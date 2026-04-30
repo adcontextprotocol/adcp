@@ -23,7 +23,7 @@
     },
     "provenance_requirements": {
       "type": "object",
-      "description": "Structured provenance requirements for creatives. Expands on the provenance_required boolean with specific field-level requirements. Existing seller agents that do not read this object are unaffected; the wire shape does not change for them. This is a visibility surface, not a prevention surface: provenance_requirements declares what the seller expects, but does not block delivery if requirements are unmet. A non-enforcing seller silently accepts non-compliant creative. The should-verify tier (receiver-obligation RFC) is intended to close this enforcement gap by adding task-level error signals that make unmet requirements visible to the buyer.",
+      "description": "Structured provenance requirements for creatives. Refines provenance_required: when provenance_required is true, the fields in this object specify which provenance features the seller requires. When provenance_required is false or absent, this object SHOULD be absent; if present, receivers SHOULD ignore it. Existing seller agents that do not read this object are unaffected; the wire shape does not change for them. This is a visibility surface, not a prevention surface: provenance_requirements declares what the seller expects, but does not block delivery if requirements are unmet. A non-enforcing seller silently accepts non-compliant creative. The should-verify tier (receiver-obligation RFC) is intended to close this enforcement gap by adding task-level error signals that make unmet requirements visible to the buyer.",
       "properties": {
         "require_digital_source_type": {
           "type": "boolean",
