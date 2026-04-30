@@ -3775,32 +3775,35 @@ export class HTTPServer {
                   org.workos_organization_id,
                 ]
               );
+
+              // Tier-downgrade enforcement is part of the entitlement write,
+              // not a downstream side effect. If the UPDATE flips an org from
+              // a tier with API access to one without, we MUST also demote
+              // any agents currently marked `public` — otherwise they remain
+              // publicly listed on a tier that doesn't allow it (silent
+              // entitlement leak). The helper is idempotent on retry
+              // (FOR UPDATE on member_profiles; no-ops if no public agents
+              // remain). Hoisted outside the swallow-on-error block so a
+              // transient failure here re-throws and Stripe retries (#3694).
+              if (oldTier && oldTier !== subUpdate.membership_tier) {
+                const { demotePublicAgentsOnTierDowngrade } = await import('./services/agent-visibility-enforcement.js');
+                await demotePublicAgentsOnTierDowngrade(
+                  org.workos_organization_id,
+                  oldTier as MembershipTier,
+                  (subUpdate.membership_tier ?? null) as MembershipTier | null,
+                );
+              }
             }
 
-            // Downstream side effects: tier-change enforcement, notifications,
-            // welcome email, autopublish, .deleted audit + activities. The
-            // existing pattern is "log + alert + continue" because some of
-            // these are non-idempotent (Slack, activity inserts) and a Stripe
-            // retry would refire them. Failures here are visible via
-            // notifySystemError; the column UPDATE that drives entitlement
-            // already happened above.
+            // Downstream side effects: notifications, welcome email,
+            // autopublish, .deleted audit + activities. The existing pattern
+            // is "log + alert + continue" because some of these are
+            // non-idempotent (Slack, activity inserts) and a Stripe retry
+            // would refire them. Failures here are visible via
+            // notifySystemError; the column UPDATE + tier-downgrade
+            // enforcement that drive entitlement already happened above.
             try {
               if (org && !suppressOrgUpdate && subUpdate) {
-                // Enforce the visibility gate for any tier change, including
-                // full cancellation (new tier becomes null). The helper is a
-                // no-op when the new tier still has API access.
-                if (oldTier && oldTier !== subUpdate.membership_tier) {
-                  const { demotePublicAgentsOnTierDowngrade } = await import('./services/agent-visibility-enforcement.js');
-                  try {
-                    await demotePublicAgentsOnTierDowngrade(
-                      org.workos_organization_id,
-                      oldTier as MembershipTier,
-                      (subUpdate.membership_tier ?? null) as MembershipTier | null,
-                    );
-                  } catch (err) {
-                    logger.warn({ err, orgId: org.workos_organization_id }, 'Failed to demote public agents on tier downgrade');
-                  }
-                }
 
                 // Detect tier change and notify admins
                 if (subUpdate.membership_tier && oldTier && subUpdate.membership_tier !== oldTier) {
