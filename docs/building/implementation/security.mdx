@@ -243,6 +243,14 @@ This threat is distinct from ordinary prompt injection: ordinary injection exfil
 
 The protocol cannot force this discipline on the client agent. The test for it is operational: every LLM-powered AdCP buyer MUST be able to describe, in writing, which principals can appear together in the same planning context and what gates a cross-principal tool call.
 
+### Sandbox surfaces and test-only tools
+
+Some compliance and testing surfaces — notably the [`comply_test_controller`](/docs/building/implementation/comply-test-controller) — exist to mutate seller-side state deterministically so storyboard runners can walk full lifecycle state machines. These surfaces ride the same tenancy gate every other mutating tool depends on, with two additions: the targeted account MUST be a sandbox account (a property set at account creation, immutable post-creation, with isolated billing, no real ad delivery, and no real PII), and the tool MUST NOT appear in `tools/list` on production connections.
+
+The controller does not widen the seller's existing attack surface — it rides on it. If the gate that protects `update_media_buy` from cross-tenant calls fails, the controller is exposed through the same hole, but so is every other mutating tool. Hardening the tenancy gate is the load-bearing control; the controller's per-request sandbox enforcement is defense-in-depth on top.
+
+This is the same architecture Stripe uses for `/v1/test_helpers/*`, Plaid for sandbox, and Twilio for test credentials — one binary, runtime gate on an immutable account-property flag, production code paths run against test-namespaced data. See [Compliance test controller — Security model](/docs/building/implementation/comply-test-controller#security-model) for the full normative requirements on sandbox account properties and per-request enforcement.
+
 ## Time Semantics
 
 AdCP operates across jurisdictions, ad servers, and daypart calendars. Implementations MUST be precise about time or buyers and sellers will disagree about what "delivered by 5pm" meant.
