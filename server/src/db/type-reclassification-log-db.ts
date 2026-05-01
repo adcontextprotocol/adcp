@@ -50,15 +50,19 @@ export async function insertTypeReclassification(
       ]
     );
   } catch (err) {
-    // PostgreSQL SQLSTATE codes are 5 chars; the first 2 are the error class
-    // (e.g. '23' = integrity_constraint_violation, '08' = connection_exception).
-    // The class is what ops actually alerts on — the full code is too granular.
+    // PostgreSQL SQLSTATE codes are exactly 5 chars; the first 2 are the error
+    // class (e.g. '23' = integrity_constraint_violation, '08' = connection_
+    // exception). The class is what ops actually alerts on — the full code is
+    // too granular. Anything that isn't a well-formed SQLSTATE is 'unknown'.
     const pgCode = (err as { code?: unknown })?.code;
     const errorClass =
-      typeof pgCode === 'string' && pgCode.length >= 2
+      typeof pgCode === 'string' && pgCode.length === 5
         ? pgCode.slice(0, 2)
         : 'unknown';
 
+    // Deliberately not labeled by agent_url / member_id — unbounded cardinality
+    // would blow up PostHog event volume. The {source × error_class} cross
+    // product is the alertable shape; the warn log below carries per-row detail.
     captureEvent('server-metrics', 'audit_log_insert_failed', {
       source: entry.source,
       error_class: errorClass,

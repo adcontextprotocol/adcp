@@ -136,6 +136,25 @@ describe('insertTypeReclassification', () => {
     );
   });
 
+  it('falls back to error_class="unknown" when the pg code is not a well-formed 5-char SQLSTATE', async () => {
+    // SQLSTATE is exactly 5 chars by spec — anything else is malformed and
+    // labeling it with a truncated prefix would be misleading on a dashboard.
+    const malformed = Object.assign(new Error('weird driver'), { code: 'XYZ' });
+    mockedQuery.mockRejectedValueOnce(malformed);
+
+    await insertTypeReclassification({
+      agentUrl: 'https://a',
+      newType: 'sales',
+      source: 'backfill_script',
+    });
+
+    expect(mockedCaptureEvent).toHaveBeenCalledWith(
+      'server-metrics',
+      'audit_log_insert_failed',
+      { source: 'backfill_script', error_class: 'unknown' }
+    );
+  });
+
   it('does not emit the failure metric on a successful insert', async () => {
     await insertTypeReclassification({
       agentUrl: 'https://a',
