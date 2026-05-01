@@ -2276,7 +2276,7 @@ export class HTTPServer {
       await this.serveHtmlWithConfig(req, res, 'members.html');
     });
 
-    // Member hub
+    // Your hub — personal dashboard (URL kept as /member-hub for back-compat)
     this.app.get("/member-hub", async (req, res) => {
       await this.serveHtmlWithConfig(req, res, 'membership/hub.html');
     });

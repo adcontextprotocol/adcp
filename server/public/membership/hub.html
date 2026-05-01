@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Member hub - AgenticAdvertising.org</title>
+  <title>Your hub - AgenticAdvertising.org</title>
   <link rel="icon" href="/addie-icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/design-system.css">
   <style>
@@ -1341,7 +1341,7 @@
   <div class="hub-container">
     <div id="hub-loading" class="hub-loading">
       <div class="spinner"></div>
-      <p>Loading your member hub...</p>
+      <p>Loading your hub...</p>
     </div>
 
     <div id="hub-content" style="display: none;"></div>
@@ -1399,8 +1399,8 @@
               : githubRes.ok ? await githubRes.json() : { connected: false };
             document.getElementById('hub-loading').innerHTML =
               '<div class="hub-empty-panel">' +
-              '<div class="hub-kicker">My hub</div>' +
-              '<h1>Your member hub will light up once you join a workspace</h1>' +
+              '<div class="hub-kicker">Your hub</div>' +
+              '<h1>Your hub will light up once you join a workspace</h1>' +
               '<p>You can still explore membership plans, browse the community, and decide how you want to participate before joining.</p>' +
               '<div class="hub-empty-actions">' +
               '<a href="/membership" class="btn btn-primary">Explore membership</a>' +
@@ -1441,7 +1441,7 @@
       } catch (err) {
         console.error('Hub load error:', err);
         document.getElementById('hub-loading').innerHTML =
-          '<p>Failed to load member hub. <a href="/member-hub">Try again</a></p>';
+          '<p>Failed to load your hub. <a href="/member-hub">Try again</a></p>';
       }
     }
 
@@ -1573,7 +1573,7 @@
         <!-- Header -->
         <div class="hub-header">
           <div class="hub-hero-card">
-            <div class="hub-kicker">My hub</div>
+            <div class="hub-kicker">Your hub</div>
             <h1>Welcome back, ${escapeHtml(firstName)}.</h1>
             <p class="hub-lede">This is your home base for membership progress, profile momentum, and the next things worth doing inside AgenticAdvertising.org.</p>
             <div class="hub-header-meta">

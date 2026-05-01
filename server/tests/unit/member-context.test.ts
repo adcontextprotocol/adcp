@@ -682,8 +682,9 @@ describe('community_profile formatting', () => {
     expect(result).toContain('Community profile: Not yet public');
     expect(result).toContain('Encourage them to visit');
     expect(result).toContain('GitHub: Not linked');
-    // Both surfaces must be named with exact URLs so Addie has nothing to paraphrase.
+    // All three surfaces must be named with exact URLs so Addie has nothing to paraphrase.
     expect(result).toContain('https://agenticadvertising.org/account');
+    expect(result).toContain('https://agenticadvertising.org/member-hub');
     expect(result).toContain('https://agenticadvertising.org/connect/github');
   });
 
@@ -709,6 +710,7 @@ describe('community_profile formatting', () => {
     expect(result).toContain('Community profile: Public');
     expect(result).toContain('GitHub: Not linked');
     expect(result).toContain('https://agenticadvertising.org/account');
+    expect(result).toContain('https://agenticadvertising.org/member-hub');
     expect(result).toContain('https://agenticadvertising.org/connect/github');
   });
 
