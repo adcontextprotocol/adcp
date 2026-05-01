@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.2/enums/account-scope.json",
+  "title": "Account Scope",
+  "description": "How the seller scoped a billing account relative to the operator and brand dimensions.",
+  "type": "string",
+  "enum": ["operator", "brand", "operator_brand", "agent"],
+  "enumDescriptions": {
+    "operator": "Account is shared across all brands for this operator",
+    "brand": "Account is shared across all operators for this brand",
+    "operator_brand": "Account is dedicated to a specific operator+brand combination",
+    "agent": "The agent's default account with no brand or operator association"
+  }
+}

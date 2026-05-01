@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.2/core/forecast-point.json",
+  "title": "Forecast Point",
+  "description": "A forecast data point. When budget is present, the point pairs a spend level with expected delivery — multiple points at ascending budgets form a curve. When budget is omitted, the point represents total available inventory for the requested targeting and dates, independent of spend.",
+  "type": "object",
+  "properties": {
+    "label": {
+      "type": "string",
+      "maxLength": 128,
+      "description": "Human-readable name for this forecast point. Required when forecast_range_unit is 'package' so buyer agents can identify and reference individual packages. Optional for other forecast types.",
+      "examples": ["Primetime", "Morning Drive", "Large Format Transit"]
+    },
+    "budget": {
+      "type": "number",
+      "description": "Budget amount for this forecast point. Required for spend curves; omit for availability forecasts where the metrics represent total available inventory. For allocation-level forecasts, this is the absolute budget for that allocation (not the percentage). For proposal-level forecasts, this is the total proposal budget. When omitted, use metrics.spend to express the estimated cost of the available inventory.",
+      "minimum": 0
+    },
+    "metrics": {
+      "type": "object",
+      "description": "Forecasted metric values. Keys are forecastable-metric enum values for delivery/engagement or event-type enum values for outcomes. Values are ForecastRange objects (low/mid/high). Use { \"mid\": value } for point estimates. When budget is present, these are the expected metrics at that spend level. When budget is omitted, these represent total available inventory — use spend to express the estimated cost. Additional keys beyond the documented properties are allowed for event-type values (purchase, lead, app_install, etc.).",
+      "properties": {
+        "audience_size": { "$ref": "/schemas/3.0.2/core/forecast-range.json" },
+        "reach": { "$ref": "/schemas/3.0.2/core/forecast-range.json" },
+        "frequency": { "$ref": "/schemas/3.0.2/core/forecast-range.json" },
+        "impressions": { "$ref": "/schemas/3.0.2/core/forecast-range.json" },
+        "clicks": { "$ref": "/schemas/3.0.2/core/forecast-range.json" },
+        "spend": { "$ref": "/schemas/3.0.2/core/forecast-range.json" },
+        "views": { "$ref": "/schemas/3.0.2/core/forecast-range.json" },
+        "completed_views": { "$ref": "/schemas/3.0.2/core/forecast-range.json" },
+        "grps": { "$ref": "/schemas/3.0.2/core/forecast-range.json" },
+        "engagements": { "$ref": "/schemas/3.0.2/core/forecast-range.json" },
+        "follows": { "$ref": "/schemas/3.0.2/core/forecast-range.json" },
+        "saves": { "$ref": "/schemas/3.0.2/core/forecast-range.json" },
+        "profile_visits": { "$ref": "/schemas/3.0.2/core/forecast-range.json" },
+        "measured_impressions": { "$ref": "/schemas/3.0.2/core/forecast-range.json" },
+        "downloads": { "$ref": "/schemas/3.0.2/core/forecast-range.json" },
+        "plays": { "$ref": "/schemas/3.0.2/core/forecast-range.json" }
+      },
+      "additionalProperties": {
+        "$ref": "/schemas/3.0.2/core/forecast-range.json"
+      }
+    }
+  },
+  "required": ["metrics"],
+  "additionalProperties": true
+}
