@@ -1,6 +1,6 @@
 ---
 title: "RFC — Distributed brand.json"
-description: "Proposal to evolve brand.json from monolithic house portfolio to distributed per-brand canonical documents linked by mutual-assertion."
+description: "Proposal to evolve brand.json so brands can publish their own canonical documents alongside parent-owned inline definitions, with a flat house-to-brands trust model."
 "og:title": "AdCP — Distributed brand.json RFC"
 ---
 
@@ -15,175 +15,157 @@ description: "Proposal to evolve brand.json from monolithic house portfolio to d
 | Author | bokelley |
 | Status | Proposed |
 | Tracking | [#3409](https://github.com/adcontextprotocol/adcp/issues/3409) |
-| Target | brand-protocol 1.1 (additive); breaking parts at 2.0 |
+| Target | brand-protocol 1.1 (additive) |
 | Affects | `core/brand-manifest.json` schema, `docs/brand-protocol/brand-json.mdx` |
 
 ## Summary
 
-Evolve brand.json from a single house-portfolio document containing inline child brand definitions into a **collection of canonical per-brand documents** linked by mutual-assertion pointers.
+Evolve brand.json so brands can publish their own canonical documents alongside the existing inline-children shape. The house remains the single authority for who is in the family; children pick the publishing model that fits.
 
-In the current model, a house publishes one large `brand.json` with a `brands[]` array containing inline definitions for every owned brand. In the proposed model, each brand publishes its own canonical document at its own domain (or via `authoritative_location` indirection); the parent's document keeps a `brand_refs[]` array of pointers to those children, not inline copies. A child's document declares its parent via a `house` pointer. Trust between parent and child requires **mutual assertion** at each link.
+A house's brand.json keeps `brands[]` for inline children (parent-owned data, the current shape) **and** adds `brand_refs[]` for pointer children whose canonical document lives elsewhere (child-owned data). A child's canonical document declares its parent via `parent_house`. Trust between the house and a pointer child requires **mutual assertion** — both sides must reciprocate.
 
-This makes brand.json work for the long tail of independent and small publishers, supports multi-level hierarchies (e.g. `streetkix.com → converse.com → nikeinc.com`), keeps hosting decisions independent of the data model (static, CDN, or a brand-agent — any of those works), and gives consumers an unambiguous trust contract.
+The hierarchy is **flat**: only the house declares ownership. There is no recursive parent chain.
 
 ## Motivation
 
-### What's in the spec today
+### The pain point
 
-The current portfolio variant has the parent's brand.json own everything inline:
+Today brand identity for a holdco lives in **one** brand.json owned by the parent. Every change to any brand requires an edit to the parent's file.
+
+If Converse wants to update its logo in AdCP, someone has to edit Nike, Inc.'s brand.json. If Jordan launches a new tagline, same file. If a holdco like Publicis runs 100 subsidiaries, all 100 brand teams converge on the same monolithic document. This is a structural mismatch: brand teams own their identity, but the protocol forces a single ops choke point at the corporate parent.
+
+The same shape blocks independent brands from publishing at all — a brand listed in someone else's portfolio has no protocol-level path to assert its own canonical data, even when domain control proves it could.
+
+### Secondary problems
+
+1. **Caching is all-or-nothing.** A 100-brand monolith re-fetches in full on any change.
+2. **No leaf-side authority.** A brand listed in a parent's portfolio can't override stale parent-published data, even when it controls its own domain.
+3. **Trust is implicit.** A brand appearing in someone else's portfolio is "owned" by that house with no verification. No way to distinguish "Nike asserts Converse is theirs and Converse agrees" from "anyone could publish a brand.json claiming Converse is theirs."
+
+### Constraints we want to preserve
+
+- **House remains the authority for ownership.** The protocol shouldn't let arbitrary brands claim themselves into someone's portfolio. Only the house decides who is in the family.
+- **No forced migration.** Existing portfolio publishers should keep working. Brands that don't want or need self-publish should stay simple.
+- **Hosting is independent of data model.** Static, CDN, brand-agent service, AAO-hosted, self-hosted — all should work.
+
+## Proposal
+
+### Hybrid: inline children **and** pointer children
+
+A house's canonical brand.json may carry both:
+
+- **`brands[]`** — inline child definitions. **Parent owns the data.** Same shape as today. Best for sub-brands without their own domain (Nike SB, an internal product line) or sub-brands the holdco wants to manage centrally.
+- **`brand_refs[]`** — pointer entries. **Child owns the data** at its own canonical document. Best for sub-brands with their own domain that want self-publish authority (Converse, Jordan).
+
+A given child appears in **exactly one** of the two. A house can mix freely.
 
 ```json
+// nikeinc.com — house, mixes inline and pointer children
 {
   "house": { "domain": "nikeinc.com", "name": "Nike, Inc.", "architecture": "hybrid" },
+  "house_attributes": {
+    "privacy_policy_url": "https://agreementservice.svs.nike.com/...",
+    "compliance_policies": ["no_under_13_targeting"]
+  },
   "brands": [
     {
-      "id": "nike",
-      "names": [{"en": "Nike"}],
-      "keller_type": "master",
-      "logos": [/* full inline logo data */],
-      "colors": {/* inline */},
-      "tone": {/* inline */},
-      "tagline": "Just Do It",
-      "visual_guidelines": {/* inline */},
-      "properties": [{"type": "website", "identifier": "nike.com", "primary": true}]
-    },
-    /* ...one giant block per owned brand... */
+      "id": "nike-sb",
+      "names": [{"en": "Nike SB"}],
+      "keller_type": "sub_brand",
+      "logos": [/* parent-managed inline */]
+    }
+  ],
+  "brand_refs": [
+    { "brand_id": "converse", "domain": "converse.com" },
+    { "brand_id": "jordan",   "domain": "jordan.com" }
   ]
 }
 ```
 
-### The problems
-
-1. **Monolithic.** A holdco like Publicis with 100 subsidiaries publishes one file containing 100 inline brand definitions. Every update to any brand touches the whole document. Every consumer fetches the whole thing. Caching is all-or-nothing.
-
-2. **No leaf-side authority.** A brand that wants to publish its own brand.json (correct its parent's stale data, run independently of a parent registry, declare a new house relationship after an acquisition) can't — the spec's variant exclusivity gives the parent's portfolio sole authority for any brand it lists.
-
-3. **Doesn't model multi-level reality.** A 3rd-level brand like StreetKix (Nike → Converse → StreetKix) has no clean expression. Nike's portfolio listing every descendant flattens the structure; Converse can't manage StreetKix without forcing Nike to update.
-
-4. **Operational mismatch.** Holdcos with central brand teams want to manage subsidiary brand data centrally. Independent brands want self-publish. Sub-brands of a holdco often want to be managed by the parent's team but billed/owned at the brand level. The current model forces a single ops shape on everyone.
-
-5. **Trust is implicit.** A brand that appears in someone else's portfolio is "owned" by that house with no verification primitive. No way for a consumer to distinguish "Nike asserts Converse is theirs and Converse agrees" from "anyone could publish a brand.json claiming Converse is theirs."
-
-### What we want
-
-A data model that:
-
-- Supports multi-level hierarchies recursively without flattening
-- Lets each brand own its own canonical data
-- Lets the host of a brand.json (the parent's brand-agent, AAO, the brand itself, a CDN) be an independent operational decision
-- Defines an unambiguous trust primitive — when can a consumer trust a parent/child claim?
-- Preserves the current portfolio-variant publishers through a transition window
-
-## Proposal
-
-### Data model
-
-Three pieces.
-
-#### 1. Per-brand canonical documents
-
-Each brand publishes **one** canonical brand.json describing itself. Identity attributes (`name`, `logos`, `colors`, `fonts`, `tone`, `tagline`, `visual_guidelines`, `voice`, `avatar`) live ONLY here, never inlined elsewhere.
-
 ```json
-// converse.com — canonical
+// converse.com — pointer child, owns its own data
 {
   "version": "1.0",
   "name": "Converse",
   "names": [{"en": "Converse"}],
   "keller_type": "sub_brand",
-  "house": { "domain": "nikeinc.com" },
+  "parent_house": { "domain": "nikeinc.com" },
   "logos": [...],
   "colors": {...},
   "tone": {...},
-  "tagline": "Sneaker for the streets",
-  "brand_refs": [
-    { "id": "streetkix", "domain": "streetkix.com" }
-  ]
+  "tagline": "Sneaker for the streets"
 }
 ```
 
-#### 2. `house` pointer (immediate parent)
+### Flat hierarchy — only the house adds brands
 
-A new optional field on brand-manifest. Declares the brand's **immediate** parent — one level up, not the ultimate root. Multi-level chains emerge from following pointers. Crawler walks recursively to find the master.
+Only the **house** has `brand_refs[]` / `brands[]`. A brand cannot list its own children. The hierarchy is one level deep.
+
+A multi-tier real-world arrangement (e.g. "StreetKix is run by Converse's team but legally owned by Nike, Inc.") collapses for the purpose of the data model: StreetKix's `parent_house` points to nikeinc.com directly, and StreetKix appears in nikeinc.com's `brand_refs[]`. Operational delegation between Converse and StreetKix is internal to Nike's organization — not a protocol concept.
+
+This dramatically simplifies trust and inheritance: one hop, single ancestor, no recursive walks.
+
+### `parent_house` (renamed from `house`) on a child
+
+Children declare their parent via a new `parent_house` field. The existing `house` field on the root keeps its current meaning — the corporate-entity declaration object `{domain, name, architecture}`. Two distinct fields, no overload.
 
 ```json
-"house": { "domain": "nikeinc.com" }
+"parent_house": { "domain": "nikeinc.com" }
 ```
 
-For the master brand of a house (no parent), the field is omitted.
+A pure house (no parent — the root) omits `parent_house`. A child omits `house` (it's not declaring a corporate entity, it's a brand within one).
 
-#### 3. `brand_refs[]` (replacing inline `brands[]`)
-
-A new array of pointer objects on the parent's canonical document. Each pointer is intentionally minimal — ID and the canonical domain where the child's full document lives:
+### `brand_refs[]` shape
 
 ```json
 "brand_refs": [
-  { "id": "nike",     "domain": "nike.com" },
-  { "id": "jordan",   "domain": "jordan.com" },
-  { "id": "converse", "domain": "converse.com" }
+  { "brand_id": "converse", "domain": "converse.com" }
 ]
 ```
 
-No preview fields. No inline content. The protocol contract is unambiguous: any consumer that wants any attribute about a brand fetches that brand's canonical document. There is exactly one source of truth per brand.
+Pointer-only — `brand_id` and the canonical domain. No inline content, no preview fields. Any consumer that wants any attribute about a pointer child fetches that child's canonical document.
 
-The legacy `brands[]` field stays valid through the migration window (see [Migration](#migration)) but is deprecated.
+The legacy `brands[]` field stays valid alongside it.
 
 ### Hosting is independent
 
-The data model says nothing about where bytes live. Implementations choose:
+The data model says nothing about where bytes live. For pointer children, the canonical document is served at the pointed-to domain via the existing discovery contract (`domain.com/.well-known/brand.json`, with optional `authoritative_location` indirection). The hosting party is an implementation choice:
 
 | Pattern | How |
 | --- | --- |
-| Self-hosted at the brand's domain | `domain.com/.well-known/brand.json` is the canonical document |
+| Brand self-hosts | `domain.com/.well-known/brand.json` is the canonical document |
 | AAO-hosted | `domain.com/.well-known/brand.json` is a stub with `authoritative_location: "https://agenticadvertising.org/brands/domain.com/brand.json"` |
-| Parent's brand-agent or static server | Same pattern — stub at the brand's own domain points at the parent's canonical URL |
-| CDN-fronted | Either of the above with caching infrastructure in front |
-| Mixed within a single family | Top-level uses one host; some sub-brands self-host; others use AAO |
+| Parent's brand-agent or static server | Stub at brand's domain points at the parent's canonical URL |
+| CDN-fronted | Either above with caching infrastructure in front |
+| Mixed within a single house | Some children inline (`brands[]`), some pointer-self-hosted, some pointer-AAO-hosted, etc. |
 
-The crawler does not care. It follows the discovery contract:
-
-1. Fetch `domain.com/.well-known/brand.json`
-2. If it has `authoritative_location`, fetch that URL
-3. Parse the canonical document there
-
-This is the same indirection mechanism already in spec; the proposal doesn't change it. It just makes explicit that **any party** can be the host. The brand-agent service spec ([building a brand agent](/docs/brand-protocol/building-a-brand-agent)) is a separate, complementary concept — a brand-agent can serve brand.json content via `get_brand_identity`, but trust still flows from the static document's authenticity, not the agent's identity.
+The crawler doesn't care about hosting. It follows the discovery contract. The brand-agent service spec ([building a brand agent](/docs/brand-protocol/building-a-brand-agent)) is a separate, complementary concept — a brand-agent can serve brand.json content, but trust still flows from the static document's authenticity.
 
 ### Inheritance via `house_attributes`
 
-For attributes that genuinely belong house-wide — privacy policy, compliance flags, corporate legal entity, jurisdictional data — the master (or any ancestor) may publish a `house_attributes` block that descendants inherit by default:
+For attributes that belong house-wide — privacy policy, compliance flags, corporate legal entity, jurisdictional data — the house may publish a `house_attributes` block that all its children inherit:
 
 ```json
-// nikeinc.com — master, declares house-wide attributes
+// nikeinc.com — house declares house-wide attributes
 {
-  "name": "Nike, Inc.",
+  "house": { "domain": "nikeinc.com", "name": "Nike, Inc." },
   "house_attributes": {
     "privacy_policy_url": "https://nikeinc.com/privacy",
     "data_protection_roles": [...],
     "compliance_policies": ["no_under_13_targeting"],
     "tax_entity": "Nike, Inc."
-  },
-  "brand_refs": [
-    { "id": "nike", "domain": "nike.com" },
-    { "id": "converse", "domain": "converse.com" }
-  ]
+  }
 }
 ```
 
-A descendant resolves its **effective house attributes** by walking up the chain:
+A pointer child resolves its **effective house attributes** in one step: fetch its `parent_house.domain`'s canonical document, take its `house_attributes`. No multi-level walking.
 
-```
-streetkix.com (no house_attributes block)
-  → converse.com (no house_attributes block)
-    → nikeinc.com (defines house_attributes)
-       ↳ effective: { privacy_policy_url: ..., data_protection_roles: ..., ... }
-```
-
-A descendant may override specific inherited fields:
+A child may override specific inherited fields:
 
 ```json
-// streetkix.com — overrides one inherited compliance attribute
+// jordan.com — pointer child, overrides one inherited compliance attribute
 {
-  "house": { "domain": "converse.com" },
+  "parent_house": { "domain": "nikeinc.com" },
   "house_attributes_overrides": {
     "compliance_policies": ["no_under_13_targeting", "us_only"]
   }
@@ -192,18 +174,18 @@ A descendant may override specific inherited fields:
 
 The spec defines which top-level fields are **brand-identity** (per-brand only, never inherited): `name`, `names`, `logos`, `colors`, `fonts`, `tone`, `voice`, `tagline`, `visual_guidelines`, `avatar`.
 
-Everything else is potentially inheritable; the master's `house_attributes` block is the canonical inheritance source.
+Everything else on the house is potentially inheritable through `house_attributes`.
 
 ## Trust model
 
-The hard part. Five layers, increasing in strength.
+Single-hop. Five layers, increasing in strength.
 
 ### 1. Document authenticity (baseline)
 
-A canonical brand.json document is authentic if and only if it is served via TLS by infrastructure the consumer can verify the brand controls. Two paths to authenticity:
+A canonical brand.json document is authentic if and only if it is served via TLS by infrastructure the consumer can verify the brand controls. Two paths:
 
 - **Direct**: served at `domain.com/.well-known/brand.json` over TLS valid for `domain.com`. Standard web-PKI.
-- **Indirect via `authoritative_location`**: stub at `domain.com/.well-known/brand.json` (proves domain control) points at a separate URL where the canonical document is served. The pointer is the trust anchor; the consumer trusts the pointed-to URL because the brand's domain control endorsed it.
+- **Indirect via `authoritative_location`**: stub at `domain.com/.well-known/brand.json` (proves domain control) points at a separate URL where the canonical document is served.
 
 This layer establishes "I trust this is the brand's own document." Nothing more.
 
@@ -211,55 +193,62 @@ This layer establishes "I trust this is the brand's own document." Nothing more.
 
 A brand's own canonical document is authoritative for **its own identity attributes**: `name`, `logos`, `colors`, `voice`, etc. Domain control = self-identity authority. No cross-checking needed.
 
+For inline children in `brands[]`, the parent's document authenticity covers them — the parent is the authority for the child's data, by definition.
+
 ### 3. One-sided relationship claims (metadata only — NOT trust)
 
-A child's document says `house: { domain: "converse.com" }`. Converse's canonical document does NOT include the child's domain in `brand_refs[]`.
+A pointer child says `parent_house: { domain: "nikeinc.com" }`. nikeinc.com's canonical document does NOT include the child's domain in `brand_refs[]`.
 
 This is **supportive metadata**, not a trust edge. Surface it in UIs as "claimed but unverified." Do not extend inheritance trust through it. Auto-provisioning, member-feature inheritance, billable seat inclusion: **NO**.
 
 ### 4. Mutual assertion (the trust edge)
 
-Child's document says `house: { domain: "converse.com" }`. Converse's canonical document `brand_refs[]` includes `{ id: ..., domain: "<child>.com" }`. Both verifiable at fetch time. **This is the link's trust edge.** Auto-provisioning, member-feature inheritance, inherited `house_attributes`: YES.
+Pointer child's document says `parent_house: { domain: "nikeinc.com" }`. nikeinc.com's `brand_refs[]` includes `{ brand_id: ..., domain: "<child>.com" }`. Both verifiable in one fetch each. **This is the trust edge.** Auto-provisioning, member-feature inheritance, inherited `house_attributes`: YES.
 
-For multi-level chains (`streetkix → converse → nikeinc`), every link must be mutually-asserted. One non-mutual link breaks the chain at that point — trust extends only as far as the deepest mutually-asserted ancestor.
+For inline children in `brands[]`, mutual assertion is implicit — the house authored the entry; no separate child claim exists. Parent's TLS = the assertion.
 
 ### 5. Cryptographic signing / brand-agent endorsement (future, optional)
 
-Out of scope for v1. Future extensions: a parent's brand-agent could sign attestations about its hosted brands; verifiable credentials; etc. Not needed to ship the data model.
+Out of scope for v1. Future extensions: a house's brand-agent could sign attestations about its hosted brands; verifiable credentials; etc. Not needed to ship the data model.
 
 ### Conflict resolution
 
 | Scenario | Resolution |
 | --- | --- |
-| Child claims `house: A`, A's `brand_refs[]` does not include child | One-sided. Untrusted. UI: "claimed, unverified." |
-| Child claims `house: A`, A's `brand_refs[]` includes child | Mutual. Trusted edge. |
-| A's `brand_refs[]` includes child, but child's document has no `house` (or `house: null`) | One-sided in the other direction. A's claim is supportive metadata. Child is treated as having no parent. |
-| Two parents (A and B) both have child in `brand_refs[]`; child's `house` is A | A wins (child's claim is canonical). B's claim is visible-but-unverified. |
-| Two parents both list child; child has no `house` declaration | Neither is trusted. UI shows both as competing unverified claims. |
+| Pointer child claims `parent_house: A`, A's `brand_refs[]` does not include child | One-sided. Untrusted. UI: "claimed, unverified." |
+| Pointer child claims `parent_house: A`, A's `brand_refs[]` includes child | Mutual. Trusted edge. |
+| A's `brand_refs[]` includes child, child's document has no `parent_house` | One-sided in the other direction. A's claim is supportive metadata. Child is treated as having no parent. |
+| Two houses (A and B) both list child in `brand_refs[]`; child's `parent_house` is A | A wins. B's claim is visible-but-unverified. |
+| Two houses both list child; child has no `parent_house` declaration | Neither is trusted. UI shows both as competing unverified claims. |
+| A child appears in both `brands[]` and `brand_refs[]` of the same house | Validation error. Publisher must choose one. |
 | Last-validated > 180 days | Edge ages out. Treat as one-sided regardless of prior state. |
 
-The 180-day TTL is already implemented in the AAO crawler (`server/src/db/org-filters.ts` recursive walk in `findPayingOrgForDomain` and `resolveEffectiveMembership`). The proposed spec formalizes it.
+The 180-day TTL is already implemented in the AAO crawler (`server/src/db/org-filters.ts`). The proposed spec formalizes it.
 
 ## Migration
 
-The current portfolio variant has live publishers. We give them a window:
+Pull-based, not push-based. Existing publishers don't have to do anything until a child wants to self-publish.
 
-### 3.x (transitional)
+### 3.x (additive)
 
-- Schema accepts both `brands[]` (legacy, with inline content) and `brand_refs[]` (new, pointer-only).
-- If both present, `brand_refs[]` wins.
-- If only `brands[]` is present, the validator emits a deprecation warning when entries contain anything beyond `{id, domain}`. Consumers treat inline content as a fallback when the child's canonical document doesn't exist yet.
-- New publishers MUST use `brand_refs[]`. Existing publishers SHOULD migrate.
+- `brand_refs[]` is a new optional field alongside `brands[]`.
+- `parent_house` is a new optional field on a child's canonical document.
+- A house may use either, both, or neither. Existing portfolio publishers continue to work unchanged.
+- No deprecation of `brands[]`. Inline remains a first-class option.
 
-### 2.0 (cutover — likely brand-protocol 2.0, not the same as AdCP major)
+### A child's path to self-publish
 
-- `brands[]` is invalid. `brand_refs[]` only.
-- All brand identity attributes live exclusively at the canonical document for the brand they describe.
+1. Child stands up a canonical document at its own domain (or `authoritative_location` target).
+2. Child's document declares `parent_house: { domain: <house> }`.
+3. House removes the child's entry from `brands[]` and adds `{ brand_id, domain }` to `brand_refs[]`.
+4. Crawler picks up the mutual assertion on next refresh (≤ 180-day TTL).
+
+No coordination required at the spec/version level — both shapes are valid simultaneously.
 
 ### Migration helpers
 
-- AAO publishes a one-shot CLI: given a legacy portfolio brand.json, generate per-child canonical documents at the right URLs and update the parent to use `brand_refs[]`.
-- AAO's hosted brand.json service auto-migrates members on first edit after the spec lands.
+- AAO publishes a one-shot CLI: given a legacy portfolio brand.json, generate a per-child canonical document at the right URL and rewrite the parent's `brands[]` entry as a `brand_refs[]` pointer.
+- AAO's hosted brand.json service offers a "promote child to self-publish" workflow that does the migration automatically.
 
 ## AAO API ergonomic note (non-normative)
 
@@ -271,7 +260,7 @@ For consumers who want a one-shot ergonomic view, AAO's API may offer a server-s
 GET /api/brands/nikeinc.com/family
 ```
 
-Returns a denormalized tree of the parent + all (mutually-asserted) descendants in one response, with each branch's authoritative data merged in. This is a convenience layer over the protocol; **it does not change the protocol**. The merge happens server-side; clients pay one fetch instead of N.
+Returns a denormalized tree of the house + all (mutually-asserted) brand children in one response, with each pointer child's authoritative data merged in. Inline children appear as-is. This is a convenience layer over the protocol; **it does not change the protocol**. The merge happens server-side; clients pay one fetch instead of N.
 
 Other consumers (registry crawlers, AdCP agents, validators) follow the pointer-only contract and resolve lazily.
 
@@ -279,14 +268,15 @@ Other consumers (registry crawlers, AdCP agents, validators) follow the pointer-
 
 ### Schema deltas (`core/brand-manifest.json`)
 
-- Add optional `house: BrandRef` field
-- Add optional `house_attributes: object` field (free-form for now; spec specific keys per inheritance use case)
-- Add optional `house_attributes_overrides: object` field
-- Add optional `brand_refs: BrandRef[]` field
-- Mark existing `brands` field as deprecated
-- New shared `BrandRef` type: `{ id: string, domain: string }` (or refactor existing `core/brand-ref.json` to align)
+- Add optional `brand_refs: BrandRef[]` field on the house document
+- Add optional `parent_house: { domain: string }` field on a brand document
+- Add optional `house_attributes: object` field on the house document (free-form for now; spec specific keys per inheritance use case)
+- Add optional `house_attributes_overrides: object` field on a brand document
+- Validation: a `brand_id` MUST NOT appear in both `brands[]` and `brand_refs[]` of the same house
+- Validation: only the house document may have `brand_refs[]` / `brands[]`. A brand document with `parent_house` set MUST NOT have `brand_refs[]` of its own.
+- New shared `BrandRef` type: `{ brand_id: string, domain: string }` (or refactor existing `core/brand-ref.json` to align)
 
-### Crawler resolution algorithm
+### Crawler resolution algorithm (single hop)
 
 ```
 resolve(domain):
@@ -295,38 +285,38 @@ resolve(domain):
     doc = fetch(authoritative_location)
 
   result = doc.identity_attributes
-  if doc has house:
-    parent = resolve(doc.house.domain)
-    if parent.brand_refs contains domain:
+  if doc has parent_house:
+    house = fetch(doc.parent_house.domain)
+    if house.brand_refs contains domain:
       # Mutual assertion — extend trust
       result.effective_house_attributes = merge(
-        parent.effective_house_attributes,
+        house.house_attributes,
         doc.house_attributes_overrides
       )
-      result.parent = parent (mutually_asserted: true)
+      result.house = house (mutually_asserted: true)
     else:
-      result.parent_claim = parent (mutually_asserted: false)  # surface as metadata
+      result.house_claim = house (mutually_asserted: false)  # surface as metadata
 
   return result
 ```
 
-Bound by max-depth (5 hops, matching existing `resolveEffectiveMembership`). Cycle protection via visited-domain set.
+Single hop. No recursion, no max-depth, no cycle protection needed.
 
 ### Validator behavior
 
-- Reject documents with both inline `brands[]` containing per-brand identity attributes AND `brand_refs[]` (ambiguous; force publisher to migrate).
-- Warn on `brands[]` with inline identity attributes.
-- Warn when a `house` claim is not mutually-asserted by the named parent (advisory only — single-sided claims are allowed by spec, just not trusted for inheritance).
+- Reject a brand document that has both `parent_house` set AND `brand_refs[]` (a brand can't also be a house).
+- Reject a brand_id appearing in both `brands[]` and `brand_refs[]` of the same house.
+- Warn when a `parent_house` claim is not mutually-asserted by the named house (advisory only — single-sided claims are allowed by spec, just not trusted for inheritance).
 
 ## Open questions
 
 These need spec-owner / discussion input:
 
-1. **Field name: `brand_refs` vs alternatives.** Names exactly what it is, lines up with `brand-ref.json`. Other candidates: `members`, `subsidiaries`, `house_brands`, `portfolio`. Vote: `brand_refs`.
-2. **Where do `house_attributes` keys get standardized?** Loose object now; spec individual keys (privacy_policy_url, data_protection_roles, ...) over time. Vote: start permissive, formalize per use case.
-3. **Should the spec mandate mutual-assertion for trust, or leave it to consumers?** Mandating it means every implementation has the same trust model. Leaving it lets consumers be more or less strict. Vote: mandate as the canonical trust primitive; spec text says consumers MAY apply additional checks (signing, brand-agent endorsement) but MUST NOT trust one-sided claims as the trust edge.
-4. **Migration timeline.** 3.x → 2.0 (brand-protocol major) on what cadence? Suggest at least 12 months between deprecation and removal.
-5. **Brand-protocol vs AdCP version coupling.** brand-protocol versioning is currently linked to AdCP's. Is this a brand-protocol 1.1 (additive) bump now and brand-protocol 2.0 cutover (breaking) later? Or a single AdCP 4.0 spec change? Vote: brand-protocol 1.1 + 2.0, decoupled cadence.
+1. **Field name: `parent_house` vs alternatives.** Reuses existing "house" terminology, makes direction unambiguous, avoids the field-collision Pawel flagged. Other candidates: `parent`, `house_ref`, `parent_brand_domain`. Vote: `parent_house`.
+2. **`brand_refs` vs alternatives.** Names exactly what it is, lines up with `brand-ref.json`. Other candidates: `pointer_brands`, `linked_brands`, `external_brands`. Vote: `brand_refs`.
+3. **Where do `house_attributes` keys get standardized?** Loose object now; spec individual keys (privacy_policy_url, data_protection_roles, ...) over time. Vote: start permissive, formalize per use case.
+4. **Should the spec mandate mutual-assertion for trust, or leave it to consumers?** Mandating it means every implementation has the same trust model. Vote: mandate as the canonical trust primitive; spec text says consumers MAY apply additional checks (signing, brand-agent endorsement) but MUST NOT trust one-sided claims as the trust edge.
+5. **Should we explicitly disallow recursion?** Current proposal: only houses declare ownership; brands cannot have `brand_refs[]`. Alternative: leave it open for a future v2. Vote: explicitly disallow at v1, revisit if a real use case emerges.
 
 ## References
 
