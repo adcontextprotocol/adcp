@@ -118,7 +118,12 @@ Lab exercises run against the public test agent. Use the shared token — no sig
 
 ```bash
 export ADCP_AUTH_TOKEN="1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ"
-export AGENT_URL="https://test-agent.adcontextprotocol.org/mcp"
+# Ad-server workflow (exercises 2 and 4) — `/creative/mcp`
+export AGENT_URL="https://test-agent.adcontextprotocol.org/creative/mcp"
+# Stateless transformation / template agent (exercises 1 and 5):
+#   https://test-agent.adcontextprotocol.org/creative-builder/mcp
+# Push-and-preview against a sales agent (exercise 3):
+#   https://test-agent.adcontextprotocol.org/sales/mcp
 ```
 
 See the [Quickstart](/docs/quickstart) for a walkthrough of your first call.
