@@ -69,6 +69,14 @@ import {
   withdrawCommitteeInterest as withdrawCommitteeInterestService,
   WorkingGroupMembershipError,
 } from '../../services/working-group-membership-service.js';
+import {
+  createWorkingGroupPost as createWorkingGroupPostService,
+  addCommitteeDocument as addCommitteeDocumentService,
+  updateCommitteeDocument as updateCommitteeDocumentService,
+  deleteCommitteeDocument as deleteCommitteeDocumentService,
+  WorkingGroupContentError,
+} from '../../services/working-group-content-service.js';
+import type { CommitteeDocumentType } from '../../types.js';
 import { getPool, query } from '../../db/client.js';
 import { MemberSearchAnalyticsDatabase } from '../../db/member-search-analytics-db.js';
 import { OrganizationDatabase } from '../../db/organization-db.js';
@@ -2401,7 +2409,7 @@ export function createMemberToolHandlers(
       return 'Title is required to create a post.';
     }
 
-    // Generate post slug from title with timestamp for uniqueness
+    // Generate post slug from title with timestamp for uniqueness.
     const timestamp = Date.now().toString(36);
     const baseSlug = title
       .toLowerCase()
@@ -2410,32 +2418,46 @@ export function createMemberToolHandlers(
       .substring(0, 50);
     const postSlug = baseSlug ? `${baseSlug}-${timestamp}` : timestamp;
 
-    const body: Record<string, unknown> = {
-      title,
-      content,
-      content_type: postType,
-      post_slug: postSlug,
-    };
+    // Map Addie's `post_type` (discussion / link / etc.) onto the
+    // service's stricter `contentType` ('article' | 'link'). Discussion
+    // posts become articles in the perspectives table.
+    const contentType = postType === 'link' ? 'link' : 'article';
 
-    if (postType === 'link' && linkUrl) {
-      body.external_url = linkUrl;
-    }
-
-    const result = await callApi(
-      'POST',
-      `/api/working-groups/${slug}/posts`,
-      memberContext,
-      body
-    );
-
-    if (!result.ok) {
-      if (result.status === 403) {
-        return `You're not a member of the "${slug}" working group. Join it first using join_working_group.`;
+    const wu = memberContext.workos_user;
+    try {
+      await createWorkingGroupPostService({
+        user: { id: wu.workos_user_id, email: wu.email, firstName: wu.first_name, lastName: wu.last_name },
+        slug,
+        title,
+        postSlug,
+        content,
+        contentType,
+        externalUrl: postType === 'link' ? linkUrl : undefined,
+      });
+      return `✅ Post created successfully in the "${slug}" working group!\n\n**Title:** ${title}\n\nYour post is now visible to other working group members.`;
+    } catch (error) {
+      if (error instanceof WorkingGroupContentError) {
+        if (error.is('group_not_found')) {
+          return `Working group "${slug}" not found. Use list_working_groups to see available groups.`;
+        }
+        if (error.is('not_member')) {
+          return `You're not a member of the "${slug}" working group. Join it first using join_working_group.`;
+        }
+        if (error.is('leader_required_for_public_post')) {
+          return `Only committee leaders can create public (non-members-only) posts in "${slug}".`;
+        }
+        if (error.is('missing_required_fields')) {
+          return `Title and slug are required to create a post.`;
+        }
+        if (error.is('invalid_post_slug')) {
+          return `Generated post slug was invalid (must contain only lowercase letters, numbers, and hyphens). Try again with a different title.`;
+        }
+        if (error.is('duplicate_post_slug')) {
+          return `A post with this slug already exists in "${slug}". Try again with a different title.`;
+        }
       }
-      throw new ToolError(`Failed to create post: ${result.error}`);
+      throw new ToolError(`Failed to create post: ${error instanceof Error ? error.message : String(error)}`);
     }
-
-    return `✅ Post created successfully in the "${slug}" working group!\n\n**Title:** ${title}\n\nYour post is now visible to other working group members.`;
   });
 
   // ============================================
@@ -3003,48 +3025,57 @@ export function createMemberToolHandlers(
     const description = input.description as string | undefined;
     const isFeatured = input.is_featured as boolean | undefined;
 
-    // Validate URL is a Google domain
+    // Map URL hostname → CommitteeDocumentType. Service does its own
+    // SSRF allowlist check (broader than the Addie-side Google check
+    // below) — both run so the friendlier "Google only" error fires
+    // first for chat callers.
+    let documentType: CommitteeDocumentType;
     try {
       const url = new URL(documentUrl);
       const allowedDomains = ['docs.google.com', 'sheets.google.com', 'drive.google.com'];
       if (url.protocol !== 'https:' || !allowedDomains.includes(url.hostname)) {
         return `Invalid document URL. Only Google Docs, Sheets, and Drive URLs are supported (https://docs.google.com, sheets.google.com, or drive.google.com).`;
       }
+      // CodeQL: substring check is for document type categorization, not URL validation
+      documentType = url.hostname === 'sheets.google.com' ? 'google_sheet' : 'google_doc'; // lgtm[js/incomplete-url-substring-sanitization]
     } catch {
       return 'Invalid URL format. Please provide a valid Google Docs URL.';
     }
 
-    const result = await callApi(
-      'POST',
-      `/api/working-groups/${slug}/documents`,
-      memberContext,
-      {
+    const wu = memberContext.workos_user;
+    try {
+      await addCommitteeDocumentService({
+        user: { id: wu.workos_user_id, email: wu.email, firstName: wu.first_name, lastName: wu.last_name },
+        slug,
         title,
-        document_url: documentUrl,
+        documentUrl,
         description,
-        is_featured: isFeatured || false,
-        // CodeQL: substring check is for document type categorization, not URL validation
-        document_type: documentUrl.includes('sheets.google.com') ? 'google_sheet' : 'google_doc', // lgtm[js/incomplete-url-substring-sanitization]
+        documentType,
+        isFeatured: isFeatured ?? false,
+      });
+      let response = `✅ Document added to "${slug}"!\n\n`;
+      response += `**Title:** ${title}\n`;
+      response += `**URL:** ${documentUrl}\n\n`;
+      response += `The document will be automatically indexed and summarized within the hour. `;
+      response += `You can view it at https://agenticadvertising.org/working-groups/${slug}`;
+      return response;
+    } catch (error) {
+      if (error instanceof WorkingGroupContentError) {
+        if (error.is('group_not_found')) {
+          return `Committee "${slug}" not found. Use list_working_groups to see available committees.`;
+        }
+        if (error.is('not_member')) {
+          return `You're not a member of the "${slug}" committee. Only members and leaders can add documents.`;
+        }
+        if (error.is('missing_required_fields')) {
+          return `Title and document URL are required to add a document.`;
+        }
+        if (error.is('invalid_document_url')) {
+          return `That document URL isn't on the allowlist. Only Google Docs/Sheets/Drive plus PDFs/PPTX/XLSX/DOCX from trusted hosts are accepted.`;
+        }
       }
-    );
-
-    if (!result.ok) {
-      if (result.status === 403) {
-        return `You're not a member of the "${slug}" committee. Only members and leaders can add documents.`;
-      }
-      if (result.status === 404) {
-        return `Committee "${slug}" not found. Use list_working_groups to see available committees.`;
-      }
-      throw new ToolError(`Failed to add document: ${result.error}`);
+      throw new ToolError(`Failed to add document: ${error instanceof Error ? error.message : String(error)}`);
     }
-
-    let response = `✅ Document added to "${slug}"!\n\n`;
-    response += `**Title:** ${title}\n`;
-    response += `**URL:** ${documentUrl}\n\n`;
-    response += `The document will be automatically indexed and summarized within the hour. `;
-    response += `You can view it at https://agenticadvertising.org/working-groups/${slug}`;
-
-    return response;
   });
 
   handlers.set('list_committee_documents', async (input) => {
@@ -3106,64 +3137,70 @@ export function createMemberToolHandlers(
     const documentUrl = input.document_url as string | undefined;
     const isFeatured = input.is_featured as boolean | undefined;
 
-    // Validate UUID format before API call
-    if (!isUuid(documentId)) {
-      return 'Invalid document ID format. Use list_committee_documents to find valid document IDs.';
-    }
-
-    // Validate URL if provided
-    if (documentUrl) {
+    // Addie-side Google-only check produces a friendlier error than the
+    // service's broader "isn't on the allowlist" message. Service still
+    // re-validates as defense-in-depth.
+    let documentType: CommitteeDocumentType | undefined;
+    if (documentUrl !== undefined) {
       try {
         const url = new URL(documentUrl);
         const allowedDomains = ['docs.google.com', 'sheets.google.com', 'drive.google.com'];
         if (url.protocol !== 'https:' || !allowedDomains.includes(url.hostname)) {
           return `Invalid document URL. Only Google Docs, Sheets, and Drive URLs are supported (https://docs.google.com, sheets.google.com, or drive.google.com).`;
         }
+        // CodeQL: substring check is for document type categorization, not URL validation
+        documentType = url.hostname === 'sheets.google.com' ? 'google_sheet' : 'google_doc'; // lgtm[js/incomplete-url-substring-sanitization]
       } catch {
         return 'Invalid URL format. Please provide a valid Google Docs URL.';
       }
     }
 
-    // Build update payload with only provided fields
-    const updateData: Record<string, unknown> = {};
-    if (title !== undefined) updateData.title = title;
-    if (description !== undefined) updateData.description = description;
-    if (documentUrl !== undefined) {
-      updateData.document_url = documentUrl;
-      // CodeQL: substring check is for document type categorization, not URL validation
-      updateData.document_type = documentUrl.includes('sheets.google.com') ? 'google_sheet' : 'google_doc'; // lgtm[js/incomplete-url-substring-sanitization]
-    }
-    if (isFeatured !== undefined) updateData.is_featured = isFeatured;
-
-    if (Object.keys(updateData).length === 0) {
+    if (
+      title === undefined &&
+      description === undefined &&
+      documentUrl === undefined &&
+      isFeatured === undefined
+    ) {
       return 'No fields to update. Please provide at least one field to change (title, description, document_url, or is_featured).';
     }
 
-    const result = await callApi(
-      'PUT',
-      `/api/working-groups/${slug}/documents/${documentId}`,
-      memberContext,
-      updateData
-    );
-
-    if (!result.ok) {
-      if (result.status === 403) {
-        return `You're not a member of the "${slug}" committee. Only members and leaders can update documents.`;
+    const wu = memberContext.workos_user;
+    try {
+      const result = await updateCommitteeDocumentService({
+        user: { id: wu.workos_user_id, email: wu.email, firstName: wu.first_name, lastName: wu.last_name },
+        slug,
+        documentId,
+        title,
+        description,
+        documentUrl,
+        documentType,
+        isFeatured,
+      });
+      const docTitle = (result.document as { title?: string }).title || title || 'Document';
+      let response = `✅ Document updated!\n\n`;
+      response += `**${docTitle}** has been updated in "${slug}".\n\n`;
+      response += `View it at https://agenticadvertising.org/working-groups/${slug}`;
+      return response;
+    } catch (error) {
+      if (error instanceof WorkingGroupContentError) {
+        if (error.is('invalid_document_id')) {
+          return 'Invalid document ID format. Use list_committee_documents to find valid document IDs.';
+        }
+        if (error.is('group_not_found')) {
+          return `Committee "${slug}" not found. Use list_working_groups to see available committees.`;
+        }
+        if (error.is('document_not_found')) {
+          return `Document not found in "${slug}". Use list_committee_documents to find valid document IDs.`;
+        }
+        if (error.is('not_member')) {
+          return `You're not a member of the "${slug}" committee. Only members and leaders can update documents.`;
+        }
+        if (error.is('invalid_document_url')) {
+          return `That document URL isn't on the allowlist. Only Google Docs/Sheets/Drive plus PDFs/PPTX/XLSX/DOCX from trusted hosts are accepted.`;
+        }
       }
-      if (result.status === 404) {
-        return `Document not found. Either the committee "${slug}" doesn't exist or the document ID "${documentId}" is invalid.`;
-      }
-      throw new ToolError(`Failed to update document: ${result.error}`);
+      throw new ToolError(`Failed to update document: ${error instanceof Error ? error.message : String(error)}`);
     }
-
-    const data = result.data as { document?: { title: string } } | undefined;
-    const docTitle = data?.document?.title || title || 'Document';
-
-    let response = `✅ Document updated!\n\n`;
-    response += `**${docTitle}** has been updated in "${slug}".\n\n`;
-    response += `View it at https://agenticadvertising.org/working-groups/${slug}`;
-
-    return response;
   });
 
   handlers.set('delete_committee_document', async (input) => {
@@ -3174,28 +3211,31 @@ export function createMemberToolHandlers(
     const slug = input.committee_slug as string;
     const documentId = input.document_id as string;
 
-    // Validate UUID format before API call
-    if (!isUuid(documentId)) {
-      return 'Invalid document ID format. Use list_committee_documents to find valid document IDs.';
-    }
-
-    const result = await callApi(
-      'DELETE',
-      `/api/working-groups/${slug}/documents/${documentId}`,
-      memberContext
-    );
-
-    if (!result.ok) {
-      if (result.status === 403) {
-        return `You're not a leader of the "${slug}" committee. Only committee leaders can delete documents.`;
+    const wu = memberContext.workos_user;
+    try {
+      await deleteCommitteeDocumentService({
+        user: { id: wu.workos_user_id, email: wu.email, firstName: wu.first_name, lastName: wu.last_name },
+        slug,
+        documentId,
+      });
+      return `✅ Document removed from "${slug}".\n\nThe document will no longer be tracked or displayed on the committee page.`;
+    } catch (error) {
+      if (error instanceof WorkingGroupContentError) {
+        if (error.is('invalid_document_id')) {
+          return 'Invalid document ID format. Use list_committee_documents to find valid document IDs.';
+        }
+        if (error.is('group_not_found')) {
+          return `Committee "${slug}" not found. Use list_working_groups to see available committees.`;
+        }
+        if (error.is('document_not_found')) {
+          return `Document not found in "${slug}". Use list_committee_documents to find valid document IDs.`;
+        }
+        if (error.is('not_leader')) {
+          return `You're not a leader of the "${slug}" committee. Only committee leaders can delete documents.`;
+        }
       }
-      if (result.status === 404) {
-        return `Document not found. Either the committee "${slug}" doesn't exist or the document ID "${documentId}" is invalid.`;
-      }
-      throw new ToolError(`Failed to delete document: ${result.error}`);
+      throw new ToolError(`Failed to delete document: ${error instanceof Error ? error.message : String(error)}`);
     }
-
-    return `✅ Document removed from "${slug}".\n\nThe document will no longer be tracked or displayed on the committee page.`;
   });
 
   // ============================================
