@@ -28,6 +28,7 @@ import { safeFetch } from '../utils/url-security.js';
 import { generateIllustration } from '../services/illustration-generator.js';
 import { createIllustration, approveIllustration } from '../db/illustration-db.js';
 import { resolveEscalationsForPerspective } from '../db/escalation-db.js';
+import { listMyContent as listMyContentService, MyContentError } from '../services/my-content-service.js';
 
 const logger = createLogger('content-routes');
 
@@ -1389,144 +1390,24 @@ export function createMyContentRouter(): Router {
       const status = req.query.status as string | undefined;
       const collection = req.query.collection as string | undefined;
       const relationship = req.query.relationship as string | undefined;
-      const limit = Math.min(parseInt(req.query.limit as string) || 50, 100);
-      const pool = getPool();
-
-      // Get committees user leads (for "owner" relationship)
-      const leaderResult = await pool.query(
-        `SELECT working_group_id FROM working_group_leaders WHERE user_id = $1`,
-        [user.id]
-      );
-      const ledCommitteeIds = leaderResult.rows.map(r => r.working_group_id);
-
-      // Admins can see every perspective here so they can edit anything
-      // (including content that predates them, has no proposer, or belongs to a
-      // committee they don't lead). Relationships are still computed so the UI
-      // can still distinguish their own contributions.
-      const userIsAdmin = await isWebUserAAOAdmin(user.id);
-
-      // Build the query
-      let query = `
-        SELECT DISTINCT ON (p.id)
-          p.id, p.slug, p.content_type, p.title, p.subtitle, p.category, p.excerpt,
-          p.content, p.tags, p.featured_image_url,
-          p.external_url, p.external_site_name, p.status, p.published_at,
-          p.created_at, p.updated_at, p.working_group_id, p.proposer_user_id,
-          wg.name as committee_name, wg.slug as committee_slug,
-          -- Determine relationships
-          CASE WHEN p.proposer_user_id = $1 THEN true ELSE false END as is_proposer,
-          CASE WHEN EXISTS (SELECT 1 FROM content_authors ca WHERE ca.perspective_id = p.id AND ca.user_id = $1) THEN true ELSE false END as is_author,
-          CASE WHEN p.working_group_id = ANY($2) THEN true ELSE false END as is_lead,
-          -- Get authors
-          (SELECT json_agg(json_build_object(
-            'user_id', ca.user_id,
-            'display_name', ca.display_name,
-            'display_title', ca.display_title
-          ) ORDER BY ca.display_order)
-          FROM content_authors ca WHERE ca.perspective_id = p.id) as authors
-        FROM perspectives p
-        LEFT JOIN working_groups wg ON wg.id = p.working_group_id
-        WHERE (
-          $3::boolean = true
-          OR p.proposer_user_id = $1
-          OR EXISTS (SELECT 1 FROM content_authors ca WHERE ca.perspective_id = p.id AND ca.user_id = $1)
-          OR p.working_group_id = ANY($2)
-        )
-      `;
-      const params: (string | string[] | number | boolean)[] = [user.id, ledCommitteeIds, userIsAdmin];
-
-      // Apply filters
-      if (status && status !== 'all') {
-        const validStatuses = ['draft', 'pending_review', 'published', 'archived', 'rejected'];
-        if (!validStatuses.includes(status)) {
-          return res.status(400).json({
-            error: 'Invalid status',
-            message: `status must be one of: ${validStatuses.join(', ')}, or 'all'`,
-          });
-        }
-        params.push(status);
-        query += ` AND p.status = $${params.length}`;
-      }
-
-      if (collection) {
-        if (collection === 'personal') {
-          query += ` AND p.working_group_id IS NULL`;
-        } else {
-          // Assume it's a committee slug
-          params.push(collection);
-          query += ` AND wg.slug = $${params.length}`;
-        }
-      }
-
-      query += ` ORDER BY p.id, p.created_at DESC`;
-      params.push(limit);
-      query += ` LIMIT $${params.length}`;
-
-      const result = await pool.query(query, params);
-
-      // Format response with relationships
-      const items = result.rows.map(row => {
-        const relationships: string[] = [];
-        if (row.is_author) relationships.push('author');
-        if (row.is_proposer) relationships.push('proposer');
-        if (row.is_lead) relationships.push('owner');
-
-        return {
-          id: row.id,
-          slug: row.slug,
-          title: row.title,
-          subtitle: row.subtitle,
-          content_type: row.content_type,
-          category: row.category,
-          excerpt: row.excerpt,
-          content: row.content,
-          tags: row.tags,
-          featured_image_url: row.featured_image_url,
-          external_url: row.external_url,
-          external_site_name: row.external_site_name,
-          status: row.status,
-          collection: {
-            type: row.working_group_id ? 'committee' : 'personal',
-            committee_name: row.committee_name,
-            committee_slug: row.committee_slug,
-          },
-          relationships,
-          authors: row.authors || [],
-          published_at: row.published_at,
-          created_at: row.created_at,
-          updated_at: row.updated_at,
-        };
-      }).filter(item => {
-        // Apply relationship filter if specified
-        if (!relationship) return true;
-        return item.relationships.includes(relationship);
+      const limit = parseInt(req.query.limit as string);
+      const result = await listMyContentService({
+        userId: user.id,
+        status,
+        collection,
+        relationship,
+        limit: Number.isFinite(limit) ? limit : undefined,
       });
-
-      const publishedPaths = items
-        .filter(item => item.status === 'published' && typeof item.slug === 'string' && item.slug.length > 0)
-        .map(item => `/perspectives/${item.slug}`);
-
-      const pageviewCounts = await fetchPathPageviewCounts(publishedPaths, 30);
-
-      const itemsWithPerformance = items.map(item => {
-        if (item.status !== 'published' || !item.slug || !pageviewCounts) {
-          return item;
-        }
-
-        return {
-          ...item,
-          performance: {
-            pageviews_last_30d: pageviewCounts[`/perspectives/${item.slug}`] ?? 0,
-          },
-        };
-      });
-
-      res.json({ items: itemsWithPerformance });
+      res.json({ items: result.items });
     } catch (error) {
+      if (error instanceof MyContentError && error.is('invalid_status')) {
+        return res.status(400).json({
+          error: 'Invalid status',
+          message: `status must be one of: ${error.meta.valid.join(', ')}, or 'all'`,
+        });
+      }
       logger.error({ err: error }, 'GET /api/me/content error');
-      res.status(500).json({
-        error: 'Failed to get content',
-      });
+      res.status(500).json({ error: 'Failed to get content' });
     }
   });
 

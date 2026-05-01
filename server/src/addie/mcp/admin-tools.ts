@@ -252,42 +252,12 @@ export async function isWebUserAAOCouncil(workosUserId: string): Promise<boolean
   }
 }
 
-/**
- * Check if a web user is an AAO admin
- * Checks membership in aao-admin working group by WorkOS user ID
- * Results are cached for 30 minutes to reduce DB load
- */
-export async function isWebUserAAOAdmin(workosUserId: string): Promise<boolean> {
-  // Check cache first
-  const cached = webAdminStatusCache.get(workosUserId);
-  if (cached && cached.expiresAt > Date.now()) {
-    return cached.isAdmin;
-  }
-
-  try {
-    // Get the aao-admin working group
-    const adminGroup = await wgDb.getWorkingGroupBySlug(AAO_ADMIN_WORKING_GROUP_SLUG);
-
-    if (!adminGroup) {
-      logger.warn('AAO Admin working group not found');
-      // Cache the negative result for a shorter time to avoid repeated DB lookups
-      webAdminStatusCache.set(workosUserId, { isAdmin: false, expiresAt: Date.now() + 5 * 60 * 1000 });
-      return false;
-    }
-
-    // Check if the user is a member of the admin working group
-    const isAdmin = await wgDb.isMember(adminGroup.id, workosUserId);
-
-    // Cache the result
-    webAdminStatusCache.set(workosUserId, { isAdmin, expiresAt: Date.now() + ADMIN_CACHE_TTL_MS });
-
-    logger.debug({ workosUserId, isAdmin }, 'Checked web user admin status');
-    return isAdmin;
-  } catch (error) {
-    logger.error({ error, workosUserId }, 'Error checking if web user is admin');
-    return false;
-  }
-}
+// `isWebUserAAOAdmin` lives in `../admin-status-lookup.ts` so callers
+// that only need the admin check don't have to pull in this file's
+// heavy transitive dependencies (relationship-orchestrator →
+// engagement-planner → Anthropic). Re-exported here to keep existing
+// imports working.
+export { isWebUserAAOAdmin } from '../admin-status-lookup.js';
 
 
 /**
