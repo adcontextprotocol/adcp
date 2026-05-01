@@ -45,12 +45,17 @@ jobs:
             # (#3081) now passes 4 steps instead of grading not_applicable.
             # 384→388 after bumping @adcp/client to 5.18.0 (#3191) and
             # implementing force_task_completion (#3194).
+            # 53→65 / 388→444 after #3777 — training-agent provenance
+            # enforcement (creative_policy round-trip on get_products,
+            # PROVENANCE_* rejection paths on sync_creatives) plus
+            # required-field backfill for fixture-seeded products lifted
+            # several previously-orphaned scenarios into the clean count.
             # Passing-step asymmetry with framework mode is intentional:
             # the two modes declare different capabilities, so the
             # storyboard runner skips a different subset of steps in each.
             # Both modes pass every step they run.
-            min_clean_storyboards: 53
-            min_passing_steps: 388
+            min_clean_storyboards: 65
+            min_passing_steps: 444
           - mode: framework
             flag_value: '1'
             # 390→393 after bumping @adcp/client to 5.15 + seller catalog
@@ -67,8 +72,11 @@ jobs:
             # injection — the upstream fix for #940. Framework parity with
             # legacy fully restored; passing-step asymmetry remains because
             # framework declares more capabilities (more steps run, all pass).
-            min_clean_storyboards: 53
-            min_passing_steps: 401
+            # 53→65 / 401→462 after #3777 — same training-agent provenance
+            # enforcement work that lifted the legacy floors; framework
+            # picks up extra steps from the broader capability declaration.
+            min_clean_storyboards: 65
+            min_passing_steps: 462
     steps:
       - uses: actions/checkout@v6
 

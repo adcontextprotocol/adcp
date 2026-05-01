@@ -56,7 +56,10 @@ prerequisites:
 fixtures:
   products:
     - product_id: "test-product-disclosure-required"
+      name: "Provenance Enforcement Test Product"
+      description: "Sandbox display inventory exercising AI disclosure provenance enforcement and accepted verifier allowlist"
       delivery_type: "non_guaranteed"
+      channels: ["display"]
       creative_policy:
         co_branding: "optional"
         landing_page: "any"
@@ -98,7 +101,7 @@ phases:
           the seller's verifier allowlist before submission.
         sample_request:
           buying_mode: "brief"
-          brief: "Display inventory accepting creatives with AI disclosure metadata."
+          brief: "Provenance Enforcement Test Product — display inventory exercising accepted verifier allowlist and AI disclosure metadata"
           brand:
             domain: "acmeoutdoor.example"
           account:
@@ -144,8 +147,6 @@ phases:
         schema_ref: "creative/sync-creatives-request.json"
         response_schema_ref: "creative/sync-creatives-response.json"
         doc_ref: "/creative/task-reference/sync_creatives"
-        expect_error: true
-        negative_path: payload_well_formed
         stateful: true
         expected: |
           The seller accepts the request envelope but rejects the per-creative entry
@@ -207,7 +208,8 @@ phases:
             path: "creatives[0].action"
             value: "failed"
             description: "Per-creative action is failed for the off-list verifier submission"
-          - check: error_code
+          - check: field_value
+            path: "creatives[0].errors[0].code"
             value: "PROVENANCE_VERIFIER_NOT_ACCEPTED"
             description: "Per-creative error code is PROVENANCE_VERIFIER_NOT_ACCEPTED — buyer-asserted URL was outside the seller's accepted_verifiers allowlist"
           - check: field_value
@@ -232,8 +234,6 @@ phases:
         schema_ref: "creative/sync-creatives-request.json"
         response_schema_ref: "creative/sync-creatives-response.json"
         doc_ref: "/creative/task-reference/sync_creatives"
-        expect_error: true
-        negative_path: payload_well_formed
         stateful: true
         expected: |
           The seller accepts the request envelope but rejects the per-creative entry
@@ -281,7 +281,8 @@ phases:
             path: "creatives[0].action"
             value: "failed"
             description: "Per-creative action is failed for the missing-disclosure submission"
-          - check: error_code
+          - check: field_value
+            path: "creatives[0].errors[0].code"
             value: "PROVENANCE_DISCLOSURE_MISSING"
             description: "Per-creative error code identifies the missing disclosure requirement; buyers can self-correct without negotiating"
           - check: field_value
