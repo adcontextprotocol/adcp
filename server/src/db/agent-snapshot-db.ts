@@ -160,14 +160,29 @@ export class AgentSnapshotDatabase {
     const conditions: string[] = [`measurement_capabilities_json IS NOT NULL`];
     const params: unknown[] = [];
 
-    for (const id of filters.metric_ids ?? []) {
-      params.push(JSON.stringify({ metrics: [{ metric_id: id }] }));
-      conditions.push(`measurement_capabilities_json @> $${params.length}::jsonb`);
-    }
-
-    for (const body of filters.accreditations ?? []) {
-      params.push(JSON.stringify({ metrics: [{ accreditations: [{ accrediting_body: body }] }] }));
-      conditions.push(`measurement_capabilities_json @> $${params.length}::jsonb`);
+    if (filters.metric_ids?.length && filters.accreditations?.length) {
+      // Per-metric semantics: the same metrics element must satisfy both constraints.
+      // Cross-product AND: every (metric_id, accreditation) pair gets its own containment
+      // probe so each combination must be covered by at least one element in metrics[].
+      for (const id of filters.metric_ids) {
+        for (const body of filters.accreditations) {
+          params.push(
+            JSON.stringify({ metrics: [{ metric_id: id, accreditations: [{ accrediting_body: body }] }] }),
+          );
+          conditions.push(`measurement_capabilities_json @> $${params.length}::jsonb`);
+        }
+      }
+    } else {
+      for (const id of filters.metric_ids ?? []) {
+        params.push(JSON.stringify({ metrics: [{ metric_id: id }] }));
+        conditions.push(`measurement_capabilities_json @> $${params.length}::jsonb`);
+      }
+      for (const body of filters.accreditations ?? []) {
+        params.push(
+          JSON.stringify({ metrics: [{ accreditations: [{ accrediting_body: body }] }] }),
+        );
+        conditions.push(`measurement_capabilities_json @> $${params.length}::jsonb`);
+      }
     }
 
     if (filters.q) {
