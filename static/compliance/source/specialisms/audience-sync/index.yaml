@@ -111,7 +111,7 @@ phases:
         schema_ref: "account/list-accounts-request.json"
         response_schema_ref: "account/list-accounts-response.json"
         doc_ref: "/accounts/tasks/list_accounts"
-        stateful: false
+        stateful: true
         expected: |
           Return at least one account with:
           - account_id: platform-assigned identifier
