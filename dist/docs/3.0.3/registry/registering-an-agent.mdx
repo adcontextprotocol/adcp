@@ -1,0 +1,108 @@
+---
+title: Registering an agent
+sidebarTitle: Registering an agent
+description: "How agents appear in the AAO registry — the four crawl paths, the trust levels, and what AAO membership unlocks."
+"og:title": "AdCP — Registering an agent"
+---
+
+The registry has two trust levels: **`registered`** (canonical, opt-in, AAO-attested) and **`discovered`** (crawled from a publisher's `adagents.json`, no opt-in by the agent itself). Both surface in the same `/api/registry/agents` response with the `source` field disambiguating them. Consumers should treat them differently.
+
+## How agents end up in the registry
+
+There are four entry points. Different paths produce different `source` values and different trust signals.
+
+### 1. Self-registration (members only) — `source: "registered"`
+
+An AAO member adds an agent to their member profile via the dashboard or `PUT /api/me/member-profile`. This is the canonical, attested path:
+
+- The member has signed AAO terms.
+- The agent's URL, name, type, and contact are explicitly declared.
+- The agent's stored `type` is verified against a capability snapshot at write time (`resolveAgentTypes()` overrides the client value with the probed type).
+- Visibility can be `public`, `members_only`, or `private` — see [Membership benefits](#membership-benefits) below.
+
+This requires authentication and an AAO organization membership. There is no equivalent self-registration path for non-members today.
+
+### 2. Listed in a member publisher's adagents.json — `source: "discovered"`
+
+The crawler walks every publisher domain claimed by an AAO member (`member_profiles.publishers[]` with `is_public = true`) and validates each domain's `adagents.json`. For every URL in `authorized_agents`, the crawler creates a `discovered` agent record with `discovered_from.publisher_domain` set to the member publisher.
+
+The agent itself does not opt in here — the publisher does, on its behalf. The agent's listing is therefore a third-party endorsement, not a self-attestation.
+
+### 3. Listed in any publisher's adagents.json after a triggered crawl — `source: "discovered"`
+
+Two API paths can crawl arbitrary domains, not just member-claimed ones:
+
+- **`POST /api/registry/crawl-request`** (authenticated) — explicitly request a crawl of a specific domain.
+- **`POST /api/properties/check`** (no auth required) — submitting unknown domains to the bulk property checker enqueues them in the catalog crawl queue, which the crawler drains on a schedule.
+
+If the target domain has a valid `adagents.json`, every URL in its `authorized_agents` array gets a `discovered` agent record. The publisher does not need to be an AAO member.
+
+### 4. Listed by a sales agent's `list_authorized_properties` — `source: "discovered"`
+
+When the crawler probes a sales agent and the agent returns `publisher_domains` via `list_authorized_properties`, those domains get crawled. Any agents listed in those domains' `adagents.json` files become `discovered` records. This path is bounded by the sales agents already in the registry (paths 1–3).
+
+## What this means if you are not an AAO member
+
+You cannot self-register today. Your only path into the registry is **path 2, 3, or 4** — being listed in someone's `adagents.json` and that someone's domain getting crawled.
+
+Practical options:
+
+1. **Convince an AAO-member publisher to list your agent in their `adagents.json`** (path 2). This is the easiest path with the strongest trust signal — the publisher has staked their reputation on the listing, and the publisher itself is AAO-attested.
+
+2. **Get any publisher to list your agent in their `adagents.json`, then trigger a crawl** (path 3). Either ask someone with API access to call `POST /api/registry/crawl-request`, or submit the domain via `/api/properties/check` (which is unauthenticated). The publisher does not need to be an AAO member.
+
+3. **Be referenced by an existing sales agent's `list_authorized_properties`** (path 4). Indirect; depends on agents already in the registry choosing to surface your publisher domain.
+
+In all three cases, your agent will appear with `source: "discovered"` and `member: null`. You will not have control over what appears in your registry record — it is built from third-party listings.
+
+## Membership benefits
+
+AAO membership unlocks visibility and control that the discovery paths cannot provide:
+
+| Capability | Discovery (non-member) | Registered (member) |
+|---|---|---|
+| `source` value in registry | `discovered` | `registered` |
+| Self-attest type, name, contact | No | Yes |
+| Edit your own listing | No | Yes |
+| `members_only` visibility | n/a | Available — agents visible to other AAO members on `/api/registry/operator` |
+| `private` visibility | n/a | Available — agents visible only to the profile owner |
+| AAO Verified badge | No | Eligible after passing storyboards |
+| Storyboard test access | No | Yes |
+| Compliance reporting | No | Yes |
+| Trust signal to consumers | "Mentioned in someone's adagents.json" | "Member of AAO; signed terms; attested" |
+
+The `/api/registry/operator?domain=X` endpoint is auth-aware: anonymous callers see only `public` agents; authenticated AAO API-tier callers see `members_only` agents; profile owners see `private` agents. This is the primary mechanism by which membership unlocks deeper registry data.
+
+[Become a member](https://agenticadvertising.org/membership) to access the registered path.
+
+## Verifying how your agent appears
+
+Query the registry directly:
+
+<CodeGroup>
+
+```bash cURL
+curl "https://agenticadvertising.org/api/registry/agents" \
+  | jq '.agents[] | select(.url == "https://your-agent-url.example/mcp")'
+```
+
+```javascript JavaScript
+const res = await fetch("https://agenticadvertising.org/api/registry/agents");
+const { agents } = await res.json();
+const yours = agents.find((a) => a.url === "https://your-agent-url.example/mcp");
+console.log(yours);
+```
+
+</CodeGroup>
+
+Inspect the `source` field:
+
+- `"registered"` — you are member-attested. The `member` field is populated.
+- `"discovered"` — you are listed via someone's `adagents.json`. The `discovered_from` field tells you which publisher domain pointed at you. The `member` field is `null` even when the publisher_domain is owned by an AAO member (a known limitation; tracked in [#3538](https://github.com/adcontextprotocol/adcp/issues/3538)).
+- Not present at all — no path has surfaced you. See [How agents end up in the registry](#how-agents-end-up-in-the-registry) for the routes available.
+
+## Related
+
+- [Operator lookup](/dist/docs/3.0.3/registry/api-reference/authorization-lookups/operator-lookup) — auth-aware per-entity view of agents and authorizations.
+- [List agents](/dist/docs/3.0.3/registry/api-reference/agent-discovery/list-agents) — full registry catalog with `source` filter.
+- [Request domain re-crawl](/dist/docs/3.0.3/registry/api-reference/agent-discovery/request-domain-re-crawl) — trigger path 3 manually.

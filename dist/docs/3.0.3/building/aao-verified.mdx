@@ -1,0 +1,387 @@
+---
+title: AAO Verified
+sidebarTitle: AAO Verified
+description: "The public trust mark for AdCP agents. Two axes — Verified (Spec) for storyboard conformance, Verified (Live) for AAO-observed real production traffic. Earn either or both."
+"og:title": "AdCP — AAO Verified"
+---
+
+**Status**: Request for Comments
+**Last Updated**: April 24, 2026
+
+**AAO Verified** is the public trust mark for AdCP agents. It carries one of two qualifiers in parens — **(Spec)** or **(Live)** — and may carry both. The qualifier names *which axis* of verification an agent has earned.
+
+It is two axes, not two tiers. The qualifiers answer different questions:
+
+- **Verified (Spec)** — your AdCP protocol implementation matches the spec. Storyboards run against your test-mode endpoint; wire format, task shape, error semantics, and state-machine transitions all check out. Issued by the AAO compliance heartbeat.
+- **Verified (Live)** — AAO has observed real production traffic flowing through your agent. The compliance engine continuously watches delivery against your live ad-server integration over a 7–14 day rolling window. *Lights up in 3.1 once the canonical-campaign runner is operational; the observability machinery on this page already ships.*
+
+An agent can earn either axis or both. A pure protocol wrapper around a stub ad server is honestly **Verified (Spec)** — that's what test agents and sandbox environments *are*. A real production seller with both an AdCP wrapper and a working ad server earns **Verified (Spec + Live)**, the strongest claim available.
+
+The two axes are **orthogonal** — neither is a prerequisite for the other. A seller without a sandbox/test endpoint (common for SDK-built agents whose correctness is guaranteed by the SDK, or for production-only platforms that have no test-mode surface) can earn **(Live)** directly by enrolling a compliance account; the eight observability checks already exercise wire format, filters, lifecycle, and scope introspection through real traffic, which makes a separate simulation pass redundant for that seller. Conversely, a test agent that can never serve real impressions earns **(Spec)** as a complete claim.
+
+The two axes are related but answer different questions, and the badge surfaces whichever qualifiers are earned.
+
+<Tip>
+**TL;DR for sellers.** (Spec) is automatic for any agent passing storyboards on a test-mode endpoint with active AAO membership. (Live) is opt-in: designate one compliance account with real live campaigns (PSA / remnant / house / genuine revenue all qualify), grant the AAO compliance engine the `attestation_verifier` scope, and you're done. The same compliance engine that runs your storyboards monitors delivery on that account over a 7–14 day rolling window. Signal healthy → (Live) qualifier holds; signal degrades → it lapses. Today (AdCP 3.x) the webhook-attached path requires a dedicated compliance tenant because `reporting_webhook` is single-slot; AdCP 4.0 relaxes that via [#3009](https://github.com/adcontextprotocol/adcp/issues/3009).
+</Tip>
+
+## What each axis certifies
+
+### Verified (Spec)
+
+| | |
+|---|---|
+| **Tested against** | Your test-mode / sandbox endpoint |
+| **What it proves** | AdCP wire format, task shape, error semantics, state-machine transitions, declared specialisms map to working tools, schema conformance, filter behavior, idempotency semantics |
+| **How** | Storyboards from the [Compliance Catalog](/dist/docs/3.0.3/building/compliance-catalog) run against the agent on AAO's compliance heartbeat |
+| **Cadence** | ~12-24h heartbeat |
+| **Eligibility** | Any agent that passes the storyboards for its declared specialisms + holds an active AAO membership with API-access tier |
+| **Status** | **Available now** |
+
+### Verified (Live)
+
+| | |
+|---|---|
+| **Tested against** | Your real production endpoint |
+| **What it proves** | A real ad server / decisioning engine / creative renderer is behind the protocol. Real impressions delivered on real inventory. Reporting flows through AdCP. Lifecycle transitions surface correctly. The eight observability checks below all hold. |
+| **How** | Continuous observability on a designated compliance account, run by the AAO compliance engine over a 7–14 day rolling window |
+| **Cadence** | Continuous; mark expires automatically when signals degrade |
+| **Eligibility** | Has enrolled in observability (designated compliance account + `attestation_verifier` scope granted) + signals are healthy across the rolling window. **Independent of (Spec)** — sellers without a test-mode endpoint can earn (Live) directly. |
+| **Status** | **Lights up in 3.1** when the canonical-campaign runner is operational. The eight-check observability machinery ships now and runs against operator-designated accounts; it pivots to AAO-operated canonical campaigns when the runner is in place. |
+
+The (Live) axis is the strongest signal a buyer can rely on: AAO is the active counterparty, not just an attesting body. If something breaks in the production code path, the compliance engine sees it within days and the qualifier expires.
+
+## Naming history
+
+Earlier drafts (#3001) proposed "AdCP Conformant" and "AAO Verified" as two distinct mark names — one per axis. This page uses a **single brand mark with axis qualifiers in parens** instead. Same shape, different naming convention:
+
+| Earlier draft | Current |
+|---|---|
+| AdCP Conformant | AAO Verified (Spec) |
+| AAO Verified | AAO Verified (Live) |
+| AdCP Conformant + AAO Verified | AAO Verified (Spec + Live) |
+
+The reasoning behind the rename: a single brand word ("Verified") with composable qualifiers is cleaner for buyer messaging. Buyers don't have to learn two distinct marks; they read the qualifier inline. Test agents earning **Verified (Spec)** is a complete, dignified claim — they're test agents, that's the whole point — rather than a "junior" Conformant tier. The wire format reflects this: a single `verification_modes: string[]` array in the JWT and registry API, where an agent might have `["spec"]` or `["spec", "live"]`. One badge URL per agent + role; the qualifier evolves as axes are earned, embedded badges automatically reflect the current state.
+
+The earlier draft's rejection of "Tier 1 / Tier 2" remains correct: tiering the same word — *verified* — across two different kinds of claim muddies the message. The two-axis qualifier framing inherits that rejection while keeping the brand word singular.
+
+## Coverage gaps are explicit
+
+Some claims don't have a clean (Live) observability path. The universal `signed_requests` storyboard, for example, is a per-request transport heartbeat with no canonical campaign to observe — agents declaring `request_signing.supported: true` are graded as **Verified (Spec)** for that capability with no (Live) counterpart, and that's an honest claim. The same applies to specialisms whose surface is intrinsically observational (e.g., catalog-only signal agents) rather than delivery-shaped. See [#3046](https://github.com/adcontextprotocol/adcp/issues/3046) for the per-storyboard coverage analysis.
+
+## Reading a badge
+
+Badges render as a single shields.io-style image with the qualifiers in parens:
+
+| Display | Meaning |
+|---|---|
+| `AAO Verified Sales Agent (Spec)` | Storyboards pass for declared media-buy specialisms; live traffic not yet observed, not yet enrolled, or no Live path exists for this agent's specialisms. Common for test agents and pre-production rollouts. |
+| `AAO Verified Sales Agent (Spec + Live)` | Both axes earned. The strongest claim. |
+| `AAO Verified Sales Agent (Live)` | Real production traffic is observed healthy across the rolling window. Common for SDK-built agents and production-only sellers without a test-mode endpoint — the eight observability checks already exercise wire format, filters, lifecycle, and scope, so a parallel storyboard pass would be redundant. |
+| `AAO Verified — Not Verified` | No badge issued for this agent + role, or the badge has been revoked. |
+
+The badge URL is stable per agent + role. As an agent earns or loses an axis, the SVG content updates without changing the URL — embedded badges automatically reflect the current state.
+
+## How agents earn each axis
+
+```json
+// agent declares its claims in get_adcp_capabilities
+{
+  "supported_protocols": ["media_buy", "creative"],
+  "specialisms": [
+    "sales-broadcast-tv",
+    "sales-guaranteed",
+    "creative-ad-server"
+  ]
+}
+```
+
+### To earn Verified (Spec):
+
+1. Implement AdCP for your declared specialisms.
+2. Pass the storyboards on your test-mode endpoint. (Run them locally first via `@adcp/client/testing` to see what's failing.)
+3. Hold an active AAO membership at an API-access tier.
+
+The compliance heartbeat picks it up automatically — no manual enrollment needed beyond [registering your agent](/dist/docs/3.0.3/building/index).
+
+### To earn Verified (Live):
+
+A seller enrolls in the (Live) observability program by:
+
+1. Designating a **dedicated compliance account** on the seller's production platform. The account MUST contain real live campaigns — PSA, remnant, house, or genuine revenue campaigns all work. "Real" means: the campaigns serve real impressions on real inventory, not simulated data. The account MUST be one on which the AAO compliance engine can own the `reporting_webhook` slot without displacing another buyer's webhook (see [Webhook ownership](#webhook-ownership) below). Sellers MAY declare an expected flight cadence on the account (see [Maintenance windows](#maintenance-windows)) so seasonal gaps or scheduled quiet periods do not flap the mark.
+2. Granting the AAO compliance engine the [`attestation_verifier`](/dist/docs/3.0.3/accounts/overview#standard-named-scope-attestation_verifier) scope on the compliance account. The scope is declared via the `authorization` object on `sync_accounts` / `list_accounts` responses. It is narrowly defined — read + `update_media_buy{reporting_webhook}` only. No `create_media_buy`, no `sync_creatives`, no budget, date, or cancellation mutations.
+
+That's it. No ground-truth exports, no admin API credentials, no parallel verification campaigns, no seller-side harness.
+
+(Live) today presumes the seller's stack has **tenant-level isolation** — a concept every SSP, ad server, and premium publisher has, but one that social platforms and walled-garden-adjacent surfaces without a dedicated-account model do not. Sellers in that shape can still claim **(Spec)** and can participate in (Live) via the polling-only Path B1 described below; the qualifier is the same either way.
+
+### Webhook ownership
+
+In AdCP 3.x, `reporting_webhook` is a single object on a media buy — `update_media_buy` with PATCH semantics replaces it wholesale. A compliance account MUST therefore be an account where AAO can safely take the webhook slot without interfering with a production buyer's reporting pipeline. In practice this means the compliance account is one of:
+
+- A dedicated test/compliance tenant the seller maintains for this purpose (containing real PSA, remnant, or house campaigns);
+- A production account whose live campaigns are seller-internal (e.g., the seller's own house ads) and do not have a third-party webhook subscriber;
+- Any account whose operator has recorded out-of-band consent to cede the `reporting_webhook` slot to AAO for the duration of the engagement.
+
+**Consent requirement.** Sellers MUST NOT honor an `attestation_verifier`-scoped webhook attachment on an account where another webhook subscriber is present unless the operator's consent to cede the slot has been recorded out-of-band (operator agreement, admin-portal opt-in, or equivalent audit-trailed record). The seller maintains the consent record; AAO MAY audit it as part of enrollment. Absent recorded consent, the seller MUST reject the webhook-attach `update_media_buy` with `PERMISSION_DENIED` and `error.details.reason` = `"compliance_webhook_consent_missing"`, or steer the account to polling-only Path B1. This closes the obvious loophole where a seller mis-enrolls a production buyer account and silently stomps the buyer's reporting.
+
+Multi-subscriber webhooks are tracked for AdCP 4.0 in [#3009](https://github.com/adcontextprotocol/adcp/issues/3009); once that lands, compliance subscribers coexist with a primary buyer webhook and the dedicated-tenant requirement can relax.
+
+The AAO compliance engine that performs (Live) observation is the same engine that runs storyboards for (Spec) — (Live) is an additional check set over a longer window, not a separate service.
+
+## Two discovery paths for (Live)
+
+Sellers MAY enable either path. Sellers SHOULD enable both; brownfield is the more diagnostic path because it proves AdCP is a protocol *onto* the ad server rather than a shadow ledger beside it.
+
+### Path A — Greenfield
+
+The compliance engine creates a real campaign through AdCP:
+
+1. `create_media_buy` — real order in the ad server
+2. `sync_creatives` — real assets attached
+3. Activation — ads actually serve
+4. `get_media_buy_delivery` + `reporting_webhook` — real numbers flow back
+
+Path A is an end-to-end validation of the AdCP surface from `get_products` through reporting. It is the default path the canonical-campaign runner (#3046) will use at the end-state.
+
+### Path B — Brownfield
+
+The compliance engine engages with campaigns the seller is already running on the dedicated compliance account. Path B has two forms — both are first-class qualifying paths for (Live):
+
+**Path B1 — Polling-only** (the baseline):
+
+1. [`get_media_buys`](/dist/docs/3.0.3/media-buy/task-reference/get_media_buys) returns live campaigns in the compliance account — depends on `get_media_buys` returning buys regardless of creation surface ([account ownership scope](/dist/docs/3.0.3/media-buy/specification#account-ownership-vs-creation-surface)).
+2. [`get_media_buy_delivery`](/dist/docs/3.0.3/media-buy/task-reference/get_media_buy_delivery) polls delivery on a cadence the engine chooses.
+3. If the seller declares an offline reporting bucket, the engine additionally pulls from the bucket for cross-consistency.
+
+**Path B2 — Webhook-attached** (stronger signal):
+
+1. Same as step 1 above.
+2. [`update_media_buy`](/dist/docs/3.0.3/media-buy/task-reference/update_media_buy) attaches a verification `reporting_webhook` to a live buy. This step requires the compliance account's webhook slot to be available to AAO — see [Webhook ownership](#webhook-ownership) — and requires operator consent when displacing an existing webhook.
+3. The engine consumes push delivery from the webhook, polling via `get_media_buy_delivery`, and (if declared) the offline bucket, and cross-compares all three.
+
+Path B in either form is the more valuable signal than Path A because it depends on the seller treating AdCP as an operation on the real ad server. A seller whose `get_media_buys` only returns AdCP-created buys cannot support Path B at all; see the normative tightening in [Account Ownership vs. Creation Surface](/dist/docs/3.0.3/media-buy/specification#account-ownership-vs-creation-surface).
+
+Path B2 (webhook-attached) is preferred when available because it exercises push delivery in production, not just polling. But **B1 is not a fallback**: a seller whose architecture makes webhook ownership awkward can enroll in (Live) via B1 and earn the same qualifier. The check set adapts — check 5 (reporting-surface cross-consistency) degrades to comparing polling against the offline bucket under B1, or is skipped entirely when polling is the only declared surface. All other checks run unchanged.
+
+## What the compliance engine observes for (Live)
+
+The engine runs a **rolling 7–14 day window** of checks against the compliance account. Each check is observable from AdCP alone — no external ground truth is required.
+
+| # | Check | What it proves |
+|---|-------|---------------|
+| 1 | **Liveness** | At least one active buy exists in the compliance account across the rolling window, adjusted for any declared [maintenance windows](#maintenance-windows) and flight cadence. The window-normalized minimum is "active ≥ 80% of the rolling window" — sellers with known quiet periods declare them rather than being dinged. |
+| 2 | **Freshness** | The same `get_media_buy_delivery` query on day N and day N+1 returns different numbers for an active campaign — the ad server is actually incrementing counters. |
+| 3 | **Plausibility** | Impressions grow monotonically during flight; `by_package` sums correctly; non-zero metrics appear where expected; `pacing_index` reflects observed pacing. |
+| 4 | **Filter correctness** | `start_date` / `end_date` actually narrow results; package filters behave per spec — re-run against real data, not just storyboard fixtures. |
+| 5 | **Reporting-surface cross-consistency** | If the seller declares multiple reporting mechanisms (`reporting_delivery_methods` includes `webhook` and `offline`, plus polling via `get_media_buy_delivery`), all surfaces MUST agree for the same window within the seller's declared finalization tolerance. Skipped when polling is the only declared surface. |
+| 6 | **Lifecycle correctness** | Completed campaigns stop incrementing. Paused campaigns stop accruing. Canceled campaigns stop cleanly. Terminal-state buys surface the right `status` and `valid_actions`. |
+| 7 | **Introspection consistency** | The `authorization` object returned by [`sync_accounts`](/dist/docs/3.0.3/accounts/tasks/sync_accounts) / [`list_accounts`](/dist/docs/3.0.3/accounts/tasks/list_accounts) for the compliance engine's identity matches what the scope actually permits in practice — any mismatch (advertised task rejected with `SCOPE_INSUFFICIENT`, permitted field rejected with `FIELD_NOT_PERMITTED`, permitted field accepted but with hidden side-effect branching) is a failure. Probe cadence: at least once per rolling window, plus on every observed scope change. Mismatch tolerance per probe is zero; the engine allows at most one scope-change transition per window (the window truncates at the change so the probe is evaluated against the grant that was in force). |
+| 8 | **Seller-initiated state transition propagation** | A state change initiated outside AdCP — trafficker pauses a campaign in the ad server UI, finance cancels for non-payment, flight ends and the ad server closes the line — MUST surface in `get_media_buys` (status, `valid_actions`, and `history`) within the seller's declared status-freshness tolerance. Buyers rely on this for incident response; (Live) treats it as the same class of obligation as buyer-initiated transitions. |
+
+The engine chooses which dates, slices, packages, and campaigns to query, and when. Sellers SHOULD NOT condition behavior on the engine's `agent_id` beyond the normal `attestation_verifier` scope enforcement — identity-keyed branching to produce verification-only responses is grounds for mark revocation. Because a scope-filtered engine cannot by itself detect A/B branching, **AAO reserves the right to probe from secondary identities** (a paired identity running a subset of the same queries; an anonymized-origin probe) and compare responses byte-for-byte for identical queries. Persistent divergence between the declared engine and a secondary probe is a check-7 failure and — depending on shape — grounds for immediate qualifier revocation rather than window-end lapse.
+
+## Why continuous observability for (Live)
+
+(Live) is **continuous**, not **one-shot**. Four reasons:
+
+- **No new infrastructure.** The AAO compliance engine already runs. (Live) is additional checks over a longer window, not a separate service.
+- **Harder to game.** A stub that satisfies all eight checks across variation in dates, packages, campaigns, lifecycle transitions, seller-initiated state changes, and multi-surface cross-consistency over weeks — while also surviving secondary-identity probes — is basically a working ad server. Teach-to-test overfitting is infeasible at this surface area.
+- **Auto-expiring qualifier.** **(Live)** is not "passed on YYYY-MM-DD." It means "observed healthy for the last N days." Signal degrades → qualifier lapses. A seller cannot pass once and then revert to a stub.
+- **Zero seller friction after enrollment.** No report uploads, no admin credentials, no parallel verification campaigns. After enrollment, the seller's only obligation is to keep the compliance account live and continue serving real campaigns.
+
+Hard ground-truth reconciliation (AdCP output vs. the seller's internal ad-server dashboard) is **out of scope for v1**. It is deferrable to a future higher-trust qualifier — buyer attestation, or seller-exported reports as an opt-in upgrade. The eight observable checks above close the #2903 gap without requiring sellers to expose admin surfaces.
+
+## Anti-teach-to-test alignment
+
+Real impressions on real inventory over real time are not teachable:
+
+- The engine chooses which dates, slices, and packages to query, and when.
+- Data was not generated for the test — it is real delivery that continues whether the engine is watching or not.
+- Variation across the rolling window exposes any branch that depends on stable test fixtures.
+
+See [Anti-teach-to-test conformance](/dist/docs/3.0.3/building/conformance#anti-teach-to-test) for the broader posture; (Live) is the most direct instance.
+
+## Maintenance windows
+
+A seller with seasonal flights or scheduled quiet periods (e.g., dark-week between flights, end-of-quarter pauses) MAY declare expected gaps so check 1 (Liveness) does not flap during them. Maintenance windows are declared on the compliance account itself; the engine reads them as part of enrollment. Maintenance is bounded — a seller cannot declare a 30-day maintenance window to indefinitely avoid the liveness check. Per-window maximum is 14 days; cumulative maintenance per rolling 90-day window is 30 days.
+
+## Decentralized verification
+
+Each badge is backed by a signed JWT (EdDSA / Ed25519). AAO publishes its public key set at `/.well-known/jwks.json` so any third party can verify a badge's authenticity without calling AAO's API.
+
+The token claims:
+
+```json
+{
+  "iss": "https://aao.org",
+  "sub": "https://your-agent.example.com/mcp",
+  "aud": "aao-verification",
+  "jti": "<uuid>",
+  "iat": 1745510400,
+  "exp": 1748102400,
+  "role": "media-buy",
+  "adcp_version": "3.0",
+  "verified_specialisms": ["sales-broadcast-tv", "sales-guaranteed"],
+  "verification_modes": ["spec"],
+  "protocol_version": "3.0.0"
+}
+```
+
+`adcp_version` is the AdCP release this badge was issued against (`MAJOR.MINOR`). Pairs with the `(agent_url, role, adcp_version)` identity used by the badge URL routes. **Verifiers MUST check `adcp_version` against the AdCP version they care about** — a 3.0 token presented as proof of 3.1 conformance is not authoritative. The signed claim is shape-validated at signing time (`^[1-9][0-9]*\.[0-9]+$`); verifiers SHOULD apply the same regex defensively.
+
+`verification_modes` is the array of axes earned. `["spec"]` until (Live) lights up; `["spec", "live"]` thereafter for agents that enroll. `protocol_version` is the full semver of the spec build the badge was tested against — informational metadata for support and audits.
+
+The registry API is authoritative for real-time status; the JWT is a 30-day cacheable proof.
+
+## Lifecycle
+
+Verification is continuously re-evaluated, not a one-time certificate.
+
+### (Spec)
+- **Issued** — first heartbeat with all declared-specialism storyboards passing + active membership.
+- **Active** — re-checked every heartbeat; JWT auto-renewed.
+- **Degraded** — first storyboard regression starts a 48-hour grace; the badge continues to render (Spec) while the operator investigates.
+- **Revoked** — 48h continuous failure → `(Spec)` qualifier drops from the badge. (Live), if held, is unaffected — the axes are independent.
+- **Recovery** — passing storyboards reissue (Spec) automatically.
+
+### (Live)
+- **Issued** — eight checks healthy across the rolling window for an enrolled compliance account.
+- **Active** — continuous observation; mark stays as long as signals are healthy.
+- **Degraded** — any check fails → 48-hour grace. Particular failures (check 7 mismatch with secondary-identity probes) MAY skip the grace period and revoke immediately.
+- **Revoked** — 48h continuous failure → `(Live)` qualifier drops. (Spec), if held, is unaffected.
+- **Recovery** — sustained healthy window reissues (Live).
+
+Membership lapse revokes the entire badge regardless of test results — public trust marks require active membership.
+
+## Mark semantics
+
+A seller MAY hold:
+
+- **(Spec) only** — storyboards pass on a test-mode endpoint; (Live) not enrolled, or no (Live) path exists for the agent's specialisms. Common for test agents, sandboxes, and pre-production rollouts.
+- **(Live) only** — real production traffic observed healthy across the rolling window. Common for SDK-built agents whose wire-format correctness is guaranteed by the SDK, and for production-only platforms with no test-mode surface. The eight observability checks already exercise wire format, filters, lifecycle, and scope, so requiring a parallel storyboard pass would be busywork.
+- **(Spec + Live)** — the strongest claim. Both axes verified independently.
+- **Neither**
+
+The two axes are evaluated independently. A storyboard regression revokes (Spec) without affecting (Live); an observability check failure revokes (Live) without affecting (Spec). Sellers can earn either in either order.
+
+## Per-version badges
+
+Each badge is identified by **(agent, role, AdCP version)** — a third axis on top of (Spec) and (Live). An agent can hold parallel badges across AdCP releases. For example, a media-buy agent that ships an upgrade for AdCP 3.1 might hold both:
+
+- `AAO Verified Media Buy Agent 3.0 (Spec)` — earned earlier, still valid
+- `AAO Verified Media Buy Agent 3.1 (Spec + Live)` — earned after upgrading
+
+Each version is evaluated independently. A 3.0 storyboard regression revokes the 3.0 badge without touching 3.1, and vice versa. Membership lapse revokes every version of an agent's badges atomically (the trust mark is agent-level, not version-level).
+
+The badge label embeds the AdCP version inline between the role and the qualifier: `Media Buy Agent 3.1 (Spec + Live)`.
+
+## Display
+
+### SVG badge
+
+Two URL shapes:
+
+```
+# Legacy: auto-upgrades to the highest active version
+https://agenticadvertising.org/api/registry/agents/{url-encoded-agent-url}/badge/{role}.svg
+
+# Version-pinned: freezes on a specific AdCP release
+https://agenticadvertising.org/api/registry/agents/{url-encoded-agent-url}/badge/{role}/{adcp-version}.svg
+```
+
+Buyers who want auto-upgrade behavior (the embedded image flips from `Media Buy Agent 3.0 (Spec)` to `Media Buy Agent 3.1 (Spec + Live)` automatically when the agent earns 3.1) embed the legacy URL. Buyers who want to call out "verified for AdCP 3.0" specifically embed the version-pinned URL.
+
+Both return a shields.io-style SVG with `Content-Security-Policy: script-src 'none'` and 5-minute caching. Renders teal when verified, grey when not. Unknown agents, unknown roles, and revoked badges all return a grey "Not Verified" variant — the URL never 404s, which makes it safe to embed. Version-pinned URLs at versions the agent never earned also return "Not Verified" (vs. the legacy URL, which shows the current best mark).
+
+### Embed snippet
+
+```bash
+# Legacy (auto-upgrading)
+curl https://agenticadvertising.org/api/registry/agents/{url-encoded-agent-url}/badge/media-buy/embed
+
+# Version-pinned
+curl https://agenticadvertising.org/api/registry/agents/{url-encoded-agent-url}/badge/media-buy/3.0/embed
+```
+
+Returns HTML and Markdown snippets that wrap the SVG in a link back to the agent's AAO registry listing. Safe for READMEs, docs, landing pages, and social profiles. As an agent's verification axes or AdCP versions change, the legacy embed automatically reflects the current state — no embed swap needed when (Live) lights up or when the agent ships a new AdCP version.
+
+### Registry filter
+
+The agent registry surfaces filters on either axis independently:
+
+- **"Show me agents that implement AdCP correctly"** → filter by `verification_modes contains 'spec'`
+- **"Show me agents I can actually buy through"** → filter by `verification_modes contains 'live'`
+- **"Show me agents with both"** → filter by both
+
+Both queries are valid. Buyers comparing options use (Live); orchestrator developers integrating new agents use (Spec).
+
+### brand.json enrichment
+
+When AAO serves brand.json data for a registered brand, agent entries get an `aao_verification` block with full per-version detail:
+
+```json
+"aao_verification": {
+  "verified": true,
+  "verified_at": "2026-04-29T12:34:56.000Z",
+  "badges": [
+    { "role": "media-buy", "adcp_version": "3.1", "verification_modes": ["spec", "live"], "verified_at": "..." },
+    { "role": "media-buy", "adcp_version": "3.0", "verification_modes": ["spec"], "verified_at": "..." }
+  ],
+  "roles": ["media-buy"],
+  "modes_by_role": { "media-buy": ["spec", "live"] },
+  "deprecation_notice": "roles[] and modes_by_role reflect the highest-version badge per role only. A buyer pinned to a specific AdCP version SHOULD read badges[] and filter by adcp_version. Both fields will be removed in AdCP 4.0."
+}
+```
+
+`badges[]` is the canonical shape — one entry per `(role, adcp_version)`, ordered version-DESC. Buyers pinned to a specific AdCP version MUST filter by `adcp_version` rather than reading `modes_by_role` (which flattens to the highest-version entry per role and could mislead a 3.0 buyer into thinking the agent runs Live for them when only the 3.1 badge has Live).
+
+`roles[]` and `modes_by_role` are kept as **deprecated aliases** for one release. **Removal target: AdCP 4.0.**
+
+## How to claim each qualifier
+
+### To claim **(Spec)**
+
+1. Hold an active AAO membership with API-access tier.
+2. Declare your `supported_protocols` and `specialisms` in `get_adcp_capabilities`.
+3. Pass the storyboards your declarations obligate (universal + protocol baselines + specialism baselines) at a specific AdCP major version.
+4. The AAO compliance heartbeat issues **AAO Verified (Spec)** automatically and re-verifies on each heartbeat cycle.
+
+### To claim **(Live)** *(lights up in 3.1)*
+
+(Live) is **independent of (Spec)** — sellers without a test-mode endpoint can earn (Live) directly. The eight observability checks below already exercise wire format, filters, lifecycle, and scope through real traffic.
+
+1. Designate a compliance account in your tenant containing real live campaigns. PSA, remnant, house, or genuine revenue all qualify — the only requirement is that real impressions serve on real inventory and reporting flows through AdCP.
+2. Grant the [`attestation_verifier`](/dist/docs/3.0.3/accounts/overview#standard-named-scope-attestation_verifier) scope to the AAO compliance engine's identity via the [`authorization`](/dist/docs/3.0.3/accounts/overview#caller-authorization) object on `sync_accounts` / `list_accounts` responses for that account.
+3. *(Optional)* Declare maintenance windows on the compliance account if your inventory has expected quiet periods (cap: 14 days per window, 30 days cumulative per rolling 90-day window).
+4. The AAO compliance engine watches the eight checks above over a 7–14 day rolling window and issues **(Live)** when signals are healthy. The qualifier expires automatically if signal degrades.
+
+No report uploads, no admin credentials, no ground-truth exports, no parallel verification flow.
+
+## What AAO Verified is not
+
+- **Not a regulatory or financial attestation.** SOC 2, ISO 27001, ISAE 3402 and similar frameworks address operational and financial-control posture — distinct questions, with their own audit paths. AAO Verified is wire-and-delivery correctness for AdCP.
+- **Not hard ground-truth reconciliation in v1.** The eight (Live) checks observe internal consistency of AdCP responses against real delivery; they do not reconcile AdCP-reported numbers against the seller's internal ad-server dashboard. Hard reconciliation is deferrable to a future opt-in upgrade — buyer attestation, or seller-exported reports — without affecting the v1 mark.
+- **Not certification beyond AAO membership.** The [AgenticAdvertising.org certification program](/dist/docs/3.0.3/learning/overview) composes with AAO Verified — verification is necessary input to certification, but verification is not certification itself.
+- **Not a SLA.** AAO Verified does not guarantee uptime, latency, or commercial outcomes. It attests that the seller's AdCP surface continuously reflects real delivery; commercial reliability is between buyer and seller.
+- **Not a substitute for due diligence.** Buyers SHOULD still vet sellers' contractual terms, billing posture, governance practices, and incident-response posture independently. AAO Verified is one input, not the whole picture.
+
+## Relationship to supporting specs
+
+AAO Verified (Live) depends on three normative pieces of the AdCP spec, each tracked on the issue tracker:
+
+- **[`get_media_buys` account-ownership scope (#2963)](https://github.com/adcontextprotocol/adcp/issues/2963)** — `get_media_buys` MUST return all account-owned media buys regardless of how they were created, so the brownfield Path B can discover non-AdCP-created campaigns. Without this, (Live) cannot observe campaigns trafficked outside AdCP.
+- **[Per-account `authorization` envelope + `attestation_verifier` scope + RBAC error codes (#2964)](https://github.com/adcontextprotocol/adcp/issues/2964)** — the narrow-scope grant the AAO compliance engine holds on the seller's compliance account, plus the introspection mechanism that backs check 7 (introspection consistency).
+- **[Behavioral filter assertions (#2902)](https://github.com/adcontextprotocol/adcp/issues/2902)** — the (Spec) axis runs filter-behavior assertions against `simulate_delivery`; (Live) re-runs them against real data to close the "filtering silently no-ops" gap.
+
+A fourth supporting issue tracks 4.0:
+
+- **[Multi-subscriber `reporting_webhook` (#3009)](https://github.com/adcontextprotocol/adcp/issues/3009)** — in 3.x, `reporting_webhook` is single-slot, which is why brownfield (Live) requires a dedicated compliance tenant. 4.0 relaxes this so the engine can attach without disturbing the seller's existing webhook subscriber.
+
+## Relationship to other surfaces
+
+- [Conformance Specification](/dist/docs/3.0.3/building/conformance) — defines what *conformant* means via the storyboards. The (Spec) axis verifies your agent matches that specification.
+- [Compliance Catalog](/dist/docs/3.0.3/building/compliance-catalog) — indexes the protocols and specialisms an agent can claim. Each declared specialism is what the verification engine tests, on whichever axes are eligible.
+- [`get_adcp_capabilities`](/dist/docs/3.0.3/protocol/get_adcp_capabilities) — where the agent declares its `supported_protocols` and `specialisms`. The declarations are the input to verification.
+- [`attestation_verifier` scope](/dist/docs/3.0.3/accounts/overview#standard-named-scope-attestation_verifier) — the narrow scope the seller grants to the compliance engine for (Live) observation.
+- AAO membership — required for badge issuance. Membership lapse revokes the badge.

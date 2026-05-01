@@ -1,0 +1,95 @@
+---
+title: "A2: Your first media buy"
+sidebarTitle: "A2: Your first media buy"
+description: "Module A2: Execute your first AdCP media buy. Free 20-minute hands-on module walking through discovery, purchase, creative sync, and delivery with a live sandbox agent."
+"og:title": "AdCP — A2: Your first media buy"
+---
+
+# A2: Your first media buy
+
+<Info>
+**Free module** — No account required. ~20 minutes with Addie. Prerequisite: [A1](/dist/docs/3.0.3/learning/foundations/a1-agentic-advertising).
+</Info>
+
+## Learning objectives
+
+- Execute the full media buy lifecycle: discovery, purchase, creative sync, delivery
+- Identify the agent roles involved: buyer agent, sales agent, creative agent, signals agent
+- Read and understand real protocol messages at each stage
+- Observe a live agent-to-agent transaction
+- Recognize the two things that make agent-to-agent requests safe: the request is signed (so the seller can verify who sent it) and it carries an `idempotency_key` (so a retry doesn't double-book)
+
+## Reading list
+
+<CardGroup cols={2}>
+  <Card title="Protocol architecture" icon="sitemap" href="/dist/docs/3.0.3/protocol/architecture">
+    The complete architecture: domain map, identity layer, transaction domains, governance, and ecosystem layers.
+  </Card>
+  <Card title="MCP integration guide" icon="plug" href="/dist/docs/3.0.3/building/integration/mcp-guide">
+    How MCP works in practice: tool calls, response format, context management, async operations.
+  </Card>
+  <Card title="Capability discovery" icon="magnifying-glass" href="/dist/docs/3.0.3/protocol/get_adcp_capabilities">
+    How agents advertise their capabilities so other agents can discover what they offer.
+  </Card>
+  <Card title="AdAgents.json" icon="file-code" href="/dist/docs/3.0.3/governance/property/adagents">
+    The agent discovery mechanism — like robots.txt for advertising agents.
+  </Card>
+  <Card title="A2A guide" icon="arrows-left-right" href="/dist/docs/3.0.3/building/integration/a2a-guide">
+    The Agent-to-Agent protocol — how specialized agents collaborate on complex campaigns.
+  </Card>
+  <Card title="Task lifecycle" icon="circle-nodes" href="/dist/docs/3.0.3/building/implementation/task-lifecycle">
+    How tasks move through states: from request to completion, including async operations.
+  </Card>
+</CardGroup>
+
+## Key terms
+
+| Term | Definition |
+|------|-----------|
+| **Sales agent** | Represents a publisher and exposes inventory via `get_products`. May also implement the Creative Protocol to handle creatives from the same endpoint. |
+| **Buyer agent** | Represents a brand or agency and purchases media via `create_media_buy` |
+| **Brand agent** | Manages brand identity and guidelines via `brand.json` |
+| **Creative agent** | Any agent implementing the Creative Protocol — produces and adapts advertising assets via `build_creative`. This can be a standalone service or a sales agent that declares `"creative"` in `supported_protocols`. |
+| **Signals agent** | Provides measurement and audience data via `get_signals` |
+| **adagents.json** | Publisher-hosted file declaring agent capabilities (like robots.txt for agents) |
+| **Tool discovery** | The process of an agent reading another agent's capabilities to know what tasks it supports |
+| **Request signing** | A cryptographic signature on the request that lets the seller verify who sent it and that it wasn't tampered with in transit |
+| **Idempotency key** | A unique tag on each mutating request that lets a buyer safely retry without creating a duplicate |
+| **Domain** | A broad protocol area an agent supports — `media_buy`, `creative`, `signals`, `governance`, `brand`, `sponsored_intelligence`. Declared via `supported_protocols`. |
+| **Specialism** | A narrow capability claim within a domain — e.g. `sales-guaranteed`, `creative-generative`, `signal-marketplace`. Declared via `specialisms`. See the [Compliance Catalog](/dist/docs/3.0.3/building/compliance-catalog). |
+| **Storyboard** | A scripted compliance scenario shipped by the protocol at `/compliance/{version}/` — agents don't write them, they're run against agents. An agent demonstrates its domain and specialism claims by passing the matching storyboards. |
+
+## Protocol versioning
+
+Every request carries `adcp_major_version`; sellers advertise supported versions on `get_adcp_capabilities`. A3 and B1 go deeper on version negotiation and the object-presence pattern sellers use to declare capabilities.
+
+## What you'll do with Addie
+
+Tell Addie what you want: audience, goals, budget. Then walk through each step as it happens:
+
+1. **Discovery** — `get_products` against `@cptestagent`, examine real response structure
+2. **Purchase** — `create_media_buy` with targeting and budget. Addie points out two things on this request: it carries a signature (so the seller can verify the buyer) and an `idempotency_key` (so a retry after a network error never creates two buys). Note the `confirmed_at` timestamp in the response — this is the seller's order confirmation.
+3. **Creative** — `sync_creatives` to deliver assets to the publisher
+4. **Status check** — `get_media_buys` to see lifecycle state, creative approvals, and `valid_actions`
+5. **Delivery** — `get_media_buy_delivery` to see results
+
+You'll see the actual protocol messages at each stage. By the end, you've bought media through an agent.
+
+## Assessment
+
+| Dimension | Weight | What Addie looks for |
+|-----------|--------|---------------------|
+| Conceptual understanding | 25% | Can you describe the transaction flow and which agent handles what? |
+| Practical knowledge | 35% | Can you direct a media buy and interpret the delivery report? |
+| Problem solving | 15% | Can you reason about what happens when things go wrong? |
+| Protocol fluency | 25% | Do you use correct task names and agent roles? |
+
+Passing threshold: 70%.
+
+## Start this module
+
+<Card title="Start A2 with Addie" icon="play" href="https://agenticadvertising.org/chat">
+  Open Addie and say "I'd like to start certification module A2."
+</Card>
+
+**Next:** [A3: The AdCP landscape](/dist/docs/3.0.3/learning/foundations/a3-ecosystem-governance)

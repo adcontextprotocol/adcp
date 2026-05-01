@@ -1,0 +1,113 @@
+---
+title: "Policy Registry: Sync and versioning"
+sidebarTitle: Sync and versioning
+description: "Operational pattern for keeping campaign plans synchronized with the AdCP Policy Registry — version pinning, registry version bumps, effective_date adoption, sunset behavior, and the additive-only invariant on inline policies."
+"og:title": "AdCP — Policy Registry sync and versioning"
+---
+
+Working groups designing campaign governance ask the same set of questions about how policies stay synchronized between buyers, sellers, and governance agents. This page captures the operational pattern, in five sections plus an FAQ.
+
+## Can I pin a policy version on my plan?
+
+**No — `policy_ids[]` carries no version qualifier today.** A campaign plan references registry policies by ID alone:
+
+```json
+{
+  "plan_id": "plan_q1_2027_acme",
+  "policy_ids": ["us_coppa", "alcohol_advertising"],
+  "policy_categories": ["age_restricted"]
+}
+```
+
+At every [`check_governance`](/dist/docs/3.0.3/governance/campaign/tasks/check_governance) call, the governance agent resolves each ID against the registry and uses **whatever version is current**. There is no plan-level version pin field. If a registry policy version-bumps between two checks on the same plan, the second check evaluates against the new version.
+
+If you need a deterministic policy text for the duration of a buy, copy the registry policy into [`custom_policies[]`](/dist/docs/3.0.3/governance/campaign/tasks/sync_plans) on the plan — see [Pinning by inline copy](#pinning-by-inline-copy) below. The audit trail records `policies_evaluated[]` on every check, so the historical version is recoverable per-check via [`/api/policies/history`](https://adcontextprotocol.org/api/policies/history).
+
+This is the same posture taken by other ad-tech protocols (TCF v2's TC string, OpenRTB GPP) — versions resolve at evaluation time, not at request authoring time. It keeps buyers out of the version-dependency-management business in the 99% case where latest-at-resolution is correct.
+
+## Pinning by inline copy
+
+When a deterministic policy text is required — a regulator pre-clearance, a frozen brand-safety contract, a multi-month brand campaign that must be evaluated against the policy as it was on day one — the available pattern is to copy the registry policy into `custom_policies[]` at plan creation under a **different `policy_id`**:
+
+```json
+{
+  "plan_id": "plan_q1_2027_acme",
+  "policy_ids": ["us_coppa"],
+  "custom_policies": [
+    {
+      "policy_id": "alcohol_advertising_pinned_2026Q4",
+      "version": "2.1.0",
+      "name": "Alcohol Advertising Standards (pinned to v2.1.0)",
+      "category": "standard",
+      "enforcement": "must",
+      "policy": "<full natural-language text copied verbatim from the v2.1.0 registry entry>",
+      "exemplars": { "...": "copied from registry" }
+    }
+  ]
+}
+```
+
+**Use a different `policy_id` from the registry one.** If the buyer reuses the canonical ID `alcohol_advertising` in `custom_policies`, governance-agent behavior is undefined by the spec — the [policy-entry schema](https://adcontextprotocol.org/schemas/3.0.3/governance/policy-entry.json)'s additive-only rule pins registry text as authoritative for that ID. A pinning ID like `alcohol_advertising_pinned_2026Q4` (or your internal versioning convention) sidesteps the conflict.
+
+The plan revision now carries the frozen text. The `version` field on the inline policy is informational — the text is what gets evaluated — but worth setting for forensic traceability so an auditor can correlate the inline copy back to a specific registry release.
+
+**Lifecycle.** The inline copy is preserved as long as the buyer keeps the entry in `custom_policies` on each re-sync of the plan. The governance agent's append-only `revisionHistory` archives prior plan revisions for audit, but the live evaluation always uses whatever is in the most recent `sync_plans` payload — so a buyer who drops the inline policy on a re-sync loses the pin on the next check.
+
+**Tradeoff.** Pinned policies don't pick up registry corrections. If `alcohol_advertising` v2.2.0 ships a clarification, the pinned plan keeps evaluating against v2.1.0 until someone manually re-syncs `custom_policies` with new text. That's the price of stability.
+
+## Inline policies are additive-only relative to registry
+
+Inline `custom_policies[]` carry a hard invariant from the [policy-entry schema](https://adcontextprotocol.org/schemas/3.0.3/governance/policy-entry.json): they may only **add** restrictions on top of registry-sourced policies. Inline policies MUST NOT relax `enforcement` levels of registry policies, exempt categories that a registry policy mandates, or otherwise weaken the registry baseline. A buyer-authored inline policy that doesn't intersect with any registry policy is unconstrained — only the relationship to registry policies is governed.
+
+Concretely, a governance agent evaluating a plan with both `policy_ids: ["us_coppa"]` and a `custom_policies` entry can pin or extend `us_coppa` (e.g., a brand-specific exemplar set under a renamed ID), but cannot add an inline policy that says "ignore COPPA for this campaign." Counterparties seeing `policies_evaluated: ["us_coppa"]` on an audit entry can therefore trust that the registry version of `us_coppa` was applied at its declared `must` level — the buyer did not silently downgrade it.
+
+Counterparties who want to verify this can request the plan revision and recompute the `plan_hash` ([Campaign Governance specification](/dist/docs/3.0.3/governance/campaign/specification#plan-binding-and-audit)). The plan binding is the cryptographic surface that makes the additive-only invariant verifiable rather than merely declared. The agent-side enforcement is what prevents a downgrade from happening; the hash is what makes the decision provable after the fact.
+
+## Handling registry version bumps mid-campaign
+
+When a registry policy version-bumps while a plan is active:
+
+| Plan state | Behavior |
+|---|---|
+| Plan references the policy via `policy_ids` only | Next `check_governance` resolves the new version. Buys already committed remain committed (their audit entry recorded the old version's resolution timestamp). New checks evaluate against the new text. |
+| Plan pinned the policy via `custom_policies` (under a renamed ID) | Plan keeps evaluating against the inline text. The registry change has no effect on this plan until the buyer re-syncs `custom_policies` with new text. |
+| Plan was deleted or completed | No ongoing checks; no evaluation. The audit log retains `policies_evaluated[]` for forensic recovery. |
+
+Buyers who care about the version stability of completed buys do not need to do anything — the audit trail captures what was evaluated. Buyers who care about stability for *active, in-flight* buys should use the inline-copy pattern.
+
+## `effective_date` for staged adoption
+
+The "minimal restrictions initially" pattern is the registry's documented behavior, not a per-plan setting. Governance agents honor `effective_date` automatically across every plan that references the policy ID:
+
+1. **Day 0** — community agrees on a draft policy. Publish it to the registry with `effective_date` 60+ days in the future.
+2. **Day 0–60** — every governance agent evaluating any plan that references the policy ID emits informational findings. Buyers and sellers see exactly what would have been flagged. No buys are blocked.
+3. **Day 60** — `effective_date` passes. The same evaluation now blocks at the policy's declared `enforcement` level. No configuration change required on any plan.
+4. **Day 60+** — buyers in the staged-adoption window had two months of telemetry to adjust their inventory and creatives. Late starters get a hard cutover.
+
+`effective_date` is the time axis of staged adoption. **Scope-based staging** — phasing by channel, jurisdiction, or `policy_categories` subset — is a separate move done at the registry level: publish a narrower-jurisdiction or narrower-category policy first, then a broader one. The two axes compose; a single policy can sit in a scope-narrowed and time-staged window simultaneously.
+
+## Sunset behavior
+
+When a registry policy reaches its `sunset_date`, governance agents stop evaluating it on subsequent checks. Existing audit entries that recorded the policy in `policies_evaluated[]` are unchanged — the trail tells the truth about what was evaluated when. No action is required from buyers; sunsetted policies fall out of every active plan automatically.
+
+If a sunsetted policy is replaced by a successor (e.g., a regulation supersedes another), the registry contributor publishes both: the old entry with `sunset_date` set, the new entry with `effective_date` set. Buyers update their `policy_ids[]` in the next plan revision to reference the new entry — the old ID continues evaluating until its sunset date and then quietly stops.
+
+## Common questions
+
+**What happens to in-flight buys when a regulation changes mid-campaign?** The table under [Handling registry version bumps mid-campaign](#handling-registry-version-bumps-mid-campaign) is the answer. Short version: committed buys remain committed; the next check resolves whatever is current; pinning via `custom_policies` is the way to freeze a specific text.
+
+**Does my plan re-evaluate when I add a new objective?** A plan revision (`plan_version` on the audit-log entry, recorded each time the plan re-syncs) doesn't refresh resolved policy text on its own — the next `check_governance` still hits the registry as configured. To refresh policy text on a revision, change `policy_ids[]` (or the inline copy in `custom_policies`) on the new plan revision.
+
+**How do I prove to a counterparty which version was applied?** Three layers: (1) the seller's `governance_context` token correlates a specific check, (2) the audit-log entry for that check carries `policies_evaluated[]` and `plan_hash`, (3) the registry's [`/api/policies/history`](https://adcontextprotocol.org/api/policies/history) endpoint returns the full revision sequence for any `policy_id` so an auditor can replay which version was active at a historical timestamp.
+
+**Per-jurisdiction overrides.** Declare both the global standard and a jurisdiction-specific tightening (e.g., `policy_ids: ["alcohol_advertising", "alcohol_advertising_norway"]`). The governance agent evaluates both; the additive-only rule means the more restrictive of the two wins.
+
+**Brand-specific extensions.** Use `custom_policies[]` for rules that don't belong in the shared registry (competitor exclusions, brand voice guidelines, internal compliance frameworks). Reference them alongside `policy_ids[]`.
+
+## Related
+
+- [Policy Registry](/dist/docs/3.0.3/governance/policy-registry) — registry concepts, policy structure, seeded policies, restricted attributes
+- [Campaign Governance specification](/dist/docs/3.0.3/governance/campaign/specification) — plan binding, `plan_hash`, governance context lifecycle
+- [audit trail: internal vs shareable views](/dist/docs/3.0.3/governance/campaign/audit-trail) — how to surface evaluation history to counterparties
+- [`sync_plans`](/dist/docs/3.0.3/governance/campaign/tasks/sync_plans) — `policy_ids`, `policy_categories`, `custom_policies`
+- [Annex III & Art 22 obligations](/dist/docs/3.0.3/governance/annex-iii-obligations) — when human review is required
