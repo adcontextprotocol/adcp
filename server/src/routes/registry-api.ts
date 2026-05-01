@@ -30,6 +30,7 @@ import {
 import { getPublicJwks } from "../services/verification-token.js";
 import { renderBadgeSvg, VALID_BADGE_ROLES } from "../services/badge-svg.js";
 import { resolveOwnerMembership } from "../services/membership-tiers.js";
+import { inferDiagnosticAgentType } from "../lib/diagnostic-agent-type-inference.js";
 import { isValidAdcpVersionShape } from "../services/adcp-taxonomy.js";
 import { buildAaoVerificationBlock } from "../services/aao-verification-enrichment.js";
 import { PUBLIC_TEST_AGENT } from "../config/test-agent.js";
@@ -5796,15 +5797,13 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       const agentInfo = await client.getAgentInfo();
       const tools = agentInfo.tools || [];
 
-      let agentType = "unknown";
-      const toolNames = tools.map((t: { name: string }) => t.name.toLowerCase());
-      if (toolNames.some((n: string) => n.includes("get_product") || n.includes("media_buy") || n.includes("create_media"))) {
-        agentType = "buying";
-      } else if (toolNames.some((n: string) => n.includes("signal") || n.includes("audience"))) {
-        agentType = "signals";
-      } else if (toolNames.some((n: string) => n.includes("creative") || n.includes("format") || n.includes("preview"))) {
-        agentType = "creative";
-      }
+      // Diagnostic agent-type inference. Shared helper between this
+      // endpoint and the equivalent in http.ts so polarity stays in sync
+      // across both. Pre-#3540 returned 'buying' for sales-tool exposure;
+      // #3774 corrected polarity and consolidated.
+      const agentType = inferDiagnosticAgentType(
+        tools.map((t: { name: string }) => t.name),
+      );
 
       const hostname = new URL(url).hostname;
       const agentName = agentInfo.name && agentInfo.name !== "discovery-client" ? agentInfo.name : hostname;
@@ -5836,7 +5835,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           logger.debug({ err: statsError, url }, "Failed to fetch creative formats");
           stats.format_count = 0;
         }
-      } else if (agentType === "buying") {
+      } else if (agentType === "sales") {
         stats.product_count = 0;
         stats.publisher_count = 0;
         try {
