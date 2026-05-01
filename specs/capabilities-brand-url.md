@@ -48,20 +48,20 @@ Add one field to `static/schemas/source/protocol/get-adcp-capabilities-response.
     "type": "string",
     "format": "uri",
     "pattern": "^https://",
-    "description": "HTTPS URL of the operator's brand.json (typically https://{operator-domain}/.well-known/brand.json). The agent URL on this response MUST byte-equal the `url` of an entry in that brand.json's `agents[]` array, AND the agent URL's host eTLD+1 MUST equal the brand_url's host eTLD+1 unless the brand.json's `authorized_operators[]` explicitly delegates the agent's eTLD+1 (covers the SaaS-platform-as-operator case where Scope3 runs an agent on behalf of Nike). Verifiers use the matched entry's `jwks_uri` (or its origin default) to discover signing keys. Required when the agent declares any signing posture (see required-when rule below). Optional otherwise. Distinct from `sponsored_intelligence.brand_url`, which is a rendering pointer; sellers populating both MAY set them to different URLs."
+    "description": "HTTPS URL of the operator's brand.json (typically https://{operator-domain}/.well-known/brand.json). The agent URL on this response MUST byte-equal the `url` of an entry in that brand.json's `agents[]` array, AND the agent URL's host eTLD+1 MUST equal the brand_url's host eTLD+1 unless the brand.json's `authorized_operators[]` explicitly delegates the agent's eTLD+1 (covers the SaaS-platform-as-operator case where Scope3 runs an agent on behalf of Nike). Verifiers use the matched entry's `jwks_uri` (or its origin default) to discover signing keys. Schema-optional in 3.x; required by storyboard rule when the agent declares any signing posture (see required-when rule below). Becomes schema-required in 4.0. Distinct from `sponsored_intelligence.brand_url`, which is a rendering pointer; sellers populating both MAY set them to different URLs."
   }
 }
 ```
 
 **Required-when rule** (compliance storyboard, not JSON Schema `if/then` — see Open question 1):
 
-- Required if `request_signing.supported === true`
+- Required if `request_signing.supported_for` or `request_signing.required_for` is non-empty (the agent actually verifies signatures on at least one operation)
 - Required if `webhook_signing.supported === true`
 - Required if `identity.key_origins` is present (any sub-field)
-- **Not** required by the mere presence of `identity.compromise_notification` or `identity.per_principal_key_isolation` alone — those don't imply a JWKS publication chain
-- Optional otherwise (read-only browse-only agents that never sign)
+- **Not** required by `request_signing.supported: true` with empty `supported_for`/`required_for`/`warn_for` — that's a no-op declaration that doesn't bind any operation. Also not required by `identity.compromise_notification` or `identity.per_principal_key_isolation` alone.
+- Optional otherwise (read-only browse-only agents that never sign).
 
-**`identity.key_origins` is required when signing.** The schema's existing description treats `key_origins` as advisory. This spec tightens it: when `request_signing.supported` or `webhook_signing.supported` is true, `identity.key_origins.{purpose}` for the relevant purpose(s) MUST be present. Without it the consistency check (verifier algorithm step 6) is no-op, and the only spoofing defense is the agent-URL-in-brand.json check — which alone is vulnerable to shared-tenancy spoofing.
+**`identity.key_origins` is required when signing.** The schema's existing description treats `key_origins` as advisory. This spec tightens it: when `request_signing.supported_for`/`required_for` is non-empty or `webhook_signing.supported === true`, `identity.key_origins.{purpose}` for the relevant purpose(s) MUST be present. Without it the consistency check (verifier algorithm step 7) is no-op, and the only spoofing defense is the agent-URL-in-brand.json check — which alone is vulnerable to shared-tenancy spoofing. The AAO hosted resolver (below) MUST itself enforce this — returning `consistency.key_origin_match: false` and `request_signature_key_origin_missing` when signing is declared without `key_origins`. Storyboard enforcement alone is insufficient because a verifier in `mode:"aao"` would otherwise silently lose the H2 protection until 4.0 schema enforcement lands.
 
 No `jwks_uri` field is added to capabilities — by design.
 
@@ -73,12 +73,12 @@ For any signature verification on a request from agent URL `A`:
 2. Read `brand_url`. If absent and the request is signed, reject with `request_signature_brand_url_missing`.
 3. **Origin binding**. The agent URL `A`'s host eTLD+1 MUST equal `brand_url`'s host eTLD+1. If not, fetch brand.json and check that `authorized_operators[]` lists `A`'s eTLD+1. If neither holds, reject with `request_signature_brand_origin_mismatch`. (Public Suffix List for eTLD+1 computation; canonicalize per `docs/reference/url-canonicalization` before extracting the host.)
 4. Fetch brand.json at `brand_url` with SSRF validation (HTTPS only, DNS-pin the resolved IP for the request's lifetime, block RFC1918/loopback/link-local/cloud-metadata IPs, body cap 32 KB, redirects disallowed, 5 s connect / 10 s total). Cache TTL bounded by the JWKS revocation polling interval.
-5. Find the entry in `agents[]` whose `url` **byte-equals** `A` (matches the existing `security.mdx:552` rule for `iss`-to-brand.json matching; do not canonicalize at this step — a future cross-cutting PR can flip all three resolution paths to canonical at once if desired). If none matches, reject with `request_signature_agent_not_in_brand_json`. If multiple match, reject with `request_signature_brand_json_ambiguous` (operator misconfig — `agents[]` SHOULD be deduplicated by URL, tracked as a brand.json schema bug).
-6. Resolve the entry's `jwks_uri`, defaulting to `/.well-known/jwks.json` at the origin of `A` when absent (existing rule, `static/schemas/source/brand.json:631`).
-7. **Consistency check (mandatory when signing).** For every `purpose` declared under `identity.key_origins` on the capabilities response, the host of the resolved `jwks_uri` MUST equal the declared origin for that purpose. Mismatch on any purpose → reject with `request_signature_key_origin_mismatch` carrying `{ purpose, expected_origin, actual_origin }`. Iterates every purpose, not just `request_signing` — covers `webhook_signing`, `governance_signing`, `tmp_signing`.
+5. Find the entry in `agents[]` whose `url` **byte-equals** `A` (matches the existing `security.mdx:552` rule for `iss`-to-brand.json matching; do not canonicalize at this step — a future cross-cutting PR can flip all three resolution paths to canonical at once if desired). If none matches, reject with `request_signature_agent_not_in_brand_json`. If multiple match, reject with `request_signature_brand_json_ambiguous`. (The brand.json schema does not currently constrain `agents[]` to be unique-by-URL; filed as a separate brand.json schema bug — link in Open question 6.)
+6. Resolve the JWKS source by purpose:
+   - **Sell-side webhook-signing**: the publisher's `adagents.json signing_keys` pin (when present) is the authoritative source per `adagents.mdx:477` and overrides everything below.
+   - **All other purposes** (request-signing, operator-side webhook-signing, governance-signing, TMP-signing): use the matched entry's `jwks_uri`, defaulting to `/.well-known/jwks.json` at the origin of `A` when absent (existing rule, `static/schemas/source/brand.json:631`).
+7. **Consistency check (mandatory when signing).** For every `purpose` declared under `identity.key_origins` on the capabilities response **whose JWKS source in step 6 was the operator brand.json** (i.e., not a publisher `adagents.json signing_keys` pin), the host of the resolved `jwks_uri` MUST equal the declared origin for that purpose. Mismatch on any purpose → reject with `request_signature_key_origin_mismatch` carrying `{ purpose, expected_origin, actual_origin }`. Skip the check for purposes whose source was a publisher pin — the pin is a publisher's intentional override and may legitimately point at a different host than the operator's `key_origins` declaration.
 8. Fetch JWKS, find the `kid`, verify per the existing RFC 9421 profile.
-
-For sell-side webhook signatures, the publisher's `adagents.json signing_keys` pin (when present) overrides step 6's brand.json `jwks_uri`, per the existing rule (`docs/governance/property/adagents.mdx:477`). Steps 1–5 are unchanged.
 
 ## Multi-tenant operators
 
@@ -121,6 +121,7 @@ New rejection reasons, joining the existing `request_signature_*` family (`secur
 | `request_signature_agent_not_in_brand_json` | Agent URL not present in `agents[]` of resolved brand.json | `agent_url`, `brand_url` |
 | `request_signature_brand_json_ambiguous` | Multiple `agents[]` entries match the agent URL | `agent_url`, `brand_url`, `matched_count`, `matched_entries[]` (URL + id) |
 | `request_signature_key_origin_mismatch` | `jwks_uri` host ≠ declared `identity.key_origins.{purpose}` | `purpose`, `expected_origin`, `actual_origin` |
+| `request_signature_key_origin_missing` | Signing posture declared but `identity.key_origins.{purpose}` absent | `purpose`, `posture` |
 
 Detail fields surface in error responses so operators can fix the misconfiguration without log archaeology.
 
@@ -140,7 +141,7 @@ The required-when rules land as storyboard assertions regardless of whether they
 
 The native chain — capabilities → brand.json → agents[] → jwks_uri → JWKS — is correct, but it's five HTTP calls and several validation steps. AAO publishes a public, unauthenticated reference implementation alongside the existing registry surface (`docs/registry/index.mdx`) so callers can do this in one HTTP call.
 
-**Trust posture (read this first).** The hosted resolver is a **convenience layer, not a trust anchor.** AAO does not sign resolution responses. Production verifiers handling spend-committing operations SHOULD use native resolution (`mode: "native"` in the SDK helpers) and treat AAO as a fallback or a discovery hint, not as the authoritative source. Callers who delegate trust to AAO are accepting AAO as part of their verification chain — including BGP, CA, and operational-compromise risks. The reference implementation is open-source and self-hostable; AAO's instance is one option, not the only option. This is the same posture as the registry change feed (advisory identity material — see `docs/registry/index.mdx` §Anti-abuse).
+**Trust posture (read this first).** The hosted resolver is a **convenience layer, not a trust anchor.** AAO does not sign resolution responses. Production verifiers handling spend-committing operations MUST use native resolution (`mode: "native"` in the SDK helpers) and treat AAO as a fallback or a discovery hint, not as the authoritative source. Callers who delegate trust to AAO are accepting AAO as part of their verification chain — including BGP, CA, and operational-compromise risks. The reference implementation is open-source and self-hostable; AAO's instance is one option, not the only option. This is the same posture as the registry change feed (advisory identity material — see `docs/registry/index.mdx` §Anti-abuse).
 
 ### `GET /api/registry/agents/resolve`
 
@@ -166,7 +167,14 @@ Response (200 OK):
   "jwks_uri": "https://keys.example.com/.well-known/jwks.json",
   "jwks": {
     "keys": [
-      { "kty": "OKP", "crv": "Ed25519", "kid": "key-2026-04", "x": "...", "use": "sig", "adcp_use": "request-signing" }
+      {
+        "kty": "OKP", "crv": "Ed25519",
+        "x": "SRYr8eSvjkZF6dAUquI1sKuU4YGZkoGH-2jwkz4dRJg",
+        "kid": "buyer-signing-2026-04",
+        "alg": "EdDSA", "use": "sig",
+        "adcp_use": "request-signing",
+        "key_ops": ["verify"]
+      }
     ]
   },
   "signing_keys_pin": null,
@@ -192,7 +200,7 @@ Response (200 OK):
 
 Error responses use the same error codes as the verifier algorithm (with their detail fields). `aao_signed: false` is on the wire, not just in docs, to make non-attestation explicit.
 
-`source` ∈ `{"live", "cached"}`. **No `"stale"` mode for resolutions that include `jwks`** — a rotated-out compromised key MUST NOT be served past its TTL. `cache_until` is advisory; production verifiers SHOULD use the standard `Cache-Control` header and ignore `cache_until` for trust decisions. `X-AAO-Resolver-Age` header surfaces server-asserted age so callers can enforce their own staleness floor. `X-AAO-Upstream-JWKS-URI` header carries the upstream URL so verifiers can cross-check.
+`source` ∈ `{"live", "cached"}`. **No `"stale"` mode for resolutions that include `jwks`** — a rotated-out compromised key MUST NOT be served past its TTL. `cache_until` is advisory; production verifiers MUST use the standard `Cache-Control` header and ignore `cache_until` for trust decisions. `X-AAO-Resolver-Age` header surfaces server-asserted age so callers can enforce their own staleness floor. `X-AAO-Upstream-JWKS-URI` header carries the upstream URL so verifiers can cross-check.
 
 ### `GET /api/registry/agents/jwks`
 
@@ -207,12 +215,19 @@ Response (200 OK, `Content-Type: application/jwk-set+json`):
 ```jsonc
 {
   "keys": [
-    { "kty": "OKP", "crv": "Ed25519", "kid": "key-2026-04", "x": "...", "use": "sig", "adcp_use": "request-signing" }
+    {
+      "kty": "OKP", "crv": "Ed25519",
+      "x": "SRYr8eSvjkZF6dAUquI1sKuU4YGZkoGH-2jwkz4dRJg",
+      "kid": "buyer-signing-2026-04",
+      "alg": "EdDSA", "use": "sig",
+      "adcp_use": "request-signing",
+      "key_ops": ["verify"]
+    }
   ]
 }
 ```
 
-Every JWK MUST include `kid`. Every signing JWK MUST include RFC 7517 `use: "sig"` so JOSE libraries can pre-filter and so non-AdCP-aware verifiers honor key-usage discipline. AdCP-specific purpose granularity (`request-signing`, `webhook-signing`, `governance-signing`, `tmp-signing`) rides on the `adcp_use` member; verifiers MUST enforce `adcp_use` matches the operation in addition to `use: "sig"`. JWKs MUST NOT use `key_ops` together with `use` (RFC 7517 §4.3 — pick one; AdCP standardizes on `use` for cross-library compatibility). The endpoint propagates upstream `Cache-Control` byte-for-byte and never extends TTLs — a rotated-out key disappears on the operator's TTL, not AAO's. Served from a separate hostname (`jwks.agenticadvertising.org`, HSTS-preloaded, CAA-pinned) so a compromise of the main hostname does not contaminate the key resolution path.
+Every signing JWK MUST carry the AdCP-required four-tuple per `security.mdx:780`: `kid` (unique across the JWKS), `use: "sig"`, `key_ops: ["verify"]`, and `adcp_use` (one of `request-signing`, `webhook-signing`, `governance-signing`, `tmp-signing`). Plus `alg` per the algorithm allowlist (`EdDSA`, `ES256`). Verifiers MUST enforce all four. The endpoint propagates upstream `Cache-Control` byte-for-byte and never extends TTLs — a rotated-out key disappears on the operator's TTL, not AAO's. Served from a separate hostname (`jwks.agenticadvertising.org`, HSTS-preloaded, CAA-pinned) so a compromise of the main hostname does not contaminate the key resolution path. The `X-AAO-Trace-URL` response header points at `/api/registry/agents/resolve?agent_url=...` so JOSE callers (whose body must remain RFC 7517 pure) can still surface the audit trail.
 
 ### Caller integration
 
@@ -296,22 +311,106 @@ def verify_request_signature(
 
 `mode="native"` is the default in both SDKs. Flipping to `"aao"` is an explicit opt-in to delegating trust.
 
-### `/.well-known/adcp-jwks.json` (optional agent shortcut)
-
-An agent's origin MAY serve `/.well-known/adcp-jwks.json` returning a standard JWKS. This is **agent self-attested** (same trust class as a capabilities-hosted `jwks_uri` — which is exactly why this spec rejects that as a trust source). Verifiers MUST cross-check against brand.json and treat the well-known endpoint as a hint only, never as authoritative. Useful for callers running cached or offline verifiers that want a single fetch without depending on AAO. Operators that publish this MUST keep its contents byte-equal to the brand.json-resolved JWKS or risk verifiers rejecting cross-checks.
-
 ### SSRF and rate-limit hardening
 
-The hosted resolver is a centralized fetcher of caller-controlled URLs. Hardening is mandatory in the reference implementation:
+The hosted resolver is a centralized fetcher of caller-controlled URLs. Hardening is mandatory in the reference implementation. Implementers MUST cover this list before deployment:
 
-- HTTPS only (already covered by spec).
-- DNS-pin the resolved IP for the request's lifetime; block RFC1918, loopback, link-local, and cloud-metadata IPs.
-- Body cap: 32 KB for brand.json, 16 KB for JWKS.
-- Connect timeout 5 s; total deadline 10 s.
-- Redirects disallowed (or capped at 1 same-origin).
-- Per-upstream-host rate limit (resolver MUST NOT amplify traffic to operator domains beyond a configurable cap, default 10 req/s/host).
-- Per-caller rate limits as documented (no bulk endpoint in v1 — see Open question 5).
-- Error-response detail fields HTML-escaped before reflection (header injection / log poisoning hardening).
+- HTTPS only.
+- Reject `agent_url` query strings exceeding 2 KB before any fetch.
+- DNS resolution: filter by address family **before** DNS-pinning (DNS rebinding defense; pin the resolved IP for the request's lifetime). Block, with explicit test coverage:
+  - IPv4: RFC 1918 private (10/8, 172.16/12, 192.168/16), loopback (127/8), link-local (169.254/16), CGNAT (100.64/10), `0.0.0.0`, `255.255.255.255`, multicast (224/4), reserved (240/4).
+  - IPv6: loopback (`::1`), link-local (`fe80::/10`), unique-local (`fc00::/7`), IPv4-mapped (`::ffff:0:0/96`), multicast (`ff00::/8`), unspecified (`::`).
+  - Cloud metadata: `169.254.169.254` (AWS, GCP, Azure), `fd00:ec2::254` (AWS IPv6), `100.100.100.200` (Alibaba). Maintain an explicit deny list — do not rely on link-local block alone.
+- Bracketed-IPv6 URL parsing: zone-ID stripping (`%25`) and unbracketed forms. Use a parser with explicit RFC 6874 handling; reject unparseable hosts.
+- Body cap (streamed reader with byte counter, not just `Content-Length` check): 32 KB for brand.json, 16 KB for JWKS, 64 KB for capabilities response.
+- Connect timeout 5 s; total deadline 10 s. Per-stage deadline 4 s.
+- Redirects disallowed (`maxRedirects: 0`). If a future mode allows them, cap at 1 same-origin and re-run the address-family + IP-block filter on the redirect target.
+- Per-upstream-host rate limit, default 10 req/s/host keyed on eTLD+1 (resolver MUST NOT amplify traffic to operator domains beyond a configurable cap).
+- Per-caller-IP rate limit MUST be lower than the per-upstream-host cap so a single caller cannot exhaust an operator's quota.
+- Public Suffix List for eTLD+1 computation MUST be a pinned, dated snapshot bumped via dependency update — not a runtime fetch.
+- Error-response detail fields HTML-escaped before reflection (header injection / log poisoning hardening). Canonicalize `agent_url` and length-cap before logging.
+
+### Trace / freshness on the resolve endpoint
+
+The `/api/registry/agents/resolve` response includes a top-level `trace[]` array — one entry per upstream HTTP call (capabilities → brand.json → JWKS) — plus a top-level `freshness` aggregate. A human integrator (or coding agent) hitting the endpoint can audit "is this up to date?" in one glance without trusting AAO blindly.
+
+```jsonc
+{
+  // ... agent_url, brand_url, jwks_uri, jwks, consistency, aao_signed, etc. as above ...
+  "freshness": "fresh",
+  "trace": [
+    { "step": "capabilities",
+      "url": "https://buyer.example.com/mcp",
+      "method": "MCP_CALL",
+      "status": 200,
+      "etag": null,
+      "last_modified": null,
+      "cache_control": null,
+      "fetched_at": "2026-04-30T12:00:00Z",
+      "age_seconds": 0,
+      "bytes": 4821,
+      "from_cache": false,
+      "ok": true },
+    { "step": "brand_json",
+      "url": "https://example.com/.well-known/brand.json",
+      "method": "GET",
+      "status": 200,
+      "etag": "\"b9f0\"",
+      "last_modified": "Wed, 29 Apr 2026 18:00:00 GMT",
+      "cache_control": "max-age=300, public",
+      "fetched_at": "2026-04-30T12:00:00Z",
+      "age_seconds": 0,
+      "bytes": 1903,
+      "from_cache": false,
+      "ok": true },
+    { "step": "jwks",
+      "url": "https://keys.example.com/.well-known/jwks.json",
+      "method": "GET",
+      "status": 200,
+      "etag": null,
+      "last_modified": null,
+      "cache_control": "max-age=300",
+      "fetched_at": "2026-04-30T12:00:00Z",
+      "age_seconds": 0,
+      "bytes": 612,
+      "from_cache": false,
+      "ok": true }
+  ]
+}
+```
+
+`freshness` ∈ `{"fresh", "stale", "unknown"}`:
+- `fresh` — every step's `age_seconds` ≤ its declared TTL.
+- `stale` — at least one step exceeds its declared TTL (resolver still returned because cache was valid, but caller may want to force-refresh).
+- `unknown` — at least one step lacked cache metadata (no `Cache-Control`, no `Last-Modified`).
+
+Per-step fields are **observed upstream metadata** — AAO does not attest to their accuracy. Verifiers MUST NOT use `trace` fields as a substitute for fetching `Cache-Control` themselves.
+
+**On failure**, the trace renders up to the failed step (marked `ok: false` with the matching `request_signature_*` error code in `error.code`); subsequent steps are absent (not nulled). A 502 response carries the same body shape so jq pipelines work consistently across success and failure.
+
+**Privacy**: query strings stripped from `url`; resolved IPs never echoed; redirect chains never echoed (redirects are disallowed); request headers never echoed; response headers limited to `etag`, `last_modified`, `cache_control`, `bytes` (`Content-Length`-derived); all string fields HTML-escaped before reflection.
+
+The `/api/registry/agents/jwks` endpoint omits the trace from its body (which must remain RFC 7517 pure for JOSE-library compatibility) and surfaces `X-AAO-Trace-URL: https://agenticadvertising.org/api/registry/agents/resolve?agent_url=...` so callers can fetch the human-readable audit trail when needed.
+
+CLI usage:
+
+```bash
+curl -s "https://agenticadvertising.org/api/registry/agents/resolve?agent_url=https://buyer.example.com/mcp" \
+  | jq '{freshness, trace: [.trace[] | {step, status, age: .age_seconds, fetched_at, ok}]}'
+```
+
+Output:
+
+```json
+{
+  "freshness": "fresh",
+  "trace": [
+    { "step": "capabilities", "status": 200, "age": 0,   "fetched_at": "2026-04-30T12:00:00Z", "ok": true },
+    { "step": "brand_json",   "status": 200, "age": 12,  "fetched_at": "2026-04-30T11:59:48Z", "ok": true },
+    { "step": "jwks",         "status": 200, "age": 287, "fetched_at": "2026-04-30T11:55:13Z", "ok": true }
+  ]
+}
+```
 
 ### Where this lives in `docs/registry/index.mdx`
 
@@ -362,4 +461,19 @@ Public, unauthenticated, rate-limited per the existing non-bulk endpoint convent
 - **DX (error-code actionability)**: detail fields tabulated (`http_status`, `dns_error`, `last_attempt_at`, `purpose`, `matched_entries[]`, eTLD+1 specifics).
 - **DX (`source: stale`)**: dropped for JWKS-bearing responses; `upstream_fetched_at` and `X-AAO-Resolver-Age` surface freshness.
 - **DX (SDK helpers)**: signatures sketched; `mode="native"` default.
-- **DX (`.well-known/adcp-jwks.json` shortcut)**: added as optional agent self-attested shortcut, with explicit cross-check requirement against brand.json.
+- **DX (`.well-known/adcp-jwks.json` shortcut)**: dropped after round 2 — re-introduced M3-prime self-attestation without saving fetches on the trust-required path. JOSE callers get the trace via `X-AAO-Trace-URL` header pointing at the resolve endpoint.
+
+### Round 2 (after the spec was rewritten)
+
+- **Protocol (`key_ops` MUST NOT)**: reverted — `security.mdx:780` requires the AdCP four-tuple (`use:"sig"`, `key_ops:["verify"]`, `adcp_use`, distinct `kid`). JWK examples now match the canonical shape from `security.mdx:840-850`. Removing `key_ops` would have invalidated every conformant signing JWK in the codebase and the test vectors at `static/compliance/source/test-vectors/request-signing/`.
+- **Protocol (required-when on `supported` is wrong cut)**: tightened to `supported_for[]`/`required_for[]` non-empty for `request_signing` (a no-op declaration with empty arrays doesn't bind any operation, so it shouldn't drag in `key_origins`). `webhook_signing.supported === true` cut unchanged.
+- **Protocol (consistency check breaks sell-side webhooks)**: step 7 now skips the origin check for purposes whose JWKS source was a publisher `adagents.json signing_keys` pin — the pin is an intentional override and may legitimately point at a different host than the operator's `key_origins` declaration. Operator-side purposes still enforced.
+- **Protocol (loose SHOULDs)**: tightened to MUSTs at lines 143 (production verifiers MUST use native), 195 (verifiers MUST honor upstream `Cache-Control`), and the trust-posture paragraph.
+- **Security (PSL pinning)**: SSRF hardening now requires a pinned, dated PSL snapshot, not a runtime fetch.
+- **Security (IPv6 ULA + cloud metadata)**: SSRF list expanded with explicit IPv6 unique-local, IPv4-mapped IPv6, multicast, AWS/GCP/Azure metadata IPs, bracketed-IPv6 zone-ID handling.
+- **Security (DNS rebinding ordering)**: address-family filter MUST run before DNS-pin.
+- **Security (per-caller < per-host rate cap)**: explicit invariant added so a single caller cannot exhaust an operator's quota.
+- **Security (AAO must enforce required-when at runtime)**: AAO resolver itself returns `request_signature_key_origin_missing` when signing is declared without `key_origins` — storyboard alone is insufficient because `mode:"aao"` callers would lose H2 protection until 4.0.
+- **DX (full-path breadcrumb)**: added `trace[]` array + `freshness` aggregate to `/resolve` response. Per-step fields: `step`, `url`, `method`, `status`, `etag`, `last_modified`, `cache_control`, `fetched_at`, `age_seconds`, `bytes`, `from_cache`, `ok`, `error`. JWKS endpoint surfaces `X-AAO-Trace-URL` header pointing at the resolve endpoint (preserves RFC 7517 purity in the body).
+- **DX (failure breadcrumbs render up to the failed step)**: 502 response carries the same body shape; failed step marked `ok: false` with the matching `request_signature_*` error code.
+- **DX (privacy filters on trace)**: query strings stripped, IPs not echoed, redirect chains not echoed (disallowed anyway), HTML-escaped reflection.
