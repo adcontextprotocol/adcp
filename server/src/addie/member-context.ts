@@ -1482,10 +1482,11 @@ export function formatMemberContextForPrompt(context: MemberContext, channel: 'w
       lines.push(`GitHub: ${context.community_profile.github_username}`);
     } else {
       lines.push([
-        'GitHub: Not linked. There are TWO distinct GitHub surfaces — keep them separate, and use the exact URLs below (do not paraphrase to /dashboard, /settings, etc.). Render URLs per the URL Formatting rule (markdown link or bare URL only — never wrap in `**`/`*`).',
-        '  (1) Public profile display — to show their GitHub handle on their community profile page, send them to https://agenticadvertising.org/account.',
-        '  (2) OAuth connection — to let you file issues on adcontextprotocol/adcp under their GitHub identity, send them to https://agenticadvertising.org/connect/github (this bounces through login if needed and starts the WorkOS Pipes OAuth flow).',
-        'When the user asks you to file an issue, the create_github_issue tool already surfaces the (2) Connect link automatically — show its full output. Only mention these URLs explicitly when the user asks how to connect outside of filing an issue.',
+        'GitHub: Not linked. There are THREE distinct GitHub surfaces. Pick the one that matches the user\'s intent and use the exact URL — do not paraphrase. Render URLs per the URL Formatting rule (markdown link or bare URL only — never wrap in `**`/`*`).',
+        '  (a) Public-profile display — they want their GitHub handle to appear on their community profile page (text-field only, no OAuth): https://agenticadvertising.org/account (Social links section).',
+        '  (b) Connect / disconnect OAuth — they want to manage the WorkOS Pipes GitHub connection (e.g. "disconnect", "remove access", "reconnect"): https://agenticadvertising.org/member-hub (Connections card; one-click Disconnect button).',
+        '  (c) Start OAuth flow — they want to *begin* connecting GitHub right now from this conversation: https://agenticadvertising.org/connect/github (session-aware bouncer; bounces through login if needed and lands on the OAuth consent screen).',
+        'When the user asks you to file an issue, the create_github_issue tool already surfaces the (c) Connect link automatically — show its full output. Only mention these URLs explicitly when the user asks how to connect, disconnect, or manage GitHub outside of filing an issue.',
       ].join('\n'));
     }
   }
