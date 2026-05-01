@@ -2123,11 +2123,14 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
   for (const fixture of session.complyExtensions.seededProducts.values()) {
     const cp = (fixture as Record<string, unknown>).creative_policy as Record<string, unknown> | undefined;
     if (!cp) continue;
-    if (cp.provenance_required === true) provenanceRequired = true;
-    const reqs = cp.provenance_requirements as Record<string, unknown> | undefined;
-    if (reqs?.require_digital_source_type === true) requireDigitalSourceType = true;
-    if (reqs?.require_disclosure_metadata === true) requireDisclosureMetadata = true;
-    if (reqs?.require_embedded_provenance === true) requireEmbeddedProvenance = true;
+    if (cp.provenance_required === true) {
+      provenanceRequired = true;
+      // Spec: receivers MUST ignore provenance_requirements when provenance_required is false or absent
+      const reqs = cp.provenance_requirements as Record<string, unknown> | undefined;
+      if (reqs?.require_digital_source_type === true) requireDigitalSourceType = true;
+      if (reqs?.require_disclosure_metadata === true) requireDisclosureMetadata = true;
+      if (reqs?.require_embedded_provenance === true) requireEmbeddedProvenance = true;
+    }
     const verifiers = cp.accepted_verifiers as Array<Record<string, unknown>> | undefined;
     if (Array.isArray(verifiers)) {
       for (const v of verifiers) {
@@ -2187,13 +2190,17 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
 
       // 1. Verifier allowlist — MUST precede structural checks (spec: "cross-check before any outbound call")
       if (acceptedVerifierUrls.size > 0) {
-        for (const entry of [...embeddedProv, ...watermarksList]) {
+        const verifierEntries = [
+          ...embeddedProv.map((e, i) => ({ entry: e, path: `creatives[${results.length}].provenance.embedded_provenance[${i}].verify_agent.agent_url` })),
+          ...watermarksList.map((e, i) => ({ entry: e, path: `creatives[${results.length}].provenance.watermarks[${i}].verify_agent.agent_url` })),
+        ];
+        for (const { entry, path } of verifierEntries) {
           const va = entry.verify_agent as Record<string, unknown> | undefined;
           if (typeof va?.agent_url === 'string' && !acceptedVerifierUrls.has(canonicalizeAgentUrl(va.agent_url))) {
             provenanceError = {
               code: 'PROVENANCE_VERIFIER_NOT_ACCEPTED',
               message: 'verify_agent.agent_url is not in the seller\'s accepted_verifiers. Replace with an on-list URL from get_products.',
-              field: `creatives[${results.length}].provenance.embedded_provenance[*].verify_agent.agent_url`,
+              field: path,
               recovery: 'correctable',
             };
             break;
