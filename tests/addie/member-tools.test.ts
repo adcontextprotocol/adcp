@@ -753,6 +753,8 @@ describe('createMemberToolHandlers', () => {
     const userScopedTools = [
       'join_working_group',
       'get_my_working_groups',
+      'get_my_council_interests',
+      'get_my_content',
       'get_my_profile',
       'update_my_profile',
       'get_company_listing',

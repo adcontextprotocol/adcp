@@ -2844,18 +2844,8 @@ export function createCommitteeRouters(): {
   userApiRouter.get('/interests', requireAuth, async (req: Request, res: Response) => {
     try {
       const user = req.user!;
-      const pool = getPool();
-
-      const result = await pool.query(
-        `SELECT ci.interest_level, ci.created_at, wg.name as committee_name, wg.slug, wg.committee_type
-         FROM committee_interest ci
-         JOIN working_groups wg ON wg.id = ci.working_group_id
-         WHERE ci.workos_user_id = $1
-         ORDER BY ci.created_at DESC`,
-        [user.id]
-      );
-
-      res.json(result.rows);
+      const interests = await workingGroupDb.getCouncilInterestsForUser(user.id);
+      res.json(interests);
     } catch (error) {
       logger.error({ err: error }, 'Get user council interests error');
       res.status(500).json({
