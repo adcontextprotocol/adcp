@@ -115,7 +115,7 @@
     .badge-scheduled { background: var(--color-info-100); color: var(--color-info-700); }
     .badge-completed { background: var(--color-success-100); color: var(--color-success-700); }
     .badge-cancelled { background: var(--color-error-100); color: var(--color-error-700); }
-    .badge-draft { background: var(--color-gray-200); color: var(--color-gray-700); }
+    .badge-draft { background: var(--color-bg-button-secondary); color: var(--color-text); }
     .btn {
       padding: var(--space-2) var(--space-4);
       border: none;
@@ -128,8 +128,8 @@
     .btn-primary { background: var(--color-brand); color: white; }
     .btn-primary:hover { background: var(--color-primary-700); }
     .btn-primary:disabled { background: var(--color-gray-400); cursor: not-allowed; }
-    .btn-secondary { background: var(--color-gray-200); color: var(--color-text-heading); }
-    .btn-secondary:hover { background: var(--color-gray-300); }
+    .btn-secondary { background: var(--color-bg-button-secondary); color: var(--color-text-heading); }
+    .btn-secondary:hover { background: var(--color-bg-button-secondary-hover); }
     .btn-danger { background: var(--color-error-500); color: white; }
     .btn-danger:hover { background: var(--color-error-600); }
     .modal-overlay {
@@ -227,10 +227,10 @@
     }
     .tab:hover {
       color: var(--color-text-heading);
-      background: var(--color-gray-100);
+      background: var(--color-bg-subtle);
     }
     .tab.active {
-      border-color: var(--color-gray-200);
+      border-color: var(--color-border);
       background: var(--color-bg-card);
       color: var(--color-brand);
     }
@@ -245,7 +245,7 @@
       align-items: center;
       gap: var(--space-1);
       padding: var(--space-1) var(--space-2);
-      background: var(--color-gray-100);
+      background: var(--color-bg-subtle);
       border-radius: var(--radius-sm);
       font-size: var(--text-xs);
     }

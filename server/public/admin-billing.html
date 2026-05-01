@@ -71,7 +71,7 @@
       border-collapse: collapse;
     }
     .customers-table th {
-      background: var(--color-gray-50);
+      background: var(--color-bg-subtle);
       padding: var(--space-3) var(--space-4);
       text-align: left;
       font-size: var(--text-sm);
@@ -86,13 +86,13 @@
       color: var(--color-text-heading);
     }
     .customers-table tr:hover {
-      background: var(--color-gray-50);
+      background: var(--color-bg-subtle);
     }
     .customers-table tr.linked {
       opacity: 0.6;
     }
     .customers-table tr.unlinked-with-payments {
-      background: var(--color-warning-50);
+      background: var(--color-warning-bg);
     }
     .customers-table tr.unlinked-with-payments:hover {
       background: var(--color-warning-100);
@@ -114,8 +114,8 @@
       color: var(--color-warning-800);
     }
     .badge-gray {
-      background: var(--color-gray-100);
-      color: var(--color-gray-700);
+      background: var(--color-bg-subtle);
+      color: var(--color-text);
     }
 
     .link-form {
@@ -152,15 +152,15 @@
       background: var(--color-primary-700);
     }
     .btn-primary:disabled {
-      background: var(--color-gray-300);
+      background: var(--color-bg-button-secondary-hover);
       cursor: not-allowed;
     }
     .btn-secondary {
-      background: var(--color-gray-200);
+      background: var(--color-bg-button-secondary);
       color: var(--color-text-heading);
     }
     .btn-secondary:hover {
-      background: var(--color-gray-300);
+      background: var(--color-bg-button-secondary-hover);
     }
     .btn-danger {
       background: var(--color-error-100);
@@ -170,8 +170,8 @@
       background: var(--color-error-200);
     }
     .btn-danger:disabled {
-      background: var(--color-gray-100);
-      color: var(--color-gray-400);
+      background: var(--color-bg-subtle);
+      color: var(--color-text-muted);
       cursor: not-allowed;
     }
 
@@ -201,7 +201,7 @@
       border-bottom: var(--border-1) solid var(--color-gray-100);
     }
     .search-result-item:hover {
-      background: var(--color-gray-50);
+      background: var(--color-bg-subtle);
     }
     .search-result-item:last-child {
       border-bottom: none;
@@ -238,15 +238,15 @@
     }
 
     .error-message {
-      background: var(--color-error-50);
-      color: var(--color-error-800);
+      background: var(--color-error-bg);
+      color: var(--color-error-fg);
       padding: var(--space-4);
       border-radius: var(--radius-md);
       margin-bottom: var(--space-5);
     }
     .success-message {
-      background: var(--color-success-50);
-      color: var(--color-success-800);
+      background: var(--color-success-bg);
+      color: var(--color-success-fg);
       padding: var(--space-4);
       border-radius: var(--radius-md);
       margin-bottom: var(--space-5);
@@ -267,7 +267,7 @@
       transition: var(--transition-all);
     }
     .filter-btn:hover {
-      background: var(--color-gray-50);
+      background: var(--color-bg-subtle);
     }
     .filter-btn.active {
       background: var(--color-brand);
@@ -278,17 +278,17 @@
     /* Conflicts section */
     .conflicts-card {
       border: var(--border-1) solid var(--color-error-200);
-      background: var(--color-error-50);
+      background: var(--color-error-bg);
     }
     .conflicts-card .card-title {
-      color: var(--color-error-700);
+      color: var(--color-error-fg);
     }
     .conflicts-table {
       width: 100%;
       border-collapse: collapse;
     }
     .conflicts-table th {
-      background: var(--color-gray-50);
+      background: var(--color-bg-subtle);
       padding: var(--space-3) var(--space-4);
       text-align: left;
       font-size: var(--text-sm);
@@ -301,17 +301,17 @@
       border-bottom: var(--border-1) solid var(--color-border);
       font-size: var(--text-sm);
       color: var(--color-text-heading);
-      background: white;
+      background: var(--color-bg-card);
     }
     .conflicts-table tr:hover td {
-      background: var(--color-gray-50);
+      background: var(--color-bg-row-hover);
     }
     .conflict-choice {
       display: flex;
       align-items: center;
       gap: var(--space-2);
       padding: var(--space-2);
-      background: var(--color-gray-50);
+      background: var(--color-bg-subtle);
       border-radius: var(--radius-sm);
     }
     .conflict-choice-info {
@@ -1024,7 +1024,7 @@
         }
 
         return `
-          <tr data-index="${index}" style="${canAutoResolve ? 'background: var(--color-success-50);' : needsManualReview ? 'background: var(--color-error-50);' : ''}">
+          <tr data-index="${index}" style="${canAutoResolve ? 'background: var(--color-success-bg);' : needsManualReview ? 'background: var(--color-error-bg);' : ''}">
             <td>
               <div><strong>${mismatch.org_name}</strong></div>
               <div style="font-size: 11px; color: var(--color-text-muted);">${mismatch.org_id}</div>
