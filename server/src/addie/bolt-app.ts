@@ -109,6 +109,7 @@ import {
   getToolsForSets,
   buildUnavailableSetsHint,
 } from './tool-sets.js';
+import { EMPTY_RESPONSE_FALLBACK_TEXT } from './response-postprocess.js';
 import { getHomeContent, renderHomeView, renderErrorView, invalidateHomeCache } from './home/index.js';
 import { URL_TOOLS, createUrlToolHandlers } from './mcp/url-tools.js';
 import { GOOGLE_DOCS_TOOLS, createGoogleDocsToolHandlers } from './mcp/google-docs.js';
@@ -904,7 +905,8 @@ async function createUserScopedTools(
   memberContext: MemberContext | null,
   slackUserId?: string,
   threadId?: string,
-  threadContext?: ThreadContext | null
+  threadContext?: ThreadContext | null,
+  personId?: string | null,
 ): Promise<UserScopedToolsResult> {
   const memberHandlers = createMemberToolHandlers(memberContext, slackUserId);
   let allTools = [...MEMBER_TOOLS];
@@ -937,7 +939,16 @@ async function createUserScopedTools(
   // Skip in public channels — billing tools enable enrollment pitching
   const isPublicChannel = threadContext?.viewing_channel_is_private === false;
   if (!isPublicChannel) {
-    const billingHandlers = createBillingToolHandlers(memberContext);
+    // Resolve personId for audit event emission if not passed in.
+    // This is a fallback — callers that already have personId should pass it.
+    let billingPersonId = personId;
+    if (billingPersonId === undefined && slackUserId) {
+      billingPersonId = await relationshipDb.resolvePersonId({ slack_user_id: slackUserId }).catch(err => {
+        logger.warn({ err, slackUserId }, 'Addie Bolt: Could not resolve personId for billing event emission');
+        return null;
+      });
+    }
+    const billingHandlers = createBillingToolHandlers(memberContext, billingPersonId);
     allTools.push(...BILLING_TOOLS);
     for (const [name, handler] of billingHandlers) {
       allHandlers.set(name, handler);
@@ -1857,6 +1868,20 @@ async function handleUserMessage({
     };
   }
 
+  // Detect empty-turn substitution and emit person_events entry for auditability.
+  const isEmptyTurn = response.text === EMPTY_RESPONSE_FALLBACK_TEXT;
+  if (isEmptyTurn) {
+    try {
+      const emptyTurnPersonId = await relationshipDb.resolvePersonId({ slack_user_id: userId });
+      personEvents.recordEvent(emptyTurnPersonId, 'addie_empty_turn', {
+        channel: 'slack',
+        data: { tools_used: response.tools_used },
+      }).catch(err => logger.warn({ err }, 'Addie Bolt: Failed to record addie_empty_turn event'));
+    } catch (err) {
+      logger.warn({ err, userId }, 'Addie Bolt: Could not resolve personId for addie_empty_turn event');
+    }
+  }
+
   // Validate output
   const outputValidation = validateOutput(response.text);
 
@@ -1878,8 +1903,8 @@ async function handleUserMessage({
   }
 
   // Log assistant response to unified thread
-  const assistantFlagged = response.flagged || outputValidation.flagged;
-  const flagReason = [response.flag_reason, outputValidation.reason].filter(Boolean).join('; ');
+  const assistantFlagged = response.flagged || outputValidation.flagged || isEmptyTurn;
+  const flagReason = [response.flag_reason, outputValidation.reason, isEmptyTurn ? 'addie_empty_turn' : ''].filter(Boolean).join('; ');
   const dmEffectiveModel = routedTools.requiresPrecision
     ? ModelConfig.precision
     : routedTools.requiresDepth

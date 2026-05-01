@@ -37,7 +37,9 @@ export type PersonEventType =
   | 'invite_sent'           // membership invite emailed to recipient
   | 'invite_accepted'       // recipient signed in and accepted
   | 'invite_revoked'        // admin revoked before accept
-  | 'invite_expired';       // expires_at passed without accept/revoke (sweep)
+  | 'invite_expired'        // expires_at passed without accept/revoke (sweep)
+  | 'billing_tool_failed'   // billing tool (send_invoice, confirm_send_invoice, create_payment_link) returned { success: false }
+  | 'addie_empty_turn';     // Addie produced no text content after tool use; fallback substituted
 
 export interface PersonEvent {
   id: number;

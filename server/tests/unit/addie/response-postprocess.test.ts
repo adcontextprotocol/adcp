@@ -7,6 +7,7 @@ import {
   stripBannedRituals,
   truncateLongResponseToShortQuestion,
   applyResponsePipeline,
+  EMPTY_RESPONSE_FALLBACK_TEXT,
   __test_BANNED_RITUAL_LITERALS,
   __test_lengthThresholds,
   __test_EMPTY_RESPONSE_FALLBACK,
@@ -219,5 +220,29 @@ describe('applyResponsePipeline', () => {
     const q = "What is X?";
     const short = "X is the protocol.";
     expect(applyResponsePipeline(q, short)).toBe(short);
+  });
+});
+
+describe('EMPTY_RESPONSE_FALLBACK_TEXT export (#3721 empty-turn detection)', () => {
+  it('EMPTY_RESPONSE_FALLBACK_TEXT is the same string the pipeline substitutes', () => {
+    const q = "Can you send an invoice?";
+    // Feed all-ritual input so the pipeline strips it to empty and substitutes the fallback.
+    const ritualsOnly = "Great question! " + "Certainly! ";
+    const result = applyResponsePipeline(q, ritualsOnly);
+    // If the pipeline produced the fallback, the exported constant matches it.
+    // (The pipeline may or may not strip these specific phrases to empty in all future
+    // configurations, but if it does, the constant must match — that's the contract.)
+    if (result === __test_EMPTY_RESPONSE_FALLBACK) {
+      expect(EMPTY_RESPONSE_FALLBACK_TEXT).toBe(__test_EMPTY_RESPONSE_FALLBACK);
+    } else {
+      // Pipeline kept content — just verify the constant is non-empty and consistent.
+      expect(EMPTY_RESPONSE_FALLBACK_TEXT).toBeTruthy();
+      expect(EMPTY_RESPONSE_FALLBACK_TEXT).toBe(__test_EMPTY_RESPONSE_FALLBACK);
+    }
+  });
+
+  it('EMPTY_RESPONSE_FALLBACK_TEXT equals the empty-pipeline output for a blank input', () => {
+    const result = applyResponsePipeline("test", "");
+    expect(result).toBe(EMPTY_RESPONSE_FALLBACK_TEXT);
   });
 });
