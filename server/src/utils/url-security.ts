@@ -295,7 +295,7 @@ export async function safeFetch(
   // Response body is a stream the caller consumes after this function returns;
   // closing here would tear down the underlying socket mid-stream. Connections
   // are reaped by undici's idle timeout (the same lifecycle as the global agent).
-  let response = await fetch(sanitizeUrl(parsedUrl), { // lgtm[js/request-forgery] -- URL is pre-validated by validateFetchUrl + dialed through SSRF-safe dispatcher with private-IP rejection at connect time
+  let response = await fetch(sanitizeUrl(parsedUrl), {
     method,
     headers,
     redirect: 'manual',
@@ -309,7 +309,7 @@ export async function safeFetch(
     if (!location) throw new Error('Redirect with no Location header');
     // Pre-flight check on the redirect hop, then dial through the same SSRF-safe dispatcher.
     const redirectUrl = await validateRedirectTarget(location, parsedUrl);
-    response = await fetch(sanitizeUrl(redirectUrl), { // lgtm[js/request-forgery] -- redirect target is pre-validated by validateRedirectTarget + dialed through SSRF-safe dispatcher with private-IP rejection at connect time
+    response = await fetch(sanitizeUrl(redirectUrl), {
       method,
       headers,
       redirect: 'manual',
