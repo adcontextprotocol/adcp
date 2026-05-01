@@ -133,9 +133,42 @@ Key properties:
 
 - **Revocation.** Governance agents publish a signed revocation list at a well-known path. Compromised keys and rescinded plans can be invalidated without trusting the CDN serving the list.
 - **Retention.** Revoked public keys remain discoverable for 7+ years so historical tokens remain verifiable after rotation.
-- **Approval provenance.** Because the governance attestation is signed and public-key-verifiable, any party holding the artifact can verify it was approved by the holder of the signing key at the stated time. This approaches non-repudiation — but only conditionally. The buyer cannot later claim the plan was *never approved* so long as (a) the signing key was not compromised at time-of-signing (revocation lists bound this — a post-hoc claim of "the key was already stolen when I signed" is falsifiable against the revocation timeline) and (b) the signer retains ordinary custody of its signing key. The seller side is *weaker*: an attestation proves the plan existed, not that it was delivered or acknowledged. For full bilateral non-repudiation, the seller should return a signed `plan_receipt` binding `{plan_id, received_at, plan_sha256}`. Absent a signed receipt, "never received" remains deniable.
+- **Approval provenance.** Because the governance attestation is signed and public-key-verifiable, any party holding the artifact can verify it was approved by the holder of the signing key at the stated time. This approaches non-repudiation — but only conditionally. The buyer cannot later claim the plan was *never approved* so long as (a) the signing key was not compromised at time-of-signing (revocation lists bound this — a post-hoc claim of "the key was already stolen when I signed" is falsifiable against the revocation timeline) and (b) the signer retains ordinary custody of its signing key. The seller side is *weaker*: an attestation proves the plan existed, not that it was delivered or acknowledged. For full bilateral non-repudiation, the seller should emit a signed `plan_receipt` binding `{plan_id, received_at, plan_sha256}` as a signed webhook on the `adcp_use: "webhook-signing"` surface — durable seller-side acknowledgement flows through the same at-rest signing path as every other webhook artifact (see [What gets signed](#what-gets-signed--and-what-doesnt) below). Absent a signed receipt, "never received" remains deniable.
 
 **What this defends against.** After-the-fact tampering. Claim drift between parties in a dispute. Regulatory inquiries that arrive long after the credentials have rotated.
+
+## What gets signed — and what doesn't
+
+Four application-layer signing systems exist in 3.x — three sharing the RFC 9421 / JWS publication pattern, plus TMP's own envelope:
+
+- **Inbound request signing.** Buyers (and sellers acting as buyer-side clients) sign their outbound tool calls with [RFC 9421](/docs/building/implementation/security#request-signing). Key purpose `adcp_use: "request-signing"`.
+- **Outbound webhook signing.** Sellers sign asynchronous [webhook deliveries](/docs/building/implementation/security#webhook-callbacks) — task completion, status changes, downstream events, and any specialism-scoped durable artifact (brand-rights, AAO Verified compliance, sales-intelligence relay, governance receipts). RFC 9421. Key purpose `adcp_use: "webhook-signing"`.
+- **Governance attestation signing.** Governance agents sign the JWS tokens that authorize spend (Layer 4 above). Distinct profile from RFC 9421, with its own key purpose (`adcp_use: "governance-signing"`), JWKS, and revocation list.
+- **Trusted Match Protocol envelope.** TMP signs match-time requests with its own Ed25519 envelope, scaled to TMP's per-request budget (sample-verify at ~5%); it shares JWKS publication with the three RFC 9421 / JWS surfaces above but is its own profile. See [TMP signing model](/docs/trusted-match/specification#signing-model).
+
+**Synchronous AdCP responses are NOT signed at the body level.** Buyers MUST NOT rely on response-body signatures; integrity guarantees for synchronous replies are delivered by TLS within the authenticated session. Artifacts requiring at-rest attestation MUST be delivered via signed webhooks. This applies symmetrically to MCP `tools/call` replies and to A2A non-streaming responses (and their streaming `artifactUpdate` frames); A2A push-notification delivery already rides the signed-webhook path covered by the second surface above.
+
+### Why the split is deliberate
+
+This is two surfaces with two purposes, not one surface with a coverage gap.
+
+- **TLS-scoped synchronous + signed-webhook async is the design.** The synchronous reply is consumed inside the authenticated session that carried the request — the buyer holds TLS-bound proof that the seller's authenticated edge answered, with the same edge-termination caveats that govern request-side body integrity at body-modifying CDNs (see [Transport security: edge-termination](/docs/building/implementation/security#what-this-section-does-not-replace)). A signature on the body would protect against post-edge tampering but does not protect against anything the authenticated TLS session hasn't already established between the parties' authenticated edges. At-rest integrity, by contrast, is what webhooks are for: the artifact survives past the original transport and verifies long after the session has closed, against keys that long-outlive the TCP connection.
+- **Webhook-only is a forcing function for sellers.** Making "this artifact needs at-rest integrity" an *explicit modeling decision* — emit a webhook — rather than a free rider on every reply pushes operators toward intentional design. Sellers who would otherwise reach for a generic response-signing primitive "for completeness," without asking *which* artifacts actually warrant attestation, are pushed to make the call up front.
+- **Doubling the signing surface is operationally fragile.** Every additional `adcp_use` purpose is another key in the JWKS, another rotation cycle, another verifier code path, another conformance grader, another revocation entry to monitor. The cost is borne by every adopter for every deployment; the benefit accrues to a narrow set of audit and forwarding flows that have a cleaner path through webhooks. Net negative across the ecosystem.
+
+### Cases that look like response signing but aren't
+
+- **Audit and forensics on tool-call replies.** A buyer that needs to attest "the seller said X at time T" requests the artifact via a webhook-emitting tool path, not via the synchronous reply. The asymmetry forces the right design question: which replies actually need at-rest integrity? In practice, fewer than instinct suggests.
+- **Cross-agent forwarding** (sales-intelligence relay, brand-rights handoff, AAO Verified compliance attestations). The durable artefact in each of these flows rides the standard `adcp_use: "webhook-signing"` surface — there is no per-specialism `adcp_use` value in 3.x, and there is no generic response-signing primitive. The specialism delivers its attestable payload as a signed webhook from its own agent; that's already the answer.
+- **Bilateral non-repudiation receipts** (e.g., a seller's signed `plan_receipt` binding `{plan_id, received_at, plan_sha256}`). Where the spec recommends the seller emit such a receipt, it is delivered as a signed webhook on the same `adcp_use: "webhook-signing"` surface — not on the synchronous reply that acknowledged the inbound governance attestation.
+
+### The request-the-webhook pattern
+
+If you genuinely need an attestable artifact from a tool that today returns it synchronously, the spec-supported path is to structure the tool to emit a signed webhook carrying the canonical version, and treat the synchronous reply as transport-only acknowledgement. The buyer registers a webhook on the request; the seller delivers the durable artifact via that webhook with `adcp_use: "webhook-signing"`. Verification is uniform with every other at-rest seller→buyer message, no new specialism, no new grader.
+
+Some 3.x tools that today return durable artifacts synchronously (e.g., `acquire_rights` returning `rights_constraint` and `generation_credentials` on the synchronous reply, or any tool whose seller-side receipt is currently delivered inline) are candidates to either restructure under this pattern or accept that their durable-integrity path is the webhook variant — not a future synchronous-response signature.
+
+This decision is the resolution of [#3737](https://github.com/adcontextprotocol/adcp/issues/3737); revisitable in 4.0 if the threat model evolves (e.g., a transport pattern emerges where a synchronous reply carries durable state that does not also flow through a webhook).
 
 ## What to verify before going live
 
@@ -212,7 +245,7 @@ A useful reading: the security controls on this page defend the *boundary* the h
 
 ## What AdCP does not do in 3.0
 
-Knowing what a protocol doesn't do is part of evaluating it. The canonical, maintained list lives at [**Known Limitations**](/docs/reference/known-limitations) and spans security, privacy, commerce, authentication, governance, and conformance. The security-relevant items it covers include: no end-user authentication, no protocol-level breach-notification SLA or CVD policy, no protocol-level PII transport, no LLM prompt-injection guarantee, no data-residency mechanism at the protocol layer, no OAuth 2.1 normative requirement, no cross-currency buy support, no protocol-level delivery-dispute flow, and no in-protocol payment or settlement.
+Knowing what a protocol doesn't do is part of evaluating it. The canonical, maintained list lives at [**Known Limitations**](/docs/reference/known-limitations) and spans security, privacy, commerce, authentication, governance, and conformance. The security-relevant items it covers include: no end-user authentication, no protocol-level breach-notification SLA or CVD policy, no protocol-level PII transport, no LLM prompt-injection guarantee, no data-residency mechanism at the protocol layer, no OAuth 2.1 normative requirement, no synchronous RPC response-body signing (see [What gets signed](#what-gets-signed--and-what-doesnt) above), no cross-currency buy support, no protocol-level delivery-dispute flow, and no in-protocol payment or settlement.
 
 None of these are hidden. Each is a visible edge of the specification and a candidate for future work.
 
