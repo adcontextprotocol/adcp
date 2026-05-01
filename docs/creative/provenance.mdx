@@ -25,7 +25,9 @@ Provenance is an optional object that can attach to creative assets, creative ma
 | `declared_by` | object | Party attaching this provenance claim (`role` required, plus optional `agent_url`) |
 | `declared_at` | string (date-time) | When this provenance claim was made (ISO 8601), distinct from `created_time` |
 | `created_time` | string (date-time) | When the content was created (ISO 8601) |
-| `c2pa` | object | C2PA Content Credentials reference (`manifest_url` required) |
+| `c2pa` | object | C2PA sidecar manifest reference (`manifest_url` required). Breaks under ad-server transcoding — use `embedded_provenance` for pipelines with intermediaries |
+| `embedded_provenance` | array | Provenance metadata embedded *within* the content stream (manifest wrapper or invisible markers); survives transcoding and re-encoding |
+| `watermarks` | array | Content watermarks encoding an identifier or fingerprint; survives perceptual transformations |
 | `disclosure` | object | Regulatory disclosure requirements and jurisdiction details |
 | `verification` | array | Third-party verification or detection results |
 | `ext` | object | Standard extension point |
@@ -470,9 +472,82 @@ For opaque, self-rendering creatives (MRAID, JavaScript tags, VPAID), the creati
 
 Regulation identifiers are conventions, not a closed enum. New regulations can be referenced without protocol changes.
 
+## Embedded provenance and watermarks
+
+`c2pa.manifest_url` is a sidecar reference: a URL pointer to a detached cryptographic manifest. It is durable across the network, but file-level C2PA bindings do not survive ad-server transcoding, resize, or re-encode. For pipelines where assets pass through intermediaries before reaching the publisher, two transcoding-resilient fields carry provenance evidence inside the asset itself.
+
+### `embedded_provenance[]`
+
+Provenance metadata carried *within* the content stream — either as a manifest embedded in the file container (e.g., a JUMBF box in JPEG, a C2PATextManifestWrapper in plaintext per C2PA Section A.7) or as invisible markers in the content that encode or reference a provenance record.
+
+```json
+{
+  "embedded_provenance": [
+    {
+      "method": "provenance_markers",
+      "provider": "Encypher",
+      "verify_agent": {
+        "agent_url": "https://governance.encypher.example",
+        "feature_id": "encypher.markers_present"
+      },
+      "embedded_at": "2026-04-30T10:15:00Z"
+    }
+  ]
+}
+```
+
+| Field | Required | Description |
+|---|---|---|
+| `method` | Yes | `manifest_wrapper` or `provenance_markers` (see [`embedded-provenance-method`](https://adcontextprotocol.org/schemas/v3/enums/embedded-provenance-method.json)) |
+| `provider` | Yes | Organization that performed the embedding (display label, not a wire identifier) |
+| `standard` | No | Standard the embedding conforms to (e.g., `c2pa`) |
+| `verify_agent` | No | AdCP governance agent that can verify this embedding via `get_creative_features` |
+| `embedded_at` | No | When the embedding was applied (ISO 8601) |
+
+`verify_agent` SHOULD be present for methods where the receiver cannot self-verify (e.g., `provenance_markers`); it MAY be omitted for self-verifiable embeddings such as a C2PA text manifest with a public key the receiver already trusts.
+
+### `watermarks[]`
+
+Content watermarks that encode an identifier or fingerprint within the asset. Distinct from embedded provenance: a watermark carries an identifier (who generated it, who owns it), while embedded provenance carries or references a structured provenance record (the full chain of custody). A single asset may carry both.
+
+```json
+{
+  "watermarks": [
+    {
+      "media_type": "video",
+      "provider": "Imatag",
+      "verify_agent": {
+        "agent_url": "https://governance.imatag.example",
+        "feature_id": "imatag.watermark_detected"
+      },
+      "c2pa_action": "c2pa.watermarked.unbound"
+    }
+  ]
+}
+```
+
+| Field | Required | Description |
+|---|---|---|
+| `media_type` | Yes | `audio`, `image`, `video`, or `text` (see [`watermark-media-type`](https://adcontextprotocol.org/schemas/v3/enums/watermark-media-type.json)) |
+| `provider` | Yes | Organization that applied the watermark (display label, not a wire identifier) |
+| `verify_agent` | No | AdCP governance agent that can detect this watermark via `get_creative_features` |
+| `c2pa_action` | No | C2PA action classification: `c2pa.watermarked.bound` or `c2pa.watermarked.unbound` (see [`c2pa-watermark-action`](https://adcontextprotocol.org/schemas/v3/enums/c2pa-watermark-action.json)) |
+| `embedded_at` | No | When the watermark was applied (ISO 8601) |
+
+### The `verify_agent` shape
+
+`verify_agent` is an AdCP governance-agent reference — not a vendor-specific webhook. The agent declares its features through `get_adcp_capabilities` (`governance.creative_features`); receivers invoke `get_creative_features` against the agent and read the returned feature value. Multiple verifiers can implement checks for the same `provider` — `verify_agent` nominates one the buyer trusts; receivers MAY substitute a different governance agent that declares an equivalent feature.
+
+| Field | Required | Description |
+|---|---|---|
+| `agent_url` | Yes | URL of the governance agent. MUST use `https://`. Compared per the AdCP URL canonicalization rules |
+| `feature_id` | No | Feature ID the seller should request via `get_creative_features`. When absent, the receiver inspects the agent's full `governance.creative_features` catalog |
+
+Inheritance follows the same rule as the parent `provenance` object: most-specific wins, replacement is full-object, no field-level merging.
+
 ## Creative policy enforcement
 
-Sellers can require provenance on submitted creatives through the `provenance_required` field in `creative-policy`:
+Sellers express provenance requirements on `creative-policy` — a field on every Product, surfaced through `get_products` so buyers see requirements before submitting.
 
 ```json
 {
@@ -480,17 +555,30 @@ Sellers can require provenance on submitted creatives through the `provenance_re
   "co_branding": "optional",
   "landing_page": "any",
   "templates_available": false,
-  "provenance_required": true
+  "provenance_required": true,
+  "provenance_requirements": {
+    "require_digital_source_type": true,
+    "require_disclosure_metadata": true,
+    "require_embedded_provenance": true
+  }
 }
 ```
 
-When `provenance_required` is `true`:
+`provenance_required: true` means the creative MUST carry *some* provenance object, anywhere in the inheritance chain. `provenance_requirements` refines that with field-level expectations.
 
-1. Buyers must attach provenance to creative submissions
-2. The seller may independently verify claims via `get_creative_features`
-3. Creatives without provenance are rejected
+Sellers that publish a requirement MUST enforce it. `sync_creatives` rejects non-compliant submissions with one of:
 
-This field is surfaced in product discovery through `get_products`, so buyers know the requirement before submitting creatives.
+| Error code | Trigger |
+|---|---|
+| `PROVENANCE_REQUIRED` | No provenance object anywhere on the creative |
+| `PROVENANCE_DIGITAL_SOURCE_TYPE_MISSING` | Resolved provenance has no `digital_source_type` |
+| `PROVENANCE_DISCLOSURE_MISSING` | Resolved provenance has no `disclosure.required`, or true with no jurisdictions |
+| `PROVENANCE_EMBEDDED_MISSING` | Resolved provenance has no `embedded_provenance[]` entry |
+| `PROVENANCE_CLAIM_CONTRADICTED` | Independent verifier (e.g., `get_creative_features` against the nominated `verify_agent`) contradicts the buyer's claim |
+
+`error.field` MUST point at the resolved provenance path that was inspected; `PROVENANCE_CLAIM_CONTRADICTED` `error.details` SHOULD identify the verifier (`agent_url`, `feature_id`) and the result so the buyer can audit.
+
+These codes are correctable: a buyer's orchestrator reads them, fixes the creative, and resubmits. Auto-retry without correction will not pass.
 
 ## Where provenance attaches
 
@@ -516,7 +604,12 @@ This field is surfaced in product discovery through `get_products`, so buyers kn
 | Schema | Location |
 |--------|----------|
 | Provenance object | [`/schemas/core/provenance.json`](https://adcontextprotocol.org/schemas/v3/core/provenance.json) |
+| Creative policy | [`/schemas/core/creative-policy.json`](https://adcontextprotocol.org/schemas/v3/core/creative-policy.json) |
 | Digital source type enum | [`/schemas/enums/digital-source-type.json`](https://adcontextprotocol.org/schemas/v3/enums/digital-source-type.json) |
+| Embedded provenance method enum | [`/schemas/enums/embedded-provenance-method.json`](https://adcontextprotocol.org/schemas/v3/enums/embedded-provenance-method.json) |
+| Watermark media type enum | [`/schemas/enums/watermark-media-type.json`](https://adcontextprotocol.org/schemas/v3/enums/watermark-media-type.json) |
+| C2PA watermark action enum | [`/schemas/enums/c2pa-watermark-action.json`](https://adcontextprotocol.org/schemas/v3/enums/c2pa-watermark-action.json) |
+| Error code enum (provenance codes) | [`/schemas/enums/error-code.json`](https://adcontextprotocol.org/schemas/v3/enums/error-code.json) |
 | Creative asset (with provenance) | [`/schemas/core/creative-asset.json`](https://adcontextprotocol.org/schemas/v3/core/creative-asset.json) |
 | Creative manifest (with provenance) | [`/schemas/core/creative-manifest.json`](https://adcontextprotocol.org/schemas/v3/core/creative-manifest.json) |
 | Creative policy (provenance_required) | [`/schemas/core/creative-policy.json`](https://adcontextprotocol.org/schemas/v3/core/creative-policy.json) |

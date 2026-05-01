@@ -97,7 +97,7 @@
     },
     "embedded_provenance": {
       "type": "array",
-      "description": "Provenance metadata embedded within the content stream. Each entry declares one embedding layer: structured provenance data carried inside the content itself, as distinct from sidecar references (c2pa.manifest_url). Embedded provenance survives operations that break sidecar and file-level bindings: ad-server transcoding, CMS ingestion, copy-paste, reformatting, and CDN re-encoding. For ad-tech pipelines where content passes through multiple intermediaries, embedded provenance is the reliable path for provenance that persists from declaration through delivery. This is a declaration by the embedding party; receiving parties verify independently via the provider's endpoint or their own detection tools.",
+      "description": "Provenance metadata embedded within the content stream. Each entry declares one embedding layer: structured provenance data carried inside the content itself, as distinct from sidecar references (c2pa.manifest_url). Embedded provenance survives operations that break sidecar and file-level bindings: ad-server transcoding, CMS ingestion, copy-paste, reformatting, and CDN re-encoding. For ad-tech pipelines where content passes through multiple intermediaries, embedded provenance is the reliable path for provenance that persists from declaration through delivery. This is a declaration by the embedding party; receiving parties verify independently by calling the governance agent identified in `verify_agent` via `get_creative_features`, or by running their own detection tools.",
       "minItems": 1,
       "items": {
         "type": "object",
@@ -112,12 +112,24 @@
           },
           "provider": {
             "type": "string",
-            "description": "Organization that performed the embedding (e.g., 'Encypher', 'Digimarc')"
+            "description": "Organization that performed the embedding (e.g., 'Encypher', 'Digimarc'). Display label and audit context — not a wire identifier."
           },
-          "verify_url": {
-            "type": "string",
-            "format": "uri",
-            "description": "Verification endpoint. Governance agents send content to this URL to verify embedded provenance presence and integrity. SHOULD be present for methods where the receiver cannot self-verify (e.g., provenance_markers). The verification protocol is opaque in this version; the wire contract will be defined by the should-verify RFC."
+          "verify_agent": {
+            "type": "object",
+            "description": "Governance agent that can verify this embedding via `get_creative_features`. The agent declares its features through `get_adcp_capabilities` (`governance.creative_features`); receivers invoke `get_creative_features` against the agent and inspect the returned feature value. SHOULD be present for methods where the receiver cannot self-verify (e.g., `provenance_markers`); MAY be omitted for self-verifiable embeddings (e.g., a C2PA text manifest with a public key the receiver already trusts). Multiple verifiers can implement checks for the same `provider` — this pointer nominates one the buyer trusts; receivers MAY substitute a different governance agent that declares an equivalent feature.",
+            "properties": {
+              "agent_url": {
+                "type": "string",
+                "format": "uri",
+                "description": "URL of the governance agent. MUST use the `https://` scheme. Receivers compare this URL against discovered governance agents using the AdCP URL canonicalization rules. See docs/reference/url-canonicalization."
+              },
+              "feature_id": {
+                "type": "string",
+                "description": "Optional feature identifier the seller should request via `get_creative_features` (e.g., `encypher.markers_present`). When absent, the receiver inspects the agent's full `governance.creative_features` catalog from `get_adcp_capabilities` to choose an applicable feature. Matches the `feature_id` advertised by the agent."
+              }
+            },
+            "required": ["agent_url"],
+            "additionalProperties": true
           },
           "embedded_at": {
             "type": "string",
@@ -131,7 +143,7 @@
     },
     "watermarks": {
       "type": "array",
-      "description": "Content watermarks applied to this asset. Each entry declares one watermarking layer: a content modification that encodes an identifier or fingerprint within the asset. Watermarks differ from embedded provenance: a watermark encodes an identifier (who generated it, who owns it), while embedded provenance carries or references a structured provenance record (the full chain of custody). A single asset may carry both. Aligns with C2PA action taxonomy: c2pa.watermarked.bound (watermark linked to a C2PA manifest) and c2pa.watermarked.unbound (watermark independent of any manifest). This is a declaration by the watermarking party; receiving parties verify independently.",
+      "description": "Content watermarks applied to this asset. Each entry declares one watermarking layer: a content modification that encodes an identifier or fingerprint within the asset. Watermarks differ from embedded provenance: a watermark encodes an identifier (who generated it, who owns it), while embedded provenance carries or references a structured provenance record (the full chain of custody). A single asset may carry both. Aligns with C2PA action taxonomy: c2pa.watermarked.bound (watermark linked to a C2PA manifest) and c2pa.watermarked.unbound (watermark independent of any manifest). This is a declaration by the watermarking party; receiving parties verify independently by calling the governance agent identified in `verify_agent` via `get_creative_features`.",
       "minItems": 1,
       "items": {
         "type": "object",
@@ -142,12 +154,24 @@
           },
           "provider": {
             "type": "string",
-            "description": "Organization that applied the watermark (e.g., 'Imatag', 'Steg.AI', 'Encypher')"
+            "description": "Organization that applied the watermark (e.g., 'Imatag', 'Steg.AI', 'Encypher'). Display label and audit context — not a wire identifier."
           },
-          "verify_url": {
-            "type": "string",
-            "format": "uri",
-            "description": "Verification endpoint for watermark detection. The verification protocol is opaque in this version; the wire contract will be defined by the should-verify RFC."
+          "verify_agent": {
+            "type": "object",
+            "description": "Governance agent that can detect this watermark via `get_creative_features`. The agent declares its detection features through `get_adcp_capabilities` (`governance.creative_features`); receivers invoke `get_creative_features` against the agent and inspect the returned feature value. Multiple verifiers can detect the same `provider`'s watermark — this pointer nominates one the buyer trusts; receivers MAY substitute a different governance agent that declares an equivalent feature.",
+            "properties": {
+              "agent_url": {
+                "type": "string",
+                "format": "uri",
+                "description": "URL of the governance agent. MUST use the `https://` scheme. Receivers compare this URL against discovered governance agents using the AdCP URL canonicalization rules. See docs/reference/url-canonicalization."
+              },
+              "feature_id": {
+                "type": "string",
+                "description": "Optional feature identifier the seller should request via `get_creative_features` (e.g., `imatag.watermark_detected`). When absent, the receiver inspects the agent's full `governance.creative_features` catalog from `get_adcp_capabilities` to choose an applicable feature. Matches the `feature_id` advertised by the agent."
+              }
+            },
+            "required": ["agent_url"],
+            "additionalProperties": true
           },
           "c2pa_action": {
             "$ref": "/schemas/enums/c2pa-watermark-action.json",

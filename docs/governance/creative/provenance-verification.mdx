@@ -45,6 +45,60 @@ flowchart LR
 
 Each moment is independent. A buyer can declare provenance without any verification having occurred. A seller can verify without requiring a declaration. Enforcement can happen with or without both.
 
+## What buyers can declare
+
+Provenance carries three families of evidence. Each survives a different set of supply-chain operations.
+
+| Field | What it carries | Survives transcoding? |
+|---|---|---|
+| `c2pa.manifest_url` | Sidecar reference to a detached cryptographic manifest | No — file-level bindings break under ad-server transcoding, resize, and re-encode |
+| `embedded_provenance[]` | Provenance metadata embedded *within* the content stream (manifest wrapper or invisible markers) | Yes — designed to persist through CMS ingestion, copy-paste, reformatting, and CDN re-encoding |
+| `watermarks[]` | Identifier or fingerprint encoded into the content (audio, image, video, or text watermark) | Yes — survives transformations that preserve perceptual content |
+
+`embedded_provenance` carries a structured provenance record (the chain of custody). `watermarks` encode an identifier (who generated it, who owns it). A single asset may carry both; pick the right field for what you actually attached.
+
+Each entry on `embedded_provenance` and `watermarks` MAY include a `verify_agent` pointer at a governance agent that can verify the embedding via `get_creative_features`. This is an AdCP-native verification surface — not a vendor-specific webhook. The agent declares its features through `get_adcp_capabilities`; receivers invoke `get_creative_features` against the agent and read the returned feature value. Receivers MAY substitute a different governance agent that declares an equivalent feature.
+
+```json
+{
+  "embedded_provenance": [
+    {
+      "method": "provenance_markers",
+      "provider": "Encypher",
+      "verify_agent": {
+        "agent_url": "https://governance.encypher.example",
+        "feature_id": "encypher.markers_present"
+      }
+    }
+  ]
+}
+```
+
+## What sellers can require
+
+Sellers express what they need on `creative_policy`, returned by `get_products` so buyers see requirements before submitting. Two layers:
+
+| Field | Effect |
+|---|---|
+| `provenance_required: true` | Creative MUST carry *some* provenance object, anywhere in the inheritance chain. Submission without provenance is rejected with `PROVENANCE_REQUIRED`. |
+| `provenance_requirements.{require_digital_source_type, require_disclosure_metadata, require_embedded_provenance}` | Field-level requirements. Submission missing the named field is rejected with the corresponding `PROVENANCE_*_MISSING` code. |
+
+Sellers that publish a requirement MUST enforce it on `sync_creatives` — that's the structural-rejection contract. The truth-of-claim contract (does the buyer's `digital_source_type` actually match the content?) lives in `get_creative_features` and surfaces as `PROVENANCE_CLAIM_CONTRADICTED`.
+
+### Rejection error codes
+
+When `sync_creatives` rejects a creative for provenance reasons, the per-creative result carries a structured error with one of:
+
+| Code | Meaning | `error.field` points at |
+|---|---|---|
+| `PROVENANCE_REQUIRED` | No provenance object anywhere on the creative, but `provenance_required: true` | The manifest path where provenance was expected |
+| `PROVENANCE_DIGITAL_SOURCE_TYPE_MISSING` | Resolved provenance has no `digital_source_type` | The resolved `provenance.digital_source_type` path |
+| `PROVENANCE_DISCLOSURE_MISSING` | Resolved provenance has no `disclosure.required` (or true without jurisdictions) | The resolved `provenance.disclosure` path |
+| `PROVENANCE_EMBEDDED_MISSING` | Resolved provenance has no `embedded_provenance` entry | The resolved `provenance.embedded_provenance` path |
+| `PROVENANCE_CLAIM_CONTRADICTED` | Independent verifier contradicts the claim (active refutation, not absence) | The provenance field whose claim was refuted; `error.details` SHOULD carry verifier `agent_url`, `feature_id`, and result |
+
+Buyers receiving these codes can self-correct without negotiating with the seller — the failure is machine-readable. Auto-retry without correction will not pass.
+
 ## AI detection via get_creative_features
 
 AI detection is a creative governance feature, evaluated by specialist agents through `get_creative_features` -- the same task used for security scanning, creative quality, and content categorization. AI detection does not require a separate protocol or workflow.
@@ -397,6 +451,10 @@ flowchart TB
 | Set human oversight level | Indicate `human_oversight` when AI is involved |
 | Declare disclosure obligations | Populate `disclosure.jurisdictions` for each applicable regulation |
 | Preserve C2PA references | Include `c2pa.manifest_url` when content credentials exist |
+| Use transcoding-resilient declarations | When the pipeline includes intermediaries that transcode or re-encode assets, attach `embedded_provenance[]` and/or `watermarks[]` rather than relying on `c2pa.manifest_url` alone |
+| Nominate a verifier | Populate `verify_agent.agent_url` (and optionally `feature_id`) on `embedded_provenance[]` / `watermarks[]` entries so the seller can verify via `get_creative_features` against an AdCP governance agent |
+| Read seller requirements upfront | Inspect `creative_policy.provenance_required` and `creative_policy.provenance_requirements` from `get_products` and pre-flight your creative shape before calling `sync_creatives` |
+| Handle rejection codes | Treat `PROVENANCE_REQUIRED`, `PROVENANCE_*_MISSING`, and `PROVENANCE_CLAIM_CONTRADICTED` as machine-readable correctable errors — auto-retry without correction will not pass |
 | Run pre-submission detection | Optionally attach `verification` results from your own detection services |
 
 ### Sellers (publishers and platforms)
@@ -404,10 +462,12 @@ flowchart TB
 | Requirement | Description |
 |-------------|-------------|
 | Set creative policy | Add `provenance_required: true` to `creative-policy` if provenance is required |
-| Run AI detection | Call `get_creative_features` with an AI detection agent to verify provenance claims |
+| Publish field-level requirements | Set `provenance_requirements.require_*` flags for fields you intend to enforce — buyers read these from `get_products` and self-correct before submission |
+| Enforce structural requirements | Reject `sync_creatives` submissions that omit any required field with the matching `PROVENANCE_*` error code (per-creative `errors[]`, `error.field` pointing at the missing path) |
+| Run AI detection | Call `get_creative_features` against the buyer's nominated `verify_agent` (or your own AdCP governance agent) to verify provenance claims |
 | Compare claims vs detection | Implement logic to compare `digital_source_type` against `ai_generated` feature results |
+| Reject contradictions | Use `PROVENANCE_CLAIM_CONTRADICTED` (with verifier identity in `error.details`) when an independent verification refutes the buyer's claim |
 | Enforce disclosure | Verify that AI content includes appropriate `disclosure` metadata for target jurisdictions |
-| Reject mismatches | Reject creatives where provenance claims contradict detection results |
 | Declare artifact provenance | Attach `provenance` to content artifacts submitted via content standards |
 
 ### Creative agents
