@@ -1401,7 +1401,10 @@ export function createMyContentRouter(): Router {
       res.json({ items: result.items });
     } catch (error) {
       if (error instanceof MyContentError && error.is('invalid_status')) {
-        return res.status(400).json({ error: 'Invalid status', message: error.message });
+        return res.status(400).json({
+          error: 'Invalid status',
+          message: `status must be one of: ${error.meta.valid.join(', ')}, or 'all'`,
+        });
       }
       logger.error({ err: error }, 'GET /api/me/content error');
       res.status(500).json({ error: 'Failed to get content' });

@@ -14,16 +14,14 @@
  */
 
 import { getPool } from '../db/client.js';
-import { createLogger } from '../logger.js';
 import { isWebUserAAOAdmin } from '../addie/admin-status-lookup.js';
 import { fetchPathPageviewCounts } from './posthog-query.js';
-
-const logger = createLogger('my-content-service');
 
 export type MyContentStatus = 'draft' | 'pending_review' | 'published' | 'archived' | 'rejected';
 const VALID_STATUSES: readonly MyContentStatus[] = ['draft', 'pending_review', 'published', 'archived', 'rejected'];
 
 export type MyContentRelationship = 'author' | 'proposer' | 'owner';
+const VALID_RELATIONSHIPS: readonly MyContentRelationship[] = ['author', 'proposer', 'owner'];
 
 export interface MyContentItem {
   id: string;
@@ -102,7 +100,10 @@ export async function listMyContent({
       valid: VALID_STATUSES,
     });
   }
-  const cappedLimit = Math.min(typeof limit === 'number' && Number.isFinite(limit) ? limit : 50, 100);
+  // Match the original route's coercion (`parseInt(...) || 50`): any
+  // falsy or non-finite limit (including 0, NaN, negative numbers) is
+  // treated as "use the default 50". Then cap at 100.
+  const cappedLimit = Math.min(typeof limit === 'number' && Number.isFinite(limit) && limit > 0 ? limit : 50, 100);
 
   const pool = getPool();
 
@@ -165,7 +166,36 @@ export async function listMyContent({
   params.push(cappedLimit);
   queryText += ` LIMIT $${params.length}`;
 
-  const result = await pool.query(queryText, params);
+  // Type the row shape so PG-shape drift (e.g. tags becoming non-array,
+  // authors changing JSON shape) surfaces in TypeScript instead of
+  // silently passing through `satisfies` checks against `any`.
+  interface MyContentSqlRow {
+    id: string;
+    slug: string | null;
+    content_type: string;
+    title: string;
+    subtitle: string | null;
+    category: string | null;
+    excerpt: string | null;
+    content: string | null;
+    tags: string[] | null;
+    featured_image_url: string | null;
+    external_url: string | null;
+    external_site_name: string | null;
+    status: string;
+    published_at: Date | null;
+    created_at: Date;
+    updated_at: Date;
+    working_group_id: string | null;
+    proposer_user_id: string | null;
+    committee_name: string | null;
+    committee_slug: string | null;
+    is_proposer: boolean;
+    is_author: boolean;
+    is_lead: boolean;
+    authors: Array<{ user_id: string; display_name: string; display_title: string | null }> | null;
+  }
+  const result = await pool.query<MyContentSqlRow>(queryText, params);
 
   const items: MyContentItem[] = result.rows
     .map((row) => {
@@ -204,18 +234,16 @@ export async function listMyContent({
       return item.relationships.includes(relationship as MyContentRelationship);
     });
 
-  // Pageview enrichment — best-effort. PostHog being down should not
-  // gate the listing, just degrade the response.
+  // Pageview enrichment. Match the prior route handler's behavior
+  // exactly — let any PostHog error propagate to the caller, which
+  // surfaces as a 500 from the route or a tool error from the Addie
+  // adapter. Don't degrade silently here: if pageview data is
+  // unexpectedly empty, the operator should see it.
   const publishedPaths = items
     .filter((item) => item.status === 'published' && typeof item.slug === 'string' && item.slug.length > 0)
     .map((item) => `/perspectives/${item.slug}`);
 
-  let pageviewCounts: Record<string, number> | null = null;
-  try {
-    pageviewCounts = await fetchPathPageviewCounts(publishedPaths, 30);
-  } catch (err) {
-    logger.warn({ err }, 'Pageview enrichment failed; returning items without performance');
-  }
+  const pageviewCounts = await fetchPathPageviewCounts(publishedPaths, 30);
 
   const itemsWithPerformance = items.map((item) => {
     if (item.status !== 'published' || !item.slug || !pageviewCounts) {
