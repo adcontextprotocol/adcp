@@ -14,4 +14,6 @@ Side effects (Slack channel notification on new posts and documents, document in
 
 The route's `isAllowedDocumentUrl` helper plus its three allowlist constants moved into the service so both consumers share a single SSRF allowlist for document URLs. The Addie tools keep a friendlier "Google only" pre-check that fires before the broader service-level allowlist — the service still re-validates as defense-in-depth.
 
+**Behavior note:** the new service narrows `content_type` on `POST /api/working-groups/:slug/posts` to the allowlist `'article' | 'link'` — anything else is coerced to `'article'`. The Slack notification helper has always required this shape, so any prior request that sent e.g. `'discussion'` was inserting a row into `perspectives` that the public surface couldn't render correctly anyway. Addie callers were already pre-mapping (`post_type === 'link' ? 'link' : 'article'`), so they're unaffected.
+
 Closes the addie-side half of issue #3736 — all 7 affected tools now go through service layers rather than the broken loopback. Part 3 (locking down `callApi` POST/PUT/DELETE/PATCH at runtime so future tools physically cannot reintroduce the bug class) follows in the next PR.

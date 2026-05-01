@@ -1745,7 +1745,7 @@ export function createCommitteeRouters(): {
         if (error.is('invalid_document_url')) {
           return res.status(400).json({
             error: 'Invalid document URL',
-            message: 'Only Google Docs, Sheets, Drive URLs, and direct links to PDFs or PPTX files are supported',
+            message: 'Only Google Docs, Sheets, Drive URLs, and direct links to PDFs/PPTX/XLSX/DOCX from trusted hosts are supported',
           });
         }
         if (error.is('not_member')) {
@@ -1947,7 +1947,7 @@ export function createCommitteeRouters(): {
         if (error.is('invalid_document_url')) {
           return res.status(400).json({
             error: 'Invalid document URL',
-            message: 'Only Google Docs, Sheets, Drive URLs, and direct links to PDFs or PPTX files are supported',
+            message: 'Only Google Docs, Sheets, Drive URLs, and direct links to PDFs/PPTX/XLSX/DOCX from trusted hosts are supported',
           });
         }
         if (error.is('not_member')) {
