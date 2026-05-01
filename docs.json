@@ -477,6 +477,7 @@
                       "docs/trusted-match/specification",
                       "docs/trusted-match/router-architecture",
                       "docs/trusted-match/privacy-architecture",
+                      "docs/trusted-match/data-protection-roles",
                       "docs/trusted-match/migration-from-axe",
                       {
                         "group": "Surface Guides",
