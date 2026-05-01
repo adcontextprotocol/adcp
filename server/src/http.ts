@@ -6746,6 +6746,37 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
         return res.redirect('/');
       }
 
+      const clearAdcpCookies = () => {
+        res.clearCookie('wos-session', {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production' && !ALLOW_INSECURE_COOKIES,
+          sameSite: 'lax',
+          path: '/',
+        });
+        res.clearCookie('bridge-checked', {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production' && !ALLOW_INSECURE_COOKIES,
+          sameSite: 'lax',
+          path: '/',
+        });
+      };
+
+      // If on AdCP domain, the canonical session lives on AAO. Clearing AdCP-side
+      // cookies isn't enough — the bridge would re-pull a still-valid AAO session
+      // and the user would appear logged in again. Clear AdCP cookies, then bounce
+      // to AAO's logout so the AAO session is revoked too.
+      if (this.isAdcpDomain(req)) {
+        clearAdcpCookies();
+        const aaoReturnTo = `https://${req.get('host')}/`;
+        return res.redirect(`https://agenticadvertising.org/auth/logout?return_to=${encodeURIComponent(aaoReturnTo)}`);
+      }
+
+      // Validate return_to: only allow AdCP URLs (so AdCP can chain logout through AAO)
+      const requestedReturnTo = req.query.return_to as string | undefined;
+      const safeReturnTo = requestedReturnTo && HTTPServer.isAllowedAdcpUrl(requestedReturnTo)
+        ? requestedReturnTo
+        : '/';
+
       try {
         const sessionCookie = req.cookies['wos-session'];
 
@@ -6774,36 +6805,15 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           }
         }
 
-        // Clear the session and bridge-checked cookies
-        res.clearCookie('wos-session', {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === 'production' && !ALLOW_INSECURE_COOKIES,
-          sameSite: 'lax',
-          path: '/',
-        });
-        res.clearCookie('bridge-checked', {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === 'production' && !ALLOW_INSECURE_COOKIES,
-          sameSite: 'lax',
-          path: '/',
-        });
-        res.redirect('/');
+        clearAdcpCookies();
+        // CodeQL: safeReturnTo validated by isAllowedAdcpUrl (or defaulted to '/')
+        res.redirect(safeReturnTo); // lgtm[js/server-side-unvalidated-url-redirection]
       } catch (error) {
         logger.error({ err: error }, 'Error during logout');
         // Still clear cookies and redirect even if revocation failed
-        res.clearCookie('wos-session', {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === 'production' && !ALLOW_INSECURE_COOKIES,
-          sameSite: 'lax',
-          path: '/',
-        });
-        res.clearCookie('bridge-checked', {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === 'production' && !ALLOW_INSECURE_COOKIES,
-          sameSite: 'lax',
-          path: '/',
-        });
-        res.redirect('/');
+        clearAdcpCookies();
+        // CodeQL: safeReturnTo validated by isAllowedAdcpUrl (or defaulted to '/')
+        res.redirect(safeReturnTo); // lgtm[js/server-side-unvalidated-url-redirection]
       }
     });
 
