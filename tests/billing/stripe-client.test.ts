@@ -1031,4 +1031,42 @@ describe('stripe-client', () => {
         .toBe('aao_membership_corporate_under5m');
     });
   });
+
+  describe('buildOrgCouponName', () => {
+    test('keeps short org names intact', async () => {
+      const { buildOrgCouponName } = await import('../../server/src/billing/stripe-client.js');
+      expect(buildOrgCouponName('Acme Inc', '$500.00 off'))
+        .toBe('Acme Inc - $500.00 off');
+    });
+
+    test('truncates long org names so total stays at most 40 chars', async () => {
+      const { buildOrgCouponName } = await import('../../server/src/billing/stripe-client.js');
+      // Real-world repro: a long org name plus " - $500.00 off" overflowed Stripe's 40-char cap
+      const result = buildOrgCouponName(
+        'The Omnichannel Network Exchange  O-N-X',
+        '$500.00 off',
+      );
+      expect(result.length).toBeLessThanOrEqual(40);
+      expect(result.endsWith(' - $500.00 off')).toBe(true);
+    });
+
+    test('collapses internal whitespace runs in the org name', async () => {
+      const { buildOrgCouponName } = await import('../../server/src/billing/stripe-client.js');
+      expect(buildOrgCouponName('Acme    \t  Inc', '10% off'))
+        .toBe('Acme Inc - 10% off');
+    });
+
+    test('handles a percent discount description', async () => {
+      const { buildOrgCouponName } = await import('../../server/src/billing/stripe-client.js');
+      const result = buildOrgCouponName('Some Very Long Company Name LLC International', '25% off');
+      expect(result.length).toBeLessThanOrEqual(40);
+      expect(result.endsWith(' - 25% off')).toBe(true);
+    });
+
+    test('falls back to suffix-only when org name is empty', async () => {
+      const { buildOrgCouponName } = await import('../../server/src/billing/stripe-client.js');
+      expect(buildOrgCouponName('', '$500.00 off'))
+        .toBe(' - $500.00 off');
+    });
+  });
 });
