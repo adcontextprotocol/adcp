@@ -46,19 +46,29 @@ const logger = createLogger("member-profile-routes");
 /**
  * Server-authoritative agent type for issue #3495.
  *
- * Three cases, in priority order:
+ * Four cases, in priority order:
  *
  * 1. We have a capability snapshot AND its inferred_type is a valid
  *    AgentType — use it. This is ground truth from the crawler probe.
  *
- * 2. We have a snapshot but inferred_type is null (probe failed,
- *    OAuth-required, or all tools were unrecognised) — force 'unknown'.
- *    Deliberately do NOT fall back to the client's value here: a
- *    snapshot row with null inferred_type means "we tried and could not
- *    classify", which is exactly the case where a malicious client could
- *    smuggle a wrong type. Trust silence over the client.
+ * 2. Snapshot exists but inferred_type is null (probe failed,
+ *    OAuth-required, or all tools were unrecognised) AND the client
+ *    self-declared `buying` — preserve `buying`. Buy-side agents
+ *    structurally do not expose AdCP tools (they CALL them as clients),
+ *    so the probe-based inference cannot detect them. The member's
+ *    self-declaration is the only signal we have. Smuggling protection
+ *    still holds for sales/creative/signals because the probe WILL
+ *    classify those when reachable; this carve-out is exactly `buying`,
+ *    the only type that cannot be fabricated by a passive probe. See
+ *    issue #3549.
  *
- * 3. No snapshot at all (URL has never been probed) — fall back to the
+ * 3. Any other snapshot-but-null-inferred case — force `unknown`.
+ *    Deliberately do NOT fall back to the client's value here: a
+ *    snapshot row with null inferred_type means "we tried and could
+ *    not classify", which is exactly the case where a malicious client
+ *    could smuggle a non-`buying` type. Trust silence over the client.
+ *
+ * 4. No snapshot at all (URL has never been probed) — fall back to the
  *    client's value, but only if it validates against the AgentType
  *    enum. Drop legacy strings like 'buyer' / 'seller' to 'unknown' so
  *    they cannot land in JSONB.
@@ -88,9 +98,19 @@ export async function resolveAgentTypes(agents: unknown): Promise<unknown> {
       if (inferred && isValidAgentType(inferred)) {
         return { ...a, type: inferred as AgentType };
       }
-      // Snapshot exists but probe couldn't classify the agent. Reject the
-      // client's claimed type: a probed-but-unknown URL is the exact attack
-      // window for type smuggling.
+      // Snapshot exists but probe couldn't classify the agent. Carve-out
+      // for `buying`: buy-side agents are CLIENTS of AdCP, not servers —
+      // they call sales/creative/signals tools, they do not expose them.
+      // A passive probe therefore cannot infer `buying` from tool surface,
+      // and the member's self-declaration is the only signal. Preserve it.
+      // Smuggling protection still holds: a malicious client claiming
+      // sales/creative/signals on an unreachable agent still gets squashed
+      // to `unknown` below.
+      if (a.type === 'buying') {
+        return { ...a, type: 'buying' as AgentType };
+      }
+      // Any other claimed type with a null-inferred snapshot — reject and
+      // force unknown. This is the type-smuggling window.
       return { ...a, type: 'unknown' as AgentType };
     }
     // No snapshot — trust validated client value, drop the rest.
