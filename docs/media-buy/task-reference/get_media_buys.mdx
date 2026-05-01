@@ -402,7 +402,8 @@ Use cursor pagination for broad status queries to avoid large payloads:
 |------------|-------------|------------|
 | `MEDIA_BUY_NOT_FOUND` | Media buy ID does not exist | Verify `media_buy_id` |
 | `CONTEXT_REQUIRED` | No media buys found for the requested scope | Provide valid IDs/refs or broaden `status_filter`/pagination scope |
-| `AUTH_REQUIRED` | Authentication needed | Provide credentials |
+| `AUTH_MISSING` | No credentials presented | Provide credentials via auth header |
+| `AUTH_INVALID` | Credentials rejected (expired / revoked) | Human credential rotation required; do not auto-retry |
 
 ## Next Steps
 

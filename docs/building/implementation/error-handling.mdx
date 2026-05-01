@@ -168,7 +168,9 @@ Non-normative implementation note: a single-query pattern like `SELECT ... WHERE
 
 | Code | Recovery | Description | Resolution |
 |------|----------|-------------|------------|
-| `AUTH_REQUIRED` | correctable | Authentication is required or credentials are invalid | Provide credentials via auth header |
+| `AUTH_MISSING` | correctable | No credentials were presented | Provide credentials via auth header |
+| `AUTH_INVALID` | terminal | Credentials were presented but rejected (expired / revoked / malformed) | Human credential rotation required; do not auto-retry |
+| `AUTH_REQUIRED` | correctable | **Deprecated** — use `AUTH_MISSING` or `AUTH_INVALID` | Retained for backward compatibility |
 | `ACCOUNT_NOT_FOUND` | terminal | Account reference could not be resolved | Verify via `list_accounts` or contact seller |
 | `ACCOUNT_SETUP_REQUIRED` | correctable | Account needs setup before use | Check `details.setup` for URL or instructions |
 | `ACCOUNT_AMBIGUOUS` | correctable | Natural key resolves to multiple accounts | Pass explicit `account_id` or a more specific natural key |
@@ -393,9 +395,15 @@ async function handleAdcpError(error) {
 
   // Fall back to error code matching
   switch (error.code) {
-    case 'AUTH_REQUIRED':
+    case 'AUTH_MISSING':
+    case 'AUTH_REQUIRED': // deprecated alias for AUTH_MISSING
       await refreshCredentials();
       return retry();
+
+    case 'AUTH_INVALID':
+      // Terminal — credentials were rejected server-side; human rotation required
+      console.error('Credential rejected (expired/revoked):', error.message);
+      throw error;
 
     case 'INVALID_REQUEST':
       console.error('Validation error:', error);
@@ -579,7 +587,7 @@ Governance errors from the protocol layer (as opposed to governance decisions) u
 |------|----------|----------------|
 | `PLAN_NOT_FOUND` | correctable | `sync_plans` was not called before `check_governance` |
 | `INVALID_REQUEST` | correctable | Missing required fields (e.g., `plan_id`, `caller`) |
-| `AUTH_REQUIRED` | correctable | Governance agent requires authentication |
+| `AUTH_MISSING` | correctable | Governance agent requires authentication |
 
 ## Best Practices
 

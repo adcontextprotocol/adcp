@@ -48,7 +48,7 @@ The `<alias>` form uses a saved alias from `~/.adcp/config.json` (set via `npx @
 
 **Output:** ranked hypothesis list, e.g., `1. token_endpoint not reachable (connection refused) — likely cause`, `2. issuer mismatch — AS URL returned by protected-resource does not match adagents.json`. Each hypothesis links to the relevant spec section.
 
-**When to use it:** when `AUTH_REQUIRED` errors persist after bearer token configuration; when dynamic client registration returns unexpected responses; when a new seller's OAuth setup fails silently.
+**When to use it:** when `AUTH_MISSING` or `AUTH_INVALID` errors persist after bearer token configuration; when dynamic client registration returns unexpected responses; when a new seller's OAuth setup fails silently.
 
 ## Key generation
 

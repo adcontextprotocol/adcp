@@ -558,7 +558,8 @@ asyncio.run(main())
 
 | Error Code | Description | Resolution |
 |------------|-------------|------------|
-| `AUTH_REQUIRED` | Authentication needed | Provide credentials |
+| `AUTH_MISSING` | No credentials presented | Provide credentials via auth header |
+| `AUTH_INVALID` | Credentials rejected (expired / revoked) | Human credential rotation required; do not auto-retry |
 | `MEDIA_BUY_NOT_FOUND` | Media buy doesn't exist | Verify media_buy_id |
 | `INVALID_DATE_RANGE` | Invalid start/end dates | Use YYYY-MM-DD format, ensure start < end |
 | `DATE_RANGE_NOT_SUPPORTED` | Product only supports lifetime reporting | Omit `start_date` and `end_date`. Check `reporting_capabilities.date_range_support` on the product. |

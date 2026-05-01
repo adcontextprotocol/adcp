@@ -965,7 +965,8 @@ Key rules to know before sending:
 
 | Error Code | Description | Resolution |
 |------------|-------------|------------|
-| `AUTH_REQUIRED` | Authentication needed for full catalog | Provide credentials via auth header |
+| `AUTH_MISSING` | No credentials presented | Provide credentials via auth header |
+| `AUTH_INVALID` | Credentials rejected (expired / revoked) | Human credential rotation required; do not auto-retry |
 | `INVALID_REQUEST` | Brief too long or malformed filters | Check request parameters |
 | `PRODUCT_NOT_FOUND` | One or more referenced product IDs are unknown or expired | Remove invalid IDs and retry, or re-discover with a `brief` request |
 | `PROPOSAL_EXPIRED` | A referenced proposal ID has passed its `expires_at` timestamp | Re-discover with a new `brief` or `wholesale` request |
