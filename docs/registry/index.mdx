@@ -164,8 +164,8 @@ This returns every measurement agent the registry knows about — registered via
 
 | Param | Match | Notes |
 |-------|-------|-------|
-| `metric_id=attention_units` | Exact match on `metrics[].metric_id` | Repeatable; multiple values are OR'd within the param. |
-| `accreditation=MRC` | Exact match on `metrics[].accreditations[].accrediting_body` | Repeatable; OR'd when used alone, but cross-product AND'd with `metric_id` when both params are present (see below). Vendor-asserted — `verified_by_aao` is always `false` in the response; renderers should mark these as vendor claims, not AAO endorsements. |
+| `metric_id=attention_units` | Exact match on `metrics[].metric_id` | Repeatable; multiple values are AND'd (vendor must carry all named metrics). |
+| `accreditation=MRC` | Exact match on `metrics[].accreditations[].accrediting_body` | Repeatable; multiple values are AND'd (vendor must carry all named accreditations). When combined with `metric_id`, a cross-product AND applies — see combined filter semantics below. Vendor-asserted — `verified_by_aao` is always `false` in the response; renderers should mark these as vendor claims, not AAO endorsements. |
 | `q=attention` | Case-insensitive substring on `metric_id` | v1 scope: metric_id only. Max 64 chars; SQL wildcards (`%`, `_`) rejected. Description/standard fuzzy search is a follow-up. |
 
 **Combined filter semantics.** When both `metric_id` and `accreditation` are present, per-metric semantics apply: the same `metrics[]` element must satisfy both constraints simultaneously. A vendor with an `attention_units` metric and a separately MRC-accredited `viewability` metric does **not** match — only a vendor whose `attention_units` metric itself carries MRC accreditation does.

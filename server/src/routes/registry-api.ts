@@ -574,11 +574,11 @@ registry.registerPath({
       properties: z.enum(["true"]).optional(),
       compliance: z.enum(["true"]).optional(),
       metric_id: z.union([z.string(), z.array(z.string())]).optional().openapi({
-        description: "Measurement-vendor filter: exact match on `measurement.metrics[].metric_id`. Repeatable (each value is OR'd within the param, AND'd with other filters). Implies `type=measurement`.",
+        description: "Measurement-vendor filter: exact match on `measurement.metrics[].metric_id`. Repeatable; multiple values are AND'd (vendor must carry all named metrics). When combined with `accreditation`, a cross-product AND applies — each (metric_id, accreditation) pair must be covered by the same metrics element. Implies `type=measurement`.",
         example: "attention_units",
       }),
       accreditation: z.union([z.string(), z.array(z.string())]).optional().openapi({
-        description: "Measurement-vendor filter: exact match on `measurement.metrics[].accreditations[].accrediting_body` (e.g. `MRC`, `JIC`, `ARF`). Repeatable. Implies `type=measurement`. Accreditation claims are vendor-asserted; AAO does not independently verify (`verified_by_aao` is always `false` in the response).",
+        description: "Measurement-vendor filter: exact match on `measurement.metrics[].accreditations[].accrediting_body` (e.g. `MRC`, `JIC`, `ARF`). Repeatable; multiple values are AND'd. When combined with `metric_id`, a cross-product AND applies — see `metric_id` description. Implies `type=measurement`. Accreditation claims are vendor-asserted; AAO does not independently verify (`verified_by_aao` is always `false` in the response).",
         example: "MRC",
       }),
       q: z.string().max(64).optional().openapi({
