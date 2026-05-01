@@ -1,5 +1,5 @@
 ---
-"adcontextprotocol": minor
+"adcontextprotocol": patch
 ---
 
 spec(url-asset): add SHOULD on `url_type`, role-based fallback, and mechanism-vs-purpose clarification (#2986 step 2)

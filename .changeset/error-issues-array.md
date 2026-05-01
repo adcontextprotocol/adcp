@@ -1,5 +1,5 @@
 ---
-"adcontextprotocol": minor
+"adcontextprotocol": patch
 ---
 
 spec(error): standardize VALIDATION_ERROR `issues[]` as a normative field on `core/error.json`
