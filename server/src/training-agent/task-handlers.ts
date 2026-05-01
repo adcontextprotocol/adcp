@@ -421,7 +421,8 @@ interface CreativeDeliveryEntry {
 /** Sync creative result entry. */
 interface SyncCreativeResult {
   creative_id: string;
-  action: 'created' | 'updated';
+  action: 'created' | 'updated' | 'failed';
+  errors?: TaskError[];
 }
 
 /** Creative assignment result. */
@@ -1023,7 +1024,10 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
   const buyingMode = req.buying_mode || 'brief';
   const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
 
-  let products: Product[] = getCatalog().map(cp => ({ ...cp.product }));
+  const productMap = new Map(getCatalog().map(cp => [cp.product.product_id, cp.product]));
+  overlaySeededProducts(session, productMap);
+  const seededProductIds = new Set(session.complyExtensions.seededProducts.keys());
+  let products: Product[] = [...productMap.values()];
 
   // Apply filters
   if (req.filters) {
@@ -1090,6 +1094,17 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
         ...cp.product,
         brief_relevance: 'Suggested product — no direct keyword match with your brief.',
       }));
+    }
+
+    // Seeded products may score zero on keywords (no name/description by default) but
+    // must always appear so storyboard field-value checks can inspect their creative_policy
+    // and other fixture fields. Prepend any that the scorer dropped.
+    if (seededProductIds.size > 0) {
+      const inResults = new Set(products.map(p => p.product_id));
+      const missed = [...seededProductIds]
+        .map(id => productMap.get(id))
+        .filter((p): p is Product => p !== undefined && !inResults.has(p.product_id));
+      if (missed.length > 0) products = [...missed, ...products];
     }
   }
 
@@ -2095,6 +2110,37 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
   const validFormatIds = new Set(getFormats().map(f => f.format_id.id));
   const ownAgentUrlCanonical = canonicalizeAgentUrl(getAgentUrl());
 
+  // Derive effective provenance policy from seeded products. sync_creatives has no
+  // product_id field, so per-product enforcement is not possible. Union semantics for
+  // acceptedVerifiers is a training-agent simplification: in multi-product sessions the
+  // union is more permissive than per-product; in single-product storyboards (the typical
+  // case) union === intersection.
+  let provenanceRequired = false;
+  let requireDigitalSourceType = false;
+  let requireDisclosureMetadata = false;
+  let requireEmbeddedProvenance = false;
+  const acceptedVerifierUrls = new Set<string>();
+  for (const fixture of session.complyExtensions.seededProducts.values()) {
+    const cp = (fixture as Record<string, unknown>).creative_policy as Record<string, unknown> | undefined;
+    if (!cp) continue;
+    if (cp.provenance_required === true) {
+      provenanceRequired = true;
+      // Spec: receivers MUST ignore provenance_requirements when provenance_required is false or absent
+      const reqs = cp.provenance_requirements as Record<string, unknown> | undefined;
+      if (reqs?.require_digital_source_type === true) requireDigitalSourceType = true;
+      if (reqs?.require_disclosure_metadata === true) requireDisclosureMetadata = true;
+      if (reqs?.require_embedded_provenance === true) requireEmbeddedProvenance = true;
+    }
+    const verifiers = cp.accepted_verifiers as Array<Record<string, unknown>> | undefined;
+    if (Array.isArray(verifiers)) {
+      for (const v of verifiers) {
+        if (typeof v.agent_url === 'string') acceptedVerifierUrls.add(canonicalizeAgentUrl(v.agent_url));
+      }
+    }
+  }
+  const hasProvenancePolicy = provenanceRequired || requireDigitalSourceType
+    || requireDisclosureMetadata || requireEmbeddedProvenance || acceptedVerifierUrls.size > 0;
+
   const results: SyncCreativeResult[] = [];
   for (const creative of req.creatives) {
     if (!creative.creative_id) {
@@ -2133,6 +2179,77 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
           message: `Unknown format_id "${formatId.id}". Use list_creative_formats to see available formats.`,
         }] as TaskError[],
       };
+    }
+
+    // Provenance structural enforcement against seeded products' creative_policy
+    if (hasProvenancePolicy) {
+      const provenance = (creative as Record<string, unknown>).provenance as Record<string, unknown> | undefined;
+      const embeddedProv = (provenance?.embedded_provenance as Array<Record<string, unknown>> | undefined) ?? [];
+      const watermarksList = (provenance?.watermarks as Array<Record<string, unknown>> | undefined) ?? [];
+      let provenanceError: TaskError | undefined;
+
+      // 1. Verifier allowlist — MUST precede structural checks (spec: "cross-check before any outbound call")
+      if (acceptedVerifierUrls.size > 0) {
+        const verifierEntries = [
+          ...embeddedProv.map((e, i) => ({ entry: e, path: `creatives[${results.length}].provenance.embedded_provenance[${i}].verify_agent.agent_url` })),
+          ...watermarksList.map((e, i) => ({ entry: e, path: `creatives[${results.length}].provenance.watermarks[${i}].verify_agent.agent_url` })),
+        ];
+        for (const { entry, path } of verifierEntries) {
+          const va = entry.verify_agent as Record<string, unknown> | undefined;
+          if (typeof va?.agent_url === 'string' && !acceptedVerifierUrls.has(canonicalizeAgentUrl(va.agent_url))) {
+            provenanceError = {
+              code: 'PROVENANCE_VERIFIER_NOT_ACCEPTED',
+              message: 'verify_agent.agent_url is not in the seller\'s accepted_verifiers. Replace with an on-list URL from get_products.',
+              field: path,
+              recovery: 'correctable',
+            };
+            break;
+          }
+        }
+      }
+
+      // 2. Structural checks — first failure short-circuits remaining checks for this creative
+      if (!provenanceError && provenanceRequired && !provenance) {
+        provenanceError = {
+          code: 'PROVENANCE_REQUIRED',
+          message: 'Seller requires provenance metadata. Attach a provenance object and resubmit.',
+          field: `creatives[${results.length}].provenance`,
+          recovery: 'correctable',
+        };
+      }
+      if (!provenanceError && provenance) {
+        if (requireDigitalSourceType && !provenance.digital_source_type) {
+          provenanceError = {
+            code: 'PROVENANCE_DIGITAL_SOURCE_TYPE_MISSING',
+            message: 'Seller requires provenance.digital_source_type.',
+            field: `creatives[${results.length}].provenance.digital_source_type`,
+            recovery: 'correctable',
+          };
+        } else if (requireDisclosureMetadata) {
+          const disc = provenance.disclosure as Record<string, unknown> | undefined;
+          const jurisdictions = disc?.jurisdictions as unknown[] | undefined;
+          if (disc?.required === undefined || (disc.required === true && !jurisdictions?.length)) {
+            provenanceError = {
+              code: 'PROVENANCE_DISCLOSURE_MISSING',
+              message: 'Seller requires provenance.disclosure.required, and jurisdictions when required is true.',
+              field: `creatives[${results.length}].provenance.disclosure`,
+              recovery: 'correctable',
+            };
+          }
+        } else if (requireEmbeddedProvenance && !embeddedProv.length) {
+          provenanceError = {
+            code: 'PROVENANCE_EMBEDDED_MISSING',
+            message: 'Seller requires at least one embedded_provenance entry.',
+            field: `creatives[${results.length}].provenance.embedded_provenance`,
+            recovery: 'correctable',
+          };
+        }
+      }
+
+      if (provenanceError) {
+        results.push({ creative_id: creativeId, action: 'failed', errors: [provenanceError] });
+        continue;
+      }
     }
 
     const existing = session.creatives.has(creativeId);
