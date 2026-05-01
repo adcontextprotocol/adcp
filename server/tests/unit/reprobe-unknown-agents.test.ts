@@ -1,11 +1,19 @@
-// Set WorkOS env vars BEFORE any imports — `member-profiles.ts` (transitively
-// loaded via the script's static `import { resolveAgentTypes }`) constructs
-// a WorkOS client at module-init time. We don't exercise WorkOS in this
-// test, so dummy creds are fine; the import just needs to not throw.
-process.env.WORKOS_API_KEY ||= 'sk_test_dummy_for_unit_tests';
-process.env.WORKOS_CLIENT_ID ||= 'client_test_dummy_for_unit_tests';
-
+// Don't add `process.env.X ||= '...'` shims at the top of this file. ESM
+// imports are hoisted above module-body statements, so the static `import`
+// of the script below transitively loads `member-profiles.ts`, whose
+// `new WorkOS(...)` runs at module-init time — BEFORE any env-var
+// assignment in this file gets a chance to run. The shim looks correct
+// but is a no-op. Mock the member-profiles module instead so WorkOS init
+// never fires. (Pattern matches stripe-client mocks added in #3553.)
 import { describe, it, expect, vi } from 'vitest';
+
+vi.mock('../../src/routes/member-profiles.js', () => ({
+  // The reprobe script only consumes `resolveAgentTypes` to refresh
+  // member_profiles.agents[] after a batch. Unit tests don't exercise
+  // that propagation path, so an identity stub is sufficient.
+  resolveAgentTypes: vi.fn(async (agents: unknown) => agents),
+}));
+
 import {
   aggregateOutcomes,
   decideWrite,
