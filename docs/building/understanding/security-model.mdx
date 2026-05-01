@@ -137,6 +137,18 @@ Key properties:
 
 **What this defends against.** After-the-fact tampering. Claim drift between parties in a dispute. Regulatory inquiries that arrive long after the credentials have rotated.
 
+## What gets signed — and what doesn't
+
+Three application-layer signing surfaces exist in 3.x:
+
+- **Inbound request signing.** Buyers (and sellers acting as buyer-side clients) sign their outbound tool calls with [RFC 9421](/docs/building/implementation/security#request-signing). Key purpose `adcp_use: "request-signing"`.
+- **Outbound webhook signing.** Sellers sign asynchronous [webhook deliveries](/docs/building/implementation/security#webhook-callbacks) — task completion, status changes, downstream events. RFC 9421. Key purpose `adcp_use: "webhook-signing"`.
+- **Governance attestation signing.** Governance agents sign the JWS tokens that authorize spend (Layer 4 above). Distinct profile from RFC 9421, with its own key purpose, JWKS, and revocation list.
+
+What is **not** signed at the application layer is the **synchronous RPC response body** returned by `tools/call` (or the A2A artifact). Integrity of the immediate reply rests on TLS for the duration of the connection. Long-lived integrity for results that need to survive past that connection — the actual outcome of a media buy, report data, the audit trail — flows through signed webhooks and the signed governance audit chain, both of which are verifiable independently of the original transport.
+
+This is a deliberate scoping decision in 3.x. Adding response-body signing would require a fourth `adcp_use` purpose, a paired verifier specialism, and a paired conformance grader, while most of the integrity benefit is already captured downstream. If a buyer needs body integrity on a result that has no webhook follow-up, the right shape is to lift that result onto a signed webhook rather than to sign the synchronous reply. The decision is logged for revisiting in 4.0 if the threat model evolves; tracked in [#3737](https://github.com/adcontextprotocol/adcp/issues/3737).
+
 ## What to verify before going live
 
 If you are approving an AdCP deployment — as a brand CISO, a security architect at a publisher, or the IT lead at an agency — these are the questions to ask your team (or your vendor). Each maps to one of the layers above.
@@ -212,7 +224,7 @@ A useful reading: the security controls on this page defend the *boundary* the h
 
 ## What AdCP does not do in 3.0
 
-Knowing what a protocol doesn't do is part of evaluating it. The canonical, maintained list lives at [**Known Limitations**](/docs/reference/known-limitations) and spans security, privacy, commerce, authentication, governance, and conformance. The security-relevant items it covers include: no end-user authentication, no protocol-level breach-notification SLA or CVD policy, no protocol-level PII transport, no LLM prompt-injection guarantee, no data-residency mechanism at the protocol layer, no OAuth 2.1 normative requirement, no cross-currency buy support, no protocol-level delivery-dispute flow, and no in-protocol payment or settlement.
+Knowing what a protocol doesn't do is part of evaluating it. The canonical, maintained list lives at [**Known Limitations**](/docs/reference/known-limitations) and spans security, privacy, commerce, authentication, governance, and conformance. The security-relevant items it covers include: no end-user authentication, no protocol-level breach-notification SLA or CVD policy, no protocol-level PII transport, no LLM prompt-injection guarantee, no data-residency mechanism at the protocol layer, no OAuth 2.1 normative requirement, no synchronous RPC response-body signing (see [What gets signed](#what-gets-signed--and-what-doesnt) above), no cross-currency buy support, no protocol-level delivery-dispute flow, and no in-protocol payment or settlement.
 
 None of these are hidden. Each is a visible edge of the specification and a candidate for future work.
 
