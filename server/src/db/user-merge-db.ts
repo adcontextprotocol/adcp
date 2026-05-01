@@ -630,6 +630,17 @@ export async function mergeUsers(
     // sign-in credential. Identity routing in the auth middleware unifies
     // them server-side.
 
+    // Invalidate any cached sessions for either user — the binding shape
+    // changed and a stale cached id-swap would route the wrong way until
+    // the cache TTL elapsed. Lazy-imported to avoid a circular dep with
+    // the auth middleware.
+    try {
+      const { invalidateSessionsForUsers } = await import('../middleware/auth.js');
+      invalidateSessionsForUsers([primaryUserId, secondaryUserId]);
+    } catch (err) {
+      logger.warn({ err }, 'Failed to invalidate session caches after merge — sessions will refresh on TTL expiry');
+    }
+
     logger.info(
       {
         primaryUserId,

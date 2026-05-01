@@ -661,6 +661,27 @@ function isSyntheticUser(id: string): boolean {
 }
 
 /**
+ * Drop any cached sessions whose WorkOS user id matches one of the given
+ * ids, on either auth credential (post-swap canonical or actual auth).
+ * Called when an identity binding changes (mergeUsers, admin rebind) so
+ * subsequent requests re-resolve identity instead of serving a stale swap.
+ */
+export function invalidateSessionsForUsers(workosUserIds: string[]): void {
+  if (workosUserIds.length === 0) return;
+  const ids = new Set(workosUserIds);
+  for (const [key, value] of sessionCache.entries()) {
+    if (ids.has(value.user.id) || (value.user.authWorkosUserId && ids.has(value.user.authWorkosUserId))) {
+      sessionCache.delete(key);
+    }
+  }
+  for (const [key, value] of bearerJwtCache.entries()) {
+    if (ids.has(value.user.id) || (value.user.authWorkosUserId && ids.has(value.user.authWorkosUserId))) {
+      bearerJwtCache.delete(key);
+    }
+  }
+}
+
+/**
  * Resolve the identity for a WorkOS user. Sets `user.identityId` and, when
  * the authenticated user is a non-primary binding, swaps `user.id` to the
  * identity's primary workos_user_id so app-state reads land on the right
@@ -676,12 +697,13 @@ async function attachIdentityId(user: WorkOSUser): Promise<void> {
   try {
     const result = await getPool().query<{
       identity_id: string;
-      primary_workos_user_id: string;
+      primary_workos_user_id: string | null;
     }>(
-      `SELECT iwu.identity_id,
-              (SELECT workos_user_id FROM identity_workos_users
-                WHERE identity_id = iwu.identity_id AND is_primary = TRUE) AS primary_workos_user_id
+      `SELECT iwu.identity_id, primary_iwu.workos_user_id AS primary_workos_user_id
          FROM identity_workos_users iwu
+         LEFT JOIN identity_workos_users primary_iwu
+           ON primary_iwu.identity_id = iwu.identity_id
+          AND primary_iwu.is_primary = TRUE
         WHERE iwu.workos_user_id = $1`,
       [user.id]
     );

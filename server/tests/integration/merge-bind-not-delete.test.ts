@@ -139,4 +139,22 @@ describe('mergeUsers (bind, don\'t delete)', () => {
     expect(result.rows[0].details.primary_user_id).toBe(PRIMARY_ID);
     expect(result.rows[0].details.secondary_user_id).toBe(SECONDARY_ID);
   });
+
+  it('throws if the primary lacks an identity binding (Phase 1 trigger should make this impossible)', async () => {
+    // Manually break the invariant to confirm we fail loud rather than
+    // silently producing partial state. The AFTER INSERT trigger normally
+    // guarantees this can't happen.
+    await pool.query(`DELETE FROM identity_workos_users WHERE workos_user_id = $1`, [PRIMARY_ID]);
+
+    await expect(mergeUsers(PRIMARY_ID, SECONDARY_ID, PRIMARY_ID)).rejects.toThrow(
+      /no identity binding/
+    );
+
+    // ROLLBACK should leave the secondary intact (no partial bind).
+    const secondaryStill = await pool.query(
+      `SELECT 1 FROM users WHERE workos_user_id = $1`,
+      [SECONDARY_ID]
+    );
+    expect(secondaryStill.rows).toHaveLength(1);
+  });
 });

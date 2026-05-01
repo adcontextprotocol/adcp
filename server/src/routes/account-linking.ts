@@ -159,6 +159,25 @@ export function createAccountLinkingRouter(): Router {
       );
       const targetWorkosUserId = targetUser.rows[0]?.workos_user_id || null;
 
+      // Block the self-service "merge two existing accounts" path. Without
+      // the old delete-the-secondary side effect, the existing confused-
+      // deputy attack (attacker requests a link to victim's email; victim
+      // confirms; attacker becomes primary, victim is rebound non-primary
+      // and silently routes into the attacker's workspace) would be silent
+      // and persistent. Consolidating two real accounts is now admin-only —
+      // see /admin/people for the bind tool. Bare alias adds (where the
+      // target email has no existing WorkOS user) are unaffected.
+      if (targetWorkosUserId) {
+        logger.info(
+          { userId, targetEmail: normalizedEmail, targetWorkosUserId },
+          'Refused self-service merge of two existing accounts; admin tool required'
+        );
+        return res.status(409).json({
+          error: 'This email already has an AAO account',
+          message: 'Combining two existing accounts requires admin assistance — please contact support.',
+        });
+      }
+
       // Generate verification token
       const token = crypto.randomBytes(32).toString('hex');
       const expiresAt = new Date(Date.now() + TOKEN_EXPIRY_HOURS * 60 * 60 * 1000);
@@ -237,7 +256,10 @@ export function createAccountLinkingRouter(): Router {
       // is not recorded). UNIQUE(LOWER(email)) on aliases prevents anyone
       // else from claiming the abandoned email; cleanup is manual.
       try {
-        await getWorkos().userManagement.updateUser({ userId, email: aliasEmail });
+        // Mutate the actually-signed-in WorkOS user's email, not the
+        // post-swap canonical. Email is per-credential.
+        const workosTargetUserId = req.user!.authWorkosUserId ?? userId;
+        await getWorkos().userManagement.updateUser({ userId: workosTargetUserId, email: aliasEmail });
       } catch (workosError: any) {
         if (isEmailUnavailable(workosError)) {
           return res.status(409).json({ error: 'This email is already associated with another account in our auth system' });
@@ -419,16 +441,28 @@ export function handleEmailLinkVerification(app: {
 
       await client.query('COMMIT');
 
-      // Execute the merge outside the token lock (mergeUsers has its own transaction)
-      let mergeSummary = null;
-
       try {
         if (tokenRecord.target_workos_user_id) {
-          mergeSummary = await mergeUsers(
-            tokenRecord.primary_workos_user_id,
-            tokenRecord.target_workos_user_id,
-            tokenRecord.primary_workos_user_id
+          // Defense in depth: initiation now refuses tokens with a target
+          // WorkOS user (see POST /api/me/linked-emails), but in-flight
+          // tokens issued before that block landed must also be refused
+          // here. The merge-existing-accounts path is admin-only.
+          await query(
+            `UPDATE email_link_tokens SET status = 'revoked' WHERE id = $1`,
+            [tokenRecord.id]
           );
+          logger.info(
+            {
+              tokenId: tokenRecord.id,
+              primaryUserId: tokenRecord.primary_workos_user_id,
+              targetWorkosUserId: tokenRecord.target_workos_user_id,
+            },
+            'Refused self-service merge at verify time; admin tool required'
+          );
+          return renderVerifyPage(res, {
+            success: false,
+            message: 'This email already has an AAO account. Combining accounts requires admin assistance — please contact support.',
+          });
         }
 
         // Record the email alias (use bare ON CONFLICT to handle both the
@@ -440,32 +474,26 @@ export function handleEmailLinkVerification(app: {
           [tokenRecord.primary_workos_user_id, tokenRecord.target_email]
         );
 
-        // Mark token as verified with merge summary
+        // Mark token as verified
         await query(
-          `UPDATE email_link_tokens SET status = 'verified', verified_at = NOW(), merge_summary = $2 WHERE id = $1`,
-          [tokenRecord.id, mergeSummary ? JSON.stringify(mergeSummary) : null]
+          `UPDATE email_link_tokens SET status = 'verified', verified_at = NOW() WHERE id = $1`,
+          [tokenRecord.id]
         );
-      } catch (mergeError) {
+      } catch (verifyError) {
         // Reset token to pending so the user can retry
         await query(
           `UPDATE email_link_tokens SET status = 'pending' WHERE id = $1`,
           [tokenRecord.id]
         ).catch((resetErr) => {
-          logger.error({ error: resetErr, tokenId: tokenRecord.id }, 'Failed to reset token status after merge error — user cannot retry');
+          logger.error({ error: resetErr, tokenId: tokenRecord.id }, 'Failed to reset token status after verify error — user cannot retry');
         });
-        throw mergeError;
+        throw verifyError;
       }
 
-      const totalMoved = mergeSummary
-        ? mergeSummary.tables_merged.reduce((sum, t) => sum + t.rows_moved, 0)
-        : 0;
-
-      const message = mergeSummary
-        ? `Your email <strong>${escapeHtml(tokenRecord.target_email)}</strong> is now linked to your account. ${totalMoved} record${totalMoved === 1 ? '' : 's'} from the other account were combined here. You can sign in with either email — both lead to the same workspace.`
-        : `Your email <strong>${escapeHtml(tokenRecord.target_email)}</strong> is now linked to your account. You can sign in with either email — both lead to the same workspace.`;
+      const message = `Your email <strong>${escapeHtml(tokenRecord.target_email)}</strong> is now linked to your account.`;
 
       logger.info(
-        { primaryUserId: tokenRecord.primary_workos_user_id, targetEmail: tokenRecord.target_email, merged: !!mergeSummary },
+        { primaryUserId: tokenRecord.primary_workos_user_id, targetEmail: tokenRecord.target_email },
         'Email link verification completed'
       );
 
