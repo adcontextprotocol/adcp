@@ -1,6 +1,14 @@
 import { FederatedIndexDatabase, type DiscoveredAgent, type DiscoveredPublisher, type AgentPublisherAuthorization, type DiscoveredProperty, type PropertyIdentifier, type PublisherPropertySelector } from './db/federated-index-db.js';
 import { MemberDatabase } from './db/member-db.js';
+import { canonicalizeAgentUrl } from './db/publisher-db.js';
 import type { FederatedAgent, FederatedPublisher, DomainLookupResult, AgentType } from './types.js';
+
+// Local helper: canonicalize for in-memory collapse (lowercase scheme/host,
+// trailing slash stripped). Falls back to the raw value when canonicalization
+// returns null so we never silently drop a row from the merged view.
+function collapseKey(url: string): string {
+  return canonicalizeAgentUrl(url) ?? url;
+}
 
 /**
  * Service layer for federated agent/publisher discovery.
@@ -69,7 +77,10 @@ export class FederatedIndexService {
         const agentType = agentConfig.type || 'unknown';
         if (type && agentType !== type) continue;
 
-        registeredAgents.set(agentConfig.url, {
+        // Key on the canonical form (lowercase, trailing slash stripped) so
+        // a registered `https://agent.example/` collapses with a discovered
+        // `https://agent.example`. Issue #3573.
+        registeredAgents.set(collapseKey(agentConfig.url), {
           url: agentConfig.url,
           name: agentConfig.name || profile.display_name,
           type: agentType as FederatedAgent['type'],
@@ -96,7 +107,7 @@ export class FederatedIndexService {
     const result: FederatedAgent[] = Array.from(registeredAgents.values());
 
     for (const discovered of discoveredAgents) {
-      if (registeredAgents.has(discovered.agent_url)) {
+      if (registeredAgents.has(collapseKey(discovered.agent_url))) {
         continue; // Skip if already registered
       }
 
@@ -205,7 +216,10 @@ export class FederatedIndexService {
     for (const profile of profiles) {
       for (const agentConfig of profile.agents || []) {
         if (agentConfig.visibility === 'public') {
-          registeredAgentUrls.set(agentConfig.url, {
+          // Key on canonical form so trailing-slash / case differences
+          // between registered and discovered/claim agent_url still
+          // resolve to the registered member. Issue #3573.
+          registeredAgentUrls.set(collapseKey(agentConfig.url), {
             slug: profile.slug,
             display_name: profile.display_name,
           });
@@ -218,7 +232,7 @@ export class FederatedIndexService {
     const authorizedAgents = authorizations
       .filter(auth => auth.source === 'adagents_json')
       .map(auth => {
-        const member = registeredAgentUrls.get(auth.agent_url);
+        const member = registeredAgentUrls.get(collapseKey(auth.agent_url));
         return {
           url: auth.agent_url,
           authorized_for: auth.authorized_for,
@@ -230,7 +244,7 @@ export class FederatedIndexService {
     // Get sales agents claiming this domain
     const claims = await this.db.getSalesAgentsClaimingDomain(domain);
     const salesAgentsClaiming = claims.map(claim => {
-      const member = registeredAgentUrls.get(claim.discovered_by_agent);
+      const member = registeredAgentUrls.get(collapseKey(claim.discovered_by_agent));
       return {
         url: claim.discovered_by_agent,
         source: member ? 'registered' as const : 'discovered' as const,
@@ -297,6 +311,12 @@ export class FederatedIndexService {
 
   /**
    * Record an agent discovered from an adagents.json file.
+   *
+   * Canonicalizes agent_url at the entry point (lowercase, trailing
+   * slash stripped) so legacy `discovered_agents` and
+   * `agent_publisher_authorizations` rows store the same shape the
+   * catalog-side already enforces. Forward-only — existing rows are not
+   * migrated. Issue #3573.
    */
   async recordAgentFromAdagentsJson(
     agentUrl: string,
@@ -304,16 +324,19 @@ export class FederatedIndexService {
     authorizedFor?: string,
     propertyIds?: string[]
   ): Promise<void> {
+    const canonical = canonicalizeAgentUrl(agentUrl);
+    if (!canonical) return; // Skip unusable URLs (whitespace, embedded '*', empty)
+
     // Record the agent
     await this.db.upsertAgent({
-      agent_url: agentUrl,
+      agent_url: canonical,
       source_type: 'adagents_json',
       source_domain: publisherDomain,
     });
 
     // Record the authorization
     await this.db.upsertAuthorization({
-      agent_url: agentUrl,
+      agent_url: canonical,
       publisher_domain: publisherDomain,
       authorized_for: authorizedFor,
       property_ids: propertyIds,
@@ -323,21 +346,27 @@ export class FederatedIndexService {
 
   /**
    * Record a publisher discovered from a sales agent's list_authorized_properties.
+   *
+   * Canonicalizes agent_url for the legacy authorization row so it
+   * collapses with adagents.json-side records. Issue #3573.
    */
   async recordPublisherFromAgent(
     domain: string,
     salesAgentUrl: string,
     hasValidAdagents?: boolean
   ): Promise<void> {
+    const canonicalAgent = canonicalizeAgentUrl(salesAgentUrl);
     await this.db.upsertPublisher({
       domain,
-      discovered_by_agent: salesAgentUrl,
+      discovered_by_agent: canonicalAgent ?? salesAgentUrl,
       has_valid_adagents: hasValidAdagents,
     });
 
+    if (!canonicalAgent) return;
+
     // Also record the claim (unverified authorization)
     await this.db.upsertAuthorization({
-      agent_url: salesAgentUrl,
+      agent_url: canonicalAgent,
       publisher_domain: domain,
       source: 'agent_claim',
     });
@@ -350,7 +379,7 @@ export class FederatedIndexService {
     agentUrl: string,
     metadata: { name?: string; agent_type?: string; protocol?: string }
   ): Promise<void> {
-    await this.db.updateAgentMetadata(agentUrl, metadata);
+    await this.db.updateAgentMetadata(canonicalizeAgentUrl(agentUrl) ?? agentUrl, metadata);
   }
 
   /**

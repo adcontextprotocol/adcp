@@ -252,6 +252,116 @@ describe('FederatedIndexService.listAllAgents — endorsed_by_publisher_member',
     expect(agents[0].endorsed_by_publisher_member).toBeUndefined();
   });
 
+  it('collapses registered + discovered when only the trailing slash differs (issue #3573)', async () => {
+    // Pin: a registered agent stored as `https://shared.agent.example.com/`
+    // (with trailing slash) collides with a discovered row recorded as
+    // `https://shared.agent.example.com` (no slash). They must surface
+    // as a single registered row, not two.
+    setupProfilesAndDiscovered({
+      profiles: [
+        {
+          slug: 'acme',
+          display_name: 'Acme',
+          agents: [
+            {
+              url: 'https://shared.agent.example.com/',
+              visibility: 'public',
+              type: 'sales',
+              name: 'Acme Agent',
+            },
+          ],
+        },
+      ],
+      discoveredAgents: [
+        {
+          agent_url: 'https://shared.agent.example.com',
+          source_type: 'adagents_json',
+          source_domain: 'pub.example.com',
+          name: 'Acme Agent',
+          agent_type: 'sales',
+          protocol: 'mcp',
+        },
+      ],
+    });
+
+    const svc = new FederatedIndexService();
+    const agents = await svc.listAllAgents();
+
+    expect(agents).toHaveLength(1);
+    expect(agents[0].source).toBe('registered');
+  });
+
+  it('collapses registered + discovered when only host case differs (issue #3573)', async () => {
+    setupProfilesAndDiscovered({
+      profiles: [
+        {
+          slug: 'acme',
+          display_name: 'Acme',
+          agents: [
+            {
+              url: 'https://Shared.Agent.Example.com/mcp',
+              visibility: 'public',
+              type: 'sales',
+              name: 'Acme Agent',
+            },
+          ],
+        },
+      ],
+      discoveredAgents: [
+        {
+          agent_url: 'https://shared.agent.example.com/mcp',
+          source_type: 'adagents_json',
+          source_domain: 'pub.example.com',
+          name: 'Acme Agent',
+          agent_type: 'sales',
+          protocol: 'mcp',
+        },
+      ],
+    });
+
+    const svc = new FederatedIndexService();
+    const agents = await svc.listAllAgents();
+
+    expect(agents).toHaveLength(1);
+    expect(agents[0].source).toBe('registered');
+  });
+
+  it('does NOT collapse on scheme mismatch — http vs https are different security postures (issue #3573)', async () => {
+    setupProfilesAndDiscovered({
+      profiles: [
+        {
+          slug: 'acme',
+          display_name: 'Acme',
+          agents: [
+            {
+              url: 'https://shared.agent.example.com/mcp',
+              visibility: 'public',
+              type: 'sales',
+              name: 'Acme Agent',
+            },
+          ],
+        },
+      ],
+      discoveredAgents: [
+        {
+          agent_url: 'http://shared.agent.example.com/mcp',
+          source_type: 'adagents_json',
+          source_domain: 'pub.example.com',
+          name: 'Acme Agent',
+          agent_type: 'sales',
+          protocol: 'mcp',
+        },
+      ],
+    });
+
+    const svc = new FederatedIndexService();
+    const agents = await svc.listAllAgents();
+
+    expect(agents).toHaveLength(2);
+    const sources = agents.map((a) => a.source).sort();
+    expect(sources).toEqual(['discovered', 'registered']);
+  });
+
   it('uses authorization publisher_domain over discovered.source_domain when present', async () => {
     // First-auth from bulkGetFirstAuthForAgents takes precedence in
     // populating discovered_from.publisher_domain. The endorsement lookup
