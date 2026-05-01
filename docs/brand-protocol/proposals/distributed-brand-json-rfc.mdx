@@ -134,7 +134,7 @@ The data model says nothing about where bytes live. For pointer children, the ca
 | Pattern | How |
 | --- | --- |
 | Brand self-hosts | `domain.com/.well-known/brand.json` is the canonical document |
-| AAO-hosted | `domain.com/.well-known/brand.json` is a stub with `authoritative_location: "https://agenticadvertising.org/brands/domain.com/brand.json"` |
+| AAO-hosted | `domain.com/.well-known/brand.json` is a stub with `authoritative_location: "https://agenticadvertising.org/brands/${domain}/brand.json"` |
 | Parent's brand-agent or static server | Stub at brand's domain points at the parent's canonical URL |
 | CDN-fronted | Either above with caching infrastructure in front |
 | Mixed within a single house | Some children inline (`brands[]`), some pointer-self-hosted, some pointer-AAO-hosted, etc. |
