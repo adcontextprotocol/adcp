@@ -782,6 +782,8 @@ AdCP 3.0 defines this profile as **optional and capability-advertised** via `req
 
 **Conformance.** Verifier behavior is graded by the universal capability-gated storyboard at [`/compliance/latest/universal/signed-requests`](https://adcontextprotocol.org/compliance/latest/universal/signed-requests), which runs for any agent advertising `request_signing.supported: true`. The storyboard exercises every step in the [verifier checklist](#verifier-checklist-requests) below and every canonicalization-edge rule in this profile, against the test vectors at [`/compliance/latest/test-vectors/request-signing/`](https://adcontextprotocol.org/compliance/latest/test-vectors/request-signing/). To run the CLI grader against your own agent, see [Auth Graders](/docs/building/grading).
 
+**No symmetric response-signing profile.** This profile signs the *request*; there is no paired profile for signing the synchronous response body. Sellers MUST NOT sign synchronous AdCP response bodies under any `adcp_use` value, and buyers MUST NOT rely on a signature on the synchronous reply. Integrity of the immediate response rests on TLS within the authenticated session that carried the request; durable at-rest attestation for artifacts that need to survive past the session is the job of [signed webhooks](#webhook-callbacks) (`adcp_use: "webhook-signing"`). The split is deliberate — see [Security Model: What gets signed](/docs/building/understanding/security-model#what-gets-signed--and-what-doesnt) for the full rationale and the request-the-webhook pattern for tools whose canonical artifact needs to be attestable.
+
 #### Transport scope
 
 | Class | 3.0 | 4.0 |

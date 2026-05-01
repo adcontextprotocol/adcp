@@ -145,9 +145,26 @@ Three application-layer signing surfaces exist in 3.x:
 - **Outbound webhook signing.** Sellers sign asynchronous [webhook deliveries](/docs/building/implementation/security#webhook-callbacks) — task completion, status changes, downstream events. RFC 9421. Key purpose `adcp_use: "webhook-signing"`.
 - **Governance attestation signing.** Governance agents sign the JWS tokens that authorize spend (Layer 4 above). Distinct profile from RFC 9421, with its own key purpose, JWKS, and revocation list.
 
-What is **not** signed at the application layer is the **synchronous RPC response body** returned by `tools/call` (or the A2A artifact). Integrity of the immediate reply rests on TLS for the duration of the connection. Long-lived integrity for results that need to survive past that connection — the actual outcome of a media buy, report data, the audit trail — flows through signed webhooks and the signed governance audit chain, both of which are verifiable independently of the original transport.
+**Synchronous AdCP responses are NOT signed at the body level.** Buyers MUST NOT rely on response-body signatures; integrity guarantees for synchronous replies are delivered by TLS. Artifacts requiring at-rest attestation MUST be delivered via signed webhooks.
 
-This is a deliberate scoping decision in 3.x. Adding response-body signing would require a fourth `adcp_use` purpose, a paired verifier specialism, and a paired conformance grader, while most of the integrity benefit is already captured downstream. If a buyer needs body integrity on a result that has no webhook follow-up, the right shape is to lift that result onto a signed webhook rather than to sign the synchronous reply. The decision is logged for revisiting in 4.0 if the threat model evolves; tracked in [#3737](https://github.com/adcontextprotocol/adcp/issues/3737).
+### Why the split is deliberate
+
+This is two surfaces with two purposes, not one surface with a coverage gap.
+
+- **TLS-scoped synchronous + signed-webhook async is the design.** The synchronous reply is consumed inside the authenticated session that carried the request — the buyer already holds TLS-bound proof that the seller it authenticated to answered. A signature on that body adds no information the session doesn't already carry. At-rest integrity, by contrast, is what webhooks are for: the artifact survives past the original transport and verifies long after the session has closed, against keys that long-outlive the TCP connection.
+- **Webhook-only is a forcing function for sellers.** Making "this artifact needs at-rest integrity" an *explicit modeling decision* — emit a webhook — rather than a free rider on every reply pushes operators toward intentional design. Sellers who would otherwise reach for a generic response-signing primitive "for completeness," without asking *which* artifacts actually warrant attestation, are pushed to make the call up front.
+- **Doubling the signing surface is operationally fragile.** Every additional `adcp_use` purpose is another key in the JWKS, another rotation cycle, another verifier code path, another conformance grader, another revocation entry to monitor. The cost is borne by every adopter for every deployment; the benefit accrues to a narrow set of audit and forwarding flows that have a cleaner path through webhooks. Net negative across the ecosystem.
+
+### Cases that look like response signing but aren't
+
+- **Audit and forensics on tool-call replies.** A buyer that needs to attest "the seller said X at time T" requests the artifact via a webhook-emitting tool path, not via the synchronous reply. The asymmetry forces the right design question: which replies actually need at-rest integrity? In practice, fewer than instinct suggests.
+- **Cross-agent forwarding** (e.g., sales-intelligence relay, brand-rights handoff). Covered by the relevant specialism's own signing surface, which has its own `adcp_use` purpose and is not a generic response-signing primitive. Don't conflate the two — folding cross-agent forwarding into a generic "signed responses" surface widens the trust model in ways the specialism-scoped key purpose intentionally narrows.
+
+### The request-the-webhook pattern
+
+If you genuinely need an attestable artifact from a tool that today returns it synchronously, the spec-supported path is to structure the tool to emit a signed webhook carrying the canonical version, and treat the synchronous reply as transport-only acknowledgement. The buyer registers a webhook on the request; the seller delivers the durable artifact via that webhook with `adcp_use: "webhook-signing"`. Verification is uniform with every other at-rest seller→buyer message, no new specialism, no new grader.
+
+This decision is the resolution of [#3737](https://github.com/adcontextprotocol/adcp/issues/3737); revisitable in 4.0 if the threat model evolves (e.g., a transport pattern emerges where a synchronous reply carries durable state that does not also flow through a webhook).
 
 ## What to verify before going live
 
