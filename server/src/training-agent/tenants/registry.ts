@@ -1,13 +1,24 @@
 /**
  * Multi-tenant TenantRegistry setup.
  *
- * Five tenants — `/sales`, `/signals`, `/creative`, `/governance`, `/brand` —
- * each with its own `DecisioningPlatform` impl, signing key, and specialism
- * declarations. Path-based routing per `cbff7773` (`resolveByRequest(host,
- * pathname)`).
+ * Six per-specialism tenants — `/sales`, `/signals`, `/governance`,
+ * `/creative`, `/creative-builder`, `/brand` — each with its own
+ * `DecisioningPlatform` impl, ephemeral signing key, and specialism
+ * declarations. Path-routed: tenants register with `agentUrl` like
+ * `${CANONICAL_BASE}/<tenantId>`, the router binds tenantId at route
+ * definition and dispatches via `registry.resolveByRequest(canonicalHost,
+ * '/<tenantId>/mcp')` — independent of the actual request URL so the same
+ * handlers work under host-based dispatch
+ * (`test-agent.adcontextprotocol.org/sales/mcp`) and under the local
+ * Express mount (`/api/training-agent/sales/mcp` — Express strips the
+ * prefix before the router runs).
  *
- * Today's wedge: only `/signals` is registered. Other tenants follow as
- * specialism platforms get ported.
+ * Sandbox semantics: session state and idempotency keys are partitioned
+ * by `account.brand.domain`/`account.account_id`, NOT by tenantId. Cross-
+ * tenant scenarios (a buyer creating a media buy on `/sales/mcp` and
+ * checking governance on `/governance/mcp` for the same brand) intentionally
+ * share session state. Production sellers that need tenant isolation should
+ * key by their authenticated principal upstream of the training agent.
  */
 
 import type { Request } from 'express';
@@ -29,20 +40,34 @@ import { createLogger } from '../../logger.js';
 const logger = createLogger('training-agent-tenants');
 
 /**
- * No-op JWKS validator for the spike. The SDK's default validator fetches
- * `{agentUrl}/.well-known/brand.json` which resolves to host root — but our
- * brand.json sits under `/api/training-agent/.well-known/brand.json`, not
- * server root. Pre-flight validation can't succeed against the wrong URL.
+ * No-op JWKS validator for the training agent. The SDK's default validator
+ * fetches `{agentUrl}/.well-known/brand.json`, which for path-routed tenants
+ * resolves to the host-root brand.json (RFC 5785) — our aggregated brand.json
+ * lives under the parent training-agent router rather than the host root,
+ * so the default validator can't reach it.
  *
  * Without a passing validator, tenants are stuck in `'pending'` and the
- * registry refuses traffic. The spike trades pre-flight validation for
- * functionality; AAO certification needs either:
- *   (a) brand.json hosted at server root (path-routed multi-tenant
- *       requires this anyway per RFC 5785), OR
- *   (b) a custom validator that knows our mount path.
+ * registry refuses traffic. We trade pre-flight validation for functionality
+ * because the training agent is a sandbox where the public keys are already
+ * advertised at the parent router. Production agents that ship their own
+ * deployment should write a path-aware validator (or move brand.json to
+ * host root and drop the no-op).
+ *
+ * Production guard: if NODE_ENV=production AND the agent is not the training
+ * agent (signaled by ALLOW_NOOP_JWKS_VALIDATOR), throw at boot. This
+ * prevents accidental import of the no-op validator into a production tenant
+ * registry that should be enforcing JWKS validation.
  */
 const noopJwksValidator = {
   async validate() {
+    if (process.env.NODE_ENV === 'production' && !process.env.ALLOW_NOOP_JWKS_VALIDATOR) {
+      throw new Error(
+        'noopJwksValidator refused in production. Set ALLOW_NOOP_JWKS_VALIDATOR=1 ' +
+          'on the training agent deployment to acknowledge that path-routed multi-tenant ' +
+          'agents skip pre-flight JWKS validation by design (the public keys are still ' +
+          'advertised in the aggregated brand.json at the parent router).',
+      );
+    }
     return { ok: true as const };
   },
 };

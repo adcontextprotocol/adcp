@@ -175,6 +175,24 @@ function getBaseUrl(req: Request): string {
 
 const TENANT_IDS = ['signals', 'sales', 'governance', 'creative', 'creative-builder', 'brand'] as const;
 
+/** Specialisms each tenant declares — surfaced in the adagents.json
+ *  `_training_agent_tenants` discovery extension. Mirrors the per-tenant
+ *  config builders in `tenants/<id>.ts`. */
+const TENANT_SPECIALISMS: Record<typeof TENANT_IDS[number], readonly string[]> = {
+  sales: ['sales-non-guaranteed', 'sales-guaranteed'],
+  signals: ['signal-marketplace', 'signal-owned'],
+  governance: [
+    'governance-spend-authority',
+    'governance-delivery-monitor',
+    'property-lists',
+    'collection-lists',
+    'content-standards',
+  ],
+  creative: ['creative-ad-server'],
+  'creative-builder': ['creative-template', 'creative-generative'],
+  brand: ['brand-rights'],
+};
+
 export function createTrainingAgentRouter(): Router {
   const router = Router();
 
@@ -298,9 +316,16 @@ export function createTrainingAgentRouter(): Router {
     res.json(getPublicJwks());
   });
 
-  // adagents.json discovery — lists each per-tenant URL with the
-  // properties / signals it serves. Per-tenant entries replace the
-  // single-URL `authorized_agents[0].url` from the v5 monolith.
+  // adagents.json discovery. Schema-conformant per
+  // `static/schemas/source/adagents.json`:
+  //   - `authorized_agents[]` is a discriminated union — sales agents use
+  //     `inline_properties`/`property_list_id`, signals agents use
+  //     `signal_ids`/`signal_tags`. Governance/creative/brand tenants don't
+  //     fit this shape (they're not inventory or data sellers) and are
+  //     surfaced via the `_training_agent_tenants` discovery extension below.
+  //   - `signals` and `signal_tags` are top-level catalog declarations the
+  //     signals agent's `signal_tags` entry references.
+  const SIGNAL_TAG_VALUES = ['automotive', 'geo', 'retail', 'demographic', 'identity', 'contextual', 'first_party'];
   router.get('/.well-known/adagents.json', (req: Request, res: Response) => {
     const baseUrl = getBaseUrl(req);
     const agentUrl = `${baseUrl}${req.baseUrl}`;
@@ -329,8 +354,8 @@ export function createTrainingAgentRouter(): Router {
         {
           url: `${agentUrl}/signals/mcp`,
           authorized_for: 'AdCP training — signals (marketplace + owned)',
-          authorization_type: 'inline_properties',
-          properties: [],
+          authorization_type: 'signal_tags',
+          signal_tags: SIGNAL_TAG_VALUES,
         },
       ],
       signals: SIGNAL_PROVIDERS.flatMap(provider =>
@@ -353,6 +378,16 @@ export function createTrainingAgentRouter(): Router {
         contextual: { name: 'Contextual signals', description: 'Content category, sentiment, and page-level signals' },
         first_party: { name: 'First-party signals', description: 'Publisher subscriber and CDP audience signals' },
       },
+      // Custom extension (allowed under schema's additionalProperties:true).
+      // Lists all six per-specialism tenants so a developer hitting
+      // adagents.json gets the full multi-tenant picture in one request —
+      // even for tenants that don't fit the schema's authorized_agents
+      // discriminator (governance, creative, creative-builder, brand).
+      _training_agent_tenants: TENANT_IDS.map(tenantId => ({
+        tenant_id: tenantId,
+        url: `${agentUrl}/${tenantId}/mcp`,
+        specialisms: TENANT_SPECIALISMS[tenantId],
+      })),
       last_updated: STARTUP_TIME,
     });
   });

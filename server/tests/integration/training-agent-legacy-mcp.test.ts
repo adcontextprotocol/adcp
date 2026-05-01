@@ -140,6 +140,24 @@ describe('Tenant routes via host-based dispatch (no /api/training-agent prefix)'
     expect(names.has('activate_signal')).toBe(true);
   });
 
+  it('exposes all six tenants via _training_agent_tenants in adagents.json', async () => {
+    const res = await request(app).get('/.well-known/adagents.json');
+    expect(res.status).toBe(200);
+    const body = res.body as {
+      authorized_agents: Array<{ url: string; authorization_type: string }>;
+      _training_agent_tenants: Array<{ tenant_id: string; url: string; specialisms: string[] }>;
+    };
+    // Schema-conformant authorized_agents covers sales (inline_properties)
+    // and signals (signal_tags). Other tenants surface via the extension.
+    expect(body.authorized_agents.find(a => a.url.endsWith('/sales/mcp'))?.authorization_type).toBe('inline_properties');
+    expect(body.authorized_agents.find(a => a.url.endsWith('/signals/mcp'))?.authorization_type).toBe('signal_tags');
+    // Discovery extension lists every tenant with its specialism declaration.
+    const ids = body._training_agent_tenants.map(t => t.tenant_id).sort();
+    expect(ids).toEqual(['brand', 'creative', 'creative-builder', 'governance', 'sales', 'signals']);
+    expect(body._training_agent_tenants.find(t => t.tenant_id === 'brand')?.specialisms).toContain('brand-rights');
+    expect(body._training_agent_tenants.find(t => t.tenant_id === 'governance')?.specialisms).toContain('content-standards');
+  });
+
   it('routes /brand/mcp to the brand tenant', async () => {
     const res = await request(app)
       .post('/brand/mcp')

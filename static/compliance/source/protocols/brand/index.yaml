@@ -157,7 +157,8 @@ phases:
         validations:
           - check: error_code
             allowed_values:
+              - "REFERENCE_NOT_FOUND"
               - "brand_not_found"
               - "BRAND_NOT_FOUND"
               - "NOT_FOUND"
-            description: "Error code indicates brand-not-found"
+            description: "Error code indicates brand-not-found. REFERENCE_NOT_FOUND is the canonical fallback per error-handling.mdx (brands lack a dedicated *_NOT_FOUND code); the legacy lowercase / BRAND_NOT_FOUND / generic NOT_FOUND values are tolerated for back-compat."

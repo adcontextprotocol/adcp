@@ -51,8 +51,9 @@ describe('tenant routing smoke', () => {
           },
         }),
       });
-      // eslint-disable-next-line no-console
-      console.log('init status:', initR.status, 'body[:200]:', (await initR.text()).slice(0, 300));
+      // Body content irrelevant — we just need the init handshake to settle
+      // before discovery so the JWKS is populated.
+      await initR.text();
       const r = await fetch(`${baseUrl}/.well-known/brand.json`);
       expect(r.status).toBe(200);
       const body = await r.json() as { jwks: { keys: Array<{ kid: string; alg: string }> } };
@@ -60,8 +61,6 @@ describe('tenant routing smoke', () => {
       expect(body.jwks.keys.length).toBeGreaterThan(0);
       const signalsKid = body.jwks.keys.find(k => k.kid?.includes('signals'));
       expect(signalsKid).toBeDefined();
-      // eslint-disable-next-line no-console
-      console.log('brand.json keys:', body.jwks.keys.map(k => ({ kid: k.kid, alg: k.alg })));
     } finally {
       await close();
     }
@@ -94,8 +93,6 @@ describe('tenant routing smoke', () => {
       });
       const body = await list.json() as { result?: { tools?: Array<{ name: string }> } };
       const toolNames = (body.result?.tools ?? []).map(t => t.name).sort();
-      // eslint-disable-next-line no-console
-      console.log('/signals tools:', toolNames);
       expect(toolNames).toContain('get_signals');
       expect(toolNames).toContain('activate_signal');
       // Tenant should NOT expose mediaBuy / governance tools

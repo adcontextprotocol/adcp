@@ -15,7 +15,7 @@
  * KMS-backed keys.
  */
 
-import { generateKeyPairSync } from 'node:crypto';
+import { generateKeyPairSync, randomBytes } from 'node:crypto';
 import type { TenantSigningKey } from '@adcp/sdk/server';
 import type { AdcpJsonWebKey } from '@adcp/sdk/signing';
 import { createLogger } from '../../logger.js';
@@ -40,7 +40,7 @@ function generateEphemeralKey(tenantId: string): TenantMaterial {
   // JsonWebKey expectation.
   const privateJwk = privateKey.export({ format: 'jwk' }) as Record<string, unknown>;
   const publicJwk = publicKey.export({ format: 'jwk' }) as Record<string, unknown>;
-  const kid = `training-${tenantId}-${Math.random().toString(16).slice(2, 10)}`;
+  const kid = `training-${tenantId}-${randomBytes(4).toString('hex')}`;
 
   const signingKey: TenantSigningKey = {
     keyId: kid,

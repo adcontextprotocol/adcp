@@ -25,6 +25,15 @@ import { TOOL_INPUT_SHAPE } from '@adcp/sdk/server';
 import { handleComplyTestController } from '../comply-test-controller.js';
 import type { ToolArgs, TrainingContext } from '../types.js';
 
+// Hardcoded principal — `ComplyControllerContext` doesn't carry authInfo,
+// so the comply adapter has no per-call principal to forward. Effect: comply
+// state set by one caller is visible to another caller using the same
+// brand.domain. This is acceptable for the training agent (the entire surface
+// is shared sandbox fixtures by design — different orgs intentionally see the
+// same mock data while running storyboards) but is NOT a pattern production
+// agents should copy. SDK feedback filed: surface authInfo on
+// ComplyControllerContext so adopters that want partition-by-caller have the
+// hook to do it.
 const trainingCtx: TrainingContext = { mode: 'open', principal: 'static:public' };
 
 /**
