@@ -1,8 +1,12 @@
 ---
-"adcontextprotocol": minor
+"adcontextprotocol": patch
 ---
 
-spec(manifest): publish `manifest.json` + structured `enumMetadata` to stop SDK drift (adcp#3725)
+spec(manifest): publish `manifest.json` + structured `enumMetadata` to stop SDK drift (adcp#3725) — 3.0.x backport
+
+Hand-cherry-picked from #3738 onto 3.0.x. The original `enumMetadata` block on `main` references three error codes (`SCOPE_INSUFFICIENT`, `READ_ONLY_SCOPE`, `FIELD_NOT_PERMITTED`) that don't exist in 3.0.x's enum; this version trims those entries so the structured metadata covers exactly the 45 codes 3.0.x ships. The build-time lint enforces that coverage invariant — there is no way to silently drift `enumMetadata` away from the published `enum`.
+
+Patch-bump rationale: pure additive metadata block on a published schema, plus a new buildable artifact. No new wire fields, no enum value additions, no breaking changes for any conformant 3.0 agent.
 
 Adds two additive artifacts to every released schema bundle:
 
