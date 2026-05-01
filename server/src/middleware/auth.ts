@@ -652,6 +652,37 @@ function hasValidAdminApiKey(req: Request): boolean {
 }
 
 /**
+ * True if `id` is a synthetic user (static admin API key or per-org WorkOS
+ * API key). Synthetic users don't represent a person, so they have no
+ * identity binding.
+ */
+function isSyntheticUser(id: string): boolean {
+  return id === 'admin_api_key' || id.startsWith('api_key_');
+}
+
+/**
+ * Look up the identity_id for a WorkOS user and attach it to the user object.
+ * Identity = the person; one identity may back multiple WorkOS users (Phase 2).
+ * Skipped for synthetic users since they don't represent a person. Failures
+ * are swallowed — identity resolution must never block an authenticated
+ * request.
+ */
+async function attachIdentityId(user: WorkOSUser): Promise<void> {
+  if (isSyntheticUser(user.id)) return;
+  try {
+    const result = await getPool().query<{ identity_id: string }>(
+      `SELECT identity_id FROM identity_workos_users WHERE workos_user_id = $1`,
+      [user.id]
+    );
+    if (result.rows[0]) {
+      user.identityId = result.rows[0].identity_id;
+    }
+  } catch (err) {
+    logger.warn({ err, userId: user.id }, 'Failed to resolve identity_id');
+  }
+}
+
+/**
  * Middleware to require authentication
  * Checks for WorkOS session cookie and loads user info
  * Also accepts WorkOS API keys as Bearer token for programmatic access
@@ -734,6 +765,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       logger.warn({ err: banError, userId: jwtAuth.user.id, path: req.path }, 'Ban check failed — allowing request through');
     }
 
+    await attachIdentityId(req.user);
     return next();
   }
 
@@ -748,6 +780,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       if (devConfig) {
         (req.user as unknown as Record<string, unknown>).isMember = devConfig.isMember;
       }
+      await attachIdentityId(req.user);
       return next();
     }
     // No dev session - redirect to dev login page
@@ -1042,6 +1075,9 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       );
     }
 
+    // Resolve identityId once before caching so cache hits inherit it.
+    await attachIdentityId(user);
+
     // Cache the validated session
     sessionCache.set(cacheKey, {
       user,
@@ -1295,6 +1331,7 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
       if (mockUser) {
         req.user = mockUser;
         req.accessToken = 'dev-mode-token';
+        await attachIdentityId(req.user);
       }
     }
 
@@ -1730,6 +1767,11 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
           'Impersonation session detected (optional auth)'
         );
       }
+
+      // Resolve identityId before caching — sessionCache is shared with
+      // requireAuth, so skipping it here would let an optionalAuth request
+      // poison subsequent requireAuth cache hits with identityId=undefined.
+      await attachIdentityId(user);
 
       // Cache the validated session
       sessionCache.set(cacheKey, {
