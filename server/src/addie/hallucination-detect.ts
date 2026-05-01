@@ -3,7 +3,7 @@
  * Extracted to a standalone module for testability.
  */
 
-interface ToolExecutionRecord {
+export interface ToolExecutionRecord {
   tool_name: string;
   is_error: boolean;
 }
@@ -23,8 +23,8 @@ export const HALLUCINATION_PATTERNS: ReadonlyArray<{ pattern: RegExp; expectedTo
   { pattern: /(?:I'?ve\s+|I\s+)?(?:sent|delivered)\s+(?:a\s+)?(?:DM|direct message|notification)/i, expectedTools: ['send_member_dm', 'resolve_escalation'] },
   { pattern: /(?:I'?ve\s+|I\s+)?added\s+\S+(?:\s+\S+){0,5}\s+to\s+the\s+(?:meeting|call|series)/i, expectedTools: ['add_meeting_attendee'] },
   // Escalation / ticket-creation claims — #3720
-  { pattern: /(?:I'?ve\s+|I\s+)?(?:created|opened|filed|submitted)\s+(?:a\s+)?(?:ticket|issue)(?:\s+#?\d+)?/i, expectedTools: ['escalate_to_admin', 'create_github_issue'] },
-  { pattern: /(?:I'?ve\s+|I\s+)(?:notified|alerted)\s+(?:the\s+)?team|(?:the\s+)?team\s+has\s+been\s+notified\b/i, expectedTools: ['escalate_to_admin'] },
+  { pattern: /(?:I'?ve\s+|I\s+)?(?:created|opened|filed|submitted)\s+(?:an?\s+)?(?:ticket|issue)(?:\s+#?\d+)?/i, expectedTools: ['escalate_to_admin', 'create_github_issue'] },
+  { pattern: /(?:I'?ve\s+|I\s+)(?:notified|alerted)\s+(?:the\s+)?team|(?:the\s+)?team\s+has\s+been\s+notified\b/i, expectedTools: ['escalate_to_admin', 'send_member_dm'] },
   { pattern: /I'?ve\s+(?:flagged|escalated)\s+(?:this|the\s+(?:issue|matter|request|team))|I'?ve\s+notified\s+the\s+team/i, expectedTools: ['escalate_to_admin', 'send_member_dm'] },
 ];
 

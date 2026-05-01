@@ -68,6 +68,10 @@ describe('detectHallucinatedAction — team-notified patterns (#3720)', () => {
     it(`clear on "${text}" when escalate_to_admin succeeded`, () => {
       expect(detectHallucinatedAction(text, succeeded('escalate_to_admin'))).toBeNull();
     });
+
+    it(`clear on "${text}" when send_member_dm succeeded`, () => {
+      expect(detectHallucinatedAction(text, succeeded('send_member_dm'))).toBeNull();
+    });
   }
 
   it('does NOT fire on future-tense team notification promise', () => {
