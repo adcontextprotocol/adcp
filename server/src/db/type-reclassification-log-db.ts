@@ -12,6 +12,7 @@
  */
 import { query } from './client.js';
 import { createLogger } from '../logger.js';
+import { captureEvent } from '../utils/posthog.js';
 
 const log = createLogger('type-reclassification-log');
 
@@ -49,6 +50,20 @@ export async function insertTypeReclassification(
       ]
     );
   } catch (err) {
+    // PostgreSQL SQLSTATE codes are 5 chars; the first 2 are the error class
+    // (e.g. '23' = integrity_constraint_violation, '08' = connection_exception).
+    // The class is what ops actually alerts on — the full code is too granular.
+    const pgCode = (err as { code?: unknown })?.code;
+    const errorClass =
+      typeof pgCode === 'string' && pgCode.length >= 2
+        ? pgCode.slice(0, 2)
+        : 'unknown';
+
+    captureEvent('server-metrics', 'audit_log_insert_failed', {
+      source: entry.source,
+      error_class: errorClass,
+    });
+
     log.warn(
       {
         err,
