@@ -84,6 +84,7 @@ import { PropertyCheckService } from "../services/property-check.js";
 import { PropertyCheckDatabase } from "../db/property-check-db.js";
 import { BulkPropertyCheckService } from "../services/bulk-property-check.js";
 import { ComplianceDatabase, type LifecycleStage } from "../db/compliance-db.js";
+import { VERIFICATION_MODES, isVerificationMode } from "../services/adcp-taxonomy.js";
 import { AgentSnapshotDatabase } from "../db/agent-snapshot-db.js";
 import { resolveUserAgentAuth } from "./helpers/resolve-user-agent-auth.js";
 import { adaptAuthForSdk } from "../services/sdk-auth-adapter.js";
@@ -569,6 +570,14 @@ registry.registerPath({
       capabilities: z.enum(["true"]).optional(),
       properties: z.enum(["true"]).optional(),
       compliance: z.enum(["true"]).optional(),
+      verification_mode: z.array(z.enum(["spec", "live"])).optional().openapi({
+        description:
+          "Filter to agents whose active badge covers the given verification axis. Repeat the parameter for AND semantics: " +
+          "?verification_mode=spec&verification_mode=live returns only agents verified on both axes.",
+      }),
+      verified: z.enum(["true"]).optional().openapi({
+        description: "When true, filter to agents that hold any active verification badge.",
+      }),
     }),
   },
   responses: {
@@ -581,6 +590,14 @@ registry.registerPath({
             count: z.number().int(),
             sources: z.object({ registered: z.number().int(), discovered: z.number().int() }),
           }),
+        },
+      },
+    },
+    400: {
+      description: "Invalid query parameter",
+      content: {
+        "application/json": {
+          schema: z.object({ error: z.string(), valid_values: z.array(z.string()).optional() }),
         },
       },
     },
@@ -3637,6 +3654,22 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       const withProperties = req.query.properties === "true";
       const withCompliance = req.query.compliance === "true";
 
+      const rawVerificationMode = req.query.verification_mode;
+      const verificationModes: string[] | undefined = rawVerificationMode
+        ? (Array.isArray(rawVerificationMode) ? (rawVerificationMode as string[]) : [rawVerificationMode as string])
+        : undefined;
+      const withVerified = req.query.verified === "true";
+
+      if (verificationModes?.length) {
+        const invalid = verificationModes.filter((m) => !isVerificationMode(m));
+        if (invalid.length > 0) {
+          return res.status(400).json({
+            error: `Invalid verification_mode value(s): ${invalid.join(", ")}`,
+            valid_values: [...VERIFICATION_MODES],
+          });
+        }
+      }
+
       // members_only agents are discoverable to authenticated API-access
       // members (Professional+). Crawlers and anonymous callers only see
       // public agents.
@@ -3651,7 +3684,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
 
       const federatedAgents = await federatedIndex.listAllAgents(type, { includeMembersOnly });
 
-      const agents = federatedAgents.map((fa) => ({
+      let agents = federatedAgents.map((fa) => ({
         name: fa.name || fa.url,
         url: fa.url,
         type: isValidAgentType(fa.type) ? fa.type : ("unknown" as const),
@@ -3669,9 +3702,32 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         discovered_from: fa.discovered_from,
       }));
 
+      // Apply verification filter before enrichment so bySource and downstream
+      // enrichment only see the filtered set.
+      let prefetchedBadgeMap: Map<string, Awaited<ReturnType<typeof complianceDb.getBadgesForAgent>>> | null = null;
+      if (verificationModes?.length || withVerified) {
+        let verificationBadgeMap: Map<string, Awaited<ReturnType<typeof complianceDb.getBadgesForAgent>>>;
+        try {
+          verificationBadgeMap = await complianceDb.bulkGetActiveBadges(agents.map((a) => a.url));
+        } catch (err) {
+          logger.error({ err }, "Verification mode filter failed");
+          return res.status(503).json({ error: "Verification filter temporarily unavailable" });
+        }
+        agents = agents.filter((a) => {
+          const badges = verificationBadgeMap.get(a.url) || [];
+          // Both params additive (AND): badge must satisfy mode constraints AND have any mode.
+          return badges.some((b) => {
+            const modesOk = !verificationModes?.length || verificationModes.every((m) => b.verification_modes.includes(m));
+            const verifiedOk = !withVerified || b.verification_modes.length > 0;
+            return modesOk && verifiedOk;
+          });
+        });
+        prefetchedBadgeMap = verificationBadgeMap;
+      }
+
       const bySource = {
-        registered: federatedAgents.filter((a) => a.source === "registered").length,
-        discovered: federatedAgents.filter((a) => a.source === "discovered").length,
+        registered: agents.filter((a) => a.source === "registered").length,
+        discovered: agents.filter((a) => a.source === "discovered").length,
       };
 
       if (!withHealth && !withCapabilities && !withProperties && !withCompliance) {
@@ -3693,7 +3749,9 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       let badgeMap: Map<string, Awaited<ReturnType<typeof complianceDb.getBadgesForAgent>>> | null = null;
       if (withCompliance) {
         try {
-          badgeMap = await complianceDb.bulkGetActiveBadges(agentUrls);
+          // Reuse the badge map already fetched for verification filtering when available,
+          // since it covers the same filtered agent set.
+          badgeMap = prefetchedBadgeMap ?? await complianceDb.bulkGetActiveBadges(agentUrls);
         } catch (err) {
           logger.warn({ err }, "Badge bulk query failed (table may not exist yet)");
         }
