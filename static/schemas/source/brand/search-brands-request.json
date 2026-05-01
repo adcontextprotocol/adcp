@@ -1,0 +1,56 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/brand/search-brands-request.json",
+  "title": "Search Brands Request",
+  "description": "Discover brands on a brand agent's roster using a natural language query. Returns lightweight brand stubs — use get_brand_identity to fetch full identity data for a selected brand_id, and get_rights to fetch pricing options. Read-only; naturally idempotent.",
+  "x-status": "experimental",
+  "type": "object",
+  "properties": {
+    "adcp_major_version": {
+      "type": "integer",
+      "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
+      "minimum": 1,
+      "maximum": 99
+    },
+    "query": {
+      "type": "string",
+      "description": "Natural language description of the brands to find. The agent interprets intent, category, and roster coverage from this text.",
+      "maxLength": 2000
+    },
+    "industries": {
+      "type": "array",
+      "description": "Optional industry filter. The agent restricts results to brands operating in these industries. Values follow the advertiser-industry taxonomy; the agent SHOULD accept unknown values gracefully per the advertiser-industry extension policy.",
+      "items": {
+        "$ref": "/schemas/enums/advertiser-industry.json"
+      },
+      "minItems": 1
+    },
+    "countries": {
+      "type": "array",
+      "description": "Optional market filter. Returns brands with rights availability in at least one of the specified countries (ISO 3166-1 alpha-2).",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z]{2}$"
+      },
+      "minItems": 1
+    },
+    "buyer_brand": {
+      "$ref": "/schemas/core/brand-ref.json",
+      "description": "The buyer's brand. When provided, the agent SHOULD apply the same compatibility filtering as get_rights — filtering out brands with category conflicts, competitor exclusions, or dietary restrictions that would prevent licensing. When omitted, results are returned without compatibility filtering."
+    },
+    "pagination": {
+      "$ref": "/schemas/core/pagination-request.json",
+      "description": "Pagination parameters for large result sets"
+    },
+    "context": {
+      "$ref": "/schemas/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/core/ext.json"
+    }
+  },
+  "required": [
+    "query"
+  ],
+  "additionalProperties": true
+}
