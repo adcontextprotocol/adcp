@@ -61,6 +61,8 @@ import { MemberDatabase } from '../../db/member-db.js';
 import { updateBrandIdentity, BrandIdentityError } from '../../services/brand-identity.js';
 import { canonicalizeBrandDomain } from '../../services/identifier-normalization.js';
 import { ComplianceDatabase } from '../../db/compliance-db.js';
+import { AgentSnapshotDatabase } from '../../db/agent-snapshot-db.js';
+import { AgentValidator } from '../../validator.js';
 import { getPool, query } from '../../db/client.js';
 import { MemberSearchAnalyticsDatabase } from '../../db/member-search-analytics-db.js';
 import { OrganizationDatabase } from '../../db/organization-db.js';
@@ -83,6 +85,8 @@ import { recordAgentTestRun } from '../../db/agent-test-db.js';
 const memberDb = new MemberDatabase();
 const agentContextDb = new AgentContextDatabase();
 const complianceDb = new ComplianceDatabase();
+const agentSnapshotDb = new AgentSnapshotDatabase();
+const adagentsValidator = new AgentValidator();
 const memberSearchAnalyticsDb = new MemberSearchAnalyticsDatabase();
 const orgDb = new OrganizationDatabase();
 const wgDb = new WorkingGroupDatabase();
@@ -471,27 +475,6 @@ function compareRates(agentRate?: number, ioRate?: number): { label: string; con
     label: 'aligned',
     context: `Agent rate $${agentRate} is within 20% of IO rate $${ioRate}. Rates are aligned.`,
   };
-}
-
-/**
- * Extract AdCP version from an agent card's extensions array.
- * Returns the version string if found and valid (e.g., "2.6.0"), undefined otherwise.
- */
-export function extractAdcpVersion(extensions: unknown): string | undefined {
-  if (!Array.isArray(extensions)) return undefined;
-  const adcpExt = extensions.find((ext: { uri?: string }) => {
-    if (!ext?.uri) return false;
-    try {
-      return new URL(ext.uri).hostname === 'adcontextprotocol.org';
-    } catch {
-      return false;
-    }
-  });
-  const version = adcpExt?.params?.adcp_version;
-  if (typeof version === 'string' && /^\d+\.\d+/.test(version)) {
-    return version;
-  }
-  return undefined;
 }
 
 /**
@@ -966,14 +949,14 @@ export const MEMBER_TOOLS: AddieTool[] = [
   // AGENT TESTING & COMPLIANCE
   // ============================================
   {
-    name: 'probe_adcp_agent',
+    name: 'get_agent_status',
     description:
-      'Check if an AdCP agent is online and list its advertised capabilities. This only verifies connectivity (the agent responds to HTTP requests) - it does NOT verify the agent implements the protocol correctly. Use evaluate_agent_quality to verify actual protocol compliance.',
-    usage_hints: 'use for "is this agent online?", "check connectivity", "what tools does this agent advertise?". For compliance testing, use evaluate_agent_quality instead.',
+      'Return the AAO registry\'s current status for an agent: health (online / last checked), declared capabilities, and the most recent compliance verdict per track from the comply storyboard suite. Reads cached state — does NOT perform a live probe. For agents not in the registry, returns guidance to register the agent (so the heartbeat picks it up) or to run evaluate_agent_quality for an on-demand check.',
+    usage_hints: 'use for "is this agent online?", "is this agent up?", "what does this agent support?", "what\'s the compliance status?", "is this agent verified?". Reads the same data the public dashboard renders, so Addie and the dashboard never disagree. For an on-demand live test, use evaluate_agent_quality. For a fresh OAuth handshake / signing diagnosis, use diagnose_agent_auth.',
     input_schema: {
       type: 'object',
       properties: {
-        agent_url: { type: 'string', description: 'The agent URL to probe' },
+        agent_url: { type: 'string', description: 'The agent URL to look up in the registry.' },
       },
       required: ['agent_url'],
     },
@@ -3255,171 +3238,159 @@ export function createMemberToolHandlers(
   // ============================================
   // AGENT TESTING & COMPLIANCE
   // ============================================
-  handlers.set('probe_adcp_agent', async (input) => {
+  handlers.set('get_agent_status', async (input) => {
     const agentUrl = input.agent_url as string;
+    const urlError = validateAgentUrl(agentUrl);
+    if (urlError) return `**Error:** ${urlError}`;
 
-    // Step 1: Health check (always do this first)
-    const healthResult = await callApi('POST', '/api/adagents/validate-cards', memberContext, {
-      agent_urls: [agentUrl],
-    });
+    // Try both trailing-slash variants — the registry stores agents in
+    // whatever shape the source declared (most without a trailing slash,
+    // some with). Without this, asking about `https://x/mcp` when the
+    // crawler stored `https://x/mcp/` (or vice versa) silently returns
+    // "not in registry" for an agent that IS registered. No-slash is
+    // tried first because that's the more common storage form across
+    // the registry.
+    const stripped = agentUrl.replace(/\/+$/, '');
+    const withSlash = stripped + '/';
+    const candidates = stripped === agentUrl ? [stripped, withSlash] : [stripped, agentUrl];
 
-    if (!healthResult.ok) {
-      return `## Agent Probe Failed\n\nUnable to probe agent at ${agentUrl}.\n\n**Error:** ${healthResult.error || 'Unknown error occurred while checking agent health.'}`;
-    }
-
-    const healthData = healthResult.data as {
-      success: boolean;
-      data: {
-        agent_cards: Array<{
-          agent_url: string;
-          valid: boolean;
-          errors?: string[];
-          status_code?: number;
-          response_time_ms?: number;
-          card_data?: { name?: string; description?: string; protocol?: string; requires_auth?: boolean; extensions?: Array<{ uri?: string; params?: { adcp_version?: string } }> };
-          card_endpoint?: string;
-          oauth_required?: boolean;
-        }>;
-      };
+    const pickFirst = async <T>(fn: (u: string) => Promise<T | null>): Promise<{ url: string; row: T } | null> => {
+      for (const u of candidates) {
+        const row = await fn(u);
+        if (row) return { url: u, row };
+      }
+      return null;
     };
 
-    const card = healthData?.data?.agent_cards?.[0];
-    const isHealthy = card?.valid === true;
-    const healthCheckRequiresOAuth = card?.oauth_required === true;
+    const [complianceHit, metadataHit, healthMap, capsMap] = await Promise.all([
+      pickFirst((u) => complianceDb.getComplianceStatus(u)),
+      pickFirst((u) => complianceDb.getRegistryMetadata(u)),
+      agentSnapshotDb.bulkGetHealth(candidates),
+      agentSnapshotDb.bulkGetCapabilities(candidates),
+    ]);
 
-    // Step 2: Try capability discovery (non-blocking - show health status regardless of outcome)
-    const encodedUrl = encodeURIComponent(agentUrl);
-    const capResult = await callApi('GET', `/api/registry/agents?url=${encodedUrl}&capabilities=true`, memberContext);
-    const capData = capResult.data as {
-      agents: Array<{
-        name: string;
-        url: string;
-        type: string;
-        protocol: string;
-        description?: string;
-        capabilities?: {
-          tools_count: number;
-          tools: Array<{ name: string; description?: string }>;
-          standard_operations?: string[];
-          discovery_error?: string;
-          oauth_required?: boolean;
-        };
-      }>;
-    };
-    const normalizedInput = agentUrl.replace(/\/$/, "");
-    const agent = capData?.agents?.find((a) => a.url.replace(/\/$/, "") === normalizedInput);
+    // Resolve the canonical URL the registry actually has on file — fall
+    // back to the input when there's no match anywhere so the response
+    // header still echoes what the user typed.
+    const registryUrl =
+      complianceHit?.url ??
+      metadataHit?.url ??
+      candidates.find((u) => healthMap.has(u)) ??
+      candidates.find((u) => capsMap.has(u)) ??
+      agentUrl;
 
-    // Step 2.5: Check if OAuth is required (from either health check or capabilities discovery)
-    const requiresOAuth = healthCheckRequiresOAuth || agent?.capabilities?.oauth_required;
-    if (requiresOAuth) {
-      const organizationId = memberContext?.organization?.workos_organization_id;
-      if (organizationId) {
-        try {
-          // Get or create agent context for OAuth flow
-          const baseUrl = new URL(agentUrl);
-          let agentContext = await agentContextDb.getByOrgAndUrl(organizationId, agentUrl);
-          if (!agentContext) {
-            agentContext = await agentContextDb.create({
-              organization_id: organizationId,
-              agent_url: agentUrl,
-              agent_name: agent?.name || baseUrl.hostname,
-              protocol: (agent?.protocol as 'mcp' | 'a2a') || 'mcp',
-            });
-          }
+    const complianceStatus = complianceHit?.row ?? null;
+    const registryMetadata = metadataHit?.row ?? null;
+    const health = healthMap.get(registryUrl) ?? null;
+    const caps = capsMap.get(registryUrl) ?? null;
 
-          const authParams = new URLSearchParams({
-            agent_context_id: agentContext.id,
-          });
-          const authUrl = `${getBaseUrl()}/api/oauth/agent/start?${authParams.toString()}`;
+    const [badges, declaredSpecialisms] = await Promise.all([
+      complianceDb.getBadgesForAgent(registryUrl).catch(() => []),
+      complianceDb.getLatestDeclaredSpecialisms(registryUrl).catch(() => [] as string[]),
+    ]);
 
-          let response = `## Agent Probe: ${agent?.name || agentUrl}\n\n`;
-          response += `### Connectivity\n`;
-          response += `**Status:** 🔒 Requires Authentication\n\n`;
-          response += `This agent requires OAuth authorization before you can access it.\n\n`;
-          response += `**[Click here to authorize this agent](${authUrl})**\n\n`;
-          response += `After you authorize, try probing again to see the agent's capabilities.`;
-          return response;
-        } catch (oauthError) {
-          logger.debug({ error: oauthError, agentUrl }, 'Failed to set up OAuth flow for probe');
-        }
-      } else {
-        // User not logged in or no organization
-        let response = `## Agent Probe: ${agent?.name || agentUrl}\n\n`;
-        response += `### Connectivity\n`;
-        response += `**Status:** 🔒 Requires Authentication\n\n`;
-        response += `This agent requires OAuth authorization. Please sign in to an organization account to authorize and access this agent.`;
-        return response;
-      }
+    // Agent is unknown to the registry — no crawler health, no comply state.
+    // Don't synthesize a probe; route the user to the right next step.
+    if (!complianceStatus && !health && !caps && !registryMetadata) {
+      return [
+        `## Agent Status: not in registry`,
+        ``,
+        `\`${agentUrl}\` isn't in the AAO registry, so there's no cached health or compliance state to report.`,
+        ``,
+        `Next steps:`,
+        `- **Register the agent** so the AAO heartbeat starts monitoring it: use \`save_agent\` (and then it shows up on the public dashboard with health + compliance per cycle).`,
+        `- **Run a one-off live test** without registering: \`evaluate_agent_quality\` runs the comply storyboard suite right now.`,
+        `- **Add it to your brand.json / adagents.json** if it serves a publisher domain — the crawler will pick it up on the next pass.`,
+      ].join('\n');
     }
 
-    // Step 3: Extract AdCP version from agent card extensions
-    const adcpVersion = extractAdcpVersion(card?.card_data?.extensions);
+    const optedOut = registryMetadata?.compliance_opt_out === true;
 
-    // Step 4: Format unified response
-    let response = `## Agent Probe: ${agent?.name || agentUrl}\n\n`;
+    let response = `## Agent Status: ${registryUrl}\n\n`;
+    if (registryMetadata?.lifecycle_stage) {
+      response += `**Lifecycle:** ${registryMetadata.lifecycle_stage}\n`;
+    }
 
-    // Health section
-    response += `### Connectivity\n`;
-    if (isHealthy) {
-      response += `**Status:** ✅ Online\n`;
-      if (card.response_time_ms) {
-        response += `**Response Time:** ${card.response_time_ms}ms\n`;
+    // Health snapshot from the crawler.
+    response += `\n### Health (last crawler check)\n`;
+    if (health) {
+      const checkedAt = health.checked_at instanceof Date ? health.checked_at.toISOString() : String(health.checked_at);
+      response += `**Status:** ${health.online ? '✅ Online' : '❌ Offline'}\n`;
+      response += `**Last checked:** ${checkedAt}\n`;
+      if (typeof health.response_time_ms === 'number') {
+        response += `**Response time:** ${health.response_time_ms}ms\n`;
       }
-      if (card.card_data?.protocol) {
-        response += `**Protocol:** ${card.card_data.protocol}\n`;
+      if (!health.online && health.error) {
+        response += `**Error:** ${health.error}\n`;
       }
     } else {
-      response += `**Status:** ❌ Unreachable\n`;
-      if ((card?.errors?.length ?? 0) > 0) {
-        response += `**Error:** ${card?.errors?.[0]}\n`;
-      } else if (card?.status_code) {
-        response += `**HTTP Status:** ${card.status_code}\n`;
-      }
+      response += `_No health snapshot yet — the crawler hasn't reached this agent. Re-check later or run \`evaluate_agent_quality\` for a live test._\n`;
     }
 
-    // AdCP version section
-    if (adcpVersion) {
-      response += `**AdCP Version:** ${adcpVersion}\n`;
-      const majorVersion = parseInt(adcpVersion.split('.')[0], 10);
-      if (majorVersion < 3) {
-        response += `\n> ⚠️ **Version notice:** This agent implements AdCP v${adcpVersion}, which is a v2 specification. The current version is AdCP 3.0. We recommend upgrading to v3 for full compatibility with the latest protocol features. See [what's new in AdCP 3.0](https://adcontextprotocol.org/docs/reference/whats-new-in-v3) for details.\n`;
+    // Declared capabilities from the most recent capability discovery.
+    response += `\n### Declared capabilities\n`;
+    if (caps) {
+      const tools = caps.discovered_tools_json || [];
+      response += `**Protocol:** ${caps.protocol}\n`;
+      response += `**Tools advertised:** ${tools.length}\n`;
+      if (caps.oauth_required) {
+        response += `**Auth:** OAuth required — run \`diagnose_agent_auth\` to start the handshake.\n`;
       }
+      if (caps.discovery_error) {
+        response += `**Discovery error:** ${caps.discovery_error}\n`;
+      }
+      if (declaredSpecialisms.length > 0) {
+        response += `**Declared specialisms:** ${declaredSpecialisms.join(', ')}\n`;
+      }
+    } else {
+      response += `_No capability snapshot yet._\n`;
     }
 
-    // Capabilities section
-    response += `\n### Capabilities\n`;
-    if (agent?.capabilities?.tools && agent.capabilities.tools.length > 0) {
-      if (!isHealthy) {
-        response += `> ⚠️ **Warning:** Agent is currently unreachable. Showing cached capabilities.\n\n`;
+    // Compliance verdict from the comply storyboard suite.
+    response += `\n### Compliance (latest comply run)\n`;
+    if (optedOut) {
+      response += `_This agent has opted out of compliance monitoring._\n`;
+    } else if (complianceStatus) {
+      response += `**Status:** ${complianceStatus.status}\n`;
+      if (complianceStatus.headline) {
+        response += `**Headline:** ${complianceStatus.headline}\n`;
       }
-      response += `**Tools Available:** ${agent.capabilities.tools_count}\n\n`;
-      agent.capabilities.tools.forEach((tool) => {
-        response += `- **${tool.name}**`;
-        if (tool.description) {
-          response += `: ${tool.description}`;
+      if (complianceStatus.last_checked_at) {
+        const checked = complianceStatus.last_checked_at instanceof Date
+          ? complianceStatus.last_checked_at.toISOString()
+          : String(complianceStatus.last_checked_at);
+        response += `**Last checked:** ${checked}\n`;
+      }
+      if (complianceStatus.last_passed_at) {
+        const passed = complianceStatus.last_passed_at instanceof Date
+          ? complianceStatus.last_passed_at.toISOString()
+          : String(complianceStatus.last_passed_at);
+        response += `**Last passing:** ${passed}\n`;
+      }
+      if (complianceStatus.tracks_summary_json && Object.keys(complianceStatus.tracks_summary_json).length > 0) {
+        response += `\n**Tracks:**\n`;
+        for (const [track, status] of Object.entries(complianceStatus.tracks_summary_json)) {
+          response += `- ${track}: ${status}\n`;
+        }
+      }
+    } else {
+      response += `_No comply run on file yet. Run \`evaluate_agent_quality\` to test now._\n`;
+    }
+
+    // Verification badges, if any.
+    if (badges.length > 0) {
+      response += `\n### Verified badges\n`;
+      for (const b of badges) {
+        response += `- ${b.role} (AdCP ${b.adcp_version}, ${b.status})`;
+        if (b.verified_specialisms?.length > 0) {
+          response += ` — ${b.verified_specialisms.join(', ')}`;
         }
         response += `\n`;
-      });
-
-      if (agent.capabilities.standard_operations && agent.capabilities.standard_operations.length > 0) {
-        response += `\n**Standard Operations:** ${agent.capabilities.standard_operations.join(', ')}\n`;
       }
-    } else if (!isHealthy) {
-      response += `No cached capabilities available. Agent must be online to discover tools.\n`;
-    } else {
-      response += `Agent is online but capabilities could not be discovered. It may not be in the public registry.\n`;
     }
 
-    // Summary
     response += `\n---\n`;
-    if (isHealthy && (agent?.capabilities?.tools?.length ?? 0) > 0) {
-      response += `✅ Agent is **online** and responding. Run \`evaluate_agent_quality\` to verify protocol compliance.`;
-    } else if (isHealthy) {
-      response += `✅ Agent is **online** but not in the registry. Try calling it with \`get_products\` or run \`evaluate_agent_quality\` to verify it works correctly.`;
-    } else {
-      response += `❌ Agent is **not responding**. Check the URL and ensure the agent is running.`;
-    }
-
+    response += `_Reading cached state from the registry — same data the public dashboard shows. For a live retest, run \`evaluate_agent_quality\`._`;
     return response;
   });
 
@@ -3427,24 +3398,12 @@ export function createMemberToolHandlers(
     const domain = input.domain as string;
     const agentUrl = input.agent_url as string;
 
-    // Use the validate endpoint to check authorization
-    const result = await callApi('POST', '/api/validate', memberContext, {
-      domain,
-      agent_url: agentUrl,
-    });
-
-    if (!result.ok) {
-      throw new ToolError(`Failed to check authorization: ${result.error}`);
+    let data;
+    try {
+      data = await adagentsValidator.validate(domain, agentUrl);
+    } catch (err) {
+      throw new ToolError(`Failed to check authorization: ${err instanceof Error ? err.message : String(err)}`);
     }
-
-    const data = result.data as {
-      authorized: boolean;
-      domain: string;
-      agent_url: string;
-      checked_at: string;
-      source?: string;
-      error?: string;
-    };
 
     let response = `## Authorization Check\n\n`;
     response += `**Publisher:** ${data.domain}\n`;

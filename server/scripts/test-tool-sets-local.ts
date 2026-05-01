@@ -88,7 +88,7 @@ const TEST_CASES = [
   {
     message: "Can you test if my AdCP agent is responding correctly? It's at https://agent.example.com",
     expectedSets: ['agent_testing'],
-    expectedTools: ['probe_adcp_agent', 'test_adcp_agent'],
+    expectedTools: ['get_agent_status', 'evaluate_agent_quality'],
     category: 'testing',
   },
   {
