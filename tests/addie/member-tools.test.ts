@@ -613,14 +613,22 @@ describe('createMemberToolHandlers', () => {
       vi.spyOn(ComplianceDatabase.prototype, 'getLatestDeclaredSpecialisms').mockResolvedValue([] as never);
       vi.spyOn(AgentSnapshotDatabase.prototype, 'bulkGetHealth').mockImplementation(async (urls: string[]) => {
         const map = new Map<string, unknown>();
-        if (urls.includes(stored)) {
+        // .some(===) instead of .includes() — exact-equality on the
+        // array, not substring on a URL. Avoids CodeQL's
+        // js/incomplete-url-substring-sanitization false-positive
+        // (the rule pattern-matches .includes() on URL-typed strings).
+        if (urls.some((u) => u === stored)) {
           map.set(stored, { online: true, response_time_ms: 88, checked_at: new Date(), error: null });
         }
         return map as never;
       });
       vi.spyOn(AgentSnapshotDatabase.prototype, 'bulkGetCapabilities').mockImplementation(async (urls: string[]) => {
         const map = new Map<string, unknown>();
-        if (urls.includes(stored)) {
+        // .some(===) instead of .includes() — exact-equality on the
+        // array, not substring on a URL. Avoids CodeQL's
+        // js/incomplete-url-substring-sanitization false-positive
+        // (the rule pattern-matches .includes() on URL-typed strings).
+        if (urls.some((u) => u === stored)) {
           map.set(stored, { protocol: 'mcp', discovered_tools_json: [{ name: 'get_products' }], oauth_required: false, discovery_error: null });
         }
         return map as never;
