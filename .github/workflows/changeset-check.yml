@@ -2,14 +2,15 @@ name: Changeset Check
 
 on:
   pull_request:
-    branches: [main, '2.6.x']
+    branches: [main, '3.0.x', '2.6.x']
 
 jobs:
   check:
     name: Check for changeset
     runs-on: ubuntu-latest
     # Skip changeset check on Version Packages PR (created by changesets/action)
-    if: github.head_ref != 'changeset-release/main'
+    # for any release line: changeset-release/main, changeset-release/3.0.x, etc.
+    if: ${{ !startsWith(github.head_ref, 'changeset-release/') }}
     steps:
       - uses: actions/checkout@v6
         with:

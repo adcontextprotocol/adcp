@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.3/enums/creative-identifier-type.json",
+  "title": "Creative Identifier Type",
+  "description": "Industry-standard identifier types for advertising creatives. These identifiers are managed by external registries and used across the supply chain to track and reference specific creative assets.",
+  "type": "string",
+  "enum": [
+    "ad_id",
+    "isci",
+    "clearcast_clock"
+  ],
+  "enumDescriptions": {
+    "ad_id": "Ad-ID registry code — the universal standard for identifying advertising assets in the US and increasingly worldwide. 12-character alphanumeric (4-character company prefix + 8-character unique identifier, e.g., ABCD1234000H). Managed by the Ad-ID registry (ad-id.org). Ties creative assets to rotation instructions in broadcast buying.",
+    "isci": "Industry Standard Coding Identification — legacy creative identifier that preceded Ad-ID. Some older inventory and traffic systems still reference ISCI codes.",
+    "clearcast_clock": "Clearcast clock number — UK broadcast creative identifier assigned during the Clearcast clearance process. Required for linear TV and VOD advertising in the UK."
+  },
+  "examples": [
+    "ad_id",
+    "isci",
+    "clearcast_clock"
+  ]
+}

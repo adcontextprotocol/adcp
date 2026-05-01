@@ -1,0 +1,217 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.3/governance/check-governance-response.json",
+  "title": "Check Governance Response",
+  "description": "Governance agent's response to a check request. Returns whether the action is approved under the governance plan.",
+  "x-status": "experimental",
+  "type": "object",
+  "properties": {
+    "check_id": {
+      "type": "string",
+      "description": "Unique identifier for this governance check record. Use in report_plan_outcome to link outcomes to the check that authorized them.",
+      "x-entity": "governance_check"
+    },
+    "status": {
+      "$ref": "/schemas/3.0.3/enums/governance-decision.json"
+    },
+    "plan_id": {
+      "type": "string",
+      "description": "Echoed from request.",
+      "x-entity": "governance_plan"
+    },
+    "explanation": {
+      "type": "string",
+      "description": "Human-readable explanation of the governance decision."
+    },
+    "findings": {
+      "type": "array",
+      "description": "Specific issues found during the governance check. Present when status is 'denied' or 'conditions'. MAY also be present on 'approved' for informational findings (e.g., budget approaching limit).",
+      "items": {
+        "type": "object",
+        "properties": {
+          "category_id": {
+            "type": "string",
+            "description": "Validation category that flagged the issue (e.g., 'budget_compliance', 'regulatory_compliance', 'brand_safety')."
+          },
+          "policy_id": {
+            "type": "string",
+            "description": "ID of the policy that triggered this finding. May reference a registry policy (with source: registry) or a bespoke inline policy (with source: inline). Bespoke policy_ids are unique within their authoring container; use source_plan_id when findings aggregate across multiple plans (e.g., portfolio evaluations).",
+            "$comment": "x-entity deliberately omitted — a finding's policy_id can reference EITHER a governance_registry_policy or a governance_inline_policy depending on which policy matched. Resolution requires a sibling source discriminator the lint can't see from this leaf. Storyboards that capture from findings must re-annotate at the consume site (see #2685 for the registry/inline split)."
+          },
+          "source_plan_id": {
+            "type": "string",
+            "description": "For portfolio or aggregated evaluations where findings draw on bespoke policies from multiple member plans: identifies the plan whose policy triggered this finding. Omit when the finding's policy_id is unambiguous within the response context (e.g., single-plan check_governance).",
+            "x-entity": "governance_plan"
+          },
+          "severity": {
+            "$ref": "/schemas/3.0.3/enums/escalation-severity.json"
+          },
+          "explanation": {
+            "type": "string",
+            "description": "Human-readable description of the issue."
+          },
+          "details": {
+            "type": "object",
+            "description": "Structured details for programmatic consumption.",
+            "additionalProperties": true
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Confidence score (0-1) in this finding. Distinguishes 'this definitely violates the policy' (0.95) from 'this might violate depending on how audience segments resolve' (0.6). When absent, the finding is presented without a confidence qualifier."
+          },
+          "uncertainty_reason": {
+            "type": "string",
+            "description": "Explanation of why confidence is below 1.0 (e.g., 'Targeting includes regions that partially overlap jurisdiction boundaries'). Present when confidence is below a governance-agent-defined threshold."
+          }
+        },
+        "required": [
+          "category_id",
+          "severity",
+          "explanation"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "conditions": {
+      "type": "array",
+      "description": "Present when status is 'conditions'. Specific adjustments the caller must make. After applying conditions, the caller MUST re-call check_governance with the adjusted parameters before proceeding.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string",
+            "description": "Dot-path to the field that needs adjustment (in payload for proposed, in planned_delivery for committed)."
+          },
+          "required_value": {
+            "description": "The value the field must have for approval. When present, the condition is machine-actionable. When absent, the condition is advisory."
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why this condition is required."
+          }
+        },
+        "required": [
+          "field",
+          "reason"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this approval expires. Present when status is 'approved' or 'conditions'. The caller must act before this time or re-call check_governance. A lapsed approval is no approval."
+    },
+    "next_check": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the seller should next call check_governance with delivery metrics. Present when the governance agent expects ongoing delivery reporting."
+    },
+    "categories_evaluated": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Governance categories evaluated during this check."
+    },
+    "policies_evaluated": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Policy IDs evaluated during this check. Includes registry policy IDs (resolved via the policy registry) and any inline `policy_id`s declared in the plan's `custom_policies`."
+    },
+    "mode": {
+      "$ref": "/schemas/3.0.3/enums/governance-mode.json",
+      "description": "Governance enforcement mode active when this check was evaluated. Allows counterparties, regulators, and auditors to distinguish whether a finding blocked execution (enforce) or was logged silently (audit)."
+    },
+    "governance_context": {
+      "type": "string",
+      "description": "Governance context token for this governed action. The buyer MUST attach this to the protocol envelope when sending the purchase request (media buy, rights acquisition, signal activation) to the seller. The seller MUST persist it and include it on all subsequent check_governance calls for this action's lifecycle.\n\nValue format: in 3.0 governance agents MUST emit a compact JWS per the AdCP JWS profile (see Security — Signed Governance Context). Sellers MAY verify; sellers that do not verify MUST persist and forward the token unchanged so auditors can verify downstream. In 3.1 all sellers MUST verify per the checklist. Non-JWS values from pre-3.0 governance agents are deprecated and will be rejected in 3.1.\n\nSellers that implement verification MUST verify signature, `aud`, `exp`, `jti` replay, and revocation per the profile before treating the request as governance-approved. This is the primary correlation key for audit and reporting across the governance lifecycle — the governance agent decodes its own signed token to look up internal plan state (buyer correlation IDs, policy decision log, etc.).",
+      "minLength": 1,
+      "maxLength": 4096,
+      "pattern": "^[\\x20-\\x7E]+$"
+    },
+    "context": {
+      "$ref": "/schemas/3.0.3/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.3/core/ext.json"
+    }
+  },
+  "required": [
+    "check_id",
+    "status",
+    "plan_id",
+    "explanation"
+  ],
+  "additionalProperties": true,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "conditions"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "required": [
+          "conditions"
+        ],
+        "properties": {
+          "conditions": {
+            "minItems": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "denied"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "required": [
+          "findings"
+        ],
+        "properties": {
+          "findings": {
+            "minItems": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "enum": [
+              "approved",
+              "conditions"
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "required": [
+          "expires_at"
+        ]
+      }
+    }
+  ]
+}

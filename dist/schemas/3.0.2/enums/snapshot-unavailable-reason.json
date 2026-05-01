@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.2/enums/snapshot-unavailable-reason.json",
+  "title": "Snapshot Unavailable Reason",
+  "description": "Machine-readable reason a delivery snapshot was requested but could not be returned. Present only when include_snapshot was true and snapshot data is unavailable.",
+  "type": "string",
+  "enum": ["SNAPSHOT_UNSUPPORTED", "SNAPSHOT_TEMPORARILY_UNAVAILABLE", "SNAPSHOT_PERMISSION_DENIED"],
+  "enumDescriptions": {
+    "SNAPSHOT_UNSUPPORTED": "The seller platform does not support delivery snapshots for this entity",
+    "SNAPSHOT_TEMPORARILY_UNAVAILABLE": "Snapshot data exists but is temporarily unavailable (e.g., cache miss, pipeline lag)",
+    "SNAPSHOT_PERMISSION_DENIED": "The caller lacks permission to view snapshot data for this entity"
+  }
+}

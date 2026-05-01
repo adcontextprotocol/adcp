@@ -1,0 +1,412 @@
+id: creative_lifecycle
+version: "1.0.0"
+title: "Creative lifecycle"
+category: creative_lifecycle
+summary: "Full creative lifecycle on a stateful platform: sync multiple creatives, list with filtering, build and preview across formats, observe status transitions."
+track: creative
+required_tools:
+  - list_creative_formats
+
+narrative: |
+  You run a creative platform with a persistent library — an ad server, creative management
+  platform, or publisher that accepts and stores creative assets. A buyer agent pushes
+  multiple creatives in different formats, queries the library, builds serving tags, previews
+  renderings, and monitors creative status as assets move through your review pipeline.
+
+  This storyboard covers the complete creative lifecycle from the buyer's perspective:
+  uploading assets, browsing the library, building deliverables across formats, and
+  observing status transitions as creatives move from pending_review through to accepted.
+
+  The individual creative storyboards (template, ad server, sales agent) cover specific
+  interaction models. This storyboard tests the full lifecycle across multiple creatives
+  and formats on a single platform.
+
+agent:
+  interaction_model: stateful_preloaded
+  capabilities:
+    - has_creative_library
+    - supports_transformation
+  examples:
+    - "Innovid"
+    - "Flashtalking"
+    - "CM360"
+    - "Creative management platforms"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The caller needs creative assets in multiple formats (display, video, native) and
+    a brand identity. The test kit provides sample assets at standard ad dimensions.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: capability_discovery
+    title: "Capability discovery"
+    narrative: |
+      The buyer calls get_adcp_capabilities to confirm the agent supports creative operations before browsing or building creatives.
+
+    steps:
+      - id: get_capabilities
+        title: "Check agent capabilities"
+        narrative: |
+          Verify that the agent declares the expected protocol support before
+          proceeding with domain-specific operations.
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: capability_discovery
+        stateful: false
+        expected: |
+          Return capabilities declaring creative in supported_protocols, confirming the agent handles creative operations.
+        sample_request:
+          context:
+            correlation_id: "creative_lifecycle--get_capabilities"
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json schema"
+          - check: field_present
+            path: "supported_protocols"
+            description: "Agent declares supported protocols"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "creative_lifecycle--get_capabilities"
+            description: "Context correlation_id returned unchanged"
+  - id: discover_formats
+    title: "Discover accepted formats"
+    narrative: |
+      Before pushing any creatives, the buyer discovers what formats your platform accepts.
+      This determines which assets to prepare and what dimensions and specs to target.
+
+    steps:
+      - id: list_formats
+        title: "List creative formats"
+        narrative: |
+          The buyer calls list_creative_formats to discover what your platform accepts.
+          The response defines format specs: dimensions, asset requirements, mime types,
+          and any platform-specific constraints.
+        task: list_creative_formats
+        schema_ref: "creative/list-creative-formats-request.json"
+        response_schema_ref: "creative/list-creative-formats-response.json"
+        doc_ref: "/creative/task-reference/list_creative_formats"
+        comply_scenario: creative_lifecycle
+        stateful: false
+        expected: |
+          Return all creative formats your platform accepts:
+          - format_id with your agent_url and unique id
+          - Asset requirements (dimensions, file sizes, mime types)
+          - Render dimensions
+          - At least two formats (e.g., display and video)
+
+        sample_request:
+          context:
+            correlation_id: "creative_lifecycle--list_formats"
+
+        validations:
+          - check: response_schema
+            description: "Response matches list-creative-formats-response.json schema"
+          - check: field_present
+            path: "formats"
+            description: "Response contains formats array"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "creative_lifecycle--list_formats"
+            description: "Context correlation_id returned unchanged"
+          - check: field_present
+            path: "formats[0].format_id.agent_url"
+            description: "Format IDs include agent_url"
+          - check: field_present
+            path: "formats[0].format_id.id"
+            description: "Format IDs include id — must match those in get_products"
+  - id: sync_multiple
+    title: "Sync multiple creatives"
+    narrative: |
+      The buyer pushes three creatives in different formats to your platform: a display
+      banner, a video spot, and a native card. Your platform validates each creative
+      against its format specs and returns per-creative status.
+
+    steps:
+      - id: sync_creatives
+        title: "Push three creatives in different formats"
+        narrative: |
+          The buyer syncs three creatives simultaneously: a 300x250 display banner, a 30s
+          video spot, and a native content card. Your platform validates each against its
+          format specs and returns per-creative action and status.
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
+        doc_ref: "/creative/task-reference/sync_creatives"
+        comply_scenario: creative_lifecycle
+        stateful: true
+        expected: |
+          Accept and validate all three creatives:
+          - Per-creative action: created
+          - Per-creative status: accepted or pending_review
+          - Validation results for each creative
+          - Platform-assigned IDs if applicable
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          creatives:
+            - creative_id: "display_trail_pro_300x250"
+              name: "Trail Pro 3000 - Display 300x250"
+              format_id:
+                agent_url: "https://your-platform.example.com"
+                id: "display_300x250"
+              assets:
+                image:
+                  asset_type: "image"
+                  url: "https://cdn.pinnacle-agency.example/trail-pro-300x250.png"
+                  width: 300
+                  height: 250
+                  mime_type: "image/png"
+            - creative_id: "video_30s_trail_pro"
+              name: "Trail Pro 3000 - 30s Video"
+              format_id:
+                agent_url: "https://your-platform.example.com"
+                id: "video_30s"
+              assets:
+                video:
+                  asset_type: "video"
+                  url: "https://cdn.pinnacle-agency.example/trail-pro-30s.mp4"
+                  width: 1920
+                  height: 1080
+                  duration_ms: 30000
+                  mime_type: "video/mp4"
+            - creative_id: "native_trail_pro"
+              name: "Trail Pro 3000 - Native Card"
+              format_id:
+                agent_url: "https://your-platform.example.com"
+                id: "native_content"
+              assets:
+                image:
+                  asset_type: "image"
+                  url: "https://cdn.pinnacle-agency.example/trail-pro-native.png"
+                  width: 1200
+                  height: 628
+                  mime_type: "image/png"
+                headline:
+                  asset_type: "text"
+                  content: "Trail Pro 3000 — Built for the Summit"
+
+          idempotency_key: "$generate:uuid_v4#creative_lifecycle_sync_multiple_sync_creatives"
+          context:
+            correlation_id: "creative_lifecycle--sync_creatives"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-creatives-response.json schema"
+          - check: field_present
+            path: "creatives"
+            description: "Response contains per-creative results"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "creative_lifecycle--sync_creatives"
+            description: "Context correlation_id returned unchanged"
+  - id: list_and_filter
+    title: "List creatives with filtering"
+    narrative: |
+      The buyer queries the creative library to see their synced creatives. First a broad
+      list, then filtered by format. This verifies the library correctly stores and indexes
+      the pushed creatives.
+
+    steps:
+      - id: list_all
+        title: "List all creatives in library"
+        narrative: |
+          The buyer calls list_creatives with no filters to see all creatives in the
+          library for their account. The response includes the three creatives synced
+          in the previous phase.
+        task: list_creatives
+        schema_ref: "creative/list-creatives-request.json"
+        response_schema_ref: "creative/list-creatives-response.json"
+        doc_ref: "/creative/task-reference/list_creatives"
+        comply_scenario: creative_lifecycle
+        stateful: true
+        expected: |
+          Return creatives in the library:
+          - creatives array containing the synced items
+          - Each creative includes: creative_id, name, format_id, status
+          - At least three creatives from the sync phase
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+
+          context:
+            correlation_id: "creative_lifecycle--list_all"
+        validations:
+          - check: response_schema
+            description: "Response matches list-creatives-response.json schema"
+          - check: field_present
+            path: "creatives"
+            description: "Response contains creatives array"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "creative_lifecycle--list_all"
+            description: "Context correlation_id returned unchanged"
+      - id: list_filtered
+        title: "List creatives filtered by format"
+        narrative: |
+          The buyer lists creatives filtered to a specific format (display only). The
+          response should only include creatives matching that format.
+        task: list_creatives
+        schema_ref: "creative/list-creatives-request.json"
+        response_schema_ref: "creative/list-creatives-response.json"
+        doc_ref: "/creative/task-reference/list_creatives"
+        comply_scenario: creative_lifecycle
+        stateful: true
+        expected: |
+          Return only creatives matching the format filter:
+          - creatives array filtered to display format
+          - Should include display_trail_pro_300x250 but not video or native
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          filters:
+            format_ids:
+              - agent_url: "https://your-platform.example.com"
+                id: "display_300x250"
+
+          context:
+            correlation_id: "creative_lifecycle--list_filtered"
+        validations:
+          - check: response_schema
+            description: "Response matches list-creatives-response.json schema"
+          - check: field_present
+            path: "creatives"
+            description: "Response contains filtered creatives"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "creative_lifecycle--list_filtered"
+            description: "Context correlation_id returned unchanged"
+  - id: build_and_preview
+    title: "Build and preview across formats"
+    narrative: |
+      The buyer builds serving tags and previews renderings for the synced creatives.
+      This tests multi-format output: a display tag, a VAST tag for video, and a
+      native rendering preview.
+
+    steps:
+      - id: preview_display
+        title: "Preview the display creative"
+        narrative: |
+          The buyer calls preview_creative for the display banner to see how it renders
+          in the platform's environment before going live.
+        task: preview_creative
+        schema_ref: "creative/preview-creative-request.json"
+        response_schema_ref: "creative/preview-creative-response.json"
+        doc_ref: "/creative/task-reference/preview_creative"
+        comply_scenario: creative_flow
+        stateful: true
+        expected: |
+          Return a preview of the display creative:
+          - preview_url: rendered preview the buyer can inspect
+          - render_dimensions: matches the 300x250 format
+          - status: preview available
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          request_type: "single"
+          creative_manifest:
+            creative_id: "display_trail_pro_300x250"
+            format_id:
+              agent_url: "https://your-platform.example.com"
+              id: "display_300x250"
+            assets:
+              image:
+                asset_type: "image"
+                url: "https://test-assets.adcontextprotocol.org/acme-outdoor/banner_300x250.jpg"
+                width: 300
+                height: 250
+              click_url:
+                asset_type: "url"
+                url: "https://acmeoutdoor.example/trail-pro"
+
+          context:
+            correlation_id: "creative_lifecycle--preview_display"
+        validations:
+          - check: response_schema
+            description: "Response matches preview-creative-response.json schema"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "creative_lifecycle--preview_display"
+            description: "Context correlation_id returned unchanged"
+      - id: build_video_tag
+        title: "Build a VAST tag for the video creative"
+        narrative: |
+          The buyer builds a serving tag for the video creative. The platform produces
+          a VAST-compatible tag that the buyer can traffic to ad servers.
+        task: build_creative
+        schema_ref: "creative/build-creative-request.json"
+        response_schema_ref: "creative/build-creative-response.json"
+        doc_ref: "/creative/task-reference/build_creative"
+        comply_scenario: creative_flow
+        stateful: true
+        expected: |
+          Return a built serving tag for the video creative:
+          - tag: VAST-compatible serving tag or URL
+          - format: matches the video format
+          - creative_id: matches the requested creative
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          creative_id: "video_30s_trail_pro"
+          target_format_id:
+            agent_url: "https://your-platform.example.com"
+            id: "vast_30s"
+          idempotency_key: "$generate:uuid_v4#creative_lifecycle_build_video_tag"
+
+          context:
+            correlation_id: "creative_lifecycle--build_video_tag"
+        validations:
+          - check: response_schema
+            description: "Response matches build-creative-response.json schema"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "creative_lifecycle--build_video_tag"
+            description: "Context correlation_id returned unchanged"
