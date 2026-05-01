@@ -865,12 +865,7 @@ export class MCPToolHandler {
 
       // Publisher tools
       case "list_publishers": {
-        // Use federated index to include both registered and discovered publishers
         const publishers = await this.federatedIndex.listAllPublishers();
-        const bySource = {
-          registered: publishers.filter(p => p.source === 'registered').length,
-          discovered: publishers.filter(p => p.source === 'discovered').length,
-        };
 
         return {
           content: [
@@ -879,7 +874,7 @@ export class MCPToolHandler {
               resource: {
                 uri: "publishers://all",
                 mimeType: "application/json",
-                text: JSON.stringify({ publishers, count: publishers.length, sources: bySource }, null, 2),
+                text: JSON.stringify({ publishers, count: publishers.length }, null, 2),
               },
             },
           ],
