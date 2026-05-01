@@ -1001,6 +1001,40 @@ export function createAdminUsersRouter(): Router {
       }
     }
 
+    // Foot-gun gate: refuse silent consolidation. If credId has any app-state
+    // attached (org membership, points, certification work, working-group
+    // membership), binding will MOVE it onto the host — that's a real account
+    // being absorbed, not a fresh credential being added. Require explicit
+    // `consolidate: true` in the body so the admin has stated intent.
+    //
+    // Cheap signal: check the four most user-facing tables. False negatives
+    // (e.g., a Slack-only points-bearing user with no org_membership) only
+    // matter if the points themselves are valuable enough to warn about, and
+    // they will move forward correctly either way.
+    const consolidateConfirmed = req.body?.consolidate === true;
+    if (!consolidateConfirmed) {
+      const stateCheck = await pool.query<{ has_state: boolean }>(
+        `SELECT EXISTS (
+           SELECT 1 FROM organization_memberships WHERE workos_user_id = $1
+           UNION ALL
+           SELECT 1 FROM working_group_memberships WHERE workos_user_id = $1
+           UNION ALL
+           SELECT 1 FROM certification_attempts WHERE workos_user_id = $1
+           UNION ALL
+           SELECT 1 FROM community_points WHERE workos_user_id = $1
+           LIMIT 1
+         ) AS has_state`,
+        [credId]
+      );
+      if (stateCheck.rows[0].has_state) {
+        return res.status(409).json({
+          error: 'This WorkOS user has its own AAO data',
+          message: 'Binding will move that data (organization memberships, working-group memberships, certification work, community points) to the host. Re-submit with `"consolidate": true` to confirm this is the intended consolidation.',
+          consolidate_confirmation_required: true,
+        });
+      }
+    }
+
     // mergeUsers moves any app-state from credId to existingUserId, rebinds
     // credId's identity_workos_users row to existingUserId's identity as
     // is_primary = FALSE, and drops the orphan identity. Throws if either
@@ -1038,6 +1072,10 @@ export function createAdminUsersRouter(): Router {
   router.delete('/:userId/credentials/:credentialId', requireAuth, requireAdmin, async (req, res) => {
     const adminEmail = req.user!.email;
     const adminUserId = req.user!.id;
+    // For non-singleton admin identities (today: nobody — admins are still
+    // singleton-bound — but Phase 3+ may change), record the auth credential
+    // separately from the canonical id so forensics can tell them apart.
+    const adminAuthCredentialId = req.user!.authWorkosUserId ?? req.user!.id;
     const userId = req.params.userId;
     const credId = req.params.credentialId;
 
@@ -1109,6 +1147,9 @@ export function createAdminUsersRouter(): Router {
             host_user_id: userId,
             detached_from_identity_id: detachedIdentityId,
             new_identity_id: newIdentity.rows[0].id,
+            // Auth credential the admin used (may differ from adminUserId
+            // post-id-swap if the admin has multiple bound credentials).
+            acting_workos_user_id: adminAuthCredentialId,
           }),
         ]
       );

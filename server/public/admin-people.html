@@ -641,12 +641,28 @@
         if (!confirm(`Bind ${trimmed} to ${targetLabel}?`)) return;
       }
       try {
-        const res = await AdminSidebar.fetch(`/api/admin/users/${encodeURIComponent(workosUserId)}/credentials`, {
+        let res = await AdminSidebar.fetch(`/api/admin/users/${encodeURIComponent(workosUserId)}/credentials`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ workos_user_id: trimmed }),
         });
-        const data = await res.json();
+        let data = await res.json();
+        // Server detected the cred has its own AAO data and refused without
+        // explicit consolidation intent. Escalate the confirmation and retry.
+        if (res.status === 409 && data.consolidate_confirmation_required) {
+          const ack = prompt(`This WorkOS user has its own AAO data (memberships, points, certification work, etc.).\n\nBinding will MOVE all of that data onto ${targetLabel}'s account. The other identity will no longer have its own data.\n\nThis is the right move when the two accounts are the same person. It is destructive when they are not.\n\nType CONSOLIDATE (in caps) to confirm.`);
+          if (ack === null) return;
+          if (ack.trim() !== 'CONSOLIDATE') {
+            alert('Confirmation phrase did not match. Cancelled.');
+            return;
+          }
+          res = await AdminSidebar.fetch(`/api/admin/users/${encodeURIComponent(workosUserId)}/credentials`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ workos_user_id: trimmed, consolidate: true }),
+          });
+          data = await res.json();
+        }
         if (!res.ok) {
           alert(data.message || data.error || `Link failed (${res.status})`);
           return;
@@ -658,7 +674,17 @@
     }
 
     async function unbindCredential(hostId, credId, credEmail, targetLabel) {
-      if (!confirm(`Remove sign-in credential ${credEmail || credId} from ${targetLabel}?\n\nThe WorkOS user stays alive in WorkOS but will no longer be associated with this account. Sign-ins via that email will reach an empty workspace.\n\nThis cannot be undone via this UI (you'd need to re-bind manually).`)) return;
+      const credLabel = credEmail || credId;
+      if (credEmail) {
+        const typed = prompt(`Remove sign-in credential ${credLabel} from ${targetLabel}?\n\nThe WorkOS user stays alive in WorkOS but will no longer be associated with this account. Sign-ins via that email will reach an empty workspace.\n\nTo confirm, type the credential's email exactly:\n  ${credEmail}`);
+        if (typed === null) return;
+        if (typed.trim().toLowerCase() !== credEmail.trim().toLowerCase()) {
+          alert('Confirmation email did not match. Cancelled.');
+          return;
+        }
+      } else {
+        if (!confirm(`Remove sign-in credential ${credLabel} from ${targetLabel}?\n\nThe WorkOS user stays alive in WorkOS but will no longer be associated with this account.`)) return;
+      }
       try {
         const res = await AdminSidebar.fetch(`/api/admin/users/${encodeURIComponent(hostId)}/credentials/${encodeURIComponent(credId)}`, {
           method: 'DELETE',

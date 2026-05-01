@@ -205,6 +205,53 @@ describe('admin link / unlink credential', () => {
         .expect(404);
       expect(response.body.error).toMatch(/not found/i);
     });
+
+    it('refuses to consolidate a cred with existing app-state without explicit opt-in', async () => {
+      // Insert cred locally + give it an organization_membership (real AAO data)
+      await pool.query(
+        `INSERT INTO users (workos_user_id, email, first_name, last_name, email_verified,
+                            workos_created_at, workos_updated_at, created_at, updated_at)
+         VALUES ($1, 'target@test.example', 'Target', 'User', true, NOW(), NOW(), NOW(), NOW())`,
+        [TARGET_USER_ID]
+      );
+      const orgId = 'org_test_link_consolidate';
+      await pool.query(
+        `INSERT INTO organizations (workos_organization_id, name, created_at, updated_at)
+         VALUES ($1, 'Test Org', NOW(), NOW())
+         ON CONFLICT (workos_organization_id) DO NOTHING`,
+        [orgId]
+      );
+      await pool.query(
+        `INSERT INTO organization_memberships (workos_user_id, workos_organization_id, email, role, created_at, updated_at)
+         VALUES ($1, $2, 'target@test.example', 'member', NOW(), NOW())`,
+        [TARGET_USER_ID, orgId]
+      );
+
+      try {
+        const refused = await request(app)
+          .post(`/api/admin/users/${HOST_USER_ID}/credentials`)
+          .send({ workos_user_id: TARGET_USER_ID })
+          .expect(409);
+        expect(refused.body.consolidate_confirmation_required).toBe(true);
+        expect(refused.body.message).toMatch(/consolidate/i);
+
+        // Same call with consolidate: true succeeds and moves the membership
+        await request(app)
+          .post(`/api/admin/users/${HOST_USER_ID}/credentials`)
+          .send({ workos_user_id: TARGET_USER_ID, consolidate: true })
+          .expect(201);
+
+        const moved = await pool.query(
+          `SELECT workos_user_id FROM organization_memberships WHERE workos_organization_id = $1`,
+          [orgId]
+        );
+        expect(moved.rows).toHaveLength(1);
+        expect(moved.rows[0].workos_user_id).toBe(HOST_USER_ID);
+      } finally {
+        await pool.query(`DELETE FROM organization_memberships WHERE workos_organization_id = $1`, [orgId]);
+        await pool.query(`DELETE FROM organizations WHERE workos_organization_id = $1`, [orgId]);
+      }
+    });
   });
 
   describe('GET /credentials', () => {
