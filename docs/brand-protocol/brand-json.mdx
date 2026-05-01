@@ -10,6 +10,10 @@ The `brand.json` file provides a standardized way for brands to claim their iden
 `brand.json` is the canonical source of brand identity data. The brand object defined here (logos, colors, tone, tagline) is the single brand definition used across AdCP. Tasks reference brands by domain and brand_id — the system resolves full identity from `brand.json` or the [registry](/docs/registry/index).
 </Info>
 
+<Note>
+**Proposed (RFC, not yet ratified):** A fifth variant — Brand Canonical Document — and new optional fields on House Portfolio (`brand_refs[]`, `house_attributes`) and on a brand canonical document (`parent_house`, `house_attributes_overrides`) are under discussion. They let a child brand publish its own canonical document while the house declares ownership via mutual assertion. The schema in this branch accepts these fields additively for review purposes; the existing four variants are unchanged for current publishers. See the [distributed brand.json RFC](https://github.com/adcontextprotocol/adcp/blob/main/docs/brand-protocol/proposals/distributed-brand-json-rfc.mdx) and [#3533](https://github.com/adcontextprotocol/adcp/pull/3533).
+</Note>
+
 ## File location
 
 Brands host the `brand.json` file at:
