@@ -655,11 +655,39 @@
         "$ref": "/schemas/core/vendor-pricing-option.json"
       },
       "minItems": 1
+    },
+    "canonical": {
+      "$ref": "/schemas/core/canonical-format-kind.json",
+      "description": "Optional v2 canonical format this v1 named format projects to. When set, SDKs use this declaration as the authoritative v1 → v2 mapping for this format, bypassing the [v1 canonical mapping registry](/schemas/registries/v1-canonical-mapping.json) lookup. Combined with the slot-level `asset_group_id` declarations on each `assets[i]` entry, a v1 format declaration with `canonical` set is fully self-describing for v1↔v2 translation.\n\nResolution order for SDK projection from v1 wire shape to v2 (per RFC #3305 amendment #3767):\n1. If this `canonical` field is set, use it (seller-declared, highest priority).\n2. Else, look up `format_id` in the canonical mapping registry's `format_id_glob` entries.\n3. Else, attempt structural match against the registry's `structural` entries (asset types, slot shape, vast_versions, etc.).\n4. Else, fail closed: SDK MUST NOT emit `format_options` for products carrying this format. Surface a validation warning suggesting the seller add an explicit `canonical` field or file a registry entry.\n\nWhen the canonical is `custom`, the seller MUST also declare `canonical_format_shape` and `canonical_format_schema` (parallel to ProductFormatDeclaration's `format_shape` and `format_schema`) so buyer SDKs can fetch the seller's custom format schema."
+    },
+    "canonical_parameters": {
+      "$ref": "/schemas/core/product-format-declaration.json",
+      "description": "Optional. When `canonical` is set, this field carries the full ProductFormatDeclaration that the SDK projects this v1 format into. Strict-typed via `$ref` to product-format-declaration so the discriminator + canonical-specific params validate consistently. The `format_kind` MUST equal the `canonical` field value (validators enforce). When set, this is the authoritative source for SDK v1→v2 projection — the registry's structural-match parameter inference is bypassed.\n\nUse case: a custom seller format whose v2 narrowing isn't representable purely from registry structural-match (e.g., a takeover that bundles multi-canonical components — set `canonical: \"custom\"` and provide `canonical_parameters` with a fully-formed ProductFormatDeclaration including `format_shape` and `format_schema`)."
     }
   },
   "required": [
     "format_id",
     "name"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "required": ["canonical_parameters"]
+      },
+      "then": {
+        "required": ["canonical"],
+        "properties": {
+          "canonical_parameters": {
+            "type": "object",
+            "properties": {
+              "format_kind": {
+                "$comment": "Must agree with the sibling `canonical` field — validators SHOULD assert this constraint at build time. JSON Schema can't directly express cross-field equality without ext keywords."
+              }
+            }
+          }
+        }
+      }
+    }
   ],
   "additionalProperties": true
 }

@@ -95,9 +95,66 @@ Most of AdCP doesn't change. v2 builds on the existing primitives:
 }
 ```
 
-`format_options` is an array. The 90% case is one element — one canonical narrowed for the product. Multi-element arrays declare that the product accepts any of the listed format options, picked by the buyer at `sync_creatives` time. Common multi-element use cases: a placement that accepts EITHER a third-party-hosted creative (e.g., Flashtalking-served `html5`) OR an internal `display_tag`; a video product that accepts a hosted upload (`video_hosted`) OR a tag (`video_vast`). Each entry is a discriminated union: `format_kind` names the canonical format; `params` carries that canonical's parameter schema. SDKs codegen clean tagged unions in TypeScript and Pydantic. A v2 product is **either** v1 (uses `format_ids`) **or** v2 (uses `format_options`) — not both. The product schema's `oneOf` enforces this.
+`format_options` is an array. The 90% case is one element — one canonical narrowed for the product. Multi-element arrays declare that the product accepts any of the listed format options, picked by the buyer at `sync_creatives` time. Common multi-element use cases: a placement that accepts EITHER a third-party-hosted creative (e.g., Flashtalking-served `html5`) OR an internal `display_tag`; a video product that accepts a hosted upload (`video_hosted`) OR a tag (`video_vast`). Each entry is a discriminated union: `format_kind` names the canonical format; `params` carries that canonical's parameter schema. SDKs codegen clean tagged unions in TypeScript and Pydantic.
+
+**Dual emission during the migration window**: Products MAY carry `format_ids`, `format_options`, or BOTH; at least one is required (the schema enforces this via an `anyOf`, not `oneOf`). The recommended seller pattern is to author once and let the SDK project to both wire shapes via the [v1↔v2 canonical mapping registry](https://adcontextprotocol.org/schemas/v3/registries/v1-canonical-mapping.json), so every buyer reads what it knows. When both shapes are present on a product, the two MUST refer to the same underlying format declaration — the `format_options[i]` must narrow the canonical that `format_ids[i]` resolves to via the registry. SDKs that derive both shapes from one source guarantee this invariant; SDKs that hand-author both MUST treat divergence as a build error and refuse to emit. Buyers prefer `format_options` when both are present; treat `format_ids` as fallback for v1-only buyers. Sellers whose v1 named formats have no clean v2 projection ship `format_ids` only for those products until they add an explicit `canonical` declaration on the v1 format (see "v1 → v2 canonical mapping" below) — the SDK MUST NOT emit `format_options` for non-projectable formats.
 
 For 12 fully-validated reference Product fixtures spanning all 11 canonical formats — Meta Reels (`video_hosted` vertical), IAB MREC (`image` 300×250), NYTimes HTML5 (`html5`), GAM 3P display tag (`display_tag`), Meta Carousel (`image_carousel`), YouTube VAST pre-roll (`video_vast`), podcast 30s host-read (`audio_hosted`), Triton DAAST audio (`audio_daast`), Amazon Sponsored Products (`sponsored_placement`), Google PMax (`responsive_creative`), ChatGPT brand mention (`agent_placement`), Veo 15s generative video (`video_hosted` with `synthesis_nondeterministic` + `provenance_required`) — plus 1 `get_products` response fixture exercising bundled extensions, see `static/examples/products/v2/` and `static/examples/get_products_responses/v2/`. The Veo fixture exercises `synthesis_nondeterministic: true` and `provenance_required: true`. Each fixture passes `npm run test:v2-fixtures`.
+
+## v1 → v2 canonical mapping
+
+The slot-level `asset_group_id` bridge below tells SDKs which v2 canonical *slot* a v1 slot corresponds to. The format-level mapping — which v2 *canonical format* a v1 named format projects to — is solved by two complementary mechanisms:
+
+### The canonical mapping registry
+
+[`/schemas/registries/v1-canonical-mapping.json`](https://adcontextprotocol.org/schemas/v3/registries/v1-canonical-mapping.json) is the authoritative AAO-published registry. SDKs consume it to project v1 formats to v2 canonicals during dual-emission and v1↔v2 translation. Two match modes per entry:
+
+- **`format_id_glob`** — exact / glob match against v1 `format_id.id`. Covers IAB-conventional sizes (`iab/mrec_300x250` → `image` 300×250), named platform formats, common publisher conventions.
+- **`structural`** — match against the format's slot shape, asset types, and version constraints. Catches custom v1 formats that are structurally a standard format under a different name (a seller's `acme_homepage_300x250` is structurally an IAB MREC).
+
+Initial registry covers ~15 unambiguous entries (IAB display sizes, VAST 4.x, DAAST 1.x). Subsequent PRs expand coverage as adopter feedback surfaces patterns. Governance follows the same rules as `asset-group-vocabulary.json`: PR with rationale + ≥1 reference adopter + AAO maintainer review; entries are additive and digest-pinned.
+
+### `canonical` field on v1 format declarations (custom / non-registered formats)
+
+For custom seller formats not covered by the registry, the seller declares the mapping inline at the v1 format-declaration level:
+
+```json test=false
+{
+  "format_id": "acme/sponsored_recipe_card",
+  "name": "Sponsored Recipe Card",
+  "canonical": "sponsored_placement",
+  "canonical_parameters": {
+    "format_kind": "sponsored_placement",
+    "params": {
+      "supported_catalog_types": ["product"],
+      "supported_id_types": ["sku"],
+      "fanout_mode": "per_item",
+      "item_production_model": "buyer_uploaded"
+    }
+  },
+  "assets": [
+    { "asset_id": "headline", "asset_type": "text", "asset_group_id": "headline", "required": true },
+    { "asset_id": "recipe_image", "asset_type": "image", "asset_group_id": "image_main", "required": true }
+  ]
+}
+```
+
+The `canonical` field names the v2 canonical; `canonical_parameters` (optional) carries a full ProductFormatDeclaration the SDK projects this v1 format into. Combined with slot-level `asset_group_id` declarations on each `assets[]` entry, the v1 format becomes fully self-describing for v1↔v2 translation. Seller does this once per custom format, not per buyer or per product.
+
+For the `format_kind: "custom"` case (a custom seller format that itself doesn't fit any v2 canonical), the `canonical_parameters` carries the same `format_kind: "custom"` + `format_shape` + `format_schema` triple as a normal v2 declaration would.
+
+### Normative SDK projection rules
+
+Resolution order when an SDK projects a v1 format to its v2 canonical (or back):
+
+1. If the v1 format declaration carries `canonical`, use it (seller-declared, highest priority). When `canonical_parameters` is also present, use that as the projected ProductFormatDeclaration verbatim.
+2. Else, look up `format_id` in `/schemas/registries/v1-canonical-mapping.json`'s `format_id_glob` entries.
+3. Else, attempt structural match against the registry's `structural` entries.
+4. Else, **fail closed**: SDK MUST NOT emit `format_options` for products carrying this format. Surface a validation warning suggesting the seller add an explicit `canonical` field or file a registry entry. Buyers see `format_ids` only for these products.
+
+Reverse direction (v2 → v1 demotion for v1-only buyers reading a v2 seller) is the inverse projection: same registry, same algorithm, run backward. SDKs ship a single mapping engine that handles both directions.
+
+This is what makes "publish both wire shapes during migration" tractable and consistent across SDK implementations — every SDK projects through the same registry so dual-emitted products from any seller resolve identically across any buyer.
 
 ## Slot name mapping (v1 → canonical)
 

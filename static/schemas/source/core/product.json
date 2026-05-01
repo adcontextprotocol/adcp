@@ -36,7 +36,7 @@
     },
     "format_ids": {
       "type": "array",
-      "description": "v1 path: array of supported creative format IDs (structured format_id objects with agent_url and id). Products MAY use either `format_ids` (v1) or `format_options` (v2 inline declarations) — not both. v1 named formats remain supported through the deprecation cycle.",
+      "description": "v1 path: array of supported creative format IDs (structured format_id objects with agent_url and id). Products MUST carry `format_ids`, `format_options`, or BOTH; at least one is required. v1 named formats remain supported through the v1-deprecation calendar (2027-Q4 floor / 2029-Q1 ceiling).\n\n**Dual emission**: A product MAY carry both `format_ids` and `format_options` simultaneously during the migration window. This is the recommended seller pattern — author once, SDK projects to both wire shapes via the [v1↔v2 canonical mapping registry](/schemas/registries/v1-canonical-mapping.json), every buyer reads what it knows. When both are present, the two MUST refer to the SAME underlying format declaration (the `format_options[i]` narrows the canonical that the named format in `format_ids[i]` resolves to via the registry / explicit `canonical` field). SDKs that derive both shapes from one source guarantee this invariant; SDKs that don't MUST treat divergence as a build error and refuse to emit. **Buyer rule**: when both are present, prefer `format_options`; treat `format_ids` as fallback for v1-only buyers. **Non-projectable formats**: when a v1 named format has no clean v2 projection (no registry entry, no explicit `canonical` declaration on the v1 format, no structural match), SDKs MUST NOT emit `format_options` for that product — only `format_ids` ships, and the product remains v1-only until the seller adds an explicit `canonical` field or files a registry entry.",
       "items": {
         "$ref": "/schemas/core/format-id.json"
       }
@@ -44,7 +44,7 @@
     "format_options": {
       "type": "array",
       "minItems": 1,
-      "description": "v2 path: one or more inline format declarations the product accepts. Each element narrows a canonical format with parameters, slots, and platform_extensions. The 90% case is a single-element array (one canonical narrowed for the product). Multi-element use cases: a product that accepts EITHER a third-party-hosted creative (e.g., Flashtalking-served `html5`) OR an internal `display_tag`; a video product that accepts a hosted `video_hosted` upload OR a `video_vast` tag. Buyers pick which option they're shipping at `sync_creatives` time by aligning their manifest to the matching declaration's `format_kind` and slots. Mutually exclusive with `format_ids`.",
+      "description": "v2 path: one or more inline format declarations the product accepts. Each element narrows a canonical format with parameters, slots, and platform_extensions. The 90% case is a single-element array (one canonical narrowed for the product). Multi-element use cases: a product that accepts EITHER a third-party-hosted creative (e.g., Flashtalking-served `html5`) OR an internal `display_tag`; a video product that accepts a hosted `video_hosted` upload OR a `video_vast` tag. Buyers pick which option they're shipping at `sync_creatives` time by aligning their manifest to the matching declaration's `format_kind` and slots.\n\nProducts MUST carry `format_ids`, `format_options`, or BOTH; at least one is required. See `format_ids` description for the dual-emission contract (same underlying declaration when both are present; SDK derives one from the other; buyers prefer `format_options` when both are present).",
       "items": {
         "$ref": "/schemas/core/product-format-declaration.json"
       }
@@ -497,18 +497,16 @@
     "pricing_options",
     "reporting_capabilities"
   ],
-  "oneOf": [
+  "anyOf": [
     {
       "title": "v1 Product (named-format reference)",
       "description": "Product references one or more named formats by structured format_id ({ agent_url, id }). The v1 path; remains supported through 4.x.",
-      "required": ["format_ids"],
-      "not": { "required": ["format_options"] }
+      "required": ["format_ids"]
     },
     {
       "title": "v2 Product (inline format declarations)",
       "description": "Product carries one or more inline ProductFormatDeclarations, each narrowing a canonical format. The v2 path introduced by RFC #3305. A single-element `format_options` array is the 90% case; multi-element arrays declare that the product accepts any of the listed format options.",
-      "required": ["format_options"],
-      "not": { "required": ["format_ids"] }
+      "required": ["format_options"]
     }
   ],
   "additionalProperties": true
