@@ -4,10 +4,16 @@ vi.mock('../../src/db/client.js', () => ({
   query: vi.fn(),
 }));
 
+vi.mock('../../src/utils/posthog.js', () => ({
+  captureEvent: vi.fn(),
+}));
+
 import { insertTypeReclassification } from '../../src/db/type-reclassification-log-db.js';
 import { query } from '../../src/db/client.js';
+import { captureEvent } from '../../src/utils/posthog.js';
 
 const mockedQuery = vi.mocked(query);
+const mockedCaptureEvent = vi.mocked(captureEvent);
 
 describe('insertTypeReclassification', () => {
   beforeEach(() => {
@@ -94,6 +100,69 @@ describe('insertTypeReclassification', () => {
         source: 'member_write',
       })
     ).resolves.toBeUndefined();
+  });
+
+  it('emits audit_log_insert_failed metric with pg error class on DB failure', async () => {
+    // Simulate a pg integrity constraint violation (SQLSTATE class 23).
+    const pgErr = Object.assign(new Error('duplicate key'), { code: '23505' });
+    mockedQuery.mockRejectedValueOnce(pgErr);
+
+    await insertTypeReclassification({
+      agentUrl: 'https://a',
+      newType: 'sales',
+      source: 'crawler_promote',
+    });
+
+    expect(mockedCaptureEvent).toHaveBeenCalledWith(
+      'server-metrics',
+      'audit_log_insert_failed',
+      { source: 'crawler_promote', error_class: '23' }
+    );
+  });
+
+  it('falls back to error_class="unknown" when the thrown error has no pg code', async () => {
+    mockedQuery.mockRejectedValueOnce(new Error('connection lost'));
+
+    await insertTypeReclassification({
+      agentUrl: 'https://a',
+      newType: 'sales',
+      source: 'member_write',
+    });
+
+    expect(mockedCaptureEvent).toHaveBeenCalledWith(
+      'server-metrics',
+      'audit_log_insert_failed',
+      { source: 'member_write', error_class: 'unknown' }
+    );
+  });
+
+  it('falls back to error_class="unknown" when the pg code is not a well-formed 5-char SQLSTATE', async () => {
+    // SQLSTATE is exactly 5 chars by spec — anything else is malformed and
+    // labeling it with a truncated prefix would be misleading on a dashboard.
+    const malformed = Object.assign(new Error('weird driver'), { code: 'XYZ' });
+    mockedQuery.mockRejectedValueOnce(malformed);
+
+    await insertTypeReclassification({
+      agentUrl: 'https://a',
+      newType: 'sales',
+      source: 'backfill_script',
+    });
+
+    expect(mockedCaptureEvent).toHaveBeenCalledWith(
+      'server-metrics',
+      'audit_log_insert_failed',
+      { source: 'backfill_script', error_class: 'unknown' }
+    );
+  });
+
+  it('does not emit the failure metric on a successful insert', async () => {
+    await insertTypeReclassification({
+      agentUrl: 'https://a',
+      newType: 'sales',
+      source: 'member_write',
+    });
+
+    expect(mockedCaptureEvent).not.toHaveBeenCalled();
   });
 
   it('accepts each documented source value', async () => {
