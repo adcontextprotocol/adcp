@@ -524,7 +524,8 @@
                   "docs/reference/changelog",
                   "docs/reference/implementor-faq",
                   "docs/reference/glossary",
-                  "docs/community/working-group"
+                  "docs/community/working-group",
+                  "docs/community/joining-slack"
                 ]
               },
               {
@@ -1016,7 +1017,8 @@
               "docs/reference/changelog",
               "docs/reference/implementor-faq",
               "docs/reference/glossary",
-              "docs/community/working-group"
+              "docs/community/working-group",
+              "docs/community/joining-slack"
             ]
           },
           {
