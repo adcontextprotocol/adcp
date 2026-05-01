@@ -31,6 +31,7 @@ import {
 } from '@adcp/sdk/server';
 import { createLogger } from '../logger.js';
 import { mountTenantRoutes } from './tenants/router.js';
+import { toolsForTenant } from './tenants/tool-catalog.js';
 import { createTrainingAgentServer } from './task-handlers.js';
 import { runWithSessionContext, flushDirtySessions, startSessionCleanup } from './state.js';
 import type { TrainingContext } from './types.js';
@@ -387,6 +388,7 @@ export function createTrainingAgentRouter(): Router {
         tenant_id: tenantId,
         url: `${agentUrl}/${tenantId}/mcp`,
         specialisms: TENANT_SPECIALISMS[tenantId],
+        tools: toolsForTenant(tenantId),
       })),
       last_updated: STARTUP_TIME,
     });

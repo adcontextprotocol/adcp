@@ -145,7 +145,12 @@ describe('Tenant routes via host-based dispatch (no /api/training-agent prefix)'
     expect(res.status).toBe(200);
     const body = res.body as {
       authorized_agents: Array<{ url: string; authorization_type: string }>;
-      _training_agent_tenants: Array<{ tenant_id: string; url: string; specialisms: string[] }>;
+      _training_agent_tenants: Array<{
+        tenant_id: string;
+        url: string;
+        specialisms: string[];
+        tools: string[];
+      }>;
     };
     // Schema-conformant authorized_agents covers sales (inline_properties)
     // and signals (signal_tags). Other tenants surface via the extension.
@@ -156,6 +161,12 @@ describe('Tenant routes via host-based dispatch (no /api/training-agent prefix)'
     expect(ids).toEqual(['brand', 'creative', 'creative-builder', 'governance', 'sales', 'signals']);
     expect(body._training_agent_tenants.find(t => t.tenant_id === 'brand')?.specialisms).toContain('brand-rights');
     expect(body._training_agent_tenants.find(t => t.tenant_id === 'governance')?.specialisms).toContain('content-standards');
+    // Tools surface so a developer can pick the right URL without trial.
+    expect(body._training_agent_tenants.find(t => t.tenant_id === 'sales')?.tools).toContain('get_products');
+    expect(body._training_agent_tenants.find(t => t.tenant_id === 'signals')?.tools).toContain('get_signals');
+    expect(body._training_agent_tenants.find(t => t.tenant_id === 'creative-builder')?.tools).toContain('build_creative');
+    expect(body._training_agent_tenants.find(t => t.tenant_id === 'creative-builder')?.tools).not.toContain('list_creatives');
+    expect(body._training_agent_tenants.find(t => t.tenant_id === 'governance')?.tools).toContain('check_governance');
   });
 
   it('routes /brand/mcp to the brand tenant', async () => {
