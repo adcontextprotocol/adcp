@@ -33,6 +33,13 @@ import {
   withdrawCommitteeInterest as withdrawCommitteeInterestService,
   WorkingGroupMembershipError,
 } from "../services/working-group-membership-service.js";
+import {
+  createWorkingGroupPost as createWorkingGroupPostService,
+  addCommitteeDocument as addCommitteeDocumentService,
+  updateCommitteeDocument as updateCommitteeDocumentService,
+  deleteCommitteeDocument as deleteCommitteeDocumentService,
+  WorkingGroupContentError,
+} from "../services/working-group-content-service.js";
 
 const logger = createLogger("committee-routes");
 
@@ -74,52 +81,9 @@ function checkReindexRateLimit(userId: string): boolean {
   return true;
 }
 
-// Allowed document URL patterns (whitelist approach to prevent SSRF)
-const ALLOWED_DOCUMENT_DOMAINS = [
-  'docs.google.com',
-  'drive.google.com',
-  'sheets.google.com',
-];
-
-// Trusted domains for direct file links (PDFs, presentations)
-const ALLOWED_FILE_HOSTING_DOMAINS = [
-  'drive.google.com',
-  'docs.google.com',
-  'storage.googleapis.com',
-  'dropbox.com',
-  'www.dropbox.com',
-  'dl.dropboxusercontent.com',
-  'onedrive.live.com',
-  '1drv.ms',
-  'agenticadvertising.org',
-  'www.agenticadvertising.org',
-];
-
-const ALLOWED_FILE_EXTENSIONS = ['.pdf', '.pptx', '.xlsx', '.docx'];
-
-function isAllowedDocumentUrl(url: string): boolean {
-  try {
-    const parsed = new URL(url);
-    if (parsed.protocol !== 'https:') {
-      return false;
-    }
-    // Allow trusted Google Docs/Sheets domains
-    if (ALLOWED_DOCUMENT_DOMAINS.includes(parsed.hostname)) {
-      return true;
-    }
-    // Allow PDF/PPTX only from trusted file hosting domains
-    const pathname = parsed.pathname.toLowerCase();
-    if (
-      ALLOWED_FILE_HOSTING_DOMAINS.includes(parsed.hostname) &&
-      ALLOWED_FILE_EXTENSIONS.some(ext => pathname.endsWith(ext))
-    ) {
-      return true;
-    }
-    return false;
-  } catch {
-    return false;
-  }
-}
+// Document URL allowlist + helper now live in
+// services/working-group-content-service so the route and the Addie
+// tool consume the same rules.
 
 // Valid committee types
 const VALID_COMMITTEE_TYPES = ['working_group', 'council', 'chapter', 'governance', 'industry_gathering'] as const;
@@ -1375,115 +1339,59 @@ export function createCommitteeRouters(): {
     try {
       const { slug } = req.params;
       const { title, content, content_type, category, excerpt, external_url, external_site_name, post_slug, is_members_only } = req.body;
-      const pool = getPool();
       const user = req.user!;
-
-      const group = await workingGroupDb.getWorkingGroupBySlug(slug);
-
-      if (!group || group.status !== 'active') {
-        return res.status(404).json({
-          error: 'Working group not found',
-          message: `No working group found with slug: ${slug}`,
-        });
-      }
-
-      const isMember = await workingGroupDb.isMember(group.id, user.id);
-      if (!isMember) {
-        return res.status(403).json({
-          error: 'Not a member',
-          message: 'You must be a member of this working group to post',
-        });
-      }
-
-      const isLeader = group.leaders?.some(l => l.canonical_user_id === user.id) ?? false;
-      // Non-leaders CANNOT opt out of members_only. Reject any explicit
-      // non-true value (`false`, `0`, `"false"`, `null`) with a 403 so the
-      // abuse signal surfaces in logs rather than being silently coerced.
-      // Omitting the field entirely is fine — we default to members-only.
-      if (!isLeader && is_members_only !== undefined && is_members_only !== true) {
-        return res.status(403).json({
-          error: 'Permission denied',
-          message: 'Only committee leaders can create public (non-members-only) posts in this working group. Submit via the Perspectives flow for editorial review instead.',
-        });
-      }
-      // For leaders, normalize the field to a strict boolean so a
-      // `0`/`"false"`/`null` value doesn't accidentally create a public
-      // post the leader didn't intend.
-      const finalMembersOnly = isLeader
-        ? (is_members_only === undefined ? true : Boolean(is_members_only))
-        : true;
-
-      if (!title || !post_slug) {
-        return res.status(400).json({
-          error: 'Missing required fields',
-          message: 'Title and slug are required',
-        });
-      }
-
-      const slugPattern = /^[a-z0-9-]+$/;
-      if (!slugPattern.test(post_slug)) {
-        return res.status(400).json({
-          error: 'Invalid slug',
-          message: 'Slug must contain only lowercase letters, numbers, and hyphens',
-        });
-      }
-
-      const authorName = user.firstName && user.lastName
-        ? `${user.firstName} ${user.lastName}`
-        : user.email;
-
-      const result = await pool.query(
-        `INSERT INTO perspectives (
-          working_group_id, slug, content_type, title, content, category, excerpt,
-          external_url, external_site_name, author_name, author_user_id,
-          status, published_at, is_members_only
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'published', NOW(), $12)
-        RETURNING *`,
-        [
-          group.id,
-          post_slug,
-          content_type || 'article',
-          title,
-          content || null,
-          category || null,
-          excerpt || null,
-          external_url || null,
-          external_site_name || null,
-          authorName,
-          user.id,
-          finalMembersOnly,
-        ]
-      );
-
-      // Send Slack notification to the working group's channel
-      notifyPublishedPost({
-        slackChannelId: group.slack_channel_id ?? undefined,
-        workingGroupName: group.name,
-        workingGroupSlug: slug,
-        postTitle: title,
+      const result = await createWorkingGroupPostService({
+        user: { id: user.id, email: user.email, firstName: user.firstName, lastName: user.lastName },
+        slug,
+        title,
         postSlug: post_slug,
-        authorName,
-        contentType: content_type || 'article',
-        excerpt: excerpt || undefined,
-        externalUrl: external_url || undefined,
-        category: category || undefined,
-        isMembersOnly: finalMembersOnly,
-      }).catch(err => {
-        logger.warn({ err }, 'Failed to send Slack channel notification for working group post');
+        content,
+        contentType: content_type,
+        category,
+        excerpt,
+        externalUrl: external_url,
+        externalSiteName: external_site_name,
+        isMembersOnly: is_members_only,
       });
-
-      res.status(201).json({ post: result.rows[0] });
+      res.status(201).json({ post: result.post });
     } catch (error) {
-      logger.error({ err: error }, 'Create working group post error');
-      if (error instanceof Error && error.message.includes('duplicate key')) {
-        return res.status(409).json({
-          error: 'Slug already exists',
-          message: 'A post with this slug already exists in this working group',
-        });
+      if (error instanceof WorkingGroupContentError) {
+        if (error.is('group_not_found')) {
+          return res.status(404).json({
+            error: 'Working group not found',
+            message: `No working group found with slug: ${error.meta.slug}`,
+          });
+        }
+        if (error.is('not_member')) {
+          return res.status(403).json({
+            error: 'Not a member',
+            message: 'You must be a member of this working group to post',
+          });
+        }
+        if (error.is('leader_required_for_public_post')) {
+          return res.status(403).json({
+            error: 'Permission denied',
+            message: 'Only committee leaders can create public (non-members-only) posts in this working group. Submit via the Perspectives flow for editorial review instead.',
+          });
+        }
+        if (error.is('missing_required_fields')) {
+          return res.status(400).json({ error: 'Missing required fields', message: 'Title and slug are required' });
+        }
+        if (error.is('invalid_post_slug')) {
+          return res.status(400).json({
+            error: 'Invalid slug',
+            message: 'Slug must contain only lowercase letters, numbers, and hyphens',
+          });
+        }
+        if (error.is('duplicate_post_slug')) {
+          return res.status(409).json({
+            error: 'Slug already exists',
+            message: 'A post with this slug already exists in this working group',
+          });
+        }
       }
-      res.status(500).json({
-        error: 'Failed to create post',
-      });
+      logger.error({ err: error }, 'Create working group post error');
+      res.status(500).json({ error: 'Failed to create post' });
     }
   });
 
@@ -1809,97 +1717,45 @@ export function createCommitteeRouters(): {
       const { slug } = req.params;
       const { title, description, document_url, document_type, display_order, is_featured } = req.body;
       const user = req.user!;
-
-      const group = await workingGroupDb.getWorkingGroupBySlug(slug);
-      if (!group) {
-        return res.status(404).json({
-          error: 'Committee not found',
-          message: `No committee found with slug: ${slug}`,
-        });
-      }
-
-      if (!title || !document_url) {
-        return res.status(400).json({
-          error: 'Missing required fields',
-          message: 'Title and document_url are required',
-        });
-      }
-
-      // Strict URL validation to prevent SSRF - only allow trusted domains
-      if (!isAllowedDocumentUrl(document_url)) {
-        return res.status(400).json({
-          error: 'Invalid document URL',
-          message: 'Only Google Docs, Sheets, Drive URLs, and direct links to PDFs or PPTX files are supported',
-        });
-      }
-
-      const document = await workingGroupDb.createDocument({
-        working_group_id: group.id,
+      const result = await addCommitteeDocumentService({
+        user: { id: user.id, email: user.email, firstName: user.firstName, lastName: user.lastName },
+        slug,
         title,
+        documentUrl: document_url,
         description,
-        document_url,
-        document_type,
-        display_order: display_order ?? 0,
-        is_featured: is_featured ?? false,
-        added_by_user_id: user.id,
+        documentType: document_type,
+        displayOrder: display_order,
+        isFeatured: is_featured,
       });
-
-      logger.info({ documentId: document.id, groupSlug: slug, userId: user.id }, 'Committee document created');
-
-      // Notify the working group's Slack channel
-      if (group.slack_channel_id && isSlackConfigured()) {
-        const docTypeLabel = document_type === 'spreadsheet' ? 'Spreadsheet' : document_type === 'presentation' ? 'Presentation' : 'Document';
-        const userName = user.firstName && user.lastName
-          ? `${user.firstName} ${user.lastName}`
-          : user.email || 'A working group leader';
-        const appUrl = process.env.APP_URL || 'https://agenticadvertising.org';
-        const groupUrl = `${appUrl}/working-groups/${slug}`;
-        // Sanitize for Slack mrkdwn link syntax (pipe breaks <url|label>)
-        const safeTitle = title.replace(/[|<>]/g, '-');
-
-        sendChannelMessage(group.slack_channel_id, {
-          text: `📄 New ${docTypeLabel} added to ${group.name}: ${title}`,
-          blocks: [
-            {
-              type: 'header',
-              text: {
-                type: 'plain_text' as const,
-                text: `📄 New ${docTypeLabel} Added`,
-                emoji: true,
-              },
-            },
-            {
-              type: 'section',
-              text: {
-                type: 'mrkdwn' as const,
-                text: `*<${document_url}|${safeTitle}>*${description ? `\n${description}` : ''}`,
-              },
-            },
-            {
-              type: 'section',
-              text: {
-                type: 'mrkdwn' as const,
-                text: `Added by ${userName} · <${groupUrl}|View all ${group.name} resources>`,
-              },
-            },
-          ],
-        }).catch(err => {
-          logger.warn({ err, groupSlug: slug, documentId: document.id }, 'Failed to send Slack notification for new committee document');
-        });
-      }
-
-      const { file_data: _fd, last_content: _lc, ...documentMeta } = document;
-      res.status(201).json({ document: documentMeta });
-
-      // Index immediately so Addie can reference the document right away
-      reindexDocument(document.id)
-        .then(() => refreshWorkingGroupDocs())
-        .catch(err => logger.warn({ err, documentId: document.id }, 'Background indexing after document creation failed'));
+      res.status(201).json({ document: result.document });
     } catch (error) {
+      if (error instanceof WorkingGroupContentError) {
+        if (error.is('group_not_found')) {
+          return res.status(404).json({
+            error: 'Committee not found',
+            message: `No committee found with slug: ${error.meta.slug}`,
+          });
+        }
+        if (error.is('missing_required_fields')) {
+          return res.status(400).json({
+            error: 'Missing required fields',
+            message: 'Title and document_url are required',
+          });
+        }
+        if (error.is('invalid_document_url')) {
+          return res.status(400).json({
+            error: 'Invalid document URL',
+            message: 'Only Google Docs, Sheets, Drive URLs, and direct links to PDFs/PPTX/XLSX/DOCX from trusted hosts are supported',
+          });
+        }
+        if (error.is('not_member')) {
+          // requireWorkingGroupMember middleware blocks this in practice,
+          // but the service still returns it for in-process callers.
+          return res.status(403).json({ error: 'Not a member', message: 'Only committee members can add documents' });
+        }
+      }
       logger.error({ err: error }, 'Create committee document error');
-      res.status(500).json({
-        error: 'Failed to create document',
-      });
+      res.status(500).json({ error: 'Failed to create document' });
     }
   });
 
@@ -2061,61 +1917,45 @@ export function createCommitteeRouters(): {
     try {
       const { slug, documentId } = req.params;
       const { title, description, document_url, document_type, display_order, is_featured } = req.body;
-
-      if (!isUuid(documentId)) {
-        return res.status(400).json({
-          error: 'Invalid document ID',
-          message: 'Document ID must be a valid UUID',
-        });
-      }
-
-      const group = await workingGroupDb.getWorkingGroupBySlug(slug);
-      if (!group) {
-        return res.status(404).json({
-          error: 'Committee not found',
-          message: `No committee found with slug: ${slug}`,
-        });
-      }
-
-      const existingDoc = await workingGroupDb.getDocumentById(documentId);
-      if (!existingDoc || existingDoc.working_group_id !== group.id) {
-        return res.status(404).json({
-          error: 'Document not found',
-          message: 'Document not found in this committee',
-        });
-      }
-
-      // Validate URL if provided - strict validation to prevent SSRF
-      if (document_url && !isAllowedDocumentUrl(document_url)) {
-        return res.status(400).json({
-          error: 'Invalid document URL',
-          message: 'Only Google Docs, Sheets, Drive URLs, and direct links to PDFs or PPTX files are supported',
-        });
-      }
-
-      const document = await workingGroupDb.updateDocument(documentId, {
+      const user = req.user!;
+      const result = await updateCommitteeDocumentService({
+        user: { id: user.id, email: user.email, firstName: user.firstName, lastName: user.lastName },
+        slug,
+        documentId,
         title,
         description,
-        document_url,
-        document_type,
-        display_order,
-        is_featured,
+        documentUrl: document_url,
+        documentType: document_type,
+        displayOrder: display_order,
+        isFeatured: is_featured,
       });
-
-      if (!document) {
-        return res.status(404).json({ error: 'Document not found' });
-      }
-      const { file_data: _fd, last_content: _lc, ...documentMeta } = document;
-      res.json({ document: documentMeta });
-
-      // Refresh in-memory search index so Addie sees updated metadata
-      refreshWorkingGroupDocs()
-        .catch(err => logger.warn({ err, documentId }, 'Background refresh after document update failed'));
+      res.json({ document: result.document });
     } catch (error) {
+      if (error instanceof WorkingGroupContentError) {
+        if (error.is('invalid_document_id')) {
+          return res.status(400).json({ error: 'Invalid document ID', message: 'Document ID must be a valid UUID' });
+        }
+        if (error.is('group_not_found')) {
+          return res.status(404).json({
+            error: 'Committee not found',
+            message: `No committee found with slug: ${error.meta.slug}`,
+          });
+        }
+        if (error.is('document_not_found')) {
+          return res.status(404).json({ error: 'Document not found', message: 'Document not found in this committee' });
+        }
+        if (error.is('invalid_document_url')) {
+          return res.status(400).json({
+            error: 'Invalid document URL',
+            message: 'Only Google Docs, Sheets, Drive URLs, and direct links to PDFs/PPTX/XLSX/DOCX from trusted hosts are supported',
+          });
+        }
+        if (error.is('not_member')) {
+          return res.status(403).json({ error: 'Not a member', message: 'Only committee members can update documents' });
+        }
+      }
       logger.error({ err: error }, 'Update committee document error');
-      res.status(500).json({
-        error: 'Failed to update document',
-      });
+      res.status(500).json({ error: 'Failed to update document' });
     }
   });
 
@@ -2189,44 +2029,33 @@ export function createCommitteeRouters(): {
   publicApiRouter.delete('/:slug/documents/:documentId', requireAuth, requireWorkingGroupLeader, async (req: Request, res: Response) => {
     try {
       const { slug, documentId } = req.params;
-
-      if (!isUuid(documentId)) {
-        return res.status(400).json({
-          error: 'Invalid document ID',
-          message: 'Document ID must be a valid UUID',
-        });
-      }
-
-      const group = await workingGroupDb.getWorkingGroupBySlug(slug);
-      if (!group) {
-        return res.status(404).json({
-          error: 'Committee not found',
-          message: `No committee found with slug: ${slug}`,
-        });
-      }
-
-      const existingDoc = await workingGroupDb.getDocumentById(documentId);
-      if (!existingDoc || existingDoc.working_group_id !== group.id) {
-        return res.status(404).json({
-          error: 'Document not found',
-          message: 'Document not found in this committee',
-        });
-      }
-
-      await workingGroupDb.deleteDocument(documentId);
-
-      logger.info({ documentId, groupSlug: slug }, 'Committee document deleted');
-
-      res.json({ success: true });
-
-      // Remove from in-memory search index
-      refreshWorkingGroupDocs()
-        .catch(err => logger.warn({ err, documentId }, 'Background refresh after document delete failed'));
-    } catch (error) {
-      logger.error({ err: error }, 'Delete committee document error');
-      res.status(500).json({
-        error: 'Failed to delete document',
+      const user = req.user!;
+      await deleteCommitteeDocumentService({
+        user: { id: user.id, email: user.email, firstName: user.firstName, lastName: user.lastName },
+        slug,
+        documentId,
       });
+      res.json({ success: true });
+    } catch (error) {
+      if (error instanceof WorkingGroupContentError) {
+        if (error.is('invalid_document_id')) {
+          return res.status(400).json({ error: 'Invalid document ID', message: 'Document ID must be a valid UUID' });
+        }
+        if (error.is('group_not_found')) {
+          return res.status(404).json({
+            error: 'Committee not found',
+            message: `No committee found with slug: ${error.meta.slug}`,
+          });
+        }
+        if (error.is('document_not_found')) {
+          return res.status(404).json({ error: 'Document not found', message: 'Document not found in this committee' });
+        }
+        if (error.is('not_leader')) {
+          return res.status(403).json({ error: 'Not a leader', message: 'Only committee leaders can delete documents' });
+        }
+      }
+      logger.error({ err: error }, 'Delete committee document error');
+      res.status(500).json({ error: 'Failed to delete document' });
     }
   });
 
