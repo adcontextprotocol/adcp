@@ -80,6 +80,23 @@ export interface AgentCapabilities {
     can_activate: boolean;
     can_get_signals: boolean;
   };
+  measurement_capabilities?: {
+    metrics: Array<{
+      metric_id: string;
+      standard_reference?: string;
+      accreditations?: Array<{
+        accrediting_body: string;
+        certification_id?: string;
+        valid_until?: string;
+        evidence_url?: string;
+        verified_by_aao: false;
+      }>;
+      unit?: string;
+      description?: string;
+      methodology_url?: string;
+      methodology_version?: string;
+    }>;
+  };
   discovery_error?: string;
   oauth_required?: boolean;
 }
@@ -302,6 +319,14 @@ export interface Impersonator {
 }
 
 export interface WorkOSUser {
+  /**
+   * The canonical workos_user_id for app-state queries. For singleton
+   * identities this equals the authenticated WorkOS user. For non-primary
+   * bindings (someone signed in with a linked email), the auth middleware
+   * swaps this to the identity's primary workos_user_id so reads land on
+   * the right person. Use {@link authWorkosUserId} when you need the
+   * actual authenticated WorkOS user (calling WorkOS APIs, audit logs).
+   */
   id: string;
   email: string;
   firstName?: string;
@@ -309,6 +334,24 @@ export interface WorkOSUser {
   emailVerified: boolean;
   createdAt: string;
   updatedAt: string;
+  /**
+   * The person behind this WorkOS user. One identity may back multiple
+   * WorkOS users (one per email). Resolved from `identity_workos_users` in
+   * the auth middleware. Absent for synthetic users (admin API key, WorkOS
+   * API key).
+   *
+   * Server-side only — do not serialize to clients. Correlating identityId
+   * across surfaces would let a client tie multiple emails to one person.
+   */
+  identityId?: string;
+  /**
+   * The actual authenticated WorkOS user, before any identity-aware id
+   * swap. Set whenever {@link id} differs from the WorkOS-authenticated
+   * user (i.e., a non-primary binding signed in). Use this for WorkOS API
+   * calls and audit logs that need the credential identity, not the
+   * person identity.
+   */
+  authWorkosUserId?: string;
   /** Present when this session is being impersonated by an admin */
   impersonator?: Impersonator;
 }
@@ -1030,6 +1073,15 @@ export interface FederatedAgent {
   discovered_from?: {
     publisher_domain: string;
     authorized_for?: string;
+  };
+  // Publisher-side endorsement: set when source='discovered' AND the
+  // publisher_domain in discovered_from is claimed by an AAO member.
+  // Mutually exclusive with `member`. See registering-an-agent docs and
+  // option C from issue #3547 (Problem 6 of #3538).
+  endorsed_by_publisher_member?: {
+    slug?: string;
+    display_name?: string;
+    publisher_domain: string;
   };
   discovered_at?: string;
 }

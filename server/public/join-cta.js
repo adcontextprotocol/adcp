@@ -74,7 +74,7 @@ function injectJoinCtaStyles() {
       left: 50%;
       transform: translateX(-50%);
       background: var(--aao-primary);
-      color: white;
+      color: var(--color-text-on-dark);
       padding: var(--space-1) var(--space-4);
       border-radius: var(--radius-full);
       font-size: var(--text-xs);
@@ -235,7 +235,7 @@ function injectJoinCtaStyles() {
       align-items: center;
       gap: var(--space-2);
       background: var(--color-success-600);
-      color: white;
+      color: var(--color-text-on-dark);
       padding: var(--space-2) var(--space-4);
       border-radius: var(--radius-full);
       font-size: var(--text-lg);
@@ -255,7 +255,7 @@ function injectJoinCtaStyles() {
     }
 
     .join-cta-member-benefits {
-      background: white;
+      background: var(--color-bg-card);
       border-radius: var(--radius-md);
       padding: var(--space-5);
       text-align: left;

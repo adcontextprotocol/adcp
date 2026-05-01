@@ -192,6 +192,7 @@
                           "docs/media-buy/product-discovery/collections-and-installments",
                           "docs/media-buy/product-discovery/refinement",
                           "docs/media-buy/media-buys/index",
+                          "docs/media-buy/media-buys/lifecycle",
                           "docs/media-buy/media-buys/optimization-reporting",
                           "docs/media-buy/media-buys/policy-compliance",
                           "docs/media-buy/creatives/index",
@@ -556,7 +557,8 @@
                       "docs/learning/specialist/creative",
                       "docs/learning/specialist/signals",
                       "docs/learning/specialist/governance",
-                      "docs/learning/specialist/sponsored-intelligence"
+                      "docs/learning/specialist/sponsored-intelligence",
+                      "docs/learning/specialist/security"
                     ]
                   },
                   {
@@ -704,6 +706,7 @@
                       "docs/media-buy/product-discovery/collections-and-installments",
                       "docs/media-buy/product-discovery/refinement",
                       "docs/media-buy/media-buys/index",
+                      "docs/media-buy/media-buys/lifecycle",
                       "docs/media-buy/media-buys/optimization-reporting",
                       "docs/media-buy/media-buys/policy-compliance",
                       "docs/media-buy/creatives/index",
@@ -1047,7 +1050,8 @@
                   "docs/learning/specialist/creative",
                   "docs/learning/specialist/signals",
                   "docs/learning/specialist/governance",
-                  "docs/learning/specialist/sponsored-intelligence"
+                  "docs/learning/specialist/sponsored-intelligence",
+                  "docs/learning/specialist/security"
                 ]
               },
               {

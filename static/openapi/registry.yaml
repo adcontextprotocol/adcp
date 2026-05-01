@@ -393,7 +393,7 @@ components:
               type: string
             display_name:
               type: string
-          description: "AAO member that owns this agent record, if any. Populated when `source` is `registered`. For `discovered` agents this is currently `null` even when the publisher_domain in `discovered_from` is owned by a member — see #3538 Problem 6."
+          description: "AAO member that owns this agent record, if any. Populated when `source` is `registered`. For `discovered` agents this is `null`; see `endorsed_by_publisher_member` for the publisher-side endorsement signal added in #3547 / Problem 6 of #3538."
         discovered_from:
           type: object
           properties:
@@ -402,6 +402,8 @@ components:
             authorized_for:
               type: string
           description: Set when `source = 'discovered'`. Identifies the publisher_domain whose adagents.json listed this agent, and the `authorized_for` string from that listing. Mutually exclusive with the `member` field on the registered path.
+        endorsed_by_publisher_member:
+          $ref: "#/components/schemas/EndorsedByPublisherMember"
         health:
           $ref: "#/components/schemas/AgentHealth"
         stats:
@@ -420,6 +422,23 @@ components:
         - url
         - name
         - type
+    EndorsedByPublisherMember:
+      type: object
+      properties:
+        slug:
+          type: string
+          description: Member organization slug — stable URL-safe identifier for the publisher member.
+        display_name:
+          type: string
+          description: Member organization display name — render-ready label for the publisher member.
+        publisher_domain:
+          type: string
+          description: Publisher domain whose adagents.json endorsed this agent (the linkage that produced this signal).
+      required:
+        - slug
+        - display_name
+        - publisher_domain
+      description: "Set on discovered agents when discovered_from.publisher_domain is claimed by an AAO member (publishers[] entry with is_public=true). Mutually exclusive with member — registered agents never carry this. Option C from #3547 (Problem 6 / #3538)."
     AgentHealth:
       type: object
       properties:
@@ -2642,6 +2661,16 @@ paths:
         - schema:
             type: string
             enum:
+              - registered
+              - discovered
+            description: Filter agents by registration source. Omit to receive both.
+          required: false
+          description: Filter agents by registration source. Omit to receive both.
+          name: source
+          in: query
+        - schema:
+            type: string
+            enum:
               - "true"
           required: false
           name: health
@@ -2695,6 +2724,12 @@ paths:
                   - agents
                   - count
                   - sources
+        "400":
+          description: Invalid query parameter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/registry/publishers:
     get:
       operationId: listPublishers

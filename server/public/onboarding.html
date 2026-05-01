@@ -48,7 +48,7 @@
       margin-bottom: var(--space-8);
     }
     .option-card {
-      border: var(--border-2) solid var(--color-gray-200);
+      border: var(--border-2) solid var(--color-border);
       border-radius: var(--radius-md);
       padding: var(--space-5);
       cursor: pointer;
@@ -56,18 +56,18 @@
     }
     .option-card:hover {
       border-color: var(--color-brand);
-      background: var(--color-primary-50);
+      background: var(--color-brand-bg);
     }
     .option-card.selected {
       border-color: var(--color-brand);
-      background: var(--color-primary-100);
+      background: var(--color-brand-bg);
     }
     .option-card.disabled {
       opacity: 0.5;
       cursor: not-allowed;
     }
     .option-card.disabled:hover {
-      border-color: var(--color-gray-200);
+      border-color: var(--color-border);
       background: var(--color-bg-card);
     }
     .option-header {
@@ -143,7 +143,7 @@
     }
     .role-owner { background: var(--color-info-100); color: var(--color-info-700); }
     .role-admin { background: var(--color-primary-100); color: var(--color-primary-700); }
-    .role-member { background: var(--color-gray-100); color: var(--color-text-secondary); }
+    .role-member { background: var(--color-bg-subtle); color: var(--color-text-secondary); }
     .btn-accept {
       padding: var(--space-2) var(--space-4);
       background: var(--color-info-600);
@@ -178,7 +178,7 @@
     input {
       width: 100%;
       padding: var(--space-3);
-      border: var(--border-2) solid var(--color-gray-200);
+      border: var(--border-2) solid var(--color-border);
       border-radius: var(--radius-md);
       font-size: var(--text-base);
       transition: var(--transition-colors);
@@ -208,12 +208,12 @@
       transform: none;
     }
     .btn-secondary {
-      background: var(--color-gray-100);
+      background: var(--color-bg-subtle);
       color: var(--color-text-heading);
-      border: var(--border-1) solid var(--color-gray-300);
+      border: var(--border-1) solid var(--color-border-strong);
     }
     .btn-secondary:hover {
-      background: var(--color-gray-200);
+      background: var(--color-bg-button-secondary);
     }
     .error {
       background: var(--color-error-50);
@@ -232,8 +232,8 @@
       margin-bottom: var(--space-5);
     }
     .agreements {
-      background: var(--color-gray-50);
-      border: var(--border-1) solid var(--color-gray-200);
+      background: var(--color-bg-subtle);
+      border: var(--border-1) solid var(--color-border);
       border-radius: var(--radius-md);
       padding: var(--space-4);
       margin-bottom: var(--space-5);
@@ -250,8 +250,8 @@
       display: flex;
       align-items: flex-start;
       gap: var(--space-3);
-      background: var(--color-gray-50);
-      border: var(--border-1) solid var(--color-gray-200);
+      background: var(--color-bg-subtle);
+      border: var(--border-1) solid var(--color-border);
       border-radius: var(--radius-md);
       padding: var(--space-4);
       margin-bottom: var(--space-5);
@@ -259,7 +259,7 @@
       cursor: pointer;
     }
     .agreements-checkbox:hover {
-      background: var(--color-gray-100);
+      background: var(--color-bg-subtle);
     }
     .agreements-checkbox input[type="checkbox"] {
       width: 18px;
@@ -295,7 +295,7 @@
       color: var(--color-text-secondary);
       font-size: var(--text-sm);
       padding: var(--space-4);
-      background: var(--color-gray-100);
+      background: var(--color-bg-subtle);
       border-radius: var(--radius-md);
       text-align: center;
     }
@@ -319,7 +319,7 @@
       color: var(--color-text-secondary);
       margin-bottom: var(--space-4);
       padding: var(--space-2_5);
-      background: var(--color-gray-100);
+      background: var(--color-bg-subtle);
       border-radius: var(--radius-md);
     }
     .domain-hint strong {
@@ -330,7 +330,7 @@
       align-items: center;
       gap: var(--space-4);
       background: var(--color-bg-card);
-      border: var(--border-1) solid var(--color-gray-200);
+      border: var(--border-1) solid var(--color-border);
       border-radius: var(--radius-md);
       padding: var(--space-4);
       margin-bottom: var(--space-3);
@@ -343,12 +343,12 @@
       width: 48px;
       height: 48px;
       border-radius: var(--radius-md);
-      background: var(--color-gray-100);
+      background: var(--color-bg-subtle);
       display: flex;
       align-items: center;
       justify-content: center;
       font-size: var(--text-2xl);
-      color: var(--color-gray-400);
+      color: var(--color-text-muted);
       flex-shrink: 0;
       overflow: hidden;
     }
@@ -407,18 +407,18 @@
       cursor: not-allowed;
     }
     .btn-pending {
-      background: var(--color-gray-100);
+      background: var(--color-bg-subtle);
       color: var(--color-text-secondary);
       cursor: default;
     }
     .btn-pending:hover {
-      background: var(--color-gray-100);
+      background: var(--color-bg-subtle);
     }
     .no-orgs {
       color: var(--color-text-secondary);
       font-size: var(--text-sm);
       padding: var(--space-5);
-      background: var(--color-gray-100);
+      background: var(--color-bg-subtle);
       border-radius: var(--radius-md);
       text-align: center;
     }
@@ -426,11 +426,11 @@
     /* Radio option hover styles */
     .radio-option:hover {
       border-color: var(--color-brand);
-      background: var(--color-primary-50);
+      background: var(--color-brand-bg);
     }
     .radio-option:has(input:checked) {
       border-color: var(--color-brand);
-      background: var(--color-primary-100);
+      background: var(--color-brand-bg);
     }
   </style>
 </head>
@@ -592,49 +592,49 @@
           <div class="form-group">
             <label>What type of company are you? *</label>
             <div class="radio-group" style="display: flex; flex-direction: column; gap: var(--space-2_5);">
-              <label class="radio-option" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-1) solid var(--color-gray-200); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-colors);">
+              <label class="radio-option" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-1) solid var(--color-border); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-colors);">
                 <input type="radio" name="companyType" value="brand" required style="width: 18px; height: 18px; flex-shrink: 0;">
                 <div>
                   <div style="font-weight: var(--font-semibold); color: var(--color-text-heading);">Brand / Marketer</div>
                   <div style="font-size: var(--text-sm); color: var(--color-text-secondary);">Companies that advertise products or services</div>
                 </div>
               </label>
-              <label class="radio-option" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-1) solid var(--color-gray-200); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-colors);">
+              <label class="radio-option" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-1) solid var(--color-border); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-colors);">
                 <input type="radio" name="companyType" value="publisher" style="width: 18px; height: 18px; flex-shrink: 0;">
                 <div>
                   <div style="font-weight: var(--font-semibold); color: var(--color-text-heading);">Publisher / Media Network</div>
                   <div style="font-size: var(--text-sm); color: var(--color-text-secondary);">Media owners and networks that sell advertising inventory</div>
                 </div>
               </label>
-              <label class="radio-option" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-1) solid var(--color-gray-200); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-colors);">
+              <label class="radio-option" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-1) solid var(--color-border); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-colors);">
                 <input type="radio" name="companyType" value="agency" style="width: 18px; height: 18px; flex-shrink: 0;">
                 <div>
                   <div style="font-weight: var(--font-semibold); color: var(--color-text-heading);">Agency</div>
                   <div style="font-size: var(--text-sm); color: var(--color-text-secondary);">Advertising, media, or creative agencies</div>
                 </div>
               </label>
-              <label class="radio-option" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-1) solid var(--color-gray-200); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-colors);">
+              <label class="radio-option" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-1) solid var(--color-border); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-colors);">
                 <input type="radio" name="companyType" value="adtech" style="width: 18px; height: 18px; flex-shrink: 0;">
                 <div>
                   <div style="font-weight: var(--font-semibold); color: var(--color-text-heading);">Ad Tech</div>
                   <div style="font-size: var(--text-sm); color: var(--color-text-secondary);">DSPs, SSPs, ad servers, programmatic platforms</div>
                 </div>
               </label>
-              <label class="radio-option" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-1) solid var(--color-gray-200); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-colors);">
+              <label class="radio-option" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-1) solid var(--color-border); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-colors);">
                 <input type="radio" name="companyType" value="data" style="width: 18px; height: 18px; flex-shrink: 0;">
                 <div>
                   <div style="font-weight: var(--font-semibold); color: var(--color-text-heading);">Data & Measurement</div>
                   <div style="font-size: var(--text-sm); color: var(--color-text-secondary);">Clean rooms, CDPs, identity, measurement, attribution</div>
                 </div>
               </label>
-              <label class="radio-option" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-1) solid var(--color-gray-200); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-colors);">
+              <label class="radio-option" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-1) solid var(--color-border); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-colors);">
                 <input type="radio" name="companyType" value="ai" style="width: 18px; height: 18px; flex-shrink: 0;">
                 <div>
                   <div style="font-weight: var(--font-semibold); color: var(--color-text-heading);">AI & Tech Platforms</div>
                   <div style="font-size: var(--text-sm); color: var(--color-text-secondary);">LLM providers, agent frameworks, cloud AI, AI tooling</div>
                 </div>
               </label>
-              <label class="radio-option" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-1) solid var(--color-gray-200); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-colors);">
+              <label class="radio-option" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-1) solid var(--color-border); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-colors);">
                 <input type="radio" name="companyType" value="other" style="width: 18px; height: 18px; flex-shrink: 0;">
                 <div>
                   <div style="font-weight: var(--font-semibold); color: var(--color-text-heading);">Other</div>
@@ -647,37 +647,37 @@
           <div class="form-group">
             <label>Annual Revenue *</label>
             <div class="radio-group" style="display: flex; flex-direction: column; gap: var(--space-2_5);">
-              <label class="radio-option" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-1) solid var(--color-gray-200); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-colors);">
+              <label class="radio-option" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-1) solid var(--color-border); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-colors);">
                 <input type="radio" name="revenueTier" value="under_1m" required style="width: 18px; height: 18px; flex-shrink: 0;">
                 <div>
                   <div style="font-weight: var(--font-semibold); color: var(--color-text-heading);">Under $1M</div>
                 </div>
               </label>
-              <label class="radio-option" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-1) solid var(--color-gray-200); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-colors);">
+              <label class="radio-option" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-1) solid var(--color-border); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-colors);">
                 <input type="radio" name="revenueTier" value="1m_5m" style="width: 18px; height: 18px; flex-shrink: 0;">
                 <div>
                   <div style="font-weight: var(--font-semibold); color: var(--color-text-heading);">$1M - $5M</div>
                 </div>
               </label>
-              <label class="radio-option" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-1) solid var(--color-gray-200); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-colors);">
+              <label class="radio-option" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-1) solid var(--color-border); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-colors);">
                 <input type="radio" name="revenueTier" value="5m_50m" style="width: 18px; height: 18px; flex-shrink: 0;">
                 <div>
                   <div style="font-weight: var(--font-semibold); color: var(--color-text-heading);">$5M - $50M</div>
                 </div>
               </label>
-              <label class="radio-option" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-1) solid var(--color-gray-200); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-colors);">
+              <label class="radio-option" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-1) solid var(--color-border); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-colors);">
                 <input type="radio" name="revenueTier" value="50m_250m" style="width: 18px; height: 18px; flex-shrink: 0;">
                 <div>
                   <div style="font-weight: var(--font-semibold); color: var(--color-text-heading);">$50M - $250M</div>
                 </div>
               </label>
-              <label class="radio-option" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-1) solid var(--color-gray-200); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-colors);">
+              <label class="radio-option" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-1) solid var(--color-border); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-colors);">
                 <input type="radio" name="revenueTier" value="250m_1b" style="width: 18px; height: 18px; flex-shrink: 0;">
                 <div>
                   <div style="font-weight: var(--font-semibold); color: var(--color-text-heading);">$250M - $1B</div>
                 </div>
               </label>
-              <label class="radio-option" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-1) solid var(--color-gray-200); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-colors);">
+              <label class="radio-option" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-1) solid var(--color-border); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-colors);">
                 <input type="radio" name="revenueTier" value="1b_plus" style="width: 18px; height: 18px; flex-shrink: 0;">
                 <div>
                   <div style="font-weight: var(--font-semibold); color: var(--color-text-heading);">$1B+</div>
@@ -690,7 +690,7 @@
           <div class="form-group" id="companyTierGroup">
             <label>Select your membership tier</label>
             <div class="radio-group" style="display: flex; flex-direction: column; gap: var(--space-2_5);">
-              <label class="radio-option" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-1) solid var(--color-gray-200); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-colors);">
+              <label class="radio-option" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-1) solid var(--color-border); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-colors);">
                 <input type="radio" name="companyTier" value="" checked style="width: 18px; height: 18px; flex-shrink: 0;">
                 <div style="flex: 1;">
                   <div style="font-weight: var(--font-semibold); color: var(--color-text-heading);">Community</div>
@@ -698,7 +698,7 @@
                 </div>
                 <div style="font-weight: var(--font-bold); color: var(--color-success-700); white-space: nowrap;">Free</div>
               </label>
-              <label class="radio-option" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-1) solid var(--color-gray-200); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-colors);">
+              <label class="radio-option" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-1) solid var(--color-border); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-colors);">
                 <input type="radio" name="companyTier" value="company_standard" style="width: 18px; height: 18px; flex-shrink: 0;">
                 <div style="flex: 1;">
                   <div style="font-weight: var(--font-semibold); color: var(--color-text-heading);">Company Membership</div>
@@ -706,7 +706,7 @@
                 </div>
                 <div id="companyStandardPrice" style="font-weight: var(--font-bold); color: var(--color-brand); white-space: nowrap;">$2,500<span style="font-size: var(--text-sm); font-weight: normal; color: var(--color-text-muted);">/year</span></div>
               </label>
-              <label class="radio-option" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-1) solid var(--color-gray-200); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-colors);">
+              <label class="radio-option" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-1) solid var(--color-border); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-colors);">
                 <input type="radio" name="companyTier" value="company_icl" style="width: 18px; height: 18px; flex-shrink: 0;">
                 <div style="flex: 1;">
                   <div style="font-weight: var(--font-semibold); color: var(--color-text-heading);">Industry Council Leader</div>
@@ -757,7 +757,7 @@
         <div class="form-group">
           <label>Select your membership tier</label>
           <div class="radio-group" style="display: flex; flex-direction: column; gap: var(--space-2_5);">
-            <label class="radio-option" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-1) solid var(--color-gray-200); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-colors);">
+            <label class="radio-option" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-1) solid var(--color-border); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-colors);">
               <input type="radio" name="individualTier" value="" checked style="width: 18px; height: 18px; flex-shrink: 0;">
               <div style="flex: 1;">
                 <div style="font-weight: var(--font-semibold); color: var(--color-text-heading);">Community</div>
@@ -765,7 +765,7 @@
               </div>
               <div style="font-weight: var(--font-bold); color: var(--color-success-700); white-space: nowrap;">Free</div>
             </label>
-            <label class="radio-option" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-1) solid var(--color-gray-200); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-colors);">
+            <label class="radio-option" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-1) solid var(--color-border); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-colors);">
               <input type="radio" name="individualTier" value="individual_professional" style="width: 18px; height: 18px; flex-shrink: 0;">
               <div style="flex: 1;">
                 <div style="font-weight: var(--font-semibold); color: var(--color-text-heading);">Professional</div>
@@ -773,7 +773,7 @@
               </div>
               <div style="font-weight: var(--font-bold); color: var(--color-brand); white-space: nowrap;">$250<span style="font-size: var(--text-sm); font-weight: normal; color: var(--color-text-muted);">/year</span></div>
             </label>
-            <label class="radio-option" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-1) solid var(--color-gray-200); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-colors);">
+            <label class="radio-option" style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-1) solid var(--color-border); border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-colors);">
               <input type="radio" name="individualTier" value="individual_academic" style="width: 18px; height: 18px; flex-shrink: 0;">
               <div style="flex: 1;">
                 <div style="font-weight: var(--font-semibold); color: var(--color-text-heading);">Academic, Student, or Non-profit</div>
@@ -811,7 +811,7 @@
         <label for="brandDomain">Your domain</label>
         <div style="display: flex; gap: var(--space-2);">
           <input type="text" id="brandDomain" placeholder="yourdomain.com" style="flex: 1;" oninput="clearBrandCheck()">
-          <button type="button" onclick="checkBrandJson()" style="padding: var(--space-2) var(--space-4); background: var(--color-gray-100); border: var(--border-1) solid var(--color-border); border-radius: var(--radius-md); cursor: pointer; white-space: nowrap; font-size: var(--text-sm);">Check</button>
+          <button type="button" onclick="checkBrandJson()" style="padding: var(--space-2) var(--space-4); background: var(--color-bg-subtle); border: var(--border-1) solid var(--color-border); border-radius: var(--radius-md); cursor: pointer; white-space: nowrap; font-size: var(--text-sm);">Check</button>
         </div>
         <div id="brandJsonStatus" style="margin-top: var(--space-2); font-size: var(--text-sm); display: none;"></div>
       </div>
@@ -1210,14 +1210,14 @@
     function renderOrgCard(org) {
       const logoHtml = org.logo_url
         ? '<img src="' + escapeHtml(org.logo_url) + '" alt="" style="width: 40px; height: 40px; border-radius: var(--radius-md); object-fit: cover;">'
-        : '<div style="width: 40px; height: 40px; background: var(--color-gray-100); border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; font-size: 20px;">&#127970;</div>';
+        : '<div style="width: 40px; height: 40px; background: var(--color-bg-subtle); border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; font-size: 20px;">&#127970;</div>';
 
       const adminContactHtml = org.admin_contact
         ? '<div style="font-size: var(--text-xs); color: var(--color-text-muted);">Contact: ' + escapeHtml(org.admin_contact) + '</div>'
         : '';
 
       const buttonHtml = org.request_pending
-        ? '<button class="btn btn-sm" disabled style="background: var(--color-gray-200); cursor: not-allowed;">Request Pending</button>'
+        ? '<button class="btn btn-sm" disabled style="background: var(--color-bg-button-secondary); cursor: not-allowed;">Request Pending</button>'
         : '<button class="btn btn-primary btn-sm" onclick="requestToJoin(\'' + escapeHtml(org.organization_id) + '\', this)">Request to Join</button>';
 
       return '<div class="org-card" style="display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); padding: var(--space-3); border: var(--border-1) solid var(--color-border); border-radius: var(--radius-md); margin-bottom: var(--space-2);" data-org-id="' + escapeHtml(org.organization_id) + '">' +

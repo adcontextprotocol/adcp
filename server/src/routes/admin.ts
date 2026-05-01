@@ -441,7 +441,9 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
 
         const token = await workos.widgets.createToken({
           organizationId,
-          userId: req.user.id,
+          // Widgets are bound to a specific WorkOS user as auth credential —
+          // use the actual auth user, not the post-swap canonical id.
+          userId: req.user.authWorkosUserId ?? req.user.id,
           scopes: [requestedScope],
         });
 

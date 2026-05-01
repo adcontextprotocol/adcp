@@ -86,7 +86,7 @@
     .badge-in_person { background: var(--color-info-100); color: var(--color-info-700); }
     .badge-virtual { background: var(--color-primary-100); color: var(--color-primary-700); }
     .badge-hybrid { background: var(--color-success-100); color: var(--color-success-700); }
-    .badge-type { background: var(--color-gray-100); color: var(--color-gray-700); }
+    .badge-type { background: var(--color-bg-subtle); color: var(--color-text); }
     .badge-external { background: var(--color-warning-100); color: var(--color-warning-700); }
     .badge-invite { background: #fef3c7; color: #92400e; }
 
@@ -159,7 +159,7 @@
     }
 
     .btn-outline:hover {
-      background: var(--color-primary-50);
+      background: var(--color-brand-bg);
     }
 
     .btn:disabled {
@@ -239,14 +239,14 @@
     }
 
     .event-description code {
-      background: var(--color-gray-100);
+      background: var(--color-bg-subtle);
       padding: 0.2em 0.4em;
       border-radius: 4px;
       font-size: 0.9em;
     }
 
     .event-description pre {
-      background: var(--color-gray-100);
+      background: var(--color-bg-subtle);
       padding: 1em;
       border-radius: 8px;
       overflow-x: auto;
@@ -332,7 +332,7 @@
       display: flex;
       gap: 1rem;
       padding: 1rem;
-      background: var(--color-gray-50);
+      background: var(--color-bg-subtle);
       border-radius: 10px;
       align-items: flex-start;
     }
@@ -342,7 +342,7 @@
       border-radius: 50%;
       object-fit: cover;
       flex-shrink: 0;
-      background: var(--color-gray-200);
+      background: var(--color-bg-button-secondary);
     }
     .speaker-headshot-fallback {
       display: flex;
@@ -389,7 +389,7 @@
       flex-direction: column;
       align-items: center;
       padding: 1rem;
-      background: var(--color-gray-50);
+      background: var(--color-bg-subtle);
       border-radius: 8px;
       text-decoration: none;
       transition: transform 0.15s;
@@ -928,7 +928,7 @@
                    ${sponsor.organization_website ? 'target="_blank" rel="noopener noreferrer"' : ''}>
                   ${sponsor.display_logo_url
                     ? `<img src="${escapeHtml(sponsor.display_logo_url)}" alt="${escapeHtml(sponsor.organization_name)}" class="sponsor-logo">`
-                    : `<div class="sponsor-logo" style="background: var(--color-gray-200); border-radius: 8px;"></div>`
+                    : `<div class="sponsor-logo" style="background: var(--color-bg-button-secondary); border-radius: 8px;"></div>`
                   }
                   <span class="sponsor-name">${escapeHtml(sponsor.organization_name)}</span>
                   ${sponsor.tier_name ? `<span class="sponsor-tier">${escapeHtml(sponsor.tier_name)}</span>` : ''}

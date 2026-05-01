@@ -51,7 +51,7 @@ The two axes are related but answer different questions, and the badge surfaces 
 
 The (Live) axis is the strongest signal a buyer can rely on: AAO is the active counterparty, not just an attesting body. If something breaks in the production code path, the compliance engine sees it within days and the qualifier expires.
 
-## Two marks: AdCP Conformant vs AAO Verified, or one mark with two qualifiers?
+## Naming history
 
 Earlier drafts (#3001) proposed "AdCP Conformant" and "AAO Verified" as two distinct mark names — one per axis. This page uses a **single brand mark with axis qualifiers in parens** instead. Same shape, different naming convention:
 
@@ -59,7 +59,7 @@ Earlier drafts (#3001) proposed "AdCP Conformant" and "AAO Verified" as two dist
 |---|---|
 | AdCP Conformant | AAO Verified (Spec) |
 | AAO Verified | AAO Verified (Live) |
-| Both held | AdCP Conformant + AAO Verified | AAO Verified (Spec + Live) |
+| AdCP Conformant + AAO Verified | AAO Verified (Spec + Live) |
 
 The reasoning behind the rename: a single brand word ("Verified") with composable qualifiers is cleaner for buyer messaging. Buyers don't have to learn two distinct marks; they read the qualifier inline. Test agents earning **Verified (Spec)** is a complete, dignified claim — they're test agents, that's the whole point — rather than a "junior" Conformant tier. The wire format reflects this: a single `verification_modes: string[]` array in the JWT and registry API, where an agent might have `["spec"]` or `["spec", "live"]`. One badge URL per agent + role; the qualifier evolves as axes are earned, embedded badges automatically reflect the current state.
 
@@ -221,12 +221,18 @@ The token claims:
   "iat": 1745510400,
   "exp": 1748102400,
   "role": "media-buy",
+  "adcp_version": "3.0",
   "verified_specialisms": ["sales-broadcast-tv", "sales-guaranteed"],
-  "verification_modes": ["spec"]
+  "verification_modes": ["spec"],
+  "protocol_version": "3.0.0"
 }
 ```
 
-`verification_modes` is the array of axes earned. `["spec"]` until (Live) lights up; `["spec", "live"]` thereafter for agents that enroll. The registry API is authoritative for real-time status; the JWT is a 30-day cacheable proof.
+`adcp_version` is the AdCP release this badge was issued against (`MAJOR.MINOR`). Pairs with the `(agent_url, role, adcp_version)` identity used by the badge URL routes. **Verifiers MUST check `adcp_version` against the AdCP version they care about** — a 3.0 token presented as proof of 3.1 conformance is not authoritative. The signed claim is shape-validated at signing time (`^[1-9][0-9]*\.[0-9]+$`); verifiers SHOULD apply the same regex defensively.
+
+`verification_modes` is the array of axes earned. `["spec"]` until (Live) lights up; `["spec", "live"]` thereafter for agents that enroll. `protocol_version` is the full semver of the spec build the badge was tested against — informational metadata for support and audits.
+
+The registry API is authoritative for real-time status; the JWT is a 30-day cacheable proof.
 
 ## Lifecycle
 
@@ -259,23 +265,46 @@ A seller MAY hold:
 
 The two axes are evaluated independently. A storyboard regression revokes (Spec) without affecting (Live); an observability check failure revokes (Live) without affecting (Spec). Sellers can earn either in either order.
 
+## Per-version badges
+
+Each badge is identified by **(agent, role, AdCP version)** — a third axis on top of (Spec) and (Live). An agent can hold parallel badges across AdCP releases. For example, a media-buy agent that ships an upgrade for AdCP 3.1 might hold both:
+
+- `AAO Verified Media Buy Agent 3.0 (Spec)` — earned earlier, still valid
+- `AAO Verified Media Buy Agent 3.1 (Spec + Live)` — earned after upgrading
+
+Each version is evaluated independently. A 3.0 storyboard regression revokes the 3.0 badge without touching 3.1, and vice versa. Membership lapse revokes every version of an agent's badges atomically (the trust mark is agent-level, not version-level).
+
+The badge label embeds the AdCP version inline between the role and the qualifier: `Media Buy Agent 3.1 (Spec + Live)`.
+
 ## Display
 
 ### SVG badge
 
+Two URL shapes:
+
 ```
+# Legacy: auto-upgrades to the highest active version
 https://agenticadvertising.org/api/registry/agents/{url-encoded-agent-url}/badge/{role}.svg
+
+# Version-pinned: freezes on a specific AdCP release
+https://agenticadvertising.org/api/registry/agents/{url-encoded-agent-url}/badge/{role}/{adcp-version}.svg
 ```
 
-Returns a shields.io-style SVG with `Content-Security-Policy: script-src 'none'` and 5-minute caching. Renders teal when verified, grey when not. The qualifier in parens reflects the current verification axes. Unknown agents, unknown roles, and revoked badges all return a grey "Not Verified" variant — the URL never 404s, which makes it safe to embed.
+Buyers who want auto-upgrade behavior (the embedded image flips from `Media Buy Agent 3.0 (Spec)` to `Media Buy Agent 3.1 (Spec + Live)` automatically when the agent earns 3.1) embed the legacy URL. Buyers who want to call out "verified for AdCP 3.0" specifically embed the version-pinned URL.
+
+Both return a shields.io-style SVG with `Content-Security-Policy: script-src 'none'` and 5-minute caching. Renders teal when verified, grey when not. Unknown agents, unknown roles, and revoked badges all return a grey "Not Verified" variant — the URL never 404s, which makes it safe to embed. Version-pinned URLs at versions the agent never earned also return "Not Verified" (vs. the legacy URL, which shows the current best mark).
 
 ### Embed snippet
 
 ```bash
+# Legacy (auto-upgrading)
 curl https://agenticadvertising.org/api/registry/agents/{url-encoded-agent-url}/badge/media-buy/embed
+
+# Version-pinned
+curl https://agenticadvertising.org/api/registry/agents/{url-encoded-agent-url}/badge/media-buy/3.0/embed
 ```
 
-Returns HTML and Markdown snippets that wrap the SVG in a link back to the agent's AAO registry listing. Safe for READMEs, docs, landing pages, and social profiles. As an agent's verification axes change, embedded badges automatically reflect the current state — no embed swap needed when (Live) lights up.
+Returns HTML and Markdown snippets that wrap the SVG in a link back to the agent's AAO registry listing. Safe for READMEs, docs, landing pages, and social profiles. As an agent's verification axes or AdCP versions change, the legacy embed automatically reflects the current state — no embed swap needed when (Live) lights up or when the agent ships a new AdCP version.
 
 ### Registry filter
 
@@ -286,6 +315,28 @@ The agent registry surfaces filters on either axis independently:
 - **"Show me agents with both"** → filter by both
 
 Both queries are valid. Buyers comparing options use (Live); orchestrator developers integrating new agents use (Spec).
+
+### brand.json enrichment
+
+When AAO serves brand.json data for a registered brand, agent entries get an `aao_verification` block with full per-version detail:
+
+```json
+"aao_verification": {
+  "verified": true,
+  "verified_at": "2026-04-29T12:34:56.000Z",
+  "badges": [
+    { "role": "media-buy", "adcp_version": "3.1", "verification_modes": ["spec", "live"], "verified_at": "..." },
+    { "role": "media-buy", "adcp_version": "3.0", "verification_modes": ["spec"], "verified_at": "..." }
+  ],
+  "roles": ["media-buy"],
+  "modes_by_role": { "media-buy": ["spec", "live"] },
+  "deprecation_notice": "roles[] and modes_by_role reflect the highest-version badge per role only. A buyer pinned to a specific AdCP version SHOULD read badges[] and filter by adcp_version. Both fields will be removed in AdCP 4.0."
+}
+```
+
+`badges[]` is the canonical shape — one entry per `(role, adcp_version)`, ordered version-DESC. Buyers pinned to a specific AdCP version MUST filter by `adcp_version` rather than reading `modes_by_role` (which flattens to the highest-version entry per role and could mislead a 3.0 buyer into thinking the agent runs Live for them when only the 3.1 badge has Live).
+
+`roles[]` and `modes_by_role` are kept as **deprecated aliases** for one release. **Removal target: AdCP 4.0.**
 
 ## How to claim each qualifier
 

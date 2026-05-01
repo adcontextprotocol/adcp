@@ -882,12 +882,16 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
 
       const org = linkedOrg.rows[0];
 
-      // Clear the Stripe customer's metadata.workos_organization_id BEFORE
-      // we null the DB link. Without this, a webhook that fires for this
-      // customer between the unlink and the next admin action would walk
-      // the metadata fallback in resolveOrgForStripeCustomer and silently
-      // re-link the org we just unlinked. (The link path already does this
-      // when force-replacing — mirror it here.)
+      // Clear the workos_organization_id metadata on BOTH the Stripe
+      // customer AND every active subscription on it BEFORE nulling the DB
+      // link. resolveOrgForStripeCustomer walks three fallback paths:
+      //   1. DB stripe_customer_id (we null this below)
+      //   2. customer.metadata.workos_organization_id
+      //   3. subscription.metadata.workos_organization_id
+      //
+      // If we only clear #2, a webhook for one of this customer's
+      // subscriptions would walk to #3 and silently re-link the org we
+      // just unlinked. Both must be cleared to actually close the race.
       if (stripe) {
         try {
           await stripe.customers.update(customerId, {
@@ -897,6 +901,33 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
           logger.warn(
             { err, customerId },
             "Failed to clear workos_organization_id metadata on Stripe customer during unlink — webhook fallback may re-link",
+          );
+        }
+
+        try {
+          const subs = await stripe.subscriptions.list({
+            customer: customerId,
+            status: 'all',
+            limit: 100,
+          });
+          for (const sub of subs.data) {
+            if (sub.metadata?.workos_organization_id) {
+              try {
+                await stripe.subscriptions.update(sub.id, {
+                  metadata: { workos_organization_id: '' },
+                });
+              } catch (subErr) {
+                logger.warn(
+                  { err: subErr, customerId, subscriptionId: sub.id },
+                  "Failed to clear workos_organization_id metadata on Stripe subscription during unlink — webhook fallback may re-link",
+                );
+              }
+            }
+          }
+        } catch (listErr) {
+          logger.warn(
+            { err: listErr, customerId },
+            "Failed to list subscriptions during unlink for metadata clear — webhook fallback via subscription metadata may re-link",
           );
         }
       }

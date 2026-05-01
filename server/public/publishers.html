@@ -220,8 +220,8 @@
       margin-right: auto;
     }
     .check-result.valid { background: var(--color-success-bg); color: var(--color-success-fg); }
-    .check-result.invalid { background: var(--color-gray-100); color: var(--color-text-heading); }
-    .check-result.checking { background: var(--color-gray-100); color: var(--color-text-muted); }
+    .check-result.invalid { background: var(--color-bg-subtle); color: var(--color-text-heading); }
+    .check-result.checking { background: var(--color-bg-subtle); color: var(--color-text-muted); }
 
     /* Add publisher CTA */
     .add-publisher-cta {
@@ -519,7 +519,7 @@
     if (properties.length < totalCount && properties.length >= PAGE_SIZE) {
       grid.insertAdjacentHTML('afterend',
         `<div id="load-more" style="text-align: center; margin-top: var(--space-6);">
-          <button onclick="window.loadMore()" style="padding: var(--space-3) var(--space-6); background: var(--color-gray-100); border: var(--border-2) solid var(--color-border); border-radius: var(--radius-lg); cursor: pointer; font-size: var(--text-sm);">
+          <button onclick="window.loadMore()" style="padding: var(--space-3) var(--space-6); background: var(--color-bg-subtle); border: var(--border-2) solid var(--color-border); border-radius: var(--radius-lg); cursor: pointer; font-size: var(--text-sm);">
             Load more properties
           </button>
         </div>`

@@ -16,6 +16,7 @@ import { createLogger } from "./logger.js";
 import type { CatalogEventsDatabase, WriteEventInput } from "./db/catalog-events-db.js";
 import type { AgentInventoryProfilesDatabase, ProfileUpsertInput } from "./db/agent-inventory-profiles-db.js";
 import { query } from "./db/client.js";
+import { insertTypeReclassification } from "./db/type-reclassification-log-db.js";
 
 const log = createLogger('crawler');
 
@@ -593,6 +594,16 @@ export class CrawlerService {
               { url: agent.url, knownType, inferredType },
               'Agent type disagreement: stored vs probed. Run backfill to reconcile.'
             );
+            // The disagreement event itself is what the audit log captures —
+            // we deliberately do NOT auto-flip here (see #3538). Failure to
+            // log is swallowed by the helper; no try/catch needed.
+            await insertTypeReclassification({
+              agentUrl: agent.url,
+              oldType: knownType ?? null,
+              newType: inferredType,
+              source: 'crawler_promote',
+              notes: { decision: 'logged_only_no_promote' },
+            });
           }
 
           if (canPromote) {

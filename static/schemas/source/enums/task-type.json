@@ -23,6 +23,7 @@
     "sync_catalogs",
     "log_event",
     "get_brand_identity",
+    "search_brands",
     "get_rights",
     "acquire_rights"
   ],
@@ -45,6 +46,7 @@
     "sync_catalogs": "Media-buy domain: Sync catalog feeds (products, inventory, stores, promotions, offerings) to a platform with approval workflow",
     "log_event": "Media-buy domain: Send conversion or marketing events for attribution",
     "get_brand_identity": "Brand domain: Retrieve brand identity data (logos, colors, tone, assets, voice config) from a brand agent",
+    "search_brands": "Brand domain: Discover brands on a brand agent's roster via natural language query; returns lightweight identity stubs",
     "get_rights": "Brand domain: Search for licensable rights across a brand agent's roster with pricing",
     "acquire_rights": "Brand domain: Acquire rights from a brand agent with contractual clearance and generation credentials"
   },

@@ -296,13 +296,16 @@ export function deriveStoryboardStatuses(
 
 // ── Verification Status Derivation ───────────────────────────────
 
-import { isStableSpecialism, type AdcpProtocol } from '../../services/adcp-taxonomy.js';
+import { isStableSpecialism } from '../../services/adcp-taxonomy.js';
+import type { BadgeRole } from '../../db/compliance-db.js';
 
 /**
- * AAO Verified badge roles map to AdCP protocols (enums/adcp-protocol.json).
- * Each declared specialism rolls up to exactly one protocol.
+ * AAO Verified badge roles map to AdCP protocols that have shipped
+ * specialism storyboards and a corresponding DB CHECK constraint
+ * (see migration 453_agent_verification_badges.sql). Newer protocols
+ * like `measurement` will be added once their storyboards ship.
  */
-export type BadgeRole = AdcpProtocol;
+export type { BadgeRole };
 
 /**
  * Specialism metadata: parent protocol + root storyboard ID
