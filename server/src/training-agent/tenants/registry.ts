@@ -14,7 +14,9 @@
  * prefix before the router runs).
  *
  * Sandbox semantics: session state and idempotency keys are partitioned
- * by `account.brand.domain`/`account.account_id`, NOT by tenantId. Cross-
+ * by `account.brand.domain` / `account.account_id` in open mode, and by
+ * `training:<userId>:<moduleId>` in training mode (see
+ * `state.ts:sessionKeyFromArgs`). Neither path includes tenantId — cross-
  * tenant scenarios (a buyer creating a media buy on `/sales/mcp` and
  * checking governance on `/governance/mcp` for the same brand) intentionally
  * share session state. Production sellers that need tenant isolation should
@@ -53,10 +55,13 @@ const logger = createLogger('training-agent-tenants');
  * deployment should write a path-aware validator (or move brand.json to
  * host root and drop the no-op).
  *
- * Production guard: if NODE_ENV=production AND the agent is not the training
- * agent (signaled by ALLOW_NOOP_JWKS_VALIDATOR), throw at boot. This
- * prevents accidental import of the no-op validator into a production tenant
- * registry that should be enforcing JWKS validation.
+ * Production guard: if NODE_ENV=production AND the deployment hasn't set
+ * ALLOW_NOOP_JWKS_VALIDATOR=1, throw on the first request that initializes
+ * the registry. Validation runs lazily, so the throw fires near-boot but
+ * not at import time — operators triaging an incident should look in the
+ * request stream, not the deploy log. Prevents accidental import of the
+ * no-op validator into a production tenant registry that should be
+ * enforcing JWKS validation.
  */
 const noopJwksValidator = {
   async validate() {

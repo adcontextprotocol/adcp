@@ -221,11 +221,31 @@ async function resolveAgentAuth(
 ): Promise<ResolvedAgentAuth> {
   let resolvedUrl = agentUrl;
 
+  // Canonicalize for comparison: strip trailing slash, query string, and
+  // fragment so saved `agent_contexts` rows with cosmetic variations
+  // ("…/sales/mcp/", "…/sales/mcp?retry=1") still resolve to the public
+  // token path.
+  const canonicalize = (u: string): string => {
+    try {
+      const parsed = new URL(u);
+      // Drop fragment and query — they don't change which agent is being addressed.
+      parsed.hash = '';
+      parsed.search = '';
+      let pathname = parsed.pathname;
+      if (pathname.length > 1 && pathname.endsWith('/')) pathname = pathname.slice(0, -1);
+      return `${parsed.protocol}//${parsed.host}${pathname}`.toLowerCase();
+    } catch {
+      // Not a parseable URL — fall back to lowercased input so the
+      // includes-check still has stable semantics.
+      return u.toLowerCase();
+    }
+  };
+
   // Redirect internal path URL to the legacy back-compat alias on the
   // canonical hostname. Callers using INTERNAL_PATH_AGENT_URL are referencing
   // the single-URL multi-tool agent — preserve that semantics by routing to
   // the legacy alias (v5 monolith), not a per-specialism tenant.
-  if (resolvedUrl.toLowerCase() === INTERNAL_PATH_AGENT_URL.toLowerCase()) {
+  if (canonicalize(resolvedUrl) === canonicalize(INTERNAL_PATH_AGENT_URL)) {
     resolvedUrl = PUBLIC_TEST_AGENT_URLS.legacy;
   }
 
@@ -233,9 +253,9 @@ async function resolveAgentAuth(
   // for this URL are ignored because they're likely incorrect (the public token is
   // intentionally published and doesn't need per-user credentials). Match against
   // any per-specialism URL or the legacy alias — they all hit the same Fly app.
-  const lowerUrl = resolvedUrl.toLowerCase();
-  const publicTestAgentUrls: string[] = Object.values(PUBLIC_TEST_AGENT_URLS).map(u => u.toLowerCase());
-  if (publicTestAgentUrls.includes(lowerUrl)) {
+  const canonicalResolved = canonicalize(resolvedUrl);
+  const publicTestAgentUrls: string[] = Object.values(PUBLIC_TEST_AGENT_URLS).map(canonicalize);
+  if (publicTestAgentUrls.includes(canonicalResolved)) {
     return { authToken: PUBLIC_TEST_AGENT.token, authType: 'bearer', source: 'public', resolvedUrl };
   }
 

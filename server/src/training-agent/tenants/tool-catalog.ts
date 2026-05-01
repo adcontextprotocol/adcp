@@ -11,8 +11,14 @@
  * runner. Keep the catalog as a discovery hint only until upstream SDK
  * adds a wrong-tenant classifier.
  *
- * Multi-tenant tools (e.g., `list_creative_formats` on sales / creative /
+ * Multi-tenant tools (e.g., `sync_creatives` served by sales / creative /
  * creative-builder) appear in multiple tenants' lists.
+ *
+ * Drift detection: `tests/integration/training-agent-tool-catalog-drift.test.ts`
+ * boots each tenant and asserts this catalog matches the live `tools/list`
+ * response. Universal tools (`get_adcp_capabilities`, `comply_test_controller`,
+ * `tasks_get`) are excluded from the catalog by convention — they're on
+ * every tenant and never form a "wrong tenant" hint.
  */
 
 export const TOOL_CATALOG: Readonly<Record<string, readonly string[]>> = {
@@ -23,15 +29,14 @@ export const TOOL_CATALOG: Readonly<Record<string, readonly string[]>> = {
   get_media_buys: ['sales'],
   get_media_buy_delivery: ['sales'],
   provide_performance_feedback: ['sales'],
-  report_usage: ['sales', 'creative', 'signals'],
+  list_creative_formats: ['sales'],
 
-  // creative discovery / management — exposed by multiple tenants
-  list_creative_formats: ['sales', 'creative', 'creative-builder'],
-  list_creatives: ['sales', 'creative'],
-  sync_creatives: ['sales', 'creative'],
+  // creative — exposed on multiple tenants
+  list_creatives: ['sales', 'creative', 'creative-builder'],
+  sync_creatives: ['sales', 'creative', 'creative-builder'],
   build_creative: ['creative', 'creative-builder'],
   preview_creative: ['creative', 'creative-builder'],
-  get_creative_delivery: ['creative'],
+  get_creative_delivery: ['creative', 'creative-builder'],
 
   // signals
   get_signals: ['signals'],
@@ -48,13 +53,15 @@ export const TOOL_CATALOG: Readonly<Record<string, readonly string[]>> = {
   update_property_list: ['governance'],
   list_property_lists: ['governance'],
   get_property_list: ['governance'],
-  validate_property_delivery: ['governance'],
+  delete_property_list: ['governance'],
+  validate_content_delivery: ['governance'],
 
   // governance — collection lists
   create_collection_list: ['governance'],
   update_collection_list: ['governance'],
   list_collection_lists: ['governance'],
   get_collection_list: ['governance'],
+  delete_collection_list: ['governance'],
 
   // governance — content standards
   create_content_standards: ['governance'],

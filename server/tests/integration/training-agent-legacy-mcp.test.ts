@@ -165,7 +165,7 @@ describe('Tenant routes via host-based dispatch (no /api/training-agent prefix)'
     expect(body._training_agent_tenants.find(t => t.tenant_id === 'sales')?.tools).toContain('get_products');
     expect(body._training_agent_tenants.find(t => t.tenant_id === 'signals')?.tools).toContain('get_signals');
     expect(body._training_agent_tenants.find(t => t.tenant_id === 'creative-builder')?.tools).toContain('build_creative');
-    expect(body._training_agent_tenants.find(t => t.tenant_id === 'creative-builder')?.tools).not.toContain('list_creatives');
+    expect(body._training_agent_tenants.find(t => t.tenant_id === 'creative-builder')?.tools).not.toContain('get_products');
     expect(body._training_agent_tenants.find(t => t.tenant_id === 'governance')?.tools).toContain('check_governance');
   });
 
