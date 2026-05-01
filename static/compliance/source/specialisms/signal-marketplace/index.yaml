@@ -147,6 +147,9 @@ phases:
           - check: response_schema
             description: "Response matches get-signals-response.json schema"
           - check: field_present
+            path: "signals[0]"
+            description: "At least one signal returned"
+          - check: field_present
             path: "signals[0].signal_agent_segment_id"
             description: "Each signal has a signal_agent_segment_id"
           - check: field_present
@@ -172,6 +175,9 @@ phases:
           - check: field_present
             path: "signals[0].signal_id.data_provider_domain"
             description: "Signal ID includes data_provider_domain for provenance"
+          - check: field_present
+            path: "signals[1]"
+            description: "At least two signals returned (second_signal_id context capture requires signals[1])"
       - id: search_by_ids
         title: "Look up specific signals by ID"
         narrative: |

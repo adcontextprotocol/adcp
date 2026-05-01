@@ -332,9 +332,13 @@
 #     populate the context accumulator — downstream $context.<name> references
 #     resolve to an unresolved_substitution error, which grades the dependent
 #     step as failed rather than the storyboard passing on fabricated state.
-#   - Paths that do not resolve in the response body are a runner-side grading
-#     failure on THIS step (capture_path_not_resolvable), not the downstream
-#     reader — the capture declared a contract that the response did not meet.
+#   - Paths that do not resolve to a usable value in the response body (absent,
+#     null, or "") are a runner-side grading failure on THIS step
+#     (capture_path_not_resolvable), not on the downstream reader — the capture
+#     declared a contract that the response did not meet. The capturing step
+#     grades as failed; downstream steps that depended on the captured value
+#     grade as skipped with reason: prerequisite_failed citing this step.
+#     See runner-output-contract.yaml > validation_result for the output shape.
 #   - The accumulator is storyboard-run-scoped; values do not leak across runs.
 #
 # context_inputs: array of ContextInput objects (optional — inject captured
@@ -763,10 +767,23 @@
 #
 #   capture_path_not_resolvable
 #       Emitted on the capturing step when a `context_outputs:` entry's
-#       `path` does not resolve against the step's response body. The step
-#       grades as failed — the capture declared a contract that the response
-#       did not meet. Distinct from unresolved_substitution so tooling can
-#       discriminate "producer contract breach" from "consumer missing state."
+#       `path` does not resolve to a usable value in the step's response body.
+#       The step grades as failed — the capture declared a contract that the
+#       response did not meet. Distinct from unresolved_substitution so tooling
+#       can discriminate "producer contract breach" from "consumer missing
+#       state."
+#
+#       "Does not resolve to a usable value" covers all three cases:
+#         1. Path structurally absent (e.g. `signals[0]` when array is empty)
+#         2. Path present but value is null
+#         3. Path present but value is "" (empty string)
+#       Capturing null or "" produces fabricated downstream state and is as
+#       incorrect as a missing path; runners MUST treat all three as failures.
+#
+#       Output shape: runner-output-contract.yaml > validation_result, with
+#       check: capture_path_not_resolvable, expected: the declared path string,
+#       actual: the resolved value (or null if absent), json_pointer: RFC 6901
+#       form of the path.
 #
 #   unresolved_substitution
 #       Emitted on a consumer step when a referenced $context.<name> or
@@ -776,6 +793,10 @@
 #       substitution is statically unresolvable (e.g., {{runner.webhook_url:*}}
 #       on a run with no webhook receiver) to grade the entire storyboard
 #       not_applicable before execution.
+#
+#       Output shape: runner-output-contract.yaml > validation_result, with
+#       check: unresolved_substitution, expected: the unresolved token string,
+#       actual: null, json_pointer: null.
 #
 #   fixture_seed_unsupported
 #       Emitted when a storyboard's `prerequisites.controller_seeding` requires
