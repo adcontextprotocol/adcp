@@ -15,6 +15,8 @@ import { WorkingGroupDatabase } from '../../db/working-group-db.js';
 import { getPool } from '../../db/client.js';
 import { backfillOrganizationMemberships, backfillUsers, backfillOrganizationDomains } from '../workos-webhooks.js';
 import { sendSlackInviteEmail, hasSlackInviteBeenSent } from '../../notifications/email.js';
+import { getWorkos } from '../../auth/workos-client.js';
+import { mergeUsers } from '../../db/user-merge-db.js';
 
 const logger = createLogger('admin-users-routes');
 
@@ -717,6 +719,132 @@ export function createAdminUsersRouter(): Router {
       logger.error({ err: error }, 'Admin update user name error');
       res.status(500).json({ error: 'Failed to update name' });
     }
+  });
+
+  // POST /api/admin/users/:userId/linked-emails
+  //
+  // Bind a new sign-in email to an existing user's identity. Creates a fresh
+  // WorkOS user for the new email and binds it as a non-primary credential
+  // under the same identity. After this, the user can sign in with either
+  // email — the auth middleware id-swaps non-primary logins to the canonical
+  // workos_user_id so they see the same workspace.
+  //
+  // Use case: a user lost access to an alias email after the old delete-the-
+  // secondary merge flow. Admin restores the alias by creating a new WorkOS
+  // user and binding it.
+  //
+  // Trust model: admin is asserting the email belongs to the person. No
+  // verification email is sent to the new address. Phase 3 may add one.
+  router.post('/:userId/linked-emails', requireAuth, requireAdmin, async (req, res) => {
+    const adminEmail = req.user!.email;
+    const adminUserId = req.user!.id;
+    const existingUserId = req.params.userId;
+    const rawEmail = (req.body?.email as string | undefined)?.trim();
+
+    if (!rawEmail) {
+      return res.status(400).json({ error: 'email is required' });
+    }
+    const newEmail = rawEmail.toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail) || newEmail.length > 255) {
+      return res.status(400).json({ error: 'Invalid email address' });
+    }
+
+    const pool = getPool();
+
+    // Verify existing user
+    const existing = await pool.query<{ email: string; first_name: string | null; last_name: string | null }>(
+      `SELECT email, first_name, last_name FROM users WHERE workos_user_id = $1`,
+      [existingUserId]
+    );
+    if (existing.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    if (existing.rows[0].email.toLowerCase() === newEmail) {
+      return res.status(409).json({ error: 'This is already the user\'s primary email' });
+    }
+
+    // Refuse if this email is already a real WorkOS user in our DB. Binding
+    // an existing account is the high-risk path that the self-service merge
+    // flow blocks (see issue #3719); admin shouldn't silently merge two
+    // existing accounts via this endpoint either. Use the org-merge tool or
+    // a future "bind existing" admin path instead.
+    const claimed = await pool.query(
+      `SELECT workos_user_id FROM users WHERE LOWER(email) = $1`,
+      [newEmail]
+    );
+    if (claimed.rows.length > 0) {
+      return res.status(409).json({
+        error: 'This email already has an AAO account',
+        message: 'Use a separate consolidation flow to combine two existing accounts. This endpoint creates a fresh sign-in.',
+      });
+    }
+
+    const workos = getWorkos();
+    let newWorkosUser: { id: string; email: string; firstName: string | null; lastName: string | null; emailVerified: boolean; createdAt: string; updatedAt: string };
+
+    try {
+      newWorkosUser = await workos.userManagement.createUser({
+        email: newEmail,
+        emailVerified: true,
+        firstName: existing.rows[0].first_name ?? undefined,
+        lastName: existing.rows[0].last_name ?? undefined,
+      });
+    } catch (err: any) {
+      // 422 = email already in use in WorkOS (we didn't see them in our DB
+      // but WorkOS knows about them). Surface clearly.
+      const status = err?.status ?? err?.response?.status;
+      if (status === 422 || status === 409) {
+        logger.warn({ err, newEmail, existingUserId }, 'Admin bind-email: WorkOS rejected createUser (email in use)');
+        return res.status(409).json({
+          error: 'This email already exists in our auth system',
+          message: 'Use a separate consolidation flow.',
+        });
+      }
+      logger.error({ err, newEmail, existingUserId }, 'Admin bind-email: WorkOS createUser failed');
+      return res.status(502).json({ error: 'Failed to create sign-in email upstream' });
+    }
+
+    // Insert into local users — fires the AFTER INSERT trigger which creates
+    // a singleton identity for the new WorkOS user. mergeUsers will then
+    // re-point the new user's binding to the existing user's identity.
+    try {
+      await pool.query(
+        `INSERT INTO users (workos_user_id, email, first_name, last_name, email_verified,
+                            workos_created_at, workos_updated_at, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+         ON CONFLICT (workos_user_id) DO NOTHING`,
+        [newWorkosUser.id, newWorkosUser.email, newWorkosUser.firstName, newWorkosUser.lastName,
+         newWorkosUser.emailVerified, newWorkosUser.createdAt, newWorkosUser.updatedAt]
+      );
+
+      // Merge: moves zero data rows (the new user has nothing), rebinds the
+      // new user's identity_workos_users row to the existing user's identity
+      // as is_primary = FALSE, drops the new user's orphan singleton identity.
+      await mergeUsers(existingUserId, newWorkosUser.id, adminUserId);
+    } catch (err) {
+      logger.error(
+        { err, newWorkosUserId: newWorkosUser.id, existingUserId },
+        'Admin bind-email: local bind failed after WorkOS createUser succeeded — manual cleanup may be needed'
+      );
+      return res.status(500).json({
+        error: 'Created the WorkOS user but failed to bind locally',
+        message: 'Please contact engineering — a WorkOS user was created at the new email but is not yet linked.',
+        new_workos_user_id: newWorkosUser.id,
+      });
+    }
+
+    logger.info(
+      { adminEmail, existingUserId, newEmail, newWorkosUserId: newWorkosUser.id },
+      'Admin bound new sign-in email to existing user'
+    );
+
+    return res.status(201).json({
+      bound: true,
+      existing_user_id: existingUserId,
+      new_email: newEmail,
+      new_workos_user_id: newWorkosUser.id,
+      message: `${newEmail} is now a sign-in email for this user. They can sign in with either address.`,
+    });
   });
 
   return router;

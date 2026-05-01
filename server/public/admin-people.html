@@ -360,6 +360,8 @@
 
       <div class="detail-stats" id="detailStats"></div>
 
+      <div id="detailSignInActions" style="margin-top: var(--space-4);"></div>
+
       <div class="timeline">
         <div class="timeline-header">
           <h3>Activity timeline</h3>
@@ -529,6 +531,22 @@
           </div>
         `;
 
+        // Sign-in actions: bind another email (Phase 2b admin tool)
+        const signInActions = document.getElementById('detailSignInActions');
+        if (r.workos_user_id) {
+          signInActions.innerHTML = `
+            <h3 style="margin: 0 0 var(--space-2); font-size: var(--text-base);">Sign-in</h3>
+            <p style="margin: 0 0 var(--space-2); color: var(--color-text-secondary); font-size: var(--text-sm);">
+              Bind another email as a sign-in credential. The user will be able to sign in with either email and see the same workspace.
+            </p>
+            <button class="btn btn-secondary" onclick="bindAnotherEmail('${escapeHtml(r.workos_user_id)}')">
+              + Add sign-in email
+            </button>
+          `;
+        } else {
+          signInActions.innerHTML = '';
+        }
+
         // Load timeline
         const tlRes = await AdminSidebar.fetch('/api/admin/relationships/' + personId + '/timeline?limit=100');
         const tlData = await tlRes.json();
@@ -537,6 +555,32 @@
         document.getElementById('detailOverlay').classList.add('open');
       } catch (e) {
         console.error('Failed to load person detail', e);
+      }
+    }
+
+    async function bindAnotherEmail(workosUserId) {
+      const email = prompt('Enter a new sign-in email for this user.\n\nA fresh WorkOS account will be created at that email and bound to this user\'s identity. They will be able to sign in with either email.\n\nOnly use this when you\'ve confirmed the email belongs to this person.');
+      if (!email) return;
+      const trimmed = email.trim().toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+        alert('That doesn\'t look like a valid email address.');
+        return;
+      }
+      if (!confirm(`Bind ${trimmed} as a sign-in email for this user?\n\nThis cannot be undone via this UI.`)) return;
+      try {
+        const res = await AdminSidebar.fetch(`/api/admin/users/${encodeURIComponent(workosUserId)}/linked-emails`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: trimmed }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          alert(data.message || data.error || `Bind failed (${res.status})`);
+          return;
+        }
+        alert(data.message || 'Sign-in email bound.');
+      } catch (e) {
+        alert('Network error: ' + (e && e.message ? e.message : String(e)));
       }
     }
 
