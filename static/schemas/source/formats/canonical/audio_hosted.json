@@ -18,11 +18,13 @@
       "type": "array",
       "items": { "type": "integer", "minimum": 0 },
       "minItems": 2,
-      "maxItems": 2
+      "maxItems": 2,
+      "description": "[min, max] duration in milliseconds. **Precedence**: `duration_ms_exact` takes precedence when both ship on the same product. SDKs SHOULD lint a warning when both fields ship."
     },
     "duration_ms_exact": {
       "type": "integer",
-      "minimum": 1
+      "minimum": 1,
+      "description": "When set, duration must equal exactly this value. Takes precedence over `duration_ms_range` when both ship."
     },
     "audio_codecs": {
       "type": "array",

@@ -92,10 +92,17 @@
           },
           "assets": {
             "type": "object",
-            "description": "Assets for this creative, keyed by asset_id. Each asset value carries an `asset_type` discriminator that selects the matching asset schema.",
+            "description": "Assets for this creative, keyed by asset_id. Each slot value is either a single asset object or an array of asset objects (for slots with `min`/`max > 1`). Each asset value carries an `asset_type` discriminator that selects the matching asset schema.",
             "patternProperties": {
               "^[a-z0-9_]+$": {
-                "$ref": "/schemas/core/assets/asset-union.json"
+                "oneOf": [
+                  { "$ref": "/schemas/core/assets/asset-union.json" },
+                  {
+                    "type": "array",
+                    "items": { "$ref": "/schemas/core/assets/asset-union.json" },
+                    "minItems": 1
+                  }
+                ]
               }
             },
             "additionalProperties": true

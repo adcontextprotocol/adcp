@@ -56,8 +56,8 @@
           },
           "asset_type": {
             "type": "string",
-            "enum": ["image", "video", "audio", "text", "markdown", "url", "html", "css", "javascript", "vast", "daast", "webhook", "brief", "catalog", "zip", "object"],
-            "description": "Discriminator selecting the asset schema this slot accepts. SDK codegen uses this to type the slot value. `object` is a fallback for structured non-asset inputs that don't fit a primitive asset_type (rare; prefer specific types when possible)."
+            "enum": ["image", "video", "audio", "text", "markdown", "url", "html", "css", "javascript", "vast", "daast", "webhook", "brief", "catalog", "zip", "card", "object"],
+            "description": "Discriminator selecting the asset schema this slot accepts. SDK codegen uses this to type the slot value. `card` is the multi-card carousel element type (see card-asset.json). `object` is a last-resort fallback for structured non-asset inputs that don't fit any primitive asset_type — prefer specific types whenever possible."
           },
           "required": {
             "type": "boolean",

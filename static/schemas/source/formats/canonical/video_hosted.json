@@ -34,12 +34,12 @@
       "items": { "type": "integer", "minimum": 0 },
       "minItems": 2,
       "maxItems": 2,
-      "description": "[min, max] duration in milliseconds."
+      "description": "[min, max] duration in milliseconds. **Precedence**: when both `duration_ms_exact` and `duration_ms_range` ship on the same product, `duration_ms_exact` takes precedence — buyers MUST validate against the exact value and ignore the range. The range is treated as advisory metadata in that case (e.g., for UI display showing the broader product family). SDKs SHOULD lint a warning when both fields ship; producers SHOULD pick one."
     },
     "duration_ms_exact": {
       "type": "integer",
       "minimum": 1,
-      "description": "When set, duration must equal exactly this value."
+      "description": "When set, duration must equal exactly this value. Takes precedence over `duration_ms_range` when both ship (see `duration_ms_range` description)."
     },
     "video_codecs": {
       "type": "array",

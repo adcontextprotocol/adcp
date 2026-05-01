@@ -569,7 +569,23 @@ A placement that accepts EITHER a third-party-hosted creative OR an internal tag
 }
 ```
 
-Buyer's manifest: `{ "format_kind": "html5", "capability_id": "html5_flashtalking_hosted", "assets": { "html5_bundle": {...}, "backup_image": {...} } }` — `format_kind` selects the canonical's slot vocabulary; `capability_id` disambiguates because both options share `format_kind: html5`/`display_tag`-shaped slots are different anyway, but `capability_id` removes any ambiguity for the seller's router. (When `format_options` carries one element per `format_kind`, `capability_id` is optional — `format_kind` alone routes the manifest.)
+Buyer's manifest, targeting the html5 option:
+
+```json test=false
+{
+  "format_kind": "html5",
+  "capability_id": "html5_flashtalking_hosted",
+  "assets": { "html5_bundle": { /* ... */ }, "backup_image": { /* ... */ } }
+}
+```
+
+**Routing rule for multi-element `format_options`** (normative):
+
+- `format_kind` selects the canonical and its slot vocabulary.
+- `capability_id` is **REQUIRED** on the manifest when the target product's `format_options` contains two or more declarations sharing the same `format_kind` — without it, the seller can't disambiguate which option the buyer is shipping against.
+- `capability_id` is **OPTIONAL** when each `format_kind` in the product's `format_options` is unique (the example above: one html5 entry, one display_tag entry) — `format_kind` alone routes the manifest. Buyers MAY still send `capability_id` as a clarity hint.
+
+In this example each option carries a distinct `format_kind`, so `capability_id` is optional. Including it (as shown) is a recommended habit — it makes the manifest unambiguous to logs, replays, and downstream tooling, and it keeps the buyer-side codepath identical regardless of whether the seller's product has one or many options sharing a kind.
 
 ## Worked example — sponsored_placement with item_production_model
 
@@ -605,45 +621,47 @@ A retail-media product that accepts a catalog reference plus a brief, and render
 
 ## Validation flow — `validate_input`
 
-Buyers can dry-run a manifest against canonicals and/or specific products without committing to a render:
+Buyers can dry-run a manifest against canonicals and/or specific products without committing to a render. The buyer's manifest below is a v2 manifest (`format_kind: "video_hosted"`); the slot key is the canonical's `asset_group_id` (`video_main`); the asset value carries its `asset_type` discriminator. The buyer asks `validate_input` to check both the canonical contract AND the seller's specific product narrowing in a single round-trip:
 
 ```json test=false
 {
   "manifest": {
-    "format_id": { "agent_url": "https://creative.adcontextprotocol.org", "id": "video_30s" },
+    "format_kind": "video_hosted",
     "assets": {
-      "video": {
+      "video_main": {
         "asset_type": "video",
-        "url": "https://cdn.acme.example/spring-30s.mp4",
-        "duration_ms": 30000,
+        "url": "https://cdn.acme.example/spring-95s.mp4",
+        "duration_ms": 95000,
         "width": 1080,
         "height": 1920
       }
     },
     "brand": { "domain": "acme.example" }
   },
-  "format_ids": ["video_hosted"],
-  "product_ids": ["meta_reels_us"]
+  "targets": [
+    { "kind": "canonical", "id": "video_hosted" },
+    { "kind": "product", "id": "meta_reels_us" }
+  ]
 }
 ```
 
-Response carries per-target results:
+Response carries per-target results. The canonical accepts the duration (canonical `video_hosted` doesn't constrain duration — products narrow); the Meta Reels product narrows duration to `[3000, 90000]` ms, so 95000 is out of range and the product target fails:
 
 ```json test=false
 {
   "results": [
     {
       "target": { "kind": "canonical", "id": "video_hosted" },
-      "ok": true
+      "result_kind": "validated_pass"
     },
     {
       "target": { "kind": "product", "id": "meta_reels_us" },
-      "ok": false,
+      "result_kind": "validated_fail",
       "violations": [
         {
           "rule": "duration_ms_range",
           "expected": "3000-90000",
-          "predicted": 30000,
+          "predicted": 95000,
           "field": "assets.video_main.duration_ms"
         }
       ]

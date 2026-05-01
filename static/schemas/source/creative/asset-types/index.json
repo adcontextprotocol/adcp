@@ -80,6 +80,11 @@
       "description": "Typed data feed (products, stores, jobs, etc.)",
       "schema": "/schemas/core/assets/catalog-asset.json",
       "typical_use": "Product catalogs, store locators, job feeds for dynamic creatives"
+    },
+    "card": {
+      "description": "Single card in a multi-card creative — image_carousel `cards` slot element",
+      "schema": "/schemas/core/assets/card-asset.json",
+      "typical_use": "Carousel cards (Meta-style mixed-media, Pinterest collections), Snap collection cards. Each card carries its own media (image OR video), optional headline, optional landing_page_url. The carousel format's `cards` slot is an array of card-asset values."
     }
   },
   "architecture": {

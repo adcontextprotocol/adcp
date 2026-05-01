@@ -2,9 +2,9 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/creative/validate-input-result.json",
   "title": "Validate Input Result",
-  "description": "Per-target result of a validate_input call.",
+  "description": "Per-target result of a validate_input call. The `result_kind` discriminator (replacing the earlier boolean `ok`) lets buyers distinguish three meaningfully different outcomes:\n\n- `validated_pass` — manifest validates cleanly against the target. Buyers can submit with confidence.\n- `validated_fail` — manifest is structurally evaluable AND fails specific constraints. `violations[]` enumerates which. Buyers fix and retry.\n- `unvalidatable_nondeterministic` — predictive validation is impossible because the target's production pipeline is genuinely nondeterministic (Veo / Sora / Runway-class formats with `synthesis_nondeterministic: true`). The platform's own post-synthesis QA loop applies; outcome is unknowable until `build_creative` runs. Buyers MUST plan for the QA-loop semantics: submission may return `task_failed` with a `synthesis_failed` reason if the QA loop exhausts. There is no protocol state for orphaned out-of-spec artifacts.\n\nThe boolean `ok` field carried in earlier drafts is removed — it conflated `validated_fail` (a real validation result the buyer can act on) with `unvalidatable_nondeterministic` (a structural property of the target the buyer needs to handle differently). `validated_fail` returns `violations[]`; `unvalidatable_nondeterministic` does not (there's nothing to enumerate).",
   "type": "object",
-  "required": ["target", "ok"],
+  "required": ["target", "result_kind"],
   "properties": {
     "target": {
       "type": "object",
@@ -21,13 +21,14 @@
       },
       "additionalProperties": true
     },
-    "ok": {
-      "type": "boolean",
-      "description": "True when the manifest validates against the target."
+    "result_kind": {
+      "type": "string",
+      "enum": ["validated_pass", "validated_fail", "unvalidatable_nondeterministic"],
+      "description": "Discriminator for the validation outcome. See schema description for the three states. Replaces the earlier boolean `ok` to distinguish 'failed validation' from 'platform is nondeterministic, can't pre-validate'."
     },
     "violations": {
       "type": "array",
-      "description": "When ok is false, the specific constraints the manifest fails to meet.",
+      "description": "When `result_kind` is `validated_fail`, the specific constraints the manifest fails to meet. MUST be absent (or empty) for `validated_pass` and `unvalidatable_nondeterministic` — neither has constraint violations to enumerate (`unvalidatable_nondeterministic` doesn't validate at all; `validated_pass` has nothing to fail).",
       "items": {
         "type": "object",
         "required": ["rule", "field"],
@@ -56,22 +57,56 @@
       }
     }
   },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "result_kind": { "const": "validated_pass" } },
+        "required": ["result_kind"]
+      },
+      "then": {
+        "not": { "required": ["violations"] }
+      }
+    },
+    {
+      "if": {
+        "properties": { "result_kind": { "const": "unvalidatable_nondeterministic" } },
+        "required": ["result_kind"]
+      },
+      "then": {
+        "not": { "required": ["violations"] }
+      }
+    }
+  ],
   "additionalProperties": true,
   "examples": [
     {
-      "description": "Manifest fails canonical video_vertical because its duration is too long",
+      "description": "Manifest fails Meta Reels product narrowing because its duration exceeds the [3000, 90000] range",
       "data": {
-        "target": { "kind": "canonical", "id": "video_vertical" },
-        "ok": false,
+        "target": { "kind": "product", "id": "meta_reels_us" },
+        "result_kind": "validated_fail",
         "violations": [
           {
             "rule": "duration_ms_range",
             "expected": "3000-90000",
-            "predicted": 91500,
+            "predicted": 95000,
             "field": "assets.video_main.duration_ms",
-            "retry_with": { "trim_ms_from_end": 1500 }
+            "retry_with": { "trim_ms_from_end": 5000 }
           }
         ]
+      }
+    },
+    {
+      "description": "Manifest passes canonical video_hosted (canonical doesn't constrain duration; products narrow)",
+      "data": {
+        "target": { "kind": "canonical", "id": "video_hosted" },
+        "result_kind": "validated_pass"
+      }
+    },
+    {
+      "description": "Veo generative video product is unvalidatable up-front; buyer plans for the QA-loop semantics on build_creative",
+      "data": {
+        "target": { "kind": "product", "id": "veo_generative_video_vertical_15s" },
+        "result_kind": "unvalidatable_nondeterministic"
       }
     }
   ]

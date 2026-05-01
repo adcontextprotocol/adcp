@@ -2,32 +2,16 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/formats/canonical/image_carousel.json",
   "title": "Canonical Format: Image Carousel",
-  "description": "Multi-card swipeable carousel. The buyer ships a `cards` slot whose value is an **array** of card-shaped objects (a single key with an array value — NOT one key per card, NOT dotted/bracketed paths). Each card carries: `media` (an image or video asset), optional `headline` (text), optional `landing_page_url` (url asset). Per-card structure is the same across all cards; mixed orientations not allowed within a single carousel. Tracking model: per-card impression and engagement pixels + carousel-level engagement (swipe, view-time). Allowed asset types per card: `image` and `video` (Meta-style mixed-media); platforms can narrow to image-only or video-only via `allowed_card_asset_types`.\n\nThe manifest's `assets.cards` value is an array of card objects matching `card_shape` below. Example: `\"cards\": [{\"media\": {\"asset_type\": \"image\", \"url\": \"...\"}, \"headline\": \"Buy now\", \"landing_page_url\": {\"asset_type\": \"url\", \"url\": \"...\"}}, ...]`. This is the normative shape — adopters MUST NOT invent per-card key conventions (`card_0_headline`, `cards.0.headline`, etc.).",
+  "description": "Multi-card swipeable carousel. The buyer ships a `cards` slot whose value is an **array** of [card-asset](/schemas/core/assets/card-asset.json) objects (a single key with an array value — NOT one key per card, NOT dotted/bracketed paths). Each card-asset carries: `asset_type: \"card\"`, `media` (an image or video asset), optional `headline` (text), optional `landing_page_url` (url asset). Per-card structure is the same across all cards; mixed orientations not allowed within a single carousel. Tracking model: per-card impression and engagement pixels + carousel-level engagement (swipe, view-time). Allowed asset types for a card's `media` field: `image` and `video` (Meta-style mixed-media); platforms can narrow to image-only or video-only via `allowed_card_media_asset_types`.\n\nThe manifest's `assets.cards` value is an array of card-asset objects. Example: `\"cards\": [{\"asset_type\": \"card\", \"media\": {\"asset_type\": \"image\", \"url\": \"...\"}, \"headline\": \"Buy now\", \"landing_page_url\": {\"asset_type\": \"url\", \"url_type\": \"clickthrough\", \"url\": \"...\"}}, ...]`. Each card-asset validates against the card schema; per-card platform extensions attach via the card's `platform_extensions` field, never via inline non-canonical keys.",
   "allOf": [{ "$ref": "/schemas/formats/canonical/_base.json" }],
   "properties": {
     "slots": {
       "default": [
-        { "asset_group_id": "cards", "asset_type": "object", "required": true, "min": 2, "max": 10 },
+        { "asset_group_id": "cards", "asset_type": "card", "required": true, "min": 2, "max": 10 },
         { "asset_group_id": "primary_text", "asset_type": "text", "required": false },
         { "asset_group_id": "landing_page_url", "asset_type": "url", "required": false }
       ],
-      "description": "Default slots for image_carousel. The `cards` slot's value in the manifest is an array of card objects (see `card_shape`); `min` / `max` constrain card count."
-    },
-    "card_shape": {
-      "type": "object",
-      "description": "Normative structure of each card object in the manifest's `assets.cards` array. Adopters MUST honor this shape; product narrowing MAY add per-card platform_extension fields but MUST NOT rename or restructure the listed fields. Constraints on per-card values (max chars, max file size, etc.) live on the format declaration's per-card parameters (`card_image_max_file_size_kb`, `card_headline_max_chars`, etc.).",
-      "properties": {
-        "media": {
-          "description": "The card's primary visual asset. Either an `image` or `video` asset matching `allowed_card_asset_types`."
-        },
-        "headline": {
-          "type": "string",
-          "description": "Optional per-card headline. Length governed by `card_headline_max_chars` on the format declaration."
-        },
-        "landing_page_url": {
-          "description": "Optional per-card click-through URL. `url` asset with `url_type: \"clickthrough\"`."
-        }
-      }
+      "description": "Default slots for image_carousel. The `cards` slot's value in the manifest is an array of [card-asset](/schemas/core/assets/card-asset.json) objects; `min` / `max` constrain card count."
     },
     "card_aspect_ratio": {
       "type": "string",
@@ -43,13 +27,18 @@
       "type": "integer",
       "description": "Maximum card count (typical: 6, 10, or 35 depending on platform)."
     },
-    "allowed_card_asset_types": {
+    "allowed_card_media_asset_types": {
       "type": "array",
       "items": {
         "type": "string",
         "enum": ["image", "video"]
       },
-      "description": "Asset types each card may carry. Default: ['image']. Polymorphic carousels (Meta) allow ['image', 'video']."
+      "description": "Asset types each card's `media` field may carry. Default: ['image']. Polymorphic carousels (Meta) allow ['image', 'video']. Renamed from `allowed_card_asset_types` to disambiguate that this constrains the card's media payload, not the card-asset itself (which is always asset_type: \"card\")."
+    },
+    "allowed_card_asset_types": {
+      "type": "array",
+      "items": { "type": "string", "enum": ["image", "video"] },
+      "description": "DEPRECATED — alias for `allowed_card_media_asset_types`. Kept for back-compat; prefer the new field name. Removed in 5.0."
     },
     "card_image_max_file_size_kb": {
       "type": "integer",
