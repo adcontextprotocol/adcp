@@ -35,8 +35,6 @@ import { PUBLIC_TEST_AGENT } from "../config/test-agent.js";
 import * as policiesDb from "../db/policies-db.js";
 import { createLogger } from "../logger.js";
 import { validateCrawlDomain, validateExternalUrl } from "../utils/url-security.js";
-import { resolveAgent, getAgentJwks } from "../registry/agent-resolver/index.js";
-import { AgentResolverError } from "../registry/agent-resolver/errors.js";
 import {
   registry,
   ResolvedBrandSchema,
@@ -2545,88 +2543,6 @@ registry.registerPath({
     403: { description: "Not authorized", content: { "application/json": { schema: ErrorSchema } } },
     404: { description: "Storyboard not found", content: { "application/json": { schema: ErrorSchema } } },
     500: { description: "Server error", content: { "application/json": { schema: ErrorSchema } } },
-  },
-});
-
-registry.registerPath({
-  method: "get",
-  path: "/api/registry/agents/resolve",
-  operationId: "resolveAgent",
-  summary: "Resolve an agent URL to its operator brand.json + JWKS",
-  description:
-    "One-shot resolver: capabilities → brand_url → brand.json → agents[] entry → jwks_uri → JWKS. Implements the verifier algorithm from `specs/capabilities-brand-url.md`. Returns the full chain plus a privacy-filtered `trace[]` and `freshness` aggregate so callers can audit upstream Cache-Control without trusting AAO blindly. `aao_signed: false` on the wire — this is a convenience layer, not a trust anchor.\n\n**Rate limit:** 60 requests/minute/IP plus a per-upstream-host cap of 10 req/s/host (eTLD+1).",
-  tags: ["Agent Resolution"],
-  request: {
-    query: z.object({
-      agent_url: z.string().openapi({ example: "https://buyer.example.com/mcp" }),
-    }),
-  },
-  responses: {
-    200: {
-      description: "Agent resolved successfully",
-      content: {
-        "application/json": {
-          schema: z.object({
-            agent_url: z.string(),
-            brand_url: z.string(),
-            operator_domain: z.string(),
-            agent_entry: z.object({ type: z.string().optional(), url: z.string(), id: z.string().optional(), jwks_uri: z.string().optional() }),
-            jwks_uri: z.string(),
-            jwks: z.object({ keys: z.array(z.record(z.string(), z.unknown())) }),
-            signing_keys_pin: z.null(),
-            identity_posture: z.object({
-              per_principal_key_isolation: z.boolean().optional(),
-              key_origins: z.record(z.string(), z.string()).optional(),
-            }),
-            consistency: z.object({
-              origin_binding: z.enum(["etld1_match", "authorized_operator", "mismatch"]),
-              key_origin_match: z.boolean(),
-              issues: z.array(z.object({ purpose: z.string(), expected_origin: z.string(), actual_origin: z.string() })),
-            }),
-            aao_signed: z.literal(false),
-            resolved_at: z.string(),
-            upstream_fetched_at: z.string(),
-            cache_until: z.string(),
-            source: z.enum(["live", "cached"]),
-            freshness: z.enum(["fresh", "stale", "unknown"]),
-            trace: z.array(z.record(z.string(), z.unknown())),
-          }),
-        },
-      },
-    },
-    400: { description: "Invalid agent_url query parameter", content: { "application/json": { schema: ErrorSchema } } },
-    414: { description: "agent_url exceeds 2 KB cap", content: { "application/json": { schema: ErrorSchema } } },
-    429: { description: "Rate limit exceeded", content: { "application/json": { schema: ErrorSchema } } },
-    502: { description: "Upstream resolution failed; body carries `error.code` from the request_signature_* family plus a partial trace.", content: { "application/json": { schema: ErrorSchema } } },
-  },
-});
-
-registry.registerPath({
-  method: "get",
-  path: "/api/registry/agents/jwks",
-  operationId: "resolveAgentJwks",
-  summary: "JWKS for an agent URL (RFC 7517)",
-  description:
-    "Resolves an agent URL via the same chain as `/api/registry/agents/resolve` and returns the JWKS in standard RFC 7517 form. Drop-in for any JOSE library (`jose`, `pyjwt`, `nimbus-jose-jwt`). Propagates upstream `Cache-Control` byte-for-byte — a rotated-out key disappears on the operator's TTL, not AAO's. The body is RFC 7517 pure (no trace); `X-AAO-Trace-URL` points at the resolve endpoint for audit.\n\n**Rate limit:** 60 requests/minute/IP plus a per-upstream-host cap of 10 req/s/host (eTLD+1).",
-  tags: ["Agent Resolution"],
-  request: {
-    query: z.object({
-      agent_url: z.string().openapi({ example: "https://buyer.example.com/mcp" }),
-    }),
-  },
-  responses: {
-    200: {
-      description: "JWKS resolved successfully",
-      content: {
-        "application/jwk-set+json": {
-          schema: z.object({ keys: z.array(z.record(z.string(), z.unknown())) }),
-        },
-      },
-    },
-    400: { description: "Invalid agent_url query parameter", content: { "application/json": { schema: ErrorSchema } } },
-    414: { description: "agent_url exceeds 2 KB cap", content: { "application/json": { schema: ErrorSchema } } },
-    429: { description: "Rate limit exceeded", content: { "application/json": { schema: ErrorSchema } } },
-    502: { description: "Upstream resolution failed", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
 
@@ -5822,84 +5738,6 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     } catch (error) {
       logger.error({ err: error, path: req.path }, "Property authorization check failed");
       res.status(500).json({ error: "Property authorization check failed" });
-    }
-  });
-
-  // ── Agent Resolution (capabilities → brand.json → JWKS) ───────
-
-  router.get("/registry/agents/resolve", agentReadRateLimiter, async (req, res) => {
-    const agentUrlRaw = req.query.agent_url;
-    if (typeof agentUrlRaw !== "string" || agentUrlRaw.length === 0) {
-      return res.status(400).json({
-        error: { code: "request_signature_invalid_agent_url", message: "agent_url query parameter is required" },
-      });
-    }
-    try {
-      const result = await resolveAgent(agentUrlRaw);
-      return res.status(200).json(result);
-    } catch (err) {
-      if (err instanceof AgentResolverError) {
-        const { code, detail, httpStatus } = err;
-        // Per spec §"Trace / freshness on the resolve endpoint": failure
-        // body carries the same shape — partial trace + error.code.
-        const { trace, freshness, ...detailFields } = detail as typeof detail & {
-          trace?: unknown;
-          freshness?: unknown;
-        };
-        return res.status(httpStatus).json({
-          error: { code, detail: detailFields },
-          aao_signed: false,
-          freshness: freshness ?? "unknown",
-          trace: trace ?? [],
-        });
-      }
-      logger.error({ err, agent_url: agentUrlRaw }, "Agent resolver failed");
-      return res.status(500).json({
-        error: { code: "internal_error", message: "Agent resolver failed" },
-      });
-    }
-  });
-
-  router.get("/registry/agents/jwks", agentReadRateLimiter, async (req, res) => {
-    const agentUrlRaw = req.query.agent_url;
-    if (typeof agentUrlRaw !== "string" || agentUrlRaw.length === 0) {
-      return res.status(400).json({
-        error: { code: "request_signature_invalid_agent_url", message: "agent_url query parameter is required" },
-      });
-    }
-    try {
-      const result = await getAgentJwks(agentUrlRaw);
-      // Propagate upstream Cache-Control / ETag / Last-Modified byte-for-byte.
-      for (const [name, value] of Object.entries(result.passthroughHeaders)) {
-        res.setHeader(name, value);
-      }
-      // RFC 7517 content type. Trace lives behind a header to keep the body
-      // RFC 7517 pure for JOSE-library compatibility.
-      res.setHeader("Content-Type", "application/jwk-set+json");
-      res.setHeader("X-AAO-Resolver-Age", String(result.resolverAgeSeconds));
-      res.setHeader("X-AAO-Upstream-JWKS-URI", result.jwksUri);
-      const traceUrl = `/api/registry/agents/resolve?agent_url=${encodeURIComponent(agentUrlRaw)}`;
-      res.setHeader("X-AAO-Trace-URL", traceUrl);
-      return res.status(200).send(JSON.stringify(result.jwks));
-    } catch (err) {
-      if (err instanceof AgentResolverError) {
-        const { code, detail, httpStatus } = err;
-        const { trace, freshness, ...detailFields } = detail as typeof detail & {
-          trace?: unknown;
-          freshness?: unknown;
-        };
-        const traceUrl = `/api/registry/agents/resolve?agent_url=${encodeURIComponent(agentUrlRaw)}`;
-        res.setHeader("X-AAO-Trace-URL", traceUrl);
-        return res.status(httpStatus).json({
-          error: { code, detail: detailFields },
-          aao_signed: false,
-          freshness: freshness ?? "unknown",
-        });
-      }
-      logger.error({ err, agent_url: agentUrlRaw }, "Agent JWKS resolver failed");
-      return res.status(500).json({
-        error: { code: "internal_error", message: "Agent JWKS resolver failed" },
-      });
     }
   });
 

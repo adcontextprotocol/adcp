@@ -137,21 +137,89 @@ New universal storyboard: `capabilities-brand-url-discovery`. Variants:
 
 The required-when rules land as storyboard assertions regardless of whether they're encoded in JSON Schema (Open question 1).
 
-## Hosted resolver (AAO Registry API)
+## Client SDK + CLI
 
-The native chain — capabilities → brand.json → agents[] → jwks_uri → JWKS — is correct, but it's five HTTP calls and several validation steps. AAO publishes a public, unauthenticated reference implementation alongside the existing registry surface (`docs/registry/index.mdx`) so callers can do this in one HTTP call.
+The native chain — capabilities → brand.json → agents[] → jwks_uri → JWKS — is five HTTP calls and several validation steps. To make this one call for callers, ship the resolver as a **client SDK** in `@adcp/client` (TypeScript) and `adcp` (Python), plus a CLI for instant-answer use cases.
 
-**Trust posture (read this first).** The hosted resolver is a **convenience layer, not a trust anchor.** AAO does not sign resolution responses. Production verifiers handling spend-committing operations MUST use native resolution (`mode: "native"` in the SDK helpers) and treat AAO as a fallback or a discovery hint, not as the authoritative source. Callers who delegate trust to AAO are accepting AAO as part of their verification chain — including BGP, CA, and operational-compromise risks. The reference implementation is open-source and self-hostable; AAO's instance is one option, not the only option. This is the same posture as the registry change feed (advisory identity material — see `docs/registry/index.mdx` §Anti-abuse).
+**No AAO-hosted resolver.** An earlier draft of this spec proposed a hosted `GET /api/registry/agents/resolve` endpoint. That was dropped: a centralized fetcher of caller-supplied URLs creates SSRF amplification on AAO infrastructure, a centralized cache is a single poisoning point, and a "convenience layer that's not a trust anchor" still drags AAO into every JOSE-naive verifier's trust chain in practice. The right shape is per-process resolution: the verifier calls `resolveAgent(agentUrl)` in their own SDK, with their own cache, no third party in the path. The registry crawler continues to ingest brand.json/adagents.json on its own schedule for the existing discovery surfaces (`/api/brands/registry`, `/api/registry/agents`), but stops being an on-demand fetcher of arbitrary user-supplied URLs.
 
-### `GET /api/registry/agents/resolve`
+### SDK API
 
-One-shot resolver. Caller passes an agent URL, gets the full discovery chain and the verifier inputs in one response. Implements the verifier algorithm above and surfaces both the inputs and the consistency-check verdict.
+`@adcp/client`:
 
-```bash
-curl "https://agenticadvertising.org/api/registry/agents/resolve?agent_url=https://buyer.example.com/mcp"
+```ts
+import { resolveAgent, getAgentJwks, createAgentJwksSet } from "@adcp/client";
+
+// One-shot resolve: full chain, trace, freshness aggregate.
+const result = await resolveAgent("https://buyer.example.com/mcp", {
+  cacheTTLs: { brandJson: 5 * 60 * 1000, jwks: 5 * 60 * 1000 },  // both 5 min
+  fresh: false,                                                   // bypass cache when true
+});
+// result: { agent_url, brand_url, agent_entry, jwks_uri, jwks, signing_keys_pin,
+//           identity_posture, consistency, freshness, trace[] }
+
+// JWKS-only fast path (skips trace assembly).
+const { jwks, jwksUri, cacheControl } = await getAgentJwks("https://buyer.example.com/mcp");
+
+// JOSE adapter — returns the function jwtVerify wants.
+import { jwtVerify } from "jose";
+
+const getKey = createAgentJwksSet("https://buyer.example.com/mcp", {
+  allowedAlgs: ["EdDSA", "ES256"],   // AdCP request-signing profile
+  cacheMaxAge: 5 * 60 * 1000,
+});
+
+const { payload } = await jwtVerify(token, getKey, {
+  algorithms: ["EdDSA", "ES256"],
+  issuer: agentUrl,
+});
 ```
 
-Response (200 OK):
+Python (`adcp`):
+
+```python
+from adcp import resolve_agent, get_agent_jwks, verify_request_signature
+
+result = resolve_agent("https://buyer.example.com/mcp")
+# result: AgentResolution { agent_url, brand_url, agent_entry, jwks_uri,
+#                          jwks, identity_posture, consistency, freshness, trace }
+
+verified = verify_request_signature(
+    request,                                  # httpx.Request
+    agent_url="https://buyer.example.com/mcp",
+    allowed_algs=("EdDSA",),
+)
+# Raises typed exceptions matching the spec's request_signature_* error codes.
+```
+
+The SDK is the only resolution path. There is no `mode="aao"`.
+
+### CLI
+
+Drop a CLI command in `@adcp/client` for the "I have an agent URL, show me its keys" UX:
+
+```bash
+$ npx @adcp/client resolve https://buyer.example.com/mcp
+
+agent_url      https://buyer.example.com/mcp
+brand_url      https://example.com/.well-known/brand.json   ✓ etld1_match
+agent_entry    type=buying  id=buyer_main
+jwks_uri       https://keys.example.com/.well-known/jwks.json
+jwks           1 key  buyer-signing-2026-04 (Ed25519, sig, request-signing)
+consistency    key_origin_match=true  issues=[]
+freshness      fresh
+
+trace
+  capabilities  MCP_CALL  200  age=0    fetched=2026-04-30T12:00:00Z  bytes=4821
+  brand_json    GET       200  age=12   fetched=2026-04-30T11:59:48Z  bytes=1903   etag="b9f0"
+  jwks          GET       200  age=287  fetched=2026-04-30T11:55:13Z  bytes=612    cache-control="max-age=300"
+```
+
+Add `--json` for machine-readable output (same shape as the SDK's `resolveAgent()` return value), `--fresh` to bypass cache, `--quiet` to print only the JWKS in RFC 7517 form (drop-in for `jq | jose verify`).
+
+### Resolution result shape
+
+`resolveAgent()` returns:
 
 ```jsonc
 {
@@ -190,254 +258,70 @@ Response (200 OK):
     "key_origin_match": true,
     "issues": []
   },
-  "aao_signed": false,
-  "resolved_at": "2026-04-30T12:00:00Z",
-  "upstream_fetched_at": "2026-04-30T12:00:00Z",
-  "cache_until": "2026-04-30T12:05:00Z",
-  "source": "live"
-}
-```
-
-Error responses use the same error codes as the verifier algorithm (with their detail fields). `aao_signed: false` is on the wire, not just in docs, to make non-attestation explicit.
-
-`source` ∈ `{"live", "cached"}`. **No `"stale"` mode for resolutions that include `jwks`** — a rotated-out compromised key MUST NOT be served past its TTL. `cache_until` is advisory; production verifiers MUST use the standard `Cache-Control` header and ignore `cache_until` for trust decisions. `X-AAO-Resolver-Age` header surfaces server-asserted age so callers can enforce their own staleness floor. `X-AAO-Upstream-JWKS-URI` header carries the upstream URL so verifiers can cross-check.
-
-### `GET /api/registry/agents/jwks`
-
-Drop-in JWKS endpoint. Returns the resolved JWKS in standard RFC 7517 form so existing JOSE libraries (`jose`, `pyjwt`, `nimbus-jose-jwt`) work without any AdCP-aware code.
-
-```bash
-curl "https://agenticadvertising.org/api/registry/agents/jwks?agent_url=https://buyer.example.com/mcp"
-```
-
-Response (200 OK, `Content-Type: application/jwk-set+json`):
-
-```jsonc
-{
-  "keys": [
-    {
-      "kty": "OKP", "crv": "Ed25519",
-      "x": "SRYr8eSvjkZF6dAUquI1sKuU4YGZkoGH-2jwkz4dRJg",
-      "kid": "buyer-signing-2026-04",
-      "alg": "EdDSA", "use": "sig",
-      "adcp_use": "request-signing",
-      "key_ops": ["verify"]
-    }
-  ]
-}
-```
-
-Every signing JWK MUST carry the AdCP-required four-tuple per `security.mdx:780`: `kid` (unique across the JWKS), `use: "sig"`, `key_ops: ["verify"]`, and `adcp_use` (one of `request-signing`, `webhook-signing`, `governance-signing`, `tmp-signing`). Plus `alg` per the algorithm allowlist (`EdDSA`, `ES256`). Verifiers MUST enforce all four. The endpoint propagates upstream `Cache-Control` byte-for-byte and never extends TTLs — a rotated-out key disappears on the operator's TTL, not AAO's. Served from a separate hostname (`jwks.agenticadvertising.org`, HSTS-preloaded, CAA-pinned) so a compromise of the main hostname does not contaminate the key resolution path. The `X-AAO-Trace-URL` response header points at `/api/registry/agents/resolve?agent_url=...` so JOSE callers (whose body must remain RFC 7517 pure) can still surface the audit trail.
-
-### Caller integration
-
-**Native (production-recommended, no third-party in the trust chain):**
-
-```ts
-import { createRemoteJWKSet, jwtVerify } from "jose";
-import { resolveAgentBrandJson } from "@adcp/client";
-
-// Native resolution: capabilities → brand.json → agents[] entry → jwks_uri
-const { jwksUri } = await resolveAgentBrandJson(agentUrl, { mode: "native" });
-
-const jwks = createRemoteJWKSet(new URL(jwksUri), {
-  cacheMaxAge: 5 * 60 * 1000,    // 5 min
-  cooldownDuration: 30 * 1000,   // 30 s
-});
-
-const { payload } = await jwtVerify(token, jwks, {
-  algorithms: ["EdDSA", "ES256"],   // AdCP request-signing profile
-  issuer: agentUrl,
-});
-```
-
-**AAO-resolver (convenience, opt-in trust delegation):**
-
-```ts
-import { createRemoteJWKSet, jwtVerify } from "jose";
-
-const aao = "https://jwks.agenticadvertising.org/api/registry/agents/jwks";
-const jwks = createRemoteJWKSet(
-  new URL(`${aao}?agent_url=${encodeURIComponent(agentUrl)}`),
-  { cacheMaxAge: 5 * 60 * 1000, cooldownDuration: 30 * 1000 },
-);
-
-const { payload } = await jwtVerify(token, jwks, {
-  algorithms: ["EdDSA", "ES256"],
-  issuer: agentUrl,
-});
-```
-
-The native form is shown first deliberately. Most production integrators should ship that.
-
-### SDK helpers
-
-`@adcp/client`:
-
-```ts
-// Native: capabilities → brand.json → JWKS. No AAO dependency.
-function resolveAgentBrandJson(
-  agentUrl: string,
-  opts?: { fetch?: typeof fetch; cacheTTLs?: { brandJson?: number; jwks?: number } },
-): Promise<{ brandUrl: string; agentEntry: BrandAgentEntry; jwksUri: string; jwks: JWKSet }>;
-
-// AAO convenience.
-function resolveAgentViaAAO(
-  agentUrl: string,
-  opts?: { aaoBase?: string; fetch?: typeof fetch },
-): Promise<AAOResolveResponse>;
-
-// JOSE adapter — returns the thing jwtVerify wants.
-function createAgentJWKSet(
-  agentUrl: string,
-  opts: { mode: "native" | "aao"; allowedAlgs: string[]; cacheMaxAge?: number },
-): JWTVerifyGetKey;
-```
-
-Python (`adcp`):
-
-```python
-def resolve_agent_brand_json(
-    agent_url: str, *, mode: Literal["native", "aao"] = "native",
-) -> AgentBrandResolution: ...
-
-def verify_request_signature(
-    request: httpx.Request, *,
-    agent_url: str,
-    mode: Literal["native", "aao"] = "native",
-    allowed_algs: tuple[str, ...] = ("EdDSA",),
-) -> VerifiedIdentity: ...
-```
-
-`mode="native"` is the default in both SDKs. Flipping to `"aao"` is an explicit opt-in to delegating trust.
-
-### SSRF and rate-limit hardening
-
-The hosted resolver is a centralized fetcher of caller-controlled URLs. Hardening is mandatory in the reference implementation. Implementers MUST cover this list before deployment:
-
-- HTTPS only.
-- Reject `agent_url` query strings exceeding 2 KB before any fetch.
-- DNS resolution: filter by address family **before** DNS-pinning (DNS rebinding defense; pin the resolved IP for the request's lifetime). Block, with explicit test coverage:
-  - IPv4: RFC 1918 private (10/8, 172.16/12, 192.168/16), loopback (127/8), link-local (169.254/16), CGNAT (100.64/10), `0.0.0.0`, `255.255.255.255`, multicast (224/4), reserved (240/4).
-  - IPv6: loopback (`::1`), link-local (`fe80::/10`), unique-local (`fc00::/7`), IPv4-mapped (`::ffff:0:0/96`), multicast (`ff00::/8`), unspecified (`::`).
-  - Cloud metadata: `169.254.169.254` (AWS, GCP, Azure), `fd00:ec2::254` (AWS IPv6), `100.100.100.200` (Alibaba). Maintain an explicit deny list — do not rely on link-local block alone.
-- Bracketed-IPv6 URL parsing: zone-ID stripping (`%25`) and unbracketed forms. Use a parser with explicit RFC 6874 handling; reject unparseable hosts.
-- Body cap (streamed reader with byte counter, not just `Content-Length` check): 32 KB for brand.json, 16 KB for JWKS, 64 KB for capabilities response.
-- Connect timeout 5 s; total deadline 10 s. Per-stage deadline 4 s.
-- Redirects disallowed (`maxRedirects: 0`). If a future mode allows them, cap at 1 same-origin and re-run the address-family + IP-block filter on the redirect target.
-- Per-upstream-host rate limit, default 10 req/s/host keyed on eTLD+1 (resolver MUST NOT amplify traffic to operator domains beyond a configurable cap).
-- Per-caller-IP rate limit MUST be lower than the per-upstream-host cap so a single caller cannot exhaust an operator's quota.
-- Public Suffix List for eTLD+1 computation MUST be a pinned, dated snapshot bumped via dependency update — not a runtime fetch.
-- Error-response detail fields HTML-escaped before reflection (header injection / log poisoning hardening). Canonicalize `agent_url` and length-cap before logging.
-
-### Trace / freshness on the resolve endpoint
-
-The `/api/registry/agents/resolve` response includes a top-level `trace[]` array — one entry per upstream HTTP call (capabilities → brand.json → JWKS) — plus a top-level `freshness` aggregate. A human integrator (or coding agent) hitting the endpoint can audit "is this up to date?" in one glance without trusting AAO blindly.
-
-```jsonc
-{
-  // ... agent_url, brand_url, jwks_uri, jwks, consistency, aao_signed, etc. as above ...
   "freshness": "fresh",
   "trace": [
-    { "step": "capabilities",
-      "url": "https://buyer.example.com/mcp",
-      "method": "MCP_CALL",
-      "status": 200,
-      "etag": null,
-      "last_modified": null,
-      "cache_control": null,
-      "fetched_at": "2026-04-30T12:00:00Z",
-      "age_seconds": 0,
-      "bytes": 4821,
-      "from_cache": false,
-      "ok": true },
-    { "step": "brand_json",
-      "url": "https://example.com/.well-known/brand.json",
-      "method": "GET",
-      "status": 200,
-      "etag": "\"b9f0\"",
-      "last_modified": "Wed, 29 Apr 2026 18:00:00 GMT",
-      "cache_control": "max-age=300, public",
-      "fetched_at": "2026-04-30T12:00:00Z",
-      "age_seconds": 0,
-      "bytes": 1903,
-      "from_cache": false,
-      "ok": true },
-    { "step": "jwks",
-      "url": "https://keys.example.com/.well-known/jwks.json",
-      "method": "GET",
-      "status": 200,
-      "etag": null,
-      "last_modified": null,
-      "cache_control": "max-age=300",
-      "fetched_at": "2026-04-30T12:00:00Z",
-      "age_seconds": 0,
-      "bytes": 612,
-      "from_cache": false,
-      "ok": true }
+    { "step": "capabilities", "url": "https://buyer.example.com/mcp", "method": "MCP_CALL",
+      "status": 200, "etag": null, "last_modified": null, "cache_control": null,
+      "fetched_at": "2026-04-30T12:00:00Z", "age_seconds": 0, "bytes": 4821,
+      "from_cache": false, "ok": true },
+    { "step": "brand_json", "url": "https://example.com/.well-known/brand.json", "method": "GET",
+      "status": 200, "etag": "\"b9f0\"", "last_modified": "Wed, 29 Apr 2026 18:00:00 GMT",
+      "cache_control": "max-age=300, public", "fetched_at": "2026-04-30T12:00:00Z",
+      "age_seconds": 0, "bytes": 1903, "from_cache": false, "ok": true },
+    { "step": "jwks", "url": "https://keys.example.com/.well-known/jwks.json", "method": "GET",
+      "status": 200, "etag": null, "last_modified": null, "cache_control": "max-age=300",
+      "fetched_at": "2026-04-30T12:00:00Z", "age_seconds": 0, "bytes": 612,
+      "from_cache": false, "ok": true }
   ]
 }
 ```
 
 `freshness` ∈ `{"fresh", "stale", "unknown"}`:
 - `fresh` — every step's `age_seconds` ≤ its declared TTL.
-- `stale` — at least one step exceeds its declared TTL (resolver still returned because cache was valid, but caller may want to force-refresh).
-- `unknown` — at least one step lacked cache metadata (no `Cache-Control`, no `Last-Modified`).
+- `stale` — at least one step exceeds its declared TTL (the SDK still returned because the local cache was valid, but the caller may want to set `fresh: true` and re-resolve).
+- `unknown` — at least one step lacked cache metadata.
 
-Per-step fields are **observed upstream metadata** — AAO does not attest to their accuracy. Verifiers MUST NOT use `trace` fields as a substitute for fetching `Cache-Control` themselves.
+On failure, the SDK throws a typed `AgentResolverError` with `code` (one of the `request_signature_*` codes from §"Error codes") and `detail` carrying the matching fields. The partial trace is attached to the error so callers can render the same audit format on failure as on success.
 
-**On failure**, the trace renders up to the failed step (marked `ok: false` with the matching `request_signature_*` error code in `error.code`); subsequent steps are absent (not nulled). A 502 response carries the same body shape so jq pipelines work consistently across success and failure.
+### SDK-side hardening
 
-**Privacy**: query strings stripped from `url`; resolved IPs never echoed; redirect chains never echoed (redirects are disallowed); request headers never echoed; response headers limited to `etag`, `last_modified`, `cache_control`, `bytes` (`Content-Length`-derived); all string fields HTML-escaped before reflection.
+A per-process SDK resolver doesn't have the same threat model as a hosted endpoint — there's no caller-pool to amplify against, and the cache is local. But several hardening items still apply:
 
-The `/api/registry/agents/jwks` endpoint omits the trace from its body (which must remain RFC 7517 pure for JOSE-library compatibility) and surfaces `X-AAO-Trace-URL: https://agenticadvertising.org/api/registry/agents/resolve?agent_url=...` so callers can fetch the human-readable audit trail when needed.
+- HTTPS only. Reject `agent_url` strings exceeding 2 KB.
+- IP-block on the resolver's outbound fetches: RFC 1918, loopback, link-local, CGNAT, IPv6 ULA `fc00::/7`, IPv4-mapped `::ffff:0:0/96`, multicast, cloud-metadata IPs (`169.254.169.254` AWS/GCP/Azure, `fd00:ec2::254` AWS IPv6, `100.100.100.200` Alibaba). An SDK running in a cloud workload is a juicy SSRF target via a hostile agent URL — not because the SDK is centrally hosted, but because the workload has metadata-IP credentials. The block matters even per-process.
+- DNS rebinding defense via address-family filter before connect-time pin (same TOCTOU rule).
+- Bracketed-IPv6 URL parsing per RFC 6874 (zone-ID stripping).
+- Body caps: 32 KB brand.json, 16 KB JWKS, 64 KB capabilities response. Streamed-reader byte counter, not just `Content-Length`.
+- Timeouts: connect 5 s, per-stage 4 s, total 10 s.
+- Redirects disallowed (`maxRedirects: 0`).
+- Per-upstream-host rate limit (10 req/s/host keyed on eTLD+1) — politeness to operator infra, not amplification defense.
+- Public Suffix List from a pinned, dated snapshot bumped via dependency update — not a runtime fetch.
+- JWKS cache: propagate upstream `Cache-Control` byte-for-byte. **No stale-while-revalidate on JWKS** — a rotated-out compromised key MUST NOT be served past its TTL.
 
-CLI usage:
+### Why this works without a hosted layer
 
-```bash
-curl -s "https://agenticadvertising.org/api/registry/agents/resolve?agent_url=https://buyer.example.com/mcp" \
-  | jq '{freshness, trace: [.trace[] | {step, status, age: .age_seconds, fetched_at, ok}]}'
-```
+The "instant answer for an agent URL" UX still works:
 
-Output:
+- **Local CLI**: `npx @adcp/client resolve <url>` runs the chain in the caller's terminal, prints the trace + JWKS in the format above. Same one-glance audit. No third party. Cache lives in `$XDG_CACHE_HOME/adcp/resolver.json` for repeated calls.
+- **In-browser playground** (e.g., on agenticadvertising.org): runs the same SDK in the browser via the `jose` library — fetches brand.json + JWKS from the user's own browser, AAO never sees the request. Cross-origin requests need operators to serve `Access-Control-Allow-Origin: *` on brand.json/JWKS (which they should already, for browser-based JOSE verifiers).
+- **Production verifiers**: import `@adcp/client`, call `createAgentJwksSet`, hand it to `jwtVerify`. Done.
 
-```json
-{
-  "freshness": "fresh",
-  "trace": [
-    { "step": "capabilities", "status": 200, "age": 0,   "fetched_at": "2026-04-30T12:00:00Z", "ok": true },
-    { "step": "brand_json",   "status": 200, "age": 12,  "fetched_at": "2026-04-30T11:59:48Z", "ok": true },
-    { "step": "jwks",         "status": 200, "age": 287, "fetched_at": "2026-04-30T11:55:13Z", "ok": true }
-  ]
-}
-```
-
-### Where this lives in `docs/registry/index.mdx`
-
-Add to the Lookups & Authorization table:
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/registry/agents/resolve` | Resolve an agent URL to its operator brand.json, JWKS URI, and JWKS. One-shot for signature verification. |
-| GET | `/api/registry/agents/jwks` | JWKS for an agent URL, in standard RFC 7517 form. Drop-in for any JOSE library. |
-
-Public, unauthenticated, rate-limited per the existing non-bulk endpoint conventions (60 req/min/IP for resolve, 60 req/min/IP for jwks, plus the per-upstream-host cap above).
+What we lose vs. the hosted shape: the three-line `createRemoteJWKSet(aaoUrl)` integration for callers who didn't want to import an AdCP SDK. The native form requires importing `@adcp/client` (a real dependency) instead of pointing at a URL. That's the right tradeoff — verifying AdCP signatures means understanding AdCP-specific things like `adcp_use`, the `tag` parameter, and the four-tuple JWK shape. A JOSE-only shortcut was always misleading; making it explicit that the SDK is the entry point is more honest.
 
 ## Open questions
 
 1. **Schema enforcement of required-when**. JSON Schema draft-07 `if/then/else` is dropped by several code generators (same constraint that drove the discriminated union on `idempotency`). Lean toward keeping the required-when rules in compliance storyboards and 4.0 schema-required, not in 3.x JSON Schema.
 2. **Caching coordination**. brand.json fetch TTL needs to align with the JWKS refetch cooldown (existing 30 s rule, `security.mdx:956`). Recommend brand.json TTL ≥ JWKS TTL so a key rotation doesn't require a brand.json invalidation. Document in `security.mdx` alongside the JWKS cache rules.
 3. **TLS-trust hardening**. brand.json fetch is plain HTTPS GET. With `brand_url` becoming the universal trust pointer, a CA mis-issuance against the operator domain gives an attacker the keys to every signing agent that operator runs. Recommend operators publish brand.json at a host with CAA records pinning their issuer; verifiers SHOULD consult CT logs on first fetch. Document in `security.mdx`.
-4. **Signed resolver responses**. Should the AAO hosted resolver sign its responses (JWS over the resolution result) so paranoid verifiers can use it offline-auditable? OIDC-style precedent says yes. Defer to a follow-up if the resolver sees real production usage.
-5. **Bulk resolver endpoint**. Dropped from v1 (per ad-tech product feedback — premature without demonstrated demand). Native resolution + per-agent caching covers the buy-side fan-out case; revisit if cold-cache traffic patterns prove the need.
-6. **Cross-protocol uniformity of URL matching**. brand.json schema currently says "canonicalize" for matching agent URLs (`brand.json:614`); `security.mdx:552` says "byte-for-byte". This spec uses byte-for-byte to match `security.mdx`. A future cross-cutting PR should pick one and align all three resolution paths (this spec, brand.json schema, security.mdx) — out of scope here.
+4. **In-browser playground CORS**. The browser playground depends on operators serving `Access-Control-Allow-Origin: *` on brand.json and JWKS. Most do already (it's the standard pattern for OIDC `jwks_uri`); document the requirement in `security.mdx` so it doesn't surprise operators rolling out brand.json for the first time.
+5. **Cross-protocol uniformity of URL matching**. brand.json schema currently says "canonicalize" for matching agent URLs (`brand.json:614`); `security.mdx:552` says "byte-for-byte". This spec uses byte-for-byte to match `security.mdx`. A future cross-cutting PR should pick one and align all three resolution paths (this spec, brand.json schema, security.mdx) — out of scope here.
 
 ## Rollout
 
 - PR 1: Schema + docs. Add `brand_url` to capabilities response schema; update `security.mdx` discovery chain; add the eTLD+1 origin-binding rule and the consistency-check note alongside `identity.key_origins`; document the trust-posture distinction between brand.json (operator) and adagents.json (publisher).
 - PR 2: Storyboard. Add `capabilities-brand-url-discovery` to universal compliance with all six variants from §Compliance impact.
-- PR 3: Verifier reference implementation in `@adcp/client` and the Python SDK. Add the new `request_signature_*` error codes to the existing rejection table. SDK helpers default to `mode="native"`.
-- PR 4: AAO hosted resolver as a self-hostable reference implementation. Implement `/api/registry/agents/resolve`, `/api/registry/agents/jwks` (separate hostname), SSRF hardening, no stale JWKS. Document in `docs/registry/index.mdx` and add to OpenAPI spec at `static/openapi/registry.yaml`. Wire to existing brand.json + JWKS fetch infrastructure.
+- PR 3: Resolver implementation in `@adcp/client` (TypeScript) and `adcp` (Python). Includes the SDK API (`resolveAgent`, `getAgentJwks`, `createAgentJwksSet`), SSRF hardening, the `trace[]`/`freshness` shape on the result, typed `AgentResolverError` with the `request_signature_*` error codes, and the `npx @adcp/client resolve <url>` CLI.
+- PR 4 (optional, follow-up): In-browser playground at agenticadvertising.org running the SDK in the browser. Pure client-side — fetches brand.json/JWKS from the user's own browser, registry never proxies. Documents the `Access-Control-Allow-Origin: *` operator requirement.
 - PR 5 (4.0 cycle): Flip `brand_url` and `identity.key_origins` required-when from advisory storyboard rule to JSON-Schema-required.
 
 ## Reviewer feedback addressed
@@ -477,3 +361,16 @@ Public, unauthenticated, rate-limited per the existing non-bulk endpoint convent
 - **DX (full-path breadcrumb)**: added `trace[]` array + `freshness` aggregate to `/resolve` response. Per-step fields: `step`, `url`, `method`, `status`, `etag`, `last_modified`, `cache_control`, `fetched_at`, `age_seconds`, `bytes`, `from_cache`, `ok`, `error`. JWKS endpoint surfaces `X-AAO-Trace-URL` header pointing at the resolve endpoint (preserves RFC 7517 purity in the body).
 - **DX (failure breadcrumbs render up to the failed step)**: 502 response carries the same body shape; failed step marked `ok: false` with the matching `request_signature_*` error code.
 - **DX (privacy filters on trace)**: query strings stripped, IPs not echoed, redirect chains not echoed (disallowed anyway), HTML-escaped reflection.
+
+### Round 3 (after CodeQL flagged the hosted resolver as an SSRF surface)
+
+- **Hosted AAO resolver dropped entirely**. Replaced §"Hosted resolver (AAO Registry API)" with §"Client SDK + CLI". Centralized fetch of caller-supplied URLs is the wrong shape for the registry: it's an SSRF amplification target, the cache is a single poisoning point, and "convenience layer that's not a trust anchor" still drags AAO into JOSE-naive verifiers' trust chains in practice. Per-process SDK resolution is what the spec already required for production verifiers; this round commits to it as the only path.
+- **AAO-specific surface scrubbed**: removed `aao_signed`, `X-AAO-Resolver-Age`, `X-AAO-Upstream-JWKS-URI`, `X-AAO-Trace-URL` headers, `cache_until`/`source: live|cached` envelope, separate-hostname requirement. The resolver now returns a plain SDK result with `trace[]` + `freshness` as part of its return value; no wire envelope to bikeshed.
+- **CLI added**: `npx @adcp/client resolve <agent_url>` prints the trace + JWKS + freshness in a one-screen format. `--json` for machine output, `--fresh` to bypass cache, `--quiet` for RFC 7517-only output.
+- **In-browser playground**: documented as the right shape for "I have an agent URL, show me its keys" UX without a server-side fetcher. Pure client-side via the SDK + the `jose` library. CORS dependency on operator brand.json/JWKS noted (open question 4).
+- **SSRF list reframed for SDK posture**: kept the IP blocks (cloud-metadata IPs still matter for SDK callers running in cloud workloads), dropped the per-caller-IP rate limit (no caller pool), reframed per-host rate as politeness-not-amplification.
+- **Rollout simplified**: removed PR 4 (hosted resolver). Implementation lands in PR 3 (`@adcp/client` + Python SDK + CLI). Optional follow-up PR 4 for the browser playground.
+
+### Round 3 implementation note
+
+This PR removes the in-progress AAO server-side resolver implementation (`server/src/registry/agent-resolver/`, the two `/api/registry/agents/*` route handlers, the OpenAPI entries, and the resolver-impl changeset). The pure-function modules — `consistency.ts`, `breadcrumb.ts`, `cache.ts`, `algorithms.ts`, the SSRF-strict fetch wrapper — are the right starting point for the `@adcp/client` port; that work happens in a follow-up PR on the `adcp-client` repo. The CodeQL suppression on `safeFetch` is kept regardless: it documents the existing `axios.get` callers' established pattern and stays correct whether or not the resolver routes exist.
