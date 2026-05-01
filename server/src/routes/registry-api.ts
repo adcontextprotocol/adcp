@@ -560,7 +560,8 @@ registry.registerPath({
   operationId: "listAgents",
   summary: "List agents",
   description:
-    "List all registered and discovered agents. Optionally enrich with health checks, capabilities, and property summaries via query parameters.",
+    "List all registered and discovered agents. Optionally enrich with health checks, capabilities, and property summaries via query parameters. " +
+    "Measurement-vendor filters (`metric_id`, `accreditation`, `q`) imply `type=measurement` when `type` is unset; an explicit `type` other than `measurement` returns 400.",
   tags: ["Agent Discovery"],
   request: {
     query: z.object({
@@ -572,6 +573,18 @@ registry.registerPath({
       capabilities: z.enum(["true"]).optional(),
       properties: z.enum(["true"]).optional(),
       compliance: z.enum(["true"]).optional(),
+      metric_id: z.union([z.string(), z.array(z.string())]).optional().openapi({
+        description: "Measurement-vendor filter: exact match on `measurement.metrics[].metric_id`. Repeatable (each value is OR'd within the param, AND'd with other filters). Implies `type=measurement`.",
+        example: "attention_units",
+      }),
+      accreditation: z.union([z.string(), z.array(z.string())]).optional().openapi({
+        description: "Measurement-vendor filter: exact match on `measurement.metrics[].accreditations[].accrediting_body` (e.g. `MRC`, `JIC`, `ARF`). Repeatable. Implies `type=measurement`. Accreditation claims are vendor-asserted; AAO does not independently verify (`verified_by_aao` is always `false` in the response).",
+        example: "MRC",
+      }),
+      q: z.string().max(64).optional().openapi({
+        description: "Measurement-vendor filter: case-insensitive substring match against `measurement.metrics[].metric_id`. v1 scope: metric_id only (description/standard search is a follow-up). Max 64 chars; SQL wildcard characters are escaped. Implies `type=measurement`.",
+        example: "attention",
+      }),
     }),
   },
   responses: {
@@ -3635,7 +3648,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
   router.get("/registry/agents", optAuth, async (req, res) => {
     try {
       const federatedIndex = crawler.getFederatedIndex();
-      const type = req.query.type as AgentType | undefined;
+      let type = req.query.type as AgentType | undefined;
       const withHealth = req.query.health === "true";
       const withCapabilities = req.query.capabilities === "true";
       const withProperties = req.query.properties === "true";
@@ -3657,6 +3670,47 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         sourceFilter = sourceParam;
       }
 
+      // Measurement-vendor filters (#3613). Repeatable params arrive as
+      // string|string[]; normalize to arrays. `q` is a single substring.
+      // Auto-scope: if any measurement filter is present and `type` is
+      // unset, force `type=measurement` so an agent-generated query like
+      // `?metric_id=attention_units` doesn't need the redundant `type` hint.
+      // An explicit `type` other than `measurement` is a conflict — 400.
+      const toArray = (v: unknown): string[] => {
+        if (v === undefined) return [];
+        if (typeof v === "string") return v ? [v] : [];
+        if (Array.isArray(v)) return v.filter((x): x is string => typeof x === "string" && x.length > 0);
+        return [];
+      };
+      const metricIds = toArray(req.query.metric_id);
+      const accreditations = toArray(req.query.accreditation);
+      const qParam = typeof req.query.q === "string" ? req.query.q : undefined;
+      const hasMeasurementFilter = metricIds.length > 0 || accreditations.length > 0 || (qParam !== undefined && qParam.length > 0);
+
+      if (hasMeasurementFilter) {
+        if (type && type !== "measurement") {
+          return res.status(400).json({
+            error: "metric_id, accreditation, and q filters require type=measurement",
+          });
+        }
+        type = "measurement" as AgentType;
+      }
+
+      // Length cap on q. Wildcards (% _) get rejected outright rather than
+      // escaped-and-passed — q is a substring search, never a pattern.
+      let qFilter: string | undefined;
+      if (qParam !== undefined) {
+        if (qParam.length === 0) {
+          // Empty q is a no-op; treat as absent.
+        } else if (qParam.length > 64) {
+          return res.status(400).json({ error: "q exceeds 64 characters" });
+        } else if (/[%_]/.test(qParam)) {
+          return res.status(400).json({ error: "q must not contain SQL wildcard characters (% or _)" });
+        } else {
+          qFilter = qParam;
+        }
+      }
+
       // members_only agents are discoverable to authenticated API-access
       // members (Professional+). Crawlers and anonymous callers only see
       // public agents.
@@ -3670,9 +3724,23 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       }
 
       const allFederatedAgents = await federatedIndex.listAllAgents(type, { includeMembersOnly });
-      const federatedAgents = sourceFilter
+      let federatedAgents = sourceFilter
         ? allFederatedAgents.filter((fa) => fa.source === sourceFilter)
         : allFederatedAgents;
+
+      // Apply measurement-vendor filters by intersecting with the snapshot
+      // table. The snapshot is the only place metric_id / accreditation /
+      // metric_id-substring lookups can be answered without per-agent fan-out.
+      // Counts in `sources` are computed below against the filtered set so
+      // the invariant `sum(sources) === count` holds for downstream UIs.
+      if (hasMeasurementFilter) {
+        const matchingUrls = await agentSnapshotDb.filterMeasurementAgents({
+          metric_ids: metricIds,
+          accreditations,
+          q: qFilter,
+        });
+        federatedAgents = federatedAgents.filter((fa) => matchingUrls.has(fa.url));
+      }
 
       const agents = federatedAgents.map((fa) => ({
         name: fa.name || fa.url,
@@ -3745,6 +3813,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
                 standard_operations: cap.standard_operations_json ?? undefined,
                 creative_capabilities: cap.creative_capabilities_json ?? undefined,
                 signals_capabilities: cap.signals_capabilities_json ?? undefined,
+                measurement_capabilities: cap.measurement_capabilities_json ?? undefined,
                 discovery_error: cap.discovery_error ?? undefined,
                 oauth_required: cap.oauth_required || undefined,
               };
