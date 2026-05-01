@@ -25,7 +25,7 @@
 import { getPool, query } from '../db/client.js';
 import { createLogger } from '../logger.js';
 import { WorkingGroupDatabase } from '../db/working-group-db.js';
-import type { WorkingGroupMembership } from '../types.js';
+import type { WorkingGroup, WorkingGroupMembership } from '../types.js';
 import { CommunityDatabase } from '../db/community-db.js';
 import { SlackDatabase } from '../db/slack-db.js';
 import { invalidateMemberContextCache } from '../addie/member-context-cache.js';
@@ -391,4 +391,45 @@ export async function withdrawCommitteeInterest({
     groupName: group.name,
     groupSlug: group.slug,
   };
+}
+
+// ─── Read paths ───────────────────────────────────────────────────────
+// These exist because Addie's `callApi('GET', '/api/me/…', …)` carries
+// no credentials and the routes require auth — so the Addie tools
+// silently 401'd in production. Both surfaces (route + chat) now
+// consume the service directly. No HTTP loopback. (See issue #3748.)
+
+export interface ListMyWorkingGroupsInput {
+  userId: string;
+}
+
+export async function listMyWorkingGroups({ userId }: ListMyWorkingGroupsInput): Promise<WorkingGroup[]> {
+  return workingGroupDb.getWorkingGroupsForUser(userId);
+}
+
+export interface CommitteeInterestRow {
+  committee_name: string;
+  slug: string;
+  committee_type: string;
+  interest_level: string;
+  created_at: Date;
+}
+
+export interface ListMyCommitteeInterestsInput {
+  userId: string;
+}
+
+export async function listMyCommitteeInterests({
+  userId,
+}: ListMyCommitteeInterestsInput): Promise<CommitteeInterestRow[]> {
+  const pool = getPool();
+  const result = await pool.query<CommitteeInterestRow>(
+    `SELECT ci.interest_level, ci.created_at, wg.name as committee_name, wg.slug, wg.committee_type
+     FROM committee_interest ci
+     JOIN working_groups wg ON wg.id = ci.working_group_id
+     WHERE ci.workos_user_id = $1
+     ORDER BY ci.created_at DESC`,
+    [userId],
+  );
+  return result.rows;
 }

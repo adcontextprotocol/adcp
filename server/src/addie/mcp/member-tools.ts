@@ -67,8 +67,11 @@ import {
   joinWorkingGroup as joinWorkingGroupService,
   expressCommitteeInterest as expressCommitteeInterestService,
   withdrawCommitteeInterest as withdrawCommitteeInterestService,
+  listMyWorkingGroups as listMyWorkingGroupsService,
+  listMyCommitteeInterests as listMyCommitteeInterestsService,
   WorkingGroupMembershipError,
 } from '../../services/working-group-membership-service.js';
+import { listMyContent as listMyContentService } from '../../services/my-content-service.js';
 import {
   createWorkingGroupPost as createWorkingGroupPostService,
   addCommitteeDocument as addCommitteeDocumentService,
@@ -1732,19 +1735,7 @@ export function createMemberToolHandlers(
       return 'You need to be logged in to see your working groups. Please log in at https://agenticadvertising.org/dashboard first.';
     }
 
-    const result = await callApi('GET', '/api/me/working-groups', memberContext);
-
-    if (!result.ok) {
-      throw new ToolError(`Failed to fetch your working groups: ${result.error}`);
-    }
-
-    const data = result.data as { working_groups: Array<{
-      name: string;
-      slug: string;
-      committee_type: string;
-      is_private: boolean;
-    }> };
-    const groups = data.working_groups;
+    const groups = await listMyWorkingGroupsService({ userId: memberContext.workos_user.workos_user_id });
 
     if (!groups || groups.length === 0) {
       return "You're not a member of any working groups yet. Use list_working_groups to find groups to join!";
@@ -1815,18 +1806,9 @@ export function createMemberToolHandlers(
       return 'You need to be logged in to see your council interests. Please log in at https://agenticadvertising.org/dashboard first.';
     }
 
-    const result = await callApi('GET', '/api/me/working-groups/interests', memberContext);
-
-    if (!result.ok) {
-      throw new ToolError(`Failed to fetch your council interests: ${result.error}`);
-    }
-
-    const interests = result.data as Array<{
-      committee_name: string;
-      slug: string;
-      interest_level: string;
-      created_at: string;
-    }>;
+    const interests = await listMyCommitteeInterestsService({
+      userId: memberContext.workos_user.workos_user_id,
+    });
 
     if (interests.length === 0) {
       return "You haven't expressed interest in any councils yet. Use list_working_groups with type \"council\" to see available councils!";
@@ -2805,33 +2787,17 @@ export function createMemberToolHandlers(
     const collection = input.collection as string | undefined;
     const relationship = input.relationship as string | undefined;
 
-    // Build query string
-    const params = new URLSearchParams();
-    if (status && status !== 'all') params.set('status', status);
-    if (collection) params.set('collection', collection);
-    if (relationship) params.set('relationship', relationship);
-
-    const queryString = params.toString() ? `?${params.toString()}` : '';
-    const result = await callApi('GET', `/api/me/content${queryString}`, memberContext);
-
-    if (!result.ok) {
-      throw new ToolError(`Failed to fetch your content: ${result.error}`);
+    let data;
+    try {
+      data = await listMyContentService({
+        userId: memberContext.workos_user.workos_user_id,
+        status,
+        collection,
+        relationship,
+      });
+    } catch (err) {
+      throw new ToolError(`Failed to fetch your content: ${err instanceof Error ? err.message : String(err)}`);
     }
-
-    const data = result.data as {
-      items: Array<{
-        id: string;
-        slug: string;
-        title: string;
-        status: string;
-        content_type: string;
-        collection: { type: string; committee_name?: string; committee_slug?: string };
-        relationships: string[];
-        authors: Array<{ display_name: string }>;
-        published_at?: string;
-        created_at: string;
-      }>;
-    };
 
     if (data.items.length === 0) {
       let response = "You don't have any content yet.\n\n";

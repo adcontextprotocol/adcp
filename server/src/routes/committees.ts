@@ -31,6 +31,8 @@ import {
   joinWorkingGroup as joinWorkingGroupService,
   expressCommitteeInterest as expressCommitteeInterestService,
   withdrawCommitteeInterest as withdrawCommitteeInterestService,
+  listMyWorkingGroups as listMyWorkingGroupsService,
+  listMyCommitteeInterests as listMyCommitteeInterestsService,
   WorkingGroupMembershipError,
 } from "../services/working-group-membership-service.js";
 import {
@@ -2816,7 +2818,7 @@ export function createCommitteeRouters(): {
   userApiRouter.get('/', requireAuth, async (req: Request, res: Response) => {
     try {
       const user = req.user!;
-      const groups = await workingGroupDb.getWorkingGroupsForUser(user.id);
+      const groups = await listMyWorkingGroupsService({ userId: user.id });
       res.json({ working_groups: groups });
     } catch (error) {
       logger.error({ err: error }, 'Get user working groups error');
@@ -2844,18 +2846,8 @@ export function createCommitteeRouters(): {
   userApiRouter.get('/interests', requireAuth, async (req: Request, res: Response) => {
     try {
       const user = req.user!;
-      const pool = getPool();
-
-      const result = await pool.query(
-        `SELECT ci.interest_level, ci.created_at, wg.name as committee_name, wg.slug, wg.committee_type
-         FROM committee_interest ci
-         JOIN working_groups wg ON wg.id = ci.working_group_id
-         WHERE ci.workos_user_id = $1
-         ORDER BY ci.created_at DESC`,
-        [user.id]
-      );
-
-      res.json(result.rows);
+      const rows = await listMyCommitteeInterestsService({ userId: user.id });
+      res.json(rows);
     } catch (error) {
       logger.error({ err: error }, 'Get user council interests error');
       res.status(500).json({
