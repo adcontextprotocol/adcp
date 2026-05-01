@@ -399,6 +399,7 @@
                           "docs/sponsored-intelligence/product-spectrum",
                           "docs/sponsored-intelligence/networks",
                           "docs/sponsored-intelligence/workflow",
+                          "docs/sponsored-intelligence/a2ui",
                           "docs/sponsored-intelligence/measurement"
                         ]
                       },
@@ -407,8 +408,7 @@
                         "pages": [
                           "docs/sponsored-intelligence/si-chat-protocol",
                           "docs/sponsored-intelligence/implementing-si-agents",
-                          "docs/sponsored-intelligence/implementing-si-hosts",
-                          "docs/sponsored-intelligence/a2ui"
+                          "docs/sponsored-intelligence/implementing-si-hosts"
                         ]
                       },
                       {
@@ -906,6 +906,7 @@
                       "docs/sponsored-intelligence/product-spectrum",
                       "docs/sponsored-intelligence/networks",
                       "docs/sponsored-intelligence/workflow",
+                      "docs/sponsored-intelligence/a2ui",
                       "docs/sponsored-intelligence/measurement"
                     ]
                   },
@@ -914,8 +915,7 @@
                     "pages": [
                       "docs/sponsored-intelligence/si-chat-protocol",
                       "docs/sponsored-intelligence/implementing-si-agents",
-                      "docs/sponsored-intelligence/implementing-si-hosts",
-                      "docs/sponsored-intelligence/a2ui"
+                      "docs/sponsored-intelligence/implementing-si-hosts"
                     ]
                   },
                   {
