@@ -252,7 +252,7 @@ Default flow when a fix is needed in both lines:
    git cherry-pick <main-sha>
    git push origin 3.0.x
    ```
-3. The forward-merge workflow (`.github/workflows/forward-merge-3.0.yml`) opens a PR back to `main` whenever `3.0.x` updates. Merging it is a near-no-op (the cherry-pick is already in `main`) but keeps the lines provably in sync.
+3. The forward-merge workflow (`.github/workflows/forward-merge-3.0.yml`) opens a PR back to `main` whenever `3.0.x` updates. Merging it is a near-no-op (the cherry-pick is already in `main`) but keeps the lines provably in sync. The workflow auto-resolves conflicts on always-divergent paths (`package.json` / `package-lock.json` → take 3.0.x's; `.changeset/*.md` → preserve main's; `dist/*`, `CHANGELOG.md`, `static/schemas/source/index.json` → take 3.0.x's) and post-merge skips the PR if the result has no tree change vs `main` (which happens after a squash-merge of an earlier forward-merge). Conflicts on any path outside that allowlist fail the workflow loud and need manual resolution — they indicate a playbook violation (a change on 3.0.x that wasn't first cherry-picked from main).
 
 #### Patch eligibility
 
