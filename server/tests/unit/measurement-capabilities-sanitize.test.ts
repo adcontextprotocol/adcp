@@ -90,11 +90,11 @@ describe('sanitizeMeasurementCapabilities', () => {
     expect(out.metrics[0].description).toBe('normaltext');
   });
 
-  it('preserves tab and newline in description', () => {
+  it('preserves tab, newline, and carriage return in description', () => {
     const out = sanitizeMeasurementCapabilities({
-      metrics: [{ metric_id: 'm', description: 'line1\nline2\tcol2' }],
+      metrics: [{ metric_id: 'm', description: 'line1\nline2\tcol2\rmore' }],
     });
-    expect(out.metrics[0].description).toBe('line1\nline2\tcol2');
+    expect(out.metrics[0].description).toBe('line1\nline2\tcol2\rmore');
   });
 
   it('rejects description over 2000 chars', () => {

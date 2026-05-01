@@ -113,8 +113,10 @@ const ALLOWED_URI_SCHEMES = process.env.NODE_ENV === 'production'
   : new Set(['https:', 'http:']);
 
 function stripControlChars(value: string): string {
-  // Keep \t and \n; strip other control chars including \r and the
-  // less-common ones that survive copy-paste from documents.
+  // Keep whitespace controls (\t = U+0009, \n = U+000A, \r = U+000D); strip
+  // the rest of the C0 set and DEL. The character class deliberately skips
+  // 0x09, 0x0A, and 0x0D so copy-paste from documents that contain real line
+  // breaks survives.
   return value.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '');
 }
 
