@@ -449,6 +449,18 @@ function main() {
     process.exit(1);
   }
 
+  // provides_state_for lint: same-phase substitution declarations on stateful
+  // steps must reference real, stateful, same-phase peers and the per-phase
+  // peer-graph must be acyclic. See adcontextprotocol/adcp#3734.
+  try {
+    execSync('node scripts/lint-storyboard-provides-state-for.cjs', {
+      cwd: path.join(__dirname, '..'),
+      stdio: 'inherit',
+    });
+  } catch {
+    process.exit(1);
+  }
+
   // Contradiction lint: no two storyboards may encode contradictory outcomes
   // for the same (task, request, prior-state, env) — a conformant agent
   // cannot satisfy both.

@@ -150,6 +150,13 @@ phases:
         response_schema_ref: "account/list-accounts-response.json"
         doc_ref: "/accounts/tasks/list_accounts"
         stateful: true
+        # Explicit-mode social platforms (Snap, Meta, TikTok) pre-provision
+        # advertiser accounts out-of-band — `sync_accounts` is intentionally
+        # missing_tool, with `list_accounts` as the canonical alternative.
+        # Declaring the substitution here lets the runner waive the
+        # downstream missing_tool cascade when list_accounts passes.
+        # See adcontextprotocol/adcp#3734.
+        provides_state_for: sync_accounts
         expected: |
           Return accounts matching the query:
           - accounts array with status, account_id, brand, operator

@@ -251,7 +251,8 @@ skip_result:
     - reason                  # not_applicable | no_phases |
                               # prerequisite_failed | missing_tool |
                               # missing_test_controller |
-                              # unsatisfied_contract | peer_branch_taken
+                              # unsatisfied_contract | peer_branch_taken |
+                              # peer_substituted
     - detail                  # human-readable explanation citing the
                               # declared supported_protocols / specialisms
                               # and, if relevant, the missing tool,
@@ -297,8 +298,20 @@ skip_result:
       gaps (agent doesn't support a protocol) and runtime branch routing
       (agent took the other path) are different signals and must not be
       conflated in dashboards or summaries.
-
-  detailed_reason_mapping:
+    peer_substituted: |
+      The step would otherwise grade `missing_tool` or
+      `missing_test_controller`, but a same-phase peer step declared
+      `provides_state_for: <this_step_id>` (see storyboard-schema.yaml >
+      `provides_state_for`) and passed — the substitute established
+      equivalent state for downstream stateful steps, so the cascade is
+      waived. detail MUST follow the shape
+      "<this_step_id> state provided by <peer_phase_id>.<peer_step_id>"
+      so downstream tooling can parse which substitute carried the state.
+      Kept distinct from peer_branch_taken (branch-set routing for
+      mutually exclusive behaviors) and not_applicable (coverage gap):
+      this signal indicates the agent did declare the specialism but
+      offers an interchangeable tool that the storyboard accepts as an
+      equivalent state contract.
     description: |
       Runners MAY internally track narrower skip reasons (e.g., a grader
       distinguishing `rate_abuse_opt_out` from `live_side_effect_opt_in_required`).
