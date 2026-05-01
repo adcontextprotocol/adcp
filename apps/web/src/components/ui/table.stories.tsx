@@ -49,9 +49,9 @@ export const All: Story = () => (
                 <Badge
                   variant={
                     row.status === "paid"
-                      ? "default"
+                      ? "success"
                       : row.status === "pending"
-                        ? "secondary"
+                        ? "warning"
                         : "destructive"
                   }
                 >
