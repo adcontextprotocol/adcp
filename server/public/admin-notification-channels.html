@@ -72,7 +72,7 @@
     }
     .channel-item.inactive {
       opacity: 0.6;
-      background: var(--color-gray-50);
+      background: var(--color-bg-subtle);
     }
     .channel-header {
       display: flex;
@@ -120,7 +120,7 @@
       font-weight: var(--font-medium);
     }
     .badge-active { background: var(--color-success-100); color: var(--color-success-700); }
-    .badge-inactive { background: var(--color-gray-200); color: var(--color-gray-700); }
+    .badge-inactive { background: var(--color-bg-button-secondary); color: var(--color-text); }
     .badge-website { background: var(--color-info-100); color: var(--color-info-700); }
     .btn {
       padding: var(--space-2) var(--space-4);
@@ -134,8 +134,8 @@
     .btn-primary { background: var(--color-brand); color: white; }
     .btn-primary:hover { background: var(--color-primary-700); }
     .btn-primary:disabled { background: var(--color-gray-400); cursor: not-allowed; }
-    .btn-secondary { background: var(--color-gray-200); color: var(--color-text-heading); }
-    .btn-secondary:hover { background: var(--color-gray-300); }
+    .btn-secondary { background: var(--color-bg-button-secondary); color: var(--color-text-heading); }
+    .btn-secondary:hover { background: var(--color-bg-button-secondary-hover); }
     .btn-danger { background: var(--color-error-500); color: white; }
     .btn-danger:hover { background: var(--color-error-600); }
     .btn-success { background: var(--color-success-500); color: white; }
@@ -252,13 +252,13 @@
       color: var(--color-text-secondary);
     }
     .info-box {
-      background: var(--color-info-50);
+      background: var(--color-info-bg);
       border: var(--border-1) solid var(--color-info-200);
       border-radius: var(--radius-md);
       padding: var(--space-4);
       margin-bottom: var(--space-5);
       font-size: var(--text-sm);
-      color: var(--color-info-700);
+      color: var(--color-info-fg);
     }
   </style>
 </head>

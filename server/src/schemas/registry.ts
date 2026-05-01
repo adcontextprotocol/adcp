@@ -149,6 +149,35 @@ const DiscoveredFromSchema = z.object({
   authorized_for: z.string().optional(),
 });
 
+/**
+ * Publisher-side endorsement signal for a discovered agent.
+ *
+ * Populated only when an agent's `source = 'discovered'` AND its
+ * `discovered_from.publisher_domain` is claimed by an AAO member
+ * (member_profiles row whose `publishers[]` contains that domain with
+ * `is_public = true`). Mutually exclusive with `member` — a registered
+ * agent never carries this field.
+ *
+ * The agent itself did not opt in; the publisher endorsed it via
+ * `adagents.json`. Surfaces option C from issue #3547 / Problem 6 of
+ * issue #3538: discovered agents like `agent.mamamia.com.au` whose
+ * publisher is a member previously rendered `member: null` and dropped
+ * that trust signal on the floor.
+ */
+const EndorsedByPublisherMemberSchema = z
+  .object({
+    slug: z
+      .string()
+      .openapi({ description: "Member organization slug — stable URL-safe identifier for the publisher member." }),
+    display_name: z
+      .string()
+      .openapi({ description: "Member organization display name — render-ready label for the publisher member." }),
+    publisher_domain: z
+      .string()
+      .openapi({ description: "Publisher domain whose adagents.json endorsed this agent (the linkage that produced this signal)." }),
+  })
+  .openapi("EndorsedByPublisherMember");
+
 export const ResolvedBrandSchema = z
   .object({
     canonical_id: z.string().openapi({ example: "acmecorp.com" }),
@@ -373,13 +402,15 @@ export const FederatedAgentWithDetailsSchema = z
     member: MemberRefSchema.optional().openapi({
       description:
         "AAO member that owns this agent record, if any. Populated when `source` is `registered`. " +
-        "For `discovered` agents this is currently `null` even when the publisher_domain in `discovered_from` is owned by a member — see #3538 Problem 6.",
+        "For `discovered` agents this is `null`; see `endorsed_by_publisher_member` for the publisher-side endorsement signal added in #3547 / Problem 6 of #3538.",
     }),
     discovered_from: DiscoveredFromSchema.optional().openapi({
       description:
         "Set when `source = 'discovered'`. Identifies the publisher_domain whose adagents.json listed this agent, and the `authorized_for` string from that listing. " +
         "Mutually exclusive with the `member` field on the registered path.",
     }),
+    endorsed_by_publisher_member: EndorsedByPublisherMemberSchema.optional()
+      .openapi({ description: "Set on discovered agents when discovered_from.publisher_domain is claimed by an AAO member (publishers[] entry with is_public=true). Mutually exclusive with member — registered agents never carry this. Option C from #3547 (Problem 6 / #3538)." }),
     health: AgentHealthSchema.optional(),
     stats: AgentStatsSchema.optional(),
     capabilities: AgentCapabilitiesSchema.optional(),

@@ -89,6 +89,22 @@ Rate-limited endpoints return `429 Too Many Requests` when the limit is exceeded
   </Card>
 </CardGroup>
 
+## Lookups by entity
+
+Three endpoints answer different questions about who is in the registry. They span two tag groups in the API reference, so the table below is the entry point.
+
+| Endpoint | Question it answers |
+|----------|---------------------|
+| `GET /api/registry/agents` | "Give me the catalog." |
+| `GET /api/registry/operator?domain=X` | "What does this entity operate?" |
+| `GET /api/registry/publisher?domain=X` | "What does this entity publish?" |
+
+**`GET /api/registry/agents`** — the full catalog of agents in the registry, both `registered` (member-attested, opt-in) and `discovered` (crawled from a publisher's `adagents.json`). Use this when you want to browse or filter the whole population; the `source` field on each row distinguishes the two trust levels. Reference: [List agents endpoint](#agent-discovery) under Agent Discovery.
+
+**`GET /api/registry/operator?domain=X`** — given a domain, returns the agents that entity operates and the publishers that trust them. Use this when you have one entity in hand and want its agent footprint. Response shape is auth-aware: anonymous callers see only `public` agents, AAO API-tier callers also see `members_only`, and profile owners additionally see `private` (`server/src/routes/registry-api.ts:5486`). Reference: [Operator lookup](/docs/registry/api-reference/authorization-lookups/operator-lookup) under Authorization Lookups.
+
+**`GET /api/registry/publisher?domain=X`** — given a domain, returns the inventory that entity publishes (`properties[]`) and which agents it authorizes (`authorized_agents[]` from its `adagents.json`). Use this when you have one publisher in hand and want its inventory and delegations. The endpoint is unauthenticated and returns the same shape for every caller (`server/src/routes/registry-api.ts:5550`). Reference: [Publisher lookup](/docs/registry/api-reference/authorization-lookups/publisher-lookup) under Authorization Lookups.
+
 ### Brand Resolution
 
 These endpoints resolve domains to brand identities. The `source` field in the response indicates where the data came from:

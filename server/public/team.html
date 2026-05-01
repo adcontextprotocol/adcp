@@ -81,7 +81,7 @@
       text-transform: uppercase;
     }
     .members-table tbody tr:hover {
-      background: var(--color-gray-50);
+      background: var(--color-bg-subtle);
     }
     .member-email {
       font-weight: var(--font-medium);
@@ -106,7 +106,7 @@
       color: var(--color-primary-700);
     }
     .role-member {
-      background: var(--color-gray-100);
+      background: var(--color-bg-subtle);
       color: var(--color-text-secondary);
     }
     .status-badge {
@@ -512,7 +512,7 @@
             </span>
           </label>
           <div id="autoProvisionHierarchyStatus" style="display: none; margin-top: var(--space-2); font-size: var(--text-sm);"></div>
-          <div id="inferredSubsidiariesList" style="margin-top: var(--space-3); padding: var(--space-3); background: var(--color-gray-50); border-radius: var(--radius-2); font-size: var(--text-sm);"></div>
+          <div id="inferredSubsidiariesList" style="margin-top: var(--space-3); padding: var(--space-3); background: var(--color-bg-subtle); border-radius: var(--radius-2); font-size: var(--text-sm);"></div>
         </div>
 
         <div style="margin-top: 16px;">
@@ -1330,7 +1330,7 @@
         if (source === 'brand_json') {
           return `<span style="padding: 2px 6px; border-radius: var(--radius-1); font-size: var(--text-xs); background: var(--color-success-50); color: var(--color-success-700);" title="Self-asserted in brand.json">Asserted</span>`;
         }
-        return `<span style="padding: 2px 6px; border-radius: var(--radius-1); font-size: var(--text-xs); background: var(--color-gray-100); color: var(--color-text-secondary);" title="Inferred by automated classification">Inferred</span>`;
+        return `<span style="padding: 2px 6px; border-radius: var(--radius-1); font-size: var(--text-xs); background: var(--color-bg-subtle); color: var(--color-text-secondary);" title="Inferred by automated classification">Inferred</span>`;
       };
 
       const parts = [];
@@ -1339,7 +1339,7 @@
       if (classification && classification.parent) {
         const p = classification.parent;
         parts.push(`
-          <div style="display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); background: var(--color-gray-50); border-radius: var(--radius-2); margin-bottom: var(--space-2);">
+          <div style="display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); background: var(--color-bg-subtle); border-radius: var(--radius-2); margin-bottom: var(--space-2);">
             <span style="font-size: var(--text-xs); color: var(--color-text-tertiary); text-transform: uppercase; letter-spacing: 0.04em;">Parent</span>
             <strong style="color: var(--color-text-heading);">${escapeHtml(p.brand_name || p.domain)}</strong>
             <span style="color: var(--color-text-tertiary);">— ${escapeHtml(p.domain)}</span>
@@ -1382,7 +1382,7 @@
       if (inferred.length > 0) {
         parts.push(`<div style="text-align: center; color: var(--color-text-tertiary); font-size: var(--text-xs); margin-bottom: var(--space-2);">↓</div>`);
         parts.push(`
-          <div style="padding: var(--space-2) var(--space-3); background: var(--color-gray-50); border-radius: var(--radius-2);">
+          <div style="padding: var(--space-2) var(--space-3); background: var(--color-bg-subtle); border-radius: var(--radius-2);">
             <div style="font-size: var(--text-xs); color: var(--color-text-tertiary); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: var(--space-2);">Subsidiary brands (${inferred.length})</div>
             <ul style="list-style: none; margin: 0; padding: 0;">
               ${inferred.map(s => `
@@ -1592,7 +1592,7 @@
                 justify-content: space-between;
                 align-items: center;
                 padding: 12px;
-                background: var(--color-gray-50);
+                background: var(--color-bg-subtle);
                 border-radius: var(--radius-md);
               " id="domain-user-${escapeHtml(user.slack_email).replace(/[@.]/g, '-')}">
                 <div>

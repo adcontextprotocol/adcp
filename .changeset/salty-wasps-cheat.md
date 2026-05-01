@@ -1,7 +1,7 @@
 ---
 ---
 
-AAO Verified agent badge — implementation. Agents that declare `specialisms` in `get_adcp_capabilities` and pass the matching storyboards earn a per-protocol badge. Implements the trust-mark spec from #3001 (which introduced `AdCP Conformant` and `AAO Verified` as separate marks) under a single brand name with composable axis qualifiers — `AAO Verified Media Buy Agent (Spec)`, `(Live)`, or `(Spec + Live)`. Same containment relationship as #3001 (Spec is a prerequisite for measuring Live); single brand word for cleaner buyer messaging.
+AAO Verified agent badge — implementation. Agents that declare `specialisms` in `get_adcp_capabilities` and pass the matching storyboards earn a per-protocol badge. Implements the trust-mark spec from #3001 (which introduced `AdCP Conformant` and `AAO Verified` as separate marks) under a single brand name with composable axis qualifiers — `AAO Verified Media Buy Agent (Spec)`, `(Live)`, or `(Spec + Live)`. The two axes are orthogonal — neither is a prerequisite for the other (#3536); single brand word for cleaner buyer messaging.
 
 Badges are issued by AAO's compliance heartbeat to agents whose organization holds an active API-access membership tier, and revoked when membership lapses or specialisms start failing (48-hour grace). Preview-status specialisms are tested but do not contribute to stable badge issuance.
 
