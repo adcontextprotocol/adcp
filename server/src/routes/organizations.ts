@@ -381,6 +381,7 @@ export function createOrganizationsRouter(): Router {
       await orgDb.recordAuditLog({
         workos_organization_id: orgId,
         workos_user_id: user.id,
+        auth_workos_user_id: user.authWorkosUserId,
         action: 'join_request_approved',
         resource_type: 'join_request',
         resource_id: requestId,
@@ -510,6 +511,7 @@ export function createOrganizationsRouter(): Router {
       await orgDb.recordAuditLog({
         workos_organization_id: orgId,
         workos_user_id: user.id,
+        auth_workos_user_id: user.authWorkosUserId,
         action: 'join_request_rejected',
         resource_type: 'join_request',
         resource_id: requestId,
@@ -725,6 +727,7 @@ export function createOrganizationsRouter(): Router {
       await orgDb.recordAuditLog({
         workos_organization_id: orgId,
         workos_user_id: user.id,
+        auth_workos_user_id: user.authWorkosUserId,
         action: 'brand_classification_report_filed',
         resource_type: 'brand',
         resource_id: subject_domain.toLowerCase(),
@@ -1032,6 +1035,7 @@ export function createOrganizationsRouter(): Router {
       await orgDb.recordAuditLog({
         workos_organization_id: orgId,
         workos_user_id: adminUser.id,
+        auth_workos_user_id: adminUser.authWorkosUserId,
         action: 'member_added',
         resource_type: 'membership',
         resource_id: membership.id,
@@ -1403,6 +1407,7 @@ export function createOrganizationsRouter(): Router {
             await orgDb.recordAuditLog({
               workos_organization_id: existingOrgId,
               workos_user_id: user.id,
+              auth_workos_user_id: user.authWorkosUserId,
               action: 'organization_adopted',
               resource_type: 'organization',
               resource_id: existingOrgId,
@@ -1542,6 +1547,7 @@ export function createOrganizationsRouter(): Router {
       await orgDb.recordAuditLog({
         workos_organization_id: workosOrgId,
         workos_user_id: user.id,
+        auth_workos_user_id: user.authWorkosUserId,
         action: 'organization_created',
         resource_type: 'organization',
         resource_id: workosOrgId,
@@ -1679,6 +1685,7 @@ export function createOrganizationsRouter(): Router {
       await orgDb.recordAuditLog({
         workos_organization_id: orgId,
         workos_user_id: user.id,
+        auth_workos_user_id: user.authWorkosUserId,
         action: 'organization_renamed',
         resource_type: 'organization',
         resource_id: orgId,
@@ -1845,6 +1852,7 @@ export function createOrganizationsRouter(): Router {
       await orgDb.recordAuditLog({
         workos_organization_id: orgId,
         workos_user_id: user.id,
+        auth_workos_user_id: user.authWorkosUserId,
         action: 'organization_settings_updated',
         resource_type: 'organization',
         resource_id: orgId,
@@ -1960,6 +1968,7 @@ export function createOrganizationsRouter(): Router {
       await orgDb.recordAuditLog({
         workos_organization_id: orgId,
         workos_user_id: user.id,
+        auth_workos_user_id: user.authWorkosUserId,
         action: 'organization_deleted',
         resource_type: 'organization',
         resource_id: orgId,
@@ -2175,6 +2184,7 @@ export function createOrganizationsRouter(): Router {
       await orgDb.recordAuditLog({
         workos_organization_id: orgId,
         workos_user_id: user.id,
+        auth_workos_user_id: user.authWorkosUserId,
         action: 'convert_to_team',
         resource_type: 'organization',
         resource_id: orgId,
@@ -2260,6 +2270,7 @@ export function createOrganizationsRouter(): Router {
       await orgDb.recordAuditLog({
         workos_organization_id: orgId,
         workos_user_id: user.id,
+        auth_workos_user_id: user.authWorkosUserId,
         action: 'convert_to_individual',
         resource_type: 'organization',
         resource_id: orgId,
@@ -2547,6 +2558,7 @@ export function createOrganizationsRouter(): Router {
       await orgDb.recordAuditLog({
         workos_organization_id: orgId,
         workos_user_id: user.id,
+        auth_workos_user_id: user.authWorkosUserId,
         action: 'member_invited',
         resource_type: 'invitation',
         resource_id: invitation.id,
@@ -2633,6 +2645,7 @@ export function createOrganizationsRouter(): Router {
       await orgDb.recordAuditLog({
         workos_organization_id: orgId,
         workos_user_id: user.id,
+        auth_workos_user_id: user.authWorkosUserId,
         action: 'invitation_revoked',
         resource_type: 'invitation',
         resource_id: invitationId,
@@ -2713,6 +2726,7 @@ export function createOrganizationsRouter(): Router {
       await orgDb.recordAuditLog({
         workos_organization_id: orgId,
         workos_user_id: user.id,
+        auth_workos_user_id: user.authWorkosUserId,
         action: 'invitation_resent',
         resource_type: 'invitation',
         resource_id: newInvitation.id,
@@ -2897,6 +2911,7 @@ export function createOrganizationsRouter(): Router {
         await orgDb.recordAuditLog({
           workos_organization_id: orgId,
           workos_user_id: user.id,
+          auth_workos_user_id: user.authWorkosUserId,
           action: 'member_invited',
           resource_type: 'invitation',
           resource_id: invitation.id,
@@ -3011,6 +3026,7 @@ export function createOrganizationsRouter(): Router {
         await orgDb.recordAuditLog({
           workos_organization_id: orgId,
           workos_user_id: user.id,
+          auth_workos_user_id: user.authWorkosUserId,
           action: 'member_added',
           resource_type: 'membership',
           resource_id: membership.id,
@@ -3137,6 +3153,7 @@ export function createOrganizationsRouter(): Router {
       await orgDb.recordAuditLog({
         workos_organization_id: orgId,
         workos_user_id: user.id,
+        auth_workos_user_id: user.authWorkosUserId,
         action: 'member_role_changed',
         resource_type: 'membership',
         resource_id: membershipId,
@@ -3312,6 +3329,7 @@ export function createOrganizationsRouter(): Router {
           await orgDb.recordAuditLog({
             workos_organization_id: orgId,
             workos_user_id: user.id,
+            auth_workos_user_id: user.authWorkosUserId,
             action: 'member_seat_type_changed',
             resource_type: 'membership',
             resource_id: membershipId,
@@ -3365,6 +3383,7 @@ export function createOrganizationsRouter(): Router {
         await orgDb.recordAuditLog({
           workos_organization_id: orgId,
           workos_user_id: user.id,
+          auth_workos_user_id: user.authWorkosUserId,
           action: 'member_role_changed',
           resource_type: 'membership',
           resource_id: membershipId,
@@ -3487,6 +3506,7 @@ export function createOrganizationsRouter(): Router {
       await orgDb.recordAuditLog({
         workos_organization_id: orgId,
         workos_user_id: user.id,
+        auth_workos_user_id: user.authWorkosUserId,
         action: 'member_removed',
         resource_type: 'membership',
         resource_id: membershipId,
@@ -3839,6 +3859,7 @@ export function createOrganizationsRouter(): Router {
       await orgDb.recordAuditLog({
         workos_organization_id: orgId,
         workos_user_id: user.id,
+        auth_workos_user_id: user.authWorkosUserId,
         action: 'seat_upgrade_requested',
         resource_type: 'seat_upgrade_request',
         resource_id: request.id,
@@ -3938,6 +3959,7 @@ export function createOrganizationsRouter(): Router {
       await orgDb.recordAuditLog({
         workos_organization_id: orgId,
         workos_user_id: user.id,
+        auth_workos_user_id: user.authWorkosUserId,
         action: 'seat_upgrade_approved',
         resource_type: 'seat_upgrade_request',
         resource_id: requestId,
@@ -4012,6 +4034,7 @@ export function createOrganizationsRouter(): Router {
       await orgDb.recordAuditLog({
         workos_organization_id: orgId,
         workos_user_id: user.id,
+        auth_workos_user_id: user.authWorkosUserId,
         action: 'seat_upgrade_denied',
         resource_type: 'seat_upgrade_request',
         resource_id: requestId,

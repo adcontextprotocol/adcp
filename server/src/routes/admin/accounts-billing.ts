@@ -532,6 +532,7 @@ export function setupAccountsBillingRoutes(
         await orgDb.recordAuditLog({
           workos_organization_id: orgId,
           workos_user_id: req.user!.id,
+          auth_workos_user_id: req.user!.authWorkosUserId,
           action: "organization_deleted",
           resource_type: "organization",
           resource_id: orgId,
@@ -738,6 +739,7 @@ export function setupAccountsBillingRoutes(
                 admin_email: req.user!.email,
                 reason: reason.trim(),
                 before_state: beforeState,
+                ...(req.user!.authWorkosUserId && { auth_workos_user_id: req.user!.authWorkosUserId }),
               }),
             ]
           );
@@ -1045,6 +1047,7 @@ export function setupAccountsBillingRoutes(
                 reason: reason.trim(),
                 before_state: beforeState,
                 after_state: afterState,
+                ...(req.user!.authWorkosUserId && { auth_workos_user_id: req.user!.authWorkosUserId }),
               }),
             ]
           );

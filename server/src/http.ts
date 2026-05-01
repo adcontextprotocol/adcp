@@ -4720,10 +4720,30 @@ export class HTTPServer {
               userName = 'System';
             }
 
+            // When id-swap was in effect, also resolve the auth credential's display name
+            let authUserName: string | undefined;
+            const authUserId = (entry.details as Record<string, unknown>)?.auth_workos_user_id as string | undefined;
+            if (authUserId && workos) {
+              const cachedAuth = getCachedUser(authUserId);
+              if (cachedAuth) {
+                authUserName = cachedAuth.displayName;
+              } else {
+                try {
+                  const authUser = await workos.userManagement.getUser(authUserId);
+                  const displayName = authUser.email || `${authUser.firstName} ${authUser.lastName}`.trim() || 'Unknown';
+                  authUserName = displayName;
+                  setCachedUser(authUserId, displayName);
+                } catch (err) {
+                  logger.warn({ err, userId: authUserId }, 'Failed to fetch auth user name for audit log');
+                }
+              }
+            }
+
             return {
               ...entry,
               organization_name: organizationName,
               user_name: userName,
+              ...(authUserName !== undefined && { auth_user_name: authUserName }),
             };
           })
         );
@@ -7563,6 +7583,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
             await orgDb.recordAuditLog({
               workos_organization_id: organization_id,
               workos_user_id: user.id,
+              auth_workos_user_id: user.authWorkosUserId,
               action: 'member_added',
               resource_type: 'membership',
               resource_id: membership.id,
@@ -7639,6 +7660,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
         await orgDb.recordAuditLog({
           workos_organization_id: organization_id,
           workos_user_id: user.id,
+          auth_workos_user_id: user.authWorkosUserId,
           action: 'join_request_created',
           resource_type: 'join_request',
           resource_id: request.id,
@@ -7692,6 +7714,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
             await orgDb.recordAuditLog({
               workos_organization_id: organization_id,
               workos_user_id: user.id,
+              auth_workos_user_id: user.authWorkosUserId,
               action: 'join_request_auto_approved',
               resource_type: 'join_request',
               resource_id: request.id,

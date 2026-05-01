@@ -752,7 +752,7 @@ export function createAdminUsersRouter(): Router {
   // verification email is sent to the new address. Phase 3 may add one.
   router.post('/:userId/linked-emails', requireAuth, requireAdmin, async (req, res) => {
     const adminEmail = req.user!.email;
-    const adminUserId = req.user!.id;
+    const adminUserId = req.user!.authWorkosUserId ?? req.user!.id;
     const existingUserId = req.params.userId;
     const rawEmail = (req.body?.email as string | undefined)?.trim();
 

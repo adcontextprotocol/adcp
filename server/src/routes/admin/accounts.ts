@@ -2505,6 +2505,7 @@ export function setupAccountRoutes(
         await orgDb.recordAuditLog({
           workos_organization_id: orgId,
           workos_user_id: req.user?.id || "admin",
+          auth_workos_user_id: req.user?.authWorkosUserId,
           action: "admin_member_role_changed",
           resource_type: "membership",
           resource_id: membershipId,
