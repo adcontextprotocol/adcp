@@ -52,17 +52,16 @@ vi.mock('../../src/middleware/csrf.js', () => ({
 
 const MOCK_NEW_WORKOS_USER_ID = 'user_test_bind_NEW_FROM_WORKOS';
 
+// Hoist the mock fns so the vi.mock factory (also hoisted) can reference them.
+const { mockCreateUser, mockDeleteUser } = vi.hoisted(() => ({
+  mockCreateUser: vi.fn(),
+  mockDeleteUser: vi.fn(),
+}));
+
 vi.mock('../../src/auth/workos-client.js', () => {
   const mockUserManagement = {
-    createUser: vi.fn().mockImplementation(async ({ email, firstName, lastName }: any) => ({
-      id: MOCK_NEW_WORKOS_USER_ID,
-      email,
-      firstName: firstName ?? null,
-      lastName: lastName ?? null,
-      emailVerified: true,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    })),
+    createUser: mockCreateUser,
+    deleteUser: mockDeleteUser,
   };
   const mockWorkos = { userManagement: mockUserManagement };
   return {
@@ -104,6 +103,18 @@ describe('POST /api/admin/users/:userId/linked-emails (admin bind)', () => {
        VALUES ($1, 'existing@test.example', 'Existing', 'User', true, NOW(), NOW(), NOW(), NOW())`,
       [EXISTING_USER_ID]
     );
+    mockCreateUser.mockReset();
+    mockDeleteUser.mockReset();
+    mockCreateUser.mockImplementation(async ({ email, firstName, lastName }: any) => ({
+      id: MOCK_NEW_WORKOS_USER_ID,
+      email,
+      firstName: firstName ?? null,
+      lastName: lastName ?? null,
+      emailVerified: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }));
+    mockDeleteUser.mockResolvedValue(undefined);
   });
 
   async function cleanup() {
@@ -182,5 +193,43 @@ describe('POST /api/admin/users/:userId/linked-emails (admin bind)', () => {
       .send({ email: 'fresh@test.example' })
       .expect(404);
     expect(response.body.error).toMatch(/not found/i);
+  });
+
+  it('translates WorkOS 422 (email already in use upstream) to a 409', async () => {
+    mockCreateUser.mockImplementationOnce(async () => {
+      const err: any = new Error('Email already in use');
+      err.status = 422;
+      throw err;
+    });
+
+    const response = await request(app)
+      .post(`/api/admin/users/${EXISTING_USER_ID}/linked-emails`)
+      .send({ email: 'taken-upstream@test.example' })
+      .expect(409);
+
+    expect(response.body.error).toMatch(/already exists/i);
+    // No local users row should have been created.
+    const localCheck = await pool.query(
+      `SELECT 1 FROM users WHERE LOWER(email) = 'taken-upstream@test.example'`
+    );
+    expect(localCheck.rows).toEqual([]);
+  });
+
+  it('rolls back the WorkOS user when local bind fails after createUser succeeded', async () => {
+    // Pre-create the new WorkOS user id locally so the post-createUser INSERT
+    // would succeed, but force mergeUsers to fail by deleting the trigger-
+    // created identity binding for the existing user (Phase 1 trigger
+    // guarantees normally — we break the invariant to simulate a partial
+    // failure path).
+    await pool.query(`DELETE FROM identity_workos_users WHERE workos_user_id = $1`, [EXISTING_USER_ID]);
+
+    const response = await request(app)
+      .post(`/api/admin/users/${EXISTING_USER_ID}/linked-emails`)
+      .send({ email: 'rollback@test.example' })
+      .expect(500);
+
+    expect(response.body.error).toMatch(/failed to bind/i);
+    expect(response.body.message).toMatch(/rolled back|retry/i);
+    expect(mockDeleteUser).toHaveBeenCalledWith(MOCK_NEW_WORKOS_USER_ID);
   });
 });

@@ -824,12 +824,26 @@ export function createAdminUsersRouter(): Router {
     } catch (err) {
       logger.error(
         { err, newWorkosUserId: newWorkosUser.id, existingUserId },
-        'Admin bind-email: local bind failed after WorkOS createUser succeeded — manual cleanup may be needed'
+        'Admin bind-email: local bind failed after WorkOS createUser succeeded — rolling back the WorkOS user'
       );
+      // Best-effort cleanup so a retry doesn't leave an orphan in WorkOS.
+      // If the delete itself fails, surface the WorkOS id for manual cleanup.
+      let cleanedUp = false;
+      try {
+        await workos.userManagement.deleteUser(newWorkosUser.id);
+        cleanedUp = true;
+      } catch (deleteErr) {
+        logger.error(
+          { err: deleteErr, newWorkosUserId: newWorkosUser.id },
+          'Admin bind-email: failed to roll back WorkOS user after local-bind failure'
+        );
+      }
       return res.status(500).json({
-        error: 'Created the WorkOS user but failed to bind locally',
-        message: 'Please contact engineering — a WorkOS user was created at the new email but is not yet linked.',
-        new_workos_user_id: newWorkosUser.id,
+        error: 'Failed to bind sign-in email',
+        message: cleanedUp
+          ? 'The new WorkOS user was rolled back. Please retry.'
+          : 'Please contact engineering — a WorkOS user was created at the new email but is not yet linked, and rollback failed.',
+        ...(cleanedUp ? {} : { new_workos_user_id: newWorkosUser.id }),
       });
     }
 
