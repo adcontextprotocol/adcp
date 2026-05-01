@@ -3247,7 +3247,9 @@ export function createMemberToolHandlers(
     // whatever shape the source declared (most without a trailing slash,
     // some with). Without this, asking about `https://x/mcp` when the
     // crawler stored `https://x/mcp/` (or vice versa) silently returns
-    // "not in registry" for an agent that IS registered.
+    // "not in registry" for an agent that IS registered. No-slash is
+    // tried first because that's the more common storage form across
+    // the registry.
     const stripped = agentUrl.replace(/\/+$/, '');
     const withSlash = stripped + '/';
     const candidates = stripped === agentUrl ? [stripped, withSlash] : [stripped, agentUrl];

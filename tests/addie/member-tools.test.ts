@@ -598,21 +598,44 @@ describe('createMemberToolHandlers', () => {
     });
 
     it('matches stored URL with trailing slash when input has none', async () => {
-      // Storage form: trailing slash. Input: no slash. Without
-      // canonicalization the agent looks unknown.
+      // Storage form: trailing slash on every snapshot table. Input: no
+      // slash. Each of the four data sources is keyed strictly on the
+      // stored form, so a passing test proves the candidates-array path
+      // exercises every lookup, not just compliance.
       const stored = 'https://celtra.example.com/mcp/';
       vi.spyOn(ComplianceDatabase.prototype, 'getComplianceStatus').mockImplementation(async (u: string) => {
         return u === stored ? ({ status: 'passing', headline: 'ok', last_checked_at: new Date(), last_passed_at: new Date(), tracks_summary_json: { core: 'pass' } } as never) : null;
       });
-      vi.spyOn(ComplianceDatabase.prototype, 'getRegistryMetadata').mockResolvedValue(null as never);
+      vi.spyOn(ComplianceDatabase.prototype, 'getRegistryMetadata').mockImplementation(async (u: string) => {
+        return u === stored ? ({ lifecycle_stage: 'production', compliance_opt_out: false, monitoring_paused: false, check_interval_hours: 12, monitoring_paused_at: null, created_at: new Date(), updated_at: new Date() } as never) : null;
+      });
       vi.spyOn(ComplianceDatabase.prototype, 'getBadgesForAgent').mockResolvedValue([] as never);
       vi.spyOn(ComplianceDatabase.prototype, 'getLatestDeclaredSpecialisms').mockResolvedValue([] as never);
-      vi.spyOn(AgentSnapshotDatabase.prototype, 'bulkGetHealth').mockResolvedValue(new Map() as never);
-      vi.spyOn(AgentSnapshotDatabase.prototype, 'bulkGetCapabilities').mockResolvedValue(new Map() as never);
+      vi.spyOn(AgentSnapshotDatabase.prototype, 'bulkGetHealth').mockImplementation(async (urls: string[]) => {
+        const map = new Map<string, unknown>();
+        if (urls.includes(stored)) {
+          map.set(stored, { online: true, response_time_ms: 88, checked_at: new Date(), error: null });
+        }
+        return map as never;
+      });
+      vi.spyOn(AgentSnapshotDatabase.prototype, 'bulkGetCapabilities').mockImplementation(async (urls: string[]) => {
+        const map = new Map<string, unknown>();
+        if (urls.includes(stored)) {
+          map.set(stored, { protocol: 'mcp', discovered_tools_json: [{ name: 'get_products' }], oauth_required: false, discovery_error: null });
+        }
+        return map as never;
+      });
       const handlers = createMemberToolHandlers(null);
       const result = await handlers.get('get_agent_status')!({ agent_url: 'https://celtra.example.com/mcp' });
       expect(result).not.toContain('not in registry');
       expect(result).toContain(stored);
+      // The handler renders health + caps + compliance from the stored
+      // canonical form — these only appear when bulkGetHealth /
+      // bulkGetCapabilities returned a row keyed on `stored`.
+      expect(result).toContain('Online');
+      expect(result).toContain('88ms');
+      expect(result).toContain('Tools advertised:** 1');
+      expect(result).toContain('passing');
     });
   });
 
