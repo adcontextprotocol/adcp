@@ -1,0 +1,370 @@
+id: creative_sales_agent/provenance_enforcement
+version: "1.0.0"
+title: "Seller enforces provenance_requirements on sync_creatives"
+category: creative_sales_agent
+summary: "Seller publishes provenance_requirements + accepted_verifiers on a product. Two structural rejections (off-list verify_agent → PROVENANCE_VERIFIER_NOT_ACCEPTED, missing disclosure → PROVENANCE_DISCLOSURE_MISSING), then accepts a corrected resubmission with on-list verifier."
+track: creative
+required_tools:
+  - get_products
+  - sync_creatives
+
+narrative: |
+  creative_policy carries three load-bearing fields for provenance enforcement:
+  provenance_required (some provenance must be attached), provenance_requirements
+  (which fields must be present), and accepted_verifiers (which governance agents
+  the seller will call). The contract is three steps: the seller publishes via
+  get_products, the buyer represents on sync_creatives by attaching matching
+  provenance + an on-list verify_agent, and the seller confirms by structurally
+  cross-checking the submission and (when applicable) calling an on-list agent.
+
+  This scenario walks the structural-rejection contract end to end. Phase 1: the
+  buyer discovers a product whose creative_policy declares require_disclosure_metadata
+  and accepted_verifiers. Phase 2: the buyer submits with provenance pointing at an
+  off-list verify_agent.agent_url — the seller MUST cross-check before any outbound
+  call and reject with PROVENANCE_VERIFIER_NOT_ACCEPTED, closing the buyer-controlled-URL
+  trust gap. Phase 3: the buyer's submission has an on-list verifier but omits the
+  required disclosure block — the seller MUST reject with PROVENANCE_DISCLOSURE_MISSING.
+  Phase 4: the buyer resubmits with disclosure populated and an on-list verify_agent;
+  the seller accepts.
+
+  The truth-of-claim contract (PROVENANCE_CLAIM_CONTRADICTED, surfaced via
+  get_creative_features when the on-list verifier returns a result that contradicts
+  the buyer's claim) is a separate scenario; this one tests only the structural
+  surface a buyer's orchestrator can self-correct against without negotiating with
+  the seller.
+
+agent:
+  interaction_model: stateful_push
+  capabilities:
+    - has_creative_library
+  examples:
+    - "Publishers and SSPs that require AI disclosure metadata for EU AI Act / CA SB 942 compliance"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    Seller publishes at least one product whose creative_policy carries
+    provenance_required: true and provenance_requirements.require_disclosure_metadata: true.
+    The buyer discovers the product via get_products and reads the requirement before
+    submitting creatives.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "test-product-disclosure-required"
+      delivery_type: "non_guaranteed"
+      creative_policy:
+        co_branding: "optional"
+        landing_page: "any"
+        templates_available: false
+        provenance_required: true
+        provenance_requirements:
+          require_disclosure_metadata: true
+        accepted_verifiers:
+          - agent_url: "https://governance.encypher.seller.example"
+            feature_id: "encypher.markers_present_v2"
+            providers: ["Encypher"]
+      pricing_options:
+        - pricing_option_id: "test-pricing-cpm"
+          pricing_model: "cpm"
+          rate: 5.00
+          currency: "USD"
+
+phases:
+  - id: discover_requirement
+    title: "Discover the disclosure requirement"
+    narrative: |
+      The buyer calls get_products and inspects the returned product's creative_policy.
+      An orchestrator that reads provenance_requirements upfront can pre-flight the
+      creative shape before paying the round-trip cost of a rejection.
+
+    steps:
+      - id: get_products_with_disclosure_policy
+        title: "Read provenance_requirements and accepted_verifiers from creative_policy"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: false
+        expected: |
+          Return the seeded product with creative_policy.provenance_required: true,
+          creative_policy.provenance_requirements.require_disclosure_metadata: true,
+          and creative_policy.accepted_verifiers populated with at least one entry,
+          so the buyer's orchestrator can read both the structural requirement and
+          the seller's verifier allowlist before submission.
+        sample_request:
+          buying_mode: "brief"
+          brief: "Display inventory accepting creatives with AI disclosure metadata."
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          context:
+            correlation_id: "provenance_enforcement--get_products"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_value
+            path: "products[0].creative_policy.provenance_required"
+            value: true
+            description: "Seller declares provenance_required on the product"
+          - check: field_value
+            path: "products[0].creative_policy.provenance_requirements.require_disclosure_metadata"
+            value: true
+            description: "Seller declares require_disclosure_metadata as a structural requirement"
+          - check: field_present
+            path: "products[0].creative_policy.accepted_verifiers[0].agent_url"
+            description: "Seller publishes at least one accepted verifier so buyers can represent against it"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "provenance_enforcement--get_products"
+            description: "Context correlation_id returned unchanged"
+
+  - id: reject_off_list_verifier
+    title: "Sync with off-list verify_agent — rejected"
+    narrative: |
+      The buyer attaches a verify_agent.agent_url that is not on the seller's
+      accepted_verifiers list. The seller MUST cross-check the URL before any
+      outbound call and reject the per-creative entry with
+      PROVENANCE_VERIFIER_NOT_ACCEPTED. This closes the buyer-controlled-URL
+      trust gap: the seller does not call buyer-asserted endpoints outside its
+      allowlist. The buyer self-corrects by replacing verify_agent.agent_url
+      with one drawn from the published accepted_verifiers list.
+
+    steps:
+      - id: sync_creatives_off_list_verifier
+        title: "Submit creative pointing at an off-list verifier"
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
+        doc_ref: "/creative/task-reference/sync_creatives"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: true
+        expected: |
+          The seller accepts the request envelope but rejects the per-creative entry
+          with action: failed and an error carrying:
+          - code: PROVENANCE_VERIFIER_NOT_ACCEPTED
+          - field pointing at the offending verify_agent.agent_url path
+          - recovery: correctable
+          The seller MUST NOT call the off-list URL.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          creatives:
+            - creative_id: "acme_off_list_verifier_probe_001"
+              name: "Acme off-list verifier probe"
+              format_id:
+                agent_url: "https://your-platform.example.com"
+                id: "display_300x250"
+              assets:
+                headline:
+                  asset_type: "text"
+                  content: "Outdoor gear, photographed live"
+                image:
+                  asset_type: "image"
+                  url: "https://test-assets.adcontextprotocol.org/acme-outdoor/hero.jpg"
+                  width: 300
+                  height: 250
+                click_url:
+                  asset_type: "url"
+                  url: "https://acmeoutdoor.example/spring"
+              provenance:
+                digital_source_type: "trained_algorithmic_media"
+                ai_tool:
+                  name: "DALL-E 3"
+                  provider: "OpenAI"
+                declared_by:
+                  role: "agency"
+                disclosure:
+                  required: true
+                  jurisdictions:
+                    - country: "US"
+                      region: "CA"
+                      regulation: "ca_sb_942"
+                      label_text: "Created with AI"
+                embedded_provenance:
+                  - method: "provenance_markers"
+                    provider: "Encypher"
+                    verify_agent:
+                      agent_url: "https://attacker-controlled.example"
+                      feature_id: "encypher.markers_present_v2"
+          idempotency_key: "$generate:uuid_v4#provenance_enforcement_reject_off_list_verifier_sync"
+          context:
+            correlation_id: "provenance_enforcement--reject_off_list_verifier"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-creatives-response.json schema"
+          - check: field_value
+            path: "creatives[0].action"
+            value: "failed"
+            description: "Per-creative action is failed for the off-list verifier submission"
+          - check: error_code
+            value: "PROVENANCE_VERIFIER_NOT_ACCEPTED"
+            description: "Per-creative error code is PROVENANCE_VERIFIER_NOT_ACCEPTED — buyer-asserted URL was outside the seller's accepted_verifiers allowlist"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "provenance_enforcement--reject_off_list_verifier"
+            description: "Context correlation_id returned unchanged on rejection"
+
+  - id: reject_missing_disclosure
+    title: "Sync without disclosure — rejected"
+    narrative: |
+      The buyer submits a creative whose provenance has digital_source_type but no
+      disclosure object. The seller MUST reject the per-creative entry with
+      PROVENANCE_DISCLOSURE_MISSING and error.field pointing at the resolved
+      provenance.disclosure path. This is the structural-rejection contract: the
+      seller does not need to call any verifier, only inspect the submitted
+      manifest against the published provenance_requirements.
+
+    steps:
+      - id: sync_creatives_missing_disclosure
+        title: "Submit creative with provenance but no disclosure"
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
+        doc_ref: "/creative/task-reference/sync_creatives"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: true
+        expected: |
+          The seller accepts the request envelope but rejects the per-creative entry
+          with action: failed and an error carrying:
+          - code: PROVENANCE_DISCLOSURE_MISSING
+          - field pointing at the missing disclosure path on the resolved manifest
+          - recovery: correctable
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          creatives:
+            - creative_id: "acme_disclosure_probe_001"
+              name: "Acme disclosure probe — missing block"
+              format_id:
+                agent_url: "https://your-platform.example.com"
+                id: "display_300x250"
+              assets:
+                headline:
+                  asset_type: "text"
+                  content: "Outdoor gear, photographed live"
+                image:
+                  asset_type: "image"
+                  url: "https://test-assets.adcontextprotocol.org/acme-outdoor/hero.jpg"
+                  width: 300
+                  height: 250
+                click_url:
+                  asset_type: "url"
+                  url: "https://acmeoutdoor.example/spring"
+              provenance:
+                digital_source_type: "trained_algorithmic_media"
+                ai_tool:
+                  name: "DALL-E 3"
+                  provider: "OpenAI"
+                declared_by:
+                  role: "agency"
+          idempotency_key: "$generate:uuid_v4#provenance_enforcement_reject_missing_disclosure_sync"
+          context:
+            correlation_id: "provenance_enforcement--reject_missing_disclosure"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-creatives-response.json schema"
+          - check: field_value
+            path: "creatives[0].action"
+            value: "failed"
+            description: "Per-creative action is failed for the missing-disclosure submission"
+          - check: error_code
+            value: "PROVENANCE_DISCLOSURE_MISSING"
+            description: "Per-creative error code identifies the missing disclosure requirement; buyers can self-correct without negotiating"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "provenance_enforcement--reject_missing_disclosure"
+            description: "Context correlation_id returned unchanged on rejection"
+
+  - id: accept_with_disclosure
+    title: "Resync with disclosure and on-list verifier — accepted"
+    narrative: |
+      The buyer reads the rejection error codes from the prior phases, attaches a
+      complete disclosure block, and represents an on-list verifier (an entry from
+      the seller's accepted_verifiers). The seller's structural and verifier-allowlist
+      checks both pass; the creative enters the seller's review lifecycle.
+
+    steps:
+      - id: sync_creatives_with_disclosure
+        title: "Resubmit with disclosure metadata populated and an on-list verify_agent"
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
+        doc_ref: "/creative/task-reference/sync_creatives"
+        stateful: true
+        expected: |
+          The seller accepts the corrected creative. The per-creative result has
+          action created or updated and a status from creative-status (processing,
+          pending_review, or approved).
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          creatives:
+            - creative_id: "acme_disclosure_probe_001"
+              name: "Acme disclosure probe — disclosure attached, on-list verifier"
+              format_id:
+                agent_url: "https://your-platform.example.com"
+                id: "display_300x250"
+              assets:
+                headline:
+                  asset_type: "text"
+                  content: "Outdoor gear, photographed live"
+                image:
+                  asset_type: "image"
+                  url: "https://test-assets.adcontextprotocol.org/acme-outdoor/hero.jpg"
+                  width: 300
+                  height: 250
+                click_url:
+                  asset_type: "url"
+                  url: "https://acmeoutdoor.example/spring"
+              provenance:
+                digital_source_type: "trained_algorithmic_media"
+                ai_tool:
+                  name: "DALL-E 3"
+                  provider: "OpenAI"
+                declared_by:
+                  role: "agency"
+                disclosure:
+                  required: true
+                  jurisdictions:
+                    - country: "US"
+                      region: "CA"
+                      regulation: "ca_sb_942"
+                      label_text: "Created with AI"
+                    - country: "DE"
+                      regulation: "eu_ai_act_article_50"
+                      label_text: "KI-generiert"
+                embedded_provenance:
+                  - method: "provenance_markers"
+                    provider: "Encypher"
+                    verify_agent:
+                      agent_url: "https://governance.encypher.seller.example"
+                      feature_id: "encypher.markers_present_v2"
+          idempotency_key: "$generate:uuid_v4#provenance_enforcement_accept_with_disclosure_sync"
+          context:
+            correlation_id: "provenance_enforcement--accept_with_disclosure"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-creatives-response.json schema"
+          - check: field_present
+            path: "creatives[0].action"
+            description: "Per-creative action is present (created or updated, not failed)"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "provenance_enforcement--accept_with_disclosure"
+            description: "Context correlation_id returned unchanged"

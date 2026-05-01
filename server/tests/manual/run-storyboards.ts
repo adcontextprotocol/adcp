@@ -113,6 +113,15 @@ const KNOWN_FAILING_STORYBOARDS: ReadonlyMap<string, string> = new Map([
   // Tracked upstream as adcp#3429; remove once the storyboard is migrated to
   // `envelope_field_present` AND the framework wraps capabilities responses.
   ['v3_envelope_integrity', 'adcp-client#1045 / adcp#3429 — storyboard asserts envelope status, framework capabilities tool returns unenveloped payload'],
+  // The storyboard exercises creative_policy.{provenance_required,
+  // provenance_requirements, accepted_verifiers} round-tripping through
+  // get_products and the PROVENANCE_*_MISSING / PROVENANCE_VERIFIER_NOT_ACCEPTED
+  // rejection paths on sync_creatives. The training agent has no provenance
+  // enforcement yet — get_products doesn't surface the seeded creative_policy
+  // fields and sync_creatives accepts every submission. Three step validations
+  // fail against the reference implementation. Tracked as adcp#3777; remove
+  // this entry once the training agent enforces provenance per the spec.
+  ['creative_sales_agent/provenance_enforcement', 'adcp#3777 — training agent does not yet enforce creative_policy.provenance_requirements / accepted_verifiers (no PROVENANCE_* rejection paths in sync_creatives)'],
 ]);
 
 /**
