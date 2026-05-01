@@ -47,7 +47,7 @@ sales / creative / signals capabilities still land normally.
   with a clear error — visible in the registry panel via
   `discovery_error`, not silently truncated.
 - Belt-and-braces 256 KB DB CHECK on the column itself
-  (`measurement_capabilities_size_cap` in migration 461) — catches any
+  (`measurement_capabilities_size_cap` in migration 462) — catches any
   future code path that bypasses the validator.
 - Control characters stripped from text fields (keeps `\t` and `\n`,
   drops C0 + DEL).
@@ -60,7 +60,7 @@ sales / creative / signals capabilities still land normally.
 
 **Migrations.**
 
-- `461_measurement_capabilities_snapshot.sql` adds the JSONB column,
+- `462_measurement_capabilities_snapshot.sql` adds the JSONB column,
   the 256 KB CHECK constraint, and a GIN index for containment queries.
 
 **Doc updates.**

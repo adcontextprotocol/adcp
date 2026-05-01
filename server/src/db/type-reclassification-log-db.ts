@@ -1,7 +1,7 @@
 /**
  * Append-only audit log for agent type transitions. Closes #3550.
  *
- * Three writers feed this table — see `462_create_type_reclassification_log.sql`
+ * Three writers feed this table — see `461_create_type_reclassification_log.sql`
  * for the schema rationale. This module is intentionally minimal: a single
  * insert helper. Idempotency at the row level means the caller decides what
  * counts as a "change" — we don't dedupe.

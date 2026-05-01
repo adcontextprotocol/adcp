@@ -360,6 +360,8 @@
 
       <div class="detail-stats" id="detailStats"></div>
 
+      <div id="detailSignInActions" style="margin-top: var(--space-4);"></div>
+
       <div class="timeline">
         <div class="timeline-header">
           <h3>Activity timeline</h3>
@@ -529,6 +531,33 @@
           </div>
         `;
 
+        // Sign-in actions: bind another email (Phase 2b admin tool)
+        const signInActions = document.getElementById('detailSignInActions');
+        if (r.workos_user_id) {
+          signInActions.innerHTML = `
+            <h3 style="margin: 0 0 var(--space-2); font-size: var(--text-base);">Sign-in</h3>
+            <p style="margin: 0 0 var(--space-2); color: var(--color-text-secondary); font-size: var(--text-sm);">
+              Bind another email as a sign-in credential for <strong>${escapeHtml(r.display_name || r.email || 'this user')}</strong>. They will be able to sign in with either email and see the same workspace.
+            </p>
+            <button class="btn btn-secondary" id="bindEmailBtn"
+                    data-workos-user-id="${escapeHtml(r.workos_user_id)}"
+                    data-target-name="${escapeHtml(r.display_name || '')}"
+                    data-target-email="${escapeHtml(r.email || '')}">
+              + Add sign-in email
+            </button>
+          `;
+          document.getElementById('bindEmailBtn').addEventListener('click', (ev) => {
+            const btn = ev.currentTarget;
+            bindAnotherEmail(
+              btn.dataset.workosUserId,
+              btn.dataset.targetName,
+              btn.dataset.targetEmail
+            );
+          });
+        } else {
+          signInActions.innerHTML = '';
+        }
+
         // Load timeline
         const tlRes = await AdminSidebar.fetch('/api/admin/relationships/' + personId + '/timeline?limit=100');
         const tlData = await tlRes.json();
@@ -537,6 +566,45 @@
         document.getElementById('detailOverlay').classList.add('open');
       } catch (e) {
         console.error('Failed to load person detail', e);
+      }
+    }
+
+    async function bindAnotherEmail(workosUserId, targetName, targetEmail) {
+      const targetLabel = targetName ? `${targetName} (${targetEmail || 'no email'})` : (targetEmail || 'this user');
+      const email = prompt(`Enter a new sign-in email for ${targetLabel}.\n\nA fresh WorkOS account will be created at that email and bound to this user's identity. They will be able to sign in with either email.\n\nOnly use this when you've confirmed the email belongs to this person.`);
+      if (!email) return;
+      const trimmed = email.trim().toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+        alert('That doesn\'t look like a valid email address.');
+        return;
+      }
+      // Require typing the target user's existing primary email to confirm.
+      // Defends against an admin acting on the wrong row (left the panel open
+      // on someone else, hit refresh wrong, etc.).
+      if (targetEmail) {
+        const typed = prompt(`To confirm: type the user's existing primary email exactly.\n\n  Target user: ${targetLabel}\n  New sign-in email: ${trimmed}\n\nThis will grant permanent sign-in access to the target account at the new email.`);
+        if (typed === null) return;
+        if (typed.trim().toLowerCase() !== targetEmail.trim().toLowerCase()) {
+          alert('Confirmation email did not match. Cancelled.');
+          return;
+        }
+      } else {
+        if (!confirm(`Bind ${trimmed} as a sign-in email for ${targetLabel}?\n\nThis grants permanent sign-in access.`)) return;
+      }
+      try {
+        const res = await AdminSidebar.fetch(`/api/admin/users/${encodeURIComponent(workosUserId)}/linked-emails`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: trimmed }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          alert(data.message || data.error || `Bind failed (${res.status})`);
+          return;
+        }
+        alert(data.message || 'Sign-in email bound.');
+      } catch (e) {
+        alert('Network error: ' + (e && e.message ? e.message : String(e)));
       }
     }
 
