@@ -62,13 +62,15 @@ You should ask about their company type and approximate revenue to find the righ
 The link is issued to the signed-in member only — the customer email and identity are taken from the
 authenticated session, never from caller-supplied input. The member must be signed in at
 agenticadvertising.org and have a workspace; if not, refuse and direct them to sign up first.
-This tool cannot generate payment links on behalf of other people or organizations.`,
+This tool cannot generate payment links on behalf of other people or organizations.
+IMPORTANT: Pass lookup_key verbatim from find_membership_products. Do NOT construct it from the tier
+name and billing interval (e.g. do not pass "explorer_annual" — pass "aao_membership_explorer_50").`,
     input_schema: {
       type: 'object' as const,
       properties: {
         lookup_key: {
           type: 'string',
-          description: 'The product lookup key from find_membership_products',
+          description: 'The exact lookup_key value returned by find_membership_products — do not construct or guess this value',
         },
       },
       required: ['lookup_key'],
@@ -79,13 +81,15 @@ This tool cannot generate payment links on behalf of other people or organizatio
     description: `Preview an invoice for the authenticated member's own organization so they can
 confirm the amount and billing email before it is sent. The contact email and company are taken from
 the signed-in session, never from caller-supplied input. After calling this and the member confirms,
-call confirm_send_invoice to send.`,
+call confirm_send_invoice to send.
+IMPORTANT: Pass lookup_key verbatim from find_membership_products. Do NOT construct it from the tier
+name and billing interval (e.g. do not pass "explorer_annual" — pass "aao_membership_explorer_50").`,
     input_schema: {
       type: 'object' as const,
       properties: {
         lookup_key: {
           type: 'string',
-          description: 'The product lookup key from find_membership_products',
+          description: 'The exact lookup_key value returned by find_membership_products — do not construct or guess this value',
         },
         coupon_id: {
           type: 'string',
@@ -105,13 +109,15 @@ call confirm_send_invoice to send.`,
     description: `Send an invoice for the authenticated member's own organization after they have
 confirmed the details shown by send_invoice. The contact email, company, and billing address come
 from the signed-in session — they cannot be overridden. The org must already have a billing address
-on file (set via the dashboard or invite-acceptance flow).`,
+on file (set via the dashboard or invite-acceptance flow).
+IMPORTANT: Pass lookup_key verbatim from find_membership_products. Do NOT construct it from the tier
+name and billing interval (e.g. do not pass "explorer_annual" — pass "aao_membership_explorer_50").`,
     input_schema: {
       type: 'object' as const,
       properties: {
         lookup_key: {
           type: 'string',
-          description: 'The product lookup key from find_membership_products',
+          description: 'The exact lookup_key value returned by find_membership_products — do not construct or guess this value',
         },
         coupon_id: {
           type: 'string',
@@ -261,13 +267,14 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
     logger.info({ lookupKey, orgId, workosUserId }, 'Addie: Creating payment link for signed-in member');
 
     try {
-      const priceId = await getPriceByLookupKey(lookupKey);
-      if (!priceId) {
+      const priceResult = await getPriceByLookupKey(lookupKey);
+      if (!priceResult) {
         return JSON.stringify({
           success: false,
           error: `No product matches lookup_key "${lookupKey}". Call find_membership_products first, then pass the exact lookup_key from the result.`,
         });
       }
+      const { priceId, canonicalKey } = priceResult;
 
       const org = await orgDb.getOrganization(orgId);
 
@@ -305,6 +312,7 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
         success: true,
         payment_url: session.url,
         message: 'Payment link created. Share this URL with the signed-in member to complete checkout.',
+        ...(canonicalKey !== lookupKey && { did_you_mean: canonicalKey }),
       });
     } catch (error) {
       logger.error({ error }, 'Addie: Error creating payment link');
@@ -357,6 +365,15 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
     logger.info({ lookupKey, orgId, hasCoupon: !!effectiveCouponId }, 'Addie: Previewing invoice for signed-in member');
 
     try {
+      const priceResult = await getPriceByLookupKey(lookupKey);
+      if (!priceResult) {
+        return JSON.stringify({
+          success: false,
+          error: `No product matches lookup_key "${lookupKey}". Call find_membership_products first, then pass the exact lookup_key from the result.`,
+        });
+      }
+      const { canonicalKey } = priceResult;
+
       const preview = await validateInvoiceDetails({
         lookupKey,
         contactEmail: memberEmail,
@@ -385,6 +402,7 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
         discount_description: orgDiscount,
         discount_warning: preview.discountWarning,
         payment_terms: paymentTerms ?? 30,
+        ...(canonicalKey && canonicalKey !== lookupKey && { did_you_mean: canonicalKey }),
       });
     } catch (error) {
       logger.error({ error }, 'Addie: Error previewing invoice');
@@ -455,6 +473,15 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
     );
 
     try {
+      const priceResult = await getPriceByLookupKey(lookupKey);
+      if (!priceResult) {
+        return JSON.stringify({
+          success: false,
+          error: `No product matches lookup_key "${lookupKey}". Call find_membership_products first, then pass the exact lookup_key from the result.`,
+        });
+      }
+      const { canonicalKey } = priceResult;
+
       const result = await createAndSendInvoice({
         lookupKey,
         companyName: org.name,
@@ -480,6 +507,7 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
         discount_applied: result.discountApplied,
         discount_description: orgDiscount,
         discount_warning: result.discountWarning,
+        ...(canonicalKey && canonicalKey !== lookupKey && { did_you_mean: canonicalKey }),
       });
     } catch (error) {
       logger.error({ error }, 'Addie: Error sending invoice');
