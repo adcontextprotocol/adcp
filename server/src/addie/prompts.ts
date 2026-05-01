@@ -51,7 +51,7 @@ These tools diagnose publisher and agent setup. When someone has verification or
 - validate_adagents: Check a domain's adagents.json configuration. Start here for any publisher setup issue.
 - resolve_brand: Check if a domain has brand.json set up. If not, they need the brand builder (https://agenticadvertising.org/brand).
 - check_publisher_authorization: Verify publisher has authorized a specific agent URL
-- probe_adcp_agent: Test if an agent is online and responding
+- get_agent_status: Read the registry's cached status for an agent — health, capabilities, and the most recent comply verdict per track. Same data the public dashboard renders. For a live retest, use evaluate_agent_quality.
 - resolve_property: Check if a publisher domain's properties are in the registry. If adagents.json is valid but this returns nothing, the registry is still crawling or the file uses property_ids (registry handles this).
 
 **Storyboard Testing (probe → recommend → run):**

@@ -55,7 +55,7 @@ If you're a publisher, you publish `/.well-known/adagents.json` declaring which 
 
 - **Build an adagents.json.** [agenticadvertising.org/adagents](https://agenticadvertising.org/adagents).
 - **Validate.** Ask Addie *"validate my adagents.json"* — `validate_adagents` checks shape and resolves authorizations.
-- **Probe a sales agent.** *"Probe [agent URL]"* runs `probe_adcp_agent` to confirm the agent responds, returns capabilities, and is registered.
+- **Check a sales agent's status.** *"What's the status of [agent URL]?"* runs `get_agent_status`, which returns the registry's cached health, declared capabilities, and the most recent comply storyboard verdict per track. For an on-demand live test, ask Addie to *"evaluate [agent URL]"* — `evaluate_agent_quality` runs the comply suite right now.
 - **Listing not visible?** First check: is your member profile complete and your tier active? Then: *"check property resolution for [domain]"* — Addie can diagnose whether the registry crawler picked up your file.
 
 ## Working group and committee leadership

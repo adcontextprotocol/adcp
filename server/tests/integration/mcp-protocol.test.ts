@@ -175,7 +175,7 @@ describe('MCP Protocol Compliance', () => {
 
   describe('POST /mcp - evaluation tools in tools/list', () => {
     const EVAL_TOOLS = [
-      'probe_adcp_agent',
+      'get_agent_status',
       'evaluate_agent_quality',
       'test_rfp_response',
       'test_io_execution',

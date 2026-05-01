@@ -326,9 +326,9 @@ Resolve a domain to its canonical brand identity by checking for brand.json at /
 
 *Source: `server/src/addie/mcp/brand-tools.ts`*
 
-### `probe_adcp_agent`
+### `get_agent_status`
 
-Check if an AdCP agent is online and list its advertised capabilities. This only verifies connectivity (the agent responds to HTTP requests) - it does NOT verify the agent implements the protocol correctly. Use evaluate_agent_quality to verify actual protocol compliance.
+Return the AAO registry's current status for an agent: health (online / last checked), declared capabilities, and the most recent compliance verdict per track from the comply storyboard suite. Reads cached state — does NOT perform a live probe. For agents not in the registry, returns guidance to register the agent (so the heartbeat picks it up) or to run evaluate_agent_quality for an on-demand check.
 
 *Source: `server/src/addie/mcp/member-tools.ts`*
 
@@ -554,7 +554,7 @@ Returns a list of organizations with open or draft invoices.
 
 ### `get_account`
 
-Get complete account view for any organization: lifecycle stage, membership status, engagement metrics, pipeline info, and enrichment data. Use for any company lookup.
+Get complete account view for any organization: lifecycle stage, membership status, engagement metrics, pipeline info, and enrichment data. Use for any company lookup. If no org matches, falls back to the users table — surfaces people who signed up with a matching email domain but have not yet created/joined an org (typical for inbound website signups).
 
 *Source: `server/src/addie/mcp/admin-tools.ts`*
 
@@ -799,7 +799,7 @@ Returns a list of organizations with open or draft invoices.
 
 ### `get_account`
 
-Get complete account view for any organization: lifecycle stage, membership status, engagement metrics, pipeline info, and enrichment data. Use for any company lookup.
+Get complete account view for any organization: lifecycle stage, membership status, engagement metrics, pipeline info, and enrichment data. Use for any company lookup. If no org matches, falls back to the users table — surfaces people who signed up with a matching email domain but have not yet created/joined an org (typical for inbound website signups).
 
 *Source: `server/src/addie/mcp/admin-tools.ts`*
 
@@ -1206,7 +1206,7 @@ Get open action items from the outreach pipeline — nudges, warm leads, momentu
 
 ### `get_account`
 
-Get complete account view for any organization: lifecycle stage, membership status, engagement metrics, pipeline info, and enrichment data. Use for any company lookup.
+Get complete account view for any organization: lifecycle stage, membership status, engagement metrics, pipeline info, and enrichment data. Use for any company lookup. If no org matches, falls back to the users table — surfaces people who signed up with a matching email domain but have not yet created/joined an org (typical for inbound website signups).
 
 *Source: `server/src/addie/mcp/admin-tools.ts`*
 
@@ -1274,7 +1274,7 @@ Mark modules as tested out after a placement assessment confirms the learner alr
 
 ### `start_certification_exam`
 
-Begin a specialist deep dive module (S1: Media Buy, S2: Creative, S3: Signals, S4: Governance, S5: Sponsored Intelligence). The learner must hold the Practitioner credential. Returns the capstone format, lab exercises, and assessment criteria. You (Addie) will conduct the combined hands-on lab and adaptive exam.
+Begin a specialist deep dive module (S1: Media Buy, S2: Creative, S3: Signals, S4: Governance, S5: Sponsored Intelligence). The learner must hold the Practitioner credential. Returns the capstone format, lab exercises, and assessment criteria. You (Sage) will conduct the combined hands-on lab and adaptive exam — technically assess the learner against the spec.
 
 *Source: `server/src/addie/mcp/certification-tools.ts`*
 
@@ -1462,6 +1462,36 @@ Comprehensive domain research: checks brand registry, enriches via Brandfetch + 
 
 *Source: `server/src/addie/mcp/admin-tools.ts`*
 
+### `diagnose_signin_block`
+
+Use when a user reports they cannot sign in to AgenticAdvertising.org. Combines person, invite, and org-membership state into a single verdict — needs_signin (account exists, just sign in), needs_resend (invite expired or stale, send a fresh one), needs_invite (no invite on file, send one), or needs_human (state is unclear). Do NOT use for general account questions — use lookup_person or get_account for those. Returns the verdict plus a one-line reason and any pending invite token to act on.
+
+*Source: `server/src/addie/mcp/admin-tools.ts`*
+
+### `list_invites_for_org`
+
+Use when an admin asks "what invites do we have for X" or you need to reference an invite token before resending or revoking. Defaults to pending only; pass include_accepted or include_revoked to widen. Capped at 20, sorted by expiry (soonest first). Returns one invite per line with its token suffix so you can quote a token back into resend_invite or revoke_invite.
+
+*Source: `server/src/addie/mcp/admin-tools.ts`*
+
+### `resend_invite`
+
+Use to refresh a pending or expired membership invite — atomically revokes the original and emails a fresh one. Do NOT use to invite a brand-new contact (use send_payment_request for that). Do NOT use on an accepted invite. Returns the new expiry and whether the email was delivered.
+
+*Source: `server/src/addie/mcp/admin-tools.ts`*
+
+### `revoke_invite`
+
+Use to cancel a pending or expired invite (e.g. wrong email, person no longer joining). Does NOT send any notification to the recipient — their existing invite link will simply stop working. Cannot revoke an already-accepted or already-revoked invite. Returns confirmation including the previous status.
+
+*Source: `server/src/addie/mcp/admin-tools.ts`*
+
+### `add_member_to_org`
+
+Use when an admin or owner asks to add, invite, or promote a colleague on a paying org. Also the action to take when diagnose_signin_block returns needs_invite for an authorized requester. Handles four states automatically: invites new users (no WorkOS account yet), adds existing users to the org, updates roles, or no-ops if already correct. Do NOT use to remove members (no removal path), to change your own role, or for personal workspaces. Returns one of: invited, member_added, role_updated, no_change.
+
+*Source: `server/src/addie/mcp/admin-tools.ts`*
+
 ### `create_committee`
 
 Create a committee (working group, council, or governance body). For chapters use create_chapter; for conferences use create_industry_gathering. Can link an existing Slack channel by name.
@@ -1497,6 +1527,12 @@ List active bans. Optionally filter by ban_type, scope, or entity_id.
 
 *Source: `server/src/addie/mcp/admin-tools.ts`*
 
+### `get_person_memory`
+
+Use when you need the full picture of what we know about a person — identity, membership, engagement, preferences, pending invites, recent threads — gathered into one view before reasoning. Prefer this over chaining lookup_person + get_account + list_invites_for_org. Do NOT use for org-level questions. Returns a structured summary with sources so you can cite where each fact came from.
+
+*Source: `server/src/addie/mcp/admin-tools.ts`*
+
 ### `get_engagement_plan`
 
 Preview the engagement plan for a person — shows contact eligibility, scored opportunities, and what Addie would say. Use this to understand or debug engagement decisions.
@@ -1526,9 +1562,21 @@ The member must be signed in.
 
 *Source: `server/src/addie/mcp/billing-tools.ts`*
 
+### `parse_brand_properties`
+
+Preview a smart-paste import for a brand the operator owns. Takes pasted text (a list of domains and app bundles) or a URL whose body should be fetched, and returns the structured property list that would be imported. The user MUST confirm before you call import_brand_properties — show them the parsed list first. Caller's organization must own the brand domain.
+
+*Source: `server/src/addie/mcp/brand-property-tools.ts`*
+
+### `import_brand_properties`
+
+Commit a previewed property import. Takes a property list (typically the output of parse_brand_properties, possibly trimmed by the user) and merges it into the brand manifest by identifier — existing entries are updated in place, new entries are added. ONLY call after the user has explicitly confirmed the list from parse_brand_properties. Caller's organization must own the brand domain.
+
+*Source: `server/src/addie/mcp/brand-property-tools.ts`*
+
 ### `upload_brand_logo`
 
-Upload a logo file for a brand in the registry. The logo will be pending review.
+Upload a logo file for a brand in the registry. The logo is auto-approved and immediately visible.
 
 *Source: `server/src/addie/mcp/brand-tools.ts`*
 

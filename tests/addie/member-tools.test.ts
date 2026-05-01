@@ -13,7 +13,7 @@ vi.mock('../../server/src/services/pipes.js', () => ({
 }));
 
 // Import the tool definitions directly (no side effects)
-import { MEMBER_TOOLS, createMemberToolHandlers, extractAdcpVersion } from '../../server/src/addie/mcp/member-tools.js';
+import { MEMBER_TOOLS, createMemberToolHandlers } from '../../server/src/addie/mcp/member-tools.js';
 import { getGitHubAccessToken } from '../../server/src/services/pipes.js';
 
 describe('MEMBER_TOOLS definitions', () => {
@@ -119,13 +119,13 @@ describe('MEMBER_TOOLS definitions', () => {
     expect(tool?.description).toContain('Slack account');
   });
 
-  it('has probe_adcp_agent tool', () => {
-    const tool = MEMBER_TOOLS.find(t => t.name === 'probe_adcp_agent');
+  it('has get_agent_status tool', () => {
+    const tool = MEMBER_TOOLS.find(t => t.name === 'get_agent_status');
     expect(tool).toBeDefined();
     expect(tool?.input_schema.properties).toHaveProperty('agent_url');
     expect(tool?.input_schema.required).toContain('agent_url');
-    expect(tool?.description).toContain('online');
-    expect(tool?.description).toContain('capabilities');
+    expect(tool?.description).toContain('cached');
+    expect(tool?.description).toContain('compliance');
   });
 
   it('has check_publisher_authorization tool', () => {
@@ -509,80 +509,6 @@ describe('createMemberToolHandlers', () => {
 
       expect(result).toContain('network error');
       expect(result).toContain('draft_github_issue');
-    });
-  });
-
-  describe('extractAdcpVersion', () => {
-    it('extracts version from valid AdCP extension', () => {
-      const extensions = [{
-        uri: 'https://adcontextprotocol.org/extensions/adcp',
-        params: { adcp_version: '2.6.0' },
-      }];
-      expect(extractAdcpVersion(extensions)).toBe('2.6.0');
-    });
-
-    it('extracts v3 version', () => {
-      const extensions = [{
-        uri: 'https://adcontextprotocol.org/extensions/adcp',
-        params: { adcp_version: '3.0.0' },
-      }];
-      expect(extractAdcpVersion(extensions)).toBe('3.0.0');
-    });
-
-    it('returns undefined for non-array input', () => {
-      expect(extractAdcpVersion(undefined)).toBeUndefined();
-      expect(extractAdcpVersion(null)).toBeUndefined();
-      expect(extractAdcpVersion('not an array')).toBeUndefined();
-      expect(extractAdcpVersion({})).toBeUndefined();
-    });
-
-    it('returns undefined when no AdCP extension exists', () => {
-      const extensions = [{
-        uri: 'https://example.com/other',
-        params: { adcp_version: '2.0.0' },
-      }];
-      expect(extractAdcpVersion(extensions)).toBeUndefined();
-    });
-
-    it('rejects extensions with non-adcontextprotocol.org hostname', () => {
-      const extensions = [{
-        uri: 'https://evil.com/adcontextprotocol.org/spoof',
-        params: { adcp_version: '2.0.0' },
-      }];
-      expect(extractAdcpVersion(extensions)).toBeUndefined();
-    });
-
-    it('returns undefined for malformed version strings', () => {
-      const extensions = [{
-        uri: 'https://adcontextprotocol.org/extensions/adcp',
-        params: { adcp_version: 'evil' },
-      }];
-      expect(extractAdcpVersion(extensions)).toBeUndefined();
-    });
-
-    it('returns undefined for empty version string', () => {
-      const extensions = [{
-        uri: 'https://adcontextprotocol.org/extensions/adcp',
-        params: { adcp_version: '' },
-      }];
-      expect(extractAdcpVersion(extensions)).toBeUndefined();
-    });
-
-    it('returns undefined for invalid URI', () => {
-      const extensions = [{
-        uri: 'not-a-url',
-        params: { adcp_version: '2.6.0' },
-      }];
-      expect(extractAdcpVersion(extensions)).toBeUndefined();
-    });
-
-    it('returns undefined when extensions have no uri', () => {
-      const extensions = [{ params: { adcp_version: '2.6.0' } }];
-      expect(extractAdcpVersion(extensions)).toBeUndefined();
-    });
-
-    it('handles empty extensions array', () => {
-      expect(extractAdcpVersion([])).toBeUndefined();
     });
   });
 

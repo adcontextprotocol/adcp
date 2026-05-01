@@ -175,7 +175,7 @@ export const TOOL_SETS: Record<string, ToolSet> = {
     tools: [
       'validate_adagents',
       'resolve_brand',
-      'probe_adcp_agent',
+      'get_agent_status',
       'check_publisher_authorization',
       'test_adcp_agent',
       'evaluate_agent_quality',
