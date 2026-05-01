@@ -85,3 +85,53 @@ test('accepts double-quoted method literals (matches loose source style)', () =>
     assert.equal(v[0].method, 'POST');
   });
 });
+
+test('catches multi-line callApi shapes (the form removed in PR #3741)', () => {
+  withTempFile(
+    'x.ts',
+    [
+      'await callApi(',
+      "  'POST',",
+      "  '/api/x',",
+      '  ctx,',
+      ');',
+    ].join('\n'),
+    (file) => {
+      const v = scanFile(file);
+      assert.equal(v.length, 1);
+      assert.equal(v[0].method, 'POST');
+      // Line number should point at `callApi(` (line 1), not the
+      // method literal on the continuation line.
+      assert.equal(v[0].line, 1);
+    },
+  );
+});
+
+test('does not false-positive on line comments referencing the bug class', () => {
+  withTempFile(
+    'x.ts',
+    [
+      "// historical note: callApi('POST', …) used to silently 403",
+      "await callApi('GET', '/api/x', ctx);",
+    ].join('\n'),
+    (file) => {
+      assert.deepEqual(scanFile(file), []);
+    },
+  );
+});
+
+test('does not false-positive on block comments', () => {
+  withTempFile(
+    'x.ts',
+    [
+      '/**',
+      " * Issue #3736 fixed by removing callApi('PUT', …) loopbacks.",
+      " * Migrated callApi('DELETE', …) to direct service calls.",
+      ' */',
+      "await callApi('GET', '/api/x', ctx);",
+    ].join('\n'),
+    (file) => {
+      assert.deepEqual(scanFile(file), []);
+    },
+  );
+});

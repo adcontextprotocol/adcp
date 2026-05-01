@@ -26,11 +26,31 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const ROOT = path.resolve(__dirname, '..');
-const ADDIE_MCP_DIR = path.join(ROOT, 'server', 'src', 'addie', 'mcp');
+// Walk all of server/src/addie/ (not just /mcp/) so a future helper in
+// services/ or any other addie subdir gets caught too. `callApi` is
+// currently unique to member-tools.ts — the wider sweep is essentially
+// free, and it's the bug-pattern boundary that matters.
+const ADDIE_DIR = path.join(ROOT, 'server', 'src', 'addie');
 
-// Match `callApi('POST'`, `callApi("PUT"`, `callApi(\n  'DELETE'`, etc.
-// We only care about the first argument (the HTTP method).
-const FORBIDDEN_RE = /callApi\s*\(\s*['"`](POST|PUT|DELETE|PATCH)['"`]/;
+// Multi-line aware: anchor on `callApi(` and allow whitespace+newline
+// before the method literal. The previously-removed loopback callers
+// in member-tools.ts were multi-line, so a single-line regex would
+// have missed them — and could miss future regressions written that
+// way.
+const FORBIDDEN_RE = /callApi\s*\(\s*['"`](POST|PUT|DELETE|PATCH)['"`]/m;
+
+// Strip both line and block comments before scanning so a comment
+// referencing the bug class (`// callApi('POST', …) used to loopback`)
+// doesn't trip the lint. We don't need a real JS parser — naive comment
+// stripping is enough because the regex above is already specific.
+function stripComments(source) {
+  // Block comments first so /* ... */ spanning lines don't survive.
+  // Replace with a same-length blank to preserve line numbers.
+  let stripped = source.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '));
+  // Line comments: blank from `//` to end of line.
+  stripped = stripped.replace(/\/\/[^\n]*/g, (m) => m.replace(/[^\n]/g, ' '));
+  return stripped;
+}
 
 function* walkSourceFiles(dir) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -44,26 +64,29 @@ function* walkSourceFiles(dir) {
 }
 
 function scanFile(filePath) {
-  const source = fs.readFileSync(filePath, 'utf8');
+  const source = stripComments(fs.readFileSync(filePath, 'utf8'));
   const violations = [];
-  const lines = source.split('\n');
-  lines.forEach((line, idx) => {
-    if (FORBIDDEN_RE.test(line)) {
-      violations.push({
-        file: filePath,
-        line: idx + 1,
-        method: line.match(FORBIDDEN_RE)[1],
-        snippet: line.trim(),
-      });
-    }
-  });
+  // Scan as a single string with a global multi-line regex so calls
+  // split across lines (e.g. `callApi(\n  'POST',\n  ...)`) are caught.
+  // Compute the line number by counting newlines up to the match.
+  const re = /callApi\s*\(\s*['"`](POST|PUT|DELETE|PATCH)['"`]/g;
+  let match;
+  while ((match = re.exec(source)) !== null) {
+    const line = source.slice(0, match.index).split('\n').length;
+    violations.push({
+      file: filePath,
+      line,
+      method: match[1],
+      snippet: match[0].replace(/\s+/g, ' '),
+    });
+  }
   return violations;
 }
 
 function lint() {
-  if (!fs.existsSync(ADDIE_MCP_DIR)) return [];
+  if (!fs.existsSync(ADDIE_DIR)) return [];
   const all = [];
-  for (const file of walkSourceFiles(ADDIE_MCP_DIR)) {
+  for (const file of walkSourceFiles(ADDIE_DIR)) {
     all.push(...scanFile(file));
   }
   return all;

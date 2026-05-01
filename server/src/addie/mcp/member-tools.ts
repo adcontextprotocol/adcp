@@ -1439,12 +1439,18 @@ async function callApi(
 ): Promise<{ ok: boolean; status: number; data?: unknown; error?: string }> {
   // Defense-in-depth runtime guard — TypeScript constrains `method` to
   // 'GET', but runtime callers from JS (and any code that bypassed the
-  // type check via a cast) still need to fail loudly.
-  if (method !== 'GET') {
+  // type check via a cast) still need to fail loudly. Deny-listing the
+  // four state-changers (rather than allow-listing GET) keeps the
+  // runtime check aligned with the lint rule and the changeset
+  // rationale: if someone later widens the type to `'GET' | 'HEAD'`,
+  // the new legal method passes through without a code edit.
+  const forbidden = ['POST', 'PUT', 'DELETE', 'PATCH'] as const;
+  if ((forbidden as readonly string[]).includes(method as string)) {
     throw new Error(
       `callApi method=${method} is forbidden. Addie tools must call a service ` +
       `function directly for state-change actions — see ` +
-      `services/working-group-membership-service.ts for the pattern (issue #3736).`,
+      `services/working-group-membership-service.ts or ` +
+      `services/working-group-content-service.ts for the pattern (issue #3736).`,
     );
   }
   const baseUrl = getBaseUrl();
