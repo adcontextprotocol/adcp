@@ -166,7 +166,7 @@ Response (200 OK):
   "jwks_uri": "https://keys.example.com/.well-known/jwks.json",
   "jwks": {
     "keys": [
-      { "kty": "OKP", "crv": "Ed25519", "kid": "key-2026-04", "x": "...", "adcp_use": "request-signing" }
+      { "kty": "OKP", "crv": "Ed25519", "kid": "key-2026-04", "x": "...", "use": "sig", "adcp_use": "request-signing" }
     ]
   },
   "signing_keys_pin": null,
@@ -207,12 +207,12 @@ Response (200 OK, `Content-Type: application/jwk-set+json`):
 ```jsonc
 {
   "keys": [
-    { "kty": "OKP", "crv": "Ed25519", "kid": "key-2026-04", "x": "...", "adcp_use": "request-signing" }
+    { "kty": "OKP", "crv": "Ed25519", "kid": "key-2026-04", "x": "...", "use": "sig", "adcp_use": "request-signing" }
   ]
 }
 ```
 
-Every JWK MUST include `kid`. The endpoint propagates upstream `Cache-Control` byte-for-byte and never extends TTLs — a rotated-out key disappears on the operator's TTL, not AAO's. Served from a separate hostname (`jwks.agenticadvertising.org`, HSTS-preloaded, CAA-pinned) so a compromise of the main hostname does not contaminate the key resolution path.
+Every JWK MUST include `kid`. Every signing JWK MUST include RFC 7517 `use: "sig"` so JOSE libraries can pre-filter and so non-AdCP-aware verifiers honor key-usage discipline. AdCP-specific purpose granularity (`request-signing`, `webhook-signing`, `governance-signing`, `tmp-signing`) rides on the `adcp_use` member; verifiers MUST enforce `adcp_use` matches the operation in addition to `use: "sig"`. JWKs MUST NOT use `key_ops` together with `use` (RFC 7517 §4.3 — pick one; AdCP standardizes on `use` for cross-library compatibility). The endpoint propagates upstream `Cache-Control` byte-for-byte and never extends TTLs — a rotated-out key disappears on the operator's TTL, not AAO's. Served from a separate hostname (`jwks.agenticadvertising.org`, HSTS-preloaded, CAA-pinned) so a compromise of the main hostname does not contaminate the key resolution path.
 
 ### Caller integration
 
