@@ -1418,14 +1418,41 @@ function getBaseUrl(): string {
 }
 
 /**
- * Make an authenticated API call on behalf of a user
+ * Make an authenticated GET API call on behalf of a user.
+ *
+ * GET-only by design (issue #3736). State-changing loopback POST/PUT/
+ * DELETE/PATCH was responsible for an entire class of silent CSRF
+ * rejections that Addie misinterpreted as upstream-agent or domain
+ * errors (probe → fake outage; join_working_group → "private group" for
+ * public groups; etc.). Every state-change tool now consumes a service
+ * layer directly (see `services/working-group-membership-service.ts`,
+ * `services/working-group-content-service.ts`, etc.). This function is
+ * kept GET-only so the bug class cannot regress: a future tool author
+ * who reaches for the old POST/PUT/DELETE/PATCH overloads gets a
+ * runtime + type error and is forced toward the service-layer pattern
+ * instead.
  */
 async function callApi(
-  method: 'GET' | 'POST' | 'PUT' | 'DELETE',
+  method: 'GET',
   path: string,
   memberContext: MemberContext | null,
-  body?: Record<string, unknown>
 ): Promise<{ ok: boolean; status: number; data?: unknown; error?: string }> {
+  // Defense-in-depth runtime guard — TypeScript constrains `method` to
+  // 'GET', but runtime callers from JS (and any code that bypassed the
+  // type check via a cast) still need to fail loudly. Deny-listing the
+  // four state-changers (rather than allow-listing GET) keeps the
+  // runtime check aligned with the lint rule and the changeset
+  // rationale: if someone later widens the type to `'GET' | 'HEAD'`,
+  // the new legal method passes through without a code edit.
+  const forbidden = ['POST', 'PUT', 'DELETE', 'PATCH'] as const;
+  if ((forbidden as readonly string[]).includes(method as string)) {
+    throw new Error(
+      `callApi method=${method} is forbidden. Addie tools must call a service ` +
+      `function directly for state-change actions — see ` +
+      `services/working-group-membership-service.ts or ` +
+      `services/working-group-content-service.ts for the pattern (issue #3736).`,
+    );
+  }
   const baseUrl = getBaseUrl();
   const url = `${baseUrl}${path}`;
 
@@ -1445,7 +1472,6 @@ async function callApi(
     const response = await fetch(url, {
       method,
       headers,
-      body: body ? JSON.stringify(body) : undefined,
       signal: AbortSignal.timeout(5000), // Keep short for responsive UX
     });
 
