@@ -536,12 +536,16 @@ Content watermarks that encode an identifier or fingerprint within the asset. Di
 
 ### The `verify_agent` shape
 
-`verify_agent` is an AdCP governance-agent reference — not a vendor-specific webhook. The agent declares its features through `get_adcp_capabilities` (`governance.creative_features`); receivers invoke `get_creative_features` against the agent and read the returned feature value. Multiple verifiers can implement checks for the same `provider` — `verify_agent` nominates one the buyer trusts; receivers MAY substitute a different governance agent that declares an equivalent feature.
+`verify_agent` is the buyer's *representation* that this layer can be verified by a governance agent the seller already accepts. The seller is the verifier-of-record: it publishes which agents it will call on `creative_policy.accepted_verifiers[]` (returned by `get_products`), and the buyer's `verify_agent.agent_url` MUST be a canonicalized match of one of those entries. Off-list URLs are rejected with `PROVENANCE_VERIFIER_NOT_ACCEPTED` before any outbound call.
+
+This is buyer-supplied evidence, not buyer-driven routing. The seller chooses which agent it actually invokes, and may substitute a different on-list agent than the buyer nominated; it does not call buyer-asserted endpoints outside its allowlist.
 
 | Field | Required | Description |
 |---|---|---|
-| `agent_url` | Yes | URL of the governance agent. MUST use `https://`. Compared per the AdCP URL canonicalization rules |
-| `feature_id` | No | Feature ID the seller should request via `get_creative_features`. When absent, the receiver inspects the agent's full `governance.creative_features` catalog |
+| `agent_url` | Yes | URL of the governance agent the buyer represents was used. MUST use `https://`. MUST match (canonicalized) one of the seller's `creative_policy.accepted_verifiers[].agent_url` values |
+| `feature_id` | No | Feature ID the buyer represents was used. SHOULD match the `feature_id` declared on the corresponding `accepted_verifiers[]` entry, or be omitted to defer to the seller |
+
+Buyers MAY omit `verify_agent` for self-verifiable embeddings (e.g., a C2PA text manifest with a public key the seller already trusts) — in that case, the seller selects an agent from `accepted_verifiers` at evaluation time.
 
 Inheritance follows the same rule as the parent `provenance` object: most-specific wins, replacement is full-object, no field-level merging.
 
@@ -560,11 +564,23 @@ Sellers express provenance requirements on `creative-policy` — a field on ever
     "require_digital_source_type": true,
     "require_disclosure_metadata": true,
     "require_embedded_provenance": true
-  }
+  },
+  "accepted_verifiers": [
+    {
+      "agent_url": "https://governance.encypher.seller.example",
+      "feature_id": "encypher.markers_present_v2",
+      "providers": ["Encypher"]
+    },
+    {
+      "agent_url": "https://governance.imatag.seller.example",
+      "feature_id": "imatag.watermark_detected",
+      "providers": ["Imatag"]
+    }
+  ]
 }
 ```
 
-`provenance_required: true` means the creative MUST carry *some* provenance object, anywhere in the inheritance chain. `provenance_requirements` refines that with field-level expectations.
+`provenance_required: true` means the creative MUST carry *some* provenance object, anywhere in the inheritance chain. `provenance_requirements` refines that with field-level expectations. `accepted_verifiers[]` publishes the governance agents the seller operates or has allowlisted — the seller is the verifier-of-record, and buyers' `verify_agent` references MUST be a canonicalized match of one of these `agent_url` values. Field-level requirements are seller-enforced; JSON Schema does not validate them.
 
 Sellers that publish a requirement MUST enforce it. `sync_creatives` rejects non-compliant submissions with one of:
 
@@ -574,9 +590,10 @@ Sellers that publish a requirement MUST enforce it. `sync_creatives` rejects non
 | `PROVENANCE_DIGITAL_SOURCE_TYPE_MISSING` | Resolved provenance has no `digital_source_type` |
 | `PROVENANCE_DISCLOSURE_MISSING` | Resolved provenance has no `disclosure.required`, or true with no jurisdictions |
 | `PROVENANCE_EMBEDDED_MISSING` | Resolved provenance has no `embedded_provenance[]` entry |
-| `PROVENANCE_CLAIM_CONTRADICTED` | Independent verifier (e.g., `get_creative_features` against the nominated `verify_agent`) contradicts the buyer's claim |
+| `PROVENANCE_VERIFIER_NOT_ACCEPTED` | `verify_agent.agent_url` is not on the seller's `accepted_verifiers` list (cross-checked before any outbound call) |
+| `PROVENANCE_CLAIM_CONTRADICTED` | Verifier (called from `accepted_verifiers`) actively refutes the buyer's claim — for example, buyer claims `digital_source_type: digital_capture` but the AI-detection feature returns `ai_generated: true` |
 
-`error.field` MUST point at the resolved provenance path that was inspected; `PROVENANCE_CLAIM_CONTRADICTED` `error.details` SHOULD identify the verifier (`agent_url`, `feature_id`) and the result so the buyer can audit.
+`error.field` MUST point at the resolved provenance path that was inspected. `PROVENANCE_CLAIM_CONTRADICTED` `error.details` is limited to the audit-safe allowlist `{ agent_url, feature_id, claimed_value, observed_value, confidence }` plus `substituted_for` when the seller called an on-list agent other than the one the buyer nominated — sellers MUST NOT forward arbitrary verifier extension fields, `detail_url`, or any verifier response shape that may carry cross-tenant or PII data.
 
 These codes are correctable: a buyer's orchestrator reads them, fixes the creative, and resubmits. Auto-retry without correction will not pass.
 

@@ -97,7 +97,7 @@
     },
     "embedded_provenance": {
       "type": "array",
-      "description": "Provenance metadata embedded within the content stream. Each entry declares one embedding layer: structured provenance data carried inside the content itself, as distinct from sidecar references (c2pa.manifest_url). Embedded provenance survives operations that break sidecar and file-level bindings: ad-server transcoding, CMS ingestion, copy-paste, reformatting, and CDN re-encoding. For ad-tech pipelines where content passes through multiple intermediaries, embedded provenance is the reliable path for provenance that persists from declaration through delivery. This is a declaration by the embedding party; receiving parties verify independently by calling the governance agent identified in `verify_agent` via `get_creative_features`, or by running their own detection tools.",
+      "description": "Provenance metadata embedded within the content stream. Each entry declares one embedding layer: structured provenance data carried inside the content itself, as distinct from sidecar references (c2pa.manifest_url). Embedded provenance survives operations that break sidecar and file-level bindings: ad-server transcoding, CMS ingestion, copy-paste, reformatting, and CDN re-encoding. For ad-tech pipelines where content passes through multiple intermediaries, embedded provenance is the reliable path for provenance that persists from declaration through delivery. This is a declaration by the embedding party. The receiving party (the seller) is the verifier-of-record: it confirms the claim by calling a governance agent it trusts (typically one published in `creative_policy.accepted_verifiers`).",
       "minItems": 1,
       "items": {
         "type": "object",
@@ -116,20 +116,21 @@
           },
           "verify_agent": {
             "type": "object",
-            "description": "Governance agent that can verify this embedding via `get_creative_features`. The agent declares its features through `get_adcp_capabilities` (`governance.creative_features`); receivers invoke `get_creative_features` against the agent and inspect the returned feature value. SHOULD be present for methods where the receiver cannot self-verify (e.g., `provenance_markers`); MAY be omitted for self-verifiable embeddings (e.g., a C2PA text manifest with a public key the receiver already trusts). Multiple verifiers can implement checks for the same `provider` — this pointer nominates one the buyer trusts; receivers MAY substitute a different governance agent that declares an equivalent feature.",
+            "description": "Buyer's representation that this embedding can be verified by a governance agent on the seller's `creative_policy.accepted_verifiers` list. The `agent_url` MUST match (canonicalized) one of the seller's published `accepted_verifiers[].agent_url` entries; sellers reject `sync_creatives` submissions whose `verify_agent.agent_url` is off-list with `PROVENANCE_VERIFIER_NOT_ACCEPTED`. This is buyer-supplied evidence, not buyer-driven routing — the seller is the verifier-of-record and the seller controls which agent it actually calls (the seller MAY use a different on-list agent if it determines this is more appropriate; the seller does not call buyer-asserted endpoints outside its allowlist). MAY be omitted for self-verifiable embeddings (e.g., a C2PA text manifest with a public key the seller already trusts).",
             "properties": {
               "agent_url": {
                 "type": "string",
                 "format": "uri",
-                "description": "URL of the governance agent. MUST use the `https://` scheme. Receivers compare this URL against discovered governance agents using the AdCP URL canonicalization rules. See docs/reference/url-canonicalization."
+                "pattern": "^https://",
+                "description": "URL of the governance agent the buyer represents was used to embed/verify this layer. MUST use the `https://` scheme and MUST appear in the seller's `creative_policy.accepted_verifiers[].agent_url` list (canonicalized per the AdCP URL canonicalization rules). Sellers MUST NOT call this URL until the canonicalized match is confirmed."
               },
               "feature_id": {
                 "type": "string",
-                "description": "Optional feature identifier the seller should request via `get_creative_features` (e.g., `encypher.markers_present`). When absent, the receiver inspects the agent's full `governance.creative_features` catalog from `get_adcp_capabilities` to choose an applicable feature. Matches the `feature_id` advertised by the agent."
+                "description": "Optional `feature_id` the buyer represents the seller should request via `get_creative_features` (e.g., `encypher.markers_present_v2`). SHOULD match the `feature_id` declared on the matching `accepted_verifiers[]` entry, or be omitted to defer the selector to the seller. When the seller's entry pins a `feature_id`, that value wins; when neither side pins, the seller selects from the agent's `governance.creative_features` catalog."
               }
             },
             "required": ["agent_url"],
-            "additionalProperties": true
+            "additionalProperties": false
           },
           "embedded_at": {
             "type": "string",
@@ -143,7 +144,7 @@
     },
     "watermarks": {
       "type": "array",
-      "description": "Content watermarks applied to this asset. Each entry declares one watermarking layer: a content modification that encodes an identifier or fingerprint within the asset. Watermarks differ from embedded provenance: a watermark encodes an identifier (who generated it, who owns it), while embedded provenance carries or references a structured provenance record (the full chain of custody). A single asset may carry both. Aligns with C2PA action taxonomy: c2pa.watermarked.bound (watermark linked to a C2PA manifest) and c2pa.watermarked.unbound (watermark independent of any manifest). This is a declaration by the watermarking party; receiving parties verify independently by calling the governance agent identified in `verify_agent` via `get_creative_features`.",
+      "description": "Content watermarks applied to this asset. Each entry declares one watermarking layer: a content modification that encodes an identifier or fingerprint within the asset. Watermarks differ from embedded provenance: a watermark encodes an identifier (who generated it, who owns it), while embedded provenance carries or references a structured provenance record (the full chain of custody). A single asset may carry both. Aligns with C2PA action taxonomy: c2pa.watermarked.bound (watermark linked to a C2PA manifest) and c2pa.watermarked.unbound (watermark independent of any manifest). This is a declaration by the watermarking party. The receiving party (the seller) is the verifier-of-record: it confirms the claim by calling a governance agent it trusts (typically one published in `creative_policy.accepted_verifiers`).",
       "minItems": 1,
       "items": {
         "type": "object",
@@ -158,20 +159,21 @@
           },
           "verify_agent": {
             "type": "object",
-            "description": "Governance agent that can detect this watermark via `get_creative_features`. The agent declares its detection features through `get_adcp_capabilities` (`governance.creative_features`); receivers invoke `get_creative_features` against the agent and inspect the returned feature value. Multiple verifiers can detect the same `provider`'s watermark — this pointer nominates one the buyer trusts; receivers MAY substitute a different governance agent that declares an equivalent feature.",
+            "description": "Buyer's representation that this watermark can be detected by a governance agent on the seller's `creative_policy.accepted_verifiers` list. The `agent_url` MUST match (canonicalized) one of the seller's published `accepted_verifiers[].agent_url` entries; sellers reject `sync_creatives` submissions whose `verify_agent.agent_url` is off-list with `PROVENANCE_VERIFIER_NOT_ACCEPTED`. This is buyer-supplied evidence, not buyer-driven routing — the seller is the verifier-of-record and the seller controls which agent it actually calls (the seller MAY use a different on-list agent if it determines this is more appropriate; the seller does not call buyer-asserted endpoints outside its allowlist).",
             "properties": {
               "agent_url": {
                 "type": "string",
                 "format": "uri",
-                "description": "URL of the governance agent. MUST use the `https://` scheme. Receivers compare this URL against discovered governance agents using the AdCP URL canonicalization rules. See docs/reference/url-canonicalization."
+                "pattern": "^https://",
+                "description": "URL of the governance agent the buyer represents was used to apply/detect this watermark. MUST use the `https://` scheme and MUST appear in the seller's `creative_policy.accepted_verifiers[].agent_url` list (canonicalized per the AdCP URL canonicalization rules). Sellers MUST NOT call this URL until the canonicalized match is confirmed."
               },
               "feature_id": {
                 "type": "string",
-                "description": "Optional feature identifier the seller should request via `get_creative_features` (e.g., `imatag.watermark_detected`). When absent, the receiver inspects the agent's full `governance.creative_features` catalog from `get_adcp_capabilities` to choose an applicable feature. Matches the `feature_id` advertised by the agent."
+                "description": "Optional `feature_id` the buyer represents the seller should request via `get_creative_features` (e.g., `imatag.watermark_detected`). SHOULD match the `feature_id` declared on the matching `accepted_verifiers[]` entry, or be omitted to defer the selector to the seller. When the seller's entry pins a `feature_id`, that value wins; when neither side pins, the seller selects from the agent's `governance.creative_features` catalog."
               }
             },
             "required": ["agent_url"],
-            "additionalProperties": true
+            "additionalProperties": false
           },
           "c2pa_action": {
             "$ref": "/schemas/enums/c2pa-watermark-action.json",
