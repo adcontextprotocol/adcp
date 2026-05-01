@@ -36,6 +36,30 @@ export class FederatedIndexService {
     const profiles = await this.memberDb.listProfiles({ is_public: true });
     const registeredAgents = new Map<string, FederatedAgent>();
 
+    // Build a publisher-domain -> member-ref index from the same profiles
+    // we already loaded. Used to populate `endorsed_by_publisher_member`
+    // on discovered agents whose publisher_domain is claimed by a member
+    // (option C from issue #3547 / Problem 6 of #3538). Reuses the loaded
+    // profiles instead of re-querying — no extra DB round-trip.
+    const publisherToMember = new Map<
+      string,
+      { slug: string; display_name: string }
+    >();
+    for (const profile of profiles) {
+      for (const pubConfig of profile.publishers || []) {
+        if (!pubConfig.is_public) continue;
+        // First member that claims a publisher_domain wins. In practice
+        // publisher_domain ownership is unique per profile; collisions are
+        // a registry data-quality bug, not a runtime concern.
+        if (!publisherToMember.has(pubConfig.domain)) {
+          publisherToMember.set(pubConfig.domain, {
+            slug: profile.slug,
+            display_name: profile.display_name,
+          });
+        }
+      }
+    }
+
     for (const profile of profiles) {
       for (const agentConfig of profile.agents || []) {
         const v = agentConfig.visibility;
@@ -66,7 +90,9 @@ export class FederatedIndexService {
     const agentUrls = discoveredAgents.map(a => a.agent_url);
     const allAuths = await this.db.bulkGetFirstAuthForAgents(agentUrls);
 
-    // Merge: registered takes precedence
+    // Merge: agent_url collapses across registered + discovered when
+    // both signals exist; registered wins. The skip below is the
+    // collapse behaviour referenced by option B in issue #3547.
     const result: FederatedAgent[] = Array.from(registeredAgents.values());
 
     for (const discovered of discoveredAgents) {
@@ -75,6 +101,15 @@ export class FederatedIndexService {
       }
 
       const auth = allAuths.get(discovered.agent_url);
+      const publisherDomain = auth?.publisher_domain || discovered.source_domain;
+
+      // Option C / option A: if the publisher_domain is claimed by an
+      // AAO member, surface the endorsement signal. Agent stays
+      // source='discovered' — the publisher endorsed it, the agent
+      // itself didn't opt in.
+      const endorsingMember = publisherDomain
+        ? publisherToMember.get(publisherDomain)
+        : undefined;
 
       result.push({
         url: discovered.agent_url,
@@ -88,6 +123,15 @@ export class FederatedIndexService {
         } : {
           publisher_domain: discovered.source_domain,
         },
+        ...(endorsingMember && publisherDomain
+          ? {
+              endorsed_by_publisher_member: {
+                slug: endorsingMember.slug,
+                display_name: endorsingMember.display_name,
+                publisher_domain: publisherDomain,
+              },
+            }
+          : {}),
         discovered_at: discovered.discovered_at?.toISOString(),
       });
     }

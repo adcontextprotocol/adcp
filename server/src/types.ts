@@ -1057,6 +1057,15 @@ export interface FederatedAgent {
     publisher_domain: string;
     authorized_for?: string;
   };
+  // Publisher-side endorsement: set when source='discovered' AND the
+  // publisher_domain in discovered_from is claimed by an AAO member.
+  // Mutually exclusive with `member`. See registering-an-agent docs and
+  // option C from issue #3547 (Problem 6 of #3538).
+  endorsed_by_publisher_member?: {
+    slug?: string;
+    display_name?: string;
+    publisher_domain: string;
+  };
   discovered_at?: string;
 }
 
