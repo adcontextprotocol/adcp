@@ -53,7 +53,7 @@
   ],
   "enumDescriptions": {
     "INVALID_REQUEST": "Request is malformed, missing required fields, or violates schema constraints. Recovery: correctable (check request parameters and fix).",
-    "AUTH_REQUIRED": "Authentication is required to access this resource. Recovery: correctable (provide credentials via auth header).",
+    "AUTH_REQUIRED": "Authentication is required, or presented credentials were rejected. Two operational sub-cases share this code: (a) credentials missing — agent provides credentials and retries; (b) credentials presented but rejected (expired / revoked / malformed signature) — agent SHOULD NOT auto-retry, since re-presenting a rejected credential against an SSO endpoint creates retry-storm patterns indistinguishable from brute-force probes. In sub-case (b) the agent SHOULD escalate to operator for credential rotation rather than loop. A future minor release splits this code into AUTH_MISSING (correctable) and AUTH_INVALID (terminal); agents handling 3.0.x sellers SHOULD apply the same operational distinction at the application layer. Recovery: correctable (provide credentials via auth header — but only when the credential was missing, not when it was presented and rejected).",
     "RATE_LIMITED": "Request rate exceeded. Retry after the retry_after interval. Recovery: transient.",
     "SERVICE_UNAVAILABLE": "Seller service is temporarily unavailable. Retry with exponential backoff. Recovery: transient.",
     "POLICY_VIOLATION": "Request violates the seller's content or advertising policies. Recovery: correctable (review policy requirements in the error details).",
@@ -106,7 +106,7 @@
     },
     "AUTH_REQUIRED": {
       "recovery": "correctable",
-      "suggestion": "provide credentials via auth header"
+      "suggestion": "provide credentials via auth header on missing-credential case; do NOT auto-retry on presented-but-rejected credentials — escalate to operator for credential rotation (3.1+ splits this into AUTH_MISSING / AUTH_INVALID)"
     },
     "RATE_LIMITED": {
       "recovery": "transient",

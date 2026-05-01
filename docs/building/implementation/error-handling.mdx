@@ -168,12 +168,36 @@ Non-normative implementation note: a single-query pattern like `SELECT ... WHERE
 
 | Code | Recovery | Description | Resolution |
 |------|----------|-------------|------------|
-| `AUTH_REQUIRED` | correctable | Authentication is required or credentials are invalid | Provide credentials via auth header |
+| `AUTH_REQUIRED` | correctable | Authentication is required, or presented credentials were rejected | See *AUTH_REQUIRED sub-cases* below |
 | `ACCOUNT_NOT_FOUND` | terminal | Account reference could not be resolved | Verify via `list_accounts` or contact seller |
 | `ACCOUNT_SETUP_REQUIRED` | correctable | Account needs setup before use | Check `details.setup` for URL or instructions |
 | `ACCOUNT_AMBIGUOUS` | correctable | Natural key resolves to multiple accounts | Pass explicit `account_id` or a more specific natural key |
 | `ACCOUNT_PAYMENT_REQUIRED` | terminal | Outstanding balance requires payment | Buyer must resolve billing |
 | `ACCOUNT_SUSPENDED` | terminal | Account has been suspended | Contact seller to resolve |
+
+#### `AUTH_REQUIRED` sub-cases
+
+`AUTH_REQUIRED` shares one wire code across two operationally distinct cases that agents MUST handle differently:
+
+| Sub-case | Behavior | Why |
+|---|---|---|
+| Credentials missing | Provide credentials and retry once. | Genuinely correctable from inside the agent loop. |
+| Credentials presented but rejected (expired / revoked / malformed signature) | Do **not** auto-retry. Escalate to operator for credential rotation. | Re-presenting a rejected credential against an SSO endpoint creates retry-storm patterns indistinguishable from brute-force probes. The seller's fraud detection may rate-limit, suspend, or alert on the calling agent. |
+
+A future minor release splits this code into `AUTH_MISSING` (correctable) and `AUTH_INVALID` (terminal). Until then, agents SHOULD branch on whether credentials were actually attached to the failing request:
+
+```javascript
+case 'AUTH_REQUIRED':
+  if (!requestHadCredentials) {
+    // Sub-case (a) — provide credentials and retry.
+    await refreshCredentials();
+    return retry();
+  }
+  // Sub-case (b) — credentials were presented and rejected.
+  // Treat as terminal at the application layer; surface to operator.
+  console.error('Credential rejected — needs human rotation:', error.message);
+  throw error;
+```
 
 ### Request Validation
 
@@ -338,8 +362,13 @@ async function handleAdcpError(error) {
   // Fall back to error code matching
   switch (error.code) {
     case 'AUTH_REQUIRED':
-      await refreshCredentials();
-      return retry();
+      // Two sub-cases share this code; see "AUTH_REQUIRED sub-cases" above.
+      if (!error.requestHadCredentials) {
+        await refreshCredentials();
+        return retry();
+      }
+      // Credentials were presented and rejected — terminal at app layer.
+      throw error;
 
     case 'INVALID_REQUEST':
       console.error('Validation error:', error);
