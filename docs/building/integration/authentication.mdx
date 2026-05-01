@@ -253,7 +253,7 @@ A user JWT obtained from AAO is **not** an AdCP credential. Calls to a sales age
 ```json
 {
   "error": {
-    "code": "AUTH_REQUIRED",
+    "code": "AUTH_MISSING",
     "message": "Authentication required for this operation"
   }
 }
@@ -275,7 +275,7 @@ A user JWT obtained from AAO is **not** an AdCP credential. Calls to a sales age
 ```json
 {
   "error": {
-    "code": "INSUFFICIENT_PERMISSIONS",
+    "code": "PERMISSION_DENIED",
     "message": "Agent does not have required permissions for this operation"
   }
 }

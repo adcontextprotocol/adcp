@@ -10,12 +10,24 @@ describe('isOAuthRequiredErrorMessage', () => {
     expect(isOAuthRequiredErrorMessage(msg)).toBe(true);
   });
 
-  it('matches an AdCP AUTH_REQUIRED protocol error payload', () => {
+  it('matches an AdCP AUTH_REQUIRED protocol error payload (deprecated)', () => {
     expect(isOAuthRequiredErrorMessage('AUTH_REQUIRED: Unauthorized')).toBe(true);
     expect(isOAuthRequiredErrorMessage('task failed with AUTH_REQUIRED')).toBe(true);
     // Embedded in a sentence with trailing punctuation
     expect(isOAuthRequiredErrorMessage('Request failed: AUTH_REQUIRED.')).toBe(true);
     expect(isOAuthRequiredErrorMessage('AUTH_REQUIRED, please reauthorize')).toBe(true);
+  });
+
+  it('matches an AdCP AUTH_MISSING protocol error payload', () => {
+    expect(isOAuthRequiredErrorMessage('AUTH_MISSING: No credentials provided')).toBe(true);
+    expect(isOAuthRequiredErrorMessage('task failed with AUTH_MISSING')).toBe(true);
+    expect(isOAuthRequiredErrorMessage('Request failed: AUTH_MISSING.')).toBe(true);
+    expect(isOAuthRequiredErrorMessage('AUTH_MISSING, please authenticate')).toBe(true);
+  });
+
+  it('does not match AUTH_INVALID (terminal — human rotation required, not re-auth prompt)', () => {
+    expect(isOAuthRequiredErrorMessage('AUTH_INVALID: Token revoked')).toBe(false);
+    expect(isOAuthRequiredErrorMessage('task failed with AUTH_INVALID')).toBe(false);
   });
 
   it('does not match a transport-level connection failure', () => {

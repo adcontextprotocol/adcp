@@ -93,7 +93,7 @@ When infrastructure rejects a request *before* tool dispatch (API gateway, rate-
 | Code | AdCP Error Code | When |
 |---|---|---|
 | `-32029` | `RATE_LIMITED` | Infrastructure rate limit before tool dispatch |
-| `-32028` | `AUTH_REQUIRED` | Auth rejected by middleware before tool dispatch |
+| `-32028` | `AUTH_MISSING` | No credentials presented; auth rejected by middleware before tool dispatch |
 | `-32027` | `SERVICE_UNAVAILABLE` | Infra health check fails, upstream down |
 
 These codes are in the JSON-RPC server-defined range (`-32000` to `-32099`). All other AdCP error codes use the tool-level path exclusively.
@@ -331,7 +331,9 @@ const CODE_RECOVERY = {
   SERVICE_UNAVAILABLE: 'transient',
   CONFLICT: 'transient',
   INVALID_REQUEST: 'correctable',
-  AUTH_REQUIRED: 'correctable',
+  AUTH_MISSING: 'correctable',
+  AUTH_INVALID: 'terminal',
+  AUTH_REQUIRED: 'correctable', // deprecated alias for AUTH_MISSING
   POLICY_VIOLATION: 'correctable',
   PRODUCT_NOT_FOUND: 'correctable',
   PRODUCT_UNAVAILABLE: 'correctable',
