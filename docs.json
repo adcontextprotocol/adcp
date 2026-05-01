@@ -407,7 +407,8 @@
                         "pages": [
                           "docs/sponsored-intelligence/si-chat-protocol",
                           "docs/sponsored-intelligence/implementing-si-agents",
-                          "docs/sponsored-intelligence/implementing-si-hosts"
+                          "docs/sponsored-intelligence/implementing-si-hosts",
+                          "docs/sponsored-intelligence/a2ui"
                         ]
                       },
                       {
@@ -913,7 +914,8 @@
                     "pages": [
                       "docs/sponsored-intelligence/si-chat-protocol",
                       "docs/sponsored-intelligence/implementing-si-agents",
-                      "docs/sponsored-intelligence/implementing-si-hosts"
+                      "docs/sponsored-intelligence/implementing-si-hosts",
+                      "docs/sponsored-intelligence/a2ui"
                     ]
                   },
                   {
