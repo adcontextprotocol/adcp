@@ -860,9 +860,17 @@ export async function handleAppMention(event: AppMentionEvent): Promise<void> {
     });
   }
 
+  const isEmptyTurn = response.text === EMPTY_RESPONSE_FALLBACK_TEXT;
+  if (isEmptyTurn && personId) {
+    personEvents.recordEvent(personId, 'addie_empty_turn', {
+      channel: 'slack',
+      data: { tools_used: response.tools_used },
+    }).catch(err => logger.warn({ err, personId }, 'Addie: Failed to record addie_empty_turn event (mention)'));
+  }
+
   // Log interaction
-  const flagged = inputValidation.flagged || response.flagged || outputValidation.flagged;
-  const flagReason = [inputValidation.reason, response.flag_reason, outputValidation.reason]
+  const flagged = inputValidation.flagged || response.flagged || outputValidation.flagged || isEmptyTurn;
+  const flagReason = [inputValidation.reason, response.flag_reason, outputValidation.reason, isEmptyTurn ? 'addie_empty_turn' : '']
     .filter(Boolean)
     .join('; ');
 

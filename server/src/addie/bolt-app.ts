@@ -943,7 +943,10 @@ async function createUserScopedTools(
     // This is a fallback — callers that already have personId should pass it.
     let billingPersonId = personId;
     if (billingPersonId === undefined && slackUserId) {
-      billingPersonId = await relationshipDb.resolvePersonId({ slack_user_id: slackUserId }).catch(() => null);
+      billingPersonId = await relationshipDb.resolvePersonId({ slack_user_id: slackUserId }).catch(err => {
+        logger.warn({ err, slackUserId }, 'Addie Bolt: Could not resolve personId for billing event emission');
+        return null;
+      });
     }
     const billingHandlers = createBillingToolHandlers(memberContext, billingPersonId);
     allTools.push(...BILLING_TOOLS);
@@ -1874,8 +1877,8 @@ async function handleUserMessage({
         channel: 'slack',
         data: { tools_used: response.tools_used },
       }).catch(err => logger.warn({ err }, 'Addie Bolt: Failed to record addie_empty_turn event'));
-    } catch {
-      // non-fatal — person record may not exist yet
+    } catch (err) {
+      logger.warn({ err, userId }, 'Addie Bolt: Could not resolve personId for addie_empty_turn event');
     }
   }
 
