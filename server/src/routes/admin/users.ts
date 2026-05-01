@@ -21,6 +21,21 @@ import { mergeUsers } from '../../db/user-merge-db.js';
 const logger = createLogger('admin-users-routes');
 
 /**
+ * Linear-time plausibility check for an email-shaped string. Avoids the
+ * polynomial backtracking that catch-all email regexes can hit on adversarial
+ * input. We don't try to be RFC-correct — WorkOS validates real syntax
+ * upstream; this is just a "does it look like an email?" gate.
+ */
+function isPlausibleEmail(s: string): boolean {
+  if (s.length < 3 || /\s/.test(s)) return false;
+  const at = s.indexOf('@');
+  if (at < 1 || at !== s.lastIndexOf('@')) return false;
+  const dot = s.indexOf('.', at + 1);
+  if (dot < 0 || dot === at + 1 || dot === s.length - 1) return false;
+  return true;
+}
+
+/**
  * Create admin users router
  * Returns a router to be mounted at /api/admin/users
  */
@@ -745,7 +760,7 @@ export function createAdminUsersRouter(): Router {
       return res.status(400).json({ error: 'email is required' });
     }
     const newEmail = rawEmail.toLowerCase();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail) || newEmail.length > 255) {
+    if (newEmail.length > 255 || !isPlausibleEmail(newEmail)) {
       return res.status(400).json({ error: 'Invalid email address' });
     }
 
