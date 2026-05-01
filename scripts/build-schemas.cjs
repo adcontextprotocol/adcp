@@ -191,10 +191,8 @@ function hasNaturallyIdempotentMarker(schema) {
 //
 // Used by both lintMutatingRequestsRequireIdempotencyKey and the manifest
 // generator — single source of truth for "is this a mutating tool?".
-function classifyRequestMutating(filePath, schema) {
-  const basename = path.basename(filePath);
-  if (isNonMutatingRequestBasename(basename)) return false;
-  return true;
+function classifyRequestMutating(filePath) {
+  return !isNonMutatingRequestBasename(path.basename(filePath));
 }
 
 function lintMutatingRequestsRequireIdempotencyKey(sourceDir) {
@@ -676,21 +674,45 @@ function buildExtensions(sourceDir, targetDir, version) {
 // Inverse mapping (tool → specialisms[]) is folded back onto each tool
 // based on exercised_tools, since that's the surface SDK authors care about.
 
+// Keep this set in sync with the `protocol` enum in
+// static/schemas/source/manifest.schema.json. Adding a protocol surface
+// requires updating both — the script enum gates which directories are
+// scanned for tools; the meta-schema enum gates which protocol values are
+// valid in the emitted manifest.
 const MANIFEST_PROTOCOLS = new Set([
   'media-buy', 'signals', 'governance', 'account', 'creative',
   'brand', 'content-standards', 'property', 'collection',
   'sponsored-intelligence', 'protocol', 'compliance', 'tmp', 'a2ui'
 ]);
 
-// Strip the trailing `Recovery: <verdict>(...).` sentence from an error-code
+// Strip the `Recovery: <verdict>(...).` sentence from an error-code
 // description. The structured `recovery` and `suggestion` fields carry the
 // same semantic — emitting the prose verbatim in the manifest would force
-// SDKs to choose between two surfaces. Removes one full sentence so prose
-// content that follows the Recovery sentence (e.g. REFERENCE_NOT_FOUND's
-// uniform-response MUST summary) is preserved.
+// SDKs to choose between two surfaces.
+//
+// Three patterns occur in the corpus:
+//   1) `Recovery: <verdict>.`              — bare verdict + period
+//   2) `Recovery: <verdict> (...).`         — parenthetical suggestion + period
+//   3) `Recovery: <verdict> <clause>.`      — clause continuation to end of string
+//
+// (1) and (2) preserve any content after the Recovery sentence (e.g.
+// REFERENCE_NOT_FOUND's uniform-response MUST summary that follows
+// `Recovery: correctable.`). (3) only ever runs to end of string in the
+// corpus; no description has additional sentences after a clause-style
+// Recovery continuation.
 function stripRecoveryProse(desc) {
   if (typeof desc !== 'string') return desc;
-  return desc.replace(/\s*Recovery:[^.]*\.\s*/, ' ').trim();
+  // Patterns 1+2: verdict optionally followed by a balanced (single-level)
+  // parenthetical, then a period. The parenthetical may contain dotted
+  // identifiers — match `[^)]*` to consume everything up to the closing
+  // paren regardless of internal periods.
+  const verdictThenPeriod = /\s*Recovery:\s*(?:correctable|transient|terminal)(?:\s*\([^)]*\))?\.\s*/;
+  if (verdictThenPeriod.test(desc)) {
+    return desc.replace(verdictThenPeriod, ' ').replace(/\s{2,}/g, ' ').trim();
+  }
+  // Pattern 3: clause continuation. Strip from `Recovery:` to end of string.
+  const clauseToEnd = /\s*Recovery:\s*(?:correctable|transient|terminal)\b[\s\S]+$/;
+  return desc.replace(clauseToEnd, '').replace(/\s{2,}/g, ' ').trim();
 }
 
 // Build a Map<scenarioId, Set<task>> by walking the entire compliance source
@@ -716,24 +738,30 @@ function indexScenarioTasks(repoRoot) {
       try { doc = yaml.load(fs.readFileSync(p, 'utf8')); }
       catch { continue; }
       if (!doc || typeof doc !== 'object' || typeof doc.id !== 'string') continue;
-      const tasks = collectTasksFromPhases(doc.phases);
-      if (tasks.size === 0 && !Array.isArray(doc.phases)) continue;
-      index.set(doc.id, tasks);
+      if (!Array.isArray(doc.phases)) continue;
+      index.set(doc.id, collectTasksFromPhases(doc.phases));
     }
   }
   walk(sourceRoot);
   return index;
 }
 
+// Walk a storyboard's phases and collect the tasks an agent MUST handle to
+// pass conformance for that storyboard. Steps with `requires_tool: <X>` are
+// conditional — the runner only executes them if the agent claims tool X —
+// so they're optional surface and intentionally excluded here. Without that
+// filter, optional test-harness tools (e.g. comply_test_controller, gated
+// across many storyboards) would propagate to every specialism's
+// exercised_tools and overstate the required surface.
 function collectTasksFromPhases(phases) {
   const tasks = new Set();
   if (!Array.isArray(phases)) return tasks;
   for (const phase of phases) {
     if (!phase || !Array.isArray(phase.steps)) continue;
     for (const step of phase.steps) {
-      if (step && typeof step.task === 'string' && step.task.length > 0) {
-        tasks.add(step.task);
-      }
+      if (!step || typeof step.task !== 'string' || step.task.length === 0) continue;
+      if (step.requires_tool) continue;
+      tasks.add(step.task);
     }
   }
   return tasks;
@@ -800,7 +828,10 @@ function discoverTools(sourceDir) {
       if (!f.isFile()) continue;
       if (!f.name.endsWith('-request.json')) continue;
       // Skip embedded utility request shapes — they're not standalone tools.
-      if (isNonMutatingRequestBasename(f.name) && NON_OPERATION_ALLOWLIST.has(f.name)) continue;
+      // Authors adding a new utility shape under a protocol directory MUST
+      // add it to NON_OPERATION_ALLOWLIST or the manifest will emit it as
+      // a tool name, which would surface in every SDK's generated client.
+      if (NON_OPERATION_ALLOWLIST.has(f.name)) continue;
       const toolBase = f.name.replace(/-request\.json$/, '');
       const toolName = toolBase.replace(/-/g, '_');
       const requestPath = path.join(protoDir, f.name);
@@ -813,8 +844,7 @@ function discoverTools(sourceDir) {
           `Either add the response file or move the request out of the protocol directory.`
         );
       }
-      const requestSchema = JSON.parse(fs.readFileSync(requestPath, 'utf8'));
-      const mutating = classifyRequestMutating(requestPath, requestSchema);
+      const mutating = classifyRequestMutating(requestPath);
 
       const asyncVariants = files
         .filter(g => g.isFile() && g.name.startsWith(`${toolBase}-async-response-`) && g.name.endsWith('.json'))
