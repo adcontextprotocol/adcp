@@ -114,17 +114,18 @@ The following `specialisms` fall under the `creative` domain. Each has its own c
 
 ## Connecting to the test agent
 
-Lab exercises run against the public test agent. Use the shared token — no signup required:
+Lab exercises run against the public test agent. Use the shared token — no signup required. The creative module spans three agent surfaces; start with the ad server (the most common path) and switch URLs when an exercise calls for a different agent type.
 
 ```bash
 export ADCP_AUTH_TOKEN="1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ"
-# Ad-server workflow (exercises 2 and 4) — `/creative/mcp`
 export AGENT_URL="https://test-agent.adcontextprotocol.org/creative/mcp"
-# Stateless transformation / template agent (exercises 1 and 5):
-#   https://test-agent.adcontextprotocol.org/creative-builder/mcp
-# Push-and-preview against a sales agent (exercise 3):
-#   https://test-agent.adcontextprotocol.org/sales/mcp
 ```
+
+| Agent surface | URL | Used in |
+|---|---|---|
+| Creative ad server | `https://test-agent.adcontextprotocol.org/creative/mcp` | Exercises 2, 4 |
+| Stateless transformation / template agent | `https://test-agent.adcontextprotocol.org/creative-builder/mcp` | Exercises 1, 5 |
+| Sales agent (push-and-preview) | `https://test-agent.adcontextprotocol.org/sales/mcp` | Exercise 3 |
 
 See the [Quickstart](/docs/quickstart) for a walkthrough of your first call.
 
