@@ -302,6 +302,14 @@ export interface Impersonator {
 }
 
 export interface WorkOSUser {
+  /**
+   * The canonical workos_user_id for app-state queries. For singleton
+   * identities this equals the authenticated WorkOS user. For non-primary
+   * bindings (someone signed in with a linked email), the auth middleware
+   * swaps this to the identity's primary workos_user_id so reads land on
+   * the right person. Use {@link authWorkosUserId} when you need the
+   * actual authenticated WorkOS user (calling WorkOS APIs, audit logs).
+   */
   id: string;
   email: string;
   firstName?: string;
@@ -313,12 +321,20 @@ export interface WorkOSUser {
    * The person behind this WorkOS user. One identity may back multiple
    * WorkOS users (one per email). Resolved from `identity_workos_users` in
    * the auth middleware. Absent for synthetic users (admin API key, WorkOS
-   * API key). Phase 2 will start using this for app-state lookups.
+   * API key).
    *
    * Server-side only — do not serialize to clients. Correlating identityId
    * across surfaces would let a client tie multiple emails to one person.
    */
   identityId?: string;
+  /**
+   * The actual authenticated WorkOS user, before any identity-aware id
+   * swap. Set whenever {@link id} differs from the WorkOS-authenticated
+   * user (i.e., a non-primary binding signed in). Use this for WorkOS API
+   * calls and audit logs that need the credential identity, not the
+   * person identity.
+   */
+  authWorkosUserId?: string;
   /** Present when this session is being impersonated by an admin */
   impersonator?: Impersonator;
 }

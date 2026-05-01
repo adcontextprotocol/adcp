@@ -6371,7 +6371,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
                   }
 
                   const { mergeUsers } = await import('./db/user-merge-db.js');
-                  const summary = await mergeUsers(primaryId, secondaryId, 'system:google-alias-merge', workos!);
+                  const summary = await mergeUsers(primaryId, secondaryId, 'system:google-alias-merge');
                   autoMerged = true;
                   logger.info(
                     { primaryUserId: primaryId, secondaryUserId: secondaryId, tables: summary.tables_merged.length },

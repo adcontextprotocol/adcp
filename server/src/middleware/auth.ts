@@ -661,21 +661,66 @@ function isSyntheticUser(id: string): boolean {
 }
 
 /**
- * Look up the identity_id for a WorkOS user and attach it to the user object.
- * Identity = the person; one identity may back multiple WorkOS users (Phase 2).
- * Skipped for synthetic users since they don't represent a person. Failures
- * are swallowed — identity resolution must never block an authenticated
- * request.
+ * Drop any cached sessions whose WorkOS user id matches one of the given
+ * ids, on either auth credential (post-swap canonical or actual auth).
+ * Called when an identity binding changes (mergeUsers, admin rebind) so
+ * subsequent requests re-resolve identity instead of serving a stale swap.
+ */
+export function invalidateSessionsForUsers(workosUserIds: string[]): void {
+  if (workosUserIds.length === 0) return;
+  const ids = new Set(workosUserIds);
+  for (const [key, value] of sessionCache.entries()) {
+    if (ids.has(value.user.id) || (value.user.authWorkosUserId && ids.has(value.user.authWorkosUserId))) {
+      sessionCache.delete(key);
+    }
+  }
+  for (const [key, value] of bearerJwtCache.entries()) {
+    if (ids.has(value.user.id) || (value.user.authWorkosUserId && ids.has(value.user.authWorkosUserId))) {
+      bearerJwtCache.delete(key);
+    }
+  }
+}
+
+/**
+ * Resolve the identity for a WorkOS user. Sets `user.identityId` and, when
+ * the authenticated user is a non-primary binding, swaps `user.id` to the
+ * identity's primary workos_user_id so app-state reads land on the right
+ * person. The original authenticated id is preserved on `user.authWorkosUserId`.
+ *
+ * Skipped for synthetic users (admin API key, WorkOS API key) — they don't
+ * represent a person. Failures are swallowed: identity resolution must
+ * never block an authenticated request, and a degraded request that sees
+ * only the auth user's slice of data is still better than a 500.
  */
 async function attachIdentityId(user: WorkOSUser): Promise<void> {
   if (isSyntheticUser(user.id)) return;
   try {
-    const result = await getPool().query<{ identity_id: string }>(
-      `SELECT identity_id FROM identity_workos_users WHERE workos_user_id = $1`,
+    const result = await getPool().query<{
+      identity_id: string;
+      primary_workos_user_id: string | null;
+    }>(
+      `SELECT iwu.identity_id, primary_iwu.workos_user_id AS primary_workos_user_id
+         FROM identity_workos_users iwu
+         LEFT JOIN identity_workos_users primary_iwu
+           ON primary_iwu.identity_id = iwu.identity_id
+          AND primary_iwu.is_primary = TRUE
+        WHERE iwu.workos_user_id = $1`,
       [user.id]
     );
-    if (result.rows[0]) {
-      user.identityId = result.rows[0].identity_id;
+    const row = result.rows[0];
+    if (!row) return;
+
+    user.identityId = row.identity_id;
+
+    if (row.primary_workos_user_id && row.primary_workos_user_id !== user.id) {
+      // Non-primary binding signed in. Swap id so app-state reads see the
+      // canonical person; preserve the actual auth user on authWorkosUserId.
+      logger.debug(
+        { authWorkosUserId: user.id, canonicalUserId: row.primary_workos_user_id, identityId: row.identity_id },
+        'Identity id-swap: routing non-primary binding to canonical user'
+      );
+      user.authWorkosUserId = user.id;
+      user.id = row.primary_workos_user_id;
     }
   } catch (err) {
     logger.warn({ err, userId: user.id }, 'Failed to resolve identity_id');
