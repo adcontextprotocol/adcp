@@ -15,6 +15,8 @@ vi.mock('../../server/src/services/pipes.js', () => ({
 // Import the tool definitions directly (no side effects)
 import { MEMBER_TOOLS, createMemberToolHandlers } from '../../server/src/addie/mcp/member-tools.js';
 import { getGitHubAccessToken } from '../../server/src/services/pipes.js';
+import { ComplianceDatabase } from '../../server/src/db/compliance-db.js';
+import { AgentSnapshotDatabase } from '../../server/src/db/agent-snapshot-db.js';
 
 describe('MEMBER_TOOLS definitions', () => {
   it('exports an array of tools', () => {
@@ -509,6 +511,108 @@ describe('createMemberToolHandlers', () => {
 
       expect(result).toContain('network error');
       expect(result).toContain('draft_github_issue');
+    });
+  });
+
+  describe('get_agent_status handler', () => {
+    // Spy on the database modules' prototypes so the module-level
+    // singletons in member-tools.ts pick up the mocks. The classes are
+    // statically imported at the top of the file because the lint rule
+    // (scripts/lint-test-dynamic-imports.cjs) forbids dynamic project
+    // imports inside test bodies — they re-resolve the module tree per
+    // test and open race windows under thread-pool contention.
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    function stubAll(opts: {
+      complianceStatus?: unknown;
+      registryMetadata?: unknown;
+      health?: unknown;
+      caps?: unknown;
+      badges?: unknown;
+      specialisms?: string[];
+    } = {}) {
+      vi.spyOn(ComplianceDatabase.prototype, 'getComplianceStatus').mockResolvedValue(opts.complianceStatus as never);
+      vi.spyOn(ComplianceDatabase.prototype, 'getRegistryMetadata').mockResolvedValue(opts.registryMetadata as never);
+      vi.spyOn(ComplianceDatabase.prototype, 'getBadgesForAgent').mockResolvedValue((opts.badges ?? []) as never);
+      vi.spyOn(ComplianceDatabase.prototype, 'getLatestDeclaredSpecialisms').mockResolvedValue((opts.specialisms ?? []) as never);
+      vi.spyOn(AgentSnapshotDatabase.prototype, 'bulkGetHealth').mockImplementation(async (urls: string[]) => {
+        const map = new Map<string, unknown>();
+        if (opts.health) {
+          for (const u of urls) map.set(u, opts.health);
+        }
+        return map as never;
+      });
+      vi.spyOn(AgentSnapshotDatabase.prototype, 'bulkGetCapabilities').mockImplementation(async (urls: string[]) => {
+        const map = new Map<string, unknown>();
+        if (opts.caps) {
+          for (const u of urls) map.set(u, opts.caps);
+        }
+        return map as never;
+      });
+    }
+
+    it('routes unknown agents to register / evaluate, not a probe', async () => {
+      stubAll();
+      const handlers = createMemberToolHandlers(null);
+      const result = await handlers.get('get_agent_status')!({ agent_url: 'https://unknown.example.com/mcp' });
+      expect(result).toContain('not in registry');
+      expect(result).toContain('save_agent');
+      expect(result).toContain('evaluate_agent_quality');
+      expect(result).not.toContain('CSRF');
+      expect(result).not.toContain('Probe Failed');
+    });
+
+    it('renders cached health + capabilities + compliance for a known agent', async () => {
+      stubAll({
+        registryMetadata: { lifecycle_stage: 'production', compliance_opt_out: false, monitoring_paused: false, check_interval_hours: 12, monitoring_paused_at: null, created_at: new Date(), updated_at: new Date() },
+        health: { online: true, response_time_ms: 142, checked_at: new Date('2026-04-30T11:00:00Z'), error: null },
+        caps: { protocol: 'mcp', discovered_tools_json: [{ name: 'get_products' }, { name: 'create_media_buy' }], oauth_required: false, discovery_error: null },
+        complianceStatus: { status: 'passing', headline: 'all tracks green', last_checked_at: new Date('2026-04-30T11:00:00Z'), last_passed_at: new Date('2026-04-30T11:00:00Z'), tracks_summary_json: { core: 'pass', media_buy: 'pass' } },
+        specialisms: ['sales'],
+      });
+      const handlers = createMemberToolHandlers(null);
+      const result = await handlers.get('get_agent_status')!({ agent_url: 'https://known.example.com/mcp' });
+      expect(result).toContain('Lifecycle');
+      expect(result).toContain('production');
+      expect(result).toContain('Online');
+      expect(result).toContain('142ms');
+      expect(result).toContain('Tools advertised:** 2');
+      expect(result).toContain('passing');
+      expect(result).toContain('all tracks green');
+      expect(result).toContain('core: pass');
+      expect(result).toContain('Declared specialisms:** sales');
+    });
+
+    it('honors compliance opt-out instead of showing a verdict', async () => {
+      stubAll({
+        registryMetadata: { lifecycle_stage: 'production', compliance_opt_out: true, monitoring_paused: false, check_interval_hours: 12, monitoring_paused_at: null, created_at: new Date(), updated_at: new Date() },
+        health: { online: true, response_time_ms: 100, checked_at: new Date(), error: null },
+        complianceStatus: { status: 'passing', headline: 'should not appear', last_checked_at: new Date(), last_passed_at: null, tracks_summary_json: null },
+      });
+      const handlers = createMemberToolHandlers(null);
+      const result = await handlers.get('get_agent_status')!({ agent_url: 'https://opted.example.com/mcp' });
+      expect(result).toContain('opted out');
+      expect(result).not.toContain('should not appear');
+    });
+
+    it('matches stored URL with trailing slash when input has none', async () => {
+      // Storage form: trailing slash. Input: no slash. Without
+      // canonicalization the agent looks unknown.
+      const stored = 'https://celtra.example.com/mcp/';
+      vi.spyOn(ComplianceDatabase.prototype, 'getComplianceStatus').mockImplementation(async (u: string) => {
+        return u === stored ? ({ status: 'passing', headline: 'ok', last_checked_at: new Date(), last_passed_at: new Date(), tracks_summary_json: { core: 'pass' } } as never) : null;
+      });
+      vi.spyOn(ComplianceDatabase.prototype, 'getRegistryMetadata').mockResolvedValue(null as never);
+      vi.spyOn(ComplianceDatabase.prototype, 'getBadgesForAgent').mockResolvedValue([] as never);
+      vi.spyOn(ComplianceDatabase.prototype, 'getLatestDeclaredSpecialisms').mockResolvedValue([] as never);
+      vi.spyOn(AgentSnapshotDatabase.prototype, 'bulkGetHealth').mockResolvedValue(new Map() as never);
+      vi.spyOn(AgentSnapshotDatabase.prototype, 'bulkGetCapabilities').mockResolvedValue(new Map() as never);
+      const handlers = createMemberToolHandlers(null);
+      const result = await handlers.get('get_agent_status')!({ agent_url: 'https://celtra.example.com/mcp' });
+      expect(result).not.toContain('not in registry');
+      expect(result).toContain(stored);
     });
   });
 

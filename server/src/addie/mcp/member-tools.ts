@@ -62,6 +62,7 @@ import { updateBrandIdentity, BrandIdentityError } from '../../services/brand-id
 import { canonicalizeBrandDomain } from '../../services/identifier-normalization.js';
 import { ComplianceDatabase } from '../../db/compliance-db.js';
 import { AgentSnapshotDatabase } from '../../db/agent-snapshot-db.js';
+import { AgentValidator } from '../../validator.js';
 import { getPool, query } from '../../db/client.js';
 import { MemberSearchAnalyticsDatabase } from '../../db/member-search-analytics-db.js';
 import { OrganizationDatabase } from '../../db/organization-db.js';
@@ -85,6 +86,7 @@ const memberDb = new MemberDatabase();
 const agentContextDb = new AgentContextDatabase();
 const complianceDb = new ComplianceDatabase();
 const agentSnapshotDb = new AgentSnapshotDatabase();
+const adagentsValidator = new AgentValidator();
 const memberSearchAnalyticsDb = new MemberSearchAnalyticsDatabase();
 const orgDb = new OrganizationDatabase();
 const wgDb = new WorkingGroupDatabase();
@@ -3241,17 +3243,49 @@ export function createMemberToolHandlers(
     const urlError = validateAgentUrl(agentUrl);
     if (urlError) return `**Error:** ${urlError}`;
 
-    const [complianceStatus, registryMetadata, healthMap, capsMap, badges, declaredSpecialisms] = await Promise.all([
-      complianceDb.getComplianceStatus(agentUrl),
-      complianceDb.getRegistryMetadata(agentUrl),
-      agentSnapshotDb.bulkGetHealth([agentUrl]),
-      agentSnapshotDb.bulkGetCapabilities([agentUrl]),
-      complianceDb.getBadgesForAgent(agentUrl).catch(() => []),
-      complianceDb.getLatestDeclaredSpecialisms(agentUrl).catch(() => [] as string[]),
+    // Try both trailing-slash variants — the registry stores agents in
+    // whatever shape the source declared (most without a trailing slash,
+    // some with). Without this, asking about `https://x/mcp` when the
+    // crawler stored `https://x/mcp/` (or vice versa) silently returns
+    // "not in registry" for an agent that IS registered.
+    const stripped = agentUrl.replace(/\/+$/, '');
+    const withSlash = stripped + '/';
+    const candidates = stripped === agentUrl ? [stripped, withSlash] : [stripped, agentUrl];
+
+    const pickFirst = async <T>(fn: (u: string) => Promise<T | null>): Promise<{ url: string; row: T } | null> => {
+      for (const u of candidates) {
+        const row = await fn(u);
+        if (row) return { url: u, row };
+      }
+      return null;
+    };
+
+    const [complianceHit, metadataHit, healthMap, capsMap] = await Promise.all([
+      pickFirst((u) => complianceDb.getComplianceStatus(u)),
+      pickFirst((u) => complianceDb.getRegistryMetadata(u)),
+      agentSnapshotDb.bulkGetHealth(candidates),
+      agentSnapshotDb.bulkGetCapabilities(candidates),
     ]);
 
-    const health = healthMap.get(agentUrl);
-    const caps = capsMap.get(agentUrl);
+    // Resolve the canonical URL the registry actually has on file — fall
+    // back to the input when there's no match anywhere so the response
+    // header still echoes what the user typed.
+    const registryUrl =
+      complianceHit?.url ??
+      metadataHit?.url ??
+      candidates.find((u) => healthMap.has(u)) ??
+      candidates.find((u) => capsMap.has(u)) ??
+      agentUrl;
+
+    const complianceStatus = complianceHit?.row ?? null;
+    const registryMetadata = metadataHit?.row ?? null;
+    const health = healthMap.get(registryUrl) ?? null;
+    const caps = capsMap.get(registryUrl) ?? null;
+
+    const [badges, declaredSpecialisms] = await Promise.all([
+      complianceDb.getBadgesForAgent(registryUrl).catch(() => []),
+      complianceDb.getLatestDeclaredSpecialisms(registryUrl).catch(() => [] as string[]),
+    ]);
 
     // Agent is unknown to the registry — no crawler health, no comply state.
     // Don't synthesize a probe; route the user to the right next step.
@@ -3268,11 +3302,12 @@ export function createMemberToolHandlers(
       ].join('\n');
     }
 
-    const lifecycleStage = registryMetadata?.lifecycle_stage || 'production';
     const optedOut = registryMetadata?.compliance_opt_out === true;
 
-    let response = `## Agent Status: ${agentUrl}\n\n`;
-    response += `**Lifecycle:** ${lifecycleStage}\n`;
+    let response = `## Agent Status: ${registryUrl}\n\n`;
+    if (registryMetadata?.lifecycle_stage) {
+      response += `**Lifecycle:** ${registryMetadata.lifecycle_stage}\n`;
+    }
 
     // Health snapshot from the crawler.
     response += `\n### Health (last crawler check)\n`;
@@ -3297,7 +3332,7 @@ export function createMemberToolHandlers(
       response += `**Protocol:** ${caps.protocol}\n`;
       response += `**Tools advertised:** ${tools.length}\n`;
       if (caps.oauth_required) {
-        response += `**Auth:** OAuth required\n`;
+        response += `**Auth:** OAuth required — run \`diagnose_agent_auth\` to start the handshake.\n`;
       }
       if (caps.discovery_error) {
         response += `**Discovery error:** ${caps.discovery_error}\n`;
@@ -3361,24 +3396,12 @@ export function createMemberToolHandlers(
     const domain = input.domain as string;
     const agentUrl = input.agent_url as string;
 
-    // Use the validate endpoint to check authorization
-    const result = await callApi('POST', '/api/validate', memberContext, {
-      domain,
-      agent_url: agentUrl,
-    });
-
-    if (!result.ok) {
-      throw new ToolError(`Failed to check authorization: ${result.error}`);
+    let data;
+    try {
+      data = await adagentsValidator.validate(domain, agentUrl);
+    } catch (err) {
+      throw new ToolError(`Failed to check authorization: ${err instanceof Error ? err.message : String(err)}`);
     }
-
-    const data = result.data as {
-      authorized: boolean;
-      domain: string;
-      agent_url: string;
-      checked_at: string;
-      source?: string;
-      error?: string;
-    };
 
     let response = `## Authorization Check\n\n`;
     response += `**Publisher:** ${data.domain}\n`;
