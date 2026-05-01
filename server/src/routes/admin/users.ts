@@ -9,7 +9,7 @@
 
 import { Router } from 'express';
 import { createLogger } from '../../logger.js';
-import { requireAuth, requireAdmin } from '../../middleware/auth.js';
+import { requireAuth, requireAdmin, invalidateSessionsForUsers } from '../../middleware/auth.js';
 import { SlackDatabase } from '../../db/slack-db.js';
 import { WorkingGroupDatabase } from '../../db/working-group-db.js';
 import { getPool } from '../../db/client.js';
@@ -806,17 +806,23 @@ export function createAdminUsersRouter(): Router {
       });
     } catch (err: any) {
       // 422 = email already in use in WorkOS (we didn't see them in our DB
-      // but WorkOS knows about them). Surface clearly.
+      // but WorkOS knows about them). 400 = WorkOS rejected for other
+      // reasons — typically a still-living user at that email from a prior
+      // merge whose deleteUser silently failed. Surface clearly.
       const status = err?.status ?? err?.response?.status;
-      if (status === 422 || status === 409) {
-        logger.warn({ err, newEmail, existingUserId }, 'Admin bind-email: WorkOS rejected createUser (email in use)');
+      const workosMsg = err?.message ?? err?.rawMessage ?? '';
+      if (status === 422 || status === 409 || status === 400) {
+        logger.warn({ err, newEmail, existingUserId, status }, 'Admin bind-email: WorkOS rejected createUser');
         return res.status(409).json({
-          error: 'This email already exists in our auth system',
-          message: 'Use a separate consolidation flow.',
+          error: 'WorkOS will not create a user at this email',
+          message: `WorkOS responded ${status}: ${workosMsg || 'no message'}. The email is likely already in use upstream — look it up in the WorkOS Dashboard and use the "Link existing WorkOS user" admin tool to bind by id.`,
         });
       }
-      logger.error({ err, newEmail, existingUserId }, 'Admin bind-email: WorkOS createUser failed');
-      return res.status(502).json({ error: 'Failed to create sign-in email upstream' });
+      logger.error({ err, newEmail, existingUserId, status }, 'Admin bind-email: WorkOS createUser failed');
+      return res.status(502).json({
+        error: 'Failed to create sign-in email upstream',
+        message: workosMsg || `WorkOS responded with status ${status ?? 'unknown'}.`,
+      });
     }
 
     // Insert into local users — fires the AFTER INSERT trigger which creates
@@ -873,6 +879,304 @@ export function createAdminUsersRouter(): Router {
       new_email: newEmail,
       new_workos_user_id: newWorkosUser.id,
       message: `${newEmail} is now a sign-in email for this user. They can sign in with either address.`,
+    });
+  });
+
+  // GET /api/admin/users/:userId/credentials
+  //
+  // List the WorkOS-user credentials bound to this user's identity. Useful
+  // for the admin UI to render a "linked emails" section and decide which
+  // operations are available.
+  router.get('/:userId/credentials', requireAuth, requireAdmin, async (req, res) => {
+    const userId = req.params.userId;
+    const pool = getPool();
+
+    const identity = await pool.query<{ identity_id: string }>(
+      `SELECT identity_id FROM identity_workos_users WHERE workos_user_id = $1`,
+      [userId]
+    );
+    if (identity.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const credentials = await pool.query<{
+      workos_user_id: string;
+      is_primary: boolean;
+      bound_at: string;
+      email: string | null;
+      first_name: string | null;
+      last_name: string | null;
+    }>(
+      `SELECT iwu.workos_user_id, iwu.is_primary, iwu.bound_at,
+              u.email, u.first_name, u.last_name
+         FROM identity_workos_users iwu
+         LEFT JOIN users u ON u.workos_user_id = iwu.workos_user_id
+        WHERE iwu.identity_id = $1
+        ORDER BY iwu.is_primary DESC, iwu.bound_at ASC`,
+      [identity.rows[0].identity_id]
+    );
+
+    return res.json({
+      identity_id: identity.rows[0].identity_id,
+      credentials: credentials.rows,
+    });
+  });
+
+  // POST /api/admin/users/:userId/credentials
+  // Body: { workos_user_id }
+  //
+  // Bind an EXISTING WorkOS user as a non-primary credential to this user's
+  // identity. Use this when the email already has a WorkOS user (admin
+  // created one in the WorkOS Dashboard, or a prior merge left the WorkOS
+  // user alive). Bypasses createUser, which avoids the case where WorkOS
+  // returns 400 because the email is already in use.
+  //
+  // If the target WorkOS user is itself bound to a different identity with
+  // its own app-state, mergeUsers moves that data to this user — admin is
+  // asserting the two represent the same person. The trust model and
+  // confirmation UX live on the admin frontend.
+  router.post('/:userId/credentials', requireAuth, requireAdmin, async (req, res) => {
+    const adminEmail = req.user!.email;
+    const adminUserId = req.user!.id;
+    const existingUserId = req.params.userId;
+    const credId = (req.body?.workos_user_id as string | undefined)?.trim();
+
+    if (!credId || !credId.startsWith('user_')) {
+      return res.status(400).json({ error: 'workos_user_id is required (must start with user_)' });
+    }
+    if (credId === existingUserId) {
+      return res.status(400).json({ error: 'Cannot bind a user to itself' });
+    }
+
+    const pool = getPool();
+
+    const existing = await pool.query<{ email: string }>(
+      `SELECT email FROM users WHERE workos_user_id = $1`,
+      [existingUserId]
+    );
+    if (existing.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // If credId is already bound to existingUserId's identity, this is a
+    // no-op (idempotent retry).
+    const sameIdentity = await pool.query<{ workos_user_id: string }>(
+      `SELECT iwu.workos_user_id
+         FROM identity_workos_users iwu
+        WHERE iwu.workos_user_id = $1
+          AND iwu.identity_id = (
+            SELECT identity_id FROM identity_workos_users WHERE workos_user_id = $2
+          )`,
+      [credId, existingUserId]
+    );
+    if (sameIdentity.rows.length > 0) {
+      return res.json({ linked: true, message: 'Already bound to this user — no change.' });
+    }
+
+    // If credId is not in our local users table, fetch from WorkOS and
+    // upsert. The AFTER INSERT trigger creates a singleton identity which
+    // mergeUsers will then re-point.
+    const credLocal = await pool.query(
+      `SELECT email FROM users WHERE workos_user_id = $1`,
+      [credId]
+    );
+    if (credLocal.rows.length === 0) {
+      try {
+        const workosUser = await getWorkos().userManagement.getUser(credId);
+        await pool.query(
+          `INSERT INTO users (workos_user_id, email, first_name, last_name, email_verified,
+                              workos_created_at, workos_updated_at, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+           ON CONFLICT (workos_user_id) DO NOTHING`,
+          [workosUser.id, workosUser.email, workosUser.firstName, workosUser.lastName,
+           workosUser.emailVerified, workosUser.createdAt, workosUser.updatedAt]
+        );
+      } catch (err: any) {
+        const status = err?.status ?? err?.response?.status;
+        if (status === 404) {
+          return res.status(404).json({ error: 'WorkOS user not found at that id' });
+        }
+        logger.error({ err, credId }, 'Admin link-credential: failed to fetch WorkOS user');
+        return res.status(502).json({ error: 'Failed to fetch WorkOS user', message: err?.message });
+      }
+    }
+
+    // Foot-gun gate: refuse silent consolidation. If credId has any app-state
+    // attached (org membership, points, certification work, working-group
+    // membership), binding will MOVE it onto the host — that's a real account
+    // being absorbed, not a fresh credential being added. Require explicit
+    // `consolidate: true` in the body so the admin has stated intent.
+    //
+    // Cheap signal: check the four most user-facing tables. False negatives
+    // (e.g., a Slack-only points-bearing user with no org_membership) only
+    // matter if the points themselves are valuable enough to warn about, and
+    // they will move forward correctly either way.
+    const consolidateConfirmed = req.body?.consolidate === true;
+    if (!consolidateConfirmed) {
+      const stateCheck = await pool.query<{ has_state: boolean }>(
+        `SELECT EXISTS (
+           SELECT 1 FROM organization_memberships WHERE workos_user_id = $1
+           UNION ALL
+           SELECT 1 FROM working_group_memberships WHERE workos_user_id = $1
+           UNION ALL
+           SELECT 1 FROM certification_attempts WHERE workos_user_id = $1
+           UNION ALL
+           SELECT 1 FROM community_points WHERE workos_user_id = $1
+           LIMIT 1
+         ) AS has_state`,
+        [credId]
+      );
+      if (stateCheck.rows[0].has_state) {
+        return res.status(409).json({
+          error: 'This WorkOS user has its own AAO data',
+          message: 'Binding will move that data (organization memberships, working-group memberships, certification work, community points) to the host. Re-submit with `"consolidate": true` to confirm this is the intended consolidation.',
+          consolidate_confirmation_required: true,
+        });
+      }
+    }
+
+    // mergeUsers moves any app-state from credId to existingUserId, rebinds
+    // credId's identity_workos_users row to existingUserId's identity as
+    // is_primary = FALSE, and drops the orphan identity. Throws if either
+    // user lacks an identity binding.
+    try {
+      await mergeUsers(existingUserId, credId, adminUserId);
+    } catch (err) {
+      logger.error({ err, existingUserId, credId }, 'Admin link-credential: mergeUsers failed');
+      return res.status(500).json({ error: 'Failed to bind credential' });
+    }
+
+    logger.info(
+      { adminEmail, existingUserId, credId },
+      'Admin linked existing WorkOS user to identity'
+    );
+
+    return res.status(201).json({
+      linked: true,
+      existing_user_id: existingUserId,
+      bound_workos_user_id: credId,
+      message: 'WorkOS user linked. They can now sign in with that credential and reach the same workspace.',
+    });
+  });
+
+  // DELETE /api/admin/users/:userId/credentials/:credentialId
+  //
+  // Unbind a non-primary credential from this user's identity. The WorkOS
+  // user stays alive in WorkOS and gets a fresh singleton identity locally
+  // (becomes its own person again). Admin can delete the WorkOS user
+  // separately via the WorkOS Dashboard if desired.
+  //
+  // Refuses if the credential is the primary — removing the primary would
+  // leave the identity with no canonical credential. Promote another
+  // credential to primary first (separate endpoint, not yet built).
+  router.delete('/:userId/credentials/:credentialId', requireAuth, requireAdmin, async (req, res) => {
+    const adminEmail = req.user!.email;
+    const adminUserId = req.user!.id;
+    // For non-singleton admin identities (today: nobody — admins are still
+    // singleton-bound — but Phase 3+ may change), record the auth credential
+    // separately from the canonical id so forensics can tell them apart.
+    const adminAuthCredentialId = req.user!.authWorkosUserId ?? req.user!.id;
+    const userId = req.params.userId;
+    const credId = req.params.credentialId;
+
+    if (credId === userId) {
+      return res.status(400).json({ error: 'Cannot remove the canonical user via this endpoint' });
+    }
+
+    const pool = getPool();
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const check = await client.query<{ is_primary: boolean; identity_id: string }>(
+        `SELECT iwu.is_primary, iwu.identity_id
+           FROM identity_workos_users iwu
+          WHERE iwu.workos_user_id = $1
+            AND iwu.identity_id = (
+              SELECT identity_id FROM identity_workos_users WHERE workos_user_id = $2
+            )`,
+        [credId, userId]
+      );
+
+      if (check.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'Credential not bound to this user' });
+      }
+      if (check.rows[0].is_primary) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({
+          error: 'Cannot remove the primary credential',
+          message: 'Promote another credential to primary before removing this one.',
+        });
+      }
+
+      const detachedIdentityId = check.rows[0].identity_id;
+
+      // Unbind, then create a fresh singleton identity for the detached
+      // credential so the Phase 1 invariant ("every user has exactly one
+      // binding") holds.
+      await client.query(
+        `DELETE FROM identity_workos_users WHERE workos_user_id = $1`,
+        [credId]
+      );
+      const newIdentity = await client.query<{ id: string }>(
+        `INSERT INTO identities DEFAULT VALUES RETURNING id`
+      );
+      await client.query(
+        `INSERT INTO identity_workos_users (workos_user_id, identity_id, is_primary)
+         VALUES ($1, $2, TRUE)`,
+        [credId, newIdentity.rows[0].id]
+      );
+
+      // Audit log
+      const auditOrg = await client.query<{ workos_organization_id: string }>(
+        `SELECT workos_organization_id FROM organization_memberships
+          WHERE workos_user_id = $1 LIMIT 1`,
+        [userId]
+      );
+      const auditOrgId = auditOrg.rows[0]?.workos_organization_id || 'system';
+      await client.query(
+        `INSERT INTO registry_audit_log (
+          workos_organization_id, workos_user_id, action, resource_type, resource_id, details
+        ) VALUES ($1, $2, 'unbind_credential', 'user', $3, $4)`,
+        [
+          auditOrgId,
+          adminUserId,
+          credId,
+          JSON.stringify({
+            host_user_id: userId,
+            detached_from_identity_id: detachedIdentityId,
+            new_identity_id: newIdentity.rows[0].id,
+            // Auth credential the admin used (may differ from adminUserId
+            // post-id-swap if the admin has multiple bound credentials).
+            acting_workos_user_id: adminAuthCredentialId,
+          }),
+        ]
+      );
+
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      logger.error({ err, userId, credId }, 'Admin unbind-credential: failed');
+      return res.status(500).json({ error: 'Failed to unbind credential' });
+    } finally {
+      client.release();
+    }
+
+    // Invalidate cached sessions for both users so the swap is recomputed
+    // on the next request.
+    invalidateSessionsForUsers([userId, credId]);
+
+    logger.info(
+      { adminEmail, userId, credId },
+      'Admin unbound credential from identity'
+    );
+
+    return res.json({
+      removed: true,
+      host_user_id: userId,
+      removed_workos_user_id: credId,
+      message: 'Credential unbound. The WorkOS user is now a separate identity.',
     });
   });
 

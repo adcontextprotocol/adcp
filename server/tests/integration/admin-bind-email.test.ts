@@ -207,7 +207,9 @@ describe('POST /api/admin/users/:userId/linked-emails (admin bind)', () => {
       .send({ email: 'taken-upstream@test.example' })
       .expect(409);
 
-    expect(response.body.error).toMatch(/already exists/i);
+    // The error wording surfaces the WorkOS status + message and points
+    // admins at the "Link existing WorkOS user" tool.
+    expect(response.body.message).toMatch(/already in use upstream|Link existing WorkOS user/i);
     // No local users row should have been created.
     const localCheck = await pool.query(
       `SELECT 1 FROM users WHERE LOWER(email) = 'taken-upstream@test.example'`
