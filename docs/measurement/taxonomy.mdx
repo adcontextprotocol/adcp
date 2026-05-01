@@ -86,6 +86,65 @@ When evaluating where a measurement field belongs, ask **who is the source of tr
 
 This single question resolves most placement debates. If two layers seem to claim the same field, the field is probably two fields wearing one name — split it.
 
+## Boundaries with Signals and Governance
+
+Measurement is not the only third-party-attestation surface in AdCP. [Signals](/docs/signals/overview) and [Governance](/docs/governance/overview) also involve third parties, also produce attested artifacts, and also evolve faster than the core media-buy primitives. The boundaries are real but the protocols overlap in vendor and in lifecycle — Signals' own key-concepts page notes that signals are used "for targeting or measurement," and that ambiguity is the boundary in question.
+
+The clearest separation is by lifecycle moment and the question being asked:
+
+| Lifecycle moment | Question | Protocol home |
+|---|---|---|
+| Pre-decision | What should we do? | Signals |
+| Plan-time | Are we allowed to do this? | Governance (policy registry, plan check) |
+| Delivery | Did it happen? Did it count? | Measurement (metrics, verification) |
+| Post-delivery | What outcome did it cause? | Measurement (attribution) |
+| Continuous | Is the audit trail intact? | Governance (audit trail) |
+
+The same vendor often plays in multiple lanes. DoubleVerify, for example, sells pre-bid brand-safety *signals*, post-delivery *verification* attestations, and content-classification feeds consumed by *governance* policy enforcement. The vendor is one entity; the protocol surfaces are three because the timing, sources of truth, and consumption patterns differ.
+
+### Where the lines are crisp
+
+- **Signals are predictive; measurement is descriptive.** A pre-bid viewability score is a signal — an estimate of how likely an impression is to be viewable. A post-delivery viewability rate is measurement. Same methodology family, different question.
+- **Governance is normative; measurement is factual.** Governance asks "did this comply with the rules we set?" Measurement asks "what objectively happened?" An attribution model can disagree with a buyer's outcome goal without violating any policy; a brand-safety violation can occur even when delivery measured cleanly.
+- **Signals are inputs, measurement is outputs, governance is constraints.** The buying decision consumes signals, is bounded by governance, and produces facts that measurement records.
+
+### Where the lines blur
+
+- A pre-bid brand-safety classifier is sold as a *signal*; the same vendor's post-delivery report is *verification*. Same input data, different protocol home — driven by *when* the data is consumed.
+- A *governance* policy can require a *measurement* attestation as evidence ("this campaign must verify with an MRC-accredited vendor"). Measurement becomes a precondition for governance approval.
+- *Signals* feed *attribution* models — audience segments and identity signals are inputs to the lift or MMM model that produces outcome estimates.
+
+These overlaps are not bugs. They reflect how the measurement-and-data industry actually works: vendors operate across the lifecycle, and an event in one layer often becomes input to another. The protocol's job is to keep the *interfaces* clean — same vendor, multiple roles, multiple endpoints — not to collapse the lifecycle into a single surface.
+
+## Open question: where do measurement agents live?
+
+Today, measurement is **distributed** across the protocol. Capabilities declare which paths are supported. Creative manifests carry trackers. Event sources hand off attribution data. But there is no first-class **measurement agent** concept the way there are sales agents, signal agents, and governance agents.
+
+A first-class Measurement Protocol — peer to Signals and Governance — would give vendors:
+
+- **Discovery** — register as a measurement agent with declared capabilities (which metrics, which environments, which standards, which certifications)
+- **Binding** — be referenced from a creative or media buy as the responsible measurement party
+- **Attestation** — publish signed verification or attribution results that flow into the governance audit trail
+- **Lifecycle hooks** — pre-bid (predicted measurability), in-flight (signal survival reporting), post-delivery (results), reconciliation (dispute and recount)
+
+The alternative is to keep measurement distributed and accept that the agent is implicit, defined by the union of capability declarations, manifest trackers, and out-of-band vendor reports.
+
+**Case for first-class Measurement Protocol:**
+
+- Measurement vendors already operate as agents — independent, certified, signing their own attestations. Making that explicit aligns the protocol with how the industry is structured.
+- Verification and attribution share enough plumbing (signed attestations, audit linkage, dispute resolution) to benefit from common primitives.
+- A shared discovery surface lets buyers and brands pick measurement partners up front, the way they already pick sales agents and governance agents — rather than discovering measurement gaps after delivery.
+
+**Case against:**
+
+- Measurement vendors are conservative. They have established integrations (OMID, MRC accreditation, vendor SDKs) that AdCP would either replicate or wrap.
+- The verification *result* is fundamentally out-of-band (vendor → buyer dashboard). Bringing it into the protocol risks duplicating what already works.
+- Three protocols (Signals, Governance, Measurement) that all involve third-party attestation might be better unified under one *third-party agent* meta-pattern than scaled out to a fourth peer protocol.
+
+**A third option** is unification — name the meta-pattern explicitly. All three protocols would share primitives for agent discovery, capability declaration, signed attestation, and audit linkage; each would then specialize on its lifecycle moment and consumption pattern. This is closer to how vendors think about their own products (one company, one identity, multiple roles).
+
+This question is open. The taxonomy in this document is a precondition for resolving it — once metrics, verification, and attribution are clearly named, it becomes possible to ask which of them justify dedicated protocol surface, and whether the right unification is at the *layer* level or at the *third-party-agent* level.
+
 ## What this protocol does not do
 
 AdCP does not run measurement models. It does not adjudicate between competing verification vendors. It does not define MRC counting conventions. It does not store or normalize attribution outputs.
