@@ -43,6 +43,7 @@ const BANNED_RITUAL_LITERALS: readonly string[] = [
   "that's a fair question",
   "fair question",
   "great question",
+  "good question",
   "sharp question",
   "this is a sharp point",
   "to be clear",
@@ -108,9 +109,13 @@ export function stripBannedRituals(text: string): string {
 }
 
 /**
- * Test-only export of the literal list so the unit test can assert
- * that every literal would actually be stripped by the regex.
+ * Canonical list of banned ritual literals. Exported so the shape grader
+ * (and tests) can assert against the same source of truth that the strip
+ * regex is built from. Treat this as a public read-only export.
  */
+export const BANNED_RITUALS = BANNED_RITUAL_LITERALS;
+
+/** @deprecated use {@link BANNED_RITUALS}; kept for the existing unit test import. */
 export const __test_BANNED_RITUAL_LITERALS = BANNED_RITUAL_LITERALS;
 
 // ---------------------------------------------------------------------------

@@ -2018,6 +2018,7 @@ export class HTTPServer {
       const byType = {
         creative: agents.filter((a) => a.type === "creative").length,
         signals: agents.filter((a) => a.type === "signals").length,
+        sales: agents.filter((a) => a.type === "sales").length,
         buying: agents.filter((a) => a.type === "buying").length,
       };
 
@@ -2084,6 +2085,7 @@ export class HTTPServer {
         by_type: {
           creative: agents.filter(a => a.type === "creative").length,
           signals: agents.filter(a => a.type === "signals").length,
+          sales: agents.filter(a => a.type === "sales").length,
           buying: agents.filter(a => a.type === "buying").length,
         }
       });
@@ -2274,7 +2276,7 @@ export class HTTPServer {
       await this.serveHtmlWithConfig(req, res, 'members.html');
     });
 
-    // Member hub
+    // Your hub — personal dashboard (URL kept as /member-hub for back-compat)
     this.app.get("/member-hub", async (req, res) => {
       await this.serveHtmlWithConfig(req, res, 'membership/hub.html');
     });
@@ -3720,67 +3722,88 @@ export class HTTPServer {
               break;
             }
 
-            // Update database with subscription status, period end, and pricing details
-            // This allows admin dashboard to display data without querying Stripe API
+            // Update database with subscription status, period end, and pricing details.
+            // This allows admin dashboard to display data without querying Stripe API.
+            //
+            // IMPORTANT: the core UPDATE happens OUTSIDE the swallow-on-error
+            // outer try below. UPDATE on a single row by primary key is
+            // idempotent — if this fails (DB outage, constraint violation,
+            // race), let the exception propagate so Stripe retries. Silently
+            // logging it was the silent-swallow path that could leave a
+            // paying member with stale subscription_status until a human
+            // noticed (#3623 catch-block audit; #3681).
+            let subUpdate: ReturnType<typeof buildSubscriptionUpdate> | undefined;
+            let oldTier: string | null | undefined;
+            if (org && !suppressOrgUpdate) {
+              subUpdate = buildSubscriptionUpdate(subscription as any, org.is_personal);
+
+              const oldTierResult = await pool.query<{ membership_tier: string | null }>(
+                'SELECT membership_tier FROM organizations WHERE workos_organization_id = $1',
+                [org.workos_organization_id]
+              );
+              oldTier = oldTierResult.rows[0]?.membership_tier;
+
+              await pool.query(
+                `UPDATE organizations
+                 SET subscription_status = $1,
+                     stripe_subscription_id = $2,
+                     subscription_current_period_end = $3,
+                     subscription_amount = COALESCE($4, subscription_amount),
+                     subscription_currency = COALESCE($5, subscription_currency),
+                     subscription_interval = COALESCE($6, subscription_interval),
+                     subscription_canceled_at = $7,
+                     subscription_product_id = $8,
+                     subscription_product_name = COALESCE($9, subscription_product_name),
+                     subscription_price_id = $10,
+                     subscription_price_lookup_key = $11,
+                     membership_tier = $12,
+                     updated_at = NOW()
+                 WHERE workos_organization_id = $13`,
+                [
+                  subUpdate.subscription_status,
+                  subUpdate.stripe_subscription_id,
+                  subUpdate.subscription_current_period_end,
+                  subUpdate.subscription_amount,
+                  subUpdate.subscription_currency,
+                  subUpdate.subscription_interval,
+                  subUpdate.subscription_canceled_at,
+                  subUpdate.subscription_product_id,
+                  subUpdate.subscription_product_name,
+                  subUpdate.subscription_price_id,
+                  subUpdate.subscription_price_lookup_key,
+                  subUpdate.membership_tier,
+                  org.workos_organization_id,
+                ]
+              );
+
+              // Tier-downgrade enforcement is part of the entitlement write,
+              // not a downstream side effect. If the UPDATE flips an org from
+              // a tier with API access to one without, we MUST also demote
+              // any agents currently marked `public` — otherwise they remain
+              // publicly listed on a tier that doesn't allow it (silent
+              // entitlement leak). The helper is idempotent on retry
+              // (FOR UPDATE on member_profiles; no-ops if no public agents
+              // remain). Hoisted outside the swallow-on-error block so a
+              // transient failure here re-throws and Stripe retries (#3694).
+              if (oldTier && oldTier !== subUpdate.membership_tier) {
+                const { demotePublicAgentsOnTierDowngrade } = await import('./services/agent-visibility-enforcement.js');
+                await demotePublicAgentsOnTierDowngrade(
+                  org.workos_organization_id,
+                  oldTier as MembershipTier,
+                  (subUpdate.membership_tier ?? null) as MembershipTier | null,
+                );
+              }
+            }
+
+            // Downstream side effects: notifications, welcome email,
+            // autopublish, .deleted audit + activities. The existing pattern
+            // is "log + alert + continue" because some of these are
+            // non-idempotent (Slack, activity inserts) and a Stripe retry
+            // would refire them. Failures here are visible via
+            // notifySystemError; the column UPDATE + tier-downgrade
+            // enforcement that drive entitlement already happened above.
             try {
-              if (org && !suppressOrgUpdate) {
-                const subUpdate = buildSubscriptionUpdate(subscription as any, org.is_personal);
-
-                // Capture current tier before update for change detection
-                const oldTierResult = await pool.query<{ membership_tier: string | null }>(
-                  'SELECT membership_tier FROM organizations WHERE workos_organization_id = $1',
-                  [org.workos_organization_id]
-                );
-                const oldTier = oldTierResult.rows[0]?.membership_tier;
-
-                await pool.query(
-                  `UPDATE organizations
-                   SET subscription_status = $1,
-                       stripe_subscription_id = $2,
-                       subscription_current_period_end = $3,
-                       subscription_amount = COALESCE($4, subscription_amount),
-                       subscription_currency = COALESCE($5, subscription_currency),
-                       subscription_interval = COALESCE($6, subscription_interval),
-                       subscription_canceled_at = $7,
-                       subscription_product_id = $8,
-                       subscription_product_name = COALESCE($9, subscription_product_name),
-                       subscription_price_id = $10,
-                       subscription_price_lookup_key = $11,
-                       membership_tier = $12,
-                       updated_at = NOW()
-                   WHERE workos_organization_id = $13`,
-                  [
-                    subUpdate.subscription_status,
-                    subUpdate.stripe_subscription_id,
-                    subUpdate.subscription_current_period_end,
-                    subUpdate.subscription_amount,
-                    subUpdate.subscription_currency,
-                    subUpdate.subscription_interval,
-                    subUpdate.subscription_canceled_at,
-                    subUpdate.subscription_product_id,
-                    subUpdate.subscription_product_name,
-                    subUpdate.subscription_price_id,
-                    subUpdate.subscription_price_lookup_key,
-                    subUpdate.membership_tier,
-                    org.workos_organization_id,
-                  ]
-                );
-
-                // Enforce the visibility gate for any tier change, including
-                // full cancellation (new tier becomes null). The helper is a
-                // no-op when the new tier still has API access.
-                if (oldTier && oldTier !== subUpdate.membership_tier) {
-                  const { demotePublicAgentsOnTierDowngrade } = await import('./services/agent-visibility-enforcement.js');
-                  try {
-                    await demotePublicAgentsOnTierDowngrade(
-                      org.workos_organization_id,
-                      oldTier as MembershipTier,
-                      (subUpdate.membership_tier ?? null) as MembershipTier | null,
-                    );
-                  } catch (err) {
-                    logger.warn({ err, orgId: org.workos_organization_id }, 'Failed to demote public agents on tier downgrade');
-                  }
-                }
+              if (org && !suppressOrgUpdate && subUpdate) {
 
                 // Detect tier change and notify admins
                 if (subUpdate.membership_tier && oldTier && subUpdate.membership_tier !== oldTier) {
@@ -3915,41 +3938,70 @@ export class HTTPServer {
 
                 // Send Slack notification for subscription cancellation
                 if (event.type === 'customer.subscription.deleted') {
-                  // Record audit log for subscription cancellation (use system user since webhook context)
-                  await orgDb.recordAuditLog({
-                    workos_organization_id: org.workos_organization_id,
-                    workos_user_id: SYSTEM_USER_ID,
-                    action: 'subscription_cancelled',
-                    resource_type: 'subscription',
-                    resource_id: subscription.id,
-                    details: {
-                      status: subscription.status,
-                      stripe_customer_id: customerId,
-                    },
-                  });
+                  // Record audit log + activity for subscription cancellation. Wrapped
+                  // in their own try/catches: a failure here must not poison the rest
+                  // of the .deleted handling, but it must also be observable —
+                  // without inner try/catches the failure jumps to the outer
+                  // swallow and the audit row is silently lost forever (Stripe
+                  // sees 200, never retries). Surface via notifySystemError so
+                  // an admin can backfill the trail.
+                  try {
+                    await orgDb.recordAuditLog({
+                      workos_organization_id: org.workos_organization_id,
+                      workos_user_id: SYSTEM_USER_ID,
+                      action: 'subscription_cancelled',
+                      resource_type: 'subscription',
+                      resource_id: subscription.id,
+                      details: {
+                        status: subscription.status,
+                        stripe_customer_id: customerId,
+                      },
+                    });
+                  } catch (auditErr) {
+                    logger.error(
+                      { err: auditErr, orgId: org.workos_organization_id, subscriptionId: subscription.id },
+                      'Failed to record subscription_cancelled audit log entry',
+                    );
+                    notifySystemError({
+                      source: 'stripe-webhook-audit-log',
+                      errorMessage: `Failed to record subscription_cancelled audit row for ${org.workos_organization_id} sub ${subscription.id}: ${auditErr instanceof Error ? auditErr.message : String(auditErr)}`,
+                    });
+                  }
 
                   notifySubscriptionCancelled({
                     organizationName: org.name || 'Unknown Organization',
                   }).catch(err => logger.error({ err }, 'Failed to send Slack cancellation notification'));
 
-                  // Record to org_activities for prospect tracking
-                  await pool.query(
-                    `INSERT INTO org_activities (
-                      organization_id,
-                      activity_type,
-                      description,
-                      logged_by_user_id,
-                      logged_by_name,
-                      activity_date
-                    ) VALUES ($1, $2, $3, $4, $5, NOW())`,
-                    [
-                      org.workos_organization_id,
-                      'subscription_cancelled',
-                      'Subscription cancelled',
-                      SYSTEM_USER_ID,
-                      'System',
-                    ]
-                  );
+                  // Record to org_activities for prospect tracking. Same pattern —
+                  // own try/catch with notifySystemError on failure.
+                  try {
+                    await pool.query(
+                      `INSERT INTO org_activities (
+                        organization_id,
+                        activity_type,
+                        description,
+                        logged_by_user_id,
+                        logged_by_name,
+                        activity_date
+                      ) VALUES ($1, $2, $3, $4, $5, NOW())`,
+                      [
+                        org.workos_organization_id,
+                        'subscription_cancelled',
+                        'Subscription cancelled',
+                        SYSTEM_USER_ID,
+                        'System',
+                      ]
+                    );
+                  } catch (activityErr) {
+                    logger.error(
+                      { err: activityErr, orgId: org.workos_organization_id, subscriptionId: subscription.id },
+                      'Failed to record subscription_cancelled org_activities row',
+                    );
+                    notifySystemError({
+                      source: 'stripe-webhook-org-activities',
+                      errorMessage: `Failed to record subscription_cancelled activity row for ${org.workos_organization_id} sub ${subscription.id}: ${activityErr instanceof Error ? activityErr.message : String(activityErr)}`,
+                    });
+                  }
                 }
               }
             } catch (syncError) {
@@ -4173,12 +4225,26 @@ export class HTTPServer {
                   ]
                 );
               } catch (revenueError) {
-                logger.error({
-                  err: revenueError,
-                  orgId: org.workos_organization_id,
-                  invoiceId: invoice.id,
-                }, 'Failed to insert revenue event');
-                // Continue processing - don't fail the webhook
+                // PG code 23505 = unique_violation. revenue_events.stripe_invoice_id
+                // is UNIQUE, so a duplicate INSERT here means Stripe re-fired the
+                // same invoice.paid event — safe to swallow (the row already exists).
+                // Any other error (transient DB blip, statement timeout) means the
+                // row was lost; re-throw so Stripe retries with backoff. Without
+                // this, swallowing transient errors silently dropped paid revenue
+                // (#3693).
+                if ((revenueError as { code?: string })?.code === '23505') {
+                  logger.info(
+                    { orgId: org.workos_organization_id, invoiceId: invoice.id },
+                    'revenue_events INSERT hit UNIQUE on stripe_invoice_id; duplicate event ignored',
+                  );
+                } else {
+                  logger.error({
+                    err: revenueError,
+                    orgId: org.workos_organization_id,
+                    invoiceId: invoice.id,
+                  }, 'Failed to insert revenue event — re-throwing so Stripe retries');
+                  throw revenueError;
+                }
               }
 
               // Store subscription line items for subscriptions
@@ -4389,12 +4455,22 @@ export class HTTPServer {
                   invoiceId: invoice.id,
                 }, 'Failed payment event recorded');
               } catch (revenueError) {
-                logger.error({
-                  err: revenueError,
-                  orgId: org.workos_organization_id,
-                  invoiceId: invoice.id,
-                }, 'Failed to insert failed payment event');
-                // Continue processing - don't fail the webhook
+                // Same dedup pattern as the invoice.paid INSERT above:
+                // 23505 = duplicate Stripe retry, swallow safely; otherwise
+                // re-throw so the transient failure gets retried (#3693).
+                if ((revenueError as { code?: string })?.code === '23505') {
+                  logger.info(
+                    { orgId: org.workos_organization_id, invoiceId: invoice.id },
+                    'failed-payment revenue_events INSERT hit UNIQUE; duplicate event ignored',
+                  );
+                } else {
+                  logger.error({
+                    err: revenueError,
+                    orgId: org.workos_organization_id,
+                    invoiceId: invoice.id,
+                  }, 'Failed to insert failed payment event — re-throwing so Stripe retries');
+                  throw revenueError;
+                }
               }
 
               // Send Slack notification for failed payment
@@ -4465,12 +4541,19 @@ export class HTTPServer {
                     refundAmount: charge.amount_refunded,
                   }, 'Refund event recorded');
                 } catch (revenueError) {
+                  // Refund INSERTs use stripe_charge_id which is NOT a UNIQUE
+                  // column on revenue_events. Until that constraint is added
+                  // (separate migration), we cannot distinguish "Stripe retry"
+                  // from "transient error" by error code. Keep the swallow
+                  // here so retries don't dup, document the gap. Tracked for
+                  // a follow-up: add UNIQUE (stripe_charge_id) WHERE
+                  // revenue_type = 'refund', then apply the 23505 pattern
+                  // used for invoice-based events above (#3693 follow-up).
                   logger.error({
                     err: revenueError,
                     orgId: org.workos_organization_id,
                     chargeId: charge.id,
-                  }, 'Failed to insert refund event');
-                  // Continue processing - don't fail the webhook
+                  }, 'Failed to insert refund event (silent — needs schema follow-up to throw safely)');
                 }
               }
             }
@@ -4546,6 +4629,8 @@ export class HTTPServer {
       this.serveHtmlWithConfig(req, res, 'admin-accounts.html'));
     this.app.get('/admin/accounts/:orgId', requireAuth, requireAdmin, (req, res) =>
       this.serveHtmlWithConfig(req, res, 'admin-account-detail.html'));
+    this.app.get('/admin/relationships/:personId', requireAuth, requireAdmin, (req, res) =>
+      this.serveHtmlWithConfig(req, res, 'admin-relationship-detail.html'));
     this.app.get('/admin/analytics', requireAuth, requireAdmin, (req, res) =>
       this.serveHtmlWithConfig(req, res, 'admin-analytics.html'));
     this.app.get('/admin/geo', requireAuth, requireAdmin, (req, res) =>
@@ -6286,7 +6371,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
                   }
 
                   const { mergeUsers } = await import('./db/user-merge-db.js');
-                  const summary = await mergeUsers(primaryId, secondaryId, 'system:google-alias-merge', workos!);
+                  const summary = await mergeUsers(primaryId, secondaryId, 'system:google-alias-merge');
                   autoMerged = true;
                   logger.info(
                     { primaryUserId: primaryId, secondaryUserId: secondaryId, tables: summary.tables_merged.length },
@@ -8800,7 +8885,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           ]);
 
           // Warm type-specific caches
-          if (agent.type === "buying") {
+          if (agent.type === "sales") {
             await this.propertiesService.getPropertiesForAgent(agent);
           }
         } catch (error) {

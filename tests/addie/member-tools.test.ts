@@ -13,8 +13,11 @@ vi.mock('../../server/src/services/pipes.js', () => ({
 }));
 
 // Import the tool definitions directly (no side effects)
-import { MEMBER_TOOLS, createMemberToolHandlers, extractAdcpVersion } from '../../server/src/addie/mcp/member-tools.js';
+import { MEMBER_TOOLS, createMemberToolHandlers } from '../../server/src/addie/mcp/member-tools.js';
 import { getGitHubAccessToken } from '../../server/src/services/pipes.js';
+import { ComplianceDatabase } from '../../server/src/db/compliance-db.js';
+import { AgentSnapshotDatabase } from '../../server/src/db/agent-snapshot-db.js';
+import * as wgService from '../../server/src/services/working-group-membership-service.js';
 
 describe('MEMBER_TOOLS definitions', () => {
   it('exports an array of tools', () => {
@@ -119,13 +122,13 @@ describe('MEMBER_TOOLS definitions', () => {
     expect(tool?.description).toContain('Slack account');
   });
 
-  it('has probe_adcp_agent tool', () => {
-    const tool = MEMBER_TOOLS.find(t => t.name === 'probe_adcp_agent');
+  it('has get_agent_status tool', () => {
+    const tool = MEMBER_TOOLS.find(t => t.name === 'get_agent_status');
     expect(tool).toBeDefined();
     expect(tool?.input_schema.properties).toHaveProperty('agent_url');
     expect(tool?.input_schema.required).toContain('agent_url');
-    expect(tool?.description).toContain('online');
-    expect(tool?.description).toContain('capabilities');
+    expect(tool?.description).toContain('cached');
+    expect(tool?.description).toContain('compliance');
   });
 
   it('has check_publisher_authorization tool', () => {
@@ -383,6 +386,24 @@ describe('createMemberToolHandlers', () => {
       expect(fetchMock).not.toHaveBeenCalled();
     });
 
+    it('prompts reauth when token is active but missing required scopes', async () => {
+      getTokenMock.mockResolvedValue({
+        status: 'ok',
+        accessToken: 'gho_token_with_partial_scopes',
+        scopes: ['user:email'],
+        missingScopes: ['public_repo'],
+      });
+
+      const handlers = createMemberToolHandlers(loggedInContext);
+      const handler = handlers.get('create_github_issue')!;
+
+      const result = await handler({ title: 'T', body: 'B' });
+
+      expect(result).toContain('re-authorization');
+      expect(result).toMatch(/\[Reconnect GitHub\]\([^)]*\/connect\/github\?return_to=/);
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
     it('gracefully degrades when Pipes getAccessToken throws', async () => {
       getTokenMock.mockRejectedValue(new Error('workos api down'));
 
@@ -494,77 +515,237 @@ describe('createMemberToolHandlers', () => {
     });
   });
 
-  describe('extractAdcpVersion', () => {
-    it('extracts version from valid AdCP extension', () => {
-      const extensions = [{
-        uri: 'https://adcontextprotocol.org/extensions/adcp',
-        params: { adcp_version: '2.6.0' },
-      }];
-      expect(extractAdcpVersion(extensions)).toBe('2.6.0');
+  describe('get_agent_status handler', () => {
+    // Spy on the database modules' prototypes so the module-level
+    // singletons in member-tools.ts pick up the mocks. The classes are
+    // statically imported at the top of the file because the lint rule
+    // (scripts/lint-test-dynamic-imports.cjs) forbids dynamic project
+    // imports inside test bodies — they re-resolve the module tree per
+    // test and open race windows under thread-pool contention.
+    afterEach(() => {
+      vi.restoreAllMocks();
     });
 
-    it('extracts v3 version', () => {
-      const extensions = [{
-        uri: 'https://adcontextprotocol.org/extensions/adcp',
-        params: { adcp_version: '3.0.0' },
-      }];
-      expect(extractAdcpVersion(extensions)).toBe('3.0.0');
+    function stubAll(opts: {
+      complianceStatus?: unknown;
+      registryMetadata?: unknown;
+      health?: unknown;
+      caps?: unknown;
+      badges?: unknown;
+      specialisms?: string[];
+    } = {}) {
+      vi.spyOn(ComplianceDatabase.prototype, 'getComplianceStatus').mockResolvedValue(opts.complianceStatus as never);
+      vi.spyOn(ComplianceDatabase.prototype, 'getRegistryMetadata').mockResolvedValue(opts.registryMetadata as never);
+      vi.spyOn(ComplianceDatabase.prototype, 'getBadgesForAgent').mockResolvedValue((opts.badges ?? []) as never);
+      vi.spyOn(ComplianceDatabase.prototype, 'getLatestDeclaredSpecialisms').mockResolvedValue((opts.specialisms ?? []) as never);
+      vi.spyOn(AgentSnapshotDatabase.prototype, 'bulkGetHealth').mockImplementation(async (urls: string[]) => {
+        const map = new Map<string, unknown>();
+        if (opts.health) {
+          for (const u of urls) map.set(u, opts.health);
+        }
+        return map as never;
+      });
+      vi.spyOn(AgentSnapshotDatabase.prototype, 'bulkGetCapabilities').mockImplementation(async (urls: string[]) => {
+        const map = new Map<string, unknown>();
+        if (opts.caps) {
+          for (const u of urls) map.set(u, opts.caps);
+        }
+        return map as never;
+      });
+    }
+
+    it('routes unknown agents to register / evaluate, not a probe', async () => {
+      stubAll();
+      const handlers = createMemberToolHandlers(null);
+      const result = await handlers.get('get_agent_status')!({ agent_url: 'https://unknown.example.com/mcp' });
+      expect(result).toContain('not in registry');
+      expect(result).toContain('save_agent');
+      expect(result).toContain('evaluate_agent_quality');
+      expect(result).not.toContain('CSRF');
+      expect(result).not.toContain('Probe Failed');
     });
 
-    it('returns undefined for non-array input', () => {
-      expect(extractAdcpVersion(undefined)).toBeUndefined();
-      expect(extractAdcpVersion(null)).toBeUndefined();
-      expect(extractAdcpVersion('not an array')).toBeUndefined();
-      expect(extractAdcpVersion({})).toBeUndefined();
+    it('renders cached health + capabilities + compliance for a known agent', async () => {
+      stubAll({
+        registryMetadata: { lifecycle_stage: 'production', compliance_opt_out: false, monitoring_paused: false, check_interval_hours: 12, monitoring_paused_at: null, created_at: new Date(), updated_at: new Date() },
+        health: { online: true, response_time_ms: 142, checked_at: new Date('2026-04-30T11:00:00Z'), error: null },
+        caps: { protocol: 'mcp', discovered_tools_json: [{ name: 'get_products' }, { name: 'create_media_buy' }], oauth_required: false, discovery_error: null },
+        complianceStatus: { status: 'passing', headline: 'all tracks green', last_checked_at: new Date('2026-04-30T11:00:00Z'), last_passed_at: new Date('2026-04-30T11:00:00Z'), tracks_summary_json: { core: 'pass', media_buy: 'pass' } },
+        specialisms: ['sales'],
+      });
+      const handlers = createMemberToolHandlers(null);
+      const result = await handlers.get('get_agent_status')!({ agent_url: 'https://known.example.com/mcp' });
+      expect(result).toContain('Lifecycle');
+      expect(result).toContain('production');
+      expect(result).toContain('Online');
+      expect(result).toContain('142ms');
+      expect(result).toContain('Tools advertised:** 2');
+      expect(result).toContain('passing');
+      expect(result).toContain('all tracks green');
+      expect(result).toContain('core: pass');
+      expect(result).toContain('Declared specialisms:** sales');
     });
 
-    it('returns undefined when no AdCP extension exists', () => {
-      const extensions = [{
-        uri: 'https://example.com/other',
-        params: { adcp_version: '2.0.0' },
-      }];
-      expect(extractAdcpVersion(extensions)).toBeUndefined();
+    it('honors compliance opt-out instead of showing a verdict', async () => {
+      stubAll({
+        registryMetadata: { lifecycle_stage: 'production', compliance_opt_out: true, monitoring_paused: false, check_interval_hours: 12, monitoring_paused_at: null, created_at: new Date(), updated_at: new Date() },
+        health: { online: true, response_time_ms: 100, checked_at: new Date(), error: null },
+        complianceStatus: { status: 'passing', headline: 'should not appear', last_checked_at: new Date(), last_passed_at: null, tracks_summary_json: null },
+      });
+      const handlers = createMemberToolHandlers(null);
+      const result = await handlers.get('get_agent_status')!({ agent_url: 'https://opted.example.com/mcp' });
+      expect(result).toContain('opted out');
+      expect(result).not.toContain('should not appear');
     });
 
-    it('rejects extensions with non-adcontextprotocol.org hostname', () => {
-      const extensions = [{
-        uri: 'https://evil.com/adcontextprotocol.org/spoof',
-        params: { adcp_version: '2.0.0' },
-      }];
-      expect(extractAdcpVersion(extensions)).toBeUndefined();
+    it('matches stored URL with trailing slash when input has none', async () => {
+      // Storage form: trailing slash on every snapshot table. Input: no
+      // slash. Each of the four data sources is keyed strictly on the
+      // stored form, so a passing test proves the candidates-array path
+      // exercises every lookup, not just compliance.
+      const stored = 'https://celtra.example.com/mcp/';
+      vi.spyOn(ComplianceDatabase.prototype, 'getComplianceStatus').mockImplementation(async (u: string) => {
+        return u === stored ? ({ status: 'passing', headline: 'ok', last_checked_at: new Date(), last_passed_at: new Date(), tracks_summary_json: { core: 'pass' } } as never) : null;
+      });
+      vi.spyOn(ComplianceDatabase.prototype, 'getRegistryMetadata').mockImplementation(async (u: string) => {
+        return u === stored ? ({ lifecycle_stage: 'production', compliance_opt_out: false, monitoring_paused: false, check_interval_hours: 12, monitoring_paused_at: null, created_at: new Date(), updated_at: new Date() } as never) : null;
+      });
+      vi.spyOn(ComplianceDatabase.prototype, 'getBadgesForAgent').mockResolvedValue([] as never);
+      vi.spyOn(ComplianceDatabase.prototype, 'getLatestDeclaredSpecialisms').mockResolvedValue([] as never);
+      vi.spyOn(AgentSnapshotDatabase.prototype, 'bulkGetHealth').mockImplementation(async (urls: string[]) => {
+        const map = new Map<string, unknown>();
+        // .some(===) instead of .includes() — exact-equality on the
+        // array, not substring on a URL. Avoids CodeQL's
+        // js/incomplete-url-substring-sanitization false-positive
+        // (the rule pattern-matches .includes() on URL-typed strings).
+        if (urls.some((u) => u === stored)) {
+          map.set(stored, { online: true, response_time_ms: 88, checked_at: new Date(), error: null });
+        }
+        return map as never;
+      });
+      vi.spyOn(AgentSnapshotDatabase.prototype, 'bulkGetCapabilities').mockImplementation(async (urls: string[]) => {
+        const map = new Map<string, unknown>();
+        // .some(===) instead of .includes() — exact-equality on the
+        // array, not substring on a URL. Avoids CodeQL's
+        // js/incomplete-url-substring-sanitization false-positive
+        // (the rule pattern-matches .includes() on URL-typed strings).
+        if (urls.some((u) => u === stored)) {
+          map.set(stored, { protocol: 'mcp', discovered_tools_json: [{ name: 'get_products' }], oauth_required: false, discovery_error: null });
+        }
+        return map as never;
+      });
+      const handlers = createMemberToolHandlers(null);
+      const result = await handlers.get('get_agent_status')!({ agent_url: 'https://celtra.example.com/mcp' });
+      expect(result).not.toContain('not in registry');
+      expect(result).toContain(stored);
+      // The handler renders health + caps + compliance from the stored
+      // canonical form — these only appear when bulkGetHealth /
+      // bulkGetCapabilities returned a row keyed on `stored`.
+      expect(result).toContain('Online');
+      expect(result).toContain('88ms');
+      expect(result).toContain('Tools advertised:** 1');
+      expect(result).toContain('passing');
+    });
+  });
+
+  describe('working-group membership tools (service-backed)', () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
     });
 
-    it('returns undefined for malformed version strings', () => {
-      const extensions = [{
-        uri: 'https://adcontextprotocol.org/extensions/adcp',
-        params: { adcp_version: 'evil' },
-      }];
-      expect(extractAdcpVersion(extensions)).toBeUndefined();
+    const memberCtx = {
+      is_mapped: true,
+      is_member: true,
+      slack_linked: false,
+      workos_user: {
+        workos_user_id: 'user_test_123',
+        email: 'test@example.com',
+        first_name: 'Test',
+        last_name: 'User',
+      },
+    } as MemberContext;
+
+    it('join_working_group renders friendly success on a public group', async () => {
+      vi.spyOn(wgService, 'joinWorkingGroup').mockResolvedValue({
+        membership: {} as never,
+        groupId: 'wg_abc',
+        groupName: 'Media Buying Protocol',
+        groupSlug: 'media-buying-protocol-wg',
+      });
+      const handlers = createMemberToolHandlers(memberCtx);
+      const result = await handlers.get('join_working_group')!({ slug: 'media-buying-protocol-wg' });
+      expect(result).toContain('Successfully joined');
+      expect(result).toContain('Media Buying Protocol');
     });
 
-    it('returns undefined for empty version string', () => {
-      const extensions = [{
-        uri: 'https://adcontextprotocol.org/extensions/adcp',
-        params: { adcp_version: '' },
-      }];
-      expect(extractAdcpVersion(extensions)).toBeUndefined();
+    it('join_working_group disambiguates private vs not-found vs already-member by code, not status', async () => {
+      // Private group
+      vi.spyOn(wgService, 'joinWorkingGroup').mockRejectedValueOnce(
+        new wgService.WorkingGroupMembershipError('group_private', 'Private', { slug: 'sp', groupName: 'Specialists' }),
+      );
+      const handlers = createMemberToolHandlers(memberCtx);
+      let result = await handlers.get('join_working_group')!({ slug: 'sp' });
+      expect(result).toContain('Specialists');
+      expect(result).toContain('private');
+      expect(result).toContain('request_working_group_invitation');
+
+      // Not found
+      vi.spyOn(wgService, 'joinWorkingGroup').mockRejectedValueOnce(
+        new wgService.WorkingGroupMembershipError('group_not_found', 'No', { slug: 'nope' }),
+      );
+      result = await handlers.get('join_working_group')!({ slug: 'nope' });
+      expect(result).toContain('not found');
+      expect(result).toContain('list_working_groups');
+
+      // Already member
+      vi.spyOn(wgService, 'joinWorkingGroup').mockRejectedValueOnce(
+        new wgService.WorkingGroupMembershipError('already_member', 'Already', { slug: 'mb', groupName: 'Media Buying' }),
+      );
+      result = await handlers.get('join_working_group')!({ slug: 'mb' });
+      expect(result).toContain('already a member');
+      expect(result).toContain('Media Buying');
+
+      // Community-only seat blocker
+      vi.spyOn(wgService, 'joinWorkingGroup').mockRejectedValueOnce(
+        new wgService.WorkingGroupMembershipError('community_only_seat_blocked', 'Need contributor seat', {
+          slug: 'mb',
+          groupName: 'Media Buying',
+          workingGroupId: 'wg_abc',
+          resourceType: 'working_group',
+          userOrgId: 'org_1',
+        }),
+      );
+      result = await handlers.get('join_working_group')!({ slug: 'mb' });
+      expect(result).toContain('contributor seat');
+      expect(result).toContain('Media Buying');
     });
 
-    it('returns undefined for invalid URI', () => {
-      const extensions = [{
-        uri: 'not-a-url',
-        params: { adcp_version: '2.6.0' },
-      }];
-      expect(extractAdcpVersion(extensions)).toBeUndefined();
+    it('express_council_interest returns the launch-pending message on success', async () => {
+      vi.spyOn(wgService, 'expressCommitteeInterest').mockResolvedValue({
+        groupId: 'wg_x',
+        groupName: 'Future Council',
+        groupSlug: 'future-council',
+        interestLevel: 'participant',
+      });
+      const handlers = createMemberToolHandlers(memberCtx);
+      const result = await handlers.get('express_council_interest')!({ slug: 'future-council', interest_level: 'participant' });
+      expect(result).toContain('Future Council');
+      expect(result.toLowerCase()).toContain("we'll let you know");
     });
 
-    it('returns undefined when extensions have no uri', () => {
-      const extensions = [{ params: { adcp_version: '2.6.0' } }];
-      expect(extractAdcpVersion(extensions)).toBeUndefined();
-    });
+    it('withdraw_council_interest distinguishes never-expressed from group-not-found', async () => {
+      vi.spyOn(wgService, 'withdrawCommitteeInterest').mockRejectedValueOnce(
+        new wgService.WorkingGroupMembershipError('no_interest_recorded', 'never', { slug: 'fc', groupName: 'Future Council' }),
+      );
+      const handlers = createMemberToolHandlers(memberCtx);
+      let result = await handlers.get('withdraw_council_interest')!({ slug: 'fc' });
+      expect(result).toContain("haven't expressed interest");
 
-    it('handles empty extensions array', () => {
-      expect(extractAdcpVersion([])).toBeUndefined();
+      vi.spyOn(wgService, 'withdrawCommitteeInterest').mockRejectedValueOnce(
+        new wgService.WorkingGroupMembershipError('group_not_found', 'no group', { slug: 'nope' }),
+      );
+      result = await handlers.get('withdraw_council_interest')!({ slug: 'nope' });
+      expect(result).toContain('Could not find');
     });
   });
 

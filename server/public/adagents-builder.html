@@ -95,7 +95,7 @@
       }
 
       .page-header h1 {
-        color: white;
+        color: var(--color-text-on-dark);
         font-size: var(--text-4xl);
         font-weight: var(--font-bold);
         margin: 0 0 var(--space-4) 0;
@@ -155,7 +155,7 @@
       /* Modern Button System */
       .btn {
         background: var(--primary-gradient);
-        color: white;
+        color: var(--color-text-on-dark);
         border: none;
         padding: var(--space-3) var(--space-6);
         border-radius: var(--radius-md);
@@ -235,7 +235,7 @@
 
       .agent-entry:hover {
         border-color: var(--accent-blue);
-        background: var(--color-gray-100);
+        background: var(--color-bg-subtle);
       }
 
       .agent-entry input {
@@ -260,7 +260,7 @@
 
       .property-entry:hover {
         border-color: var(--accent-purple);
-        background: var(--color-gray-100);
+        background: var(--color-bg-subtle);
       }
 
       .property-entry-header {
@@ -323,7 +323,7 @@
 
       .tab-btn:hover {
         color: var(--text-primary);
-        background: var(--color-primary-50);
+        background: var(--color-brand-bg);
       }
 
       .tab-btn.active {
@@ -394,8 +394,8 @@
 
       .dashboard-card-tag {
         font-size: var(--text-xs);
-        background: var(--color-gray-100);
-        color: var(--color-gray-600);
+        background: var(--color-bg-subtle);
+        color: var(--color-text-secondary);
         padding: var(--space-1) var(--space-2_5);
         border-radius: var(--radius-full);
         font-weight: var(--font-semibold);
@@ -951,7 +951,7 @@
               <div style="display: flex; gap: 8px; align-items: center">
                 <select
                   id="bulk-tag-select"
-                  style="flex: 1; padding: 8px; border: 1px solid var(--color-gray-300); border-radius: 6px"
+                  style="flex: 1; padding: 8px; border: 1px solid var(--color-border-strong); border-radius: 6px"
                 >
                   <option value="">Select a tag...</option>
                 </select>
@@ -974,7 +974,7 @@
                 type="text"
                 id="new-tag-input"
                 placeholder="Enter new tag name..."
-                style="flex: 1; padding: 10px; border: 1px solid var(--color-gray-300); border-radius: 8px; font-size: 14px"
+                style="flex: 1; padding: 10px; border: 1px solid var(--color-border-strong); border-radius: 8px; font-size: 14px"
               />
               <button class="btn" onclick="createTag()">➕ Create Tag</button>
               <button class="btn btn-secondary" onclick="enableBulkTagMode()">🏷️ Bulk Tag Properties</button>
@@ -1145,7 +1145,7 @@
                     max-height: 150px;
                     overflow-y: auto;
                     padding: 8px;
-                    border: 1px solid var(--color-gray-300);
+                    border: 1px solid var(--color-border-strong);
                     border-radius: 6px;
                   "
                 >
@@ -1156,7 +1156,7 @@
                     type="text"
                     id="quick-add-tag"
                     placeholder="Type to create new tag..."
-                    style="flex: 1; padding: 6px; border: 1px solid var(--color-gray-300); border-radius: 4px; font-size: 13px"
+                    style="flex: 1; padding: 6px; border: 1px solid var(--color-border-strong); border-radius: 4px; font-size: 13px"
                   />
                   <button class="btn" onclick="quickCreateTag()" style="padding: 6px 12px; font-size: 13px">
                     ➕ Add
@@ -1636,7 +1636,7 @@
             }
 
             html += `
-                        <div style="margin-bottom: 10px; padding: 12px; border-left: 4px solid ${statusColor}; background: white; border-radius: 4px;">
+                        <div style="margin-bottom: 10px; padding: 12px; border-left: 4px solid ${statusColor}; background: var(--color-bg-card); border-radius: 4px;">
                             <strong>${status} ${card.agent_url}${agentName}</strong>${endpointInfo}
                             ${
                               card.response_time_ms
@@ -3813,7 +3813,7 @@
           const statusColor = card.valid ? '#166534' : '#dc2626';
 
           html += `
-                    <div style="margin-bottom: 10px; padding: 12px; border-left: 4px solid ${statusColor}; background: white; border-radius: 4px;">
+                    <div style="margin-bottom: 10px; padding: 12px; border-left: 4px solid ${statusColor}; background: var(--color-bg-card); border-radius: 4px;">
                         <strong>${status} ${card.agent_url}</strong>
                         ${
                           card.response_time_ms

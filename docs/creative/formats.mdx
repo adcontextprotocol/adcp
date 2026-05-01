@@ -320,7 +320,12 @@ This unified approach helps creative tools and AI agents understand the full cap
 
 ### Third-Party Tracker Support
 
-Whether a format supports third-party measurement is determined by whether its `assets` array includes a tracker slot — an asset with `asset_type: "url"` and `url_type: "tracker_pixel"` or `"tracker_script"`. Buyer agents should check this before assigning creatives that require third-party verification.
+Whether a format supports third-party measurement is determined by whether its `assets` array includes a tracker slot. A tracker slot is any asset with `asset_type: "url"` AND either:
+
+- `url_type: "tracker_pixel"` or `url_type: "tracker_script"` (mechanism-side declaration), OR
+- `requirements.role` of `impression_tracker`, `click_tracker`, `viewability_tracker`, or `third_party_tracker` (purpose-side declaration; the slot accepts a tracker URL even if the format author declares the role rather than the mechanism)
+
+Buyer agents should check this before assigning creatives that require third-party verification.
 
 Most digital formats (display, video, CTV, audio, DOOH) include an optional `impression_tracker` asset. Formats without a tracker slot — such as broadcast TV spots — do not support creative-level pixel tracking. Measurement for these formats comes from external sources (panel data, set-top box telemetry) declared in the product's `billing_measurement` terms, not from creative-embedded pixels.
 

@@ -12,9 +12,9 @@ const logger = createLogger('addie-claude-client');
 import type { AddieTool } from './types.js';
 import { ADDIE_FALLBACK_PROMPT, ADDIE_TOOL_REFERENCE, buildMessageTurnsWithMetadata } from './prompts.js';
 import { AddieDatabase } from '../db/addie-db.js';
-import { AddieModelConfig, getModelBetas } from '../config/models.js';
+import { AddieModelConfig } from '../config/models.js';
 import { getCurrentConfigVersionId } from './config-version.js';
-import { loadRules, invalidateRulesCache } from './rules/index.js';
+import { loadRules, loadResponseStyle, invalidateRulesCache } from './rules/index.js';
 import { isMultimodalContent, extractMultimodalContent, isAllowedImageType, type FileReadResult } from './mcp/url-tools.js';
 import { withRetry, isRetryableError, RetriesExhaustedError, type RetryConfig } from '../utils/anthropic-retry.js';
 import { formatTokenCount, getConversationTokenLimit, buildDroppedMessagesSummary, type MessageTurn } from '../utils/token-limiter.js';
@@ -357,16 +357,24 @@ export class AddieClaudeClient {
   }
 
   /**
-   * Get the system prompt from markdown rule files, with tool reference always appended.
+   * Get the system prompt from markdown rule files, with tool reference and
+   * response-style.md appended in that order so the shape rules are the
+   * last thing the model reads before generating.
    *
-   * Rules are loaded from ./rules/*.md files (cached in memory after first read).
-   * Tool reference (ADDIE_TOOL_REFERENCE) is always appended (tied to code).
-   * Fallback prompt used only when rule files can't be read.
+   * Validated by the prompt-variant eval (server/tests/manual/prompt-variant-eval.ts):
+   * on Sonnet 4.6, this ordering cuts mean response length 13% and shape
+   * violations 2/12 vs the prior order on a fixed question battery, with
+   * zero default-template or banned-ritual regressions.
+   *
+   * Rules are loaded from ./rules/*.md files (cached in memory after first
+   * read). Tool reference (ADDIE_TOOL_REFERENCE) is always appended (tied
+   * to code). Fallback prompt used only when rule files can't be read.
    */
   private getSystemPrompt(): { prompt: string } {
     try {
       const basePrompt = loadRules();
-      const prompt = `${basePrompt}\n\n---\n\n${ADDIE_TOOL_REFERENCE}`;
+      const responseStyle = loadResponseStyle();
+      const prompt = `${basePrompt}\n\n---\n\n${ADDIE_TOOL_REFERENCE}\n\n---\n\n${responseStyle}`;
       return { prompt };
     } catch (error) {
       logger.warn({ error }, 'Addie: Failed to load rules from files, using fallback prompt');
@@ -676,7 +684,7 @@ export class AddieClaudeClient {
               }] : []),
             ],
             messages,
-            betas: ['web-search-2025-03-05', ...getModelBetas(effectiveModel)],
+            betas: ['web-search-2025-03-05'],
           }),
           { maxRetries: 3, initialDelayMs: 1000 },
           'processMessage'
@@ -1263,16 +1271,12 @@ export class AddieClaudeClient {
 
         while (!streamSucceeded && streamRetryCount <= maxStreamRetries) {
           try {
-            // Use streaming API (beta namespace so we can pass `betas`,
-            // e.g. 1M-context on supported depth-tier models).
-            const modelBetas = getModelBetas(effectiveModel);
             const stream = this.client.beta.messages.stream({
               model: effectiveModel,
               max_tokens: 4096,
               system: systemBlocks,
               tools: customTools,
               messages,
-              ...(modelBetas.length > 0 ? { betas: modelBetas } : {}),
             });
 
             // Process stream events

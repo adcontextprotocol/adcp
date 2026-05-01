@@ -23,7 +23,7 @@ const logger = createLogger('mcp-exposed-tools');
 
 /** Agent evaluation tools (require auth for saved-agent credential lookup). */
 const EVAL_TOOL_NAMES = [
-  'probe_adcp_agent',
+  'get_agent_status',
   'evaluate_agent_quality',
   'test_rfp_response',
   'test_io_execution',

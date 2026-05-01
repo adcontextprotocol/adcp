@@ -2,6 +2,40 @@ import dns from 'dns/promises';
 import { lookup as dnsLookup, type LookupAddress, type LookupOptions } from 'dns';
 import { isIP, type LookupFunction } from 'net';
 import { Agent, type Dispatcher } from 'undici';
+import { createLogger } from '../logger.js';
+
+const logger = createLogger('url-security');
+
+/**
+ * The SSRF-safe dispatcher in `safeFetch` enforces private-IP rejection at TCP
+ * connect time via undici's `lookup` hook. That defense bypasses if the deploy
+ * environment routes outbound HTTP through a proxy (HTTP_PROXY / HTTPS_PROXY)
+ * — undici's standard `Agent` does not auto-route through `ProxyAgent`, but if
+ * a future caller wraps it OR a sibling library (e.g. axios, node-fetch
+ * shimmed elsewhere) honors these env vars, the proxy itself becomes the DNS
+ * resolver and our `lookup` hook is never invoked.
+ *
+ * Detect the env at module load and warn loudly. Operators can then verify the
+ * proxy enforces SSRF rules of its own, or unset the var on the path that
+ * calls `safeFetch`.
+ *
+ * Tracked from the post-#3609 security review (issue #3620).
+ */
+export function detectProxyEnv(): readonly string[] {
+  const set: string[] = [];
+  for (const name of ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy']) {
+    if (process.env[name]) set.push(name);
+  }
+  return set;
+}
+
+const proxyEnvVars = detectProxyEnv();
+if (proxyEnvVars.length > 0) {
+  logger.warn(
+    { vars: proxyEnvVars },
+    'safeFetch: proxy env var(s) detected — DNS-rebind defense is only safe if the proxy itself enforces SSRF rules. Verify or unset.',
+  );
+}
 
 /**
  * Check if a hostname or IP address points to a private/internal network.

@@ -89,6 +89,22 @@ Rate-limited endpoints return `429 Too Many Requests` when the limit is exceeded
   </Card>
 </CardGroup>
 
+## Lookups by entity
+
+Three endpoints answer different questions about who is in the registry. They span two tag groups in the API reference, so the table below is the entry point.
+
+| Endpoint | Question it answers |
+|----------|---------------------|
+| `GET /api/registry/agents` | "Give me the catalog." |
+| `GET /api/registry/operator?domain=X` | "What does this entity operate?" |
+| `GET /api/registry/publisher?domain=X` | "What does this entity publish?" |
+
+**`GET /api/registry/agents`** — the full catalog of agents in the registry, both `registered` (member-attested, opt-in) and `discovered` (crawled from a publisher's `adagents.json`). Use this when you want to browse or filter the whole population; the `source` field on each row distinguishes the two trust levels. Reference: [List agents endpoint](#agent-discovery) under Agent Discovery.
+
+**`GET /api/registry/operator?domain=X`** — given a domain, returns the agents that entity operates and the publishers that trust them. Use this when you have one entity in hand and want its agent footprint. Response shape is auth-aware: anonymous callers see only `public` agents, AAO API-tier callers also see `members_only`, and profile owners additionally see `private` (`server/src/routes/registry-api.ts:5486`). Reference: [Operator lookup](/docs/registry/api-reference/authorization-lookups/operator-lookup) under Authorization Lookups.
+
+**`GET /api/registry/publisher?domain=X`** — given a domain, returns the inventory that entity publishes (`properties[]`) and which agents it authorizes (`authorized_agents[]` from its `adagents.json`). Use this when you have one publisher in hand and want its inventory and delegations. The endpoint is unauthenticated and returns the same shape for every caller (`server/src/routes/registry-api.ts:5550`). Reference: [Publisher lookup](/docs/registry/api-reference/authorization-lookups/publisher-lookup) under Authorization Lookups.
+
 ### Brand Resolution
 
 These endpoints resolve domains to brand identities. The `source` field in the response indicates where the data came from:
@@ -140,9 +156,33 @@ To discover measurement vendors specifically (Adelaide-style attention, Scope3-s
 curl "https://agenticadvertising.org/api/registry/agents?type=measurement"
 ```
 
-This returns every measurement agent the registry knows about — registered via member profiles plus discovered through crawling brand.json declarations. Use this to populate buyer-agent vendor catalogs for the [vendor-metric extensions surface](/docs/media-buy/media-buys/optimization-reporting#vendor-defined-metrics) when buyers request cross-vendor metric availability.
+This returns every measurement agent the registry knows about — registered via member profiles plus discovered through crawling brand.json declarations.
 
-**Current limitation — per-metric catalog not yet structured.** The registry knows *which* agents do measurement, but not *which specific metrics* each one offers. Buyer agents that want to filter on `category="attention"` or `metric_id="attention_units"` across vendors must currently call each vendor's measurement agent for capability details. A structured per-metric catalog on brand.json's `agents[type='measurement']` declarations is tracked under [#3586](https://github.com/adcontextprotocol/adcp/issues/3586).
+**Per-metric catalog discovery.** Each measurement agent publishes its full per-metric catalog at [`get_adcp_capabilities.measurement.metrics[]`](/docs/protocol/get_adcp_capabilities#measurement) — the canonical, vendor-controlled source of truth. AAO crawls each measurement agent's `get_adcp_capabilities` on a TTL and stores the result; passing `?capabilities=true` folds the catalog into the response next to `creative_capabilities` and `signals_capabilities`.
+
+**Filter parameters** (all imply `type=measurement` when present; an explicit non-measurement type returns 400):
+
+| Param | Match | Notes |
+|-------|-------|-------|
+| `metric_id=attention_units` | Exact match on `metrics[].metric_id` | Repeatable; multiple values are OR'd within the param. |
+| `accreditation=MRC` | Exact match on `metrics[].accreditations[].accrediting_body` | Repeatable. Vendor-asserted — `verified_by_aao` is always `false` in the response; renderers should mark these as vendor claims, not AAO endorsements. |
+| `q=attention` | Case-insensitive substring on `metric_id` | v1 scope: metric_id only. Max 64 chars; SQL wildcards (`%`, `_`) rejected. Description/standard fuzzy search is a follow-up. |
+
+```bash
+# All vendors offering attention measurement
+curl "https://agenticadvertising.org/api/registry/agents?metric_id=attention_units&capabilities=true"
+
+# MRC-accredited viewability vendors
+curl "https://agenticadvertising.org/api/registry/agents?type=measurement&accreditation=MRC&q=viewab&capabilities=true"
+```
+
+**Direct call vs. index — when to use which.** Buyers have two paths to a vendor's metric catalog:
+
+| Use case | Path | Why |
+|----------|------|-----|
+| Discovery / planning ("which vendors offer attention?") | AAO index (`?metric_id=...`) | Pre-aggregated, cached, fast. Cross-vendor in one call. Stale up to the AAO TTL window (typically 24h). |
+| Settlement / audit ("does Adelaide currently support metric X?") | Direct call to `get_adcp_capabilities` | Live, canonical, no staleness. The buyer is already calling the measurement agent at delivery / reconciliation time; one extra call is cheap and removes index staleness from the audit trail. |
+| Filtering at `get_products` time | AAO index | Buyer is in a fast-path query and the seller's product catalog already needs to know which vendors are valid. |
 
 ### Change Feed
 

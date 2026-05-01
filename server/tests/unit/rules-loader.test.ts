@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { loadRules, invalidateRulesCache } from '../../src/addie/rules/index.js';
+import { loadRules, loadResponseStyle, invalidateRulesCache } from '../../src/addie/rules/index.js';
 import { ADDIE_TOOL_REFERENCE } from '../../src/addie/prompts.js';
 
 describe('Rules Loader', () => {
@@ -7,32 +7,44 @@ describe('Rules Loader', () => {
     invalidateRulesCache();
   });
 
-  it('should load all five rule sections', () => {
+  it('loadRules() loads the four base rule sections (response-style is loaded separately)', () => {
     const rules = loadRules();
 
     expect(rules).toContain('# Core Identity');
     expect(rules).toContain('# Behaviors');
     expect(rules).toContain('# Knowledge');
     expect(rules).toContain('# Constraints');
-    expect(rules).toContain('# Response Style');
+    // response-style.md is loaded by loadResponseStyle() and appended
+    // after the tool reference at assembly time — see claude-client.ts.
+    expect(rules).not.toContain('# Response Style');
+  });
+
+  it('loadResponseStyle() returns the response-style.md content', () => {
+    const style = loadResponseStyle();
+    expect(style).toContain('# Response Style');
+    expect(style).toContain('## Concise and Helpful');
+    expect(style).toContain('## Naming Conventions');
   });
 
   it('should join sections with --- separators', () => {
     const rules = loadRules();
     const sections = rules.split('\n\n---\n\n');
 
-    // Five hardcoded rule files + any injected sections (current-context,
-    // expert-panel) loaded from .agents/ and .claude/agents/. Only the
-    // minimum-five contract is load-bearing here.
-    expect(sections.length).toBeGreaterThanOrEqual(5);
+    // Four hardcoded base rule files (identity, behaviors, knowledge, urls,
+    // constraints) + any injected sections (current-context, expert-panel)
+    // loaded from .agents/ and .claude/agents/. Only the minimum-four
+    // contract is load-bearing here.
+    expect(sections.length).toBeGreaterThanOrEqual(4);
   });
 
-  it('should include key rules from each section', () => {
+  it('should include key rules from each base section', () => {
     const rules = loadRules();
 
-    // Identity
+    // Identity (now consolidates voice / character traits previously
+    // spread across constraints — Honesty, Welcoming people in, etc.)
     expect(rules).toContain('## Core Mission');
-    expect(rules).toContain('## Account Setup Priority');
+    expect(rules).toContain('## Welcoming people in');
+    expect(rules).toContain('## Honesty over confidence');
 
     // Behaviors
     expect(rules).toContain('## Verify Claims With Tools');
@@ -42,13 +54,9 @@ describe('Rules Loader', () => {
     expect(rules).toContain('## Prebid Expertise');
     expect(rules).toContain('## Trusted Match Protocol (TMP)');
 
-    // Constraints
-    expect(rules).toContain('## No Speculative Answers');
+    // Constraints (deterministic guardrails only after the voice migration)
+    expect(rules).toContain('## Tool Outcomes — Three Distinct Cases');
     expect(rules).toContain('## Domain Focus - CRITICAL');
-
-    // Response Style
-    expect(rules).toContain('## Naming Conventions');
-    expect(rules).toContain('## Concise and Helpful');
   });
 
   it('should contain accurate TMP and AXE references', () => {
@@ -95,18 +103,18 @@ describe('Addie tool reference', () => {
     expect(ADDIE_TOOL_REFERENCE).toContain('search_docs');
   });
 
-  it('catalog lands at the END of the assembled system prompt (claude-client concat order)', () => {
+  it('response-style.md lands at the END of the assembled system prompt', () => {
     // Mirror the concat in claude-client.ts:getSystemPrompt — base rules,
-    // then `\n\n---\n\n`, then ADDIE_TOOL_REFERENCE. The catalog needs to be
-    // the LAST section the model reads so its "treat every listed tool as
-    // available" framing isn't undercut by earlier prose.
-    const assembled = `${loadRules()}\n\n---\n\n${ADDIE_TOOL_REFERENCE}`;
+    // tool reference, then response-style.md. Style instructions need to
+    // be the LAST section the model reads. The prior ordering (style
+    // before tool reference) was contradicted by the rules/index.ts
+    // comment claiming style was last; the prompt-variant eval confirmed
+    // moving style to truly-last cuts shape violations on Sonnet 4.6.
+    const assembled = `${loadRules()}\n\n---\n\n${ADDIE_TOOL_REFERENCE}\n\n---\n\n${loadResponseStyle()}`;
+    const styleIdx = assembled.indexOf('# Response Style');
     const catalogIdx = assembled.indexOf('## Authoritative tool catalog (auto-generated)');
     expect(catalogIdx).toBeGreaterThan(0);
-    // Nothing of substance after the catalog (allow trailing whitespace).
-    const tail = assembled.slice(catalogIdx);
-    const lastNonEmptyLine = tail.split('\n').reverse().find(l => l.trim().length > 0);
-    expect(lastNonEmptyLine).toMatch(/^[a-z_, ]+$/); // a flat tool list line, not prose
+    expect(styleIdx).toBeGreaterThan(catalogIdx);
   });
 
   it('includes the honest-search-report rule', () => {

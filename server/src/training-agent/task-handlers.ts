@@ -1037,6 +1037,19 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
     if (deliveryTypeFilter) {
       products = products.filter(p => p.delivery_type === deliveryTypeFilter);
     }
+    const requiredVendorMetrics = (req.filters as { required_vendor_metrics?: Array<{ vendor?: { domain?: string }; metric_id?: string }> }).required_vendor_metrics;
+    if (requiredVendorMetrics?.length) {
+      products = products.filter(p => {
+        const declared = (p.reporting_capabilities as { vendor_metrics?: Array<{ vendor?: { domain?: string }; metric_id?: string }> } | undefined)?.vendor_metrics;
+        if (!declared?.length) return false;
+        return requiredVendorMetrics.every(req =>
+          declared.some(d =>
+            (!req.vendor?.domain || d.vendor?.domain === req.vendor.domain)
+            && (!req.metric_id || d.metric_id === req.metric_id),
+          ),
+        );
+      });
+    }
   }
 
   // Brief mode: channel-aware keyword matching
@@ -2383,6 +2396,14 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       const assignments = (update as PackageUpdate & { creative_assignments?: Array<{ creative_id: string }> }).creative_assignments;
       if (assignments === undefined) continue;
       const pkgId = update.package_id || '';
+      if (assignments.length === 0) {
+        const currentStatus = deriveStatus(mb);
+        if (['active', 'paused', 'pending_start'].includes(currentStatus)) {
+          return {
+            errors: [{ code: 'VALIDATION_ERROR', message: `creative_assignments cannot be cleared on a buy in "${currentStatus}" status`, field: `packages[${pkgId}].creative_assignments` }] as TaskError[],
+          };
+        }
+      }
       for (const assignment of assignments) {
         const cid = assignment.creative_id;
         if (!cid) {
@@ -2452,8 +2473,8 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
       }
 
       // Replacement semantics: the provided array replaces pkg.creativeAssignments
-      // entirely. An empty array clears assignments and may regress the buy to
-      // pending_creatives. Validity of creative_ids was checked in the pre-pass.
+      // entirely. Empty arrays are rejected in the pre-pass for active/paused/pending_start buys;
+      // validity of creative_ids was also checked in the pre-pass.
       const creativeAssignments = (update as PackageUpdate & { creative_assignments?: Array<{ creative_id: string }> }).creative_assignments;
       if (creativeAssignments !== undefined) {
         const creativeIds = creativeAssignments.map(a => a.creative_id);

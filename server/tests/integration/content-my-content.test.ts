@@ -58,6 +58,16 @@ vi.mock('../../src/middleware/csrf.js', () => ({
 }));
 
 const adminState = { isAdmin: false };
+// Mock the lookup module directly. `my-content-service.ts` imports
+// `isWebUserAAOAdmin` from `addie/admin-status-lookup.js` (the thin
+// module created in PR #3758), so the test must intercept there.
+// `addie/mcp/admin-tools.js` re-exports for legacy callers, but ESM
+// re-exports are not call-routed through the original module — once
+// the consumer points at `admin-status-lookup`, that's what gets
+// resolved.
+vi.mock('../../src/addie/admin-status-lookup.js', () => ({
+  isWebUserAAOAdmin: vi.fn(async () => adminState.isAdmin),
+}));
 vi.mock('../../src/addie/mcp/admin-tools.js', async (importOriginal) => {
   const actual = await importOriginal() as Record<string, unknown>;
   return {

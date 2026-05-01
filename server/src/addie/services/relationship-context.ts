@@ -1,4 +1,5 @@
 import { query } from '../../db/client.js';
+import { isPayingMembership } from '../../db/org-filters.js';
 import * as relationshipDb from '../../db/relationship-db.js';
 import { getMemberCapabilities, hasRelevantUpcomingEvents } from '../../db/outbound-db.js';
 import * as certDb from '../../db/certification-db.js';
@@ -42,6 +43,70 @@ export interface RelationshipContext {
   certification: CertificationSummary | null;
   community?: CommunityContext;
   journey?: JourneyContext;
+  /** Identity / account state — derived flags so callers don't re-check. */
+  identity: IdentityFlags;
+  /** Communication preferences gathered from the relationship row + email prefs. */
+  preferences: PreferencesContext;
+  /** Pending or recently-expired membership invites for this person's email. */
+  invites: InviteSummary[];
+  /** Last few threads with this person across surfaces (titled when known). */
+  recentThreads: ThreadSummary[];
+  /**
+   * Every WorkOS org this person belongs to (versus `profile.company` which
+   * is one). Empty when the person isn't WorkOS-linked. Use this to answer
+   * "is this person in org X?" — the live-thread sample showed Addie
+   * conflating "in Slack" with "in WorkOS org Y" because she only had
+   * `profile.company` to work with.
+   */
+  orgMemberships: OrgMembership[];
+}
+
+export interface IdentityFlags {
+  account_linked: boolean;
+  has_slack: boolean;
+  has_email: boolean;
+}
+
+export interface PreferencesContext {
+  contact_preference: 'slack' | 'email' | null;
+  opted_out: boolean;
+  marketing_opt_in: boolean | null;
+}
+
+export interface InviteSummary {
+  org_id: string;
+  org_name: string | null;
+  lookup_key: string;
+  status: 'pending' | 'expired';
+  created_at: Date;
+  expires_at: Date;
+  invited_by_user_id: string;
+}
+
+export interface ThreadSummary {
+  thread_id: string;
+  channel: string;
+  title: string | null;
+  message_count: number;
+  last_message_at: Date;
+  created_at: Date;
+}
+
+/**
+ * Per-org membership for a person. The existing `profile.company` field is
+ * the LIMIT 1 join — sufficient for most queries but loses information for
+ * people who belong to multiple orgs, and conflates "the org we picked" with
+ * "the org being asked about." This surface is the explicit answer to "what
+ * orgs does this person belong to, and in what capacity."
+ */
+export interface OrgMembership {
+  workos_organization_id: string;
+  org_name: string;
+  role: 'admin' | 'member' | null;
+  seat_type: 'contributor' | 'community_only' | null;
+  provisioning_source: string | null;
+  is_paying_member: boolean;
+  joined_at: Date;
 }
 
 export interface CrossSurfaceMessage {
@@ -83,36 +148,55 @@ export async function loadRelationshipContext(
     throw new Error(`No relationship found for person ${personId}`);
   }
 
-  const { slack_user_id, workos_user_id, prospect_org_id } = relationship;
+  const { slack_user_id, workos_user_id, prospect_org_id, email } = relationship;
 
   // Fan out all independent queries in parallel
-  const [messages, capabilities, company, certification, community, journey] = await Promise.all([
-    // Recent messages across all surfaces
-    loadRecentMessages(personId),
+  const [
+    messages,
+    capabilities,
+    company,
+    certification,
+    community,
+    journey,
+    invites,
+    marketingOptIn,
+    recentThreads,
+    orgMemberships,
+  ] = await Promise.all([
+      // Recent messages across all surfaces
+      loadRecentMessages(personId),
 
-    // Member capabilities
-    slack_user_id
-      ? getMemberCapabilities(slack_user_id, workos_user_id ?? undefined)
-      : Promise.resolve(null),
+      // Member capabilities
+      slack_user_id
+        ? getMemberCapabilities(slack_user_id, workos_user_id ?? undefined)
+        : Promise.resolve(null),
 
-    // Company info
-    loadCompanyInfo(workos_user_id, prospect_org_id),
+      // Company info
+      loadCompanyInfo(workos_user_id, prospect_org_id),
 
-    // Certification progress
-    workos_user_id
-      ? loadCertificationSummary(workos_user_id)
-      : Promise.resolve(null),
+      // Certification progress
+      workos_user_id ? loadCertificationSummary(workos_user_id) : Promise.resolve(null),
 
-    // Community context (only when requested)
-    options?.includeCommunity
-      ? loadCommunityContext(workos_user_id, slack_user_id)
-      : Promise.resolve(undefined),
+      // Community context (only when requested)
+      options?.includeCommunity
+        ? loadCommunityContext(workos_user_id, slack_user_id)
+        : Promise.resolve(undefined),
 
-    // Journey context (tier, groups, credentials, notable colleagues)
-    workos_user_id
-      ? loadJourneyContext(workos_user_id)
-      : Promise.resolve(undefined),
-  ]);
+      // Journey context (tier, groups, credentials, notable colleagues)
+      workos_user_id ? loadJourneyContext(workos_user_id) : Promise.resolve(undefined),
+
+      // Pending + expired membership invites for this person's email
+      email ? loadInviteSummaries(email) : Promise.resolve([]),
+
+      // Marketing opt-in (lives on user_email_preferences keyed by workos user)
+      workos_user_id ? loadMarketingOptIn(workos_user_id) : Promise.resolve(null),
+
+      // Recent thread index (titles where set + channel + last_message_at)
+      loadRecentThreads(personId),
+
+      // All WorkOS orgs this person belongs to (multi-org / role / seat_type)
+      workos_user_id ? loadOrgMemberships(workos_user_id) : Promise.resolve([]),
+    ]);
 
   return {
     relationship,
@@ -124,6 +208,19 @@ export async function loadRelationshipContext(
     certification,
     community,
     journey,
+    identity: {
+      account_linked: workos_user_id !== null,
+      has_slack: slack_user_id !== null,
+      has_email: email !== null,
+    },
+    preferences: {
+      contact_preference: relationship.contact_preference,
+      opted_out: relationship.opted_out,
+      marketing_opt_in: marketingOptIn,
+    },
+    invites,
+    recentThreads,
+    orgMemberships,
   };
 }
 
@@ -162,9 +259,11 @@ async function loadCompanyInfo(
       company_types: string[];
       persona: string | null;
       subscription_status: string | null;
+      subscription_canceled_at: Date | null;
       prospect_owner: string | null;
     }>(
-      `SELECT o.name, o.company_types, o.persona, o.subscription_status, o.prospect_owner
+      `SELECT o.name, o.company_types, o.persona, o.subscription_status,
+              o.subscription_canceled_at, o.prospect_owner
        FROM organizations o
        JOIN organization_memberships om ON om.workos_organization_id = o.workos_organization_id
        WHERE om.workos_user_id = $1
@@ -179,7 +278,7 @@ async function loadCompanyInfo(
       name: row.name,
       type: row.company_types?.[0] ?? 'unknown',
       persona: row.persona ?? undefined,
-      is_member: row.subscription_status === 'active',
+      is_member: isPayingMembership(row),
       is_addie_prospect: row.prospect_owner !== null,
     };
   }
@@ -190,9 +289,11 @@ async function loadCompanyInfo(
       company_types: string[];
       persona: string | null;
       subscription_status: string | null;
+      subscription_canceled_at: Date | null;
       prospect_owner: string | null;
     }>(
-      `SELECT name, company_types, persona, subscription_status, prospect_owner
+      `SELECT name, company_types, persona, subscription_status,
+              subscription_canceled_at, prospect_owner
        FROM organizations
        WHERE workos_organization_id = $1
        LIMIT 1`,
@@ -206,7 +307,7 @@ async function loadCompanyInfo(
       name: row.name,
       type: row.company_types?.[0] ?? 'unknown',
       persona: row.persona ?? undefined,
-      is_member: row.subscription_status === 'active',
+      is_member: isPayingMembership(row),
       is_addie_prospect: row.prospect_owner !== null,
     };
   }
@@ -299,6 +400,137 @@ async function loadCommunityContext(
   };
 }
 
+async function loadInviteSummaries(email: string): Promise<InviteSummary[]> {
+  // Pending or just-expired invites for this email across any org. Useful
+  // signal for "they have an invite waiting" / "their invite expired."
+  // Accepted/revoked are excluded — they're history, not actionable state.
+  try {
+    const result = await query<{
+      workos_organization_id: string;
+      org_name: string | null;
+      lookup_key: string;
+      created_at: Date;
+      expires_at: Date;
+      invited_by_user_id: string;
+      accepted_at: Date | null;
+      revoked_at: Date | null;
+    }>(
+      `SELECT mi.workos_organization_id, o.name AS org_name, mi.lookup_key,
+              mi.created_at, mi.expires_at, mi.invited_by_user_id,
+              mi.accepted_at, mi.revoked_at
+       FROM membership_invites mi
+       LEFT JOIN organizations o ON o.workos_organization_id = mi.workos_organization_id
+       WHERE mi.contact_email = $1
+         AND mi.accepted_at IS NULL
+         AND mi.revoked_at IS NULL
+       ORDER BY mi.created_at DESC
+       LIMIT 10`,
+      [email]
+    );
+    const now = Date.now();
+    return result.rows.map((r) => ({
+      org_id: r.workos_organization_id,
+      org_name: r.org_name,
+      lookup_key: r.lookup_key,
+      status: new Date(r.expires_at).getTime() > now ? 'pending' : 'expired',
+      created_at: new Date(r.created_at),
+      expires_at: new Date(r.expires_at),
+      invited_by_user_id: r.invited_by_user_id,
+    }));
+  } catch (err) {
+    logger.error({ err, email }, 'Failed to load invite summaries');
+    return [];
+  }
+}
+
+async function loadMarketingOptIn(workosUserId: string): Promise<boolean | null> {
+  try {
+    const result = await query<{ marketing_opt_in: boolean | null }>(
+      `SELECT marketing_opt_in FROM user_email_preferences WHERE workos_user_id = $1 LIMIT 1`,
+      [workosUserId]
+    );
+    return result.rows[0]?.marketing_opt_in ?? null;
+  } catch (err) {
+    logger.error({ err, workosUserId }, 'Failed to load marketing opt-in');
+    return null;
+  }
+}
+
+async function loadOrgMemberships(workosUserId: string): Promise<OrgMembership[]> {
+  try {
+    const result = await query<{
+      workos_organization_id: string;
+      org_name: string;
+      role: string | null;
+      seat_type: string | null;
+      provisioning_source: string | null;
+      subscription_status: string | null;
+      subscription_canceled_at: Date | null;
+      created_at: Date;
+    }>(
+      `SELECT om.workos_organization_id,
+              o.name AS org_name,
+              om.role,
+              om.seat_type,
+              om.provisioning_source,
+              o.subscription_status,
+              o.subscription_canceled_at,
+              om.created_at
+       FROM organization_memberships om
+       JOIN organizations o ON o.workos_organization_id = om.workos_organization_id
+       WHERE om.workos_user_id = $1
+       ORDER BY om.created_at DESC`,
+      [workosUserId]
+    );
+    return result.rows.map((r) => ({
+      workos_organization_id: r.workos_organization_id,
+      org_name: r.org_name,
+      role: r.role === 'admin' || r.role === 'member' ? r.role : null,
+      seat_type:
+        r.seat_type === 'contributor' || r.seat_type === 'community_only'
+          ? r.seat_type
+          : null,
+      provisioning_source: r.provisioning_source,
+      is_paying_member: isPayingMembership(r),
+      joined_at: new Date(r.created_at),
+    }));
+  } catch (err) {
+    logger.error({ err, workosUserId }, 'Failed to load org memberships');
+    return [];
+  }
+}
+
+async function loadRecentThreads(personId: string): Promise<ThreadSummary[]> {
+  try {
+    const result = await query<{
+      thread_id: string;
+      channel: string;
+      title: string | null;
+      message_count: number;
+      last_message_at: Date;
+      created_at: Date;
+    }>(
+      `SELECT thread_id, channel, title, message_count, last_message_at, created_at
+       FROM addie_threads
+       WHERE person_id = $1
+       ORDER BY last_message_at DESC NULLS LAST
+       LIMIT 5`,
+      [personId]
+    );
+    return result.rows.map((r) => ({
+      thread_id: r.thread_id,
+      channel: r.channel,
+      title: r.title,
+      message_count: r.message_count,
+      last_message_at: new Date(r.last_message_at),
+      created_at: new Date(r.created_at),
+    }));
+  } catch (err) {
+    logger.error({ err, personId }, 'Failed to load recent threads');
+    return [];
+  }
+}
+
 async function loadJourneyContext(workosUserId: string): Promise<JourneyContext | undefined> {
   try {
     const [pointsResult, groupsResult, credsResult, contribResult, colleaguesResult] = await Promise.all([
@@ -384,6 +616,19 @@ async function loadJourneyContext(workosUserId: string): Promise<JourneyContext 
 // =====================================================
 
 /**
+ * Render a date as a short human-readable relative phrase ("in 5 days",
+ * "3 days ago", "today"). Used in prompt sections so Addie reads dates
+ * the way a human would, not as ISO timestamps.
+ */
+function formatRelativeDate(d: Date): string {
+  const diffMs = d.getTime() - Date.now();
+  const days = Math.round(diffMs / 86400000);
+  if (days === 0) return 'today';
+  if (days > 0) return `in ${days} day${days === 1 ? '' : 's'}`;
+  return `${-days} day${-days === 1 ? '' : 's'} ago`;
+}
+
+/**
  * Format relationship context as markdown for injection into Addie's system prompt.
  * Used by both the engagement planner and the conversation handler.
  */
@@ -411,9 +656,79 @@ export function formatContextForPrompt(ctx: RelationshipContext): string {
     lines.push(`**Member**: ${profile.company.is_member ? 'Yes' : 'No'}`);
   }
 
+  lines.push(`**Account linked**: ${ctx.identity.account_linked ? 'Yes' : 'No'}`);
   lines.push(`**Interactions**: ${r.interaction_count} messages across ${channelList}`);
   lines.push(`**Sentiment**: ${r.sentiment_trend}`);
   lines.push(`**Last contact**: Addie ${lastAddieContact}, them ${lastPersonContact}`);
+
+  // Preferences — render when any signal is non-default. opted_out is
+  // load-bearing (Addie must not message them); contact_preference and
+  // marketing_opt_in shape channel/timing decisions.
+  const prefs = ctx.preferences;
+  const showPrefs =
+    prefs.opted_out ||
+    prefs.contact_preference !== null ||
+    prefs.marketing_opt_in !== null;
+  if (showPrefs) {
+    lines.push('');
+    lines.push('### Preferences');
+    if (prefs.opted_out) {
+      lines.push('- ⚠️ **Opted out** — do not contact');
+    }
+    if (prefs.contact_preference) {
+      lines.push(`- Preferred channel: ${prefs.contact_preference}`);
+    }
+    if (prefs.marketing_opt_in === true) {
+      lines.push('- Marketing opt-in: yes');
+    } else if (prefs.marketing_opt_in === false) {
+      lines.push('- Marketing opt-in: no');
+    }
+  }
+
+  // Org memberships — every WorkOS org this person belongs to. The header
+  // line above shows one company; this section answers "is this person in
+  // org X" for any org. High-value when an admin asks about a colleague at
+  // a specific org and Addie needs to disambiguate Slack-presence from
+  // formal WorkOS membership (the Triton / Affinity Answers pattern).
+  // Only render when the person belongs to multiple orgs OR has an
+  // off-primary signal worth surfacing (admin role, community_only seat,
+  // verified-domain provisioning).
+  if (ctx.orgMemberships.length > 0) {
+    const showAlways =
+      ctx.orgMemberships.length > 1 ||
+      ctx.orgMemberships.some(
+        (m) => m.role === 'admin' || m.seat_type === 'community_only' || m.provisioning_source === 'verified_domain'
+      );
+    if (showAlways) {
+      lines.push('');
+      lines.push('### Org memberships');
+      for (const m of ctx.orgMemberships) {
+        const parts: string[] = [];
+        parts.push(m.role ?? 'member');
+        if (m.seat_type === 'community_only') parts.push('community-only seat');
+        if (m.is_paying_member) parts.push('paying');
+        if (m.provisioning_source) parts.push(`via ${m.provisioning_source}`);
+        const joined = m.joined_at.toISOString().split('T')[0];
+        lines.push(
+          `- **${m.org_name}** (${m.workos_organization_id}) — ${parts.join(', ')}, joined ${joined}`
+        );
+      }
+    }
+  }
+
+  // Open invites — pending or expired membership invites for this email.
+  // High-value signal: Pubx-shaped "they have an invite waiting" cases.
+  if (ctx.invites.length > 0) {
+    lines.push('');
+    lines.push('### Open membership invites');
+    for (const inv of ctx.invites) {
+      const expRel = formatRelativeDate(inv.expires_at);
+      const orgLabel = inv.org_name ?? inv.org_id;
+      lines.push(
+        `- [${inv.status}] ${inv.lookup_key} at ${orgLabel} — expires ${expRel}`
+      );
+    }
+  }
 
   // Capabilities
   const capLines = formatCapabilitiesForPrompt(profile.capabilities);
@@ -438,6 +753,24 @@ export function formatContextForPrompt(ctx: RelationshipContext): string {
         ? msg.content.slice(0, 200) + '...'
         : msg.content;
       lines.push(`**${msg.channel} ${date}** ${msg.role}: ${truncated}`);
+    }
+  }
+
+  // Recent threads — index of past threads with this person across surfaces.
+  // Different from "Recent conversation" above (which shows raw messages);
+  // this surfaces older threads Addie can reference without flooding the
+  // prompt. Placed after capabilities + conversation since this is a soft
+  // index, not a decision-shaping signal.
+  if (ctx.recentThreads.length > 0) {
+    lines.push('');
+    lines.push('### Recent threads');
+    for (const t of ctx.recentThreads) {
+      const lastRel = formatRelativeDate(t.last_message_at);
+      const msgPlural = t.message_count === 1 ? 'message' : 'messages';
+      const titlePart = t.title ? ` "${t.title}"` : '';
+      lines.push(
+        `- [${t.channel}]${titlePart} — ${t.message_count} ${msgPlural}, last ${lastRel}`
+      );
     }
   }
 
@@ -483,9 +816,8 @@ export function formatCapabilitiesForPrompt(caps: MemberCapabilities | null): st
 
   const lines: string[] = [];
 
-  lines.push(caps.account_linked
-    ? '- \u2713 Account linked'
-    : '- \u2717 Account not linked');
+  // Note: account_linked is rendered inline in the header (formatContextForPrompt),
+  // sourced from ctx.identity. Don't duplicate it here.
 
   lines.push(caps.profile_complete
     ? '- \u2713 Profile complete'

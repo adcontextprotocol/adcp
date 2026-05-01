@@ -385,6 +385,7 @@ components:
           enum:
             - registered
             - discovered
+          description: Provenance of this agent in the registry. `registered` = an AAO member has explicitly enrolled this agent on their member profile (canonical, attested). `discovered` = the crawler found this agent listed in some publisher's adagents.json file; the agent itself has not opted in to the registry. These are different trust levels — `registered` ≠ `discovered`. Filter by source if your use case depends on attestation.
         member:
           type: object
           properties:
@@ -392,6 +393,7 @@ components:
               type: string
             display_name:
               type: string
+          description: "AAO member that owns this agent record, if any. Populated when `source` is `registered`. For `discovered` agents this is `null`; see `endorsed_by_publisher_member` for the publisher-side endorsement signal added in #3547 / Problem 6 of #3538."
         discovered_from:
           type: object
           properties:
@@ -399,6 +401,9 @@ components:
               type: string
             authorized_for:
               type: string
+          description: Set when `source = 'discovered'`. Identifies the publisher_domain whose adagents.json listed this agent, and the `authorized_for` string from that listing. Mutually exclusive with the `member` field on the registered path.
+        endorsed_by_publisher_member:
+          $ref: "#/components/schemas/EndorsedByPublisherMember"
         health:
           $ref: "#/components/schemas/AgentHealth"
         stats:
@@ -417,6 +422,23 @@ components:
         - url
         - name
         - type
+    EndorsedByPublisherMember:
+      type: object
+      properties:
+        slug:
+          type: string
+          description: Member organization slug — stable URL-safe identifier for the publisher member.
+        display_name:
+          type: string
+          description: Member organization display name — render-ready label for the publisher member.
+        publisher_domain:
+          type: string
+          description: Publisher domain whose adagents.json endorsed this agent (the linkage that produced this signal).
+      required:
+        - slug
+        - display_name
+        - publisher_domain
+      description: "Set on discovered agents when discovered_from.publisher_domain is claimed by an AAO member (publishers[] entry with is_public=true). Mutually exclusive with member — registered agents never carry this. Option C from #3547 (Problem 6 / #3538)."
     AgentHealth:
       type: object
       properties:
@@ -545,6 +567,20 @@ components:
           type: boolean
         check_interval_hours:
           type: integer
+        verified:
+          type: boolean
+        verified_roles:
+          type: array
+          items:
+            type: string
+            enum:
+              - media-buy
+              - signals
+              - governance
+              - creative
+              - brand
+              - sponsored-intelligence
+          description: AdCP protocols the agent is AAO Verified for (e.g. media-buy, creative). Matches enums/adcp-protocol.json.
       required:
         - status
         - lifecycle_stage
@@ -1189,10 +1225,136 @@ components:
           type: integer
         storyboards_total:
           type: integer
+        check_interval_hours:
+          type: integer
+          description: How often the heartbeat re-tests this agent, in hours
+        declared_specialisms:
+          type: array
+          items:
+            type: string
+          description: Specialisms the agent declared in get_adcp_capabilities, from the latest run
+        specialism_status:
+          type: object
+          additionalProperties:
+            type: string
+            enum:
+              - passing
+              - failing
+              - untested
+              - unknown
+          description: Per-specialism pass/fail/untested status — keyed on declared specialism, derived from the matching storyboard's status
+        membership_tier:
+          type:
+            - string
+            - "null"
+          description: "Owner-scoped: the agent owner's membership tier. Populated only when the authenticated viewer owns the agent; null otherwise. Field is always present so response shape doesn't reveal ownership."
+        membership_tier_label:
+          type:
+            - string
+            - "null"
+          description: "Owner-scoped: human-readable label for membership_tier (e.g. 'Builder'). Null for non-owners."
+        subscription_status:
+          type:
+            - string
+            - "null"
+          description: "Owner-scoped: the agent owner's subscription status (active, past_due, trialing, etc.). Null for non-owners."
+        is_api_access_tier:
+          type: boolean
+          description: "Owner-scoped: true when the owner's tier and subscription status grant badge eligibility. False for non-owners. Single source of truth — UI should not re-derive."
+        verified:
+          type: boolean
+        verified_badges:
+          type: array
+          items:
+            $ref: "#/components/schemas/VerificationBadge"
       required:
         - agent_url
         - status
         - lifecycle_stage
+    VerificationBadge:
+      type: object
+      properties:
+        role:
+          type: string
+          enum:
+            - media-buy
+            - signals
+            - governance
+            - creative
+            - brand
+            - sponsored-intelligence
+          description: AdCP protocol this badge covers (enums/adcp-protocol.json).
+        adcp_version:
+          type: string
+          description: AdCP release this badge was issued against, MAJOR.MINOR (e.g. '3.0', '3.1'). Load-bearing for badge identity — pairs with the (agent_url, role, adcp_version) PK.
+        verified_at:
+          type: string
+        verified_specialisms:
+          type: array
+          items:
+            type: string
+            enum:
+              - audience-sync
+              - brand-rights
+              - collection-lists
+              - content-standards
+              - creative-ad-server
+              - creative-generative
+              - creative-template
+              - governance-aware-seller
+              - governance-delivery-monitor
+              - governance-spend-authority
+              - property-lists
+              - sales-broadcast-tv
+              - sales-catalog-driven
+              - sales-guaranteed
+              - sales-non-guaranteed
+              - sales-proposal-mode
+              - sales-social
+              - signal-marketplace
+              - signal-owned
+              - signed-requests
+          description: Specialisms demonstrably passed (enums/specialism.json). Preview specialisms are excluded from stable badges.
+        verification_modes:
+          type: array
+          items:
+            type: string
+            enum:
+              - spec
+              - live
+          minItems: 1
+          description: Verification axes earned. 'spec' = AdCP storyboards pass for the declared specialisms. 'live' = AAO has observed real production traffic via canonical campaigns. Always non-empty when a badge is present; an absent badge is conveyed by the parent record being omitted, not by an empty array.
+        verified_protocol_version:
+          type:
+            - string
+            - "null"
+        badge_url:
+          type: string
+          description: Legacy URL — auto-upgrades to the highest active version. For version-pinned embedding, derive `/api/registry/agents/{encoded_url}/badge/{role}/{adcp_version}.svg` where `{encoded_url}` is `encodeURIComponent(agent_url)`.
+      required:
+        - role
+        - adcp_version
+        - verified_at
+        - verified_specialisms
+        - verification_modes
+        - verified_protocol_version
+    AgentVerification:
+      type: object
+      properties:
+        agent_url:
+          type: string
+        verified:
+          type: boolean
+        badges:
+          type: array
+          items:
+            $ref: "#/components/schemas/VerificationBadge"
+        registry_url:
+          type: string
+      required:
+        - agent_url
+        - verified
+        - badges
     StoryboardStatus:
       type: object
       properties:
@@ -1825,7 +1987,7 @@ paths:
     get:
       operationId: listBrands
       summary: List brands
-      description: List all brands in the registry with optional search, pagination.
+      description: List all brands in the registry with optional search, pagination, and source filter.
       tags:
         - Brand Resolution
       parameters:
@@ -1846,6 +2008,18 @@ paths:
           required: false
           name: offset
           in: query
+        - schema:
+            type: string
+            enum:
+              - hosted
+              - brand_json
+              - enriched
+              - community
+            description: "Filter by source. Values match the per-brand source field in the response: hosted = registered by domain owner via /api/brands; brand_json = crawler-discovered with a live /.well-known/brand.json; enriched = Brandfetch-sourced; community = manually contributed."
+          required: false
+          description: "Filter by source. Values match the per-brand source field in the response: hosted = registered by domain owner via /api/brands; brand_json = crawler-discovered with a live /.well-known/brand.json; enriched = Brandfetch-sourced; community = manually contributed."
+          name: source
+          in: query
       responses:
         "200":
           description: Brand list with stats
@@ -1863,20 +2037,38 @@ paths:
                     properties:
                       total:
                         type: integer
+                      hosted:
+                        type: integer
                       brand_json:
                         type: integer
                       community:
                         type: integer
                       enriched:
                         type: integer
+                      houses:
+                        type: integer
+                      sub_brands:
+                        type: integer
+                      with_manifest:
+                        type: integer
                     required:
                       - total
+                      - hosted
                       - brand_json
                       - community
                       - enriched
+                      - houses
+                      - sub_brands
+                      - with_manifest
                 required:
                   - brands
                   - stats
+        "400":
+          description: Invalid source filter value
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/brands/history:
     get:
       operationId: getBrandHistory
@@ -2469,6 +2661,16 @@ paths:
         - schema:
             type: string
             enum:
+              - registered
+              - discovered
+            description: Filter agents by registration source. Omit to receive both.
+          required: false
+          description: Filter agents by registration source. Omit to receive both.
+          name: source
+          in: query
+        - schema:
+            type: string
+            enum:
               - "true"
           required: false
           name: health
@@ -2522,6 +2724,12 @@ paths:
                   - agents
                   - count
                   - sources
+        "400":
+          description: Invalid query parameter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/registry/publishers:
     get:
       operationId: listPublishers
@@ -2579,7 +2787,7 @@ paths:
       summary: Domain lookup
       description: Find all agents authorized for a given publisher domain.
       tags:
-        - Lookups & Authorization
+        - Authorization Lookups
       parameters:
         - schema:
             type: string
@@ -2600,7 +2808,7 @@ paths:
       summary: Property identifier lookup
       description: Find agents that hold a specific property identifier.
       tags:
-        - Lookups & Authorization
+        - Authorization Lookups
       parameters:
         - schema:
             type: string
@@ -2640,7 +2848,7 @@ paths:
       summary: Agent domain lookup
       description: Get all publisher domains associated with an agent.
       tags:
-        - Lookups & Authorization
+        - Authorization Lookups
       parameters:
         - schema:
             type: string
@@ -2671,9 +2879,12 @@ paths:
     get:
       operationId: lookupOperator
       summary: Operator lookup
-      description: Given a domain, returns the agents this entity operates and which publishers trust them.
+      description: |-
+        Given a domain, returns the agents this entity operates and which publishers trust them.
+
+        **Response shape is auth-aware.** Anonymous callers see only `public` agents. Authenticated callers on an AAO membership tier with API access also see `members_only` agents. Profile owners (callers whose org owns the queried domain) additionally see `private` agents. This is the primary mechanism by which AAO membership unlocks deeper registry visibility.
       tags:
-        - Lookups & Authorization
+        - Authorization Lookups
       parameters:
         - schema:
             type: string
@@ -2698,9 +2909,12 @@ paths:
     get:
       operationId: lookupPublisher
       summary: Publisher lookup
-      description: Given a domain, returns the inventory this entity publishes and which agents it authorizes.
+      description: |-
+        Given a domain, returns the inventory this entity publishes and which agents it authorizes.
+
+        **This endpoint is unauthenticated and returns the same response shape for every caller.** Compare to `/api/registry/operator`, where AAO membership tier and profile ownership unlock additional agent visibility (`members_only`, `private`). AAO membership does not change the `/publisher` response today.
       tags:
-        - Lookups & Authorization
+        - Authorization Lookups
       parameters:
         - schema:
             type: string
@@ -2727,7 +2941,7 @@ paths:
       summary: Validate product authorization
       description: Check whether an agent is authorized to sell a product based on its publisher_properties.
       tags:
-        - Lookups & Authorization
+        - Authorization Lookups
       requestBody:
         content:
           application/json:
@@ -2768,7 +2982,7 @@ paths:
       summary: Expand product identifiers
       description: Expand publisher_properties selectors into concrete property identifiers for caching.
       tags:
-        - Lookups & Authorization
+        - Authorization Lookups
       requestBody:
         content:
           application/json:
@@ -2834,7 +3048,7 @@ paths:
       summary: Property authorization check
       description: Quick check if a property identifier is authorized for an agent. Optimized for real-time ad request validation.
       tags:
-        - Lookups & Authorization
+        - Authorization Lookups
       parameters:
         - schema:
             type: string
@@ -3815,6 +4029,226 @@ paths:
                 required:
                   - error
                   - message
+  /api/registry/authorizations:
+    get:
+      operationId: getAgentAuthorizations
+      summary: Per-agent authorization pull
+      description: |-
+        Default endpoint for verification consumers (DSPs, sales houses, agencies). Returns the rows where the requested agent appears as `agent_url` — typically ≤ a few hundred. Pair with `/api/registry/feed?entity_type=authorization` to tail subsequent changes via the `X-Sync-Cursor` header.
+
+        **evidence** defaults to `adagents_json` only. `agent_claim` is opt-in (`?evidence=adagents_json,agent_claim`) to prevent buy-side trust misuse — see specs/registry-authorization-model.md.
+      tags:
+        - Change Feed
+      security:
+        - bearerAuth: []
+        - oauth2: []
+      parameters:
+        - schema:
+            type: string
+            description: Agent URL to look up. Canonicalized server-side (lowercased, trailing slashes trimmed).
+          required: true
+          description: Agent URL to look up. Canonicalized server-side (lowercased, trailing slashes trimmed).
+          name: agent_url
+          in: query
+        - schema:
+            type: string
+            enum:
+              - raw
+              - effective
+            description: "`effective` (default) applies override layer; `raw` reads base table."
+          required: false
+          description: "`effective` (default) applies override layer; `raw` reads base table."
+          name: include
+          in: query
+        - schema:
+            type: string
+            description: Comma-separated evidence allowlist. Defaults to `adagents_json`.
+            example: adagents_json,agent_claim
+          required: false
+          description: Comma-separated evidence allowlist. Defaults to `adagents_json`.
+          name: evidence
+          in: query
+      responses:
+        "200":
+          description: Authorization rows for the agent.
+          headers:
+            X-Sync-Cursor:
+              description: UUIDv7 cursor for the authorization change feed at snapshot time. Pass to /api/registry/feed?entity_type=authorization&cursor=<value>.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  agent_url:
+                    type: string
+                  evidence:
+                    type: array
+                    items:
+                      type: string
+                  include:
+                    type: string
+                    enum:
+                      - raw
+                      - effective
+                  rows:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        agent_url:
+                          type: string
+                        agent_url_canonical:
+                          type: string
+                        property_rid:
+                          type:
+                            - string
+                            - "null"
+                          format: uuid
+                        property_id_slug:
+                          type:
+                            - string
+                            - "null"
+                        publisher_domain:
+                          type:
+                            - string
+                            - "null"
+                        authorized_for:
+                          type:
+                            - string
+                            - "null"
+                        evidence:
+                          type: string
+                        disputed:
+                          type: boolean
+                        created_by:
+                          type:
+                            - string
+                            - "null"
+                        expires_at:
+                          type:
+                            - string
+                            - "null"
+                          format: date-time
+                        created_at:
+                          type: string
+                          format: date-time
+                        updated_at:
+                          type: string
+                          format: date-time
+                        override_applied:
+                          type: boolean
+                        override_reason:
+                          type:
+                            - string
+                            - "null"
+                      required:
+                        - id
+                        - agent_url
+                        - agent_url_canonical
+                        - property_rid
+                        - property_id_slug
+                        - publisher_domain
+                        - authorized_for
+                        - evidence
+                        - disputed
+                        - created_by
+                        - expires_at
+                        - created_at
+                        - updated_at
+                        - override_applied
+                        - override_reason
+                  count:
+                    type: integer
+                required:
+                  - agent_url
+                  - evidence
+                  - include
+                  - rows
+                  - count
+        "400":
+          description: Validation error (missing/empty agent_url, unknown evidence, unknown include)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/registry/authorizations/snapshot:
+    get:
+      operationId: getAgentAuthorizationsSnapshot
+      summary: Bootstrap snapshot for inline verifiers
+      description: |-
+        Streams the full effective authorization set as gzipped NDJSON (one JSON object per line). Consumers persist `X-Sync-Cursor` and tail `/api/registry/feed?entity_type=authorization&cursor=<value>` for deltas.
+
+        **ETag** is the hash of the X-Sync-Cursor — clients can `If-None-Match` to skip a re-pull when nothing has changed. **evidence** defaults to `adagents_json` only; long-run wire size ~150 MB gzipped.
+      tags:
+        - Change Feed
+      security:
+        - bearerAuth: []
+        - oauth2: []
+      parameters:
+        - schema:
+            type: string
+            enum:
+              - raw
+              - effective
+            description: "`effective` (default) applies override layer; `raw` reads base table."
+          required: false
+          description: "`effective` (default) applies override layer; `raw` reads base table."
+          name: include
+          in: query
+        - schema:
+            type: string
+            description: Comma-separated evidence allowlist. Defaults to `adagents_json`.
+            example: adagents_json,agent_claim
+          required: false
+          description: Comma-separated evidence allowlist. Defaults to `adagents_json`.
+          name: evidence
+          in: query
+      responses:
+        "200":
+          description: gzipped NDJSON stream — one authorization row per line.
+          headers:
+            X-Sync-Cursor:
+              description: UUIDv7 cursor for the authorization change feed at snapshot time.
+              schema:
+                type: string
+            ETag:
+              description: Hash of X-Sync-Cursor; clients can If-None-Match.
+              schema:
+                type: string
+            Content-Encoding:
+              description: gzip
+              schema:
+                type: string
+          content:
+            application/x-ndjson:
+              schema:
+                type: string
+                description: Newline-delimited JSON, gzip-compressed.
+        "304":
+          description: Not modified — cursor unchanged from If-None-Match.
+        "400":
+          description: Validation error (unknown evidence, unknown include)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/registry/agents/search:
     get:
       operationId: searchAgentProfiles
@@ -4177,6 +4611,274 @@ paths:
                 $ref: "#/components/schemas/AgentComplianceDetail"
         "400":
           description: Invalid agent URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/.well-known/jwks.json:
+    get:
+      operationId: getJwks
+      summary: AAO public key set
+      description: Returns the JSON Web Key Set (JWKS) containing AAO's public verification keys. Use these to verify AAO Verified badge tokens without calling AAO's API.
+      tags:
+        - Agent Compliance
+      responses:
+        "200":
+          description: JWKS response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  keys:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: {}
+                required:
+                  - keys
+  /api/registry/agents/{encodedUrl}/verification:
+    get:
+      operationId: getAgentVerification
+      summary: Get agent AAO Verified status
+      description: Returns AAO Verified badge status for a single agent. Public and cacheable. Includes role badges, verified storyboards, and a link to the agent's registry listing.
+      tags:
+        - Agent Compliance
+      parameters:
+        - schema:
+            type: string
+            description: URL-encoded agent URL
+            example: https%3A%2F%2Fexample.com%2Fmcp
+          required: true
+          description: URL-encoded agent URL
+          name: encodedUrl
+          in: path
+      responses:
+        "200":
+          description: Verification status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentVerification"
+        "400":
+          description: Invalid agent URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/registry/agents/{encodedUrl}/badge/{role}.svg:
+    get:
+      operationId: getAgentBadgeSvg
+      summary: Get agent verification badge SVG
+      description: Returns an SVG badge image for the specified agent and role. Shows 'AAO Verified | Sales Agent' (teal) when verified, or 'AAO Verified | Not Verified' (grey) when not. Cacheable, suitable for embedding in websites.
+      tags:
+        - Agent Compliance
+      parameters:
+        - schema:
+            type: string
+            description: URL-encoded agent URL
+          required: true
+          description: URL-encoded agent URL
+          name: encodedUrl
+          in: path
+        - schema:
+            type: string
+            description: Badge role (sales, buying, creative, governance, signals, measurement)
+          required: true
+          description: Badge role (sales, buying, creative, governance, signals, measurement)
+          name: role
+          in: path
+      responses:
+        "200":
+          description: SVG badge image
+          content:
+            image/svg+xml:
+              schema:
+                type: string
+        "400":
+          description: Invalid agent URL
+        "500":
+          description: Server error
+  /api/registry/agents/{encodedUrl}/badge/{role}/embed:
+    get:
+      operationId: getAgentBadgeEmbed
+      summary: Get embeddable badge code
+      description: Returns HTML and Markdown embed snippets for displaying an AAO Verified badge on websites, social profiles, and documentation. The badge links to the agent's AAO registry listing.
+      tags:
+        - Agent Compliance
+      parameters:
+        - schema:
+            type: string
+            description: URL-encoded agent URL
+          required: true
+          description: URL-encoded agent URL
+          name: encodedUrl
+          in: path
+        - schema:
+            type: string
+            description: Badge role
+          required: true
+          description: Badge role
+          name: role
+          in: path
+      responses:
+        "200":
+          description: Embed code
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  agent_url:
+                    type: string
+                  role:
+                    type: string
+                  badge_svg_url:
+                    type: string
+                  registry_url:
+                    type: string
+                  html:
+                    type: string
+                  markdown:
+                    type: string
+                required:
+                  - agent_url
+                  - role
+                  - badge_svg_url
+                  - registry_url
+                  - html
+                  - markdown
+        "400":
+          description: Invalid agent URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/registry/agents/{encodedUrl}/badge/{role}/{version}.svg:
+    get:
+      operationId: getAgentBadgeVersionedSvg
+      summary: Get version-pinned agent verification badge SVG
+      description: Returns an SVG badge image scoped to a specific AdCP release (MAJOR.MINOR, e.g. '3.0'). Buyers who want to call out 'verified for 3.0' embed this instead of the legacy `/badge/{role}.svg` (which auto-upgrades to the highest active version). Renders 'Not Verified' when the agent never earned a badge at this version.
+      tags:
+        - Agent Compliance
+      parameters:
+        - schema:
+            type: string
+            description: URL-encoded agent URL
+          required: true
+          description: URL-encoded agent URL
+          name: encodedUrl
+          in: path
+        - schema:
+            type: string
+            description: Badge role (media-buy, creative, signals, governance, brand, sponsored-intelligence)
+          required: true
+          description: Badge role (media-buy, creative, signals, governance, brand, sponsored-intelligence)
+          name: role
+          in: path
+        - schema:
+            type: string
+            description: AdCP release as MAJOR.MINOR (e.g. '3.0', '3.1')
+          required: true
+          description: AdCP release as MAJOR.MINOR (e.g. '3.0', '3.1')
+          name: version
+          in: path
+      responses:
+        "200":
+          description: SVG badge image
+          content:
+            image/svg+xml:
+              schema:
+                type: string
+        "400":
+          description: Invalid agent URL, role, or version
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Server error
+  /api/registry/agents/{encodedUrl}/badge/{role}/{version}/embed:
+    get:
+      operationId: getAgentBadgeVersionedEmbed
+      summary: Get version-pinned embeddable badge code
+      description: Returns HTML and Markdown embed snippets that point at the version-pinned SVG. Alt text includes the version (e.g. 'AAO Verified Media Buy Agent 3.0'). Buyers who want to freeze on a specific AdCP release embed these instead of the legacy `/badge/{role}/embed`.
+      tags:
+        - Agent Compliance
+      parameters:
+        - schema:
+            type: string
+            description: URL-encoded agent URL
+          required: true
+          description: URL-encoded agent URL
+          name: encodedUrl
+          in: path
+        - schema:
+            type: string
+            description: Badge role
+          required: true
+          description: Badge role
+          name: role
+          in: path
+        - schema:
+            type: string
+            description: AdCP release as MAJOR.MINOR
+          required: true
+          description: AdCP release as MAJOR.MINOR
+          name: version
+          in: path
+      responses:
+        "200":
+          description: Embed code
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  agent_url:
+                    type: string
+                  role:
+                    type: string
+                  verified:
+                    type: boolean
+                  adcp_version:
+                    type: string
+                  badge_svg_url:
+                    type: string
+                  registry_url:
+                    type: string
+                  html:
+                    type: string
+                  markdown:
+                    type: string
+                required:
+                  - agent_url
+                  - role
+                  - verified
+                  - badge_svg_url
+                  - registry_url
+                  - html
+                  - markdown
+        "400":
+          description: Invalid agent URL, role, or version
           content:
             application/json:
               schema:

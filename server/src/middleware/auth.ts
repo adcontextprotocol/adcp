@@ -652,6 +652,82 @@ function hasValidAdminApiKey(req: Request): boolean {
 }
 
 /**
+ * True if `id` is a synthetic user (static admin API key or per-org WorkOS
+ * API key). Synthetic users don't represent a person, so they have no
+ * identity binding.
+ */
+function isSyntheticUser(id: string): boolean {
+  return id === 'admin_api_key' || id.startsWith('api_key_');
+}
+
+/**
+ * Drop any cached sessions whose WorkOS user id matches one of the given
+ * ids, on either auth credential (post-swap canonical or actual auth).
+ * Called when an identity binding changes (mergeUsers, admin rebind) so
+ * subsequent requests re-resolve identity instead of serving a stale swap.
+ */
+export function invalidateSessionsForUsers(workosUserIds: string[]): void {
+  if (workosUserIds.length === 0) return;
+  const ids = new Set(workosUserIds);
+  for (const [key, value] of sessionCache.entries()) {
+    if (ids.has(value.user.id) || (value.user.authWorkosUserId && ids.has(value.user.authWorkosUserId))) {
+      sessionCache.delete(key);
+    }
+  }
+  for (const [key, value] of bearerJwtCache.entries()) {
+    if (ids.has(value.user.id) || (value.user.authWorkosUserId && ids.has(value.user.authWorkosUserId))) {
+      bearerJwtCache.delete(key);
+    }
+  }
+}
+
+/**
+ * Resolve the identity for a WorkOS user. Sets `user.identityId` and, when
+ * the authenticated user is a non-primary binding, swaps `user.id` to the
+ * identity's primary workos_user_id so app-state reads land on the right
+ * person. The original authenticated id is preserved on `user.authWorkosUserId`.
+ *
+ * Skipped for synthetic users (admin API key, WorkOS API key) — they don't
+ * represent a person. Failures are swallowed: identity resolution must
+ * never block an authenticated request, and a degraded request that sees
+ * only the auth user's slice of data is still better than a 500.
+ */
+async function attachIdentityId(user: WorkOSUser): Promise<void> {
+  if (isSyntheticUser(user.id)) return;
+  try {
+    const result = await getPool().query<{
+      identity_id: string;
+      primary_workos_user_id: string | null;
+    }>(
+      `SELECT iwu.identity_id, primary_iwu.workos_user_id AS primary_workos_user_id
+         FROM identity_workos_users iwu
+         LEFT JOIN identity_workos_users primary_iwu
+           ON primary_iwu.identity_id = iwu.identity_id
+          AND primary_iwu.is_primary = TRUE
+        WHERE iwu.workos_user_id = $1`,
+      [user.id]
+    );
+    const row = result.rows[0];
+    if (!row) return;
+
+    user.identityId = row.identity_id;
+
+    if (row.primary_workos_user_id && row.primary_workos_user_id !== user.id) {
+      // Non-primary binding signed in. Swap id so app-state reads see the
+      // canonical person; preserve the actual auth user on authWorkosUserId.
+      logger.debug(
+        { authWorkosUserId: user.id, canonicalUserId: row.primary_workos_user_id, identityId: row.identity_id },
+        'Identity id-swap: routing non-primary binding to canonical user'
+      );
+      user.authWorkosUserId = user.id;
+      user.id = row.primary_workos_user_id;
+    }
+  } catch (err) {
+    logger.warn({ err, userId: user.id }, 'Failed to resolve identity_id');
+  }
+}
+
+/**
  * Middleware to require authentication
  * Checks for WorkOS session cookie and loads user info
  * Also accepts WorkOS API keys as Bearer token for programmatic access
@@ -734,6 +810,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       logger.warn({ err: banError, userId: jwtAuth.user.id, path: req.path }, 'Ban check failed — allowing request through');
     }
 
+    await attachIdentityId(req.user);
     return next();
   }
 
@@ -748,6 +825,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       if (devConfig) {
         (req.user as unknown as Record<string, unknown>).isMember = devConfig.isMember;
       }
+      await attachIdentityId(req.user);
       return next();
     }
     // No dev session - redirect to dev login page
@@ -1042,6 +1120,9 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       );
     }
 
+    // Resolve identityId once before caching so cache hits inherit it.
+    await attachIdentityId(user);
+
     // Cache the validated session
     sessionCache.set(cacheKey, {
       user,
@@ -1295,6 +1376,7 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
       if (mockUser) {
         req.user = mockUser;
         req.accessToken = 'dev-mode-token';
+        await attachIdentityId(req.user);
       }
     }
 
@@ -1730,6 +1812,11 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
           'Impersonation session detected (optional auth)'
         );
       }
+
+      // Resolve identityId before caching — sessionCache is shared with
+      // requireAuth, so skipping it here would let an optionalAuth request
+      // poison subsequent requireAuth cache hits with identityId=undefined.
+      await attachIdentityId(user);
 
       // Cache the validated session
       sessionCache.set(cacheKey, {

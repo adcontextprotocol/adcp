@@ -101,8 +101,16 @@ export async function createMembershipInvite(
 }
 
 export async function getMembershipInviteByToken(
-  token: string
+  token: string,
+  orgId?: string
 ): Promise<MembershipInvite | null> {
+  if (orgId) {
+    const result = await query<MembershipInvite>(
+      'SELECT * FROM membership_invites WHERE token = $1 AND workos_organization_id = $2',
+      [token, orgId]
+    );
+    return result.rows[0] || null;
+  }
   const result = await query<MembershipInvite>(
     'SELECT * FROM membership_invites WHERE token = $1',
     [token]
@@ -171,21 +179,38 @@ export async function markMembershipInviteAccepted(
 
 export async function revokeMembershipInvite(
   token: string,
-  revokedByUserId: string
+  revokedByUserId: string,
+  orgId?: string
 ): Promise<MembershipInvite | null> {
-  const existing = await getMembershipInviteByToken(token);
+  const existing = await getMembershipInviteByToken(token, orgId);
   const previousStatus = existing ? inviteStatus(existing) : null;
 
-  const result = await query<MembershipInvite>(
-    `UPDATE membership_invites
-     SET revoked_at = NOW(),
-         revoked_by_user_id = $2
-     WHERE token = $1
-       AND accepted_at IS NULL
-       AND revoked_at IS NULL
-     RETURNING *`,
-    [token, revokedByUserId]
-  );
+  // When orgId is provided, the UPDATE binds it too — defense-in-depth so a
+  // future caller passing a token alone can't revoke a row scoped to a
+  // different org. Today every caller goes through a route that already
+  // enforces the binding upstream; this is the SQL layer fallback.
+  const result = orgId
+    ? await query<MembershipInvite>(
+        `UPDATE membership_invites
+         SET revoked_at = NOW(),
+             revoked_by_user_id = $2
+         WHERE token = $1
+           AND accepted_at IS NULL
+           AND revoked_at IS NULL
+           AND workos_organization_id = $3
+         RETURNING *`,
+        [token, revokedByUserId, orgId]
+      )
+    : await query<MembershipInvite>(
+        `UPDATE membership_invites
+         SET revoked_at = NOW(),
+             revoked_by_user_id = $2
+         WHERE token = $1
+           AND accepted_at IS NULL
+           AND revoked_at IS NULL
+         RETURNING *`,
+        [token, revokedByUserId]
+      );
   const revoked = result.rows[0] || null;
   if (!revoked) {
     return null;

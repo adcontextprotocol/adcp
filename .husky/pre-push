@@ -14,13 +14,17 @@ DOC_PATHS='^(docs/|dist/docs/|mintlify-docs/|mint\.json|README\.md|server/src/ad
 CHANGED=$(git diff --name-only "$RANGE" 2>/dev/null || echo "")
 
 if echo "$CHANGED" | grep -Eq "$DOC_PATHS"; then
+  echo "🔍 Docs changed — checking schema link convention..."
+  npm run lint:schema-links --silent || exit 1
+
   echo "🔍 Docs changed — running Mintlify broken-links check..."
 
   # Use the local devDependency, not a re-resolved npx download.
-  # Shuffle sibling dirs that contain non-MDX markdown Mintlify chokes on.
-  rm -rf dist/docs
+  # Move sibling dirs that contain non-MDX markdown Mintlify chokes on. mv +
+  # restore (not rm + checkout) so a failed restore can't be swept into the
+  # next `git add -A`. See #3633.
   MOVED=""
-  for d in dist/addie/rules .addie-repos .context; do
+  for d in dist/docs dist/addie/rules .addie-repos .context; do
     if [ -d "$d" ]; then
       tmp="/tmp/.prepush-$(echo "$d" | tr '/' '_')-$$"
       mv "$d" "$tmp"
@@ -31,7 +35,6 @@ if echo "$CHANGED" | grep -Eq "$DOC_PATHS"; then
   npx --no-install mintlify broken-links
   EXIT=$?
 
-  git checkout dist/docs 2>/dev/null || true
   for pair in $MOVED; do
     src=$(echo "$pair" | cut -d: -f2)
     dst=$(echo "$pair" | cut -d: -f1)

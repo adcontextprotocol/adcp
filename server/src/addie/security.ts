@@ -213,12 +213,19 @@ export async function resolveSlackMentions(
 }
 
 /**
- * Wrap bare URLs in Slack explicit link format to preserve fragments.
+ * Wrap bare URLs in Slack explicit link format to preserve fragments and stop
+ * Slack's auto-linker from sweeping wrapping punctuation into the link target.
  *
- * Slack's auto-linker can drop URL fragments (the #... portion),
- * which breaks Stripe checkout URLs that require the fragment for the
- * encrypted session data. Wrapping in <url> ensures Slack preserves
- * the full URL including fragments.
+ * Slack's auto-linker has two failure modes:
+ *  1. It drops URL fragments (#...), which breaks Stripe checkout URLs that
+ *     require the fragment for the encrypted session data.
+ *  2. It includes trailing punctuation in the link target, so a model that
+ *     emits `**URL**` produces a click to `URL**` and 404s.
+ *
+ * Wrapping in `<url>` Slack-explicit-link syntax fixes both — but only if our
+ * URL boundary regex stops at the same characters Slack would otherwise use
+ * as wrappers. The character class below excludes whitespace and the
+ * characters that wrap URLs in chat output: `>`, `)`, backtick, `*`, `"`, `'`.
  *
  * Only wraps URLs not already inside Slack link syntax (< >).
  */
@@ -227,7 +234,7 @@ export function wrapUrlsForSlack(text: string): string {
   // Use negative lookbehind for < and ensure URL isn't followed by >
   // Also skip URLs inside backtick code spans
   return text.replace(
-    /(?<![<`])(https?:\/\/[^\s>)`]+)/g,
+    /(?<![<`])(https?:\/\/[^\s>)`*"']+)/g,
     (match, url, offset) => {
       // Check if we're inside a backtick code span
       const before = text.substring(0, offset);

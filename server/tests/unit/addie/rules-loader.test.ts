@@ -1,17 +1,26 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { loadRules, invalidateRulesCache } from '../../../src/addie/rules/index.js';
+import { loadRules, loadResponseStyle, invalidateRulesCache } from '../../../src/addie/rules/index.js';
 
 describe('Addie rules loader', () => {
   beforeEach(() => {
     invalidateRulesCache();
   });
 
-  it('loads the five rule files joined with separators', () => {
+  it('loads the four base rule files joined with separators', () => {
     const prompt = loadRules();
-    // The five sections should produce at least four `---` separators.
+    // Four base sections + injected current-context + expert-panel; each
+    // separator is `\n---\n`. response-style.md is loaded separately and
+    // appended after the tool reference at assembly time.
     const separatorCount = (prompt.match(/\n---\n/g) ?? []).length;
-    expect(separatorCount).toBeGreaterThanOrEqual(4);
+    expect(separatorCount).toBeGreaterThanOrEqual(3);
     expect(prompt.length).toBeGreaterThan(500);
+    expect(prompt).not.toContain('# Response Style');
+  });
+
+  it('loadResponseStyle() returns the response-style.md content', () => {
+    const style = loadResponseStyle();
+    expect(style).toContain('# Response Style');
+    expect(style).toContain('## Concise and Helpful');
   });
 
   it('injects the Current AdCP Context section from .agents/current-context.md', () => {
@@ -62,15 +71,10 @@ describe('Addie rules loader', () => {
     expect(topLevelHeadingMatches).toHaveLength(0);
   });
 
-  it('places response-style after the context/panel so it binds output shape last', () => {
+  it('expert panel sits after the current-context injection', () => {
     const prompt = loadRules();
     const panelIdx = prompt.indexOf('# Expert Panel');
-    const styleIdx = prompt.search(/response[-\s]style/i);
-    // response-style.md title varies; at minimum verify the panel comes before
-    // the constraints/style section by checking the last `---` separator before
-    // the end of the prompt is not before panel.
     expect(panelIdx).toBeGreaterThan(0);
-    // Constraints+response-style should land after both injected sections.
     const contextIdx = prompt.indexOf('Current AdCP Context');
     expect(panelIdx).toBeGreaterThan(contextIdx);
   });

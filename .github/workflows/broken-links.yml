@@ -56,6 +56,9 @@ jobs:
       env:
         PUPPETEER_SKIP_DOWNLOAD: 'true'
 
+    - name: Schema link convention (autofix with `npm run fix:schema-links`)
+      run: npm run lint:schema-links
+
     - name: Mintlify broken links (fix any links printed below)
       run: npx --no-install mintlify broken-links
 

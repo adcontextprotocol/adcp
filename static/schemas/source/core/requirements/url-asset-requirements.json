@@ -8,7 +8,7 @@
     "role": {
       "type": "string",
       "enum": ["clickthrough", "landing_page", "impression_tracker", "click_tracker", "viewability_tracker", "third_party_tracker"],
-      "description": "Standard role for this URL asset. Use this to constrain which purposes are valid for this URL slot. Complements asset_role (which is a human-readable label) by providing a machine-readable enum."
+      "description": "Purpose this URL slot serves in the format — distinct from `url_type` on the manifest-side asset (which declares the receiver's invocation mechanism). A slot can be `click_tracker` (purpose) and accept a `tracker_pixel` (mechanism) URL, or `clickthrough` (purpose) and accept a `clickthrough` (mechanism) URL. Complements `asset_role` (human-readable label) by providing a machine-readable enum and serves as the receiver's fallback signal when a manifest URL asset omits `url_type`."
     },
     "protocols": {
       "type": "array",

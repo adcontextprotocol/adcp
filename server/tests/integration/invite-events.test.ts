@@ -235,8 +235,10 @@ describe('invite lifecycle events', () => {
     const expectedExpiresAt = new Date(expiredAtRow.rows[0].expires_at);
 
     const first = await runInviteExpirySweep();
-    expect(first.candidates).toBe(1);
-    expect(first.emitted).toBe(1);
+    // Other test files may be creating expired invites in parallel; assert only
+    // that *this* invite was picked up, not that we were the only candidate.
+    expect(first.candidates).toBeGreaterThanOrEqual(1);
+    expect(first.emitted).toBeGreaterThanOrEqual(1);
     expect(first.resolveFailures).toBe(0);
     expect(first.recordFailures).toBe(0);
 
@@ -247,11 +249,10 @@ describe('invite lifecycle events', () => {
     expect(expired!.data.detected_at).toBeTypeOf('string');
 
     const second = await runInviteExpirySweep();
-    // The just-handled invite must not appear as a candidate again.
+    // The just-handled invite must not appear as a candidate again — but other
+    // tests may have introduced fresh expired invites between sweeps.
     const sweepedAgain = await eventsForInvite(invite.id);
     expect(sweepedAgain.filter((e) => e.event_type === 'invite_expired')).toHaveLength(1);
-    expect(second.candidates).toBe(0);
-    expect(second.emitted).toBe(0);
     expect(second.resolveFailures).toBe(0);
     expect(second.recordFailures).toBe(0);
   });
@@ -297,5 +298,52 @@ describe('invite lifecycle events', () => {
     expect(revokedEvents.find((e) => e.event_type === 'invite_expired')).toBeUndefined();
     const acceptedEvents = await eventsForInvite(acceptedInvite.id);
     expect(acceptedEvents.find((e) => e.event_type === 'invite_expired')).toBeUndefined();
+  });
+
+  it('reinvite flow: revoke original + create fresh share the recipient and emit distinct event chains', async () => {
+    const orgId = `${TEST_ORG_PREFIX}_reinvite`;
+    await createTestOrg(orgId);
+
+    const original = await createMembershipInvite({
+      workos_organization_id: orgId,
+      lookup_key: 'aao_membership_professional',
+      contact_email: `reinvite@${TEST_EMAIL_DOMAIN}`,
+      contact_name: 'Reinvite Recipient',
+      invited_by_user_id: TEST_ADMIN_ID,
+    });
+
+    // What the /reinvite endpoint does: revoke the original + create a fresh
+    // invite with the same lookup_key/email/name.
+    await revokeMembershipInvite(original.token, TEST_ADMIN_ID);
+    const fresh = await createMembershipInvite({
+      workos_organization_id: orgId,
+      lookup_key: original.lookup_key,
+      contact_email: original.contact_email,
+      contact_name: original.contact_name ?? undefined,
+      invited_by_user_id: TEST_ADMIN_ID,
+    });
+
+    expect(fresh.id).not.toBe(original.id);
+    expect(fresh.token).not.toBe(original.token);
+    expect(fresh.contact_email).toBe(original.contact_email);
+
+    const originalEvents = await eventsForInvite(original.id);
+    expect(originalEvents.map((e) => e.event_type)).toEqual([
+      'invite_sent',
+      'invite_revoked',
+    ]);
+    expect(originalEvents[1].data.previous_status).toBe('pending');
+
+    const freshEvents = await eventsForInvite(fresh.id);
+    expect(freshEvents.map((e) => e.event_type)).toEqual(['invite_sent']);
+
+    // Both event chains attach to the same person_relationships row keyed by
+    // contact_email — important for "show this person's invite history" use.
+    const personIds = await pool.query<{ person_id: string }>(
+      `SELECT DISTINCT person_id FROM person_events
+       WHERE data->>'invite_id' IN ($1, $2)`,
+      [original.id, fresh.id]
+    );
+    expect(personIds.rows).toHaveLength(1);
   });
 });

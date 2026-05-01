@@ -61,6 +61,25 @@ import { MemberDatabase } from '../../db/member-db.js';
 import { updateBrandIdentity, BrandIdentityError } from '../../services/brand-identity.js';
 import { canonicalizeBrandDomain } from '../../services/identifier-normalization.js';
 import { ComplianceDatabase } from '../../db/compliance-db.js';
+import { AgentSnapshotDatabase } from '../../db/agent-snapshot-db.js';
+import { AgentValidator } from '../../validator.js';
+import {
+  joinWorkingGroup as joinWorkingGroupService,
+  expressCommitteeInterest as expressCommitteeInterestService,
+  withdrawCommitteeInterest as withdrawCommitteeInterestService,
+  listMyWorkingGroups as listMyWorkingGroupsService,
+  listMyCommitteeInterests as listMyCommitteeInterestsService,
+  WorkingGroupMembershipError,
+} from '../../services/working-group-membership-service.js';
+import { listMyContent as listMyContentService } from '../../services/my-content-service.js';
+import {
+  createWorkingGroupPost as createWorkingGroupPostService,
+  addCommitteeDocument as addCommitteeDocumentService,
+  updateCommitteeDocument as updateCommitteeDocumentService,
+  deleteCommitteeDocument as deleteCommitteeDocumentService,
+  WorkingGroupContentError,
+} from '../../services/working-group-content-service.js';
+import type { CommitteeDocumentType } from '../../types.js';
 import { getPool, query } from '../../db/client.js';
 import { MemberSearchAnalyticsDatabase } from '../../db/member-search-analytics-db.js';
 import { OrganizationDatabase } from '../../db/organization-db.js';
@@ -83,6 +102,8 @@ import { recordAgentTestRun } from '../../db/agent-test-db.js';
 const memberDb = new MemberDatabase();
 const agentContextDb = new AgentContextDatabase();
 const complianceDb = new ComplianceDatabase();
+const agentSnapshotDb = new AgentSnapshotDatabase();
+const adagentsValidator = new AgentValidator();
 const memberSearchAnalyticsDb = new MemberSearchAnalyticsDatabase();
 const orgDb = new OrganizationDatabase();
 const wgDb = new WorkingGroupDatabase();
@@ -471,27 +492,6 @@ function compareRates(agentRate?: number, ioRate?: number): { label: string; con
     label: 'aligned',
     context: `Agent rate $${agentRate} is within 20% of IO rate $${ioRate}. Rates are aligned.`,
   };
-}
-
-/**
- * Extract AdCP version from an agent card's extensions array.
- * Returns the version string if found and valid (e.g., "2.6.0"), undefined otherwise.
- */
-export function extractAdcpVersion(extensions: unknown): string | undefined {
-  if (!Array.isArray(extensions)) return undefined;
-  const adcpExt = extensions.find((ext: { uri?: string }) => {
-    if (!ext?.uri) return false;
-    try {
-      return new URL(ext.uri).hostname === 'adcontextprotocol.org';
-    } catch {
-      return false;
-    }
-  });
-  const version = adcpExt?.params?.adcp_version;
-  if (typeof version === 'string' && /^\d+\.\d+/.test(version)) {
-    return version;
-  }
-  return undefined;
 }
 
 /**
@@ -966,14 +966,14 @@ export const MEMBER_TOOLS: AddieTool[] = [
   // AGENT TESTING & COMPLIANCE
   // ============================================
   {
-    name: 'probe_adcp_agent',
+    name: 'get_agent_status',
     description:
-      'Check if an AdCP agent is online and list its advertised capabilities. This only verifies connectivity (the agent responds to HTTP requests) - it does NOT verify the agent implements the protocol correctly. Use evaluate_agent_quality to verify actual protocol compliance.',
-    usage_hints: 'use for "is this agent online?", "check connectivity", "what tools does this agent advertise?". For compliance testing, use evaluate_agent_quality instead.',
+      'Return the AAO registry\'s current status for an agent: health (online / last checked), declared capabilities, and the most recent compliance verdict per track from the comply storyboard suite. Reads cached state — does NOT perform a live probe. For agents not in the registry, returns guidance to register the agent (so the heartbeat picks it up) or to run evaluate_agent_quality for an on-demand check.',
+    usage_hints: 'use for "is this agent online?", "is this agent up?", "what does this agent support?", "what\'s the compliance status?", "is this agent verified?". Reads the same data the public dashboard renders, so Addie and the dashboard never disagree. For an on-demand live test, use evaluate_agent_quality. For a fresh OAuth handshake / signing diagnosis, use diagnose_agent_auth.',
     input_schema: {
       type: 'object',
       properties: {
-        agent_url: { type: 'string', description: 'The agent URL to probe' },
+        agent_url: { type: 'string', description: 'The agent URL to look up in the registry.' },
       },
       required: ['agent_url'],
     },
@@ -1421,14 +1421,41 @@ function getBaseUrl(): string {
 }
 
 /**
- * Make an authenticated API call on behalf of a user
+ * Make an authenticated GET API call on behalf of a user.
+ *
+ * GET-only by design (issue #3736). State-changing loopback POST/PUT/
+ * DELETE/PATCH was responsible for an entire class of silent CSRF
+ * rejections that Addie misinterpreted as upstream-agent or domain
+ * errors (probe → fake outage; join_working_group → "private group" for
+ * public groups; etc.). Every state-change tool now consumes a service
+ * layer directly (see `services/working-group-membership-service.ts`,
+ * `services/working-group-content-service.ts`, etc.). This function is
+ * kept GET-only so the bug class cannot regress: a future tool author
+ * who reaches for the old POST/PUT/DELETE/PATCH overloads gets a
+ * runtime + type error and is forced toward the service-layer pattern
+ * instead.
  */
 async function callApi(
-  method: 'GET' | 'POST' | 'PUT' | 'DELETE',
+  method: 'GET',
   path: string,
   memberContext: MemberContext | null,
-  body?: Record<string, unknown>
 ): Promise<{ ok: boolean; status: number; data?: unknown; error?: string }> {
+  // Defense-in-depth runtime guard — TypeScript constrains `method` to
+  // 'GET', but runtime callers from JS (and any code that bypassed the
+  // type check via a cast) still need to fail loudly. Deny-listing the
+  // four state-changers (rather than allow-listing GET) keeps the
+  // runtime check aligned with the lint rule and the changeset
+  // rationale: if someone later widens the type to `'GET' | 'HEAD'`,
+  // the new legal method passes through without a code edit.
+  const forbidden = ['POST', 'PUT', 'DELETE', 'PATCH'] as const;
+  if ((forbidden as readonly string[]).includes(method as string)) {
+    throw new Error(
+      `callApi method=${method} is forbidden. Addie tools must call a service ` +
+      `function directly for state-change actions — see ` +
+      `services/working-group-membership-service.ts or ` +
+      `services/working-group-content-service.ts for the pattern (issue #3736).`,
+    );
+  }
   const baseUrl = getBaseUrl();
   const url = `${baseUrl}${path}`;
 
@@ -1448,7 +1475,6 @@ async function callApi(
     const response = await fetch(url, {
       method,
       headers,
-      body: body ? JSON.stringify(body) : undefined,
       signal: AbortSignal.timeout(5000), // Keep short for responsive UX
     });
 
@@ -1636,32 +1662,30 @@ export function createMemberToolHandlers(
     }
 
     const slug = input.slug as string;
-
-    // Check group visibility before attempting to join
-    const groupResult = await callApi('GET', `/api/working-groups/${slug}`, memberContext);
-    if (groupResult.ok) {
-      const groupData = groupResult.data as { working_group: { is_private?: boolean; name?: string } };
-      if (groupData.working_group?.is_private) {
-        return `"${groupData.working_group.name || slug}" is a private working group that requires an invitation. Use request_working_group_invitation to request access.`;
+    const wu = memberContext.workos_user;
+    try {
+      const result = await joinWorkingGroupService({
+        user: { id: wu.workos_user_id, email: wu.email, firstName: wu.first_name, lastName: wu.last_name },
+        slug,
+      });
+      return `Successfully joined the "${result.groupName}" working group! You can now participate in discussions and see group posts.`;
+    } catch (error) {
+      if (error instanceof WorkingGroupMembershipError) {
+        if (error.is('group_not_found')) {
+          return `Working group "${slug}" not found. Use list_working_groups to see available groups.`;
+        }
+        if (error.is('group_private')) {
+          return `"${error.meta.groupName}" is a private working group that requires an invitation. Use request_working_group_invitation to request access.`;
+        }
+        if (error.is('community_only_seat_blocked')) {
+          return `Joining "${error.meta.groupName}" requires a contributor seat. Ask your org admin to upgrade your access.`;
+        }
+        if (error.is('already_member')) {
+          return `You're already a member of the "${error.meta.groupName}" working group!`;
+        }
       }
+      throw new ToolError(`Failed to join working group: ${error instanceof Error ? error.message : String(error)}`);
     }
-
-    const result = await callApi('POST', `/api/working-groups/${slug}/join`, memberContext);
-
-    if (!result.ok) {
-      if (result.status === 403) {
-        return `Cannot join "${slug}" — this is a private working group. Use request_working_group_invitation to request access.`;
-      }
-      if (result.status === 404) {
-        return `Working group "${slug}" not found. Use list_working_groups to see available groups.`;
-      }
-      if (result.status === 409) {
-        return `You're already a member of the "${slug}" working group!`;
-      }
-      throw new ToolError(`Failed to join working group: ${result.error}`);
-    }
-
-    return `Successfully joined the "${slug}" working group! You can now participate in discussions and see group posts.`;
   });
 
   handlers.set('request_working_group_invitation', async (input) => {
@@ -1711,19 +1735,7 @@ export function createMemberToolHandlers(
       return 'You need to be logged in to see your working groups. Please log in at https://agenticadvertising.org/dashboard first.';
     }
 
-    const result = await callApi('GET', '/api/me/working-groups', memberContext);
-
-    if (!result.ok) {
-      throw new ToolError(`Failed to fetch your working groups: ${result.error}`);
-    }
-
-    const data = result.data as { working_groups: Array<{
-      name: string;
-      slug: string;
-      committee_type: string;
-      is_private: boolean;
-    }> };
-    const groups = data.working_groups;
+    const groups = await listMyWorkingGroupsService({ userId: memberContext.workos_user.workos_user_id });
 
     if (!groups || groups.length === 0) {
       return "You're not a member of any working groups yet. Use list_working_groups to find groups to join!";
@@ -1747,24 +1759,20 @@ export function createMemberToolHandlers(
     }
 
     const slug = input.slug as string;
-    const validInterestLevels = ['participant', 'leader'];
-    const interestLevel = validInterestLevels.includes(input.interest_level as string)
-      ? (input.interest_level as string)
-      : 'participant';
-
-    const result = await callApi('POST', `/api/working-groups/${slug}/interest`, memberContext, {
-      interest_level: interestLevel,
-    });
-
-    if (!result.ok) {
-      if (result.status === 404) {
+    const wu = memberContext.workos_user;
+    try {
+      const result = await expressCommitteeInterestService({
+        user: { id: wu.workos_user_id, email: wu.email, firstName: wu.first_name, lastName: wu.last_name },
+        slug,
+        interestLevel: input.interest_level as string | undefined,
+      });
+      return `Thanks for your interest in ${result.groupName}! We'll let you know when it launches.`;
+    } catch (error) {
+      if (error instanceof WorkingGroupMembershipError && error.is('group_not_found')) {
         return `Could not find a council or committee with slug "${slug}". Use list_working_groups with type "council" to see available councils.`;
       }
-      throw new ToolError(`Failed to express interest: ${result.error}`);
+      throw new ToolError(`Failed to express interest: ${error instanceof Error ? error.message : String(error)}`);
     }
-
-    const data = result.data as { message?: string };
-    return data.message || `You've expressed interest! We'll notify you when this council launches.`;
   });
 
   handlers.set('withdraw_council_interest', async (input) => {
@@ -1773,22 +1781,24 @@ export function createMemberToolHandlers(
     }
 
     const slug = input.slug as string;
-
-    const result = await callApi('DELETE', `/api/working-groups/${slug}/interest`, memberContext);
-
-    if (!result.ok) {
-      if (result.status === 404) {
-        const data = result.data as { error?: string };
-        if (data?.error === 'No interest found') {
+    const wu = memberContext.workos_user;
+    try {
+      const result = await withdrawCommitteeInterestService({
+        user: { id: wu.workos_user_id, email: wu.email, firstName: wu.first_name, lastName: wu.last_name },
+        slug,
+      });
+      return `You have withdrawn your interest in ${result.groupName}. You won't be notified when this council launches.`;
+    } catch (error) {
+      if (error instanceof WorkingGroupMembershipError) {
+        if (error.is('no_interest_recorded')) {
           return `You haven't expressed interest in "${slug}". No action needed.`;
         }
-        return `Could not find a council or committee with slug "${slug}".`;
+        if (error.is('group_not_found')) {
+          return `Could not find a council or committee with slug "${slug}".`;
+        }
       }
-      throw new ToolError(`Failed to withdraw interest: ${result.error}`);
+      throw new ToolError(`Failed to withdraw interest: ${error instanceof Error ? error.message : String(error)}`);
     }
-
-    const data = result.data as { message?: string };
-    return data.message || `You've withdrawn your interest. You won't be notified when this council launches.`;
   });
 
   handlers.set('get_my_council_interests', async () => {
@@ -1796,18 +1806,9 @@ export function createMemberToolHandlers(
       return 'You need to be logged in to see your council interests. Please log in at https://agenticadvertising.org/dashboard first.';
     }
 
-    const result = await callApi('GET', '/api/me/working-groups/interests', memberContext);
-
-    if (!result.ok) {
-      throw new ToolError(`Failed to fetch your council interests: ${result.error}`);
-    }
-
-    const interests = result.data as Array<{
-      committee_name: string;
-      slug: string;
-      interest_level: string;
-      created_at: string;
-    }>;
+    const interests = await listMyCommitteeInterestsService({
+      userId: memberContext.workos_user.workos_user_id,
+    });
 
     if (interests.length === 0) {
       return "You haven't expressed interest in any councils yet. Use list_working_groups with type \"council\" to see available councils!";
@@ -2416,7 +2417,7 @@ export function createMemberToolHandlers(
       return 'Title is required to create a post.';
     }
 
-    // Generate post slug from title with timestamp for uniqueness
+    // Generate post slug from title with timestamp for uniqueness.
     const timestamp = Date.now().toString(36);
     const baseSlug = title
       .toLowerCase()
@@ -2425,32 +2426,46 @@ export function createMemberToolHandlers(
       .substring(0, 50);
     const postSlug = baseSlug ? `${baseSlug}-${timestamp}` : timestamp;
 
-    const body: Record<string, unknown> = {
-      title,
-      content,
-      content_type: postType,
-      post_slug: postSlug,
-    };
+    // Map Addie's `post_type` (discussion / link / etc.) onto the
+    // service's stricter `contentType` ('article' | 'link'). Discussion
+    // posts become articles in the perspectives table.
+    const contentType = postType === 'link' ? 'link' : 'article';
 
-    if (postType === 'link' && linkUrl) {
-      body.external_url = linkUrl;
-    }
-
-    const result = await callApi(
-      'POST',
-      `/api/working-groups/${slug}/posts`,
-      memberContext,
-      body
-    );
-
-    if (!result.ok) {
-      if (result.status === 403) {
-        return `You're not a member of the "${slug}" working group. Join it first using join_working_group.`;
+    const wu = memberContext.workos_user;
+    try {
+      await createWorkingGroupPostService({
+        user: { id: wu.workos_user_id, email: wu.email, firstName: wu.first_name, lastName: wu.last_name },
+        slug,
+        title,
+        postSlug,
+        content,
+        contentType,
+        externalUrl: postType === 'link' ? linkUrl : undefined,
+      });
+      return `✅ Post created successfully in the "${slug}" working group!\n\n**Title:** ${title}\n\nYour post is now visible to other working group members.`;
+    } catch (error) {
+      if (error instanceof WorkingGroupContentError) {
+        if (error.is('group_not_found')) {
+          return `Working group "${slug}" not found. Use list_working_groups to see available groups.`;
+        }
+        if (error.is('not_member')) {
+          return `You're not a member of the "${slug}" working group. Join it first using join_working_group.`;
+        }
+        if (error.is('leader_required_for_public_post')) {
+          return `Only committee leaders can create public (non-members-only) posts in "${slug}".`;
+        }
+        if (error.is('missing_required_fields')) {
+          return `Title and slug are required to create a post.`;
+        }
+        if (error.is('invalid_post_slug')) {
+          return `Generated post slug was invalid (must contain only lowercase letters, numbers, and hyphens). Try again with a different title.`;
+        }
+        if (error.is('duplicate_post_slug')) {
+          return `A post with this slug already exists in "${slug}". Try again with a different title.`;
+        }
       }
-      throw new ToolError(`Failed to create post: ${result.error}`);
+      throw new ToolError(`Failed to create post: ${error instanceof Error ? error.message : String(error)}`);
     }
-
-    return `✅ Post created successfully in the "${slug}" working group!\n\n**Title:** ${title}\n\nYour post is now visible to other working group members.`;
   });
 
   // ============================================
@@ -2772,33 +2787,17 @@ export function createMemberToolHandlers(
     const collection = input.collection as string | undefined;
     const relationship = input.relationship as string | undefined;
 
-    // Build query string
-    const params = new URLSearchParams();
-    if (status && status !== 'all') params.set('status', status);
-    if (collection) params.set('collection', collection);
-    if (relationship) params.set('relationship', relationship);
-
-    const queryString = params.toString() ? `?${params.toString()}` : '';
-    const result = await callApi('GET', `/api/me/content${queryString}`, memberContext);
-
-    if (!result.ok) {
-      throw new ToolError(`Failed to fetch your content: ${result.error}`);
+    let data;
+    try {
+      data = await listMyContentService({
+        userId: memberContext.workos_user.workos_user_id,
+        status,
+        collection,
+        relationship,
+      });
+    } catch (err) {
+      throw new ToolError(`Failed to fetch your content: ${err instanceof Error ? err.message : String(err)}`);
     }
-
-    const data = result.data as {
-      items: Array<{
-        id: string;
-        slug: string;
-        title: string;
-        status: string;
-        content_type: string;
-        collection: { type: string; committee_name?: string; committee_slug?: string };
-        relationships: string[];
-        authors: Array<{ display_name: string }>;
-        published_at?: string;
-        created_at: string;
-      }>;
-    };
 
     if (data.items.length === 0) {
       let response = "You don't have any content yet.\n\n";
@@ -3018,48 +3017,57 @@ export function createMemberToolHandlers(
     const description = input.description as string | undefined;
     const isFeatured = input.is_featured as boolean | undefined;
 
-    // Validate URL is a Google domain
+    // Map URL hostname → CommitteeDocumentType. Service does its own
+    // SSRF allowlist check (broader than the Addie-side Google check
+    // below) — both run so the friendlier "Google only" error fires
+    // first for chat callers.
+    let documentType: CommitteeDocumentType;
     try {
       const url = new URL(documentUrl);
       const allowedDomains = ['docs.google.com', 'sheets.google.com', 'drive.google.com'];
       if (url.protocol !== 'https:' || !allowedDomains.includes(url.hostname)) {
         return `Invalid document URL. Only Google Docs, Sheets, and Drive URLs are supported (https://docs.google.com, sheets.google.com, or drive.google.com).`;
       }
+      // CodeQL: substring check is for document type categorization, not URL validation
+      documentType = url.hostname === 'sheets.google.com' ? 'google_sheet' : 'google_doc'; // lgtm[js/incomplete-url-substring-sanitization]
     } catch {
       return 'Invalid URL format. Please provide a valid Google Docs URL.';
     }
 
-    const result = await callApi(
-      'POST',
-      `/api/working-groups/${slug}/documents`,
-      memberContext,
-      {
+    const wu = memberContext.workos_user;
+    try {
+      await addCommitteeDocumentService({
+        user: { id: wu.workos_user_id, email: wu.email, firstName: wu.first_name, lastName: wu.last_name },
+        slug,
         title,
-        document_url: documentUrl,
+        documentUrl,
         description,
-        is_featured: isFeatured || false,
-        // CodeQL: substring check is for document type categorization, not URL validation
-        document_type: documentUrl.includes('sheets.google.com') ? 'google_sheet' : 'google_doc', // lgtm[js/incomplete-url-substring-sanitization]
+        documentType,
+        isFeatured: isFeatured ?? false,
+      });
+      let response = `✅ Document added to "${slug}"!\n\n`;
+      response += `**Title:** ${title}\n`;
+      response += `**URL:** ${documentUrl}\n\n`;
+      response += `The document will be automatically indexed and summarized within the hour. `;
+      response += `You can view it at https://agenticadvertising.org/working-groups/${slug}`;
+      return response;
+    } catch (error) {
+      if (error instanceof WorkingGroupContentError) {
+        if (error.is('group_not_found')) {
+          return `Committee "${slug}" not found. Use list_working_groups to see available committees.`;
+        }
+        if (error.is('not_member')) {
+          return `You're not a member of the "${slug}" committee. Only members and leaders can add documents.`;
+        }
+        if (error.is('missing_required_fields')) {
+          return `Title and document URL are required to add a document.`;
+        }
+        if (error.is('invalid_document_url')) {
+          return `That document URL isn't on the allowlist. Only Google Docs/Sheets/Drive plus PDFs/PPTX/XLSX/DOCX from trusted hosts are accepted.`;
+        }
       }
-    );
-
-    if (!result.ok) {
-      if (result.status === 403) {
-        return `You're not a member of the "${slug}" committee. Only members and leaders can add documents.`;
-      }
-      if (result.status === 404) {
-        return `Committee "${slug}" not found. Use list_working_groups to see available committees.`;
-      }
-      throw new ToolError(`Failed to add document: ${result.error}`);
+      throw new ToolError(`Failed to add document: ${error instanceof Error ? error.message : String(error)}`);
     }
-
-    let response = `✅ Document added to "${slug}"!\n\n`;
-    response += `**Title:** ${title}\n`;
-    response += `**URL:** ${documentUrl}\n\n`;
-    response += `The document will be automatically indexed and summarized within the hour. `;
-    response += `You can view it at https://agenticadvertising.org/working-groups/${slug}`;
-
-    return response;
   });
 
   handlers.set('list_committee_documents', async (input) => {
@@ -3121,64 +3129,70 @@ export function createMemberToolHandlers(
     const documentUrl = input.document_url as string | undefined;
     const isFeatured = input.is_featured as boolean | undefined;
 
-    // Validate UUID format before API call
-    if (!isUuid(documentId)) {
-      return 'Invalid document ID format. Use list_committee_documents to find valid document IDs.';
-    }
-
-    // Validate URL if provided
-    if (documentUrl) {
+    // Addie-side Google-only check produces a friendlier error than the
+    // service's broader "isn't on the allowlist" message. Service still
+    // re-validates as defense-in-depth.
+    let documentType: CommitteeDocumentType | undefined;
+    if (documentUrl !== undefined) {
       try {
         const url = new URL(documentUrl);
         const allowedDomains = ['docs.google.com', 'sheets.google.com', 'drive.google.com'];
         if (url.protocol !== 'https:' || !allowedDomains.includes(url.hostname)) {
           return `Invalid document URL. Only Google Docs, Sheets, and Drive URLs are supported (https://docs.google.com, sheets.google.com, or drive.google.com).`;
         }
+        // CodeQL: substring check is for document type categorization, not URL validation
+        documentType = url.hostname === 'sheets.google.com' ? 'google_sheet' : 'google_doc'; // lgtm[js/incomplete-url-substring-sanitization]
       } catch {
         return 'Invalid URL format. Please provide a valid Google Docs URL.';
       }
     }
 
-    // Build update payload with only provided fields
-    const updateData: Record<string, unknown> = {};
-    if (title !== undefined) updateData.title = title;
-    if (description !== undefined) updateData.description = description;
-    if (documentUrl !== undefined) {
-      updateData.document_url = documentUrl;
-      // CodeQL: substring check is for document type categorization, not URL validation
-      updateData.document_type = documentUrl.includes('sheets.google.com') ? 'google_sheet' : 'google_doc'; // lgtm[js/incomplete-url-substring-sanitization]
-    }
-    if (isFeatured !== undefined) updateData.is_featured = isFeatured;
-
-    if (Object.keys(updateData).length === 0) {
+    if (
+      title === undefined &&
+      description === undefined &&
+      documentUrl === undefined &&
+      isFeatured === undefined
+    ) {
       return 'No fields to update. Please provide at least one field to change (title, description, document_url, or is_featured).';
     }
 
-    const result = await callApi(
-      'PUT',
-      `/api/working-groups/${slug}/documents/${documentId}`,
-      memberContext,
-      updateData
-    );
-
-    if (!result.ok) {
-      if (result.status === 403) {
-        return `You're not a member of the "${slug}" committee. Only members and leaders can update documents.`;
+    const wu = memberContext.workos_user;
+    try {
+      const result = await updateCommitteeDocumentService({
+        user: { id: wu.workos_user_id, email: wu.email, firstName: wu.first_name, lastName: wu.last_name },
+        slug,
+        documentId,
+        title,
+        description,
+        documentUrl,
+        documentType,
+        isFeatured,
+      });
+      const docTitle = (result.document as { title?: string }).title || title || 'Document';
+      let response = `✅ Document updated!\n\n`;
+      response += `**${docTitle}** has been updated in "${slug}".\n\n`;
+      response += `View it at https://agenticadvertising.org/working-groups/${slug}`;
+      return response;
+    } catch (error) {
+      if (error instanceof WorkingGroupContentError) {
+        if (error.is('invalid_document_id')) {
+          return 'Invalid document ID format. Use list_committee_documents to find valid document IDs.';
+        }
+        if (error.is('group_not_found')) {
+          return `Committee "${slug}" not found. Use list_working_groups to see available committees.`;
+        }
+        if (error.is('document_not_found')) {
+          return `Document not found in "${slug}". Use list_committee_documents to find valid document IDs.`;
+        }
+        if (error.is('not_member')) {
+          return `You're not a member of the "${slug}" committee. Only members and leaders can update documents.`;
+        }
+        if (error.is('invalid_document_url')) {
+          return `That document URL isn't on the allowlist. Only Google Docs/Sheets/Drive plus PDFs/PPTX/XLSX/DOCX from trusted hosts are accepted.`;
+        }
       }
-      if (result.status === 404) {
-        return `Document not found. Either the committee "${slug}" doesn't exist or the document ID "${documentId}" is invalid.`;
-      }
-      throw new ToolError(`Failed to update document: ${result.error}`);
+      throw new ToolError(`Failed to update document: ${error instanceof Error ? error.message : String(error)}`);
     }
-
-    const data = result.data as { document?: { title: string } } | undefined;
-    const docTitle = data?.document?.title || title || 'Document';
-
-    let response = `✅ Document updated!\n\n`;
-    response += `**${docTitle}** has been updated in "${slug}".\n\n`;
-    response += `View it at https://agenticadvertising.org/working-groups/${slug}`;
-
-    return response;
   });
 
   handlers.set('delete_committee_document', async (input) => {
@@ -3189,28 +3203,31 @@ export function createMemberToolHandlers(
     const slug = input.committee_slug as string;
     const documentId = input.document_id as string;
 
-    // Validate UUID format before API call
-    if (!isUuid(documentId)) {
-      return 'Invalid document ID format. Use list_committee_documents to find valid document IDs.';
-    }
-
-    const result = await callApi(
-      'DELETE',
-      `/api/working-groups/${slug}/documents/${documentId}`,
-      memberContext
-    );
-
-    if (!result.ok) {
-      if (result.status === 403) {
-        return `You're not a leader of the "${slug}" committee. Only committee leaders can delete documents.`;
+    const wu = memberContext.workos_user;
+    try {
+      await deleteCommitteeDocumentService({
+        user: { id: wu.workos_user_id, email: wu.email, firstName: wu.first_name, lastName: wu.last_name },
+        slug,
+        documentId,
+      });
+      return `✅ Document removed from "${slug}".\n\nThe document will no longer be tracked or displayed on the committee page.`;
+    } catch (error) {
+      if (error instanceof WorkingGroupContentError) {
+        if (error.is('invalid_document_id')) {
+          return 'Invalid document ID format. Use list_committee_documents to find valid document IDs.';
+        }
+        if (error.is('group_not_found')) {
+          return `Committee "${slug}" not found. Use list_working_groups to see available committees.`;
+        }
+        if (error.is('document_not_found')) {
+          return `Document not found in "${slug}". Use list_committee_documents to find valid document IDs.`;
+        }
+        if (error.is('not_leader')) {
+          return `You're not a leader of the "${slug}" committee. Only committee leaders can delete documents.`;
+        }
       }
-      if (result.status === 404) {
-        return `Document not found. Either the committee "${slug}" doesn't exist or the document ID "${documentId}" is invalid.`;
-      }
-      throw new ToolError(`Failed to delete document: ${result.error}`);
+      throw new ToolError(`Failed to delete document: ${error instanceof Error ? error.message : String(error)}`);
     }
-
-    return `✅ Document removed from "${slug}".\n\nThe document will no longer be tracked or displayed on the committee page.`;
   });
 
   // ============================================
@@ -3255,171 +3272,159 @@ export function createMemberToolHandlers(
   // ============================================
   // AGENT TESTING & COMPLIANCE
   // ============================================
-  handlers.set('probe_adcp_agent', async (input) => {
+  handlers.set('get_agent_status', async (input) => {
     const agentUrl = input.agent_url as string;
+    const urlError = validateAgentUrl(agentUrl);
+    if (urlError) return `**Error:** ${urlError}`;
 
-    // Step 1: Health check (always do this first)
-    const healthResult = await callApi('POST', '/api/adagents/validate-cards', memberContext, {
-      agent_urls: [agentUrl],
-    });
+    // Try both trailing-slash variants — the registry stores agents in
+    // whatever shape the source declared (most without a trailing slash,
+    // some with). Without this, asking about `https://x/mcp` when the
+    // crawler stored `https://x/mcp/` (or vice versa) silently returns
+    // "not in registry" for an agent that IS registered. No-slash is
+    // tried first because that's the more common storage form across
+    // the registry.
+    const stripped = agentUrl.replace(/\/+$/, '');
+    const withSlash = stripped + '/';
+    const candidates = stripped === agentUrl ? [stripped, withSlash] : [stripped, agentUrl];
 
-    if (!healthResult.ok) {
-      return `## Agent Probe Failed\n\nUnable to probe agent at ${agentUrl}.\n\n**Error:** ${healthResult.error || 'Unknown error occurred while checking agent health.'}`;
-    }
-
-    const healthData = healthResult.data as {
-      success: boolean;
-      data: {
-        agent_cards: Array<{
-          agent_url: string;
-          valid: boolean;
-          errors?: string[];
-          status_code?: number;
-          response_time_ms?: number;
-          card_data?: { name?: string; description?: string; protocol?: string; requires_auth?: boolean; extensions?: Array<{ uri?: string; params?: { adcp_version?: string } }> };
-          card_endpoint?: string;
-          oauth_required?: boolean;
-        }>;
-      };
+    const pickFirst = async <T>(fn: (u: string) => Promise<T | null>): Promise<{ url: string; row: T } | null> => {
+      for (const u of candidates) {
+        const row = await fn(u);
+        if (row) return { url: u, row };
+      }
+      return null;
     };
 
-    const card = healthData?.data?.agent_cards?.[0];
-    const isHealthy = card?.valid === true;
-    const healthCheckRequiresOAuth = card?.oauth_required === true;
+    const [complianceHit, metadataHit, healthMap, capsMap] = await Promise.all([
+      pickFirst((u) => complianceDb.getComplianceStatus(u)),
+      pickFirst((u) => complianceDb.getRegistryMetadata(u)),
+      agentSnapshotDb.bulkGetHealth(candidates),
+      agentSnapshotDb.bulkGetCapabilities(candidates),
+    ]);
 
-    // Step 2: Try capability discovery (non-blocking - show health status regardless of outcome)
-    const encodedUrl = encodeURIComponent(agentUrl);
-    const capResult = await callApi('GET', `/api/registry/agents?url=${encodedUrl}&capabilities=true`, memberContext);
-    const capData = capResult.data as {
-      agents: Array<{
-        name: string;
-        url: string;
-        type: string;
-        protocol: string;
-        description?: string;
-        capabilities?: {
-          tools_count: number;
-          tools: Array<{ name: string; description?: string }>;
-          standard_operations?: string[];
-          discovery_error?: string;
-          oauth_required?: boolean;
-        };
-      }>;
-    };
-    const normalizedInput = agentUrl.replace(/\/$/, "");
-    const agent = capData?.agents?.find((a) => a.url.replace(/\/$/, "") === normalizedInput);
+    // Resolve the canonical URL the registry actually has on file — fall
+    // back to the input when there's no match anywhere so the response
+    // header still echoes what the user typed.
+    const registryUrl =
+      complianceHit?.url ??
+      metadataHit?.url ??
+      candidates.find((u) => healthMap.has(u)) ??
+      candidates.find((u) => capsMap.has(u)) ??
+      agentUrl;
 
-    // Step 2.5: Check if OAuth is required (from either health check or capabilities discovery)
-    const requiresOAuth = healthCheckRequiresOAuth || agent?.capabilities?.oauth_required;
-    if (requiresOAuth) {
-      const organizationId = memberContext?.organization?.workos_organization_id;
-      if (organizationId) {
-        try {
-          // Get or create agent context for OAuth flow
-          const baseUrl = new URL(agentUrl);
-          let agentContext = await agentContextDb.getByOrgAndUrl(organizationId, agentUrl);
-          if (!agentContext) {
-            agentContext = await agentContextDb.create({
-              organization_id: organizationId,
-              agent_url: agentUrl,
-              agent_name: agent?.name || baseUrl.hostname,
-              protocol: (agent?.protocol as 'mcp' | 'a2a') || 'mcp',
-            });
-          }
+    const complianceStatus = complianceHit?.row ?? null;
+    const registryMetadata = metadataHit?.row ?? null;
+    const health = healthMap.get(registryUrl) ?? null;
+    const caps = capsMap.get(registryUrl) ?? null;
 
-          const authParams = new URLSearchParams({
-            agent_context_id: agentContext.id,
-          });
-          const authUrl = `${getBaseUrl()}/api/oauth/agent/start?${authParams.toString()}`;
+    const [badges, declaredSpecialisms] = await Promise.all([
+      complianceDb.getBadgesForAgent(registryUrl).catch(() => []),
+      complianceDb.getLatestDeclaredSpecialisms(registryUrl).catch(() => [] as string[]),
+    ]);
 
-          let response = `## Agent Probe: ${agent?.name || agentUrl}\n\n`;
-          response += `### Connectivity\n`;
-          response += `**Status:** 🔒 Requires Authentication\n\n`;
-          response += `This agent requires OAuth authorization before you can access it.\n\n`;
-          response += `**[Click here to authorize this agent](${authUrl})**\n\n`;
-          response += `After you authorize, try probing again to see the agent's capabilities.`;
-          return response;
-        } catch (oauthError) {
-          logger.debug({ error: oauthError, agentUrl }, 'Failed to set up OAuth flow for probe');
-        }
-      } else {
-        // User not logged in or no organization
-        let response = `## Agent Probe: ${agent?.name || agentUrl}\n\n`;
-        response += `### Connectivity\n`;
-        response += `**Status:** 🔒 Requires Authentication\n\n`;
-        response += `This agent requires OAuth authorization. Please sign in to an organization account to authorize and access this agent.`;
-        return response;
-      }
+    // Agent is unknown to the registry — no crawler health, no comply state.
+    // Don't synthesize a probe; route the user to the right next step.
+    if (!complianceStatus && !health && !caps && !registryMetadata) {
+      return [
+        `## Agent Status: not in registry`,
+        ``,
+        `\`${agentUrl}\` isn't in the AAO registry, so there's no cached health or compliance state to report.`,
+        ``,
+        `Next steps:`,
+        `- **Register the agent** so the AAO heartbeat starts monitoring it: use \`save_agent\` (and then it shows up on the public dashboard with health + compliance per cycle).`,
+        `- **Run a one-off live test** without registering: \`evaluate_agent_quality\` runs the comply storyboard suite right now.`,
+        `- **Add it to your brand.json / adagents.json** if it serves a publisher domain — the crawler will pick it up on the next pass.`,
+      ].join('\n');
     }
 
-    // Step 3: Extract AdCP version from agent card extensions
-    const adcpVersion = extractAdcpVersion(card?.card_data?.extensions);
+    const optedOut = registryMetadata?.compliance_opt_out === true;
 
-    // Step 4: Format unified response
-    let response = `## Agent Probe: ${agent?.name || agentUrl}\n\n`;
+    let response = `## Agent Status: ${registryUrl}\n\n`;
+    if (registryMetadata?.lifecycle_stage) {
+      response += `**Lifecycle:** ${registryMetadata.lifecycle_stage}\n`;
+    }
 
-    // Health section
-    response += `### Connectivity\n`;
-    if (isHealthy) {
-      response += `**Status:** ✅ Online\n`;
-      if (card.response_time_ms) {
-        response += `**Response Time:** ${card.response_time_ms}ms\n`;
+    // Health snapshot from the crawler.
+    response += `\n### Health (last crawler check)\n`;
+    if (health) {
+      const checkedAt = health.checked_at instanceof Date ? health.checked_at.toISOString() : String(health.checked_at);
+      response += `**Status:** ${health.online ? '✅ Online' : '❌ Offline'}\n`;
+      response += `**Last checked:** ${checkedAt}\n`;
+      if (typeof health.response_time_ms === 'number') {
+        response += `**Response time:** ${health.response_time_ms}ms\n`;
       }
-      if (card.card_data?.protocol) {
-        response += `**Protocol:** ${card.card_data.protocol}\n`;
+      if (!health.online && health.error) {
+        response += `**Error:** ${health.error}\n`;
       }
     } else {
-      response += `**Status:** ❌ Unreachable\n`;
-      if ((card?.errors?.length ?? 0) > 0) {
-        response += `**Error:** ${card?.errors?.[0]}\n`;
-      } else if (card?.status_code) {
-        response += `**HTTP Status:** ${card.status_code}\n`;
-      }
+      response += `_No health snapshot yet — the crawler hasn't reached this agent. Re-check later or run \`evaluate_agent_quality\` for a live test._\n`;
     }
 
-    // AdCP version section
-    if (adcpVersion) {
-      response += `**AdCP Version:** ${adcpVersion}\n`;
-      const majorVersion = parseInt(adcpVersion.split('.')[0], 10);
-      if (majorVersion < 3) {
-        response += `\n> ⚠️ **Version notice:** This agent implements AdCP v${adcpVersion}, which is a v2 specification. The current version is AdCP 3.0. We recommend upgrading to v3 for full compatibility with the latest protocol features. See [what's new in AdCP 3.0](https://adcontextprotocol.org/docs/reference/whats-new-in-v3) for details.\n`;
+    // Declared capabilities from the most recent capability discovery.
+    response += `\n### Declared capabilities\n`;
+    if (caps) {
+      const tools = caps.discovered_tools_json || [];
+      response += `**Protocol:** ${caps.protocol}\n`;
+      response += `**Tools advertised:** ${tools.length}\n`;
+      if (caps.oauth_required) {
+        response += `**Auth:** OAuth required — run \`diagnose_agent_auth\` to start the handshake.\n`;
       }
+      if (caps.discovery_error) {
+        response += `**Discovery error:** ${caps.discovery_error}\n`;
+      }
+      if (declaredSpecialisms.length > 0) {
+        response += `**Declared specialisms:** ${declaredSpecialisms.join(', ')}\n`;
+      }
+    } else {
+      response += `_No capability snapshot yet._\n`;
     }
 
-    // Capabilities section
-    response += `\n### Capabilities\n`;
-    if (agent?.capabilities?.tools && agent.capabilities.tools.length > 0) {
-      if (!isHealthy) {
-        response += `> ⚠️ **Warning:** Agent is currently unreachable. Showing cached capabilities.\n\n`;
+    // Compliance verdict from the comply storyboard suite.
+    response += `\n### Compliance (latest comply run)\n`;
+    if (optedOut) {
+      response += `_This agent has opted out of compliance monitoring._\n`;
+    } else if (complianceStatus) {
+      response += `**Status:** ${complianceStatus.status}\n`;
+      if (complianceStatus.headline) {
+        response += `**Headline:** ${complianceStatus.headline}\n`;
       }
-      response += `**Tools Available:** ${agent.capabilities.tools_count}\n\n`;
-      agent.capabilities.tools.forEach((tool) => {
-        response += `- **${tool.name}**`;
-        if (tool.description) {
-          response += `: ${tool.description}`;
+      if (complianceStatus.last_checked_at) {
+        const checked = complianceStatus.last_checked_at instanceof Date
+          ? complianceStatus.last_checked_at.toISOString()
+          : String(complianceStatus.last_checked_at);
+        response += `**Last checked:** ${checked}\n`;
+      }
+      if (complianceStatus.last_passed_at) {
+        const passed = complianceStatus.last_passed_at instanceof Date
+          ? complianceStatus.last_passed_at.toISOString()
+          : String(complianceStatus.last_passed_at);
+        response += `**Last passing:** ${passed}\n`;
+      }
+      if (complianceStatus.tracks_summary_json && Object.keys(complianceStatus.tracks_summary_json).length > 0) {
+        response += `\n**Tracks:**\n`;
+        for (const [track, status] of Object.entries(complianceStatus.tracks_summary_json)) {
+          response += `- ${track}: ${status}\n`;
+        }
+      }
+    } else {
+      response += `_No comply run on file yet. Run \`evaluate_agent_quality\` to test now._\n`;
+    }
+
+    // Verification badges, if any.
+    if (badges.length > 0) {
+      response += `\n### Verified badges\n`;
+      for (const b of badges) {
+        response += `- ${b.role} (AdCP ${b.adcp_version}, ${b.status})`;
+        if (b.verified_specialisms?.length > 0) {
+          response += ` — ${b.verified_specialisms.join(', ')}`;
         }
         response += `\n`;
-      });
-
-      if (agent.capabilities.standard_operations && agent.capabilities.standard_operations.length > 0) {
-        response += `\n**Standard Operations:** ${agent.capabilities.standard_operations.join(', ')}\n`;
       }
-    } else if (!isHealthy) {
-      response += `No cached capabilities available. Agent must be online to discover tools.\n`;
-    } else {
-      response += `Agent is online but capabilities could not be discovered. It may not be in the public registry.\n`;
     }
 
-    // Summary
     response += `\n---\n`;
-    if (isHealthy && (agent?.capabilities?.tools?.length ?? 0) > 0) {
-      response += `✅ Agent is **online** and responding. Run \`evaluate_agent_quality\` to verify protocol compliance.`;
-    } else if (isHealthy) {
-      response += `✅ Agent is **online** but not in the registry. Try calling it with \`get_products\` or run \`evaluate_agent_quality\` to verify it works correctly.`;
-    } else {
-      response += `❌ Agent is **not responding**. Check the URL and ensure the agent is running.`;
-    }
-
+    response += `_Reading cached state from the registry — same data the public dashboard shows. For a live retest, run \`evaluate_agent_quality\`._`;
     return response;
   });
 
@@ -3427,24 +3432,12 @@ export function createMemberToolHandlers(
     const domain = input.domain as string;
     const agentUrl = input.agent_url as string;
 
-    // Use the validate endpoint to check authorization
-    const result = await callApi('POST', '/api/validate', memberContext, {
-      domain,
-      agent_url: agentUrl,
-    });
-
-    if (!result.ok) {
-      throw new ToolError(`Failed to check authorization: ${result.error}`);
+    let data;
+    try {
+      data = await adagentsValidator.validate(domain, agentUrl);
+    } catch (err) {
+      throw new ToolError(`Failed to check authorization: ${err instanceof Error ? err.message : String(err)}`);
     }
-
-    const data = result.data as {
-      authorized: boolean;
-      domain: string;
-      agent_url: string;
-      checked_at: string;
-      source?: string;
-      error?: string;
-    };
 
     let response = `## Authorization Check\n\n`;
     response += `**Publisher:** ${data.domain}\n`;
@@ -5082,10 +5075,19 @@ export function createMemberToolHandlers(
       return `GitHub connection is unavailable right now. Use \`draft_github_issue\` to generate a pre-filled link you can submit yourself. (Manage connections at ${manageConnectionsUrl}.)`;
     }
 
-    if (tokenResult.status !== 'ok') {
+    const tokenMissingScopes =
+      tokenResult.status === 'ok' && tokenResult.missingScopes.length > 0;
+
+    if (tokenResult.status !== 'ok' || tokenMissingScopes) {
       const connectUrl = `${baseUrl}/connect/github?return_to=${encodeURIComponent('/member-hub?connected=github')}`;
 
-      if (tokenResult.status === 'needs_reauthorization') {
+      if (tokenResult.status === 'needs_reauthorization' || tokenMissingScopes) {
+        if (tokenMissingScopes && tokenResult.status === 'ok') {
+          logger.info(
+            { workosUserId, missingScopes: tokenResult.missingScopes },
+            'create_github_issue: token is active but missing required scopes — prompting reauth',
+          );
+        }
         return [
           `Your GitHub connection needs a quick re-authorization (the scopes we need changed).`,
           '',

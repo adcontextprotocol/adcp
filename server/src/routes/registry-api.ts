@@ -31,6 +31,7 @@ import { getPublicJwks } from "../services/verification-token.js";
 import { renderBadgeSvg, VALID_BADGE_ROLES } from "../services/badge-svg.js";
 import { resolveOwnerMembership } from "../services/membership-tiers.js";
 import { isValidAdcpVersionShape } from "../services/adcp-taxonomy.js";
+import { buildAaoVerificationBlock } from "../services/aao-verification-enrichment.js";
 import { PUBLIC_TEST_AGENT } from "../config/test-agent.js";
 import * as policiesDb from "../db/policies-db.js";
 import { createLogger } from "../logger.js";
@@ -294,13 +295,16 @@ registry.registerPath({
   path: "/api/brands/registry",
   operationId: "listBrands",
   summary: "List brands",
-  description: "List all brands in the registry with optional search, pagination.",
+  description: "List all brands in the registry with optional search, pagination, and source filter.",
   tags: ["Brand Resolution"],
   request: {
     query: z.object({
       search: z.string().optional(),
       limit: z.string().optional().openapi({ type: 'integer', example: 100 }),
       offset: z.string().optional().openapi({ type: 'integer', example: 0 }),
+      source: z.enum(['hosted', 'brand_json', 'enriched', 'community']).optional().openapi({
+        description: 'Filter by source. Values match the per-brand source field in the response: hosted = registered by domain owner via /api/brands; brand_json = crawler-discovered with a live /.well-known/brand.json; enriched = Brandfetch-sourced; community = manually contributed.',
+      }),
     }),
   },
   responses: {
@@ -312,13 +316,21 @@ registry.registerPath({
             brands: z.array(BrandRegistryItemSchema),
             stats: z.object({
               total: z.number().int(),
+              hosted: z.number().int(),
               brand_json: z.number().int(),
               community: z.number().int(),
               enriched: z.number().int(),
+              houses: z.number().int(),
+              sub_brands: z.number().int(),
+              with_manifest: z.number().int(),
             }),
           }),
         },
       },
+    },
+    400: {
+      description: "Invalid source filter value",
+      content: { "application/json": { schema: ErrorSchema } },
     },
   },
 });
@@ -548,15 +560,31 @@ registry.registerPath({
   operationId: "listAgents",
   summary: "List agents",
   description:
-    "List all registered and discovered agents. Optionally enrich with health checks, capabilities, and property summaries via query parameters.",
+    "List all registered and discovered agents. Optionally enrich with health checks, capabilities, and property summaries via query parameters. " +
+    "Measurement-vendor filters (`metric_id`, `accreditation`, `q`) imply `type=measurement` when `type` is unset; an explicit `type` other than `measurement` returns 400.",
   tags: ["Agent Discovery"],
   request: {
     query: z.object({
       type: z.enum(["brand", "rights", "measurement", "governance", "creative", "sales", "buying", "signals", "unknown"]).optional(),
+      source: z.enum(["registered", "discovered"]).optional().openapi({
+        description: "Filter agents by registration source. Omit to receive both.",
+      }),
       health: z.enum(["true"]).optional(),
       capabilities: z.enum(["true"]).optional(),
       properties: z.enum(["true"]).optional(),
       compliance: z.enum(["true"]).optional(),
+      metric_id: z.union([z.string(), z.array(z.string())]).optional().openapi({
+        description: "Measurement-vendor filter: exact match on `measurement.metrics[].metric_id`. Repeatable (each value is OR'd within the param, AND'd with other filters). Implies `type=measurement`.",
+        example: "attention_units",
+      }),
+      accreditation: z.union([z.string(), z.array(z.string())]).optional().openapi({
+        description: "Measurement-vendor filter: exact match on `measurement.metrics[].accreditations[].accrediting_body` (e.g. `MRC`, `JIC`, `ARF`). Repeatable. Implies `type=measurement`. Accreditation claims are vendor-asserted; AAO does not independently verify (`verified_by_aao` is always `false` in the response).",
+        example: "MRC",
+      }),
+      q: z.string().max(64).optional().openapi({
+        description: "Measurement-vendor filter: case-insensitive substring match against `measurement.metrics[].metric_id`. v1 scope: metric_id only (description/standard search is a follow-up). Max 64 chars; SQL wildcard characters are escaped. Implies `type=measurement`.",
+        example: "attention",
+      }),
     }),
   },
   responses: {
@@ -572,6 +600,7 @@ registry.registerPath({
         },
       },
     },
+    400: { description: "Invalid query parameter", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
 
@@ -617,7 +646,7 @@ registry.registerPath({
   operationId: "lookupDomain",
   summary: "Domain lookup",
   description: "Find all agents authorized for a given publisher domain.",
-  tags: ["Lookups & Authorization"],
+  tags: ["Authorization Lookups"],
   request: { params: z.object({ domain: z.string().openapi({ example: "examplepub.com" }) }) },
   responses: {
     200: { description: "Domain lookup result", content: { "application/json": { schema: DomainLookupResultSchema } } },
@@ -630,7 +659,7 @@ registry.registerPath({
   operationId: "lookupProperty",
   summary: "Property identifier lookup",
   description: "Find agents that hold a specific property identifier.",
-  tags: ["Lookups & Authorization"],
+  tags: ["Authorization Lookups"],
   request: { query: z.object({ type: z.string(), value: z.string() }) },
   responses: {
     200: { description: "Matching agents", content: { "application/json": { schema: z.object({ type: z.string(), value: z.string(), agents: z.array(z.unknown()), count: z.number().int() }) } } },
@@ -643,7 +672,7 @@ registry.registerPath({
   operationId: "getAgentDomains",
   summary: "Agent domain lookup",
   description: "Get all publisher domains associated with an agent.",
-  tags: ["Lookups & Authorization"],
+  tags: ["Authorization Lookups"],
   request: { params: z.object({ agentUrl: z.string() }) },
   responses: {
     200: { description: "Domains for the agent", content: { "application/json": { schema: z.object({ agent_url: z.string(), domains: z.array(z.string()), count: z.number().int() }) } } },
@@ -655,8 +684,13 @@ registry.registerPath({
   path: "/api/registry/operator",
   operationId: "lookupOperator",
   summary: "Operator lookup",
-  description: "Given a domain, returns the agents this entity operates and which publishers trust them.",
-  tags: ["Lookups & Authorization"],
+  description:
+    "Given a domain, returns the agents this entity operates and which publishers trust them.\n\n" +
+    "**Response shape is auth-aware.** Anonymous callers see only `public` agents. " +
+    "Authenticated callers on an AAO membership tier with API access also see `members_only` agents. " +
+    "Profile owners (callers whose org owns the queried domain) additionally see `private` agents. " +
+    "This is the primary mechanism by which AAO membership unlocks deeper registry visibility.",
+  tags: ["Authorization Lookups"],
   request: {
     query: z.object({
       domain: z.string().openapi({ example: "pubmatic.com" }),
@@ -673,8 +707,13 @@ registry.registerPath({
   path: "/api/registry/publisher",
   operationId: "lookupPublisher",
   summary: "Publisher lookup",
-  description: "Given a domain, returns the inventory this entity publishes and which agents it authorizes.",
-  tags: ["Lookups & Authorization"],
+  description:
+    "Given a domain, returns the inventory this entity publishes and which agents it authorizes.\n\n" +
+    "**This endpoint is unauthenticated and returns the same response shape for every caller.** " +
+    "Compare to `/api/registry/operator`, where AAO membership tier and profile ownership unlock " +
+    "additional agent visibility (`members_only`, `private`). AAO membership does not change the " +
+    "`/publisher` response today.",
+  tags: ["Authorization Lookups"],
   request: {
     query: z.object({
       domain: z.string().openapi({ example: "voxmedia.com" }),
@@ -693,7 +732,7 @@ registry.registerPath({
   summary: "Validate product authorization",
   description:
     "Check whether an agent is authorized to sell a product based on its publisher_properties.",
-  tags: ["Lookups & Authorization"],
+  tags: ["Authorization Lookups"],
   request: {
     body: {
       content: {
@@ -717,7 +756,7 @@ registry.registerPath({
   operationId: "expandProductIdentifiers",
   summary: "Expand product identifiers",
   description: "Expand publisher_properties selectors into concrete property identifiers for caching.",
-  tags: ["Lookups & Authorization"],
+  tags: ["Authorization Lookups"],
   request: {
     body: {
       content: {
@@ -755,7 +794,7 @@ registry.registerPath({
   operationId: "validatePropertyAuthorization",
   summary: "Property authorization check",
   description: "Quick check if a property identifier is authorized for an agent. Optimized for real-time ad request validation.",
-  tags: ["Lookups & Authorization"],
+  tags: ["Authorization Lookups"],
   request: {
     query: z.object({
       agent_url: z.string(),
@@ -2577,23 +2616,26 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
 
   // ── Brand Resolution ──────────────────────────────────────────
 
+  const BRAND_SOURCE_VALUES = ['hosted', 'brand_json', 'enriched', 'community'] as const;
+  type BrandSourceParam = typeof BRAND_SOURCE_VALUES[number];
+
   router.get("/brands/registry", async (req, res) => {
     try {
-      const brands = await brandDb.getAllBrandsForRegistry({
-        search: req.query.search as string,
-        limit: req.query.limit ? Math.min(parseInt(req.query.limit as string), 5000) : undefined,
-        offset: parseInt(req.query.offset as string) || 0,
-      });
+      const search = req.query.search as string | undefined;
+      const limit = req.query.limit ? Math.min(parseInt(req.query.limit as string), 5000) : undefined;
+      const offset = parseInt(req.query.offset as string) || 0;
+      const sourceParam = req.query.source as string | undefined;
 
-      const stats = {
-        total: brands.length,
-        brand_json: brands.filter((b) => b.source === "brand_json" || b.source === "hosted").length,
-        community: brands.filter((b) => b.source === "community").length,
-        enriched: brands.filter((b) => b.source === "enriched").length,
-        houses: brands.filter((b) => b.keller_type === "master" || b.keller_type === "independent").length,
-        sub_brands: brands.filter((b) => b.keller_type === "sub_brand" || b.keller_type === "endorsed").length,
-        with_manifest: brands.filter((b) => b.has_manifest).length,
-      };
+      if (sourceParam && !(BRAND_SOURCE_VALUES as readonly string[]).includes(sourceParam)) {
+        return res.status(400).json({ error: `Invalid source filter. Valid values: ${BRAND_SOURCE_VALUES.join(', ')}` });
+      }
+
+      const source = sourceParam as BrandSourceParam | undefined;
+
+      const [brands, stats] = await Promise.all([
+        brandDb.getAllBrandsForRegistry({ search, limit, offset, source }),
+        brandDb.getBrandRegistryStats(search),
+      ]);
 
       return res.json({ brands, stats });
     } catch (error) {
@@ -2709,42 +2751,13 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
   });
 
   /**
-   * Shape contract for the `aao_verification` block this enrichment
-   * appends to brand.json agent entries. Public buyer-facing surface;
-   * documented here so future contributors don't drift the wire format.
-   *
-   *   `verified`         — boolean: any active badge exists
-   *   `verified_at`      — ISO timestamp of the most-recent state change
-   *                        across any badge
-   *   `badges[]`         — canonical per-(role, version) detail. Order is
-   *                        preserved from the underlying API's
-   *                        `adcp_version DESC, role` sort. Adding future
-   *                        axes won't change the array shape (#3524 Q6).
-   *   `roles[]`          — DEPRECATED alias: distinct roles, highest
-   *                        badge per role. Removal target: AdCP 4.0.
-   *   `modes_by_role`    — DEPRECATED alias: highest-version modes per
-   *                        role. Removal target: AdCP 4.0.
-   *   `deprecation_notice` — Travels with the data so long-tail crawlers
-   *                          see the warning even without release notes.
-   */
-  interface AaoVerificationBlock {
-    verified: true;
-    verified_at: string;
-    badges: Array<{
-      role: string;
-      adcp_version: string | null;
-      verification_modes: string[];
-      verified_at: string;
-    }>;
-    roles: string[];
-    modes_by_role: Record<string, string[]>;
-    deprecation_notice: string;
-  }
-
-  /**
    * Enrich brand.json agent entries with AAO verification status.
-   * Scans data for agent URLs and appends `aao_verification` (shape
-   * documented above as `AaoVerificationBlock`) where badges exist.
+   * Scans data for agent URLs and appends an `aao_verification`
+   * block where badges exist. The block's shape is the contract
+   * documented at {@link buildAaoVerificationBlock} in
+   * services/aao-verification-enrichment.ts — the route handler
+   * is the I/O layer; the builder is the unit-testable shaping
+   * logic.
    */
   async function enrichBrandDataWithVerification(data: unknown): Promise<unknown> {
     if (!data || typeof data !== 'object') return data;
@@ -2784,53 +2797,9 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       const rec = obj as Record<string, unknown>;
       if (typeof rec.url === 'string' && typeof rec.type === 'string') {
         const badges = badgeMap.get(rec.url as string);
-        if (badges && badges.length > 0) {
-          // bulkGetActiveBadges orders by `agent_url, adcp_version DESC,
-          // role`, so for any given agent the first occurrence of each
-          // role in the iteration is the highest-version badge for that
-          // role. Roles can interleave (e.g. media-buy 3.1, creative
-          // 3.1, media-buy 3.0) — `if (!byRole.has)` picks correctly.
-          const byRole = new Map<typeof badges[number]['role'], typeof badges[number]>();
-          for (const badge of badges) {
-            if (!byRole.has(badge.role)) byRole.set(badge.role, badge);
-          }
-          const dedupedBadges = Array.from(byRole.values());
-          // Per-version badges array — the canonical shape going forward.
-          // One entry per (role, adcp_version), preserving the API's
-          // version-DESC ordering. Defense-in-depth: gate adcp_version
-          // through the same shape regex used by /compliance and
-          // /verification — brand.json is the public buyer-facing
-          // surface, so any future code path that bypasses the DB CHECK
-          // (raw SQL backfill, restored snapshot) MUST NOT leak through.
-          const badgesArray = badges.map(b => ({
-            role: b.role,
-            adcp_version: isValidAdcpVersionShape(b.adcp_version) ? b.adcp_version : null,
-            verification_modes: b.verification_modes,
-            verified_at: b.verified_at.toISOString(),
-          }));
-          const aaoVerification: AaoVerificationBlock = {
-            verified: true,
-            // Newest verification across any (role, version) — the most
-            // recent state change for the agent.
-            verified_at: dedupedBadges[0].verified_at.toISOString(),
-            // Canonical: full per-(role, version) detail. Per Q6 of
-            // #3524's resolved decisions, this is the forward-compat
-            // shape — adding future axes won't change the array.
-            badges: badgesArray,
-            // Deprecated aliases kept for one release. Highest-version
-            // badge per role; reflects "the current best mark." A
-            // buyer pinned to AdCP 3.0 reading `modes_by_role: { x:
-            // ['spec', 'live'] }` could wrongly conclude their 3.0
-            // traffic gets Live when in fact only 3.1 has Live. The
-            // deprecation_notice ships alongside the data so a long-
-            // tail crawler that doesn't track release notes still sees
-            // the warning. Removal target: AdCP 4.0 (≥6 months from
-            // this PR's merge per the cadence policy in #2359).
-            roles: dedupedBadges.map(b => b.role),
-            modes_by_role: Object.fromEntries(dedupedBadges.map(b => [b.role, b.verification_modes])),
-            deprecation_notice: 'roles[] and modes_by_role reflect the highest-version badge per role only. A buyer pinned to a specific AdCP version SHOULD read badges[] and filter by adcp_version. Both fields will be removed in AdCP 4.0.',
-          };
-          rec.aao_verification = aaoVerification;
+        const block = badges ? buildAaoVerificationBlock(badges) : null;
+        if (block) {
+          rec.aao_verification = block;
         }
       }
       if (rec.agents && Array.isArray(rec.agents)) rec.agents.forEach(enrichAgentEntries);
@@ -3684,11 +3653,68 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
   router.get("/registry/agents", optAuth, async (req, res) => {
     try {
       const federatedIndex = crawler.getFederatedIndex();
-      const type = req.query.type as AgentType | undefined;
+      let type = req.query.type as AgentType | undefined;
       const withHealth = req.query.health === "true";
       const withCapabilities = req.query.capabilities === "true";
       const withProperties = req.query.properties === "true";
       const withCompliance = req.query.compliance === "true";
+
+      // Optional source filter — narrows the response to one trust level
+      // (registered = AAO-attested opt-in; discovered = crawled from
+      // adagents.json with no opt-in). Omit to receive both, preserving
+      // the historical default. Validate explicitly so unknown values
+      // produce a 400 instead of silently being ignored.
+      const sourceParam = req.query.source;
+      let sourceFilter: "registered" | "discovered" | undefined;
+      if (typeof sourceParam === "string" && sourceParam.length > 0) {
+        if (sourceParam !== "registered" && sourceParam !== "discovered") {
+          return res.status(400).json({
+            error: "Invalid source: expected 'registered' or 'discovered'",
+          });
+        }
+        sourceFilter = sourceParam;
+      }
+
+      // Measurement-vendor filters (#3613). Repeatable params arrive as
+      // string|string[]; normalize to arrays. `q` is a single substring.
+      // Auto-scope: if any measurement filter is present and `type` is
+      // unset, force `type=measurement` so an agent-generated query like
+      // `?metric_id=attention_units` doesn't need the redundant `type` hint.
+      // An explicit `type` other than `measurement` is a conflict — 400.
+      const toArray = (v: unknown): string[] => {
+        if (v === undefined) return [];
+        if (typeof v === "string") return v ? [v] : [];
+        if (Array.isArray(v)) return v.filter((x): x is string => typeof x === "string" && x.length > 0);
+        return [];
+      };
+      const metricIds = toArray(req.query.metric_id);
+      const accreditations = toArray(req.query.accreditation);
+      const qParam = typeof req.query.q === "string" ? req.query.q : undefined;
+      const hasMeasurementFilter = metricIds.length > 0 || accreditations.length > 0 || (qParam !== undefined && qParam.length > 0);
+
+      if (hasMeasurementFilter) {
+        if (type && type !== "measurement") {
+          return res.status(400).json({
+            error: "metric_id, accreditation, and q filters require type=measurement",
+          });
+        }
+        type = "measurement" as AgentType;
+      }
+
+      // Length cap on q. Wildcards (% _) get rejected outright rather than
+      // escaped-and-passed — q is a substring search, never a pattern.
+      let qFilter: string | undefined;
+      if (qParam !== undefined) {
+        if (qParam.length === 0) {
+          // Empty q is a no-op; treat as absent.
+        } else if (qParam.length > 64) {
+          return res.status(400).json({ error: "q exceeds 64 characters" });
+        } else if (/[%_]/.test(qParam)) {
+          return res.status(400).json({ error: "q must not contain SQL wildcard characters (% or _)" });
+        } else {
+          qFilter = qParam;
+        }
+      }
 
       // members_only agents are discoverable to authenticated API-access
       // members (Professional+). Crawlers and anonymous callers only see
@@ -3702,14 +3728,38 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         }
       }
 
-      const federatedAgents = await federatedIndex.listAllAgents(type, { includeMembersOnly });
+      const allFederatedAgents = await federatedIndex.listAllAgents(type, { includeMembersOnly });
+      let federatedAgents = sourceFilter
+        ? allFederatedAgents.filter((fa) => fa.source === sourceFilter)
+        : allFederatedAgents;
+
+      // Apply measurement-vendor filters by intersecting with the snapshot
+      // table. The snapshot is the only place metric_id / accreditation /
+      // metric_id-substring lookups can be answered without per-agent fan-out.
+      // Counts in `sources` are computed below against the filtered set so
+      // the invariant `sum(sources) === count` holds for downstream UIs.
+      if (hasMeasurementFilter) {
+        const matchingUrls = await agentSnapshotDb.filterMeasurementAgents({
+          metric_ids: metricIds,
+          accreditations,
+          q: qFilter,
+        });
+        federatedAgents = federatedAgents.filter((fa) => matchingUrls.has(fa.url));
+      }
 
       const agents = federatedAgents.map((fa) => ({
         name: fa.name || fa.url,
         url: fa.url,
         type: isValidAgentType(fa.type) ? fa.type : ("unknown" as const),
         protocol: fa.protocol || "mcp",
-        description: fa.member?.display_name || fa.discovered_from?.publisher_domain || "",
+        // Description prefers registered member, then publisher endorsement,
+        // then bare publisher_domain — surfaces the strongest trust signal we
+        // have for this agent.
+        description:
+          fa.member?.display_name ||
+          fa.endorsed_by_publisher_member?.display_name ||
+          fa.discovered_from?.publisher_domain ||
+          "",
         mcp_endpoint: fa.url,
         contact: {
           name: fa.member?.display_name || "",
@@ -3720,6 +3770,9 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         source: fa.source,
         member: fa.member,
         discovered_from: fa.discovered_from,
+        // Publisher-side endorsement (option C from #3547). Mutually
+        // exclusive with `member`: registered agents never carry it.
+        endorsed_by_publisher_member: fa.endorsed_by_publisher_member,
       }));
 
       const bySource = {
@@ -3765,6 +3818,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
                 standard_operations: cap.standard_operations_json ?? undefined,
                 creative_capabilities: cap.creative_capabilities_json ?? undefined,
                 signals_capabilities: cap.signals_capabilities_json ?? undefined,
+                measurement_capabilities: cap.measurement_capabilities_json ?? undefined,
                 discovery_error: cap.discovery_error ?? undefined,
                 oauth_required: cap.oauth_required || undefined,
               };
@@ -3796,7 +3850,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
 
           const promises = [];
 
-          if (withProperties && enrichedAgent.type === "buying") {
+          if (withProperties && enrichedAgent.type === "sales") {
             promises.push(
               federatedIndex.getPropertiesForAgent(agent.url),
               federatedIndex.getPublisherDomainsForAgent(agent.url)
@@ -3806,7 +3860,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           const results = await Promise.all(promises);
           let resultIndex = 0;
 
-          if (withProperties && enrichedAgent.type === "buying") {
+          if (withProperties && enrichedAgent.type === "sales") {
             const agentProperties = results[resultIndex++] as any[];
             const publisherDomains = results[resultIndex++] as string[];
 

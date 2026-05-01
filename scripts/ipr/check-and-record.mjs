@@ -28,6 +28,7 @@
 import fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { GitHubClient } from './github.mjs';
+import { isLedgerRemoteAllowed } from './ledger-remote.mjs';
 import {
   SIGN_PHRASE,
   addSignature,
@@ -98,13 +99,12 @@ function configureGitIdentity() {
   git(['config', 'user.email', '41898282+github-actions[bot]@users.noreply.github.com']);
 }
 
-// LEDGER_REMOTE_PATTERN guards the push target. GitHub Actions concurrency is
-// per-repo, so the rebase-retry loop is the actual serialization mechanism
+// The ledger-remote guard protects the push target. GitHub Actions concurrency
+// is per-repo, so the rebase-retry loop is the actual serialization mechanism
 // against contention from sibling AAO repos all writing to the same ledger.
 // Asserting the remote URL here removes a class of "future workflow edit
-// changes which checkout backs LEDGER_DIR" footguns.
-const LEDGER_REMOTE_PATTERN = /^https:\/\/[^/@]+@?github\.com\/adcontextprotocol\/adcp(\.git)?\/?$/;
-
+// changes which checkout backs LEDGER_DIR" footguns. The accept/reject matrix
+// lives in tests/ipr-ledger-remote.test.mjs.
 function assertLedgerRemote() {
   let url;
   try {
@@ -112,7 +112,7 @@ function assertLedgerRemote() {
   } catch (err) {
     throw new Error(`LEDGER_DIR ${LEDGER_DIR} has no \`origin\` remote: ${err.message ?? err}`);
   }
-  if (!LEDGER_REMOTE_PATTERN.test(url)) {
+  if (!isLedgerRemoteAllowed(url)) {
     throw new Error(
       `Refusing to push: LEDGER_DIR origin (${url}) is not adcontextprotocol/adcp.`,
     );

@@ -249,44 +249,16 @@ async function fetchCommunityProfile(
   };
 }
 
-// Cache for member context to avoid repeated lookups for the same user
-// TTL of 30 minutes - user profile data rarely changes, and we invalidate on specific events
-const MEMBER_CONTEXT_CACHE_TTL_MS = 30 * 60 * 1000;
-const memberContextCache = new Map<string, { context: MemberContext; timestamp: number }>();
+// Cache primitives live in ./member-context-cache so callers that only
+// need to invalidate (route handlers, services) can do so without
+// pulling in middleware/auth's WorkOS module-load side effects.
+import {
+  getCachedMemberContext as getCachedContext,
+  setCachedMemberContext as setCachedContext,
+  invalidateMemberContextCache,
+} from './member-context-cache.js';
 
-/**
- * Get cached member context if still valid
- */
-function getCachedContext(slackUserId: string): MemberContext | null {
-  const cached = memberContextCache.get(slackUserId);
-  if (!cached) return null;
-
-  const age = Date.now() - cached.timestamp;
-  if (age > MEMBER_CONTEXT_CACHE_TTL_MS) {
-    memberContextCache.delete(slackUserId);
-    return null;
-  }
-
-  return cached.context;
-}
-
-/**
- * Cache member context for future lookups
- */
-function setCachedContext(slackUserId: string, context: MemberContext): void {
-  memberContextCache.set(slackUserId, { context, timestamp: Date.now() });
-}
-
-/**
- * Invalidate cached context for a user (call when user data changes)
- */
-export function invalidateMemberContextCache(slackUserId?: string): void {
-  if (slackUserId) {
-    memberContextCache.delete(slackUserId);
-  } else {
-    memberContextCache.clear();
-  }
-}
+export { invalidateMemberContextCache };
 
 /**
  * Member context for Addie to use when responding
@@ -1482,10 +1454,11 @@ export function formatMemberContextForPrompt(context: MemberContext, channel: 'w
       lines.push(`GitHub: ${context.community_profile.github_username}`);
     } else {
       lines.push([
-        'GitHub: Not linked. There are TWO distinct GitHub surfaces — keep them separate, and use the exact URLs below (do not paraphrase to /dashboard, /settings, etc.):',
-        '  (1) Public profile display — to show their GitHub handle on their community profile page, send them to https://agenticadvertising.org/account.',
-        '  (2) OAuth connection — to let you file issues on adcontextprotocol/adcp under their GitHub identity, send them to https://agenticadvertising.org/connect/github (this bounces through login if needed and starts the WorkOS Pipes OAuth flow).',
-        'When the user asks you to file an issue, the create_github_issue tool already surfaces the (2) Connect link automatically — show its full output. Only mention these URLs explicitly when the user asks how to connect outside of filing an issue.',
+        'GitHub: Not linked. There are THREE distinct GitHub surfaces. Pick the one that matches the user\'s intent and use the exact URL — do not paraphrase. Render URLs per the URL Formatting rule (markdown link or bare URL only — never wrap in `**`/`*`).',
+        '  (a) Public-profile display — they want their GitHub handle to appear on their community profile page (text-field only, no OAuth): https://agenticadvertising.org/account (Social links section).',
+        '  (b) Connect / disconnect OAuth — they want to manage the WorkOS Pipes GitHub connection (e.g. "disconnect", "remove access", "reconnect"): https://agenticadvertising.org/member-hub (Connections card; one-click Disconnect button).',
+        '  (c) Start OAuth flow — they want to *begin* connecting GitHub right now from this conversation: https://agenticadvertising.org/connect/github (session-aware bouncer; bounces through login if needed and lands on the OAuth consent screen).',
+        'When the user asks you to file an issue, the create_github_issue tool already surfaces the (c) Connect link automatically — show its full output. Only mention these URLs explicitly when the user asks how to connect, disconnect, or manage GitHub outside of filing an issue.',
       ].join('\n'));
     }
   }
@@ -1571,7 +1544,10 @@ export function formatMemberContextForPrompt(context: MemberContext, channel: 'w
   // Upcoming registered event — context for time-bound discussions.
   if (context.next_event) {
     const e = context.next_event;
-    const days = Math.floor(
+    // Round to the nearest day so a sub-millisecond gap between the caller
+    // setting starts_at and us computing the diff doesn't flip "in 5 days"
+    // to "in 4 days".
+    const days = Math.round(
       (e.starts_at.getTime() - Date.now()) / (24 * 60 * 60 * 1000)
     );
     lines.push('');

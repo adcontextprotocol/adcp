@@ -161,7 +161,8 @@ function renderMemberCard(member, options = {}) {
 function getMemberCardStyles() {
   return `
     .member-card {
-      background: white;
+      background: var(--color-bg-card);
+      border: 1px solid var(--color-border);
       border-radius: 12px;
       overflow: hidden;
       box-shadow: 0 2px 8px rgba(0,0,0,0.1);
@@ -177,7 +178,7 @@ function getMemberCardStyles() {
       display: flex;
       align-items: center;
       gap: 1rem;
-      border-bottom: 1px solid #f3f4f6;
+      border-bottom: 1px solid var(--color-border);
     }
     .member-logo {
       width: 80px;
@@ -193,7 +194,7 @@ function getMemberCardStyles() {
       display: flex;
       align-items: center;
       justify-content: center;
-      color: white;
+      color: var(--color-text-on-dark);
       font-size: 24px;
       font-weight: bold;
     }
@@ -209,7 +210,7 @@ function getMemberCardStyles() {
     .member-name {
       font-size: 1.2rem;
       font-weight: 600;
-      color: #333;
+      color: var(--color-text-heading);
     }
     .member-markets {
       display: flex;
@@ -220,22 +221,22 @@ function getMemberCardStyles() {
     .member-markets .market-tag {
       font-size: 0.7rem;
       padding: 2px 6px;
-      background: #f3f4f6;
-      color: #6b7280;
+      background: var(--color-bg-subtle);
+      color: var(--color-text-secondary);
       border-radius: 3px;
     }
     .member-card-body {
       padding: 1.5rem;
     }
     .member-tagline {
-      color: #333;
+      color: var(--color-text);
       font-size: 0.95rem;
       font-weight: 500;
       line-height: 1.4;
       margin-bottom: 0.5rem;
     }
     .member-description {
-      color: #666;
+      color: var(--color-text-secondary);
       font-size: 0.95rem;
       line-height: 1.6;
       margin-bottom: 1rem;
@@ -251,15 +252,15 @@ function getMemberCardStyles() {
     }
     .offering-tag {
       padding: 4px 10px;
-      background: #dbeafe;
-      color: #1e40af;
+      background: var(--color-brand-bg);
+      color: var(--color-brand);
       border-radius: 6px;
       font-size: 12px;
       font-weight: 500;
     }
     .member-card-footer {
       padding: 1rem 1.5rem;
-      background: #f9fafb;
+      background: var(--color-bg-subtle);
       display: flex;
       justify-content: space-between;
       align-items: center;
@@ -269,7 +270,7 @@ function getMemberCardStyles() {
       gap: 1rem;
     }
     .member-contact a {
-      color: #10b981;
+      color: var(--color-brand);
       text-decoration: none;
       font-size: 14px;
     }
@@ -278,8 +279,8 @@ function getMemberCardStyles() {
     }
     .view-profile-btn {
       padding: 8px 16px;
-      background: #10b981;
-      color: white;
+      background: var(--color-brand);
+      color: var(--color-text-on-dark);
       border: none;
       border-radius: 6px;
       font-size: 14px;
@@ -288,7 +289,7 @@ function getMemberCardStyles() {
       transition: background 0.2s;
     }
     .view-profile-btn:hover {
-      background: #059669;
+      background: var(--color-brand-hover);
     }
     .visibility-badge {
       display: inline-flex;
@@ -304,26 +305,26 @@ function getMemberCardStyles() {
       border-radius: 50%;
     }
     .visibility-badge.public {
-      background: #d1fae5;
-      color: #065f46;
+      background: var(--color-success-bg);
+      color: var(--color-success-fg);
     }
     .visibility-badge.public .dot {
-      background: #10b981;
+      background: var(--color-success-500);
     }
     .visibility-badge.private {
-      background: #f3f4f6;
-      color: #6b7280;
+      background: var(--color-bg-subtle);
+      color: var(--color-text-secondary);
     }
     .visibility-badge.private .dot {
-      background: #9ca3af;
+      background: var(--color-text-muted);
     }
     .agent-badge {
       display: inline-flex;
       align-items: center;
       gap: 4px;
       padding: 2px 8px;
-      background: #fef3c7;
-      color: #92400e;
+      background: var(--color-warning-bg);
+      color: var(--color-warning-fg);
       border-radius: 4px;
       font-size: 11px;
       font-weight: 500;
@@ -333,8 +334,8 @@ function getMemberCardStyles() {
       align-items: center;
       gap: 4px;
       padding: 2px 8px;
-      background: var(--color-primary-100);
-      color: var(--color-primary-700);
+      background: var(--color-brand-bg);
+      color: var(--color-brand);
       border-radius: 4px;
       font-size: 11px;
       font-weight: 500;
@@ -344,8 +345,8 @@ function getMemberCardStyles() {
       align-items: center;
       gap: 4px;
       padding: 2px 8px;
-      background: #d1fae5;
-      color: #065f46;
+      background: var(--color-success-bg);
+      color: var(--color-success-fg);
       border-radius: 4px;
       font-size: 11px;
       font-weight: 500;
@@ -624,23 +625,23 @@ function renderAgentCard(agentInfo, agentUrl, options = {}) {
 function getAgentCardStyles() {
   return `
     .agent-card {
-      background: white;
-      border: 1px solid #e5e7eb;
+      background: var(--color-bg-card);
+      border: 1px solid var(--color-border);
       border-radius: 8px;
       padding: 12px 16px;
       margin-bottom: 8px;
     }
     .agent-card.success {
-      background: #f0fdf4;
-      border-color: #86efac;
+      background: var(--color-success-bg);
+      border-color: var(--color-success-fg);
     }
     .agent-card.error {
-      background: #fef2f2;
-      border-color: #fecaca;
+      background: var(--color-error-bg);
+      border-color: var(--color-error-fg);
     }
     .agent-card.loading {
-      background: #fffbeb;
-      border-color: #fde68a;
+      background: var(--color-warning-bg);
+      border-color: var(--color-warning-fg);
     }
     .agent-card-main {
       display: flex;
@@ -660,7 +661,7 @@ function getAgentCardStyles() {
     }
     .agent-card-url {
       font-size: 13px;
-      color: #6b7280;
+      color: var(--color-text-secondary);
       word-break: break-all;
       margin-bottom: 6px;
     }
@@ -670,11 +671,11 @@ function getAgentCardStyles() {
       gap: 8px;
       flex-wrap: wrap;
       font-size: 13px;
-      color: #374151;
+      color: var(--color-text);
     }
     .agent-card-error {
       font-size: 13px;
-      color: #dc2626;
+      color: var(--color-error-fg);
     }
     .agent-type-badge {
       display: inline-block;
@@ -689,14 +690,14 @@ function getAgentCardStyles() {
       border-radius: 4px;
       font-size: 10px;
       font-weight: 600;
-      background: #e5e7eb;
-      color: #374151;
+      background: var(--color-bg-button-secondary);
+      color: var(--color-text);
     }
     .agent-stat {
-      color: #374151;
+      color: var(--color-text);
     }
     .agent-stat-sep {
-      color: #9ca3af;
+      color: var(--color-text-muted);
     }
     .agent-visibility-badge {
       font-size: 11px;
@@ -704,16 +705,16 @@ function getAgentCardStyles() {
       border-radius: 4px;
     }
     .agent-visibility-badge.public {
-      background: #d1fae5;
-      color: #065f46;
+      background: var(--color-success-bg);
+      color: var(--color-success-fg);
     }
     .agent-visibility-badge.members-only {
-      background: #e0e7ff;
-      color: #3730a3;
+      background: var(--color-brand-bg);
+      color: var(--color-brand);
     }
     .agent-visibility-badge.private {
-      background: #f3f4f6;
-      color: #6b7280;
+      background: var(--color-bg-subtle);
+      color: var(--color-text-secondary);
     }
     .agent-card-status {
       display: flex;
@@ -725,25 +726,25 @@ function getAgentCardStyles() {
       border-radius: 12px;
     }
     .agent-card-status.online {
-      background: #d1fae5;
-      color: #065f46;
+      background: var(--color-success-bg);
+      color: var(--color-success-fg);
     }
     .agent-card-status.error {
-      color: #dc2626;
+      color: var(--color-error-fg);
     }
     .agent-card-status.loading {
-      color: #d97706;
+      color: var(--color-warning-fg);
     }
     .agent-card-status .status-dot {
       width: 6px;
       height: 6px;
       border-radius: 50%;
-      background: #10b981;
+      background: var(--color-success-500);
     }
     .agent-card-spinner {
       width: 14px;
       height: 14px;
-      border: 2px solid #fbbf24;
+      border: 2px solid var(--color-warning-500);
       border-top-color: transparent;
       border-radius: 50%;
       animation: agent-spin 1s linear infinite;
@@ -772,8 +773,8 @@ function getAgentCardStyles() {
       align-items: flex-start;
       padding: 6px 8px;
       border-radius: 6px;
-      border: 1px solid #e5e7eb;
-      background: #ffffff;
+      border: 1px solid var(--color-border);
+      background: var(--color-bg-card);
     }
     .agent-visibility-option.disabled {
       opacity: 0.55;
@@ -789,27 +790,27 @@ function getAgentCardStyles() {
     }
     .agent-visibility-option-label {
       font-weight: 600;
-      color: #111827;
+      color: var(--color-text-heading);
     }
     .agent-visibility-option-hint {
-      color: #6b7280;
+      color: var(--color-text-secondary);
       font-size: 12px;
     }
     .agent-visibility-upsell {
       margin-top: 6px;
       font-size: 12px;
-      color: #6b7280;
+      color: var(--color-text-secondary);
     }
     .agent-visibility-upsell a {
-      color: #2563eb;
+      color: var(--color-brand);
     }
     .agent-visibility-actions {
       margin-top: 6px;
     }
     .agent-card-remove {
       padding: 6px 12px;
-      background: #fee2e2;
-      color: #dc2626;
+      background: var(--color-error-bg);
+      color: var(--color-error-fg);
       border: none;
       border-radius: 6px;
       font-size: 12px;
@@ -817,7 +818,8 @@ function getAgentCardStyles() {
       margin-top: 8px;
     }
     .agent-card-remove:hover {
-      background: #fecaca;
+      background: var(--color-error-bg);
+      filter: brightness(0.95);
     }
     /* Compact layout for member cards */
     .agent-card-compact {

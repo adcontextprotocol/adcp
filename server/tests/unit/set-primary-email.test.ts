@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
+import { isEmailUnavailable } from '../../src/routes/account-linking-errors.js';
 
 /**
  * Static analysis test for the set-primary-email endpoint.
@@ -53,14 +54,60 @@ describe('Set primary email endpoint', () => {
     expect(source).toMatch(/FOR UPDATE/);
   });
 
-  it('does WorkOS update after DB transaction to avoid holding connections during network calls', () => {
-    const commitIdx = source.indexOf("'COMMIT'");
+  it('updates WorkOS before the DB swap so a WorkOS rejection leaves DB state untouched', () => {
+    const beginIdx = source.indexOf("'BEGIN'");
     const workosIdx = source.indexOf('getWorkos().userManagement.updateUser');
-    expect(workosIdx).toBeGreaterThan(commitIdx);
+    expect(workosIdx).toBeGreaterThan(-1);
+    expect(beginIdx).toBeGreaterThan(-1);
+    expect(workosIdx).toBeLessThan(beginIdx);
+  });
+
+  it('classifies WorkOS rejections via isEmailUnavailable and returns a friendly 409', () => {
+    expect(source).toMatch(/isEmailUnavailable\(workosError\)/);
+    expect(source).toMatch(/already associated with another account/);
   });
 
   it('rolls back on error', () => {
     expect(source).toMatch(/ROLLBACK/);
+  });
+});
+
+describe('isEmailUnavailable', () => {
+  it('matches WorkOS GenericServerException with "This email is not available" message', () => {
+    expect(isEmailUnavailable({
+      name: 'GenericServerException',
+      status: 422,
+      message: 'This email is not available.',
+    })).toBe(true);
+  });
+
+  it('matches by code regardless of status', () => {
+    expect(isEmailUnavailable({ code: 'email_already_exists' })).toBe(true);
+    expect(isEmailUnavailable({ code: 'email_not_available' })).toBe(true);
+  });
+
+  it('matches a 409 conflict response', () => {
+    expect(isEmailUnavailable({ status: 409, message: 'Conflict' })).toBe(true);
+  });
+
+  it('does NOT match a bare 422 with an unrelated validation message', () => {
+    expect(isEmailUnavailable({
+      status: 422,
+      message: 'Password does not meet complexity requirements.',
+    })).toBe(false);
+  });
+
+  it('does NOT match a generic server error', () => {
+    expect(isEmailUnavailable({ status: 500, message: 'Internal server error' })).toBe(false);
+  });
+
+  it('does NOT match a vague "email already verified" message', () => {
+    expect(isEmailUnavailable({ status: 422, message: 'Email already verified' })).toBe(false);
+  });
+
+  it('returns false for null/undefined', () => {
+    expect(isEmailUnavailable(null)).toBe(false);
+    expect(isEmailUnavailable(undefined)).toBe(false);
   });
 });
 

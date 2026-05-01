@@ -5,6 +5,9 @@ server/node_modules
 # Production
 /build
 
+# Mintlify dev wrapper staging dir (scripts/dev-docs.mjs)
+/.mintlify-dev
+
 # Ignore dist except for released schemas, compliance, protocol tarballs, and docs
 /dist/*
 !/dist/schemas
@@ -60,6 +63,7 @@ skills/*/schemas/
 
 # Stripe webhook secret (dynamically generated)
 .stripe-webhook-secret
+.stripe-key
 test-results/
 tests/screenshots/
 

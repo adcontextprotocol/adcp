@@ -14,7 +14,7 @@
   <link rel="stylesheet" href="/layout.css">
   <style>
     body {
-      background: #fff;
+      background: var(--color-surface);
       padding-top: var(--nav-height);
     }
 
@@ -90,7 +90,8 @@
     }
     .filter-group select {
       padding: var(--space-2) var(--space-4);
-      background: var(--color-gray-100);
+      background: var(--color-bg-card);
+      color: var(--color-text);
       border: var(--border-2) solid var(--color-border);
       border-radius: var(--radius-lg);
       cursor: pointer;
@@ -152,24 +153,24 @@
       flex-shrink: 0;
     }
     .badge-regulation {
-      background: var(--color-danger-100);
-      color: var(--color-danger-700);
+      background: var(--color-error-bg);
+      color: var(--color-error-fg);
     }
     .badge-standard {
-      background: var(--color-info-100);
-      color: var(--color-info-700);
+      background: var(--color-brand-bg);
+      color: var(--color-brand);
     }
     .badge-must {
-      background: var(--color-danger-100);
-      color: var(--color-danger-700);
+      background: var(--color-error-bg);
+      color: var(--color-error-fg);
     }
     .badge-should {
-      background: var(--color-warning-100);
-      color: var(--color-warning-700);
+      background: var(--color-warning-bg);
+      color: var(--color-warning-fg);
     }
     .badge-may {
-      background: var(--color-gray-200);
-      color: var(--color-gray-600);
+      background: var(--color-bg-subtle);
+      color: var(--color-text-secondary);
     }
 
     /* Card badges row */

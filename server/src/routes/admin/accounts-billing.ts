@@ -15,6 +15,7 @@ import { createLogger } from "../../logger.js";
 import { requireAuth, requireAdmin } from "../../middleware/auth.js";
 import { OrganizationDatabase, TIER_PRESERVING_STATUSES } from "../../db/organization-db.js";
 import { stripe } from "../../billing/stripe-client.js";
+import { pickMembershipSub } from "../../billing/membership-prices.js";
 
 const logger = createLogger("admin-accounts-billing");
 
@@ -140,8 +141,18 @@ export function setupAccountsBillingRoutes(
               } else {
                 const subscriptions = (customer as Stripe.Customer).subscriptions;
 
-                if (subscriptions && subscriptions.data.length > 0) {
-                  const subscription = subscriptions.data[0];
+                // Filter to membership subs before picking. A customer with a
+                // non-membership sub (one-off products, future ancillary subs)
+                // alongside a real membership would otherwise have its row
+                // overwritten with the wrong sub's state — Stripe doesn't
+                // guarantee ordering of `subscriptions.data`. Falls through to
+                // the invoice-fallback branch below when no membership sub is
+                // found, preserving prior behavior for invoice-billed orgs.
+                const subscription = subscriptions
+                  ? pickMembershipSub(subscriptions.data)
+                  : null;
+
+                if (subscription) {
                   const priceData = subscription.items.data[0]?.price;
 
                   await pool.query(
@@ -181,7 +192,9 @@ export function setupAccountsBillingRoutes(
                   };
                   syncResults.updated = true;
                 } else {
-                  // No subscription - check for paid membership invoices (manual invoice flow)
+                  // No live membership subscription on the customer (either
+                  // no subs at all, or only non-membership subs). Check for
+                  // paid membership invoices (manual invoice flow).
                   const invoices = await stripe.invoices.list({
                     customer: org.stripe_customer_id,
                     status: 'paid',

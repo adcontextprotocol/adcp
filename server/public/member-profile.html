@@ -136,7 +136,7 @@
       margin-top: var(--space-4);
     }
     .description-guidance .example-prompts {
-      background: white;
+      background: var(--color-bg-card);
       border-radius: var(--radius-sm);
       padding: var(--space-3);
       margin-left: 0;
@@ -168,7 +168,7 @@
       align-items: center;
       gap: var(--space-2);
       padding: var(--space-2) var(--space-3_5);
-      background: var(--color-gray-50);
+      background: var(--color-bg-subtle);
       border: var(--border-2) solid var(--color-gray-200);
       border-radius: var(--radius-md);
       cursor: pointer;
@@ -221,7 +221,7 @@
       left: 0;
       right: 0;
       bottom: 0;
-      background-color: var(--color-gray-300);
+      background-color: var(--color-bg-button-secondary-hover);
       transition: var(--transition-colors);
       border-radius: 26px;
     }
@@ -243,7 +243,7 @@
       transform: translateX(24px);
     }
     .preview-section {
-      background: var(--color-gray-50);
+      background: var(--color-bg-subtle);
       border-radius: var(--radius-md);
       padding: var(--space-5);
       margin-top: var(--space-5);
@@ -283,7 +283,7 @@
       letter-spacing: 0.5px;
     }
     .logo-preview-box.light .label { color: var(--color-text-secondary); }
-    .logo-preview-box.dark .label { color: var(--color-gray-400); }
+    .logo-preview-box.dark .label { color: var(--color-text-muted); }
     .logo-preview img {
       max-width: 120px;
       max-height: 60px;
@@ -292,7 +292,7 @@
     .logo-preview .placeholder {
       width: 120px;
       height: 60px;
-      background: var(--color-gray-200);
+      background: var(--color-bg-button-secondary);
       border-radius: var(--radius-md);
       display: flex;
       align-items: center;
@@ -302,7 +302,7 @@
     }
     .logo-preview-box.dark .placeholder {
       background: var(--color-gray-700);
-      color: var(--color-gray-400);
+      color: var(--color-text-muted);
     }
     .gravatar-note {
       font-size: var(--text-xs);
@@ -329,15 +329,15 @@
       border: var(--border-2) solid var(--color-gray-200);
       border-radius: var(--radius-md);
       font-size: var(--text-sm);
-      color: var(--color-gray-700);
-      background: var(--color-gray-50);
+      color: var(--color-text);
+      background: var(--color-bg-subtle);
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
     }
     .logo-input-group .upload-filename:empty::before {
       content: 'No file selected';
-      color: var(--color-gray-400);
+      color: var(--color-text-muted);
     }
     .logo-input-group .upload-filename.has-file {
       background: var(--color-success-50);
@@ -346,17 +346,17 @@
     }
     .logo-input-group .btn-upload {
       padding: var(--space-2_5) var(--space-4);
-      background: var(--color-gray-100);
+      background: var(--color-bg-subtle);
       border: var(--border-2) solid var(--color-gray-200);
       border-radius: var(--radius-md);
       cursor: pointer;
       font-size: var(--text-sm);
-      color: var(--color-gray-700);
+      color: var(--color-text);
       white-space: nowrap;
       transition: var(--transition-all);
     }
     .logo-input-group .btn-upload:hover {
-      background: var(--color-gray-200);
+      background: var(--color-bg-button-secondary);
       border-color: var(--color-success-500);
     }
     .logo-input-group .btn-clear {
@@ -403,11 +403,11 @@
       cursor: not-allowed;
     }
     .btn-secondary {
-      background: var(--color-gray-100);
-      color: var(--color-gray-700);
+      background: var(--color-bg-subtle);
+      color: var(--color-text);
     }
     .btn-secondary:hover {
-      background: var(--color-gray-200);
+      background: var(--color-bg-button-secondary);
     }
     .btn-danger {
       background: var(--color-error-50);
@@ -448,7 +448,7 @@
     }
     .slug-prefix {
       padding: var(--space-2_5) var(--space-3_5);
-      background: var(--color-gray-100);
+      background: var(--color-bg-subtle);
       border: var(--border-2) solid var(--color-gray-200);
       border-right: none;
       border-radius: var(--radius-md) 0 0 var(--radius-md);
@@ -521,8 +521,8 @@
       font-weight: var(--font-semibold);
     }
     .status-badge.draft {
-      background: var(--color-gray-100);
-      color: var(--color-gray-500);
+      background: var(--color-bg-subtle);
+      color: var(--color-text-secondary);
       border: var(--border-1) solid var(--color-gray-200);
     }
     .status-badge.published {
@@ -545,7 +545,7 @@
       align-items: center;
       gap: var(--space-3);
       padding: var(--space-3);
-      background: var(--color-gray-50);
+      background: var(--color-bg-subtle);
       border: var(--border-2) solid var(--color-gray-200);
       border-radius: var(--radius-md);
     }
@@ -568,7 +568,7 @@
     .agent-url-info .url {
       font-family: var(--font-mono);
       font-size: var(--text-sm);
-      color: var(--color-gray-700);
+      color: var(--color-text);
       word-break: break-all;
     }
     .agent-url-info .agent-name {
@@ -606,8 +606,8 @@
       color: var(--color-warning-700);
     }
     .agent-type-badge.unknown {
-      background: var(--color-gray-100);
-      color: var(--color-gray-500);
+      background: var(--color-bg-subtle);
+      color: var(--color-text-secondary);
     }
     .protocol-badge {
       display: inline-block;
@@ -615,8 +615,8 @@
       border-radius: var(--radius-sm);
       font-size: 10px;
       font-weight: var(--font-semibold);
-      background: var(--color-gray-200);
-      color: var(--color-gray-700);
+      background: var(--color-bg-button-secondary);
+      color: var(--color-text);
     }
     .agent-url-status {
       display: flex;
@@ -673,7 +673,7 @@
       position: relative;
       width: 36px;
       height: 20px;
-      background: var(--color-gray-200);
+      background: var(--color-bg-button-secondary);
       border-radius: var(--radius-full);
       transition: var(--transition-colors);
     }
@@ -708,8 +708,8 @@
       color: var(--color-success-700);
     }
     .visibility-badge-small.private {
-      background: var(--color-gray-100);
-      color: var(--color-gray-500);
+      background: var(--color-bg-subtle);
+      color: var(--color-text-secondary);
     }
     .add-agent-row {
       display: flex;
@@ -771,7 +771,7 @@
         <div id="error-message" class="alert alert-error" style="display: none;"></div>
 
         <!-- Account type notice -->
-        <div id="account-type-notice" style="display: none; padding: 16px; background: var(--color-primary-50); border: 1px solid var(--color-primary-200); border-radius: 8px; margin-bottom: 24px;">
+        <div id="account-type-notice" style="display: none; padding: 16px; background: var(--color-brand-bg); border: 1px solid var(--color-border); border-radius: 8px; margin-bottom: 24px;">
           <div style="display: flex; align-items: start; gap: 12px;">
             <span style="font-size: 20px;">💡</span>
             <div style="flex: 1;">
@@ -920,7 +920,7 @@
               </div>
               <div style="margin-left: auto; display: flex; gap: var(--space-2);">
                 <button type="button" id="brand-edit-btn" onclick="toggleBrandEdit()" style="padding: var(--space-2) var(--space-4); background: var(--color-bg-subtle); color: var(--color-text-secondary); border: 1px solid var(--color-border); border-radius: var(--radius-md); font-size: var(--text-sm); cursor: pointer; white-space: nowrap;">Edit</button>
-                <a id="brand-manage-link" href="#" target="_blank" style="padding: var(--space-2) var(--space-4); background: var(--color-primary-50); color: var(--color-primary-700); border: 1px solid var(--color-primary-200); border-radius: var(--radius-md); text-decoration: none; font-size: var(--text-sm); white-space: nowrap;">Manage brand &rarr;</a>
+                <a id="brand-manage-link" href="#" target="_blank" style="padding: var(--space-2) var(--space-4); background: var(--color-brand-bg); color: var(--color-primary-700); border: 1px solid var(--color-border); border-radius: var(--radius-md); text-decoration: none; font-size: var(--text-sm); white-space: nowrap;">Manage brand &rarr;</a>
               </div>
             </div>
 
@@ -961,7 +961,7 @@
             </div>
 
             <!-- Pointer snippet for unverified brands -->
-            <div id="brand-pointer-callout" style="display: none; background: var(--color-primary-50); border: 1px solid var(--color-primary-200); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-4);">
+            <div id="brand-pointer-callout" style="display: none; background: var(--color-brand-bg); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-4);">
               <div style="font-weight: var(--font-semibold); color: var(--color-primary-700); margin-bottom: var(--space-2);">Make AAO your authoritative brand source</div>
               <p style="font-size: var(--text-sm); color: var(--color-primary-700); margin-bottom: var(--space-3);">
                 Place this file at <code style="background: var(--color-primary-100); padding: 1px 4px; border-radius: 3px;">yourdomain.com/.well-known/brand.json</code> (and any other domains you own) to make this your canonical brand identity:
@@ -1051,7 +1051,7 @@
 
               <div style="text-align: center; color: var(--color-text-muted); font-size: var(--text-sm); margin-bottom: var(--space-3);">or use the full brand builder for more options</div>
               <div style="text-align: center;">
-                <a href="/brand/builder" style="display: inline-block; padding: var(--space-2_5) var(--space-5); background: var(--color-primary-50); color: var(--color-primary-700); border: 1px solid var(--color-primary-200); border-radius: var(--radius-md); text-decoration: none; font-weight: var(--font-medium);">Brand builder</a>
+                <a href="/brand/builder" style="display: inline-block; padding: var(--space-2_5) var(--space-5); background: var(--color-brand-bg); color: var(--color-primary-700); border: 1px solid var(--color-border); border-radius: var(--radius-md); text-decoration: none; font-weight: var(--font-medium);">Brand builder</a>
               </div>
             </div>
           </div>
@@ -1115,7 +1115,7 @@
                   </div>
                 </div>
                 <div class="member-card-body">
-                  <div class="member-description" style="color: var(--color-gray-400);">Add a description to tell people about your company...</div>
+                  <div class="member-description" style="color: var(--color-text-muted);">Add a description to tell people about your company...</div>
                   <div class="member-offerings"></div>
                 </div>
                 <div class="member-card-footer">

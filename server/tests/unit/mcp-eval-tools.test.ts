@@ -20,7 +20,7 @@ import {
 
 describe('EVAL_TOOL_DEFINITIONS', () => {
   const EXPECTED = [
-    'probe_adcp_agent',
+    'get_agent_status',
     'evaluate_agent_quality',
     'test_rfp_response',
     'test_io_execution',
@@ -143,13 +143,13 @@ describe('ALL_EXPOSED_TOOL_DEFINITIONS', () => {
 
 describe('createMemberToolHandler', () => {
   it('returns a function with 2 params (args, authContext)', () => {
-    const handler = createMemberToolHandler('probe_adcp_agent');
+    const handler = createMemberToolHandler('get_agent_status');
     expect(typeof handler).toBe('function');
     expect(handler.length).toBe(2);
   });
 
   it('returns isError when called without auth', async () => {
-    const handler = createMemberToolHandler('probe_adcp_agent');
+    const handler = createMemberToolHandler('get_agent_status');
     const result = await handler({ agent_url: 'https://example.com' });
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain('Authentication required');

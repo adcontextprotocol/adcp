@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="/addie-icon.svg" type="image/svg+xml">
+  <title>Person memory · AgenticAdvertising.org</title>
+  <link rel="stylesheet" href="/design-system.css">
+  <script src="/nav.js"></script>
+  <script src="/admin-sidebar.js"></script>
+  <style>
+    body {
+      background: var(--color-bg-page);
+      margin: 0;
+    }
+    .container {
+      max-width: 960px;
+      margin: var(--space-8) auto;
+      padding: 0 var(--space-5);
+    }
+    .breadcrumb {
+      margin-bottom: var(--space-4);
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+    }
+    .breadcrumb a { color: var(--color-brand); }
+    .card {
+      background: var(--color-bg-card);
+      padding: var(--space-6);
+      margin-bottom: var(--space-5);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-sm);
+    }
+    .card h2 {
+      margin: 0 0 var(--space-3) 0;
+      font-size: var(--text-lg);
+    }
+    .card .meta {
+      font-size: var(--text-xs);
+      color: var(--color-text-muted);
+      margin-bottom: var(--space-3);
+    }
+    .kv {
+      display: grid;
+      grid-template-columns: 200px 1fr;
+      gap: var(--space-1) var(--space-4);
+      font-size: var(--text-sm);
+    }
+    .kv dt {
+      color: var(--color-text-muted);
+      font-weight: var(--font-medium);
+    }
+    .kv dd { margin: 0; }
+    .pill {
+      display: inline-flex;
+      padding: 2px var(--space-2);
+      border-radius: var(--radius-full);
+      font-size: var(--text-xs);
+      font-weight: var(--font-semibold);
+      text-transform: uppercase;
+      background: var(--color-bg-button-secondary);
+      color: var(--color-text-heading);
+      letter-spacing: 0.03em;
+    }
+    .pill.pending { background: var(--color-info-500); color: white; }
+    .pill.expired { background: var(--color-warning-500); color: white; }
+    .pill.green { background: var(--color-success-600); color: white; }
+    .pill.muted { background: var(--color-bg-button-secondary); color: var(--color-text-heading); }
+    .row-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    .row-list li {
+      padding: var(--space-2) 0;
+      border-bottom: var(--border-1) solid var(--color-gray-100);
+      font-size: var(--text-sm);
+      display: flex;
+      align-items: flex-start;
+      gap: var(--space-3);
+    }
+    .row-list li:last-child { border-bottom: none; }
+    .empty {
+      color: var(--color-text-muted);
+      font-style: italic;
+      font-size: var(--text-sm);
+    }
+    .raw-json {
+      font-family: var(--font-mono);
+      font-size: var(--text-xs);
+      background: var(--color-bg-subtle);
+      padding: var(--space-3);
+      border-radius: var(--radius-sm);
+      max-height: 400px;
+      overflow: auto;
+      white-space: pre-wrap;
+    }
+  </style>
+</head>
+<body>
+  <div id="nav-placeholder"></div>
+  <div class="container">
+    <div class="breadcrumb">
+      <a href="/admin">Admin</a> · <a href="/admin/relationships">Relationships</a> · <span id="breadcrumb-name">Person</span>
+    </div>
+    <div id="loading" class="card">Loading…</div>
+    <div id="content" style="display: none;"></div>
+  </div>
+
+  <script>
+    const personId = window.location.pathname.split('/').pop();
+
+    function escapeHtml(s) {
+      if (s == null) return '';
+      return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function fmtDate(iso) {
+      if (!iso) return '—';
+      return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    }
+
+    function fmtDateTime(iso) {
+      if (!iso) return '—';
+      return new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    }
+
+    function relativeDays(iso) {
+      if (!iso) return '—';
+      const ms = new Date(iso).getTime() - Date.now();
+      const days = Math.round(ms / 86400000);
+      if (days === 0) return 'today';
+      if (days > 0) return `in ${days} day${days === 1 ? '' : 's'}`;
+      return `${-days} day${-days === 1 ? '' : 's'} ago`;
+    }
+
+    function renderIdentity(ctx) {
+      const r = ctx.relationship;
+      const id = ctx.identity;
+      return `
+        <div class="card">
+          <h2>Identity</h2>
+          <dl class="kv">
+            <dt>Display name</dt><dd>${escapeHtml(r.display_name || '—')}</dd>
+            <dt>Email</dt><dd>${escapeHtml(r.email || '—')}</dd>
+            <dt>Slack user ID</dt><dd>${escapeHtml(r.slack_user_id || '—')}</dd>
+            <dt>WorkOS user ID</dt><dd>${escapeHtml(r.workos_user_id || '—')}</dd>
+            <dt>Account linked</dt><dd>${id.account_linked ? '<span class="pill green">yes</span>' : '<span class="pill muted">no</span>'}</dd>
+            <dt>person_id</dt><dd><code>${escapeHtml(r.id)}</code></dd>
+          </dl>
+        </div>
+      `;
+    }
+
+    function renderMembership(ctx) {
+      const company = ctx.profile.company;
+      const journey = ctx.journey;
+      const lines = [];
+      if (company) {
+        lines.push(`<dt>Company</dt><dd>${escapeHtml(company.name)} <span class="pill muted">${escapeHtml(company.type)}</span></dd>`);
+        lines.push(`<dt>Paying member</dt><dd>${company.is_member ? '<span class="pill green">yes</span>' : '<span class="pill muted">no</span>'}</dd>`);
+      } else {
+        lines.push(`<dt>Company</dt><dd class="empty">none on file</dd>`);
+      }
+      if (journey?.tier) lines.push(`<dt>Tier</dt><dd>${escapeHtml(journey.tier)} <span class="pill muted">${journey.points} points</span></dd>`);
+      if (journey?.working_groups?.length) lines.push(`<dt>Working groups</dt><dd>${journey.working_groups.map(escapeHtml).join(', ')}</dd>`);
+      if (journey?.credentials?.length) lines.push(`<dt>Credentials</dt><dd>${journey.credentials.map(escapeHtml).join(', ')}</dd>`);
+      if (journey?.contribution_count != null) lines.push(`<dt>Contributions</dt><dd>${journey.contribution_count}</dd>`);
+      return `<div class="card"><h2>Membership</h2><dl class="kv">${lines.join('')}</dl></div>`;
+    }
+
+    function renderOrgMemberships(ctx) {
+      if (!ctx.orgMemberships?.length) {
+        return `<div class="card"><h2>Org memberships</h2><p class="empty">Not a WorkOS member of any org.</p></div>`;
+      }
+      const items = ctx.orgMemberships.map((m) => {
+        const tags = [];
+        tags.push(`<span class="pill muted">${escapeHtml(m.role || 'member')}</span>`);
+        if (m.seat_type === 'community_only') tags.push(`<span class="pill muted">community-only</span>`);
+        if (m.is_paying_member) tags.push(`<span class="pill green">paying</span>`);
+        if (m.provisioning_source) tags.push(`<span class="pill muted">via ${escapeHtml(m.provisioning_source)}</span>`);
+        return `
+          <li>
+            <div>
+              <a href="/admin/accounts/${escapeHtml(m.workos_organization_id)}">${escapeHtml(m.org_name)}</a>
+              <span class="meta">(${escapeHtml(m.workos_organization_id)})</span>
+            </div>
+            <div class="invitation-meta" style="margin-top: 4px;">
+              ${tags.join(' ')}
+              <span class="meta"> · joined ${fmtDate(m.joined_at)}</span>
+            </div>
+          </li>
+        `;
+      }).join('');
+      return `<div class="card"><h2>Org memberships (${ctx.orgMemberships.length})</h2><ul class="row-list">${items}</ul></div>`;
+    }
+
+    function renderEngagement(ctx) {
+      const r = ctx.relationship;
+      return `
+        <div class="card">
+          <h2>Engagement</h2>
+          <dl class="kv">
+            <dt>Stage</dt><dd>${escapeHtml(r.stage)} <span class="meta">since ${fmtDate(r.stage_changed_at)}</span></dd>
+            <dt>Sentiment</dt><dd>${escapeHtml(r.sentiment_trend)}</dd>
+            <dt>Interactions</dt><dd>${r.interaction_count}</dd>
+            <dt>Unreplied to Addie</dt><dd>${r.unreplied_outreach_count}</dd>
+            <dt>Last channel</dt><dd>${escapeHtml(r.last_interaction_channel || '—')}</dd>
+            <dt>Last contact</dt><dd>Addie ${fmtDate(r.last_addie_message_at)}, them ${fmtDate(r.last_person_message_at)}</dd>
+          </dl>
+        </div>
+      `;
+    }
+
+    function renderPreferences(ctx) {
+      const p = ctx.preferences;
+      return `
+        <div class="card">
+          <h2>Preferences</h2>
+          <dl class="kv">
+            <dt>Contact preference</dt><dd>${escapeHtml(p.contact_preference || '—')}</dd>
+            <dt>Opted out</dt><dd>${p.opted_out ? '<span class="pill expired">yes</span>' : 'no'}</dd>
+            <dt>Marketing opt-in</dt><dd>${p.marketing_opt_in === null ? '<span class="empty">unknown</span>' : (p.marketing_opt_in ? '<span class="pill green">yes</span>' : 'no')}</dd>
+          </dl>
+        </div>
+      `;
+    }
+
+    function renderInvites(ctx) {
+      if (!ctx.invites?.length) {
+        return `<div class="card"><h2>Open invites</h2><p class="empty">No pending or expired invites for this email.</p></div>`;
+      }
+      const items = ctx.invites.map((inv) => `
+        <li>
+          <span class="pill ${inv.status}">${inv.status}</span>
+          <div>
+            <div>${escapeHtml(inv.lookup_key)} at ${escapeHtml(inv.org_name || inv.org_id)}</div>
+            <div class="meta">created ${fmtDate(inv.created_at)} · expires ${relativeDays(inv.expires_at)}</div>
+          </div>
+        </li>
+      `).join('');
+      return `<div class="card"><h2>Open invites (${ctx.invites.length})</h2><ul class="row-list">${items}</ul></div>`;
+    }
+
+    function renderThreads(ctx) {
+      if (!ctx.recentThreads?.length) {
+        return `<div class="card"><h2>Recent threads</h2><p class="empty">No threads recorded yet.</p></div>`;
+      }
+      const items = ctx.recentThreads.map((t) => `
+        <li>
+          <span class="pill muted">${escapeHtml(t.channel)}</span>
+          <div>
+            <div>${escapeHtml(t.title || '(no title set)')}</div>
+            <div class="meta">${t.message_count} messages · last ${fmtDateTime(t.last_message_at)}</div>
+          </div>
+        </li>
+      `).join('');
+      return `<div class="card"><h2>Recent threads</h2><ul class="row-list">${items}</ul></div>`;
+    }
+
+    function renderRaw(ctx) {
+      return `
+        <details class="card">
+          <summary><h2 style="display: inline; margin: 0;">Raw memory JSON</h2></summary>
+          <p class="meta">Exact shape returned by <code>loadRelationshipContext()</code> — useful for debugging.</p>
+          <pre class="raw-json">${escapeHtml(JSON.stringify(ctx, null, 2))}</pre>
+        </details>
+      `;
+    }
+
+    async function load() {
+      try {
+        const response = await fetch(`/api/admin/relationships/${personId}/memory`);
+        if (!response.ok) {
+          const err = await response.json().catch(() => ({}));
+          document.getElementById('loading').textContent = `Failed to load: ${err.error || response.status}`;
+          return;
+        }
+        const ctx = await response.json();
+        const name = ctx.relationship?.display_name || ctx.relationship?.email || personId;
+        document.getElementById('breadcrumb-name').textContent = name;
+        document.title = `${name} · Person memory`;
+
+        const html =
+          renderIdentity(ctx) +
+          renderMembership(ctx) +
+          renderOrgMemberships(ctx) +
+          renderEngagement(ctx) +
+          renderPreferences(ctx) +
+          renderInvites(ctx) +
+          renderThreads(ctx) +
+          renderRaw(ctx);
+        document.getElementById('content').innerHTML = html;
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('content').style.display = 'block';
+      } catch (err) {
+        console.error(err);
+        document.getElementById('loading').textContent = 'Error loading memory.';
+      }
+    }
+
+    load();
+  </script>
+</body>
+</html>

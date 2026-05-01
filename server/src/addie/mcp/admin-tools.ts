@@ -78,10 +78,23 @@ import {
   getProductsForCustomer,
   type BillingProduct,
 } from '../../billing/stripe-client.js';
-import { createMembershipInvite } from '../../db/membership-invites-db.js';
+import {
+  createMembershipInvite,
+  getMembershipInviteByToken,
+  inviteStatus,
+  listMembershipInvitesForOrg,
+  revokeMembershipInvite,
+  type MembershipInvite,
+} from '../../db/membership-invites-db.js';
 import { sendMembershipInviteEmail } from '../../notifications/email.js';
 import { mergeOrganizations, previewMerge, type StripeCustomerResolution } from '../../db/org-merge-db.js';
 import { getWorkos } from '../../auth/workos-client.js';
+import {
+  getSlackAdminStatusCache,
+  getWebAdminStatusCache,
+  invalidateSlackAdminStatusCache,
+  invalidateWebAdminStatusCache,
+} from '../admin-status-cache.js';
 import { DomainDataState } from '@workos-inc/node';
 import { processInteraction, type InteractionContext } from '../services/interaction-analyzer.js';
 import {
@@ -136,7 +149,10 @@ const KITCHEN_CABINET_SLUG = 'kitchen-cabinet';
 
 // Cache for admin status checks - admin status rarely changes
 const ADMIN_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
-const adminStatusCache = new Map<string, { isAdmin: boolean; expiresAt: number }>();
+// Shared cache module — invalidators can be called without dragging the
+// rest of admin-tools (and its Anthropic-instantiating dependencies)
+// into unrelated import graphs.
+const adminStatusCache = getSlackAdminStatusCache();
 
 /**
  * Check if a Slack user is an admin
@@ -184,30 +200,14 @@ export async function isSlackUserAAOAdmin(slackUserId: string): Promise<boolean>
   }
 }
 
-/**
- * Invalidate admin status cache for a Slack user (call when admin membership changes)
- */
-export function invalidateAdminStatusCache(slackUserId?: string): void {
-  if (slackUserId) {
-    adminStatusCache.delete(slackUserId);
-  } else {
-    adminStatusCache.clear();
-  }
-}
+// Re-export Slack/web admin invalidators from the shared cache module so
+// existing imports of `admin-tools` keep working while new callers can
+// import directly from `admin-status-cache` to avoid this file's heavy
+// transitive dependencies. (Single import block at top — see line ~91.)
+export { invalidateSlackAdminStatusCache as invalidateAdminStatusCache, invalidateWebAdminStatusCache };
 
 // Cache for web user admin status (keyed by WorkOS user ID)
-const webAdminStatusCache = new Map<string, { isAdmin: boolean; expiresAt: number }>();
-
-/**
- * Invalidate web admin status cache for a user (call when admin membership changes)
- */
-export function invalidateWebAdminStatusCache(workosUserId?: string): void {
-  if (workosUserId) {
-    webAdminStatusCache.delete(workosUserId);
-  } else {
-    webAdminStatusCache.clear();
-  }
-}
+const webAdminStatusCache = getWebAdminStatusCache();
 
 /**
  * Invalidate all admin caches (both Slack and web)
@@ -217,6 +217,7 @@ export function invalidateAllAdminCaches(): void {
   webAdminStatusCache.clear();
   webCouncilStatusCache.clear();
 }
+
 
 // Cache for web user kitchen-cabinet council status (keyed by WorkOS user ID)
 const webCouncilStatusCache = new Map<string, { isCouncil: boolean; expiresAt: number }>();
@@ -251,42 +252,12 @@ export async function isWebUserAAOCouncil(workosUserId: string): Promise<boolean
   }
 }
 
-/**
- * Check if a web user is an AAO admin
- * Checks membership in aao-admin working group by WorkOS user ID
- * Results are cached for 30 minutes to reduce DB load
- */
-export async function isWebUserAAOAdmin(workosUserId: string): Promise<boolean> {
-  // Check cache first
-  const cached = webAdminStatusCache.get(workosUserId);
-  if (cached && cached.expiresAt > Date.now()) {
-    return cached.isAdmin;
-  }
-
-  try {
-    // Get the aao-admin working group
-    const adminGroup = await wgDb.getWorkingGroupBySlug(AAO_ADMIN_WORKING_GROUP_SLUG);
-
-    if (!adminGroup) {
-      logger.warn('AAO Admin working group not found');
-      // Cache the negative result for a shorter time to avoid repeated DB lookups
-      webAdminStatusCache.set(workosUserId, { isAdmin: false, expiresAt: Date.now() + 5 * 60 * 1000 });
-      return false;
-    }
-
-    // Check if the user is a member of the admin working group
-    const isAdmin = await wgDb.isMember(adminGroup.id, workosUserId);
-
-    // Cache the result
-    webAdminStatusCache.set(workosUserId, { isAdmin, expiresAt: Date.now() + ADMIN_CACHE_TTL_MS });
-
-    logger.debug({ workosUserId, isAdmin }, 'Checked web user admin status');
-    return isAdmin;
-  } catch (error) {
-    logger.error({ error, workosUserId }, 'Error checking if web user is admin');
-    return false;
-  }
-}
+// `isWebUserAAOAdmin` lives in `../admin-status-lookup.ts` so callers
+// that only need the admin check don't have to pull in this file's
+// heavy transitive dependencies (relationship-orchestrator →
+// engagement-planner → Anthropic). Re-exported here to keep existing
+// imports working.
+export { isWebUserAAOAdmin } from '../admin-status-lookup.js';
 
 
 /**
@@ -499,6 +470,119 @@ Actions:
         limit: { type: 'number', description: 'Max results (default 10)' },
       },
       required: [],
+    },
+  },
+
+  // ============================================
+  // MEMBERSHIP INVITE TOOLS
+  // ============================================
+  {
+    name: 'diagnose_signin_block',
+    description:
+      'Use when a user reports they cannot sign in to AgenticAdvertising.org. Combines person, invite, and org-membership state into a single verdict — needs_signin (account exists, just sign in), needs_resend (invite expired or stale, send a fresh one), needs_invite (no invite on file, send one), or needs_human (state is unclear). Do NOT use for general account questions — use lookup_person or get_account for those. Returns the verdict plus a one-line reason and any pending invite token to act on.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        email: {
+          type: 'string',
+          description: 'Email address of the person who cannot sign in',
+        },
+        org_id: {
+          type: 'string',
+          description: 'WorkOS organization ID (org_…) the user is trying to access',
+        },
+      },
+      required: ['email', 'org_id'],
+    },
+  },
+  {
+    name: 'list_invites_for_org',
+    description:
+      'Use when an admin asks "what invites do we have for X" or you need to reference an invite token before resending or revoking. Defaults to pending only; pass include_accepted or include_revoked to widen. Capped at 20, sorted by expiry (soonest first). Returns one invite per line with its token suffix so you can quote a token back into resend_invite or revoke_invite.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        org_id: {
+          type: 'string',
+          description: 'WorkOS organization ID (org_…)',
+        },
+        include_accepted: {
+          type: 'boolean',
+          description: 'Include invites that have been accepted. Default false.',
+        },
+        include_revoked: {
+          type: 'boolean',
+          description: 'Include invites that have been revoked. Default false.',
+        },
+      },
+      required: ['org_id'],
+    },
+  },
+  {
+    name: 'resend_invite',
+    description:
+      'Use to refresh a pending or expired membership invite — atomically revokes the original and emails a fresh one. Do NOT use to invite a brand-new contact (use send_payment_request for that). Do NOT use on an accepted invite. Returns the new expiry and whether the email was delivered.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        token: {
+          type: 'string',
+          description: 'Token of the invite to resend (from list_invites_for_org or diagnose_signin_block)',
+        },
+        org_id: {
+          type: 'string',
+          description: 'WorkOS organization ID (org_…) the invite belongs to',
+        },
+      },
+      required: ['token', 'org_id'],
+    },
+  },
+  {
+    name: 'revoke_invite',
+    description:
+      'Use to cancel a pending or expired invite (e.g. wrong email, person no longer joining). Does NOT send any notification to the recipient — their existing invite link will simply stop working. Cannot revoke an already-accepted or already-revoked invite. Returns confirmation including the previous status.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        token: {
+          type: 'string',
+          description: 'Token of the invite to revoke (from list_invites_for_org)',
+        },
+        org_id: {
+          type: 'string',
+          description: 'WorkOS organization ID (org_…) the invite belongs to',
+        },
+      },
+      required: ['token', 'org_id'],
+    },
+  },
+  {
+    name: 'add_member_to_org',
+    description:
+      'Use when an admin or owner asks to add, invite, or promote a colleague on a paying org. Also the action to take when diagnose_signin_block returns needs_invite for an authorized requester. Handles four states automatically: invites new users (no WorkOS account yet), adds existing users to the org, updates roles, or no-ops if already correct. Do NOT use to remove members (no removal path), to change your own role, or for personal workspaces. Returns one of: invited, member_added, role_updated, no_change.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        email: {
+          type: 'string',
+          description: 'Email of the colleague to add or promote',
+        },
+        org_id: {
+          type: 'string',
+          description: 'WorkOS organization ID (org_…) to add them to',
+        },
+        role: {
+          type: 'string',
+          enum: ['member', 'admin', 'owner'],
+          description: 'Role to assign. Default: member. Note: owner can only be assigned by another owner or AAO super-admin; new invites always go out as member regardless and must be promoted after acceptance.',
+        },
+        seat_type: {
+          type: 'string',
+          enum: ['contributor', 'community_only'],
+          description: 'Seat type. Default: community_only. Contributors get Slack/working-groups/councils; community-only get Addie/certification/training.',
+        },
+      },
+      required: ['email', 'org_id'],
     },
   },
 
@@ -1458,6 +1542,21 @@ For logo changes, use update_member_logo instead.`,
         query: {
           type: 'string',
           description: 'Slack user ID (U...), email address, or name to search',
+        },
+      },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'get_person_memory',
+    description:
+      'Use when you need the full picture of what we know about a person — identity, membership, engagement, preferences, pending invites, recent threads — gathered into one view before reasoning. Prefer this over chaining lookup_person + get_account + list_invites_for_org. Do NOT use for org-level questions. Returns a structured summary with sources so you can cite where each fact came from.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        query: {
+          type: 'string',
+          description: 'Slack user ID (U...), email, or display name',
         },
       },
       required: ['query'],
@@ -8126,6 +8225,625 @@ Use add_committee_leader to assign a leader.`;
     } catch (error) {
       logger.error({ error, query: queryStr }, 'Error looking up person');
       return `❌ Failed to look up person: ${error instanceof Error ? error.message : 'Unknown error'}`;
+    }
+  });
+
+  handlers.set('get_person_memory', async (input) => {
+    const queryStr = (input.query as string)?.trim();
+    if (!queryStr) {
+      return '❌ query is required (Slack user ID, email, or name).';
+    }
+
+    const pool = getPool();
+    try {
+      const isSlackId = /^U[A-Z0-9]{8,11}$/.test(queryStr);
+      const isEmail = queryStr.includes('@');
+      let personResult;
+      if (isSlackId) {
+        personResult = await pool.query(
+          `SELECT id FROM person_relationships WHERE slack_user_id = $1`,
+          [queryStr]
+        );
+      } else if (isEmail) {
+        // Match lookup_person's casing convention — emails are typically stored
+        // normalized but resolvePersonId / lookup_person don't lowercase here.
+        personResult = await pool.query(
+          `SELECT id FROM person_relationships WHERE email = $1`,
+          [queryStr]
+        );
+      } else {
+        personResult = await pool.query(
+          `SELECT id FROM person_relationships WHERE display_name ILIKE $1 LIMIT 5`,
+          [`%${queryStr}%`]
+        );
+      }
+
+      if (personResult.rows.length === 0) {
+        return `No person found for "${queryStr}".`;
+      }
+      if (personResult.rows.length > 1) {
+        return `Multiple matches for "${queryStr}". Use a more specific query (Slack ID or email).`;
+      }
+      const personId = personResult.rows[0].id;
+
+      const ctx = await loadRelationshipContext(personId, { includeCommunity: true });
+      const r = ctx.relationship;
+
+      const lines: string[] = [];
+      lines.push(`## Memory for ${r.display_name ?? queryStr}`);
+      lines.push('');
+
+      lines.push(`### Identity`);
+      lines.push(`- person_id: ${r.id}`);
+      if (r.email) lines.push(`- email: ${r.email}`);
+      if (r.slack_user_id) lines.push(`- slack: ${r.slack_user_id}`);
+      lines.push(`- account_linked: ${ctx.identity.account_linked ? 'yes' : 'no'}`);
+      lines.push('');
+
+      lines.push(`### Membership`);
+      if (ctx.profile.company) {
+        lines.push(`- company: ${ctx.profile.company.name} (${ctx.profile.company.type})`);
+        lines.push(`- paying member: ${ctx.profile.company.is_member ? 'yes' : 'no'}`);
+      } else {
+        lines.push(`- company: (none on file)`);
+      }
+      if (ctx.journey?.working_groups?.length) {
+        lines.push(`- working groups: ${ctx.journey.working_groups.join(', ')}`);
+      }
+      if (ctx.journey?.tier) {
+        lines.push(`- tier: ${ctx.journey.tier} (${ctx.journey.points} points)`);
+      }
+      if (ctx.journey?.credentials?.length) {
+        lines.push(`- credentials: ${ctx.journey.credentials.join(', ')}`);
+      }
+      lines.push('');
+
+      // Per-org memberships — every WorkOS org this person belongs to.
+      // Use this to answer "is this person in org X?" — `company` above is
+      // one (LIMIT 1) and conflates "the org we picked" with "the org being
+      // asked about."
+      if (ctx.orgMemberships.length > 0) {
+        lines.push(`### Org memberships (${ctx.orgMemberships.length})`);
+        for (const m of ctx.orgMemberships) {
+          const tags: string[] = [m.role ?? 'member'];
+          if (m.seat_type === 'community_only') tags.push('community-only seat');
+          if (m.is_paying_member) tags.push('paying');
+          if (m.provisioning_source) tags.push(`via ${m.provisioning_source}`);
+          lines.push(
+            `- ${m.org_name} (${m.workos_organization_id}) — ${tags.join(', ')}`
+          );
+        }
+        lines.push('');
+      }
+
+      lines.push(`### Engagement`);
+      lines.push(`- stage: ${r.stage} (since ${r.stage_changed_at.toISOString().slice(0, 10)})`);
+      lines.push(`- sentiment: ${r.sentiment_trend}`);
+      lines.push(`- interactions: ${r.interaction_count}, unreplied to Addie: ${r.unreplied_outreach_count}`);
+      const lastAddie = r.last_addie_message_at?.toISOString().slice(0, 10) ?? 'never';
+      const lastPerson = r.last_person_message_at?.toISOString().slice(0, 10) ?? 'never';
+      lines.push(`- last contact: Addie ${lastAddie}, them ${lastPerson}`);
+      lines.push('');
+
+      lines.push(`### Preferences`);
+      lines.push(`- contact_preference: ${ctx.preferences.contact_preference ?? '(none)'}`);
+      lines.push(`- opted_out: ${ctx.preferences.opted_out ? 'yes' : 'no'}`);
+      lines.push(
+        `- marketing_opt_in: ${
+          ctx.preferences.marketing_opt_in === null
+            ? '(unknown)'
+            : ctx.preferences.marketing_opt_in
+              ? 'yes'
+              : 'no'
+        }`
+      );
+      lines.push('');
+
+      if (ctx.invites.length > 0) {
+        lines.push(`### Open invites (${ctx.invites.length})`);
+        for (const inv of ctx.invites) {
+          lines.push(
+            `- [${inv.status}] ${inv.lookup_key} at ${inv.org_name ?? inv.org_id} — created ${inv.created_at.toISOString().slice(0, 10)}, expires ${inv.expires_at.toISOString().slice(0, 10)}`
+          );
+        }
+        lines.push('');
+      }
+
+      if (ctx.recentThreads.length > 0) {
+        lines.push(`### Recent threads (${ctx.recentThreads.length})`);
+        for (const t of ctx.recentThreads) {
+          const title = t.title ?? '(no title set)';
+          lines.push(
+            `- [${t.channel}] "${title}" — ${t.message_count} messages, last ${t.last_message_at.toISOString().slice(0, 10)}`
+          );
+        }
+        lines.push('');
+      }
+
+      if (ctx.certification && ctx.certification.modulesCompleted > 0) {
+        lines.push(`### Certification`);
+        lines.push(
+          `- ${ctx.certification.modulesCompleted}/${ctx.certification.totalModules} modules complete`
+        );
+        if (ctx.certification.credentialsEarned.length > 0) {
+          lines.push(`- credentials: ${ctx.certification.credentialsEarned.join(', ')}`);
+        }
+        lines.push('');
+      }
+
+      return lines.join('\n').trim();
+    } catch (error) {
+      logger.error({ error, query: queryStr }, 'Error loading person memory');
+      return `❌ Failed to load person memory: ${error instanceof Error ? error.message : 'Unknown error'}`;
+    }
+  });
+
+  // ============================================
+  // MEMBERSHIP INVITE HANDLERS
+  // ============================================
+
+  function actionToHeader(action: string): string {
+    switch (action) {
+      case 'invited':
+        return 'Invitation sent';
+      case 'member_added':
+        return 'Added to org';
+      case 'role_updated':
+        return 'Role updated';
+      case 'no_change':
+        return 'No change';
+      default:
+        return 'Done';
+    }
+  }
+
+  function formatRelativeDays(d: Date): string {
+    const diffMs = d.getTime() - Date.now();
+    const days = Math.round(diffMs / 86400000);
+    if (days === 0) return 'today';
+    if (days > 0) return `in ${days} day${days === 1 ? '' : 's'}`;
+    return `${-days} day${-days === 1 ? '' : 's'} ago`;
+  }
+
+  function formatInviteLine(inv: MembershipInvite): string {
+    const status = inviteStatus(inv);
+    const recipient = inv.contact_name
+      ? `${inv.contact_name} <${inv.contact_email}>`
+      : inv.contact_email;
+    const tokenSuffix = inv.token.slice(0, 8);
+    let when: string;
+    if (status === 'pending') {
+      when = `expires ${formatRelativeDays(inv.expires_at)}`;
+    } else if (status === 'expired') {
+      when = `expired ${formatRelativeDays(inv.expires_at)}`;
+    } else if (status === 'accepted' && inv.accepted_at) {
+      when = `accepted ${formatRelativeDays(inv.accepted_at)}`;
+    } else if (status === 'revoked' && inv.revoked_at) {
+      when = `revoked ${formatRelativeDays(inv.revoked_at)}`;
+    } else {
+      when = '';
+    }
+    return `- [${status}] ${recipient} — ${when} — token=${tokenSuffix}…`;
+  }
+
+  handlers.set('list_invites_for_org', async (input) => {
+    const orgId = input.org_id as string;
+    const includeAccepted = (input.include_accepted as boolean) ?? false;
+    const includeRevoked = (input.include_revoked as boolean) ?? false;
+
+    if (!orgId || !orgId.startsWith('org_')) {
+      return '❌ org_id is required (org_…).';
+    }
+
+    try {
+      const all = await listMembershipInvitesForOrg(orgId);
+      const filtered = all.filter((inv) => {
+        const s = inviteStatus(inv);
+        if (s === 'accepted' && !includeAccepted) return false;
+        if (s === 'revoked' && !includeRevoked) return false;
+        return true;
+      });
+
+      // Sort: pending+expired first by expiry-asc, then terminals
+      filtered.sort((a, b) => {
+        const sa = inviteStatus(a);
+        const sb = inviteStatus(b);
+        const aTerm = sa === 'accepted' || sa === 'revoked';
+        const bTerm = sb === 'accepted' || sb === 'revoked';
+        if (aTerm !== bTerm) return aTerm ? 1 : -1;
+        return a.expires_at.getTime() - b.expires_at.getTime();
+      });
+
+      const capped = filtered.slice(0, 20);
+
+      const counts = {
+        pending: all.filter((i) => inviteStatus(i) === 'pending').length,
+        expired: all.filter((i) => inviteStatus(i) === 'expired').length,
+        accepted: all.filter((i) => inviteStatus(i) === 'accepted').length,
+        revoked: all.filter((i) => inviteStatus(i) === 'revoked').length,
+      };
+
+      let response = `## Invitations for ${orgId}\n\n`;
+      response += `**Totals:** ${counts.pending} pending, ${counts.expired} expired, ${counts.accepted} accepted, ${counts.revoked} revoked\n\n`;
+      if (capped.length === 0) {
+        const filterDesc =
+          includeAccepted || includeRevoked
+            ? 'matching the requested filters'
+            : 'pending or expired';
+        response += `_No invites ${filterDesc}._\n`;
+      } else {
+        response += capped.map(formatInviteLine).join('\n') + '\n';
+        if (filtered.length > capped.length) {
+          response += `\n_Showing ${capped.length} of ${filtered.length} matching invites._\n`;
+        }
+      }
+      return response;
+    } catch (error) {
+      logger.error({ error, orgId }, 'Error listing invitations');
+      return `❌ Failed to list invitations: ${error instanceof Error ? error.message : 'Unknown error'}`;
+    }
+  });
+
+  handlers.set('resend_invite', async (input) => {
+    const token = input.token as string;
+    const orgId = input.org_id as string;
+
+    if (!token) return '❌ token is required.';
+    if (!orgId || !orgId.startsWith('org_')) {
+      return '❌ org_id is required (org_…).';
+    }
+
+    const adminUser = memberContext?.workos_user;
+    if (!adminUser) {
+      return '❌ Cannot resend — no signed-in admin context.';
+    }
+    const adminUserId = adminUser.workos_user_id;
+    const adminEmail = adminUser.email;
+    const adminName =
+      [adminUser.first_name, adminUser.last_name].filter(Boolean).join(' ') || adminEmail;
+
+    try {
+      const existing = await getMembershipInviteByToken(token, orgId);
+      if (!existing) {
+        return `❌ Invite not found for ${orgId} (token may belong to a different org).`;
+      }
+      if (existing.accepted_at) {
+        return `❌ Invite for ${existing.contact_email} was already accepted — no resend needed.`;
+      }
+
+      const org = await orgDb.getOrganization(orgId);
+      if (!org) {
+        return `❌ Organization ${orgId} not found.`;
+      }
+
+      const customerType = org.is_personal ? 'individual' : 'company';
+      const eligibleProducts = await getProductsForCustomer({
+        customerType,
+        category: 'membership',
+      });
+      const product = eligibleProducts.find((p) => p.lookup_key === existing.lookup_key);
+      if (!product) {
+        return `❌ Tier "${existing.lookup_key}" is no longer available for this org. Send a fresh invite with a current tier instead.`;
+      }
+
+      // Revoke first, then create — same atomicity choice as the HTTP endpoint.
+      await revokeMembershipInvite(token, adminUserId, orgId);
+      const fresh = await createMembershipInvite({
+        workos_organization_id: orgId,
+        lookup_key: existing.lookup_key,
+        contact_email: existing.contact_email,
+        contact_name: existing.contact_name ?? undefined,
+        referral_code: existing.referral_code ?? undefined,
+        invited_by_user_id: adminUserId,
+      });
+
+      const baseUrl = process.env.BASE_URL || 'https://agenticadvertising.org';
+      const inviteUrl = `${baseUrl}/invite/${fresh.token}`;
+      const priceDisplay = `$${(product.amount_cents / 100).toLocaleString()}`;
+
+      const emailSent = await sendMembershipInviteEmail({
+        to: fresh.contact_email,
+        contactName: fresh.contact_name ?? null,
+        orgName: org.name,
+        tierDisplayName: product.display_name,
+        priceDisplay,
+        inviteUrl,
+        invitedByName: adminName,
+        invitedByEmail: adminEmail,
+        expiresAt: fresh.expires_at,
+      });
+
+      logger.info(
+        {
+          orgId,
+          contactEmail: fresh.contact_email,
+          previousInviteId: existing.id,
+          newInviteId: fresh.id,
+          emailSent,
+          adminUserId,
+        },
+        'Addie resent invite'
+      );
+
+      let response = `## Resent invite\n\n`;
+      response += `**To:** ${fresh.contact_email}\n`;
+      response += `**Tier:** ${product.display_name} (${priceDisplay}/year)\n`;
+      response += `**New expiry:** ${formatRelativeDays(fresh.expires_at)}\n`;
+      response += `**Email delivered:** ${emailSent ? 'yes' : 'no (Resend not configured)'}\n`;
+      response += `\nThe original invite for this email was revoked atomically — only the new link works.\n`;
+      return response;
+    } catch (error) {
+      logger.error({ error, orgId, token: token.slice(0, 8) }, 'Error resending invite');
+      return `❌ Failed to resend: ${error instanceof Error ? error.message : 'Unknown error'}`;
+    }
+  });
+
+  handlers.set('revoke_invite', async (input) => {
+    const token = input.token as string;
+    const orgId = input.org_id as string;
+
+    if (!token) return '❌ token is required.';
+    if (!orgId || !orgId.startsWith('org_')) {
+      return '❌ org_id is required (org_…).';
+    }
+
+    const adminUserId = memberContext?.workos_user?.workos_user_id;
+    if (!adminUserId) {
+      return '❌ Cannot revoke — no signed-in admin context.';
+    }
+
+    try {
+      const existing = await getMembershipInviteByToken(token, orgId);
+      if (!existing) {
+        return `❌ Invite not found for ${orgId}.`;
+      }
+      const previousStatus = inviteStatus(existing);
+      if (previousStatus === 'accepted' || previousStatus === 'revoked') {
+        return `❌ Invite for ${existing.contact_email} is already ${previousStatus} — nothing to do.`;
+      }
+
+      const revoked = await revokeMembershipInvite(token, adminUserId, orgId);
+      if (!revoked) {
+        return `❌ Revoke failed — invite may have changed state.`;
+      }
+
+      logger.info(
+        {
+          orgId,
+          contactEmail: revoked.contact_email,
+          inviteId: revoked.id,
+          previousStatus,
+          adminUserId,
+        },
+        'Addie revoked invite'
+      );
+
+      return (
+        `## Revoked invite\n\n` +
+        `**For:** ${revoked.contact_email}\n` +
+        `**Was:** ${previousStatus}\n` +
+        `\nThe recipient's existing link will stop working. They received no notification.\n`
+      );
+    } catch (error) {
+      logger.error({ error, orgId, token: token.slice(0, 8) }, 'Error revoking invite');
+      return `❌ Failed to revoke: ${error instanceof Error ? error.message : 'Unknown error'}`;
+    }
+  });
+
+  handlers.set('add_member_to_org', async (input) => {
+    const email = ((input.email as string) || '').trim().toLowerCase();
+    const orgId = input.org_id as string;
+    const role = (input.role as string) ?? 'member';
+    const seatType = (input.seat_type as string) ?? 'community_only';
+
+    if (!email || !email.includes('@')) {
+      return '❌ email is required (a valid email address).';
+    }
+    if (!orgId || !orgId.startsWith('org_')) {
+      return '❌ org_id is required (org_…).';
+    }
+    if (!['member', 'admin', 'owner'].includes(role)) {
+      return `❌ role must be one of: member, admin, owner (got: ${role}).`;
+    }
+    if (!['contributor', 'community_only'].includes(seatType)) {
+      return `❌ seat_type must be one of: contributor, community_only (got: ${seatType}).`;
+    }
+
+    const adminUser = memberContext?.workos_user;
+    if (!adminUser) {
+      return '❌ Cannot add member — no signed-in admin context.';
+    }
+
+    const apiKey = process.env.ADMIN_API_KEY;
+    if (!apiKey) {
+      return '❌ ADMIN_API_KEY is not configured on the server.';
+    }
+    // Match the base-URL precedence used by member-tools.ts:getBaseUrl —
+    // BASE_URL (production) wins; otherwise PORT/CONDUCTOR_PORT for local.
+    const baseUrl =
+      process.env.BASE_URL ||
+      `http://localhost:${process.env.PORT || process.env.CONDUCTOR_PORT || '3000'}`;
+    const endpoint = `${baseUrl}/api/organizations/${encodeURIComponent(orgId)}/members/by-email`;
+
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({ email, role, seat_type: seatType }),
+        signal: AbortSignal.timeout(10000),
+      });
+      const data = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+      if (!response.ok) {
+        const errorMsg = (data.message as string) || (data.error as string) || `HTTP ${response.status}`;
+        logger.warn(
+          { status: response.status, orgId, email, error: errorMsg },
+          'add_member_to_org route returned non-OK'
+        );
+        return `❌ Failed to add ${email} to ${orgId}: ${errorMsg}`;
+      }
+
+      const action = data.action as string;
+      logger.info(
+        {
+          orgId,
+          email,
+          action,
+          role,
+          seatType,
+          adminUserId: adminUser.workos_user_id,
+        },
+        'Addie called add_member_to_org'
+      );
+
+      // Mirror the route's response shape rather than reflecting the input —
+      // e.g. the route may keep an existing seat_type when adding to an org
+      // the user already has a seat in.
+      const responseSeatType = (data.seat_type as string | undefined) ?? seatType;
+
+      let md = `## ${actionToHeader(action)}\n\n`;
+      md += `**Email:** ${email}\n`;
+      md += `**Org:** ${orgId}\n`;
+
+      if (action === 'invited') {
+        const invitation = data.invitation as Record<string, unknown> | undefined;
+        const expiresAt = invitation?.expires_at as string | undefined;
+        md += `**Invited as:** member (must be promoted after acceptance for higher roles)\n`;
+        md += `**Requested role:** ${role}\n`;
+        md += `**Seat type:** ${responseSeatType}\n`;
+        if (expiresAt) md += `**Invite expires:** ${expiresAt.slice(0, 10)}\n`;
+        if (invitation?.accept_invitation_url) {
+          md += `\nThey'll receive an email with a sign-up link.\n`;
+        }
+      } else if (action === 'member_added') {
+        md += `**Role:** ${role}\n`;
+        md += `**Seat type:** ${responseSeatType}\n`;
+        md += `\nThey already had a WorkOS account; added directly to the org.\n`;
+      } else if (action === 'role_updated') {
+        const previousRole = data.previous_role as string | null | undefined;
+        md += `**New role:** ${role}\n`;
+        md += `**Previous role:** ${previousRole ?? '(none)'}\n`;
+      } else if (action === 'no_change') {
+        md += `\nNo change — they already have role ${role}.\n`;
+      } else {
+        md += `**Action:** ${action ?? 'unknown'}\n`;
+      }
+      return md;
+    } catch (error) {
+      logger.error({ error, orgId, email }, 'Error calling members/by-email');
+      return `❌ Failed to add member: ${error instanceof Error ? error.message : 'Unknown error'}`;
+    }
+  });
+
+  handlers.set('diagnose_signin_block', async (input) => {
+    const email = ((input.email as string) || '').trim().toLowerCase();
+    const orgId = input.org_id as string;
+
+    if (!email || !email.includes('@')) {
+      return '❌ email is required (a valid email address).';
+    }
+    if (!orgId || !orgId.startsWith('org_')) {
+      return '❌ org_id is required (org_…).';
+    }
+
+    const pool = getPool();
+
+    try {
+      // 1. Org context — is it a paying member with a matching email_domain?
+      // email_domain isn't on the Organization type but is on the row, so a
+      // small targeted query keeps this surgical.
+      const org = await orgDb.getOrganization(orgId);
+      if (!org) {
+        return `❌ Organization ${orgId} not found.`;
+      }
+      const orgDomainResult = await pool.query<{ email_domain: string | null }>(
+        `SELECT email_domain FROM organizations WHERE workos_organization_id = $1`,
+        [orgId]
+      );
+      const orgEmailDomain = orgDomainResult.rows[0]?.email_domain ?? null;
+      const emailDomain = email.split('@')[1];
+      // Mirror the project-wide AAO membership predicate: active subscription
+      // and not in a canceled-but-period-still-active state. See server/src/db/org-filters.ts.
+      const orgPays =
+        (org.subscription_status === 'active' || org.subscription_status === 'trialing') &&
+        org.subscription_canceled_at === null;
+      const domainMatches = (orgEmailDomain ?? '').toLowerCase() === emailDomain;
+
+      // 2. Person row — does the email already have a person_relationships entry?
+      const personResult = await pool.query<{
+        id: string;
+        workos_user_id: string | null;
+        slack_user_id: string | null;
+        stage: string | null;
+      }>(
+        `SELECT id, workos_user_id, slack_user_id, stage
+         FROM person_relationships
+         WHERE email = $1
+         LIMIT 1`,
+        [email]
+      );
+      const person = personResult.rows[0];
+
+      // 3. Invites — any non-terminal one for this email + org?
+      const invites = await listMembershipInvitesForOrg(orgId);
+      const matchingInvites = invites.filter((i) => i.contact_email === email);
+      const pendingInvite = matchingInvites.find((i) => inviteStatus(i) === 'pending');
+      const expiredInvite = matchingInvites.find((i) => inviteStatus(i) === 'expired');
+      const acceptedInvite = matchingInvites.find((i) => inviteStatus(i) === 'accepted');
+
+      // 4. Verdict
+      let verdict: 'needs_signin' | 'needs_resend' | 'needs_invite' | 'needs_human';
+      let reason: string;
+      let actionable: string | null = null;
+
+      if (acceptedInvite || person?.workos_user_id) {
+        verdict = 'needs_signin';
+        reason = acceptedInvite
+          ? 'They already accepted a membership invite at this org; the WorkOS account exists. They should sign in.'
+          : 'They have a WorkOS account; signing in at agenticadvertising.org should work. If sign-in still fails, the account may not be a member of this specific org — verify org membership before escalating.';
+      } else if (expiredInvite) {
+        verdict = 'needs_resend';
+        reason = `Their last invite expired ${formatRelativeDays(expiredInvite.expires_at)}. Resend it.`;
+        actionable = `Use resend_invite with token=${expiredInvite.token.slice(0, 8)}… and org_id=${orgId}.`;
+      } else if (pendingInvite) {
+        verdict = 'needs_signin';
+        reason = `They have a pending invite (sent ${formatRelativeDays(pendingInvite.created_at)}, expires ${formatRelativeDays(pendingInvite.expires_at)}). They just need to click the link in their email.`;
+        actionable = `If they can't find the email, use resend_invite with token=${pendingInvite.token.slice(0, 8)}… to refresh.`;
+      } else if (orgPays && domainMatches) {
+        verdict = 'needs_signin';
+        reason = `The org is a paying member and this email's domain (${emailDomain}) matches the org's email_domain. Signing in at agenticadvertising.org should auto-link them.`;
+      } else if (orgPays && !domainMatches) {
+        verdict = 'needs_invite';
+        reason = `The org is a paying member but this email's domain (${emailDomain}) does not match the org's email_domain (${orgEmailDomain ?? '(none)'}). They need an explicit invite.`;
+        actionable = `Use send_payment_request with action="send_invite" to issue one.`;
+      } else {
+        verdict = 'needs_human';
+        reason = `The org is not on an active membership and there is no invite on file for ${email}. Escalate to an admin to confirm whether they should be invited at all.`;
+      }
+
+      let response = `## Sign-in diagnosis for ${email}\n\n`;
+      response += `**Org:** ${org.name} (${orgId}) — subscription: ${org.subscription_status ?? 'none'}, email_domain: ${orgEmailDomain ?? 'none'}\n`;
+      response += `**Person record:** ${person ? `exists (stage=${person.stage}, workos_user_id=${person.workos_user_id ? 'yes' : 'no'}, slack_user_id=${person.slack_user_id ? 'yes' : 'no'})` : 'none'}\n`;
+      const inviteSummary =
+        [
+          pendingInvite ? 'pending' : null,
+          expiredInvite ? 'expired' : null,
+          acceptedInvite ? 'accepted' : null,
+        ]
+          .filter(Boolean)
+          .join(', ') || 'none';
+      response += `**Invites for this email at this org:** ${matchingInvites.length} (${inviteSummary})\n\n`;
+      response += `**Verdict: ${verdict}**\n`;
+      response += `${reason}\n`;
+      if (actionable) {
+        response += `\n**Suggested action:** ${actionable}\n`;
+      }
+      return response;
+    } catch (error) {
+      logger.error({ error, email, orgId }, 'Error diagnosing signin block');
+      return `❌ Failed to diagnose: ${error instanceof Error ? error.message : 'Unknown error'}`;
     }
   });
 

@@ -591,7 +591,7 @@ export async function handleAssistantMessage(
       });
     personEvents.recordEvent(personId, 'message_received', {
       channel: 'slack',
-      data: { source: 'dm', text_length: textWithResolvedMentions.length },
+      data: personEvents.buildMessageReceivedData(inputValidation.sanitized, 'dm'),
     }).catch(err => logger.warn({ err, personId }, 'Addie: Failed to record message_received event'));
   }
 

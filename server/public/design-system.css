@@ -36,6 +36,16 @@
   --color-brand-light: var(--color-primary-300);
   --color-brand-bg: var(--color-primary-50);
 
+  /* Semantic tag/badge color pairs (adapt in dark mode) */
+  --color-success-bg: var(--color-success-100);
+  --color-success-fg: var(--color-success-700);
+  --color-warning-bg: var(--color-warning-100);
+  --color-warning-fg: var(--color-warning-700);
+  --color-error-bg: var(--color-error-100);
+  --color-error-fg: var(--color-error-700);
+  --color-info-bg: var(--color-info-100);
+  --color-info-fg: var(--color-info-700);
+
   /* -----------------------------------------------------------------------------
      1.2 Neutral Colors (Gray Scale)
      ----------------------------------------------------------------------------- */
@@ -66,23 +76,38 @@
      1.3 Status Colors (Semantic)
      ----------------------------------------------------------------------------- */
   /* Success - Green */
+  --color-success-900: #064e3b;
+  --color-success-800: #065f46;
   --color-success-700: #047857;
   --color-success-600: #059669;
   --color-success-500: #10b981;     /* Primary success */
+  --color-success-400: #34d399;
+  --color-success-300: #6ee7b7;
+  --color-success-200: #a7f3d0;
   --color-success-100: #d1fae5;
   --color-success-50:  #ecfdf5;
 
   /* Warning - Amber/Orange */
+  --color-warning-900: #78350f;
+  --color-warning-800: #92400e;
   --color-warning-700: #b45309;
   --color-warning-600: #d97706;
   --color-warning-500: #f59e0b;     /* Primary warning */
+  --color-warning-400: #fbbf24;
+  --color-warning-300: #fcd34d;
+  --color-warning-200: #fde68a;
   --color-warning-100: #fef3c7;
   --color-warning-50:  #fffbeb;
 
   /* Error/Danger - Red */
+  --color-error-900: #7f1d1d;
+  --color-error-800: #991b1b;
   --color-error-700: #b91c1c;
   --color-error-600: #dc2626;
   --color-error-500: #ef4444;       /* Primary error */
+  --color-error-400: #f87171;
+  --color-error-300: #fca5a5;
+  --color-error-200: #fecaca;
   --color-error-100: #fee2e2;
   --color-error-50:  #fef2f2;
 
@@ -105,6 +130,26 @@
   /* Off-white for alternating sections */
   --color-off-white: #f6f5ec;
 
+  /* Always-light text for use on saturated colored backgrounds (status pills,
+     primary buttons) where the bg doesn't swap in dark mode. Does not swap. */
+  --color-text-on-dark: #ffffff;
+  --color-text-on-dark-secondary: rgba(255, 255, 255, 0.8);
+
+  /* Secondary button surfaces — swap in dark mode so the button stays
+     distinguishable from the page background under both themes. */
+  --color-bg-button-secondary: var(--color-gray-200);
+  --color-bg-button-secondary-hover: var(--color-gray-300);
+
+  /* Subtle raised surfaces for table headers, hovered rows, bulk-action
+     panels — swap in dark mode. */
+  --color-bg-table-header: var(--color-gray-50);
+  --color-bg-row-hover: var(--color-gray-50);
+
+  /* Translucent overlay for nav-link hover and similar interactive states.
+     Swaps from black-tint in light mode to white-tint in dark mode so the
+     hover affordance stays visible against either page background. */
+  --color-hover-overlay: rgba(0, 0, 0, 0.05);
+
   /* -----------------------------------------------------------------------------
      1.5 Legacy Compatibility (map old vars to new)
      ----------------------------------------------------------------------------- */
@@ -113,7 +158,7 @@
   --aao-accent: var(--color-primary-300);
   --aao-off-white: var(--color-off-white);
   --aao-black: var(--color-gray-900);
-  --aao-white: #ffffff;
+  --aao-white: var(--color-text-on-dark);
   --aao-gray: var(--color-gray-500);
   --aao-gray-light: var(--color-gray-400);
   --aao-gray-dark: var(--color-gray-700);
@@ -430,6 +475,7 @@
 }
 
 html {
+  color-scheme: light dark;
   font-family: var(--font-sans);
   font-size: 16px;
   line-height: var(--leading-normal);
@@ -445,6 +491,15 @@ body {
   line-height: var(--leading-normal);
   color: var(--color-text);
   background-color: var(--color-bg-page);
+}
+
+/* Native form elements default to browser text color (typically black), which
+   makes them invisible against a dark surface. Inherit the theme text color
+   so light-mode and dark-mode page text apply unless a class overrides. */
+input,
+select,
+textarea {
+  color: inherit;
 }
 
 /* =============================================================================
@@ -567,8 +622,8 @@ body {
   text-transform: uppercase;
   letter-spacing: var(--tracking-wide);
   color: var(--color-text-secondary);
-  background: var(--color-gray-100);
-  border: 1px solid var(--color-gray-300);
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border);
   cursor: pointer;
   white-space: nowrap;
   transition: var(--transition-all);
@@ -576,11 +631,11 @@ body {
 }
 .ds-pill:hover {
   color: var(--color-text-heading);
-  background: var(--color-gray-200);
+  background: var(--color-surface-raised);
 }
 .ds-pill.active {
-  color: var(--color-warning-700);
-  background: var(--color-warning-100);
+  color: var(--color-warning-fg);
+  background: var(--color-warning-bg);
   border-color: var(--color-warning-500);
 }
 
@@ -799,8 +854,8 @@ body {
 .ds-text-warning   { color: var(--color-warning-600); }
 .ds-text-error     { color: var(--color-error-600); }
 
-.ds-text-on-dark   { color: white; }
-.ds-text-on-dark-secondary { color: rgba(255, 255, 255, 0.8); }
+.ds-text-on-dark   { color: var(--color-text-on-dark); }
+.ds-text-on-dark-secondary { color: var(--color-text-on-dark-secondary); }
 
 /* -----------------------------------------------------------------------------
    9.9 Link Styles
@@ -995,7 +1050,7 @@ body {
 
 /* Clean hero — white background, dark text (matches homepage feel) */
 .hero--clean {
-  background: #fff;
+  background: var(--color-surface);
   color: var(--color-text-heading);
   padding: var(--space-8) var(--space-8) var(--space-10);
 }
@@ -1079,14 +1134,14 @@ a.btn-primary:hover {
   color: white;
 }
 
-/* Secondary button - Gray background (secondary actions) */
+/* Secondary button - Surface background (secondary actions) */
 .btn-secondary {
-  background: var(--color-gray-200);
+  background: var(--color-bg-button-secondary);
   color: var(--color-text-heading);
 }
 
 .btn-secondary:hover {
-  background: var(--color-gray-300);
+  background: var(--color-bg-button-secondary-hover);
 }
 
 /* Danger button - Red background (destructive actions) */
@@ -2166,15 +2221,29 @@ body {
     --color-bg-card: #1f2937;
     --color-surface: #1f2937;
     --color-surface-raised: #374151;
+    --color-bg-button-secondary: #4b5563;
+    --color-bg-button-secondary-hover: #6b7280;
+    --color-bg-table-header: #1f2937;
+    --color-bg-row-hover: #374151;
+    --color-hover-overlay: rgba(255, 255, 255, 0.06);
     --color-brand: #6b8cef;
     --color-brand-hover: #8aa3f4;
     --color-brand-bg: rgba(107, 140, 239, 0.1);
+    --color-success-bg: rgba(16, 185, 129, 0.18);
+    --color-success-fg: #6ee7b7;
+    --color-warning-bg: rgba(245, 158, 11, 0.18);
+    --color-warning-fg: #fcd34d;
+    --color-error-bg: rgba(239, 68, 68, 0.18);
+    --color-error-fg: #fca5a5;
+    --color-info-bg: rgba(107, 140, 239, 0.18);
+    --color-info-fg: #a4c2f4;
   }
 }
 
 /* html[data-theme] — explicit user preference; beats @media :root by specificity */
 
 html[data-theme="dark"] {
+  color-scheme: dark;
   --color-text: #f9fafb;
   --color-text-secondary: #d1d5db;
   --color-text-muted: #9ca3af;
@@ -2186,12 +2255,26 @@ html[data-theme="dark"] {
   --color-bg-card: #1f2937;
   --color-surface: #1f2937;
   --color-surface-raised: #374151;
+  --color-bg-button-secondary: #4b5563;
+  --color-bg-button-secondary-hover: #6b7280;
+  --color-bg-table-header: #1f2937;
+  --color-bg-row-hover: #374151;
+  --color-hover-overlay: rgba(255, 255, 255, 0.06);
   --color-brand: #6b8cef;
   --color-brand-hover: #8aa3f4;
   --color-brand-bg: rgba(107, 140, 239, 0.1);
+  --color-success-bg: rgba(16, 185, 129, 0.18);
+  --color-success-fg: #6ee7b7;
+  --color-warning-bg: rgba(245, 158, 11, 0.18);
+  --color-warning-fg: #fcd34d;
+  --color-error-bg: rgba(239, 68, 68, 0.18);
+  --color-error-fg: #fca5a5;
+  --color-info-bg: rgba(107, 140, 239, 0.18);
+  --color-info-fg: #a4c2f4;
 }
 
 html[data-theme="light"] {
+  color-scheme: light;
   --color-text: #1d1d1d;
   --color-text-secondary: #6b7280;
   --color-text-muted: #9ca3af;
@@ -2203,7 +2286,20 @@ html[data-theme="light"] {
   --color-bg-card: #ffffff;
   --color-surface: #ffffff;
   --color-surface-raised: #ffffff;
+  --color-bg-button-secondary: #e5e7eb;
+  --color-bg-button-secondary-hover: #d1d5db;
+  --color-bg-table-header: #f9fafb;
+  --color-bg-row-hover: #f9fafb;
+  --color-hover-overlay: rgba(0, 0, 0, 0.05);
   --color-brand: #1a36b4;
   --color-brand-hover: #2d4fd6;
   --color-brand-bg: #eef4fc;
+  --color-success-bg: #d1fae5;
+  --color-success-fg: #047857;
+  --color-warning-bg: #fef3c7;
+  --color-warning-fg: #b45309;
+  --color-error-bg: #fee2e2;
+  --color-error-fg: #b91c1c;
+  --color-info-bg: #dbe8fc;
+  --color-info-fg: #1a36b4;
 }

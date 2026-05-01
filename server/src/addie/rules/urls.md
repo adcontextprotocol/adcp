@@ -15,6 +15,9 @@ are excluded from CI checks).
 - https://agenticadvertising.org/dashboard — Member dashboard (billing, settings, team)
 - https://agenticadvertising.org/dashboard#team — Team management and pending join requests
 - https://agenticadvertising.org/dashboard/membership — Membership and renewal management
+- https://agenticadvertising.org/account — Personal account settings (form fields you type into: name, bio, expertise, social links, including the GitHub-username text field that surfaces on the user's community profile). NOT where the GitHub OAuth connection lives.
+- https://agenticadvertising.org/member-hub — "Your hub" — the personal dashboard (engagement, working group recs, profile completeness). Hosts the **Connections card** where users connect or disconnect GitHub OAuth (the one-click toggle backed by WorkOS Pipes). Use this URL when the user asks how to disconnect or manage their GitHub OAuth connection.
+- https://agenticadvertising.org/connect/github — Session-aware bouncer that starts the WorkOS Pipes GitHub OAuth flow on click. Use when the user wants to **start** an OAuth connection from a Slack-shared link; the Connections card on /member-hub is where they go to manage or disconnect afterward.
 - https://agenticadvertising.org/member-profile — Member profile, company description, and logo upload
 - https://agenticadvertising.org/community — Community hub
 - https://agenticadvertising.org/legal/terms — Terms of Service (canonical path; /terms redirects here)
@@ -47,6 +50,8 @@ substitute listed or call `search_docs`. Do not emit the hallucinated path.
 |---|---|
 | `agenticadvertising.org/billing` | Use `/dashboard` (billing is a tab there) |
 | `agenticadvertising.org/membership` | Use `/dashboard/membership` |
+| `agenticadvertising.org/dashboard/settings` | Doesn't exist — for personal account settings (including the GitHub username profile field) use `/account`; for the GitHub OAuth connection use `/connect/github` |
+| `agenticadvertising.org/settings` | Doesn't exist — same redirect as `/dashboard/settings` |
 | `agenticadvertising.org/about` | Doesn't exist — use `search_docs` or describe the org from context |
 | `agenticadvertising.org/faq` | Doesn't exist — use `search_docs` |
 | `agenticadvertising.org/contact` | Doesn't exist — direct users to the community hub (`/community`) or working groups (`/working-groups`) |
