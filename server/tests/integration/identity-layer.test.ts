@@ -48,15 +48,29 @@ describe('Identity layer (migration 460)', () => {
   }
 
   describe('backfill', () => {
-    it('every existing user has exactly one identity_workos_users row marked primary', async () => {
+    it('every existing user has exactly one identity_workos_users binding', async () => {
+      // Don't assert is_primary here — Phase 2a/2b legitimately create
+      // non-primary bindings via mergeUsers and the admin bind tool. The
+      // partial unique index `idx_identity_workos_users_one_primary`
+      // enforces "exactly one primary per identity" at the DB level.
       const result = await pool.query(`
         SELECT u.workos_user_id,
-               COUNT(iwu.workos_user_id) AS binding_count,
-               COUNT(*) FILTER (WHERE iwu.is_primary) AS primary_count
+               COUNT(iwu.workos_user_id) AS binding_count
         FROM users u
         LEFT JOIN identity_workos_users iwu ON iwu.workos_user_id = u.workos_user_id
         GROUP BY u.workos_user_id
-        HAVING COUNT(iwu.workos_user_id) <> 1 OR COUNT(*) FILTER (WHERE iwu.is_primary) <> 1
+        HAVING COUNT(iwu.workos_user_id) <> 1
+        LIMIT 5
+      `);
+      expect(result.rows).toEqual([]);
+    });
+
+    it('every identity has exactly one primary binding', async () => {
+      const result = await pool.query(`
+        SELECT identity_id, COUNT(*) FILTER (WHERE is_primary) AS primary_count
+        FROM identity_workos_users
+        GROUP BY identity_id
+        HAVING COUNT(*) FILTER (WHERE is_primary) <> 1
         LIMIT 5
       `);
       expect(result.rows).toEqual([]);
