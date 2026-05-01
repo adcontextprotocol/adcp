@@ -143,7 +143,10 @@ const KITCHEN_CABINET_SLUG = 'kitchen-cabinet';
 
 // Cache for admin status checks - admin status rarely changes
 const ADMIN_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
-const adminStatusCache = new Map<string, { isAdmin: boolean; expiresAt: number }>();
+// Shared cache module — invalidators can be called without dragging the
+// rest of admin-tools (and its Anthropic-instantiating dependencies)
+// into unrelated import graphs.
+const adminStatusCache = getSlackAdminStatusCache();
 
 /**
  * Check if a Slack user is an admin
@@ -191,30 +194,15 @@ export async function isSlackUserAAOAdmin(slackUserId: string): Promise<boolean>
   }
 }
 
-/**
- * Invalidate admin status cache for a Slack user (call when admin membership changes)
- */
-export function invalidateAdminStatusCache(slackUserId?: string): void {
-  if (slackUserId) {
-    adminStatusCache.delete(slackUserId);
-  } else {
-    adminStatusCache.clear();
-  }
-}
+// Re-export Slack/web admin invalidators from the shared cache module so
+// existing imports of `admin-tools` keep working while new callers can
+// import directly from `admin-status-cache` to avoid this file's heavy
+// transitive dependencies.
+import { invalidateSlackAdminStatusCache, invalidateWebAdminStatusCache } from '../admin-status-cache.js';
+export { invalidateSlackAdminStatusCache as invalidateAdminStatusCache, invalidateWebAdminStatusCache };
 
 // Cache for web user admin status (keyed by WorkOS user ID)
-const webAdminStatusCache = new Map<string, { isAdmin: boolean; expiresAt: number }>();
-
-/**
- * Invalidate web admin status cache for a user (call when admin membership changes)
- */
-export function invalidateWebAdminStatusCache(workosUserId?: string): void {
-  if (workosUserId) {
-    webAdminStatusCache.delete(workosUserId);
-  } else {
-    webAdminStatusCache.clear();
-  }
-}
+const webAdminStatusCache = getWebAdminStatusCache();
 
 /**
  * Invalidate all admin caches (both Slack and web)
@@ -224,6 +212,11 @@ export function invalidateAllAdminCaches(): void {
   webAdminStatusCache.clear();
   webCouncilStatusCache.clear();
 }
+
+// Surface the shared-cache helpers so admin-tools' module graph stays
+// authoritative (other files can either import from admin-tools or from
+// admin-status-cache directly — both reach the same Maps).
+import { getSlackAdminStatusCache, getWebAdminStatusCache } from '../admin-status-cache.js';
 
 // Cache for web user kitchen-cabinet council status (keyed by WorkOS user ID)
 const webCouncilStatusCache = new Map<string, { isCouncil: boolean; expiresAt: number }>();

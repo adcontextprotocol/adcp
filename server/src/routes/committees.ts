@@ -27,6 +27,12 @@ import { SlackDatabase } from "../db/slack-db.js";
 import { CommunityDatabase } from "../db/community-db.js";
 import multer from 'multer';
 import { sendWgWelcomeMessage } from "../addie/services/wg-welcome.js";
+import {
+  joinWorkingGroup as joinWorkingGroupService,
+  expressCommitteeInterest as expressCommitteeInterestService,
+  withdrawCommitteeInterest as withdrawCommitteeInterestService,
+  WorkingGroupMembershipError,
+} from "../services/working-group-membership-service.js";
 
 const logger = createLogger("committee-routes");
 
@@ -1163,162 +1169,43 @@ export function createCommitteeRouters(): {
     try {
       const { slug } = req.params;
       const user = req.user!;
-
-      const group = await workingGroupDb.getWorkingGroupBySlug(slug);
-
-      if (!group || group.status !== 'active') {
-        return res.status(404).json({
-          error: 'Working group not found',
-          message: `No working group found with slug: ${slug}`,
-        });
-      }
-
-      if (group.is_private) {
-        return res.status(403).json({
-          error: 'Private group',
-          message: 'This working group is private and requires an invitation to join',
-        });
-      }
-
-      // Community-only seats cannot join working groups or councils
-      const { getUserSeatType } = await import('../db/organization-db.js');
-      const seatType = await getUserSeatType(user.id);
-      if (seatType === 'community_only') {
-        // Look up user's org for seat request capability
-        const orgResult = await query<{ workos_organization_id: string }>(
-          'SELECT workos_organization_id FROM organization_memberships WHERE workos_user_id = $1 LIMIT 1',
-          [user.id]
-        );
-        const userOrgId = orgResult.rows[0]?.workos_organization_id;
-        const resourceType = group.committee_type === 'council' ? 'council' : 'working_group';
-
-        return res.status(403).json({
-          error: 'Contributor access required',
-          message: 'Working group membership requires a contributor seat. Ask your org admin to upgrade your access.',
-          can_request: !!userOrgId,
-          request_url: userOrgId ? `/api/organizations/${userOrgId}/seat-requests` : undefined,
-          request_body: userOrgId ? { resource_type: resourceType, resource_id: group.id, resource_name: group.name } : undefined,
-        });
-      }
-
-      const existingMembership = await workingGroupDb.getMembership(group.id, user.id);
-      if (existingMembership && existingMembership.status === 'active') {
-        return res.status(409).json({
-          error: 'Already a member',
-          message: 'You are already a member of this working group',
-        });
-      }
-
-      let orgId: string | undefined;
-      let orgName: string | undefined;
-      if (workos) {
-        try {
-          const memberships = await workos.userManagement.listOrganizationMemberships({
-            userId: user.id,
+      const result = await joinWorkingGroupService({
+        user: { id: user.id, email: user.email, firstName: user.firstName, lastName: user.lastName },
+        slug,
+      });
+      res.status(201).json({ success: true, membership: result.membership });
+    } catch (error) {
+      if (error instanceof WorkingGroupMembershipError) {
+        if (error.is('group_not_found')) {
+          return res.status(404).json({ error: 'Working group not found', message: error.message });
+        }
+        if (error.is('group_private')) {
+          return res.status(403).json({
+            error: 'Private group',
+            message: 'This working group is private and requires an invitation to join',
           });
-          if (memberships.data.length > 0) {
-            const org = await workos.organizations.getOrganization(memberships.data[0].organizationId);
-            orgId = org.id;
-            orgName = org.name;
-          }
-        } catch {
-          // Ignore org fetch errors
+        }
+        if (error.is('community_only_seat_blocked')) {
+          const { userOrgId, workingGroupId, groupName, resourceType } = error.meta;
+          return res.status(403).json({
+            error: 'Contributor access required',
+            message: 'Working group membership requires a contributor seat. Ask your org admin to upgrade your access.',
+            can_request: !!userOrgId,
+            request_url: userOrgId ? `/api/organizations/${userOrgId}/seat-requests` : undefined,
+            request_body: userOrgId
+              ? { resource_type: resourceType, resource_id: workingGroupId, resource_name: groupName }
+              : undefined,
+          });
+        }
+        if (error.is('already_member')) {
+          return res.status(409).json({
+            error: 'Already a member',
+            message: 'You are already a member of this working group',
+          });
         }
       }
-
-      const membership = await workingGroupDb.addMembership({
-        working_group_id: group.id,
-        workos_user_id: user.id,
-        user_email: user.email,
-        user_name: user.firstName && user.lastName
-          ? `${user.firstName} ${user.lastName}`
-          : user.email,
-        workos_organization_id: orgId,
-        user_org_name: orgName,
-        added_by_user_id: user.id,
-      });
-
-      invalidateMemberContextCache();
-      invalidateWebAdminStatusCache(user.id);
-
-      // Award community points + check badges (fire-and-forget)
-      const communityDb = new CommunityDatabase();
-      communityDb.awardPoints(user.id, 'wg_joined', 10, group.id, 'working_group').catch(err => {
-        logger.error({ err, userId: user.id }, 'Failed to award WG join points');
-      });
-      communityDb.checkAndAwardBadges(user.id, 'wg').catch(err => {
-        logger.error({ err, userId: user.id }, 'Failed to check WG badges');
-      });
-
-      // Notify group leaders with joiner context (fire-and-forget)
-      const joinerName = user.firstName && user.lastName
-        ? `${user.firstName} ${user.lastName}` : user.email;
-
-      if (group.leaders) {
-        // Escape Slack mrkdwn special chars in external data
-        const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-
-        (async () => {
-          // Gather joiner's other WG memberships for context
-          const otherWgNames: string[] = [];
-          try {
-            const joinerGroups = await workingGroupDb.getWorkingGroupsForUser(user.id);
-            for (const g of joinerGroups) {
-              if (g.id !== group.id) otherWgNames.push(g.name);
-            }
-          } catch {
-            // Non-critical — proceed without other WG context
-          }
-
-          const orgContext = orgName ? ` (${esc(orgName)})` : '';
-          const wgContext = otherWgNames.length > 0
-            ? `. Also active in ${otherWgNames.map(esc).join(', ')}`
-            : '';
-
-          for (const leader of group.leaders!) {
-            notifyUser({
-              recipientUserId: leader.canonical_user_id,
-              actorUserId: user.id,
-              type: 'wg_member_joined',
-              referenceId: group.id,
-              referenceType: 'working_group',
-              title: `${esc(joinerName)}${orgContext} joined ${esc(group.name)}${wgContext}`,
-              url: `/working-groups/${group.slug}`,
-            }).catch(err => logger.error({ err }, 'Failed to send WG join notification'));
-          }
-        })().catch(err => logger.error({ err }, 'Failed to build WG join notification context'));
-      }
-
-      // Auto-invite joiner to the group's Slack channel (fire-and-forget)
-      if (group.slack_channel_id) {
-        const slackDb = new SlackDatabase();
-        slackDb.getByWorkosUserId(user.id).then(mapping => {
-          if (mapping?.slack_user_id) {
-            return inviteToChannel(group.slack_channel_id!, [mapping.slack_user_id]);
-          }
-        }).catch(err => {
-          logger.error({ err, userId: user.id, channelId: group.slack_channel_id }, 'Failed to auto-invite to Slack channel');
-        });
-      }
-
-      // Send Addie welcome message with group context (fire-and-forget)
-      sendWgWelcomeMessage({
-        userId: user.id,
-        userEmail: user.email,
-        userName: joinerName,
-        workingGroupId: group.id,
-        workingGroupSlug: group.slug,
-        workingGroupName: group.name,
-      }).catch(err => {
-        logger.error({ err, userId: user.id }, 'Failed to send WG welcome message');
-      });
-
-      res.status(201).json({ success: true, membership });
-    } catch (error) {
       logger.error({ err: error }, 'Join working group error');
-      res.status(500).json({
-        error: 'Failed to join working group',
-      });
+      res.status(500).json({ error: 'Failed to join working group' });
     }
   });
 
@@ -1328,81 +1215,21 @@ export function createCommitteeRouters(): {
       const { slug } = req.params;
       const { interest_level: rawInterestLevel } = req.body;
       const user = req.user!;
-      const pool = getPool();
-
-      // Validate interest level
-      const validInterestLevels = ['participant', 'leader'] as const;
-      const interest_level = validInterestLevels.includes(rawInterestLevel)
-        ? rawInterestLevel
-        : 'participant';
-
-      const group = await workingGroupDb.getWorkingGroupBySlug(slug);
-
-      if (!group || group.status !== 'active') {
-        return res.status(404).json({
-          error: 'Committee not found',
-          message: `No committee found with slug: ${slug}`,
-        });
-      }
-
-      // Get user's org info if available
-      let orgId: string | undefined;
-      let orgName: string | undefined;
-      if (workos) {
-        try {
-          const memberships = await workos.userManagement.listOrganizationMemberships({
-            userId: user.id,
-          });
-          if (memberships.data.length > 0) {
-            const org = await workos.organizations.getOrganization(memberships.data[0].organizationId);
-            orgId = org.id;
-            orgName = org.name;
-          }
-        } catch {
-          // Ignore org fetch errors
-        }
-      }
-
-      const userName = user.firstName && user.lastName
-        ? `${user.firstName} ${user.lastName}`
-        : user.email;
-
-      // Upsert the interest record
-      await pool.query(
-        `INSERT INTO committee_interest (
-          working_group_id, workos_user_id, user_email, user_name,
-          workos_organization_id, user_org_name, interest_level
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7)
-        ON CONFLICT (working_group_id, workos_user_id) DO UPDATE SET
-          interest_level = COALESCE(EXCLUDED.interest_level, committee_interest.interest_level),
-          user_email = EXCLUDED.user_email,
-          user_name = EXCLUDED.user_name,
-          user_org_name = EXCLUDED.user_org_name`,
-        [
-          group.id,
-          user.id,
-          user.email,
-          userName,
-          orgId || null,
-          orgName || null,
-          interest_level,
-        ]
-      );
-
-      logger.info(
-        { workingGroupId: group.id, userId: user.id, interestLevel: interest_level },
-        'User expressed interest in committee'
-      );
-
+      const result = await expressCommitteeInterestService({
+        user: { id: user.id, email: user.email, firstName: user.firstName, lastName: user.lastName },
+        slug,
+        interestLevel: rawInterestLevel,
+      });
       res.status(201).json({
         success: true,
-        message: `Thanks for your interest in ${group.name}! We'll let you know when it launches.`,
+        message: `Thanks for your interest in ${result.groupName}! We'll let you know when it launches.`,
       });
     } catch (error) {
+      if (error instanceof WorkingGroupMembershipError && error.is('group_not_found')) {
+        return res.status(404).json({ error: 'Committee not found', message: error.message });
+      }
       logger.error({ err: error }, 'Express committee interest error');
-      res.status(500).json({
-        error: 'Failed to record interest',
-      });
+      res.status(500).json({ error: 'Failed to record interest' });
     }
   });
 
@@ -1450,45 +1277,25 @@ export function createCommitteeRouters(): {
     try {
       const { slug } = req.params;
       const user = req.user!;
-      const pool = getPool();
-
-      const group = await workingGroupDb.getWorkingGroupBySlug(slug);
-
-      if (!group) {
-        return res.status(404).json({
-          error: 'Committee not found',
-          message: `No committee found with slug: ${slug}`,
-        });
-      }
-
-      const result = await pool.query(
-        `DELETE FROM committee_interest
-         WHERE working_group_id = $1 AND workos_user_id = $2
-         RETURNING id`,
-        [group.id, user.id]
-      );
-
-      if (result.rowCount === 0) {
-        return res.status(404).json({
-          error: 'No interest found',
-          message: 'You have not expressed interest in this committee',
-        });
-      }
-
-      logger.info(
-        { workingGroupId: group.id, userId: user.id },
-        'User withdrew interest in committee'
-      );
-
+      const result = await withdrawCommitteeInterestService({
+        user: { id: user.id, email: user.email, firstName: user.firstName, lastName: user.lastName },
+        slug,
+      });
       res.json({
         success: true,
-        message: `You have withdrawn your interest in ${group.name}.`,
+        message: `You have withdrawn your interest in ${result.groupName}.`,
       });
     } catch (error) {
+      if (error instanceof WorkingGroupMembershipError) {
+        if (error.is('group_not_found')) {
+          return res.status(404).json({ error: 'Committee not found', message: error.message });
+        }
+        if (error.is('no_interest_recorded')) {
+          return res.status(404).json({ error: 'No interest found', message: error.message });
+        }
+      }
       logger.error({ err: error }, 'Withdraw committee interest error');
-      res.status(500).json({
-        error: 'Failed to withdraw interest',
-      });
+      res.status(500).json({ error: 'Failed to withdraw interest' });
     }
   });
 

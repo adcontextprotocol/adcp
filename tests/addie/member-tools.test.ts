@@ -17,6 +17,7 @@ import { MEMBER_TOOLS, createMemberToolHandlers } from '../../server/src/addie/m
 import { getGitHubAccessToken } from '../../server/src/services/pipes.js';
 import { ComplianceDatabase } from '../../server/src/db/compliance-db.js';
 import { AgentSnapshotDatabase } from '../../server/src/db/agent-snapshot-db.js';
+import * as wgService from '../../server/src/services/working-group-membership-service.js';
 
 describe('MEMBER_TOOLS definitions', () => {
   it('exports an array of tools', () => {
@@ -644,6 +645,107 @@ describe('createMemberToolHandlers', () => {
       expect(result).toContain('88ms');
       expect(result).toContain('Tools advertised:** 1');
       expect(result).toContain('passing');
+    });
+  });
+
+  describe('working-group membership tools (service-backed)', () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    const memberCtx = {
+      is_mapped: true,
+      is_member: true,
+      slack_linked: false,
+      workos_user: {
+        workos_user_id: 'user_test_123',
+        email: 'test@example.com',
+        first_name: 'Test',
+        last_name: 'User',
+      },
+    } as MemberContext;
+
+    it('join_working_group renders friendly success on a public group', async () => {
+      vi.spyOn(wgService, 'joinWorkingGroup').mockResolvedValue({
+        membership: {} as never,
+        groupId: 'wg_abc',
+        groupName: 'Media Buying Protocol',
+        groupSlug: 'media-buying-protocol-wg',
+      });
+      const handlers = createMemberToolHandlers(memberCtx);
+      const result = await handlers.get('join_working_group')!({ slug: 'media-buying-protocol-wg' });
+      expect(result).toContain('Successfully joined');
+      expect(result).toContain('Media Buying Protocol');
+    });
+
+    it('join_working_group disambiguates private vs not-found vs already-member by code, not status', async () => {
+      // Private group
+      vi.spyOn(wgService, 'joinWorkingGroup').mockRejectedValueOnce(
+        new wgService.WorkingGroupMembershipError('group_private', 'Private', { slug: 'sp', groupName: 'Specialists' }),
+      );
+      const handlers = createMemberToolHandlers(memberCtx);
+      let result = await handlers.get('join_working_group')!({ slug: 'sp' });
+      expect(result).toContain('Specialists');
+      expect(result).toContain('private');
+      expect(result).toContain('request_working_group_invitation');
+
+      // Not found
+      vi.spyOn(wgService, 'joinWorkingGroup').mockRejectedValueOnce(
+        new wgService.WorkingGroupMembershipError('group_not_found', 'No', { slug: 'nope' }),
+      );
+      result = await handlers.get('join_working_group')!({ slug: 'nope' });
+      expect(result).toContain('not found');
+      expect(result).toContain('list_working_groups');
+
+      // Already member
+      vi.spyOn(wgService, 'joinWorkingGroup').mockRejectedValueOnce(
+        new wgService.WorkingGroupMembershipError('already_member', 'Already', { slug: 'mb', groupName: 'Media Buying' }),
+      );
+      result = await handlers.get('join_working_group')!({ slug: 'mb' });
+      expect(result).toContain('already a member');
+      expect(result).toContain('Media Buying');
+
+      // Community-only seat blocker
+      vi.spyOn(wgService, 'joinWorkingGroup').mockRejectedValueOnce(
+        new wgService.WorkingGroupMembershipError('community_only_seat_blocked', 'Need contributor seat', {
+          slug: 'mb',
+          groupName: 'Media Buying',
+          workingGroupId: 'wg_abc',
+          resourceType: 'working_group',
+          userOrgId: 'org_1',
+        }),
+      );
+      result = await handlers.get('join_working_group')!({ slug: 'mb' });
+      expect(result).toContain('contributor seat');
+      expect(result).toContain('Media Buying');
+    });
+
+    it('express_council_interest returns the launch-pending message on success', async () => {
+      vi.spyOn(wgService, 'expressCommitteeInterest').mockResolvedValue({
+        groupId: 'wg_x',
+        groupName: 'Future Council',
+        groupSlug: 'future-council',
+        interestLevel: 'participant',
+      });
+      const handlers = createMemberToolHandlers(memberCtx);
+      const result = await handlers.get('express_council_interest')!({ slug: 'future-council', interest_level: 'participant' });
+      expect(result).toContain('Future Council');
+      expect(result.toLowerCase()).toContain("we'll let you know");
+    });
+
+    it('withdraw_council_interest distinguishes never-expressed from group-not-found', async () => {
+      vi.spyOn(wgService, 'withdrawCommitteeInterest').mockRejectedValueOnce(
+        new wgService.WorkingGroupMembershipError('no_interest_recorded', 'never', { slug: 'fc', groupName: 'Future Council' }),
+      );
+      const handlers = createMemberToolHandlers(memberCtx);
+      let result = await handlers.get('withdraw_council_interest')!({ slug: 'fc' });
+      expect(result).toContain("haven't expressed interest");
+
+      vi.spyOn(wgService, 'withdrawCommitteeInterest').mockRejectedValueOnce(
+        new wgService.WorkingGroupMembershipError('group_not_found', 'no group', { slug: 'nope' }),
+      );
+      result = await handlers.get('withdraw_council_interest')!({ slug: 'nope' });
+      expect(result).toContain('Could not find');
     });
   });
 

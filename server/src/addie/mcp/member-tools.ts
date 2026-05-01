@@ -63,6 +63,12 @@ import { canonicalizeBrandDomain } from '../../services/identifier-normalization
 import { ComplianceDatabase } from '../../db/compliance-db.js';
 import { AgentSnapshotDatabase } from '../../db/agent-snapshot-db.js';
 import { AgentValidator } from '../../validator.js';
+import {
+  joinWorkingGroup as joinWorkingGroupService,
+  expressCommitteeInterest as expressCommitteeInterestService,
+  withdrawCommitteeInterest as withdrawCommitteeInterestService,
+  WorkingGroupMembershipError,
+} from '../../services/working-group-membership-service.js';
 import { getPool, query } from '../../db/client.js';
 import { MemberSearchAnalyticsDatabase } from '../../db/member-search-analytics-db.js';
 import { OrganizationDatabase } from '../../db/organization-db.js';
@@ -1619,32 +1625,30 @@ export function createMemberToolHandlers(
     }
 
     const slug = input.slug as string;
-
-    // Check group visibility before attempting to join
-    const groupResult = await callApi('GET', `/api/working-groups/${slug}`, memberContext);
-    if (groupResult.ok) {
-      const groupData = groupResult.data as { working_group: { is_private?: boolean; name?: string } };
-      if (groupData.working_group?.is_private) {
-        return `"${groupData.working_group.name || slug}" is a private working group that requires an invitation. Use request_working_group_invitation to request access.`;
+    const wu = memberContext.workos_user;
+    try {
+      const result = await joinWorkingGroupService({
+        user: { id: wu.workos_user_id, email: wu.email, firstName: wu.first_name, lastName: wu.last_name },
+        slug,
+      });
+      return `Successfully joined the "${result.groupName}" working group! You can now participate in discussions and see group posts.`;
+    } catch (error) {
+      if (error instanceof WorkingGroupMembershipError) {
+        if (error.is('group_not_found')) {
+          return `Working group "${slug}" not found. Use list_working_groups to see available groups.`;
+        }
+        if (error.is('group_private')) {
+          return `"${error.meta.groupName}" is a private working group that requires an invitation. Use request_working_group_invitation to request access.`;
+        }
+        if (error.is('community_only_seat_blocked')) {
+          return `Joining "${error.meta.groupName}" requires a contributor seat. Ask your org admin to upgrade your access.`;
+        }
+        if (error.is('already_member')) {
+          return `You're already a member of the "${error.meta.groupName}" working group!`;
+        }
       }
+      throw new ToolError(`Failed to join working group: ${error instanceof Error ? error.message : String(error)}`);
     }
-
-    const result = await callApi('POST', `/api/working-groups/${slug}/join`, memberContext);
-
-    if (!result.ok) {
-      if (result.status === 403) {
-        return `Cannot join "${slug}" — this is a private working group. Use request_working_group_invitation to request access.`;
-      }
-      if (result.status === 404) {
-        return `Working group "${slug}" not found. Use list_working_groups to see available groups.`;
-      }
-      if (result.status === 409) {
-        return `You're already a member of the "${slug}" working group!`;
-      }
-      throw new ToolError(`Failed to join working group: ${result.error}`);
-    }
-
-    return `Successfully joined the "${slug}" working group! You can now participate in discussions and see group posts.`;
   });
 
   handlers.set('request_working_group_invitation', async (input) => {
@@ -1730,24 +1734,20 @@ export function createMemberToolHandlers(
     }
 
     const slug = input.slug as string;
-    const validInterestLevels = ['participant', 'leader'];
-    const interestLevel = validInterestLevels.includes(input.interest_level as string)
-      ? (input.interest_level as string)
-      : 'participant';
-
-    const result = await callApi('POST', `/api/working-groups/${slug}/interest`, memberContext, {
-      interest_level: interestLevel,
-    });
-
-    if (!result.ok) {
-      if (result.status === 404) {
+    const wu = memberContext.workos_user;
+    try {
+      const result = await expressCommitteeInterestService({
+        user: { id: wu.workos_user_id, email: wu.email, firstName: wu.first_name, lastName: wu.last_name },
+        slug,
+        interestLevel: input.interest_level as string | undefined,
+      });
+      return `Thanks for your interest in ${result.groupName}! We'll let you know when it launches.`;
+    } catch (error) {
+      if (error instanceof WorkingGroupMembershipError && error.is('group_not_found')) {
         return `Could not find a council or committee with slug "${slug}". Use list_working_groups with type "council" to see available councils.`;
       }
-      throw new ToolError(`Failed to express interest: ${result.error}`);
+      throw new ToolError(`Failed to express interest: ${error instanceof Error ? error.message : String(error)}`);
     }
-
-    const data = result.data as { message?: string };
-    return data.message || `You've expressed interest! We'll notify you when this council launches.`;
   });
 
   handlers.set('withdraw_council_interest', async (input) => {
@@ -1756,22 +1756,24 @@ export function createMemberToolHandlers(
     }
 
     const slug = input.slug as string;
-
-    const result = await callApi('DELETE', `/api/working-groups/${slug}/interest`, memberContext);
-
-    if (!result.ok) {
-      if (result.status === 404) {
-        const data = result.data as { error?: string };
-        if (data?.error === 'No interest found') {
+    const wu = memberContext.workos_user;
+    try {
+      const result = await withdrawCommitteeInterestService({
+        user: { id: wu.workos_user_id, email: wu.email, firstName: wu.first_name, lastName: wu.last_name },
+        slug,
+      });
+      return `You have withdrawn your interest in ${result.groupName}. You won't be notified when this council launches.`;
+    } catch (error) {
+      if (error instanceof WorkingGroupMembershipError) {
+        if (error.is('no_interest_recorded')) {
           return `You haven't expressed interest in "${slug}". No action needed.`;
         }
-        return `Could not find a council or committee with slug "${slug}".`;
+        if (error.is('group_not_found')) {
+          return `Could not find a council or committee with slug "${slug}".`;
+        }
       }
-      throw new ToolError(`Failed to withdraw interest: ${result.error}`);
+      throw new ToolError(`Failed to withdraw interest: ${error instanceof Error ? error.message : String(error)}`);
     }
-
-    const data = result.data as { message?: string };
-    return data.message || `You've withdrawn your interest. You won't be notified when this council launches.`;
   });
 
   handlers.set('get_my_council_interests', async () => {
