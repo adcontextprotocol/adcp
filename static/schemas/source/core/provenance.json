@@ -122,7 +122,7 @@
                 "type": "string",
                 "format": "uri",
                 "pattern": "^https://",
-                "description": "URL of the governance agent the buyer represents was used to embed/verify this layer. MUST use the `https://` scheme and MUST appear in the seller's `creative_policy.accepted_verifiers[].agent_url` list (canonicalized per the AdCP URL canonicalization rules). Sellers MUST NOT call this URL until the canonicalized match is confirmed."
+                "description": "URL of the governance agent the buyer represents was used to embed/verify this layer. MUST use the `https://` scheme and MUST appear in the seller's `creative_policy.accepted_verifiers[].agent_url` list (canonicalized per /docs/reference/url-canonicalization: lowercase scheme and host, strip default port, normalize path dot-segments). Sellers MUST NOT call this URL until the canonicalized match is confirmed."
               },
               "feature_id": {
                 "type": "string",
@@ -165,7 +165,7 @@
                 "type": "string",
                 "format": "uri",
                 "pattern": "^https://",
-                "description": "URL of the governance agent the buyer represents was used to apply/detect this watermark. MUST use the `https://` scheme and MUST appear in the seller's `creative_policy.accepted_verifiers[].agent_url` list (canonicalized per the AdCP URL canonicalization rules). Sellers MUST NOT call this URL until the canonicalized match is confirmed."
+                "description": "URL of the governance agent the buyer represents was used to apply/detect this watermark. MUST use the `https://` scheme and MUST appear in the seller's `creative_policy.accepted_verifiers[].agent_url` list (canonicalized per /docs/reference/url-canonicalization: lowercase scheme and host, strip default port, normalize path dot-segments). Sellers MUST NOT call this URL until the canonicalized match is confirmed."
               },
               "feature_id": {
                 "type": "string",
