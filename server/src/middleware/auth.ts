@@ -652,14 +652,23 @@ function hasValidAdminApiKey(req: Request): boolean {
 }
 
 /**
+ * True if `id` is a synthetic user (static admin API key or per-org WorkOS
+ * API key). Synthetic users don't represent a person, so they have no
+ * identity binding.
+ */
+function isSyntheticUser(id: string): boolean {
+  return id === 'admin_api_key' || id.startsWith('api_key_');
+}
+
+/**
  * Look up the identity_id for a WorkOS user and attach it to the user object.
  * Identity = the person; one identity may back multiple WorkOS users (Phase 2).
- * Skipped for synthetic users (admin API key, WorkOS API key) since they don't
- * represent a person. Failures are swallowed — identity resolution must never
- * block an authenticated request.
+ * Skipped for synthetic users since they don't represent a person. Failures
+ * are swallowed — identity resolution must never block an authenticated
+ * request.
  */
 async function attachIdentityId(user: WorkOSUser): Promise<void> {
-  if (user.id === 'admin_api_key' || user.id.startsWith('api_key_')) return;
+  if (isSyntheticUser(user.id)) return;
   try {
     const result = await getPool().query<{ identity_id: string }>(
       `SELECT identity_id FROM identity_workos_users WHERE workos_user_id = $1`,
@@ -1322,6 +1331,7 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
       if (mockUser) {
         req.user = mockUser;
         req.accessToken = 'dev-mode-token';
+        await attachIdentityId(req.user);
       }
     }
 
@@ -1757,6 +1767,11 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
           'Impersonation session detected (optional auth)'
         );
       }
+
+      // Resolve identityId before caching — sessionCache is shared with
+      // requireAuth, so skipping it here would let an optionalAuth request
+      // poison subsequent requireAuth cache hits with identityId=undefined.
+      await attachIdentityId(user);
 
       // Cache the validated session
       sessionCache.set(cacheKey, {

@@ -13,8 +13,7 @@
 
 CREATE TABLE identities (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- workos_user_id PK enforces "one WorkOS user belongs to exactly one identity".
@@ -35,7 +34,8 @@ CREATE UNIQUE INDEX idx_identity_workos_users_one_primary
 
 -- Backfill: one identity per existing user, marked primary. Use a transient
 -- column to pair each new identity row with its source user in a single
--- set-based pass.
+-- set-based pass. Set-based is fine at current users-table size (low tens of
+-- thousands); batch past ~100k.
 ALTER TABLE identities ADD COLUMN _backfill_workos_user_id VARCHAR(255);
 
 INSERT INTO identities (id, _backfill_workos_user_id)
