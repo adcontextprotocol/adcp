@@ -95,6 +95,7 @@ import { issueDomainChallenge, verifyDomainChallenge } from '../../services/bran
 import { getWorkos } from '../../auth/workos-client.js';
 import { resolveUserRole } from '../../utils/resolve-user-role.js';
 import { recordAgentTestRun } from '../../db/agent-test-db.js';
+import { listContentForUser } from '../../services/member-content-service.js';
 
 const memberDb = new MemberDatabase();
 const agentContextDb = new AgentContextDatabase();
@@ -1732,19 +1733,7 @@ export function createMemberToolHandlers(
       return 'You need to be logged in to see your working groups. Please log in at https://agenticadvertising.org/dashboard first.';
     }
 
-    const result = await callApi('GET', '/api/me/working-groups', memberContext);
-
-    if (!result.ok) {
-      throw new ToolError(`Failed to fetch your working groups: ${result.error}`);
-    }
-
-    const data = result.data as { working_groups: Array<{
-      name: string;
-      slug: string;
-      committee_type: string;
-      is_private: boolean;
-    }> };
-    const groups = data.working_groups;
+    const groups = await wgDb.getWorkingGroupsForUser(memberContext.workos_user.workos_user_id);
 
     if (!groups || groups.length === 0) {
       return "You're not a member of any working groups yet. Use list_working_groups to find groups to join!";
@@ -1815,18 +1804,7 @@ export function createMemberToolHandlers(
       return 'You need to be logged in to see your council interests. Please log in at https://agenticadvertising.org/dashboard first.';
     }
 
-    const result = await callApi('GET', '/api/me/working-groups/interests', memberContext);
-
-    if (!result.ok) {
-      throw new ToolError(`Failed to fetch your council interests: ${result.error}`);
-    }
-
-    const interests = result.data as Array<{
-      committee_name: string;
-      slug: string;
-      interest_level: string;
-      created_at: string;
-    }>;
+    const interests = await wgDb.getCouncilInterestsForUser(memberContext.workos_user.workos_user_id);
 
     if (interests.length === 0) {
       return "You haven't expressed interest in any councils yet. Use list_working_groups with type \"council\" to see available councils!";
@@ -2805,35 +2783,25 @@ export function createMemberToolHandlers(
     const collection = input.collection as string | undefined;
     const relationship = input.relationship as string | undefined;
 
-    // Build query string
-    const params = new URLSearchParams();
-    if (status && status !== 'all') params.set('status', status);
-    if (collection) params.set('collection', collection);
-    if (relationship) params.set('relationship', relationship);
+    // Call the service directly — no HTTP loopback (issue #3748).
+    // isAdmin: false because Addie tools are always scoped to the authenticated
+    // member; includePageviews: false because the tool never renders pageview counts.
+    const serviceResult = await listContentForUser({
+      userId: memberContext.workos_user.workos_user_id,
+      isAdmin: false,
+      status,
+      collection,
+      relationship,
+      includePageviews: false,
+    });
 
-    const queryString = params.toString() ? `?${params.toString()}` : '';
-    const result = await callApi('GET', `/api/me/content${queryString}`, memberContext);
-
-    if (!result.ok) {
-      throw new ToolError(`Failed to fetch your content: ${result.error}`);
+    if (!serviceResult.ok) {
+      throw new ToolError(
+        `Invalid status filter. Must be one of: ${serviceResult.validStatuses.join(', ')}, or 'all'`,
+      );
     }
 
-    const data = result.data as {
-      items: Array<{
-        id: string;
-        slug: string;
-        title: string;
-        status: string;
-        content_type: string;
-        collection: { type: string; committee_name?: string; committee_slug?: string };
-        relationships: string[];
-        authors: Array<{ display_name: string }>;
-        published_at?: string;
-        created_at: string;
-      }>;
-    };
-
-    if (data.items.length === 0) {
+    if (serviceResult.items.length === 0) {
       let response = "You don't have any content yet.\n\n";
       response += 'Use `propose_content` to create your first article or perspective!';
       return response;
@@ -2842,8 +2810,8 @@ export function createMemberToolHandlers(
     let response = `## Your Content\n\n`;
 
     // Group by status
-    const byStatus: Record<string, typeof data.items> = {};
-    for (const item of data.items) {
+    const byStatus: Record<string, typeof serviceResult.items> = {};
+    for (const item of serviceResult.items) {
       if (!byStatus[item.status]) byStatus[item.status] = [];
       byStatus[item.status].push(item);
     }
