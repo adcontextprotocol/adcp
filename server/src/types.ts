@@ -309,6 +309,13 @@ export interface WorkOSUser {
   emailVerified: boolean;
   createdAt: string;
   updatedAt: string;
+  /**
+   * The person behind this WorkOS user. One identity may back multiple
+   * WorkOS users (one per email). Resolved from `identity_workos_users` in
+   * the auth middleware. Absent for synthetic users (admin API key, WorkOS
+   * API key). Phase 2 will start using this for app-state lookups.
+   */
+  identityId?: string;
   /** Present when this session is being impersonated by an admin */
   impersonator?: Impersonator;
 }

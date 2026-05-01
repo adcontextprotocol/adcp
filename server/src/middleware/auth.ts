@@ -652,6 +652,28 @@ function hasValidAdminApiKey(req: Request): boolean {
 }
 
 /**
+ * Look up the identity_id for a WorkOS user and attach it to the user object.
+ * Identity = the person; one identity may back multiple WorkOS users (Phase 2).
+ * Skipped for synthetic users (admin API key, WorkOS API key) since they don't
+ * represent a person. Failures are swallowed — identity resolution must never
+ * block an authenticated request.
+ */
+async function attachIdentityId(user: WorkOSUser): Promise<void> {
+  if (user.id === 'admin_api_key' || user.id.startsWith('api_key_')) return;
+  try {
+    const result = await getPool().query<{ identity_id: string }>(
+      `SELECT identity_id FROM identity_workos_users WHERE workos_user_id = $1`,
+      [user.id]
+    );
+    if (result.rows[0]) {
+      user.identityId = result.rows[0].identity_id;
+    }
+  } catch (err) {
+    logger.warn({ err, userId: user.id }, 'Failed to resolve identity_id');
+  }
+}
+
+/**
  * Middleware to require authentication
  * Checks for WorkOS session cookie and loads user info
  * Also accepts WorkOS API keys as Bearer token for programmatic access
@@ -734,6 +756,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       logger.warn({ err: banError, userId: jwtAuth.user.id, path: req.path }, 'Ban check failed — allowing request through');
     }
 
+    await attachIdentityId(req.user);
     return next();
   }
 
@@ -748,6 +771,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       if (devConfig) {
         (req.user as unknown as Record<string, unknown>).isMember = devConfig.isMember;
       }
+      await attachIdentityId(req.user);
       return next();
     }
     // No dev session - redirect to dev login page
@@ -1041,6 +1065,9 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
         'Impersonation session detected'
       );
     }
+
+    // Resolve identityId once before caching so cache hits inherit it.
+    await attachIdentityId(user);
 
     // Cache the validated session
     sessionCache.set(cacheKey, {
