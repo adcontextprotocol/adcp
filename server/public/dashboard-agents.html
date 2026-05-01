@@ -861,6 +861,13 @@
 
     document.addEventListener('DOMContentLoaded', loadAgents);
 
+    // Single source of truth for the chat seed prompt sent when a user
+    // clicks "+ Register agent" or "Register your first agent". Both
+    // CTAs link to /chat?prompt=<encoded>; the matching trigger phrase
+    // is handled by the "Registering an Agent in the AAO Registry" rule
+    // in server/src/addie/rules/behaviors.md.
+    const REGISTER_AGENT_SEED_PROMPT = 'Help me register my agent.';
+
     // Shared across the page so event handlers (e.g. retry) can re-render
     // a single card without a full reload.
     const pageState = {
@@ -1130,7 +1137,7 @@
         injectAgentCardStyles();
       }
 
-      const addPrompt = encodeURIComponent('I want to register an agent in the AAO registry. What information do you require?');
+      const addPrompt = encodeURIComponent(REGISTER_AGENT_SEED_PROMPT);
 
       content.innerHTML = `
         <div class="page-header">
@@ -1273,7 +1280,7 @@
             <div style="font-size: var(--text-2xl); margin-bottom: var(--space-3);">🤖</div>
             <p style="font-weight: var(--font-medium); color: var(--color-text-heading); margin-bottom: var(--space-2);">Monitor your agents' protocol compliance</p>
             <p style="font-size: var(--text-sm); color: var(--color-text-secondary); max-width: 400px; margin: 0 auto var(--space-4);">Register your buyer or seller agents to get automated compliance checks, public trust badges, and storyboard testing — included with your membership.</p>
-            <a href="/chat?prompt=${encodeURIComponent('I want to register an agent in the AAO registry. What information do you require?')}" class="btn btn-primary btn-sm">Register your first agent</a>
+            <a href="/chat?prompt=${encodeURIComponent(REGISTER_AGENT_SEED_PROMPT)}" class="btn btn-primary btn-sm">Register your first agent</a>
           </div>
         `;
       }
