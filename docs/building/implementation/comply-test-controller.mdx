@@ -23,15 +23,64 @@ Without a test controller, compliance testing is observational: fire an action, 
 | **Budgeting** | Create buy with budget → read back | Simulate spend to threshold → verify alerts and `payment_required` |
 | **Media buy** | Create → pause → resume | Force seller-initiated `rejected` → verify terminal state |
 
-## Sandbox gating
+## Security model
 
-Sellers MUST NOT include `comply_test_controller` in the `tools/list` response for production connections. The tool should only appear when the connection is established with sandbox credentials (a sandbox API key, a sandbox OAuth scope, or a sandbox URL). This ensures production context windows are not taxed by test-only tooling and prevents accidental state manipulation.
+The controller is a state-mutation primitive that bypasses the buyer-initiated flows it complements. That makes the gate between caller and target account the load-bearing security control. This section defines the gate and what sellers MUST guarantee about the accounts on the other side of it.
+
+### Threat model
+
+Production accounts MUST be unreachable from any controller call, regardless of how the call arrives. The control is not "the controller exists in sandbox mode" — it is "the controller's writes physically cannot land on a production account." If that property holds, every other property in this section is defense-in-depth.
+
+The attack surface the controller adds is the same surface every other mutating AdCP tool already depends on: the seller's [tenancy boundary](/docs/building/implementation/security#agent-and-account-isolation). If `update_media_buy`, `sync_creatives`, or `get_account_financials` can be called against an account the caller does not own, the controller is the smallest of the seller's problems — every mutating tool is already exposed through the same hole. The remediation is to harden the tenancy gate, not to remove this tool.
+
+The honest answer to "what if the gate fails open?" is that a tenancy-gate failure exposes every mutating tool — the controller is one of many, not the only one. The controller's *marginal* contribution to blast radius, given a tenancy bug, is the set of forced-state transitions in the [scenarios](#scenarios) catalog. That marginal blast radius is bounded by the five [sandbox account properties](#sandbox-account-properties-normative): targeted accounts have no real-money settlement, no real ad delivery to real users, and no end-user PII from production data flows. A controller call that succeeds against a misclassified account through a broken gate still cannot move real money, serve real impressions, or expose real audience data — those are seller-side guarantees on what the word "sandbox" means, not properties enforced by the controller code. The controller's design assumes the gate may fail; the sandbox-account properties define what that failure can and cannot reach.
+
+### Industry precedent
+
+The architecture this section defines is structurally identical to how regulated financial APIs ship state-forcing test primitives: one binary, runtime gate on an immutable account-property flag, production code paths run against test-namespaced data. The skeptical reading of any test-only mutation primitive is "remove it from the production binary." The reason regulated APIs do not is that the production code path is the test target — separating the binary tests a different binary than the one buyers hit in production, replacing a tenancy-gate failure mode with a sandbox-parity failure mode. The architectural identity is what's load-bearing here, not the names that follow.
+
+Stripe ships this design for `/v1/test_helpers/*` (test clocks, fund balances, forced refund expirations, forced authorization captures, treasury-transfer outcome forcing), gated by API-key namespace (`sk_test_` vs `sk_live_`). The pattern handles real money, regulated, billions in flow, with adversarial actors actively probing the API, and has shipped unchanged for over a decade. Plaid (sandbox), Twilio (test credentials), and Auth0 (test tenants) follow the same pattern with the same architectural choice. The argument against this pattern is the argument that Stripe's design is wrong — a load that, after a decade of operational evidence in a more adversarial regulatory environment than ad tech, the skeptic carries.
+
+### Sandbox account properties (normative)
+
+A "sandbox account" — the only kind of account a controller call may target — MUST have the following properties:
+
+1. **Set at account creation.** The sandbox flag is part of the account record from the moment the account is provisioned. Sellers MUST NOT promote a production account to sandbox or demote a sandbox account to production.
+2. **Immutable post-creation.** The sandbox flag MUST NOT be mutable through any AdCP tool, any caller-supplied request field, or any operator runbook short of deleting the account. A request payload field MAY assert the targeted account is sandbox (the controller request envelope accepts `account.sandbox: true`), but the seller MUST verify the assertion against the persisted account record, not trust the request.
+3. **Isolated billing.** A sandbox account MUST NOT settle against any real-money ledger and MUST NOT consume any real-money budget envelope — even transitively (a sandbox account MUST NOT be a child or alias of a production account).
+4. **No real ad delivery.** Media buys created or simulated against a sandbox account MUST NOT serve real impressions to real users. Sellers that share serving infrastructure between production and sandbox MUST scope sandbox traffic to test inventory or non-production ad servers.
+5. **No real end-user PII.** Sandbox accounts MUST NOT contain or operate on production audience data, production creative assets, or production reporting data. Hashed identifiers and 1P signals scoped to sandbox accounts MUST be synthetic. "No real end-user PII" is operational, not literal: the seller's own operational identifiers (an employee email on a test account contact, a test brand domain that resolves to a real company, a publisher-owned property used for fixture data) are out of scope for this rule. The property the spec is constraining is *no end-user PII from production data flows* — the data that, if exposed by a gate failure, would constitute a privacy incident.
+
+These five properties bound the blast radius if any other gate fails. They are seller-side guarantees; the spec assumes they hold, and a seller whose sandbox cannot meet them is not in a position to certify against deterministic-mode storyboards regardless of whether their controller code is correct.
+
+### Per-request enforcement
+
+Every controller call MUST go through the following gate, in order, before any mutation runs:
+
+1. **Resolve the targeted account from the request.** The controller dispatcher MUST identify the account each scenario touches (`account_id`, `media_buy_id` → owning account, `creative_id` → owning account, `task_id` → owning account, etc.).
+2. **Verify the targeted account is sandbox.** Look up the resolved account and confirm `sandbox = true` on the account record (not in a request field, not in a header — on the persisted record). If the account is not sandbox, return `FORBIDDEN` with no further processing.
+3. **Verify the authenticated agent has access to the targeted account.** Apply the same tenancy precheck every other AdCP tool runs (see [Agent and Account Isolation](/docs/building/implementation/security#agent-and-account-isolation)). The controller does not relax the tenancy boundary; it operates inside it.
+
+A controller call that fails any of these checks MUST NOT mutate seller state, MUST return a generic error shape (per the [error codes](#error-codes) table), and SHOULD log the attempt to the seller's audit pipeline at the same severity as a cross-tenant probe on a production tool.
+
+Sandbox gating is enforced per-request on the resolved account, not just at tool registration time — the tool may be listed in a sandbox connection, but the caller could still reference a production account in the params, and the per-request gate is what catches that.
+
+### Known gaps in the 3.0 surface
+
+The 3.0 controller spec is normative on per-request enforcement, but the surface is not yet tightened at every layer it could be. These are surface-tightening tasks, not design questions — the spec already says the gate is required; these issues track making it harder to ship a non-conformant gate by accident.
+
+- **Schema-level pinning of `account.sandbox: true`** is not yet required by [`comply-test-controller-request.json`](https://adcontextprotocol.org/schemas/v3/compliance/comply-test-controller-request.json). Sellers MUST verify against the persisted account record regardless, but a request that omits `account` entirely is currently schema-valid. Tracked: [#3755](https://github.com/adcontextprotocol/adcp/issues/3755).
+- **The training-agent reference implementation** in this repo (`server/src/training-agent/comply-test-controller.ts`) defaults to allow when `account` is absent on the request — opposite of the default-deny posture this spec section requires. Sellers reading the reference implementation as a template need to know this is a known gap, not a design choice. Tracked: [#3756](https://github.com/adcontextprotocol/adcp/issues/3756).
+
+Sellers implementing against this spec MUST follow the [normative per-request enforcement](#per-request-enforcement) above; the open issues above close loopholes the spec already declares closed.
+
+### Tool registration
+
+Sellers MUST NOT include `comply_test_controller` in the `tools/list` response for production connections. The tool only appears when the connection is established with sandbox credentials (a sandbox API key, a sandbox OAuth scope, or a sandbox URL). This prevents production context windows from being taxed by test-only tooling and makes a misrouted call fail at tool-discovery time rather than at the per-request gate.
 
 The mechanism for provisioning sandbox credentials is seller-specific and out of scope for this spec. Sellers MUST document their sandbox access mechanism so storyboard runners can connect appropriately.
 
 The storyboard runner SHOULD verify that `comply_test_controller` is absent from `tools/list` on a production connection as a basic safety check.
-
-If a `comply_test_controller` call references a non-sandbox account, the controller MUST return `FORBIDDEN`. Sandbox gating is enforced per-request on the account reference, not just at tool registration time — the tool may be listed in a sandbox connection, but the caller could still reference a production account in the params.
 
 ## Tool definition
 
@@ -713,7 +762,7 @@ The runner distinguishes three outcome categories in deterministic mode:
 
 ### For sellers
 
-1. Gate `comply_test_controller` behind sandbox mode — it MUST NOT appear in `tools/list` for production connections
+1. Implement the [Security model](#security-model) end-to-end — sandbox-only `tools/list`, per-request account-record verification, and the five sandbox-account properties (set at creation, immutable, isolated billing, no real delivery, no real PII)
 2. Reuse your production state machine logic — the controller should call the same internal transition functions, not bypass them
 3. Enforce transition rules — if `rejected` is terminal in production, `force_media_buy_status(rejected → active)` must fail via the controller too
 4. Reflect changes immediately — after a forced transition, the next `list_*` or `get_*` call must return the updated state

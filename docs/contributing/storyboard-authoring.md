@@ -137,6 +137,8 @@ The runner injects a fixtures phase that calls `comply_test_controller` with `sc
 
 See the full list of seed scenarios and their params in [Compliance test controller — Scenarios](/docs/building/implementation/comply-test-controller#scenarios).
 
+> **Sandbox-only.** Storyboards using `controller_seeding: true` (or any other `comply_test_controller` scenario) require a sandbox endpoint. Runners MUST connect with sandbox credentials and MUST verify the controller is absent from `tools/list` on production connections as a basic safety check. The targeted accounts MUST be sandbox accounts — a property set at account creation, immutable, with isolated billing, no real ad delivery, and no real PII. See [Compliance test controller — Security model](/docs/building/implementation/comply-test-controller#security-model) for the full normative requirements.
+
 ### Pattern B — flow-derived captures via `context_outputs:` + `$context.<name>`
 
 Capture the ID the generating step returned, then reference it by `$context.<name>` on downstream steps.
