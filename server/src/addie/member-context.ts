@@ -249,44 +249,16 @@ async function fetchCommunityProfile(
   };
 }
 
-// Cache for member context to avoid repeated lookups for the same user
-// TTL of 30 minutes - user profile data rarely changes, and we invalidate on specific events
-const MEMBER_CONTEXT_CACHE_TTL_MS = 30 * 60 * 1000;
-const memberContextCache = new Map<string, { context: MemberContext; timestamp: number }>();
+// Cache primitives live in ./member-context-cache so callers that only
+// need to invalidate (route handlers, services) can do so without
+// pulling in middleware/auth's WorkOS module-load side effects.
+import {
+  getCachedMemberContext as getCachedContext,
+  setCachedMemberContext as setCachedContext,
+  invalidateMemberContextCache,
+} from './member-context-cache.js';
 
-/**
- * Get cached member context if still valid
- */
-function getCachedContext(slackUserId: string): MemberContext | null {
-  const cached = memberContextCache.get(slackUserId);
-  if (!cached) return null;
-
-  const age = Date.now() - cached.timestamp;
-  if (age > MEMBER_CONTEXT_CACHE_TTL_MS) {
-    memberContextCache.delete(slackUserId);
-    return null;
-  }
-
-  return cached.context;
-}
-
-/**
- * Cache member context for future lookups
- */
-function setCachedContext(slackUserId: string, context: MemberContext): void {
-  memberContextCache.set(slackUserId, { context, timestamp: Date.now() });
-}
-
-/**
- * Invalidate cached context for a user (call when user data changes)
- */
-export function invalidateMemberContextCache(slackUserId?: string): void {
-  if (slackUserId) {
-    memberContextCache.delete(slackUserId);
-  } else {
-    memberContextCache.clear();
-  }
-}
+export { invalidateMemberContextCache };
 
 /**
  * Member context for Addie to use when responding
