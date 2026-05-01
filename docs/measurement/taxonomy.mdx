@@ -1,0 +1,93 @@
+---
+title: Measurement Taxonomy
+sidebarTitle: Measurement Taxonomy
+description: "Three-layer model for AdCP measurement — metrics (delivery), verification (quality), attribution (outcomes) — and how each layer differs in source of truth, protocol home, and rate of change."
+"og:title": "AdCP — Measurement Taxonomy"
+---
+
+# Measurement Taxonomy
+
+Measurement is three things, not one. Treating them as one bucket is the source of most confusion in measurement RFCs (SSAI, identity loss, AI-content provenance, clean rooms) and most schema bloat in delivery responses. AdCP separates them deliberately.
+
+The three layers — **metrics**, **verification**, and **attribution** — answer different questions, are attested by different parties, live in different places in the protocol, and evolve at different speeds.
+
+## The three layers
+
+| Layer | Question | Source of truth | Protocol home | Rate of change |
+|---|---|---|---|---|
+| **Metrics** | Did it happen? | Seller | Delivery reporting | Slow (decade-scale) |
+| **Verification** | Did it count properly? | Third party | Capabilities + creative manifest trackers | Medium (environment-driven) |
+| **Attribution** | Did it cause an outcome? | Buyer | Handoff hooks (event sources, log-level signals) | Fast (model-driven) |
+
+### 1. Metrics — "did it happen?"
+
+Delivery facts: impressions, completes, quartiles, clicks, spend, reach, frequency.
+
+The seller is the source of truth — the seller served the ad and counts the event. Industry counting conventions (MRC, IAB) define what qualifies as an impression, what completes a video view, how to deduplicate. AdCP standardizes how sellers expose these counts; it does not redefine what they count.
+
+In AdCP, metrics flow through delivery reporting:
+
+- [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) — current delivery state
+- [`provide_performance_feedback`](/docs/media-buy/task-reference/provide_performance_feedback) — buyer-side observed performance
+- [Optimization & Reporting](/docs/media-buy/media-buys/optimization-reporting) — how reporting connects to optimization goals
+
+Metrics evolve slowly. Definitions are governed by industry bodies; new metrics (viewable impressions, attention seconds) appear on decade timescales. Schema pressure here is low.
+
+### 2. Verification — "did it count properly?"
+
+Quality attestation: viewability, invalid traffic (IVT), brand safety, geo accuracy, context fitness, ad-content provenance.
+
+The whole point of verification is that it is *not* the seller's word. Buyers contract with third-party measurement vendors (Moat, IAS, DoubleVerify) precisely so an independent party can confirm the impression met quality thresholds. Verification requires execution paths that survive the delivery environment — historically OMID and VPAID running client-side; in SSAI, [SIVA](https://iabtechlab.com/standards/siva/) as the server-side workaround.
+
+In AdCP, verification lives in two places:
+
+- **Capabilities** ([`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities)) — declares which verification *paths* the seller supports (OMID, SIVA, client-side SDK callbacks, server-side beacons only) and which signals survive per environment. Buyer agents read this to decide whether a product's measurement profile meets brand requirements before they buy.
+- **Creative manifest** — wires the actual trackers and macros per ad (`vast_tracker`, `daast_tracker`, universal macros). This is what fires at delivery time so the third-party vendor records the event.
+
+The verification *result* lives outside AdCP — vendor reports go to the buyer, not into a delivery payload. AdCP's job is making the verification path possible and discoverable, not running the measurement.
+
+Verification evolves at medium pace. Environment shifts — CTV, SSAI, walled gardens, cookieless, AI-generated content — drive new signal-loss problems and new protocols to recover them. Expect schema pressure on verification capabilities every one to three years.
+
+### 3. Attribution — "did it cause an outcome?"
+
+Buyer-side joins between delivery and outcomes: conversions, lift, multi-touch attribution, media mix modeling, incrementality.
+
+The seller doesn't know the conversion event. The buyer (or the buyer's measurement partner) holds outcome data and joins it to delivery. AdCP's role is making the join possible — exposing log-level signals, identity hooks, and handoff patterns to clean rooms — not running the model.
+
+In AdCP, attribution shows up at the *boundary*:
+
+- [`sync_event_sources`](/docs/media-buy/task-reference/sync_event_sources) — buyer pushes conversion event sources into seller platforms so the platform can optimize toward real outcomes
+- [`log_event`](/docs/media-buy/task-reference/log_event) — buyer-attested event delivery
+- [Conversion Tracking](/docs/media-buy/conversion-tracking/) — patterns that connect delivery to outcomes
+- [Trusted Match](/docs/trusted-match/) — identity resolution that makes the join possible without leaking PII
+
+The model itself (clean rooms, MMM, causal inference, agentic outcome attribution) lives entirely outside the protocol.
+
+Attribution evolves fastest. Clean-room patterns, MMM revival, causal AI, commerce-media attribution, and agentic outcome models all shift the attribution layer on quarter-to-year timescales. If attribution lived inside delivery schemas, it would force a schema break every cycle.
+
+## Why the separation matters
+
+Most measurement debates in the working group resolve faster once the layer is named:
+
+- **SSAI** ([#3759](https://github.com/adcontextprotocol/adcp/issues/3759)) is a *verification* problem. It does not change which metrics get reported; it changes which verification paths are valid and how rich the surviving signal is. The fix lives in capabilities + creative manifest trackers, not in delivery reporting.
+- **Identity loss** (cookieless, IDFA deprecation, walled-garden signal collapse) shows up in *attribution*, not metrics. The seller still serves and counts impressions; the buyer's join to outcomes degrades. Fixes belong at the attribution boundary (clean rooms, [Trusted Match](/docs/trusted-match/)), not in delivery payloads.
+- **AI-content provenance** is a *verification* concern (was this ad what the brand approved?), not an attribution concern. It belongs alongside other verification capabilities — see [Provenance Verification](/docs/governance/creative/provenance-verification) — not bolted onto outcome reporting.
+- **Outcome-based optimization goals** (CPA, ROAS, custom events) are an *attribution* concern surfaced as an optimization input. They belong at the event-source boundary, where the buyer hands over what the platform should optimize toward.
+
+When a proposal puts an attribution concept (lift, ROAS, MMM input) into delivery reporting, or a verification concept (OMID, SIVA) into attribution hooks, push back. The layer mismatch almost always means the proposal will accumulate edge cases until it breaks.
+
+## Working rule of thumb
+
+When evaluating where a measurement field belongs, ask **who is the source of truth?**
+
+- The **seller** counts it → metric → delivery reporting
+- A **third party** attests to it → verification → capabilities + creative manifest
+- The **buyer** owns the outcome → attribution → event-source / log-level handoff
+
+This single question resolves most placement debates. If two layers seem to claim the same field, the field is probably two fields wearing one name — split it.
+
+## What this protocol does not do
+
+AdCP does not run measurement models. It does not adjudicate between competing verification vendors. It does not define MRC counting conventions. It does not store or normalize attribution outputs.
+
+What AdCP does is make the right *connection points* exist — so the seller's metrics are queryable, the verifier's path is declarable and executable, and the buyer's outcome data has a place to attach. The measurement industry that grew up over thirty years sits on top of those connection points; the protocol does not replace it.
