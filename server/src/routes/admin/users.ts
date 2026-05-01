@@ -1043,7 +1043,7 @@ export function createAdminUsersRouter(): Router {
       await mergeUsers(existingUserId, credId, adminUserId);
     } catch (err) {
       logger.error({ err, existingUserId, credId }, 'Admin link-credential: mergeUsers failed');
-      return res.status(500).json({ error: 'Failed to bind credential', message: (err as Error).message });
+      return res.status(500).json({ error: 'Failed to bind credential' });
     }
 
     logger.info(
@@ -1158,7 +1158,7 @@ export function createAdminUsersRouter(): Router {
     } catch (err) {
       await client.query('ROLLBACK');
       logger.error({ err, userId, credId }, 'Admin unbind-credential: failed');
-      return res.status(500).json({ error: 'Failed to unbind credential', message: (err as Error).message });
+      return res.status(500).json({ error: 'Failed to unbind credential' });
     } finally {
       client.release();
     }
