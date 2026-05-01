@@ -1,0 +1,253 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/*
+ * Tell Tailwind where to scan for class names. Needed when the CSS is loaded
+ * from a context (like Ladle's separate vite config) where auto-detection
+ * doesn't reach all source files.
+ */
+/* biome-ignore lint/suspicious/noUnknownAtRules: Tailwind CSS v4 directive */
+@source "../";
+/* biome-ignore lint/suspicious/noUnknownAtRules: Tailwind CSS v4 directive */
+@source "../../.ladle";
+
+/*
+ * Override Tailwind's default dark: variant so it respects the data-theme
+ * attribute set by Ladle. When data-theme is present, it takes priority.
+ * When absent, falls back to prefers-color-scheme.
+ */
+/* biome-ignore lint/suspicious/noUnknownAtRules: Tailwind CSS v4 directive */
+@custom-variant dark {
+  &:where([data-theme="dark"], [data-theme="dark"] *) {
+    /* biome-ignore lint/suspicious/noUnknownAtRules: Tailwind CSS v4 @custom-variant slot */
+    @slot;
+  }
+  @media (prefers-color-scheme: dark) {
+    &:where(:not([data-theme] *):not([data-theme])) {
+      /* biome-ignore lint/suspicious/noUnknownAtRules: Tailwind CSS v4 @custom-variant slot */
+      @slot;
+    }
+  }
+}
+
+/*
+ * Semantic theme tokens point at Tailwind primitives so the brand palette
+ * can be swapped by changing references (e.g., neutral → blue) instead of
+ * rewriting raw color values.
+ */
+:root {
+  --radius: 0.25rem;
+  --background: var(--color-white);
+  --foreground: var(--color-neutral-950);
+  --card: var(--color-white);
+  --card-foreground: var(--color-neutral-950);
+  --popover: var(--color-white);
+  --popover-foreground: var(--color-neutral-950);
+  --primary: var(--color-brand-blue-700);
+  --primary-foreground: var(--color-white);
+  --secondary: oklch(from var(--color-slate-900) l c h / 6%);
+  --secondary-foreground: var(--color-neutral-900);
+  --muted: var(--color-slate-100);
+  --muted-foreground: var(--color-slate-500);
+  --body-foreground: var(--color-neutral-600);
+  --accent: var(--color-slate-100);
+  --accent-foreground: var(--color-slate-900);
+  --destructive: var(--color-red-600);
+  --destructive-foreground: var(--color-red-700);
+  --destructive-on-color: var(--color-white);
+  --success: var(--color-emerald-600);
+  --success-foreground: var(--color-emerald-700);
+  --warning: var(--color-yellow-400);
+  --warning-foreground: var(--color-yellow-700);
+  --info: var(--color-blue-600);
+  --info-foreground: var(--color-blue-700);
+  --border: var(--color-neutral-200);
+  --input: var(--color-neutral-200);
+  --ring: var(--color-neutral-400);
+  --chart-1: var(--color-orange-500);
+  --chart-2: var(--color-cyan-500);
+  --chart-3: var(--color-blue-700);
+  --chart-4: var(--color-yellow-400);
+  --chart-5: var(--color-amber-500);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: var(--color-slate-950);
+    --foreground: var(--color-slate-50);
+    --card: var(--color-slate-900);
+    --card-foreground: var(--color-slate-50);
+    --popover: var(--color-slate-900);
+    --popover-foreground: var(--color-slate-50);
+    --primary: var(--color-brand-blue-500);
+    --primary-foreground: var(--color-white);
+    --secondary: oklch(1 0 0 / 12%);
+    --secondary-foreground: var(--color-slate-50);
+    --muted: var(--color-slate-800);
+    --muted-foreground: var(--color-slate-400);
+    --body-foreground: var(--color-slate-300);
+    --accent: var(--color-slate-800);
+    --accent-foreground: var(--color-slate-50);
+    --destructive: var(--color-red-400);
+    --destructive-foreground: var(--color-red-400);
+    --destructive-on-color: var(--color-white);
+    --success: var(--color-emerald-400);
+    --success-foreground: var(--color-emerald-300);
+    --warning: var(--color-yellow-400);
+    --warning-foreground: var(--color-yellow-300);
+    --info: var(--color-blue-400);
+    --info-foreground: var(--color-blue-300);
+    --border: oklch(1 0 0 / 10%);
+    --input: oklch(1 0 0 / 15%);
+    --ring: var(--color-slate-500);
+  }
+}
+
+/* Explicit overrides via Ladle's data-theme attribute */
+:root[data-theme="light"] {
+  --background: var(--color-white);
+  --foreground: var(--color-neutral-950);
+  --card: var(--color-white);
+  --card-foreground: var(--color-neutral-950);
+  --popover: var(--color-white);
+  --popover-foreground: var(--color-neutral-950);
+  --primary: var(--color-brand-blue-700);
+  --primary-foreground: var(--color-white);
+  --secondary: oklch(from var(--color-slate-900) l c h / 6%);
+  --secondary-foreground: var(--color-neutral-900);
+  --muted: var(--color-slate-100);
+  --muted-foreground: var(--color-slate-500);
+  --body-foreground: var(--color-neutral-600);
+  --accent: var(--color-slate-100);
+  --accent-foreground: var(--color-slate-900);
+  --destructive: var(--color-red-600);
+  --destructive-foreground: var(--color-red-700);
+  --destructive-on-color: var(--color-white);
+  --success: var(--color-emerald-600);
+  --success-foreground: var(--color-emerald-700);
+  --warning: var(--color-yellow-400);
+  --warning-foreground: var(--color-yellow-700);
+  --info: var(--color-blue-600);
+  --info-foreground: var(--color-blue-700);
+  --border: var(--color-neutral-200);
+  --input: var(--color-neutral-200);
+  --ring: var(--color-neutral-400);
+}
+
+:root[data-theme="dark"] {
+  --background: var(--color-slate-950);
+  --foreground: var(--color-slate-50);
+  --card: var(--color-slate-900);
+  --card-foreground: var(--color-slate-50);
+  --popover: var(--color-slate-900);
+  --popover-foreground: var(--color-slate-50);
+  --primary: var(--color-brand-blue-500);
+  --primary-foreground: var(--color-white);
+  --secondary: oklch(1 0 0 / 12%);
+  --secondary-foreground: var(--color-slate-50);
+  --muted: var(--color-slate-800);
+  --muted-foreground: var(--color-slate-400);
+  --body-foreground: var(--color-slate-300);
+  --accent: var(--color-slate-800);
+  --accent-foreground: var(--color-slate-50);
+  --destructive: var(--color-red-400);
+  --destructive-foreground: var(--color-red-400);
+  --destructive-on-color: var(--color-white);
+  --success: var(--color-emerald-400);
+  --success-foreground: var(--color-emerald-300);
+  --warning: var(--color-yellow-400);
+  --warning-foreground: var(--color-yellow-300);
+  --info: var(--color-blue-400);
+  --info-foreground: var(--color-blue-300);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: var(--color-slate-500);
+}
+
+/*
+ * Custom primitive ramp — brand-blue. 11 stops matching Tailwind's progression.
+ * Anchored at 700 / 600 / 300 from the legacy AdCP palette; remaining stops
+ * fill out the legacy primary scale, with 950 extrapolated darker than 900.
+ * Available as bg-brand-blue-700, text-brand-blue-300, etc.
+ *
+ * NOT a replacement for Tailwind's built-in `blue` — both ramps coexist.
+ */
+/* biome-ignore lint/suspicious/noUnknownAtRules: Tailwind CSS v4 directive */
+@theme {
+  --font-sans: 'Inter Variable', 'Inter', -apple-system, BlinkMacSystemFont,
+    'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas,
+    monospace;
+
+  --color-brand-blue-50: oklch(0.9649 0.0125 255.51);
+  --color-brand-blue-100: oklch(0.9273 0.0306 258.94);
+  --color-brand-blue-200: oklch(0.88 0.0468 258.37);
+  --color-brand-blue-300: oklch(0.8096 0.0783 260.52);
+  --color-brand-blue-400: oklch(0.661 0.1519 268.18);
+  --color-brand-blue-500: oklch(0.5598 0.1882 266.4);
+  --color-brand-blue-600: oklch(0.4933 0.21 266.99);
+  --color-brand-blue-700: oklch(0.4101 0.1996 266.43);
+  --color-brand-blue-800: oklch(0.3293 0.1533 267.24);
+  --color-brand-blue-900: oklch(0.2876 0.1327 267.29);
+  --color-brand-blue-950: oklch(0.2328 0.0988 268.25);
+}
+
+/* biome-ignore lint/suspicious/noUnknownAtRules: Tailwind CSS v4 directive */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-body-foreground: var(--body-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-destructive-on-color: var(--destructive-on-color);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: max(0px, calc(var(--radius) - 4px));
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 4px);
+  --radius-xl: calc(var(--radius) + 8px);
+}
+
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-border, currentColor);
+  }
+
+  body {
+    background: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+  }
+
+  [data-sonner-toast][data-styled="true"] [data-description] {
+    color: var(--body-foreground);
+  }
+}
