@@ -707,7 +707,12 @@ registry.registerPath({
   path: "/api/registry/publisher",
   operationId: "lookupPublisher",
   summary: "Publisher lookup",
-  description: "Given a domain, returns the inventory this entity publishes and which agents it authorizes.",
+  description:
+    "Given a domain, returns the inventory this entity publishes and which agents it authorizes.\n\n" +
+    "**This endpoint is unauthenticated and returns the same response shape for every caller.** " +
+    "Compare to `/api/registry/operator`, where AAO membership tier and profile ownership unlock " +
+    "additional agent visibility (`members_only`, `private`). AAO membership does not change the " +
+    "`/publisher` response today.",
   tags: ["Authorization Lookups"],
   request: {
     query: z.object({
