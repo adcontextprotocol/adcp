@@ -430,8 +430,14 @@ export class CapabilityDiscovery {
    * properties for buyers to call; buy-side agents typically do NOT
    * advertise those (they call them). So advertising SALES_TOOLS maps to
    * type 'sales'. Buy-side agents are not reliably typed from this signal
-   * and return 'unknown' until a stronger source (e.g. member self-
-   * registration) sets the type.
+   * and return 'unknown' here.
+   *
+   * The `'buying'` value in `AgentType` is preserved exclusively through
+   * member self-declaration. `resolveAgentTypes` in `routes/member-profiles.ts`
+   * carries member-set `'buying'` through the null-inferred-snapshot
+   * override (closes #3549). Inference here intentionally never returns
+   * `'buying'` because no passive probe signal can distinguish a buy-side
+   * agent from a broken/empty MCP server.
    */
   private inferAgentType(tools: ToolCapability[]): 'sales' | 'creative' | 'signals' | 'unknown' {
     const toolNames = new Set(tools.map((t) => t.name.toLowerCase()));
