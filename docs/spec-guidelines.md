@@ -235,6 +235,39 @@ The rule to apply: if the name asks "which vendor-equivalent version of somethin
 - Vendor names in **example blocks** (email addresses, sample IDs) are fine.
 - When uncertain, ask: "Is this field or value representing *one vendor's version of something the protocol already has a general concept for*?" If yes, it belongs under `ext.{vendor}`.
 
+## Reserved SDK-Internal Keys
+
+**RULE**: The top-level key `ctx_metadata` is reserved on AdCP resource objects as an adapter-internal round-trip cache for state that an SDK or platform adapter needs to carry across calls but that buyers MUST NOT see or rely on. Adapters MUST strip `ctx_metadata` from any payload before wire egress, and MUST emit a warning-level log entry when stripping, so operators can detect accidental key collisions with custom adapter code.
+
+**Why**: Platform adapters (e.g. Google Ad Manager, Kevel, custom seller infrastructure) often need to associate adapter-internal identifiers — GAM ad-unit IDs, key-value pairs, placement IDs — with AdCP resources that the buyer-facing SDK returns. The reference Prebid `salesagent` Python implementation uses an `implementation_config` JSON column on its Product model for exactly this purpose. Without a reserved name, every SDK invents its own (`implementation_config`, `_internal`, `sdk_state`, etc.); a fourth SDK then collides with one of them, or two SDKs converging on the same name produce ambiguous semantics. One reserved name removes the coordination problem.
+
+**Scope**: The reservation applies to AdCP resource objects whose schemas declare `additionalProperties: true` — including `Product`, `MediaBuy`, `Package`, `Creative`, `AudienceSegment`, `Signal`, and `RightsGrant`. `PropertyList` and `CollectionList` declare `additionalProperties: false` and are out of scope until a follow-up PR widens those schemas.
+
+**Distinction from neighboring conventions**:
+
+- `ext.{vendor}` — vendor-namespaced, **buyer-visible**, travels on the wire. Use for vendor-specific data the buyer should see (e.g. `ext.gam.line_item_id`).
+- `context` — caller-echoed correlation data, also wire-visible.
+- `ctx_metadata` — **adapter-internal only**, MUST be stripped before egress, never reaches the buyer.
+
+**Adapter conformance**:
+
+```
+1. Read ctx_metadata from inbound resource (publisher → SDK direction).
+2. Carry it in adapter-local state.
+3. Before serializing the resource for wire egress (SDK → buyer direction):
+   a. Remove the ctx_metadata key.
+   b. If the key was present and non-empty, emit a warning-level log:
+      "stripping reserved ctx_metadata before egress on <resource_type>"
+4. Buyer-facing surfaces MUST NOT expose ctx_metadata in any documentation,
+   typed shape, or example.
+```
+
+**Reviewer checklist**:
+
+- Reject any spec, schema, or example that promotes `ctx_metadata` as a buyer-readable field.
+- Reject any SDK contribution that surfaces `ctx_metadata` in a buyer-facing typed return.
+- Accept SDK code that reads/writes `ctx_metadata` as adapter-internal state, provided the egress-strip + warning-log path is in place.
+
 ## Breaking Changes
 
 ### What Constitutes a Breaking Change
