@@ -8,6 +8,7 @@ import { mergeUsers } from '../db/user-merge-db.js';
 import { sendEmailLinkVerification } from '../notifications/email.js';
 import { getWorkos } from '../auth/workos-client.js';
 import { CachedPostgresStore } from '../middleware/pg-rate-limit-store.js';
+import { isEmailUnavailable } from './account-linking-errors.js';
 
 const logger = createLogger('account-linking');
 
@@ -213,18 +214,46 @@ export function createAccountLinkingRouter(): Router {
 
       const oldPrimary = req.user!.email;
 
-      // DB-first, then WorkOS: if WorkOS fails we rollback cleanly.
-      // If WorkOS succeeds but COMMIT fails (extremely rare), the user.updated
-      // webhook will re-sync the email from WorkOS on the next event.
-      let aliasEmail: string;
+      // Verify the alias exists before touching WorkOS so we don't change
+      // WorkOS state for an email the user hasn't actually verified.
+      const aliasRead = await query(
+        `SELECT email FROM user_email_aliases
+         WHERE workos_user_id = $1 AND LOWER(email) = $2 AND verified_at IS NOT NULL`,
+        [userId, normalizedEmail]
+      );
+      if (aliasRead.rows.length === 0) {
+        return res.status(404).json({ error: 'Email is not linked to your account' });
+      }
+      const aliasEmail: string = aliasRead.rows[0].email;
+
+      // WorkOS first (source of truth for auth). If WorkOS rejects, our DB is
+      // unchanged and we surface a clear error.
+      //
+      // If WorkOS accepts but the local swap below fails, `users.email` and
+      // `organization_memberships.email` will eventually re-sync via the
+      // user.updated webhook. The `user_email_aliases` table is NOT touched
+      // by the webhook, so a partial failure here can leave the alias list
+      // stale (the new email remains as a verified alias, the old primary
+      // is not recorded). UNIQUE(LOWER(email)) on aliases prevents anyone
+      // else from claiming the abandoned email; cleanup is manual.
+      try {
+        await getWorkos().userManagement.updateUser({ userId, email: aliasEmail });
+      } catch (workosError: any) {
+        if (isEmailUnavailable(workosError)) {
+          return res.status(409).json({ error: 'This email is already associated with another account in our auth system' });
+        }
+        throw workosError;
+      }
+
       const pool = getPool();
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
 
-        // Lock and verify the alias belongs to this user
+        // Re-lock and re-verify in case the alias changed between the read
+        // above and now.
         const alias = await client.query(
-          `SELECT id, email FROM user_email_aliases
+          `SELECT email FROM user_email_aliases
            WHERE workos_user_id = $1 AND LOWER(email) = $2 AND verified_at IS NOT NULL
            FOR UPDATE`,
           [userId, normalizedEmail]
@@ -232,24 +261,26 @@ export function createAccountLinkingRouter(): Router {
 
         if (alias.rows.length === 0) {
           await client.query('ROLLBACK');
-          return res.status(404).json({ error: 'Email is not linked to your account' });
+          // WorkOS already points at the new email; the user.updated webhook
+          // will re-sync users.email and organization_memberships.email. The
+          // alias table will remain stale until manual cleanup.
+          logger.warn(
+            { userId, normalizedEmail },
+            'Alias disappeared between WorkOS update and DB swap; users.email will reconcile via webhook, aliases need manual cleanup'
+          );
+          return res.status(409).json({ error: 'Email link state changed; please refresh and try again' });
         }
 
-        aliasEmail = alias.rows[0].email;
-
-        // Update users table with the new primary email
         await client.query(
           `UPDATE users SET email = $1, updated_at = NOW() WHERE workos_user_id = $2`,
           [aliasEmail, userId]
         );
 
-        // Remove the new primary from aliases
         await client.query(
           `DELETE FROM user_email_aliases WHERE workos_user_id = $1 AND LOWER(email) = $2`,
           [userId, normalizedEmail]
         );
 
-        // Add old primary as an alias
         await client.query(
           `INSERT INTO user_email_aliases (workos_user_id, email)
            VALUES ($1, $2)
@@ -257,7 +288,6 @@ export function createAccountLinkingRouter(): Router {
           [userId, oldPrimary]
         );
 
-        // Update organization_memberships to reflect new email
         await client.query(
           `UPDATE organization_memberships SET email = $1, updated_at = NOW()
            WHERE workos_user_id = $2`,
@@ -272,14 +302,6 @@ export function createAccountLinkingRouter(): Router {
         client.release();
       }
 
-      // Update WorkOS (source of truth for auth) AFTER the transaction is
-      // committed and the connection is released. This avoids holding a DB
-      // connection idle while waiting on an external network call.
-      // If WorkOS rejects the update the outer catch handles the error;
-      // the DB change is already committed, and the user.updated webhook
-      // will re-sync on the next WorkOS event if needed.
-      await getWorkos().userManagement.updateUser({ userId, email: aliasEmail });
-
       logger.info(
         { userId, oldPrimary, newPrimary: aliasEmail },
         'Primary email changed'
@@ -287,10 +309,6 @@ export function createAccountLinkingRouter(): Router {
 
       return res.json({ status: 'primary_updated', primary_email: aliasEmail });
     } catch (error: any) {
-      // WorkOS may reject the email update (e.g. email already taken in WorkOS)
-      if (error?.code === 'email_already_exists' || error?.status === 409) {
-        return res.status(409).json({ error: 'This email is already associated with another account in our auth system' });
-      }
       logger.error({ error }, 'Failed to set primary email');
       return res.status(500).json({ error: 'Failed to update primary email' });
     }
