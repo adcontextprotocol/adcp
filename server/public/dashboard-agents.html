@@ -1130,13 +1130,13 @@
         injectAgentCardStyles();
       }
 
-      const addPrompt = encodeURIComponent('I want to add an agent for compliance monitoring.');
+      const addPrompt = encodeURIComponent('I want to register an agent in the AAO registry. What information do you require?');
 
       content.innerHTML = `
         <div class="page-header">
           <h1>Agents</h1>
           <div class="page-header-actions">
-            <a href="/chat?prompt=${addPrompt}" class="btn btn-primary btn-sm">+ Add agent</a>
+            <a href="/chat?prompt=${addPrompt}" class="btn btn-primary btn-sm">+ Register agent</a>
           </div>
         </div>
         <div id="agents-list">
@@ -1273,7 +1273,7 @@
             <div style="font-size: var(--text-2xl); margin-bottom: var(--space-3);">🤖</div>
             <p style="font-weight: var(--font-medium); color: var(--color-text-heading); margin-bottom: var(--space-2);">Monitor your agents' protocol compliance</p>
             <p style="font-size: var(--text-sm); color: var(--color-text-secondary); max-width: 400px; margin: 0 auto var(--space-4);">Register your buyer or seller agents to get automated compliance checks, public trust badges, and storyboard testing — included with your membership.</p>
-            <a href="/chat?prompt=${encodeURIComponent('I want to add an agent for compliance monitoring.')}" class="btn btn-primary btn-sm">Register your first agent</a>
+            <a href="/chat?prompt=${encodeURIComponent('I want to register an agent in the AAO registry. What information do you require?')}" class="btn btn-primary btn-sm">Register your first agent</a>
           </div>
         `;
       }

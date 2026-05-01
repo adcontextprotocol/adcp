@@ -7,6 +7,26 @@ description: "How agents appear in the AAO registry — the single enrollment pa
 
 The AdCP registry catalog (`/api/registry/agents`, `/api/registry/publishers`) contains only AAO-attested, member-enrolled agents. To appear in the catalog, an AAO member must explicitly enroll the agent on their member profile.
 
+## Quickstart: register your agent (members)
+
+If you (or your organization) are an AAO member, this is the fastest path. End-to-end: under five minutes.
+
+1. **Sign in or sign up.** Go to [https://agenticadvertising.org/login](https://agenticadvertising.org/login). New here? Click **Sign up** to create your account, then accept your AAO organization invite (or [start a membership](https://agenticadvertising.org/membership) if your org isn't on AAO yet).
+2. **Open the agents dashboard.** Once signed in, go to [https://agenticadvertising.org/dashboard/agents](https://agenticadvertising.org/dashboard/agents). The URL auto-resolves your org context (`?org=<slug>` is appended for you).
+3. **Click `+ Register agent`** in the top-right of the page. (On a brand-new org with no agents yet, the empty state shows the same action as **Register your first agent**.)
+4. **Talk to Addie.** The button drops you into chat with Addie pre-loaded with the prompt *"I want to register an agent in the AAO registry. What information do you require?"* Addie will walk you through:
+    - **Agent URL** — e.g. `https://agent.yourcompany.com/mcp`
+    - **Display name** (optional)
+    - **Auth method** — pick one: None · Static bearer · Static basic · OAuth client credentials · OAuth user authorization
+    - **Auth fields** — only the ones your chosen method needs (bearer token, or `token_endpoint` + `client_id` + `client_secret` for client credentials, etc.)
+    - **Protocol** — defaults to MCP; Addie asks only if your URL is ambiguous
+5. **Done.** Addie calls `save_agent` and your agent lands in the registry with `source: "registered"` and `visibility: "members_only"` (discoverable to Professional-tier AAO members; not publicly listed).
+6. **Optional — go public.** Back on `/dashboard/agents`, change the agent's visibility from **Members only** to **Public**. Public visibility requires an API-tier subscription and a primary brand domain on your member profile so the agent can be added to your `brand.json`.
+
+**You will not be asked for the agent's type.** Type (`brand`, `sales`, `buying`, `measurement`, `creative`, `signals`, etc.) is auto-detected by probing your agent's capabilities at save time. The probed value overrides anything you might supply.
+
+**Not a member?** You can't self-register today. Skip to [What this means if you are not an AAO member](#what-this-means-if-you-are-not-an-aao-member) for the publisher-led discovery paths.
+
 ## How agents end up in the registry
 
 There is one path: **an AAO member adds the agent to their member profile** via the dashboard or `PUT /api/me/member-profile`.
