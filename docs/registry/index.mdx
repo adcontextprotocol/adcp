@@ -142,7 +142,7 @@ curl "https://agenticadvertising.org/api/registry/agents?type=measurement"
 
 This returns every measurement agent the registry knows about — registered via member profiles plus discovered through crawling brand.json declarations. Use this to populate buyer-agent vendor catalogs for the [vendor-metric extensions surface](/docs/media-buy/media-buys/optimization-reporting#vendor-defined-metrics) when buyers request cross-vendor metric availability.
 
-**Current limitation — per-metric catalog not yet structured.** The registry knows *which* agents do measurement, but not *which specific metrics* each one offers. Buyer agents that want to filter on `category="attention"` or `metric_id="attention_units"` across vendors must currently call each vendor's measurement agent for capability details. A structured per-metric catalog on brand.json's `agents[type='measurement']` declarations is tracked under [#3586](https://github.com/adcontextprotocol/adcp/issues/3586).
+**Per-metric catalog discovery.** Each measurement agent publishes its full per-metric catalog at [`get_adcp_capabilities.measurement.metrics[]`](/docs/protocol/get_adcp_capabilities#measurement) — the canonical, vendor-controlled source of truth (parallels every other AdCP agent type's capability surface). Buyers query the AAO federated index for cross-vendor aggregation; AAO crawls each measurement agent's `get_adcp_capabilities` on a TTL to keep the index fresh. The aggregating endpoint and its query shape are tracked at [#3613](https://github.com/adcontextprotocol/adcp/issues/3613); buyer-agent direct-vs-index call patterns are documented at [#3614](https://github.com/adcontextprotocol/adcp/issues/3614).
 
 ### Change Feed
 

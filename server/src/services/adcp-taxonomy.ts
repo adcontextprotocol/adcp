@@ -74,7 +74,8 @@ export type AdcpProtocol =
   | 'governance'
   | 'creative'
   | 'brand'
-  | 'sponsored-intelligence';
+  | 'sponsored-intelligence'
+  | 'measurement';
 
 export const ADCP_PROTOCOLS: readonly AdcpProtocol[] = [
   'media-buy',
@@ -83,6 +84,7 @@ export const ADCP_PROTOCOLS: readonly AdcpProtocol[] = [
   'creative',
   'brand',
   'sponsored-intelligence',
+  'measurement',
 ];
 
 /** AdCP specialism enum — must match enums/specialism.json. */

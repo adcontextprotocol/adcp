@@ -114,7 +114,7 @@
     },
     "supported_protocols": {
       "type": "array",
-      "description": "AdCP protocols this agent supports. Each value both (a) declares which tools the agent implements and (b) commits the agent to pass the baseline compliance storyboard at /compliance/{version}/protocols/{protocol}/ (with snake_case → kebab-case path mapping, e.g. media_buy → /compliance/.../protocols/media-buy/). Compliance testing support is declared separately via the `compliance_testing` capability block (below), not as a protocol claim.",
+      "description": "AdCP protocols this agent supports. Each value both (a) declares which tools the agent implements and (b) commits the agent to pass the baseline compliance storyboard at /compliance/{version}/protocols/{protocol}/ (with snake_case → kebab-case path mapping, e.g. media_buy → /compliance/.../protocols/media-buy/). The `measurement` protocol is in development — currently scoped to `get_adcp_capabilities` for catalog discovery; additional measurement tasks (reporting, attribution, etc.) and a baseline storyboard land in subsequent minors. Compliance testing support is declared separately via the `compliance_testing` capability block (below), not as a protocol claim.",
       "items": {
         "type": "string",
         "enum": [
@@ -123,7 +123,8 @@
           "governance",
           "sponsored_intelligence",
           "creative",
-          "brand"
+          "brand",
+          "measurement"
         ]
       },
       "minItems": 1
@@ -1065,6 +1066,88 @@
         }
       },
       "additionalProperties": false
+    },
+    "measurement": {
+      "type": "object",
+      "description": "Measurement capability block. Presence indicates this agent computes one or more quantitative metrics about ad delivery, exposure, or effect, and is willing to be discovered as a measurement vendor. Returns metric definitions (this surface), not pricing/coverage (negotiated via `measurement_terms` on `create_media_buy`) or live values (returned per buy via `vendor_metric_values`). Modeled as a capability block (like `compliance_testing` and `webhook_signing`) rather than a `supported_protocols` value because measurement agents have one surface — this catalog — not a tool-set with mandatory tasks. AAO crawls each measurement agent's `metrics[]` on a TTL to populate the federated cross-vendor index. Same self-describing pattern as `governance.property_features[]`: agents own the catalog; the registry aggregates.",
+      "properties": {
+        "metrics": {
+          "type": "array",
+          "description": "Metrics this agent computes. Each entry is identified by `metric_id` within the vendor's vocabulary; the canonical reference everywhere a measurement value appears (`committed_metrics`, `vendor_metric_values`, `missing_metrics`) is the tuple `(vendor.domain, vendor.brand_id, metric_id)`.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "metric_id": {
+                "$ref": "/schemas/core/vendor-metric-id.json",
+                "description": "Identifier for the metric within the vendor's vocabulary. Combined with the agent's BrandRef, forms the canonical tuple `(vendor.domain, vendor.brand_id, metric_id)`. Each metric_id MUST be unique within a single agent's catalog."
+              },
+              "standard_reference": {
+                "type": "string",
+                "format": "uri",
+                "description": "Optional URI pointing at the published standard this metric IMPLEMENTS (e.g., IAB Attention Measurement Guidelines, MRC Viewable Impression Measurement, GARM emissions framework). Distinct from `accreditations[]` — `standard_reference` is what the metric is built against; `accreditations[]` is third-party certification that the implementation actually conforms. Buyer agents normalizing across vendors SHOULD apply the AdCP URL canonicalization rules before comparing — vendors implementing the same standard MAY use different URL forms for the same canonical document."
+              },
+              "accreditations": {
+                "type": "array",
+                "description": "Third-party accreditations this metric holds (MRC, ARF, JIC, ABC, BARB, AGOF, etc.). Distinct from `standard_reference`: a metric can implement a standard without being independently accredited. Buyers asking 'is this MRC-accredited?' SHOULD check this array, not just `standard_reference`. Each entry names the accrediting body and optionally pins a certification ID, validity date, and evidence URL.",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "accrediting_body": {
+                      "type": "string",
+                      "description": "Accrediting organization — open string (the global landscape includes MRC, ARF, ABC, BARB, JICWEBS, AGOF, JIC bodies in many markets). Use the canonical short name where one exists.",
+                      "examples": ["MRC", "ARF", "ABC", "BARB", "JICWEBS", "AGOF"]
+                    },
+                    "certification_id": {
+                      "type": "string",
+                      "description": "Optional identifier for the certification in the accrediting body's records (when one exists; many bodies do not issue stable IDs)."
+                    },
+                    "valid_until": {
+                      "type": "string",
+                      "format": "date",
+                      "description": "Optional ISO 8601 date when the current accreditation expires. Buyers MAY treat post-expiry data as un-accredited. Absence means the vendor does not assert an expiry — buyers SHOULD verify currency at the accrediting body's directory."
+                    },
+                    "evidence_url": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "Optional URL pointing at the accrediting body's public listing for this certification (the buyer's path to verify the claim independently)."
+                    }
+                  },
+                  "required": ["accrediting_body"],
+                  "additionalProperties": false
+                },
+                "uniqueItems": true
+              },
+              "unit": {
+                "type": "string",
+                "description": "Unit of the metric value when reported via `vendor_metric_values.value` (e.g., `score`, `seconds`, `persons`, `gCO2e`, `lift_percent`, `USD`). Buyers SHOULD render the unit alongside the value rather than computing units locally; sellers populating `vendor_metric_values.unit` MUST match this declaration when present.",
+                "examples": ["score", "seconds", "persons", "gCO2e", "lift_percent", "index", "USD"]
+              },
+              "description": {
+                "type": "string",
+                "description": "Human-readable description of what this metric measures and any relevant methodology notes. Surfaced in buyer-agent UX when explaining the metric to humans."
+              },
+              "methodology_url": {
+                "type": "string",
+                "format": "uri",
+                "description": "URL to the vendor's full methodology documentation for this metric. Buyers SHOULD link or fetch this when human review of the methodology is in scope (compliance, RFP review, accreditation audit). Field name mirrors `governance.property_features[].methodology_url`."
+              },
+              "methodology_version": {
+                "type": "string",
+                "description": "Optional version identifier (semver, ISO date, or vendor-defined version string) for the methodology this metric currently implements. When present, buyer agents pin the contracted version on `committed_metrics` so silent vendor methodology changes are detectable; absence means the vendor does not version their methodology and buyers MUST treat any change as untracked.",
+                "examples": ["v2.1", "2026-Q1", "1.0"]
+              },
+              "ext": {
+                "$ref": "/schemas/core/ext.json"
+              }
+            },
+            "required": ["metric_id"],
+            "additionalProperties": false
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "required": ["metrics"]
     },
     "compliance_testing": {
       "type": "object",
