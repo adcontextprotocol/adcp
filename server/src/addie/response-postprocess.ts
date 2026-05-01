@@ -306,5 +306,7 @@ export function applyResponsePipeline(question: string, rawText: string): string
   return truncateLongResponseToShortQuestion(question, stripped);
 }
 
-/** Test-only export of the empty-response fallback. */
+/** The string substituted when the model produces no content. Callers can detect this to emit observability events. */
+export const EMPTY_RESPONSE_FALLBACK_TEXT = EMPTY_RESPONSE_FALLBACK;
+/** @deprecated Use EMPTY_RESPONSE_FALLBACK_TEXT */
 export const __test_EMPTY_RESPONSE_FALLBACK = EMPTY_RESPONSE_FALLBACK;

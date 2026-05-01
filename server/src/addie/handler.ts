@@ -9,6 +9,7 @@ import { createLogger } from '../logger.js';
 const logger = createLogger('addie-handler');
 import { sendChannelMessage } from '../slack/client.js';
 import { AddieClaudeClient, ADMIN_MAX_ITERATIONS, type UserScopedToolsResult } from './claude-client.js';
+import { EMPTY_RESPONSE_FALLBACK_TEXT } from './response-postprocess.js';
 import { buildSlackCostScope } from './claude-cost-tracker.js';
 import {
   sanitizeInput,
@@ -321,7 +322,8 @@ async function createUserScopedTools(
   memberContext: MemberContext | null,
   slackUserId?: string,
   threadId?: string,
-  options?: { isChannelMention?: boolean }
+  options?: { isChannelMention?: boolean },
+  personId?: string | null,
 ): Promise<UserScopedToolsResult> {
   const memberHandlers = createMemberToolHandlers(memberContext, slackUserId);
   const allTools = [...MEMBER_TOOLS];
@@ -330,7 +332,7 @@ async function createUserScopedTools(
   // Add billing tools (for membership signup assistance)
   // Skip in channel mentions to prevent enrollment pitching
   if (!options?.isChannelMention) {
-    const billingHandlers = createBillingToolHandlers(memberContext);
+    const billingHandlers = createBillingToolHandlers(memberContext, personId);
     allTools.push(...BILLING_TOOLS);
     for (const [name, handler] of billingHandlers) {
       allHandlers.set(name, handler);
@@ -627,7 +629,7 @@ export async function handleAssistantMessage(
     // Pass undefined as threadId — this legacy path doesn't create unified threads,
     // and event.thread_ts is a Slack timestamp that would violate the FK constraint
     // on addie_escalations.thread_id (which references addie_threads.thread_id UUID).
-    const { tools: userTools, isAAOAdmin: userIsAdmin } = await createUserScopedTools(memberContext, event.user, undefined);
+    const { tools: userTools, isAAOAdmin: userIsAdmin } = await createUserScopedTools(memberContext, event.user, undefined, undefined, personId);
 
     // Admin users get higher iteration limit for bulk operations.
     // Cost-cap scope (#2790 / #2945 f/u) resolved via shared helper.
@@ -650,6 +652,17 @@ export async function handleAssistantMessage(
         flag_reason: `Error: ${error instanceof Error ? error.message : 'Unknown'}`,
       };
     }
+  }
+
+  // Detect empty-turn substitution: the model produced no content and applyResponsePipeline
+  // substituted the generic fallback. Emit an observability event so the failure appears
+  // in the person timeline alongside the surrounding message_received / message_sent entries.
+  const isEmptyTurn = response.text === EMPTY_RESPONSE_FALLBACK_TEXT;
+  if (isEmptyTurn && personId) {
+    personEvents.recordEvent(personId, 'addie_empty_turn', {
+      channel: 'slack',
+      data: { tools_used: response.tools_used },
+    }).catch(err => logger.warn({ err, personId }, 'Addie: Failed to record addie_empty_turn event'));
   }
 
   // Validate output
@@ -687,8 +700,8 @@ export async function handleAssistantMessage(
   }
 
   // Log interaction
-  const flagged = inputValidation.flagged || response.flagged || outputValidation.flagged;
-  const flagReason = [inputValidation.reason, response.flag_reason, outputValidation.reason]
+  const flagged = inputValidation.flagged || response.flagged || outputValidation.flagged || isEmptyTurn;
+  const flagReason = [inputValidation.reason, response.flag_reason, outputValidation.reason, isEmptyTurn ? 'addie_empty_turn' : '']
     .filter(Boolean)
     .join('; ');
 
@@ -799,7 +812,7 @@ export async function handleAppMention(event: AppMentionEvent): Promise<void> {
     };
   } else {
     // Create user-scoped tools (these can only operate on behalf of this user)
-    const { tools: userTools, isAAOAdmin: userIsAdmin } = await createUserScopedTools(memberContext, event.user, event.thread_ts || event.ts, { isChannelMention: true });
+    const { tools: userTools, isAAOAdmin: userIsAdmin } = await createUserScopedTools(memberContext, event.user, event.thread_ts || event.ts, { isChannelMention: true }, personId);
 
     // Admin users get higher iteration limit for bulk operations.
     // Cost-cap scope (#2790 / #2945 f/u) resolved via shared helper.

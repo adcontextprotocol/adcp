@@ -15,6 +15,7 @@
 import { createLogger } from '../../logger.js';
 import type { AddieTool } from '../types.js';
 import type { MemberContext } from '../member-context.js';
+import { recordEvent } from '../../db/person-events-db.js';
 import {
   getProductsForCustomer,
   createCheckoutSession,
@@ -167,8 +168,19 @@ function formatRevenueTier(tier: string): string {
 /**
  * Tool handler implementations
  */
-export function createBillingToolHandlers(memberContext?: MemberContext | null): Map<string, (input: Record<string, unknown>) => Promise<string>> {
+export function createBillingToolHandlers(
+  memberContext?: MemberContext | null,
+  personId?: string | null,
+): Map<string, (input: Record<string, unknown>) => Promise<string>> {
   const handlers = new Map<string, (input: Record<string, unknown>) => Promise<string>>();
+
+  function emitBillingFailure(tool: string, lookupKey: string | undefined, reason: string, authStatus: string, orgId?: string | null): void {
+    if (!personId) return;
+    recordEvent(personId, 'billing_tool_failed', {
+      channel: 'slack',
+      data: { tool, lookup_key: lookupKey, reason, auth_status: authStatus, org_id: orgId ?? null },
+    }).catch(err => logger.warn({ err, personId, tool }, 'Addie: Failed to record billing_tool_failed event'));
+  }
 
   // Find membership products
   handlers.set('find_membership_products', async (input) => {
@@ -231,6 +243,7 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
       return JSON.stringify({
         success: false,
         error: 'Failed to find products. Please try again.',
+        action_required: 'You MUST post a non-empty Slack message. Copy this error to the user verbatim as your reply.',
       });
     }
   });
@@ -246,15 +259,21 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
     const orgId = memberContext?.organization?.workos_organization_id;
 
     if (!workosUserId || !memberEmail) {
+      const reason = 'Cannot create a payment link without a signed-in account. Ask the user to sign in at https://agenticadvertising.org first, then try again.';
+      emitBillingFailure('create_payment_link', lookupKey, reason, 'no_session', null);
       return JSON.stringify({
         success: false,
-        error: 'Cannot create a payment link without a signed-in account. Ask the user to sign in at https://agenticadvertising.org first, then try again.',
+        error: reason,
+        action_required: 'You MUST post a non-empty Slack message. Copy this error to the user verbatim as your reply.',
       });
     }
     if (!orgId) {
+      const reason = 'This user has an account but no workspace yet. They need to complete onboarding at https://agenticadvertising.org/dashboard to create their workspace before a payment link can be generated.';
+      emitBillingFailure('create_payment_link', lookupKey, reason, 'no_org', null);
       return JSON.stringify({
         success: false,
-        error: 'This user has an account but no workspace yet. They need to complete onboarding at https://agenticadvertising.org/dashboard to create their workspace before a payment link can be generated.',
+        error: reason,
+        action_required: 'You MUST post a non-empty Slack message. Copy this error to the user verbatim as your reply.',
       });
     }
 
@@ -263,9 +282,12 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
     try {
       const priceId = await getPriceByLookupKey(lookupKey);
       if (!priceId) {
+        const reason = `No product matches lookup_key "${lookupKey}". Call find_membership_products first, then pass the exact lookup_key from the result.`;
+        emitBillingFailure('create_payment_link', lookupKey, reason, 'invalid_lookup_key', orgId);
         return JSON.stringify({
           success: false,
-          error: `No product matches lookup_key "${lookupKey}". Call find_membership_products first, then pass the exact lookup_key from the result.`,
+          error: reason,
+          action_required: 'You MUST post a non-empty Slack message. Copy this error to the user verbatim as your reply.',
         });
       }
 
@@ -295,9 +317,12 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
       });
 
       if (!session) {
+        const reason = 'Stripe is not configured. Please contact support.';
+        emitBillingFailure('create_payment_link', lookupKey, reason, 'stripe_unconfigured', orgId);
         return JSON.stringify({
           success: false,
-          error: 'Stripe is not configured. Please contact support.',
+          error: reason,
+          action_required: 'You MUST post a non-empty Slack message. Copy this error to the user verbatim as your reply.',
         });
       }
 
@@ -309,9 +334,12 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
     } catch (error) {
       logger.error({ error }, 'Addie: Error creating payment link');
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const reason = `Failed to create payment link: ${errorMessage}`;
+      emitBillingFailure('create_payment_link', lookupKey, reason, 'stripe_error', orgId ?? null);
       return JSON.stringify({
         success: false,
-        error: `Failed to create payment link: ${errorMessage}`,
+        error: reason,
+        action_required: 'You MUST post a non-empty Slack message. Copy this error to the user verbatim as your reply.',
       });
     }
   });
@@ -327,9 +355,12 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
     const memberEmail = memberContext?.workos_user?.email;
     const orgId = memberContext?.organization?.workos_organization_id;
     if (!memberEmail || !orgId) {
+      const reason = 'Cannot preview an invoice without a signed-in member and a workspace. Ask the user to sign in at https://agenticadvertising.org first.';
+      emitBillingFailure('send_invoice', lookupKey, reason, 'no_session', null);
       return JSON.stringify({
         success: false,
-        error: 'Cannot preview an invoice without a signed-in member and a workspace. Ask the user to sign in at https://agenticadvertising.org first.',
+        error: reason,
+        action_required: 'You MUST post a non-empty Slack message. Copy this error to the user verbatim as your reply.',
       });
     }
 
@@ -364,9 +395,12 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
       });
 
       if (!preview) {
+        const reason = 'Product not found or Stripe is not configured.';
+        emitBillingFailure('send_invoice', lookupKey, reason, 'stripe_unconfigured', orgId);
         return JSON.stringify({
           success: false,
-          error: 'Product not found or Stripe is not configured.',
+          error: reason,
+          action_required: 'You MUST post a non-empty Slack message. Copy this error to the user verbatim as your reply.',
         });
       }
 
@@ -388,9 +422,12 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
       });
     } catch (error) {
       logger.error({ error }, 'Addie: Error previewing invoice');
+      const reason = 'Failed to preview invoice. Please try again.';
+      emitBillingFailure('send_invoice', lookupKey, reason, 'stripe_error', orgId);
       return JSON.stringify({
         success: false,
-        error: 'Failed to preview invoice. Please try again.',
+        error: reason,
+        action_required: 'You MUST post a non-empty Slack message. Copy this error to the user verbatim as your reply.',
       });
     }
   });
@@ -406,9 +443,12 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
     const memberEmail = memberContext?.workos_user?.email;
     const orgId = memberContext?.organization?.workos_organization_id;
     if (!memberEmail || !orgId) {
+      const reason = 'Cannot send an invoice without a signed-in member and a workspace. Ask the user to sign in at https://agenticadvertising.org first.';
+      emitBillingFailure('confirm_send_invoice', lookupKey, reason, 'no_session', null);
       return JSON.stringify({
         success: false,
-        error: 'Cannot send an invoice without a signed-in member and a workspace. Ask the user to sign in at https://agenticadvertising.org first.',
+        error: reason,
+        action_required: 'You MUST post a non-empty Slack message. Copy this error to the user verbatim as your reply.',
       });
     }
 
@@ -425,16 +465,22 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
     }
 
     if (!org) {
+      const reason = 'Could not load your organization. Please contact finance@agenticadvertising.org.';
+      emitBillingFailure('confirm_send_invoice', lookupKey, reason, 'org_load_failed', orgId);
       return JSON.stringify({
         success: false,
-        error: 'Could not load your organization. Please contact finance@agenticadvertising.org.',
+        error: reason,
+        action_required: 'You MUST post a non-empty Slack message. Copy this error to the user verbatim as your reply.',
       });
     }
 
     if (!org.billing_address || !org.billing_address.line1) {
+      const reason = 'Your organization does not have a billing address on file. Please add one in the dashboard at https://agenticadvertising.org/dashboard/membership before requesting an invoice.';
+      emitBillingFailure('confirm_send_invoice', lookupKey, reason, 'no_billing_address', orgId);
       return JSON.stringify({
         success: false,
-        error: 'Your organization does not have a billing address on file. Please add one in the dashboard at https://agenticadvertising.org/dashboard/membership before requesting an invoice.',
+        error: reason,
+        action_required: 'You MUST post a non-empty Slack message. Copy this error to the user verbatim as your reply.',
       });
     }
 
@@ -467,9 +513,12 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
       });
 
       if (!result) {
+        const reason = 'Failed to send invoice. Stripe may not be configured or the product was not found.';
+        emitBillingFailure('confirm_send_invoice', lookupKey, reason, 'stripe_unconfigured', orgId);
         return JSON.stringify({
           success: false,
-          error: 'Failed to send invoice. Stripe may not be configured or the product was not found.',
+          error: reason,
+          action_required: 'You MUST post a non-empty Slack message. Copy this error to the user verbatim as your reply.',
         });
       }
 
@@ -484,9 +533,11 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
     } catch (error) {
       logger.error({ error }, 'Addie: Error sending invoice');
       const message = error instanceof Error ? error.message : 'Failed to send invoice. Please try again.';
+      emitBillingFailure('confirm_send_invoice', lookupKey, message, 'stripe_error', orgId);
       return JSON.stringify({
         success: false,
         error: message,
+        action_required: 'You MUST post a non-empty Slack message. Copy this error to the user verbatim as your reply.',
       });
     }
   });
@@ -498,6 +549,7 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
       return JSON.stringify({
         success: false,
         error: 'You need to be signed in with a linked account to access billing. Visit https://agenticadvertising.org/dashboard/membership to manage your billing.',
+        action_required: 'You MUST post a non-empty Slack message. Copy this error to the user verbatim as your reply.',
       });
     }
 
@@ -509,6 +561,7 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
         return JSON.stringify({
           success: false,
           error: 'No billing account found for your organization. If you have already paid, please contact finance@agenticadvertising.org for assistance.',
+          action_required: 'You MUST post a non-empty Slack message. Copy this error to the user verbatim as your reply.',
         });
       }
 
@@ -519,6 +572,7 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
         return JSON.stringify({
           success: false,
           error: 'Unable to create billing portal session. Please try again or contact finance@agenticadvertising.org.',
+          action_required: 'You MUST post a non-empty Slack message. Copy this error to the user verbatim as your reply.',
         });
       }
 
@@ -532,6 +586,7 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
       return JSON.stringify({
         success: false,
         error: 'Failed to access billing portal. Please try again or contact finance@agenticadvertising.org.',
+        action_required: 'You MUST post a non-empty Slack message. Copy this error to the user verbatim as your reply.',
       });
     }
   });
