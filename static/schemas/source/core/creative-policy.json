@@ -23,19 +23,19 @@
     },
     "provenance_requirements": {
       "type": "object",
-      "description": "Structured provenance requirements for creatives. Refines provenance_required: when provenance_required is true, the fields in this object specify which provenance features the seller requires. When provenance_required is false or absent, this object SHOULD be absent; if present, receivers SHOULD ignore it. Existing seller agents that do not read this object are unaffected; the wire shape does not change for them. This is a visibility surface, not a prevention surface: provenance_requirements declares what the seller expects, but does not block delivery if requirements are unmet. A non-enforcing seller silently accepts non-compliant creative. The should-verify tier (receiver-obligation RFC) is intended to close this enforcement gap by adding task-level error signals that make unmet requirements visible to the buyer.",
+      "description": "Structured provenance requirements for creatives. Refines `provenance_required`: when `provenance_required` is true, the fields in this object specify which provenance features the seller requires. When `provenance_required` is false or absent, this object SHOULD be absent; if present, receivers MUST ignore it. Existing seller agents that do not read this object are unaffected; the wire shape does not change for them. Sellers that publish a requirement here MUST enforce it on creative submission: a `sync_creatives` request that omits a required field is rejected with the corresponding `PROVENANCE_*` error code (see error-code.json), and a creative whose provenance claim is contradicted by an independent verification (e.g., `get_creative_features` against a governance agent) is rejected with `PROVENANCE_CLAIM_CONTRADICTED`. This is the structural-rejection surface; the truth-of-claim surface lives in `get_creative_features`.",
       "properties": {
         "require_digital_source_type": {
           "type": "boolean",
-          "description": "When true, the seller requires creatives to include a digital_source_type field in their provenance, set to a valid value from the digital-source-type enum (not null or absent). Supports EU AI Act Art. 50 and CA SB 942 compliance workflows where AI disclosure metadata must be present at the protocol level."
+          "description": "When true, the seller requires creatives to include a `digital_source_type` field in their provenance, set to a valid value from the `digital-source-type` enum (not null or absent). Submissions that omit this field are rejected with `PROVENANCE_DIGITAL_SOURCE_TYPE_MISSING`. Supports EU AI Act Art. 50 and CA SB 942 compliance workflows where AI disclosure metadata must be present at the protocol level."
         },
         "require_disclosure_metadata": {
           "type": "boolean",
-          "description": "When true, the seller requires creatives to include a disclosure object in their provenance with disclosure.required set to a boolean value (true or false). When disclosure.required is true, at least one entry in disclosure.jurisdictions is expected."
+          "description": "When true, the seller requires creatives to include a `disclosure` object in their provenance with `disclosure.required` set to a boolean value (true or false). When `disclosure.required` is true, at least one entry in `disclosure.jurisdictions` is expected. Submissions that omit `disclosure.required` are rejected with `PROVENANCE_DISCLOSURE_MISSING`."
         },
         "require_embedded_provenance": {
           "type": "boolean",
-          "description": "When true, the seller requires creatives to include at least one embedded_provenance entry. For pipelines where sidecar metadata is stripped by intermediaries, this ensures provenance data persists through delivery."
+          "description": "When true, the seller requires creatives to include at least one `embedded_provenance` entry. For pipelines where sidecar metadata is stripped by intermediaries, this ensures provenance data persists through delivery. Submissions that omit `embedded_provenance` are rejected with `PROVENANCE_EMBEDDED_MISSING`."
         }
       },
       "additionalProperties": true
