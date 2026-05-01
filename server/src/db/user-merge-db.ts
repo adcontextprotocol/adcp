@@ -10,8 +10,6 @@
 
 import { getPool } from './client.js';
 import { createLogger } from '../logger.js';
-import type { WorkOS } from '@workos-inc/node';
-
 const logger = createLogger('user-merge-db');
 
 export interface UserMergeSummary {
@@ -24,8 +22,6 @@ export interface UserMergeSummary {
     rows_moved: number;
     rows_skipped_duplicate: number;
   }[];
-  workos_user_deleted: boolean;
-  warnings: string[];
 }
 
 export interface UserMergePreview {
@@ -110,18 +106,23 @@ export async function previewUserMerge(
 }
 
 /**
- * Merge two user accounts, moving all data from secondary to primary.
+ * Merge two user accounts. Moves all of the secondary user's app-state rows
+ * to the primary, then binds the secondary's WorkOS user to the primary's
+ * identity as a non-primary sign-in credential. The secondary WorkOS user
+ * stays alive — sign-in via either email resolves to the same identity, and
+ * the auth middleware swaps `req.user.id` to the primary's workos_user_id
+ * when a non-primary binding signs in so app-state reads land on the right
+ * person.
  *
- * @param primaryUserId - The WorkOS user ID to keep (merge into)
- * @param secondaryUserId - The WorkOS user ID to remove (merge from)
- * @param mergedBy - WorkOS user ID of person initiating the merge
- * @param workos - WorkOS client instance for deleting the secondary user
+ * @param primaryUserId - The WorkOS user ID to keep as the canonical
+ *   credential (and target for app-state rows)
+ * @param secondaryUserId - The WorkOS user ID to bind as a secondary sign-in
+ * @param mergedBy - WorkOS user ID of the person initiating the merge
  */
 export async function mergeUsers(
   primaryUserId: string,
   secondaryUserId: string,
-  mergedBy: string,
-  workos: WorkOS
+  mergedBy: string
 ): Promise<UserMergeSummary> {
   const pool = getPool();
   const client = await pool.connect();
@@ -132,8 +133,6 @@ export async function mergeUsers(
     merged_by: mergedBy,
     merged_at: new Date(),
     tables_merged: [],
-    workos_user_deleted: false,
-    warnings: [],
   };
 
   try {
@@ -542,12 +541,58 @@ export async function mergeUsers(
     );
 
     // =====================================================
-    // 4. Delete secondary user from local DB
+    // 4. Bind both WorkOS users to one identity
+    //
+    // The primary kept its singleton identity (created by the AFTER INSERT
+    // trigger when the user row was first inserted). The secondary's
+    // singleton identity is now orphaned — its workos_user_id still has a
+    // binding row pointing at the secondary's identity. Re-point the
+    // secondary's binding at the primary's identity so a sign-in via the
+    // secondary's WorkOS user resolves to the same person.
+    //
+    // We do NOT delete the secondary WorkOS user. Each linked email stays a
+    // real, working sign-in credential. The secondary's data has already
+    // been moved to the primary above, so reads via the secondary's
+    // workos_user_id correctly return nothing — the auth middleware swaps
+    // req.user.id to the primary's workos_user_id when a non-primary
+    // binding signs in.
     // =====================================================
-    await client.query(
-      `DELETE FROM users WHERE workos_user_id = $1`,
+    const primaryIdentityResult = await client.query<{ identity_id: string }>(
+      `SELECT identity_id FROM identity_workos_users WHERE workos_user_id = $1`,
+      [primaryUserId]
+    );
+    const primaryIdentityId = primaryIdentityResult.rows[0]?.identity_id;
+
+    if (!primaryIdentityId) {
+      // Trigger should have created this. If not, fail loud — silent skip
+      // would leave the system in a partially-merged state.
+      throw new Error(
+        `Primary user ${primaryUserId} has no identity binding; merge cannot proceed`
+      );
+    }
+
+    // Drop the secondary's singleton identity (orphan after the rebind) and
+    // re-point its binding to the primary's identity as a non-primary
+    // sign-in credential.
+    const secondaryBindingResult = await client.query<{ identity_id: string }>(
+      `SELECT identity_id FROM identity_workos_users WHERE workos_user_id = $1`,
       [secondaryUserId]
     );
+    const secondaryOldIdentityId = secondaryBindingResult.rows[0]?.identity_id;
+
+    await client.query(
+      `UPDATE identity_workos_users
+         SET identity_id = $1, is_primary = FALSE, bound_at = NOW()
+       WHERE workos_user_id = $2`,
+      [primaryIdentityId, secondaryUserId]
+    );
+
+    if (secondaryOldIdentityId && secondaryOldIdentityId !== primaryIdentityId) {
+      await client.query(
+        `DELETE FROM identities WHERE id = $1`,
+        [secondaryOldIdentityId]
+      );
+    }
 
     // =====================================================
     // 5. Audit log
@@ -581,29 +626,15 @@ export async function mergeUsers(
 
     await client.query('COMMIT');
 
-    // =====================================================
-    // 6. Delete secondary user from WorkOS (after commit)
-    // =====================================================
-    try {
-      await workos.userManagement.deleteUser(secondaryUserId);
-      summary.workos_user_deleted = true;
-      logger.info({ secondaryUserId }, 'Deleted secondary user from WorkOS');
-    } catch (workosError) {
-      logger.error(
-        { error: workosError, secondaryUserId },
-        'Failed to delete secondary user from WorkOS - manual cleanup may be required'
-      );
-      summary.warnings.push(
-        'Failed to delete secondary user from WorkOS. The user may need to be manually deleted in the WorkOS Dashboard.'
-      );
-    }
+    // The secondary WorkOS user stays alive — each linked email is a real
+    // sign-in credential. Identity routing in the auth middleware unifies
+    // them server-side.
 
     logger.info(
       {
         primaryUserId,
         secondaryUserId,
         totalMoved: summary.tables_merged.reduce((sum, t) => sum + t.rows_moved, 0),
-        workosDeleted: summary.workos_user_deleted,
       },
       'User merge completed successfully'
     );

@@ -427,8 +427,7 @@ export function handleEmailLinkVerification(app: {
           mergeSummary = await mergeUsers(
             tokenRecord.primary_workos_user_id,
             tokenRecord.target_workos_user_id,
-            tokenRecord.primary_workos_user_id,
-            getWorkos()
+            tokenRecord.primary_workos_user_id
           );
         }
 
@@ -462,8 +461,8 @@ export function handleEmailLinkVerification(app: {
         : 0;
 
       const message = mergeSummary
-        ? `Your email <strong>${escapeHtml(tokenRecord.target_email)}</strong> has been linked to your account. ${totalMoved} records were consolidated from your previous account.`
-        : `Your email <strong>${escapeHtml(tokenRecord.target_email)}</strong> has been linked to your account.`;
+        ? `Your email <strong>${escapeHtml(tokenRecord.target_email)}</strong> is now linked to your account. ${totalMoved} record${totalMoved === 1 ? '' : 's'} from the other account were combined here. You can sign in with either email — both lead to the same workspace.`
+        : `Your email <strong>${escapeHtml(tokenRecord.target_email)}</strong> is now linked to your account. You can sign in with either email — both lead to the same workspace.`;
 
       logger.info(
         { primaryUserId: tokenRecord.primary_workos_user_id, targetEmail: tokenRecord.target_email, merged: !!mergeSummary },
@@ -488,7 +487,7 @@ function escapeHtml(str: string): string {
 function renderConfirmPage(res: Response, opts: { targetEmail: string; hasMerge: boolean; token: string }): void {
   const mergeWarning = opts.hasMerge
     ? `<p style="background: #fef3c7; border: 1px solid #f59e0b; border-radius: 6px; padding: 12px; font-size: 13px; margin-top: 16px;">
-        An existing account was found with this email. Confirming will merge that account into yours. This cannot be undone.
+        An existing account was found with this email. Confirming will combine the two accounts so that signing in with either email leads to the same workspace.
       </p>`
     : '';
 

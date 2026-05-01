@@ -661,21 +661,44 @@ function isSyntheticUser(id: string): boolean {
 }
 
 /**
- * Look up the identity_id for a WorkOS user and attach it to the user object.
- * Identity = the person; one identity may back multiple WorkOS users (Phase 2).
- * Skipped for synthetic users since they don't represent a person. Failures
- * are swallowed — identity resolution must never block an authenticated
- * request.
+ * Resolve the identity for a WorkOS user. Sets `user.identityId` and, when
+ * the authenticated user is a non-primary binding, swaps `user.id` to the
+ * identity's primary workos_user_id so app-state reads land on the right
+ * person. The original authenticated id is preserved on `user.authWorkosUserId`.
+ *
+ * Skipped for synthetic users (admin API key, WorkOS API key) — they don't
+ * represent a person. Failures are swallowed: identity resolution must
+ * never block an authenticated request, and a degraded request that sees
+ * only the auth user's slice of data is still better than a 500.
  */
 async function attachIdentityId(user: WorkOSUser): Promise<void> {
   if (isSyntheticUser(user.id)) return;
   try {
-    const result = await getPool().query<{ identity_id: string }>(
-      `SELECT identity_id FROM identity_workos_users WHERE workos_user_id = $1`,
+    const result = await getPool().query<{
+      identity_id: string;
+      primary_workos_user_id: string;
+    }>(
+      `SELECT iwu.identity_id,
+              (SELECT workos_user_id FROM identity_workos_users
+                WHERE identity_id = iwu.identity_id AND is_primary = TRUE) AS primary_workos_user_id
+         FROM identity_workos_users iwu
+        WHERE iwu.workos_user_id = $1`,
       [user.id]
     );
-    if (result.rows[0]) {
-      user.identityId = result.rows[0].identity_id;
+    const row = result.rows[0];
+    if (!row) return;
+
+    user.identityId = row.identity_id;
+
+    if (row.primary_workos_user_id && row.primary_workos_user_id !== user.id) {
+      // Non-primary binding signed in. Swap id so app-state reads see the
+      // canonical person; preserve the actual auth user on authWorkosUserId.
+      logger.debug(
+        { authWorkosUserId: user.id, canonicalUserId: row.primary_workos_user_id, identityId: row.identity_id },
+        'Identity id-swap: routing non-primary binding to canonical user'
+      );
+      user.authWorkosUserId = user.id;
+      user.id = row.primary_workos_user_id;
     }
   } catch (err) {
     logger.warn({ err, userId: user.id }, 'Failed to resolve identity_id');
