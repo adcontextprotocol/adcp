@@ -237,16 +237,18 @@ The rule to apply: if the name asks "which vendor-equivalent version of somethin
 
 ## Reserved SDK-Internal Keys
 
-**RULE**: The top-level key `ctx_metadata` is reserved on AdCP resource objects as an adapter-internal round-trip cache for state that an SDK or platform adapter needs to carry across calls but that buyers MUST NOT see or rely on. Adapters MUST strip `ctx_metadata` from any payload before wire egress, and MUST emit a warning-level log entry when stripping, so operators can detect accidental key collisions with custom adapter code.
+**RULE**: The top-level key `ctx_metadata` is reserved on AdCP resource objects as an adapter-internal round-trip cache for state that an SDK or platform adapter needs to carry across calls but that buyers MUST NOT see or rely on. Adapters MUST strip `ctx_metadata` from any payload before wire egress. When the key was present and non-empty at strip time, adapters MUST emit a warning-level log entry so operators can detect accidental key collisions with custom adapter code. (An empty or absent `ctx_metadata` is silent — only a non-empty value triggers the warning.)
 
 **Why**: Platform adapters (e.g. Google Ad Manager, Kevel, custom seller infrastructure) often need to associate adapter-internal identifiers — GAM ad-unit IDs, key-value pairs, placement IDs — with AdCP resources that the buyer-facing SDK returns. The reference Prebid `salesagent` Python implementation uses an `implementation_config` JSON column on its Product model for exactly this purpose. Without a reserved name, every SDK invents its own (`implementation_config`, `_internal`, `sdk_state`, etc.); a fourth SDK then collides with one of them, or two SDKs converging on the same name produce ambiguous semantics. One reserved name removes the coordination problem.
 
-**Scope**: The reservation applies to AdCP resource objects whose schemas declare `additionalProperties: true` — including `Product`, `MediaBuy`, `Package`, `Creative`, `AudienceSegment`, `Signal`, and `RightsGrant`. `PropertyList` and `CollectionList` declare `additionalProperties: false` and are out of scope until a follow-up PR widens those schemas.
+**Scope**: The reservation applies to AdCP resource objects whose schemas declare `additionalProperties: true` — including `Product`, `MediaBuy`, `Package`, `Creative`, `AudienceSegment`, `Signal`, and `RightsGrant`. The reservation travels with the resource wherever it appears: top-level in a response envelope, nested inside another resource (e.g. `Package` inside `MediaBuy`), or inside an array of resources (e.g. each element of `products: Product[]`). Adapters MUST strip the key from every occurrence before egress, not just the outermost one.
+
+`PropertyList` and `CollectionList` declare `additionalProperties: false` and are out of scope until a follow-up PR widens those schemas; until then, adapters needing round-trip state for those resources should track it out-of-band.
 
 **Distinction from neighboring conventions**:
 
 - `ext.{vendor}` — vendor-namespaced, **buyer-visible**, travels on the wire. Use for vendor-specific data the buyer should see (e.g. `ext.gam.line_item_id`).
-- `context` — caller-echoed correlation data, also wire-visible.
+- `context` / `context_id` — caller-echoed correlation data, also wire-visible. Despite the prefix-match, `ctx_metadata` is not a sub-namespace of these — they are unrelated concepts and travel on different layers.
 - `ctx_metadata` — **adapter-internal only**, MUST be stripped before egress, never reaches the buyer.
 
 **Adapter conformance**:
