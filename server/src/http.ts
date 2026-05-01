@@ -16,6 +16,7 @@ import { notifySystemError } from "./addie/error-notifier.js";
 import { CrawlerService } from "./crawler.js";
 import { createLogger, processRole } from "./logger.js";
 import { CapabilityDiscovery } from "./capabilities.js";
+import { inferDiagnosticAgentType } from "./lib/diagnostic-agent-type-inference.js";
 import { getPublicSigningJwks } from "./security/jwks.js";
 import { PublisherTracker } from "./publishers.js";
 import { PropertiesService } from "./properties.js";
@@ -2004,7 +2005,12 @@ export class HTTPServer {
 
     // Crawler endpoints
     this.app.post("/api/crawler/run", async (req, res) => {
-      const agents = await this.agentService.listAgents("buying");
+      // Crawler iterates sales agents — they're the ones with publisher
+      // authorizations and list_authorized_properties responses to walk.
+      // Pre-#3540 this filter was inverted (matched 'buying' against the
+      // accidentally-aligned classification); see #3774 for the sweep
+      // that closed the remaining gaps.
+      const agents = await this.agentService.listAgents("sales");
       const result = await this.crawler.crawlAllAgents(agents);
       res.json(result);
     });
@@ -8445,17 +8451,13 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
         const agentInfo = await client.getAgentInfo();
         const tools = agentInfo.tools || [];
 
-        // Detect agent type from tools
-        // Check for buying first since buying agents may also expose creative tools
-        let agentType = 'unknown';
-        const toolNames = tools.map((t: { name: string }) => t.name.toLowerCase());
-        if (toolNames.some((n: string) => n.includes('get_product') || n.includes('media_buy') || n.includes('create_media'))) {
-          agentType = 'buying';
-        } else if (toolNames.some((n: string) => n.includes('signal') || n.includes('audience'))) {
-          agentType = 'signals';
-        } else if (toolNames.some((n: string) => n.includes('creative') || n.includes('format') || n.includes('preview'))) {
-          agentType = 'creative';
-        }
+        // Diagnostic agent-type inference. Shared helper between this
+        // endpoint and the equivalent in registry-api.ts so polarity stays
+        // in sync across both. Pre-#3540 returned 'buying' for sales-tool
+        // exposure; #3774 corrected polarity and consolidated.
+        const agentType = inferDiagnosticAgentType(
+          tools.map((t: { name: string }) => t.name),
+        );
 
         // The library returns our config name, so extract real name from URL or use hostname
         const hostname = new URL(url).hostname;
@@ -8497,8 +8499,9 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
             logger.debug({ err: statsError, url }, 'Failed to fetch creative formats');
             stats.format_count = 0;
           }
-        } else if (agentType === 'buying') {
-          // Always show product and publisher counts for buying agents
+        } else if (agentType === 'sales') {
+          // Always show product and publisher counts for sales agents
+          // (they expose get_products / list_authorized_properties).
           stats.product_count = 0;
           stats.publisher_count = 0;
           try {
@@ -8735,11 +8738,15 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
     logger.info({ isWorker }, 'Process role resolved');
 
     if (isWorker) {
-      // Start periodic property crawler for buying agents
-      const buyingAgents = await this.agentService.listAgents("buying");
-      if (buyingAgents.length > 0) {
-        logger.debug({ buyingAgentCount: buyingAgents.length }, 'Starting property crawler');
-        this.crawler.startPeriodicCrawl(buyingAgents, 360); // Crawl every 6 hours
+      // Start periodic property crawler for sales agents — they're the
+      // ones with publisher authorizations and list_authorized_properties
+      // responses to walk. Pre-#3540 this filtered on 'buying' (inverted-
+      // but-aligned with the classification bug); see #3774 for the
+      // sweep that closed remaining gaps.
+      const salesAgents = await this.agentService.listAgents("sales");
+      if (salesAgents.length > 0) {
+        logger.debug({ salesAgentCount: salesAgents.length }, 'Starting property crawler');
+        this.crawler.startPeriodicCrawl(salesAgents, 360); // Crawl every 6 hours
       }
 
       // Crawl catalog domains for adagents.json (demand-driven queue)
