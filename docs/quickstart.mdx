@@ -24,6 +24,8 @@ export ADCP_AUTH_TOKEN="1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ"
 export AGENT_URL="https://test-agent.adcontextprotocol.org/sales/mcp"
 ```
 
+The test agent is path-routed: `/sales/mcp` serves media-buy tools (this quickstart's path), and sibling URLs serve the other specialisms — `/signals/mcp`, `/governance/mcp`, `/creative/mcp`, `/creative-builder/mcp`, `/brand/mcp`. Hit [`/.well-known/adagents.json`](https://test-agent.adcontextprotocol.org/.well-known/adagents.json) for the full tenant + tool list.
+
 For your own API key (org-scoped, usage tracking), create one at the [AAO dashboard](https://agenticadvertising.org/dashboard/api-keys).
 
 ## 1. Discover products
