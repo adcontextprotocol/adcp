@@ -208,6 +208,16 @@ phases:
             - audience_id: "outdoor_enthusiasts_25_54"
               name: "Outdoor enthusiasts 25-54"
               description: "Adults 25-54 interested in hiking, camping, and outdoor gear"
+              # Realistic add[] payload forces adapters to call the upstream
+              # audience-upload endpoint rather than returning shape-valid
+              # responses from an empty-members branch. Hash values are
+              # fictional test vectors distinct from audience-sync storyboard
+              # fixtures to avoid cross-storyboard collision in shared state backends.
+              add:
+                - external_id: "acme-user-0001"
+                  hashed_email: "a000000000000000000000000000000000000000000000000000000000000001"
+                - external_id: "acme-user-0002"
+                  hashed_phone: "b000000000000000000000000000000000000000000000000000000000000002"
 
           idempotency_key: "$generate:uuid_v4#sales_social_audience_sync_sync_audiences"
           context:
@@ -215,6 +225,12 @@ phases:
         validations:
           - check: response_schema
             description: "Response matches sync-audiences-response.json schema"
+          - check: field_present
+            path: "audiences[0].action"
+            description: "Audience result includes action (created or updated)"
+          - check: field_present
+            path: "audiences[0].uploaded_count"
+            description: "Audience result includes uploaded_count confirming identifiers were received"
 
           - check: field_present
             path: "context"
@@ -515,8 +531,15 @@ phases:
             - event_type: "purchase"
               event_id: "evt_trail_pro_001"
               event_time: "2026-04-05T14:30:00Z"
-              value: 149.99
-              currency: "USD"
+              # user_match prevents adapters from injecting synthetic
+              # placeholder identifiers to satisfy upstream required fields.
+              user_match:
+                hashed_email: "a000000000000000000000000000000000000000000000000000000000000001"
+              # value and currency belong in custom_data, not at the event
+              # top-level — event.json routes monetary fields through custom_data.
+              custom_data:
+                value: 149.99
+                currency: "USD"
 
           idempotency_key: "$generate:uuid_v4#sales_social_event_logging_log_event"
           context:
