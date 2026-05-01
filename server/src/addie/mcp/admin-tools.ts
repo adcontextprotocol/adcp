@@ -89,6 +89,12 @@ import {
 import { sendMembershipInviteEmail } from '../../notifications/email.js';
 import { mergeOrganizations, previewMerge, type StripeCustomerResolution } from '../../db/org-merge-db.js';
 import { getWorkos } from '../../auth/workos-client.js';
+import {
+  getSlackAdminStatusCache,
+  getWebAdminStatusCache,
+  invalidateSlackAdminStatusCache,
+  invalidateWebAdminStatusCache,
+} from '../admin-status-cache.js';
 import { DomainDataState } from '@workos-inc/node';
 import { processInteraction, type InteractionContext } from '../services/interaction-analyzer.js';
 import {
@@ -197,8 +203,7 @@ export async function isSlackUserAAOAdmin(slackUserId: string): Promise<boolean>
 // Re-export Slack/web admin invalidators from the shared cache module so
 // existing imports of `admin-tools` keep working while new callers can
 // import directly from `admin-status-cache` to avoid this file's heavy
-// transitive dependencies.
-import { invalidateSlackAdminStatusCache, invalidateWebAdminStatusCache } from '../admin-status-cache.js';
+// transitive dependencies. (Single import block at top — see line ~91.)
 export { invalidateSlackAdminStatusCache as invalidateAdminStatusCache, invalidateWebAdminStatusCache };
 
 // Cache for web user admin status (keyed by WorkOS user ID)
@@ -213,10 +218,6 @@ export function invalidateAllAdminCaches(): void {
   webCouncilStatusCache.clear();
 }
 
-// Surface the shared-cache helpers so admin-tools' module graph stays
-// authoritative (other files can either import from admin-tools or from
-// admin-status-cache directly — both reach the same Maps).
-import { getSlackAdminStatusCache, getWebAdminStatusCache } from '../admin-status-cache.js';
 
 // Cache for web user kitchen-cabinet council status (keyed by WorkOS user ID)
 const webCouncilStatusCache = new Map<string, { isCouncil: boolean; expiresAt: number }>();

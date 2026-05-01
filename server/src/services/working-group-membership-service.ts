@@ -93,7 +93,10 @@ export class WorkingGroupMembershipError<
   is<K extends WorkingGroupMembershipErrorCode>(
     code: K,
   ): this is WorkingGroupMembershipError<K> & { meta: WorkingGroupMembershipErrorMetaByCode[K] } {
-    return (this.code as WorkingGroupMembershipErrorCode) === code;
+    // Generic-parameter comparison: TS treats `C` and `K` as independent
+    // type vars, so a direct `===` is rejected. The runtime check is
+    // sound — both sides are `WorkingGroupMembershipErrorCode` strings.
+    return (this.code as string) === (code as string);
   }
 }
 

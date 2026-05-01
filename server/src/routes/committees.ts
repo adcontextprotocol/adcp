@@ -1177,7 +1177,10 @@ export function createCommitteeRouters(): {
     } catch (error) {
       if (error instanceof WorkingGroupMembershipError) {
         if (error.is('group_not_found')) {
-          return res.status(404).json({ error: 'Working group not found', message: error.message });
+          return res.status(404).json({
+            error: 'Working group not found',
+            message: `No working group found with slug: ${error.meta.slug}`,
+          });
         }
         if (error.is('group_private')) {
           return res.status(403).json({
@@ -1226,7 +1229,10 @@ export function createCommitteeRouters(): {
       });
     } catch (error) {
       if (error instanceof WorkingGroupMembershipError && error.is('group_not_found')) {
-        return res.status(404).json({ error: 'Committee not found', message: error.message });
+        return res.status(404).json({
+          error: 'Committee not found',
+          message: `No committee found with slug: ${error.meta.slug}`,
+        });
       }
       logger.error({ err: error }, 'Express committee interest error');
       res.status(500).json({ error: 'Failed to record interest' });
@@ -1288,10 +1294,16 @@ export function createCommitteeRouters(): {
     } catch (error) {
       if (error instanceof WorkingGroupMembershipError) {
         if (error.is('group_not_found')) {
-          return res.status(404).json({ error: 'Committee not found', message: error.message });
+          return res.status(404).json({
+            error: 'Committee not found',
+            message: `No committee found with slug: ${error.meta.slug}`,
+          });
         }
         if (error.is('no_interest_recorded')) {
-          return res.status(404).json({ error: 'No interest found', message: error.message });
+          return res.status(404).json({
+            error: 'No interest found',
+            message: 'You have not expressed interest in this committee',
+          });
         }
       }
       logger.error({ err: error }, 'Withdraw committee interest error');
