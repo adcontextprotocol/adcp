@@ -156,9 +156,33 @@ To discover measurement vendors specifically (Adelaide-style attention, Scope3-s
 curl "https://agenticadvertising.org/api/registry/agents?type=measurement"
 ```
 
-This returns every measurement agent the registry knows about — registered via member profiles plus discovered through crawling brand.json declarations. Use this to populate buyer-agent vendor catalogs for the [vendor-metric extensions surface](/docs/media-buy/media-buys/optimization-reporting#vendor-defined-metrics) when buyers request cross-vendor metric availability.
+This returns every measurement agent the registry knows about — registered via member profiles plus discovered through crawling brand.json declarations.
 
-**Per-metric catalog discovery.** Each measurement agent publishes its full per-metric catalog at [`get_adcp_capabilities.measurement.metrics[]`](/docs/protocol/get_adcp_capabilities#measurement) — the canonical, vendor-controlled source of truth (parallels every other AdCP agent type's capability surface). Buyers query the AAO federated index for cross-vendor aggregation; AAO crawls each measurement agent's `get_adcp_capabilities` on a TTL to keep the index fresh. The aggregating endpoint and its query shape are tracked at [#3613](https://github.com/adcontextprotocol/adcp/issues/3613); buyer-agent direct-vs-index call patterns are documented at [#3614](https://github.com/adcontextprotocol/adcp/issues/3614).
+**Per-metric catalog discovery.** Each measurement agent publishes its full per-metric catalog at [`get_adcp_capabilities.measurement.metrics[]`](/docs/protocol/get_adcp_capabilities#measurement) — the canonical, vendor-controlled source of truth. AAO crawls each measurement agent's `get_adcp_capabilities` on a TTL and stores the result; passing `?capabilities=true` folds the catalog into the response next to `creative_capabilities` and `signals_capabilities`.
+
+**Filter parameters** (all imply `type=measurement` when present; an explicit non-measurement type returns 400):
+
+| Param | Match | Notes |
+|-------|-------|-------|
+| `metric_id=attention_units` | Exact match on `metrics[].metric_id` | Repeatable; multiple values are OR'd within the param. |
+| `accreditation=MRC` | Exact match on `metrics[].accreditations[].accrediting_body` | Repeatable. Vendor-asserted — `verified_by_aao` is always `false` in the response; renderers should mark these as vendor claims, not AAO endorsements. |
+| `q=attention` | Case-insensitive substring on `metric_id` | v1 scope: metric_id only. Max 64 chars; SQL wildcards (`%`, `_`) rejected. Description/standard fuzzy search is a follow-up. |
+
+```bash
+# All vendors offering attention measurement
+curl "https://agenticadvertising.org/api/registry/agents?metric_id=attention_units&capabilities=true"
+
+# MRC-accredited viewability vendors
+curl "https://agenticadvertising.org/api/registry/agents?type=measurement&accreditation=MRC&q=viewab&capabilities=true"
+```
+
+**Direct call vs. index — when to use which.** Buyers have two paths to a vendor's metric catalog:
+
+| Use case | Path | Why |
+|----------|------|-----|
+| Discovery / planning ("which vendors offer attention?") | AAO index (`?metric_id=...`) | Pre-aggregated, cached, fast. Cross-vendor in one call. Stale up to the AAO TTL window (typically 24h). |
+| Settlement / audit ("does Adelaide currently support metric X?") | Direct call to `get_adcp_capabilities` | Live, canonical, no staleness. The buyer is already calling the measurement agent at delivery / reconciliation time; one extra call is cheap and removes index staleness from the audit trail. |
+| Filtering at `get_products` time | AAO index | Buyer is in a fast-path query and the seller's product catalog already needs to know which vendors are valid. |
 
 ### Change Feed
 

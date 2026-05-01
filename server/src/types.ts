@@ -80,6 +80,23 @@ export interface AgentCapabilities {
     can_activate: boolean;
     can_get_signals: boolean;
   };
+  measurement_capabilities?: {
+    metrics: Array<{
+      metric_id: string;
+      standard_reference?: string;
+      accreditations?: Array<{
+        accrediting_body: string;
+        certification_id?: string;
+        valid_until?: string;
+        evidence_url?: string;
+        verified_by_aao: false;
+      }>;
+      unit?: string;
+      description?: string;
+      methodology_url?: string;
+      methodology_version?: string;
+    }>;
+  };
   discovery_error?: string;
   oauth_required?: boolean;
 }

@@ -127,6 +127,46 @@ export const AgentCapabilitiesSchema = z
         can_preview: z.boolean(),
       })
       .optional(),
+    signals_capabilities: z
+      .object({
+        audience_types: z.array(z.string()),
+        can_match: z.boolean(),
+        can_activate: z.boolean(),
+        can_get_signals: z.boolean(),
+      })
+      .optional(),
+    measurement_capabilities: z
+      .object({
+        metrics: z.array(
+          z.object({
+            metric_id: z.string(),
+            standard_reference: z.string().optional(),
+            accreditations: z
+              .array(
+                z.object({
+                  accrediting_body: z.string(),
+                  certification_id: z.string().optional(),
+                  valid_until: z.string().optional(),
+                  evidence_url: z.string().optional(),
+                  verified_by_aao: z.literal(false).openapi({
+                    description:
+                      "Always `false` — accreditation claims are vendor-asserted. AAO does not independently verify; renderers should mark these as vendor claims.",
+                  }),
+                })
+              )
+              .optional(),
+            unit: z.string().optional(),
+            description: z.string().optional(),
+            methodology_url: z.string().optional(),
+            methodology_version: z.string().optional(),
+          })
+        ),
+      })
+      .optional()
+      .openapi({
+        description:
+          "Vendor-published per-metric catalog for measurement agents. Populated when the crawler successfully fetched and validated `get_adcp_capabilities.measurement` (AdCP 3.x). Mirrors the protocol shape — see the AdCP `get_adcp_capabilities` reference for field semantics.",
+      }),
   })
   .openapi("AgentCapabilities");
 

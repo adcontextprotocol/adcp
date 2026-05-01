@@ -6,6 +6,7 @@ import type {
   StandardOperations,
   CreativeCapabilities,
   SignalsCapabilities,
+  MeasurementCapabilities,
   ToolCapability,
 } from '../capabilities.js';
 
@@ -30,6 +31,7 @@ export interface AgentCapabilitiesSnapshotRow {
   standard_operations_json: StandardOperations | null;
   creative_capabilities_json: CreativeCapabilities | null;
   signals_capabilities_json: SignalsCapabilities | null;
+  measurement_capabilities_json: MeasurementCapabilities | null;
   inferred_type: string | null;
   discovery_error: string | null;
   oauth_required: boolean;
@@ -101,15 +103,17 @@ export class AgentSnapshotDatabase {
       await query(
         `INSERT INTO agent_capabilities_snapshot
            (agent_url, protocol, discovered_tools_json, standard_operations_json,
-            creative_capabilities_json, signals_capabilities_json, inferred_type,
+            creative_capabilities_json, signals_capabilities_json,
+            measurement_capabilities_json, inferred_type,
             discovery_error, oauth_required, last_discovered, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
          ON CONFLICT (agent_url) DO UPDATE SET
            protocol = EXCLUDED.protocol,
            discovered_tools_json = EXCLUDED.discovered_tools_json,
            standard_operations_json = EXCLUDED.standard_operations_json,
            creative_capabilities_json = EXCLUDED.creative_capabilities_json,
            signals_capabilities_json = EXCLUDED.signals_capabilities_json,
+           measurement_capabilities_json = EXCLUDED.measurement_capabilities_json,
            inferred_type = EXCLUDED.inferred_type,
            discovery_error = EXCLUDED.discovery_error,
            oauth_required = EXCLUDED.oauth_required,
@@ -122,6 +126,7 @@ export class AgentSnapshotDatabase {
           profile.standard_operations ? JSON.stringify(profile.standard_operations) : null,
           profile.creative_capabilities ? JSON.stringify(profile.creative_capabilities) : null,
           profile.signals_capabilities ? JSON.stringify(profile.signals_capabilities) : null,
+          profile.measurement_capabilities ? JSON.stringify(profile.measurement_capabilities) : null,
           inferredType,
           profile.discovery_error ?? null,
           profile.oauth_required ?? false,
@@ -131,5 +136,53 @@ export class AgentSnapshotDatabase {
     } catch (err) {
       logger.warn({ agentUrl: profile.agent_url, err }, 'Failed to upsert agent capabilities snapshot');
     }
+  }
+
+  /**
+   * Filtered query for measurement-vendor discovery. Used by
+   * `/api/registry/agents?type=measurement&metric_id=...&accreditation=...&q=...`.
+   *
+   * - `metric_id` and `accreditation` use JSONB containment (`@>`), which
+   *   leverages the GIN index on `measurement_capabilities_json`.
+   * - `q` is anchored substring match on metric_id only (per #3613 v1
+   *   scope) — fuzzy match across descriptions/standards is a follow-up.
+   *   Wildcards in `q` are escaped with the SQL standard `ESCAPE '\\'`
+   *   pattern (matches the `catalog-db.ts` precedent).
+   *
+   * Returns the agent_urls that match all provided filters; an empty
+   * filter set returns every measurement agent in the snapshot.
+   */
+  async filterMeasurementAgents(filters: {
+    metric_ids?: string[];
+    accreditations?: string[];
+    q?: string;
+  }): Promise<Set<string>> {
+    const conditions: string[] = [`measurement_capabilities_json IS NOT NULL`];
+    const params: unknown[] = [];
+
+    for (const id of filters.metric_ids ?? []) {
+      params.push(JSON.stringify({ metrics: [{ metric_id: id }] }));
+      conditions.push(`measurement_capabilities_json @> $${params.length}::jsonb`);
+    }
+
+    for (const body of filters.accreditations ?? []) {
+      params.push(JSON.stringify({ metrics: [{ accreditations: [{ accrediting_body: body }] }] }));
+      conditions.push(`measurement_capabilities_json @> $${params.length}::jsonb`);
+    }
+
+    if (filters.q) {
+      // Escape `\\`, `%`, `_` in user input before injecting into ILIKE.
+      // Surrounding `%` are unescaped wildcards we apply ourselves.
+      const escaped = filters.q.replace(/[\\%_]/g, '\\$&');
+      params.push(`%${escaped}%`);
+      conditions.push(`EXISTS (
+        SELECT 1 FROM jsonb_array_elements(measurement_capabilities_json->'metrics') AS m
+        WHERE m->>'metric_id' ILIKE $${params.length} ESCAPE '\\'
+      )`);
+    }
+
+    const sql = `SELECT agent_url FROM agent_capabilities_snapshot WHERE ${conditions.join(' AND ')}`;
+    const result = await query<{ agent_url: string }>(sql, params);
+    return new Set(result.rows.map(r => r.agent_url));
   }
 }

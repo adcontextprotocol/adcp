@@ -37,6 +37,45 @@ export interface SignalsCapabilities {
   can_get_signals: boolean;
 }
 
+/**
+ * Measurement capability block, mirrored from `get_adcp_capabilities`'s
+ * `measurement` response (AdCP 3.x, PR #3652). The catalog of metrics this
+ * vendor computes — buyers query against `metrics[].metric_id` and
+ * `metrics[].accreditations[].accrediting_body` for cross-vendor discovery.
+ *
+ * Strings are vendor-asserted and pass through to anonymous JSON callers; see
+ * `sanitizeMeasurementCapabilities` in this file for the write-time cleaning
+ * that strips control chars, rejects scriptish content, and constrains URI
+ * schemes. The DB CHECK on `measurement_capabilities_size_cap` is the
+ * belt-and-braces backstop (see migration 461).
+ */
+export interface MeasurementAccreditation {
+  accrediting_body: string;
+  certification_id?: string;
+  valid_until?: string;
+  evidence_url?: string;
+  /**
+   * Always `false` on the public registry surface — the vendor self-asserts
+   * accreditation; AAO does not independently verify. Buyers rendering the
+   * value should treat it as a vendor claim, not an AAO endorsement.
+   */
+  verified_by_aao: false;
+}
+
+export interface MeasurementMetric {
+  metric_id: string;
+  standard_reference?: string;
+  accreditations?: MeasurementAccreditation[];
+  unit?: string;
+  description?: string;
+  methodology_url?: string;
+  methodology_version?: string;
+}
+
+export interface MeasurementCapabilities {
+  metrics: MeasurementMetric[];
+}
+
 export interface AgentCapabilityProfile {
   agent_url: string;
   protocol: "mcp" | "a2a";
@@ -44,9 +83,171 @@ export interface AgentCapabilityProfile {
   standard_operations?: StandardOperations;
   creative_capabilities?: CreativeCapabilities;
   signals_capabilities?: SignalsCapabilities;
+  measurement_capabilities?: MeasurementCapabilities;
   last_discovered: string;
   discovery_error?: string;
   oauth_required?: boolean;
+}
+
+/**
+ * Per-field caps on the measurement capability payload. These are
+ * application-side bounds enforced at write time; the column-level
+ * `measurement_capabilities_size_cap` CHECK is the catastrophic backstop.
+ *
+ * A hostile vendor publishing 100k metrics or a 50 MB description must be
+ * rejected at crawl time so the failure is visible in the registry panel
+ * (via `discovery_error`) rather than silently truncated.
+ */
+const MEASUREMENT_LIMITS = {
+  MAX_METRICS: 500,
+  MAX_DESCRIPTION_LEN: 2000,
+  MAX_METRIC_ID_LEN: 256,
+  MAX_URI_LEN: 2048,
+  MAX_ACCREDITATIONS_PER_METRIC: 32,
+  MAX_ACCREDITING_BODY_LEN: 128,
+} as const;
+
+const SCRIPTISH_PATTERN = /<script\b|javascript:|data:text\/html|on[a-z]+\s*=/i;
+const ALLOWED_URI_SCHEMES = process.env.NODE_ENV === 'production'
+  ? new Set(['https:'])
+  : new Set(['https:', 'http:']);
+
+function stripControlChars(value: string): string {
+  // Keep \t and \n; strip other control chars including \r and the
+  // less-common ones that survive copy-paste from documents.
+  return value.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '');
+}
+
+function rejectIfScriptish(value: string, field: string): void {
+  if (SCRIPTISH_PATTERN.test(value.normalize('NFKC'))) {
+    throw new Error(`measurement.${field}: rejected scriptish content`);
+  }
+}
+
+function validateUri(value: string, field: string): string {
+  if (value.length > MEASUREMENT_LIMITS.MAX_URI_LEN) {
+    throw new Error(`measurement.${field}: URI exceeds ${MEASUREMENT_LIMITS.MAX_URI_LEN} chars`);
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error(`measurement.${field}: invalid URI`);
+  }
+  if (!ALLOWED_URI_SCHEMES.has(parsed.protocol)) {
+    throw new Error(`measurement.${field}: scheme '${parsed.protocol}' not allowed`);
+  }
+  return parsed.toString();
+}
+
+function clampString(value: unknown, max: number, field: string): string {
+  if (typeof value !== 'string') {
+    throw new Error(`measurement.${field}: expected string`);
+  }
+  const stripped = stripControlChars(value);
+  if (stripped.length > max) {
+    throw new Error(`measurement.${field}: exceeds ${max} chars`);
+  }
+  rejectIfScriptish(stripped, field);
+  return stripped;
+}
+
+/**
+ * Validate, sanitize, and bound the `measurement` block from a vendor's
+ * capabilities response. Throws on any violation — the caller stores the
+ * error in `discovery_error` so the failure is visible in the panel rather
+ * than silently truncated.
+ */
+export function sanitizeMeasurementCapabilities(raw: unknown): MeasurementCapabilities {
+  if (!raw || typeof raw !== 'object') {
+    throw new Error('measurement: not an object');
+  }
+  const obj = raw as Record<string, unknown>;
+  if (!Array.isArray(obj.metrics)) {
+    throw new Error('measurement.metrics: expected array');
+  }
+  if (obj.metrics.length === 0) {
+    throw new Error('measurement.metrics: empty array');
+  }
+  if (obj.metrics.length > MEASUREMENT_LIMITS.MAX_METRICS) {
+    throw new Error(`measurement.metrics: exceeds ${MEASUREMENT_LIMITS.MAX_METRICS} entries`);
+  }
+
+  const seenIds = new Set<string>();
+  const metrics: MeasurementMetric[] = [];
+  for (let i = 0; i < obj.metrics.length; i++) {
+    const m = obj.metrics[i];
+    if (!m || typeof m !== 'object') {
+      throw new Error(`measurement.metrics[${i}]: not an object`);
+    }
+    const metric = m as Record<string, unknown>;
+    const metric_id = clampString(metric.metric_id, MEASUREMENT_LIMITS.MAX_METRIC_ID_LEN, `metrics[${i}].metric_id`);
+    if (seenIds.has(metric_id)) {
+      throw new Error(`measurement.metrics[${i}].metric_id: duplicate '${metric_id}'`);
+    }
+    seenIds.add(metric_id);
+
+    const out: MeasurementMetric = { metric_id };
+    if (metric.standard_reference !== undefined) {
+      out.standard_reference = validateUri(String(metric.standard_reference), `metrics[${i}].standard_reference`);
+    }
+    if (metric.unit !== undefined) {
+      out.unit = clampString(metric.unit, 64, `metrics[${i}].unit`);
+    }
+    if (metric.description !== undefined) {
+      out.description = clampString(metric.description, MEASUREMENT_LIMITS.MAX_DESCRIPTION_LEN, `metrics[${i}].description`);
+    }
+    if (metric.methodology_url !== undefined) {
+      out.methodology_url = validateUri(String(metric.methodology_url), `metrics[${i}].methodology_url`);
+    }
+    if (metric.methodology_version !== undefined) {
+      out.methodology_version = clampString(metric.methodology_version, 64, `metrics[${i}].methodology_version`);
+    }
+    if (metric.accreditations !== undefined) {
+      if (!Array.isArray(metric.accreditations)) {
+        throw new Error(`measurement.metrics[${i}].accreditations: expected array`);
+      }
+      if (metric.accreditations.length > MEASUREMENT_LIMITS.MAX_ACCREDITATIONS_PER_METRIC) {
+        throw new Error(`measurement.metrics[${i}].accreditations: exceeds ${MEASUREMENT_LIMITS.MAX_ACCREDITATIONS_PER_METRIC} entries`);
+      }
+      const accs: MeasurementAccreditation[] = [];
+      for (let j = 0; j < metric.accreditations.length; j++) {
+        const a = metric.accreditations[j];
+        if (!a || typeof a !== 'object') {
+          throw new Error(`measurement.metrics[${i}].accreditations[${j}]: not an object`);
+        }
+        const acc = a as Record<string, unknown>;
+        const accrediting_body = clampString(acc.accrediting_body, MEASUREMENT_LIMITS.MAX_ACCREDITING_BODY_LEN, `metrics[${i}].accreditations[${j}].accrediting_body`);
+        const out_a: MeasurementAccreditation = { accrediting_body, verified_by_aao: false };
+        if (acc.certification_id !== undefined) {
+          out_a.certification_id = clampString(acc.certification_id, 256, `metrics[${i}].accreditations[${j}].certification_id`);
+        }
+        if (acc.valid_until !== undefined) {
+          const v = String(acc.valid_until);
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) {
+            throw new Error(`measurement.metrics[${i}].accreditations[${j}].valid_until: not ISO 8601 date`);
+          }
+          out_a.valid_until = v;
+        }
+        if (acc.evidence_url !== undefined) {
+          out_a.evidence_url = validateUri(String(acc.evidence_url), `metrics[${i}].accreditations[${j}].evidence_url`);
+        }
+        accs.push(out_a);
+      }
+      out.accreditations = accs;
+    }
+    metrics.push(out);
+  }
+
+  const result: MeasurementCapabilities = { metrics };
+  // Final size guard — the column-level CHECK will reject anyway, but
+  // surfacing a clear error here keeps the panel diagnostic and stops the
+  // wasted INSERT round-trip.
+  const serialized = JSON.stringify(result);
+  if (serialized.length >= 262144) {
+    throw new Error(`measurement: serialized payload ${serialized.length} bytes exceeds 256KB ceiling`);
+  }
+  return result;
 }
 
 export class CapabilityDiscovery {
@@ -99,6 +300,13 @@ export class CapabilityDiscovery {
       }
       if (CapabilityDiscovery.SIGNALS_TOOLS.some(t => toolNames.has(t))) {
         profile.signals_capabilities = this.analyzeSignalsCapabilities(tools);
+      }
+      // Measurement comes from get_adcp_capabilities, not from inferring on
+      // tool names — only fetch when the agent actually exposes the tool, so
+      // sales/creative/signals agents don't incur an extra round-trip.
+      if (toolNames.has('get_adcp_capabilities')) {
+        const measurement = await this.fetchMeasurementCapabilities(agent);
+        if (measurement) profile.measurement_capabilities = measurement;
       }
 
       this.cache.set(agent.url, profile);
@@ -283,6 +491,44 @@ export class CapabilityDiscovery {
     };
   }
 
+  /**
+   * Call the agent's `get_adcp_capabilities` tool and extract the
+   * `measurement` block, if present. Returns `undefined` for agents that
+   * don't claim measurement (i.e. capability response omits the block).
+   *
+   * Validation/sanitization is delegated to `sanitizeMeasurementCapabilities`
+   * — a hostile vendor publishing a 100k-metric or 50 MB-description response
+   * gets rejected with a clear error rather than silently truncated. The
+   * caller (the catch block in discoverCapabilities) records the error in
+   * `discovery_error` so the registry panel surfaces it.
+   */
+  private async fetchMeasurementCapabilities(agent: Agent): Promise<MeasurementCapabilities | undefined> {
+    try {
+      const { AdCPClient } = await import("@adcp/sdk");
+      const multiClient = new AdCPClient([{
+        id: "discovery",
+        name: "Discovery Client",
+        agent_uri: agent.url,
+        protocol: agent.protocol || "mcp",
+      }], { userAgent: AAO_UA_DISCOVERY });
+      const client = multiClient.agent("discovery");
+
+      // 10s timeout matches the existing tools/list discovery budget.
+      const result = await client.getAdcpCapabilities({}, undefined, { timeout: 10_000 });
+      const measurement = (result?.data as Record<string, unknown> | undefined)?.measurement;
+      if (measurement === undefined || measurement === null) return undefined;
+
+      return sanitizeMeasurementCapabilities(measurement);
+    } catch (err: any) {
+      // Don't fail the whole discovery on a measurement-block error — the
+      // agent may still have valid sales/creative/signals capability. Log
+      // and continue; the panel won't show measurement filters for this
+      // agent until the next crawl succeeds.
+      logger.debug({ url: agent.url, err: err?.message }, 'Measurement capability fetch failed');
+      return undefined;
+    }
+  }
+
   async discoverAll(agents: Agent[]): Promise<Map<string, AgentCapabilityProfile>> {
     const profiles = new Map<string, AgentCapabilityProfile>();
 
@@ -304,10 +550,11 @@ export class CapabilityDiscovery {
    * Infer agent type from a capability profile.
    * Use this to avoid duplicating the type inference logic.
    */
-  inferTypeFromProfile(profile: AgentCapabilityProfile): 'sales' | 'creative' | 'signals' | 'unknown' {
+  inferTypeFromProfile(profile: AgentCapabilityProfile): 'sales' | 'creative' | 'signals' | 'measurement' | 'unknown' {
     if (profile.standard_operations) return 'sales';
     if (profile.creative_capabilities) return 'creative';
     if (profile.signals_capabilities) return 'signals';
+    if (profile.measurement_capabilities) return 'measurement';
     return 'unknown';
   }
 }
