@@ -43,7 +43,7 @@ export function isMembershipProductByMetadata(
   product: string | Stripe.Product | Stripe.DeletedProduct | null | undefined,
 ): boolean {
   if (!product || typeof product === 'string') return false;
-  if ((product as Stripe.DeletedProduct).deleted) return false;
+  if ('deleted' in product && product.deleted) return false;
   const metadata = (product as Stripe.Product).metadata ?? {};
   return metadata.category === 'membership';
 }

@@ -500,8 +500,8 @@ describe('stripe-sub-reflected-in-org-row', () => {
     expect(result.violations).toEqual([]);
   });
 
-  it('flags Bidcliq-shape: founding sub with no lookup_key but membership product metadata, customer not linked to any AAO org', async () => {
-    // Bidcliq / Equativ (May 2026): founding-era Stripe subs whose price
+  it('flags Bidcliq-shape: founding Startup/SMB sub ($2.5K) with no lookup_key but membership product metadata, customer not linked', async () => {
+    // Bidcliq (May 2026): founding-era Startup/SMB Stripe sub whose price
     // lacks the aao_membership_ lookup_key convention. The product carries
     // category=membership metadata. Pre-fix this filter excluded them; the
     // orphan-customer detection downstream never saw them, so admins had no
@@ -523,7 +523,33 @@ describe('stripe-sub-reflected-in-org-row', () => {
     expect(result.violations[0].severity).toBe('warning');
     expect(result.violations[0].subject_type).toBe('customer');
     expect(result.violations[0].subject_id).toBe('cus_bidcliq');
+    // Substring asserted intentionally: this string is the admin-facing
+    // signal for the orphan-customer remediation path. Treat as load-bearing.
     expect(result.violations[0].message).toContain('not linked to any AAO organization');
+  });
+
+  it('flags Equativ-shape: founding Corporate sub ($10K) with metadata-only classification, customer not linked', async () => {
+    // Equativ (May 2026): corporate-tier founding sub at the higher amount.
+    // Confirms the metadata fallback isn't accidentally specialized to the
+    // Startup/SMB price level — any membership-tagged product at any
+    // amount must be in scope.
+    const sub = membershipSub({
+      id: 'sub_equativ',
+      customer: 'cus_equativ',
+      lookup_key: null,
+      unit_amount: 1000000,
+      product: { id: 'prod_founding_corp', metadata: { category: 'membership' } },
+    });
+    mockSubsListWith([sub]);
+    mockPoolQuery.mockResolvedValueOnce({ rows: [] });
+
+    const result = await stripeSubReflectedInOrgRowInvariant.check(makeCtx());
+
+    expect(result.checked).toBe(1);
+    expect(result.violations).toHaveLength(1);
+    expect(result.violations[0].severity).toBe('warning');
+    expect(result.violations[0].subject_id).toBe('cus_equativ');
+    expect(result.violations[0].details?.unit_amount).toBe(1000000);
   });
 
   it('does not flag a row with subscription_status="past_due" — dunning still grants entitlement', async () => {
