@@ -70,41 +70,13 @@ jobs:
 
       - name: Overlay in-repo compliance source onto SDK cache
         # The storyboard runner loads from @adcp/sdk's bundled compliance
-        # cache, which is a snapshot synced from this repo's
-        # static/compliance/source/ on each SDK publish. To validate spec
-        # changes in this PR before waiting for an SDK republish, mirror
-        # the current source tree onto the cache — both edits to existing
-        # files AND new files added in this PR. mkdir -p creates any new
-        # subdirectories the source introduces so the cache stays in sync
-        # with whatever lands here.
-        #
-        # Caveat: this overlay does NOT regenerate the SDK's cache index
-        # (e.g., index.json bundles enumerated at build time). New files
-        # under existing protocols are picked up via directory walk, but
-        # adding a brand-new top-level bundle (a new specialism / universal
-        # file) may need a sync-schemas cycle on the SDK side before the
-        # runner enumerates it. New files under existing scenarios/ dirs
-        # are the common case and work fine.
-        run: |
-          SRC="static/compliance/source"
-          # SDK 5.13 moved the cache dir from `latest` to the AdCP version
-          # string (e.g. `3.0.0`). 5.23.0 renamed the package
-          # `@adcp/client` -> `@adcp/sdk` and the compliance bundle moved
-          # with it. Resolve whichever subdir exists so the overlay step
-          # doesn't have to bump with every SDK release.
-          CACHE_ROOT="node_modules/@adcp/sdk/compliance/cache"
-          DST=$(find "$CACHE_ROOT" -mindepth 1 -maxdepth 1 -type d | head -1)
-          if [ -z "$DST" ] || [ ! -d "$DST" ]; then
-            echo "::warning::SDK compliance cache not found under $CACHE_ROOT — skipping overlay"
-            exit 0
-          fi
-          echo "Overlaying onto $DST"
-          (cd "$SRC" && find . -type f) | while read -r rel; do
-            target="$DST/${rel#./}"
-            mkdir -p "$(dirname "$target")"
-            cp "$SRC/${rel#./}" "$target"
-          done
-          echo "Overlay complete."
+        # cache (a snapshot synced from this repo's static/compliance/source/
+        # on each SDK publish). To grade current-PR fixtures rather than
+        # the published snapshot, copy the source tree onto the cache.
+        # Logic lives in scripts/overlay-compliance-cache.sh so the
+        # pre-push hook (scripts/run-storyboards-matrix.sh) and CI grade
+        # against the same overlay.
+        run: bash scripts/overlay-compliance-cache.sh
 
       - name: Run storyboards against /${{ matrix.tenant }}
         id: run

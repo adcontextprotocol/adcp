@@ -9,6 +9,14 @@
 
 set -uo pipefail
 
+# Mirror CI's overlay step before running tenants: copies in-repo
+# compliance source onto the SDK's bundled cache so the runner grades
+# against current-PR fixtures, not the SDK-published snapshot. Without
+# this, edits under static/compliance/source/ would silently no-op
+# locally and only surface in CI.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+bash "${SCRIPT_DIR}/overlay-compliance-cache.sh" || true
+
 # tenant:min_clean:min_passed — kept in sync with the matrix.include block in
 # .github/workflows/training-agent-storyboards.yml.
 TENANTS=(
