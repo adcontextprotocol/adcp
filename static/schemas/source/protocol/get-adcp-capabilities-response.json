@@ -948,7 +948,7 @@
           "additionalProperties": false
         }
       },
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "compliance_testing": {
       "type": "object",
