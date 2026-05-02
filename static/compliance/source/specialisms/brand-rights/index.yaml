@@ -237,8 +237,8 @@ phases:
         stateful: true
         expected: |
           Return the acquired rights grant:
-          - rights_grant_id: unique identifier
-          - status: active
+          - rights_id: unique identifier
+          - status: acquired
           - Generation credentials
           - Expiration date and usage limits
           - Terms and constraints
@@ -270,7 +270,7 @@ phases:
           context:
             correlation_id: "brand_rights--acquire_rights"
         context_outputs:
-          - path: "rights_grant_id"
+          - path: "rights_id"
             key: "rights_grant_id"
 
         validations:
