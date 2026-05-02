@@ -54,6 +54,29 @@ interface OrgRow {
   stripe_customer_id: string | null;
   subscription_status: string | null;
   subscription_canceled_at: Date | null;
+  stripe_subscription_id: string | null;
+  subscription_price_lookup_key: string | null;
+  subscription_amount: number | null;
+}
+
+/**
+ * "Fully synced" requires status entitled AND product fields populated. A row
+ * with `subscription_status='active'` but NULL `stripe_subscription_id` /
+ * `subscription_price_lookup_key` is a partial-truth: entitled enough to pass
+ * gate checks, but missing the data the tier resolver and dashboard need.
+ *
+ * Founding-member rows lived in this state for months — admin set status
+ * manually but the Stripe sub never wrote its lookup_key into the org row.
+ * The `every-entitled-org-has-resolvable-tier` invariant catches them now,
+ * but lazy-reconcile is the cheap heal path: treating partial-truth as
+ * "already entitled" leaves the row stuck. Only skip when the row is
+ * actually complete.
+ */
+function isFullySynced(org: OrgRow): boolean {
+  if (!org.subscription_status || !ENTITLED_STATUSES.has(org.subscription_status)) return false;
+  if (!org.stripe_subscription_id) return false;
+  if (org.subscription_price_lookup_key === null && (org.subscription_amount ?? 0) <= 0) return false;
+  return true;
 }
 
 export interface LazyReconcileDeps {
@@ -76,7 +99,8 @@ export async function attemptStripeReconciliation(
   const { pool, stripe, logger } = deps;
 
   const orgResult = await pool.query<OrgRow>(
-    `SELECT workos_organization_id, stripe_customer_id, subscription_status, subscription_canceled_at
+    `SELECT workos_organization_id, stripe_customer_id, subscription_status, subscription_canceled_at,
+            stripe_subscription_id, subscription_price_lookup_key, subscription_amount
        FROM organizations
       WHERE workos_organization_id = $1`,
     [orgId],
@@ -84,7 +108,7 @@ export async function attemptStripeReconciliation(
   const org = orgResult.rows[0];
   if (!org) return { healed: false, reason: 'org_not_found' };
 
-  if (org.subscription_status && ENTITLED_STATUSES.has(org.subscription_status)) {
+  if (isFullySynced(org)) {
     return { healed: false, reason: 'already_entitled' };
   }
 
@@ -116,10 +140,11 @@ export async function attemptStripeReconciliation(
 
   const price = sub.items.data[0]?.price;
 
-  // `WHERE subscription_status IS NULL OR = 'none'` makes the write a no-op
-  // if a webhook beat us to it. We deliberately do not overwrite an existing
-  // active/canceled/etc. status — the webhook is the source of truth for
-  // those transitions; lazy reconcile only fills in the gap.
+  // The WHERE clause only writes when the row is still in a partial-truth
+  // state (no entitled status, or status set but key product fields missing).
+  // If a webhook beat us to a fully-synced state between our read and write,
+  // the update is a no-op — the webhook is the source of truth for live
+  // transitions; lazy reconcile only fills gaps.
   const updated = await pool.query(
     `UPDATE organizations
        SET subscription_status = $1,
@@ -132,7 +157,12 @@ export async function attemptStripeReconciliation(
            subscription_price_lookup_key = $8,
            updated_at = NOW()
      WHERE workos_organization_id = $9
-       AND (subscription_status IS NULL OR subscription_status = 'none')
+       AND (
+         subscription_status IS NULL
+         OR subscription_status = 'none'
+         OR stripe_subscription_id IS NULL
+         OR (subscription_price_lookup_key IS NULL AND COALESCE(subscription_amount, 0) <= 0)
+       )
      RETURNING workos_organization_id`,
     [
       sub.status,
