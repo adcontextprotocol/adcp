@@ -2,18 +2,25 @@
  * Membership product / lookup_key helpers.
  *
  * AAO billing has many Stripe products and prices, but only a subset drive
- * membership entitlement. The price `lookup_key` distinguishes them by
- * convention — every membership price starts with `aao_membership_` or
- * `aao_invoice_`. This module is the single source of truth for that
- * convention; consumers should never re-encode the prefix list inline.
+ * membership entitlement. Two signals identify them:
+ *   1. The price `lookup_key` starts with `aao_membership_` or
+ *      `aao_invoice_`. This is the modern convention.
+ *   2. The price's product carries `metadata.category = "membership"`.
+ *      Founding-era prices (Startup/SMB, Corporate) were created in the
+ *      Stripe Dashboard before the lookup_key convention existed and rely
+ *      on this metadata to classify. Without this fallback the founding
+ *      cohort is invisible to `pickMembershipSub` and the integrity
+ *      invariants — see Adzymic / Advertible / Bidcliq / Equativ (May 2026).
  *
  * Used by:
- *  - the integrity invariant that walks Stripe subs (so we don't flag drift
- *    on non-membership subs that don't drive entitlement)
- *  - the admin `/sync` endpoint (so we don't pick a non-membership sub off
- *    a customer that happens to have one + a real membership)
+ *  - the integrity invariants that walk Stripe subs
+ *  - the admin `/sync` endpoint when picking the right sub off a customer
  *  - the webhook handler when deciding whether subscription events update
  *    membership state
+ *
+ * The metadata path requires the price's `product` to be expanded by the
+ * caller (otherwise Stripe returns a string id). Callers that don't expand
+ * fall back to the lookup_key path, preserving prior behaviour.
  */
 import type Stripe from 'stripe';
 
@@ -26,9 +33,27 @@ export function isMembershipLookupKey(lookupKey: string | null | undefined): boo
   return MEMBERSHIP_LOOKUP_KEY_PREFIXES.some((p) => lookupKey.startsWith(p));
 }
 
+/**
+ * True when the price's product is tagged as a membership product via
+ * `metadata.category = "membership"`. Returns false when `product` is a
+ * string id (caller didn't expand) — the function is a hint for the
+ * legacy-data path and is intentionally conservative when uncertain.
+ */
+export function isMembershipProductByMetadata(
+  product: string | Stripe.Product | Stripe.DeletedProduct | null | undefined,
+): boolean {
+  if (!product || typeof product === 'string') return false;
+  if ('deleted' in product && product.deleted) return false;
+  const metadata = (product as Stripe.Product).metadata ?? {};
+  return metadata.category === 'membership';
+}
+
 /** True when the first item on a subscription is a membership-driving price. */
 export function isMembershipSub(sub: Stripe.Subscription): boolean {
-  return isMembershipLookupKey(sub.items.data[0]?.price?.lookup_key);
+  const price = sub.items.data[0]?.price;
+  if (!price) return false;
+  if (isMembershipLookupKey(price.lookup_key)) return true;
+  return isMembershipProductByMetadata(price.product);
 }
 
 /**

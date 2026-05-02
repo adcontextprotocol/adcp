@@ -71,11 +71,30 @@ function detectEnvMismatch(): string | null {
     host = '';
   }
 
+  // Fly.io serves private services to the prod app over `*.flycast` and
+  // `*.internal` (6PN). The original allowlist only had `*.fly.dev`, which
+  // doesn't match the prod Postgres host — that mis-classified the live app
+  // as "not prod" and refused the runner with a "live key against staging"
+  // message in production. Recognize the Fly prod patterns plus a positive
+  // `FLY_APP_NAME` signal so the runner is unblocked there without
+  // loosening the staging guard.
+  //
+  // Prod app names are configurable so a future deployment (aao-prod-2,
+  // staging mirror, etc.) doesn't silently regress this guard.
+  const PROD_FLY_APPS = (process.env.AAO_PROD_FLY_APPS ?? 'adcp-docs')
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+  const flyAppName = (process.env.FLY_APP_NAME ?? '').toLowerCase();
+  const isFlyProdApp = !!flyAppName && PROD_FLY_APPS.includes(flyAppName);
   const looksProd =
     host.endsWith('.agenticadvertising.org') ||
     host === 'agenticadvertising.org' ||
     host.startsWith('aao-prod') ||
-    host.endsWith('.fly.dev');
+    host.endsWith('.fly.dev') ||
+    host.endsWith('.flycast') ||
+    host.endsWith('.internal') ||
+    isFlyProdApp;
 
   if (looksProd && isTestKey) {
     return 'STRIPE_SECRET_KEY is sk_test_* but DATABASE_URL points at production. Refusing to run integrity checks against this mismatched configuration.';
