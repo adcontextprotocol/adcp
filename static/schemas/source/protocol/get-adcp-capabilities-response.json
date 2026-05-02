@@ -1093,7 +1093,7 @@
           "additionalProperties": false
         }
       },
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "measurement": {
       "type": "object",
