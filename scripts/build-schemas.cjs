@@ -1361,6 +1361,93 @@ function versionInlineSchemaIds(schema, version) {
 }
 
 /**
+ * Strip `$id` from any inlined subtree whose descendants contain a
+ * local `$ref` (i.e. `#/...` rooted at the document).
+ *
+ * `hoistDuplicateInlineEnums` and `hoistNestedDefsToRoot` move shared
+ * definitions to the document's root `$defs` block and rewrite their
+ * call-sites to `{$ref: "#/$defs/Foo"}`. JSON Schema resolves those
+ * relative fragment refs against the *nearest enclosing `$id`* — so
+ * preserving `$id` on an inlined subtree changes the resolution scope,
+ * and a hoisted `#/$defs/Foo` inside that subtree no longer reaches
+ * the root-level definition. Ajv reports
+ * "can't resolve reference #/$defs/Foo from id <inlined-$id>".
+ *
+ * Strip the conflicting `$id` so the local fragment resolves against
+ * the document root again. Subtrees that don't contain hoisted refs
+ * keep their `$id` and surface the deep schema identity to SDK error
+ * reporting (the value preserved by #3868).
+ */
+function stripIdsFromSubtreesWithLocalRefs(schema) {
+  function hasLocalRef(node) {
+    if (!node || typeof node !== 'object') return false;
+    if (Array.isArray(node)) return node.some(hasLocalRef);
+    if (typeof node.$ref === 'string' && node.$ref.startsWith('#/')) return true;
+    for (const value of Object.values(node)) {
+      if (value && typeof value === 'object' && hasLocalRef(value)) return true;
+    }
+    return false;
+  }
+  function walk(node, isRoot) {
+    if (!node || typeof node !== 'object') return;
+    if (Array.isArray(node)) {
+      for (const item of node) walk(item, false);
+      return;
+    }
+    if (!isRoot && typeof node.$id === 'string' && hasLocalRef(node)) {
+      delete node.$id;
+    }
+    for (const value of Object.values(node)) {
+      if (value && typeof value === 'object') walk(value, false);
+    }
+  }
+  walk(schema, true);
+}
+
+/**
+ * Dedupe `$id` within a bundled schema document.
+ *
+ * Same source schema referenced from multiple co-locations (e.g.
+ * `version-envelope` in an `allOf`, `activation-key` in two `oneOf`
+ * branches of a deployment shape) produces multiple inlined subtrees
+ * with identical `$id` values. Ajv rejects this with "reference X
+ * resolves to more than one schema" — even in `strict: false` mode,
+ * because duplicate `$id` registration is a structural error, not a
+ * strictness lint.
+ *
+ * First-wins: keep `$id` on the first occurrence the walker visits,
+ * strip it from subsequent occurrences. The first occurrence anchors
+ * the schema's identity for SDK error reporting (longest-prefix-match
+ * walks up to find the nearest `$id`-bearing ancestor); subsequent
+ * occurrences fall back to that nearest ancestor — typically the
+ * response root, which is fine because they describe the same shape.
+ *
+ * The root `$id` is recorded as seen so a nested occurrence with the
+ * same value (degenerate but possible) doesn't shadow it.
+ */
+function dedupBundledSchemaIds(schema) {
+  const seen = new Set();
+  function walk(node, isRoot) {
+    if (!node || typeof node !== 'object') return;
+    if (Array.isArray(node)) {
+      for (const item of node) walk(item, false);
+      return;
+    }
+    if (typeof node.$id === 'string') {
+      if (seen.has(node.$id)) {
+        delete node.$id;
+      } else {
+        seen.add(node.$id);
+      }
+    }
+    for (const value of Object.values(node)) {
+      if (value && typeof value === 'object') walk(value, false);
+    }
+  }
+  walk(schema, true);
+}
+
+/**
  * Generate bundled (dereferenced) schemas
  * These have all $ref resolved inline for tools that can't handle references
  */
@@ -1429,6 +1516,18 @@ async function generateBundledSchemas(sourceDir, bundledDir, version) {
       // resolve. The root `$id` is rewritten separately below to the
       // bundled URI.
       versionInlineSchemaIds(dereferenced, version);
+
+      // Strip $id from subtrees whose descendants contain hoisted
+      // local refs — preserving $id there would change the resolution
+      // scope and break `#/$defs/...` lookups against the document
+      // root.
+      stripIdsFromSubtreesWithLocalRefs(dereferenced);
+
+      // Dedupe inlined $ids — Ajv (and any draft-07 validator) refuses
+      // to compile a schema with duplicate $ids, even in non-strict
+      // mode. First-wins keeps the bundle compilable while preserving
+      // the deep $id at the first occurrence of each sub-schema.
+      dedupBundledSchemaIds(dereferenced);
 
       // Update root $id to indicate this is a bundled schema
       if (dereferenced.$id) {
@@ -1720,7 +1819,7 @@ async function main() {
   console.log('📖 See docs/reference/versioning.mdx for guidance on which to use.');
 }
 
-module.exports = { hoistDuplicateInlineEnums, resolveRefs, versionInlineSchemaIds };
+module.exports = { hoistDuplicateInlineEnums, resolveRefs, versionInlineSchemaIds, dedupBundledSchemaIds, stripIdsFromSubtreesWithLocalRefs };
 
 if (require.main === module) {
   main().catch(err => {

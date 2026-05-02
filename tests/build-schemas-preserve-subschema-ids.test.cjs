@@ -26,7 +26,12 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { resolveRefs, versionInlineSchemaIds } = require('../scripts/build-schemas.cjs');
+const {
+  resolveRefs,
+  versionInlineSchemaIds,
+  dedupBundledSchemaIds,
+  stripIdsFromSubtreesWithLocalRefs,
+} = require('../scripts/build-schemas.cjs');
 
 function clone(o) { return JSON.parse(JSON.stringify(o)); }
 
@@ -188,4 +193,88 @@ test('versionInlineSchemaIds walks array members with isRoot=false', () => {
   assert.equal(schema.$id, '/schemas/core/root.json', 'document root $id stays unstamped');
   assert.equal(schema.oneOf[0].$id, '/schemas/3.1.0/core/branch-a.json');
   assert.equal(schema.oneOf[1].$id, '/schemas/3.1.0/core/branch-b.json');
+});
+
+test('stripIdsFromSubtreesWithLocalRefs removes $id when descendants carry local $ref', () => {
+  // hoistDuplicateInlineEnums introduces `$ref: "#/$defs/Foo"` inside
+  // inlined subtrees. Those local fragments resolve against the
+  // nearest enclosing $id — so a preserved $id on the subtree breaks
+  // the lookup. Strip the conflicting $id; the subtree's content
+  // stays.
+  const schema = {
+    $id: '/schemas/3.1.0/core/root.json',
+    properties: {
+      delivery_metrics: {
+        $id: '/schemas/3.1.0/core/delivery-metrics.json',
+        properties: {
+          event_type: { $ref: '#/$defs/EventType' },
+        },
+      },
+      version_envelope: {
+        $id: '/schemas/3.1.0/core/version-envelope.json',
+        properties: { adcp_version: { type: 'string' } },
+      },
+    },
+    $defs: {
+      EventType: { type: 'string', enum: ['impression', 'click'] },
+    },
+  };
+  stripIdsFromSubtreesWithLocalRefs(schema);
+  assert.equal(schema.$id, '/schemas/3.1.0/core/root.json', 'document root $id is preserved');
+  assert.equal(schema.properties.delivery_metrics.$id, undefined, '$id stripped because subtree has local $ref');
+  assert.equal(schema.properties.version_envelope.$id, '/schemas/3.1.0/core/version-envelope.json', '$id preserved on subtree without local $ref');
+  assert.equal(schema.properties.delivery_metrics.properties.event_type.$ref, '#/$defs/EventType', 'descendant $ref untouched');
+});
+
+test('stripIdsFromSubtreesWithLocalRefs leaves $id alone when only absolute $refs are present', () => {
+  // External `$ref` URIs (`/schemas/...`) don't change resolution
+  // scope the way fragment refs do — a subtree with absolute refs
+  // can keep its $id.
+  const schema = {
+    $id: '/schemas/3.1.0/core/root.json',
+    properties: {
+      deployment: {
+        $id: '/schemas/3.1.0/core/deployment.json',
+        properties: {
+          remote: { $ref: '/schemas/3.1.0/core/other.json' },
+        },
+      },
+    },
+  };
+  stripIdsFromSubtreesWithLocalRefs(schema);
+  assert.equal(schema.properties.deployment.$id, '/schemas/3.1.0/core/deployment.json');
+});
+
+test('dedupBundledSchemaIds first-wins on duplicate $ids', () => {
+  // Same source schema referenced from two co-locations gets the same
+  // inlined $id. Ajv refuses to compile schemas with duplicate $ids
+  // even in non-strict mode. First-wins keeps the bundle compilable
+  // while anchoring the schema's identity at the first occurrence.
+  const schema = {
+    $id: '/schemas/3.1.0/bundled/foo.json',
+    properties: {
+      a: { $id: '/schemas/3.1.0/core/shared.json', type: 'string' },
+      b: { $id: '/schemas/3.1.0/core/shared.json', type: 'string' },
+      c: { $id: '/schemas/3.1.0/core/unique.json', type: 'number' },
+    },
+  };
+  dedupBundledSchemaIds(schema);
+  assert.equal(schema.properties.a.$id, '/schemas/3.1.0/core/shared.json', 'first occurrence keeps $id');
+  assert.equal(schema.properties.b.$id, undefined, 'second occurrence has $id stripped');
+  assert.equal(schema.properties.c.$id, '/schemas/3.1.0/core/unique.json', 'unique $id is unaffected');
+  assert.equal(schema.properties.a.type, 'string', 'content other than $id is preserved on first');
+  assert.equal(schema.properties.b.type, 'string', 'content other than $id is preserved on second');
+});
+
+test('dedupBundledSchemaIds protects the document root from being shadowed', () => {
+  // A nested $id matching the root would shadow the root in `seen`.
+  // The walker records the root's $id first so a degenerate match
+  // strips the descendant, not the root.
+  const schema = {
+    $id: '/schemas/3.1.0/bundled/foo.json',
+    nested: { $id: '/schemas/3.1.0/bundled/foo.json' },
+  };
+  dedupBundledSchemaIds(schema);
+  assert.equal(schema.$id, '/schemas/3.1.0/bundled/foo.json', 'root $id preserved');
+  assert.equal(schema.nested.$id, undefined, 'duplicate descendant $id stripped');
 });
