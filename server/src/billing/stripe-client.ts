@@ -2275,6 +2275,30 @@ export async function createPromotionCode(input: CreatePromotionCodeInput): Prom
   }
 }
 
+// Stripe enforces a 40-character cap on coupon.name (counted in UTF-16 code
+// units). Build the name by stripping unsafe control/format chars (RTL marks,
+// ZWJ, etc.), collapsing whitespace, then walking the org name code-point by
+// code-point until adding another would push the composite over the cap —
+// avoids landing mid-surrogate on emoji/CJK names.
+const STRIPE_COUPON_NAME_MAX = 40;
+export function buildOrgCouponName(orgName: string, discountDescription: string): string {
+  const normalizedOrg = orgName
+    .replace(/[\p{Cc}\p{Cf}]/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!normalizedOrg) {
+    return discountDescription.slice(0, STRIPE_COUPON_NAME_MAX);
+  }
+  const suffix = ` - ${discountDescription}`;
+  const orgBudget = Math.max(0, STRIPE_COUPON_NAME_MAX - suffix.length);
+  let shortOrg = '';
+  for (const ch of normalizedOrg) {
+    if (shortOrg.length + ch.length > orgBudget) break;
+    shortOrg += ch;
+  }
+  return `${shortOrg.trim()}${suffix}`;
+}
+
 /**
  * Create a coupon and promotion code for a specific organization
  * Generates a unique code based on org name
@@ -2310,7 +2334,7 @@ export async function createOrgDiscount(
 
   // Create the coupon
   const coupon = await createCoupon({
-    name: `${orgName} - ${discountDescription}`,
+    name: buildOrgCouponName(orgName, discountDescription),
     percent_off: options.percent_off,
     amount_off_cents: options.amount_off_cents,
     duration: options.duration || 'forever',
