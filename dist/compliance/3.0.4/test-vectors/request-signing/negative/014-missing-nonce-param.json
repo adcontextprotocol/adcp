@@ -1,0 +1,27 @@
+{
+  "name": "Signature-Input is missing the required 'nonce' parameter",
+  "spec_reference": "#verifier-checklist-requests step 2",
+  "reference_now": 1776520800,
+  "request": {
+    "method": "POST",
+    "url": "https://seller.example.com/adcp/create_media_buy",
+    "headers": {
+      "Content-Type": "application/json",
+      "Signature-Input": "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-type\");created=1776520800;expires=1776521100;keyid=\"test-ed25519-2026\";alg=\"ed25519\";tag=\"adcp/request-signing/v1\"",
+      "Signature": "sig1=:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA:"
+    },
+    "body": "{\"plan_id\":\"plan_001\"}"
+  },
+  "verifier_capability": {
+    "supported": true,
+    "covers_content_digest": "either",
+    "required_for": ["create_media_buy"]
+  },
+  "jwks_ref": ["test-ed25519-2026"],
+  "expected_outcome": {
+    "success": false,
+    "error_code": "request_signature_params_incomplete",
+    "failed_step": 2
+  },
+  "$comment": "Without nonce, replay dedup collapses — the verifier has nothing to deduplicate on within the validity window. Spec requires nonce presence independently of other sig-params so this specific rejection path fires before the verifier reaches step 12's replay check."
+}

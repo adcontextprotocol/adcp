@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.4/core/assets/asset-union.json",
+  "title": "AssetVariant",
+  "description": "Canonical union of all asset variant schemas. Referenced from creative-asset.json and creative-manifest.json to ensure a single named type is emitted by schema-to-TypeScript tooling. Add new asset types here and to the creative/asset-types registry.",
+  "oneOf": [
+    { "$ref": "/schemas/3.0.4/core/assets/image-asset.json" },
+    { "$ref": "/schemas/3.0.4/core/assets/video-asset.json" },
+    { "$ref": "/schemas/3.0.4/core/assets/audio-asset.json" },
+    { "$ref": "/schemas/3.0.4/core/assets/vast-asset.json" },
+    { "$ref": "/schemas/3.0.4/core/assets/text-asset.json" },
+    { "$ref": "/schemas/3.0.4/core/assets/url-asset.json" },
+    { "$ref": "/schemas/3.0.4/core/assets/html-asset.json" },
+    { "$ref": "/schemas/3.0.4/core/assets/javascript-asset.json" },
+    { "$ref": "/schemas/3.0.4/core/assets/webhook-asset.json" },
+    { "$ref": "/schemas/3.0.4/core/assets/css-asset.json" },
+    { "$ref": "/schemas/3.0.4/core/assets/daast-asset.json" },
+    { "$ref": "/schemas/3.0.4/core/assets/markdown-asset.json" },
+    { "$ref": "/schemas/3.0.4/core/assets/brief-asset.json" },
+    { "$ref": "/schemas/3.0.4/core/assets/catalog-asset.json" }
+  ],
+  "discriminator": {
+    "propertyName": "asset_type"
+  }
+}

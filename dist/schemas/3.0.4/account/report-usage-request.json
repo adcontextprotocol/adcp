@@ -1,0 +1,168 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.4/account/report-usage-request.json",
+  "title": "Report Usage Request",
+  "description": "Reports how a vendor's service was consumed after campaign delivery. Used by orchestrators (DSPs, storefronts) to inform vendor agents (signals, governance, creative) what was used so the vendor can track earned revenue and verify billing. Records can span multiple accounts and campaigns in a single request.",
+  "x-mutates-state": true,
+  "type": "object",
+  "properties": {
+    "adcp_major_version": {
+      "type": "integer",
+      "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
+      "minimum": 1,
+      "maximum": 99
+    },
+    "idempotency_key": {
+      "type": "string",
+      "description": "Client-generated unique key for this request. If a request with the same key has already been accepted, the server returns the original response without re-processing. MUST be unique per (seller, request) pair to prevent cross-seller correlation. Use a fresh UUID v4 for each request. Prevents duplicate billing on retries."
+    },
+    "reporting_period": {
+      "$ref": "/schemas/3.0.4/core/datetime-range.json",
+      "description": "The time range covered by this usage report. Applies to all records in the request."
+    },
+    "usage": {
+      "type": "array",
+      "description": "One or more usage records. Each record is self-contained: it carries its own account, allowing a single request to span multiple accounts.",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {
+          "account": {
+            "$ref": "/schemas/3.0.4/core/account-ref.json",
+            "description": "Account for this usage record."
+          },
+          "media_buy_id": {
+            "type": "string",
+            "description": "Seller-assigned media buy identifier. Links this usage record to a specific media buy.",
+            "x-entity": "media_buy"
+          },
+          "vendor_cost": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Amount owed to the vendor for this record, denominated in currency."
+          },
+          "currency": {
+            "type": "string",
+            "pattern": "^[A-Z]{3}$",
+            "description": "ISO 4217 currency code."
+          },
+          "pricing_option_id": {
+            "type": "string",
+            "description": "Pricing option identifier from the vendor's discovery response (e.g., get_signals, list_content_standards). The vendor uses this to verify the correct rate was applied.",
+            "x-entity": "vendor_pricing_option"
+          },
+          "impressions": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Impressions delivered using this vendor service."
+          },
+          "media_spend": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Media spend in currency for the period. Required when a percent_of_media pricing model was used, so the vendor can verify the applied rate."
+          },
+          "signal_agent_segment_id": {
+            "type": "string",
+            "description": "Signal identifier from get_signals. Required for signals agents.",
+            "x-entity": "signal_activation_id"
+          },
+          "standards_id": {
+            "type": "string",
+            "description": "Content standards configuration identifier. Required for governance agents.",
+            "x-entity": "content_standards"
+          },
+          "rights_id": {
+            "type": "string",
+            "description": "Rights grant identifier from acquire_rights. Required for brand/rights agents. Links usage records to specific rights grants for cap tracking, billing verification, and overage calculation.",
+            "x-entity": "rights_grant"
+          },
+          "creative_id": {
+            "type": "string",
+            "description": "Creative identifier from build_creative or list_creatives. Required for creative agents. Links usage records to specific creatives for billing verification.",
+            "x-entity": "creative"
+          },
+          "property_list_id": {
+            "type": "string",
+            "description": "Property list identifier from list_property_lists. Required for property list agents. Links usage records to specific property lists for billing verification.",
+            "x-entity": "property_list"
+          }
+        },
+        "required": [
+          "account",
+          "vendor_cost",
+          "currency"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "context": {
+      "$ref": "/schemas/3.0.4/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.4/core/ext.json"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "reporting_period",
+    "usage"
+  ],
+  "additionalProperties": true,
+  "examples": [
+    {
+      "description": "Signal usage for a single campaign",
+      "data": {
+        "idempotency_key": "550e8400-e29b-41d4-a716-446655440000",
+        "reporting_period": {
+          "start": "2025-03-01T00:00:00Z",
+          "end": "2025-03-31T23:59:59Z"
+        },
+        "usage": [
+          {
+            "account": {
+              "account_id": "acct_pinnacle_signals"
+            },
+            "signal_agent_segment_id": "luxury_auto_intenders",
+            "pricing_option_id": "po_lux_auto_cpm",
+            "impressions": 4200000,
+            "media_spend": 21000,
+            "vendor_cost": 2100,
+            "currency": "USD"
+          }
+        ]
+      }
+    },
+    {
+      "description": "Multi-account batch across two campaigns",
+      "data": {
+        "idempotency_key": "8b7a9c2d-3456-4789-abcd-ef0123456789",
+        "reporting_period": {
+          "start": "2025-03-01T00:00:00Z",
+          "end": "2025-03-31T23:59:59Z"
+        },
+        "usage": [
+          {
+            "account": {
+              "account_id": "acct_pinnacle_signals"
+            },
+            "signal_agent_segment_id": "luxury_auto_intenders",
+            "pricing_option_id": "po_lux_auto_cpm",
+            "impressions": 2100000,
+            "vendor_cost": 1050,
+            "currency": "USD"
+          },
+          {
+            "account": {
+              "account_id": "acct_nova"
+            },
+            "signal_agent_segment_id": "eco_conscious_shoppers",
+            "pricing_option_id": "po_eco_cpm",
+            "impressions": 800000,
+            "vendor_cost": 400,
+            "currency": "USD"
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.4/core/assets/css-asset.json",
+  "title": "CSS Asset",
+  "description": "CSS stylesheet asset",
+  "type": "object",
+  "properties": {
+    "asset_type": {
+      "type": "string",
+      "const": "css",
+      "description": "Discriminator identifying this as a CSS asset. See /schemas/creative/asset-types for the registry."
+    },
+    "content": {
+      "type": "string",
+      "description": "CSS content"
+    },
+    "media": {
+      "type": "string",
+      "description": "CSS media query context (e.g., 'screen', 'print')"
+    },
+    "provenance": {
+      "$ref": "/schemas/3.0.4/core/provenance.json",
+      "description": "Provenance metadata for this asset, overrides manifest-level provenance"
+    }
+  },
+  "required": [
+    "asset_type",
+    "content"
+  ],
+  "additionalProperties": true
+}
