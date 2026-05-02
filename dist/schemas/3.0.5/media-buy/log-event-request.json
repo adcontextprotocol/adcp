@@ -1,0 +1,53 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.5/media-buy/log-event-request.json",
+  "title": "Log Event Request",
+  "description": "Request parameters for logging marketing events",
+  "x-mutates-state": true,
+  "type": "object",
+  "properties": {
+    "adcp_major_version": {
+      "type": "integer",
+      "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
+      "minimum": 1,
+      "maximum": 99
+    },
+    "event_source_id": {
+      "type": "string",
+      "description": "Event source configured on the account via sync_event_sources",
+      "x-entity": "event_source"
+    },
+    "test_event_code": {
+      "type": "string",
+      "description": "Test event code for validation without affecting production data. Events with this code appear in the platform's test events UI."
+    },
+    "events": {
+      "type": "array",
+      "description": "Events to log",
+      "items": {
+        "$ref": "/schemas/3.0.5/core/event.json"
+      },
+      "minItems": 1,
+      "maxItems": 10000
+    },
+    "idempotency_key": {
+      "type": "string",
+      "description": "Client-generated unique key for this request. Prevents duplicate event logging on retries. MUST be unique per (seller, request) pair to prevent cross-seller correlation. Use a fresh UUID v4 for each request.",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
+    "context": {
+      "$ref": "/schemas/3.0.5/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.5/core/ext.json"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "event_source_id",
+    "events"
+  ],
+  "additionalProperties": true
+}
