@@ -84,6 +84,9 @@
                 },
                 "attribution_window": {
                   "$ref": "/schemas/core/duration.json"
+                },
+                "lift_dimension": {
+                  "$ref": "/schemas/enums/lift-dimension.json"
                 }
               },
               "additionalProperties": false

@@ -192,7 +192,11 @@
                       },
                       "attribution_window": {
                         "$ref": "/schemas/core/duration.json",
-                        "description": "Attribution window for this outcome row. Outcome metrics measured over different windows represent the same metric over different time periods; the partition keeps them as separate rows so buyers don't accidentally aggregate."
+                        "description": "Attribution window for this outcome row. Object-valued duration (`{interval, unit}`), not a shorthand string. Outcome metrics measured over different windows represent the same metric over different time periods; the partition keeps them as separate rows so buyers don't accidentally aggregate."
+                      },
+                      "lift_dimension": {
+                        "$ref": "/schemas/enums/lift-dimension.json",
+                        "description": "Brand-lift dimension this row represents (awareness, consideration, favorability, purchase intent, or ad recall). Required when `metric_id` is `brand_lift`. Each dimension is a separate surveyed outcome with its own sample size and confidence interval; never sum across dimensions."
                       }
                     },
                     "additionalProperties": false
@@ -502,6 +506,9 @@
                                   },
                                   "attribution_window": {
                                     "$ref": "/schemas/core/duration.json"
+                                  },
+                                  "lift_dimension": {
+                                    "$ref": "/schemas/enums/lift-dimension.json"
                                   }
                                 },
                                 "additionalProperties": false

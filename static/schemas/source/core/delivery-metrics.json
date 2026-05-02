@@ -80,7 +80,7 @@
     },
     "brand_lift": {
       "type": "number",
-      "description": "Brand lift — measured change in brand metrics (awareness, consideration, purchase intent, ad recall) attributed to the campaign. Typically panel-based or survey-based. Reported as a fraction (0.05 = 5% lift). Use `attribution_methodology: 'panel_based'` qualifier when the underlying methodology is a panel.",
+      "description": "Brand lift — measured change in a brand metric (awareness, consideration, favorability, purchase intent, or ad recall) attributed to the campaign. Typically panel-based or survey-based. Reported as a fraction (0.05 = 5% lift). **Multidimensional in production** — Kantar, Upwave, Cint, DV all report each dimension separately with its own sample size and confidence interval. The dimension flows through `qualifier.lift_dimension` on `committed_metrics` / `metric_aggregates` (`awareness` | `consideration` | `favorability` | `purchase_intent` | `ad_recall`); rows under different dimensions are different surveyed outcomes and must not be combined. Use `attribution_methodology: 'panel_based'` qualifier when the underlying methodology is a panel.",
       "minimum": 0
     },
     "foot_traffic": {
