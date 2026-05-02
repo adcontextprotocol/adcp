@@ -157,20 +157,8 @@
           ]
         },
         "attribution_window": {
-          "type": "object",
-          "description": "Attribution window for this optimization goal. Values must match an option declared in the seller's conversion_tracking.attribution_windows capability. Sellers must reject windows not in their declared capabilities. When omitted, the seller uses their default window.",
-          "properties": {
-            "post_click": {
-              "allOf": [{ "$ref": "/schemas/core/duration.json" }],
-              "description": "Post-click attribution window. Conversions within this duration after a click are attributed to the ad (e.g. {\"interval\": 7, \"unit\": \"days\"})."
-            },
-            "post_view": {
-              "allOf": [{ "$ref": "/schemas/core/duration.json" }],
-              "description": "Post-view attribution window. Conversions within this duration after an ad impression (without click) are attributed to the ad (e.g. {\"interval\": 1, \"unit\": \"days\"})."
-            }
-          },
-          "required": ["post_click"],
-          "additionalProperties": true
+          "allOf": [{ "$ref": "/schemas/core/attribution-window.json" }],
+          "description": "Attribution window for this optimization goal — references the canonical `attribution-window` shape (post_click, post_view, model). Values must match an option declared in the seller's `conversion_tracking.attribution_windows` capability. Sellers MUST reject windows not in their declared capabilities. When the entire field is omitted, the seller uses their default window."
         },
         "priority": {
           "type": "integer",
