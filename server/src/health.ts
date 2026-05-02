@@ -6,6 +6,7 @@ import { AAO_UA_HEALTH_CHECK } from "./config/user-agents.js";
 import { logOutboundRequest } from "./db/outbound-log-db.js";
 import { safeFetch } from "./utils/url-security.js";
 import { logger } from "./logger.js";
+import { promises as dnsPromises } from "node:dns";
 
 export interface ClassifiedProbeError {
   kind: ProbeErrorKind;
@@ -112,6 +113,38 @@ export function classifyMCPError(error: unknown): ClassifiedProbeError {
   return { kind: 'unknown', message: `MCP connection failed: ${raw}`, raw };
 }
 
+/**
+ * The SDK sometimes wraps DNS / connection failures into a generic outer
+ * message ("Failed to discover MCP endpoint" listing the candidate paths
+ * it tried) without exposing the underlying cause. The cause-chain walk in
+ * `classifyMCPError` cannot recover the original `ENOTFOUND` in that case,
+ * so a registered host that doesn't resolve mis-classifies as `wrong_path`.
+ *
+ * Disambiguate with a quick DNS lookup. Run only when the classifier already
+ * said `wrong_path` so successful probes pay no extra cost. Returns true if
+ * the hostname genuinely doesn't resolve, in which case the caller upgrades
+ * the classification to `unreachable`.
+ */
+async function isHostUnreachableDns(url: string, timeoutMs = 1500): Promise<boolean> {
+  let hostname: string;
+  try {
+    hostname = new URL(url).hostname;
+  } catch {
+    return false;
+  }
+  try {
+    await Promise.race([
+      dnsPromises.lookup(hostname),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('dns_lookup_timeout')), timeoutMs),
+      ),
+    ]);
+    return false;
+  } catch (err: any) {
+    return err?.code === 'ENOTFOUND' || err?.code === 'EAI_NONAME' || err?.code === 'EAI_AGAIN';
+  }
+}
+
 export class HealthChecker {
   private healthCache: Cache<AgentHealth>;
   private statsCache: Cache<AgentStats>;
@@ -176,7 +209,18 @@ export class HealthChecker {
         resources_count: (agentInfo as any).resources?.length || 0,
       };
     } catch (error: any) {
-      const classified = classifyMCPError(error);
+      let classified = classifyMCPError(error);
+      // Disambiguate `wrong_path` vs unreachable: when the SDK swallows
+      // the DNS cause, a non-resolving host looks identical to a host
+      // that's up but missing the MCP endpoint. A targeted DNS probe is
+      // the only signal left.
+      if (classified.kind === 'wrong_path' && await isHostUnreachableDns(agent.url)) {
+        classified = {
+          kind: 'unreachable',
+          message: 'Agent host is unreachable. Check that the URL is correct and the host is running.',
+          raw: classified.raw,
+        };
+      }
       const fallback = await this.tryHealthCheckFallback(agent, startTime, classified);
       if (fallback) return fallback;
       return {

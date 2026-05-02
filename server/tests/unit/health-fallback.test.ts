@@ -13,9 +13,14 @@ import type { Agent } from '../../src/types.js';
 
 // vi.hoisted lets the mocks reference shared fns without tripping vitest's
 // hoisting of vi.mock() calls above other top-level code.
-const { mockGetAgentInfo, mockSafeFetch } = vi.hoisted(() => ({
+const { mockGetAgentInfo, mockSafeFetch, mockDnsLookup } = vi.hoisted(() => ({
   mockGetAgentInfo: vi.fn(),
   mockSafeFetch: vi.fn(),
+  mockDnsLookup: vi.fn(),
+}));
+
+vi.mock('node:dns', () => ({
+  promises: { lookup: mockDnsLookup },
 }));
 
 vi.mock('@adcp/sdk', () => ({
@@ -118,6 +123,10 @@ describe('HealthChecker.tryMCP — health_check_url fallback', () => {
   beforeEach(() => {
     mockGetAgentInfo.mockReset();
     mockSafeFetch.mockReset();
+    mockDnsLookup.mockReset();
+    // Default: DNS resolves successfully so wrong_path stays wrong_path
+    // unless a test specifically simulates a non-resolving host.
+    mockDnsLookup.mockResolvedValue({ address: '93.184.216.34', family: 4 });
   });
 
   it('returns online with tools when MCP succeeds (no fallback used)', async () => {
@@ -182,5 +191,28 @@ describe('HealthChecker.tryMCP — health_check_url fallback', () => {
     expect(health.online).toBe(false);
     expect(health.error_kind).toBe('unreachable');
     expect(mockSafeFetch).not.toHaveBeenCalled();
+  });
+
+  it('upgrades wrong_path to unreachable when DNS fails (SDK swallowed the cause)', async () => {
+    // Pins the gap found during live probing: the SDK wraps DNS errors
+    // into a generic "Failed to discover MCP endpoint" with no exposed
+    // cause. The classifier's regex says wrong_path; the DNS lookup is
+    // the only remaining signal that the host doesn't actually exist.
+    mockGetAgentInfo.mockRejectedValue(new Error('Failed to discover MCP endpoint at any of: /, /mcp, /mcp/'));
+    mockDnsLookup.mockRejectedValue(Object.assign(new Error('getaddrinfo ENOTFOUND nope.invalid'), { code: 'ENOTFOUND' }));
+    const checker = new HealthChecker(0);
+    const health = await checker.checkHealth(baseAgent({ url: 'https://nope.invalid' }));
+    expect(health.online).toBe(false);
+    expect(health.error_kind).toBe('unreachable');
+    expect(health.error).toMatch(/host is unreachable/i);
+  });
+
+  it('keeps wrong_path when DNS resolves (host is up, just missing MCP)', async () => {
+    mockGetAgentInfo.mockRejectedValue(new Error('Failed to discover MCP endpoint'));
+    // mockDnsLookup default in beforeEach resolves successfully
+    const checker = new HealthChecker(0);
+    const health = await checker.checkHealth(baseAgent({ url: 'https://example.com' }));
+    expect(health.online).toBe(false);
+    expect(health.error_kind).toBe('wrong_path');
   });
 });
