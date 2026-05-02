@@ -78,6 +78,16 @@ jobs:
             echo "Merge completed without conflicts."
           else
             CONFLICTS=$(git diff --name-only --diff-filter=U)
+            # Guard: a non-zero merge with no surfaced conflicts means
+            # something other than a content conflict failed (hook
+            # rejection, refusing-to-merge-unrelated-histories, etc.).
+            # Bail loud rather than masking with the "nothing to resolve"
+            # success path below.
+            if [ -z "$CONFLICTS" ]; then
+              echo "::error::git merge failed but produced no conflicted files. Investigate manually."
+              git merge --abort 2>/dev/null || true
+              exit 1
+            fi
             echo "Conflicts to auto-resolve:"
             echo "$CONFLICTS"
 
@@ -98,7 +108,7 @@ jobs:
                   STATUS=$(git status --porcelain -- "$f" | head -c 2)
                   case "$STATUS" in
                     DU|DD|D*)
-                      git rm -f -- "$f" >/dev/null 2>&1 || true
+                      git rm -f -- "$f" >/dev/null
                       ;;
                     *)
                       git checkout --ours -- "$f"
@@ -134,12 +144,15 @@ jobs:
                   git checkout --theirs -- "$f"
                   git add -- "$f"
                   ;;
-                # dist/{schemas,compliance,protocol}/<version>/ are 3.0.x's
-                # release artifacts that main needs to serve at versioned URLs.
-                # Always take theirs — these directories are immutable per
-                # release and main only ever ADDS to its dist tree, never
-                # rewrites old versions.
-                dist/*)
+                # dist/{schemas,compliance,protocol,docs}/<version>/ are
+                # 3.0.x's release artifacts that main needs to serve at
+                # versioned URLs. Always take theirs — these directories
+                # are immutable per release and main only ever ADDS to its
+                # dist tree, never rewrites old versions. Explicit list
+                # rather than `dist/*` so future mutable subtrees under
+                # dist/ (e.g., a development-only dist/index.html) don't
+                # silently auto-resolve.
+                dist/schemas/*|dist/compliance/*|dist/protocol/*|dist/docs/*)
                   git checkout --theirs -- "$f"
                   git add -- "$f"
                   ;;
@@ -166,6 +179,20 @@ jobs:
 
             git commit --no-edit -m "$MERGE_MSG (auto-resolved divergent metadata)"
             echo "Auto-resolution complete."
+
+            # Surface the resolution shape inline so a reviewer sees what
+            # the workflow did without having to download the diff. Two
+            # views: per-file resolution status (already staged), and a
+            # focused package.json field-level diff (the one path where
+            # silent loss of main-unique scripts is a real concern).
+            echo ""
+            echo "::group::Post-resolution git status"
+            git status --short
+            echo "::endgroup::"
+            echo ""
+            echo "::group::package.json diff vs origin/main"
+            git diff origin/main HEAD -- package.json package-lock.json || true
+            echo "::endgroup::"
           fi
 
           # Did the merge actually change anything vs main? If 3.0.x's
