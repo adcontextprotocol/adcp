@@ -68,6 +68,20 @@ validation_result:
     expected, and actual unless the failure is transport-level (in which case
     json_pointer, expected, and actual MAY be null and the step-level error
     field carries the transport failure).
+
+    Forward compatibility: when a runner encounters an authored `check` value
+    it does not recognize (e.g., a storyboard declares a check type added in a
+    later spec minor version than the runner implements), the runner MUST emit
+    a validation_result with passed: true, check: <the unrecognized value>,
+    description: copied from the storyboard, and a `note` field describing the
+    coverage gap (e.g., "runner does not implement check type
+    'upstream_traffic' — graded as not_applicable to preserve forward
+    compatibility"). The result MUST contribute to a per-step `not_applicable`
+    counter the runner exposes alongside steps_passed/failed/skipped, so
+    consumers can distinguish "runner is older than the storyboard" from
+    "storyboard validations passed cleanly." Runners MUST NOT fail steps
+    on unrecognized check values — additive check-type extensions are
+    explicitly part of the spec evolution model.
   required_fields:
     - check                   # Validation kind. For storyboard-authored checks,
                               # mirrors the storyboard's step.validations[].check:
@@ -448,6 +462,13 @@ run_summary:
     - schemas_used            # array of { schema_id, schema_url } so an
                               # implementor can re-validate locally against
                               # the exact artifacts the runner applied
+  optional_fields:
+    - validations_not_applicable  # count of validation_result entries graded
+                                  # not_applicable due to forward-compat
+                                  # (runner does not implement the storyboard's
+                                  # declared check type). Surfaces "runner is
+                                  # older than the storyboard" as a distinct
+                                  # signal from clean passes.
 
 # --- Non-goals ---
 #
