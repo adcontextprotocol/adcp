@@ -65,11 +65,25 @@ endpoint_scope: sandbox
 
 harness_mode: black_box
 
-# Authentication fixture for the universal security_baseline storyboard. The
-# Bearer prefix convention (`demo-<kit>-`) lets agents accept any token
-# matching the prefix without rotating implementations on each spec version.
+# Authentication fixture. Validated end-to-end against the training-agent
+# reference implementation (#3851), which recognizes the
+# `demo-billing-passthrough-*` family as the spoofable test principal
+# mapping to `commercial_relationship: passthrough_only` — see
+# server/src/training-agent/commercial-relationships.ts. Sellers running
+# their own conformance harness substitute their own bearer convention
+# for the same precondition.
+#
+# IMPORTANT — runner invocation: today's storyboard runner does not
+# auto-extract `auth.api_key` from the test kit. Pass it explicitly:
+#
+#   npx adcp storyboard run <agent-url> \
+#     --auth demo-billing-passthrough-v1 \
+#     --file static/compliance/source/universal/billing-gate-dispatch.yaml
+#
+# The kit declares the bearer the seller's harness expects to be
+# authenticated under; the CLI carries the bearer onto the wire.
 auth:
-  api_key: "demo-billing-gate-runner-v1"
+  api_key: "demo-billing-passthrough-v1"
   probe_task: list_accounts
 
 # Brand identity for the storyboard's sample_request payloads. Reuses the Acme
@@ -95,7 +109,7 @@ account:
 # per-agent gate. Other values reserved for future commercial-state shapes
 # (e.g., "agent_billable", "advertiser_billable_only").
 #
-# Sellers that ship a passthrough-only test caller declare it here. Sellers
-# that don't leave this commented out and the per-agent phases grade
+# Sellers that ship a passthrough-only test caller declare it here.
+# Sellers that don't, comment this out and the per-agent phases grade
 # not_applicable.
-# commercial_relationship: "passthrough_only"
+commercial_relationship: "passthrough_only"

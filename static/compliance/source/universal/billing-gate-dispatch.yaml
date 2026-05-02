@@ -25,10 +25,11 @@ narrative: |
     gate. The seller's capability accepts the value, but the calling
     buyer agent's commercial relationship does not — e.g., the agent is
     onboarded as passthrough-only (no payments relationship — only the
-    operator can be invoiced). Recovery: retry the same upsert with
-    `error.details.suggested_billing` (the seller's nominated fallback,
-    typically `operator`) under the same `idempotency_key`. Surface to a
-    human when `suggested_billing` is absent — the agent cannot extend
+    operator can be invoiced). Recovery: submit a new request with the
+    seller's `error.details.suggested_billing` value (typically
+    `operator`) under a fresh `idempotency_key` — same key + different
+    payload would produce IDEMPOTENCY_CONFLICT per error-handling.mdx.
+    Surface to a human when `suggested_billing` is absent — the agent cannot extend
     its own commercial relationship. `error.details` MUST conform to
     `error-details/billing-not-permitted-for-agent.json` —
     `additionalProperties: false`, `rejected_billing` plus optional
@@ -74,14 +75,15 @@ narrative: |
     captured into context for the recover phase.
 
   - **`per_agent_gate_recover`** chains off the previous phase and
-    retries the same upsert under the same `idempotency_key` — using
-    the seller's nominated `suggested_billing` as the `billing`
-    value — and asserts a successful provisioning. Reusing the
-    idempotency_key is the spec contract: per-agent-gate recovery is
-    a retry of the same upsert with a different `billing` value. Skipped when the
-    test kit does not declare `commercial_relationship:
-    "passthrough_only"`. Failure of the reject phase cascades:
-    recover does not assert on its own.
+    submits a NEW request — using the seller's nominated
+    `suggested_billing` as the `billing` value, under a fresh
+    `idempotency_key` — and asserts a successful provisioning. The
+    recover phase is NOT a replay; it's a separate request with a
+    different payload, so a fresh idempotency_key is required (same
+    key + different payload yields IDEMPOTENCY_CONFLICT per
+    error-handling.mdx). Skipped when the test kit does not declare
+    `commercial_relationship: "passthrough_only"`. Failure of the
+    reject phase cascades: recover does not assert on its own.
 
   Storyboards-as-fixtures: a single specification artifact ratifies
   the dispatch contract once for every SDK. Ahead of full controller
@@ -198,8 +200,10 @@ phases:
         schema_ref: "account/sync-accounts-request.json"
         response_schema_ref: "account/sync-accounts-response.json"
         doc_ref: "/accounts/tasks/sync_accounts"
-        expect_error: true
-        negative_path: payload_well_formed
+        # sync_accounts returns transport-level success with per-account
+        # errors in accounts[].errors[] — this is the per-account-error
+        # envelope, not a transport-layer failure. expect_error: true would
+        # incorrectly require an MCP isError / A2A failed marker.
         stateful: false
         expected: |
           Reject the per-account upsert with:
@@ -231,7 +235,7 @@ phases:
             path: "accounts[0].status"
             value: "rejected"
             description: "Per-account status is rejected"
-          - check: error_code
+          - check: field_value
             value: "BILLING_NOT_SUPPORTED"
             path: "accounts[0].errors[0].code"
             description: "Per-account error code is BILLING_NOT_SUPPORTED"
@@ -261,8 +265,9 @@ phases:
       "agent"` (which `supported_billing` accepts but the per-agent
       record does not) and asserts the per-buyer-agent gate fires with
       the clamped `error.details` shape. The seller's `suggested_billing`
-      value is captured into context for the recover phase, which retries
-      the same upsert under the same idempotency_key.
+      value is captured into context for the recover phase, which
+      submits a new request (with a fresh idempotency_key) using the
+      suggested value.
 
     steps:
       - id: sync_accounts_passthrough_rejects_agent
@@ -271,8 +276,10 @@ phases:
         schema_ref: "account/sync-accounts-request.json"
         response_schema_ref: "account/sync-accounts-response.json"
         doc_ref: "/accounts/tasks/sync_accounts"
-        expect_error: true
-        negative_path: payload_well_formed
+        # sync_accounts returns transport-level success with per-account
+        # errors in accounts[].errors[] — this is the per-account-error
+        # envelope, not a transport-layer failure. expect_error: true would
+        # incorrectly require an MCP isError / A2A failed marker.
         stateful: false
         expected: |
           Reject the per-account upsert with:
@@ -312,7 +319,7 @@ phases:
             path: "accounts[0].status"
             value: "rejected"
             description: "Per-account status is rejected"
-          - check: error_code
+          - check: field_value
             value: "BILLING_NOT_PERMITTED_FOR_AGENT"
             path: "accounts[0].errors[0].code"
             description: "Per-account error code is BILLING_NOT_PERMITTED_FOR_AGENT"
@@ -355,14 +362,14 @@ phases:
     optional: true
     skip_if: "test_kit.commercial_relationship != 'passthrough_only'"
     narrative: |
-      The runner retries the same upsert under the same idempotency_key
-      (the `#billing_gate_dispatch_passthrough_retry` stability tag
-      resolves to the same UUID as the reject phase) but with the
-      `billing` value the seller suggested via
-      `error.details.suggested_billing`. A successful provisioning
-      validates two things: the seller's nominated fallback genuinely
-      works on retry (without it, the autonomous-recovery branch is
-      dead), and the per-agent gate's recovery is autonomous —
+      The runner submits a new request with the `billing` value the
+      seller suggested via `error.details.suggested_billing`, under a
+      fresh idempotency_key. The recover phase is NOT a replay of the
+      reject phase — same key + different payload would produce
+      IDEMPOTENCY_CONFLICT per error-handling.mdx semantics. A successful
+      provisioning validates two things: the seller's nominated fallback
+      genuinely works on retry (without it, the autonomous-recovery
+      branch is dead), and the per-agent gate's recovery is autonomous —
       pivoting on `suggested_billing` produces a working retry without
       human intervention. The recover phase passes only when the
       reject phase passed; if the reject phase fails for a non-
@@ -392,7 +399,13 @@ phases:
                 domain: "acmeoutdoor.example"
               operator: "pinnacle-agency.example"
               billing: "$context.suggested_billing"
-          idempotency_key: "$generate:uuid_v4#billing_gate_dispatch_passthrough_retry"
+          # Fresh idempotency_key — the recover phase is a new request
+          # carrying a different payload (different `billing` value), not
+          # a replay. Reusing the reject phase's key would produce
+          # IDEMPOTENCY_CONFLICT per error-handling.mdx (same key + different
+          # payload within the replay window). Validated end-to-end against
+          # the training-agent reference implementation in #3851.
+          idempotency_key: "$generate:uuid_v4#billing_gate_dispatch_passthrough_recover"
           context:
             correlation_id: "billing_gate_dispatch--per_agent_recover"
 
