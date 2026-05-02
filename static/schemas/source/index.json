@@ -1504,6 +1504,12 @@
       "file_location": "/.well-known/adagents.json",
       "purpose": "Declares authorized agents. Publishers use it for sales agent authorization over properties. Data providers use it to publish signal catalogs and authorize signals agents to resell their data."
     },
+    "adcp-agents": {
+      "description": "Multi-agent topology manifest — enumerates every AdCP agent served from an origin, with URLs, transports, and claimed specialisms",
+      "$ref": "/schemas/adcp-agents.json",
+      "file_location": "/.well-known/adcp-agents.json",
+      "purpose": "Lets buyers and conformance runners discover an operator's full multi-agent topology in a single fetch. Complements per-agent agent-card.json (single agent) and adagents.json (publisher-side authorization)."
+    },
     "brand": {
       "description": "Brand identity claim file format specification",
       "$ref": "/schemas/brand.json",
