@@ -246,14 +246,26 @@ jobs:
             # for every other contract; if this fails nothing else grades.
             "capability_discovery"
           )
+          # Approach: check the runner's failure inventory rather than trying
+          # to detect "id followed by ✓ on the same line." The latter doesn't
+          # work in legacy dispatch — when the runner emits warnings during a
+          # storyboard run (e.g., "[AdCP] Stripping fields not declared in agent
+          # schema..."), the warning fills the id-prefixed column and the ✓
+          # summary lands on the next line without the id. The runner's
+          # `--- Failures ---` block is the authoritative list of failures.
+          # A required-clean scenario passes the gate iff it does NOT appear
+          # there AND is NOT on the KNOWN_FAILING_STORYBOARDS skip list.
+          failures_block=$(awk '/^--- Failures ---/{flag=1; next} /^--- Totals ---/{flag=0} flag' /tmp/storyboards.log)
+          known_failing_block=$(awk '/^Skipping storyboards on the known-failing list:/{flag=1; next} /^[^ ]/{flag=0} flag' /tmp/storyboards.log)
           missing=()
           for id in "${REQUIRED[@]}"; do
-            # Match a line that starts with the storyboard id (after leading
-            # whitespace) and contains the ✓ pass marker. The runner's output
-            # format is `  <id><spaces>✓ NP / NS / NN/A`. Use a tab-tolerant
-            # whitespace pattern after the id to allow for the column alignment.
-            if ! grep -qE "^[[:space:]]+${id}[[:space:]]+✓" /tmp/storyboards.log; then
-              missing+=("${id}")
+            if echo "${failures_block}" | grep -qE "^[[:space:]]+${id}: "; then
+              missing+=("${id} (failed)")
+              continue
+            fi
+            if echo "${known_failing_block}" | grep -qE "${id}:"; then
+              missing+=("${id} (on KNOWN_FAILING_STORYBOARDS — would silently skip)")
+              continue
             fi
           done
           if [ "${#missing[@]}" -gt 0 ]; then
