@@ -16,14 +16,16 @@ Reconcile the metric vocabulary across the protocol. Closes #3858 (deprecate `me
 ### `performance-feedback.json` (#3858)
 
 - Adds `metric: { scope, metric_id, qualifier? }` field — the discriminated row shape symmetric with `committed_metrics` and `metric_aggregates`. Preferred over the legacy `metric_type` field for new implementations.
-- Marks `metric_type` as **deprecated** in description; retained as `required` for one-minor backwards compatibility (existing implementations continue to work). Removed at the next major when `metric` becomes required.
+- Marks `metric_type` as **deprecated** in description and **drops it from `required`** at the schema level — the previous "still required while deprecated" pattern was internally inconsistent. Existing implementations populating `metric_type` continue to work; new implementations populate `metric` instead. Removed at the next major when `metric` becomes the canonical dispatch path.
 - When both `metric` and `metric_type` are present, consumers MUST use `metric` for dispatch.
+- **`metric` is also optional** — for holistic feedback (a trader flagging a campaign as underperforming without a specific metric), senders can omit `metric` entirely; `performance_index` plus the response narrative carry the signal. This preserves the workflow that legacy `metric_type: "overall_performance"` and `cost_efficiency` served.
 - Standard-scope `metric` entries support `qualifier.viewability_standard` (MRC vs GroupM) and `qualifier.completion_source` (seller vs vendor attested). Vendor-scope entries carry the BrandRef pattern.
+- For `brand_safety` migration: buyers who don't know the vendor's specific `metric_id` MAY populate the top-level `vendor` field and OMIT `metric` — the row stays attributable via `feedback_source` + `vendor` without forcing buyers to learn vendor-specific metric vocabularies.
 
 ### `metric-type.json` (#3858)
 
 - Marked deprecated in title and description.
-- Description carries a migration table mapping each legacy value to its replacement on the new `metric` field. Meta-bucket values (`overall_performance`, `cost_efficiency`) have no replacement — they were never well-defined and the migration encourages specific metrics or omitting the field.
+- Description carries a migration table mapping each legacy value to its replacement on the new `metric` field. Meta-bucket values (`overall_performance`, `cost_efficiency`) migrate to **omitting `metric` entirely** — the previously-meaningless meta-buckets are now expressible as "no specific metric" rather than "a meta-string with no defined dispatch semantics." `conversion_rate` has no clean direct target (the protocol distinguishes ratio from count); migration suggests either feeding back `conversions` or a vendor-scope MMM/MTA conversion-rate variant. `brand_safety` migration accommodates buyers who don't know vendor-specific metric IDs (top-level `vendor` field carries source identity even when `metric` is omitted).
 
 ### `forecastable-metric.json` (#3863, partial)
 

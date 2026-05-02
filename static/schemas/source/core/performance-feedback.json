@@ -53,7 +53,7 @@
     },
     "metric": {
       "type": "object",
-      "description": "The metric this feedback row pertains to, using the same `(scope, metric_id, qualifier)` row shape as `committed_metrics` and `metric_aggregates`. Preferred over the legacy `metric_type` field for new implementations. Brings performance-feedback into the same atomic unit and dispatch model as the rest of the measurement surface — buyer agents reconcile feedback against the contract surface using the row-level join on `(scope, metric_id, qualifier)`. Optional in v1 to permit incremental adoption alongside the deprecated `metric_type` field; expected to become required at the next major when `metric_type` is removed.",
+      "description": "The metric this feedback row pertains to, using the same `(scope, metric_id, qualifier)` row shape as `committed_metrics` and `metric_aggregates`. Preferred over the legacy `metric_type` field for new implementations. Brings performance-feedback into the same atomic unit and dispatch model as the rest of the measurement surface — buyer agents reconcile feedback against the contract surface using the row-level join on `(scope, metric_id, qualifier)`. **Optional and may be omitted entirely for holistic feedback** (e.g., a trader flagging a campaign as underperforming without a specific metric in mind — `performance_index` plus the response narrative carry the signal). Senders SHOULD populate `metric` when the feedback is metric-specific so consumers can route it to the right optimization path; senders MAY omit it for general performance feedback.",
       "discriminator": {
         "propertyName": "scope"
       },
@@ -141,7 +141,6 @@
     "media_buy_id",
     "measurement_period",
     "performance_index",
-    "metric_type",
     "feedback_source",
     "status",
     "submitted_at"
