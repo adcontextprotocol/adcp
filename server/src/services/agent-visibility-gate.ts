@@ -58,11 +58,26 @@ export function gateAgentVisibilityForCaller(
     // into brand.json (`agentEntry.type`) so an arbitrary tenant string
     // would become a durable artifact in other members' manifests.
     const typeValue = typeof a.type === 'string' && isValidAgentType(a.type) ? a.type : undefined;
+    // Validate health_check_url: must parse and use http(s). Anything else
+    // is silently dropped — no fail-loud, since this is an optional probe
+    // hint and a bad value would otherwise just fail the fallback fetch.
+    let healthCheckUrl: string | undefined;
+    if (typeof a.health_check_url === 'string' && a.health_check_url.length > 0) {
+      try {
+        const parsed = new URL(a.health_check_url);
+        if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+          healthCheckUrl = a.health_check_url;
+        }
+      } catch {
+        // ignore — drop invalid value
+      }
+    }
     const cleaned: AgentConfig = {
       url,
       visibility,
       ...(typeof a.name === 'string' ? { name: a.name } : {}),
       ...(typeValue ? { type: typeValue } : {}),
+      ...(healthCheckUrl ? { health_check_url: healthCheckUrl } : {}),
     };
     return cleaned;
   });

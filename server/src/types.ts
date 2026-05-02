@@ -34,6 +34,14 @@ export interface Agent {
     website: string;
   };
   added_date: string;
+  /**
+   * Optional liveness URL used as a fallback by the health probe when the
+   * MCP/A2A handshake fails. Any 2xx is treated as "online" — type and tools
+   * still come from the protocol probe, which means a fallback hit cannot
+   * synthesize capabilities. This is a workaround for sellers blocked on
+   * other discovery issues; not a documented seller-side contract.
+   */
+  health_check_url?: string;
 }
 
 export interface AgentHealth {
@@ -420,6 +428,12 @@ export interface AgentConfig {
   // Cached info from discovery (optional, refreshed periodically)
   name?: string;
   type?: AgentType;
+  /**
+   * Optional fallback liveness URL. See {@link Agent.health_check_url}.
+   * The probe tries the protocol handshake first; on failure it GETs this
+   * URL and treats any 2xx as "online" without populating type/tools.
+   */
+  health_check_url?: string;
 }
 
 /**

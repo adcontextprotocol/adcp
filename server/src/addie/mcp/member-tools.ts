@@ -1200,6 +1200,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
           required: ['token_endpoint', 'client_id', 'client_secret'],
         },
         protocol: { type: 'string', enum: ['mcp', 'a2a'], description: 'Protocol (default: mcp)' },
+        health_check_url: { type: 'string', description: 'Optional fallback liveness URL. The dashboard probe tries the protocol handshake first; if it fails and this URL is set, the probe GETs it and treats any 2xx as "online." Used by sellers whose protocol endpoint requires auth or is path-prefixed (e.g. /adcp/mcp). Liveness only — does not populate type or tools.' },
       },
       required: ['agent_url'],
     },
@@ -5332,6 +5333,19 @@ export function createMemberToolHandlers(
     const authType: 'bearer' | 'basic' = rawAuthType === 'basic' ? 'basic' : 'bearer';
     const protocol = (input.protocol as 'mcp' | 'a2a') || 'mcp';
 
+    let healthCheckUrl: string | undefined;
+    if (typeof input.health_check_url === 'string' && input.health_check_url.length > 0) {
+      try {
+        const parsed = new URL(input.health_check_url);
+        if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+          return 'health_check_url must use https:// or http:// protocol.';
+        }
+        healthCheckUrl = input.health_check_url;
+      } catch {
+        return 'Invalid health_check_url format. Provide a full URL like https://your-agent.example.com/health';
+      }
+    }
+
     // Route oauth_client_credentials through the shared parser so the Addie
     // tool applies identical SSRF + $ENV-prefix rules as the REST endpoint.
     // Any divergence here reopens the cloud-metadata / env-var exfiltration
@@ -5351,7 +5365,8 @@ export function createMemberToolHandlers(
         const profile = await memberDb.getProfileByOrgId(saveOrgId);
         if (profile) {
           const agents = profile.agents || [];
-          if (!agents.some((a: any) => a.url === agentUrl)) {
+          const existing = agents.find((a: any) => a.url === agentUrl);
+          if (!existing) {
             // Default to members_only, not public. The public directory
             // requires an API-access tier (Professional+); defaulting to
             // 'public' here lets Addie implicitly publish an agent for an
@@ -5359,7 +5374,15 @@ export function createMemberToolHandlers(
             // keeps the agent discoverable to peer members with API access
             // and lets the owner promote to public through the explicit,
             // tier-checked /publish route when eligible.
-            agents.push({ url: agentUrl, name: displayName, visibility: 'members_only' });
+            agents.push({
+              url: agentUrl,
+              name: displayName,
+              visibility: 'members_only',
+              ...(healthCheckUrl ? { health_check_url: healthCheckUrl } : {}),
+            });
+            await memberDb.updateProfile(profile.id, { agents });
+          } else if (healthCheckUrl && (existing as any).health_check_url !== healthCheckUrl) {
+            (existing as any).health_check_url = healthCheckUrl;
             await memberDb.updateProfile(profile.id, { agents });
           }
         }

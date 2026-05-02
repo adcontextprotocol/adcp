@@ -5,6 +5,40 @@ import { FormatsService } from "./formats.js";
 import { AAO_UA_HEALTH_CHECK } from "./config/user-agents.js";
 import { logOutboundRequest } from "./db/outbound-log-db.js";
 
+/**
+ * Translate an MCP probe failure into a message that hints at the most
+ * common operator mistakes. Registration mismatches (wrong path, missing
+ * auth, A2A advertised at the host root) all surface as opaque "MCP
+ * connection failed" errors today; this classifier puts the likely cause
+ * up front so dashboard users notice. See adcp#3066.
+ */
+export function classifyMCPError(error: unknown): string {
+  const raw = error instanceof Error ? error.message : String(error ?? '');
+  const name = error instanceof Error ? error.name : '';
+  const code = (error as { code?: string | number } | null)?.code;
+
+  // SDK auth errors — endpoint exists but requires credentials.
+  if (
+    name === 'AuthenticationRequiredError' ||
+    name === 'NeedsAuthorizationError' ||
+    /unauthor|forbidden|401|403|www-authenticate/i.test(raw)
+  ) {
+    return `MCP endpoint requires authentication. Save an auth token or OAuth client credentials, then re-probe. (${raw})`;
+  }
+  // SDK couldn't find an MCP endpoint at any of the candidate paths.
+  if (/discover\s+mcp\s+endpoint|no\s+mcp\s+endpoint|404/i.test(raw)) {
+    return `No MCP endpoint at this URL. The agent may live at a sub-path (e.g. /mcp, /adcp/mcp) or be advertised as A2A in /.well-known/agent.json — check the registered URL. (${raw})`;
+  }
+  // Network reachability — DNS, refused, timed out.
+  if (
+    code === 'ENOTFOUND' || code === 'ECONNREFUSED' || code === 'ETIMEDOUT' ||
+    /network|fetch failed|timeout|unreachable/i.test(raw)
+  ) {
+    return `Agent host is unreachable. (${raw})`;
+  }
+  return `MCP connection failed: ${raw}`;
+}
+
 export class HealthChecker {
   private healthCache: Cache<AgentHealth>;
   private statsCache: Cache<AgentStats>;
@@ -69,11 +103,48 @@ export class HealthChecker {
         resources_count: (agentInfo as any).resources?.length || 0,
       };
     } catch (error: any) {
+      const mcpError = classifyMCPError(error);
+      const fallback = await this.tryHealthCheckFallback(agent, startTime, mcpError);
+      if (fallback) return fallback;
       return {
         online: false,
         checked_at: new Date().toISOString(),
-        error: `MCP connection failed: ${error.message}`,
+        error: mcpError,
       };
+    }
+  }
+
+  /**
+   * Liveness-only fallback for MCP probe failures. Sellers blocked by other
+   * discovery issues (path-prefixed MCP endpoints, auth-required handshakes,
+   * etc.) can register a health_check_url; we GET it and treat any 2xx as
+   * "online." The fallback never populates type or tools — protocol probe
+   * is still the source of truth for capabilities. See adcp#3066.
+   */
+  private async tryHealthCheckFallback(
+    agent: Agent,
+    startTime: number,
+    mcpError: string,
+  ): Promise<AgentHealth | null> {
+    if (!agent.health_check_url) return null;
+    try {
+      const response = await fetch(agent.health_check_url, {
+        method: "GET",
+        headers: { 'User-Agent': AAO_UA_HEALTH_CHECK },
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!response.ok) return null;
+      return {
+        online: true,
+        checked_at: new Date().toISOString(),
+        response_time_ms: Date.now() - startTime,
+        // tools_count / resources_count intentionally absent — fallback
+        // is liveness-only; the surfaced error preserves the underlying
+        // MCP failure so dashboards can still flag the discovery gap.
+        error: `Liveness via health_check_url; protocol probe failed: ${mcpError}`,
+      };
+    } catch {
+      return null;
     }
   }
 

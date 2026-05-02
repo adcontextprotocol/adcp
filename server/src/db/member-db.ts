@@ -41,6 +41,9 @@ function normalizeAgentConfig(raw: unknown): AgentConfig {
     // dev seeds) instead of leaking them through the AgentConfig['type']
     // cast. Callers can repopulate via the route-layer inference path.
     ...(isValidAgentType(obj.type) ? { type: obj.type } : {}),
+    ...(typeof obj.health_check_url === 'string' && obj.health_check_url.length > 0
+      ? { health_check_url: obj.health_check_url }
+      : {}),
   };
 }
 
