@@ -1,0 +1,437 @@
+id: billing_gate_dispatch
+version: "1.0.0"
+title: "Billing-gate dispatch — sync_accounts capability vs per-buyer-agent gate"
+category: error_compliance
+summary: "Validates the two distinct billing-rejection paths on sync_accounts — seller-wide capability gate (BILLING_NOT_SUPPORTED) and per-buyer-agent commercial-relationship gate (BILLING_NOT_PERMITTED_FOR_AGENT) — and the clamped error.details shape that prevents the per-agent code from acting as a commercial-state oracle."
+track: error_handling
+required_tools:
+  - get_adcp_capabilities
+  - sync_accounts
+
+narrative: |
+  Two distinct gates can reject `sync_accounts.billing`, and SDKs MUST
+  dispatch on the right code so recovery is autonomous-precise rather
+  than collapse-to-a-single-retry-loop:
+
+  - **`BILLING_NOT_SUPPORTED`** — seller-wide capability gate. The seller's
+    `supported_billing` capability does not include the requested value,
+    or the seller has no direct billing relationship with the operator on
+    this specific account. Recovery: pick a value from `supported_billing`
+    and retry. `error.details.scope` ∈ `{"capability", "account"}`
+    disambiguates which sub-gate fired (per
+    `error-details/billing-not-supported.json`).
+
+  - **`BILLING_NOT_PERMITTED_FOR_AGENT`** — per-buyer-agent commercial
+    gate. The seller's capability accepts the value, but the calling
+    buyer agent's commercial relationship does not — e.g., the agent is
+    onboarded as passthrough-only (no payments relationship — only the
+    operator can be invoiced). Recovery: retry the same upsert with
+    `error.details.suggested_billing` (the seller's nominated fallback,
+    typically `operator`) under the same `idempotency_key`. Surface to a
+    human when `suggested_billing` is absent — the agent cannot extend
+    its own commercial relationship. `error.details` MUST conform to
+    `error-details/billing-not-permitted-for-agent.json` —
+    `additionalProperties: false`, `rejected_billing` plus optional
+    `suggested_billing`. The shape MUST NOT carry the agent's full
+    permitted-billing subset, rate cards, payment terms, credit limit,
+    billing entity, or any other per-agent commercial state.
+
+  Critical security invariant: sellers MUST emit
+  `BILLING_NOT_PERMITTED_FOR_AGENT` only after agent identity has been
+  established via signed-request derivation or a credential-to-agent
+  mapping in the seller's onboarding record. Callers without
+  established identity MUST receive `BILLING_NOT_SUPPORTED` instead —
+  emitting the per-agent code without established identity is a
+  cross-tenant onboarding oracle (same uniform-response shape required
+  by the `*_NOT_FOUND` family). This storyboard does not attempt to
+  exercise that branch directly because the runner authenticates with
+  the agent under test via `test_kit.auth.api_key` before the
+  per-agent phases run, so by construction it always operates under
+  established identity. The authenticated-vs-unauthenticated branch is
+  exercised by the universal `error_compliance` storyboard's
+  cross-tenant uniform-response phases.
+
+  Phase structure:
+
+  - **`capability_discovery`** reads `account.supported_billing` from
+    `get_adcp_capabilities` so subsequent phases can dispatch.
+
+  - **`capability_gate`** runs only when the test kit declares
+    `account.unsupported_billing_probe` (a value the seller does NOT
+    support at the capability level). The runner submits that value
+    and asserts `BILLING_NOT_SUPPORTED` with `error.details.scope:
+    "capability"` and `error.details.supported_billing` echoing the
+    seller's capability. Skipped when the field is absent (sellers
+    whose `supported_billing` is the full three-value set leave the
+    field unset).
+
+  - **`per_agent_gate_reject`** runs only when the test kit declares
+    `commercial_relationship: "passthrough_only"`. The runner submits
+    `billing: "agent"` (a value `supported_billing` accepts but the
+    per-agent record does not), and asserts
+    `BILLING_NOT_PERMITTED_FOR_AGENT` with the clamped
+    `error.details` shape. The seller's `suggested_billing` value is
+    captured into context for the recover phase.
+
+  - **`per_agent_gate_recover`** chains off the previous phase and
+    retries the same upsert under the same `idempotency_key` — using
+    the seller's nominated `suggested_billing` as the `billing`
+    value — and asserts a successful provisioning. Reusing the
+    idempotency_key is the spec contract: per-agent-gate recovery is
+    a retry of the same upsert with a different `billing` value. Skipped when the
+    test kit does not declare `commercial_relationship:
+    "passthrough_only"`. Failure of the reject phase cascades:
+    recover does not assert on its own.
+
+  Storyboards-as-fixtures: a single specification artifact ratifies
+  the dispatch contract once for every SDK. Ahead of full controller
+  support for toggling per-agent commercial state programmatically
+  (out of scope for this storyboard — see "Follow-ups" below), the
+  per-agent phases are gated on a static test-kit declaration so
+  conformance can be measured against any seller whose test kit makes
+  the precondition explicit.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities: []
+  examples:
+    - "Any AdCP agent that accepts sync_accounts"
+
+caller:
+  role: buyer_agent
+  example: "Compliance test harness"
+
+prerequisites:
+  description: |
+    The agent under test exposes `sync_accounts` and advertises an
+    `account` capability block in `get_adcp_capabilities` populated with
+    `supported_billing`.
+
+    Test-kit precondition fields (see `test-kits/billing-gate-runner.yaml`
+    for the canonical example):
+
+      account.unsupported_billing_probe — (optional) value the runner
+        submits on the capability-gate phase. MUST be absent from the
+        seller's `supported_billing`. When unset, capability_gate grades
+        `not_applicable`.
+
+      commercial_relationship — (optional) declares whether the calling
+        buyer agent is registered with the seller as passthrough-only.
+        When set to "passthrough_only", per_agent_gate_reject and
+        per_agent_gate_recover run. When unset or set to anything else,
+        both per-agent phases grade `not_applicable`.
+
+    Establishing the commercial relationship is offline — the
+    seller-under-test records the test caller's commercial state in its
+    onboarding system before the storyboard runs. A future extension
+    (`comply_test_controller` `seed_buyer_agent`) MAY let runners
+    establish the precondition programmatically; until then the test
+    kit declares it.
+  test_kit: "test-kits/billing-gate-runner.yaml"
+  controller_seeding: false
+
+phases:
+  - id: capability_discovery
+    title: "Capability discovery"
+    narrative: |
+      Read `account.supported_billing` so subsequent phases can dispatch
+      on which gate is testable for this seller.
+
+    steps:
+      - id: get_capabilities
+        title: "Read supported_billing"
+        narrative: |
+          The runner inspects `account.supported_billing` to confirm the
+          seller advertises billing capabilities at all and to provide
+          context for downstream validators (e.g., the capability-gate
+          phase echoes the seller's capability list back in the error
+          response).
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: capability_discovery
+        stateful: false
+        expected: |
+          Return capabilities including `account.supported_billing` listing
+          which `billing` values the seller accepts at the wire-capability
+          level.
+
+        sample_request:
+          context:
+            correlation_id: "billing_gate_dispatch--get_capabilities"
+
+        context_outputs:
+          - path: "account.supported_billing"
+            key: "supported_billing"
+
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json schema"
+          - check: field_present
+            path: "account.supported_billing"
+            description: "Seller declares supported_billing"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "billing_gate_dispatch--get_capabilities"
+            description: "Context correlation_id returned unchanged"
+
+  - id: capability_gate
+    title: "Capability gate — BILLING_NOT_SUPPORTED"
+    optional: true
+    skip_if: "!test_kit.account.unsupported_billing_probe"
+    narrative: |
+      When the test kit declares `account.unsupported_billing_probe` (a
+      value the seller does NOT support at the capability level), the
+      runner submits that value and asserts the seller-wide capability
+      gate fires with structured `error.details`. Skipped when the field
+      is absent (sellers whose `supported_billing` is the full
+      three-value set leave the kit field unset).
+
+    steps:
+      - id: sync_accounts_unsupported_billing
+        title: "Submit a billing value the seller does not support"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: false
+        expected: |
+          Reject the per-account upsert with:
+          - accounts[0].action: "failed"
+          - accounts[0].status: "rejected"
+          - accounts[0].errors[0].code: BILLING_NOT_SUPPORTED
+          - accounts[0].errors[0].recovery: "correctable"
+          - accounts[0].errors[0].details.scope: "capability"
+          - accounts[0].errors[0].details.supported_billing: echoes the seller's capability list
+
+        sample_request:
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+              billing: "$test_kit.account.unsupported_billing_probe"
+          idempotency_key: "$generate:uuid_v4#billing_gate_dispatch_capability_probe"
+          context:
+            correlation_id: "billing_gate_dispatch--capability_gate"
+
+        validations:
+          - check: response_schema
+            description: "Response matches sync-accounts-response.json schema even on per-account failure"
+          - check: field_value
+            path: "accounts[0].action"
+            value: "failed"
+            description: "Per-account action is failed"
+          - check: field_value
+            path: "accounts[0].status"
+            value: "rejected"
+            description: "Per-account status is rejected"
+          - check: error_code
+            value: "BILLING_NOT_SUPPORTED"
+            path: "accounts[0].errors[0].code"
+            description: "Per-account error code is BILLING_NOT_SUPPORTED"
+          - check: field_value
+            path: "accounts[0].errors[0].recovery"
+            value: "correctable"
+            description: "error.recovery is correctable per the enum metadata for BILLING_NOT_SUPPORTED"
+          - check: field_value
+            path: "accounts[0].errors[0].details.scope"
+            value: "capability"
+            description: "error.details.scope identifies the capability gate"
+          - check: field_present
+            path: "accounts[0].errors[0].details.supported_billing"
+            description: "error.details.supported_billing echoes the seller's capability"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "billing_gate_dispatch--capability_gate"
+            description: "Context correlation_id returned unchanged on error response"
+
+  - id: per_agent_gate_reject
+    title: "Per-agent gate — BILLING_NOT_PERMITTED_FOR_AGENT (reject)"
+    optional: true
+    skip_if: "test_kit.commercial_relationship != 'passthrough_only'"
+    narrative: |
+      The test kit declares the calling buyer agent is registered with
+      the seller as passthrough-only. The runner submits `billing:
+      "agent"` (which `supported_billing` accepts but the per-agent
+      record does not) and asserts the per-buyer-agent gate fires with
+      the clamped `error.details` shape. The seller's `suggested_billing`
+      value is captured into context for the recover phase, which retries
+      the same upsert under the same idempotency_key.
+
+    steps:
+      - id: sync_accounts_passthrough_rejects_agent
+        title: "Passthrough-only buyer agent submits billing: agent"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: false
+        expected: |
+          Reject the per-account upsert with:
+          - accounts[0].action: "failed"
+          - accounts[0].status: "rejected"
+          - accounts[0].errors[0].code: BILLING_NOT_PERMITTED_FOR_AGENT
+          - accounts[0].errors[0].recovery: "correctable"
+          - accounts[0].errors[0].details.rejected_billing: "agent"
+          - accounts[0].errors[0].details.suggested_billing: a single value drawn from the billing-party enum
+          - accounts[0].errors[0].details MUST NOT carry permitted_billing,
+            rate_card, payment_terms, credit_limit, billing_entity, or any
+            other per-agent commercial state (additionalProperties: false on
+            error-details/billing-not-permitted-for-agent.json).
+
+        sample_request:
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+              billing: "agent"
+          idempotency_key: "$generate:uuid_v4#billing_gate_dispatch_passthrough_retry"
+          context:
+            correlation_id: "billing_gate_dispatch--per_agent_reject"
+
+        context_outputs:
+          - path: "accounts[0].errors[0].details.suggested_billing"
+            key: "suggested_billing"
+
+        validations:
+          - check: response_schema
+            description: "Response matches sync-accounts-response.json schema even on per-account failure"
+          - check: field_value
+            path: "accounts[0].action"
+            value: "failed"
+            description: "Per-account action is failed"
+          - check: field_value
+            path: "accounts[0].status"
+            value: "rejected"
+            description: "Per-account status is rejected"
+          - check: error_code
+            value: "BILLING_NOT_PERMITTED_FOR_AGENT"
+            path: "accounts[0].errors[0].code"
+            description: "Per-account error code is BILLING_NOT_PERMITTED_FOR_AGENT"
+          - check: field_value
+            path: "accounts[0].errors[0].recovery"
+            value: "correctable"
+            description: "error.recovery is correctable per the enum metadata for BILLING_NOT_PERMITTED_FOR_AGENT"
+          - check: field_value
+            path: "accounts[0].errors[0].details.rejected_billing"
+            value: "agent"
+            description: "error.details.rejected_billing echoes the submitted value"
+          - check: field_present
+            path: "accounts[0].errors[0].details.suggested_billing"
+            description: "error.details.suggested_billing names a value the agent can retry with (typically operator). Recovery is asserted by the per_agent_gate_recover phase succeeding under the suggested value."
+          - check: field_absent
+            path: "accounts[0].errors[0].details.permitted_billing"
+            description: "Full permitted_billing subset MUST NOT be returned (commercial-state oracle)"
+          - check: field_absent
+            path: "accounts[0].errors[0].details.rate_card"
+            description: "rate_card MUST NOT leak through error.details"
+          - check: field_absent
+            path: "accounts[0].errors[0].details.payment_terms"
+            description: "payment_terms MUST NOT leak through error.details"
+          - check: field_absent
+            path: "accounts[0].errors[0].details.credit_limit"
+            description: "credit_limit MUST NOT leak through error.details"
+          - check: field_absent
+            path: "accounts[0].errors[0].details.billing_entity"
+            description: "billing_entity MUST NOT leak through error.details"
+          - check: field_absent
+            path: "accounts[0].errors[0].details.account_id"
+            description: "Per-account state MUST NOT leak through error.details"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "billing_gate_dispatch--per_agent_reject"
+            description: "Context correlation_id returned unchanged on error response"
+
+  - id: per_agent_gate_recover
+    title: "Per-agent gate — autonomous recovery via suggested_billing"
+    optional: true
+    skip_if: "test_kit.commercial_relationship != 'passthrough_only'"
+    narrative: |
+      The runner retries the same upsert under the same idempotency_key
+      (the `#billing_gate_dispatch_passthrough_retry` stability tag
+      resolves to the same UUID as the reject phase) but with the
+      `billing` value the seller suggested via
+      `error.details.suggested_billing`. A successful provisioning
+      validates two things: the seller's nominated fallback genuinely
+      works on retry (without it, the autonomous-recovery branch is
+      dead), and the per-agent gate's recovery is autonomous —
+      pivoting on `suggested_billing` produces a working retry without
+      human intervention. The recover phase passes only when the
+      reject phase passed; if the reject phase fails for a non-
+      precondition reason (e.g., 5xx from the agent), this phase's
+      assertions are still meaningful but the overall storyboard
+      surfaces the upstream failure first.
+
+    steps:
+      - id: sync_accounts_recover_with_suggested
+        title: "Retry with the seller's suggested_billing value"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        expected: |
+          Provision the account using `billing: $context.suggested_billing`.
+          accounts[0].action is `created` or `updated`; accounts[0].status
+          is `active` or `pending_approval`. The autonomous-retry branch of
+          BILLING_NOT_PERMITTED_FOR_AGENT recovery completes here. The
+          response echoes back the requested `billing` value so the runner
+          can confirm the seller honored the suggested fallback.
+
+        sample_request:
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+              billing: "$context.suggested_billing"
+          idempotency_key: "$generate:uuid_v4#billing_gate_dispatch_passthrough_retry"
+          context:
+            correlation_id: "billing_gate_dispatch--per_agent_recover"
+
+        validations:
+          - check: response_schema
+            description: "Response matches sync-accounts-response.json schema"
+          - check: field_present
+            path: "accounts[0].account_id"
+            description: "Account has a platform-assigned ID"
+          - check: field_value
+            path: "accounts[0].billing"
+            value: "$context.suggested_billing"
+            description: "Account is provisioned with the seller's suggested_billing value"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "billing_gate_dispatch--per_agent_recover"
+            description: "Context correlation_id returned unchanged"
+
+# Follow-ups (out of scope for this storyboard, tracked separately):
+#
+# 1. comply_test_controller `seed_buyer_agent` extension — toggling the
+#    test caller's commercial_relationship programmatically rather than
+#    via static test-kit declaration. Would let any seller exercise both
+#    branches of the per-agent gate without a manually-curated test
+#    kit. Requires extending the seed-DAG documented in the storyboard
+#    schema.
+#
+# 2. Account-scope sub-gate (BILLING_NOT_SUPPORTED with
+#    error.details.scope: "account") — tests that the seller-wide
+#    capability accepts a value but the seller has no direct billing
+#    relationship with the operator on the specific account. Out of
+#    scope here because it requires a test kit that declares both an
+#    operator the seller has no direct relationship with AND a
+#    seller-side onboarding state to that effect — a heavier
+#    coordination contract than this kit. Track when the test kit grows
+#    multi-operator support.
+#
+# 3. Cross-language naming alignment for BrandAuthorizationResolver
+#    (Python v3-identity-bundle-design.md). The Python SDK's in-flight
+#    Protocol uses `AdagentsResolver`, which names the wrong file
+#    (adagents.json is publisher-side). Coordination filed as
+#    adcp-client-python#346.
