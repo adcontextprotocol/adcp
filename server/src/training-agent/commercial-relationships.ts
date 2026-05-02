@@ -42,6 +42,17 @@ export type CommercialRelationship = 'passthrough_only' | 'agent_billable';
 // DEMO_TEST_KIT_KEY_PATTERN. If that authenticator's prefix changes,
 // these constants stop matching and the per-agent gate silently no-ops
 // (tests catch it, but the coupling is otherwise invisible).
+//
+// Security note: the `static:demo:*` namespace is *spoofable by design*
+// — any caller with a `demo-billing-passthrough-*` bearer self-stamps
+// that principal. This is intentional for conformance runners that need
+// to deterministically target each branch of the per-agent gate. A
+// real, non-test commercial-state lookup MUST NOT be keyed on a
+// `static:demo:*` principal — they have no provenance. Production
+// principals come from the WorkOS or signed-request authenticators
+// (`workos:*`, signed-request `agent_url`), which carry verifiable
+// identity. Future code adding a real billing store keyed on principal
+// should explicitly reject `static:demo:*` at the lookup layer.
 const PASSTHROUGH_PREFIX = 'static:demo:demo-billing-passthrough-';
 const AGENT_BILLABLE_PREFIX = 'static:demo:demo-billing-agent-billable-';
 

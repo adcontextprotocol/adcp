@@ -1,5 +1,9 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import Ajv from 'ajv';
+import addFormats from 'ajv-formats';
 import {
   createTrainingAgentServer,
   invalidateCache,
@@ -9,6 +13,39 @@ import { clearSessions } from '../../src/training-agent/state.js';
 import { clearAccountStore } from '../../src/training-agent/account-handlers.js';
 import { MUTATING_TOOLS, clearIdempotencyCache } from '../../src/training-agent/idempotency.js';
 import type { TrainingContext } from '../../src/training-agent/types.js';
+
+// Runtime validation against the canonical error-details schemas.
+// Catches drift between the handler's emitted shape and the spec's
+// JSON Schema (additionalProperties: false on
+// billing-not-permitted-for-agent.json is the load-bearing clamp;
+// shape assertions in tests prove the handler emits the right keys
+// today, but a live ajv validation proves they MUST stay consistent
+// as the schemas evolve).
+const SCHEMA_BASE_DIR = join(process.cwd(), 'static/schemas/source');
+
+async function validateAgainstErrorDetails(
+  data: unknown,
+  schemaPath: string,
+): Promise<{ valid: boolean; errors: string }> {
+  const ajv = new Ajv({
+    allErrors: true,
+    strict: false,
+    loadSchema: async (uri: string) => {
+      if (!uri.startsWith('/schemas/')) throw new Error(`Cannot load: ${uri}`);
+      const p = join(SCHEMA_BASE_DIR, uri.replace('/schemas/', ''));
+      return JSON.parse(readFileSync(p, 'utf8'));
+    },
+  });
+  addFormats(ajv);
+  const schema = JSON.parse(readFileSync(join(SCHEMA_BASE_DIR, schemaPath), 'utf8'));
+  const validate = await ajv.compileAsync(schema);
+  const ok = validate(data);
+  if (ok) return { valid: true, errors: '' };
+  const errs = (validate.errors ?? [])
+    .map(e => `${e.instancePath || '(root)'}: ${e.message}`)
+    .join('; ');
+  return { valid: false, errors: errs };
+}
 
 const DEFAULT_CTX: TrainingContext = { mode: 'open' };
 
@@ -350,6 +387,89 @@ describe('sync_accounts', () => {
     expect(acct.status).toBe('rejected');
     const errors = acct.errors as Array<{ code: string }>;
     expect(errors[0].code).toBe('BILLING_NOT_PERMITTED_FOR_AGENT');
+  });
+
+  it('multi-account batching: rejected sibling does not poison passing entries', async () => {
+    // sync_accounts is a per-account upsert loop with `continue` on
+    // rejection. A batch with [passing, rejected, passing] entries MUST
+    // produce three results in input order — the rejected middle entry
+    // must not abort processing of the third entry, and the result
+    // ordering must match the request ordering so callers can correlate
+    // by index.
+    const passthroughCtx: TrainingContext = {
+      mode: 'open',
+      principal: 'static:demo:demo-billing-passthrough-v1',
+    };
+    const passthroughServer = createTrainingAgentServer(passthroughCtx);
+
+    const { result } = await simulateCallTool(passthroughServer, 'sync_accounts', {
+      accounts: [
+        { brand: { domain: 'first.com' }, operator: 'agency-one', billing: 'operator', sandbox: true },
+        { brand: { domain: 'middle.com' }, operator: 'agency-one', billing: 'agent', sandbox: true },
+        { brand: { domain: 'last.com' }, operator: 'agency-one', billing: 'operator', sandbox: true },
+      ],
+    });
+
+    const accts = result.accounts as Record<string, unknown>[];
+    expect(accts).toHaveLength(3);
+
+    // First (passing): provisioned
+    expect((accts[0].brand as Record<string, unknown>).domain).toBe('first.com');
+    expect(accts[0].status).toBe('active');
+
+    // Second (rejected): per-agent gate fired
+    expect((accts[1].brand as Record<string, unknown>).domain).toBe('middle.com');
+    expect(accts[1].status).toBe('rejected');
+    const middleErrors = accts[1].errors as Array<{ code: string }>;
+    expect(middleErrors[0].code).toBe('BILLING_NOT_PERMITTED_FOR_AGENT');
+
+    // Third (passing): provisioned, despite the rejected sibling above
+    expect((accts[2].brand as Record<string, unknown>).domain).toBe('last.com');
+    expect(accts[2].status).toBe('active');
+  });
+
+  it('error.details payloads validate against the canonical JSON schemas', async () => {
+    // Capability-gate error.details must conform to billing-not-supported.json.
+    const { result: capResult } = await simulateCallTool(server, 'sync_accounts', {
+      accounts: [{
+        brand: { domain: 'acme.com' },
+        operator: 'agency-one',
+        billing: 'unsupported_value',
+        sandbox: true,
+      }],
+    });
+    const capAcct = (capResult.accounts as Record<string, unknown>[])[0];
+    const capDetails = (capAcct.errors as Array<{ details: unknown }>)[0].details;
+    const capCheck = await validateAgainstErrorDetails(
+      capDetails,
+      'error-details/billing-not-supported.json',
+    );
+    expect(capCheck.valid, capCheck.errors).toBe(true);
+
+    // Per-agent-gate error.details must conform to
+    // billing-not-permitted-for-agent.json. additionalProperties: false
+    // on that schema is the load-bearing clamp the runtime validation
+    // catches if the handler ever leaks a commercial-state field.
+    const passthroughCtx: TrainingContext = {
+      mode: 'open',
+      principal: 'static:demo:demo-billing-passthrough-v1',
+    };
+    const passthroughServer = createTrainingAgentServer(passthroughCtx);
+    const { result: pgResult } = await simulateCallTool(passthroughServer, 'sync_accounts', {
+      accounts: [{
+        brand: { domain: 'acme.com' },
+        operator: 'agency-one',
+        billing: 'agent',
+        sandbox: true,
+      }],
+    });
+    const pgAcct = (pgResult.accounts as Record<string, unknown>[])[0];
+    const pgDetails = (pgAcct.errors as Array<{ details: unknown }>)[0].details;
+    const pgCheck = await validateAgainstErrorDetails(
+      pgDetails,
+      'error-details/billing-not-permitted-for-agent.json',
+    );
+    expect(pgCheck.valid, pgCheck.errors).toBe(true);
   });
 
   it('unrecognized principal: no per-agent gate fires (uniform-response rule)', async () => {

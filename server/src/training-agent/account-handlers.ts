@@ -313,14 +313,17 @@ export const ACCOUNT_TOOLS = [
 
 const SUPPORTED_PAYMENT_TERMS = ['net_15', 'net_30', 'net_45', 'net_60', 'net_90', 'prepay'];
 
-// Seller-wide capability for the legacy /mcp route. Mirrors the
-// `supported_billing` field advertised in `get_adcp_capabilities` for
-// this route — keep the two in lockstep. Submitting a value not in this
-// list rejects with BILLING_NOT_SUPPORTED + error.details.scope:
-// "capability". Per-tenant v6 routes carry their own supportedBillings
-// declaration (see v6-*-platform.ts); the gate plumbing for those lands
-// when accounts.upsert is wired on those platforms.
-const SUPPORTED_BILLINGS = ['agent', 'operator', 'advertiser'] as const;
+// Seller-wide capability for the legacy /mcp route. Consumed both here
+// (for the BILLING_NOT_SUPPORTED capability gate) and by
+// task-handlers.ts (for the `supported_billing` advertisement on
+// get_adcp_capabilities) — exported so the two surfaces are
+// mechanically locked rather than comment-coupled. Submitting a value
+// not in this list rejects with BILLING_NOT_SUPPORTED +
+// error.details.scope: "capability". Per-tenant v6 routes carry their
+// own supportedBillings declaration (see v6-*-platform.ts); the gate
+// plumbing for those lands when accounts.upsert is wired on those
+// platforms.
+export const SUPPORTED_BILLINGS = ['agent', 'operator', 'advertiser'] as const;
 type SupportedBilling = typeof SUPPORTED_BILLINGS[number];
 
 export function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {

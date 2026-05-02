@@ -210,6 +210,7 @@ import {
 } from './content-standards-handlers.js';
 import {
   ACCOUNT_TOOLS,
+  SUPPORTED_BILLINGS,
   handleListAccounts,
   handleSyncAccounts,
   handleSyncGovernance,
@@ -2979,11 +2980,11 @@ export async function handleGetAdcpCapabilities(_args: ToolArgs, ctx: TrainingCo
     account: {
       require_operator_auth: false,
       required_for_products: false,
-      // Match the gate in account-handlers.ts SUPPORTED_BILLINGS — the
-      // handler accepts any of the three values; the previous
-      // ['agent']-only advertisement was a stale narrowing that
-      // contradicted runtime behavior.
-      supported_billing: ['agent', 'operator', 'advertiser'],
+      // Single source of truth — the gate at account-handlers.ts
+      // imports the same constant. Spread so the typed `as const` tuple
+      // becomes a regular string array that the JSON-Schema
+      // validator on the capabilities response accepts.
+      supported_billing: [...SUPPORTED_BILLINGS],
       sandbox: true,
     },
     compliance_testing: {
