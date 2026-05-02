@@ -53,6 +53,38 @@
 #     MUST exist in the source tree at build time. Duplicate IDs
 #     across files are a build-time error.)
 #
+# default_agent: string (optional — logical agent key used by multi-agent
+#   storyboard runners to route steps that do not have a unique specialism
+#   claimant in the runtime agents map. Resolved by the runner against the
+#   `agents` option passed to `runStoryboard({ agents: { sales: …, governance: …, … } })`.
+#
+#   When to set it. Storyboards that exercise cross-domain tools — e.g.,
+#   `sync_creatives`, `list_creative_formats`, `comply_test_controller` — do
+#   not name a single specialism the runner can match. The author has the
+#   most context for which logical tenant should receive these calls (usually
+#   "wherever the seller is": `sales`). Encoding `default_agent: sales` once
+#   in the YAML beats re-asserting it on every CI invocation.
+#
+#   Resolution order (runner contract — see adcp-client#1066, #1355):
+#     1. Step-level `agent:` override (if declared on the step).
+#     2. Unique specialism claimant in the runtime agents map (matched via
+#        each agent's `get_adcp_capabilities.supported_protocols`).
+#     3. Storyboard-level `default_agent` (THIS field) resolved against the
+#        runtime agents map.
+#     4. Run-options `default_agent` passed to `runStoryboard({ default_agent })`.
+#     5. Fail-fast — runner raises `unrouted_step` and grades the step failed.
+#
+#   Single-agent runs ignore this field entirely — there is no map to resolve
+#   against, every step routes to the only configured agent. Authors SHOULD
+#   still declare it for clarity; multi-agent runners treat it as advisory and
+#   single-agent runners as a no-op.
+#
+#   Validation. The `<key>` MUST be a non-empty string. Validation that the
+#   key resolves to a configured tenant is a runtime concern (the runner
+#   raises `default_agent_unresolved` when the key is absent from the runtime
+#   agents map AND no run-options fallback is supplied), not a schema concern —
+#   the same storyboard runs against different topologies.)
+#
 # agent:
 #   interaction_model: enum (stateless_transform | stateful_preloaded | stateful_push | stateless_generate | media_buy_seller | marketplace_catalog | owned_signals | si_platform | brand_rights_holder | governance_agent)
 #   capabilities: string[] (AdCP capability flags: supports_transformation, has_creative_library, supports_generation, sells_media, accepts_briefs, supports_guaranteed, supports_non_guaranteed, catalog_signals)
