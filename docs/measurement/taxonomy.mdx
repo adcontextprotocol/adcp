@@ -60,7 +60,22 @@ Verification metrics evolve at different rates of standardization, and the proto
 
 A metric graduates from Tier 2 to Tier 1 when an industry standards body publishes a measurement specification — anchored on standards-body publication, not vendor-count thresholds or informal convergence. The patterns that support Tier 1 (`qualifier` slot, dedicated delivery scalar, performance-standard binding) are reusable templates: viewability is the first instance, not a viewability-specific bespoke shape.
 
-Verification evolves at medium pace. Environment shifts — CTV, SSAI, walled gardens, cookieless, AI-generated content — drive new signal-loss problems and new protocols to recover them. Expect schema pressure on verification capabilities every one to three years.
+#### Closed-loop topologies: seller-as-measurement-agent
+
+The graduated-metrics framing assumes the default measurement topology is *seller serves, third-party verifies* — DV/IAS attesting viewability while the publisher's ad server counts impressions. That's still the dominant pattern for traditional CTV, video, and display. But two channel classes have a different default:
+
+- **Retail-media closed loop**: Walmart Connect, Kroger Precision, Amazon DSP, Criteo Retail Media. The retailer serves the ad on its own surface, observes the click on its own surface, and observes the conversion (loyalty card, login, point-of-sale) on its own surface. The seller is also the measurement vendor; the trust model rests on the retailer's first-party data assets rather than third-party independence.
+- **AI-native channels**: ChatGPT and other agentic-conversation surfaces inject ads directly into the conversation stream (server-side). Click navigation happens in an in-app webview the seller controls. Conversion attribution flows back through a seller-provided SDK (`oaiq.min.js` for OpenAI) deployed on the merchant's property. The seller is again also the measurement vendor.
+
+These are not degraded cases of third-party verification — they're a structurally different topology that the protocol supports cleanly via the existing primitives:
+
+- **Vendor identity is implicit when seller is vendor**: BrandRef anchors on the seller in `delivery_measurement.vendors`; vendor-scope `committed_metrics` entries point at the seller's measurement-agent capability; `performance_standards.vendor` (when present) names the seller. No additional schema needed.
+- **Outcome metrics flow through the same vocabulary**: `conversion_value` + `qualifier.attribution_methodology: "deterministic_purchase"` + `qualifier.attribution_window: { interval: 30, unit: "days" }` cleanly expresses ChatGPT's attribution-token-based conversion attribution and Walmart Connect's `attributedSalesIn14Days`. No retail-media-specific schema, no AI-native-specific schema.
+- **The `(metric_id, qualifier)` row shape handles both**: contract / diff / delivery / feedback all reconcile the same way regardless of whether the vendor is third-party or seller-as-vendor.
+
+What's missing today: a structured way for the seller to declare a **merchant-side SDK** the buyer deploys on their property to feed events back to the seller (the OAIQ pattern). Tracked as a separate RFC ([#3889](https://github.com/adcontextprotocol/adcp/issues/3889)) — the existing primitives express *what's measured*; the SDK distribution / integration / supply-chain story is the gap.
+
+Verification evolves at medium pace. Environment shifts — CTV, SSAI, walled gardens, cookieless, AI-generated content, AI-native channels — drive new signal-loss problems and new protocols to recover them. Expect schema pressure on verification capabilities every one to three years.
 
 ### 3. Attribution — "did it cause an outcome?"
 
@@ -194,6 +209,14 @@ This question doesn't need an abstract answer. It will resolve as soon as a meas
 ### Where do pre-bid measurement signals live?
 
 A pre-bid viewability score (predicted likelihood that an impression will be viewable) is sold by the same vendors that produce post-delivery viewability measurement. Today, predictions are *signals* (consumed pre-decision); measurements are *verification* (consumed post-delivery). Same vendor, same methodology family, two protocol homes. This works because the *consumption pattern* differs — but it's worth watching whether the duplication cost outweighs the layering benefit, especially as predictive measurement and post-delivery measurement converge in real-time bidding contexts.
+
+### Where does conversation-context targeting fit?
+
+AI-native channels (ChatGPT and similar agentic-conversation surfaces) target ads using the conversation topic as the signal — no cookies, no fingerprinting, no audience graph. The same account gets different advertisers across different chat subjects; the prompt itself carries the targeting signal in real time.
+
+This is structurally a *signals*-layer pattern (predictive, pre-decision) but at a finer grain than traditional contextual signals (which targeted page URL or page content). It's closer to walled-garden engagement-signal targeting (Facebook News Feed) than to traditional contextual ads — except that the inventory is conversational text, not feed posts.
+
+AdCP's signals taxonomy doesn't model conversation-context targeting directly today. Whether it warrants a new signal type or fits within the existing `Contextual signals` category is an open question — the inventory shape (conversational vs page-based) and signal lifecycle (per-prompt vs per-pageview) differ, but the consumption pattern (pre-decision targeting input) is the same.
 
 ## What this protocol does not do
 
