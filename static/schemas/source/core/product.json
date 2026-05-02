@@ -74,20 +74,25 @@
     },
     "delivery_measurement": {
       "type": "object",
-      "description": "Measurement provider and methodology for delivery metrics. The buyer accepts the declared provider as the source of truth for the buy. When absent, buyers should apply their own measurement defaults.",
+      "description": "Measurement vendors and methodology for delivery metrics. The buyer accepts the declared vendors as the source of truth for the buy. When absent, buyers should apply their own measurement defaults. Senders SHOULD populate `vendors` (structured BrandRef array) for new implementations; the legacy `provider` string field is deprecated and retained for one-minor backwards compatibility.",
       "properties": {
+        "vendors": {
+          "type": "array",
+          "description": "Measurement vendors used for this product, as structured `BrandRef` identities. Multiple entries when multiple vendors play different roles (e.g., the ad server plus a separate viewability vendor like IAS or DV; or a retail-media seller plus a third-party retail measurement vendor like Circana or NielsenIQ). Each vendor's `brand.json` `agents[type='measurement']` is the discovery anchor; metric definitions live on the agent's `get_adcp_capabilities.measurement.metrics[]` block. Distinct from `performance_standards[].vendor` which carries vendor identity for *committed* metrics with thresholds — this field carries vendor identity for the overall measurement story, including non-committed-but-reported metrics.",
+          "items": {
+            "$ref": "/schemas/core/brand-ref.json"
+          },
+          "minItems": 1
+        },
         "provider": {
           "type": "string",
-          "description": "Measurement provider(s) used for this product (e.g., 'Google Ad Manager with IAS viewability', 'Nielsen DAR', 'Geopath for DOOH impressions')"
+          "description": "**Deprecated as of this minor.** Free-form measurement provider description (e.g., 'Google Ad Manager with IAS viewability', 'Nielsen DAR', 'Geopath for DOOH impressions'). New implementations SHOULD use the structured `vendors` field instead. Retained for one-minor backwards compatibility; removed at the next major. When both `vendors` and `provider` are present, consumers MUST use `vendors` for vendor identity and treat `provider` as informational text."
         },
         "notes": {
           "type": "string",
-          "description": "Additional details about measurement methodology in plain language (e.g., 'MRC-accredited viewability. 50% in-view for 1s display / 2s video', 'Panel-based demographic measurement updated monthly')"
+          "description": "Additional details about measurement methodology in plain language (e.g., 'MRC-accredited viewability. 50% in-view for 1s display / 2s video', 'Panel-based demographic measurement updated monthly'). Free-form prose for context that doesn't fit the structured `vendors` field."
         }
-      },
-      "required": [
-        "provider"
-      ]
+      }
     },
     "measurement_terms": {
       "$ref": "/schemas/core/measurement-terms.json",
