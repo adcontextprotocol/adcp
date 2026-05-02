@@ -1435,13 +1435,15 @@ export class AddieClaudeClient {
         if (currentResponse.stop_reason === 'end_turn') {
           totalToolExecutionMs = toolExecutions.reduce((sum, t) => sum + t.duration_ms, 0);
 
-          // Detect possible hallucinated actions (text claims success without successful tool calls)
-          const hallucinationReason = detectHallucinatedAction(fullText, toolExecutions);
+          // Run both detectors against the post-pipeline text — same as the
+          // non-stream path. If applyResponsePipeline strips the only text
+          // (e.g., scrubbed a refused-action sentence), that should look like
+          // an empty turn to the user, which is what we want to flag.
+          const pipelined = applyResponsePipeline(userMessage, fullText);
+          const hallucinationReason = detectHallucinatedAction(pipelined, toolExecutions);
           if (hallucinationReason) {
             logger.warn({ toolsUsed, reason: hallucinationReason }, 'Addie Stream: Possible hallucinated action detected');
           }
-
-          const pipelined = applyResponsePipeline(userMessage, fullText);
           const emptyTurnReason = detectEmptyTurn(pipelined, toolExecutions);
           if (emptyTurnReason) {
             logger.warn({ toolsUsed, toolExecutions: toolExecutions.length }, 'Addie Stream: Empty turn — no text and no successful tool calls');
