@@ -5234,11 +5234,13 @@ export class HTTPServer {
               // List subs separately. Price comes back inline (lookup_key,
               // unit_amount, etc.); founding-era prices that need product
               // metadata are resolved by per-sub `products.retrieve` inside
-              // pickMembershipSubWithProductFetch.
+              // pickMembershipSubWithProductFetch. limit: 100 matches the
+              // dedup helper — a customer with more lifetime subs than the
+              // cap could have its membership sub silently truncated out.
               const subsResult = await stripeClient.subscriptions.list({
                 customer: customerId,
                 status: 'all',
-                limit: 10,
+                limit: 100,
               });
 
               const subscription = await pickMembershipSubWithProductFetch(

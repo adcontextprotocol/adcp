@@ -11,6 +11,7 @@ import {
   isMembershipLookupKey,
   isMembershipProductByMetadata,
   isMembershipSub,
+  isMembershipSubWithProductFetch,
   pickMembershipSub,
   pickMembershipSubWithProductFetch,
 } from '../../../src/billing/membership-prices.js';
@@ -245,6 +246,74 @@ describe('pickMembershipSubWithProductFetch', () => {
     ];
     const result = await pickMembershipSubWithProductFetch(subs, fetchProduct);
     expect(result).toBeNull();
+    expect(fetchProduct).not.toHaveBeenCalled();
+  });
+});
+
+describe('isMembershipSubWithProductFetch', () => {
+  it('returns true for a lookup_key match without invoking fetchProduct', async () => {
+    const fetchProduct = vi.fn();
+    const sub = fakeSub({ lookup_key: 'aao_membership_explorer_50', product: 'prod_x' });
+    expect(await isMembershipSubWithProductFetch(sub, fetchProduct)).toBe(true);
+    expect(fetchProduct).not.toHaveBeenCalled();
+  });
+
+  it('returns true via metadata fallback when lookup_key is missing', async () => {
+    const fetchProduct = vi.fn().mockResolvedValue({
+      id: 'prod_founding', metadata: { category: 'membership' },
+    });
+    const sub = fakeSub({ lookup_key: null, product: 'prod_founding' });
+    expect(await isMembershipSubWithProductFetch(sub, fetchProduct)).toBe(true);
+    expect(fetchProduct).toHaveBeenCalledWith('prod_founding');
+  });
+
+  it('returns false when neither lookup_key nor product metadata classifies as membership', async () => {
+    const fetchProduct = vi.fn().mockResolvedValue({
+      id: 'prod_event', metadata: { category: 'event' },
+    });
+    const sub = fakeSub({ lookup_key: null, product: 'prod_event' });
+    expect(await isMembershipSubWithProductFetch(sub, fetchProduct)).toBe(false);
+  });
+
+  it('uses the cache when present — second call on same product id does not fetch', async () => {
+    const fetchProduct = vi.fn().mockResolvedValue({
+      id: 'prod_founding', metadata: { category: 'membership' },
+    });
+    const cache = new Map();
+    const sub1 = fakeSub({ id: 'sub_a', lookup_key: null, product: 'prod_founding' });
+    const sub2 = fakeSub({ id: 'sub_b', lookup_key: null, product: 'prod_founding' });
+    expect(await isMembershipSubWithProductFetch(sub1, fetchProduct, cache)).toBe(true);
+    expect(await isMembershipSubWithProductFetch(sub2, fetchProduct, cache)).toBe(true);
+    expect(fetchProduct).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns false silently on fetch error — never throws', async () => {
+    // Documented trade-off: a transient Stripe error misclassifies a
+    // founding-era sub as non-membership for one audit run, rather than
+    // failing the whole audit. The audit re-runs; persistent failures
+    // surface via Stripe-side ops, not by throwing here.
+    const fetchProduct = vi.fn().mockRejectedValue(new Error('Stripe transient'));
+    const sub = fakeSub({ lookup_key: null, product: 'prod_flaky' });
+    expect(await isMembershipSubWithProductFetch(sub, fetchProduct)).toBe(false);
+  });
+
+  it('returns false when sub has no price', async () => {
+    const fetchProduct = vi.fn();
+    const sub = { items: { data: [] } } as unknown as Stripe.Subscription;
+    expect(await isMembershipSubWithProductFetch(sub, fetchProduct)).toBe(false);
+    expect(fetchProduct).not.toHaveBeenCalled();
+  });
+
+  it('returns false when product is already expanded but non-membership (no fetch)', async () => {
+    // Mirrors the invariant test at the same site: when a caller did expand
+    // the product inline and it's an event/non-membership, the sync path of
+    // isMembershipSub already returned false and we should not refetch.
+    const fetchProduct = vi.fn();
+    const sub = fakeSub({
+      lookup_key: null,
+      product: { id: 'prod_event', metadata: { category: 'event' } },
+    });
+    expect(await isMembershipSubWithProductFetch(sub, fetchProduct)).toBe(false);
     expect(fetchProduct).not.toHaveBeenCalled();
   });
 });

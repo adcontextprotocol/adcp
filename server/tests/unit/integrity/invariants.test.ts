@@ -22,6 +22,7 @@ const mockPoolQuery = vi.fn();
 const mockStripeCustomersRetrieve = vi.fn();
 const mockStripeSubsList = vi.fn();
 const mockStripeSubsRetrieve = vi.fn();
+const mockStripeProductsRetrieve = vi.fn();
 const mockWorkosListMemberships = vi.fn();
 
 function makeCtx(): InvariantContext {
@@ -30,6 +31,7 @@ function makeCtx(): InvariantContext {
     stripe: {
       customers: { retrieve: mockStripeCustomersRetrieve },
       subscriptions: { list: mockStripeSubsList, retrieve: mockStripeSubsRetrieve },
+      products: { retrieve: mockStripeProductsRetrieve },
     } as unknown as InvariantContext['stripe'],
     workos: {
       userManagement: { listOrganizationMemberships: mockWorkosListMemberships },
@@ -47,6 +49,7 @@ beforeEach(() => {
   mockStripeCustomersRetrieve.mockReset();
   mockStripeSubsList.mockReset();
   mockStripeSubsRetrieve.mockReset();
+  mockStripeProductsRetrieve.mockReset();
   mockWorkosListMemberships.mockReset();
 });
 
@@ -506,18 +509,27 @@ describe('stripe-sub-reflected-in-org-row', () => {
     // category=membership metadata. Pre-fix this filter excluded them; the
     // orphan-customer detection downstream never saw them, so admins had no
     // signal that paying customers weren't linked to AAO orgs.
+    //
+    // `product` is a string id here, matching what Stripe actually returns
+    // post the expand-depth fix. The invariant resolves it via the
+    // `isMembershipSubWithProductFetch` fallback (one `products.retrieve`).
     const sub = membershipSub({
       id: 'sub_bidcliq',
       customer: 'cus_bidcliq',
       lookup_key: null,
       unit_amount: 250000,
-      product: { id: 'prod_founding_smb', metadata: { category: 'membership' } },
+      product: 'prod_founding_smb',
     });
     mockSubsListWith([sub]);
+    mockStripeProductsRetrieve.mockResolvedValueOnce({
+      id: 'prod_founding_smb',
+      metadata: { category: 'membership' },
+    });
     mockPoolQuery.mockResolvedValueOnce({ rows: [] }); // no AAO org linked to cus_bidcliq
 
     const result = await stripeSubReflectedInOrgRowInvariant.check(makeCtx());
 
+    expect(mockStripeProductsRetrieve).toHaveBeenCalledWith('prod_founding_smb');
     expect(result.checked).toBe(1);
     expect(result.violations).toHaveLength(1);
     expect(result.violations[0].severity).toBe('warning');
@@ -538,18 +550,66 @@ describe('stripe-sub-reflected-in-org-row', () => {
       customer: 'cus_equativ',
       lookup_key: null,
       unit_amount: 1000000,
-      product: { id: 'prod_founding_corp', metadata: { category: 'membership' } },
+      product: 'prod_founding_corp',
     });
     mockSubsListWith([sub]);
+    mockStripeProductsRetrieve.mockResolvedValueOnce({
+      id: 'prod_founding_corp',
+      metadata: { category: 'membership' },
+    });
     mockPoolQuery.mockResolvedValueOnce({ rows: [] });
 
     const result = await stripeSubReflectedInOrgRowInvariant.check(makeCtx());
 
+    expect(mockStripeProductsRetrieve).toHaveBeenCalledWith('prod_founding_corp');
     expect(result.checked).toBe(1);
     expect(result.violations).toHaveLength(1);
     expect(result.violations[0].severity).toBe('warning');
     expect(result.violations[0].subject_id).toBe('cus_equativ');
     expect(result.violations[0].details?.unit_amount).toBe(1000000);
+  });
+
+  it('caches product fetches across subs that share a product id (one retrieve, not N)', async () => {
+    // Two founding-era subs on the same Stripe product. The per-run
+    // productCache in the invariant should fold them into a single
+    // products.retrieve. Without the cache, an account with the
+    // Startup/SMB cohort would multiply Stripe API calls per audit run.
+    const sub1 = membershipSub({
+      id: 'sub_a', customer: 'cus_a', lookup_key: null, product: 'prod_founding_smb',
+    });
+    const sub2 = membershipSub({
+      id: 'sub_b', customer: 'cus_b', lookup_key: null, product: 'prod_founding_smb',
+    });
+    mockSubsListWith([sub1, sub2]);
+    mockStripeProductsRetrieve.mockResolvedValueOnce({
+      id: 'prod_founding_smb',
+      metadata: { category: 'membership' },
+    });
+    mockPoolQuery.mockResolvedValueOnce({ rows: [] });
+
+    const result = await stripeSubReflectedInOrgRowInvariant.check(makeCtx());
+
+    expect(mockStripeProductsRetrieve).toHaveBeenCalledTimes(1);
+    expect(result.checked).toBe(2);
+    expect(result.violations).toHaveLength(2);
+  });
+
+  it('skips a sub whose product fetch fails (Stripe transient) — does not throw the whole audit', async () => {
+    // Founding-era sub whose products.retrieve rejects. The helper swallows
+    // and returns false; invariant continues. Behavior trade-off: a flaky
+    // Stripe momentarily hides a real founding-era sub from the audit run,
+    // but the next run will catch it. Worse alternative would be throwing
+    // and losing the rest of the audit's findings.
+    const sub = membershipSub({
+      id: 'sub_flaky', customer: 'cus_flaky', lookup_key: null, product: 'prod_flaky',
+    });
+    mockSubsListWith([sub]);
+    mockStripeProductsRetrieve.mockRejectedValueOnce(new Error('Stripe transient'));
+
+    const result = await stripeSubReflectedInOrgRowInvariant.check(makeCtx());
+
+    expect(result.checked).toBe(0);
+    expect(result.violations).toEqual([]);
   });
 
   it('does not flag a row with subscription_status="past_due" — dunning still grants entitlement', async () => {

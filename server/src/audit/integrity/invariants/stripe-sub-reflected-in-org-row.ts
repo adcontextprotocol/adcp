@@ -97,19 +97,25 @@ export const stripeSubReflectedInOrgRowInvariant: Invariant = {
     // Cheaper than walking customers (2N+ calls) and bounded by the count of
     // live entitling subs, which is small at AAO scale.
     //
-    // No expand — the path Stripe needs for product metadata
-    // (`data.items.data.price.product`) is 5 levels deep and over the
-    // 4-level limit, which made this invariant throw on every run. Walk
-    // the list with the lookup_key fast path; founding-era subs that
-    // lack the `aao_membership_*` convention fall through to a per-product
-    // `products.retrieve` (cached) so legacy prices (Adzymic, Advertible,
-    // Bidcliq, Equativ — May 2026) still classify as membership.
+    // No `data.items.data.price.product` expand — the path Stripe needs for
+    // product metadata is 5 levels deep and over the 4-level limit, which
+    // made this invariant throw on every run. Walk the list with the
+    // lookup_key fast path; founding-era subs that lack the `aao_membership_*`
+    // convention fall through to a per-product `products.retrieve` (cached)
+    // so legacy prices (Adzymic, Advertible, Bidcliq, Equativ — May 2026)
+    // still classify as membership.
+    //
+    // `data.customer` (2 levels) is expanded so the orphan-customer
+    // violation can surface the customer's email for triage. Without it,
+    // `customer_email` always serializes null and admins have to click
+    // through to the Stripe Dashboard by id to know who to link.
     const memberSubs: Stripe.Subscription[] = [];
     const productCache = new Map<string, Stripe.Product | Stripe.DeletedProduct>();
     for (const status of ['active', 'trialing'] as const) {
       for await (const sub of stripe.subscriptions.list({
         status,
         limit: 100,
+        expand: ['data.customer'],
       })) {
         const isMember = await isMembershipSubWithProductFetch(
           sub,
