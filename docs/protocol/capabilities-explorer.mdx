@@ -1,0 +1,245 @@
+---
+title: Capabilities explorer
+sidebarTitle: Capabilities explorer
+description: "Browsable view of the get_adcp_capabilities response schema — every top-level domain, every sub-namespace, with anchors and 'propose extension here' links so new flags land in the right home."
+"og:title": "AdCP — Capabilities explorer"
+---
+
+# Capabilities explorer
+
+This page renders the actual top-level shape of the [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) response so you can find the right place for a new capability before you propose it. The most common reason an extension RFC gets bounced is wrong-shape: the proposal puts a flag at a level that doesn't match where similar flags already live. Walk the tree first.
+
+If you're here to draft an RFC, the workflow is:
+
+1. Find the closest existing top-level domain for your flag below.
+2. Drill into that domain's sub-namespaces (`features`, `execution`, etc.).
+3. If your flag fits an existing sub-namespace, propose it there. Use the **propose extension here** link at the relevant node — it pre-fills the issue title with the path.
+4. If nothing fits, scroll to **Before proposing a new top-level key** at the bottom and answer the gate questions in your RFC body.
+
+The authoritative schema lives at [`static/schemas/source/protocol/get-adcp-capabilities-response.json`](https://github.com/adcontextprotocol/adcp/blob/main/static/schemas/source/protocol/get-adcp-capabilities-response.json). The tree below is curated to one level deep for the rich domains; for the full nested shape, read the schema. See also [Design principles — capabilities are commitments, declared under existing buckets](/docs/protocol/design-principles#4-capabilities-are-commitments-declared-under-existing-buckets).
+
+---
+
+## Top-level domains
+
+The 14 domains below are the entire top-level surface of `get_adcp_capabilities`. Every capability flag eventually nests under one of these. New top-level keys are extremely rare and should not be the first move — see the gate questions at the end of this page.
+
+### `adcp` — core protocol identity
+
+Version negotiation, idempotency contract, build identifier.
+
+- **`supported_versions`** — release-precision strings (e.g. `"3.0"`, `"3.1-beta"`). Authoritative for buyer-side release pinning.
+- **`major_versions`** — DEPRECATED in favor of `supported_versions`; sellers MUST keep emitting through 3.x.
+- **`build_version`** — full semver build identifier; advisory metadata for buyer-side incident triage.
+- **`idempotency`** — discriminated union (`IdempotencySupported` / `IdempotencyUnsupported`) declaring replay semantics. **A declaration here is a commitment** — sellers that declare `supported: true` are probed by the conformance runner.
+
+[Propose an extension to `adcp`](https://github.com/adcontextprotocol/adcp/issues/new?title=Extend+adcp+capability:+%3Cflag%3E&body=Schema+location:+%60.adcp%60%0AExisting+keys:+supported_versions,+major_versions,+build_version,+idempotency%0A%0A%23%23+Proposal%0A%0A...%0A%0A%23%23+Why+this+belongs+under+%60adcp%60+and+not+a+new+top-level+key%0A%0A...&labels=rfc,capabilities)
+
+---
+
+### `supported_protocols` — which AdCP protocols this agent implements
+
+Array of protocol names. Each value commits the agent to (a) implement those tools and (b) pass the baseline compliance storyboard at `/compliance/{version}/protocols/{protocol}/`.
+
+Valid values cover `media_buy`, `creative`, `signals`, `governance`, `sponsored_intelligence`, `brand`, `accounts`, `measurement` (in development).
+
+[Propose a new protocol to add to `supported_protocols`](https://github.com/adcontextprotocol/adcp/issues/new?title=Add+protocol+to+supported_protocols:+%3Cname%3E&body=%23%23+Proposal%0A%0A...%0A%0A%23%23+Compliance+storyboard+plan%0A%0AHow+will+the+baseline+conformance+suite+exercise+this+protocol?+...&labels=rfc,capabilities,new-protocol)
+
+---
+
+### `account` — account establishment and billing
+
+How accounts are negotiated; whether one is required before product discovery; what billing models are supported.
+
+- **`required_for_products`** — boolean. If true, `get_products` requires an established account.
+- **`authorization_endpoint`** — OAuth/auth URL for account negotiation.
+- **`require_operator_auth`** — declares whether operator-level authentication is required.
+- **`supported_billing`** — array of billing models (e.g. `prepaid`, `monthly_invoice`).
+- **`account_financials`** — what financial data the seller exposes (credit limits, current balance, etc.).
+- **`sandbox`** — sandbox-account capabilities.
+
+[Propose an extension to `account`](https://github.com/adcontextprotocol/adcp/issues/new?title=Extend+account+capability:+%3Cflag%3E&body=Schema+location:+%60.account%60&labels=rfc,capabilities)
+
+---
+
+### `media_buy` — media buying capabilities
+
+The largest domain. Sub-namespaces are where most media-buying flags belong.
+
+- **`features`** — boolean feature flags (e.g. `inline_creative_management`, `property_list_filtering`, `catalog_management`, `committed_metrics_supported`). **Most new media-buy capability flags belong here.**
+- **`execution`** — technical execution capabilities. Contains `trusted_match` (TMP), `creative_specs` (VAST/MRAID/VPAID/SIMID versions), `targeting` (geo / audience / device / temporal), `axe_integrations` (deprecated). See note in [Design principles — Where the surface doesn't yet follow these](/docs/protocol/design-principles#where-the-surface-doesnt-yet-follow-these-principles) about the `trusted_match` placement.
+- **`audience_targeting`** — declared audience-targeting capabilities.
+- **`content_standards`** — content-standards enforcement capabilities.
+- **`conversion_tracking`** — conversion-tracking capabilities.
+- **`offline_delivery_protocols`** — supported offline delivery protocols (broadcast trafficking, etc.).
+- **`portfolio`** — portfolio-management capabilities.
+- **`reporting_delivery_methods`** — how reporting is delivered.
+- **`supported_pricing_models`** — array (CPM, CPC, CPCV, CPP, fixed, etc.).
+
+[Propose a flag for `media_buy.features`](https://github.com/adcontextprotocol/adcp/issues/new?title=Add+media_buy+feature:+%3Cflag%3E&body=Schema+location:+%60.media_buy.features%60%0A%0A%23%23+Proposal%0A%0A...%0A%0A%23%23+Why+a+feature+flag+and+not+a+new+task%0A%0A...%0A%0A%23%23+Conformance+probe%0A%0AHow+can+a+buyer+verify+this+capability+is+actually+honored?+...&labels=rfc,capabilities)
+
+[Propose an extension to `media_buy.execution`](https://github.com/adcontextprotocol/adcp/issues/new?title=Extend+media_buy.execution:+%3Cflag%3E&body=Schema+location:+%60.media_buy.execution%60%0AExisting+sub-keys:+trusted_match,+creative_specs,+targeting&labels=rfc,capabilities)
+
+---
+
+### `signals` — audience and contextual data activation
+
+Authorization scope and feature flags for the signals domain.
+
+- **`data_provider_domains`** — array of domains this signals agent is authorized to resell. Buyers fetch each provider's `adagents.json` to verify.
+- **`features`** — boolean feature flags. Currently `catalog_signals` (structured signal_id references). **Additional signals capability flags belong here**, not in a new top-level key. (E.g., a `signal_enforcement_on_guaranteed` flag for direct-sold targeting belongs at `signals.features`, not under `media_buy.execution.trusted_match`.)
+
+[Propose a flag for `signals.features`](https://github.com/adcontextprotocol/adcp/issues/new?title=Add+signals+feature:+%3Cflag%3E&body=Schema+location:+%60.signals.features%60%0A%0A%23%23+Proposal%0A%0A...%0A%0A%23%23+Conformance+probe%0A%0A...&labels=rfc,capabilities,signals)
+
+---
+
+### `governance` — governance protocol capabilities
+
+Property and creative governance capabilities.
+
+- **`property_features`** — what the governance agent does with property lists.
+- **`creative_features`** — what the governance agent does for creative review.
+- **`aggregation_window_days`** — how long the agent aggregates governance events.
+
+[Propose an extension to `governance`](https://github.com/adcontextprotocol/adcp/issues/new?title=Extend+governance+capability:+%3Cflag%3E&body=Schema+location:+%60.governance%60&labels=rfc,capabilities,governance)
+
+---
+
+### `sponsored_intelligence` — conversational brand experiences
+
+For agents that handle SI sessions.
+
+- **`endpoint`** — SI endpoint URL.
+- **`brand_url`** — brand identity URL.
+- **`capabilities`** — SI-specific capabilities (commerce handoff, voice, UI components, etc.).
+
+[Propose an extension to `sponsored_intelligence`](https://github.com/adcontextprotocol/adcp/issues/new?title=Extend+sponsored_intelligence+capability:+%3Cflag%3E&body=Schema+location:+%60.sponsored_intelligence%60&labels=rfc,capabilities)
+
+---
+
+### `brand` — brand protocol capabilities
+
+For brand agents.
+
+- **`description`** — agent description.
+- **`available_uses`** — what the brand data is licensed for.
+- **`generation_providers`** — supported generation providers.
+- **`right_types`** — right types the agent grants.
+- **`rights`** — concrete rights this agent issues.
+
+[Propose an extension to `brand`](https://github.com/adcontextprotocol/adcp/issues/new?title=Extend+brand+capability:+%3Cflag%3E&body=Schema+location:+%60.brand%60&labels=rfc,capabilities)
+
+---
+
+### `creative` — creative protocol capabilities
+
+For creative agents.
+
+- **`has_creative_library`** — whether the agent maintains a creative library.
+- **`supports_compliance`** — creative compliance scanning.
+- **`supports_generation`** — generative-creative capabilities.
+- **`supports_transformation`** — creative transformation capabilities.
+
+[Propose an extension to `creative`](https://github.com/adcontextprotocol/adcp/issues/new?title=Extend+creative+capability:+%3Cflag%3E&body=Schema+location:+%60.creative%60&labels=rfc,capabilities,creative)
+
+---
+
+### `request_signing` — RFC 9421 HTTP Signatures for incoming requests
+
+Optional in 3.0; capability-advertised so counterparties can opt into signing selectively.
+
+- **`supported`** — boolean.
+- **`required_for`** — array of operations where signing is required.
+- **`supported_for`** — array of operations where signing is supported.
+- **`warn_for`** — array of operations where unsigned requests produce warnings.
+- **`covers_content_digest`** — whether signatures cover the request body digest.
+
+[Propose an extension to `request_signing`](https://github.com/adcontextprotocol/adcp/issues/new?title=Extend+request_signing+capability:+%3Cflag%3E&body=Schema+location:+%60.request_signing%60&labels=rfc,capabilities,security)
+
+---
+
+### `webhook_signing` — RFC 9421 signing for outbound webhooks
+
+Top-level peer of `request_signing`.
+
+- **`supported`** — boolean.
+- **`profile`** — signing profile name.
+- **`algorithms`** — supported signature algorithms.
+- **`legacy_hmac_fallback`** — whether HMAC fallback is supported for legacy receivers.
+
+[Propose an extension to `webhook_signing`](https://github.com/adcontextprotocol/adcp/issues/new?title=Extend+webhook_signing+capability:+%3Cflag%3E&body=Schema+location:+%60.webhook_signing%60&labels=rfc,capabilities,security)
+
+---
+
+### `identity` — operator identity posture
+
+Key-scoping and compromise-response controls. Advisory in 3.x; required in 4.0.
+
+- **`per_principal_key_isolation`** — whether each principal has an isolated key.
+- **`key_origins`** — declared key-management origins.
+- **`compromise_notification`** — notification posture for key compromise events.
+
+[Propose an extension to `identity`](https://github.com/adcontextprotocol/adcp/issues/new?title=Extend+identity+capability:+%3Cflag%3E&body=Schema+location:+%60.identity%60&labels=rfc,capabilities,security)
+
+---
+
+### `measurement` — measurement capabilities (in development)
+
+Quantitative metrics about ad delivery, exposure, or effectiveness.
+
+- **`metrics`** — array of metric definitions this agent emits.
+
+The protocol surface beyond capabilities discovery (reporting, attribution tasks) lands in subsequent minors.
+
+[Propose an extension to `measurement`](https://github.com/adcontextprotocol/adcp/issues/new?title=Extend+measurement+capability:+%3Cflag%3E&body=Schema+location:+%60.measurement%60&labels=rfc,capabilities,measurement)
+
+---
+
+### `compliance_testing` — deterministic test scenarios
+
+Declares the agent supports `comply_test_controller` and which scenarios are honored.
+
+- **`scenarios`** — array of compliance scenario IDs the agent supports.
+
+[Propose an extension to `compliance_testing`](https://github.com/adcontextprotocol/adcp/issues/new?title=Extend+compliance_testing+capability:+%3Cflag%3E&body=Schema+location:+%60.compliance_testing%60&labels=rfc,capabilities,compliance)
+
+---
+
+### `specialisms` — kebab-case specialty IDs
+
+Optional. Specialty compliance claims (e.g., `creative-generative`, `sales-non-guaranteed`). Values are kebab-case enum IDs registered with the working group.
+
+[Propose a new specialism](https://github.com/adcontextprotocol/adcp/issues/new?title=Add+specialism:+%3Ckebab-case-id%3E&body=%23%23+Specialism+ID%0A%0A%3Ckebab-case-id%3E%0A%0A%23%23+What+it+claims%0A%0A...%0A%0A%23%23+Conformance+criteria%0A%0AHow+do+we+verify+an+agent+actually+meets+this+claim?+...&labels=rfc,capabilities,specialism)
+
+---
+
+## Things-this-agent-does that aren't a domain
+
+Three top-level lists carry capability metadata that doesn't fit a single protocol domain. The shape inconsistency between them is on the open list ([Design principles — Where the surface doesn't yet follow these](/docs/protocol/design-principles#where-the-surface-doesnt-yet-follow-these-principles)).
+
+- **`extensions_supported`** — array of extension namespaces this agent populates (`ext.{namespace}`).
+- **`experimental_features`** — array of experimental surface IDs this agent implements (e.g. `trusted_match.core`).
+- **`compliance_testing`** — covered above.
+
+---
+
+## Before proposing a new top-level key
+
+If your flag genuinely doesn't fit any of the 14 domains above, open the RFC — but answer these gate questions in the body. Most reviewers expect them. RFCs that ignore them tend to bounce.
+
+1. **Which existing top-level domain is closest?** Name it. Explain why your flag *isn't* an extension to that domain's `features`, `execution`, or other sub-namespaces.
+2. **Why isn't this an `ext.{vendor}` extension?** Vendor-specific behavior belongs in vendor namespaces ([spec-guidelines on platform agnosticism](/docs/spec-guidelines#platform-agnosticism)). Why is your flag normative across all implementers?
+3. **What's the conformance probe?** A capability declaration is a commitment, not an advertisement. How does the conformance runner verify a seller that declares your flag actually honors it?
+4. **What does this rule out?** What proposals does adding this top-level key make easier — and what does it make harder for someone scanning the top level a year from now?
+
+These are the same questions reviewers will ask. Answering them in the RFC saves a round-trip.
+
+[Propose a new top-level capability key (use only after answering the gate questions)](https://github.com/adcontextprotocol/adcp/issues/new?title=Propose+new+top-level+capability+key:+%3Cname%3E&body=%23%23+Proposed+top-level+key%0A%0A%3Cname%3E%0A%0A%23%23+Gate+questions%0A%0A**1.+Which+existing+top-level+domain+is+closest+and+why+isn%27t+this+an+extension+there?**%0A%0A...%0A%0A**2.+Why+isn%27t+this+an+%60ext.%7Bvendor%7D%60+extension?**%0A%0A...%0A%0A**3.+What%27s+the+conformance+probe?**%0A%0A...%0A%0A**4.+What+does+this+rule+out?**%0A%0A...&labels=rfc,capabilities,new-top-level-key)
+
+---
+
+## Related
+
+- [Design principles](/docs/protocol/design-principles) — the reasoning behind the capability surface shape.
+- [`get_adcp_capabilities` task reference](/docs/protocol/get_adcp_capabilities) — the response schema as documented per-field.
+- [Specification Guidelines](/docs/spec-guidelines) — type naming, enum design, vendor-neutral rule.

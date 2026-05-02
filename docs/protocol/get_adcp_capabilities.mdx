@@ -7,6 +7,10 @@ testable: false
 
 Discover a seller's protocol support and capabilities across all AdCP protocols. This is the first call a buyer should make to understand what a seller supports.
 
+<Info>
+**Why this shape.** Capabilities are organized into ~14 top-level domain keys (one per protocol plus identity and signing infrastructure), with feature flags nested under each domain's `features`/`execution`/etc. sub-namespace. We rejected a flat capability list — it forces every implementer to scan an unbounded surface, and it removes the discoverability that comes from related flags sitting next to each other. New capability flags belong under existing domains, not in new top-level keys; declarations are commitments, not advertisements (the conformance runner probes them). → [Capabilities explorer](/docs/protocol/capabilities-explorer) walks the tree before you propose. → [Design principle: capabilities are commitments](/docs/protocol/design-principles#4-capabilities-are-commitments-declared-under-existing-buckets).
+</Info>
+
 **Response Time**: ~2 seconds (configuration lookup)
 
 **Purpose**:

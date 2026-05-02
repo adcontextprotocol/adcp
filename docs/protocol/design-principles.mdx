@@ -1,0 +1,148 @@
+---
+title: How AdCP is designed
+sidebarTitle: Design principles
+description: "The load-bearing principles behind AdCP's design — what they rule out, when you'd be right to push back, and where the surface doesn't yet follow them."
+"og:title": "AdCP — Design principles"
+---
+
+# How AdCP is designed
+
+You don't need to read this page to use AdCP. You do need to read it to extend it.
+
+This is the meta-protocol — the philosophical framework behind the calls we made. Each principle is a load-bearing decision that shows up the moment someone proposes "just add this one field." We've made these calls deliberately, and we revisit them deliberately. The goal here is to give contributors enough context to either propose something that fits the existing shape or to argue, with both feet on the ground, for changing the shape itself.
+
+Two principles bounce most RFCs that reach the working group: **the schema is the spec** and **compose before adding a task**. They sit first because they're load-bearing for the rest. Five supporting principles follow. A "where the surface doesn't yet follow these" section at the end names the contradictions we know about — the principles are credible only to the extent that we're honest about them.
+
+Each principle has the same structure: the rule, why we chose it, what it rules out, and the exception path — when pushing back on the principle is the right move.
+
+---
+
+## The two principles that bounce most RFCs
+
+### 1. The schema is the spec
+
+Documentation describes; schemas decide. When documentation and schemas diverge, schemas win. A proposal that extends a field or task that does not exist in the schema is making two claims at once — that a thing exists, and that it should grow — and reviewers will bounce it on the first claim alone.
+
+**Why we chose it.** Generated SDKs come from schemas, conformance tests come from schemas, the registry comes from schemas. A doc page can lag for a release and the protocol still works; a schema change ships everywhere. The schema is also the only place we can enforce the cross-language guarantees AdCP claims (TypeScript, Python, Go all generate cleanly from one source). See [Specification Guidelines — Philosophy](/docs/spec-guidelines#philosophy) for the canonical version of this rule.
+
+**What this rules out.** Proposing a `direct_sold_signals` flag inside a `trusted_match` capability object in [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) when the schema's actual top-level keys are `adcp`, `supported_protocols`, `account`, `media_buy`, `signals`, `governance`, `sponsored_intelligence`, `brand`, `creative`, `request_signing`, `webhook_signing`, `identity`, `compliance_testing`, and `specialisms`. There is no `trusted_match` top-level key — and the right shape for the proposed flag is `signals.features.signal_enforcement_on_guaranteed`, not a new bucket. Reviewers bounce the issue on the wrong-shape premise alone, before evaluating the underlying idea — which may be perfectly good.
+
+**When you'd be right to push.** When the schema genuinely lacks a place to put your proposal. State that as the first claim, propose the new schema location with a path, and then propose the field. Two clear claims beat one fuzzy one.
+
+→ Use the [Capabilities explorer](/docs/protocol/capabilities-explorer) before proposing a new flag. It walks the actual schema tree.
+
+---
+
+### 2. Compose with existing primitives before adding a new task
+
+Every new top-level task is a permanent surface every implementer eventually has to reason about, even the ones who don't use it. Before proposing one, the question to answer is: can this be expressed via the existing tasks plus their existing modes? If yes, the proposal is a documentation gap (or a missing field) — not a new task.
+
+**Why we chose it.** Tasks are the protocol's coordination cost. Adding a task is the most expensive thing a contributor can ask for, because it lands on every sales agent, every buyer agent, every SDK, every test suite, every conformance row. Fields and modes compose; tasks don't. A protocol that grows by adding tasks every release ages into something only its authors can hold in their head.
+
+**What this rules out.** Proposing a `get_price_quote` task between [`get_products`](/docs/media-buy/task-reference/get_products) and [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) — a configure-price-quote step where the buyer submits targeting and the seller returns a firm rate. Most of what that proposal asks for already exists: account-scoped rate cards via `account`, firm prices via `pricing_options`, the `pricing_option_id` lock at commit time, and `buying_mode: "refine"` for the iteration loop. The "new task" framing assumes targeting and pricing are missing from discovery; they aren't.
+
+**When you'd be right to push.** When no composition reaches the desired semantics — when the proposal demands a state transition or a counterparty role no existing task can carry. The bar is high and that's intentional. Bring evidence: which existing task you tried to extend, why the extension didn't work, what the new task adds that an extension can't.
+
+---
+
+## Five supporting principles
+
+### 3. The brief drives discovery; targeting is an input, not a step
+
+Targeting is what the buyer wants. It's not a downstream filter on a generic catalog — it's what the seller curates *against*. Buyers send a brief (or `wholesale + filters`) to [`get_products`](/docs/media-buy/task-reference/get_products); the seller returns products already shaped for that intent, with pricing already scoped to the buyer's account via the `account` parameter. Iteration happens through `buying_mode: "refine"` with a typed change array — the round-trip is folded into discovery, not bolted on afterward.
+
+**Why we chose it.** A brief is the natural unit of buyer intent. The publisher knows their inventory, their audience, and their rate card better than any external taxonomy. Curating against the brief lets the seller bring all of that to the response in one round-trip, which is also the round-trip that produces the price. Splitting targeting and pricing across two tasks turns one expert decision into two underspecified ones.
+
+**What this rules out.** A separate quote step between products and buy creation. (See principle 2 — the same RFC fails both filters.)
+
+**When you'd be right to push.** When pricing depends on flight dates and total budget that the buyer hasn't committed yet — seasonality, volume tiers, sell-through-rate-driven yield. Or when the seller wants to issue a time-bound firm rate (`valid_until`) before commitment, distinct from indicative pricing options. Or when buyers need an auditable explanation of what drove the price (a `rate_basis` field). Those three are real gaps, and they're extensions to `pricing_options` and the discovery flow — not a new task.
+
+→ See [Targeting](/docs/media-buy/advanced-topics/targeting) for the brief-first model.
+
+---
+
+### 4. Capabilities are commitments, declared under existing buckets
+
+Two things, one principle. **Where capabilities live** in the schema: under existing top-level domains (`signals`, `media_buy`, `creative`, `governance`), not in new top-level keys. **What declaring a capability means**: an enforceable contract, not an advertisement. If a sales agent declares `idempotency.supported: true`, the conformance suite probes it and the contract is testable. Declarations cost something to make.
+
+**Why we chose it.** Top-level keys are the most visible part of the capabilities surface. Each one is a category every implementer scans on every read. Sub-namespacing keeps related capabilities discoverable together (`signals.features.X` belongs near `signals.data_provider_domains`) and keeps the top level scannable. Adding a top-level key for one flag is like adding a department to handle one form. And declarations need to be load-bearing to be useful: a flag the protocol can't enforce or test is a wish, not a contract.
+
+**What this rules out.** "Add a `trusted_match` top-level capability key" for a flag about how signals interact with guaranteed line items. The flag belongs in `signals.features` — a `signal_enforcement_on_guaranteed: "enforced" | "best_effort" | "not_supported"` enum, not a new bucket. Also: declaring a capability you don't actually support, hoping no one probes it. The conformance runner will.
+
+**Reviewer test.** Did the proposal cite the actual top-level keys in the schema today, and explain why none of them is the right home? If the proposal can't answer that question, it's not ready.
+
+→ The [Capabilities explorer](/docs/protocol/capabilities-explorer) renders the existing tree.
+
+---
+
+### 5. Trust is bilateral and `/.well-known`-rooted
+
+Trust in AdCP is bilateral and verifiable, not blessed by a registry. Sellers declare authorized buyers via [`adagents.json`](/docs/governance/property/adagents); buyers declare brand identity via [`brand.json`](/docs/brand-protocol/brand-json) at `/.well-known/brand.json`. Either party can resolve and verify the other's declarations. The [Registry](/docs/registry) helps with discovery and resolution; it does not gate participation. Every discovery hop is an HTTP GET against a deterministic path — the model ads.txt and sellers.json got right, deliberately reused.
+
+**Why we chose it.** Every centralized trust authority eventually becomes a tax. ads.txt and sellers.json got the model right: declarations are public and machine-readable; verification is bilateral; the network discovers truth without a single gatekeeper deciding who counts. AdCP follows that pattern deliberately — adding a "well-known brand registry" or a "verified buyer" tier would re-create the exact ad tech tax structure the protocol is meant to replace.
+
+**What this rules out.** Proposals that frame brand verification as a centralized validation problem — "who decides which brands are well-known?", "should AAO verify brand.json submissions before allowing them in the registry?" The premise is the error: `/.well-known/` is a [URI convention from RFC 8615](https://datatracker.ietf.org/doc/html/rfc8615), not a quality signal. A `brand.json` at a domain proves only that whoever controls that domain published it. Trust is built by composing that proof with adagents.json, account-level commercial relationships, and (when needed) signed requests — not by a third party blessing the brand list.
+
+**When you'd be right to push.** When you have evidence of a trust failure that bilateral declarations *demonstrably can't* address — not "what if a fraud declares themselves," but "here's a class of fraud the bilateral model misses, here's the cost, here's the smallest amount of centralization that closes it." Trust extensions are accepted; trust centralization needs receipts. The unresolved question on the substrate (CDN takeovers, DNS games, stale `/.well-known/` crawls) is real — see [Trust & Security](/docs/trust) for what AdCP provides versus what it explicitly does not.
+
+---
+
+### 6. Privacy is layered, not uniform
+
+[Trusted Match Protocol](/docs/trusted-match) has *structural* privacy — separated code paths, schema prohibitions on combining identity with context, decorrelation that's independently verifiable. Every other domain has *contractual* privacy — the parties exchanging data are bound by the account's terms or the user's consent. These are different mechanisms with different guarantees, and proposals that mix them produce confused features.
+
+**Why we chose it.** Structural privacy is expensive — it constrains the schema, requires separated infrastructure, and limits what compositions are possible. We pay that cost in TMP because TMP runs at impression time across mixed buyer/seller boundaries, where contractual confidentiality can't reach. Outside TMP, parties have already established a commercial relationship; a contract is the right unit of trust. Pretending the two are interchangeable means either over-engineering the contractual cases or under-protecting the structural ones.
+
+**What this rules out.** Proposing a "TMP-verified direct-sold targeting" capability that assumes TMP's privacy guarantees apply to direct-sold ad-server decisioning. They don't — TMP wasn't designed as the GAM/FreeWheel decisioning hook, and saying "no ad server supports TMP for direct-sold" is true but slightly misleading because that's not the layer TMP operates at. The honest framing is different: AdCP has no protocol-level mechanism to declare whether a seller can enforce signal-based targeting on guaranteed line items. That's a `signals.features` flag plus a [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy) validation rule — a contractual-disclosure feature, not a structural-privacy one.
+
+**When you'd be right to push.** When you have a cross-domain privacy claim and you can name which mechanism applies. "This is a contractual feature, here's what's in the contract" or "this is a structural feature, here's the schema-level prohibition that makes it work." Vague privacy improvements tend to land on neither and end up in the wrong place.
+
+→ See [Architecture — Privacy posture across domains](/docs/protocol/architecture#privacy-posture-across-domains) for the per-domain mechanism table.
+
+---
+
+### 7. The protocol exposes seams; deployers wire decisions
+
+AdCP defines what fields exist and what guarantees the protocol makes about them. It does not define how a deployer's policy must be enforced, how a governance agent must decide, or what counts as a "good" buyer. This stance shows up in three places, and they share a single posture: **the protocol is realistic about how decisions actually happen — distributed across parties, asynchronous in time, human-checkable in process.**
+
+- *Capabilities are declared, not gated.* `check_governance` is a seam, not an enforcer. A seller that hasn't configured a governance agent will not call it; the protocol doesn't prevent a non-conformant seller from transacting. Schema-level enforcement exists but is rare and named (`fair_housing`, `fair_lending`, `fair_employment` in 3.0); the default is exposure, not coercion.
+- *Async is the default; sync is the optimization.* Every mutating task has `*-async-response-{submitted,working,input-required}.json` siblings. A protocol that pretends every operation is synchronous and atomic is one that breaks the moment a real workflow lands.
+- *Human review is architectural, not exceptional.* Any mutation can be taken async for human approval via the [task lifecycle](/docs/building/implementation/task-lifecycle); campaign governance provides a declarative buyer-side review channel. HITL composes with everything else — audit logs, governance checks, async responses — rather than being a special case bolted onto certain tasks.
+
+A related invariant lives at the account boundary: **account ownership, not creation surface, determines visibility.** Buys created outside AdCP still belong to the account they fall under, and surface in account-scoped queries. This prevents the shadow-ledger pattern that breaks every "API on top of an ad server."
+
+**Why we chose it.** A protocol that ships policy is a platform with extra steps. The credibility of an open standard is exactly its restraint about what it tries to decide. Deployer policy is also where context-specific judgment belongs — what's a brand-safety violation in one vertical is fine in another, and AdCP can't carry that nuance without picking sides.
+
+**What this rules out.** "The protocol should reject buys that don't match capability X." Most of the time the right answer is "the protocol should make capability X visible, and the deployer rejects the buy." Also: framing autonomy and oversight as opposites — "for agentic to truly work, X must be automated end-to-end." For most regulated and high-stakes operations, that's not what we want, and it's not what the protocol assumes.
+
+**When you'd be right to push.** When the asymmetry is bad enough that a per-deployer policy doesn't solve the coordination problem — when buyers and sellers can't economically agree on enforcement without a protocol-level rule. Schema-level enforcement is rare and earned; argue for it when you have it, not as the first move.
+
+→ See [Trust & Security — Governance](/docs/trust#governance) for what AdCP provides versus what it explicitly does not, and [Governance — Embedded human judgment](/docs/governance/embedded-human-judgment) for how HITL surfaces in the protocol.
+
+---
+
+## Where the surface doesn't yet follow these principles
+
+The principles are credible to the extent we name where the surface still violates them. These are known and tracked.
+
+**`media_buy.execution.trusted_match` (principle 4).** The capabilities schema places TMP-related flags inside `media_buy.execution.trusted_match`, while the architecture page treats TMP as a peer transaction domain alongside Media Buy, Creative, and Signals. A reviewer using these principles to evaluate proposals lands in conflicting answers about where TMP-shaped flags belong. The schema sub-namespacing was right (per principle 4); the parent location is the open question. RFCs proposing changes to TMP capability declarations should expect this to be on the table.
+
+**`axe_integrations` and `axe_include_segment` / `axe_exclude_segment` (principles 1 and the [vendor-neutral rule in spec-guidelines](/docs/spec-guidelines#platform-agnosticism)).** These survive in the v3 schema as normative fields. AXE is a Scope3-originated brand. By the spec-guidelines test, these should have moved to `ext.axe` or replaced cleanly by `trusted_match` before 3.0 GA. They reflect a deprecation in progress, not a stable shape — proposals that build on these fields should expect them to be moved.
+
+**Three top-level keys for "things this agent does that aren't a domain" (principle 4).** `compliance_testing`, `experimental_features`, and `extensions_supported` each carry related-but-shaped-differently capability metadata at the top level. A reviewer would ask why these aren't unified.
+
+**Three signing-related top-level keys (principle 4).** `request_signing`, `webhook_signing`, and `identity` (operator JWKS) are all signing infrastructure metadata. Three top-level keys for one concern is exactly the "scannable top level" cost the principle warns about.
+
+**The trust substrate (principle 5).** Trust in 3.x is trust-on-first-use, rooted in each counterparty's `/.well-known/` + DNS + CDN. Key transparency is deferred to 4.0. ads.txt and sellers.json have been gamed by exactly this attack class for years. The principle is right; the substrate isn't yet what the principle deserves. See [Trust & Security](/docs/trust) for the explicit gap statement.
+
+These are the surface contradictions a sharp third-party reviewer flags on a first read. The honest answer is that some are deprecation in progress, some are unresolved, and at least one (the trust substrate) is the load-bearing 4.0 work. Naming them here keeps the principles credible.
+
+---
+
+## How to use this page
+
+If you're drafting an RFC, work through the principles before you write the title. Most proposals that get bounced get bounced on one of the first two — proposing a field that doesn't exist (principle 1) or proposing a new task for a behavior already expressible via existing tasks plus modes (principle 2). The [Capabilities explorer](/docs/protocol/capabilities-explorer) renders the actual schema tree; check it before you propose a new top-level key.
+
+If you're reviewing an RFC, the principles double as a triage filter. A proposal that names which principle it's pushing back on, and why, is doing the work; a proposal that doesn't recognize a principle applies usually needs a coverage-leading reply before any drafting happens.
+
+The principles aren't immutable. Each one was chosen against a specific trade-off, and each is up for renegotiation when the trade-off shifts. But the renegotiation is the work of an RFC, not the side effect of one — argue for changing the rule explicitly, with the cost of the change named, before proposing the change that depends on it.
