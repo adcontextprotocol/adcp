@@ -73,6 +73,31 @@
       "description": "Leads generated (convenience alias for by_event_type where event_type='lead')",
       "minimum": 0
     },
+    "incremental_sales_lift": {
+      "type": "number",
+      "description": "Incremental sales lift attributed to the campaign — sales above the control/holdout baseline. Reported as a fraction (0.15 = 15% lift) or as an absolute value depending on seller convention. The seller's `attribution_methodology` qualifier (typically `deterministic_purchase` or `modeled`) and `attribution_window` qualifier on the matching `committed_metrics` entry disambiguate the methodology and window.",
+      "minimum": 0
+    },
+    "brand_lift": {
+      "type": "number",
+      "description": "Brand lift — measured change in brand metrics (awareness, consideration, purchase intent, ad recall) attributed to the campaign. Typically panel-based or survey-based. Reported as a fraction (0.05 = 5% lift). Use `attribution_methodology: 'panel_based'` qualifier when the underlying methodology is a panel.",
+      "minimum": 0
+    },
+    "foot_traffic": {
+      "type": "number",
+      "description": "Store visits attributed to ad exposure. Count of incremental visits over baseline. Typically uses location-data panel methodology (`attribution_methodology: 'panel_based'`) or deterministic loyalty-card match (`attribution_methodology: 'deterministic_purchase'`).",
+      "minimum": 0
+    },
+    "conversion_lift": {
+      "type": "number",
+      "description": "Incremental conversions attributed to the campaign — conversions above the control/holdout baseline. Reported as a fraction (0.10 = 10% lift) or as an absolute count depending on seller convention. Distinct from `conversions` (raw count of attributed conversions); conversion_lift requires a control group and an incrementality methodology.",
+      "minimum": 0
+    },
+    "brand_search_lift": {
+      "type": "number",
+      "description": "Lift in brand search query volume attributed to the campaign — measured via search-data partnerships (Google, Microsoft) or survey methodology. Reported as a fraction (0.20 = 20% lift in branded search).",
+      "minimum": 0
+    },
     "plays": {
       "type": "number",
       "description": "Number of times the ad creative was displayed on a DOOH screen or played in a loop. Raw play count before any impression multiplier is applied. Mirrors `forecastable-metric.json`'s `plays` token for forecast↔delivery reconciliation. Distinct from `dooh_metrics.loop_plays` (per-screen rotation count) and from `impressions` (multiplied audience figure). Used for DOOH and broadcast inventory where buyers reconcile against forecast `plays`.",

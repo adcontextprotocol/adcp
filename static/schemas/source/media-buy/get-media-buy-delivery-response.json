@@ -185,6 +185,14 @@
                       "completion_source": {
                         "$ref": "/schemas/enums/completion-source.json",
                         "description": "Source of `completion_rate` attestation for this row — `seller_attested` from player/ad server, `vendor_attested` from a third-party measurement vendor. The two paths can yield different rates; never sum across sources."
+                      },
+                      "attribution_methodology": {
+                        "$ref": "/schemas/enums/attribution-methodology.json",
+                        "description": "Attribution methodology under which this outcome row was computed (`deterministic_purchase`, `probabilistic`, `panel_based`, `modeled`). Outcome metrics measured under different methodologies represent materially different numbers; never sum across methodologies."
+                      },
+                      "attribution_window": {
+                        "$ref": "/schemas/core/duration.json",
+                        "description": "Attribution window for this outcome row. Outcome metrics measured over different windows represent the same metric over different time periods; the partition keeps them as separate rows so buyers don't accidentally aggregate."
                       }
                     },
                     "additionalProperties": false
@@ -481,13 +489,19 @@
                               },
                               "qualifier": {
                                 "type": "object",
-                                "description": "Mirrors the qualifier on `committed_metrics` so the missing entry preserves the contract distinction (e.g., flagging MRC viewability as missing even when GroupM viewability was reported, or flagging vendor-attested completion as missing when only seller-attested completion was reported). MUST match the qualifier on the corresponding `committed_metrics` entry the missing flag refers to.",
+                                "description": "Mirrors the qualifier on `committed_metrics` so the missing entry preserves the contract distinction (e.g., flagging MRC viewability as missing when only GroupM was reported, vendor-attested completion as missing when only seller-attested was reported, or deterministic_purchase attribution as missing when only probabilistic was reported). MUST match the qualifier on the corresponding `committed_metrics` entry the missing flag refers to.",
                                 "properties": {
                                   "viewability_standard": {
                                     "$ref": "/schemas/enums/viewability-standard.json"
                                   },
                                   "completion_source": {
                                     "$ref": "/schemas/enums/completion-source.json"
+                                  },
+                                  "attribution_methodology": {
+                                    "$ref": "/schemas/enums/attribution-methodology.json"
+                                  },
+                                  "attribution_window": {
+                                    "$ref": "/schemas/core/duration.json"
                                   }
                                 },
                                 "additionalProperties": false

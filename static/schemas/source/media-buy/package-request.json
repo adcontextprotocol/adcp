@@ -116,13 +116,19 @@
               },
               "qualifier": {
                 "type": "object",
-                "description": "Disambiguator — same shape as on the response-side `committed_metrics`. Required when the buyer wants to pin a specific measurement path: `viewability_standard` for MRC vs GroupM viewability (when `metric_id` ∈ {`viewable_impressions`, `viewable_rate`, `measurable_impressions`}); `completion_source` for seller- vs vendor-attested `completion_rate`. See response-side description for full semantics.",
+                "description": "Disambiguator — same shape as on the response-side `committed_metrics`. Required when the buyer wants to pin a specific measurement path: `viewability_standard` for MRC vs GroupM viewability; `completion_source` for seller- vs vendor-attested `completion_rate`; `attribution_methodology` for how attribution was computed (deterministic_purchase, probabilistic, panel_based, modeled); `attribution_window` for the time window over which outcomes are attributed. See response-side description for full semantics.",
                 "properties": {
                   "viewability_standard": {
                     "$ref": "/schemas/enums/viewability-standard.json"
                   },
                   "completion_source": {
                     "$ref": "/schemas/enums/completion-source.json"
+                  },
+                  "attribution_methodology": {
+                    "$ref": "/schemas/enums/attribution-methodology.json"
+                  },
+                  "attribution_window": {
+                    "$ref": "/schemas/core/duration.json"
                   }
                 },
                 "additionalProperties": false

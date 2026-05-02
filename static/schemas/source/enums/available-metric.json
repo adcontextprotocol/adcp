@@ -35,6 +35,11 @@
     "downloads",
     "units_sold",
     "new_to_brand_units",
-    "plays"
+    "plays",
+    "incremental_sales_lift",
+    "brand_lift",
+    "foot_traffic",
+    "conversion_lift",
+    "brand_search_lift"
   ]
 }

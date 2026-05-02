@@ -93,7 +93,7 @@
               },
               "qualifier": {
                 "type": "object",
-                "description": "Disambiguates metrics whose definition varies by qualifier. Today carries two keys — `viewability_standard` for MRC vs GroupM viewability disambiguation, and `completion_source` for seller-attested vs vendor-attested `completion_rate` disambiguation. Required when the underlying `metric_id` has multiple incompatible measurement paths AND the seller commits to a specific one. Symmetric on `missing_metrics`: a buyer expecting MRC viewability flags a GroupM-only delivery report as missing the MRC commitment; a buyer expecting vendor-attested completion flags a seller-attested-only report as missing the vendor commitment. Reserved for additive qualifiers in future minors — schema is closed (`additionalProperties: false`); new keys ship explicitly.",
+                "description": "Disambiguates metrics whose definition varies by qualifier. Today carries four keys — `viewability_standard` (MRC vs GroupM viewability), `completion_source` (seller- vs vendor-attested completion), `attribution_methodology` (how attribution was computed for outcome metrics), and `attribution_window` (the time window over which outcomes were attributed). Required when the underlying `metric_id` has multiple incompatible measurement paths AND the seller commits to a specific one. Symmetric on `missing_metrics`: a buyer expecting MRC viewability flags a GroupM-only delivery report as missing the MRC commitment; a buyer expecting deterministic_purchase attribution flags a probabilistic-only delivery report as missing the deterministic commitment. Reserved for additive qualifiers in future minors — schema is closed (`additionalProperties: false`); new keys ship explicitly.",
                 "properties": {
                   "viewability_standard": {
                     "$ref": "/schemas/enums/viewability-standard.json",
@@ -102,6 +102,14 @@
                   "completion_source": {
                     "$ref": "/schemas/enums/completion-source.json",
                     "description": "Source of `completion_rate` attestation. MUST be set when `metric_id` is `completion_rate` and the seller commits to a specific source — `seller_attested` when the player/ad server's own completion event is the contract, `vendor_attested` when a third-party measurement vendor (anchored on the matching `performance_standard.vendor` BrandRef) is the contract. Absence means the contract leaves the source unspecified and reconciliation falls back to whatever the delivery report happens to carry."
+                  },
+                  "attribution_methodology": {
+                    "$ref": "/schemas/enums/attribution-methodology.json",
+                    "description": "How attribution between ad exposure and outcome events was computed. SHOULD be set when `metric_id` is an outcome metric (`conversions`, `conversion_value`, `roas`, `cost_per_acquisition`, `incremental_sales_lift`, `brand_lift`, `foot_traffic`, `conversion_lift`, `brand_search_lift`, `units_sold`, `new_to_brand_rate`, `new_to_brand_units`, `leads`) and the seller commits to a specific methodology. `deterministic_purchase` is the retail-media default; `modeled` covers MMM and clean-room outputs; `probabilistic` and `panel_based` cover their respective methodologies. Two outcome rows with the same `metric_id` and different `attribution_methodology` are not interchangeable and must not be summed."
+                  },
+                  "attribution_window": {
+                    "$ref": "/schemas/core/duration.json",
+                    "description": "Time window over which outcome attribution is computed. SHOULD be set when `metric_id` is an outcome metric and the seller commits to a specific window. Common windows: `{ interval: 7, unit: 'days' }`, `{ interval: 14, unit: 'days' }`, `{ interval: 30, unit: 'days' }`, `{ interval: 90, unit: 'days' }`. Two outcome rows with the same `metric_id` and `attribution_methodology` but different `attribution_window` represent the same metric measured over different periods — the join on `(metric_id, qualifier)` keeps them as separate rows so buyers don't accidentally aggregate across windows."
                   }
                 },
                 "additionalProperties": false
