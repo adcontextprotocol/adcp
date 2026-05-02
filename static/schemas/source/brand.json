@@ -1363,14 +1363,28 @@
         },
         "brand_refs": {
           "type": "array",
-          "description": "Pointer brands owned by this house (child-owned data). Each entry references a brand whose canonical document is published elsewhere — typically at the brand's own domain. Use when a child brand wants self-publish authority. Mutual-assertion trust: the pointed-to document's parent_house must reciprocate this house's domain. A brand_id MUST NOT appear in both brands[] and brand_refs[]. See RFC: docs/brand-protocol/proposals/distributed-brand-json-rfc.mdx",
-          "items": { "$ref": "/schemas/core/brand-ref.json" },
+          "description": "Pointer brands owned by this house (child-owned data). Each entry references a brand whose canonical document is published elsewhere — typically at the brand's own domain. Use when a child brand wants self-publish authority. Mutual-assertion trust: the pointed-to document's house_domain must equal this house's domain. A brand_id MUST NOT appear in both brands[] and brand_refs[]. See RFC: docs/brand-protocol/proposals/distributed-brand-json-rfc.mdx",
+          "items": {
+            "type": "object",
+            "description": "Reference to a pointer brand owned by this house. The child publishes its own canonical brand.json at the named domain.",
+            "properties": {
+              "domain": {
+                "$ref": "#/definitions/domain",
+                "description": "Domain where the child's canonical brand.json lives"
+              },
+              "brand_id": {
+                "$ref": "#/definitions/brand_id",
+                "description": "Stable brand identifier within the house portfolio"
+              },
+              "managed_by": {
+                "$ref": "#/definitions/domain",
+                "description": "Optional domain of the entity that operationally manages this brand (e.g., an agency network within a holdco). House-declared, non-trust-bearing — used for grouping and discovery, not validation. The child does not need to reciprocate this claim."
+              }
+            },
+            "required": ["domain"],
+            "additionalProperties": false
+          },
           "minItems": 1
-        },
-        "house_attributes": {
-          "type": "object",
-          "description": "House-wide attributes inherited by all brands in the house (privacy policy, compliance flags, corporate legal entity, jurisdictional data). Children may override individual keys via house_attributes_overrides on their canonical document. Free-form by design; the spec will formalize specific keys per use case. See RFC: docs/brand-protocol/proposals/distributed-brand-json-rfc.mdx",
-          "additionalProperties": true
         },
         "contact": { "$ref": "#/definitions/contact" },
         "authorized_operators": {
@@ -1403,31 +1417,24 @@
     {
       "type": "object",
       "title": "Brand Canonical Document",
-      "description": "Self-published brand document where the brand owns its own identity attributes. Declares its parent house via parent_house; for trust, the named house's brand_refs[] must reciprocate (mutual assertion). Hosted at the brand's own /.well-known/brand.json (or via authoritative_location indirection). See RFC: docs/brand-protocol/proposals/distributed-brand-json-rfc.mdx",
+      "description": "Self-published brand document where the brand owns its own identity attributes. Optionally declares its house via house_domain; for trust, the named house's brand_refs[] must reciprocate (mutual assertion). Standalone brands (no parent house) omit house_domain. Hosted at the brand's own /.well-known/brand.json (or via authoritative_location indirection). See RFC: docs/brand-protocol/proposals/distributed-brand-json-rfc.mdx",
       "allOf": [
         {
           "type": "object",
           "properties": {
             "$schema": { "type": "string" },
             "version": { "type": "string" },
-            "parent_house": {
-              "$ref": "/schemas/core/brand-ref.json",
-              "description": "Pointer to the corporate house this brand belongs to. The named house's brand_refs[] MUST reciprocate for mutual-assertion trust. Single-hop only — a brand cannot itself declare brand_refs[]."
-            },
-            "house_attributes_overrides": {
-              "type": "object",
-              "description": "Per-brand overrides for inherited house_attributes. Only specified keys are overridden; others inherit from the parent house's house_attributes block.",
-              "additionalProperties": true
+            "house_domain": {
+              "$ref": "#/definitions/domain",
+              "description": "Optional pointer to the corporate house this brand belongs to. The named house's brand_refs[] MUST reciprocate for mutual-assertion trust. Single-hop only — a brand cannot itself declare brand_refs[]. Omit for standalone brands (no house)."
             },
             "last_updated": { "type": "string", "format": "date-time" }
           },
-          "required": ["parent_house"],
           "not": {
             "anyOf": [
               { "required": ["house"] },
               { "required": ["brands"] },
               { "required": ["brand_refs"] },
-              { "required": ["house_attributes"] },
               { "required": ["authorized_operators"] }
             ]
           }
@@ -1823,11 +1830,6 @@
         "name": "Nike, Inc.",
         "architecture": "hybrid"
       },
-      "house_attributes": {
-        "privacy_policy_url": "https://agreementservice.svs.nike.com/rest/agreement?agreementType=privacyPolicy",
-        "compliance_policies": ["no_under_13_targeting"],
-        "tax_entity": "Nike, Inc."
-      },
       "brands": [
         {
           "id": "nike_sb",
@@ -1847,17 +1849,40 @@
     {
       "$schema": "/schemas/brand.json",
       "version": "1.0",
+      "house": {
+        "domain": "wpp.com",
+        "name": "WPP plc"
+      },
+      "brand_refs": [
+        { "domain": "bbh-sport.com", "brand_id": "bbh_sport", "managed_by": "bbh.com" },
+        { "domain": "ogilvy-toyota.com", "brand_id": "ogilvy_toyota", "managed_by": "ogilvy.com" },
+        { "domain": "wpp-direct.com", "brand_id": "wpp_direct" }
+      ],
+      "last_updated": "2026-01-15T10:00:00Z"
+    },
+    {
+      "$schema": "/schemas/brand.json",
+      "version": "1.0",
       "id": "converse",
       "names": [{"en_US": "Converse"}],
       "keller_type": "sub_brand",
-      "parent_house": { "domain": "nikeinc.com" },
+      "house_domain": "nikeinc.com",
       "logos": [
         {"url": "https://converse.com/logo.svg", "variant": "primary"}
       ],
       "tagline": "Sneaker for the streets",
-      "house_attributes_overrides": {
-        "compliance_policies": ["no_under_13_targeting", "us_only"]
-      },
+      "last_updated": "2026-01-15T10:00:00Z"
+    },
+    {
+      "$schema": "/schemas/brand.json",
+      "version": "1.0",
+      "id": "patagonia",
+      "names": [{"en_US": "Patagonia"}],
+      "keller_type": "independent",
+      "logos": [
+        {"url": "https://patagonia.com/logo.svg", "variant": "primary"}
+      ],
+      "tagline": "We're in business to save our home planet.",
       "last_updated": "2026-01-15T10:00:00Z"
     }
   ]
