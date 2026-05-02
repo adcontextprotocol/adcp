@@ -353,7 +353,7 @@
     },
     {
       "title": "UpstreamTrafficSuccess",
-      "description": "A query_upstream_traffic scenario returned the outbound HTTP calls the agent has made since the requested time window. Used by storyboard runners to apply `check: upstream_traffic` assertions. The mechanism raises the bar against unintentional façades — adapters (often LLM-generated) that satisfy AdCP schema requirements with synthetic placeholders without forwarding data upstream. Adopters self-report their own traffic; this contract is NOT an adversarial integrity check, and consumers MUST NOT treat upstream_traffic passing as cryptographic proof of adapter behavior. Adopters MUST NOT enable query_upstream_traffic against a sandbox that processes production identifier values; storyboards SHOULD use synthetic hashed inputs (e.g., the `acme-user-NNNN` form in the example below). Caller scoping: adopters MUST scope recorded_calls to traffic caused by the requesting principal's session/auth context — cross-caller traffic MUST NOT be returned regardless of `since_timestamp`. Multi-tenant sandboxes MUST key the recording buffer on the comply_test_controller invocation's auth principal, not just process-global. Secret redaction: adopters MUST recursively redact values at keys matching the case-insensitive pattern `^(authorization|credentials?|token|api[_-]?key|password|secret|client[_-]secret|refresh[_-]token|access[_-]token|bearer|session[_-]token|offering[_-]token|cookie|set[_-]cookie)$` from the recorded `payload` before emission. The redaction obligation is normative on the controller — runner-side redaction is a backstop, not a substitute.",
+      "description": "A query_upstream_traffic scenario returned the outbound HTTP calls the agent has made since the requested time window. Used by storyboard runners to apply `check: upstream_traffic` assertions. The mechanism raises the bar against unintentional façades — adapters (often LLM-generated) that satisfy AdCP schema requirements with synthetic placeholders without forwarding data upstream. Adopters self-report their own traffic; this contract is NOT an adversarial integrity check, and consumers MUST NOT treat upstream_traffic passing as cryptographic proof of adapter behavior. Synthetic vectors only: adopters MUST NOT enable query_upstream_traffic against a sandbox that processes production identifier values, regardless of attestation mode. Storyboards SHOULD use synthetic hashed inputs (e.g., the `acme-user-NNNN` form in the example below). The synthetic-vectors-only requirement applies to digest mode as well as raw — the digest carrying production hashed PII would still let a runner with the right precomputed digest set learn membership of arbitrary identifiers in the adopter's production user base (existence-oracle), which is exactly the threat synthetic vectors close. Privacy-conscious adopters use digest mode to support upstream_traffic conformance without raw-payload disclosure of synthetic test data — not to enable testing against production data. Caller scoping: adopters MUST scope recorded_calls to traffic caused by the requesting principal's session/auth context — cross-caller traffic MUST NOT be returned regardless of `since_timestamp`. Multi-tenant sandboxes MUST key the recording buffer on the comply_test_controller invocation's auth principal, not just process-global. Secret redaction: adopters MUST recursively redact values at keys matching the case-insensitive pattern `^(authorization|credentials?|token|api[_-]?key|password|secret|client[_-]secret|refresh[_-]token|access[_-]token|bearer|session[_-]token|offering[_-]token|cookie|set[_-]cookie)$` from the recorded payload before emission (raw mode) or before digest computation (digest mode). The redaction obligation is normative on the controller — runner-side redaction is a backstop, not a substitute.",
       "type": "object",
       "properties": {
         "success": {
@@ -406,8 +406,7 @@
                   "raw",
                   "digest"
                 ],
-                "default": "raw",
-                "description": "Per-call attestation mode echoing the request's `params.attestation_mode`. Adopters MAY unilaterally downgrade a `raw` request to `digest` for a specific call when their policy requires it (e.g., the call carried regulated PII the adopter can't return raw). The runner reads this field to know which assertions to apply. When omitted, defaults to `raw` for backward compatibility with v2.0.0 controllers."
+                "description": "Per-call attestation mode echoing the request's `params.attestation_mode`. Required on every recorded_call so the `oneOf` discriminator always has an explicit value to dispatch on — no implicit defaults inside oneOf branches. Adopters MAY unilaterally downgrade a `raw` request to `digest` for a specific call when their policy requires it (e.g., the call carried regulated PII the adopter can't return raw). The runner reads this field to know which assertions to apply."
               },
               "purpose": {
                 "type": "string",
@@ -428,16 +427,17 @@
               "payload_digest_sha256": {
                 "type": "string",
                 "pattern": "^[a-f0-9]{64}$",
-                "description": "SHA-256 digest of the canonicalized outbound request body, lowercase hex (64 chars). Required when `attestation_mode` is `digest`; MUST be absent when `attestation_mode` is `raw`. Canonicalization rules: for `application/json` and `*+json` content types, the controller MUST compute the digest over the JSON body in canonical form (RFC 8785 / JCS) — sorted keys, no extraneous whitespace — so runners can independently produce a matching digest. For non-JSON content types the digest is computed over the raw body bytes. Secret-key redaction is NOT required before digest computation in digest mode (the body never leaves the controller); however adopters MAY still apply redaction if they want digests to be reproducible from a redacted-form replay."
+                "description": "SHA-256 digest of the canonicalized outbound request body, lowercase hex (64 chars). Required when `attestation_mode` is `digest`; MUST be absent when `attestation_mode` is `raw`. Canonicalization order is normative: (1) controllers MUST apply the recursive secret-key redaction (same pattern as the raw-mode payload field) BEFORE computing the digest; (2) for `application/json` and `*+json` content types, controllers MUST then serialize the redacted body to RFC 8785 (JCS) canonical form — sorted keys, no extraneous whitespace — and digest the resulting bytes. Storyboard-supplied identifiers (hashed PII, request correlation values) MUST NOT be redacted before digest computation; they are the load-bearing match target for `identifier_match_proofs` and digesting them away makes echo verification impossible. Both `payload_digest_sha256` AND `identifier_match_proofs` MUST be computed against the same post-redaction canonical bytes — diverging the two surfaces breaks coherence between digest replay and identifier echo. JCS edge cases: payloads containing `NaN` or `Infinity` numbers MUST grade `not_applicable` for digest mode (RFC 8785 forbids them); payloads carrying numeric identifiers MUST serialize them as JSON strings before digest computation (adtech bid payloads regularly carry IDs outside ±2^53 where I-JSON / RFC 7493 number round-tripping diverges across implementations). For non-JSON content types the digest is computed over the post-redaction raw body bytes."
               },
               "payload_length": {
                 "type": "integer",
                 "minimum": 0,
-                "description": "Byte length of the outbound request body. Required when `attestation_mode` is `digest`; OPTIONAL when raw (consumers can compute it from `payload`). Lets the runner detect adopter-side truncation that would otherwise be invisible in digest mode."
+                "description": "Byte length of the post-redaction canonicalized body. Required in both `raw` and `digest` modes — symmetric across modes so runners can detect adopter-side truncation regardless of attestation choice. In raw mode this MUST equal the byte length of the `payload` value as serialized for transmission; in digest mode this is the length of the canonicalized body the digest covers. Mismatch between observed payload length and reported `payload_length` is a controller-side bug worth surfacing in the report."
               },
               "identifier_match_proofs": {
                 "type": "array",
-                "description": "Per-identifier echo proofs for digest-mode calls. Required when `attestation_mode` is `digest` AND the request supplied `params.identifier_value_digests`; MUST be absent or empty otherwise. Each entry corresponds to one digest from the request: the controller scans the recorded payload for any string token whose SHA-256 hashes to the requested digest and reports whether it was found. Lets storyboards verify `identifier_paths` echo in digest mode without ever transmitting plaintext identifiers to the controller. Self-reported by the controller — same trust model as raw payloads.",
+                "maxItems": 64,
+                "description": "Per-identifier echo proofs for digest-mode calls. Required when `attestation_mode` is `digest` AND the request supplied `params.identifier_value_digests`; MUST be absent or empty otherwise. Each entry corresponds to one digest from the request. Capped at 64 to match the request-side `params.identifier_value_digests` cap. Lets storyboards verify `identifier_paths` echo in digest mode without ever transmitting plaintext identifiers to the controller. SHA-256 is a privacy mechanism here, not a trust mechanism — controllers self-report `found` and a determined façade can return any boolean; consumers MUST NOT treat digest-mode passing as cryptographically more trustworthy than raw mode. Tokenization is normative: for `application/json` and `*+json` content types, controllers MUST scan exactly the JSON string-typed leaf values of the post-redaction canonicalized body — no substring matching, no word splitting, no case folding, no Unicode normalization. A token matches when its SHA-256 hash equals one of the requested digests byte-for-byte. For non-JSON content types (form-urlencoded, multipart, plain text), `identifier_match_proofs` MUST be empty and runner-side `identifier_paths` assertions targeting those calls grade `not_applicable` — token boundaries are not portably defined across non-JSON shapes.",
                 "items": {
                   "type": "object",
                   "properties": {
@@ -475,21 +475,22 @@
               "endpoint",
               "url",
               "content_type",
+              "attestation_mode",
+              "payload_length",
               "timestamp"
             ],
             "additionalProperties": false,
             "oneOf": [
               {
                 "title": "RawAttestation",
-                "description": "attestation_mode raw (default) — payload is required; payload_digest_sha256, payload_length, and identifier_match_proofs are absent.",
+                "description": "attestation_mode raw — payload is required; payload_digest_sha256 and identifier_match_proofs are absent. attestation_mode is required at the item level so the discriminator always has a value to dispatch on (no implicit defaults inside oneOf branches).",
                 "properties": {
                   "attestation_mode": {
-                    "enum": [
-                      "raw"
-                    ]
+                    "const": "raw"
                   }
                 },
                 "required": [
+                  "attestation_mode",
                   "payload"
                 ],
                 "not": {
@@ -509,18 +510,15 @@
               },
               {
                 "title": "DigestAttestation",
-                "description": "attestation_mode digest — payload_digest_sha256 + payload_length required, payload absent. identifier_match_proofs present when the request supplied identifier_value_digests.",
+                "description": "attestation_mode digest — payload_digest_sha256 required, payload absent. identifier_match_proofs present when the request supplied identifier_value_digests.",
                 "properties": {
                   "attestation_mode": {
-                    "enum": [
-                      "digest"
-                    ]
+                    "const": "digest"
                   }
                 },
                 "required": [
                   "attestation_mode",
-                  "payload_digest_sha256",
-                  "payload_length"
+                  "payload_digest_sha256"
                 ],
                 "not": {
                   "required": [
@@ -787,6 +785,7 @@
                 }
               ]
             },
+            "payload_length": 387,
             "timestamp": "2026-05-02T14:30:01.245Z",
             "status_code": 200
           }
@@ -794,7 +793,7 @@
       }
     },
     {
-      "description": "Upstream traffic in digest attestation mode — EU adopter under GDPR processor obligations cannot return raw payloads carrying hashed PII. Returns payload_digest_sha256 + payload_length + identifier_match_proofs[] (per-digest echo verification matching the request's identifier_value_digests).",
+      "description": "Upstream traffic in digest attestation mode — privacy-conscious adopter returns payload_digest_sha256 + payload_length + identifier_match_proofs[] (per-digest echo verification matching the request's identifier_value_digests) instead of raw payload. Synthetic vectors only: digest mode reduces what the runner sees, but the controller must still operate on synthetic test data.",
       "data": {
         "success": true,
         "since_timestamp": "2026-05-02T14:30:00Z",
