@@ -194,6 +194,20 @@ function detectHallucinatedAction(text: string, toolExecutions: ToolExecution[])
   return null;
 }
 
+/**
+ * Empty-turn detector (#3721). The user gets nothing back when the model
+ * produces no text AND no successful tool calls — same UX as a transport
+ * drop, and the signature failure mode behind silent invoice-tool failures.
+ * Returns a reason string when this happens so the caller can flag + log it.
+ */
+export function detectEmptyTurn(text: string, toolExecutions: ToolExecution[]): string | null {
+  if (text.length > 0) return null;
+  const successful = toolExecutions.filter(t => !t.is_error).length;
+  if (successful > 0) return null;
+  const errored = toolExecutions.length - successful;
+  return `Empty turn: no text and no successful tool calls (toolExecutions=${toolExecutions.length}, errored=${errored})`;
+}
+
 /** Default max tool iterations for regular users */
 export const DEFAULT_MAX_ITERATIONS = 10;
 
@@ -788,6 +802,12 @@ export class AddieClaudeClient {
           logger.warn({ toolsUsed, reason: hallucinationReason }, 'Addie: Possible hallucinated action detected');
         }
 
+        const emptyTurnReason = detectEmptyTurn(text, toolExecutions);
+        if (emptyTurnReason) {
+          logger.warn({ toolsUsed, toolExecutions: toolExecutions.length }, 'Addie: Empty turn — no text and no successful tool calls');
+        }
+        const flagReason = hallucinationReason ?? emptyTurnReason;
+
         const finalUsage = {
           input_tokens: totalInputTokens,
           output_tokens: totalOutputTokens,
@@ -810,8 +830,8 @@ export class AddieClaudeClient {
           text,
           tools_used: toolsUsed,
           tool_executions: toolExecutions,
-          flagged: !!hallucinationReason,
-          flag_reason: hallucinationReason ?? undefined,
+          flagged: !!flagReason,
+          flag_reason: flagReason ?? undefined,
           active_rule_ids: undefined,
           config_version_id: configVersionId ?? undefined,
           timing: {
@@ -1421,16 +1441,23 @@ export class AddieClaudeClient {
             logger.warn({ toolsUsed, reason: hallucinationReason }, 'Addie Stream: Possible hallucinated action detected');
           }
 
+          const pipelined = applyResponsePipeline(userMessage, fullText);
+          const emptyTurnReason = detectEmptyTurn(pipelined, toolExecutions);
+          if (emptyTurnReason) {
+            logger.warn({ toolsUsed, toolExecutions: toolExecutions.length }, 'Addie Stream: Empty turn — no text and no successful tool calls');
+          }
+          const flagReason = hallucinationReason ?? emptyTurnReason;
+
           const streamUsage = buildStreamUsage();
           await chargeStreamCost(streamUsage);
           yield {
             type: 'done',
             response: {
-              text: applyResponsePipeline(userMessage, fullText),
+              text: pipelined,
               tools_used: toolsUsed,
               tool_executions: toolExecutions,
-              flagged: !!hallucinationReason,
-              flag_reason: hallucinationReason ?? undefined,
+              flagged: !!flagReason,
+              flag_reason: flagReason ?? undefined,
               active_rule_ids: undefined,
               config_version_id: configVersionId ?? undefined,
               timing: {
