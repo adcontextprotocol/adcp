@@ -60,18 +60,8 @@ jobs:
       - name: Fetch 3.0.x
         run: git fetch origin 3.0.x
 
-      - name: Skip if 3.0.x already in main
-        id: ancestry
-        run: |
-          if git merge-base --is-ancestor origin/3.0.x origin/main; then
-            echo "3.0.x is already an ancestor of main; nothing to forward-merge."
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "skip=false" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Create forward-merge branch and merge
-        if: steps.ancestry.outputs.skip != 'true'
+        id: merge
         run: |
           set -e
           # Create the target branch BEFORE the merge so peter-evans sees
@@ -79,16 +69,144 @@ jobs:
           # diffs its branch: ref against base:, not the working tree).
           git checkout -B forward-merge/3.0.x origin/main
 
-          if ! git merge --no-ff origin/3.0.x \
-              -m "Forward-merge 3.0.x@$(git rev-parse --short origin/3.0.x) → main"; then
-            echo "::error::Merge conflict between 3.0.x and main. Resolve manually:"
-            echo "::error::  git checkout main && git merge origin/3.0.x"
-            git merge --abort
-            exit 1
+          # Attempt the merge. Conflicts are expected on a small set of
+          # divergent-by-design files (package.json version, .changeset/,
+          # CHANGELOG.md, dist/) — auto-resolved below. Anything else
+          # conflicting fails the workflow loud.
+          MERGE_MSG="Forward-merge 3.0.x@$(git rev-parse --short origin/3.0.x) → main"
+          if git merge --no-ff origin/3.0.x -m "$MERGE_MSG"; then
+            echo "Merge completed without conflicts."
+          else
+            CONFLICTS=$(git diff --name-only --diff-filter=U)
+            # Guard: a non-zero merge with no surfaced conflicts means
+            # something other than a content conflict failed (hook
+            # rejection, refusing-to-merge-unrelated-histories, etc.).
+            # Bail loud rather than masking with the "nothing to resolve"
+            # success path below.
+            if [ -z "$CONFLICTS" ]; then
+              echo "::error::git merge failed but produced no conflicted files. Investigate manually."
+              git merge --abort 2>/dev/null || true
+              exit 1
+            fi
+            echo "Conflicts to auto-resolve:"
+            echo "$CONFLICTS"
+
+            UNEXPECTED=""
+            while IFS= read -r f; do
+              [ -z "$f" ] && continue
+              case "$f" in
+                # `.changeset/*.md` and `.changeset/pre.json`: preserve
+                # main's state. Main consumes changesets on its own pre-mode
+                # schedule (each Version Packages cut on main produces a
+                # 3.1.0-beta.X bump from accumulated changesets); 3.0.x
+                # consuming a changeset on its release line shouldn't
+                # silently delete the same file from main's pending pool.
+                # Use `git status --porcelain` to distinguish the conflict
+                # shape — `--ours` checkout fails when ours is the deleted
+                # side (delete/modify), so we route DU/DD to `git rm`.
+                .changeset/*.md|.changeset/pre.json)
+                  STATUS=$(git status --porcelain -- "$f" | head -c 2)
+                  case "$STATUS" in
+                    DU|DD|D*)
+                      git rm -f -- "$f" >/dev/null
+                      ;;
+                    *)
+                      git checkout --ours -- "$f"
+                      git add -- "$f"
+                      ;;
+                  esac
+                  ;;
+                # package.json: take 3.0.x's wholesale. The version field
+                # is the structural conflict (3.0.x is one patch ahead of
+                # main after each release); other fields SHOULD be in sync
+                # if the playbook is followed (changes land on main first,
+                # cherry-picked to 3.0.x). If main has unique additions
+                # that 3.0.x doesn't, those came from a missing cherry-pick
+                # — the PR review surfaces the loss in the diff and the
+                # follow-up is a re-add commit on main.
+                package.json|package-lock.json)
+                  git checkout --theirs -- "$f"
+                  git add -- "$f"
+                  ;;
+                # Schema source index files carry version metadata that gets
+                # regenerated on every release build (scripts/build-schemas.cjs
+                # populates published_version / adcp_version from package.json).
+                # Take theirs — values get overwritten on next release.
+                static/schemas/source/index.json|static/schemas/source/registry/index.yaml)
+                  git checkout --theirs -- "$f"
+                  git add -- "$f"
+                  ;;
+                # CHANGELOG.md: both lines prepend new entries via changesets;
+                # the merge will conflict at the top. Take theirs (3.0.x's
+                # CHANGELOG includes the canonical 3.0 line history); main's
+                # next Version Packages cut prepends its own entries above.
+                CHANGELOG.md)
+                  git checkout --theirs -- "$f"
+                  git add -- "$f"
+                  ;;
+                # dist/{schemas,compliance,protocol,docs}/<version>/ are
+                # 3.0.x's release artifacts that main needs to serve at
+                # versioned URLs. Always take theirs — these directories
+                # are immutable per release and main only ever ADDS to its
+                # dist tree, never rewrites old versions. Explicit list
+                # rather than `dist/*` so future mutable subtrees under
+                # dist/ (e.g., a development-only dist/index.html) don't
+                # silently auto-resolve.
+                dist/schemas/*|dist/compliance/*|dist/protocol/*|dist/docs/*)
+                  git checkout --theirs -- "$f"
+                  git add -- "$f"
+                  ;;
+                *)
+                  UNEXPECTED="$UNEXPECTED $f"
+                  ;;
+              esac
+            done <<< "$CONFLICTS"
+
+            if [ -n "$UNEXPECTED" ]; then
+              echo "::error::Forward-merge has unexpected conflicts that need manual resolution:$UNEXPECTED"
+              echo "::error::Resolve manually: git checkout main && git merge origin/3.0.x"
+              git merge --abort
+              exit 1
+            fi
+
+            # Anything still unmerged after auto-resolution? Should be empty.
+            REMAINING=$(git diff --name-only --diff-filter=U)
+            if [ -n "$REMAINING" ]; then
+              echo "::error::After auto-resolution, files still conflicted: $REMAINING"
+              git merge --abort
+              exit 1
+            fi
+
+            git commit --no-edit -m "$MERGE_MSG (auto-resolved divergent metadata)"
+            echo "Auto-resolution complete."
+
+            # Surface the resolution shape inline so a reviewer sees what
+            # the workflow did without having to download the diff. Two
+            # views: per-file resolution status (already staged), and a
+            # focused package.json field-level diff (the one path where
+            # silent loss of main-unique scripts is a real concern).
+            echo ""
+            echo "::group::Post-resolution git status"
+            git status --short
+            echo "::endgroup::"
+            echo ""
+            echo "::group::package.json diff vs origin/main"
+            git diff origin/main HEAD -- package.json package-lock.json || true
+            echo "::endgroup::"
+          fi
+
+          # Did the merge actually change anything vs main? If 3.0.x's
+          # content already reached main via a prior squash-merge or
+          # cherry-pick, there's nothing to PR. Skip cleanly.
+          if git diff --quiet origin/main HEAD; then
+            echo "Forward-merge produced no tree change — main already has 3.0.x's content."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Create or update pull request
-        if: steps.ancestry.outputs.skip != 'true'
+        if: steps.merge.outputs.skip != 'true'
         uses: peter-evans/create-pull-request@v8
         with:
           token: ${{ steps.app-token.outputs.token }}
@@ -102,18 +220,42 @@ jobs:
             3.0.x fixes. **Direction is one-way**: `3.0.x → main`. Never the
             reverse.
 
+            ## Auto-resolved divergent metadata
+
+            Conflicts on these always-divergent paths are resolved
+            automatically (see workflow source for rationale):
+
+            - `package.json` / `package-lock.json` → take 3.0.x's (version
+              propagates; main's pre-mode tracking is independent)
+            - `.changeset/*.md` / `.changeset/pre.json` → preserve main's
+              state (main consumes changesets on its own beta schedule)
+            - `static/schemas/source/index.json`,
+              `static/schemas/source/registry/index.yaml` → take 3.0.x's
+              (regenerated on next release build anyway)
+            - `CHANGELOG.md` → take 3.0.x's (main's next Version Packages
+              cut prepends its own beta entries above)
+            - `dist/*` → take 3.0.x's (versioned release artifacts)
+
+            Any conflict outside this list fails the workflow loud — needs
+            manual resolution and indicates a playbook violation (a change
+            on 3.0.x that wasn't first cherry-picked from main).
+
             ## Review checklist
 
             - [ ] Diff matches what you'd expect from the 3.0.x patches
             - [ ] No 3.1-line work has been pulled in by accident (would
                   indicate the merge picked up something unintended)
+            - [ ] If the merge commit message says "(auto-resolved
+                  divergent metadata)", spot-check `package.json` for any
+                  main-unique scripts/deps that may have been overwritten
+                  (a missed cherry-pick to 3.0.x — re-add as a follow-up)
             - [ ] CI green
 
             ## Source
 
             See `.github/workflows/forward-merge-3.0.yml` for the trigger
-            and merge logic. See `.agents/playbook.md` § Release lines for
-            the cherry-pick convention.
+            and auto-resolution logic. See `.agents/playbook.md` § Release
+            lines for the cherry-pick convention.
 
             🤖 Generated by `.github/workflows/forward-merge-3.0.yml`
           labels: forward-merge
