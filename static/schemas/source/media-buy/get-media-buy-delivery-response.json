@@ -156,7 +156,7 @@
         },
         "metric_aggregates": {
           "type": "array",
-          "description": "Cross-buy delivery aggregates partitioned by qualifier. Row-symmetric with `package.committed_metrics` and `by_package[].missing_metrics` — same atomic unit `(scope, metric_id, qualifier)` — so reconciliation collapses to a row-level join on the tuple. Granularity rule: one row per `(metric_id, full-qualifier-set)`, reported at the finest available granularity; buyers re-aggregate up if they want a coarser view. Used only for metrics with non-empty qualifier sets — unqualified metrics (`impressions`, `spend`, `media_buy_count`, etc.) remain at the top of `aggregated_totals` to avoid duplicate sources of truth. The qualifier vocabulary on this delivery surface is a deliberate **superset** of `committed_metrics.qualifier`: contract qualifier is closed (today: `viewability_standard` only); delivery qualifier reserves additional keys for path-level transparency disclosures the buyer does not commit to (e.g., `tracker_firing` pending #3832 resolution). Each row carries a `value` plus inlined per-metric component fields (e.g., `measurable_impressions` and `viewable_impressions` for `viewable_rate`; `spend` and `conversions` for `cost_per_acquisition`). Per-buy `totals` keeps its flat shape — each buy is single-qualifier by definition; only the aggregate spans qualifiers.",
+          "description": "Cross-buy delivery aggregates partitioned by qualifier. Row-symmetric with `package.committed_metrics` and `by_package[].missing_metrics` — same atomic unit `(scope, metric_id, qualifier)` — so reconciliation collapses to a row-level join on the tuple. Granularity rule: one row per `(metric_id, full-qualifier-set)`, reported at the finest available granularity; buyers re-aggregate up if they want a coarser view. Used only for metrics with non-empty qualifier sets — unqualified metrics (`impressions`, `spend`, `media_buy_count`, etc.) remain at the top of `aggregated_totals`. **Mutual exclusion MUST**: for any `metric_id` appearing in `metric_aggregates`, the corresponding top-level scalar in `aggregated_totals` MUST be omitted (not zeroed) — avoids duplicate sources of truth. The qualifier vocabulary on this delivery surface is closed today (`additionalProperties: false`, same content as `committed_metrics.qualifier`) but is expected to **diverge from contract qualifier in future minors** as transparency disclosures buyers don't commit to ship delivery-only (e.g., `tracker_firing` pending #3832 resolution). Each row carries a `value` plus inlined per-metric component fields (e.g., `measurable_impressions` and `viewable_impressions` for `viewable_rate`; `spend` and `conversions` for `cost_per_acquisition`). Per-buy `totals` keeps its flat shape — each buy is single-qualifier by definition; only the aggregate spans qualifiers. **Qualifier-set drift across reports**: when a campaign gains a new qualifier mid-flight (e.g., adds `tracker_firing` partitioning in week 2), prior periods' rows remain valid at their original granularity; buyers SHOULD NOT retroactively repartition.",
           "items": {
             "type": "object",
             "discriminator": {
@@ -231,7 +231,25 @@
                   }
                 },
                 "required": ["scope", "metric_id", "value"],
-                "additionalProperties": true
+                "additionalProperties": false,
+                "allOf": [
+                  {
+                    "if": { "properties": { "metric_id": { "const": "viewable_rate" } } },
+                    "then": { "required": ["measurable_impressions", "viewable_impressions"] }
+                  },
+                  {
+                    "if": { "properties": { "metric_id": { "const": "completion_rate" } } },
+                    "then": { "required": ["impressions", "completed_views"] }
+                  },
+                  {
+                    "if": { "properties": { "metric_id": { "const": "cost_per_acquisition" } } },
+                    "then": { "required": ["spend", "conversions"] }
+                  },
+                  {
+                    "if": { "properties": { "metric_id": { "const": "roas" } } },
+                    "then": { "required": ["spend", "conversion_value"] }
+                  }
+                ]
               },
               {
                 "properties": {
@@ -264,7 +282,7 @@
                   }
                 },
                 "required": ["scope", "vendor", "metric_id", "value"],
-                "additionalProperties": true
+                "additionalProperties": false
               }
             ]
           },
