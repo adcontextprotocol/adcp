@@ -1422,7 +1422,15 @@
             "last_updated": { "type": "string", "format": "date-time" }
           },
           "required": ["parent_house"],
-          "not": { "required": ["brand_refs"] }
+          "not": {
+            "anyOf": [
+              { "required": ["house"] },
+              { "required": ["brands"] },
+              { "required": ["brand_refs"] },
+              { "required": ["house_attributes"] },
+              { "required": ["authorized_operators"] }
+            ]
+          }
         },
         { "$ref": "#/definitions/brand" }
       ]
@@ -1842,7 +1850,7 @@
       "id": "converse",
       "names": [{"en_US": "Converse"}],
       "keller_type": "sub_brand",
-      "parent_house": { "domain": "nikeinc.com", "brand_id": "converse" },
+      "parent_house": { "domain": "nikeinc.com" },
       "logos": [
         {"url": "https://converse.com/logo.svg", "variant": "primary"}
       ],
