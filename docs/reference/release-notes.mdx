@@ -9,6 +9,156 @@ High-level summaries of major AdCP releases with migration guidance. For detaile
 
 ---
 
+## Version 3.0.4
+
+**Status:** Patch release — stable-surface no-op for 3.0-conformant agents
+
+**3.0.4 is the third 3.0.x patch.** Three additive cherry-picks from main, all hand-adapted for the maintenance line: the `manifest.json` + structured `enumMetadata` artifact (so SDKs stop hand-transcribing the spec), a normative `issues[]` array on `core/error.json`, and prose-only tightening of `AUTH_REQUIRED` to call out the retry-storm risk. Wire format unchanged.
+
+<Info>
+**Upgrading from 3.0.3?** No code changes required for 3.0-conformant agents. SDK consumers bump `ADCP_VERSION` to `3.0.4` to pick up `manifest.json` and the new `enumMetadata` block.
+</Info>
+
+### Adopter action
+
+| If you are… | What you need to do |
+|---|---|
+| A 3.0-conformant production agent | Nothing. Stable schemas remain wire-compatible with 3.0.0. |
+| An SDK author | Switch from parsing `Recovery: X` prose out of `enumDescriptions` to consuming the structured `enumMetadata` block. The build-time lint guarantees structured/prose parity, so the prose path can stay as a fallback while you migrate. |
+| An SDK consumer | Bump `ADCP_VERSION` to `3.0.4`. Pick up `/schemas/3.0.4/manifest.json` for one-stop tool/error/specialism enumeration. |
+| Implementing a buyer agent | Read the new `AUTH_REQUIRED` sub-cases in [error-handling.mdx](/docs/building/implementation/error-handling) — the wire code stays the same but you SHOULD NOT auto-retry when credentials were attached and rejected (terminal case). 3.1 will split this into separate enum values via #3739. |
+| Returning multi-field validation errors | Optionally populate `core/error.json`'s new top-level `issues[]` array (each entry: RFC 6901 pointer, message, JSON Schema keyword). Pre-3.1 consumers reading only `field` get the first failure; 3.1+ consumers prefer `issues`. |
+
+### `manifest.json` + structured `enumMetadata` (#3725, #3738)
+
+Two additive artifacts published with every released schema bundle:
+
+1. **`enums/error-code.json` gains an `enumMetadata` block.** Every error code now carries structured `recovery` (`correctable` | `transient` | `terminal`) and `suggestion` fields. SDKs MUST consume this block instead of parsing `Recovery: X` prose out of `enumDescriptions` — a build-time lint enforces structured/prose parity. Closes the root cause of [adcp-client#1135](https://github.com/adcontextprotocol/adcp-client/issues/1135) (17 missing codes, 3 wrong recovery classifications shipped in TS SDK for over a year).
+
+2. **`/schemas/3.0.4/manifest.json`.** Single canonical artifact listing every tool (with `protocol`, `mutating`, `request_schema`, `response_schema`, `async_response_schemas`, `specialisms`), every error code (with `recovery`, `description`, `suggestion`), an `error_code_policy` block (defining `default_unknown_recovery` so SDKs handle non-spec codes correctly), and every storyboard specialism (with `protocol`, `entry_point_tools`, `exercised_tools`). Validates against `manifest.schema.json`. Lets SDKs derive their internal tool/error tables from one place at codegen time.
+
+The 3.0.4 manifest covers exactly the 45 error codes 3.0.x ships (vs. main's 48 — three of main's codes don't exist in 3.0.x's enum and were trimmed during the cherry-pick).
+
+### `core/error.json` — `issues[]` field (#3059, #3562)
+
+Optional top-level `issues` array on the standard error envelope, normalizing what `@adcp/sdk` and prospectively `adcp-go` / `adcp-client-python` already need for multi-field validation rejections.
+
+```json
+{
+  "code": "VALIDATION_ERROR",
+  "message": "Request validation failed",
+  "field": "creatives[0].assets.image",
+  "issues": [
+    {
+      "pointer": "/creatives/0/assets/image",
+      "message": "Required",
+      "keyword": "required"
+    },
+    {
+      "pointer": "/creatives/0/format_id",
+      "message": "Must match pattern",
+      "keyword": "pattern"
+    }
+  ]
+}
+```
+
+Each entry is `{ pointer (RFC 6901), message, keyword, schemaPath? }`. `schemaPath` MAY be omitted in production to avoid fingerprinting `oneOf` branch selection on adversarial payloads.
+
+**Backward compatibility with `field` (singular):** when both are present, sellers SHOULD set `field` to `issues[0].pointer`. Pre-3.1 consumers reading only `field` get the first failure; 3.1+ consumers prefer the top-level `issues`. Sellers MAY mirror `issues[]` into `details.issues` for backward compat with consumers reading from `details`.
+
+### `AUTH_REQUIRED` retry-storm prose (#3730 partial, #3739 backport)
+
+`AUTH_REQUIRED` conflates two operationally distinct cases — credentials missing (genuinely correctable) and credentials presented but rejected (terminal — needs human rotation). A buyer agent treating both as `correctable` will retry-loop on revoked tokens, hammering seller SSO endpoints in a pattern indistinguishable from a brute-force probe.
+
+The 3.1 line splits this into `AUTH_MISSING` and `AUTH_INVALID` (#3739). 3.0.x cannot adopt the split — adding new enum values violates the maintenance line's semver rules. 3.0.4 ships the prose-only backport: the wire code stays `AUTH_REQUIRED` with `recovery: correctable`, but the description and `enumMetadata.suggestion` now spell out the two sub-cases and the SHOULD-NOT-auto-retry rule for the rejected-credential case. SDKs running against 3.0.x sellers can apply the operational distinction at the application layer.
+
+`docs/building/implementation/error-handling.mdx` gets a sub-case callout and an updated example showing how to branch on whether credentials were attached. Closes the 3.0.x portion of #3730; the full split lands in 3.1.0.
+
+### Detailed changelog
+
+For the full per-PR change list, see [CHANGELOG.md § 3.0.4](https://github.com/adcontextprotocol/adcp/blob/main/CHANGELOG.md#304).
+
+---
+
+## Version 3.0.3
+
+**Status:** Patch release — additive storyboard schema field, stable-surface no-op for 3.0-conformant agents
+
+**3.0.3 ships the `provides_state_for` storyboard field** so the conformance suite can rescue cascade-skipping when two interchangeable stateful steps live in the same phase. Plus a docs-only fix for the `url_type` enum in channel docs that was emitting a value the published schema already excluded.
+
+<Info>
+**Upgrading from 3.0.2?** No code changes required for 3.0-conformant agents. Storyboard runners on `@adcp/sdk` 6.5.0+ pick up the new field automatically once the cache refreshes against 3.0.3.
+</Info>
+
+### Adopter action
+
+| If you are… | What you need to do |
+|---|---|
+| A 3.0-conformant production agent | Nothing. Stable schemas unchanged. |
+| Authoring storyboards | Optionally use `provides_state_for: <step_id>` on a stateful step to declare it substitutes for a missing peer step's state. Same-phase only; both steps must be `stateful: true`. The build-time lint enforces shape, target validity, statefulness, no self-reference, and no two-step cycles. |
+| Running storyboards via `@adcp/sdk` | Bump to 6.5.0+ to pick up the cascade-rescue runtime. Older SDK versions ignore the field and fall back to the existing `missing_tool` cascade behavior. |
+| A storyboard-authoring docs source (channels) | Replace `"url_type": "tracker"` with `"url_type": "tracker_pixel"` in any examples. The published schema enum already excluded `"tracker"`, so existing valid wire payloads are unaffected — only the prose docs were drifting. |
+
+### `provides_state_for` storyboard field (#3734)
+
+Optional `provides_state_for: <step_id> | <step_id>[]` on a stateful storyboard step declares that this step's pass establishes equivalent state for the named peer step(s) in the same phase. Pairs with the cascade-skip mechanism in `@adcp/sdk` 6.5.0+: when a peer step would otherwise grade `missing_tool` or `missing_test_controller`, the substitute waives the cascade and the runner grades the peer with the new `peer_substituted` skip reason.
+
+**Concrete impact:** explicit-mode social platforms (Snap, Meta, TikTok) intentionally pre-provision advertiser accounts out-of-band — `sync_accounts` is `missing_tool` by design, with `list_accounts` as the canonical alternative. 3.0.3's `sales-social/index.yaml` declares `provides_state_for: sync_accounts` on the `list_accounts` step, letting these adapters graduate from `1/9/0` (8 downstream stateful steps cascade-skipped) to `9/10` against the `sales_social` storyboard once the SDK cache refreshes.
+
+The field is part of the conformance harness, so it ships under the harness-additive patch-eligibility rule. Existing storyboards that don't use it keep their current cascade behavior — pure additive.
+
+Build-time validation (`scripts/lint-storyboard-provides-state-for.cjs`): rule shape, self-reference, unknown target, cross-phase reference (rejected — must be same-phase), target-not-stateful, substitute-not-stateful, and direct-cycle violations all fail loud.
+
+### `runner-output-contract.yaml` — `peer_substituted` skip reason
+
+Companion to `provides_state_for`: when the runner waives a cascade because a same-phase peer substituted for the state contract, it grades the original peer with `skip_result.reason = peer_substituted` and detail `"<this_step_id> state provided by <peer_phase_id>.<peer_step_id>"`. Distinct from `peer_branch_taken` (branch-set routing for mutually exclusive behaviors) and `not_applicable` (coverage gap — agent didn't declare the protocol).
+
+### `url_type: tracker` → `tracker_pixel` (#2986 step 1)
+
+Display, audio, carousels, and DOOH channel docs were emitting `"url_type": "tracker"` in examples — a value the published `url-asset-type.json` enum (`clickthrough` / `tracker_pixel` / `tracker_script`) already excluded. Fixed to `tracker_pixel`. Wire format unchanged; only prose docs were drifting.
+
+### Detailed changelog
+
+For the full per-PR change list, see [CHANGELOG.md § 3.0.3](https://github.com/adcontextprotocol/adcp/blob/main/CHANGELOG.md#303).
+
+---
+
+## Version 3.0.2
+
+**Status:** Patch release — additive storyboard check kind + canonical asset-union schema
+
+**3.0.2 ships a new storyboard check kind** that closes a static-analysis gap in `@adcp/sdk`'s drift verifier, plus extracts a shared asset-variant `oneOf` union into its own schema file so codegen tools (notably `json-schema-to-typescript`) stop emitting numbered duplicate types.
+
+<Info>
+**Upgrading from 3.0.1?** No code changes required for 3.0-conformant agents. The check kind is consumed by the conformance runner, not by sellers; the asset-union refactor is a wire-format no-op.
+</Info>
+
+### Adopter action
+
+| If you are… | What you need to do |
+|---|---|
+| A 3.0-conformant production agent | Nothing. Wire format and validation semantics unchanged. |
+| An SDK author running codegen against schemas | Re-run `json-schema-to-typescript` (or your equivalent) to drop the `VASTAsset1`, `DAASTAsset1`, `BriefAsset1`, `CatalogAsset1` numbered duplicates. They were artifacts of the same `oneOf` union being encountered through multiple parent schemas; 3.0.2 references the canonical `core/assets/asset-union.json` from both `creative-asset.json` and `creative-manifest.json`. |
+| Authoring storyboards that assert envelope-level fields | Optionally use the new `envelope_field_present` check kind in place of `field_present` for `protocol-envelope.json` fields like `status`. The new check walks the envelope schema rather than the step's `response_schema_ref`, eliminating the static-analysis `VERIFIER_UNREACHABLE` gap in adcp-client's storyboard-drift verifier. |
+| Running storyboards via `@adcp/sdk` | Bump to the version that lands [adcp-client#1045](https://github.com/adcontextprotocol/adcp-client/pull/1045) for the new check kind. |
+
+### `envelope_field_present` check kind
+
+Storyboard `validations[].check` gains `envelope_field_present` as a peer of `field_present`. Same shape — `path` is RFC 6901-style — but resolves the path against `protocol-envelope.json` rather than the step's `response_schema_ref`. Used in `static/compliance/source/universal/v3-envelope-integrity.yaml` to assert that responses include `status`, where the previous `field_present` check left a `VERIFIER_UNREACHABLE` hole because `status` lives on the envelope, not the per-task response schema.
+
+### Canonical `core/assets/asset-union.json`
+
+The asset-variant `oneOf` union (the discriminated set of `image | video | text | url | vast | daast | ...` shapes) was inlined identically in `creative-asset.json` and `creative-manifest.json`. `json-schema-to-typescript` walking those parent schemas independently emitted `VASTAsset1`, `DAASTAsset1`, `BriefAsset1`, `CatalogAsset1` numbered-duplicate types — invisible at the wire level, irritating in generated code.
+
+3.0.2 promotes the union to `core/assets/asset-union.json` and references it via `$ref` from both parents. Codegen now emits a single `Asset` (or whatever your tool chooses) without the numbered duplicates. Wire format and validation semantics unchanged — pure refactor of the schema reference graph.
+
+### Detailed changelog
+
+For the full per-PR change list, see [CHANGELOG.md § 3.0.2](https://github.com/adcontextprotocol/adcp/blob/main/CHANGELOG.md#302).
+
+---
+
 ## Version 3.0.1
 
 **Status:** Patch release — stable-surface no-op for 3.0-conformant agents
