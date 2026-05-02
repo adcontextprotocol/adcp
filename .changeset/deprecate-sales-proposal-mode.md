@@ -9,7 +9,9 @@ Proposal mode is how guaranteed deals get sold in practice — RFP → proposal 
 Following the established `signed-requests` precedent (deprecated in 3.1, retained until 4.0), this PR:
 
 - Adds `sales-proposal-mode` to `x-deprecated-enum-values` in `static/schemas/source/enums/specialism.json`
-- Updates `enumDescriptions[sales-proposal-mode]` with the deprecation note + migration path: declare `sales-guaranteed` instead; the `media_buy_seller/proposal_finalize` scenario remains accessible to agents that support `buying_mode: 'refine'` regardless of which specialism is declared
+- Updates `enumDescriptions[sales-proposal-mode]` with the deprecation note + migration path
+- Adds `media_buy_seller/proposal_finalize` to `sales-guaranteed`'s `requires_scenarios` so the proposal lifecycle actually grades under the new specialism — sellers that declare `generates_proposals` capability grade against the proposal flow, sellers without it grade proposal_finalize as `not_applicable` (the scenario already declares `generates_proposals` capability so the runner skips gracefully)
+- Updates `sales-guaranteed`'s narrative to reflect that proposal flows are part of guaranteed selling
 - Adds a deprecation banner to the storyboard at `static/compliance/source/specialisms/sales-proposal-mode/index.yaml`
 
 The storyboard bundle and enum value are retained through 3.x for backward compatibility — sellers that declare `sales-proposal-mode` continue to grade against the existing flow without any wire break. New sellers should declare `sales-guaranteed`. At 4.0 the enum value is removed and the storyboard bundle is retired.

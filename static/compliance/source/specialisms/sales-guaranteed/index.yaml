@@ -10,6 +10,7 @@ required_tools:
   - create_media_buy
 requires_scenarios:
   - media_buy_seller/refine_products
+  - media_buy_seller/proposal_finalize
   - media_buy_seller/delivery_reporting
   - media_buy_seller/measurement_terms_rejected
   - media_buy_seller/pending_creatives_to_start
@@ -39,6 +40,16 @@ narrative: |
   automation and human decision-making that makes guaranteed buys work in practice. IO review
   is modelled entirely at the A2A task layer; there is no interim "pending_approval" media buy
   status (that value only exists on Account.status, not MediaBuy.status).
+
+  Proposal-driven workflows are part of guaranteed selling: most guaranteed deals start with
+  an RFP/brief, generate a proposal with curated bundles and rationale, refine, finalize to
+  committed status with firm pricing and an inventory hold, and then the buyer accepts via
+  create_media_buy. The `media_buy_seller/proposal_finalize` scenario in this specialism's
+  `requires_scenarios` exercises that flow. Sellers that declare `generates_proposals`
+  capability grade against it; direct-buy guaranteed sellers (rare; quoted-rate-only flows
+  with no RFP) grade proposal_finalize as not_applicable. This mirrors the consolidation
+  from the deprecated `sales-proposal-mode` specialism — proposal mode is how guaranteed
+  deals get sold, not a separate selling shape.
 
 agent:
   interaction_model: media_buy_seller
