@@ -30,6 +30,34 @@ version: "2.0.0"
 title: "Runner output contract"
 summary: "Required failure-detail shape that AdCP storyboard runners MUST emit so implementors can self-diagnose validation failures."
 
+# Single source of truth for the storyboard-authored check enum.
+# Storyboards MUST only declare step.validations[].check values from this
+# list. Synthesized codes (capture_path_not_resolvable,
+# unresolved_substitution) are emitted by the runner — not authored — and
+# MUST NOT appear here. The build-time lint
+# `scripts/lint-storyboard-check-enum.cjs` reads this field and rejects any
+# storyboard that declares an unknown check kind, complementing the runtime
+# forward-compat default (which exists for cross-version skew between
+# storyboard and runner, not for catching typos at publish time).
+authored_check_kinds:
+  - response_schema
+  - field_present
+  - field_absent
+  - envelope_field_present
+  - field_value
+  - field_value_or_absent
+  - status_code
+  - http_status
+  - http_status_in
+  - error_code
+  - on_401_require_header
+  - resource_equals_agent_url
+  - any_of
+  - refs_resolve
+  - a2a_submitted_artifact
+  - a2a_context_continuity
+  - upstream_traffic
+
 # Conforming implementation: adcp-client PR #611
 # (src/lib/testing/storyboard/types.ts — RunnerRequestRecord,
 # RunnerResponseRecord, ValidationResult, RunnerSkipResult, etc.).
@@ -151,8 +179,9 @@ validation_result:
                               #   upstream_traffic     → object with the declared
                               #                          assertion: { min_count,
                               #                          endpoint_pattern, payload_must_contain,
-                              #                          identifier_paths, since } —
-                              #                          whichever fields the storyboard set.
+                              #                          identifier_paths, purpose_filter,
+                              #                          since } — whichever fields
+                              #                          the storyboard set.
     - actual                  # machine-readable actual value observed:
                               #   response_schema      → array of schema errors
                               #                          (each { instance_path,
@@ -252,6 +281,20 @@ validation_result:
                               # a well-known cause (e.g., "agent did not echo
                               # context.correlation_id — see
                               # docs/building/implementation/task-lifecycle")
+    - severity                # "required" | "advisory" — copied from the
+                              # storyboard validation entry's severity field
+                              # (default: "required"). When "advisory", a
+                              # passed: false validation_result MUST NOT
+                              # cause its step to grade as failed; the step
+                              # grades on its remaining required validations.
+                              # The advisory result still appears in the
+                              # validations array (so the implementor sees
+                              # what failed) and contributes to
+                              # validations_advisory_failed on run_summary,
+                              # not to steps_failed. See storyboard-schema.yaml
+                              # > "Validation" for the author-side semantics
+                              # and use case (rollout gating during runner
+                              # adoption windows).
 
 request:
   description: |
@@ -535,6 +578,17 @@ run_summary:
                                   # declared check type). Surfaces "runner is
                                   # older than the storyboard" as a distinct
                                   # signal from clean passes.
+    - validations_advisory_failed # count of validation_result entries with
+                                  # passed: false and severity: advisory.
+                                  # These do NOT contribute to steps_failed
+                                  # (the step grades on its required
+                                  # validations); this counter surfaces them
+                                  # for visibility without polluting the
+                                  # conformance verdict. Use case:
+                                  # author-managed rollout gating during
+                                  # runner adoption windows — see
+                                  # storyboard-schema.yaml > "Validation"
+                                  # severity field.
 
 # --- Non-goals ---
 #

@@ -544,6 +544,21 @@ function main() {
     process.exit(1);
   }
 
+  // Check-enum lint: storyboards may only declare validations[].check values
+  // listed in runner-output-contract.yaml's `authored_check_kinds` enum.
+  // Synthesized codes (capture_path_not_resolvable, unresolved_substitution)
+  // are runner-emitted, not authored. The runtime forward-compat default
+  // (unknown kinds → not_applicable) handles cross-version skew; this lint
+  // catches typos at publish time. adcontextprotocol/adcp#3830 item 1.
+  try {
+    execSync('node scripts/lint-storyboard-check-enum.cjs', {
+      cwd: path.join(__dirname, '..'),
+      stdio: 'inherit',
+    });
+  } catch {
+    process.exit(1);
+  }
+
   console.log(isRelease
     ? `🚀 RELEASE BUILD: Creating compliance artifacts for AdCP v${version}`
     : `📦 Development build: Updating latest/ compliance`);
