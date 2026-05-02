@@ -104,23 +104,47 @@ jobs:
             "/brand/mcp"
             "/mcp"
           )
-          fail=0
-          for path in "${paths[@]}"; do
-            url="${base}${path}"
-            code=$(curl -sS -o /tmp/smoke-body -w '%{http_code}' \
+          # Build curl args once. Omit the Authorization header when the secret
+          # is unset so a strict-bearer-format server can't 400 us into a false
+          # deploy failure — we accept 401 as healthy anyway.
+          auth_args=()
+          if [ -n "${PUBLIC_TEST_AGENT_TOKEN:-}" ]; then
+            auth_args=(-H "Authorization: Bearer ${PUBLIC_TEST_AGENT_TOKEN}")
+          fi
+          # Single attempt against one URL. Echoes the HTTP code; body in /tmp/smoke-body.
+          probe() {
+            local url="$1"
+            curl -sS -o /tmp/smoke-body -w '%{http_code}' \
               -X POST \
-              -H "Authorization: Bearer ${PUBLIC_TEST_AGENT_TOKEN:-unset}" \
+              "${auth_args[@]}" \
               -H "Content-Type: application/json" \
               -H "Accept: application/json, text/event-stream" \
               --max-time 15 \
               -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' \
-              "${url}" || echo "000")
+              "${url}" || echo "000"
+          }
+          # Retry once on transient failure. Both bug modes we care about (#3854,
+          # #3869) are deterministic — a healthy tenant won't blip on retry, but
+          # a Cloudflare/Fly edge wobble during rolling-restart settle might.
+          fail=0
+          for path in "${paths[@]}"; do
+            url="${base}${path}"
+            code=$(probe "${url}")
             case "${code}" in
               200|401)
                 echo "✅ ${path} → ${code}"
+                continue
+                ;;
+            esac
+            echo "⏳ ${path} → ${code}, retrying in 8s…"
+            sleep 8
+            code=$(probe "${url}")
+            case "${code}" in
+              200|401)
+                echo "✅ ${path} → ${code} (after retry)"
                 ;;
               *)
-                echo "::error::Tenant smoke failed: ${path} returned HTTP ${code}"
+                echo "::error::Tenant smoke failed: ${path} returned HTTP ${code} (twice)"
                 echo "Body (first 500 chars):"
                 head -c 500 /tmp/smoke-body || true
                 echo ""
