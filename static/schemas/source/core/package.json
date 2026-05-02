@@ -93,11 +93,15 @@
               },
               "qualifier": {
                 "type": "object",
-                "description": "Measurement-standard qualifier for metrics whose definition varies by standard. Required when `metric_id` is one of `viewable_impressions`, `viewable_rate`, or `measurable_impressions` and the seller commits to a specific viewability standard — without this, the contract is ambiguous (MRC and GroupM viewability are materially different thresholds and not comparable, see `viewability-standard.json`). Symmetric on `missing_metrics`: a buyer expecting MRC viewability flags a GroupM-only delivery report as missing the MRC commitment. Reserved for additive standard qualifiers in future minors (e.g., reach unit, completion threshold) — schema is closed (`additionalProperties: false`).",
+                "description": "Disambiguates metrics whose definition varies by qualifier. Today carries two keys — `viewability_standard` for MRC vs GroupM viewability disambiguation, and `completion_source` for seller-attested vs vendor-attested `completion_rate` disambiguation. Required when the underlying `metric_id` has multiple incompatible measurement paths AND the seller commits to a specific one. Symmetric on `missing_metrics`: a buyer expecting MRC viewability flags a GroupM-only delivery report as missing the MRC commitment; a buyer expecting vendor-attested completion flags a seller-attested-only report as missing the vendor commitment. Reserved for additive qualifiers in future minors — schema is closed (`additionalProperties: false`); new keys ship explicitly.",
                 "properties": {
                   "viewability_standard": {
                     "$ref": "/schemas/enums/viewability-standard.json",
                     "description": "Viewability standard the seller commits to for this metric. MUST be set when `metric_id` ∈ {`viewable_impressions`, `viewable_rate`, `measurable_impressions`} and the seller commits to a specific standard; absence means the contract leaves the standard unspecified and reconciliation falls back to whatever standard the delivery report carries on its `viewability.standard` field."
+                  },
+                  "completion_source": {
+                    "$ref": "/schemas/enums/completion-source.json",
+                    "description": "Source of `completion_rate` attestation. MUST be set when `metric_id` is `completion_rate` and the seller commits to a specific source — `seller_attested` when the player/ad server's own completion event is the contract, `vendor_attested` when a third-party measurement vendor (anchored on the matching `performance_standard.vendor` BrandRef) is the contract. Absence means the contract leaves the source unspecified and reconciliation falls back to whatever the delivery report happens to carry."
                   }
                 },
                 "additionalProperties": false

@@ -116,10 +116,13 @@
               },
               "qualifier": {
                 "type": "object",
-                "description": "Measurement-standard qualifier — same shape as on the response-side `committed_metrics`. Required when `metric_id` ∈ {`viewable_impressions`, `viewable_rate`, `measurable_impressions`} and the buyer wants to pin a specific viewability standard. See response-side description for full semantics.",
+                "description": "Disambiguator — same shape as on the response-side `committed_metrics`. Required when the buyer wants to pin a specific measurement path: `viewability_standard` for MRC vs GroupM viewability (when `metric_id` ∈ {`viewable_impressions`, `viewable_rate`, `measurable_impressions`}); `completion_source` for seller- vs vendor-attested `completion_rate`. See response-side description for full semantics.",
                 "properties": {
                   "viewability_standard": {
                     "$ref": "/schemas/enums/viewability-standard.json"
+                  },
+                  "completion_source": {
+                    "$ref": "/schemas/enums/completion-source.json"
                   }
                 },
                 "additionalProperties": false

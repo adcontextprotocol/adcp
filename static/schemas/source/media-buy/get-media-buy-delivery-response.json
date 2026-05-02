@@ -176,11 +176,15 @@
                   },
                   "qualifier": {
                     "type": "object",
-                    "description": "Qualifier keys disambiguating this row from sibling rows under the same `metric_id`. Symmetric with `committed_metrics.qualifier` plus delivery-only keys for transparency disclosures (delivery vocabulary is a superset of contract vocabulary). Closed (`additionalProperties: false`) — new qualifier keys ship explicitly in subsequent minors.",
+                    "description": "Qualifier keys disambiguating this row from sibling rows under the same `metric_id`. Symmetric with `committed_metrics.qualifier` today; expected to diverge in future minors as transparency disclosures buyers don't commit to ship delivery-only. Closed (`additionalProperties: false`) — new qualifier keys ship explicitly.",
                     "properties": {
                       "viewability_standard": {
                         "$ref": "/schemas/enums/viewability-standard.json",
                         "description": "Viewability standard under which this row was measured. MRC and GroupM define materially different thresholds; never sum across standards."
+                      },
+                      "completion_source": {
+                        "$ref": "/schemas/enums/completion-source.json",
+                        "description": "Source of `completion_rate` attestation for this row — `seller_attested` from player/ad server, `vendor_attested` from a third-party measurement vendor. The two paths can yield different rates; never sum across sources."
                       }
                     },
                     "additionalProperties": false
@@ -477,10 +481,13 @@
                               },
                               "qualifier": {
                                 "type": "object",
-                                "description": "Mirrors the qualifier on `committed_metrics` so the missing entry preserves the contract distinction (e.g., flagging MRC viewability as missing even when GroupM viewability was reported). MUST match the qualifier on the corresponding `committed_metrics` entry the missing flag refers to.",
+                                "description": "Mirrors the qualifier on `committed_metrics` so the missing entry preserves the contract distinction (e.g., flagging MRC viewability as missing even when GroupM viewability was reported, or flagging vendor-attested completion as missing when only seller-attested completion was reported). MUST match the qualifier on the corresponding `committed_metrics` entry the missing flag refers to.",
                                 "properties": {
                                   "viewability_standard": {
                                     "$ref": "/schemas/enums/viewability-standard.json"
+                                  },
+                                  "completion_source": {
+                                    "$ref": "/schemas/enums/completion-source.json"
                                   }
                                 },
                                 "additionalProperties": false
