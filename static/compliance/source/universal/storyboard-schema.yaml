@@ -757,10 +757,14 @@
 #
 # Upstream side-effects — use `check: upstream_traffic`:
 #   Asserts that the agent caused observable upstream traffic with a payload
-#   carrying the storyboard-supplied identifiers. This is the load-bearing
-#   anti-façade contract: a fully-conformant adapter and a façade that returns
-#   shape-valid AdCP responses with synthetic data are indistinguishable on
-#   the AdCP wire — only what the adapter caused upstream tells them apart.
+#   carrying the storyboard-supplied identifiers. The mechanism raises the bar
+#   against UNINTENTIONAL façades — adapters (often LLM-generated) that satisfy
+#   AdCP schema requirements with synthetic placeholders without forwarding the
+#   payload upstream. It is NOT an adversarial integrity check: adopters
+#   self-report their own traffic, and a determined façade could fabricate
+#   recorded_calls. Spec consumers MUST NOT treat upstream_traffic passing as
+#   cryptographic proof of adapter behavior; the value is "raises the bar
+#   against accidental façades," not "stops malicious façades."
 #
 #   The runner queries the adopter's comply_test_controller with scenario
 #   `query_upstream_traffic`, scoped to traffic recorded since the storyboard
@@ -778,41 +782,72 @@
 #                              # only for negative assertions (e.g., a step
 #                              # MUST NOT cause upstream traffic).
 #     endpoint_pattern: string (optional)
-#                              # Glob/path pattern matched against
+#                              # Glob pattern matched against
 #                              # recorded_calls[].endpoint. Examples:
 #                              #   "POST */audience/upload"
 #                              #   "POST *"           (any POST, useful when
 #                              #                      the storyboard stays
 #                              #                      platform-agnostic)
 #                              # When omitted, all recorded calls in the window
-#                              # match. Keep storyboards platform-agnostic where
-#                              # possible — over-specific patterns couple the
-#                              # spec to specific upstream platforms (TikTok,
-#                              # Meta, Pinterest) and break for adopters whose
-#                              # upstream is something else.
+#                              # match. Storyboards in the shared corpus SHOULD
+#                              # stay platform-agnostic — host-specific patterns
+#                              # like "POST api.tiktok.com/*" couple the spec
+#                              # to specific upstream platforms and break for
+#                              # adopters whose upstream is something else.
+#                              # Reserve host-specific patterns for
+#                              # adapter-specific extensions, not shared
+#                              # storyboards.
 #     payload_must_contain: array of MatchSpec (optional)
 #                              # Each entry asserts a path/value pair that MUST
 #                              # appear in at least one matching call's payload.
+#                              # Path syntax: positional dotted path with `[*]`
+#                              # array wildcards. Examples:
+#                              #   "users[*].hashed_email"
+#                              #   "data.audience.members[*].id"
+#                              # The `[*]` wildcard flattens over arrays and
+#                              # passes if any element matches. RFC 9535
+#                              # JSONPath descendant syntax (`$..foo`) is NOT
+#                              # supported — the runner uses
+#                              # parsePathWithWildcards from @adcp/sdk, which
+#                              # recognizes `[*]` only. Path matching only
+#                              # applies when recorded_calls[].content_type is
+#                              # JSON-shaped (application/json or *+json);
+#                              # against form-urlencoded, multipart, or other
+#                              # content types the runner falls back to
+#                              # substring matching for `match: present` and
+#                              # grades non-substring matches not_applicable.
 #                              # Shape:
-#                              #   - path: <JSONPath into recorded_calls[].payload>
+#                              #   - path: <dotted-with-[*] path>
 #                              #     match: present | equals | contains_any
 #                              #     value: <value>            # for equals
 #                              #     allowed_values: [...]     # for contains_any
 #                              # Example:
-#                              #   - path: "$.users[*].hashed_email"
+#                              #   - path: "users[*].hashed_email"
 #                              #     match: present
-#     buyer_identifier_echo: boolean (default: false)
-#                              # Shorthand for "the storyboard's
-#                              # supplied buyer identifiers (any value the
-#                              # storyboard's sample_request carries that
-#                              # matches a hashed-identifier or buyer-key
-#                              # convention) MUST appear in at least one
-#                              # matching call's payload, at any depth." This is
-#                              # the strongest single anti-façade signal —
-#                              # adapters cannot satisfy it by fabricating a
-#                              # constant placeholder hash, because the
-#                              # placeholder won't match the storyboard's
-#                              # supplied value.
+#     identifier_paths: array of string (optional)
+#                              # Paths into the storyboard's sample_request that
+#                              # name the load-bearing identifiers the adapter
+#                              # MUST forward upstream. The runner extracts the
+#                              # values at these paths from the storyboard's
+#                              # request and asserts each value appears in at
+#                              # least one matching recorded_call's payload at
+#                              # any depth. This is the strongest single
+#                              # anti-façade signal — adapters cannot satisfy
+#                              # it by fabricating a constant placeholder hash,
+#                              # because the placeholder will not match the
+#                              # storyboard's supplied value.
+#                              # Path syntax: same dotted-with-[*] form as
+#                              # `payload_must_contain.path`. Each path MAY
+#                              # resolve to a single value or an array; all
+#                              # resolved values MUST be present in the
+#                              # recorded payload. Replaces the earlier
+#                              # `buyer_identifier_echo: boolean` shorthand
+#                              # (which left "what counts as an identifier" to
+#                              # convention) with an explicit enumeration.
+#                              # Example:
+#                              #   identifier_paths:
+#                              #     - "audiences[*].add[*].hashed_email"
+#                              #     - "audiences[*].add[*].external_id"
 #     since: prior_step_id (optional, default: this step's request timestamp)
 #                              # Bound the lookup window. By default, the
 #                              # runner queries traffic recorded since the
@@ -820,22 +855,30 @@
 #                              # only side-effects of THIS step are counted.
 #                              # Set to a prior step's id to include traffic
 #                              # caused by an earlier step (e.g., for a
-#                              # cumulative-effect assertion).
+#                              # cumulative-effect assertion). The runner uses
+#                              # its own wall-clock timestamp from when it
+#                              # issued the AdCP request as the lower bound —
+#                              # the controller's `since_timestamp` echo is
+#                              # informational, not authoritative. See
+#                              # runner-output-contract.yaml > validation_result
+#                              # for the timestamp boundary semantics
+#                              # (inclusive lower bound, clock-skew tolerance).
 #
 #   Grading output (see runner-output-contract.yaml > validation_result):
 #     `expected` echoes the declared assertion fields. `actual` is a
 #     diagnostic summary: { matched_count, total_calls, missing_payload_paths,
-#     identifier_echo_failures }. The full recorded_calls array lives in
+#     missing_identifier_values }. The full recorded_calls array lives in
 #     `response.payload` so an implementor can see the exact upstream
 #     payloads the runner observed.
 #
 #   Adopter integration:
 #     The adopter implements `query_upstream_traffic` in its
 #     comply_test_controller. The controller records outbound HTTP calls in a
-#     session-scoped buffer (sandbox-only — production builds MUST 404 the
-#     comply_test_controller tool entirely) and returns them when queried.
-#     See comply-test-controller-request.json > query_upstream_traffic for
-#     the controller-side query contract.
+#     caller-scoped buffer (sandbox-only — production builds MUST 404 the
+#     comply_test_controller tool entirely; multi-tenant sandboxes MUST key
+#     the buffer on the calling principal so cross-caller traffic does not
+#     leak). See comply-test-controller-request.json > query_upstream_traffic
+#     for the controller-side query contract.
 #
 #   Example — sync_audiences must POST hashed members upstream:
 #     - check: upstream_traffic
@@ -843,9 +886,11 @@
 #       endpoint_pattern: "POST *"
 #       min_count: 1
 #       payload_must_contain:
-#         - path: "$..hashed_email"
+#         - path: "users[*].hashed_email"
 #           match: present
-#       buyer_identifier_echo: true
+#       identifier_paths:
+#         - "audiences[*].add[*].hashed_email"
+#         - "audiences[*].add[*].external_id"
 #
 # --- Runner output ---
 #

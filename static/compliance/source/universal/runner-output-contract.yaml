@@ -151,7 +151,7 @@ validation_result:
                               #   upstream_traffic     → object with the declared
                               #                          assertion: { min_count,
                               #                          endpoint_pattern, payload_must_contain,
-                              #                          buyer_identifier_echo } —
+                              #                          identifier_paths, since } —
                               #                          whichever fields the storyboard set.
     - actual                  # machine-readable actual value observed:
                               #   response_schema      → array of schema errors
@@ -182,7 +182,7 @@ validation_result:
                               #   upstream_traffic     → object summarizing what was
                               #                          observed: { matched_count,
                               #                          total_calls, missing_payload_paths,
-                              #                          identifier_echo_failures }.
+                              #                          missing_identifier_values }.
                               #                          The full recorded_calls array
                               #                          lives in `response.payload`;
                               #                          `actual` is the diagnostic summary.
@@ -218,6 +218,35 @@ validation_result:
       See storyboard-schema.yaml > "upstream_traffic" for the authored shape
       and comply-test-controller-request.json > query_upstream_traffic for
       the controller-side query contract.
+    upstream_traffic_timestamp_boundary: |
+      The runner's lower-bound timestamp for query_upstream_traffic MUST be
+      the runner's own wall-clock at the moment it issued the storyboard
+      step's AdCP request (or the prior step's request timestamp when the
+      storyboard declares `since: <prior_step_id>`). The bound is INCLUSIVE.
+      Runners SHOULD subtract a clock-skew tolerance (50ms minimum, 250ms
+      recommended) before sending the bound to the controller, so a recorded
+      call timestamped microseconds before the runner's clock measurement is
+      not silently excluded. Controllers MUST emit recorded_calls timestamps
+      matching the wall clock at outbound-request-send time (not log-flush
+      time) and MUST order them monotonically non-decreasing. Runners MUST
+      attribute calls to a step using their own clock-bracket of when they
+      issued and received the AdCP request, not the controller's
+      since_timestamp echo (which is informational only — see
+      comply-test-controller-response.json > UpstreamTrafficSuccess >
+      since_timestamp).
+    upstream_traffic_threat_model: |
+      upstream_traffic raises the bar against UNINTENTIONAL façades —
+      adapters that satisfy AdCP schema requirements with synthetic
+      placeholders without forwarding payloads upstream. It is NOT an
+      adversarial integrity check. Adopters self-report their own traffic
+      through query_upstream_traffic; a determined façade can fabricate
+      recorded_calls entries. Spec consumers — compliance dashboards,
+      adapter directories, conformance-tier UIs — MUST NOT present
+      upstream_traffic passing as cryptographic proof of adapter behavior.
+      The conformance value is "unintentional façades fail this check"; an
+      adversarial-integrity attestation path (signed traffic-summary
+      endpoint, agent-side telemetry digest, etc.) is its own future RFC,
+      not this contract.
   optional_fields:
     - remediation             # runner-suggested fix when the failure maps to
                               # a well-known cause (e.g., "agent did not echo
@@ -333,14 +362,51 @@ security:
 
   rendered_output_fencing:
     description: |
-      Validation `error` and `actual` fields can carry strings the agent
-      under test controlled. When a runner renders these into a shared
-      surface (chat transcript, markdown report, summary fed to another
-      LLM), those strings MUST be fenced with a nonce or otherwise isolated
-      so a hostile error message cannot inject instructions into a
+      Several validation_result and skip_result fields carry strings whose
+      origin is not the runner: the agent under test, the storyboard author,
+      or an adopter-supplied test controller. When a runner renders these
+      into a shared surface (chat transcript, markdown report, summary fed
+      to another LLM), the strings MUST be fenced with a nonce or otherwise
+      isolated so a hostile message cannot inject instructions into a
       downstream summarizer. This applies to rendered output, not to the
-      machine-readable step_result — the raw string stays in the JSON for
+      machine-readable step_result — raw strings stay in the JSON for
       programmatic consumers.
+
+      Load-bearing fields that MUST be fenced when rendered:
+        - validation_result.error              (transport-level errors,
+                                                agent-controlled when the
+                                                error message is echoed)
+        - validation_result.actual             (agent-controlled response
+                                                values, including string
+                                                forms)
+        - validation_result.description        (storyboard-author-controlled
+                                                — copied verbatim from the
+                                                storyboard validation entry)
+        - validation_result.note               (runner-generated but
+                                                interpolates the
+                                                storyboard's unrecognized
+                                                check value verbatim — see
+                                                forward-compat clause above)
+        - skip_result.detail                   (runner-generated but
+                                                interpolates storyboard
+                                                IDs and adopter-supplied
+                                                strings)
+        - response.payload (for upstream_traffic checks)
+                                               (carries recorded_calls[]
+                                                where url, payload, and
+                                                endpoint are all
+                                                agent-controlled — a
+                                                hostile adapter that hits
+                                                an attacker-controlled URL
+                                                plants the URL string in
+                                                the payload, and a
+                                                hostile adopter controller
+                                                returns whatever it wants)
+
+      Inversion rule: any field whose value is copied from storyboard input,
+      agent-under-test output, or an adopter-supplied test controller MUST be
+      fenced when rendered. Runner-generated identifiers (step_id, schema_id,
+      check enum values from the spec's known list) are exempt.
 
 skip_result:
   description: |
