@@ -166,6 +166,29 @@ jobs:
                   git checkout --theirs -- "$f"
                   git add -- "$f"
                   ;;
+                # Known cherry-pick divergence: 3.0.x has #3789's prose-only
+                # backport of #3739 (AUTH_REQUIRED tightening); main has the
+                # full enum split (adds AUTH_MISSING / AUTH_INVALID codes
+                # that can't ship to 3.0.x without breaking the patch
+                # contract). Main's version is the more advanced state and
+                # main's content should win on every forward-merge until
+                # 3.1.0 cuts and replaces both.
+                #
+                # Without this rule, every forward-merge from 3.0.x → main
+                # rediscovers the divergence — squash-merges of prior
+                # forward-merges don't advance the merge-base, so git keeps
+                # seeing 3.0.x's version vs main's version and conflicting.
+                # This rule short-circuits the conflict permanently.
+                #
+                # When 3.1.0 ships and main no longer has the in-flight
+                # enum split (the work has been released), remove this
+                # block. It's a temporary bridge across a known content
+                # divergence, not a permanent allowlist entry.
+                # See adcontextprotocol/adcp#3784 / #3789 for context.
+                docs/building/implementation/error-handling.mdx|static/schemas/source/enums/error-code.json)
+                  git checkout --ours -- "$f"
+                  git add -- "$f"
+                  ;;
                 *)
                   UNEXPECTED="$UNEXPECTED $f"
                   ;;
@@ -247,6 +270,11 @@ jobs:
             - `CHANGELOG.md` → take 3.0.x's (main's next Version Packages
               cut prepends its own beta entries above)
             - `dist/*` → take 3.0.x's (versioned release artifacts)
+            - `docs/building/implementation/error-handling.mdx`,
+              `static/schemas/source/enums/error-code.json` → preserve
+              main's. Temporary bridge across a known cherry-pick
+              divergence (#3789's prose-only backport of #3739); remove
+              when 3.1.0 cuts.
 
             Any conflict outside this list fails the workflow loud — needs
             manual resolution and indicates a playbook violation (a change
