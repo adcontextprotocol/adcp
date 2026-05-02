@@ -1,0 +1,441 @@
+id: governance_delivery_monitor
+version: "1.0.0"
+title: "Campaign governance — delivery monitoring with drift detection"
+protocol: governance
+category: governance_delivery_monitor
+summary: "Governance agent monitors delivery, detects budget drift past thresholds, and triggers re-evaluation."
+track: campaign_governance
+required_tools:
+  - check_governance
+
+# Cross-step assertion (adcp#2639): mid-flight drift can return a denial
+# re-evaluation. The assertion gates any post-denial mutation on the
+# affected plan, catching sellers that ignore a mid-campaign denial and
+# keep delivering / committing new spend.
+# Cross-step assertion (adcp#2664): status.monotonic rejects media_buy
+# status transitions observed across steps that aren't on the spec
+# lifecycle graph — paused → active → paused is fine,
+# active → pending_creatives fails.
+invariants:
+  - governance.denial_blocks_mutation
+  - status.monotonic
+
+narrative: |
+  After a media buy is confirmed with governance approval, the governance agent monitors
+  delivery. When spend drifts past a reallocation threshold — for example, one line item
+  is overspending while another is underspending — the governance agent triggers a delivery
+  phase re-evaluation.
+
+  This storyboard covers the delivery monitoring governance flow: initial approval,
+  delivery metrics showing drift, governance re-check triggered by drift, and either
+  re-approval with adjusted conditions or a pause recommendation.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - governance_aware
+  examples:
+    - "Publisher platform with governance and delivery reporting"
+    - "Retail media network with pacing data"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The caller needs a brand identity, operator credentials, a governance agent URL,
+    and an active media buy with delivery data. The governance plan defines a
+    reallocation threshold that triggers re-evaluation.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "outdoor_display_q2"
+      delivery_type: "guaranteed"
+      channels: ["display"]
+      format_ids:
+        - id: "display_300x250"
+    - product_id: "outdoor_video_q2"
+      delivery_type: "guaranteed"
+      channels: ["video"]
+      format_ids:
+        - id: "video_15s"
+  pricing_options:
+    - product_id: "outdoor_display_q2"
+      pricing_option_id: "cpm_standard"
+      pricing_model: "cpm"
+      currency: "USD"
+      fixed_price: 8.0
+    - product_id: "outdoor_video_q2"
+      pricing_option_id: "cpm_standard"
+      pricing_model: "cpm"
+      currency: "USD"
+      fixed_price: 12.0
+  plans:
+    - plan_id: "gov_acme_delivery_monitor"
+      brand:
+        domain: "acmeoutdoor.example"
+      objectives: "Delivery-phase governance with drift detection and rebalancing"
+      budget:
+        total: 40000
+        currency: "USD"
+        reallocation_threshold: 8000
+      flight:
+        start: "2027-01-01T00:00:00Z"
+        end: "2027-12-31T23:59:59Z"
+      countries: ["US"]
+      custom_policies:
+        - policy_id: "drift_reevaluation"
+          enforcement: "must"
+          policy: "Re-evaluate governance if any line item drifts more than 20% from plan."
+  media_buys:
+    - media_buy_id: "mb_acme_q2_2026"
+      status: "active"
+      budget:
+        total: 40000
+        currency: "USD"
+      flight:
+        start: "2026-04-01T00:00:00Z"
+        end: "2026-06-30T23:59:59Z"
+
+phases:
+  - id: capability_discovery
+    title: "Capability discovery"
+    narrative: |
+      The buyer calls get_adcp_capabilities to confirm the agent supports media buying before sending briefs or creating buys.
+
+    steps:
+      - id: get_capabilities
+        title: "Check agent capabilities"
+        narrative: |
+          Verify that the agent declares the expected protocol support before
+          proceeding with domain-specific operations.
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: capability_discovery
+        stateful: false
+        expected: |
+          Return capabilities declaring media_buy in supported_protocols, confirming the agent sells media.
+        sample_request:
+          context:
+            correlation_id: "governance_delivery_monitor--get_capabilities"
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json schema"
+          - check: field_present
+            path: "supported_protocols"
+            description: "Agent declares supported protocols"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "governance_delivery_monitor--get_capabilities"
+            description: "Context correlation_id returned unchanged"
+  - id: plan_registration
+    title: "Register governance plan with delivery monitoring"
+    narrative: |
+      The buyer registers a governance plan that includes delivery monitoring thresholds.
+      When spend drift exceeds the reallocation threshold, the governance agent triggers
+      a delivery-phase re-evaluation.
+
+    steps:
+      - id: sync_plans
+        title: "Register a governance plan with reallocation threshold"
+        narrative: |
+          The buyer's governance agent registers a plan with full spending authority and
+          a 20% reallocation threshold. If any line item's spend drifts more than 20%
+          from the planned budget allocation, the governance agent re-evaluates.
+        task: sync_plans
+        schema_ref: "governance/sync-plans-request.json"
+        response_schema_ref: "governance/sync-plans-response.json"
+        doc_ref: "/governance/campaign/tasks/sync_plans"
+        comply_scenario: governance_delivery_monitor
+        stateful: true
+        expected: |
+          Acknowledge the governance plan:
+          - plan_id: identifier for this governance plan
+          - budget.reallocation_threshold: amount above which reallocation requires re-evaluation
+
+        sample_request:
+          idempotency_key: "governance-delivery-monitor-sync-plans-v1"
+          plans:
+            - plan_id: "gov_acme_delivery_monitor"
+              brand:
+                domain: "acmeoutdoor.example"
+              objectives: "Delivery-phase governance with drift detection and rebalancing"
+              budget:
+                total: 40000
+                currency: "USD"
+                reallocation_threshold: 8000
+              flight:
+                start: "2027-01-01T00:00:00Z"
+                end: "2027-12-31T23:59:59Z"
+              countries: ["US"]
+              custom_policies:
+                - policy_id: "drift_reevaluation"
+                  enforcement: "must"
+                  policy: "Re-evaluate governance if any line item drifts more than 20% from plan."
+
+          context:
+            correlation_id: "governance_delivery_monitor--sync_plans"
+        context_outputs:
+          - name: plan_id
+            path: 'plans[0].plan_id'
+        validations:
+          - check: response_schema
+            description: "Response matches sync-plans-response.json schema"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "governance_delivery_monitor--sync_plans"
+            description: "Context correlation_id returned unchanged"
+          - check: field_present
+            path: "plans[0].plan_id"
+            description: "Governance agent assigns plan_id — must be echoed in check_governance"
+  - id: initial_approval
+    title: "Initial governance check — approved"
+    narrative: |
+      The buyer proposes a media buy within authority. The governance agent approves
+      the buy with the delivery monitoring conditions active.
+
+    steps:
+      - id: check_governance_approved
+        title: "Pre-buy governance check (approved)"
+        narrative: |
+          The buyer calls check_governance with a media buy within authority. The governance
+          agent approves and notes that delivery monitoring is active with the 20% drift
+          threshold.
+        task: check_governance
+        schema_ref: "governance/check-governance-request.json"
+        response_schema_ref: "governance/check-governance-response.json"
+        doc_ref: "/governance/campaign/tasks/check_governance"
+        comply_scenario: governance_delivery_monitor
+        stateful: true
+        expected: |
+          Return an approved governance decision:
+          - decision: approved
+          - governance_context: token for the media buy
+          - monitoring: delivery phase governance is active
+
+        sample_request:
+          plan_id: "$context.plan_id"
+          caller: "https://pinnacle-agency.example"
+          tool: "create_media_buy"
+          payload:
+            account:
+              brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+            total_budget: 40000
+            packages:
+              - product_id: "sports_ctv_q2"
+                budget: 20000
+              - product_id: "outdoor_video_q2"
+                budget: 20000
+
+          context:
+            correlation_id: "governance_delivery_monitor--check_governance_approved"
+        validations:
+          - check: response_schema
+            description: "Response matches check-governance-response.json schema"
+          - check: field_present
+            path: "status"
+            description: "Response contains a governance decision"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "governance_delivery_monitor--check_governance_approved"
+            description: "Context correlation_id returned unchanged"
+  - id: create_buy
+    title: "Create media buy under governance approval"
+    narrative: |
+      With governance approved, the buyer creates the media buy. The seller confirms
+      and returns a media_buy_id the buyer will use to pull delivery metrics as the
+      campaign runs.
+
+    steps:
+      - id: create_media_buy
+        title: "Create a media buy"
+        narrative: |
+          The buyer creates the media buy with the governance_context from the approved
+          check. The seller confirms and returns a media_buy_id that subsequent delivery
+          monitoring steps reference.
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: governance_delivery_monitor
+        stateful: true
+        expected: |
+          Confirm the media buy:
+          - media_buy_id: platform-assigned identifier
+          - status: active
+          - packages: confirmed line items
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          brand:
+            domain: "acmeoutdoor.example"
+          governance_context: "gov_ctx_acme_delivery_approved"
+          start_time: "2026-04-01T00:00:00Z"
+          end_time: "2026-06-30T23:59:59Z"
+          packages:
+            - product_id: "sports_ctv_q2"
+              budget: 20000
+              pricing_option_id: "cpm_guaranteed"
+            - product_id: "outdoor_video_q2"
+              budget: 20000
+              pricing_option_id: "cpm_standard"
+
+          idempotency_key: "$generate:uuid_v4#governance_delivery_monitor_create_buy_create_media_buy"
+          context:
+            correlation_id: "governance_delivery_monitor--create_media_buy"
+        context_outputs:
+          - name: media_buy_id
+            path: "media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Response contains a media_buy_id for delivery monitoring"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "governance_delivery_monitor--create_media_buy"
+            description: "Context correlation_id returned unchanged"
+  - id: delivery_monitoring
+    title: "Delivery metrics show budget drift"
+    narrative: |
+      The campaign is running. The buyer checks delivery and finds that one line item
+      is overspending while the other is underspending. The CTV line item has consumed
+      70% of its budget at the halfway point while the video line item is at 30%.
+
+    steps:
+      - id: get_delivery
+        title: "Check delivery metrics"
+        narrative: |
+          The buyer requests delivery data and finds budget drift. One line item is
+          significantly overpacing while the other is underpacing.
+        task: get_media_buy_delivery
+        schema_ref: "media-buy/get-media-buy-delivery-request.json"
+        response_schema_ref: "media-buy/get-media-buy-delivery-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buy_delivery"
+        comply_scenario: governance_delivery_monitor
+        stateful: true
+        expected: |
+          Return delivery metrics showing drift:
+          - Per-package delivery with impressions, spend, and pacing
+          - One package overpacing (>60% spend at 50% flight)
+          - One package underpacing (<40% spend at 50% flight)
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_ids:
+            - "$context.media_buy_id"
+          include_package_daily_breakdown: true
+
+          context:
+            correlation_id: "governance_delivery_monitor--get_delivery"
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buy-delivery-response.json schema"
+          - check: field_present
+            path: "media_buy_deliveries"
+            description: "Response contains media buy delivery data"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "governance_delivery_monitor--get_delivery"
+            description: "Context correlation_id returned unchanged"
+  - id: drift_recheck
+    title: "Governance re-check — drift detected"
+    narrative: |
+      The buyer's governance agent detects that budget drift has exceeded the 20%
+      reallocation threshold. It triggers a delivery-phase governance check with the
+      current delivery data as evidence. The governance agent re-evaluates and returns
+      a decision — either re-approved with updated conditions or a recommendation to
+      pause and rebalance.
+
+    steps:
+      - id: check_governance_drift
+        title: "Delivery-phase governance re-check (drift exceeded)"
+        narrative: |
+          The buyer calls check_governance with phase: delivery and attaches
+          the current delivery metrics as evidence. The governance agent evaluates the
+          drift against the reallocation threshold and returns a decision.
+        task: check_governance
+        schema_ref: "governance/check-governance-request.json"
+        response_schema_ref: "governance/check-governance-response.json"
+        doc_ref: "/governance/campaign/tasks/check_governance"
+        comply_scenario: governance_delivery_monitor
+        stateful: true
+        expected: |
+          Return a governance decision about the delivery drift:
+          - decision: approved (with rebalancing conditions) or denied (pause recommended)
+          - findings: warning-severity findings noting the drift amounts
+            - severity: warning
+            - category_id: BUDGET_DRIFT_EXCEEDED
+            - explanation: explains which line items drifted and by how much
+          - conditions: if approved, conditions for rebalancing (e.g., "Reallocate $5K from CTV to video")
+
+        sample_request:
+          plan_id: "$context.plan_id"
+          caller: "https://pinnacle-agency.example"
+          phase: "delivery"
+          governance_context: "gov_ctx_acme_delivery_approved"
+          delivery_metrics:
+            reporting_period:
+              start: "2026-05-01T00:00:00Z"
+              end: "2026-05-15T00:00:00Z"
+            spend: 20000
+            cumulative_spend: 20000
+            channel_distribution:
+              ctv: 70
+              video: 30
+            pacing: "ahead"
+
+          context:
+            correlation_id: "governance_delivery_monitor--check_governance_drift"
+        validations:
+          - check: response_schema
+            description: "Response matches check-governance-response.json schema"
+          - check: field_present
+            path: "status"
+            description: "Response contains a governance decision"
+          - check: field_present
+            path: "findings"
+            description: "Response contains findings about the drift"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "governance_delivery_monitor--check_governance_drift"
+            description: "Context correlation_id returned unchanged"
