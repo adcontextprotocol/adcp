@@ -53,34 +53,46 @@ const mocks = vi.hoisted(() => {
     for (const item of items) yield item;
   }
 
+  // Shared sub fixture used by both customers.retrieve (legacy callsites)
+  // and subscriptions.list (post-#3850 /sync uses this to expand
+  // price.product for the metadata-fallback path).
+  const FAKE_SUB = {
+    id: 'sub_backfill_test_001',
+    status: 'active',
+    current_period_end: Math.floor(Date.now() / 1000) + 86400 * 365,
+    canceled_at: null,
+    items: {
+      data: [{
+        price: {
+          unit_amount: 250000,
+          currency: 'usd',
+          recurring: { interval: 'year' },
+          // /sync filters to membership subs by lookup_key prefix
+          // (`aao_membership_*` / `aao_invoice_*`) or product
+          // metadata.category=membership for founding-era prices.
+          lookup_key: 'aao_membership_professional_250',
+          product: 'prod_backfill_test_001',
+        },
+      }],
+    },
+  };
+
   return {
     FAKE_INVOICE,
+    FAKE_SUB,
     mockInvoicesList: vi.fn().mockImplementation(() => fakeInvoiceIterator([FAKE_INVOICE])),
     mockCustomersRetrieve: vi.fn().mockResolvedValue({
       id: 'cus_test_backfill',
       deleted: false,
-      subscriptions: {
-        data: [{
-          id: 'sub_backfill_test_001',
-          status: 'active',
-          current_period_end: Math.floor(Date.now() / 1000) + 86400 * 365,
-          canceled_at: null,
-          items: {
-            data: [{
-              price: {
-                unit_amount: 250000,
-                currency: 'usd',
-                recurring: { interval: 'year' },
-                // /sync filters to membership subs by lookup_key prefix
-                // (`aao_membership_*` / `aao_invoice_*`) so a non-membership
-                // sub doesn't overwrite a paying member's row. Real Stripe
-                // membership prices always carry a lookup_key.
-                lookup_key: 'aao_membership_professional_250',
-              },
-            }],
-          },
-        }],
-      },
+      subscriptions: { data: [FAKE_SUB] },
+    }),
+    // Post-#3850: /sync fetches subscriptions separately so it can expand
+    // price.product 4 levels deep without exceeding Stripe's customer-
+    // retrieve depth limit. Mock returns a list-shaped response.
+    mockSubscriptionsList: vi.fn().mockResolvedValue({
+      data: [FAKE_SUB],
+      has_more: false,
+      object: 'list',
     }),
     mockProductsRetrieve: vi.fn().mockResolvedValue({
       id: 'prod_backfill_test_001',
@@ -89,12 +101,13 @@ const mocks = vi.hoisted(() => {
   };
 });
 
-const { FAKE_INVOICE, mockInvoicesList, mockCustomersRetrieve, mockProductsRetrieve } = mocks;
+const { FAKE_INVOICE, mockInvoicesList, mockCustomersRetrieve, mockSubscriptionsList, mockProductsRetrieve } = mocks;
 
 vi.mock('../../src/billing/stripe-client.js', () => ({
   stripe: {
     customers: { retrieve: mocks.mockCustomersRetrieve },
     invoices: { list: mocks.mockInvoicesList },
+    subscriptions: { list: mocks.mockSubscriptionsList },
     products: { retrieve: mocks.mockProductsRetrieve },
     webhooks: {
       constructEvent: vi.fn().mockImplementation((body: any) => {
