@@ -522,8 +522,13 @@ phases:
             - event_type: "purchase"
               event_id: "evt_trail_pro_001"
               event_time: "2026-04-05T14:30:00Z"
-              value: 149.99
-              currency: "USD"
+              # value/currency belong inside custom_data per event-custom-data.json;
+              # additionalProperties: true on the parent silently swallowed them
+              # at the wrong nesting level, meaning real upstreams never saw
+              # the purchase value.
+              custom_data:
+                value: 149.99
+                currency: "USD"
 
           idempotency_key: "$generate:uuid_v4#sales_social_event_logging_log_event"
           context:
