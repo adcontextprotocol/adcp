@@ -287,7 +287,7 @@ export async function handleGetContentStandards(
 
   const state = session.contentStandards.get(req.standards_id);
   if (!state) {
-    return { errors: [{ code: 'not_found', message: `No content standards with id '${req.standards_id}'` }] };
+    return { errors: [{ code: 'REFERENCE_NOT_FOUND', message: `No content standards with id '${req.standards_id}'` }] };
   }
 
   return {
@@ -315,7 +315,7 @@ export async function handleUpdateContentStandards(
 
   const state = session.contentStandards.get(req.standards_id);
   if (!state) {
-    return { errors: [{ code: 'not_found', message: `No content standards with id '${req.standards_id}'` }] };
+    return { errors: [{ code: 'REFERENCE_NOT_FOUND', message: `No content standards with id '${req.standards_id}'` }] };
   }
 
   if (req.scope) {
@@ -350,7 +350,7 @@ export async function handleCalibrateContent(
 
   const state = session.contentStandards.get(req.standards_id);
   if (!state) {
-    return { errors: [{ code: 'not_found', message: `No content standards with id '${req.standards_id}'` }] };
+    return { errors: [{ code: 'REFERENCE_NOT_FOUND', message: `No content standards with id '${req.standards_id}'` }] };
   }
 
   // Sandbox heuristic: scan the artifact's text fields for must-rule keywords
@@ -432,7 +432,7 @@ export async function handleValidateContentDelivery(
 
   const state = session.contentStandards.get(req.standards_id);
   if (!state) {
-    return { errors: [{ code: 'not_found', message: `No content standards with id '${req.standards_id}'` }] };
+    return { errors: [{ code: 'REFERENCE_NOT_FOUND', message: `No content standards with id '${req.standards_id}'` }] };
   }
 
   const records = req.records || [];
