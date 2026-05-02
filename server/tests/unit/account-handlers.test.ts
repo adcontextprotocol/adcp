@@ -186,6 +186,196 @@ describe('sync_accounts', () => {
     expect(errors[0].code).toBe('PAYMENT_TERMS_NOT_SUPPORTED');
   });
 
+  // ── Billing-gate dispatch (BILLING_NOT_SUPPORTED, BILLING_NOT_PERMITTED_FOR_AGENT) ──
+
+  it('rejects billing values not in supported_billing with BILLING_NOT_SUPPORTED', async () => {
+    // The legacy /mcp route advertises supported_billing: [agent, operator, advertiser].
+    // Anything outside that list (rare — schema enum already gates on the
+    // canonical three values) triggers the capability gate. We exercise the
+    // gate by submitting an out-of-enum value via raw tool args, bypassing
+    // schema validation — the same path a non-conformant SDK might take.
+    const { result } = await simulateCallTool(server, 'sync_accounts', {
+      accounts: [{
+        brand: { domain: 'acme.com' },
+        operator: 'agency-one',
+        billing: 'unsupported_value',
+        sandbox: true,
+      }],
+    });
+
+    const acct = (result.accounts as Record<string, unknown>[])[0];
+    expect(acct.action).toBe('failed');
+    expect(acct.status).toBe('rejected');
+    const errors = acct.errors as Array<{
+      code: string;
+      message: string;
+      recovery: string;
+      details: { scope: string; supported_billing: string[] };
+    }>;
+    expect(errors[0].code).toBe('BILLING_NOT_SUPPORTED');
+    expect(errors[0].recovery).toBe('correctable');
+    expect(errors[0].details.scope).toBe('capability');
+    expect(errors[0].details.supported_billing).toEqual(['agent', 'operator', 'advertiser']);
+  });
+
+  it('passthrough-only principal: rejects billing: agent with BILLING_NOT_PERMITTED_FOR_AGENT', async () => {
+    const passthroughCtx: TrainingContext = {
+      mode: 'open',
+      principal: 'static:demo:demo-billing-passthrough-v1',
+    };
+    const passthroughServer = createTrainingAgentServer(passthroughCtx);
+
+    const { result } = await simulateCallTool(passthroughServer, 'sync_accounts', {
+      accounts: [{
+        brand: { domain: 'acme.com' },
+        operator: 'agency-one',
+        billing: 'agent',
+        sandbox: true,
+      }],
+    });
+
+    const acct = (result.accounts as Record<string, unknown>[])[0];
+    expect(acct.action).toBe('failed');
+    expect(acct.status).toBe('rejected');
+    const errors = acct.errors as Array<{
+      code: string;
+      message: string;
+      recovery: string;
+      details: Record<string, unknown>;
+    }>;
+    expect(errors[0].code).toBe('BILLING_NOT_PERMITTED_FOR_AGENT');
+    expect(errors[0].recovery).toBe('correctable');
+    // Strict equality on the full details object enforces the
+    // additionalProperties: false clamp on
+    // error-details/billing-not-permitted-for-agent.json — any new key
+    // emitted by the handler (rate_card, credit_limit, etc.) would fail
+    // this assertion immediately rather than slipping through five
+    // separate toBeUndefined checks.
+    expect(errors[0].details).toEqual({
+      rejected_billing: 'agent',
+      suggested_billing: 'operator',
+    });
+  });
+
+  it('passthrough-only principal: rejects billing: advertiser with the same shape', async () => {
+    const passthroughCtx: TrainingContext = {
+      mode: 'open',
+      principal: 'static:demo:demo-billing-passthrough-v1',
+    };
+    const passthroughServer = createTrainingAgentServer(passthroughCtx);
+
+    const { result } = await simulateCallTool(passthroughServer, 'sync_accounts', {
+      accounts: [{
+        brand: { domain: 'acme.com' },
+        operator: 'agency-one',
+        billing: 'advertiser',
+        sandbox: true,
+      }],
+    });
+
+    const acct = (result.accounts as Record<string, unknown>[])[0];
+    expect(acct.status).toBe('rejected');
+    const errors = acct.errors as Array<{ code: string; details: Record<string, unknown> }>;
+    expect(errors[0].code).toBe('BILLING_NOT_PERMITTED_FOR_AGENT');
+    expect(errors[0].details.rejected_billing).toBe('advertiser');
+    expect(errors[0].details.suggested_billing).toBe('operator');
+  });
+
+  it('passthrough-only principal: billing: operator passes (autonomous recovery)', async () => {
+    const passthroughCtx: TrainingContext = {
+      mode: 'open',
+      principal: 'static:demo:demo-billing-passthrough-v1',
+    };
+    const passthroughServer = createTrainingAgentServer(passthroughCtx);
+
+    const { result } = await simulateCallTool(passthroughServer, 'sync_accounts', {
+      accounts: [{
+        brand: { domain: 'acme.com' },
+        operator: 'agency-one',
+        billing: 'operator',
+        sandbox: true,
+      }],
+    });
+
+    const acct = (result.accounts as Record<string, unknown>[])[0];
+    expect(acct.action).toBe('created');
+    expect(acct.status).toBe('active');
+    expect(acct.billing).toBe('operator');
+  });
+
+  it('agent-billable principal: any supported billing passes (no per-agent gate)', async () => {
+    const billableCtx: TrainingContext = {
+      mode: 'open',
+      principal: 'static:demo:demo-billing-agent-billable-v1',
+    };
+    const billableServer = createTrainingAgentServer(billableCtx);
+
+    for (const billing of ['agent', 'operator', 'advertiser'] as const) {
+      const { result } = await simulateCallTool(billableServer, 'sync_accounts', {
+        accounts: [{
+          brand: { domain: `${billing}.example.com` },
+          operator: 'agency-one',
+          billing,
+          sandbox: true,
+        }],
+      });
+      const acct = (result.accounts as Record<string, unknown>[])[0];
+      expect(acct.status).toBe('active');
+      expect(acct.billing).toBe(billing);
+    }
+  });
+
+  it('dry_run does not suppress billing-gate rejections', async () => {
+    // Per the spec contract, validation errors fire pre-persistence —
+    // dry_run is for previewing successful upserts, not for skipping
+    // gates. Both gates `continue` before the dry_run branch, so this
+    // test locks the ordering in.
+    const passthroughCtx: TrainingContext = {
+      mode: 'open',
+      principal: 'static:demo:demo-billing-passthrough-v1',
+    };
+    const passthroughServer = createTrainingAgentServer(passthroughCtx);
+
+    const { result } = await simulateCallTool(passthroughServer, 'sync_accounts', {
+      accounts: [{
+        brand: { domain: 'acme.com' },
+        operator: 'agency-one',
+        billing: 'agent',
+        sandbox: true,
+      }],
+      dry_run: true,
+    });
+
+    const acct = (result.accounts as Record<string, unknown>[])[0];
+    expect(acct.status).toBe('rejected');
+    const errors = acct.errors as Array<{ code: string }>;
+    expect(errors[0].code).toBe('BILLING_NOT_PERMITTED_FOR_AGENT');
+  });
+
+  it('unrecognized principal: no per-agent gate fires (uniform-response rule)', async () => {
+    // Principals without a commercial-relationship record fall through
+    // to the seller-wide capability gate only. This is the spec's bright
+    // line for BILLING_NOT_PERMITTED_FOR_AGENT — emit only when agent
+    // identity AND a record both exist; otherwise return
+    // BILLING_NOT_SUPPORTED (the broader code) so the per-agent code
+    // does not act as an onboarding oracle for unrecognized callers.
+    const unknownCtx: TrainingContext = { mode: 'open', principal: 'static:primary' };
+    const unknownServer = createTrainingAgentServer(unknownCtx);
+
+    const { result } = await simulateCallTool(unknownServer, 'sync_accounts', {
+      accounts: [{
+        brand: { domain: 'acme.com' },
+        operator: 'agency-one',
+        billing: 'agent',
+        sandbox: true,
+      }],
+    });
+
+    const acct = (result.accounts as Record<string, unknown>[])[0];
+    expect(acct.status).toBe('active');
+    expect(acct.billing).toBe('agent');
+  });
+
   it('dry_run previews without persisting', async () => {
     const { result } = await simulateCallTool(server, 'sync_accounts', {
       accounts: [{

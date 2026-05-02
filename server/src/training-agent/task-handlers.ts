@@ -2979,7 +2979,11 @@ export async function handleGetAdcpCapabilities(_args: ToolArgs, ctx: TrainingCo
     account: {
       require_operator_auth: false,
       required_for_products: false,
-      supported_billing: ['agent'],
+      // Match the gate in account-handlers.ts SUPPORTED_BILLINGS — the
+      // handler accepts any of the three values; the previous
+      // ['agent']-only advertisement was a stale narrowing that
+      // contradicted runtime behavior.
+      supported_billing: ['agent', 'operator', 'advertiser'],
       sandbox: true,
     },
     compliance_testing: {
