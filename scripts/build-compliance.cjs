@@ -559,6 +559,34 @@ function main() {
     process.exit(1);
   }
 
+  // Raw-mode-required lint: storyboards setting attestation_mode_required:
+  // "raw" on an upstream_traffic check MUST declare at least one
+  // payload_must_contain clause. Otherwise the raw flag has no operational
+  // value and just excludes digest-mode adopters from the conformance
+  // signal. adcontextprotocol/adcp#3847 item 2.
+  try {
+    execSync('node scripts/lint-storyboard-raw-mode-required.cjs', {
+      cwd: path.join(__dirname, '..'),
+      stdio: 'inherit',
+    });
+  } catch {
+    process.exit(1);
+  }
+
+  // Advisory-expiry lint (warnings only): surface storyboards declaring
+  // severity: advisory without expires_after_version, so authors can
+  // confirm at PR review whether the drift is on purpose.
+  // adcontextprotocol/adcp#3847 item 1. Exits 0 even on warnings; drift
+  // is a judgment call, not a build error.
+  try {
+    execSync('node scripts/lint-storyboard-advisory-expiry.cjs', {
+      cwd: path.join(__dirname, '..'),
+      stdio: 'inherit',
+    });
+  } catch {
+    // Defensive: the script exits 0 by design even when warnings fire.
+  }
+
   console.log(isRelease
     ? `🚀 RELEASE BUILD: Creating compliance artifacts for AdCP v${version}`
     : `📦 Development build: Updating latest/ compliance`);

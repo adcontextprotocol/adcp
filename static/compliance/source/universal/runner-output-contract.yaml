@@ -348,6 +348,24 @@ validation_result:
                               # for the author-side semantics and use case
                               # (rollout gating during runner adoption
                               # windows).
+    - severity_promoted_from_advisory
+                              # boolean (optional, present only when the
+                              # storyboard declared severity: advisory AND
+                              # expires_after_version was met by the
+                              # runner's own @adcp/sdk version, causing
+                              # the runner to promote the validation to
+                              # required at execution time. When true,
+                              # `severity` MUST be "required" (the
+                              # promoted value the runner applied) and the
+                              # report SHOULD render the original advisory
+                              # status alongside — e.g.,
+                              # "[REQUIRED — was advisory through SDK
+                              # {expires_after_version}; promoted at SDK
+                              # {runner_version}]". When absent or false,
+                              # the storyboard's declared severity was
+                              # applied verbatim. See storyboard-schema.yaml
+                              # > "Validation" > expires_after_version for
+                              # the author-side semantics.
 
 request:
   description: |

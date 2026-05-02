@@ -690,6 +690,42 @@
 #                check kinds → not_applicable): forward-compat handles
 #                runner-spec version skew; severity handles author-managed
 #                rollout gating.
+# expires_after_version: string (optional, only meaningful when severity:
+#                advisory): semver of the runner / @adcp/sdk version after
+#                which the advisory MUST be promoted to "required" by the
+#                runner at execution time. Closes the advisory-drift
+#                problem: storyboards declared with severity: advisory
+#                during an adoption window get force-promoted once the
+#                runner catches up, so authors don't need to track every
+#                advisory entry across every PR.
+#
+#                Runner behavior: at storyboard-load time, the runner
+#                compares its own @adcp/sdk version to expires_after_version
+#                (semver compare, runner version vs declared expiry). If
+#                runner version >= expires_after_version, the runner
+#                MUST treat severity as "required" regardless of what the
+#                storyboard declares — advisory failures then fail the step.
+#                The validation_result MUST carry the original
+#                `severity: advisory` field for transparency, plus a
+#                `severity_promoted_from_advisory: true` boolean so reports
+#                can render "this assertion was advisory through SDK
+#                {expires_after_version}; promoted to required at SDK
+#                {runner_version}."
+#
+#                A build-time lint (lint-storyboard-advisory-expiry.cjs)
+#                warns (not fails) when severity: advisory is declared
+#                without expires_after_version — the field is optional but
+#                the lint surfaces "is this drift on purpose?" at PR review
+#                time. Use case for omitting the field: a permanent
+#                advisory check that's not gated on a runner version
+#                (e.g., experimental signals where the spec authors
+#                explicitly want the advisory grade to persist). Lint
+#                output is informational; the field stays optional.
+#
+#                Format: a semver string compatible with Node's `semver`
+#                npm package (semver.satisfies / semver.gte). Pre-release
+#                tags are honored: "6.5.0-beta.1" promotes earlier than
+#                "6.5.0".
 # path: string (JSON path to the field, e.g., "formats[0].format_id")
 # value: any (expected value — string, number, or boolean; required when check is "field_value";
 #             accepted (optional) when check is "field_value_or_absent")
