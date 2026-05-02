@@ -175,6 +175,88 @@ Non-normative implementation note: a single-query pattern like `SELECT ... WHERE
 | `ACCOUNT_PAYMENT_REQUIRED` | terminal | Outstanding balance requires payment | Buyer must resolve billing |
 | `ACCOUNT_SUSPENDED` | terminal | Account has been suspended | Contact seller to resolve |
 
+### Billing and Account Setup
+
+Returned by [`sync_accounts`](/docs/accounts/tasks/sync_accounts) when the request's billing or account-shape values are not acceptable to the seller. The two billing-rejection codes distinguish *which gate* fired so agents can dispatch on the right recovery — autonomous retry vs surface-to-human — without parsing prose. See [Buyer-agent identity](/docs/building/integration/accounts-and-agents#buyer-agent-identity) for the two-layer identity model these codes sit on top of.
+
+| Code | Recovery | Description | Resolution |
+|------|----------|-------------|------------|
+| `BILLING_NOT_SUPPORTED` | correctable | Seller declines the requested `billing` value at the seller-wide capability level (`supported_billing` does not include the value) or at the per-account-relationship level (e.g., the seller accepts `operator` billing in general but has no direct relationship with the operator on this specific account) | Check `get_adcp_capabilities` for `supported_billing`, resubmit with a supported value, or omit `billing`; when present, dispatch on `error.details.scope` (`"capability"` or `"account"`) per [`billing-not-supported.json`](https://adcontextprotocol.org/schemas/v3/error-details/billing-not-supported.json) |
+| `BILLING_NOT_PERMITTED_FOR_AGENT` | correctable | Seller-wide capability accepts the requested value, but the calling buyer agent's commercial relationship does not (e.g., onboarded as passthrough-only — no payments relationship — so only `operator` billing is permitted) | Retry with `error.details.suggested_billing` (typically `operator`) when present; when absent, the rejection is terminal-pending-onboarding — the agent MUST NOT auto-retry and MUST surface to a human at the buyer to complete payments-relationship onboarding with the seller offline |
+| `PAYMENT_TERMS_NOT_SUPPORTED` | correctable | Seller does not accept the requested `payment_terms` value | Omit `payment_terms` to accept the default, retry with a different supported value, or negotiate offline |
+| `BRAND_REQUIRED` | correctable | Billable operation attempted without a brand reference | Include `brand` (`domain` plus optional `brand_id`) on the request |
+
+Normative requirements:
+
+- **Uniform response without established agent identity.** `BILLING_NOT_PERMITTED_FOR_AGENT` differs from `BILLING_NOT_SUPPORTED` based on the caller's onboarded commercial state with the seller. Returning the per-agent code without established identity lets unauthenticated probes use the code-choice as an oracle for "is this agent onboarded as agent-billable?" — same shape as the [`*_NOT_FOUND` uniform-response rule](#standard-error-codes). The bright line: sellers MUST emit `BILLING_NOT_PERMITTED_FOR_AGENT` only when agent identity has been established via signed-request derivation per [Agent identity](/docs/building/implementation/security#agent-identity) or via a credential-to-agent mapping in the seller's onboarding record. In all other cases — including bearer credentials not mapped to a specific agent record — sellers MUST return `BILLING_NOT_SUPPORTED`, and `error.details.scope` MUST be omitted on this path so a `"account"` scope hint cannot itself act as a per-account-relationship oracle.
+- **`BILLING_NOT_PERMITTED_FOR_AGENT` details shape is clamped.** `error.details` MUST conform to [`error-details/billing-not-permitted-for-agent.json`](https://adcontextprotocol.org/schemas/v3/error-details/billing-not-permitted-for-agent.json): `rejected_billing` (echoed) plus an optional single `suggested_billing` retry value. The schema sets `additionalProperties: false`. The shape MUST NOT carry the agent's full permitted-billing subset, rate cards, payment terms, credit limit, billing entity, or any other per-agent commercial state — full-subset disclosure in a single probe is exactly the oracle the clamp prevents.
+- **One-shot retry.** A buyer agent that retries with `error.details.suggested_billing` and receives a second `BILLING_NOT_PERMITTED_FOR_AGENT` MUST surface to a human rather than retrying again. Recovery is bounded to a single seller-suggested fallback; further iteration indicates seller misconfiguration or onboarding state the agent cannot resolve autonomously.
+
+**Recovery dispatch — example.** The two billing codes recover differently. Implementers SHOULD branch explicitly rather than collapsing to a single retry path. The snippet below uses the response shape returned directly by the seller (the `accounts[].errors[]` array on a `sync_accounts` response — see [task reference](/docs/accounts/tasks/sync_accounts)), not the `@adcp/client/testing` wrapper used elsewhere in task examples.
+
+```javascript
+async function syncAccountsWithRecovery(client, account) {
+  const result = await client.syncAccounts({ accounts: [account] });
+  const error = result.accounts[0]?.errors?.[0];
+  if (!error) return result;
+
+  switch (error.code) {
+    case 'BILLING_NOT_SUPPORTED': {
+      // Seller-wide or per-account gate. Check capabilities, dispatch on scope.
+      const scope = error.details?.scope;  // "capability" | "account"
+      if (scope === 'capability') {
+        // The seller never accepts this value. Pick from supported_billing.
+        const supported = error.details?.supported_billing ?? [];
+        if (supported.length === 0) return surfaceToHuman(error);
+        return client.syncAccounts({
+          accounts: [{ ...account, billing: supported[0] }],
+        });
+      }
+      // Per-account-relationship reject — the operator-on-this-account isn't
+      // billable directly. Try the next-most-permissive value the seller's
+      // capability allows.
+      return tryNextBillingValue(client, account, error);
+    }
+
+    case 'BILLING_NOT_PERMITTED_FOR_AGENT': {
+      // Per-buyer-agent commercial gate. Autonomous retry only when the seller
+      // suggests a fallback; otherwise surface — the agent cannot extend its
+      // own commercial relationship.
+      const suggested = error.details?.suggested_billing;
+      if (!suggested) return surfaceToHuman(error);
+      return client.syncAccounts({
+        accounts: [{ ...account, billing: suggested }],
+      });
+    }
+
+    default:
+      throw error;
+  }
+}
+```
+
+**Example envelope** for `BILLING_NOT_PERMITTED_FOR_AGENT` — passthrough-only buyer agent receives a fallback to `operator`:
+
+```json
+{
+  "accounts": [{
+    "brand": { "domain": "nova-brands.com", "brand_id": "spark" },
+    "operator": "pinnacle-media.com",
+    "action": "failed",
+    "status": "rejected",
+    "errors": [{
+      "code": "BILLING_NOT_PERMITTED_FOR_AGENT",
+      "message": "This buyer agent is onboarded as passthrough-only; only operator billing is permitted.",
+      "recovery": "correctable",
+      "details": {
+        "rejected_billing": "agent",
+        "suggested_billing": "operator"
+      }
+    }]
+  }]
+}
+```
+
 ### Authorization (RBAC)
 
 Returned when the caller is authenticated but lacks the specific scope for the request. Enforcement is seller-local; discoverability is via the `authorization` object on per-account entries in [`sync_accounts`](/docs/accounts/tasks/sync_accounts) and [`list_accounts`](/docs/accounts/tasks/list_accounts) responses. See [Caller authorization](/docs/accounts/overview#caller-authorization) for the full shape.
