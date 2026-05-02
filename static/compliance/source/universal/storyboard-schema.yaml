@@ -53,6 +53,60 @@
 #     MUST exist in the source tree at build time. Duplicate IDs
 #     across files are a build-time error.)
 #
+# default_agent: string (optional — logical agent key used by multi-agent
+#   storyboard runners to route steps that do not have a unique specialism
+#   claimant in the runtime agents map. Resolved by the runner against the
+#   `agents` option passed to `runStoryboard({ agents: { sales: …, governance: …, … } })`.
+#
+#   Key shape: free-form non-empty string, matched verbatim against the
+#   runtime `agents` map's keys. The spec does NOT constrain the key to the
+#   specialism enum (`sales`, `signals`, `governance`, `creative`, `brand`)
+#   because production multi-agent topologies legitimately fan out per-property
+#   (`nyt_sales`, `wsj_sales`), per-region (`sales_eu`, `sales_us`), or
+#   per-brand-rights-holder. Authors choose the convention that matches their
+#   operator's CI invocation; portability across operators is the author's
+#   concern, not the spec's.
+#
+#   When to set it. Storyboards that exercise cross-domain tools — e.g.,
+#   `sync_creatives`, `list_creative_formats` — do not name a single specialism
+#   the runner can match. The author has the most context for which logical
+#   tenant should receive these calls (usually "wherever the seller is":
+#   `sales`). Encoding `default_agent: sales` once in the YAML beats
+#   re-asserting it on every CI invocation. (Note: `comply_test_controller`
+#   is routed via `prerequisites.controller_seeding`, not this field — the
+#   controller is a back-channel, not a specialism claimant.)
+#
+#   Resolution order (runner contract — see adcp-client#1066, adcp-client#1355):
+#     1. Step-level `agent:` override (if declared on the step).
+#     2. Specialism-claimant match against the runtime agents map (matched
+#        via each agent's `get_adcp_capabilities.supported_protocols`):
+#          - Exactly one agent claims the step's task's specialism → route there.
+#          - Zero claimants → fall through to slot 3.
+#          - Two or more claimants → runner MUST grade the step `unrouted_step`
+#            rather than picking arbitrarily. Multi-claim is an operator-config
+#            error; the storyboard cannot disambiguate it. Slot 3/4 do NOT
+#            rescue this case — silently picking one would mask the misconfig.
+#     3. Storyboard-level `default_agent` (THIS field) resolved against the
+#        runtime agents map. When the field is set but the key is absent from
+#        the map, the runner MUST grade the step `default_agent_unresolved`
+#        and MUST NOT fall through to slot 4 — silent fallback would invisibly
+#        override the storyboard author's encoded intent. Slot 4 fires only
+#        when the storyboard does NOT declare this field.
+#     4. Run-options `default_agent` passed to `runStoryboard({ default_agent })`.
+#        Same key-resolution rule as slot 3: set-but-unmatched grades
+#        `default_agent_unresolved`; unset falls through to slot 5.
+#     5. Fail-fast — runner raises `unrouted_step` and grades the step failed.
+#
+#   Single-agent runs ignore this field entirely — there is no map to resolve
+#   against, every step routes to the only configured agent. Authors SHOULD
+#   still declare it for clarity; multi-agent runners treat it as advisory and
+#   single-agent runners as a no-op.
+#
+#   Validation. The `<key>` MUST be a non-empty string. Validation that the
+#   key resolves to a configured tenant is a runtime concern (per the slot 3
+#   rule above), not a schema concern — the same storyboard runs against
+#   different topologies.)
+#
 # agent:
 #   interaction_model: enum (stateless_transform | stateful_preloaded | stateful_push | stateless_generate | media_buy_seller | marketplace_catalog | owned_signals | si_platform | brand_rights_holder | governance_agent)
 #   capabilities: string[] (AdCP capability flags: supports_transformation, has_creative_library, supports_generation, sells_media, accepts_briefs, supports_guaranteed, supports_non_guaranteed, catalog_signals)
