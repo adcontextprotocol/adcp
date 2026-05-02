@@ -951,11 +951,43 @@ Operators SHOULD go further and serve each signing purpose from a distinct subdo
 
 **JWKS discovery for a signed request** — given a `keyid` on an incoming signature:
 
-1. The verifier has, at onboarding or via prior discovery, a mapping from the signing agent's URL to its brand.json `agents[]` entry.
+1. The verifier resolves the signing agent's URL to its brand.json `agents[]` entry. Discovery MAY come from prior onboarding, MAY come from a registry cache, but the canonical on-wire bootstrap is the `brand_url` field on the agent's `get_adcp_capabilities` response — see [Discovering an agent's signing keys via `brand_url`](#discovering-an-agents-signing-keys-via-brand_url).
 2. Fetch the agent's `jwks_uri` (or default to `/.well-known/jwks.json` at the origin of the agent's `url`) with SSRF validation per [Webhook URL validation](#webhook-url-validation-ssrf). JWKS cache TTL bounded above by the revocation-list polling interval.
 3. If the `kid` is absent from the cached JWKS, refetch the JWKS **immediately** (step 2's first fetch may have been cached). If a refetch was already performed in the last 30 seconds for the same `jwks_uri`, the cooldown applies: the verifier MUST NOT refetch again and MUST reject with `request_signature_key_unknown`. The cooldown is between refetches, not before the first.
 
 Verifiers MUST NOT accept signatures from a `keyid` they cannot resolve to a specific `agents[]` entry — anonymous signatures provide no accountability.
+
+##### Discovering an agent's signing keys via `brand_url`
+
+The capabilities-level `brand_url` field on `get_adcp_capabilities` (added in 3.x, see schema `static/schemas/source/protocol/get-adcp-capabilities-response.json`) is the on-wire bootstrap for the agent → operator → keys chain. Given only an agent URL `A`, a verifier resolves the agent's signing keys via:
+
+1. Fetch `A`'s `get_adcp_capabilities` response. On unreachable/timeout, reject with `request_signature_capabilities_unreachable`.
+2. Read `brand_url`. If absent and the request is signed, reject with `request_signature_brand_url_missing`. The required-when rule (storyboard-enforced in 3.x; schema-required in 4.0) is: `brand_url` MUST be present when the agent declares `request_signing.supported_for`/`required_for` non-empty, `webhook_signing.supported === true`, or any field under `identity.key_origins`.
+3. **Origin binding.** The agent URL `A`'s host eTLD+1 (Public Suffix List) MUST equal `brand_url`'s host eTLD+1. If not, fetch brand.json and check that `authorized_operators[]` lists `A`'s eTLD+1. If neither holds, reject with `request_signature_brand_origin_mismatch`. This closes the shared-tenancy spoofing vector where an attacker stands up an agent on `attacker.example/mcp` and points its `brand_url` at an unrelated operator's brand.json that happens to legitimately list `attacker.example/mcp` (e.g., a SaaS multi-tenant deployment).
+4. Fetch brand.json at `brand_url` with the same SSRF validation used for webhook URLs. Cache TTL bounded by the JWKS revocation polling interval.
+5. Find the entry in `agents[]` whose `url` **byte-equals** `A` (no canonicalization at this step — same rule as the `iss`-to-brand.json match for governance JWS, see [Buyer identity resolution](#buyer-identity-resolution)). If none matches, reject with `request_signature_agent_not_in_brand_json`. If multiple match (operator misconfig — the brand.json schema does not currently constrain `agents[]` to be unique-by-URL), reject with `request_signature_brand_json_ambiguous`.
+6. Resolve the JWKS source by purpose:
+   - **Sell-side webhook-signing**: the publisher's `adagents.json signing_keys` pin (when present) is authoritative per the publisher-pin precedence rule above and overrides everything below.
+   - **All other purposes** (request-signing, operator-side webhook-signing, governance-signing, TMP-signing): use the matched entry's `jwks_uri`, defaulting to `/.well-known/jwks.json` at the origin of `A` when absent.
+7. **`identity.key_origins` consistency check (mandatory when signing).** For every `purpose` declared under `identity.key_origins` on the capabilities response **whose JWKS source in step 6 was the operator brand.json** (i.e., not a publisher `adagents.json signing_keys` pin), the host of the resolved `jwks_uri` MUST equal the declared origin for that purpose. Mismatch on any purpose → reject with `request_signature_key_origin_mismatch` carrying `{ purpose, expected_origin, actual_origin }`. Skip the check for purposes whose source was a publisher pin — the pin is an intentional override and may legitimately point at a different host than the operator's `key_origins` declaration. If the agent declares signing without a corresponding `identity.key_origins.{purpose}` entry, reject with `request_signature_key_origin_missing` carrying `{ purpose, posture }`.
+8. Fetch JWKS, find the `kid`, verify per the existing RFC 9421 profile (steps 7+ of the [verifier checklist](#verifier-checklist-requests)).
+
+**Trust roots.** brand.json is operator-attested ("this agent is mine, here are its keys"). `adagents.json` is publisher-attested ("this agent may sell my inventory; optionally, here is its pinned `signing_keys`"). For sell-side webhook signatures, the publisher pin is authoritative (publisher > operator). For request signatures and operator-side webhook signatures, the operator brand.json `jwks_uri` is authoritative. The agent never self-attests its own keys — a `jwks_uri` field is deliberately NOT carried on the capabilities response; the operator publishes the keys out-of-band via brand.json.
+
+**`sponsored_intelligence.brand_url` is distinct.** SI agents may carry a `brand_url` under `sponsored_intelligence` for rendering purposes (colors, fonts, logos, tone). That field is a rendering pointer, not a trust-root pointer; an SI agent MAY set the two URLs to different values (e.g., a sub-brand brand.json for rendering while still trusting the operator's brand.json for keys).
+
+**New rejection codes** added with this discovery chain (3.x):
+
+| Code | When | Detail fields |
+|------|------|---------------|
+| `request_signature_brand_url_missing` | Capabilities did not carry `brand_url` and a signed request was received | `agent_url` |
+| `request_signature_capabilities_unreachable` | Capabilities fetch failed | `agent_url`, `http_status`, `dns_error`, `last_attempt_at` |
+| `request_signature_brand_json_unreachable` | brand.json fetch failed | `brand_url`, `http_status`, `dns_error`, `last_attempt_at` |
+| `request_signature_brand_origin_mismatch` | Agent eTLD+1 ≠ brand_url eTLD+1 and `authorized_operators[]` does not delegate | `agent_url`, `agent_etld1`, `brand_url_etld1` |
+| `request_signature_agent_not_in_brand_json` | Agent URL not present in `agents[]` of resolved brand.json | `agent_url`, `brand_url` |
+| `request_signature_brand_json_ambiguous` | Multiple `agents[]` entries match the agent URL | `agent_url`, `brand_url`, `matched_count`, `matched_entries[]` |
+| `request_signature_key_origin_mismatch` | Resolved `jwks_uri` host ≠ declared `identity.key_origins.{purpose}` | `purpose`, `expected_origin`, `actual_origin` |
+| `request_signature_key_origin_missing` | Signing posture declared but `identity.key_origins.{purpose}` absent | `purpose`, `posture` |
 
 #### Agent identity
 

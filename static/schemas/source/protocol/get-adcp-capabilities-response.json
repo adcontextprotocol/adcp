@@ -112,6 +112,12 @@
         "idempotency"
       ]
     },
+    "brand_url": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https://",
+      "description": "HTTPS URL of the operator's brand.json (typically `https://{operator-domain}/.well-known/brand.json`). Pointer to the trust root for this agent's signing keys — the operator-attested anchor that verifiers use to discover `jwks_uri` for any signing posture this agent declares. The agent URL on this response MUST byte-equal the `url` of an entry in that brand.json's `agents[]` array, AND the agent URL's host eTLD+1 MUST equal the brand_url's host eTLD+1 unless the brand.json's `authorized_operators[]` explicitly delegates the agent's eTLD+1 (covers the SaaS-platform-as-operator case where Scope3 runs an agent on behalf of Nike). Verifiers use the matched entry's `jwks_uri` (or its origin default of `/.well-known/jwks.json`) to discover signing keys. Schema-optional in 3.x; storyboard-enforced when the agent declares `request_signing.supported_for`/`required_for` non-empty, `webhook_signing.supported === true`, or any field under `identity.key_origins`. Becomes schema-required in 4.0. Distinct from `sponsored_intelligence.brand_url`, which is a rendering pointer for SI agent visuals (colors, fonts, logos, tone); sellers populating both MAY set them to different URLs. The `jwks_uri` source for sell-side webhook signatures may additionally be pinned by the publisher's `adagents.json signing_keys`, which overrides brand.json per the existing rule. See `docs/building/implementation/security.mdx` §Discovering an agent's signing keys."
+    },
     "supported_protocols": {
       "type": "array",
       "description": "AdCP protocols this agent supports. Each value both (a) declares which tools the agent implements and (b) commits the agent to pass the baseline compliance storyboard at /compliance/{version}/protocols/{protocol}/ (with snake_case → kebab-case path mapping, e.g. media_buy → /compliance/.../protocols/media-buy/). The `measurement` protocol is in development — currently scoped to `get_adcp_capabilities` for catalog discovery; additional measurement tasks (reporting, attribution, etc.) and a baseline storyboard land in subsequent minors. Compliance testing support is declared separately via the `compliance_testing` capability block (below), not as a protocol claim.",
