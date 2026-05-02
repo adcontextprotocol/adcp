@@ -334,6 +334,26 @@ Verification is a trust signal, not a gate. Finding the operator in `brand.json`
 
 `authorized_operators` models the interface between the brand and whoever operates on its behalf. It does not model internal agency hierarchies.
 
+## Buyer-agent identity
+
+`authorized_operators` tells the seller whether an operator is allowed to represent a brand. It doesn't tell the seller who the *agent* placing the call is, or what commercial relationship is on file with that agent. Those are different questions, and the seller checks both before provisioning.
+
+Two layers run on every `sync_accounts` request:
+
+| Layer | Question | Where it lives |
+|-------|----------|----------------|
+| **Agent identity** | Which buyer agent issued this request? | The seller's onboarding record, looked up by signed-request `agent_url` (when [request signing](/docs/building/implementation/security#signed-requests-transport-layer) is in use) or by the bearer / API-key / OAuth credential the agent presented. Signature or credential establishes identity; authorization is a separate check. |
+| **Brand-operator authorization** | Is the operator named in the request authorized to act for the brand? | `brand.json` `authorized_operators` (above). Verified whether the request is signed or not. |
+
+Both layers MUST pass. A signed request from an onboarded agent for an unauthorized operator gets rejected on the brand-operator check; a request from an unrecognized agent for an authorized operator gets rejected on the identity check. Sellers that advertise [`request_signing.required_for`](/docs/building/implementation/security#transport-scope) on `sync_accounts` reject unsigned traffic at the identity layer; sellers that don't advertise it MAY still require an established credential mapping before agent-billable values are accepted.
+
+The brand-operator check runs against the seller's cached `brand.json` per [Operator revocation and caching](#operator-revocation-and-caching) — revocation is eventual. Sellers performing high-value or first-time-on-this-brand provisioning SHOULD bypass the cache to close the TOCTOU window.
+
+**The agent's commercial state is offline.** Whether a buyer agent is *passthrough-only* (no payments relationship — only the operator can be invoiced) or *agent-billable* (the agent can be invoiced directly) is recorded in the seller's onboarding system, the same way operator account creation is. Provisioning that record — contract, KYC, payment terms, billing entity capture — is out of scope for AdCP. What's in scope is two on-wire consequences:
+
+1. **Runtime billing gate.** A passthrough-only agent that submits `billing: "agent"` or `billing: "advertiser"` is rejected with `BILLING_NOT_PERMITTED_FOR_AGENT` and an `error.details.suggested_billing` of `operator`. See [Billing and Account Setup](/docs/building/implementation/error-handling#billing-and-account-setup) for the recovery contract.
+2. **Per-agent defaults.** Sellers MAY pre-fill `payment_terms`, `billing_entity`, rate-card linkage, and credit limit from the buyer agent's onboarding record when provisioning new accounts under that agent. Per-account values on the `sync_accounts` request always take precedence over per-agent defaults — the buyer can override per row. The per-agent layer is a recommended implementation pattern (it mirrors how SSPs maintain `buyer_id` / `seat_id` rows for OpenRTB DSPs); smaller publishers MAY collapse to seller-wide defaults until they have receivables ops that distinguish per-agent terms.
+
 ## Account references
 
 Every account-scoped operation accepts an `account` object instead of a flat `account_id` string. The seller's `require_operator_auth` capability determines which model applies — and the model determines the buyer's entire integration path.
