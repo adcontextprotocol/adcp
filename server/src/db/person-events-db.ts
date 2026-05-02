@@ -37,7 +37,8 @@ export type PersonEventType =
   | 'invite_sent'           // membership invite emailed to recipient
   | 'invite_accepted'       // recipient signed in and accepted
   | 'invite_revoked'        // admin revoked before accept
-  | 'invite_expired';       // expires_at passed without accept/revoke (sweep)
+  | 'invite_expired'        // expires_at passed without accept/revoke (sweep)
+  | 'tool_error';           // an Addie tool refused / errored — data carries { tool, reason, ... }
 
 export interface PersonEvent {
   id: number;

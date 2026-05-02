@@ -4,13 +4,30 @@
 import { describe, test, expect, vi, beforeEach, type Mock } from 'vitest';
 import type { MemberContext } from '../../server/src/addie/member-context.js';
 
-const { mockGetOrganization, mockSearchOrganizations, mockGetOrCreateStripeCustomer } = vi.hoisted(() => {
+const {
+  mockGetOrganization,
+  mockSearchOrganizations,
+  mockGetOrCreateStripeCustomer,
+  mockGetRelationshipByWorkosId,
+  mockGetRelationshipBySlackId,
+  mockRecordEvent,
+} = vi.hoisted(() => {
   const mockGetOrganization = vi.fn<any>();
   const mockSearchOrganizations = vi.fn<any>();
   const mockGetOrCreateStripeCustomer = vi.fn<any>().mockImplementation(
     async (_orgId: string, createFn: () => Promise<string | null>) => createFn()
   );
-  return { mockGetOrganization, mockSearchOrganizations, mockGetOrCreateStripeCustomer };
+  const mockGetRelationshipByWorkosId = vi.fn<any>();
+  const mockGetRelationshipBySlackId = vi.fn<any>();
+  const mockRecordEvent = vi.fn<any>().mockResolvedValue(undefined);
+  return {
+    mockGetOrganization,
+    mockSearchOrganizations,
+    mockGetOrCreateStripeCustomer,
+    mockGetRelationshipByWorkosId,
+    mockGetRelationshipBySlackId,
+    mockRecordEvent,
+  };
 });
 
 // Mock the stripe-client module
@@ -33,6 +50,16 @@ vi.mock('../../server/src/db/organization-db.js', () => {
     },
   };
 });
+
+// Mock relationship + person-events modules so refusal-path tool_error
+// emission doesn't try to hit a real DB pool.
+vi.mock('../../server/src/db/relationship-db.js', () => ({
+  getRelationshipByWorkosId: mockGetRelationshipByWorkosId,
+  getRelationshipBySlackId: mockGetRelationshipBySlackId,
+}));
+vi.mock('../../server/src/db/person-events-db.js', () => ({
+  recordEvent: mockRecordEvent,
+}));
 
 /** Member context with an organization for payment link tests */
 const mockMemberContext: MemberContext = {
@@ -556,6 +583,129 @@ describe('billing-tools', () => {
       expect(toolNames).toContain('create_payment_link');
       expect(toolNames).toContain('send_invoice');
       expect(toolNames).toContain('confirm_send_invoice');
+    });
+  });
+
+  // #3721 — every billing-tool refusal must leave a tool_error person event
+  // so admins can debug failures from the timeline. Without these, send_invoice
+  // can fail silently the way it did during the original incident.
+  describe('refusal paths emit tool_error events', () => {
+    const personId = 'person_test_abc';
+
+    beforeEach(() => {
+      mockGetRelationshipByWorkosId.mockResolvedValue({ id: personId });
+      mockGetRelationshipBySlackId.mockResolvedValue(null);
+      mockRecordEvent.mockResolvedValue(undefined);
+    });
+
+    test('send_invoice without a signed-in member emits tool_error and refuses', async () => {
+      const billingTools = await import('../../server/src/addie/mcp/billing-tools.js');
+      // Anonymous-on-Slack: no workos_user, but slack_user is present.
+      const slackOnly: MemberContext = {
+        is_mapped: false,
+        is_member: false,
+        slack_linked: true,
+        slack_user: { slack_user_id: 'U_GREG', display_name: 'Greg', email: null },
+      } as any;
+      mockGetRelationshipByWorkosId.mockResolvedValue(null);
+      mockGetRelationshipBySlackId.mockResolvedValue({ id: personId });
+
+      const { createBillingToolHandlers } = await import('../../server/src/addie/mcp/billing-tools.js');
+      const handlers = createBillingToolHandlers(slackOnly);
+
+      const result = JSON.parse(await handlers.get('send_invoice')({ lookup_key: 'aao_membership_explorer_50' }));
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/sign in/i);
+
+      expect(mockRecordEvent).toHaveBeenCalledWith(
+        personId,
+        'tool_error',
+        expect.objectContaining({
+          data: expect.objectContaining({
+            tool: 'send_invoice',
+            reason: 'not_signed_in_or_no_workspace',
+            lookup_key: 'aao_membership_explorer_50',
+          }),
+        }),
+      );
+    });
+
+    test('confirm_send_invoice without a billing address emits tool_error', async () => {
+      mockGetOrganization.mockResolvedValue({
+        workos_organization_id: 'org_test_123',
+        name: 'Test Corp',
+        billing_address: null,
+      });
+      const { createBillingToolHandlers } = await import('../../server/src/addie/mcp/billing-tools.js');
+      const handlers = createBillingToolHandlers(mockMemberContext);
+
+      const result = JSON.parse(await handlers.get('confirm_send_invoice')({
+        lookup_key: 'aao_membership_explorer_50',
+      }));
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/billing address/i);
+
+      expect(mockRecordEvent).toHaveBeenCalledWith(
+        personId,
+        'tool_error',
+        expect.objectContaining({
+          data: expect.objectContaining({
+            tool: 'confirm_send_invoice',
+            reason: 'missing_billing_address',
+            org_id: 'org_test_123',
+          }),
+        }),
+      );
+    });
+
+    test('create_payment_link with bad lookup_key emits tool_error', async () => {
+      const stripeMock = await import('../../server/src/billing/stripe-client.js');
+      (stripeMock.getPriceByLookupKey as any).mockResolvedValue(null);
+
+      const { createBillingToolHandlers } = await import('../../server/src/addie/mcp/billing-tools.js');
+      const handlers = createBillingToolHandlers(mockMemberContext);
+
+      const result = JSON.parse(await handlers.get('create_payment_link')({
+        lookup_key: 'bogus_key_does_not_exist',
+      }));
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/No product matches/i);
+
+      expect(mockRecordEvent).toHaveBeenCalledWith(
+        personId,
+        'tool_error',
+        expect.objectContaining({
+          data: expect.objectContaining({
+            tool: 'create_payment_link',
+            reason: 'unknown_lookup_key',
+            lookup_key: 'bogus_key_does_not_exist',
+          }),
+        }),
+      );
+    });
+
+    test('truly anonymous caller with no relationship row no-ops gracefully (no event)', async () => {
+      mockGetRelationshipByWorkosId.mockResolvedValue(null);
+      mockGetRelationshipBySlackId.mockResolvedValue(null);
+
+      const { createBillingToolHandlers } = await import('../../server/src/addie/mcp/billing-tools.js');
+      const handlers = createBillingToolHandlers(null);
+
+      const result = JSON.parse(await handlers.get('send_invoice')!({ lookup_key: 'aao_membership_explorer_50' }));
+      expect(result.success).toBe(false);
+      expect(mockRecordEvent).not.toHaveBeenCalled();
+    });
+
+    test('recordEvent throwing does not break the user-facing refusal', async () => {
+      mockRecordEvent.mockRejectedValueOnce(new Error('DB pool exhausted'));
+
+      const { createBillingToolHandlers } = await import('../../server/src/addie/mcp/billing-tools.js');
+      const noEmail: MemberContext = { ...mockMemberContext, workos_user: undefined } as any;
+      const handlers = createBillingToolHandlers(noEmail);
+
+      const result = JSON.parse(await handlers.get('send_invoice')!({ lookup_key: 'foo' }));
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/sign in/i);
     });
   });
 });
