@@ -181,7 +181,7 @@ Python (`adcp`):
 from adcp import resolve_agent, get_agent_jwks, verify_request_signature
 
 result = resolve_agent("https://buyer.example.com/mcp")
-# result: AgentResolution { agent_url, brand_url, agent_entry, jwks_uri,
+# result: AgentResolution { agent_url, brand_json_url, agent_entry, jwks_uri,
 #                          jwks, identity_posture, consistency, freshness, trace }
 
 verified = verify_request_signature(
@@ -192,17 +192,44 @@ verified = verify_request_signature(
 # Raises typed exceptions matching the spec's request_signature_* error codes.
 ```
 
+Go (`adcp-go`):
+
+```go
+import (
+    "context"
+
+    "github.com/adcontextprotocol/adcp-go/resolver"
+    "github.com/adcontextprotocol/adcp-go/verify"
+)
+
+// One-shot resolve: full chain, trace, freshness aggregate.
+result, err := resolver.ResolveAgent(ctx, "https://buyer.example.com/mcp",
+    resolver.WithCacheTTLs(5*time.Minute, 5*time.Minute),
+)
+// result: *AgentResolution { AgentURL, BrandJSONURL, AgentEntry, JWKSUri,
+//                           JWKS, IdentityPosture, Consistency, Freshness, Trace }
+
+// One-shot signature verification — runs the discovery chain plus the verifier checklist.
+verified, err := verify.RequestSignature(ctx, req, verify.Options{
+    AgentURL:    "https://buyer.example.com/mcp",
+    AllowedAlgs: []string{"EdDSA", "ES256"},
+})
+// Returns *VerifiedIdentity, or a *verify.Error whose Code matches the spec's
+// request_signature_* taxonomy and whose Detail carries the per-code fields
+// (HTTPStatus, DNSError, Purpose, ExpectedOrigin, ActualOrigin, MatchedEntries, etc.).
+```
+
 The SDK is the only resolution path. There is no `mode="aao"`.
 
 ### CLI
 
-Drop a CLI command in `@adcp/client` for the "I have an agent URL, show me its keys" UX:
+Each SDK ships an equivalent CLI for the "I have an agent URL, show me its keys" UX — `npx @adcp/client resolve <url>` (TS), `python -m adcp resolve <url>` (Python), `adcp-go resolve <url>` (Go):
 
 ```bash
 $ npx @adcp/client resolve https://buyer.example.com/mcp
 
 agent_url      https://buyer.example.com/mcp
-brand_url      https://example.com/.well-known/brand.json   ✓ etld1_match
+brand_json_url https://example.com/.well-known/brand.json   ✓ etld1_match
 agent_entry    type=buying  id=buyer_main
 jwks_uri       https://keys.example.com/.well-known/jwks.json
 jwks           1 key  buyer-signing-2026-04 (Ed25519, sig, request-signing)
@@ -215,7 +242,7 @@ trace
   jwks          GET       200  age=287  fetched=2026-04-30T11:55:13Z  bytes=612    cache-control="max-age=300"
 ```
 
-Add `--json` for machine-readable output (same shape as the SDK's `resolveAgent()` return value), `--fresh` to bypass cache, `--quiet` to print only the JWKS in RFC 7517 form (drop-in for `jq | jose verify`).
+All three CLIs support `--json` (machine-readable, same shape as the SDK's `resolveAgent()` return value), `--fresh` (bypass cache), and `--quiet` (print only the JWKS in RFC 7517 form — drop-in for `jq | jose verify`). The output format is identical across SDKs so tooling that pipes the output (e.g., shell scripts checking `freshness`) is portable.
 
 ### Resolution result shape
 

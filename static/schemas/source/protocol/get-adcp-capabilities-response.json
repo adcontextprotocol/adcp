@@ -112,12 +112,6 @@
         "idempotency"
       ]
     },
-    "brand_url": {
-      "type": "string",
-      "format": "uri",
-      "pattern": "^https://",
-      "description": "HTTPS URL of the operator's brand.json (typically `https://{operator-domain}/.well-known/brand.json`). Pointer to the trust root for this agent's signing keys — the operator-attested anchor that verifiers use to discover `jwks_uri` for any signing posture this agent declares. Schema-optional in 3.x; storyboard-enforced when the agent declares any signing posture (see required-when rule below). Becomes schema-required in 4.0 for responses that declare `supported_versions` containing any 4.x release; 4.x verifiers talking to a 3.x-only agent MUST continue to accept absent `brand_url`. Distinct from `sponsored_intelligence.brand_url`, which is a rendering pointer for SI agent visuals; verifiers MUST use this top-level field for key discovery and MUST NOT fall back to `sponsored_intelligence.brand_url` as a trust-root pointer. Full constraints (byte-equal `agents[].url` match, eTLD+1 origin binding with `authorized_operators[]` opt-in, mandatory `identity.key_origins` consistency check, publisher-pin override for sell-side webhooks) are normative in [docs/building/implementation/security.mdx#discovering-an-agents-signing-keys-via-brand_url](https://adcontextprotocol.org/docs/building/implementation/security#discovering-an-agents-signing-keys-via-brand_url)."
-    },
     "supported_protocols": {
       "type": "array",
       "description": "AdCP protocols this agent supports. Each value both (a) declares which tools the agent implements and (b) commits the agent to pass the baseline compliance storyboard at /compliance/{version}/protocols/{protocol}/ (with snake_case → kebab-case path mapping, e.g. media_buy → /compliance/.../protocols/media-buy/). The `measurement` protocol is in development — currently scoped to `get_adcp_capabilities` for catalog discovery; additional measurement tasks (reporting, attribution, etc.) and a baseline storyboard land in subsequent minors. Compliance testing support is declared separately via the `compliance_testing` capability block (below), not as a protocol claim.",
@@ -1019,8 +1013,36 @@
     },
     "identity": {
       "type": "object",
-      "description": "Operator identity posture — key-scoping and compromise-response controls the agent operates. Fields are independent, all advisory in 3.x; receivers use them to reason about blast radius and revocation latency at onboarding rather than discovering the posture after an incident. Semantics of an empty object: `identity: {}` means \"posture block present but no posture claimed\" — schema-valid but advisory-neutral; receivers MUST treat it as equivalent to omitting the block (no capability claim inferred). Operators SHOULD populate at least one field to make a declaration meaningful.",
+      "description": "Operator identity posture — trust-root pointer (`brand_json_url`) plus key-scoping and compromise-response controls the agent operates. `brand_json_url` is the load-bearing field — when the agent declares any signing posture, verifiers use it to bootstrap from the agent URL to the operator's brand.json (and from there to signing keys); see security.mdx §Discovering an agent's signing keys. Other fields are advisory in 3.x; receivers use them to reason about blast radius and revocation latency at onboarding rather than discovering the posture after an incident. Semantics of an empty object: `identity: {}` means \"posture block present but no posture claimed\" — schema-valid but advisory-neutral; receivers MUST treat it as equivalent to omitting the block (no capability claim inferred). Operators SHOULD populate at least one field to make a declaration meaningful.",
       "properties": {
+        "brand_json_url": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://",
+          "description": "HTTPS URL of the operator's brand.json (typically `https://{operator-domain}/.well-known/brand.json`). Trust-root pointer for this agent's signing keys. See [security.mdx §Discovering an agent's signing keys via `brand_json_url`](https://adcontextprotocol.org/docs/building/implementation/security#discovering-an-agents-signing-keys-via-brand_json_url) for the verifier algorithm and `x-adcp-validation` for structured constraints. Distinct from `sponsored_intelligence.brand_url`, which is a rendering pointer for SI agent visuals — verifiers MUST use this field for key discovery and MUST NOT fall back to `sponsored_intelligence.brand_url` as a trust-root pointer.",
+          "x-adcp-validation": {
+            "trust_root": true,
+            "required_when": [
+              { "any_of": [
+                { "field": "request_signing.supported_for", "non_empty": true },
+                { "field": "request_signing.required_for", "non_empty": true },
+                { "field": "webhook_signing.supported", "equals": true },
+                { "field": "identity.key_origins", "any_subfield_present": true }
+              ] }
+            ],
+            "schema_required_when": {
+              "field": "adcp.supported_versions",
+              "contains_major": 4
+            },
+            "verifier_constraints": {
+              "agent_url_match": "byte_equal",
+              "origin_binding": "etld1_or_authorized_operators",
+              "key_origins_consistency": "mandatory_when_signing"
+            },
+            "distinct_from": "sponsored_intelligence.brand_url",
+            "spec": "docs/building/implementation/security.mdx#discovering-an-agents-signing-keys-via-brand_json_url"
+          }
+        },
         "per_principal_key_isolation": {
           "type": "boolean",
           "description": "When true, this multi-principal operator scopes signing keys per-principal so a single principal's key compromise does not silently re-scope across principals served by the same operator. `kid` values remain opaque to verifiers per RFC 7517; any operator-side naming convention (e.g., `{operator}:{principal}:{key_version}`) is internal bookkeeping and MUST NOT be parsed by verifiers. See docs/building/understanding/security-model.mdx.",
