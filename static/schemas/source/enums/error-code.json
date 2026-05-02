@@ -53,7 +53,7 @@
   ],
   "enumDescriptions": {
     "INVALID_REQUEST": "Request is malformed, missing required fields, or violates schema constraints. Recovery: correctable (check request parameters and fix).",
-    "AUTH_REQUIRED": "Authentication is required to access this resource. Recovery: correctable (provide credentials via auth header).",
+    "AUTH_REQUIRED": "Authentication is required, or presented credentials were rejected. Two operational sub-cases share this code: (a) credentials missing — agent provides credentials and retries; (b) credentials presented but rejected (expired / revoked / malformed signature) — agent SHOULD NOT auto-retry, since re-presenting a rejected credential against an SSO endpoint creates retry-storm patterns indistinguishable from brute-force probes. In sub-case (b) the agent SHOULD escalate to operator for credential rotation rather than loop. A future minor release splits this code into AUTH_MISSING (correctable) and AUTH_INVALID (terminal); agents handling 3.0.x sellers SHOULD apply the same operational distinction at the application layer. Recovery: correctable (provide credentials via auth header — but only when the credential was missing, not when it was presented and rejected).",
     "RATE_LIMITED": "Request rate exceeded. Retry after the retry_after interval. Recovery: transient.",
     "SERVICE_UNAVAILABLE": "Seller service is temporarily unavailable. Retry with exponential backoff. Recovery: transient.",
     "POLICY_VIOLATION": "Request violates the seller's content or advertising policies. Recovery: correctable (review policy requirements in the error details).",
@@ -97,5 +97,188 @@
     "CAMPAIGN_SUSPENDED": "Campaign governance has been suspended pending human review; the governance agent MUST reject `check_governance` and `report_plan_outcome` calls on the affected plan until the escalation is resolved. Distinct from `ACCOUNT_SUSPENDED` (account-wide) — this is scoped to a single plan/campaign. Recovery: transient (wait for the escalation to resolve; contact the plan operator if the suspension persists).",
     "GOVERNANCE_UNAVAILABLE": "A registered governance agent is unreachable (timeout, network error, or repeated failure) and the seller cannot obtain a governance decision for the spend-commit. Distinct from `GOVERNANCE_DENIED` (agent reachable and explicitly denied). Recovery: transient (retry with backoff; if the agent remains unreachable, the buyer MUST contact the plan's governance operator — the seller MUST NOT proceed with the media buy without a valid decision).",
     "PERMISSION_DENIED": "The authenticated caller is not authorized for the requested action under the seller's own policies, or a required signed credential (e.g., a `governance_context` token on a spend-commit) is missing, fails verification, or was issued for a different plan, seller, or phase. Distinct from `AUTH_REQUIRED` (no credentials presented) and `GOVERNANCE_DENIED` (governance agent denied). Recovery: correctable (call `check_governance` to mint a valid token, or contact the seller to resolve the underlying permission)."
+  },
+  "enumMetadata": {
+    "$comment": "Structured recovery classification and remediation hints for each error code. SDKs MUST consume this block instead of parsing 'Recovery: X' from enumDescriptions prose. Each entry is { recovery, suggestion }. recovery is one of: correctable (caller can fix and retry), transient (retry with backoff), terminal (no autonomous recovery — operator intervention required). enumDescriptions is retained for human readability and will continue to carry the canonical narrative; the recovery classification embedded in that prose is normative and MUST match the value here.",
+    "INVALID_REQUEST": {
+      "recovery": "correctable",
+      "suggestion": "check request parameters and fix"
+    },
+    "AUTH_REQUIRED": {
+      "recovery": "correctable",
+      "suggestion": "provide credentials via auth header on missing-credential case; do NOT auto-retry on presented-but-rejected credentials — escalate to operator for credential rotation (3.1+ splits this into AUTH_MISSING / AUTH_INVALID)"
+    },
+    "RATE_LIMITED": {
+      "recovery": "transient",
+      "suggestion": "retry after the retry_after interval"
+    },
+    "SERVICE_UNAVAILABLE": {
+      "recovery": "transient",
+      "suggestion": "retry with exponential backoff"
+    },
+    "POLICY_VIOLATION": {
+      "recovery": "correctable",
+      "suggestion": "review policy requirements in the error details"
+    },
+    "PRODUCT_NOT_FOUND": {
+      "recovery": "correctable",
+      "suggestion": "remove invalid IDs and retry, or re-discover with get_products"
+    },
+    "PRODUCT_UNAVAILABLE": {
+      "recovery": "correctable",
+      "suggestion": "choose a different product"
+    },
+    "PROPOSAL_EXPIRED": {
+      "recovery": "correctable",
+      "suggestion": "re-discover with get_products to get a fresh proposal"
+    },
+    "BUDGET_TOO_LOW": {
+      "recovery": "correctable",
+      "suggestion": "increase budget or check capabilities.media_buy.limits"
+    },
+    "CREATIVE_REJECTED": {
+      "recovery": "correctable",
+      "suggestion": "revise the creative per the seller's advertising_policies"
+    },
+    "UNSUPPORTED_FEATURE": {
+      "recovery": "correctable",
+      "suggestion": "check get_adcp_capabilities and remove unsupported fields"
+    },
+    "AUDIENCE_TOO_SMALL": {
+      "recovery": "correctable",
+      "suggestion": "broaden targeting or upload more audience members"
+    },
+    "ACCOUNT_NOT_FOUND": {
+      "recovery": "terminal",
+      "suggestion": "verify account via list_accounts or contact seller"
+    },
+    "ACCOUNT_SETUP_REQUIRED": {
+      "recovery": "correctable",
+      "suggestion": "check details.setup for URL or instructions"
+    },
+    "ACCOUNT_AMBIGUOUS": {
+      "recovery": "correctable",
+      "suggestion": "pass explicit account_id or a more specific natural key"
+    },
+    "ACCOUNT_PAYMENT_REQUIRED": {
+      "recovery": "terminal",
+      "suggestion": "buyer must resolve billing"
+    },
+    "ACCOUNT_SUSPENDED": {
+      "recovery": "terminal",
+      "suggestion": "contact seller to resolve suspension"
+    },
+    "COMPLIANCE_UNSATISFIED": {
+      "recovery": "correctable",
+      "suggestion": "choose a format that supports the required disclosure positions and persistence modes, or remove the disclosure requirement"
+    },
+    "GOVERNANCE_DENIED": {
+      "recovery": "correctable",
+      "suggestion": "restructure the buy, escalate to human spending authority, or contact the governance agent for details"
+    },
+    "BUDGET_EXHAUSTED": {
+      "recovery": "terminal",
+      "suggestion": "buyer must add funds or increase budget cap"
+    },
+    "BUDGET_EXCEEDED": {
+      "recovery": "correctable",
+      "suggestion": "reduce requested amount or increase budget allocation"
+    },
+    "CONFLICT": {
+      "recovery": "transient",
+      "suggestion": "re-read the resource and retry with current state"
+    },
+    "IDEMPOTENCY_CONFLICT": {
+      "recovery": "correctable",
+      "suggestion": "use a fresh UUID v4 for the new request, or resend the exact original payload to get the cached response"
+    },
+    "IDEMPOTENCY_EXPIRED": {
+      "recovery": "correctable",
+      "suggestion": "perform a natural-key check to determine whether the original request succeeded; if no evidence of success, generate a fresh idempotency_key for a new attempt"
+    },
+    "CREATIVE_DEADLINE_EXCEEDED": {
+      "recovery": "correctable",
+      "suggestion": "check creative_deadline via get_media_buys before submitting changes, or negotiate a deadline extension with the seller"
+    },
+    "INVALID_STATE": {
+      "recovery": "correctable",
+      "suggestion": "check current status via get_media_buys and adjust request"
+    },
+    "MEDIA_BUY_NOT_FOUND": {
+      "recovery": "correctable",
+      "suggestion": "verify media_buy_id or buyer_ref"
+    },
+    "NOT_CANCELLABLE": {
+      "recovery": "correctable",
+      "suggestion": "check the seller's cancellation policy or contact the seller"
+    },
+    "PACKAGE_NOT_FOUND": {
+      "recovery": "correctable",
+      "suggestion": "verify package_id or buyer_ref via get_media_buys"
+    },
+    "CREATIVE_NOT_FOUND": {
+      "recovery": "correctable",
+      "suggestion": "verify creative_id via list_creatives, or sync_creatives to register it"
+    },
+    "SIGNAL_NOT_FOUND": {
+      "recovery": "correctable",
+      "suggestion": "verify signal_id via get_signals, or confirm the signal is available from this agent"
+    },
+    "REFERENCE_NOT_FOUND": {
+      "recovery": "correctable",
+      "suggestion": "verify the referenced identifier exists and is accessible to the caller"
+    },
+    "SESSION_NOT_FOUND": {
+      "recovery": "correctable",
+      "suggestion": "initiate a new session via si_initiate_session"
+    },
+    "PLAN_NOT_FOUND": {
+      "recovery": "correctable",
+      "suggestion": "verify plan_id via sync_plans, or register the plan first"
+    },
+    "SESSION_TERMINATED": {
+      "recovery": "correctable",
+      "suggestion": "initiate a new session via si_initiate_session"
+    },
+    "VALIDATION_ERROR": {
+      "recovery": "correctable",
+      "suggestion": "review error details and fix field values"
+    },
+    "PRODUCT_EXPIRED": {
+      "recovery": "correctable",
+      "suggestion": "re-discover with get_products to find current inventory"
+    },
+    "PROPOSAL_NOT_COMMITTED": {
+      "recovery": "correctable",
+      "suggestion": "finalize the proposal first using get_products with buying_mode 'refine' and action 'finalize'"
+    },
+    "IO_REQUIRED": {
+      "recovery": "correctable",
+      "suggestion": "review the proposal's insertion_order, accept terms, and include io_acceptance on create_media_buy"
+    },
+    "TERMS_REJECTED": {
+      "recovery": "correctable",
+      "suggestion": "adjust the proposed terms and retry, or omit measurement_terms to accept the product's defaults"
+    },
+    "REQUOTE_REQUIRED": {
+      "recovery": "correctable",
+      "suggestion": "re-negotiate via get_products in 'refine' mode against the existing proposal_id to obtain a fresh quote, then resubmit against the new proposal_id"
+    },
+    "VERSION_UNSUPPORTED": {
+      "recovery": "correctable",
+      "suggestion": "re-pin to a release in supported_versions and retry, or call get_adcp_capabilities without a version pin to discover supported_versions"
+    },
+    "CAMPAIGN_SUSPENDED": {
+      "recovery": "transient",
+      "suggestion": "wait for the escalation to resolve; contact the plan operator if the suspension persists"
+    },
+    "GOVERNANCE_UNAVAILABLE": {
+      "recovery": "transient",
+      "suggestion": "retry with backoff; if the agent remains unreachable, the buyer MUST contact the plan's governance operator"
+    },
+    "PERMISSION_DENIED": {
+      "recovery": "correctable",
+      "suggestion": "call check_governance to mint a valid token, or contact the seller to resolve the underlying permission"
+    }
   }
 }
