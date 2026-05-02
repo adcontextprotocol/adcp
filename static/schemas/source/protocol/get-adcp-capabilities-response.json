@@ -567,6 +567,10 @@
           },
           "additionalProperties": true
         },
+        "supports_proposals": {
+          "type": "boolean",
+          "description": "Whether this seller supports the full proposal lifecycle against the standard conformance brief: (1) buying_mode: 'brief' returns at least one entry in proposals[]; (2) buying_mode: 'refine' returns an updated proposal; (3) buying_mode: 'refine' with a refine[] entry of scope: 'proposal', action: 'finalize' transitions the proposal to committed status with firm pricing and an expires_at inventory hold window.\n\nThis is a behavioral commitment, not a feature inventory. The commitment is scoped to the standard conformance brief — sellers are not over-committed on arbitrary production briefs. A seller with a proposal engine that cannot reliably handle the conformance brief (e.g., asynchronous overnight proposal generation, or a proposal engine that does not recognize the conformance brief) MUST declare false or omit this field and skip the proposal-mode conformance scenario.\n\nWhen false or absent, the seller serves products directly without proposal abstraction, and buyers MUST NOT rely on proposals[] being present in get_products responses. Most guaranteed-deal sellers that run proposal-driven workflows (premium publishers, broadcast networks, CTV platforms) declare true; auction-based PG, retail SKU, and quoted-rate direct-buy sellers declare false."
+        },
         "content_standards": {
           "type": "object",
           "description": "Content standards implementation details. Presence of this object indicates the seller supports content_standards configuration including sampling rates and category filtering. Gives buyers pre-buy visibility into local evaluation and artifact delivery capabilities.",
