@@ -25,6 +25,13 @@ invariants:
   - status.monotonic
 
 narrative: |
+  **DEPRECATED in 3.1 — see https://github.com/adcontextprotocol/adcp/issues/3823**
+  Proposal-driven flows now grade under `sales-guaranteed`. Sellers that currently declare
+  `sales-proposal-mode` should additionally declare `sales-guaranteed` for the duration of
+  3.x; this storyboard is retained for backward compat and removed at 4.0. The
+  `media_buy_seller/proposal_finalize` scenario remains accessible to agents that support
+  `buying_mode: 'refine'` regardless of which specialism declaration is used.
+
   Your seller generates curated media plan proposals. The buyer sends a brief, your platform
   returns products alongside proposals — curated bundles with budget allocations and rationale
   for each recommendation. The buyer reviews, optionally refines, and then accepts a proposal
