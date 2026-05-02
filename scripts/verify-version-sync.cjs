@@ -2,25 +2,34 @@
 
 /**
  * Verify AdCP version is synchronized between package.json and the schema
- * registry, allowing the registry to be at or ahead of the dev package.
+ * registry.
  *
- * Why "at or ahead": the forward-merge release process (#3807) deliberately
- * keeps `package.json --ours` on main, so the dev version stays at the
- * pre-release number while the schema registry on main carries the
- * just-published version. That window is healthy — package.json hasn't
- * caught up with the cut yet but the schemas have. Strict equality made
- * pre-push fail for every contributor during that window (May 2026:
- * package.json=3.0.3, registry=3.0.4).
+ * Two modes:
+ *   - Default (pre-push hook): allow registry to be at or ahead of
+ *     package.json. The forward-merge release process (#3807) keeps
+ *     `package.json --ours` on main, so during the window between cutting
+ *     a version and bumping the dev package, registry is ahead of
+ *     package.json by design. Strict equality made pre-push fail for every
+ *     contributor during that window (May 2026: package.json=3.0.3,
+ *     registry=3.0.4).
+ *   - `--strict` (release-time): require exact equality. Run after
+ *     `changeset version` + `build:schemas --release` have both bumped
+ *     package.json and the registry — at that point they MUST match, and
+ *     any drift is a release-step bug we want to surface before tagging.
  *
- * What's still a bug:
+ * Always-fails (regardless of mode):
  *   - Either field missing entirely → release artifacts not published.
  *   - Registry behind package.json → bumped the dev version but forgot to
  *     run update-schema-versions / cut a release.
  *   - The two registry fields disagreeing with each other → hand-edit drift.
+ *   - Pre-release tags (`-beta.0`) fall back to strict equality so beta
+ *     windows lockstep, even in default mode.
  */
 
 const fs = require('fs');
 const path = require('path');
+
+const strict = process.argv.includes('--strict');
 
 const packageJson = JSON.parse(
   fs.readFileSync(path.join(__dirname, '../package.json'), 'utf8')
@@ -72,15 +81,31 @@ if (legacyAdcpVersion === undefined || legacyAdcpVersion === null) {
   problems.push('schema registry is missing `adcp_version`');
 }
 
-if (publishedVersion && !gteVersion(publishedVersion, packageVersion)) {
-  problems.push(
-    `published_version (${publishedVersion}) is behind package.json (${packageVersion}) — the registry was not updated when the package was bumped`
-  );
-}
-if (legacyAdcpVersion && !gteVersion(legacyAdcpVersion, packageVersion)) {
-  problems.push(
-    `adcp_version (${legacyAdcpVersion}) is behind package.json (${packageVersion}) — the registry was not updated when the package was bumped`
-  );
+// In strict mode (release-time, after `changeset version` + `build:schemas
+// --release` have both written), require exact equality. Otherwise allow
+// registry to be ahead.
+if (strict) {
+  if (publishedVersion !== undefined && publishedVersion !== packageVersion) {
+    problems.push(
+      `[strict] published_version (${publishedVersion}) does not equal package.json (${packageVersion})`
+    );
+  }
+  if (legacyAdcpVersion !== undefined && legacyAdcpVersion !== packageVersion) {
+    problems.push(
+      `[strict] adcp_version (${legacyAdcpVersion}) does not equal package.json (${packageVersion})`
+    );
+  }
+} else {
+  if (publishedVersion && !gteVersion(publishedVersion, packageVersion)) {
+    problems.push(
+      `published_version (${publishedVersion}) is behind package.json (${packageVersion}) — the registry was not updated when the package was bumped`
+    );
+  }
+  if (legacyAdcpVersion && !gteVersion(legacyAdcpVersion, packageVersion)) {
+    problems.push(
+      `adcp_version (${legacyAdcpVersion}) is behind package.json (${packageVersion}) — the registry was not updated when the package was bumped`
+    );
+  }
 }
 
 if (publishedVersion && legacyAdcpVersion && publishedVersion !== legacyAdcpVersion) {
@@ -97,4 +122,8 @@ if (problems.length > 0) {
   process.exit(1);
 }
 
-console.log('\n✅ Versions are in sync (registry >= package.json)\n');
+console.log(
+  strict
+    ? '\n✅ Versions are in strict sync (registry === package.json)\n'
+    : '\n✅ Versions are in sync (registry >= package.json)\n',
+);

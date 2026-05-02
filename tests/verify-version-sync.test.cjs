@@ -25,8 +25,11 @@ const { spawnSync } = require('node:child_process');
 
 const SCRIPT = path.join(__dirname, '..', 'scripts', 'verify-version-sync.cjs');
 
+const fixtureDirs = [];
+
 function makeFixture({ packageVersion, publishedVersion, adcpVersion }) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'verify-version-'));
+  fixtureDirs.push(dir);
   fs.writeFileSync(
     path.join(dir, 'package.json'),
     JSON.stringify({ name: 'fixture', version: packageVersion }),
@@ -40,20 +43,23 @@ function makeFixture({ packageVersion, publishedVersion, adcpVersion }) {
   return dir;
 }
 
-function run(fixtureDir) {
-  // The script reads files relative to its own location via __dirname/'..'.
-  // Copy it into the fixture so the temp tree is its working root.
-  const scriptInFixture = path.join(fixtureDir, 'verify-version-sync.cjs');
-  fs.mkdirSync(path.dirname(scriptInFixture), { recursive: true });
-  fs.copyFileSync(SCRIPT, scriptInFixture);
+function run(fixtureDir, args = []) {
+  // The script reads files via `path.join(__dirname, '../package.json')`, so
+  // it has to live at `<fixture>/scripts/verify-version-sync.cjs` for the
+  // fixture to be its root.
   const fixtureScriptDir = path.join(fixtureDir, 'scripts');
   fs.mkdirSync(fixtureScriptDir, { recursive: true });
-  fs.copyFileSync(SCRIPT, path.join(fixtureScriptDir, 'verify-version-sync.cjs'));
-  const result = spawnSync('node', [path.join(fixtureScriptDir, 'verify-version-sync.cjs')], {
-    encoding: 'utf8',
-  });
+  const scriptPath = path.join(fixtureScriptDir, 'verify-version-sync.cjs');
+  fs.copyFileSync(SCRIPT, scriptPath);
+  const result = spawnSync('node', [scriptPath, ...args], { encoding: 'utf8' });
   return { code: result.status, stdout: result.stdout, stderr: result.stderr };
 }
+
+test.after(() => {
+  for (const d of fixtureDirs) {
+    try { fs.rmSync(d, { recursive: true, force: true }); } catch { /* ignore */ }
+  }
+});
 
 test('passes when registry equals package.json (release-time steady state)', () => {
   const dir = makeFixture({ packageVersion: '3.0.4', publishedVersion: '3.0.4', adcpVersion: '3.0.4' });
@@ -118,4 +124,45 @@ test('fails for pre-release tags that do not match (conservative fallback)', () 
   });
   const { code } = run(dir);
   assert.equal(code, 1);
+});
+
+test('compares numerically, not lexicographically (3.10.0 is ahead of 3.2.0)', () => {
+  // String compare would order "3.10.0" < "3.2.0" because "1" < "2". A
+  // future regression that swaps to localeCompare would silently flag this
+  // as registry-behind. Pin the X.Y.Z numeric semantics.
+  const dir = makeFixture({ packageVersion: '3.2.0', publishedVersion: '3.10.0', adcpVersion: '3.10.0' });
+  const { code } = run(dir);
+  assert.equal(code, 0);
+});
+
+test('handles 0.x versions correctly (0.9.0 ahead of 0.8.0)', () => {
+  const dir = makeFixture({ packageVersion: '0.8.0', publishedVersion: '0.9.0', adcpVersion: '0.9.0' });
+  const { code } = run(dir);
+  assert.equal(code, 0);
+});
+
+test('flags asymmetric drift: published_version ahead but adcp_version behind', () => {
+  // Half-bumped registry — should fail on the behind field, not silently
+  // accept just because the disagreement check is below the behind check.
+  const dir = makeFixture({ packageVersion: '3.0.4', publishedVersion: '3.0.4', adcpVersion: '3.0.3' });
+  const { code, stderr } = run(dir);
+  assert.equal(code, 1);
+  assert.match(stderr, /adcp_version.*behind/);
+});
+
+test('strict mode: passes when registry exactly equals package.json (post-changeset-version state)', () => {
+  const dir = makeFixture({ packageVersion: '3.0.4', publishedVersion: '3.0.4', adcpVersion: '3.0.4' });
+  const { code, stdout } = run(dir, ['--strict']);
+  assert.equal(code, 0);
+  assert.match(stdout, /strict sync/);
+});
+
+test('strict mode: fails when registry is ahead of package.json (release-step bug)', () => {
+  // The exact forward-merge state that the relaxed default mode permits.
+  // After `changeset version` runs, the two MUST match — if they don't,
+  // the release scripts ran out of order or one of them no-op'd.
+  const dir = makeFixture({ packageVersion: '3.0.3', publishedVersion: '3.0.4', adcpVersion: '3.0.4' });
+  const { code, stderr } = run(dir, ['--strict']);
+  assert.equal(code, 1);
+  assert.match(stderr, /\[strict\].*does not equal/);
 });
