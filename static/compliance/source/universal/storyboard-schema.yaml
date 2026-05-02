@@ -946,6 +946,45 @@
 #                              # runner-output-contract.yaml > validation_result
 #                              # for the timestamp boundary semantics
 #                              # (inclusive lower bound, clock-skew tolerance).
+#     attestation_mode_required: string (optional)
+#                              # When set to "raw", the storyboard requires
+#                              # raw payload introspection. Recorded calls
+#                              # returned in `attestation_mode: digest` grade
+#                              # the upstream_traffic check `not_applicable`
+#                              # rather than failing — the storyboard is
+#                              # asserting against payload contents the
+#                              # adopter's privacy policy doesn't permit
+#                              # disclosing.
+#                              # When omitted, the storyboard accepts either
+#                              # mode: assertions degrade gracefully in digest
+#                              # mode (`payload_must_contain` grades
+#                              # not_applicable per call; `identifier_paths`
+#                              # works via the digest-of-identifier echo
+#                              # mechanism, see "Digest-mode behavior" below).
+#                              # Use "raw" sparingly — the digest mode exists
+#                              # so EU/privacy-conscious adopters can support
+#                              # upstream_traffic conformance without returning
+#                              # hashed-PII payloads. Forcing raw excludes
+#                              # those adopters; only use it when the
+#                              # storyboard's assertion genuinely cannot be
+#                              # expressed in identifier-digest form.
+#
+#   Digest-mode behavior:
+#     `attestation_mode: digest` per recorded_call swaps payload introspection
+#     for digest-based echo verification (see comply-test-controller-response.json
+#     > UpstreamTrafficSuccess > recorded_calls > DigestAttestation):
+#       - `payload_must_contain` arbitrary path assertions: NOT supported in
+#         digest mode. Each entry grades `not_applicable` per affected call,
+#         with a note explaining the mode constraint.
+#       - `identifier_paths` echo verification: supported via the controller's
+#         `identifier_match_proofs[]`. The runner computes SHA-256 of each
+#         resolved identifier value, sends the digests in
+#         `params.identifier_value_digests`, and reads the per-digest
+#         `found: true | false` proof from the response. Plaintext identifiers
+#         never reach the controller; the controller never returns plaintext
+#         payloads. The privacy boundary holds in both directions.
+#       - `min_count` and `endpoint_pattern`: unchanged — count and URL
+#         matching work identically in both modes.
 #
 #   Grading output (see runner-output-contract.yaml > validation_result):
 #     `expected` echoes the declared assertion fields. `actual` is a
