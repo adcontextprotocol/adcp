@@ -1,0 +1,9 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/error-details/agent-suspended.json",
+  "title": "Agent Suspended Details",
+  "description": "Details shape for AGENT_SUSPENDED errors. Returned when the buyer agent's commercial relationship with the seller is temporarily paused. The shape is intentionally empty: sellers MUST NOT include suspension reason, contract dates, re-onboarding steps, or any other per-agent commercial state — full-detail disclosure in a single error probe is exactly the oracle the uniform-response rule prevents. Sellers MUST emit AGENT_SUSPENDED only when buyer-agent identity has been established via signed-request derivation or a credential-to-agent mapping in the seller's onboarding record; callers without established identity MUST receive PERMISSION_DENIED instead (same cross-tenant oracle clamp as BILLING_NOT_PERMITTED_FOR_AGENT). The code alone is the machine-actionable artifact — it signals 'terminal-pending-reinstatement' and the agent MUST surface to a human.",
+  "type": "object",
+  "properties": {},
+  "additionalProperties": false
+}

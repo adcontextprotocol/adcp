@@ -287,6 +287,44 @@ async function syncAccountsWithRecovery(client, account) {
 }
 ```
 
+### Buyer-agent status
+
+Returned when the calling buyer agent's commercial relationship with the seller has been suspended or blocked. These codes apply at the agent-relationship level — orthogonal to any specific account on that agent — and complement `ACCOUNT_SUSPENDED` (account-level) and `BILLING_NOT_PERMITTED_FOR_AGENT` (per-agent billing gate). See [Buyer-agent identity](/docs/building/integration/accounts-and-agents#buyer-agent-identity) for the two-layer identity model these codes sit on top of.
+
+| Code | Recovery | Description | Resolution |
+|------|----------|-------------|------------|
+| `AGENT_SUSPENDED` | terminal | Buyer agent's commercial relationship with the seller is temporarily paused | Surface to a human at the buyer; re-onboarding with the seller may resolve the suspension — no autonomous retry is permitted |
+| `AGENT_BLOCKED` | terminal | Buyer agent's commercial relationship with the seller has been permanently denied | Surface to a human at the buyer; no retry path exists — this is a definitive commercial relationship rejection |
+
+Normative requirements:
+
+- **Uniform response without established agent identity.** Both codes identify the buyer agent's specific commercial standing with this seller. Returning either code without established agent identity lets unauthenticated probes use the code-choice as an oracle for "is this agent relationship active?" — same shape as the [`*_NOT_FOUND` uniform-response rule](#standard-error-codes) and the `BILLING_NOT_PERMITTED_FOR_AGENT` identity gate. The bright line: sellers MUST emit `AGENT_SUSPENDED` or `AGENT_BLOCKED` only when buyer-agent identity has been established via signed-request derivation per [Agent identity](/docs/building/implementation/security#agent-identity) or via a credential-to-agent mapping in the seller's onboarding record. In all other cases — including bearer credentials not mapped to a specific agent record — sellers MUST return `PERMISSION_DENIED` without `scope` or agent-identity-bearing detail.
+- **Details shape is clamped.** `error.details` MUST conform to [`error-details/agent-suspended.json`](https://adcontextprotocol.org/schemas/latest/error-details/agent-suspended.json) or [`error-details/agent-blocked.json`](https://adcontextprotocol.org/schemas/latest/error-details/agent-blocked.json) respectively. Both schemas set `additionalProperties: false` with no properties. Sellers MUST NOT include suspension reason, block basis, contract dates, re-onboarding steps, or any other per-agent commercial state — the code alone is the machine-actionable signal.
+- **No autonomous recovery path.** Unlike `BILLING_NOT_PERMITTED_FOR_AGENT` (which carries an optional `suggested_billing` retry hint), neither agent-status code offers a recovery value. Agents MUST surface both codes to a human and MUST NOT auto-retry. The distinction between the two codes is meaningful: `AGENT_SUSPENDED` indicates a temporary hold where re-onboarding with the seller may help; `AGENT_BLOCKED` indicates a permanent denial with no viable path the agent can surface.
+
+**Dispatch example** — distinguishing the two agent-status codes from `BILLING_NOT_PERMITTED_FOR_AGENT`:
+
+```javascript
+switch (error.code) {
+  case 'AGENT_SUSPENDED':
+    // Temporary hold. No autonomous retry. Surface to human — re-onboarding may help.
+    return surfaceToHuman(error, { hint: 'contact-seller-to-resolve-suspension' });
+
+  case 'AGENT_BLOCKED':
+    // Permanent denial. No retry path. Surface to human — buyer partnerships must engage.
+    return surfaceToHuman(error, { hint: 'buyer-partnerships-required' });
+
+  case 'BILLING_NOT_PERMITTED_FOR_AGENT':
+    // Per-agent billing gate. Autonomous retry only when seller suggests a fallback.
+    const suggested = error.details?.suggested_billing;
+    if (!suggested) return surfaceToHuman(error);
+    return client.syncAccounts({ accounts: [{ ...account, billing: suggested }] });
+
+  default:
+    throw error;
+}
+```
+
 ### Authorization (RBAC)
 
 Returned when the caller is authenticated but lacks the specific scope for the request. Enforcement is seller-local; discoverability is via the `authorization` object on per-account entries in [`sync_accounts`](/docs/accounts/tasks/sync_accounts) and [`list_accounts`](/docs/accounts/tasks/list_accounts) responses. See [Caller authorization](/docs/accounts/overview#caller-authorization) for the full shape.

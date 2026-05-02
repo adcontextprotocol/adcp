@@ -1,0 +1,9 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/error-details/agent-blocked.json",
+  "title": "Agent Blocked Details",
+  "description": "Details shape for AGENT_BLOCKED errors. Returned when the buyer agent's commercial relationship with the seller has been permanently denied. The shape is intentionally empty: sellers MUST NOT include block reason, contract history, denial basis, or any other per-agent commercial state — full-detail disclosure in a single error probe is exactly the oracle the uniform-response rule prevents. Sellers MUST emit AGENT_BLOCKED only when buyer-agent identity has been established via signed-request derivation or a credential-to-agent mapping in the seller's onboarding record; callers without established identity MUST receive PERMISSION_DENIED instead (same cross-tenant oracle clamp as BILLING_NOT_PERMITTED_FOR_AGENT). The code alone is the machine-actionable artifact — it signals a permanent terminal rejection and the agent MUST surface to a human. Distinct from AGENT_SUSPENDED (temporary hold that may be resolvable through re-onboarding) — no retry path exists for AGENT_BLOCKED.",
+  "type": "object",
+  "properties": {},
+  "additionalProperties": false
+}
