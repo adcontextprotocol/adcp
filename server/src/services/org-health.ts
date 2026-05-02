@@ -188,7 +188,7 @@ export function suggestActions(
       action: 'register_agent',
       label,
       impact: 'Connect your tech to the protocol',
-      url: '/chat?prompt=' + encodeURIComponent('I want to add an agent for compliance monitoring.'),
+      url: '/chat?prompt=' + encodeURIComponent('Help me register my agent.'),
     });
   }
 

@@ -9,14 +9,25 @@ The AdCP registry catalog (`/api/registry/agents`, `/api/registry/publishers`) c
 
 ## How agents end up in the registry
 
-There is one path: **an AAO member adds the agent to their member profile** via the dashboard or `PUT /api/me/member-profile`.
+There is one path: **an AAO member adds the agent to their member profile** via the dashboard or `PUT /api/me/member-profile`. End-to-end via the dashboard: under five minutes.
 
-- The member has signed AAO terms.
-- The agent's URL, name, type, and contact are explicitly declared.
-- The agent's stored `type` is verified against a capability snapshot at write time (`resolveAgentTypes()` overrides the client value with the probed type).
-- Visibility is set to `public`, `members_only`, or `private` — see [Visibility](#visibility) below.
+1. **Sign in or sign up.** Go to [agenticadvertising.org/auth/login](https://agenticadvertising.org/auth/login). New here? Use **Sign up** to create your account, then accept your AAO organization invite (or [start a membership](https://agenticadvertising.org/membership) if your org isn't on AAO yet).
+2. **Open the agents dashboard.** Once signed in, go to [agenticadvertising.org/dashboard/agents](https://agenticadvertising.org/dashboard/agents). The URL auto-resolves your org context.
+3. **Click `+ Register agent`** in the top-right of the page. (On a brand-new org with no agents yet, the empty-state CTA reads **Register your first agent** and triggers the same flow.)
+4. **Talk to Addie.** The button drops you into chat with Addie pre-loaded with the prompt *"Help me register my agent."* Addie will walk you through:
+    - **Agent URL** — e.g. `https://agent.yourcompany.com/mcp`
+    - **Display name** (optional)
+    - **Auth method** — pick one: None · Static bearer · Static basic · OAuth client credentials. *(Interactive OAuth user authorization is configured separately — register with **None** here, then click **Authorize** on the agent card to sign in.)*
+    - **Auth fields** — only the ones your chosen method needs (bearer token, or `token_endpoint` + `client_id` + `client_secret` for client credentials, etc.)
+    - **Protocol** — defaults to MCP; Addie asks only if your URL is ambiguous
+5. **Done.** Addie calls `save_agent` and your agent lands in the registry catalog with `visibility: "members_only"` (visible to other Professional-tier-or-higher AAO members; not publicly listed).
+6. **Optional — go public.** Back on `/dashboard/agents`, change the agent's visibility from **Members only** to **Public**. Public visibility requires Professional tier or higher and a primary brand domain on your member profile so the agent can be added to your `brand.json`.
 
-This requires authentication and an AAO organization membership. There is no auto-population from crawled `adagents.json` files; agents listed in third-party `adagents.json` files populate the publisher-authorization graph used by [Operator lookup](/docs/registry/api-reference/authorization-lookups/operator-lookup), `/api/registry/lookup/domain`, and `hasValidAdagents`, but they do not create catalog entries.
+**Type is resolved server-side.** You will not be asked for the agent's type — type (`brand`, `sales`, `buying`, `measurement`, `creative`, `signals`, etc.) is resolved from the agent's capability snapshot. `resolveAgentTypes()` reads the most recent snapshot from the crawler; if no snapshot exists yet, the type field saved is whatever the client supplied, and the next crawler probe overwrites it. Either way, you can't pin a wrong type permanently.
+
+**What this path attests:** the member has signed AAO terms; the URL, name, and contact are explicitly declared; the type is probe-verified. Visibility can be `public`, `members_only`, or `private` — see [Visibility](#visibility) below.
+
+There is no auto-population from crawled `adagents.json` files. Agents listed in third-party `adagents.json` files populate the publisher-authorization graph used by [Operator lookup](/docs/registry/api-reference/authorization-lookups/operator-lookup), `/api/registry/lookup/domain`, and `hasValidAdagents`, but they do not create catalog entries.
 
 ## What this means if you are not an AAO member
 
