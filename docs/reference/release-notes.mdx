@@ -9,6 +9,67 @@ High-level summaries of major AdCP releases with migration guidance. For detaile
 
 ---
 
+## Version 3.0.5
+
+**Status:** Patch release — stable-surface no-op for 3.0-conformant agents
+
+**3.0.5 unblocks `brand_json_url` adoption on 3.0**, ships an optional storyboard-authoring affordance, and corrects a brand-rights storyboard capture path that was rejecting spec-compliant agents. Wire format unchanged for any 3.0 agent that doesn't claim a new optional surface.
+
+<Info>
+**Upgrading from 3.0.4?** No code changes required for 3.0-conformant agents. SDK consumers bump `ADCP_VERSION` to `3.0.5` to pick up the relaxed `identity` validator and the brand-rights storyboard fix.
+</Info>
+
+### Adopter action
+
+| If you are… | What you need to do |
+|---|---|
+| A 3.0-conformant production agent | Nothing. Stable schemas remain wire-compatible with 3.0.0. |
+| Adopting `identity.brand_json_url` from #3690 on 3.0 | Bump to 3.0.5 (or have your SDK pick it up). 3.0.4 and earlier rejected the field at validation; 3.0.5 accepts it. |
+| Running brand-rights conformance against the published storyboard | Bump SDK to pick up `dist/compliance/3.0.5/specialisms/brand-rights/index.yaml`. Spec-compliant agents that return `rights_id` (per the published `acquire-rights-response.json`) now pass `rights_acquisition` and stop cascade-skipping `rights_enforcement`. |
+| Authoring multi-agent storyboards | You MAY now declare a top-level `default_agent: <key>` so multi-agent runners route cross-domain steps without per-CI-invocation overrides. Single-agent runs ignore the field. |
+
+### `identity.additionalProperties: true` on `get_adcp_capabilities` (#3896, closes Scope3 adoption gap)
+
+The `identity` block on `get-adcp-capabilities-response.json` was schema-closed (`additionalProperties: false`), which was the lone outlier among capability blocks — every peer (`media_buy`, `signals`, `creative`, `brand`, `compliance_testing`, `request_signing`, `webhook_signing`, `measurement`) already had `additionalProperties: true` at the outer level. The closed shape silently contradicted the forward-compat promise made by [#3690](https://github.com/adcontextprotocol/adcp/pull/3690) (`brand_url on get_adcp_capabilities for keys-from-agent-URL discovery`), which explicitly stated that 3.0-pinned implementers could adopt `identity.brand_json_url` without waiting for a schema bump.
+
+Without this relaxation, `@adcp/sdk`'s `createAdcpServer` (default strict-validation mode) rejected any operator response carrying `brand_json_url`, forcing adopters to disable validation entirely (a footgun) or wait for 3.1.
+
+3.0.5 mirrors what `main` already shipped post-#3690: the outer `identity` object opens; the inner blocks (`key_origins`, `compromise_notification`) stay closed where the security weight actually sits. Strictly additive — the closed property list (`per_principal_key_isolation`, `key_origins`, `compromise_notification`) is unchanged; receivers that ignore unknown fields keep working; receivers that look for new identity fields gain forward-compat without waiting for a 3.x bump. Buyers and verifiers SHOULD continue to allowlist known identity fields at read time rather than rely on schema closure for trust decisions.
+
+### Storyboard-level `default_agent` field (#3897, closes #3894)
+
+Optional top-level `default_agent: <key>` on the storyboard authoring schema (`dist/compliance/3.0.5/universal/storyboard-schema.yaml`). The multi-agent storyboard runner ([adcp-client#1066](https://github.com/adcontextprotocol/adcp-client/issues/1066), [#1355](https://github.com/adcontextprotocol/adcp-client/pull/1355)) already accepts `default_agent` via run-options; this change lets storyboard authors encode the topology intent in YAML once instead of re-asserting `--default-agent sales` on every CI invocation. Cross-domain tools (`sync_creatives`, `list_creative_formats`) become deterministic without per-step `agent:` overrides.
+
+Resolution order (runner contract):
+
+1. Step-level `agent:` override.
+2. Specialism-claimant match against the runtime agents map. Multi-claim grades `unrouted_step` (operator-config error); slots 3/4 do not rescue. Zero claimants falls through to slot 3.
+3. Storyboard-level `default_agent` (this field). Set-but-unmatched grades `default_agent_unresolved` — the runner does NOT silently fall through to slot 4, because that would invisibly override the storyboard author's encoded intent.
+4. Run-options `default_agent`. Same set-but-unmatched rule.
+5. Fail-fast — `unrouted_step`.
+
+Single-agent runs ignore the field entirely; existing 3.0.x storyboards keep working unchanged. Mirrors the `provides_state_for` precedent (#3775) for additive storyboard-schema affordances on 3.0.x.
+
+The key shape is a free-form non-empty string keyed by the runtime agents map — the spec does not constrain to the specialism enum because production multi-agent topologies legitimately fan out per-property (`nyt_sales`, `wsj_sales`), per-region (`sales_eu`, `sales_us`), or per-brand-rights-holder. Cross-operator portability is the storyboard author's concern, not the spec's.
+
+### Brand-rights storyboard `acquire_rights` capture fix (#3893, closes #3892)
+
+The `brand_rights/rights_acquisition` storyboard's `acquire_rights` step captured a `context_outputs` field at path `rights_grant_id`, but `brand/acquire-rights-response.json` defines that field as `rights_id` (the `AcquireRightsAcquired` arm). Spec-compliant agents passed `response_schema` validation but failed the capture-and-pass-to-next-step machinery, which then cascade-skipped `rights_enforcement` with `prerequisite_failed`.
+
+3.0.5 corrects the storyboard to read `rights_id` (preserving the storyboard-internal `rights_grant_id` key name so no other steps need updates) and aligns the `expected:` prose to match the published schema (`status: acquired`, not the legacy `status: active`).
+
+Adopters running brand-rights conformance against a spec-compliant agent: bumping your SDK past 3.0.4 should flip the `brand_rights` storyboard from 3/5 scenarios passing to 5/5 with no agent-side changes.
+
+### Release mechanics (#3820)
+
+`forward-merge-3.0.yml`: explicitly push the `forward-merge/3.0.x` branch to origin **before** `peter-evans/create-pull-request@v8` runs. Discovered when 3.0.4's forward-merge ran for real: auto-resolution succeeded, then peter-evans crashed with `fatal: ambiguous argument 'origin/forward-merge/3.0.x': unknown revision`. Last gap in the auto-resolution chain — every subsequent Version Packages cut now auto-creates the forward-merge PR without human intervention.
+
+### Detailed changelog
+
+For the full per-PR change list, see [CHANGELOG.md § 3.0.5](https://github.com/adcontextprotocol/adcp/blob/main/CHANGELOG.md#305).
+
+---
+
 ## Version 3.0.4
 
 **Status:** Patch release — stable-surface no-op for 3.0-conformant agents
