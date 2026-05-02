@@ -215,6 +215,16 @@ phases:
             - audience_id: "outdoor_enthusiasts_25_54"
               name: "Outdoor enthusiasts 25-54"
               description: "Adults 25-54 interested in hiking, camping, and outdoor gear"
+              # Realistic add[] payload forces adapters to call the upstream
+              # audience-upload endpoint rather than returning shape-valid
+              # responses from an empty-members branch. Hash values are fictional
+              # test vectors distinct from the audience_sync storyboard's
+              # fixtures to avoid cross-storyboard collision in shared state.
+              add:
+                - external_id: "acme-user-0001"
+                  hashed_email: "a000000000000000000000000000000000000000000000000000000000000001"
+                - external_id: "acme-user-0002"
+                  hashed_phone: "b000000000000000000000000000000000000000000000000000000000000002"
 
           idempotency_key: "$generate:uuid_v4#sales_social_audience_sync_sync_audiences"
           context:
@@ -230,6 +240,20 @@ phases:
             path: "context.correlation_id"
             value: "sales_social--sync_audiences"
             description: "Context correlation_id returned unchanged"
+          # Anti-façade: the adapter MUST forward the hashed identifiers to the
+          # upstream social platform's audience-upload endpoint. Adopters who
+          # advertise query_upstream_traffic in list_scenarios opt in; others
+          # grade this check not_applicable. An adopter who advertises the
+          # scenario but produces zero matching upstream calls fails — the
+          # AdCP-wire response is shape-valid, but no real audience was synced.
+          - check: upstream_traffic
+            description: "sync_audiences caused upstream traffic carrying the supplied hashed identifiers"
+            endpoint_pattern: "POST *"
+            min_count: 1
+            buyer_identifier_echo: true
+            payload_must_contain:
+              - path: "$..hashed_email"
+                match: present
   - id: creative_push
     title: "Native creative sync"
     narrative: |
@@ -522,8 +546,20 @@ phases:
             - event_type: "purchase"
               event_id: "evt_trail_pro_001"
               event_time: "2026-04-05T14:30:00Z"
-              value: 149.99
-              currency: "USD"
+              # user_match prevents adapters from injecting synthetic placeholder
+              # identifiers to satisfy the upstream's required-field check. The
+              # hashed_email here matches the audience_sync storyboard's first
+              # member so the upstream_traffic identifier_echo assertion can
+              # tell the values were actually forwarded, not constants.
+              user_match:
+                hashed_email: "a000000000000000000000000000000000000000000000000000000000000001"
+              # value/currency belong inside custom_data per event-custom-data.json;
+              # additionalProperties: true on the parent silently swallowed them
+              # at the wrong nesting level, meaning real upstreams never saw
+              # the purchase value.
+              custom_data:
+                value: 149.99
+                currency: "USD"
 
           idempotency_key: "$generate:uuid_v4#sales_social_event_logging_log_event"
           context:
@@ -539,6 +575,17 @@ phases:
             path: "context.correlation_id"
             value: "sales_social--log_event"
             description: "Context correlation_id returned unchanged"
+          # Anti-façade: the adapter MUST forward the conversion event to the
+          # upstream platform's event-tracking endpoint, carrying the supplied
+          # hashed identifier. A façade that injects a constant placeholder
+          # hash to satisfy the upstream's required-field check fails the
+          # buyer_identifier_echo assertion — the constant won't match the
+          # storyboard's supplied value.
+          - check: upstream_traffic
+            description: "log_event caused upstream traffic carrying the supplied user_match identifier"
+            endpoint_pattern: "POST *"
+            min_count: 1
+            buyer_identifier_echo: true
   - id: financials
     title: "Account financials"
     narrative: |

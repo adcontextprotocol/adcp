@@ -332,9 +332,13 @@
 #     populate the context accumulator — downstream $context.<name> references
 #     resolve to an unresolved_substitution error, which grades the dependent
 #     step as failed rather than the storyboard passing on fabricated state.
-#   - Paths that do not resolve in the response body are a runner-side grading
-#     failure on THIS step (capture_path_not_resolvable), not the downstream
-#     reader — the capture declared a contract that the response did not meet.
+#   - Paths that do not resolve to a usable value in the response body (absent,
+#     null, or "") are a runner-side grading failure on THIS step
+#     (capture_path_not_resolvable), not on the downstream reader — the capture
+#     declared a contract that the response did not meet. The capturing step
+#     grades as failed; downstream steps that depended on the captured value
+#     grade as skipped with reason: prerequisite_failed citing this step.
+#     See runner-output-contract.yaml > validation_result for the output shape.
 #   - The accumulator is storyboard-run-scoped; values do not leak across runs.
 #
 # context_inputs: array of ContextInput objects (optional — inject captured
@@ -629,7 +633,9 @@
 #                "field_value",
 #                "field_value_or_absent", "status_code", "http_status", "http_status_in",
 #                "error_code", "on_401_require_header", "resource_equals_agent_url",
-#                "any_of", "refs_resolve", "a2a_submitted_artifact")
+#                "any_of", "refs_resolve", "a2a_submitted_artifact",
+#                "upstream_traffic" (asserts side-effects via comply_test_controller's
+#                query_upstream_traffic scenario — see "upstream_traffic" section below))
 # path: string (JSON path to the field, e.g., "formats[0].format_id")
 # value: any (expected value — string, number, or boolean; required when check is "field_value";
 #             accepted (optional) when check is "field_value_or_absent")
@@ -749,6 +755,98 @@
 #   transports so storyboards can include it alongside MCP-shape assertions
 #   without forking by transport.
 #
+# Upstream side-effects — use `check: upstream_traffic`:
+#   Asserts that the agent caused observable upstream traffic with a payload
+#   carrying the storyboard-supplied identifiers. This is the load-bearing
+#   anti-façade contract: a fully-conformant adapter and a façade that returns
+#   shape-valid AdCP responses with synthetic data are indistinguishable on
+#   the AdCP wire — only what the adapter caused upstream tells them apart.
+#
+#   The runner queries the adopter's comply_test_controller with scenario
+#   `query_upstream_traffic`, scoped to traffic recorded since the storyboard
+#   step's request timestamp, and applies the assertion declared on the
+#   storyboard step. Adopters who do not advertise `query_upstream_traffic` in
+#   `list_scenarios` grade the check `not_applicable` — the contract is opt-in
+#   by adopter capability. Adopters who DO advertise it but return zero
+#   recorded calls during the assertion window grade as failed (the
+#   "controller present and observed nothing" path is the façade signal).
+#
+#   Fields:
+#     min_count: integer (default: 1)
+#                              # Minimum number of recorded calls that match
+#                              # the optional `endpoint_pattern` filter. Use 0
+#                              # only for negative assertions (e.g., a step
+#                              # MUST NOT cause upstream traffic).
+#     endpoint_pattern: string (optional)
+#                              # Glob/path pattern matched against
+#                              # recorded_calls[].endpoint. Examples:
+#                              #   "POST */audience/upload"
+#                              #   "POST *"           (any POST, useful when
+#                              #                      the storyboard stays
+#                              #                      platform-agnostic)
+#                              # When omitted, all recorded calls in the window
+#                              # match. Keep storyboards platform-agnostic where
+#                              # possible — over-specific patterns couple the
+#                              # spec to specific upstream platforms (TikTok,
+#                              # Meta, Pinterest) and break for adopters whose
+#                              # upstream is something else.
+#     payload_must_contain: array of MatchSpec (optional)
+#                              # Each entry asserts a path/value pair that MUST
+#                              # appear in at least one matching call's payload.
+#                              # Shape:
+#                              #   - path: <JSONPath into recorded_calls[].payload>
+#                              #     match: present | equals | contains_any
+#                              #     value: <value>            # for equals
+#                              #     allowed_values: [...]     # for contains_any
+#                              # Example:
+#                              #   - path: "$.users[*].hashed_email"
+#                              #     match: present
+#     buyer_identifier_echo: boolean (default: false)
+#                              # Shorthand for "the storyboard's
+#                              # supplied buyer identifiers (any value the
+#                              # storyboard's sample_request carries that
+#                              # matches a hashed-identifier or buyer-key
+#                              # convention) MUST appear in at least one
+#                              # matching call's payload, at any depth." This is
+#                              # the strongest single anti-façade signal —
+#                              # adapters cannot satisfy it by fabricating a
+#                              # constant placeholder hash, because the
+#                              # placeholder won't match the storyboard's
+#                              # supplied value.
+#     since: prior_step_id (optional, default: this step's request timestamp)
+#                              # Bound the lookup window. By default, the
+#                              # runner queries traffic recorded since the
+#                              # storyboard step issued its AdCP request, so
+#                              # only side-effects of THIS step are counted.
+#                              # Set to a prior step's id to include traffic
+#                              # caused by an earlier step (e.g., for a
+#                              # cumulative-effect assertion).
+#
+#   Grading output (see runner-output-contract.yaml > validation_result):
+#     `expected` echoes the declared assertion fields. `actual` is a
+#     diagnostic summary: { matched_count, total_calls, missing_payload_paths,
+#     identifier_echo_failures }. The full recorded_calls array lives in
+#     `response.payload` so an implementor can see the exact upstream
+#     payloads the runner observed.
+#
+#   Adopter integration:
+#     The adopter implements `query_upstream_traffic` in its
+#     comply_test_controller. The controller records outbound HTTP calls in a
+#     session-scoped buffer (sandbox-only — production builds MUST 404 the
+#     comply_test_controller tool entirely) and returns them when queried.
+#     See comply-test-controller-request.json > query_upstream_traffic for
+#     the controller-side query contract.
+#
+#   Example — sync_audiences must POST hashed members upstream:
+#     - check: upstream_traffic
+#       description: "sync_audiences caused upstream traffic with hashed members"
+#       endpoint_pattern: "POST *"
+#       min_count: 1
+#       payload_must_contain:
+#         - path: "$..hashed_email"
+#           match: present
+#       buyer_identifier_echo: true
+#
 # --- Runner output ---
 #
 # How a runner MUST report validation results — including which fields a
@@ -763,10 +861,23 @@
 #
 #   capture_path_not_resolvable
 #       Emitted on the capturing step when a `context_outputs:` entry's
-#       `path` does not resolve against the step's response body. The step
-#       grades as failed — the capture declared a contract that the response
-#       did not meet. Distinct from unresolved_substitution so tooling can
-#       discriminate "producer contract breach" from "consumer missing state."
+#       `path` does not resolve to a usable value in the step's response body.
+#       The step grades as failed — the capture declared a contract that the
+#       response did not meet. Distinct from unresolved_substitution so tooling
+#       can discriminate "producer contract breach" from "consumer missing
+#       state."
+#
+#       "Does not resolve to a usable value" covers all three cases:
+#         1. Path structurally absent (e.g. `signals[0]` when array is empty)
+#         2. Path present but value is null
+#         3. Path present but value is "" (empty string)
+#       Capturing null or "" produces fabricated downstream state and is as
+#       incorrect as a missing path; runners MUST treat all three as failures.
+#
+#       Output shape: runner-output-contract.yaml > validation_result, with
+#       check: capture_path_not_resolvable, expected: the declared path string,
+#       actual: the resolved value (or null if absent), json_pointer: RFC 6901
+#       form of the path.
 #
 #   unresolved_substitution
 #       Emitted on a consumer step when a referenced $context.<name> or
@@ -776,6 +887,11 @@
 #       substitution is statically unresolvable (e.g., {{runner.webhook_url:*}}
 #       on a run with no webhook receiver) to grade the entire storyboard
 #       not_applicable before execution.
+#
+#       Output shape: runner-output-contract.yaml > validation_result, with
+#       check: unresolved_substitution, expected: the unresolved token string,
+#       actual: null, json_pointer: null (pre-wire failure — no response
+#       payload available).
 #
 #   fixture_seed_unsupported
 #       Emitted when a storyboard's `prerequisites.controller_seeding` requires

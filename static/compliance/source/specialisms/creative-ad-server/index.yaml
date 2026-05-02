@@ -257,6 +257,17 @@ phases:
             path: "context.correlation_id"
             value: "creative_ad_server--build_tag"
             description: "Context correlation_id returned unchanged"
+          # Anti-façade: a real ad-server adapter calls its upstream tag-build /
+          # creative-trafficking API. An adapter that fabricates a serving tag
+          # locally without touching the ad server fails this check. The assertion
+          # is permissive on endpoint pattern because ad-server vendors differ
+          # widely (Google Ad Manager, Kevel, Equativ, FreeWheel) — the storyboard
+          # asserts the shape "an upstream call happened" rather than naming a
+          # specific platform.
+          - check: upstream_traffic
+            description: "build_creative caused upstream traffic to the ad server"
+            endpoint_pattern: "POST *"
+            min_count: 1
   - id: track_delivery
     title: "Track creative delivery"
     narrative: |

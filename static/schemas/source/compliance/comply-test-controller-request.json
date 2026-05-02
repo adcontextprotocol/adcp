@@ -359,6 +359,41 @@
           }
         }
       }
+    },
+    {
+      "if": {
+        "properties": {
+          "scenario": {
+            "const": "query_upstream_traffic"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "properties": {
+              "since_timestamp": {
+                "type": "string",
+                "format": "date-time",
+                "description": "ISO 8601 timestamp; only return calls recorded at or after this time. Default: session start. Used by storyboard runners to scope upstream_traffic assertions to a specific step's window."
+              },
+              "endpoint_pattern": {
+                "type": "string",
+                "description": "Optional server-side filter; reduces response size. Glob-style pattern matched against `<METHOD> <URL>`, e.g. 'POST */audience/upload' or 'POST *'. When omitted, all recorded calls in the window are returned."
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000,
+                "default": 100,
+                "description": "Maximum number of calls to return. The response carries `total_count` and `truncated` so the runner can detect overflow."
+              }
+            },
+            "additionalProperties": true
+          }
+        }
+      }
     }
   ],
   "x-mutates-state": true,
@@ -380,9 +415,10 @@
         "seed_creative",
         "seed_plan",
         "seed_media_buy",
-        "seed_creative_format"
+        "seed_creative_format",
+        "query_upstream_traffic"
       ],
-      "description": "Test scenario to execute. 'list_scenarios' discovers supported scenarios. 'force_*' and 'simulate_*' trigger state transitions. 'seed_*' scenarios pre-populate fixtures (product, pricing option, creative, plan, media buy, creative format) so storyboards can reference them by stable ID without the implementer having to guess which IDs the conformance suite expects."
+      "description": "Test scenario to execute. 'list_scenarios' discovers supported scenarios. 'force_*' and 'simulate_*' trigger state transitions. 'seed_*' scenarios pre-populate fixtures (product, pricing option, creative, plan, media buy, creative format) so storyboards can reference them by stable ID without the implementer having to guess which IDs the conformance suite expects. 'query_upstream_traffic' returns outbound HTTP calls the agent has made since session start (or since a caller-supplied timestamp), so storyboard runners can assert upstream side-effects via `check: upstream_traffic` — the load-bearing anti-façade contract that distinguishes a real adapter from one that returns shape-valid AdCP responses without touching the upstream platform."
     },
     "params": {
       "type": "object",
@@ -643,6 +679,17 @@
               "id": "video_30s"
             }
           }
+        }
+      }
+    },
+    {
+      "description": "Query upstream traffic recorded since a storyboard step's request timestamp",
+      "data": {
+        "scenario": "query_upstream_traffic",
+        "params": {
+          "since_timestamp": "2026-05-02T14:30:00Z",
+          "endpoint_pattern": "POST *",
+          "limit": 100
         }
       }
     }

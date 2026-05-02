@@ -37,10 +37,11 @@
               "seed_creative",
               "seed_plan",
               "seed_media_buy",
-              "seed_creative_format"
+              "seed_creative_format",
+              "query_upstream_traffic"
             ]
           },
-          "description": "Scenarios this seller has implemented. Runners and sellers MUST accept unknown scenario strings (open-for-extension) — new scenarios may be added in additive minor bumps."
+          "description": "Scenarios this seller has implemented. Runners and sellers MUST accept unknown scenario strings (open-for-extension) — new scenarios may be added in additive minor bumps. Adopters who advertise `query_upstream_traffic` opt in to the upstream-traffic conformance contract; storyboards that declare `check: upstream_traffic` grade `not_applicable` against adopters who do not advertise it."
         },
         "context": {
           "$ref": "/schemas/core/context.json"
@@ -74,6 +75,11 @@
           {
             "required": [
               "forced"
+            ]
+          },
+          {
+            "required": [
+              "recorded_calls"
             ]
           }
         ]
@@ -134,6 +140,11 @@
             "required": [
               "forced"
             ]
+          },
+          {
+            "required": [
+              "recorded_calls"
+            ]
           }
         ]
       }
@@ -192,6 +203,11 @@
           {
             "required": [
               "forced"
+            ]
+          },
+          {
+            "required": [
+              "recorded_calls"
             ]
           }
         ]
@@ -267,6 +283,11 @@
             "required": [
               "simulated"
             ]
+          },
+          {
+            "required": [
+              "recorded_calls"
+            ]
           }
         ]
       }
@@ -293,6 +314,138 @@
       },
       "required": [
         "success"
+      ],
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "error"
+            ]
+          },
+          {
+            "required": [
+              "scenarios"
+            ]
+          },
+          {
+            "required": [
+              "previous_state"
+            ]
+          },
+          {
+            "required": [
+              "simulated"
+            ]
+          },
+          {
+            "required": [
+              "forced"
+            ]
+          },
+          {
+            "required": [
+              "recorded_calls"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "title": "UpstreamTrafficSuccess",
+      "description": "A query_upstream_traffic scenario returned the outbound HTTP calls the agent has made since the requested time window. Used by storyboard runners to apply `check: upstream_traffic` assertions — the load-bearing anti-façade contract. The recorded_calls array contains every outbound HTTP call the agent's adapter caused (after AdCP-tool dispatch, before AdCP response emission), regardless of upstream destination, so storyboards can stay platform-agnostic.",
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean",
+          "const": true
+        },
+        "recorded_calls": {
+          "type": "array",
+          "description": "Outbound HTTP calls observed in the requested window, ordered by `timestamp` ascending.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "method": {
+                "type": "string",
+                "enum": [
+                  "GET",
+                  "POST",
+                  "PUT",
+                  "PATCH",
+                  "DELETE",
+                  "HEAD",
+                  "OPTIONS"
+                ],
+                "description": "HTTP method of the outbound call."
+              },
+              "endpoint": {
+                "type": "string",
+                "description": "Composed `<METHOD> <URL>` string used for `endpoint_pattern` matching, e.g. 'POST https://api.tiktok.com/v2/audience/upload'. Convenience field — the runner can also reconstruct from `method` + URL components."
+              },
+              "url": {
+                "type": "string",
+                "format": "uri",
+                "description": "Full URL of the outbound call (scheme + host + path + query)."
+              },
+              "host": {
+                "type": "string",
+                "description": "Host portion of the URL, useful for grouping calls by upstream platform."
+              },
+              "path": {
+                "type": "string",
+                "description": "Path portion of the URL (without query string)."
+              },
+              "payload": {
+                "description": "Request body the agent sent. Object when JSON-decodable; string for non-JSON bodies. Adopters MUST recursively redact secret-bearing keys (Authorization headers, API keys, tokens) before returning — see runner-output-contract.yaml > security.payload_redaction for the canonical pattern. Storyboards that assert `payload_must_contain` or `buyer_identifier_echo` are matching against THIS field, so secrets must be redacted but identifiers (hashed PII, buyer IDs) must NOT be — they are the load-bearing assertion targets."
+              },
+              "timestamp": {
+                "type": "string",
+                "format": "date-time",
+                "description": "ISO 8601 timestamp the adopter recorded the outbound call. Used by runners to scope assertions to a specific storyboard step's window."
+              },
+              "status_code": {
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 599,
+                "description": "HTTP status code returned by the upstream. Optional — adopters MAY omit when the call was instrumented before the response arrived."
+              }
+            },
+            "required": [
+              "method",
+              "endpoint",
+              "url",
+              "payload",
+              "timestamp"
+            ],
+            "additionalProperties": true
+          }
+        },
+        "total_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total calls in the requested window before any pagination — `recorded_calls.length` may be smaller when `params.limit` truncated the response."
+        },
+        "truncated": {
+          "type": "boolean",
+          "description": "True when `total_count > recorded_calls.length`. Runners MAY raise the `limit` and re-query, but storyboards SHOULD declare assertions that fit within the default 100-call window — a truncated response is a signal that the storyboard step is causing more upstream activity than expected."
+        },
+        "since_timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Echo of the `since_timestamp` the runner requested (or the session-start timestamp the adopter substituted when the runner omitted it). Lets the runner verify the controller honored the bound."
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": [
+        "success",
+        "recorded_calls",
+        "total_count"
       ],
       "additionalProperties": true,
       "not": {
@@ -391,6 +544,11 @@
             "required": [
               "forced"
             ]
+          },
+          {
+            "required": [
+              "recorded_calls"
+            ]
           }
         ]
       }
@@ -485,6 +643,40 @@
         "error": "NOT_FOUND",
         "error_detail": "Creative cr-unknown not found",
         "current_state": null
+      }
+    },
+    {
+      "description": "Upstream traffic recorded after a sync_audiences storyboard step — adapter forwarded hashed members to TikTok's audience-upload endpoint",
+      "data": {
+        "success": true,
+        "since_timestamp": "2026-05-02T14:30:00Z",
+        "total_count": 1,
+        "truncated": false,
+        "recorded_calls": [
+          {
+            "method": "POST",
+            "endpoint": "POST https://business-api.tiktok.com/open_api/v1.3/dmp/custom_audience/upload/",
+            "url": "https://business-api.tiktok.com/open_api/v1.3/dmp/custom_audience/upload/",
+            "host": "business-api.tiktok.com",
+            "path": "/open_api/v1.3/dmp/custom_audience/upload/",
+            "payload": {
+              "advertiser_id": "1234567890",
+              "audience_name": "outdoor_enthusiasts_25_54",
+              "users": [
+                {
+                  "external_id": "acme-user-0001",
+                  "hashed_email": "a000000000000000000000000000000000000000000000000000000000000001"
+                },
+                {
+                  "external_id": "acme-user-0002",
+                  "hashed_phone": "b000000000000000000000000000000000000000000000000000000000000002"
+                }
+              ]
+            },
+            "timestamp": "2026-05-02T14:30:01.245Z",
+            "status_code": 200
+          }
+        ]
       }
     }
   ],
