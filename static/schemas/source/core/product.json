@@ -69,7 +69,8 @@
       "description": "Forecasted delivery metrics for this product. Gives buyers an estimate of expected performance before requesting a proposal."
     },
     "outcome_measurement": {
-      "$ref": "/schemas/core/outcome-measurement.json"
+      "$ref": "/schemas/core/outcome-measurement.json",
+      "description": "**Deprecated as of this minor.** Outcome capabilities (incremental sales lift, brand lift, foot traffic, etc.) are now declared via `reporting_capabilities.available_metrics` (the same path used for impressions, conversions, ROAS) with `qualifier.attribution_methodology` and `qualifier.attribution_window` carrying the methodology and window on commit. New implementations SHOULD use the unified pattern; this field is retained for one-minor backwards compatibility and removed at the next major. See `outcome-measurement.json` description for migration guidance."
     },
     "delivery_measurement": {
       "type": "object",
