@@ -273,7 +273,7 @@ async function resolveAgent(agentUrl: string, ctx: CallContext): Promise<Resolut
   const brandHost = new URL(brandJsonUrl).hostname;
   const agentEtld = etldPlusOne(agentHost);
   const brandEtld = etldPlusOne(brandHost);
-  let etldMatch = agentEtld != null && brandEtld != null && agentEtld === brandEtld;
+  const etldMatch = agentEtld != null && brandEtld != null && agentEtld === brandEtld;
 
   // Step 4: fetch brand.json
   const brandAt = new Date();
@@ -288,7 +288,6 @@ async function resolveAgent(agentUrl: string, ctx: CallContext): Promise<Resolut
         brand_json_url_etld1: brandEtld,
       });
     }
-    etldMatch = true;
   }
 
   // Step 5: agents[] byte-equal match
