@@ -116,16 +116,26 @@ jobs:
                       ;;
                   esac
                   ;;
-                # package.json: take 3.0.x's wholesale. The version field
-                # is the structural conflict (3.0.x is one patch ahead of
-                # main after each release); other fields SHOULD be in sync
-                # if the playbook is followed (changes land on main first,
-                # cherry-picked to 3.0.x). If main has unique additions
-                # that 3.0.x doesn't, those came from a missing cherry-pick
-                # — the PR review surfaces the loss in the diff and the
-                # follow-up is a re-add commit on main.
+                # package.json / package-lock.json: keep main's (--ours).
+                # The original rule was --theirs (propagate 3.0.x's version
+                # bump) but that loses main's structural changes. Concrete
+                # case: main's `@adcp/client` was renamed to `@adcp/sdk`
+                # while 3.0.x kept the old name. --theirs stripped the
+                # rename + lock file, breaking `npm ci` on the auto-PR.
+                # --ours is safer because:
+                #   - Main's pre-mode tracking is independent of 3.0.x's
+                #     version. Next pre-mode cut produces 3.1.0-beta.X from
+                #     accumulated changesets regardless of base version.
+                #   - The release artifacts (dist/{schemas,compliance,
+                #     protocol}/X.Y.Z/) DO flow forward via the dist/* rule,
+                #     so consumers fetching pinned versions get them.
+                #   - Main's structural changes (package renames, new deps,
+                #     new test scripts) are preserved.
+                # Trade-off: main's package.json version doesn't reflect
+                # 3.0.x's latest release. Acceptable; the version state is
+                # never authoritative on main while pre-mode is active.
                 package.json|package-lock.json)
-                  git checkout --theirs -- "$f"
+                  git checkout --ours -- "$f"
                   git add -- "$f"
                   ;;
                 # Schema source index files carry version metadata that gets
@@ -225,8 +235,10 @@ jobs:
             Conflicts on these always-divergent paths are resolved
             automatically (see workflow source for rationale):
 
-            - `package.json` / `package-lock.json` → take 3.0.x's (version
-              propagates; main's pre-mode tracking is independent)
+            - `package.json` / `package-lock.json` → preserve main's
+              (main's pre-mode tracking is independent of 3.0.x's version,
+              and main may carry structural changes — package renames,
+              new deps — that 3.0.x doesn't)
             - `.changeset/*.md` / `.changeset/pre.json` → preserve main's
               state (main consumes changesets on its own beta schedule)
             - `static/schemas/source/index.json`,
@@ -246,9 +258,10 @@ jobs:
             - [ ] No 3.1-line work has been pulled in by accident (would
                   indicate the merge picked up something unintended)
             - [ ] If the merge commit message says "(auto-resolved
-                  divergent metadata)", spot-check `package.json` for any
-                  main-unique scripts/deps that may have been overwritten
-                  (a missed cherry-pick to 3.0.x — re-add as a follow-up)
+                  divergent metadata)", confirm `package.json` /
+                  `package-lock.json` reflect main's state (the workflow
+                  preserves --ours; 3.0.x's version bump intentionally
+                  doesn't propagate)
             - [ ] CI green
 
             ## Source
