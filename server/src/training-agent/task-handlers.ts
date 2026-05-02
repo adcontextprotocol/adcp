@@ -710,9 +710,12 @@ interface CreativeManifestView {
 interface CreativeForEnforcement {
   creative_id: string;
   provenance?: Record<string, unknown>;
+  // sync_creatives carries assets directly on the creative entry
+  // (alongside format_id, click_url, etc.).
+  assets?: Record<string, { url?: unknown; provenance?: Record<string, unknown> }>;
   manifest?: CreativeManifestView;
-  // sync_creatives also carries provenance directly on the creative-asset
-  // and on a separate `creative_manifest` field per the spec.
+  // build_creative / preview_creative use the nested `creative_manifest`
+  // shape per the spec; sync_creatives does not.
   creative_manifest?: CreativeManifestView;
 }
 
@@ -3877,9 +3880,19 @@ async function runProvenanceVerifier(
   const featureId = chosen.feature_id ?? 'ai_generated';
 
   // In-process call to the verifier handler. Real sellers do this over
-  // the network; the contract result is the same.
+  // the network; the contract result is the same. Synthesize a manifest
+  // from whichever shape the creative carries: sync_creatives puts
+  // assets at the top level, build_creative / preview_creative nest them
+  // under creative_manifest. Either path resolves to the same input.
+  const synthesized = creative.creative_manifest ?? creative.manifest ?? {
+    provenance: creative.provenance,
+    assets: creative.assets,
+  };
+  if (!synthesized.assets && creative.assets) {
+    synthesized.assets = creative.assets;
+  }
   const features = await handleGetCreativeFeatures(
-    { creative_manifest: creative.creative_manifest ?? creative.manifest, feature_ids: [featureId] } as unknown as ToolArgs,
+    { creative_manifest: synthesized, feature_ids: [featureId] } as unknown as ToolArgs,
     {} as unknown as TrainingContext,
   ) as unknown as { results?: CreativeFeatureResult[] };
   const result = features.results?.find(r => r.feature_id === featureId);
