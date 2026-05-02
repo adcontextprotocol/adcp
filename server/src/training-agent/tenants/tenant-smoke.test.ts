@@ -66,6 +66,28 @@ describe('tenant routing smoke', () => {
     }
   }, 15000);
 
+  it('serves /.well-known/adcp-agents.json with every tenant', async () => {
+    const { baseUrl, close } = await bootServer();
+    try {
+      const r = await fetch(`${baseUrl}/.well-known/adcp-agents.json`);
+      expect(r.status).toBe(200);
+      const body = await r.json() as {
+        version: string;
+        agents: Array<{ agent_id: string; url: string; transport: string; specialisms: string[] }>;
+      };
+      expect(body.version).toBe('1.0');
+      expect(Array.isArray(body.agents)).toBe(true);
+      const ids = body.agents.map(a => a.agent_id).sort();
+      expect(ids).toEqual(['brand', 'creative', 'creative-builder', 'governance', 'sales', 'signals']);
+      const sales = body.agents.find(a => a.agent_id === 'sales');
+      expect(sales?.transport).toBe('mcp');
+      expect(sales?.url).toMatch(/\/sales\/mcp$/);
+      expect(sales?.specialisms).toContain('sales-non-guaranteed');
+    } finally {
+      await close();
+    }
+  }, 15000);
+
   it('dispatches /signals/mcp tools/list and returns only signals-tenant tools', async () => {
     const { baseUrl, close } = await bootServer();
     try {
