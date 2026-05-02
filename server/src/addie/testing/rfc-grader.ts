@@ -70,6 +70,21 @@ const PUSHBACK_MARKERS = [
   'factual error',
   'premise',
   'reframe',
+  // softer-but-clear pushback that still signals "you're partly wrong"
+  'overlaps',
+  'overlap with',
+  'most of this',
+  'most of what',
+  'most of the',
+  'partly addressed',
+  'partly covered',
+  'partially covered',
+  'narrower',
+  // direct correction language
+  "isn't a",
+  'is not a',
+  'no trusted_match',
+  'no direct_sold_signals',
 ];
 
 export function gradeRfcRun(

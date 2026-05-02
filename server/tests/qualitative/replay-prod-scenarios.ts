@@ -259,13 +259,17 @@ const scenarios: Scenario[] = [
     source: 'dm',
     prodBehavior: 'Flagged as a topic; not yet drafted in current thread.',
     expectedBehavior:
-      'RESPOND — verify current brand.json validation/verification model via search_docs before agreeing the gap is real.',
+      'RESPOND — verify current brand.json validation/verification model via search_docs before agreeing the gap is real. Correct premise: "well-known" is a URI convention (RFC 8615), not a trust designation.',
     category: 'rfc',
     rfc: {
       expectedToolSets: ['knowledge'],
       expectedToolCalls: ['search_docs'],
-      expectedFieldCitations: ['brand.json', 'verification'],
-      shouldRefusePremise: false,
+      // Any of these concepts is sufficient — the grader uses OR, not AND.
+      // "well-known" / "RFC 8615" / "adagents.json" / "domain ownership" all
+      // demonstrate Addie understood the verification model rather than
+      // taking the caller's "well-known = certified" framing at face value.
+      expectedFieldCitations: ['brand.json', 'adagents.json', 'well-known', 'domain', 'rfc 8615'],
+      shouldRefusePremise: true,
     },
   },
 ];
@@ -286,10 +290,45 @@ async function generateResponse(message: string, confidence: ConfidenceTier): Pr
 }
 
 /**
+ * Variant prompt addenda for RFC drafting experiments. Selected via
+ * RFC_VARIANT env (default: baseline). Each addendum is appended to the
+ * system prompt only for `category: 'rfc'` scenarios so non-RFC
+ * scenarios stay on the prod prompt.
+ */
+const RFC_VARIANTS: Record<string, string> = {
+  baseline: '',
+  // Variant 1 — explicit two-step: lead with what's already covered before
+  // drafting. Targets the failure where Addie verifies, finds overlap, then
+  // drafts anyway without surfacing the overlap to the caller first.
+  'lead-with-coverage':
+    "## RFC Drafting — Lead With Coverage\nWhen the caller asks you to draft a GitHub issue against the AdCP spec, follow this order: (1) call search_docs and get_schema to verify the gap, (2) BEFORE calling draft_github_issue, write a short response that names which existing fields/tasks/concepts already cover any part of the request — even if you also plan to draft. If verification reveals overlap, your text response MUST lead with phrases like 'most of this is already covered' or 'X already exists in the spec' and identify the narrower real gap. Only then offer draft_github_issue (and only for the narrower gap, not the original framing).",
+  // Variant 2 — refuse-then-offer. Stronger: refuse the original framing
+  // outright when verification reveals factual error; offer to draft a
+  // corrected version on confirmation.
+  'refuse-then-offer':
+    "## RFC Drafting — Refuse Then Offer\nWhen the caller asks you to draft a GitHub issue against the AdCP spec: verify with search_docs/get_schema first. If the verification reveals the proposal extends a field that doesn't exist, conflates layers, or significantly overlaps with existing spec primitives, do NOT call draft_github_issue immediately. Instead reply with: (a) a one-sentence correction of the factual or framing error, (b) a citation of the existing primitive(s) that already cover the request, (c) the narrower real gap restated, (d) ask the caller to confirm the narrower scope before you draft. Drafting against an incorrect premise wastes review cycles and erodes trust in the protocol's apparent stability.",
+};
+
+function getRfcVariantSuffix(): { name: string; suffix: string } {
+  const name = process.env.RFC_VARIANT ?? 'baseline';
+  const suffix = RFC_VARIANTS[name];
+  if (suffix === undefined) {
+    console.warn(
+      `Unknown RFC_VARIANT="${name}". Valid: ${Object.keys(RFC_VARIANTS).join(', ')}. Falling back to baseline.`,
+    );
+    return { name: 'baseline', suffix: '' };
+  }
+  return { name, suffix };
+}
+
+/**
  * Multi-turn tool loop for RFC scenarios. Gives Sonnet the stub spec tools
  * and runs until the model returns a final text response. Records every
  * tool call so the grader can score whether search_docs / get_schema were
  * invoked before any draft was emitted.
+ *
+ * Temperature pinned to 0 to reduce run-to-run variance — variants need a
+ * clean signal, and this isn't a creativity benchmark.
  */
 async function generateRfcResponse(
   message: string,
@@ -297,7 +336,8 @@ async function generateRfcResponse(
 ): Promise<{ finalText: string; toolCalls: string[]; draftEmitted: boolean }> {
   const calibration = buildConfidenceCalibration(confidence);
   const basePrompt = await getSystemPrompt();
-  const systemPrompt = [basePrompt, calibration].filter(Boolean).join('\n\n');
+  const variant = getRfcVariantSuffix();
+  const systemPrompt = [basePrompt, calibration, variant.suffix].filter(Boolean).join('\n\n');
 
   const messages: Anthropic.MessageParam[] = [{ role: 'user', content: message }];
   const toolCalls: string[] = [];
@@ -312,6 +352,7 @@ async function generateRfcResponse(
     const response = await client.messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 1500,
+      temperature: 0,
       system: systemPrompt,
       tools: RFC_STUB_TOOLS as unknown as Anthropic.Tool[],
       messages,
@@ -373,33 +414,47 @@ async function runScenario(scenario: Scenario): Promise<boolean> {
     console.log(`CONFIDENCE: ${confidence}`);
     console.log(`TOOL SETS: [${plan.tool_sets.join(', ')}]`);
 
-    const { finalText, toolCalls, draftEmitted } = await generateRfcResponse(
-      scenario.message,
-      confidence,
-    );
-
-    console.log(`${'─'.repeat(80)}`);
-    console.log(`TOOL CALLS: [${toolCalls.join(', ') || '(none)'}]`);
-    console.log(`DRAFT EMITTED: ${draftEmitted}`);
-    console.log(`ADDIE WOULD SAY:`);
-    console.log(finalText.substring(0, 800) + (finalText.length > 800 ? '\n…' : ''));
-
-    const obs: RfcRunObservations = {
-      routerToolSets: plan.tool_sets,
-      toolCalls,
-      finalText,
-      draftEmitted,
-    };
-    const grade = gradeRfcRun(scenario.rfc ?? {}, obs);
-
-    console.log(`${'─'.repeat(80)}`);
-    console.log(
-      `RFC GRADE: router=${grade.routerOk ? '✅' : '❌'} tools=${grade.toolCallsOk ? '✅' : '❌'} citations=${grade.citationsOk ? '✅' : '❌'} premise=${grade.premiseOk ? '✅' : '❌'} → ${grade.passed ? '✅ PASS' : '❌ FAIL'}`,
-    );
-    if (grade.failures.length > 0) {
-      for (const f of grade.failures) console.log(`  - ${f}`);
+    const N = parseInt(process.env.RFC_RUNS ?? '1', 10);
+    const passes: boolean[] = [];
+    let lastFailures: string[] = [];
+    for (let i = 0; i < N; i++) {
+      const { finalText, toolCalls, draftEmitted } = await generateRfcResponse(
+        scenario.message,
+        confidence,
+      );
+      const obs: RfcRunObservations = {
+        routerToolSets: plan.tool_sets,
+        toolCalls,
+        finalText,
+        draftEmitted,
+      };
+      const grade = gradeRfcRun(scenario.rfc ?? {}, obs);
+      passes.push(grade.passed);
+      if (i === N - 1) {
+        // Print only the final run in detail to keep logs scannable.
+        console.log(`${'─'.repeat(80)}`);
+        console.log(`TOOL CALLS: [${toolCalls.join(', ') || '(none)'}]`);
+        console.log(`DRAFT EMITTED: ${draftEmitted}`);
+        console.log(`ADDIE WOULD SAY:`);
+        console.log(finalText.substring(0, 800) + (finalText.length > 800 ? '\n…' : ''));
+        console.log(`${'─'.repeat(80)}`);
+        console.log(
+          `RFC GRADE (run ${i + 1}/${N}): router=${grade.routerOk ? '✅' : '❌'} tools=${grade.toolCallsOk ? '✅' : '❌'} citations=${grade.citationsOk ? '✅' : '❌'} premise=${grade.premiseOk ? '✅' : '❌'} → ${grade.passed ? '✅ PASS' : '❌ FAIL'}`,
+        );
+        lastFailures = grade.failures;
+      }
     }
-    return grade.passed;
+    const passCount = passes.filter(Boolean).length;
+    const majorityPassed = passCount > N / 2;
+    if (N > 1) {
+      console.log(
+        `MAJORITY: ${passCount}/${N} pass → ${majorityPassed ? '✅ PASS' : '❌ FAIL'}`,
+      );
+    }
+    if (!majorityPassed && lastFailures.length > 0) {
+      for (const f of lastFailures) console.log(`  - ${f}`);
+    }
+    return majorityPassed;
   }
 
   // Legacy scenarios: shape-only, IGNORE/RESPOND prefix check.
@@ -427,11 +482,20 @@ async function runScenario(scenario: Scenario): Promise<boolean> {
 async function main() {
   // Filter env: REPLAY_FILTER=rfc runs only RFC scenarios; useful for
   // baseline-locking a specific failure mode without paying for the full
-  // battery on every iteration.
+  // battery on every iteration. RFC_SCENARIO_MATCH is a case-insensitive
+  // substring match on scenario.name for cheap single-scenario iteration.
   const filter = process.env.REPLAY_FILTER;
-  const filtered = filter ? scenarios.filter((s) => s.category === filter) : scenarios;
+  const nameMatch = process.env.RFC_SCENARIO_MATCH?.toLowerCase();
+  let filtered = filter ? scenarios.filter((s) => s.category === filter) : scenarios;
+  if (nameMatch) {
+    filtered = filtered.filter((s) => s.name.toLowerCase().includes(nameMatch));
+  }
+
+  const variant = getRfcVariantSuffix();
+  const N = parseInt(process.env.RFC_RUNS ?? '1', 10);
 
   console.log('Addie Qualitative Scenario Replay');
+  console.log(`RFC variant: ${variant.name}${variant.suffix ? ` (+${variant.suffix.length} chars)` : ''} | runs/scenario: ${N}`);
   console.log(
     filter
       ? `Running ${filtered.length} ${filter} scenarios (filtered from ${scenarios.length})...\n`
