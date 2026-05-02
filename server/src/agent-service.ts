@@ -1,7 +1,5 @@
 import { MemberDatabase } from "./db/member-db.js";
-import { FederatedIndexDatabase, type DiscoveredAgent } from "./db/federated-index-db.js";
 import type { Agent, AgentType, AgentConfig, AgentVisibility, MemberProfile } from "./types.js";
-import { isValidAgentType } from "./types.js";
 
 export interface AgentListOptions {
   type?: AgentType;
@@ -13,22 +11,21 @@ export interface AgentListOptions {
 }
 
 /**
- * Service for accessing agents from member profiles and discovered agents
- * Merges registered agents (from member profiles) with discovered agents (from federated discovery)
+ * Service for accessing agents from member profiles.
+ *
+ * The registry contains only agents that AAO members have explicitly
+ * enrolled on their member profile. Agents found by the crawler in
+ * adagents.json but not enrolled by their owner are not surfaced here.
  */
 export class AgentService {
   private memberDb: MemberDatabase;
-  private federatedDb: FederatedIndexDatabase;
 
   constructor() {
     this.memberDb = new MemberDatabase();
-    this.federatedDb = new FederatedIndexDatabase();
   }
 
   /**
    * List agents visible to the requesting viewer, optionally filtered by type.
-   * Includes both registered agents (from member profiles) and discovered agents.
-   * Registered agents take precedence for deduplication.
    */
   async listAgents(typeOrOptions?: AgentType | AgentListOptions): Promise<Agent[]> {
     const options: AgentListOptions = typeof typeOrOptions === 'string' || typeOrOptions === undefined
@@ -44,7 +41,6 @@ export class AgentService {
       : await this.memberDb.listProfiles({ is_public: true });
     const agentsByUrl = new Map<string, Agent>();
 
-    // First, collect registered agents from member profiles
     for (const profile of profiles) {
       for (const agentConfig of profile.agents || []) {
         if (!this.isVisibleToViewer(agentConfig.visibility, viewerHasApiAccess)) continue;
@@ -58,17 +54,6 @@ export class AgentService {
 
         agentsByUrl.set(agentConfig.url, this.configToAgent(agentConfig, profile));
       }
-    }
-
-    // Then, add discovered agents (if not already registered)
-    const discoveredAgents = await this.federatedDb.getAllDiscoveredAgents(type);
-    for (const discovered of discoveredAgents) {
-      if (agentsByUrl.has(discovered.agent_url)) continue; // Skip if already registered
-
-      const agentType = isValidAgentType(discovered.agent_type) ? discovered.agent_type : "unknown";
-      if (type && agentType !== type) continue;
-
-      agentsByUrl.set(discovered.agent_url, this.discoveredToAgent(discovered));
     }
 
     return Array.from(agentsByUrl.values());
@@ -86,8 +71,7 @@ export class AgentService {
   }
 
   /**
-   * Get agent by URL
-   * Checks registered agents first, then discovered agents
+   * Get agent by URL.
    */
   async getAgentByUrl(url: string, options: { viewerHasApiAccess?: boolean } = {}): Promise<Agent | undefined> {
     const viewerHasApiAccess = options.viewerHasApiAccess ?? false;
@@ -103,14 +87,6 @@ export class AgentService {
         if (!this.isVisibleToViewer(agentConfig.visibility, viewerHasApiAccess)) continue;
         if (agentConfig.visibility === 'public' && !profile.is_public && !viewerHasApiAccess) continue;
         return this.configToAgent(agentConfig, profile);
-      }
-    }
-
-    // Check discovered agents
-    const discoveredAgents = await this.federatedDb.getAllDiscoveredAgents();
-    for (const discovered of discoveredAgents) {
-      if (discovered.agent_url === url) {
-        return this.discoveredToAgent(discovered);
       }
     }
 
@@ -176,23 +152,4 @@ export class AgentService {
     };
   }
 
-  /**
-   * Convert DiscoveredAgent to Agent format
-   */
-  private discoveredToAgent(discovered: DiscoveredAgent): Agent {
-    return {
-      name: discovered.name || new URL(discovered.agent_url).hostname,
-      url: discovered.agent_url,
-      type: isValidAgentType(discovered.agent_type) ? discovered.agent_type : "unknown",
-      protocol: (discovered.protocol as "mcp" | "a2a") || "mcp",
-      description: `Discovered from ${discovered.source_domain}`,
-      mcp_endpoint: discovered.agent_url,
-      contact: {
-        name: discovered.source_domain,
-        email: "",
-        website: discovered.source_domain.startsWith("http") ? discovered.source_domain : `https://${discovered.source_domain}`,
-      },
-      added_date: discovered.discovered_at?.toISOString().split("T")[0] || new Date().toISOString().split("T")[0],
-    };
-  }
 }

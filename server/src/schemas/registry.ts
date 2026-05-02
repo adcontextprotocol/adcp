@@ -184,40 +184,6 @@ const MemberRefSchema = z.object({
   display_name: z.string().optional(),
 });
 
-const DiscoveredFromSchema = z.object({
-  publisher_domain: z.string().optional(),
-  authorized_for: z.string().optional(),
-});
-
-/**
- * Publisher-side endorsement signal for a discovered agent.
- *
- * Populated only when an agent's `source = 'discovered'` AND its
- * `discovered_from.publisher_domain` is claimed by an AAO member
- * (member_profiles row whose `publishers[]` contains that domain with
- * `is_public = true`). Mutually exclusive with `member` — a registered
- * agent never carries this field.
- *
- * The agent itself did not opt in; the publisher endorsed it via
- * `adagents.json`. Surfaces option C from issue #3547 / Problem 6 of
- * issue #3538: discovered agents like `agent.mamamia.com.au` whose
- * publisher is a member previously rendered `member: null` and dropped
- * that trust signal on the floor.
- */
-const EndorsedByPublisherMemberSchema = z
-  .object({
-    slug: z
-      .string()
-      .openapi({ description: "Member organization slug — stable URL-safe identifier for the publisher member." }),
-    display_name: z
-      .string()
-      .openapi({ description: "Member organization display name — render-ready label for the publisher member." }),
-    publisher_domain: z
-      .string()
-      .openapi({ description: "Publisher domain whose adagents.json endorsed this agent (the linkage that produced this signal)." }),
-  })
-  .openapi("EndorsedByPublisherMember");
-
 export const ResolvedBrandSchema = z
   .object({
     canonical_id: z.string().openapi({ example: "acmecorp.com" }),
@@ -429,28 +395,10 @@ export const FederatedAgentWithDetailsSchema = z
       })
       .optional(),
     added_date: z.string().optional(),
-    source: z
-      .enum(["registered", "discovered"])
-      .optional()
-      .openapi({
-        description:
-          "Provenance of this agent in the registry. " +
-          "`registered` = an AAO member has explicitly enrolled this agent on their member profile (canonical, attested). " +
-          "`discovered` = the crawler found this agent listed in some publisher's adagents.json file; the agent itself has not opted in to the registry. " +
-          "These are different trust levels — `registered` ≠ `discovered`. Filter by source if your use case depends on attestation.",
-      }),
     member: MemberRefSchema.optional().openapi({
       description:
-        "AAO member that owns this agent record, if any. Populated when `source` is `registered`. " +
-        "For `discovered` agents this is `null`; see `endorsed_by_publisher_member` for the publisher-side endorsement signal added in #3547 / Problem 6 of #3538.",
+        "AAO member that owns this agent record. The registry contains only agents that members have explicitly enrolled on their member profile.",
     }),
-    discovered_from: DiscoveredFromSchema.optional().openapi({
-      description:
-        "Set when `source = 'discovered'`. Identifies the publisher_domain whose adagents.json listed this agent, and the `authorized_for` string from that listing. " +
-        "Mutually exclusive with the `member` field on the registered path.",
-    }),
-    endorsed_by_publisher_member: EndorsedByPublisherMemberSchema.optional()
-      .openapi({ description: "Set on discovered agents when discovered_from.publisher_domain is claimed by an AAO member (publishers[] entry with is_public=true). Mutually exclusive with member — registered agents never carry this. Option C from #3547 (Problem 6 / #3538)." }),
     health: AgentHealthSchema.optional(),
     stats: AgentStatsSchema.optional(),
     capabilities: AgentCapabilitiesSchema.optional(),
@@ -463,22 +411,16 @@ export const FederatedAgentWithDetailsSchema = z
 export const FederatedPublisherSchema = z
   .object({
     domain: z.string(),
-    source: z.enum(["registered", "discovered"]).optional(),
     member: MemberRefSchema.optional(),
     agent_count: z.number().int().optional(),
     last_validated: z.string().optional(),
-    discovered_from: z
-      .object({ agent_url: z.string().optional() })
-      .optional(),
     has_valid_adagents: z.boolean().optional(),
-    discovered_at: z.string().optional(),
   })
   .openapi("FederatedPublisher");
 
 const DomainAgentRefSchema = z.object({
   url: z.string(),
   authorized_for: z.string().optional(),
-  source: z.enum(["registered", "discovered"]).optional(),
   member: MemberRefSchema.optional(),
 });
 
@@ -489,7 +431,6 @@ export const DomainLookupResultSchema = z
     sales_agents_claiming: z.array(
       z.object({
         url: z.string(),
-        source: z.enum(["registered", "discovered"]).optional(),
         member: MemberRefSchema.optional(),
       })
     ),

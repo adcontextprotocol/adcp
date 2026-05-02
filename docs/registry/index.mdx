@@ -99,7 +99,7 @@ Three endpoints answer different questions about who is in the registry. They sp
 | `GET /api/registry/operator?domain=X` | "What does this entity operate?" |
 | `GET /api/registry/publisher?domain=X` | "What does this entity publish?" |
 
-**`GET /api/registry/agents`** — the full catalog of agents in the registry, both `registered` (member-attested, opt-in) and `discovered` (crawled from a publisher's `adagents.json`). Use this when you want to browse or filter the whole population; the `source` field on each row distinguishes the two trust levels. Reference: [List agents endpoint](#agent-discovery) under Agent Discovery.
+**`GET /api/registry/agents`** — the catalog of AAO-attested member-enrolled agents in the registry. Use this when you want to browse or filter the public agent population. See [Registering an agent](/docs/registry/registering-an-agent) for how agents end up in this catalog. Reference: [List agents endpoint](#agent-discovery) under Agent Discovery.
 
 **`GET /api/registry/operator?domain=X`** — given a domain, returns the agents that entity operates and the publishers that trust them. Use this when you have one entity in hand and want its agent footprint. Response shape is auth-aware: anonymous callers see only `public` agents, AAO API-tier callers also see `members_only`, and profile owners additionally see `private` (`server/src/routes/registry-api.ts:5486`). Reference: [Operator lookup](/docs/registry/api-reference/authorization-lookups/operator-lookup) under Authorization Lookups.
 
@@ -142,7 +142,7 @@ All sources produce the same resolution response structure. To get full brand id
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/registry/agents` | List all agents — filter by type (`?type=brand|rights|measurement|governance|creative|sales|buying|signals`); merges registered (member-declared) and discovered (crawled) sources, registered takes precedence |
+| GET | `/api/registry/agents` | List all member-enrolled agents — filter by type (`?type=brand|rights|measurement|governance|creative|sales|buying|signals`) |
 | GET | `/api/registry/agents/search` | Search agents by inventory profile (auth required) |
 | GET | `/api/registry/publishers` | List all publishers |
 | GET | `/api/registry/stats` | Registry statistics |
@@ -156,7 +156,7 @@ To discover measurement vendors specifically (Adelaide-style attention, Scope3-s
 curl "https://agenticadvertising.org/api/registry/agents?type=measurement"
 ```
 
-This returns every measurement agent the registry knows about — registered via member profiles plus discovered through crawling brand.json declarations.
+This returns every measurement agent enrolled in the registry by an AAO member.
 
 **Per-metric catalog discovery.** Each measurement agent publishes its full per-metric catalog at [`get_adcp_capabilities.measurement.metrics[]`](/docs/protocol/get_adcp_capabilities#measurement) — the canonical, vendor-controlled source of truth. AAO crawls each measurement agent's `get_adcp_capabilities` on a TTL and stores the result; passing `?capabilities=true` folds the catalog into the response next to `creative_capabilities` and `signals_capabilities`.
 
@@ -502,7 +502,7 @@ Poll a cursor-based feed of registry changes. Use this to keep a local copy of t
 | `property.merged` | Two property records were merged |
 | `property.stale` | Property failed re-crawl validation |
 | `property.reactivated` | A stale property passed re-crawl |
-| `agent.discovered` | A new agent was found via adagents.json |
+| `agent.discovered` | A new `agent_url` appeared in a publisher's `adagents.json` (authorization graph; does not imply the agent is in `/api/registry/agents`) |
 | `agent.removed` | An agent was removed from the registry |
 | `agent.profile_updated` | Agent inventory profile changed |
 | `publisher.adagents_changed` | A publisher's adagents.json was updated |

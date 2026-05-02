@@ -33,7 +33,7 @@ export interface Agent {
     email: string;
     website: string;
   };
-  added_date: string;
+  added_date?: string;
 }
 
 export interface AgentHealth {
@@ -1056,73 +1056,53 @@ export interface AgentCompliance {
 // Federated Discovery Types
 
 /**
- * An agent in the federated view (registered or discovered)
+ * An agent in the federated registry view.
+ *
+ * The registry contains only agents that members have explicitly enrolled
+ * on their member profile. Agents found by the crawler in adagents.json
+ * but not enrolled by their owner are not surfaced here.
  */
 export interface FederatedAgent {
   url: string;
   name?: string;
   type?: AgentType;
   protocol?: 'mcp' | 'a2a';
-  source: 'registered' | 'discovered';
-  // For registered agents
   member?: {
     slug: string;
     display_name: string;
   };
-  // For discovered agents
-  discovered_from?: {
-    publisher_domain: string;
-    authorized_for?: string;
-  };
-  // Publisher-side endorsement: set when source='discovered' AND the
-  // publisher_domain in discovered_from is claimed by an AAO member.
-  // Mutually exclusive with `member`. See registering-an-agent docs and
-  // option C from issue #3547 (Problem 6 of #3538).
-  endorsed_by_publisher_member?: {
-    slug?: string;
-    display_name?: string;
-    publisher_domain: string;
-  };
-  discovered_at?: string;
 }
 
 /**
- * A publisher in the federated view (registered or discovered)
+ * A publisher in the federated view.
  */
 export interface FederatedPublisher {
   domain: string;
-  source: 'registered' | 'discovered';
-  // For registered publishers
   member?: {
     slug: string;
     display_name: string;
   };
   agent_count?: number;
   last_validated?: string;
-  // For discovered publishers
-  discovered_from?: {
-    agent_url: string;
-  };
   has_valid_adagents?: boolean;
-  discovered_at?: string;
 }
 
 /**
- * Result of a domain lookup showing all agents authorized for that domain
+ * Result of a domain lookup showing all agents authorized for that domain.
+ *
+ * `member` is populated when the agent_url corresponds to an AAO member's
+ * registered agent. It is left unset when the agent_url is referenced
+ * by adagents.json but not enrolled with AAO.
  */
 export interface DomainLookupResult {
   domain: string;
-  // Agents authorized via adagents.json (verified)
   authorized_agents: Array<{
     url: string;
     authorized_for?: string;
-    source: 'registered' | 'discovered';
     member?: { slug: string; display_name: string };
   }>;
-  // Sales agents that claim to sell this domain (may not be verified)
   sales_agents_claiming: Array<{
     url: string;
-    source: 'registered' | 'discovered';
     member?: { slug: string; display_name: string };
   }>;
 }
