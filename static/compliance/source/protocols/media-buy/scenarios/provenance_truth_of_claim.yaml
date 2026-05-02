@@ -1,0 +1,114 @@
+id: media_buy_seller/provenance_truth_of_claim
+version: "0.1.0"
+title: "Seller refutes a buyer's provenance claim via on-list verifier"
+category: media_buy_seller
+summary: "Buyer attaches a digital_source_type claim. Seller calls an on-list governance agent via get_creative_features; the verifier returns a result that contradicts the claim, and the seller rejects with PROVENANCE_CLAIM_CONTRADICTED. Skeleton scenario — not yet runnable end-to-end (the training agent does not implement get_creative_features against verifiers)."
+track: creative
+required_tools:
+  - get_products
+  - sync_creatives
+  - get_creative_features
+
+narrative: |
+  This is the truth-of-claim half of the provenance enforcement contract.
+  The structural-rejection half (media_buy_seller/provenance_enforcement)
+  exercises the PROVENANCE_*_MISSING / PROVENANCE_VERIFIER_NOT_ACCEPTED codes
+  — failures the seller can detect by inspecting the submission against
+  creative_policy. This scenario exercises PROVENANCE_CLAIM_CONTRADICTED:
+  the seller calls a governance agent from creative_policy.accepted_verifiers
+  via get_creative_features, the verifier returns a result that contradicts
+  the buyer's provenance claim (e.g., buyer claims digital_source_type:
+  digital_capture but the AI-detection feature returns ai_generated: true
+  above the seller's confidence threshold), and the seller rejects.
+
+  This is a SKELETON. The training agent does not yet:
+    1. Stand up a governance-agent endpoint on its own URL
+    2. Invoke get_creative_features against accepted_verifiers entries
+    3. Reconcile feature results against the buyer's provenance claim
+    4. Emit PROVENANCE_CLAIM_CONTRADICTED with the audit-safe error.details
+       allowlist (agent_url, feature_id, claimed_value, observed_value,
+       confidence, substituted_for)
+
+  Tracked via the issue referenced from KNOWN_FAILING_STORYBOARDS in
+  server/tests/manual/run-storyboards.ts. When the training agent ships
+  the truth-of-claim path, remove the KNOWN_FAILING entry and flesh out
+  this storyboard's phases (currently a single placeholder step).
+
+agent:
+  interaction_model: stateful_push
+  capabilities:
+    - has_creative_library
+  examples:
+    - "Publishers and SSPs that run independent AI detection against buyer-claimed provenance"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    Seller publishes a product with creative_policy.accepted_verifiers
+    pointing at a governance agent that implements get_creative_features.
+    The training agent's get_creative_features path is not yet implemented;
+    this storyboard is a skeleton tracked as known-failing.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "test-product-truth-of-claim"
+      name: "Provenance Truth-of-Claim Test Product"
+      description: "Sandbox display inventory exercising verifier-driven contradiction of buyer provenance claims"
+      delivery_type: "non_guaranteed"
+      channels: ["display"]
+      creative_policy:
+        co_branding: "optional"
+        landing_page: "any"
+        templates_available: false
+        provenance_required: true
+        accepted_verifiers:
+          - agent_url: "https://governance.encypher.seller.example"
+            feature_id: "ai_generated"
+            providers: ["Encypher"]
+      pricing_options:
+        - pricing_option_id: "test-pricing-cpm"
+          pricing_model: "cpm"
+          rate: 5.00
+          currency: "USD"
+
+phases:
+  - id: placeholder
+    title: "Skeleton phase — not yet runnable"
+    narrative: |
+      This phase is a placeholder so the storyboard parses and registers in
+      the conformance inventory. The full flow will be: get_products to read
+      accepted_verifiers, sync_creatives with a contradicted claim, expect
+      action: failed with creatives[0].errors[0].code ==
+      PROVENANCE_CLAIM_CONTRADICTED and error.details limited to the safe
+      allowlist. Track in run-storyboards.ts KNOWN_FAILING_STORYBOARDS.
+
+    steps:
+      - id: get_products_truth_of_claim
+        title: "Discover the truth-of-claim product"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: false
+        expected: |
+          Skeleton — the storyboard is on KNOWN_FAILING until the training
+          agent implements truth-of-claim verification.
+        sample_request:
+          buying_mode: "brief"
+          brief: "Provenance Truth-of-Claim display inventory — verifier-driven AI detection"
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          context:
+            correlation_id: "provenance_truth_of_claim--get_products"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"

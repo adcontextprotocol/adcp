@@ -1,7 +1,7 @@
-id: creative_sales_agent
+id: media_buy_seller/creative_reception
 version: "1.0.0"
 title: "Sales agent with creative capabilities"
-category: creative_sales_agent
+category: media_buy_seller
 summary: "Stateful sales agent that accepts pushed creative assets and renders them in its environment."
 track: creative
 required_tools:
@@ -60,7 +60,7 @@ phases:
           Return capabilities declaring creative in supported_protocols, confirming the agent handles creative operations.
         sample_request:
           context:
-            correlation_id: "creative_sales_agent--get_capabilities"
+            correlation_id: "media_buy_seller_creative_reception--get_capabilities"
         validations:
           - check: response_schema
             description: "Response matches get-adcp-capabilities-response.json schema"
@@ -73,7 +73,7 @@ phases:
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "creative_sales_agent--get_capabilities"
+            value: "media_buy_seller_creative_reception--get_capabilities"
             description: "Context correlation_id returned unchanged"
   - id: discover_accepted_formats
     title: "Discover accepted formats"
@@ -157,9 +157,9 @@ phases:
                   asset_type: "url"
                   url: "https://acmeoutdoor.example/summer-sale"
 
-          idempotency_key: "$generate:uuid_v4#creative_sales_agent_push_creatives_sync_creatives"
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_creative_reception_push_creatives_sync_creatives"
           context:
-            correlation_id: "creative_sales_agent--sync_creatives"
+            correlation_id: "media_buy_seller_creative_reception--sync_creatives"
         validations:
           - check: response_schema
             description: "Response matches sync-creatives-response.json schema"
@@ -172,7 +172,7 @@ phases:
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "creative_sales_agent--sync_creatives"
+            value: "media_buy_seller_creative_reception--sync_creatives"
             description: "Context correlation_id returned unchanged"
   - id: preview
     title: "Preview pushed creatives"
@@ -230,7 +230,7 @@ phases:
           quality: "draft"
 
           context:
-            correlation_id: "creative_sales_agent--preview_synced"
+            correlation_id: "media_buy_seller_creative_reception--preview_synced"
         validations:
           - check: response_schema
             description: "Response matches preview-creative-response.json schema"
@@ -243,5 +243,5 @@ phases:
             description: "Response echoes back the context object"
           - check: field_value
             path: "context.correlation_id"
-            value: "creative_sales_agent--preview_synced"
+            value: "media_buy_seller_creative_reception--preview_synced"
             description: "Context correlation_id returned unchanged"

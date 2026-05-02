@@ -421,7 +421,8 @@ interface CreativeDeliveryEntry {
 /** Sync creative result entry. */
 interface SyncCreativeResult {
   creative_id: string;
-  action: 'created' | 'updated';
+  action: 'created' | 'updated' | 'failed';
+  errors?: TaskError[];
 }
 
 /** Creative assignment result. */
@@ -550,8 +551,12 @@ export function invalidateCache(): void {
 
 /**
  * Canonicalize an agent URL for equality comparison: lowercase scheme + host,
- * strip a single trailing slash, preserve path case. Used to decide whether
- * a caller-supplied `format_id.agent_url` points at this agent.
+ * strip default port, strip a single trailing slash, preserve path case.
+ * Used both for `format_id.agent_url` (does this point at this agent?) and
+ * for cross-checking buyer-supplied `verify_agent.agent_url` against the
+ * seller's `creative_policy.accepted_verifiers` allowlist (per the rule
+ * inlined into provenance.json: lowercase scheme and host, strip default
+ * port, normalize path dot-segments).
  */
 function canonicalizeAgentUrl(url: string): string {
   try {
@@ -566,6 +571,318 @@ function canonicalizeAgentUrl(url: string): string {
 }
 
 /**
+ * Backfill required Product fields for *fixture-seeded* products only.
+ * Catalog products are guaranteed complete by `buildCatalog`, so we never
+ * mutate them — that would alias the cached singleton across every
+ * subsequent request (`getCatalog().map(cp => ({...cp.product}))` is a
+ * shallow copy; `format_ids[]` and `reporting_capabilities` are shared
+ * references). Restrict to seeded IDs to keep the cache pristine.
+ *
+ * Defaults are sentinel values that pass spec validation; storyboards
+ * that need specific values still seed them explicitly via the fixture.
+ * `publisher_domain: 'training.example.com'` uses the IETF reserved
+ * `example.*` namespace (RFC 6761) — it cannot collide with a real
+ * publisher claim, but is still a sentinel: if any consumer of
+ * `publisher_properties` ever resolves the domain (DNS, brand.json
+ * fetch), the resolution will fail loudly rather than silently match an
+ * arbitrary domain.
+ */
+function backfillTrainingProductDefaults(product: Product, ownAgentUrl: string): void {
+  const p = product as unknown as {
+    product_id?: string;
+    name?: string;
+    description?: string;
+    publisher_properties?: Array<{ publisher_domain: string; selection_type: string }>;
+    format_ids?: Array<{ agent_url?: string; id?: string }>;
+    pricing_options?: unknown[];
+    reporting_capabilities?: Record<string, unknown>;
+  };
+  if (!Array.isArray(p.format_ids) || p.format_ids.length === 0) {
+    p.format_ids = [{ agent_url: ownAgentUrl, id: 'display_300x250' }];
+  } else {
+    for (const fid of p.format_ids) {
+      if (typeof fid === 'object' && fid !== null && !fid.agent_url) {
+        fid.agent_url = ownAgentUrl;
+      }
+    }
+  }
+  if (typeof p.name !== 'string' || p.name.length === 0) {
+    p.name = p.product_id ?? 'Test Product';
+  }
+  if (typeof p.description !== 'string' || p.description.length === 0) {
+    p.description = `Fixture-seeded product ${p.product_id ?? ''}`.trim();
+  }
+  if (!Array.isArray(p.publisher_properties) || p.publisher_properties.length === 0) {
+    p.publisher_properties = [{ publisher_domain: 'training.example.com', selection_type: 'all' }];
+  }
+  if (!Array.isArray(p.pricing_options) || p.pricing_options.length === 0) {
+    p.pricing_options = [{ pricing_option_id: 'fixture_default_cpm', pricing_model: 'cpm', currency: 'USD', rate: 5 }];
+  }
+  // reporting_capabilities is required and has six required sub-fields. Fill
+  // each missing sub-field individually so fixtures that seed *some* (e.g.,
+  // available_metrics, vendor_metrics) don't fail validation on the rest.
+  const rc = (p.reporting_capabilities ?? {}) as Record<string, unknown>;
+  if (!Array.isArray(rc.available_reporting_frequencies) || (rc.available_reporting_frequencies as unknown[]).length === 0) {
+    rc.available_reporting_frequencies = ['daily'];
+  }
+  if (typeof rc.expected_delay_minutes !== 'number') rc.expected_delay_minutes = 60;
+  if (typeof rc.timezone !== 'string') rc.timezone = 'UTC';
+  if (typeof rc.supports_webhooks !== 'boolean') rc.supports_webhooks = false;
+  if (!Array.isArray(rc.available_metrics)) rc.available_metrics = ['impressions', 'spend'];
+  if (typeof rc.date_range_support !== 'string') rc.date_range_support = 'date_range';
+  p.reporting_capabilities = rc;
+}
+
+// ── Provenance enforcement (creative_policy) ──────────────────────
+
+interface AcceptedVerifierEntry {
+  agent_url: string;
+  feature_id?: string;
+  providers?: string[];
+}
+
+interface ProvenanceRequirements {
+  require_digital_source_type?: boolean;
+  require_disclosure_metadata?: boolean;
+  require_embedded_provenance?: boolean;
+}
+
+interface CreativePolicyView {
+  provenance_required?: boolean;
+  provenance_requirements?: ProvenanceRequirements;
+  accepted_verifiers?: AcceptedVerifierEntry[];
+}
+
+/**
+ * Aggregate `creative_policy` across the session's seeded products. The
+ * training agent applies the most-restrictive aggregation: if any product
+ * in the session demands a field, every `sync_creatives` submission is
+ * checked against that field. Mirrors how a real seller would treat a
+ * buyer's creative library — if the buyer might assign the creative to
+ * any product whose policy requires `disclosure`, the disclosure must be
+ * present on submission.
+ *
+ * Field-aggregation directions are deliberately asymmetric:
+ *   - Requirement booleans (`provenance_required`, `require_*`) are
+ *     ORed across products — most-restrictive wins because they're
+ *     gates the buyer must clear.
+ *   - `accepted_verifiers[]` is UNIONed across products — least-
+ *     restrictive wins because it's an allowlist. A buyer pointing at a
+ *     verifier accepted by *any* of the seller's products in this
+ *     session passes the cross-check.
+ * That's allowlists union, gates intersect — the standard pattern.
+ *
+ * Returns `null` when no seeded product carries provenance policy. Pre-
+ * existing storyboards that don't seed provenance fields keep their
+ * "accept everything" behavior; only storyboards seeding policy fields
+ * trigger enforcement.
+ */
+function aggregateCreativePolicy(session: import('./types.js').SessionState): CreativePolicyView | null {
+  const { seededProducts } = session.complyExtensions;
+  if (seededProducts.size === 0) return null;
+  const acc: CreativePolicyView = {};
+  let anyPolicy = false;
+  for (const fixture of seededProducts.values()) {
+    const policy = (fixture as { creative_policy?: CreativePolicyView } | undefined)?.creative_policy;
+    if (!policy) continue;
+    anyPolicy = true;
+    if (policy.provenance_required) acc.provenance_required = true;
+    if (policy.provenance_requirements) {
+      acc.provenance_requirements = acc.provenance_requirements ?? {};
+      const req = policy.provenance_requirements;
+      if (req.require_digital_source_type) acc.provenance_requirements.require_digital_source_type = true;
+      if (req.require_disclosure_metadata) acc.provenance_requirements.require_disclosure_metadata = true;
+      if (req.require_embedded_provenance) acc.provenance_requirements.require_embedded_provenance = true;
+    }
+    if (policy.accepted_verifiers?.length) {
+      acc.accepted_verifiers = acc.accepted_verifiers ?? [];
+      acc.accepted_verifiers.push(...policy.accepted_verifiers);
+    }
+  }
+  return anyPolicy ? acc : null;
+}
+
+interface CreativeManifestView {
+  provenance?: Record<string, unknown>;
+  assets?: Record<string, { provenance?: Record<string, unknown> }>;
+}
+
+interface CreativeForEnforcement {
+  creative_id: string;
+  provenance?: Record<string, unknown>;
+  manifest?: CreativeManifestView;
+  // sync_creatives also carries provenance directly on the creative-asset
+  // and on a separate `creative_manifest` field per the spec.
+  creative_manifest?: CreativeManifestView;
+}
+
+/**
+ * Resolve the manifest-level provenance for enforcement. Walks the spec's
+ * inheritance chain: most-specific wins, replace-not-merge. Asset-level
+ * overrides exist on the spec but the storyboard exercises manifest-level
+ * provenance; this implementation checks the manifest level first and
+ * falls back to creative-asset-level. Asset-level overrides aren't yet
+ * exercised by conformance, so they're not aggregated here.
+ */
+function resolveManifestProvenance(creative: CreativeForEnforcement): Record<string, unknown> | undefined {
+  const manifest = creative.creative_manifest ?? creative.manifest;
+  return manifest?.provenance ?? creative.provenance;
+}
+
+/**
+ * Clamp a buyer-supplied string before interpolating it into an error
+ * message or field path. Strips C0 controls (newlines, tabs, NUL,
+ * escape sequences) and caps length so log/transcript consumers that
+ * render the message in a terminal or HTML pane don't get poisoned by
+ * an attacker-shaped value. Length cap is generous enough to fit any
+ * legitimate URL or creative_id but small enough to bound an abusive
+ * payload's blast radius.
+ */
+function sanitizeForError(value: string, maxLen = 256): string {
+  // eslint-disable-next-line no-control-regex
+  return value.replace(/[ -]/g, '').slice(0, maxLen);
+}
+
+/**
+ * Build a `TaskError` for a structural-rejection PROVENANCE_* code.
+ */
+function provenanceError(
+  code:
+    | 'PROVENANCE_REQUIRED'
+    | 'PROVENANCE_DIGITAL_SOURCE_TYPE_MISSING'
+    | 'PROVENANCE_DISCLOSURE_MISSING'
+    | 'PROVENANCE_EMBEDDED_MISSING'
+    | 'PROVENANCE_VERIFIER_NOT_ACCEPTED',
+  message: string,
+  field: string,
+): TaskError {
+  return { code, message, field, recovery: 'correctable' } as TaskError;
+}
+
+/**
+ * Apply seller-side `creative_policy` enforcement to a single creative
+ * submission. Returns the first PROVENANCE_* error if any structural
+ * check fails, or `null` when the creative passes.
+ *
+ * Cascade order (stable; storyboard assertions on `errors[0]` rely on it):
+ *   1. PROVENANCE_REQUIRED                       — provenance object absent
+ *   2. PROVENANCE_DIGITAL_SOURCE_TYPE_MISSING    — required field absent
+ *   3. PROVENANCE_DISCLOSURE_MISSING             — required field absent
+ *   4. PROVENANCE_EMBEDDED_MISSING               — required field absent
+ *   5. PROVENANCE_VERIFIER_NOT_ACCEPTED          — verify_agent off-list
+ *
+ * Reordering this cascade would change the first-error a buyer sees on a
+ * creative that fails multiple checks — keep it stable. If a future
+ * implementation accumulates errors instead of returning the first, the
+ * order above is the canonical priority for sorting.
+ *
+ * The truth-of-claim surface (PROVENANCE_CLAIM_CONTRADICTED, requires
+ * calling `get_creative_features` against an on-list verifier) is out
+ * of scope for this initial implementation — the structural codes are
+ * sufficient to exercise the wire contract end to end.
+ */
+function enforceProvenancePolicy(
+  creative: CreativeForEnforcement,
+  policy: CreativePolicyView | null,
+): TaskError | null {
+  if (!policy) return null;
+  const provenance = resolveManifestProvenance(creative);
+  // creative_id is buyer-controlled — sanitize before interpolating into
+  // the field path so a payload with newlines or oversized strings can't
+  // poison the path a downstream consumer renders.
+  const safeId = sanitizeForError(creative.creative_id, 128);
+  const fieldRoot = `creatives[${safeId}].creative_manifest.provenance`;
+
+  // 1. provenance_required — any provenance object must exist
+  if (policy.provenance_required && !provenance) {
+    return provenanceError(
+      'PROVENANCE_REQUIRED',
+      `Seller's creative_policy.provenance_required is true; the submitted creative has no provenance object on the manifest.`,
+      `creatives[${safeId}].creative_manifest`,
+    );
+  }
+
+  // 2. require_digital_source_type
+  if (policy.provenance_requirements?.require_digital_source_type) {
+    const dst = provenance?.digital_source_type;
+    if (dst === undefined || dst === null) {
+      return provenanceError(
+        'PROVENANCE_DIGITAL_SOURCE_TYPE_MISSING',
+        `Seller requires digital_source_type but the resolved provenance has none.`,
+        `${fieldRoot}.digital_source_type`,
+      );
+    }
+  }
+
+  // 3. require_disclosure_metadata: disclosure.required must be a boolean,
+  //    and when true at least one disclosure.jurisdictions entry expected.
+  if (policy.provenance_requirements?.require_disclosure_metadata) {
+    const disclosure = provenance?.disclosure as { required?: unknown; jurisdictions?: unknown[] } | undefined;
+    if (!disclosure || typeof disclosure.required !== 'boolean') {
+      return provenanceError(
+        'PROVENANCE_DISCLOSURE_MISSING',
+        `Seller requires disclosure metadata but the resolved provenance has no disclosure.required boolean.`,
+        `${fieldRoot}.disclosure`,
+      );
+    }
+    if (disclosure.required === true && (!Array.isArray(disclosure.jurisdictions) || disclosure.jurisdictions.length === 0)) {
+      return provenanceError(
+        'PROVENANCE_DISCLOSURE_MISSING',
+        `Seller requires disclosure metadata; disclosure.required is true but disclosure.jurisdictions is empty.`,
+        `${fieldRoot}.disclosure.jurisdictions`,
+      );
+    }
+  }
+
+  // 4. require_embedded_provenance — at least one entry
+  if (policy.provenance_requirements?.require_embedded_provenance) {
+    const embedded = provenance?.embedded_provenance;
+    if (!Array.isArray(embedded) || embedded.length === 0) {
+      return provenanceError(
+        'PROVENANCE_EMBEDDED_MISSING',
+        `Seller requires embedded_provenance but the resolved provenance has none.`,
+        `${fieldRoot}.embedded_provenance`,
+      );
+    }
+  }
+
+  // 5. accepted_verifiers cross-check on every embedded_provenance[].verify_agent
+  //    and watermarks[].verify_agent reference. Buyer-supplied agent_urls MUST
+  //    canonicalize-match an entry in the seller's allowlist before the seller
+  //    would call them. Off-list URLs are rejected without any outbound call.
+  if (policy.accepted_verifiers?.length) {
+    const allowed = new Set(policy.accepted_verifiers.map(v => canonicalizeAgentUrl(v.agent_url)));
+    type LayerWithVerifyAgent = { verify_agent?: { agent_url?: unknown } };
+    const layers: Array<{ kind: 'embedded_provenance' | 'watermarks'; index: number; entry: LayerWithVerifyAgent }> = [];
+    const embedded = provenance?.embedded_provenance;
+    if (Array.isArray(embedded)) {
+      embedded.forEach((entry, index) => layers.push({ kind: 'embedded_provenance', index, entry: entry as LayerWithVerifyAgent }));
+    }
+    const watermarks = provenance?.watermarks;
+    if (Array.isArray(watermarks)) {
+      watermarks.forEach((entry, index) => layers.push({ kind: 'watermarks', index, entry: entry as LayerWithVerifyAgent }));
+    }
+    for (const layer of layers) {
+      const url = layer.entry.verify_agent?.agent_url;
+      if (typeof url !== 'string' || url.length === 0) continue;
+      if (!allowed.has(canonicalizeAgentUrl(url))) {
+        // `url` is buyer-controlled — sanitize before interpolation so a
+        // payload with newlines / ANSI escapes / oversized strings can't
+        // poison the message a downstream consumer renders. The field path
+        // is server-constructed from constants (no buyer data), so it's safe.
+        return provenanceError(
+          'PROVENANCE_VERIFIER_NOT_ACCEPTED',
+          `Buyer's verify_agent.agent_url "${sanitizeForError(url)}" is not in the seller's accepted_verifiers list.`,
+          `${fieldRoot}.${layer.kind}[${layer.index}].verify_agent.agent_url`,
+        );
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
  * Merge products and pricing options seeded via comply_test_controller
  * (`seed_product`, `seed_pricing_option`) into the in-memory product map
  * used for create/validate flows. Seeded fixtures are permissive objects
@@ -573,6 +890,15 @@ function canonicalizeAgentUrl(url: string): string {
  * the handlers consult (pricing_options with pricing_model/floor_price/
  * fixed_price/etc) so fixture-driven storyboards can reference products
  * that don't live in the static catalog.
+ *
+ * The overlay also runs `backfillTrainingProductDefaults` on each seeded
+ * entry so missing required Product fields don't fail response-schema
+ * validation when get_products serializes them. Catalog products in the
+ * map are left untouched — `getCatalog().map(cp => ({...cp.product}))`
+ * is a shallow copy whose nested arrays/objects (`format_ids[]`,
+ * `reporting_capabilities`, ...) alias the cached catalog singleton, so
+ * mutating them would leak across requests. Restricting backfill to
+ * seeded IDs keeps the cache pristine.
  */
 function overlaySeededProducts(
   session: import('./types.js').SessionState,
@@ -594,6 +920,7 @@ function overlaySeededProducts(
     ...seededProducts.keys(),
     ...pricingByProduct.keys(),
   ]);
+  const ownAgentUrl = getAgentUrl();
   for (const productId of productIds) {
     const existing = productMap.get(productId) ?? {} as Partial<Product>;
     const fixture = seededProducts.get(productId) as Partial<Product> | undefined;
@@ -605,6 +932,7 @@ function overlaySeededProducts(
         pricing_options: seededPricing as unknown as Product['pricing_options'],
       });
     }
+    backfillTrainingProductDefaults(merged as Product, ownAgentUrl);
     productMap.set(productId, merged as Product);
   }
 }
@@ -1024,6 +1352,16 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
   const session = await getSession(sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId));
 
   let products: Product[] = getCatalog().map(cp => ({ ...cp.product }));
+
+  // Overlay seeded products from comply_test_controller fixtures so
+  // storyboard-seeded fields (e.g. creative_policy.provenance_requirements,
+  // accepted_verifiers) round-trip through get_products. The overlay
+  // also backfills required Product fields on seeded products so they
+  // serialize as schema-valid responses without forcing every fixture
+  // to repeat boilerplate. Catalog products are not touched.
+  const productMap = new Map(products.map(p => [p.product_id, p]));
+  overlaySeededProducts(session, productMap);
+  products = Array.from(productMap.values());
 
   // Apply filters
   if (req.filters) {
@@ -2094,6 +2432,10 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
   // Build a set of valid format IDs for validation
   const validFormatIds = new Set(getFormats().map(f => f.format_id.id));
   const ownAgentUrlCanonical = canonicalizeAgentUrl(getAgentUrl());
+  // Compute the session's effective creative_policy from seeded products.
+  // Returns null when no fixture seeds policy fields — pre-existing
+  // storyboards that don't exercise provenance enforcement keep working.
+  const effectivePolicy = aggregateCreativePolicy(session);
 
   const results: SyncCreativeResult[] = [];
   for (const creative of req.creatives) {
@@ -2107,6 +2449,20 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
     }
     const creativeId = creative.creative_id;
     const formatId = creative.format_id as FormatID;
+
+    // Enforce creative_policy.provenance_required / provenance_requirements /
+    // accepted_verifiers BEFORE persisting the creative. Per-creative failure
+    // is surfaced as action: 'failed' + errors[]; the surrounding session and
+    // any other creatives in the batch are unaffected (best-effort processing).
+    const policyError = enforceProvenancePolicy(creative as unknown as CreativeForEnforcement, effectivePolicy);
+    if (policyError) {
+      results.push({
+        creative_id: creativeId,
+        action: 'failed',
+        errors: [policyError],
+      });
+      continue;
+    }
 
     // Reject clearly-malformed agent_urls before we persist them. Prevents
     // javascript:/data: or overlong URLs landing in JSONB via the pointer.
