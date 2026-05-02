@@ -80,6 +80,59 @@ jobs:
 
           echo "✅ All web/worker machines running the same image"
 
+      # Smoke each training-agent tenant URL after the rolling restart.
+      # Catches production-only failures that don't surface in CI: SDK
+      # init guards that throw under NODE_ENV=production (PR #3869),
+      # in-memory task registry refusal (PR #3854), missing migrations,
+      # etc. Both failure modes return 404 ("Tenant not registered") or
+      # 5xx — both happen *before* auth, so an unauthenticated request
+      # is sufficient: a healthy MCP endpoint returns 200 (when the
+      # public token is set) or 401 (when it isn't). 4xx other than 401
+      # and any 5xx are deploy-fatal.
+      - name: Smoke training-agent tenants
+        env:
+          PUBLIC_TEST_AGENT_TOKEN: ${{ secrets.PUBLIC_TEST_AGENT_TOKEN }}
+        run: |
+          set -uo pipefail
+          base="https://test-agent.adcontextprotocol.org"
+          paths=(
+            "/sales/mcp"
+            "/signals/mcp"
+            "/governance/mcp"
+            "/creative/mcp"
+            "/creative-builder/mcp"
+            "/brand/mcp"
+            "/mcp"
+          )
+          fail=0
+          for path in "${paths[@]}"; do
+            url="${base}${path}"
+            code=$(curl -sS -o /tmp/smoke-body -w '%{http_code}' \
+              -X POST \
+              -H "Authorization: Bearer ${PUBLIC_TEST_AGENT_TOKEN:-unset}" \
+              -H "Content-Type: application/json" \
+              -H "Accept: application/json, text/event-stream" \
+              --max-time 15 \
+              -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' \
+              "${url}" || echo "000")
+            case "${code}" in
+              200|401)
+                echo "✅ ${path} → ${code}"
+                ;;
+              *)
+                echo "::error::Tenant smoke failed: ${path} returned HTTP ${code}"
+                echo "Body (first 500 chars):"
+                head -c 500 /tmp/smoke-body || true
+                echo ""
+                fail=1
+                ;;
+            esac
+          done
+          if [ "${fail}" -ne 0 ]; then
+            echo "::error::One or more training-agent tenants failed post-deploy smoke. Recent failures of this kind: PR #3854 (in-memory task registry refused under NODE_ENV=production), PR #3869 (noopJwksValidator threw under NODE_ENV=production, marking tenants disabled). Inspect Fly logs: flyctl logs --app <app>."
+            exit 1
+          fi
+
       - name: Clean up stale console machines
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
