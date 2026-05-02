@@ -990,6 +990,15 @@ The `identity.brand_json_url` field on `get_adcp_capabilities` (added in 3.x, se
 | `request_signature_key_origin_mismatch` | Resolved `jwks_uri` host ≠ declared `identity.key_origins.{purpose}` | `purpose`, `expected_origin`, `actual_origin` | Operator: align `identity.key_origins.{purpose}` with the host of the resolved `jwks_uri`. Not retryable. |
 | `request_signature_key_origin_missing` | Signing posture declared but `identity.key_origins.{purpose}` absent | `purpose`, `posture` | Operator: add `identity.key_origins.{purpose}` declaration to capabilities. Not retryable. |
 
+<Info>
+**Adopting `brand_json_url` while pinned to AdCP 3.0.** The field lands in 3.x's next minor as a strictly-additive schema change; AdCP doesn't ship new fields in patch releases (3.0.x), so a formal backport isn't on the table. But you don't have to wait for the version bump to start using it. The wire shape is forward-compatible:
+
+- A 3.0-conformant **seller** MAY populate `identity.brand_json_url` on its `get_adcp_capabilities` response today. A 3.0 verifier ignoring the field continues to work; a 3.x verifier picks it up automatically. No coordination, no version bump.
+- A 3.0-conformant **verifier** MAY read the field opportunistically (via `caps.identity?.brand_json_url`) and run the 8-step chain when present, falling back to your existing out-of-band agent → operator mapping when absent. The chain itself is just HTTPS fetches and JSON parsing — nothing in it requires a 3.x SDK.
+
+This is the recommended path for sellers like [Scope3](https://github.com/scope3) building signature verification today: ship the field on your capabilities response, document the chain for your counterparties, and let the 3.x rollout happen passively.
+</Info>
+
 ##### Quickstart: implement a `brand_json_url`-based verifier
 
 Mirrors the [request-signing quickstart](#quickstart-opt-into-request-signing-in-30) above. Run-once-per-agent — the resulting `agents[]` entry, `jwks_uri`, and JWKS are cached per the TTL rules in step 4.
