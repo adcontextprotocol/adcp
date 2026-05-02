@@ -180,8 +180,8 @@ validation_result:
                               #                          assertion: { min_count,
                               #                          endpoint_pattern, payload_must_contain,
                               #                          identifier_paths, purpose_filter,
-                              #                          since } — whichever fields
-                              #                          the storyboard set.
+                              #                          since, attestation_mode_required } —
+                              #                          whichever fields the storyboard set.
     - actual                  # machine-readable actual value observed:
                               #   response_schema      → array of schema errors
                               #                          (each { instance_path,
@@ -276,6 +276,34 @@ validation_result:
       adversarial-integrity attestation path (signed traffic-summary
       endpoint, agent-side telemetry digest, etc.) is its own future RFC,
       not this contract.
+    upstream_traffic_digest_mode: |
+      Recorded calls returned in `attestation_mode: digest` (see
+      comply-test-controller-response.json > UpstreamTrafficSuccess >
+      recorded_calls > DigestAttestation) swap raw payload introspection
+      for digest-based echo verification:
+        - The runner verifies `identifier_paths` by computing SHA-256 of each
+          resolved identifier value, sending the digests in the controller
+          query's `params.identifier_value_digests`, and reading the
+          per-digest `found: true | false` proof from
+          `recorded_calls[].identifier_match_proofs[]`. Plaintext
+          identifiers never reach the controller in this path.
+        - `payload_must_contain` arbitrary path assertions are NOT
+          supported in digest mode — the runner emits a per-affected-entry
+          validation_result with `passed: true`, `check: payload_must_contain`,
+          and a `note` field explaining the mode constraint, contributing
+          to `validations_not_applicable` on run_summary (NOT
+          steps_failed). The same validation continues to grade against
+          recorded_calls returned in raw mode, so a mixed-mode response
+          (some calls raw, some digest) produces partial coverage rather
+          than blanket not_applicable.
+        - `min_count` and `endpoint_pattern` are unchanged — count and URL
+          matching work identically in both modes.
+      Storyboards that strictly require raw introspection set
+      `attestation_mode_required: "raw"` on the storyboard upstream_traffic
+      check; runners then grade calls returned in digest mode as
+      not_applicable for the entire check (not just per-assertion). Use
+      sparingly — see storyboard-schema.yaml > "upstream_traffic" >
+      `attestation_mode_required` for the rationale.
   optional_fields:
     - remediation             # runner-suggested fix when the failure maps to
                               # a well-known cause (e.g., "agent did not echo

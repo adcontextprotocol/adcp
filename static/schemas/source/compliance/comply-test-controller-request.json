@@ -388,6 +388,24 @@
                 "maximum": 1000,
                 "default": 100,
                 "description": "Maximum number of calls to return. The response carries `total_count` and `truncated` so the runner can detect overflow."
+              },
+              "attestation_mode": {
+                "type": "string",
+                "enum": [
+                  "raw",
+                  "digest"
+                ],
+                "default": "raw",
+                "description": "Requested response shape per recorded call. `raw` (default) returns full payload and headers — the load-bearing assertion target for arbitrary `payload_must_contain` paths, and the existing v2.0.0 contract. `digest` returns only `payload_digest_sha256` + `payload_length` + `content_type` + optional `identifier_match_proofs[]`, so adopters under privacy/data-residency obligations (EU GDPR processors handling production hashed-PII traffic) can support `upstream_traffic` conformance without returning raw outbound payloads to the runner. Adopters MAY unilaterally downgrade a `raw` request to `digest` when their policy requires it; the response's per-call `attestation_mode` field echoes what was actually returned. Storyboards that strictly require raw introspection set `attestation_mode_required: \"raw\"` on their `upstream_traffic` check — calls returned in digest mode then grade not_applicable rather than failing."
+              },
+              "identifier_value_digests": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$"
+                },
+                "maxItems": 64,
+                "description": "When `attestation_mode` is `digest`, the runner MAY supply SHA-256 digests (lowercase hex, 64 chars) of identifier values it wants the controller to verify echo for. The controller scans each recorded call's payload for string tokens whose SHA-256 hash matches any digest in this list and returns booleans in `recorded_calls[].identifier_match_proofs[]`. Lets the runner verify `identifier_paths` echo without ever transmitting plaintext identifiers to the controller — the digest is the comparison key. Cap of 64 digests per query to bound the controller's work; storyboards with more identifiers SHOULD batch across multiple queries. Has no effect when `attestation_mode` is `raw` (the runner does the matching in-process against the full payload)."
               }
             },
             "additionalProperties": true
