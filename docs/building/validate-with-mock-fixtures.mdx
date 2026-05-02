@@ -1,0 +1,166 @@
+---
+title: Validate adapter agents with mock upstream fixtures
+sidebarTitle: Mock Upstream Fixtures
+description: "Façade-resistant validation for agents that wrap an existing platform — boot a mock upstream, point your agent at it, run storyboards, assert traffic."
+"og:title": "AdCP — Validate adapter agents with mock fixtures"
+---
+
+Most AdCP agents are **adapters** — they translate an upstream platform's API (a DSP, SSP, retail data warehouse, creative server, signal marketplace) into the AdCP wire contract. The hard part of validating these agents is proving they actually integrate with the upstream, not that they return shape-valid AdCP responses with synthetic data.
+
+Storyboards check the wire contract: did the response match the schema, did the agent advertise the right tools, did context echo. They cannot tell whether the adapter behind the wire is doing real work. This page describes the complementary pattern: boot a published mock upstream, run your agent against it, and assert your handlers actually exercise the upstream's headline endpoints.
+
+If your agent does not wrap an upstream — for example, a pure decisioning service that owns its own data — the storyboard runner alone is sufficient. See [Validate your agent](/docs/building/validate-your-agent) for that path.
+
+## The four-step recipe
+
+```bash
+# 1. Boot a published mock upstream for your specialism
+adcp mock-server sales-social --port 4250 &
+
+# 2. Run your AdCP agent, configured to use http://localhost:4250 as its upstream
+./your-agent.sh        # Python / Go / Rust / TS — language-agnostic
+
+# 3. Grade your agent against the matching storyboard
+adcp storyboard run http://localhost:3001/mcp sales_social \
+  --auth $TOKEN --json > grader.json
+
+# 4. Assert your agent actually called the upstream
+curl -s http://localhost:4250/_debug/traffic
+# {"traffic": {"POST /oauth/token": 1, "POST /event/track": 6, ...}}
+```
+
+Step 3 catches AdCP wire bugs (response shape, error codes, idempotency, missing required fields). Step 4 catches **façade adapters** — agents whose handlers return shape-valid AdCP responses without integrating with the upstream. Both signals matter; one without the other is incomplete.
+
+<Info>
+The four-step recipe is language-agnostic. The `adcp` CLI ships in `@adcp/client`; alternative SDK implementations may bundle equivalent commands. The mock upstreams expose plain HTTP, so the agent under test can be in any language.
+</Info>
+
+## Why traffic counters matter — the façade pattern
+
+Empirically observed (from blind LLM-built adapters during SDK dogfood): an adapter wrote OAuth client code, declared the import, and never called it from any handler. The handlers returned hardcoded shape-valid responses for every call. Storyboard graded `passing`. Real upstream traffic: zero requests.
+
+A more sophisticated façade variant injects synthetic placeholder data so the upstream call has the required fields:
+
+```typescript
+const SYNTHETIC_HASH = sha256Hex('placeholder@example.com');
+// ...
+user_data: { email_sha256: SYNTHETIC_HASH };
+```
+
+A development-mode mock upstream accepts the placeholder; a real upstream would reject. The storyboard still passes because the response shape is valid. Catching this requires the storyboard to exercise the full payload contract, which is one of the [open spec issues](#known-limitations).
+
+Net: **traffic counters are the strongest single signal that an adapter actually integrates**. The storyboard is your shape check; traffic is your honesty check.
+
+## Mock upstream fixtures
+
+The reference TS SDK (`@adcp/client`) ships four mock-server specialisms covering distinct upstream surface shapes. Each mimics a real platform contract closely enough that an adapter built blind from the mock's OpenAPI spec works against the real platform with minimal changes.
+
+| Specialism | Mimics | Auth | Multi-tenant scope | AdCP-side identifier |
+|---|---|---|---|---|
+| `signal-marketplace` | LiveRamp / Lotame / data marketplace | Static Bearer | `X-Operator-Id` header | `account.operator` |
+| `creative-template` | Celtra / Innovid creative-management platform | Static Bearer | `/v3/workspaces/{ws}/…` path-scoped | `account.operator` |
+| `sales-social` | TikTok / Meta-shaped social ads platform | OAuth 2.0 client_credentials with refresh | `/v1.3/advertiser/{advertiser_id}/…` path-scoped | `account.advertiser` |
+| `sales-guaranteed` | GAM / FreeWheel guaranteed-sales platform | Static Bearer | `X-Network-Code` header | `account.publisher` |
+
+Each mock exposes:
+
+- **The upstream's domain endpoints** (e.g. `POST /oauth/token`, `POST /v1.3/advertiser/{id}/event/track`) — shaped to match the real platform's contract.
+- **`GET /_lookup/<resource>?<adcp_field>=<value>`** — runtime resolution. Your adapter receives an AdCP-side identifier (e.g. `account.advertiser: "novamotors.example"`) and translates it to the upstream's tenant ID by calling `_lookup`. Don't hardcode mappings; resolve at runtime, exactly as you would against a production directory service.
+- **`GET /_debug/traffic`** — hit counters keyed by `<METHOD> <route-template>`. No auth, harness-only. Your test runner queries this after the storyboard run to assert which routes the adapter exercised.
+
+OpenAPI specs for each mock are published as part of the SDK package. Reference your adapter against the spec, not against any specific seed data — the seed varies and is not part of the contract.
+
+## Pattern in practice — Python sketch
+
+The same shape applies in Go, Rust, Ruby, Java, anything with HTTP. About 30 lines for the upstream client:
+
+```python
+import httpx, os
+UPSTREAM = os.environ['UPSTREAM_URL']
+CID = os.environ['UPSTREAM_CLIENT_ID']
+CSECRET = os.environ['UPSTREAM_CLIENT_SECRET']
+
+class UpstreamClient:
+    def __init__(self):
+        self._token = None
+        self._http = httpx.AsyncClient()
+
+    async def _ensure_token(self):
+        if self._token:
+            return
+        r = await self._http.post(
+            f"{UPSTREAM}/oauth/token",
+            json={"grant_type": "client_credentials",
+                  "client_id": CID, "client_secret": CSECRET},
+        )
+        self._token = r.json()["access_token"]
+
+    async def lookup_advertiser(self, adcp_advertiser: str) -> str | None:
+        await self._ensure_token()
+        r = await self._http.get(
+            f"{UPSTREAM}/_lookup/advertiser",
+            params={"adcp_advertiser": adcp_advertiser},
+            headers={"Authorization": f"Bearer {self._token}"},
+        )
+        return r.json()["advertiser_id"] if r.status_code == 200 else None
+
+    # ... endpoint-specific methods that hit the upstream's headline routes
+```
+
+Your AdCP request handler:
+
+```python
+async def handle_log_event(request):
+    advertiser_id = await upstream.lookup_advertiser(request.account.advertiser)
+    if not advertiser_id:
+        return adcp_error("ACCOUNT_NOT_FOUND")
+    # Hit the upstream — the traffic counter will record this.
+    await upstream.post_event_track(advertiser_id, request.events)
+    return {"events_received": len(request.events)}
+```
+
+## Iteration loop
+
+Realistically your first run will not pass both gates. Common shapes and how to debug:
+
+- **Storyboard `passing` but traffic gate fails on N endpoints** — classic façade. The handlers for those routes either short-circuited or never got exercised by the storyboard's input. Inspect the handlers; if the logic is correct but the storyboard's payloads don't trigger that branch, that's a contract gap on the storyboard side.
+- **Storyboard `partial` with cascade skips** — an early step (`get_products`, `get_signals`) returned a shape-valid response missing fields that the runner extracts state from. Downstream steps skip with `unresolved context variables`. Fix the early step's response shape and most cascade skips clear.
+- **Storyboard `failing` on a single step + traffic gate clean** — usually a one-line shape bug (wrong field name, missing required field, status mismatch). The per-step `details` names the field via JSON pointer.
+- **Traffic gate empty (0 hits everywhere) + agent appears to start** — agent boot threw a recoverable error after listening on port. Check the agent's stderr.
+
+Fastest debug loop:
+
+1. Use `adcp storyboard step <agent> <storyboard_id> <step_id>` to isolate the failing step. Skips the cascade, runs a single tool call, sub-second feedback.
+2. Read the response your agent returned (in the JSON output's `response` field).
+3. Compare against the schema named in `validation.schema_id`.
+4. Fix and re-run the step.
+
+Don't run the full storyboard until the isolated step passes. You'll save minutes per iteration.
+
+## Known limitations
+
+Be honest with your team about what these gates do and don't catch:
+
+- **Storyboards under-cover payload variety.** A storyboard step may pass shape with an empty input where a real adapter never gets exercised on the variant that matters. Tracked at [adcontextprotocol/adcp#3785](https://github.com/adcontextprotocol/adcp/issues/3785).
+- **Storyboard cascade is fragile.** If an early step's response is shape-valid but missing fields the runner extracts state from, downstream steps silently skip. The error you see is on the *downstream* step, not the early one. Always investigate "skipped" steps before "failed" — the root cause is usually upstream of where the failure is reported. Tracked at [adcontextprotocol/adcp#3796](https://github.com/adcontextprotocol/adcp/issues/3796).
+- **Mock seed data may not match storyboard fixture inputs.** If you see 404s on `_lookup/<resource>`, the storyboard's payloads may reference IDs the mock doesn't seed. Either widen the mock's seed or seed scenario state at runtime via the [compliance test controller](/docs/building/implementation/comply-test-controller).
+- **Traffic gate is necessary, not sufficient.** A handler can call upstream with synthetic placeholder data and still satisfy the hit-count assertion. For agents in regulated channels (audience uploads, conversion tracking, signed requests), additional integration tests against the real upstream's payload validation are still required before production.
+
+## When to add to CI
+
+Mock-server boot is sub-second; storyboard runs are 2–10 seconds for most specialisms; traffic check is a single curl. The full loop fits in a CI step under a minute. Recommended:
+
+- Run the four-step recipe per specialism your agent claims, in parallel CI jobs (one port pair per job).
+- Fail the build on `traffic` gate failure, not just storyboard failure.
+- Cache the SDK install between runs.
+
+<Tip>
+For agents claiming multiple specialisms, run one CI job per specialism. Each gets its own mock-server port pair (agent + upstream); jobs are independent.
+</Tip>
+
+## What's next
+
+- **[Validate your agent](/docs/building/validate-your-agent)** — the broader storyboard-runner-driven validation checklist (fuzz, multi-instance, request-signing, webhook conformance).
+- **[Compliance test controller](/docs/building/implementation/comply-test-controller)** — seed scenario state at runtime when storyboards need fixtures the mock doesn't provide.
+- **[Build an agent](/docs/building/build-an-agent)** — the language-agnostic guide to building an AdCP agent.
+- **[Compliance catalog](/docs/building/compliance-catalog)** — the full taxonomy of universal / protocol / specialism storyboards.
