@@ -26,9 +26,88 @@ import {
   type BillingProduct,
 } from '../../billing/stripe-client.js';
 import { OrganizationDatabase } from '../../db/organization-db.js';
+import {
+  getRelationshipByWorkosId,
+  getRelationshipBySlackId,
+} from '../../db/relationship-db.js';
+import { recordEvent } from '../../db/person-events-db.js';
 
 const logger = createLogger('addie-billing-tools');
 const orgDb = new OrganizationDatabase();
+
+/**
+ * Resolve a person_id from a MemberContext, preferring workos_user (the more
+ * stable identifier) and falling back to slack_user. Returns null when the
+ * caller is genuinely anonymous — in that case `recordToolError` no-ops, so
+ * tool refusals are still safe to instrument blindly.
+ */
+async function resolvePersonId(ctx?: MemberContext | null): Promise<string | null> {
+  const workosId = ctx?.workos_user?.workos_user_id;
+  if (workosId) {
+    const rel = await getRelationshipByWorkosId(workosId);
+    if (rel) return rel.id;
+  }
+  const slackId = ctx?.slack_user?.slack_user_id;
+  if (slackId) {
+    const rel = await getRelationshipBySlackId(slackId);
+    if (rel) return rel.id;
+  }
+  return null;
+}
+
+/** Length cap for any user/LLM-supplied string we persist into event data. */
+const MAX_EVENT_STRING_LEN = 256;
+
+/**
+ * Sanitize a value for storage in `tool_error` event data. Strips Stripe-style
+ * identifiers and email addresses out of free-text — the timeline is admin-
+ * readable, and Stripe error messages routinely embed customer email,
+ * `cus_*` / `sub_*` / `pi_*` IDs, and card last-4 fragments. Errors are best
+ * diagnosed from the `tool` + `reason` slug + product key, not from a raw SDK
+ * message. Length-capped so an attacker-influenced `lookup_key` (LLM-supplied)
+ * can't bloat the timeline.
+ */
+function sanitizeEventValue(v: unknown): unknown {
+  if (typeof v !== 'string') return v;
+  return v
+    .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, '[email]')
+    .replace(/\b(cus|sub|pi|in|ch|src|card|seti|tok)_[A-Za-z0-9]+\b/g, '[$1_id]')
+    .slice(0, MAX_EVENT_STRING_LEN);
+}
+
+function sanitizeEventData(data: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(data)) {
+    out[k] = sanitizeEventValue(v);
+  }
+  return out;
+}
+
+/**
+ * Record a `tool_error` person event for an Addie billing-tool refusal.
+ * Best-effort — failures here log a warning but never throw, so a buggy
+ * recorder never blocks the user-facing refusal message.
+ *
+ * All string values in `data` pass through `sanitizeEventValue` so a Stripe
+ * SDK message or an LLM-supplied lookup_key cannot smuggle PII or oversize
+ * content into the admin-readable timeline.
+ */
+async function recordToolError(
+  ctx: MemberContext | null | undefined,
+  tool: string,
+  reason: string,
+  data: Record<string, unknown> = {},
+): Promise<void> {
+  try {
+    const personId = await resolvePersonId(ctx);
+    if (!personId) return;
+    await recordEvent(personId, 'tool_error', {
+      data: { tool, reason, ...sanitizeEventData(data) },
+    });
+  } catch (err) {
+    logger.warn({ err, tool, reason }, 'Failed to record tool_error event');
+  }
+}
 
 /**
  * Tool definitions for billing operations
@@ -246,12 +325,14 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
     const orgId = memberContext?.organization?.workos_organization_id;
 
     if (!workosUserId || !memberEmail) {
+      await recordToolError(memberContext, 'create_payment_link', 'not_signed_in', { lookup_key: lookupKey });
       return JSON.stringify({
         success: false,
         error: 'Cannot create a payment link without a signed-in account. Ask the user to sign in at https://agenticadvertising.org first, then try again.',
       });
     }
     if (!orgId) {
+      await recordToolError(memberContext, 'create_payment_link', 'no_workspace', { lookup_key: lookupKey });
       return JSON.stringify({
         success: false,
         error: 'This user has an account but no workspace yet. They need to complete onboarding at https://agenticadvertising.org/dashboard to create their workspace before a payment link can be generated.',
@@ -263,6 +344,7 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
     try {
       const priceId = await getPriceByLookupKey(lookupKey);
       if (!priceId) {
+        await recordToolError(memberContext, 'create_payment_link', 'unknown_lookup_key', { lookup_key: lookupKey, org_id: orgId });
         return JSON.stringify({
           success: false,
           error: `No product matches lookup_key "${lookupKey}". Call find_membership_products first, then pass the exact lookup_key from the result.`,
@@ -295,6 +377,7 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
       });
 
       if (!session) {
+        await recordToolError(memberContext, 'create_payment_link', 'stripe_not_configured', { lookup_key: lookupKey, org_id: orgId });
         return JSON.stringify({
           success: false,
           error: 'Stripe is not configured. Please contact support.',
@@ -309,6 +392,7 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
     } catch (error) {
       logger.error({ error }, 'Addie: Error creating payment link');
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      await recordToolError(memberContext, 'create_payment_link', 'exception', { lookup_key: lookupKey, org_id: orgId, error: errorMessage });
       return JSON.stringify({
         success: false,
         error: `Failed to create payment link: ${errorMessage}`,
@@ -326,7 +410,15 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
 
     const memberEmail = memberContext?.workos_user?.email;
     const orgId = memberContext?.organization?.workos_organization_id;
-    if (!memberEmail || !orgId) {
+    if (!memberEmail) {
+      await recordToolError(memberContext, 'send_invoice', 'not_signed_in', { lookup_key: lookupKey });
+      return JSON.stringify({
+        success: false,
+        error: 'Cannot preview an invoice without a signed-in member and a workspace. Ask the user to sign in at https://agenticadvertising.org first.',
+      });
+    }
+    if (!orgId) {
+      await recordToolError(memberContext, 'send_invoice', 'no_workspace', { lookup_key: lookupKey });
       return JSON.stringify({
         success: false,
         error: 'Cannot preview an invoice without a signed-in member and a workspace. Ask the user to sign in at https://agenticadvertising.org first.',
@@ -364,6 +456,7 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
       });
 
       if (!preview) {
+        await recordToolError(memberContext, 'send_invoice', 'product_not_found_or_stripe_unconfigured', { lookup_key: lookupKey, org_id: orgId });
         return JSON.stringify({
           success: false,
           error: 'Product not found or Stripe is not configured.',
@@ -388,6 +481,8 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
       });
     } catch (error) {
       logger.error({ error }, 'Addie: Error previewing invoice');
+      const message = error instanceof Error ? error.message : 'unknown';
+      await recordToolError(memberContext, 'send_invoice', 'exception', { lookup_key: lookupKey, org_id: orgId, error: message });
       return JSON.stringify({
         success: false,
         error: 'Failed to preview invoice. Please try again.',
@@ -405,7 +500,15 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
 
     const memberEmail = memberContext?.workos_user?.email;
     const orgId = memberContext?.organization?.workos_organization_id;
-    if (!memberEmail || !orgId) {
+    if (!memberEmail) {
+      await recordToolError(memberContext, 'confirm_send_invoice', 'not_signed_in', { lookup_key: lookupKey });
+      return JSON.stringify({
+        success: false,
+        error: 'Cannot send an invoice without a signed-in member and a workspace. Ask the user to sign in at https://agenticadvertising.org first.',
+      });
+    }
+    if (!orgId) {
+      await recordToolError(memberContext, 'confirm_send_invoice', 'no_workspace', { lookup_key: lookupKey });
       return JSON.stringify({
         success: false,
         error: 'Cannot send an invoice without a signed-in member and a workspace. Ask the user to sign in at https://agenticadvertising.org first.',
@@ -425,6 +528,7 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
     }
 
     if (!org) {
+      await recordToolError(memberContext, 'confirm_send_invoice', 'org_not_loaded', { lookup_key: lookupKey, org_id: orgId });
       return JSON.stringify({
         success: false,
         error: 'Could not load your organization. Please contact finance@agenticadvertising.org.',
@@ -432,6 +536,7 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
     }
 
     if (!org.billing_address || !org.billing_address.line1) {
+      await recordToolError(memberContext, 'confirm_send_invoice', 'missing_billing_address', { lookup_key: lookupKey, org_id: orgId });
       return JSON.stringify({
         success: false,
         error: 'Your organization does not have a billing address on file. Please add one in the dashboard at https://agenticadvertising.org/dashboard/membership before requesting an invoice.',
@@ -467,6 +572,7 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
       });
 
       if (!result) {
+        await recordToolError(memberContext, 'confirm_send_invoice', 'send_returned_null', { lookup_key: lookupKey, org_id: orgId });
         return JSON.stringify({
           success: false,
           error: 'Failed to send invoice. Stripe may not be configured or the product was not found.',
@@ -484,6 +590,7 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
     } catch (error) {
       logger.error({ error }, 'Addie: Error sending invoice');
       const message = error instanceof Error ? error.message : 'Failed to send invoice. Please try again.';
+      await recordToolError(memberContext, 'confirm_send_invoice', 'exception', { lookup_key: lookupKey, org_id: orgId, error: message });
       return JSON.stringify({
         success: false,
         error: message,
