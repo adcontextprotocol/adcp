@@ -134,15 +134,13 @@ export function setupAccountsBillingRoutes(
         if (org.stripe_customer_id) {
           if (stripe) {
             try {
-              // Expand the price's product so isMembershipSub can fall back
-              // to product metadata (`category=membership`) for founding-era
-              // prices that lack the aao_membership_ lookup_key convention.
-              const customer = await stripe.customers.retrieve(
-                org.stripe_customer_id,
-                {
-                  expand: ["subscriptions.data.items.data.price.product"],
-                }
-              );
+              // First, confirm the customer exists / isn't deleted. We
+              // intentionally don't expand subscriptions here — pushing
+              // `subscriptions.data.items.data.price.product` through
+              // `customers.retrieve` exceeds Stripe's 4-level expansion
+              // depth and the call throws (May 2026 — broke /sync for
+              // every org until the depth was reduced).
+              const customer = await stripe.customers.retrieve(org.stripe_customer_id);
 
               if (customer.deleted) {
                 syncResults.stripe = {
@@ -150,7 +148,18 @@ export function setupAccountsBillingRoutes(
                   error: "Customer has been deleted",
                 };
               } else {
-                const subscriptions = (customer as Stripe.Customer).subscriptions;
+                // Fetch subscriptions separately so we can expand
+                // `data.items.data.price.product` — that path is only 4
+                // levels deep from `subscriptions.list`, within Stripe's
+                // limit. The expansion is what makes `isMembershipSub`'s
+                // metadata fallback work for founding-era prices that
+                // lack the aao_membership_ lookup_key convention.
+                const subsResult = await stripe.subscriptions.list({
+                  customer: org.stripe_customer_id,
+                  status: 'all',
+                  limit: 10,
+                  expand: ['data.items.data.price.product'],
+                });
 
                 // Filter to membership subs before picking. A customer with a
                 // non-membership sub (one-off products, future ancillary subs)
@@ -159,9 +168,7 @@ export function setupAccountsBillingRoutes(
                 // guarantee ordering of `subscriptions.data`. Falls through to
                 // the invoice-fallback branch below when no membership sub is
                 // found, preserving prior behavior for invoice-billed orgs.
-                const subscription = subscriptions
-                  ? pickMembershipSub(subscriptions.data)
-                  : null;
+                const subscription = pickMembershipSub(subsResult.data);
 
                 if (subscription) {
                   // Use the canonical writer so /sync, the webhook handler,
@@ -420,6 +427,13 @@ export function setupAccountsBillingRoutes(
                 }
               }
             } catch (error) {
+              // Log the actual error so future regressions like the May 2026
+              // 4-level-expand-depth issue surface in admin logs instead of
+              // silently returning a generic message.
+              logger.error(
+                { err: error, orgId, customerId: org.stripe_customer_id },
+                "Failed to sync from Stripe",
+              );
               syncResults.stripe = {
                 success: false,
                 error: "Failed to sync from Stripe",
