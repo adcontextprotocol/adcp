@@ -26,9 +26,13 @@
 import type { Request } from 'express';
 import {
   createTenantRegistry,
+  createPostgresTaskRegistry,
+  createInMemoryTaskRegistry,
   type TenantRegistry,
+  type TaskRegistry,
   type CreateAdcpServerFromPlatformOptions,
 } from '@adcp/sdk/server';
+import { getPool } from '../../db/client.js';
 import { getIdempotencyStore, scopedPrincipal } from '../idempotency.js';
 import { getWebhookSigningMaterial } from '../webhooks.js';
 import { buildSignalsTenantConfig } from './signals.js';
@@ -120,12 +124,41 @@ export function resolveTenantHost(_req: Request): string {
   return CANONICAL_HOST;
 }
 
+/**
+ * Pick the task registry based on env. Production / staging-like envs MUST
+ * use Postgres — we run multiple Fly machines and an in-memory registry
+ * would lose task state across instances (buyer creates a media buy on
+ * machine A, polls on machine B, sees task-not-found). Test / dev fall back
+ * to in-memory: tests don't initialize the postgres pool and the SDK's
+ * `getPool()` throws if called before `initializeDatabase()`.
+ *
+ * Migration for `adcp_decisioning_tasks` lives at
+ * `server/src/db/migrations/463_adcp_decisioning_tasks.sql`.
+ */
+function pickTaskRegistry(): TaskRegistry {
+  const isProd = process.env.NODE_ENV === 'production';
+  if (!isProd) {
+    return createInMemoryTaskRegistry();
+  }
+  try {
+    return createPostgresTaskRegistry({ pool: getPool() });
+  } catch (err) {
+    logger.error(
+      { err },
+      'Postgres task registry init failed in production — falling back to in-memory. ' +
+        'Multi-instance task polling will be flaky. Verify migration 463 ran and DATABASE_URL is set.',
+    );
+    return createInMemoryTaskRegistry();
+  }
+}
+
 function buildDefaultServerOptions(): CreateAdcpServerFromPlatformOptions {
   return {
     name: 'adcp-training-agent',
     version: '1.0.0',
     idempotency: getIdempotencyStore(),
     webhooks: getWebhookSigningMaterial(),
+    taskRegistry: pickTaskRegistry(),
     mergeSeam: 'log-once',
     validation: { requests: 'off', responses: 'off' },
     // F11 — accept loopback push_notification_config.url in non-production.
