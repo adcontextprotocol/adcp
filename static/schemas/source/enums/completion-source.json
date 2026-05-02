@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/enums/completion-source.json",
+  "title": "Completion Source",
+  "description": "Disambiguator for `completion_rate` metrics, which are dual-natured: the seller witnesses completion via player events (the seller's player fired the completion beacon), and third-party measurement vendors can also independently attest to completion via SDK callbacks, panel methodology, or server-side beacon validation. The two paths can yield materially different rates — particularly in SSAI environments where the player's view of completion may differ from a vendor's. Used as a `qualifier.completion_source` key on `committed_metrics`, `missing_metrics`, and `metric_aggregates` to disambiguate which path the row represents.",
+  "type": "string",
+  "enum": ["seller_attested", "vendor_attested"],
+  "enumDescriptions": {
+    "seller_attested": "The seller witnessed and counted the completion event (typically via the ad server or player firing the completion beacon). Source of truth is the seller's delivery infrastructure.",
+    "vendor_attested": "An independent third-party measurement vendor attested to the completion (typically via SDK callbacks, panel methodology, or beacon validation). Source of truth is the vendor; the vendor identity is anchored on the matching `performance_standard.vendor` BrandRef in the buy contract."
+  }
+}
