@@ -31,6 +31,7 @@ import { stripe, STRIPE_WEBHOOK_SECRET, createStripeCustomer, createCustomerPort
 import { handleSubscriptionCreated, type ActivationAdminContext } from "./billing/handle-subscription-created.js";
 import { resolveOrgForStripeCustomer } from "./billing/webhook-helpers.js";
 import { dedupOnSubscriptionCreated } from "./billing/dedup-on-subscription-created.js";
+import { pickMembershipSubWithProductFetch } from "./billing/membership-prices.js";
 import Stripe from "stripe";
 import { OrganizationDatabase, getUserSeatType, buildSubscriptionUpdate, TIER_PRESERVING_STATUSES, type SeatType, type MembershipTier } from "./db/organization-db.js";
 import { MemberDatabase } from "./db/member-db.js";
@@ -5216,30 +5217,38 @@ export class HTTPServer {
         let subscriptionsFailed = 0;
         let customersSkipped = 0; // Deleted or missing customers
         if (stripe) {
+          const stripeClient = stripe;
           for (const [customerId, workosOrgId] of customerOrgMap) {
             try {
-              // Get customer with subscriptions and expanded price/product data in single API call
-              const customer = await stripe.customers.retrieve(customerId, {
-                expand: ['subscriptions.data.items.data.price.product'],
-              });
+              // Confirm the customer still exists / isn't deleted. Don't
+              // expand subscriptions here — `subscriptions.data.items.data.price.product`
+              // is 6 levels and exceeds Stripe's 4-level expand limit, which
+              // crashed every customer in this loop.
+              const customer = await stripeClient.customers.retrieve(customerId);
 
               if ('deleted' in customer && customer.deleted) {
                 customersSkipped++;
                 continue;
               }
 
-              const subscriptions = (customer as Stripe.Customer).subscriptions;
-              if (!subscriptions || subscriptions.data.length === 0) {
-                continue;
-              }
+              // List subs separately. Price comes back inline (lookup_key,
+              // unit_amount, etc.); founding-era prices that need product
+              // metadata are resolved by per-sub `products.retrieve` inside
+              // pickMembershipSubWithProductFetch.
+              const subsResult = await stripeClient.subscriptions.list({
+                customer: customerId,
+                status: 'all',
+                limit: 10,
+              });
 
-              // Get the first active subscription (already has expanded items)
-              const subscription = subscriptions.data[0];
+              const subscription = await pickMembershipSubWithProductFetch(
+                subsResult.data,
+                (productId) => stripeClient.products.retrieve(productId),
+              );
               if (!subscription || !(TIER_PRESERVING_STATUSES as readonly string[]).includes(subscription.status)) {
                 continue;
               }
 
-              // Get primary subscription item directly from expanded data
               const primaryItem = subscription.items.data[0];
               if (!primaryItem) {
                 continue;

@@ -108,13 +108,20 @@ export async function dedupOnSubscriptionCreated(args: DedupArgs): Promise<Dedup
 
   let liveSubs: Stripe.Subscription[];
   try {
-    // Expand latest_invoice (for paid status) and product (for tier label
-    // in the customer email). limit: 100 is Stripe's max per page.
+    // Expand latest_invoice for paid status. The product expansion that
+    // used to ride alongside it (`data.items.data.price.product`) is 5
+    // levels deep and exceeds Stripe's 4-level expand limit, which broke
+    // every dedup check silently — the catch fell through to no_duplicate
+    // and the cross-path race guard never ran. `tierLabelForSub` already
+    // falls back to `price.lookup_key` (which comes back inline), so the
+    // customer-email tier label still reads correctly on lookup-keyed
+    // prices; founding-era prices without a lookup_key degrade to null
+    // (rare on the dedup path — those orgs don't double-checkout).
     const list = await stripe.subscriptions.list({
       customer: customerId,
       status: 'all',
       limit: 100,
-      expand: ['data.latest_invoice', 'data.items.data.price.product'],
+      expand: ['data.latest_invoice'],
     });
     if (list.has_more) {
       logger.warn(

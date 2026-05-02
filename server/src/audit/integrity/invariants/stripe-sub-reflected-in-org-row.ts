@@ -32,7 +32,7 @@
  */
 import type Stripe from 'stripe';
 import type { Invariant, InvariantContext, InvariantResult, Violation } from '../types.js';
-import { isMembershipSub } from '../../../billing/membership-prices.js';
+import { isMembershipSubWithProductFetch } from '../../../billing/membership-prices.js';
 
 /**
  * Stripe statuses that grant entitlement at AAO. Mirrors the gate logic
@@ -97,21 +97,26 @@ export const stripeSubReflectedInOrgRowInvariant: Invariant = {
     // Cheaper than walking customers (2N+ calls) and bounded by the count of
     // live entitling subs, which is small at AAO scale.
     //
-    // Expand the price's product so `isMembershipSub` can fall back to
-    // `metadata.category='membership'` for founding-era prices that lack
-    // the `aao_membership_*` lookup_key convention. Without expansion those
-    // legacy subs (Adzymic, Advertible, Bidcliq, Equativ — May 2026)
-    // slipped through this filter and were invisible to the orphan-customer
-    // detection downstream.
+    // No expand — the path Stripe needs for product metadata
+    // (`data.items.data.price.product`) is 5 levels deep and over the
+    // 4-level limit, which made this invariant throw on every run. Walk
+    // the list with the lookup_key fast path; founding-era subs that
+    // lack the `aao_membership_*` convention fall through to a per-product
+    // `products.retrieve` (cached) so legacy prices (Adzymic, Advertible,
+    // Bidcliq, Equativ — May 2026) still classify as membership.
     const memberSubs: Stripe.Subscription[] = [];
+    const productCache = new Map<string, Stripe.Product | Stripe.DeletedProduct>();
     for (const status of ['active', 'trialing'] as const) {
       for await (const sub of stripe.subscriptions.list({
         status,
         limit: 100,
-        expand: ['data.items.data.price.product'],
       })) {
-        if (!isMembershipSub(sub)) continue;
-        memberSubs.push(sub);
+        const isMember = await isMembershipSubWithProductFetch(
+          sub,
+          (productId) => stripe.products.retrieve(productId),
+          productCache,
+        );
+        if (isMember) memberSubs.push(sub);
       }
     }
 
