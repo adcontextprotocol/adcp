@@ -120,7 +120,7 @@ const KNOWN_FAILING_STORYBOARDS: ReadonlyMap<string, string> = new Map([
   // adcp#3802; remove once the training agent ships truth-of-claim
   // verification and the storyboard's placeholder phase is fleshed out
   // with the full negative + positive paths.
-  ['creative_sales_agent/provenance_truth_of_claim', 'adcp#3802 — training agent does not yet invoke get_creative_features against accepted_verifiers (truth-of-claim path); storyboard is a registered skeleton'],
+  ['media_buy_seller/provenance_truth_of_claim', 'adcp#3802 — training agent does not yet invoke get_creative_features against accepted_verifiers (truth-of-claim path); storyboard is a registered skeleton'],
 ]);
 
 /**

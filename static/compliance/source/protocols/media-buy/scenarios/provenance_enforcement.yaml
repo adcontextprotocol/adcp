@@ -1,7 +1,7 @@
-id: creative_sales_agent/provenance_enforcement
+id: media_buy_seller/provenance_enforcement
 version: "1.0.0"
 title: "Seller enforces provenance_requirements on sync_creatives"
-category: creative_sales_agent
+category: media_buy_seller
 summary: "Seller publishes provenance_requirements + accepted_verifiers on a product. Four structural rejections (no provenance, missing digital_source_type, off-list verifier, missing disclosure), then a corrected resubmission with on-list verifier is accepted."
 track: creative
 required_tools:

@@ -1,7 +1,7 @@
-id: creative_sales_agent/provenance_truth_of_claim
+id: media_buy_seller/provenance_truth_of_claim
 version: "0.1.0"
 title: "Seller refutes a buyer's provenance claim via on-list verifier"
-category: creative_sales_agent
+category: media_buy_seller
 summary: "Buyer attaches a digital_source_type claim. Seller calls an on-list governance agent via get_creative_features; the verifier returns a result that contradicts the claim, and the seller rejects with PROVENANCE_CLAIM_CONTRADICTED. Skeleton scenario — not yet runnable end-to-end (the training agent does not implement get_creative_features against verifiers)."
 track: creative
 required_tools:
@@ -11,7 +11,7 @@ required_tools:
 
 narrative: |
   This is the truth-of-claim half of the provenance enforcement contract.
-  The structural-rejection half (creative_sales_agent/provenance_enforcement)
+  The structural-rejection half (media_buy_seller/provenance_enforcement)
   exercises the PROVENANCE_*_MISSING / PROVENANCE_VERIFIER_NOT_ACCEPTED codes
   — failures the seller can detect by inspecting the submission against
   creative_policy. This scenario exercises PROVENANCE_CLAIM_CONTRADICTED:

@@ -48,7 +48,7 @@ jobs:
             # The 53/388 floors had drifted below the actual baseline
             # (true main was 64 storyboards / 439 steps); #3777 brings
             # the count to 65 / 446 by adding the
-            # creative_sales_agent/provenance_enforcement scenario (six
+            # media_buy_seller/provenance_enforcement scenario (six
             # phases exercising PROVENANCE_REQUIRED,
             # PROVENANCE_DIGITAL_SOURCE_TYPE_MISSING,
             # PROVENANCE_VERIFIER_NOT_ACCEPTED,
