@@ -34,7 +34,26 @@ export interface Agent {
     website: string;
   };
   added_date?: string;
+  /**
+   * Optional liveness URL used as a fallback by the health probe when the
+   * MCP/A2A handshake fails. Any 2xx is treated as "online" — type and tools
+   * still come from the protocol probe, which means a fallback hit cannot
+   * synthesize capabilities. This is a workaround for sellers blocked on
+   * other discovery issues; not a documented seller-side contract.
+   */
+  health_check_url?: string;
 }
+
+/**
+ * Discriminator on probe failures, set by `classifyMCPError`. The dashboard
+ * uses this to render kind-specific affordances (e.g. an "Add auth token"
+ * button for `auth_required`); humans get the prose `error` string.
+ */
+export type ProbeErrorKind =
+  | 'auth_required'
+  | 'wrong_path'
+  | 'unreachable'
+  | 'unknown';
 
 export interface AgentHealth {
   online: boolean;
@@ -43,6 +62,9 @@ export interface AgentHealth {
   tools_count?: number;
   resources_count?: number;
   error?: string;
+  error_kind?: ProbeErrorKind;
+  /** Raw underlying error string, kept separate from the actionable hint */
+  error_detail?: string;
 }
 
 export interface AgentStats {
@@ -420,6 +442,12 @@ export interface AgentConfig {
   // Cached info from discovery (optional, refreshed periodically)
   name?: string;
   type?: AgentType;
+  /**
+   * Optional fallback liveness URL. See {@link Agent.health_check_url}.
+   * The probe tries the protocol handshake first; on failure it GETs this
+   * URL and treats any 2xx as "online" without populating type/tools.
+   */
+  health_check_url?: string;
 }
 
 /**

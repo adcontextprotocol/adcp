@@ -85,6 +85,9 @@ export async function demotePublicAgentsOnTierDowngrade(
         visibility,
         ...(typeof o.name === 'string' ? { name: o.name } : {}),
         ...(typeof o.type === 'string' ? { type: o.type as AgentConfig['type'] } : {}),
+        ...(typeof o.health_check_url === 'string' && o.health_check_url.length > 0
+          ? { health_check_url: o.health_check_url }
+          : {}),
       };
     });
 

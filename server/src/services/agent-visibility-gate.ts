@@ -9,6 +9,7 @@
 
 import { isValidAgentVisibility, isValidAgentType } from '../types.js';
 import type { AgentConfig, AgentVisibility } from '../types.js';
+import { validateExternalUrl } from '../utils/url-security.js';
 
 export interface VisibilityWarning {
   code: 'visibility_downgraded';
@@ -58,11 +59,24 @@ export function gateAgentVisibilityForCaller(
     // into brand.json (`agentEntry.type`) so an arbitrary tenant string
     // would become a durable artifact in other members' manifests.
     const typeValue = typeof a.type === 'string' && isValidAgentType(a.type) ? a.type : undefined;
+    // Validate health_check_url through the same SSRF guard the OAuth
+    // token-endpoint path uses. Cloud-metadata hosts are always blocked;
+    // production also rejects loopback / RFC1918. The dial-time guard in
+    // `safeFetch` re-validates at TCP connect to close the rebind window.
+    // Invalid values are dropped silently — this is an optional probe hint,
+    // not a privileged credential, and a malformed value would otherwise
+    // just fail the fallback fetch.
+    let healthCheckUrl: string | undefined;
+    if (typeof a.health_check_url === 'string' && a.health_check_url.length > 0) {
+      const validated = validateExternalUrl(a.health_check_url);
+      if (validated) healthCheckUrl = validated;
+    }
     const cleaned: AgentConfig = {
       url,
       visibility,
       ...(typeof a.name === 'string' ? { name: a.name } : {}),
       ...(typeValue ? { type: typeValue } : {}),
+      ...(healthCheckUrl ? { health_check_url: healthCheckUrl } : {}),
     };
     return cleaned;
   });

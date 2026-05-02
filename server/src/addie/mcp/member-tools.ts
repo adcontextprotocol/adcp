@@ -1202,7 +1202,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'save_agent',
     description:
-      'Register an agent in the AAO registry on behalf of the current organization. Adds the agent to the org\'s member profile; surfaces in `/dashboard/agents`. New agents land with `members_only` visibility (discoverable to other Professional-tier-or-higher AAO members; not publicly listed in the directory or brand.json). To list publicly, the caller promotes the agent via the dashboard; public visibility requires Professional tier or higher and a primary brand domain. Auth modes: (1) none — public agent, no credentials; (2) static `auth_token` + `auth_type` (`bearer` or `basic`, stored encrypted); (3) `oauth_client_credentials` for machine-to-machine (RFC 6749 §4.4). For interactive OAuth user authorization, save with no auth fields and have the user complete the dashboard\'s **Authorize** flow afterward — `save_agent` does not collect end-user OAuth state. The agent\'s `type` is resolved server-side from the capability snapshot; the schema does not accept a `type` field. See the "Registering an Agent in the AAO Registry" section of the rules for the intake script.',
+      'Register an agent in the AAO registry on behalf of the current organization. Adds the agent to the org\'s member profile; surfaces in `/dashboard/agents`. New agents land with `members_only` visibility (discoverable to other Professional-tier-or-higher AAO members; not publicly listed in the directory or brand.json). To list publicly, the caller promotes the agent via the dashboard; public visibility requires Professional tier or higher and a primary brand domain. Auth modes: (1) none — public agent, no credentials; (2) static `auth_token` + `auth_type` (`bearer` or `basic`, stored encrypted); (3) `oauth_client_credentials` for machine-to-machine (RFC 6749 §4.4). For interactive OAuth user authorization, save with no auth fields and have the user complete the dashboard\'s **Authorize** flow afterward — `save_agent` does not collect end-user OAuth state. The agent\'s `type` is resolved server-side from the capability snapshot; the schema does not accept a `type` field. If the user mentions their MCP endpoint requires auth, lives at a non-root path (e.g. /adcp/mcp), or shows up as offline after saving, suggest setting `health_check_url` for a liveness fallback while they fix the underlying URL. See the "Registering an Agent in the AAO Registry" section of the rules for the intake script.',
     usage_hints: 'use for "register my agent", "add an agent", "save my agent", "store my auth token", "configure client credentials". When the user opens the conversation with a registration intent and no details, follow the intake script in the rules — do not call save_agent until you have `agent_url` and an explicit auth-mode choice.',
     input_schema: {
       type: 'object',
@@ -1226,6 +1226,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
           required: ['token_endpoint', 'client_id', 'client_secret'],
         },
         protocol: { type: 'string', enum: ['mcp', 'a2a'], description: 'Protocol (default: mcp)' },
+        health_check_url: { type: 'string', description: 'Optional fallback liveness URL. The dashboard probe tries the protocol handshake first; if it fails and this URL is set, the probe GETs it and treats any 2xx as "online." Used by sellers whose protocol endpoint requires auth or is path-prefixed (e.g. /adcp/mcp). Liveness only — does not populate type or tools. Pass an empty string to clear a previously-set value.' },
       },
       required: ['agent_url'],
     },
@@ -5358,6 +5359,22 @@ export function createMemberToolHandlers(
     const authType: 'bearer' | 'basic' = rawAuthType === 'basic' ? 'basic' : 'bearer';
     const protocol = (input.protocol as 'mcp' | 'a2a') || 'mcp';
 
+    // null sentinel and explicit empty string both clear a previously-set
+    // value; a present non-empty string is validated through the same SSRF
+    // guard the OAuth token-endpoint path uses (cloud-metadata blocked
+    // always; loopback / RFC1918 blocked in production).
+    let healthCheckUrl: string | undefined;
+    let clearHealthCheckUrl = false;
+    if (input.health_check_url === null || input.health_check_url === '') {
+      clearHealthCheckUrl = true;
+    } else if (typeof input.health_check_url === 'string') {
+      const validated = validateExternalUrl(input.health_check_url);
+      if (!validated) {
+        return 'health_check_url is invalid or points to a blocked address. Use an https:// URL on a public host.';
+      }
+      healthCheckUrl = validated;
+    }
+
     // Route oauth_client_credentials through the shared parser so the Addie
     // tool applies identical SSRF + $ENV-prefix rules as the REST endpoint.
     // Any divergence here reopens the cloud-metadata / env-var exfiltration
@@ -5377,7 +5394,8 @@ export function createMemberToolHandlers(
         const profile = await memberDb.getProfileByOrgId(saveOrgId);
         if (profile) {
           const agents = profile.agents || [];
-          if (!agents.some((a: any) => a.url === agentUrl)) {
+          const existing = agents.find((a: any) => a.url === agentUrl);
+          if (!existing) {
             // Default to members_only, not public. The public directory
             // requires an API-access tier (Professional+); defaulting to
             // 'public' here lets Addie implicitly publish an agent for an
@@ -5385,7 +5403,18 @@ export function createMemberToolHandlers(
             // keeps the agent discoverable to peer members with API access
             // and lets the owner promote to public through the explicit,
             // tier-checked /publish route when eligible.
-            agents.push({ url: agentUrl, name: displayName, visibility: 'members_only' });
+            agents.push({
+              url: agentUrl,
+              name: displayName,
+              visibility: 'members_only',
+              ...(healthCheckUrl ? { health_check_url: healthCheckUrl } : {}),
+            });
+            await memberDb.updateProfile(profile.id, { agents });
+          } else if (clearHealthCheckUrl && (existing as any).health_check_url) {
+            delete (existing as any).health_check_url;
+            await memberDb.updateProfile(profile.id, { agents });
+          } else if (healthCheckUrl && (existing as any).health_check_url !== healthCheckUrl) {
+            (existing as any).health_check_url = healthCheckUrl;
             await memberDb.updateProfile(profile.id, { agents });
           }
         }

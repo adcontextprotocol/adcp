@@ -283,6 +283,22 @@
         .status-banner__text { font-size: var(--text-lg); font-weight: var(--font-semibold); }
         .status-banner__meta { opacity: 0.9; margin-left: var(--space-4); }
         .status-banner__time { opacity: 0.9; font-size: var(--text-sm); }
+        .status-banner__error {
+            margin-top: var(--space-2);
+            font-size: var(--text-sm);
+            opacity: 0.95;
+            line-height: 1.4;
+        }
+        .status-banner__error-detail {
+            margin-top: var(--space-1);
+            font-size: var(--text-xs);
+            opacity: 0.85;
+            font-family: var(--font-mono, monospace);
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        .status-banner__error-detail summary { cursor: pointer; opacity: 0.9; }
+        .status-banner > div:first-child { display: flex; flex-direction: column; align-items: flex-start; }
 
         /* Compliance badge */
         .compliance-badge {
@@ -901,14 +917,25 @@
 
             let html = '';
 
-            // Health status banner
+            // Health status banner — when offline, surface the classified
+            // probe-error hint so registrants see *why* (wrong path, missing
+            // auth, unreachable host) rather than just "Offline." Raw SDK
+            // error is hidden behind a details/summary toggle.
             const health = agent.health || {};
             const statusText = health.online ? 'Active' : 'Offline';
+            const errorBlock = (!health.online && health.error)
+                ? `<div class="status-banner__error">${escapeHtml(health.error)}</div>${
+                    health.error_detail
+                      ? `<details class="status-banner__error-detail"><summary>Show technical detail</summary>${escapeHtml(health.error_detail)}</details>`
+                      : ''
+                  }`
+                : '';
             html += `
                 <div class="status-banner ${health.online ? 'status-banner--online' : 'status-banner--offline'}">
                     <div>
                         <span class="status-banner__text">Status: ${statusText}</span>
                         ${health.response_time_ms ? `<span class="status-banner__meta">Response time: ${health.response_time_ms}ms</span>` : ''}
+                        ${errorBlock}
                     </div>
                     ${health.last_check ? `<div class="status-banner__time">Last check: ${new Date(health.last_check).toLocaleString()}</div>` : ''}
                 </div>

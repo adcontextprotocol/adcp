@@ -149,6 +149,7 @@ export class AgentService {
         website: profile.contact_website || "",
       },
       added_date: profile.created_at.toISOString().split("T")[0],
+      ...(config.health_check_url ? { health_check_url: config.health_check_url } : {}),
     };
   }
 
