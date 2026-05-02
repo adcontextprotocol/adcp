@@ -207,7 +207,7 @@
         },
         "calculation_notes": {
           "type": "string",
-          "description": "Explanation of how DOOH impressions were calculated"
+          "description": "Per-row supplementary methodology notes for DOOH impression calculation (e.g., 'rotation-based; 6-second slot weighted by 70% audience overlap'). Free-form prose for context that doesn't fit the structured measurement-vendor surface. Canonical methodology declarations belong on the measurement vendor's `get_adcp_capabilities.measurement.metrics[]` block where they're discoverable once and inherited across delivery rows; this field is for row-specific context (a particular daypart's calculation, a venue-mix exception) rather than the seller's general methodology."
         },
         "venue_breakdown": {
           "type": "array",
