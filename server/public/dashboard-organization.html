@@ -1184,7 +1184,7 @@
       // Membership card: simplified for free users, detailed for paid,
       // neutral for tier-unresolved (don't claim seat counts we don't know).
       const membershipCardContent = tierUnresolved ? `
-        <div style="padding: var(--space-4); background: var(--color-warning-50, var(--color-success-50)); border-radius: var(--radius-lg);">
+        <div style="padding: var(--space-4); background: var(--color-bg-muted, var(--color-bg-subtle, #f6f6f6)); border-radius: var(--radius-lg); border-left: 3px solid var(--color-text-muted);">
           <div style="font-size: var(--text-lg); font-weight: var(--font-bold); color: var(--color-text-heading);">Active membership</div>
           <div style="font-size: var(--text-xs); color: var(--color-text-secondary); margin-top: var(--space-1);">Your tier is pending a billing sync. <a href="mailto:support@agenticadvertising.org">Contact support</a> if this persists.</div>
         </div>

@@ -67,8 +67,9 @@ export const everyEntitledOrgHasResolvableTierInvariant: Invariant = {
         subject_id: org.workos_organization_id,
         message:
           `Org "${org.name}" has subscription_status=${JSON.stringify(org.subscription_status)} ` +
-          `but resolveMembershipTier() returned null. Dashboard will render the wrong tier ` +
-          `(Explorer fallback) and may prompt the member to upgrade.`,
+          `but resolveMembershipTier() returned null. Dashboard renders a neutral ` +
+          `"tier pending sync" state instead of the actual tier; Addie's prompt ` +
+          `rules treat the org as untiered.`,
         details: {
           org_name: org.name,
           stripe_customer_id: org.stripe_customer_id,

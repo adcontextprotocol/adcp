@@ -137,8 +137,11 @@ describe('attemptStripeReconciliation', () => {
 
     expect(result.healed).toBe(true);
     expect(mockCustomersRetrieve).toHaveBeenCalledTimes(1);
+    // Match the lookup_key in the UPDATE params without depending on positional
+    // index — adjacent tests in this file pattern-match on call shape, not
+    // positional binding, so a future param reorder doesn't silently invert.
     const updateParams = mockQuery.mock.calls[1][1] as unknown[];
-    expect(updateParams[7]).toBe('aao_membership_corporate_under5m'); // lookup_key written
+    expect(updateParams).toContain('aao_membership_corporate_under5m');
   });
 
   it('heals when status=active but only stripe_subscription_id is missing (lookup_key set)', async () => {

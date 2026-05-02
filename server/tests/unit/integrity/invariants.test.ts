@@ -667,7 +667,7 @@ describe('every-entitled-org-has-resolvable-tier', () => {
     expect(result.violations[0].severity).toBe('critical');
     expect(result.violations[0].subject_type).toBe('organization');
     expect(result.violations[0].subject_id).toBe('org_adzymic');
-    expect(result.violations[0].message).toContain('Explorer');
+    expect(result.violations[0].message).toContain('tier pending sync');
     expect(result.violations[0].details?.subscription_status).toBe('active');
     expect(result.violations[0].details?.subscription_price_lookup_key).toBeNull();
     expect(result.violations[0].remediation_hint).toContain('/sync');

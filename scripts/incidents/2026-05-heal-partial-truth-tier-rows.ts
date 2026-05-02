@@ -57,6 +57,13 @@ interface InvariantRunReport {
   violations: Violation[];
 }
 
+interface SyncResponse {
+  success?: boolean;
+  stripe?: { success?: boolean; subscription?: { status?: string }; error?: string };
+  workos?: { success?: boolean; error?: string };
+  updated?: boolean;
+}
+
 async function adminGet<T>(path: string): Promise<T> {
   const res = await fetch(`${ADMIN_BASE_URL}${path}`, {
     headers: { Authorization: `Bearer ${ADMIN_API_KEY}` },
@@ -112,18 +119,29 @@ async function main(): Promise<void> {
 
   console.log('\nSyncing each org from Stripe...');
   let healed = 0;
+  let stripeSkipped = 0;
   let failed = 0;
   for (const v of violations) {
     try {
-      const result = await adminPost<{ success: boolean }>(
-        `/api/admin/accounts/${v.subject_id}/sync`,
+      // adminPost throws on non-2xx, so reaching here means the endpoint accepted
+      // the call. The endpoint's `success` field is true only when both WorkOS
+      // *and* Stripe sub-syncs succeeded; for orgs with no live Stripe sub the
+      // Stripe branch returns success=true with an "error" message instead. We
+      // care that the sync ran without HTTP error, then surface what changed.
+      const result = await adminPost<SyncResponse>(
+        `/api/admin/accounts/${encodeURIComponent(v.subject_id)}/sync`,
       );
-      if (result.success) {
+      if (result.updated) {
         healed++;
-        console.log(`  ✓ ${v.subject_id} synced`);
+        const status = result.stripe?.subscription?.status;
+        console.log(`  ✓ ${v.subject_id} synced${status ? ` (status=${status})` : ''}`);
       } else {
-        failed++;
-        console.log(`  ✗ ${v.subject_id} sync returned success=false: ${JSON.stringify(result)}`);
+        // Sync ran but didn't write — usually means no live Stripe sub and no
+        // paid membership invoice (legacy hand-rolled deals). These need
+        // manual tier setting; the script can't heal them.
+        stripeSkipped++;
+        const reason = result.stripe?.error ?? 'no Stripe data to write';
+        console.log(`  ~ ${v.subject_id} not updated: ${reason}`);
       }
     } catch (err) {
       failed++;
@@ -131,7 +149,9 @@ async function main(): Promise<void> {
     }
   }
 
-  console.log(`\nHealed ${healed}/${violations.length} (${failed} failed).`);
+  console.log(
+    `\nHealed ${healed}, skipped ${stripeSkipped} (no Stripe data), failed ${failed}, total ${violations.length}.`,
+  );
   console.log('Re-run the invariant to confirm — orgs with no Stripe subscription');
   console.log('at all (legacy hand-rolled deals) will still need manual tier setting.');
 }
