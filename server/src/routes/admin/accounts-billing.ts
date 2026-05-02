@@ -19,7 +19,7 @@ import {
   buildSubscriptionUpdate,
 } from "../../db/organization-db.js";
 import { stripe } from "../../billing/stripe-client.js";
-import { pickMembershipSub } from "../../billing/membership-prices.js";
+import { pickMembershipSubWithProductFetch } from "../../billing/membership-prices.js";
 
 const logger = createLogger("admin-accounts-billing");
 
@@ -134,12 +134,11 @@ export function setupAccountsBillingRoutes(
         if (org.stripe_customer_id) {
           if (stripe) {
             try {
-              // First, confirm the customer exists / isn't deleted. We
-              // intentionally don't expand subscriptions here — pushing
-              // `subscriptions.data.items.data.price.product` through
-              // `customers.retrieve` exceeds Stripe's 4-level expansion
-              // depth and the call throws (May 2026 — broke /sync for
-              // every org until the depth was reduced).
+              // First, confirm the customer exists / isn't deleted. Don't
+              // ask Stripe to expand subscriptions deeply on this call —
+              // `subscriptions.data.items.data.price.product` is 6 levels
+              // deep and exceeds Stripe's 4-level expansion limit (May
+              // 2026: that broke /sync for every org).
               const customer = await stripe.customers.retrieve(org.stripe_customer_id);
 
               if (customer.deleted) {
@@ -148,17 +147,18 @@ export function setupAccountsBillingRoutes(
                   error: "Customer has been deleted",
                 };
               } else {
-                // Fetch subscriptions separately so we can expand
-                // `data.items.data.price.product` — that path is only 4
-                // levels deep from `subscriptions.list`, within Stripe's
-                // limit. The expansion is what makes `isMembershipSub`'s
-                // metadata fallback work for founding-era prices that
-                // lack the aao_membership_ lookup_key convention.
+                // List subs without product expansion (the price object
+                // comes back inline with lookup_key/unit_amount/etc., which
+                // is enough for the lookup_key fast path). For
+                // founding-era subs that lack the aao_membership_ prefix,
+                // pickMembershipSubWithProductFetch retrieves the product
+                // separately to check `metadata.category=membership` —
+                // one extra round-trip per non-matching candidate, which
+                // /sync (a manual admin action) can afford.
                 const subsResult = await stripe.subscriptions.list({
                   customer: org.stripe_customer_id,
                   status: 'all',
                   limit: 10,
-                  expand: ['data.items.data.price.product'],
                 });
 
                 // Filter to membership subs before picking. A customer with a
@@ -168,7 +168,13 @@ export function setupAccountsBillingRoutes(
                 // guarantee ordering of `subscriptions.data`. Falls through to
                 // the invoice-fallback branch below when no membership sub is
                 // found, preserving prior behavior for invoice-billed orgs.
-                const subscription = pickMembershipSub(subsResult.data);
+                // `stripe` is non-null inside this branch (guarded above)
+                // but TS narrowing doesn't carry through the closure.
+                const stripeClient = stripe;
+                const subscription = await pickMembershipSubWithProductFetch(
+                  subsResult.data,
+                  (productId) => stripeClient.products.retrieve(productId),
+                );
 
                 if (subscription) {
                   // Use the canonical writer so /sync, the webhook handler,

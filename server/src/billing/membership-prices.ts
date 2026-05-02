@@ -74,3 +74,47 @@ export function pickMembershipSub(subscriptions: readonly Stripe.Subscription[])
   if (memberships.length === 0) return null;
   return memberships.find((s) => s.status === 'active') ?? memberships[0];
 }
+
+/**
+ * Async picker that falls back to a per-product metadata fetch when
+ * `lookup_key` doesn't match. Founding-era subs lack the lookup_key
+ * convention, but the path Stripe needs to expand for product metadata
+ * (`subscriptions.data.items.data.price.product`) exceeds the 4-level
+ * expansion limit on `subscriptions.list`. So when the fast lookup_key
+ * pass yields nothing, fall back to retrieving the product for each
+ * candidate sub with one extra round-trip per non-matching sub.
+ *
+ * Synchronous `pickMembershipSub` remains the right call for invariants
+ * that walk every sub on the account (cheap by lookup_key, no per-sub
+ * fetches at scale). This async variant is for the admin `/sync` path
+ * where we want to repair a single org's row.
+ */
+export async function pickMembershipSubWithProductFetch(
+  subscriptions: readonly Stripe.Subscription[],
+  fetchProduct: (productId: string) => Promise<Stripe.Product | Stripe.DeletedProduct>,
+): Promise<Stripe.Subscription | null> {
+  const fast = pickMembershipSub(subscriptions);
+  if (fast) return fast;
+
+  // Fall back to product-metadata classification on subs whose price
+  // has a `product` id but no membership lookup_key.
+  const candidates: Stripe.Subscription[] = [];
+  for (const sub of subscriptions) {
+    const price = sub.items.data[0]?.price;
+    if (!price) continue;
+    const productId = typeof price.product === 'string' ? price.product : null;
+    if (!productId) continue;
+    try {
+      const product = await fetchProduct(productId);
+      if (isMembershipProductByMetadata(product)) {
+        candidates.push(sub);
+      }
+    } catch {
+      // Skip a sub whose product can't be retrieved; the lookup-key path
+      // already returned nothing for it. We don't want one bad fetch to
+      // tank the whole sync.
+    }
+  }
+  if (candidates.length === 0) return null;
+  return candidates.find((s) => s.status === 'active') ?? candidates[0];
+}

@@ -54,8 +54,7 @@ const mocks = vi.hoisted(() => {
   }
 
   // Shared sub fixture used by both customers.retrieve (legacy callsites)
-  // and subscriptions.list (post-#3850 /sync uses this to expand
-  // price.product for the metadata-fallback path).
+  // and subscriptions.list (post-#3850 /sync uses subscriptions.list).
   const FAKE_SUB = {
     id: 'sub_backfill_test_001',
     status: 'active',
@@ -68,8 +67,9 @@ const mocks = vi.hoisted(() => {
           currency: 'usd',
           recurring: { interval: 'year' },
           // /sync filters to membership subs by lookup_key prefix
-          // (`aao_membership_*` / `aao_invoice_*`) or product
-          // metadata.category=membership for founding-era prices.
+          // (`aao_membership_*` / `aao_invoice_*`) — fast path. Founding-
+          // era subs lack the lookup_key and fall through to a product-
+          // metadata fetch via stripe.products.retrieve.
           lookup_key: 'aao_membership_professional_250',
           product: 'prod_backfill_test_001',
         },
@@ -86,9 +86,9 @@ const mocks = vi.hoisted(() => {
       deleted: false,
       subscriptions: { data: [FAKE_SUB] },
     }),
-    // Post-#3850: /sync fetches subscriptions separately so it can expand
-    // price.product 4 levels deep without exceeding Stripe's customer-
-    // retrieve depth limit. Mock returns a list-shaped response.
+    // /sync fetches subs separately. No deep expand — products are
+    // fetched per-sub via stripe.products.retrieve when the lookup_key
+    // path doesn't match (founding-era fallback).
     mockSubscriptionsList: vi.fn().mockResolvedValue({
       data: [FAKE_SUB],
       has_more: false,
@@ -97,6 +97,7 @@ const mocks = vi.hoisted(() => {
     mockProductsRetrieve: vi.fn().mockResolvedValue({
       id: 'prod_backfill_test_001',
       name: 'Pinnacle Media Annual Plan',
+      metadata: { category: 'membership' },
     }),
   };
 });
