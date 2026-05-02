@@ -23,7 +23,7 @@ Share performance outcomes with publishers to enable data-driven optimization an
 | `creative_id` | string | No | Specific creative asset (if feedback is creative-specific) |
 | `metric_type` | string | No | The business metric being measured (defaults to "overall_performance") |
 | `feedback_source` | string | No | Source of the performance data (defaults to "buyer_attribution") |
-| `vendor` | [BrandRef](/docs/reference/glossary#b) | Conditional | Vendor that produced this feedback. Required when `feedback_source` is `third_party_measurement` or `verification_partner`; optional otherwise. The vendor's `brand.json` `agents[type='measurement']` is the discovery anchor; metric definitions live on the agent's `get_adcp_capabilities.measurement.metrics[]` block. |
+| `vendor` | [BrandRef](/docs/reference/glossary#b) | No | Vendor that produced this feedback. SHOULD be populated when `feedback_source` is `third_party_measurement` or `verification_partner` AND a single attesting vendor exists. OMIT for blended outputs (MMM mixes, multi-touch attribution that joins across vendors, clean-room outputs where the clean room is not the measurement source). Optional for `buyer_attribution` and `platform_analytics`. |
 
 ## Response (Message)
 
