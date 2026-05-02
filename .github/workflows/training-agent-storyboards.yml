@@ -215,6 +215,73 @@ jobs:
           mkdir -p /tmp/storyboard-results
           printf '%s\n%s\n' "${CLEAN}" "${PASSED}" > /tmp/storyboard-results/results.txt
 
+      - name: Verify required-clean storyboards (${{ matrix.mode }})
+        # Floors above gate on counts — they catch *regressions* (count drops)
+        # but not *rebalancing*: a future change could break load-bearing
+        # scenario A while a new scenario B passes, leaving the count flat.
+        # This step pins specific scenario IDs whose conformance is wire-
+        # load-bearing — failure of any listed scenario fails CI regardless
+        # of total count. Don't pin all 65 — that's just KNOWN_FAILING
+        # inverted and gets noisy. Pin only the contracts whose conformance
+        # is genuinely load-bearing for the spec wire surface.
+        # Tracked at adcp#3803.
+        run: |
+          set -euo pipefail
+          REQUIRED=(
+            # Provenance enforcement contract from #3468 — buyer/seller wire
+            # surface for creative_policy.{provenance_required,
+            # provenance_requirements, accepted_verifiers} and the six
+            # PROVENANCE_* rejection codes.
+            "media_buy_seller/provenance_enforcement"
+            # HTTP request signing per RFC 9421 — auth conformance.
+            "signed_requests"
+            # Universal rejection vocabulary — every seller must use the
+            # canonical error codes, not custom strings.
+            "error_compliance"
+            # At-most-once execution under retry — idempotency_key contract.
+            "idempotency"
+            # Schema validation contract — request/response shape conformance.
+            "schema_validation"
+            # Capability discovery — get_adcp_capabilities is the entry point
+            # for every other contract; if this fails nothing else grades.
+            "capability_discovery"
+          )
+          # Approach: check the runner's failure inventory rather than trying
+          # to detect "id followed by ✓ on the same line." The latter doesn't
+          # work in legacy dispatch — when the runner emits warnings during a
+          # storyboard run (e.g., "[AdCP] Stripping fields not declared in agent
+          # schema..."), the warning fills the id-prefixed column and the ✓
+          # summary lands on the next line without the id. The runner's
+          # `--- Failures ---` block is the authoritative list of failures.
+          # A required-clean scenario passes the gate iff it does NOT appear
+          # there AND is NOT on the KNOWN_FAILING_STORYBOARDS skip list.
+          failures_block=$(awk '/^--- Failures ---/{flag=1; next} /^--- Totals ---/{flag=0} flag' /tmp/storyboards.log)
+          known_failing_block=$(awk '/^Skipping storyboards on the known-failing list:/{flag=1; next} /^[^ ]/{flag=0} flag' /tmp/storyboards.log)
+          missing=()
+          for id in "${REQUIRED[@]}"; do
+            if echo "${failures_block}" | grep -qE "^[[:space:]]+${id}: "; then
+              missing+=("${id} (failed)")
+              continue
+            fi
+            if echo "${known_failing_block}" | grep -qE "${id}:"; then
+              missing+=("${id} (on KNOWN_FAILING_STORYBOARDS — would silently skip)")
+              continue
+            fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::Required-clean storyboards did not pass on ${{ matrix.mode }} dispatch:"
+            for id in "${missing[@]}"; do
+              echo "::error::  - ${id}"
+            done
+            cat <<HELP
+          ::error::These scenarios are pinned as load-bearing — they MUST pass on every CI run regardless of total clean count.
+          ::error::Download the storyboards-log-${{ matrix.mode }} artifact to see why each one failed (or was skipped).
+          ::error::If a scenario is intentionally being retired, remove it from the REQUIRED list in .github/workflows/training-agent-storyboards.yml AND open an issue documenting the contract being dropped.
+          HELP
+            exit 1
+          fi
+          echo "All ${#REQUIRED[@]} required-clean storyboards passed."
+
       - name: Persist matrix results for summary job
         if: success()
         uses: actions/upload-artifact@v7
