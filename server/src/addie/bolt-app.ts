@@ -2475,6 +2475,16 @@ async function handleProspectClaim({ ack, body, client }: any): Promise<void> {
 
     const user = userResult.rows[0];
 
+    if (!user.is_admin) {
+      await client.chat.postEphemeral({
+        channel: channelId,
+        user: userId,
+        text: 'Only AgenticAdvertising.org admins can claim prospects.',
+      });
+      logger.warn({ userId, workosUserId: user.workos_user_id, orgId }, 'Addie Bolt: Non-admin attempted prospect claim');
+      return;
+    }
+
     // Verify the org is still an active prospect
     const orgCheck = await pool.query<{ name: string; subscription_status: string | null; prospect_owner: string | null }>(
       `SELECT name, subscription_status, prospect_owner FROM organizations WHERE workos_organization_id = $1`,
