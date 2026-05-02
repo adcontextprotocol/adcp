@@ -232,6 +232,10 @@
       "type": "object",
       "description": "Viewability metrics. Viewable rate should be calculated as viewable_impressions / measurable_impressions (not total impressions), since some environments cannot measure viewability.",
       "properties": {
+        "vendor": {
+          "$ref": "/schemas/core/brand-ref.json",
+          "description": "Vendor that produced these viewability values. Optional but RECOMMENDED so the row is self-describing — buyer agents reading delivery in isolation can attribute the numbers without joining back to `package.committed_metrics` or `package.performance_standards`. The vendor's `brand.json` `agents[type='measurement']` is the discovery anchor; the metric definitions live on the agent's `get_adcp_capabilities.measurement.metrics[]` block. Same shape as `vendor_metric_value.vendor` for symmetry across vendor-attested surfaces."
+        },
         "measurable_impressions": {
           "type": "number",
           "description": "Impressions where viewability could be measured. Excludes environments without measurement capability (e.g., non-Intersection Observer browsers, certain app environments).",

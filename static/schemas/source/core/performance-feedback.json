@@ -55,6 +55,10 @@
       "$ref": "/schemas/enums/feedback-source.json",
       "description": "Source of the performance data"
     },
+    "vendor": {
+      "$ref": "/schemas/core/brand-ref.json",
+      "description": "Vendor that produced this feedback. Required when `feedback_source` is `third_party_measurement` or `verification_partner` — without it, the row is unattributed and consumers can't verify authorization, resolve metric definitions, or route disputes. Optional for `buyer_attribution` and `platform_analytics` (those sources are implicit from context). The vendor's `brand.json` `agents[type='measurement']` is the discovery anchor; metric definitions live on the agent's `get_adcp_capabilities.measurement.metrics[]` block. Same identity discipline as `vendor_metric_value.vendor` and `performance-standard.vendor`."
+    },
     "status": {
       "type": "string",
       "description": "Processing status of the performance feedback",
