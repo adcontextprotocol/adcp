@@ -113,6 +113,14 @@ const KNOWN_FAILING_STORYBOARDS: ReadonlyMap<string, string> = new Map([
   // Tracked upstream as adcp#3429; remove once the storyboard is migrated to
   // `envelope_field_present` AND the framework wraps capabilities responses.
   ['v3_envelope_integrity', 'adcp-client#1045 / adcp#3429 — storyboard asserts envelope status, framework capabilities tool returns unenveloped payload'],
+  // Skeleton scenario for the truth-of-claim half of provenance enforcement
+  // (PROVENANCE_CLAIM_CONTRADICTED). The training agent does not yet
+  // implement get_creative_features against accepted_verifiers, so the
+  // verifier-driven contradiction path can't run end to end. Tracked in
+  // adcp#3802; remove once the training agent ships truth-of-claim
+  // verification and the storyboard's placeholder phase is fleshed out
+  // with the full negative + positive paths.
+  ['creative_sales_agent/provenance_truth_of_claim', 'adcp#3802 — training agent does not yet invoke get_creative_features against accepted_verifiers (truth-of-claim path); storyboard is a registered skeleton'],
 ]);
 
 /**

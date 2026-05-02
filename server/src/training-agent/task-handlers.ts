@@ -571,15 +571,23 @@ function canonicalizeAgentUrl(url: string): string {
 }
 
 /**
- * Backfill required Product fields for fixture-seeded products. The base
- * catalog products are always complete; novel products created by
- * comply_test_controller seed_product fixtures often only carry the
- * fields the storyboard needs for validation (product_id, delivery_type,
- * format_ids, pricing_options). Defaults are sentinel values that pass
- * spec validation; storyboards that need specific values still seed them
- * explicitly via the fixture.
+ * Backfill required Product fields for *fixture-seeded* products only.
+ * Catalog products are guaranteed complete by `buildCatalog`, so we never
+ * mutate them — that would alias the cached singleton across every
+ * subsequent request (`getCatalog().map(cp => ({...cp.product}))` is a
+ * shallow copy; `format_ids[]` and `reporting_capabilities` are shared
+ * references). Restrict to seeded IDs to keep the cache pristine.
+ *
+ * Defaults are sentinel values that pass spec validation; storyboards
+ * that need specific values still seed them explicitly via the fixture.
+ * `publisher_domain: 'training.example.com'` uses the IETF reserved
+ * `example.*` namespace (RFC 6761) — it cannot collide with a real
+ * publisher claim, but is still a sentinel: if any consumer of
+ * `publisher_properties` ever resolves the domain (DNS, brand.json
+ * fetch), the resolution will fail loudly rather than silently match an
+ * arbitrary domain.
  */
-function backfillProductDefaults(product: Product, ownAgentUrl: string): void {
+function backfillTrainingProductDefaults(product: Product, ownAgentUrl: string): void {
   const p = product as unknown as {
     product_id?: string;
     name?: string;
@@ -654,6 +662,16 @@ interface CreativePolicyView {
  * any product whose policy requires `disclosure`, the disclosure must be
  * present on submission.
  *
+ * Field-aggregation directions are deliberately asymmetric:
+ *   - Requirement booleans (`provenance_required`, `require_*`) are
+ *     ORed across products — most-restrictive wins because they're
+ *     gates the buyer must clear.
+ *   - `accepted_verifiers[]` is UNIONed across products — least-
+ *     restrictive wins because it's an allowlist. A buyer pointing at a
+ *     verifier accepted by *any* of the seller's products in this
+ *     session passes the cross-check.
+ * That's allowlists union, gates intersect — the standard pattern.
+ *
  * Returns `null` when no seeded product carries provenance policy. Pre-
  * existing storyboards that don't seed provenance fields keep their
  * "accept everything" behavior; only storyboards seeding policy fields
@@ -712,6 +730,20 @@ function resolveManifestProvenance(creative: CreativeForEnforcement): Record<str
 }
 
 /**
+ * Clamp a buyer-supplied string before interpolating it into an error
+ * message or field path. Strips C0 controls (newlines, tabs, NUL,
+ * escape sequences) and caps length so log/transcript consumers that
+ * render the message in a terminal or HTML pane don't get poisoned by
+ * an attacker-shaped value. Length cap is generous enough to fit any
+ * legitimate URL or creative_id but small enough to bound an abusive
+ * payload's blast radius.
+ */
+function sanitizeForError(value: string, maxLen = 256): string {
+  // eslint-disable-next-line no-control-regex
+  return value.replace(/[ -]/g, '').slice(0, maxLen);
+}
+
+/**
  * Build a `TaskError` for a structural-rejection PROVENANCE_* code.
  */
 function provenanceError(
@@ -730,11 +762,24 @@ function provenanceError(
 /**
  * Apply seller-side `creative_policy` enforcement to a single creative
  * submission. Returns the first PROVENANCE_* error if any structural
- * check fails, or `null` when the creative passes. The truth-of-claim
- * surface (PROVENANCE_CLAIM_CONTRADICTED, requires calling
- * `get_creative_features` against an on-list verifier) is out of scope
- * for this initial implementation — the structural codes are sufficient
- * to make the conformance storyboard pass.
+ * check fails, or `null` when the creative passes.
+ *
+ * Cascade order (stable; storyboard assertions on `errors[0]` rely on it):
+ *   1. PROVENANCE_REQUIRED                       — provenance object absent
+ *   2. PROVENANCE_DIGITAL_SOURCE_TYPE_MISSING    — required field absent
+ *   3. PROVENANCE_DISCLOSURE_MISSING             — required field absent
+ *   4. PROVENANCE_EMBEDDED_MISSING               — required field absent
+ *   5. PROVENANCE_VERIFIER_NOT_ACCEPTED          — verify_agent off-list
+ *
+ * Reordering this cascade would change the first-error a buyer sees on a
+ * creative that fails multiple checks — keep it stable. If a future
+ * implementation accumulates errors instead of returning the first, the
+ * order above is the canonical priority for sorting.
+ *
+ * The truth-of-claim surface (PROVENANCE_CLAIM_CONTRADICTED, requires
+ * calling `get_creative_features` against an on-list verifier) is out
+ * of scope for this initial implementation — the structural codes are
+ * sufficient to exercise the wire contract end to end.
  */
 function enforceProvenancePolicy(
   creative: CreativeForEnforcement,
@@ -742,14 +787,18 @@ function enforceProvenancePolicy(
 ): TaskError | null {
   if (!policy) return null;
   const provenance = resolveManifestProvenance(creative);
-  const fieldRoot = `creatives[${creative.creative_id}].creative_manifest.provenance`;
+  // creative_id is buyer-controlled — sanitize before interpolating into
+  // the field path so a payload with newlines or oversized strings can't
+  // poison the path a downstream consumer renders.
+  const safeId = sanitizeForError(creative.creative_id, 128);
+  const fieldRoot = `creatives[${safeId}].creative_manifest.provenance`;
 
   // 1. provenance_required — any provenance object must exist
   if (policy.provenance_required && !provenance) {
     return provenanceError(
       'PROVENANCE_REQUIRED',
       `Seller's creative_policy.provenance_required is true; the submitted creative has no provenance object on the manifest.`,
-      `creatives[${creative.creative_id}].creative_manifest`,
+      `creatives[${safeId}].creative_manifest`,
     );
   }
 
@@ -817,9 +866,13 @@ function enforceProvenancePolicy(
       const url = layer.entry.verify_agent?.agent_url;
       if (typeof url !== 'string' || url.length === 0) continue;
       if (!allowed.has(canonicalizeAgentUrl(url))) {
+        // `url` is buyer-controlled — sanitize before interpolation so a
+        // payload with newlines / ANSI escapes / oversized strings can't
+        // poison the message a downstream consumer renders. The field path
+        // is server-constructed from constants (no buyer data), so it's safe.
         return provenanceError(
           'PROVENANCE_VERIFIER_NOT_ACCEPTED',
-          `Buyer's verify_agent.agent_url "${url}" is not in the seller's accepted_verifiers list.`,
+          `Buyer's verify_agent.agent_url "${sanitizeForError(url)}" is not in the seller's accepted_verifiers list.`,
           `${fieldRoot}.${layer.kind}[${layer.index}].verify_agent.agent_url`,
         );
       }
@@ -837,6 +890,15 @@ function enforceProvenancePolicy(
  * the handlers consult (pricing_options with pricing_model/floor_price/
  * fixed_price/etc) so fixture-driven storyboards can reference products
  * that don't live in the static catalog.
+ *
+ * The overlay also runs `backfillTrainingProductDefaults` on each seeded
+ * entry so missing required Product fields don't fail response-schema
+ * validation when get_products serializes them. Catalog products in the
+ * map are left untouched — `getCatalog().map(cp => ({...cp.product}))`
+ * is a shallow copy whose nested arrays/objects (`format_ids[]`,
+ * `reporting_capabilities`, ...) alias the cached catalog singleton, so
+ * mutating them would leak across requests. Restricting backfill to
+ * seeded IDs keeps the cache pristine.
  */
 function overlaySeededProducts(
   session: import('./types.js').SessionState,
@@ -858,6 +920,7 @@ function overlaySeededProducts(
     ...seededProducts.keys(),
     ...pricingByProduct.keys(),
   ]);
+  const ownAgentUrl = getAgentUrl();
   for (const productId of productIds) {
     const existing = productMap.get(productId) ?? {} as Partial<Product>;
     const fixture = seededProducts.get(productId) as Partial<Product> | undefined;
@@ -869,6 +932,7 @@ function overlaySeededProducts(
         pricing_options: seededPricing as unknown as Product['pricing_options'],
       });
     }
+    backfillTrainingProductDefaults(merged as Product, ownAgentUrl);
     productMap.set(productId, merged as Product);
   }
 }
@@ -1291,24 +1355,13 @@ export async function handleGetProducts(args: ToolArgs, ctx: TrainingContext) {
 
   // Overlay seeded products from comply_test_controller fixtures so
   // storyboard-seeded fields (e.g. creative_policy.provenance_requirements,
-  // accepted_verifiers) round-trip through get_products. Without this,
-  // create_media_buy sees the fixture's product but get_products doesn't,
-  // and a buyer reading creative_policy upfront gets stale data.
+  // accepted_verifiers) round-trip through get_products. The overlay
+  // also backfills required Product fields on seeded products so they
+  // serialize as schema-valid responses without forcing every fixture
+  // to repeat boilerplate. Catalog products are not touched.
   const productMap = new Map(products.map(p => [p.product_id, p]));
   overlaySeededProducts(session, productMap);
   products = Array.from(productMap.values());
-  // Backfill required Product fields for fixture-seeded products that
-  // weren't in the base catalog. Fixtures historically seed only the
-  // fields create_media_buy validation needed (product_id, delivery_type,
-  // format_ids, pricing_options) because get_products didn't surface them.
-  // Now that it does, missing required fields fail response schema
-  // validation. Backfill defensively so fixture-driven products serialize
-  // as valid Product objects without forcing every fixture to repeat
-  // boilerplate.
-  const ownAgentUrl = getAgentUrl();
-  for (const product of products) {
-    backfillProductDefaults(product, ownAgentUrl);
-  }
 
   // Apply filters
   if (req.filters) {

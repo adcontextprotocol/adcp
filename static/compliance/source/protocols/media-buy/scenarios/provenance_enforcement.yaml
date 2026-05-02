@@ -2,7 +2,7 @@ id: creative_sales_agent/provenance_enforcement
 version: "1.0.0"
 title: "Seller enforces provenance_requirements on sync_creatives"
 category: creative_sales_agent
-summary: "Seller publishes provenance_requirements + accepted_verifiers on a product. Two structural rejections (off-list verify_agent → PROVENANCE_VERIFIER_NOT_ACCEPTED, missing disclosure → PROVENANCE_DISCLOSURE_MISSING), then accepts a corrected resubmission with on-list verifier."
+summary: "Seller publishes provenance_requirements + accepted_verifiers on a product. Four structural rejections (no provenance, missing digital_source_type, off-list verifier, missing disclosure), then a corrected resubmission with on-list verifier is accepted."
 track: creative
 required_tools:
   - get_products
@@ -17,15 +17,16 @@ narrative: |
   provenance + an on-list verify_agent, and the seller confirms by structurally
   cross-checking the submission and (when applicable) calling an on-list agent.
 
-  This scenario walks the structural-rejection contract end to end. Phase 1: the
-  buyer discovers a product whose creative_policy declares require_disclosure_metadata
-  and accepted_verifiers. Phase 2: the buyer submits with provenance pointing at an
-  off-list verify_agent.agent_url — the seller MUST cross-check before any outbound
-  call and reject with PROVENANCE_VERIFIER_NOT_ACCEPTED, closing the buyer-controlled-URL
-  trust gap. Phase 3: the buyer's submission has an on-list verifier but omits the
-  required disclosure block — the seller MUST reject with PROVENANCE_DISCLOSURE_MISSING.
-  Phase 4: the buyer resubmits with disclosure populated and an on-list verify_agent;
-  the seller accepts.
+  This scenario walks the structural-rejection contract end to end across the
+  PROVENANCE_* family. Phase 1: discover a product whose creative_policy declares
+  the requirements + accepted_verifiers. Phase 2: submit a creative with no
+  provenance object at all → PROVENANCE_REQUIRED. Phase 3: submit with provenance
+  but no digital_source_type → PROVENANCE_DIGITAL_SOURCE_TYPE_MISSING. Phase 4:
+  point verify_agent at a URL outside accepted_verifiers → PROVENANCE_VERIFIER_NOT_ACCEPTED
+  (the seller MUST cross-check before any outbound call, closing the buyer-
+  controlled-URL trust gap). Phase 5: provenance present with on-list verifier
+  but no disclosure block → PROVENANCE_DISCLOSURE_MISSING. Phase 6: corrected
+  submission with disclosure and on-list verify_agent — accepted.
 
   The truth-of-claim contract (PROVENANCE_CLAIM_CONTRADICTED, surfaced via
   get_creative_features when the on-list verifier returns a result that contradicts
@@ -66,6 +67,7 @@ fixtures:
         templates_available: false
         provenance_required: true
         provenance_requirements:
+          require_digital_source_type: true
           require_disclosure_metadata: true
         accepted_verifiers:
           - agent_url: "https://governance.encypher.seller.example"
@@ -101,7 +103,15 @@ phases:
           the seller's verifier allowlist before submission.
         sample_request:
           buying_mode: "brief"
-          brief: "Provenance Enforcement Test Product — display inventory exercising accepted verifier allowlist and AI disclosure metadata"
+          # Brief intentionally surfaces "Provenance Enforcement" so brief-mode
+          # keyword scoring places the seeded fixture product (which carries
+          # creative_policy.{provenance_required, provenance_requirements,
+          # accepted_verifiers}) at products[0]. This is a known coupling
+          # between the storyboard and brief-mode scoring; if the runner ever
+          # supports JSONPath predicates (`products[?(@.product_id=='...')]`),
+          # switch to wholesale mode + a predicate path so the assertion
+          # doesn't depend on scoring weights.
+          brief: "Provenance Enforcement display inventory — AI disclosure metadata required, accepted verifier allowlist published"
           brand:
             domain: "acmeoutdoor.example"
           account:
@@ -128,6 +138,141 @@ phases:
             path: "context.correlation_id"
             value: "provenance_enforcement--get_products"
             description: "Context correlation_id returned unchanged"
+
+  - id: reject_no_provenance
+    title: "Sync with no provenance object — rejected"
+    narrative: |
+      The buyer submits a creative with no provenance object anywhere on
+      the manifest. Because the seller's creative_policy.provenance_required
+      is true, the seller MUST reject the per-creative entry with
+      PROVENANCE_REQUIRED. This is the cheapest, most likely buyer mistake:
+      the orchestrator forgot to attach provenance at all.
+
+    steps:
+      - id: sync_creatives_no_provenance
+        title: "Submit creative with no provenance object"
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
+        doc_ref: "/creative/task-reference/sync_creatives"
+        stateful: true
+        expected: |
+          The seller accepts the request envelope but rejects the per-creative
+          entry with action: failed and an error code PROVENANCE_REQUIRED.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          creatives:
+            - creative_id: "acme_no_provenance_probe_001"
+              name: "Acme no-provenance probe"
+              format_id:
+                agent_url: "https://your-platform.example.com"
+                id: "display_300x250"
+              assets:
+                headline:
+                  asset_type: "text"
+                  content: "Outdoor gear, photographed live"
+                image:
+                  asset_type: "image"
+                  url: "https://test-assets.adcontextprotocol.org/acme-outdoor/hero.jpg"
+                  width: 300
+                  height: 250
+                click_url:
+                  asset_type: "url"
+                  url: "https://acmeoutdoor.example/spring"
+          idempotency_key: "$generate:uuid_v4#provenance_enforcement_reject_no_provenance_sync"
+          context:
+            correlation_id: "provenance_enforcement--reject_no_provenance"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-creatives-response.json schema"
+          - check: field_value
+            path: "creatives[0].action"
+            value: "failed"
+            description: "Per-creative action is failed for the no-provenance submission"
+          # Per-creative error assertions read errors[0].code positionally.
+          # The handler emits errors in the cascade order documented on
+          # enforceProvenancePolicy (PROVENANCE_REQUIRED first), so [0] is
+          # stable. If a future implementation accumulates errors, the same
+          # cascade priority should drive the array order.
+          - check: field_value
+            path: "creatives[0].errors[0].code"
+            value: "PROVENANCE_REQUIRED"
+            description: "Per-creative error code is PROVENANCE_REQUIRED — provenance object absent on a creative under a policy that requires it"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "provenance_enforcement--reject_no_provenance"
+            description: "Context correlation_id returned unchanged on rejection"
+
+  - id: reject_missing_digital_source_type
+    title: "Sync with provenance but no digital_source_type — rejected"
+    narrative: |
+      The buyer's provenance object is present but omits digital_source_type.
+      The seller's creative_policy.provenance_requirements.require_digital_source_type
+      is true, so the seller MUST reject the per-creative entry with
+      PROVENANCE_DIGITAL_SOURCE_TYPE_MISSING. Distinct from PROVENANCE_REQUIRED
+      (no provenance at all) — provenance is present, just missing this field.
+
+    steps:
+      - id: sync_creatives_no_digital_source_type
+        title: "Submit creative with provenance but no digital_source_type"
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
+        doc_ref: "/creative/task-reference/sync_creatives"
+        stateful: true
+        expected: |
+          The seller accepts the request envelope but rejects the per-creative
+          entry with action: failed and an error code
+          PROVENANCE_DIGITAL_SOURCE_TYPE_MISSING.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          creatives:
+            - creative_id: "acme_no_dst_probe_001"
+              name: "Acme no-digital_source_type probe"
+              format_id:
+                agent_url: "https://your-platform.example.com"
+                id: "display_300x250"
+              assets:
+                headline:
+                  asset_type: "text"
+                  content: "Outdoor gear, photographed live"
+                image:
+                  asset_type: "image"
+                  url: "https://test-assets.adcontextprotocol.org/acme-outdoor/hero.jpg"
+                  width: 300
+                  height: 250
+                click_url:
+                  asset_type: "url"
+                  url: "https://acmeoutdoor.example/spring"
+              provenance:
+                # Provenance present, but digital_source_type intentionally absent
+                # so the require_digital_source_type policy gate fires.
+                declared_by:
+                  role: "agency"
+          idempotency_key: "$generate:uuid_v4#provenance_enforcement_reject_no_dst_sync"
+          context:
+            correlation_id: "provenance_enforcement--reject_no_digital_source_type"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-creatives-response.json schema"
+          - check: field_value
+            path: "creatives[0].action"
+            value: "failed"
+            description: "Per-creative action is failed for the no-digital_source_type submission"
+          - check: field_value
+            path: "creatives[0].errors[0].code"
+            value: "PROVENANCE_DIGITAL_SOURCE_TYPE_MISSING"
+            description: "Per-creative error code identifies the missing digital_source_type field"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "provenance_enforcement--reject_no_digital_source_type"
+            description: "Context correlation_id returned unchanged on rejection"
 
   - id: reject_off_list_verifier
     title: "Sync with off-list verify_agent — rejected"
@@ -362,9 +507,10 @@ phases:
         validations:
           - check: response_schema
             description: "Response matches sync-creatives-response.json schema"
-          - check: field_present
+          - check: field_value
             path: "creatives[0].action"
-            description: "Per-creative action is present (created or updated, not failed)"
+            allowed_values: ["created", "updated"]
+            description: "Per-creative action is created or updated — not failed. Tighter than field_present, which would silently pass on action: failed"
           - check: field_value
             path: "context.correlation_id"
             value: "provenance_enforcement--accept_with_disclosure"

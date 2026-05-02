@@ -45,17 +45,20 @@ jobs:
             # (#3081) now passes 4 steps instead of grading not_applicable.
             # 384→388 after bumping @adcp/client to 5.18.0 (#3191) and
             # implementing force_task_completion (#3194).
-            # 53→65 / 388→444 after #3777 — training-agent provenance
-            # enforcement (creative_policy round-trip on get_products,
-            # PROVENANCE_* rejection paths on sync_creatives) plus
-            # required-field backfill for fixture-seeded products lifted
-            # several previously-orphaned scenarios into the clean count.
+            # The 53/388 floors had drifted below the actual baseline
+            # (true main was 64 storyboards / 439 steps); #3777 brings
+            # the count to 65 / 446 by adding the
+            # creative_sales_agent/provenance_enforcement scenario (six
+            # phases exercising PROVENANCE_REQUIRED,
+            # PROVENANCE_DIGITAL_SOURCE_TYPE_MISSING,
+            # PROVENANCE_VERIFIER_NOT_ACCEPTED,
+            # PROVENANCE_DISCLOSURE_MISSING, and an accept path).
             # Passing-step asymmetry with framework mode is intentional:
             # the two modes declare different capabilities, so the
             # storyboard runner skips a different subset of steps in each.
             # Both modes pass every step they run.
             min_clean_storyboards: 65
-            min_passing_steps: 444
+            min_passing_steps: 446
           - mode: framework
             flag_value: '1'
             # 390→393 after bumping @adcp/client to 5.15 + seller catalog
@@ -72,11 +75,13 @@ jobs:
             # injection — the upstream fix for #940. Framework parity with
             # legacy fully restored; passing-step asymmetry remains because
             # framework declares more capabilities (more steps run, all pass).
-            # 53→65 / 401→462 after #3777 — same training-agent provenance
-            # enforcement work that lifted the legacy floors; framework
-            # picks up extra steps from the broader capability declaration.
+            # The 53/401 floors had drifted below the actual baseline
+            # (true main was 64 storyboards / 457 steps); #3777 brings the
+            # count to 65 / 464 — same six-phase provenance_enforcement
+            # scenario as legacy; framework picks up the extra steps from
+            # its broader capability declaration.
             min_clean_storyboards: 65
-            min_passing_steps: 462
+            min_passing_steps: 464
     steps:
       - uses: actions/checkout@v6
 
