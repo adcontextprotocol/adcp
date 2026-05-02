@@ -2275,17 +2275,28 @@ export async function createPromotionCode(input: CreatePromotionCodeInput): Prom
   }
 }
 
-// Stripe enforces a 40-character cap on coupon.name; longer values 400 with
-// "Invalid string … must be at most 40 characters". Build the name by
-// normalizing whitespace in the org portion and truncating it so the
-// "{orgName} - {discountDescription}" composite fits.
+// Stripe enforces a 40-character cap on coupon.name (counted in UTF-16 code
+// units). Build the name by stripping unsafe control/format chars (RTL marks,
+// ZWJ, etc.), collapsing whitespace, then walking the org name code-point by
+// code-point until adding another would push the composite over the cap —
+// avoids landing mid-surrogate on emoji/CJK names.
 const STRIPE_COUPON_NAME_MAX = 40;
 export function buildOrgCouponName(orgName: string, discountDescription: string): string {
-  const normalizedOrg = orgName.replace(/\s+/g, ' ').trim();
+  const normalizedOrg = orgName
+    .replace(/[\p{Cc}\p{Cf}]/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!normalizedOrg) {
+    return discountDescription.slice(0, STRIPE_COUPON_NAME_MAX);
+  }
   const suffix = ` - ${discountDescription}`;
-  const maxOrgLen = Math.max(0, STRIPE_COUPON_NAME_MAX - suffix.length);
-  const shortOrg = normalizedOrg.slice(0, maxOrgLen).trim();
-  return `${shortOrg}${suffix}`.slice(0, STRIPE_COUPON_NAME_MAX);
+  const orgBudget = Math.max(0, STRIPE_COUPON_NAME_MAX - suffix.length);
+  let shortOrg = '';
+  for (const ch of normalizedOrg) {
+    if (shortOrg.length + ch.length > orgBudget) break;
+    shortOrg += ch;
+  }
+  return `${shortOrg.trim()}${suffix}`;
 }
 
 /**

@@ -1063,10 +1063,35 @@ describe('stripe-client', () => {
       expect(result.endsWith(' - 25% off')).toBe(true);
     });
 
-    test('falls back to suffix-only when org name is empty', async () => {
+    test('falls back to discount description alone when org name is empty', async () => {
       const { buildOrgCouponName } = await import('../../server/src/billing/stripe-client.js');
       expect(buildOrgCouponName('', '$500.00 off'))
-        .toBe(' - $500.00 off');
+        .toBe('$500.00 off');
+    });
+
+    test('treats whitespace-only org names as empty', async () => {
+      const { buildOrgCouponName } = await import('../../server/src/billing/stripe-client.js');
+      expect(buildOrgCouponName('   \t\n', '10% off'))
+        .toBe('10% off');
+    });
+
+    test('strips bidi and zero-width format characters', async () => {
+      const { buildOrgCouponName } = await import('../../server/src/billing/stripe-client.js');
+      // U+202E (RTL override) and U+200B (zero-width space) must not survive
+      const result = buildOrgCouponName('Acme‮​ Inc', '$500.00 off');
+      expect(result).toBe('Acme Inc - $500.00 off');
+      expect(/[‪-‮​-‍]/.test(result)).toBe(false);
+    });
+
+    test('slices by code points so emoji and CJK names are not split mid-surrogate', async () => {
+      const { buildOrgCouponName } = await import('../../server/src/billing/stripe-client.js');
+      // Each "🚀" is a UTF-16 surrogate pair; a string-byte slice could halve one.
+      const orgName = '🚀'.repeat(20);
+      const result = buildOrgCouponName(orgName, '$500.00 off');
+      expect(result.length).toBeLessThanOrEqual(40);
+      // Re-encoding the result must round-trip — no lone surrogates.
+      expect(result).toBe(result.normalize('NFC'));
+      expect(result.endsWith(' - $500.00 off')).toBe(true);
     });
   });
 });

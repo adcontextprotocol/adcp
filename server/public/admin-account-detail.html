@@ -3796,14 +3796,24 @@
       // When the org has a discount on file but no Stripe coupon was created
       // (e.g., coupon-creation failed), the displayed net price won't match
       // what Stripe actually charges. Surface that mismatch up front so the
-      // admin can fix the coupon before sending.
+      // admin can fix the coupon before sending — banner shifts to a warning
+      // palette in that case so the visual matches the message.
       const discountBanner = invoiceOrgDiscount
-        ? `
-          <div style="padding: var(--space-2); margin-bottom: var(--space-3); background: var(--color-success-50, #ecfdf5); border: 1px solid var(--color-success-200, #a7f3d0); border-radius: var(--radius-md); font-size: var(--text-xs);">
-            Org discount on file: <strong>${escapeHtml(invoiceOrgDiscount.label)}</strong>${invoiceOrgDiscount.reason ? ` (${escapeHtml(invoiceOrgDiscount.reason)})` : ''}.
-            ${!invoiceOrgDiscount.has_stripe_coupon ? '<br><span style="color: var(--color-error-600);">⚠ No Stripe coupon attached — invoice will charge the sticker price unless a coupon is created first.</span>' : ''}
-          </div>
-        `
+        ? (() => {
+            const couponMissing = !invoiceOrgDiscount.has_stripe_coupon;
+            const bg = couponMissing ? 'var(--color-warning-50)' : 'var(--color-success-50)';
+            const border = couponMissing ? 'var(--color-warning-200)' : 'var(--color-success-200)';
+            const reason = invoiceOrgDiscount.reason ? ` (${escapeHtml(invoiceOrgDiscount.reason)})` : '';
+            const warning = couponMissing
+              ? '<br><span style="color: var(--color-error-600);">⚠ No Stripe coupon attached — invoice will charge the sticker price unless a coupon is created first.</span>'
+              : '';
+            return `
+              <div style="padding: var(--space-2); margin-bottom: var(--space-3); background: ${bg}; border: 1px solid ${border}; border-radius: var(--radius-md); font-size: var(--text-xs);">
+                Org discount on file: <strong>${escapeHtml(invoiceOrgDiscount.label)}</strong>${reason}.
+                ${warning}
+              </div>
+            `;
+          })()
         : '';
 
       container.innerHTML = discountBanner + products.map((product, index) => {
