@@ -105,6 +105,7 @@ export async function queueCommunityArticle(params: {
     `INSERT INTO addie_knowledge (
        title,
        category,
+       content,
        source_url,
        fetch_url,
        source_type,
@@ -115,6 +116,7 @@ export async function queueCommunityArticle(params: {
      ) VALUES (
        'Community shared article',
        'Industry News',
+       '',
        $1,
        $1,
        'community',
