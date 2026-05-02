@@ -29,10 +29,20 @@ if (!apiKey) {
 const router = new AddieRouter(apiKey);
 const client = new Anthropic({ apiKey });
 
-// Fetch Addie's real system prompt from prod
+// Fetch Addie's system prompt — by default from deployed prod, but
+// RFC_USE_LOCAL_PROMPT=1 builds it from server/src/addie/rules/ so rule
+// edits can be validated before deployment.
 let realSystemPrompt: string | null = null;
 async function getSystemPrompt(): Promise<string> {
   if (realSystemPrompt) return realSystemPrompt;
+
+  if (process.env.RFC_USE_LOCAL_PROMPT === '1') {
+    const { loadRules, loadResponseStyle } = await import('../../src/addie/rules/index.js');
+    const { ADDIE_TOOL_REFERENCE } = await import('../../src/addie/prompts.js');
+    realSystemPrompt = `${loadRules()}\n\n---\n\n${ADDIE_TOOL_REFERENCE}\n\n---\n\n${loadResponseStyle()}`;
+    console.log(`Built local system prompt from rules/ (${realSystemPrompt.length} chars)`);
+    return realSystemPrompt;
+  }
 
   if (adminApiKey) {
     try {
@@ -416,6 +426,7 @@ async function runScenario(scenario: Scenario): Promise<boolean> {
 
     const N = parseInt(process.env.RFC_RUNS ?? '1', 10);
     const passes: boolean[] = [];
+    const dimCounts = { router: 0, tools: 0, citations: 0, premise: 0 };
     let lastFailures: string[] = [];
     for (let i = 0; i < N; i++) {
       const { finalText, toolCalls, draftEmitted } = await generateRfcResponse(
@@ -430,23 +441,32 @@ async function runScenario(scenario: Scenario): Promise<boolean> {
       };
       const grade = gradeRfcRun(scenario.rfc ?? {}, obs);
       passes.push(grade.passed);
+      if (grade.routerOk) dimCounts.router++;
+      if (grade.toolCallsOk) dimCounts.tools++;
+      if (grade.citationsOk) dimCounts.citations++;
+      if (grade.premiseOk) dimCounts.premise++;
+      // One-line per-run summary so noisy dimensions are visible without
+      // dumping every run's full transcript.
+      console.log(
+        `  run ${i + 1}/${N}: router=${grade.routerOk ? '✅' : '❌'} tools=${grade.toolCallsOk ? '✅' : '❌'} citations=${grade.citationsOk ? '✅' : '❌'} premise=${grade.premiseOk ? '✅' : '❌'} draft=${draftEmitted ? 'yes' : 'no'}`,
+      );
       if (i === N - 1) {
-        // Print only the final run in detail to keep logs scannable.
+        // Print only the final run's full text to keep logs scannable.
         console.log(`${'─'.repeat(80)}`);
         console.log(`TOOL CALLS: [${toolCalls.join(', ') || '(none)'}]`);
         console.log(`DRAFT EMITTED: ${draftEmitted}`);
         console.log(`ADDIE WOULD SAY:`);
         console.log(finalText.substring(0, 800) + (finalText.length > 800 ? '\n…' : ''));
-        console.log(`${'─'.repeat(80)}`);
-        console.log(
-          `RFC GRADE (run ${i + 1}/${N}): router=${grade.routerOk ? '✅' : '❌'} tools=${grade.toolCallsOk ? '✅' : '❌'} citations=${grade.citationsOk ? '✅' : '❌'} premise=${grade.premiseOk ? '✅' : '❌'} → ${grade.passed ? '✅ PASS' : '❌ FAIL'}`,
-        );
         lastFailures = grade.failures;
       }
     }
     const passCount = passes.filter(Boolean).length;
     const majorityPassed = passCount > N / 2;
     if (N > 1) {
+      console.log(`${'─'.repeat(80)}`);
+      console.log(
+        `DIMENSIONS (${N} runs): router=${dimCounts.router}/${N} tools=${dimCounts.tools}/${N} citations=${dimCounts.citations}/${N} premise=${dimCounts.premise}/${N}`,
+      );
       console.log(
         `MAJORITY: ${passCount}/${N} pass → ${majorityPassed ? '✅ PASS' : '❌ FAIL'}`,
       );
