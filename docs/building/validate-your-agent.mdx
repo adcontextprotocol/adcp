@@ -9,6 +9,10 @@ Once your agent is running, validate it before going live. Storyboards exercise 
 
 Storyboards are available from the command line and interactively through [Addie](https://agenticadvertising.org). They are also published alongside schemas at `/compliance/{version}/` and bundled into the per-version protocol tarball at `/protocol/{version}.tgz` — see [Schemas and SDKs](/docs/building/schemas-and-sdks#one-shot-protocol-bundle) for how to fetch them offline.
 
+<Info>
+**Wrapping an upstream platform** (DSP, SSP, retail data warehouse, creative server, signal marketplace)? Storyboards check your AdCP wire contract; they cannot tell whether the adapter behind the wire actually integrates with the upstream or returns shape-valid responses with synthetic data. See [Validate adapter agents with mock upstream fixtures](/docs/building/validate-with-mock-fixtures) — published mock fixtures plus traffic counters give you façade-resistant compliance for adapters in any language.
+</Info>
+
 ## Storyboard taxonomy
 
 Storyboards are organized into three layers so agents declare only what they actually support:

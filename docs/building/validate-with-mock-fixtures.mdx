@@ -1,0 +1,138 @@
+---
+title: Validate adapter agents with mock upstream fixtures
+sidebarTitle: Mock Upstream Fixtures
+description: "Pre-staging gate for AdCP adapter agents — published mock upstreams plus traffic counters surface integration gaps before staging tests."
+"og:title": "AdCP — Validate adapter agents with mock fixtures"
+---
+
+<Note>
+**Non-normative.** This page describes a complementary harness pattern, not a compliance tier. The recipe builds on top of the storyboard runner ([Validate your agent](/docs/building/validate-your-agent)) — it does not replace storyboards or staging integration tests, and is not a certification gate. The mock-fixture conventions described here (`/_lookup/<resource>`, `/_debug/traffic`) are reference implementations in `@adcp/client`; alternative SDK implementations may diverge. Treat as harness convention, not protocol contract.
+</Note>
+
+Most AdCP agents that wrap an external platform (a DSP, SSP, retail data warehouse, creative server, signal marketplace) ship façade bugs that storyboards alone cannot detect: handlers return shape-valid AdCP responses without actually integrating with the upstream. The recipe on this page closes that gap as a **pre-staging gate** — cheap, fast, runs in CI, surfaces façades and contract drift before code reaches a staging tenant.
+
+If your agent does not wrap an upstream — for example, a pure decisioning service that owns its own data — the storyboard runner alone is sufficient. See [Validate your agent](/docs/building/validate-your-agent).
+
+## The four-step recipe
+
+```bash
+# 1. Boot a mock upstream for your specialism
+npx @adcp/client@latest mock-server sales-social --port 4250 &
+
+# 2. Run your AdCP agent, configured to use http://localhost:4250 as its upstream
+./your-agent.sh        # Python / Go / Rust / TS — language-agnostic
+
+# 3. Grade your agent against the matching storyboard
+npx @adcp/client@latest storyboard run http://localhost:3001/mcp sales_social \
+  --auth $TOKEN --json > grader.json
+
+# 4. Assert your agent actually called the upstream
+curl -s http://localhost:4250/_debug/traffic
+# {"traffic": {"POST /oauth/token": 1, "POST /event/track": 6, ...}}
+```
+
+Step 3 catches AdCP wire bugs (response shape, error codes, idempotency, missing required fields). Step 4 catches **integration gaps** — agents whose handlers return shape-valid AdCP responses without exercising the upstream's headline endpoints. Both signals matter; one without the other is incomplete.
+
+<Info>
+The mock-server CLI shown above ships in `@adcp/client` (TypeScript). If your CI runs in another language, the simplest pattern is to run the TS CLI as a sidecar (e.g. a Docker service container in GitHub Actions, or a separate Node process) — the agent under test stays in its native language, only the mock + storyboard runner are TS. A Python or Go SDK shipping its own mock-server would re-implement the conventions described below; until that lands, the TS CLI is the reference.
+</Info>
+
+## Why traffic counters
+
+Storyboards check the AdCP wire contract: did the response match the schema, did the agent advertise the right tools, did context echo. They do not assert what happened *behind* the wire. The CLAUDE.md guidance for this repo puts it directly: **storyboards are assertions, not ground truth.**
+
+Adapters that look correct under shape-only validation but skip the upstream entirely have shipped to staging more than once. Common shapes:
+
+- Handler short-circuits before the upstream call when the input doesn't match a non-spec branch (e.g. empty `members[]` on `sync_audiences` → returns shape-valid empty response, never POSTs).
+- OAuth client is wired but never invoked from any handler; tree-shaking is defeated with a `void fetchUpstreamToken;` literal.
+- Synthetic placeholder data is injected to satisfy the upstream's required-field schema, masking real-data shape mismatches.
+
+A traffic counter on the mock upstream catches the first two cases unconditionally and the third case if the storyboard exercises the relevant payload variety. Position this in your CI as a **pre-staging gate**: cheap, deterministic, complements your existing staging tests rather than replacing them.
+
+## What's available
+
+The reference TS implementation (`@adcp/client`) ships four mock-server specialisms covering distinct upstream surface shapes. These are not exhaustive — they exist to exercise representative auth/tenancy/payload patterns, and other specialisms reuse the closest match.
+
+| Specialism | Mimics | Auth | Multi-tenant scope |
+|---|---|---|---|
+| `signal-marketplace` | LiveRamp / Lotame / data marketplace | Static Bearer | Header (`X-Operator-Id`) |
+| `creative-template` | Celtra / Innovid creative-management platform | Static Bearer | Path (`/v3/workspaces/{ws}/…`) |
+| `sales-social` | TikTok / Meta-shaped social ads platform | OAuth 2.0 client_credentials with refresh | Path (`/v1.3/advertiser/{advertiser_id}/…`) |
+| `sales-guaranteed` | GAM / FreeWheel guaranteed-sales platform | Static Bearer | Header (`X-Network-Code`) |
+
+The auth shapes and tenancy patterns are realistic; the specific account-field names the adapter receives (e.g. `account.advertiser`, `account.operator`) are SDK conventions for binding AdCP requests to upstream tenants, not normative AdCP terms. See `@adcp/client` source for the canonical mapping.
+
+Each mock exposes:
+
+- **The upstream's domain endpoints** — shaped to match the real platform's public contract.
+- **`GET /_lookup/<resource>?<adcp_field>=<value>`** — runtime resolution from AdCP-side identifiers to upstream tenant IDs. *Harness convention.*
+- **`GET /_debug/traffic`** — hit counters keyed by `<METHOD> <route-template>`, no auth, harness-only. *Harness convention.* Read after the storyboard run; assert each headline route is hit at least once.
+
+OpenAPI specs for each mock ship as part of the SDK package. Reference your adapter against the spec, not against any specific seed data — seeds vary and are not part of the contract.
+
+## CI integration
+
+Reference shape for a GitHub Actions job, language-agnostic:
+
+```yaml
+jobs:
+  validate-adapter:
+    runs-on: ubuntu-latest
+    services:
+      mock-upstream:
+        image: node:20
+        ports: ['4250:4250']
+        # Use a bootstrap script that runs `npx @adcp/client@latest mock-server <specialism>`.
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./scripts/start-agent.sh &              # Your agent in your language
+      - run: ./scripts/wait-for-port.sh 3001
+      - run: |
+          npx @adcp/client@latest storyboard run http://localhost:3001/mcp <storyboard_id> \
+            --auth $TOKEN --json > grader.json
+      - run: |
+          # Assert each expected upstream route was hit at least once
+          curl -s http://localhost:4250/_debug/traffic | \
+            jq -e '.traffic["POST /oauth/token"] >= 1 and .traffic["POST /event/track"] >= 1'
+```
+
+**Threshold guidance.** The minimum useful assertion is `≥ 1` per headline route — that proves the handler reached the upstream. Stronger assertions (per-route counts, distinct-payload verification) require encoding storyboard-payload expectations and aren't worth the maintenance burden in a pre-staging gate. If your storyboard exercises 3 audience uploads, expect 3 hits to `custom_audience/upload`; if it doesn't, the storyboard's payload coverage is the lever to pull, not the gate's threshold.
+
+For agents claiming multiple specialisms, run one CI job per specialism in parallel; each gets its own mock-server port pair (agent + upstream). Jobs are independent.
+
+## Iteration loop
+
+Realistically your first run will not pass both gates. Common shapes and how to debug:
+
+- **Storyboard `passing` but traffic gate fails on N endpoints** — classic façade. The handlers for those routes either short-circuited or never got exercised by the storyboard's input.
+- **Storyboard `partial` with cascade skips** — an early step (`get_products`, `get_signals`) returned a shape-valid response missing fields that the runner extracts state from. Downstream steps skip with `unresolved context variables`. Fix the early step's response shape and most cascade skips clear.
+- **Storyboard `failing` on a single step + traffic gate clean** — usually a one-line shape bug (wrong field name, missing required field, status mismatch). The per-step `details` names the field via JSON pointer.
+- **Traffic gate empty (0 hits everywhere) + agent appears to start** — agent boot threw a recoverable error after listening on port. Check the agent's stderr.
+
+Fastest debug loop: use `npx @adcp/client@latest storyboard step <agent> <storyboard_id> <step_id>` to isolate the failing step. Skips the cascade, runs a single tool call, sub-second feedback. Don't run the full storyboard until the isolated step passes — saves minutes per iteration.
+
+## Limitations
+
+Be honest with your team about what these gates do and don't catch:
+
+### Storyboard limitations
+
+- **Storyboards under-cover payload variety.** A storyboard step may pass shape with an empty input where a real adapter never gets exercised on the variant that matters. Tracked at [adcontextprotocol/adcp#3785](https://github.com/adcontextprotocol/adcp/issues/3785).
+
+### Runner / tooling caveats
+
+- **Storyboard cascade skips silently** when an early step's response is shape-valid but missing fields the runner extracts state from. The error you see is on the *downstream* step, not the early one — investigate "skipped" steps before "failed". Tracked at [adcontextprotocol/adcp#3796](https://github.com/adcontextprotocol/adcp/issues/3796) (runner-side).
+- **Mock seed data may not match storyboard fixture inputs.** If you see 404s on `_lookup/<resource>`, the storyboard's payloads may reference IDs the mock doesn't seed. Either widen the mock's seed or seed scenario state at runtime via the [compliance test controller](/docs/building/implementation/comply-test-controller).
+
+### Traffic gate limitations
+
+- **Necessary, not sufficient.** A handler can call upstream with synthetic placeholder data and still satisfy the hit-count assertion. For agents in regulated channels (audience uploads, conversion tracking, signed requests), additional integration tests against the real upstream's payload validation are still required before production.
+- **Idempotency replay is not exercised by traffic counters.** A façade that ignores `idempotency_key` and doubles upstream writes will pass the hit-count gate. Use the storyboard's idempotency-replay scenarios + a separate counter check (same `idempotency_key` → same hit count) if your platform has at-most-once semantics.
+- **Outbound webhook delivery is not exercised by upstream traffic counters.** Traffic counters live on the upstream the agent calls *into*; agent → buyer webhook signing/delivery is graded by the storyboard runner's `--webhook-receiver` flag, separately. Both gates apply for adapters that emit webhooks.
+
+## What's next
+
+- **[Validate your agent](/docs/building/validate-your-agent)** — the broader storyboard-runner-driven validation checklist (fuzz, multi-instance, request-signing, webhook conformance).
+- **[Compliance test controller](/docs/building/implementation/comply-test-controller)** — seed scenario state at runtime when storyboards need fixtures the mock doesn't provide.
+- **[Build an agent](/docs/building/build-an-agent)** — the language-agnostic guide to building an AdCP agent.
+- **[Compliance catalog](/docs/building/compliance-catalog)** — the full taxonomy of universal / protocol / specialism storyboards.
