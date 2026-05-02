@@ -599,7 +599,6 @@ describe('billing-tools', () => {
     });
 
     test('send_invoice without a signed-in member emits tool_error and refuses', async () => {
-      const billingTools = await import('../../server/src/addie/mcp/billing-tools.js');
       // Anonymous-on-Slack: no workos_user, but slack_user is present.
       const slackOnly: MemberContext = {
         is_mapped: false,
