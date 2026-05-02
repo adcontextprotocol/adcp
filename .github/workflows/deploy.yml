@@ -106,7 +106,9 @@ jobs:
           )
           # Build curl args once. Omit the Authorization header when the secret
           # is unset so a strict-bearer-format server can't 400 us into a false
-          # deploy failure — we accept 401 as healthy anyway.
+          # deploy failure — we accept 401/403 as healthy anyway. (SDK v5 used
+          # 401 for invalid bearer; v6 uses 403. Both mean the registry resolved
+          # and the MCP route is alive, which is what this smoke is checking.)
           auth_args=()
           if [ -n "${PUBLIC_TEST_AGENT_TOKEN:-}" ]; then
             auth_args=(-H "Authorization: Bearer ${PUBLIC_TEST_AGENT_TOKEN}")
@@ -131,7 +133,7 @@ jobs:
             url="${base}${path}"
             code=$(probe "${url}")
             case "${code}" in
-              200|401)
+              200|401|403)
                 echo "✅ ${path} → ${code}"
                 continue
                 ;;
@@ -140,7 +142,7 @@ jobs:
             sleep 8
             code=$(probe "${url}")
             case "${code}" in
-              200|401)
+              200|401|403)
                 echo "✅ ${path} → ${code} (after retry)"
                 ;;
               *)
