@@ -1176,7 +1176,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'save_agent',
     description:
-      'Save an agent URL to the organization\'s context and add it to the dashboard for compliance monitoring. New agents land in the dashboard with `members_only` visibility — discoverable to fellow Professional-tier (or higher) members, but not publicly listed in the directory or brand.json. To list publicly, the caller promotes the agent via the dashboard publish flow; that flow gates on an API-access subscription tier. Optionally store credentials securely (encrypted, never shown in conversations). Three auth modes, any of which may be combined with a new or existing save: (1) static bearer/basic via `auth_token`, (2) OAuth 2.0 client credentials (RFC 6749 §4.4, machine-to-machine) via `oauth_client_credentials`. Use this when users want to connect their agent, set up compliance monitoring, save their agent for testing, or provide credentials.',
+      'Save an agent URL to the organization\'s context and add it to the dashboard for compliance monitoring. New agents land in the dashboard with `members_only` visibility — discoverable to fellow Professional-tier (or higher) members, but not publicly listed in the directory or brand.json. To list publicly, the caller promotes the agent via the dashboard publish flow; that flow gates on an API-access subscription tier. Optionally store credentials securely (encrypted, never shown in conversations). Three auth modes, any of which may be combined with a new or existing save: (1) static bearer/basic via `auth_token`, (2) OAuth 2.0 client credentials (RFC 6749 §4.4, machine-to-machine) via `oauth_client_credentials`. Use this when users want to connect their agent, set up compliance monitoring, save their agent for testing, or provide credentials. If the user mentions their MCP endpoint requires auth, lives at a non-root path (e.g. /adcp/mcp), or shows up as offline after saving, suggest setting `health_check_url` for a liveness fallback while they fix the underlying URL.',
     usage_hints: 'use for "connect my agent", "add agent for compliance monitoring", "save my agent", "remember this agent URL", "store my auth token", "configure client credentials", "save OAuth client credentials"',
     input_schema: {
       type: 'object',
@@ -1200,7 +1200,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
           required: ['token_endpoint', 'client_id', 'client_secret'],
         },
         protocol: { type: 'string', enum: ['mcp', 'a2a'], description: 'Protocol (default: mcp)' },
-        health_check_url: { type: 'string', description: 'Optional fallback liveness URL. The dashboard probe tries the protocol handshake first; if it fails and this URL is set, the probe GETs it and treats any 2xx as "online." Used by sellers whose protocol endpoint requires auth or is path-prefixed (e.g. /adcp/mcp). Liveness only — does not populate type or tools.' },
+        health_check_url: { type: 'string', description: 'Optional fallback liveness URL. The dashboard probe tries the protocol handshake first; if it fails and this URL is set, the probe GETs it and treats any 2xx as "online." Used by sellers whose protocol endpoint requires auth or is path-prefixed (e.g. /adcp/mcp). Liveness only — does not populate type or tools. Pass an empty string to clear a previously-set value.' },
       },
       required: ['agent_url'],
     },
@@ -5333,17 +5333,20 @@ export function createMemberToolHandlers(
     const authType: 'bearer' | 'basic' = rawAuthType === 'basic' ? 'basic' : 'bearer';
     const protocol = (input.protocol as 'mcp' | 'a2a') || 'mcp';
 
+    // null sentinel and explicit empty string both clear a previously-set
+    // value; a present non-empty string is validated through the same SSRF
+    // guard the OAuth token-endpoint path uses (cloud-metadata blocked
+    // always; loopback / RFC1918 blocked in production).
     let healthCheckUrl: string | undefined;
-    if (typeof input.health_check_url === 'string' && input.health_check_url.length > 0) {
-      try {
-        const parsed = new URL(input.health_check_url);
-        if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
-          return 'health_check_url must use https:// or http:// protocol.';
-        }
-        healthCheckUrl = input.health_check_url;
-      } catch {
-        return 'Invalid health_check_url format. Provide a full URL like https://your-agent.example.com/health';
+    let clearHealthCheckUrl = false;
+    if (input.health_check_url === null || input.health_check_url === '') {
+      clearHealthCheckUrl = true;
+    } else if (typeof input.health_check_url === 'string') {
+      const validated = validateExternalUrl(input.health_check_url);
+      if (!validated) {
+        return 'health_check_url is invalid or points to a blocked address. Use an https:// URL on a public host.';
       }
+      healthCheckUrl = validated;
     }
 
     // Route oauth_client_credentials through the shared parser so the Addie
@@ -5380,6 +5383,9 @@ export function createMemberToolHandlers(
               visibility: 'members_only',
               ...(healthCheckUrl ? { health_check_url: healthCheckUrl } : {}),
             });
+            await memberDb.updateProfile(profile.id, { agents });
+          } else if (clearHealthCheckUrl && (existing as any).health_check_url) {
+            delete (existing as any).health_check_url;
             await memberDb.updateProfile(profile.id, { agents });
           } else if (healthCheckUrl && (existing as any).health_check_url !== healthCheckUrl) {
             (existing as any).health_check_url = healthCheckUrl;

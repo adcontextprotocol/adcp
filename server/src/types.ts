@@ -44,6 +44,17 @@ export interface Agent {
   health_check_url?: string;
 }
 
+/**
+ * Discriminator on probe failures, set by `classifyMCPError`. The dashboard
+ * uses this to render kind-specific affordances (e.g. an "Add auth token"
+ * button for `auth_required`); humans get the prose `error` string.
+ */
+export type ProbeErrorKind =
+  | 'auth_required'
+  | 'wrong_path'
+  | 'unreachable'
+  | 'unknown';
+
 export interface AgentHealth {
   online: boolean;
   checked_at: string;
@@ -51,6 +62,9 @@ export interface AgentHealth {
   tools_count?: number;
   resources_count?: number;
   error?: string;
+  error_kind?: ProbeErrorKind;
+  /** Raw underlying error string, kept separate from the actionable hint */
+  error_detail?: string;
 }
 
 export interface AgentStats {
