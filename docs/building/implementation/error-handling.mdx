@@ -378,7 +378,7 @@ async function dispatchPermissionDenied(error) {
   // Per-agent commercial gate — terminal-pending-onboarding.
   if (error.details.scope === 'agent') {
     const { status, reason } = error.details;
-    // status: 'suspended' | 'blocked'  |  reason: 'sandbox-only'
+    // status: 'suspended' | 'blocked'  |  reason: 'sandbox_only'
     return surfaceToHuman({ code: error.code, status, reason });
   }
 
@@ -401,6 +401,8 @@ async function dispatchPermissionDenied(error) {
   }
 }
 ```
+
+The wire-level `recovery: "correctable"` value is the registered classification on `PERMISSION_DENIED` per [`error-code.json`](https://adcontextprotocol.org/schemas/v3/enums/error-code.json) `enumMetadata` and matches the dual-surface contract — SDKs MUST NOT switch the registered value based on `details.scope`. Buyer agents MUST instead branch on `details.scope` itself: when `details.scope === "agent"`, treat the rejection as terminal-pending-onboarding regardless of the wire-level `recovery` field, surface to a human, and do not auto-retry. A future major version may either split `suspended` / `blocked` / `sandbox_only` into dedicated codes (each with its own registered `recovery` classification) or extend `enumMetadata` with a conditional-recovery shape; until then, `details.scope` is the load-bearing branch.
 
 ### Request Validation
 
