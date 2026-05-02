@@ -40,6 +40,15 @@ narrative: |
   is modelled entirely at the A2A task layer; there is no interim "pending_approval" media buy
   status (that value only exists on Account.status, not MediaBuy.status).
 
+  The requires_io_approval capability is scoped to creates that reference products with
+  delivery_type: guaranteed (those in this storyboard's primary fixtures). Four of the
+  general seller scenarios included via requires_scenarios — measurement_terms_rejected,
+  pending_creatives_to_start, inventory_list_targeting, and invalid_transitions — use
+  open-ended product briefs and must complete creates synchronously, returning a media_buy_id
+  directly rather than a task envelope. This storyboard seeds non-guaranteed fixture products
+  so those four scenarios have a synchronous-create path available. A seller whose catalog
+  contains only guaranteed products will fail those four shared scenarios.
+
 agent:
   interaction_model: media_buy_seller
   capabilities:
@@ -65,6 +74,22 @@ prerequisites:
 
 fixtures:
   products:
+    # Non-guaranteed products listed first so open-brief get_products calls (used by
+    # requires_scenarios) resolve to products[0] as a non-guaranteed product, enabling
+    # synchronous creates. The four shared scenarios (measurement_terms_rejected,
+    # pending_creatives_to_start, inventory_list_targeting, invalid_transitions) capture
+    # products[0].product_id and must get a non-guaranteed ID to complete synchronously.
+    - product_id: "display_outdoor_non_guaranteed"
+      delivery_type: "non_guaranteed"
+      channels: ["display"]
+      format_ids:
+        - id: "display_300x250"
+    - product_id: "video_outdoor_non_guaranteed"
+      delivery_type: "non_guaranteed"
+      channels: ["video"]
+      format_ids:
+        - id: "video_30s"
+    # Guaranteed products used by the main storyboard phases (hardcoded in sample_requests).
     - product_id: "sports_preroll_q2_guaranteed"
       delivery_type: "guaranteed"
       channels: ["video"]
@@ -76,6 +101,16 @@ fixtures:
       format_ids:
         - id: "video_30s"
   pricing_options:
+    - product_id: "display_outdoor_non_guaranteed"
+      pricing_option_id: "cpm_display_non_guaranteed"
+      pricing_model: "cpm"
+      currency: "USD"
+      floor_price: 5.0
+    - product_id: "video_outdoor_non_guaranteed"
+      pricing_option_id: "cpm_video_non_guaranteed"
+      pricing_model: "cpm"
+      currency: "USD"
+      floor_price: 12.0
     - product_id: "sports_preroll_q2_guaranteed"
       pricing_option_id: "cpm_guaranteed_fixed"
       pricing_model: "cpm"
