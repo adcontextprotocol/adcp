@@ -1,0 +1,304 @@
+---
+title: Quickstart
+description: "Pick your path — buyers call an AdCP agent in 5 minutes, publishers and sellers stand up their own agent."
+"og:title": "AdCP — Quickstart"
+---
+
+Pick your path. Buyers call the public test agent in 5 minutes. Publishers and sellers stand up an agent buyers can call.
+
+<CardGroup cols={2}>
+  <Card title="I'm calling an agent" icon="plug">
+    Buyer side. The rest of this page walks through calling the public test agent — no signup, copy-pasteable curl.
+  </Card>
+  <Card title="I'm building an agent" icon="server" href="/dist/docs/3.0.4/building/build-an-agent">
+    Publisher or seller side. Stand up an agent buyers can call.
+  </Card>
+</CardGroup>
+
+## Setup
+
+Use the public test token to get started immediately — no signup required:
+
+```bash
+export ADCP_AUTH_TOKEN="1v8tAhASaUYYp4odoQ1PnMpdqNaMiTrCRqYo9OJp6IQ"
+export AGENT_URL="https://test-agent.adcontextprotocol.org/mcp"
+```
+
+For your own API key (org-scoped, usage tracking), create one at the [AAO dashboard](https://agenticadvertising.org/dashboard/api-keys).
+
+## 1. Discover products
+
+AdCP over MCP uses JSON-RPC 2.0. The transport is [Streamable HTTP](https://modelcontextprotocol.io/specification/2025-03-26/basic/transports#streamable-http) — responses arrive as server-sent events.
+
+```bash
+curl -X POST $AGENT_URL \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "Authorization: Bearer $ADCP_AUTH_TOKEN" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+      "name": "get_products",
+      "arguments": {
+        "brief": "Video ads for pet food brand",
+        "brand": { "domain": "premiumpetfoods.com" }
+      }
+    }
+  }'
+```
+
+**Response** (SSE envelope omitted for clarity):
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"products\":[{\"product_id\":\"pinnacle_news_video_premium\",\"name\":\"Pinnacle News Group video guaranteed\",\"channels\":[\"olv\",\"ctv\"],\"pricing_options\":[{\"pricing_option_id\":\"pinnacle_news_video_premium_pricing_0\",\"pricing_model\":\"cpm\",\"currency\":\"USD\",\"fixed_price\":15}],\"delivery_type\":\"guaranteed\"}, ...],\"sandbox\":true}"
+      }
+    ]
+  }
+}
+```
+
+**Extract the result** — the AdCP payload is JSON-encoded inside `content[0].text`:
+
+```javascript
+const response = /* parsed JSON-RPC response */;
+const payload = JSON.parse(response.result.content[0].text);
+
+console.log(payload.products[0].product_id);    // "pinnacle_news_video_premium"
+console.log(payload.products[0].channels);      // ["olv", "ctv"]
+console.log(payload.products[0].pricing_options[0].pricing_option_id); // "pinnacle_news_video_premium_pricing_0"
+console.log(payload.products[0].pricing_options[0].fixed_price);       // 15
+```
+
+## 2. Handle errors
+
+Send an invalid tool name to see what errors look like:
+
+```bash
+curl -X POST $AGENT_URL \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "Authorization: Bearer $ADCP_AUTH_TOKEN" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+      "name": "nonexistent_tool",
+      "arguments": {}
+    }
+  }'
+```
+
+**Response:**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"code\":\"INVALID_REQUEST\",\"message\":\"Unknown tool: nonexistent_tool\"}"
+      }
+    ],
+    "isError": true
+  }
+}
+```
+
+**Handle it** — check `isError`, then parse the error payload:
+
+```javascript
+const response = /* parsed JSON-RPC response */;
+
+if (response.result.isError) {
+  const err = JSON.parse(response.result.content[0].text);
+  console.log(err.code);     // "INVALID_REQUEST"
+  console.log(err.message);  // "Unknown tool: nonexistent_tool"
+}
+```
+
+Common error codes: `INVALID_REQUEST` (bad input), `RATE_LIMITED` (retry with backoff), `UNAUTHORIZED` (check credentials).
+
+## 3. Create a media buy (idempotently)
+
+Use the product IDs from step 1 to create a campaign. Every mutating request MUST carry an `idempotency_key` — a client-generated UUID v4 that makes retries safe. Send the same key with the same payload and the seller returns the original result instead of creating a duplicate buy:
+
+```bash
+export IDEMPOTENCY_KEY="$(uuidgen | tr '[:upper:]' '[:lower:]')"
+
+curl -X POST $AGENT_URL \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "Authorization: Bearer $ADCP_AUTH_TOKEN" \
+  -d "{
+    \"jsonrpc\": \"2.0\",
+    \"id\": 1,
+    \"method\": \"tools/call\",
+    \"params\": {
+      \"name\": \"create_media_buy\",
+      \"arguments\": {
+        \"idempotency_key\": \"$IDEMPOTENCY_KEY\",
+        \"account\": { \"account_id\": \"test_account\" },
+        \"brand\": { \"domain\": \"premiumpetfoods.com\" },
+        \"start_time\": \"asap\",
+        \"end_time\": \"2026-04-30T00:00:00Z\",
+        \"packages\": [{
+          \"product_id\": \"pinnacle_news_video_premium\",
+          \"budget\": 5000,
+          \"pricing_option_id\": \"pinnacle_news_video_premium_pricing_0\"
+        }]
+      }
+    }
+  }"
+```
+
+Replay the same request (same key, same payload) and the seller returns the original response with `replayed: true`. Send the same key with a different payload and you get `IDEMPOTENCY_CONFLICT`. Check a seller's window via `get_adcp_capabilities`:
+
+```json
+{ "idempotency": { "supported": true, "replay_ttl_seconds": 86400 } }
+```
+
+See the [Security guide](/dist/docs/3.0.4/building/implementation/security) for the full retry model, including `IDEMPOTENCY_CONFLICT`, `IDEMPOTENCY_EXPIRED`, and UUID v4 guidance for AdCP Verified agents.
+
+**Response** (IDs will differ on each call):
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"media_buy_id\":\"mb_f4139524\",\"status\":\"active\",\"revision\":1,\"packages\":[{\"package_id\":\"pkg_3df649f0\",\"product_id\":\"pinnacle_news_video_premium\",\"budget\":5000,\"pricing_option_id\":\"pinnacle_news_video_premium_pricing_0\"}],\"valid_actions\":[\"pause\",\"cancel\",\"update_budget\",\"update_dates\",\"update_packages\",\"add_packages\",\"sync_creatives\"],\"sandbox\":true}"
+      }
+    ]
+  }
+}
+```
+
+**Extract the result:**
+
+```javascript
+const response = /* parsed JSON-RPC response */;
+const buy = JSON.parse(response.result.content[0].text);
+
+console.log(buy.media_buy_id);     // "mb_f4139524"
+console.log(buy.status);           // "active"
+console.log(buy.packages[0].budget); // 5000
+console.log(buy.valid_actions);    // ["pause", "cancel", "update_budget", ...]
+```
+
+## 4. Push notifications (signed webhooks)
+
+Production agents send webhooks for long-running operations. AdCP 3.0 signs webhooks with the **same RFC 9421 HTTP Message Signatures profile used for agent-to-agent requests** — one verifier, one JWKS, one trust surface. No shared HMAC secrets.
+
+Point the agent at your webhook endpoint and advertise your JWKS. The agent signs each POST with a key it trusts; you fetch the agent's JWKS and verify the signature before acting on the payload:
+
+```json
+{
+  "name": "create_media_buy",
+  "arguments": {
+    "idempotency_key": "5c4c6f29-...",
+    "account": { "account_id": "your_account" },
+    "brand": { "domain": "premiumpetfoods.com" },
+    "push_notification_config": {
+      "url": "https://you.example.com/webhooks/adcp",
+      "authentication": {
+        "schemes": ["HTTP_MESSAGE_SIGNATURES"]
+      }
+    }
+  }
+}
+```
+
+When the operation completes, the agent POSTs a signed request to your URL. The payload carries its own `idempotency_key` so your receiver can dedupe retries:
+
+```json
+{
+  "task_id": "task_456",
+  "idempotency_key": "webhook_evt_8f2a...",
+  "task_type": "create_media_buy",
+  "status": "completed",
+  "timestamp": "2026-04-22T10:30:00Z",
+  "result": {
+    "media_buy_id": "mb_12345",
+    "packages": [{ "package_id": "pkg_001" }]
+  }
+}
+```
+
+Verify the signature before trusting the payload — resolve the `keyid` via the seller's `adagents.json` JWKS, run the AdCP webhook verifier checklist, and reject unknown keys, expired dates, or mismatched digests with a typed `webhook_signature_*` reason code:
+
+```typescript
+app.post('/webhooks/adcp/*', async (req, res) => {
+  try {
+    await verifyAdcpWebhookSignature(req, {
+      sellerAgentUrl: req.sellerContext.agentUrl,
+      requiredTag: 'adcp/webhook-signing/v1',
+      allowedAlgs: ['ed25519', 'ecdsa-p256-sha256'],
+    });
+  } catch (err) {
+    return res.status(401)
+      .setHeader('WWW-Authenticate', `Signature error="${err.code}"`)
+      .end();
+  }
+
+  const { idempotency_key } = req.body;
+  if (await seen(idempotency_key)) return res.status(200).end();
+  await process(req.body);
+  res.status(200).end();
+});
+```
+
+See the [Security guide](/dist/docs/3.0.4/building/implementation/security) and [Webhooks guide](/dist/docs/3.0.4/building/implementation/webhooks) for the full verification profile — required headers, covered components, nonce and date windows, and the negative-vector suite the compliance runner exercises.
+
+## Using the client library
+
+The examples above use raw HTTP for clarity. In practice, use the AdCP client library which handles SSE parsing, retries, and authentication:
+
+```bash
+npm install @adcp/client  # JavaScript/TypeScript
+pip install adcp          # Python
+```
+
+```javascript
+import { AdCPClient } from '@adcp/client';
+
+const client = new AdCPClient([{
+  id: 'test',
+  name: 'Test Agent',
+  agent_uri: 'https://test-agent.adcontextprotocol.org/mcp',
+  protocol: 'mcp',
+  auth_token: process.env.ADCP_AUTH_TOKEN,
+}]);
+
+const result = await client.agent('test').executeTask('get_products', {
+  brief: 'Video ads for pet food brand',
+  brand: { domain: 'premiumpetfoods.com' },
+});
+
+console.log(result.data.products);
+```
+
+## What's next
+
+- **[Build an Agent](/dist/docs/3.0.4/building/build-an-agent)** — use skill files to generate a storyboard-compliant agent with a coding agent
+- **[Validate Your Agent](/dist/docs/3.0.4/building/validate-your-agent)** — test your agent with storyboards and compliance checks
+- **[Compliance Catalog](/dist/docs/3.0.4/building/compliance-catalog)** — the domains and specialisms an agent can claim, and the storyboards that verify each claim
+- **[MCP integration guide](/dist/docs/3.0.4/building/integration/mcp-guide)** — transport, sessions, auth details
+- **[A2A integration guide](/dist/docs/3.0.4/building/integration/a2a-guide)** — streaming, artifacts, push notifications
+- **[Task reference](/dist/docs/3.0.4/media-buy/task-reference)** — all available tasks with testable examples
+- **[Error handling](/dist/docs/3.0.4/building/implementation/transport-errors)** — error codes, recovery strategies
+- **[Authentication](/dist/docs/3.0.4/building/integration/authentication)** — production credential setup

@@ -1,0 +1,436 @@
+---
+title: Print Ads
+description: "Print ad formats in AdCP cover newspaper, magazine, and trade publication advertising with physical dimensions, bleed, DPI, and CMYK color space requirements."
+"og:title": "AdCP — Print Ads"
+---
+
+This guide covers how AdCP represents print advertising formats for newspapers, magazines, inserts, and trade publications.
+
+## How print works in AdCP
+
+Print uses the same building blocks as every other channel:
+
+- **Collections** model publications (Vogue, Bergedorfer Zeitung, Ad Age)
+- **Installments** model issues (March 2026 issue, Issue #47)
+- **Installment deadlines** carry booking, cancellation, and material due dates
+- **Creative formats** define physical dimensions, bleed, DPI, and file requirements
+- **Placements** define positions (full page, half page, island, inside front cover)
+
+No print-specific schemas are needed. The standard product model handles print when sellers declare physical units in their formats and deadlines on their installments.
+
+## Print format characteristics
+
+Print formats differ from digital in several ways:
+
+- **Physical units** — dimensions in inches or centimeters, not pixels
+- **DPI requirements** — minimum 300 DPI for standard print, 150 DPI for newspaper
+- **Bleed** — extra image area beyond the trim that prevents white edges after cutting
+- **Color space** — CMYK for full-color print, grayscale for B&W
+- **File formats** — press-ready PDF, TIFF, or EPS instead of JPG/PNG
+
+## Standard print formats
+
+### Full page (magazine)
+
+```json
+{
+  "format_id": {
+    "agent_url": "https://ads.publisher.example.com",
+    "id": "full_page"
+  },
+  "name": "Full Page",
+  "renders": [{
+    "role": "primary",
+    "dimensions": {
+      "width": 8.375,
+      "height": 10.875,
+      "unit": "inches"
+    }
+  }],
+  "assets": [
+    {
+      "item_type": "individual",
+      "asset_id": "artwork",
+      "asset_type": "image",
+      "asset_role": "print_artwork",
+      "required": true,
+      "requirements": {
+        "min_width": 8.375,
+        "max_width": 8.375,
+        "min_height": 10.875,
+        "max_height": 10.875,
+        "unit": "inches",
+        "min_dpi": 300,
+        "bleed": { "uniform": 0.125 },
+        "color_space": "cmyk",
+        "formats": ["pdf", "tiff", "eps"]
+      },
+      "overlays": [
+        { "id": "safe_left", "description": "Left trim margin — keep headlines, logos, and CTAs inside", "bounds": { "x": 0, "y": 0, "width": 0.25, "height": 10.875, "unit": "inches" } },
+        { "id": "safe_right", "description": "Right trim margin", "bounds": { "x": 8.125, "y": 0, "width": 0.25, "height": 10.875, "unit": "inches" } },
+        { "id": "safe_top", "description": "Top trim margin", "bounds": { "x": 0, "y": 0, "width": 8.375, "height": 0.25, "unit": "inches" } },
+        { "id": "safe_bottom", "description": "Bottom trim margin", "bounds": { "x": 0, "y": 10.625, "width": 8.375, "height": 0.25, "unit": "inches" } }
+      ]
+    }
+  ]
+}
+```
+
+### Half page portrait (newspaper)
+
+```json
+{
+  "format_id": {
+    "agent_url": "https://ads.publisher.example.com",
+    "id": "half_page_portrait"
+  },
+  "name": "1/2 Seite Hochformat",
+  "renders": [{
+    "role": "primary",
+    "dimensions": {
+      "width": 130,
+      "height": 185,
+      "unit": "mm"
+    }
+  }],
+  "assets": [
+    {
+      "item_type": "individual",
+      "asset_id": "artwork",
+      "asset_type": "image",
+      "asset_role": "print_artwork",
+      "required": true,
+      "requirements": {
+        "min_width": 130,
+        "max_width": 130,
+        "min_height": 185,
+        "max_height": 185,
+        "unit": "mm",
+        "min_dpi": 150,
+        "bleed": { "uniform": 3 },
+        "color_space": "cmyk",
+        "formats": ["pdf", "tiff"]
+      }
+    }
+  ]
+}
+```
+
+### Insert/supplement
+
+Multi-page inserts use a repeatable group for pages:
+
+```json
+{
+  "format_id": {
+    "agent_url": "https://ads.publisher.example.com",
+    "id": "insert_4page"
+  },
+  "name": "4-Page Insert",
+  "renders": [{
+    "role": "primary",
+    "dimensions": {
+      "width": 8.375,
+      "height": 10.875,
+      "unit": "inches"
+    }
+  }],
+  "assets": [
+    {
+      "item_type": "repeatable_group",
+      "asset_group_id": "pages",
+      "required": true,
+      "min_count": 4,
+      "max_count": 4,
+      "selection_mode": "sequential",
+      "assets": [
+        {
+          "asset_id": "page",
+          "asset_type": "image",
+          "asset_role": "insert_page",
+          "required": true,
+          "requirements": {
+            "min_width": 8.375,
+            "max_width": 8.375,
+            "min_height": 10.875,
+            "max_height": 10.875,
+            "unit": "inches",
+            "min_dpi": 300,
+            "bleed": { "uniform": 0.125 },
+            "color_space": "cmyk",
+            "formats": ["pdf"]
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+## Publications and issues
+
+A publication maps to a [collection](/dist/docs/3.0.4/media-buy/product-discovery/collections-and-installments). Each issue maps to an installment with deadlines.
+
+### The publication (collection)
+
+```json
+{
+  "collection_id": "bergedorfer_zeitung",
+  "name": "Bergedorfer Zeitung",
+  "kind": "publication",
+  "description": "Regional daily newspaper for Hamburg-Bergedorf",
+  "genre": ["IAB12"],
+  "genre_taxonomy": "iab_content_3.0",
+  "language": "de",
+  "cadence": "daily",
+  "status": "active",
+  "deadline_policy": {
+    "booking_lead_days": 4,
+    "cancellation_lead_days": 3,
+    "material_stages": [
+      { "stage": "final", "lead_days": 2, "label": "Druckfertige PDF" }
+    ],
+    "business_days_only": true
+  }
+}
+```
+
+With `deadline_policy`, the collection declares lead-time rules once. Agents compute absolute deadlines from each installment's `scheduled_at`. A daily newspaper no longer needs to enumerate deadlines for every issue — the policy covers the common case, and individual installments can override when needed (e.g., holiday editions with earlier deadlines).
+
+### An issue (installment with deadlines)
+
+```json
+{
+  "installment_id": "2026-03-28",
+  "name": "Freitag, 28. März 2026",
+  "scheduled_at": "2026-03-28T05:00:00+01:00",
+  "status": "scheduled",
+  "deadlines": {
+    "booking_deadline": "2026-03-24T17:00:00+01:00",
+    "cancellation_deadline": "2026-03-25T12:00:00+01:00",
+    "material_deadlines": [
+      {
+        "stage": "draft",
+        "due_at": "2026-03-25T17:00:00+01:00",
+        "label": "Entwurf zur Prüfung"
+      },
+      {
+        "stage": "final",
+        "due_at": "2026-03-26T17:00:00+01:00",
+        "label": "Druckfertige PDF mit Beschnitt (3mm)"
+      }
+    ]
+  }
+}
+```
+
+For a monthly magazine with longer lead times:
+
+```json
+{
+  "installment_id": "2026-05",
+  "name": "Mai 2026",
+  "season": "2026",
+  "installment_number": "5",
+  "scheduled_at": "2026-05-01T00:00:00+02:00",
+  "status": "scheduled",
+  "deadlines": {
+    "booking_deadline": "2026-03-15T17:00:00+01:00",
+    "cancellation_deadline": "2026-03-22T17:00:00+01:00",
+    "material_deadlines": [
+      {
+        "stage": "draft",
+        "due_at": "2026-03-29T17:00:00+01:00",
+        "label": "Raw artwork for review and color proofing"
+      },
+      {
+        "stage": "final",
+        "due_at": "2026-04-05T17:00:00+02:00",
+        "label": "Press-ready PDF/X-4, CMYK, 300 DPI, 3mm bleed"
+      }
+    ]
+  }
+}
+```
+
+## Complete product example
+
+A regional newspaper selling print ad inventory across upcoming issues:
+
+```json
+{
+  "products": [
+    {
+      "product_id": "bz_display_april",
+      "name": "Bergedorfer Zeitung — Display Ads, April 2026",
+      "channels": ["print"],
+      "collections": [{
+        "publisher_domain": "bergedorfer-zeitung.de",
+        "collection_ids": ["bergedorfer_zeitung"]
+      }],
+      "publisher_properties": [{
+        "publisher_domain": "bergedorfer-zeitung.de",
+        "selection_type": "all"
+      }],
+      "installments": [
+        {
+          "installment_id": "2026-04-01",
+          "name": "Mittwoch, 1. April 2026",
+          "scheduled_at": "2026-04-01T05:00:00+02:00",
+          "status": "scheduled",
+          "deadlines": {
+            "booking_deadline": "2026-03-26T17:00:00+01:00",
+            "cancellation_deadline": "2026-03-27T12:00:00+01:00",
+            "material_deadlines": [
+              { "stage": "final", "due_at": "2026-03-28T17:00:00+01:00", "label": "Druckfertige PDF" }
+            ]
+          }
+        },
+        {
+          "installment_id": "2026-04-02",
+          "name": "Donnerstag, 2. April 2026",
+          "scheduled_at": "2026-04-02T05:00:00+02:00",
+          "status": "scheduled",
+          "deadlines": {
+            "booking_deadline": "2026-03-27T17:00:00+01:00",
+            "cancellation_deadline": "2026-03-28T12:00:00+01:00",
+            "material_deadlines": [
+              { "stage": "final", "due_at": "2026-03-29T17:00:00+01:00", "label": "Druckfertige PDF" }
+            ]
+          }
+        }
+      ],
+      "placements": [
+        { "placement_id": "full_page", "name": "Ganze Seite" },
+        { "placement_id": "half_page", "name": "1/2 Seite" },
+        { "placement_id": "quarter_page", "name": "1/4 Seite" }
+      ],
+      "format_ids": [
+        { "agent_url": "https://ads.bergedorfer-zeitung.de", "id": "full_page" },
+        { "agent_url": "https://ads.bergedorfer-zeitung.de", "id": "half_page_portrait" },
+        { "agent_url": "https://ads.bergedorfer-zeitung.de", "id": "quarter_page" }
+      ],
+      "delivery_type": "guaranteed",
+      "delivery_measurement": {
+        "provider": "IVW (Informationsgemeinschaft zur Feststellung der Verbreitung von Werbeträgern)",
+        "notes": "Verified circulation figures, updated quarterly"
+      },
+      "pricing_options": [
+        {
+          "pricing_option_id": "full_page_rate",
+          "pricing_model": "flat_rate",
+          "fixed_price": 2400,
+          "currency": "EUR"
+        },
+        {
+          "pricing_option_id": "half_page_rate",
+          "pricing_model": "flat_rate",
+          "fixed_price": 1350,
+          "currency": "EUR"
+        }
+      ]
+    }
+  ]
+}
+```
+
+## Print-specific image requirements
+
+### Physical dimensions
+
+Print formats declare dimensions in physical units (`inches` or `cm`) instead of pixels. The `unit` field on both format renders and image asset requirements controls interpretation:
+
+```json
+{
+  "dimensions": {
+    "width": 8.375,
+    "height": 10.875,
+    "unit": "inches"
+  }
+}
+```
+
+When `unit` is absent, dimensions default to pixels (backward compatible with digital formats).
+
+### Bleed
+
+Bleed is the extra image area beyond the trim size. After printing, the page is cut to the trim dimensions — bleed ensures ink coverage extends to the edge with no white border.
+
+Bleed can be specified per-side or uniformly:
+
+```json
+"bleed": { "uniform": 0.125 }
+```
+
+```json
+"bleed": { "top": 0.125, "right": 0.125, "bottom": 0.25, "left": 0.125 }
+```
+
+Values use the same unit as the parent dimensions.
+
+### Calculating total image dimensions
+
+For a full-page magazine ad at 8.375 x 10.875 inches with 0.125" uniform bleed at 300 DPI:
+
+1. **Total physical size**: (8.375 + 0.125 + 0.125) x (10.875 + 0.125 + 0.125) = 8.625 x 11.125 inches
+2. **Pixel dimensions**: 8.625 x 300 = 2588 pixels wide, 11.125 x 300 = 3338 pixels tall
+3. **Submitted image**: 2588 x 3338 px, CMYK, PDF or TIFF
+
+For a European newspaper at 130 x 185 mm with 3 mm uniform bleed at 150 DPI:
+
+1. **Total physical size**: (130 + 3 + 3) x (185 + 3 + 3) = 136 x 191 mm
+2. **Convert to inches**: 136 / 25.4 = 5.354", 191 / 25.4 = 7.520"
+3. **Pixel dimensions**: 5.354 x 150 = 803 px wide, 7.520 x 150 = 1128 px tall
+
+### DPI
+
+`min_dpi` specifies the minimum dots per inch for acceptable print quality:
+
+| Use case | Typical min_dpi |
+|----------|----------------|
+| Magazine (coated stock) | 300 |
+| Newspaper (uncoated) | 150 |
+| Large format / billboard | 72-150 |
+
+### Color space
+
+Print production requires CMYK color separation. Digital images in RGB must be converted before press. The `color_space` field declares what the publisher accepts:
+
+- `cmyk` — standard for offset and digital print
+- `rgb` — accepted when the publisher handles conversion
+- `grayscale` — for black-and-white placements
+
+### File formats
+
+| Format | Use case |
+|--------|----------|
+| `pdf` | Press-ready composite (PDF/X-4 recommended) |
+| `tiff` | Rasterized artwork, lossless |
+| `eps` | Vector artwork with embedded fonts |
+
+### Safe area (trim margins)
+
+Print production trims pages to their final size, and the cut can shift slightly. Critical content (headlines, logos, CTAs) placed too close to the trim edge risks being cut off.
+
+Publishers declare trim margins using the standard [overlay](/dist/docs/3.0.4/creative/formats#overlays) pattern — the same mechanism used for CTV player controls and DOOH bezels. Each overlay marks a zone where creative agents should avoid placing important content:
+
+```json
+"overlays": [
+  { "id": "safe_left", "description": "Left trim margin", "bounds": { "x": 0, "y": 0, "width": 6, "height": 185, "unit": "mm" } },
+  { "id": "safe_right", "bounds": { "x": 124, "y": 0, "width": 6, "height": 185, "unit": "mm" } },
+  { "id": "safe_top", "bounds": { "x": 0, "y": 0, "width": 130, "height": 6, "unit": "mm" } },
+  { "id": "safe_bottom", "bounds": { "x": 0, "y": 179, "width": 130, "height": 6, "unit": "mm" } }
+]
+```
+
+A 6mm margin is standard for European newspaper production. Overlay bounds support physical units (`mm`, `cm`, `inches`) alongside `px` and `fraction`, so publishers can express safe areas in whichever unit their prepress workflow uses.
+
+## Deadlines beyond print
+
+Installment deadlines are not print-specific. Any channel with advance material requirements uses the same pattern. See [collections and installments](/dist/docs/3.0.4/media-buy/product-discovery/collections-and-installments) for deadlines on podcasts, influencer host reads, and live events.
+
+## Related documentation
+
+- [Collections and installments](/dist/docs/3.0.4/media-buy/product-discovery/collections-and-installments) — the collection/installment model and deadlines
+- [Creative formats](/dist/docs/3.0.4/creative/formats) — format structure and asset discovery
+- [Media channel taxonomy](/dist/docs/3.0.4/reference/media-channel-taxonomy) — all 20 channels including print
