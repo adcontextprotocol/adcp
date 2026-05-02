@@ -1,0 +1,80 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.4/signals/get-signals-request.json",
+  "title": "Get Signals Request",
+  "description": "Request parameters for discovering and refining signals. Use signal_spec for natural language discovery, signal_ids for exact lookups, or both to refine previous results (signal_ids anchor the starting set, signal_spec guides adjustments).",
+  "type": "object",
+  "properties": {
+    "adcp_major_version": {
+      "type": "integer",
+      "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
+      "minimum": 1,
+      "maximum": 99
+    },
+    "account": {
+      "$ref": "/schemas/3.0.4/core/account-ref.json",
+      "description": "Account for this request. When provided, the signals agent returns per-account pricing options if configured."
+    },
+    "signal_spec": {
+      "type": "string",
+      "description": "Natural language description of the desired signals. When used alone, enables semantic discovery. When combined with signal_ids, provides context for the agent but signal_ids matches are returned first."
+    },
+    "signal_ids": {
+      "type": "array",
+      "description": "Specific signals to look up by data provider and ID. Returns exact matches from the data provider's catalog. When combined with signal_spec, these signals anchor the starting set and signal_spec guides adjustments.",
+      "items": {
+        "$ref": "/schemas/3.0.4/core/signal-id.json"
+      },
+      "minItems": 1
+    },
+    "destinations": {
+      "type": "array",
+      "description": "Filter signals to those activatable on specific agents/platforms. When omitted, returns all signals available on the current agent. If the authenticated caller matches one of these destinations, activation keys will be included in the response.",
+      "items": {
+        "$ref": "/schemas/3.0.4/core/destination.json"
+      },
+      "minItems": 1
+    },
+    "countries": {
+      "type": "array",
+      "description": "Countries where signals will be used (ISO 3166-1 alpha-2 codes). When omitted, no geographic filter is applied.",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z]{2}$"
+      },
+      "minItems": 1
+    },
+    "filters": {
+      "$ref": "/schemas/3.0.4/core/signal-filters.json"
+    },
+    "max_results": {
+      "type": "integer",
+      "description": "DEPRECATED: Use pagination.max_results instead. When both fields are present, agents MUST honor pagination.max_results. When only this field is present without a pagination envelope, agents SHOULD treat it as the page size subject to a maximum of 100 results. This field will be removed in AdCP 4.0.",
+      "deprecated": true,
+      "minimum": 1
+    },
+    "pagination": {
+      "$ref": "/schemas/3.0.4/core/pagination-request.json",
+      "description": "Pagination parameters. Use pagination.max_results (max: 100, default: 50) and pagination.cursor for cursor-based page walks. When the deprecated top-level max_results field is also present, pagination.max_results takes precedence."
+    },
+    "context": {
+      "$ref": "/schemas/3.0.4/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.4/core/ext.json"
+    }
+  },
+  "anyOf": [
+    {
+      "required": [
+        "signal_spec"
+      ]
+    },
+    {
+      "required": [
+        "signal_ids"
+      ]
+    }
+  ],
+  "additionalProperties": true
+}
