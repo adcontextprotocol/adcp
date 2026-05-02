@@ -125,14 +125,15 @@ const KNOWN_FAILING_STORYBOARDS: ReadonlyMap<string, string> = new Map([
   // Tracked upstream as adcp#3429; remove once the storyboard is migrated to
   // `envelope_field_present` AND the framework wraps capabilities responses.
   ['v3_envelope_integrity', 'adcp-client#1045 / adcp#3429 — storyboard asserts envelope status, framework capabilities tool returns unenveloped payload'],
-  // Skeleton scenario for the truth-of-claim half of provenance enforcement
-  // (PROVENANCE_CLAIM_CONTRADICTED). The training agent does not yet
-  // implement get_creative_features against accepted_verifiers, so the
-  // verifier-driven contradiction path can't run end to end. Tracked in
-  // adcp#3802; remove once the training agent ships truth-of-claim
-  // verification and the storyboard's placeholder phase is fleshed out
-  // with the full negative + positive paths.
-  ['media_buy_seller/provenance_truth_of_claim', 'adcp#3802 — training agent does not yet invoke get_creative_features against accepted_verifiers (truth-of-claim path); storyboard is a registered skeleton'],
+  // Truth-of-claim verifier code is implemented in task-handlers.ts (closes
+  // adcp#3802 at the spec/contract level), but the v6 SalesPlatform shim
+  // introduced in #3713 invokes handleSyncCreatives with `{ creatives }`
+  // only — it doesn't thread brand/account through, so session-keyed
+  // seeded creative_policy never reaches the enforcement path. Same
+  // regression affects media_buy_seller/provenance_enforcement, which
+  // worked pre-#3713. Tracked at adcp#3802; remove this skip once the
+  // v6 sync_creatives shim passes brand/account context through.
+  ['media_buy_seller/provenance_truth_of_claim', 'adcp#3802 — truth-of-claim verifier implemented in task-handlers.ts; blocked on the v6 SalesPlatform.syncCreatives shim losing brand/account context (#3713 regression — same root cause as the inline note on provenance_enforcement)'],
 ]);
 
 /**
