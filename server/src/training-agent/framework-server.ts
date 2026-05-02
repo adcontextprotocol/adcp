@@ -561,6 +561,14 @@ export function createFrameworkTrainingAgentServer(ctx: TrainingContext): AdcpSe
       // response so training-agent-specific fields (publisher portfolio,
       // compliance_testing scenarios, per-domain targeting surface) surface
       // on `get_adcp_capabilities` without needing to replace the tool.
+      //
+      // Note: `identity.brand_json_url` emit is deferred until @adcp/sdk's
+      // pinned ADCP_VERSION ('3.0.1') publishes the schema with the new
+      // `identity` field — the storyboard runner validates against that
+      // pinned schema and rejects unknown sub-fields. Re-add once the SDK
+      // version with the field lands. The brand.json + e2e fixture wiring
+      // in this PR exercises the chain in --inproc mode; production wiring
+      // is a follow-up.
       overrides: {
         media_buy: {
           portfolio: {

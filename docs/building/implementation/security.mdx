@@ -955,11 +955,123 @@ Operators SHOULD go further and serve each signing purpose from a distinct subdo
 
 **JWKS discovery for a signed request** — given a `keyid` on an incoming signature:
 
-1. The verifier has, at onboarding or via prior discovery, a mapping from the signing agent's URL to its brand.json `agents[]` entry.
+1. The verifier resolves the signing agent's URL to its brand.json `agents[]` entry. Discovery MAY come from prior onboarding, MAY come from a registry cache, but the canonical on-wire bootstrap is the `identity.brand_json_url` field on the agent's `get_adcp_capabilities` response — see [Discovering an agent's signing keys via `brand_json_url`](#discovering-an-agents-signing-keys-via-brand_json_url).
 2. Fetch the agent's `jwks_uri` (or default to `/.well-known/jwks.json` at the origin of the agent's `url`) with SSRF validation per [Webhook URL validation](#webhook-url-validation-ssrf). JWKS cache TTL bounded above by the revocation-list polling interval.
 3. If the `kid` is absent from the cached JWKS, refetch the JWKS **immediately** (step 2's first fetch may have been cached). If a refetch was already performed in the last 30 seconds for the same `jwks_uri`, the cooldown applies: the verifier MUST NOT refetch again and MUST reject with `request_signature_key_unknown`. The cooldown is between refetches, not before the first.
 
 Verifiers MUST NOT accept signatures from a `keyid` they cannot resolve to a specific `agents[]` entry — anonymous signatures provide no accountability.
+
+#### Discovering an agent's signing keys via `brand_json_url`
+
+The `identity.brand_json_url` field on `get_adcp_capabilities` (added in 3.x, see schema `static/schemas/source/protocol/get-adcp-capabilities-response.json`) is the on-wire bootstrap for the agent → operator → keys chain. The field name reflects the artifact it points at (the operator's `brand.json` file), independent of whether the operator structure is a single brand, a house with sub-brands, an agency, or a pure operator record. Given only an agent URL `A`, a verifier resolves the agent's signing keys via:
+
+1. Fetch `A`'s `get_adcp_capabilities` response with SSRF validation per [Webhook URL validation](#webhook-url-validation-ssrf) (HTTPS only — the URL `A` is supplied by the caller and MUST go through the same address-family + private-IP filtering used for webhook callbacks). On unreachable/timeout, reject with `request_signature_capabilities_unreachable`.
+2. Read `identity.brand_json_url`. If absent and the request is signed, reject with `request_signature_brand_json_url_missing`. Reject with the same code if the value is non-HTTPS (the schema enforces `^https://` but verifiers MUST restate the check; a 3.x parser tolerating a malformed value MUST NOT proceed). The required-when rule is: `identity.brand_json_url` MUST be present when the agent declares `request_signing.supported_for`/`required_for` non-empty, `webhook_signing.supported === true`, or any field under `identity.key_origins`. This is storyboard-enforced in 3.x. In 4.0 the rule becomes schema-required when the response declares `supported_versions` containing any 4.x release; cross-version verifiers (4.0 talking to a 3.x agent that does not advertise 4.x support) MUST continue to accept absent `identity.brand_json_url`.
+3. **Origin binding.** The agent URL `A`'s host eTLD+1 MUST equal the `brand_json_url`'s host eTLD+1. eTLD+1 computation MUST use a pinned, dated [Public Suffix List](https://publicsuffix.org/list/public_suffix_list.dat) snapshot (ICANN+PRIVATE sections both in scope so platforms like `vercel.app`, `pages.dev`, `github.io` are treated as suffixes); two verifiers running different PSL versions are non-conformant against each other. If eTLD+1 mismatches, fetch brand.json and check that `authorized_operators[]` lists `A`'s eTLD+1. If neither holds, reject with `request_signature_brand_origin_mismatch`. This closes the shared-tenancy spoofing vector where an attacker stands up an agent on `attacker.example/mcp` and points its `brand_json_url` at an unrelated operator's brand.json that happens to legitimately list `attacker.example/mcp` (e.g., a SaaS multi-tenant deployment).
+4. Fetch brand.json at `brand_json_url` with SSRF validation per [Webhook URL validation](#webhook-url-validation-ssrf). Verifiers MUST NOT follow redirects on this fetch (the single-redirect carve-out for `authoritative_location` documented elsewhere in this profile is scoped to that field and MUST NOT be inherited by the brand.json bootstrap). Recommended budgets: connect 5 s, total deadline 10 s, body cap 256 KiB. Cache TTL on a successful fetch MUST be bounded above by the JWKS revocation polling interval (so a key rotation cannot be masked by a stale brand.json). Negative responses (404, network failure) MUST NOT be cached for more than 60 s — operators fixing a misconfiguration must not be locked out for a full revocation cycle.
+5. Find the entry in `agents[]` whose `url` **byte-equals** `A` (no canonicalization at this step — same rule as the `iss`-to-brand.json match for governance JWS, see [Buyer identity resolution](#buyer-identity-resolution); the most common failure mode is a trailing-slash or scheme mismatch, e.g. `https://x.com/mcp` ≠ `https://x.com/mcp/`). If none matches, reject with `request_signature_agent_not_in_brand_json`. If multiple match (operator misconfig — the brand.json schema does not currently constrain `agents[]` to be unique-by-URL), reject with `request_signature_brand_json_ambiguous`.
+6. Resolve the JWKS source by **purpose AND role** (sender-vs-receiver position, not just signing purpose):
+   - **Sell-side webhook-signing only** — i.e., the seller signing an outbound webhook to the buyer about media-buy delivery: the publisher's `adagents.json signing_keys` pin (when present) is authoritative per the publisher-pin precedence rule above and overrides everything below. The pin is scoped to (agent, `webhook-signing` purpose, sell-side role) — it does NOT override operator-side webhook-signing (e.g., a buyer-hosted webhook receiving operator status callbacks).
+   - **All other (purpose, role) tuples** — request-signing (any direction), operator-side webhook-signing, governance-signing, TMP-signing: use the matched `agents[]` entry's `jwks_uri`, defaulting to `/.well-known/jwks.json` at the origin of `A` when absent.
+7. **`identity.key_origins` consistency check (mandatory when signing).** For every `purpose` declared under `identity.key_origins` on the capabilities response **whose JWKS source in step 6 was the operator brand.json** (i.e., not a publisher `adagents.json signing_keys` pin), the host of the resolved `jwks_uri` MUST equal the declared origin for that purpose. Mismatch on any purpose → reject with `request_signature_key_origin_mismatch` carrying `{ purpose, expected_origin, actual_origin }`. Skip the check **only** for the specific (agent, purpose, role) tuple whose source was a publisher pin — operator-side use of the same purpose is still checked. If the agent declares signing without a corresponding `identity.key_origins.{purpose}` entry, reject with `request_signature_key_origin_missing` carrying `{ purpose, posture }`.
+8. Fetch JWKS, find the `kid`, verify per the existing RFC 9421 profile (steps 7+ of the [verifier checklist](#verifier-checklist-requests)).
+
+**Trust roots.** brand.json is operator-attested ("this agent is mine, here are its keys"). `adagents.json` is publisher-attested ("this agent may sell my inventory; optionally, here is its pinned `signing_keys`"). For sell-side webhook signatures, the publisher pin is authoritative (publisher > operator). For request signatures and operator-side webhook signatures, the operator brand.json `jwks_uri` is authoritative. The agent never self-attests its own keys — a `jwks_uri` field is deliberately NOT carried on the capabilities response; the operator publishes the keys out-of-band via brand.json.
+
+**`sponsored_intelligence.brand_url` is distinct.** SI agents may carry a `brand_url` field under `sponsored_intelligence` for rendering purposes (colors, fonts, logos, tone) — the field is named `brand_url` because, in the SI context, it really is "the brand being advertised." That field is a rendering pointer, not a trust-root pointer; an SI agent MAY set its `sponsored_intelligence.brand_url` to a different URL than its `identity.brand_json_url` (e.g., a sub-brand brand.json for rendering while still trusting the operator's brand.json for keys). **Verifiers MUST use `identity.brand_json_url` for key discovery; `sponsored_intelligence.brand_url` MUST NOT be used as a trust-root pointer even when `identity.brand_json_url` is absent.** A verifier consuming SI rendering metadata MAY read `sponsored_intelligence.brand_url`; the same verifier MUST switch to `identity.brand_json_url` for any signature-verification flow. The naming distinction is deliberate: `brand_url` for "the brand being advertised" contexts; `brand_json_url` for "the operator master record" contexts.
+
+**Rejection codes for this discovery chain (3.x).** Detail fields sourced from a counterparty document (`brand_json_url`, `matched_entries[]`) MUST be HTML-escaped before rendering in admin UIs that display verifier errors — they are attacker-influenceable strings, even though the structured shape is verifier-controlled.
+
+| Code | When | Detail fields | Remediation |
+|------|------|---------------|-------------|
+| `request_signature_brand_json_url_missing` | Capabilities did not carry `identity.brand_json_url` and a signed request was received, or carried a non-HTTPS value | `agent_url` | Operator: set `identity.brand_json_url` to the HTTPS URL of your operator brand.json (typically `https://{your-domain}/.well-known/brand.json`). Verifier: surface to operations; do not retry. |
+| `request_signature_capabilities_unreachable` | Capabilities fetch failed (DNS, TCP, TLS, timeout, non-2xx) | `agent_url`, `http_status`, `dns_error`, `last_attempt_at` | Verifier MAY retry once after a 1–5 s jittered backoff, then give up; do not negative-cache for more than 60 s. Surface as transient. |
+| `request_signature_brand_json_unreachable` | brand.json fetch failed (same conditions) | `brand_json_url`, `http_status`, `dns_error`, `last_attempt_at` | Same retry/cache discipline as `_capabilities_unreachable`. |
+| `request_signature_brand_json_malformed` | brand.json failed strict-parse (duplicate keys, body cap exceeded, or non-JSON content) | `brand_json_url`, `parse_error` | Operator: serve a strict-JSON brand.json with no duplicate object keys and within the 256 KiB body cap. Verifier: do not retry; surface to operations. |
+| `request_signature_brand_origin_mismatch` | Agent eTLD+1 ≠ `brand_json_url` eTLD+1 and `authorized_operators[]` does not delegate | `agent_url`, `agent_etld1`, `brand_json_url_etld1` | Operator: either move agent to brand eTLD+1, or add agent eTLD+1 to brand.json `authorized_operators[]`. Not retryable. |
+| `request_signature_agent_not_in_brand_json` | Agent URL not byte-equal to any `agents[].url` of resolved brand.json | `agent_url`, `brand_json_url` | Operator: add agent URL byte-equal to `agents[].url`. Common cause: trailing slash, scheme mismatch, IDN/punycode normalization. Not retryable. |
+| `request_signature_brand_json_ambiguous` | Multiple `agents[]` entries match the agent URL | `agent_url`, `brand_json_url`, `matched_count`, `matched_entries[]` | Operator: dedupe `agents[]` entries by URL. Not retryable. |
+| `request_signature_key_origin_mismatch` | Resolved `jwks_uri` host ≠ declared `identity.key_origins.{purpose}` | `purpose`, `expected_origin`, `actual_origin` | Operator: align `identity.key_origins.{purpose}` with the host of the resolved `jwks_uri`. Not retryable. |
+| `request_signature_key_origin_missing` | Signing posture declared but `identity.key_origins.{purpose}` absent | `purpose`, `posture` | Operator: add `identity.key_origins.{purpose}` declaration to capabilities. Not retryable. |
+
+<Info>
+**Adopting `brand_json_url` while pinned to AdCP 3.0.** The field lands in 3.x's next minor as a strictly-additive schema change; AdCP doesn't ship new fields in patch releases (3.0.x), so a formal backport isn't on the table. But you don't have to wait for the version bump to start using it. The wire shape is forward-compatible:
+
+- A 3.0-conformant **seller** MAY populate `identity.brand_json_url` on its `get_adcp_capabilities` response today. A 3.0 verifier ignoring the field continues to work; a 3.x verifier picks it up automatically. No coordination, no version bump.
+- A 3.0-conformant **verifier** MAY read the field opportunistically (via `caps.identity?.brand_json_url`) and run the 8-step chain when present, falling back to your existing out-of-band agent → operator mapping when absent. The chain itself is just HTTPS fetches and JSON parsing — nothing in it requires a 3.x SDK.
+
+This is the recommended path for sellers like [Scope3](https://github.com/scope3) building signature verification today: ship the field on your capabilities response, document the chain for your counterparties, and let the 3.x rollout happen passively.
+</Info>
+
+##### Quickstart: implement a `brand_json_url`-based verifier
+
+Mirrors the [request-signing quickstart](#quickstart-opt-into-request-signing-in-30) above. Run-once-per-agent — the resulting `agents[]` entry, `jwks_uri`, and JWKS are cached per the TTL rules in step 4.
+
+1. **Fetch capabilities** for the signing agent's URL `A`. This is a **protocol-level** call — invoke `get_adcp_capabilities` via the agent's declared transport (MCP `tools/call` or A2A skill invocation), not a raw HTTP `GET` against `A`. The agent URL is the protocol endpoint, not a JSON capabilities document. Use SSRF-safe transport per [Webhook URL validation](#webhook-url-validation-ssrf): HTTPS only, address-family + private-IP filtering, no redirects, with budgets `{ connect: 5000, total: 10000, body: MAX_CAPABILITIES_BYTES, maxRedirects: 0 }`.
+2. **Read `identity.brand_json_url`.** Reject `request_signature_brand_json_url_missing` if absent (and the request is signed) or non-HTTPS.
+3. **eTLD+1 origin binding.** Compute `eTLD+1(A)` and `eTLD+1(brand_json_url)` using a pinned PSL snapshot. Use [`tldts`](https://www.npmjs.com/package/tldts) (TS), [`publicsuffixlist`](https://pypi.org/project/publicsuffixlist/) (Python), or [`golang.org/x/net/publicsuffix`](https://pkg.go.dev/golang.org/x/net/publicsuffix) (Go) with a vendored, dated snapshot. Do NOT fetch the PSL at runtime — a runtime fetch creates a denial-of-service oracle and a non-deterministic eTLD+1 across deployments. If they match, proceed. Otherwise fetch `brand.json` and check `authorized_operators[]` — if `eTLD+1(A)` is delegated, proceed. Else reject `request_signature_brand_origin_mismatch`. Origin comparisons throughout this algorithm MUST canonicalize both sides: ASCII-lowercase the host, then convert to IDNA-2008 A-label form (Punycode) before byte-equality. A non-canonical comparison (e.g., raw `Example.COM` vs `example.com`, or U-label vs A-label) silently rejects legitimate traffic.
+4. **Fetch `brand.json`** with the same SSRF rules + no redirects, body cap `MAX_BRAND_JSON_BYTES`, connect 5 s, total 10 s. Parse with a strict JSON parser that rejects duplicate keys (e.g., [`secure-json-parse`](https://www.npmjs.com/package/secure-json-parse) in TS, the stdlib `json.JSONDecoder` in Python with an `object_pairs_hook` that raises on duplicates, [`encoding/json`](https://pkg.go.dev/encoding/json) `Decoder.DisallowUnknownFields` paired with a duplicate-key check in Go) — duplicate keys are the parser-differential vector that step 14 closes on the request surface, and the same trust-root document MUST NOT parse to two different shapes across verifiers. On duplicate-key detection, reject `request_signature_brand_json_malformed`. Cache successful responses up to (but no longer than) the JWKS revocation polling interval; cache failures for at most 60 s.
+5. **Find the `agents[]` entry** whose `url` byte-equals `A` (no canonicalization). Reject `request_signature_agent_not_in_brand_json` on miss; `request_signature_brand_json_ambiguous` on multiple matches.
+6. **Resolve `jwks_uri`** from the matched entry — for sell-side webhook-signing only, prefer the publisher's `adagents.json signing_keys` pin (when present) over the operator's `jwks_uri`. For all other (purpose, role) tuples, use the matched entry's `jwks_uri` (default: `/.well-known/jwks.json` at the origin of `A`).
+7. **Consistency check.** For every purpose declared under capabilities `identity.key_origins`, apply `canonicalizeOrigin()` (ASCII-lowercase + IDNA-2008 A-label) to both the resolved `jwks_uri` host and the declared origin, then byte-compare (skip only the specific (agent, purpose, role) tuple sourced from a publisher pin). Reject `request_signature_key_origin_mismatch` / `_missing` as appropriate.
+8. **Hand off to step 8+ of the [verifier checklist](#verifier-checklist-requests)** — fetch the JWKS (with the same byte budget `MAX_JWKS_BYTES` and 5/10 s connect/total deadlines), find the `kid` (already resolved here in step 7's preamble — the verifier checklist's step 7 is the discovery preamble itself), verify per RFC 9421.
+
+Pseudocode (TypeScript-flavored; SDK helpers below collapse this to a single call):
+
+```ts
+const MAX_CAPABILITIES_BYTES = 65_536;
+const MAX_BRAND_JSON_BYTES   = 262_144;
+const MAX_JWKS_BYTES         = 65_536;
+const FETCH_BUDGETS          = { connect: 5_000, total: 10_000, maxRedirects: 0 };
+
+function canonicalizeOrigin(hostOrUrl: string): string {
+  const host = hostOrUrl.includes('://') ? new URL(hostOrUrl).hostname : hostOrUrl;
+  return toAsciiIdna2008(host.toLowerCase());                                 // A-label form
+}
+
+async function resolveAgent(agentUrl: string): Promise<AgentResolution> {
+  const caps = await getAdcpCapabilities(agentUrl, {                          // step 1: protocol-level call
+    ...FETCH_BUDGETS, body: MAX_CAPABILITIES_BYTES, ssrf: true,
+  });
+  const brandJsonUrl = caps.identity?.brand_json_url;
+  if (!brandJsonUrl?.startsWith('https://')) throw new Err('brand_json_url_missing');  // step 2
+  const agentEtld1 = etldPlusOne(new URL(agentUrl).hostname, PINNED_PSL_SNAPSHOT);     // step 3
+  const brandEtld1 = etldPlusOne(new URL(brandJsonUrl).hostname, PINNED_PSL_SNAPSHOT);
+  const brandJson = await safeFetch(brandJsonUrl, {                            // step 4
+    ...FETCH_BUDGETS, body: MAX_BRAND_JSON_BYTES, ssrf: true, parse: 'strict-json',
+  });
+  if (agentEtld1 !== brandEtld1
+      && !brandJson.authorized_operators?.some(o => o.domain === agentEtld1)) {
+    throw new Err('brand_origin_mismatch');
+  }
+  const entries = brandJson.agents.filter(e => e.url === agentUrl);            // step 5 (byte-equal)
+  if (entries.length === 0) throw new Err('agent_not_in_brand_json');
+  if (entries.length > 1) throw new Err('brand_json_ambiguous');
+  const entry = entries[0];
+  const jwksUri = entry.jwks_uri ?? `${origin(agentUrl)}/.well-known/jwks.json`;  // step 6
+  for (const [purpose, declared] of Object.entries(caps.identity?.key_origins ?? {})) { // step 7
+    if (canonicalizeOrigin(jwksUri) !== canonicalizeOrigin(declared)) {
+      throw new Err('key_origin_mismatch', { purpose });
+    }
+  }
+  const jwks = await safeFetch(jwksUri, {                                      // step 8 setup
+    ...FETCH_BUDGETS, body: MAX_JWKS_BYTES, ssrf: true, parse: 'strict-json',
+  });
+  return { agentUrl, brandJsonUrl, agentEntry: entry, jwksUri, jwks, /* trace, freshness */ };
+}
+```
+
+Validate end-to-end against the brand-discovery test vectors at [`/compliance/latest/test-vectors/brand-discovery/`](https://adcontextprotocol.org/compliance/latest/test-vectors/brand-discovery/) once published; until then, the storyboard at `/compliance/latest/universal/capabilities-brand-url-discovery/` exercises the verifier algorithm against fixture brand.json + JWKS and asserts the right `request_signature_*` codes for each error path.
+
+##### Reference implementations
+
+The 8-step algorithm ships in three SDKs — pick the one matching your runtime. All three return the same logical record: the agent URL, the resolved brand.json URL, the matched `agents[]` entry, the JWKS URI, the JWKS itself, the `identity_posture` block from the capabilities response, an `consistency` flag from the step-7 `key_origins` check, a `freshness` timestamp set, and a per-step `trace`.
+
+- **TypeScript** ([`@adcp/client`](https://github.com/adcontextprotocol/adcp-client)): `resolveAgent(url)` returns `{ agentUrl, brandJsonUrl, agentEntry, jwksUri, jwks, identityPosture, consistency, freshness, trace }`. `getAgentJwks(url)` is the JWKS-only fast path. `createAgentJwksSet(url, opts)` returns a `JWTVerifyGetKey` for handing to `jose`'s `jwtVerify`.
+- **Python** ([`adcp`](https://github.com/adcontextprotocol/adcp-client-python)): `resolve_agent(url)` returns an `AgentResolution` dataclass with fields `agent_url`, `brand_json_url`, `agent_entry`, `jwks_uri`, `jwks`, `identity_posture`, `consistency`, `freshness`, `trace`. `verify_request_signature(request, *, agent_url, allowed_algs)` is the one-shot helper that runs the discovery chain and the [verifier checklist](#verifier-checklist-requests) in one call.
+- **Go** ([`adcp-go`](https://github.com/adcontextprotocol/adcp-go)): `ResolveAgent(ctx, agentURL) (*AgentResolution, error)` returns a struct with fields `AgentURL`, `BrandJSONURL`, `AgentEntry`, `JWKSUri`, `JWKS`, `IdentityPosture`, `Consistency`, `Freshness`, `Trace`. `VerifyRequestSignature(ctx, req, opts) (*VerifiedIdentity, error)` mirrors the TS/Python one-shot.
+
+Each SDK ships a CLI for dev-loop debugging — `npx @adcp/client resolve <url>`, `adcp resolve <url>` (also `python -m adcp resolve <url>`), `adcp resolve <url>` (Go binary, same name as the Python one — disambiguate by `$PATH` or vendor) — printing the trace with per-step `fetched_at`/`age_seconds`/`ok` so an operator triaging a `request_signature_brand_*` failure can see exactly which step rejected and why. Both the Python (`[project.scripts]` console_scripts entry) and Go (binary `adcp`, distinct from the Go module path `github.com/adcontextprotocol/adcp-go`) toolchains install a top-level `adcp` command so a single muscle-memory invocation works across runtimes.
 
 #### Agent identity
 
@@ -987,7 +1099,7 @@ Otherwise, verifiers MUST apply these 15 checks (14 numbered steps plus sub-step
 4. Reject if `alg` is not in the allowlist (`ed25519`, `ecdsa-p256-sha256`). Library defaults MUST NOT be relied upon (`request_signature_alg_not_allowed`).
 5. Reject if `expires ≤ created`, `created > now + 60 s`, `expires < now − 60 s`, or `expires − created > 300 s` (`request_signature_window_invalid`).
 6. Reject (`request_signature_components_incomplete`) if covered components do not include all of: `@method`, `@target-uri`, `@authority`. If a body is present, reject if `content-type` is not covered. If the verifier's `covers_content_digest` capability is `"required"`, reject if `content-digest` is not covered. If the verifier's `covers_content_digest` capability is `"forbidden"` and `content-digest` IS covered, reject with `request_signature_components_unexpected`.
-7. Resolve `keyid` to a JWK via [Agent key publication](#agent-key-publication). On `kid` miss, refetch once (subject to the 30-second cooldown between refetches) before rejecting with `request_signature_key_unknown`. Reject if `keyid` cannot be resolved to a specific `agents[]` entry.
+7. Resolve `keyid` to a JWK via [Agent key publication](#agent-key-publication). If the verifier has no cached agent → JWKS mapping for the signing agent, run [Discovering an agent's signing keys via `brand_json_url`](#discovering-an-agents-signing-keys-via-brand_json_url) before this step — its 8-step preamble (capabilities → `identity.brand_json_url` → brand.json → agents[] → jwks_uri) is a precondition for `keyid` resolution and short-circuits with the `request_signature_brand_*` and `request_signature_key_origin_*` codes from that section. On `kid` miss within an established mapping, refetch once (subject to the 30-second cooldown between refetches) before rejecting with `request_signature_key_unknown`. Reject if `keyid` cannot be resolved to a specific `agents[]` entry.
 8. Verify the JWK's `use` is `"sig"`, `key_ops` includes `"verify"`, and `adcp_use` equals `"request-signing"`. Reject (`request_signature_key_purpose_invalid`) on any mismatch — including absent `adcp_use`, which MUST be treated as non-conforming.
 9. Check the [Transport revocation](#transport-revocation) list. Reject if `keyid` ∈ `revoked_kids` (`request_signature_key_revoked`). Reject with `request_signature_revocation_stale` if the verifier has not refreshed the revocation list within grace.
 
