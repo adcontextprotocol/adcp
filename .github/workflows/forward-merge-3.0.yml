@@ -236,6 +236,15 @@ jobs:
             echo "skip=true" >> "$GITHUB_OUTPUT"
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
+            # Push the branch to origin BEFORE peter-evans runs.
+            # peter-evans/create-pull-request@v8 internally runs
+            # `git reset --hard origin/forward-merge/3.0.x` as part of
+            # its branch-update flow and fails with "ambiguous argument"
+            # when the remote ref doesn't exist yet (first run, or after
+            # `delete-branch: false` left no remote ref). Pushing here
+            # establishes the remote-tracking branch so peter-evans's
+            # reset has something to point at.
+            git push --force origin "HEAD:refs/heads/forward-merge/3.0.x"
           fi
 
       - name: Create or update pull request
