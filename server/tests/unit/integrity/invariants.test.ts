@@ -356,9 +356,12 @@ describe('stripe-sub-reflected-in-org-row', () => {
     id: string;
     status: 'active' | 'trialing' | 'past_due' | 'canceled' | 'incomplete';
     customer: string;
-    lookup_key: string;
+    lookup_key: string | null;
     unit_amount: number;
+    product: string | { id: string; metadata?: Record<string, string> };
   }> = {}) {
+    const lookupKey = 'lookup_key' in overrides ? overrides.lookup_key : 'aao_membership_professional_250';
+    const product = 'product' in overrides ? overrides.product : 'prod_default';
     return {
       id: overrides.id ?? 'sub_1',
       status: overrides.status ?? 'active',
@@ -366,8 +369,9 @@ describe('stripe-sub-reflected-in-org-row', () => {
       items: {
         data: [{
           price: {
-            lookup_key: overrides.lookup_key ?? 'aao_membership_professional_250',
+            lookup_key: lookupKey,
             unit_amount: overrides.unit_amount ?? 25000,
+            product,
           },
         }],
       },
@@ -479,9 +483,14 @@ describe('stripe-sub-reflected-in-org-row', () => {
     expect(result.violations).toEqual([]);
   });
 
-  it('skips subs with no lookup_key (probably misconfigured)', async () => {
-    const sub = membershipSub();
-    (sub.items.data[0].price as { lookup_key: string | null }).lookup_key = null;
+  it('skips subs with no lookup_key AND no membership product metadata', async () => {
+    // Truly non-membership subs (event tickets, one-offs) shouldn't be in scope.
+    // Confirms the metadata fallback doesn't accidentally widen the filter to
+    // every sub on the AAO Stripe account.
+    const sub = membershipSub({
+      lookup_key: null,
+      product: { id: 'prod_event', metadata: { category: 'event' } },
+    });
     mockSubsListWith([sub]);
     mockPoolQuery.mockResolvedValue({ rows: [] });
 
@@ -489,6 +498,32 @@ describe('stripe-sub-reflected-in-org-row', () => {
 
     expect(result.checked).toBe(0);
     expect(result.violations).toEqual([]);
+  });
+
+  it('flags Bidcliq-shape: founding sub with no lookup_key but membership product metadata, customer not linked to any AAO org', async () => {
+    // Bidcliq / Equativ (May 2026): founding-era Stripe subs whose price
+    // lacks the aao_membership_ lookup_key convention. The product carries
+    // category=membership metadata. Pre-fix this filter excluded them; the
+    // orphan-customer detection downstream never saw them, so admins had no
+    // signal that paying customers weren't linked to AAO orgs.
+    const sub = membershipSub({
+      id: 'sub_bidcliq',
+      customer: 'cus_bidcliq',
+      lookup_key: null,
+      unit_amount: 250000,
+      product: { id: 'prod_founding_smb', metadata: { category: 'membership' } },
+    });
+    mockSubsListWith([sub]);
+    mockPoolQuery.mockResolvedValueOnce({ rows: [] }); // no AAO org linked to cus_bidcliq
+
+    const result = await stripeSubReflectedInOrgRowInvariant.check(makeCtx());
+
+    expect(result.checked).toBe(1);
+    expect(result.violations).toHaveLength(1);
+    expect(result.violations[0].severity).toBe('warning');
+    expect(result.violations[0].subject_type).toBe('customer');
+    expect(result.violations[0].subject_id).toBe('cus_bidcliq');
+    expect(result.violations[0].message).toContain('not linked to any AAO organization');
   });
 
   it('does not flag a row with subscription_status="past_due" — dunning still grants entitlement', async () => {

@@ -32,7 +32,7 @@
  */
 import type Stripe from 'stripe';
 import type { Invariant, InvariantContext, InvariantResult, Violation } from '../types.js';
-import { isMembershipLookupKey } from '../../../billing/membership-prices.js';
+import { isMembershipSub } from '../../../billing/membership-prices.js';
 
 /**
  * Stripe statuses that grant entitlement at AAO. Mirrors the gate logic
@@ -96,11 +96,21 @@ export const stripeSubReflectedInOrgRowInvariant: Invariant = {
     // Two list calls, server-side filtered, regardless of customer count.
     // Cheaper than walking customers (2N+ calls) and bounded by the count of
     // live entitling subs, which is small at AAO scale.
+    //
+    // Expand the price's product so `isMembershipSub` can fall back to
+    // `metadata.category='membership'` for founding-era prices that lack
+    // the `aao_membership_*` lookup_key convention. Without expansion those
+    // legacy subs (Adzymic, Advertible, Bidcliq, Equativ — May 2026)
+    // slipped through this filter and were invisible to the orphan-customer
+    // detection downstream.
     const memberSubs: Stripe.Subscription[] = [];
     for (const status of ['active', 'trialing'] as const) {
-      for await (const sub of stripe.subscriptions.list({ status, limit: 100 })) {
-        const { lookup_key } = priceFieldsOf(sub);
-        if (!isMembershipLookupKey(lookup_key)) continue;
+      for await (const sub of stripe.subscriptions.list({
+        status,
+        limit: 100,
+        expand: ['data.items.data.price.product'],
+      })) {
+        if (!isMembershipSub(sub)) continue;
         memberSubs.push(sub);
       }
     }

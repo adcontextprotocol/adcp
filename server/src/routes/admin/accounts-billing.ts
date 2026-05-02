@@ -13,7 +13,11 @@ import Stripe from "stripe";
 import { getPool } from "../../db/client.js";
 import { createLogger } from "../../logger.js";
 import { requireAuth, requireAdmin } from "../../middleware/auth.js";
-import { OrganizationDatabase, TIER_PRESERVING_STATUSES } from "../../db/organization-db.js";
+import {
+  OrganizationDatabase,
+  TIER_PRESERVING_STATUSES,
+  buildSubscriptionUpdate,
+} from "../../db/organization-db.js";
 import { stripe } from "../../billing/stripe-client.js";
 import { pickMembershipSub } from "../../billing/membership-prices.js";
 
@@ -57,8 +61,12 @@ export function setupAccountsBillingRoutes(
           revenue_events_synced?: number;
         } = { success: false };
 
-        const orgResult = await pool.query(
-          "SELECT workos_organization_id, stripe_customer_id FROM organizations WHERE workos_organization_id = $1",
+        const orgResult = await pool.query<{
+          workos_organization_id: string;
+          stripe_customer_id: string | null;
+          is_personal: boolean;
+        }>(
+          "SELECT workos_organization_id, stripe_customer_id, is_personal FROM organizations WHERE workos_organization_id = $1",
           [orgId]
         );
 
@@ -126,10 +134,13 @@ export function setupAccountsBillingRoutes(
         if (org.stripe_customer_id) {
           if (stripe) {
             try {
+              // Expand the price's product so isMembershipSub can fall back
+              // to product metadata (`category=membership`) for founding-era
+              // prices that lack the aao_membership_ lookup_key convention.
               const customer = await stripe.customers.retrieve(
                 org.stripe_customer_id,
                 {
-                  expand: ["subscriptions"],
+                  expand: ["subscriptions.data.items.data.price.product"],
                 }
               );
 
@@ -153,29 +164,46 @@ export function setupAccountsBillingRoutes(
                   : null;
 
                 if (subscription) {
-                  const priceData = subscription.items.data[0]?.price;
+                  // Use the canonical writer so /sync, the webhook handler,
+                  // and lazy-reconcile all produce identical row state. The
+                  // prior inline UPDATE wrote only 6 fields, leaving
+                  // stripe_subscription_id / lookup_key / product / tier
+                  // NULL — which is how Adzymic ended up with status=active
+                  // but unresolvable tier (May 2026 incident).
+                  const payload = buildSubscriptionUpdate(
+                    subscription as Parameters<typeof buildSubscriptionUpdate>[0],
+                    org.is_personal,
+                  );
 
                   await pool.query(
                     `UPDATE organizations
                      SET subscription_status = $1,
-                         subscription_amount = $2,
-                         subscription_interval = $3,
-                         subscription_currency = $4,
-                         subscription_current_period_end = $5,
-                         subscription_canceled_at = $6,
+                         stripe_subscription_id = $2,
+                         subscription_current_period_end = $3,
+                         subscription_amount = $4,
+                         subscription_currency = $5,
+                         subscription_interval = $6,
+                         subscription_canceled_at = $7,
+                         subscription_product_id = $8,
+                         subscription_product_name = $9,
+                         subscription_price_id = $10,
+                         subscription_price_lookup_key = $11,
+                         membership_tier = $12,
                          updated_at = NOW()
-                     WHERE workos_organization_id = $7`,
+                     WHERE workos_organization_id = $13`,
                     [
-                      subscription.status,
-                      priceData?.unit_amount || null,
-                      priceData?.recurring?.interval || null,
-                      priceData?.currency || "usd",
-                      subscription.current_period_end
-                        ? new Date(subscription.current_period_end * 1000)
-                        : null,
-                      subscription.canceled_at
-                        ? new Date(subscription.canceled_at * 1000)
-                        : null,
+                      payload.subscription_status,
+                      payload.stripe_subscription_id,
+                      payload.subscription_current_period_end,
+                      payload.subscription_amount,
+                      payload.subscription_currency,
+                      payload.subscription_interval,
+                      payload.subscription_canceled_at,
+                      payload.subscription_product_id,
+                      payload.subscription_product_name,
+                      payload.subscription_price_id,
+                      payload.subscription_price_lookup_key,
+                      payload.membership_tier,
                       orgId,
                     ]
                   );
@@ -183,9 +211,9 @@ export function setupAccountsBillingRoutes(
                   syncResults.stripe = {
                     success: true,
                     subscription: {
-                      status: subscription.status,
-                      amount: priceData?.unit_amount ?? null,
-                      interval: priceData?.recurring?.interval ?? null,
+                      status: payload.subscription_status,
+                      amount: payload.subscription_amount,
+                      interval: payload.subscription_interval,
                       current_period_end: subscription.current_period_end ?? null,
                       canceled_at: subscription.canceled_at ?? null,
                     },
