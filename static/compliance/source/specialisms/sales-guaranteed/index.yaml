@@ -16,6 +16,7 @@ requires_scenarios:
   - media_buy_seller/inventory_list_targeting
   - media_buy_seller/inventory_list_no_match
   - media_buy_seller/invalid_transitions
+  - media_buy_seller/proposal_finalize
 
 # Cross-step assertion (adcp#2664). status.monotonic rejects resource
 # status transitions observed across steps that aren't on the spec
@@ -43,15 +44,11 @@ narrative: |
   Proposal-driven workflows are part of guaranteed selling: most guaranteed deals start with
   an RFP/brief, generate a proposal with curated bundles and rationale, refine, finalize to
   committed status with firm pricing and an inventory hold, and then the buyer accepts via
-  create_media_buy. The `media_buy_seller/proposal_finalize` scenario covers that flow but
-  is NOT (yet) in this specialism's `requires_scenarios` because the storyboard runner
-  cannot currently grade it as `not_applicable` for sellers without proposal support — there
-  is no `requires_capability` path in `get_adcp_capabilities` for "this seller supports
-  proposals" (tracked at #3844). Until that capability flag exists, sellers that do
-  proposals should declare BOTH `sales-guaranteed` AND `sales-proposal-mode` through 3.x;
-  pure-direct-buy guaranteed sellers (auction PG, retail SKU) declare only `sales-guaranteed`.
-  At 4.0, with the capability flag in place, `proposal_finalize` joins `sales-guaranteed`'s
-  `requires_scenarios` and the `sales-proposal-mode` enum value is removed.
+  create_media_buy. The `media_buy_seller/proposal_finalize` scenario covers that flow and is
+  capability-gated on `media_buy.supports_proposals` — sellers that explicitly declare `false`
+  skip it as `capability_unsupported`, sellers that declare `true` (or omit the field) are
+  graded against it. Direct-buy guaranteed sellers (auction PG, retail SKU, quoted-rate)
+  declare `supports_proposals: false`; full-service guaranteed sellers declare `true`.
 
 agent:
   interaction_model: media_buy_seller

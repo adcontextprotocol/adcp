@@ -2963,6 +2963,7 @@ export async function handleGetAdcpCapabilities(_args: ToolArgs, ctx: TrainingCo
     protocol_version: '3.0',
     tasks,
     media_buy: {
+      supports_proposals: true,
       features: {
         inline_creative_management: true,
         catalog_management: true,
