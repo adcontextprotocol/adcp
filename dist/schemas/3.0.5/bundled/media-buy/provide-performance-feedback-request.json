@@ -1,0 +1,119 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.5/bundled/media-buy/provide-performance-feedback-request.json",
+  "title": "Provide Performance Feedback Request",
+  "description": "Request payload for provide_performance_feedback task",
+  "x-mutates-state": true,
+  "type": "object",
+  "properties": {
+    "adcp_major_version": {
+      "type": "integer",
+      "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
+      "minimum": 1,
+      "maximum": 99
+    },
+    "media_buy_id": {
+      "type": "string",
+      "description": "Seller's media buy identifier",
+      "minLength": 1,
+      "x-entity": "media_buy"
+    },
+    "idempotency_key": {
+      "type": "string",
+      "description": "Client-generated unique key for this request. Prevents duplicate feedback submissions on retries. MUST be unique per (seller, request) pair to prevent cross-seller correlation. Use a fresh UUID v4 for each request.",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
+    "measurement_period": {
+      "title": "Datetime Range",
+      "description": "Time period for performance measurement",
+      "type": "object",
+      "properties": {
+        "start": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Start timestamp (inclusive), ISO 8601"
+        },
+        "end": {
+          "type": "string",
+          "format": "date-time",
+          "description": "End timestamp (inclusive), ISO 8601"
+        }
+      },
+      "required": [
+        "start",
+        "end"
+      ],
+      "additionalProperties": true
+    },
+    "performance_index": {
+      "type": "number",
+      "description": "Normalized performance score (0.0 = no value, 1.0 = expected, >1.0 = above expected)",
+      "minimum": 0
+    },
+    "package_id": {
+      "type": "string",
+      "description": "Specific package within the media buy (if feedback is package-specific)",
+      "minLength": 1,
+      "x-entity": "package"
+    },
+    "creative_id": {
+      "type": "string",
+      "description": "Specific creative asset (if feedback is creative-specific)",
+      "minLength": 1,
+      "x-entity": "creative"
+    },
+    "metric_type": {
+      "title": "Metric Type",
+      "description": "The business metric being measured",
+      "type": "string",
+      "enum": [
+        "overall_performance",
+        "conversion_rate",
+        "brand_lift",
+        "click_through_rate",
+        "completion_rate",
+        "viewability",
+        "brand_safety",
+        "cost_efficiency"
+      ],
+      "default": "overall_performance"
+    },
+    "feedback_source": {
+      "title": "Feedback Source",
+      "description": "Source of the performance data",
+      "type": "string",
+      "enum": [
+        "buyer_attribution",
+        "third_party_measurement",
+        "platform_analytics",
+        "verification_partner"
+      ],
+      "default": "buyer_attribution"
+    },
+    "context": {
+      "title": "Context Object",
+      "description": "Opaque correlation data that is echoed unchanged in responses. Used for internal tracking, UI session IDs, trace IDs, and other caller-specific identifiers that don't affect protocol behavior. Context data is never parsed by AdCP agents - it's simply preserved and returned.",
+      "type": "object",
+      "additionalProperties": true
+    },
+    "ext": {
+      "title": "Extension Object",
+      "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "media_buy_id",
+    "measurement_period",
+    "performance_index"
+  ],
+  "additionalProperties": true,
+  "_bundled": {
+    "generatedAt": "2026-05-02T21:51:30.460Z",
+    "note": "This is a bundled schema with all $ref resolved inline. For the modular version with references, use the parent directory."
+  }
+}
