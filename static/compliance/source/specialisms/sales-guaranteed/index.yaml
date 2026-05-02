@@ -43,15 +43,16 @@ narrative: |
   Proposal-driven workflows are part of guaranteed selling: most guaranteed deals start with
   an RFP/brief, generate a proposal with curated bundles and rationale, refine, finalize to
   committed status with firm pricing and an inventory hold, and then the buyer accepts via
-  create_media_buy. The `media_buy_seller/proposal_finalize` scenario covers that flow but
-  is NOT (yet) in this specialism's `requires_scenarios` because the storyboard runner
-  cannot currently grade it as `not_applicable` for sellers without proposal support — there
-  is no `requires_capability` path in `get_adcp_capabilities` for "this seller supports
-  proposals" (tracked at #3844). Until that capability flag exists, sellers that do
-  proposals should declare BOTH `sales-guaranteed` AND `sales-proposal-mode` through 3.x;
-  pure-direct-buy guaranteed sellers (auction PG, retail SKU) declare only `sales-guaranteed`.
-  At 4.0, with the capability flag in place, `proposal_finalize` joins `sales-guaranteed`'s
-  `requires_scenarios` and the `sales-proposal-mode` enum value is removed.
+  create_media_buy. The `media_buy_seller/proposal_finalize` scenario covers that flow and
+  declares `requires_capability: { path: media_buy.supports_proposals, equals: true }` (#3844)
+  so the runner can skip it as `capability_unsupported` for sellers without a proposal engine.
+  It is NOT (yet) in this specialism's `requires_scenarios` because the `requires_capability`
+  predicate must be confirmed as runner-supported before grading is safe to enforce. Until
+  step 2 of the deprecation path lands, sellers that do proposals should declare BOTH
+  `sales-guaranteed` AND `sales-proposal-mode` through 3.x; pure-direct-buy guaranteed
+  sellers (auction PG, retail SKU) declare only `sales-guaranteed` and omit
+  `supports_proposals` (or declare false). At 4.0, `proposal_finalize` joins
+  `sales-guaranteed`'s `requires_scenarios` and `sales-proposal-mode` is removed.
 
 agent:
   interaction_model: media_buy_seller
