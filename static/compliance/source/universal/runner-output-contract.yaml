@@ -287,14 +287,39 @@ validation_result:
                               # passed: false validation_result MUST NOT
                               # cause its step to grade as failed; the step
                               # grades on its remaining required validations.
-                              # The advisory result still appears in the
-                              # validations array (so the implementor sees
-                              # what failed) and contributes to
-                              # validations_advisory_failed on run_summary,
-                              # not to steps_failed. See storyboard-schema.yaml
-                              # > "Validation" for the author-side semantics
-                              # and use case (rollout gating during runner
-                              # adoption windows).
+                              # Advisory failures contribute to
+                              # validations_advisory_failed on run_summary
+                              # and MUST NOT contribute to steps_failed,
+                              # validations_failed, or any other
+                              # required-failure counter — the two counter
+                              # surfaces are deliberately separate so a
+                              # consumer aggregating "passed: false" across
+                              # validations_failed never double-counts
+                              # advisory results.
+                              #
+                              # Rendered-output rule: when a runner emits
+                              # advisory results to a human-facing surface
+                              # (chat transcripts, markdown reports,
+                              # compliance dashboards, LLM summaries),
+                              # advisory entries MUST be visually
+                              # distinguished from required failures —
+                              # prefix with the literal `[ADVISORY]`,
+                              # render in a muted style, or section them
+                              # under a separate "advisory findings"
+                              # header. The machine-readable step_result
+                              # carries severity verbatim for programmatic
+                              # consumers; this rule applies only to
+                              # rendered surfaces. Without this, a façade
+                              # that declares its anti-façade validations
+                              # as advisory produces a stream of
+                              # `passed: false` entries indistinguishable
+                              # from required failures, eroding the
+                              # conformance signal.
+                              #
+                              # See storyboard-schema.yaml > "Validation"
+                              # for the author-side semantics and use case
+                              # (rollout gating during runner adoption
+                              # windows).
 
 request:
   description: |
@@ -451,6 +476,15 @@ security:
       fenced when rendered. Runner-generated identifiers (step_id, schema_id,
       check enum values from the spec's known list) are exempt.
 
+      Advisory-severity differentiation: validation_result entries with
+      severity: advisory MUST render visually distinct from required-severity
+      results (literal `[ADVISORY]` prefix, muted style, or grouped under a
+      separate "advisory findings" section). This is orthogonal to fencing —
+      both rules apply to advisory results that carry agent- or
+      storyboard-controlled strings. See validation_result.severity above for
+      the rationale (façade-resistance: a façade declaring its anti-façade
+      validations as advisory must not blend visually into required failures).
+
 skip_result:
   description: |
     When a track, storyboard, phase, or step is skipped, runners MUST
@@ -584,11 +618,26 @@ run_summary:
                                   # (the step grades on its required
                                   # validations); this counter surfaces them
                                   # for visibility without polluting the
-                                  # conformance verdict. Use case:
-                                  # author-managed rollout gating during
-                                  # runner adoption windows — see
-                                  # storyboard-schema.yaml > "Validation"
-                                  # severity field.
+                                  # conformance verdict.
+                                  #
+                                  # Rendered-summary rule: when the runner
+                                  # renders a human-facing summary line
+                                  # (CLI, dashboard, chat surface),
+                                  # validations_advisory_failed MUST be
+                                  # displayed adjacent to steps_failed in
+                                  # the same line or section, NOT buried
+                                  # at the bottom of the summary. Otherwise
+                                  # a façade declaring its anti-façade
+                                  # validations as advisory produces a
+                                  # passing summary line that hides the
+                                  # advisory failures from human
+                                  # reviewers. The two counters together
+                                  # are the conformance signal.
+                                  #
+                                  # Use case: author-managed rollout
+                                  # gating during runner adoption windows
+                                  # — see storyboard-schema.yaml >
+                                  # "Validation" severity field.
 
 # --- Non-goals ---
 #

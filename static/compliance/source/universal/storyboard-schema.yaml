@@ -627,6 +627,16 @@
 #
 # --- Validation ---
 #
+# CANONICAL CHECK ENUM
+# --------------------
+# The authored check kinds storyboards MAY declare in `step.validations[].check`
+# live in `runner-output-contract.yaml > authored_check_kinds` (structured
+# YAML; this file is comment-only documentation). The build-time lint
+# `scripts/lint-storyboard-check-enum.cjs` reads from there; runtime
+# forward-compat (unknown kinds → not_applicable) is documented in
+# runner-output-contract.yaml > validation_result. Add new kinds to that
+# enum AND document semantics here in the same PR.
+#
 # check: string (what to validate: "response_schema", "field_present",
 #                "envelope_field_present" (walks protocol-envelope.json instead of
 #                response_schema_ref — use for top-level envelope fields like `status`),
@@ -875,23 +885,30 @@
 #                              # `purpose` field matches one of the listed
 #                              # values. Allowed values:
 #                              #   "platform_primary" | "measurement" |
+#                              #   "attribution" | "creative_serving" |
 #                              #   "identity" | "other"
 #                              # Use this when an adapter legitimately makes
 #                              # multiple kinds of upstream calls during a step
 #                              # — e.g., a sales-non-guaranteed buyer agent
 #                              # creating a campaign AND calling a measurement
-#                              # vendor during the same create_media_buy. The
-#                              # storyboard scopes to `purpose_filter:
-#                              # [platform_primary]` so DV/IAS/Nielsen calls
-#                              # don't muddy the campaign-creation assertion.
+#                              # vendor AND posting an attribution event during
+#                              # the same create_media_buy. The storyboard
+#                              # scopes to `purpose_filter: [platform_primary]`
+#                              # so the other calls don't muddy the
+#                              # campaign-creation assertion.
 #                              # When omitted, the assertion considers all
 #                              # recorded_calls regardless of purpose. Calls
 #                              # without a `purpose` field (adopter didn't
-#                              # classify) match only when purpose_filter is
-#                              # omitted — explicitly filtering excludes
-#                              # unclassified calls (the adopter's
-#                              # classification is the contract; absence is
-#                              # ambiguous).
+#                              # classify) are treated as `purpose: other` for
+#                              # filter matching — they're included by filters
+#                              # listing `other` and excluded by filters that
+#                              # don't. Runners MUST include a count of
+#                              # unclassified calls in the validation_result's
+#                              # `actual` when `purpose_filter` is set and
+#                              # zero recorded_calls match the filter, so a
+#                              # façade that misclassifies-into-`other` to
+#                              # dodge filtering produces a noisy zero rather
+#                              # than a silent one.
 #     since: prior_step_id (optional, default: this step's request timestamp)
 #                              # Bound the lookup window. By default, the
 #                              # runner queries traffic recorded since the
