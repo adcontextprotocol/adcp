@@ -623,7 +623,7 @@ describe('billing-tools', () => {
         expect.objectContaining({
           data: expect.objectContaining({
             tool: 'send_invoice',
-            reason: 'not_signed_in_or_no_workspace',
+            reason: 'not_signed_in',
             lookup_key: 'aao_membership_explorer_50',
           }),
         }),
@@ -697,15 +697,74 @@ describe('billing-tools', () => {
     });
 
     test('recordEvent throwing does not break the user-facing refusal', async () => {
+      // Use a slack-only ctx so resolvePersonId returns a real id and recordEvent
+      // is actually invoked (and then throws). The previous shape resolved to null
+      // and silently skipped recordEvent, never exercising the throw safety net.
+      const slackOnly: MemberContext = {
+        is_mapped: false,
+        is_member: false,
+        slack_linked: true,
+        slack_user: { slack_user_id: 'U_THROW', display_name: 'Throw', email: null },
+      } as any;
+      mockGetRelationshipByWorkosId.mockResolvedValue(null);
+      mockGetRelationshipBySlackId.mockResolvedValue({ id: personId });
       mockRecordEvent.mockRejectedValueOnce(new Error('DB pool exhausted'));
 
       const { createBillingToolHandlers } = await import('../../server/src/addie/mcp/billing-tools.js');
-      const noEmail: MemberContext = { ...mockMemberContext, workos_user: undefined } as any;
-      const handlers = createBillingToolHandlers(noEmail);
+      const handlers = createBillingToolHandlers(slackOnly);
 
       const result = JSON.parse(await handlers.get('send_invoice')!({ lookup_key: 'foo' }));
       expect(result.success).toBe(false);
       expect(result.error).toMatch(/sign in/i);
+      expect(mockRecordEvent).toHaveBeenCalledTimes(1);
+    });
+
+    test('sanitizes Stripe-style identifiers and email out of error data', async () => {
+      mockGetOrganization.mockResolvedValue({
+        workos_organization_id: 'org_test_123',
+        name: 'Test Corp',
+        billing_address: { line1: '1 Way' },
+      });
+      const stripeMock = await import('../../server/src/billing/stripe-client.js');
+      // Simulate a Stripe error message that embeds PII — email + customer id.
+      (stripeMock.createAndSendInvoice as any).mockRejectedValue(
+        new Error('No such customer: cus_ABC123 for victim@example.com'),
+      );
+
+      const { createBillingToolHandlers } = await import('../../server/src/addie/mcp/billing-tools.js');
+      const handlers = createBillingToolHandlers(mockMemberContext);
+
+      await handlers.get('confirm_send_invoice')!({ lookup_key: 'aao_membership_explorer_50' });
+
+      const call = mockRecordEvent.mock.calls.find(
+        ([, type, opts]: any[]) => type === 'tool_error' && opts.data.reason === 'exception',
+      );
+      expect(call, 'expected an exception-path tool_error event').toBeTruthy();
+      const errString = call![2].data.error as string;
+      expect(errString).not.toContain('victim@example.com');
+      expect(errString).not.toContain('cus_ABC123');
+      expect(errString).toMatch(/\[email\]/);
+      expect(errString).toMatch(/\[cus_id\]/);
+    });
+
+    test('caps oversized lookup_key in event data', async () => {
+      // confirm_send_invoice with a missing billing address fires a refusal
+      // after the ctx is fully populated, so recordToolError actually writes.
+      mockGetOrganization.mockResolvedValue({
+        workos_organization_id: 'org_test_123',
+        name: 'Test Corp',
+        billing_address: null,
+      });
+      const huge = 'a'.repeat(1024);
+      const { createBillingToolHandlers } = await import('../../server/src/addie/mcp/billing-tools.js');
+      const handlers = createBillingToolHandlers(mockMemberContext);
+
+      await handlers.get('confirm_send_invoice')!({ lookup_key: huge });
+
+      const call = mockRecordEvent.mock.calls[0];
+      expect(call).toBeTruthy();
+      const stored = call![2].data.lookup_key as string;
+      expect(stored.length).toBeLessThanOrEqual(256);
     });
   });
 });

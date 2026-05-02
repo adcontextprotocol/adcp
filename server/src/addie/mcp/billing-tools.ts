@@ -55,14 +55,42 @@ async function resolvePersonId(ctx?: MemberContext | null): Promise<string | nul
   return null;
 }
 
+/** Length cap for any user/LLM-supplied string we persist into event data. */
+const MAX_EVENT_STRING_LEN = 256;
+
+/**
+ * Sanitize a value for storage in `tool_error` event data. Strips Stripe-style
+ * identifiers and email addresses out of free-text — the timeline is admin-
+ * readable, and Stripe error messages routinely embed customer email,
+ * `cus_*` / `sub_*` / `pi_*` IDs, and card last-4 fragments. Errors are best
+ * diagnosed from the `tool` + `reason` slug + product key, not from a raw SDK
+ * message. Length-capped so an attacker-influenced `lookup_key` (LLM-supplied)
+ * can't bloat the timeline.
+ */
+function sanitizeEventValue(v: unknown): unknown {
+  if (typeof v !== 'string') return v;
+  return v
+    .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, '[email]')
+    .replace(/\b(cus|sub|pi|in|ch|src|card|seti|tok)_[A-Za-z0-9]+\b/g, '[$1_id]')
+    .slice(0, MAX_EVENT_STRING_LEN);
+}
+
+function sanitizeEventData(data: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(data)) {
+    out[k] = sanitizeEventValue(v);
+  }
+  return out;
+}
+
 /**
  * Record a `tool_error` person event for an Addie billing-tool refusal.
  * Best-effort — failures here log a warning but never throw, so a buggy
  * recorder never blocks the user-facing refusal message.
  *
- * `data` keys are intentionally narrow (tool, reason, lookup_key, …) — admins
- * read these from the timeline, and any user-supplied free text would
- * effectively land in admin context.
+ * All string values in `data` pass through `sanitizeEventValue` so a Stripe
+ * SDK message or an LLM-supplied lookup_key cannot smuggle PII or oversize
+ * content into the admin-readable timeline.
  */
 async function recordToolError(
   ctx: MemberContext | null | undefined,
@@ -74,7 +102,7 @@ async function recordToolError(
     const personId = await resolvePersonId(ctx);
     if (!personId) return;
     await recordEvent(personId, 'tool_error', {
-      data: { tool, reason, ...data },
+      data: { tool, reason, ...sanitizeEventData(data) },
     });
   } catch (err) {
     logger.warn({ err, tool, reason }, 'Failed to record tool_error event');
@@ -382,8 +410,15 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
 
     const memberEmail = memberContext?.workos_user?.email;
     const orgId = memberContext?.organization?.workos_organization_id;
-    if (!memberEmail || !orgId) {
-      await recordToolError(memberContext, 'send_invoice', 'not_signed_in_or_no_workspace', { lookup_key: lookupKey });
+    if (!memberEmail) {
+      await recordToolError(memberContext, 'send_invoice', 'not_signed_in', { lookup_key: lookupKey });
+      return JSON.stringify({
+        success: false,
+        error: 'Cannot preview an invoice without a signed-in member and a workspace. Ask the user to sign in at https://agenticadvertising.org first.',
+      });
+    }
+    if (!orgId) {
+      await recordToolError(memberContext, 'send_invoice', 'no_workspace', { lookup_key: lookupKey });
       return JSON.stringify({
         success: false,
         error: 'Cannot preview an invoice without a signed-in member and a workspace. Ask the user to sign in at https://agenticadvertising.org first.',
@@ -465,8 +500,15 @@ export function createBillingToolHandlers(memberContext?: MemberContext | null):
 
     const memberEmail = memberContext?.workos_user?.email;
     const orgId = memberContext?.organization?.workos_organization_id;
-    if (!memberEmail || !orgId) {
-      await recordToolError(memberContext, 'confirm_send_invoice', 'not_signed_in_or_no_workspace', { lookup_key: lookupKey });
+    if (!memberEmail) {
+      await recordToolError(memberContext, 'confirm_send_invoice', 'not_signed_in', { lookup_key: lookupKey });
+      return JSON.stringify({
+        success: false,
+        error: 'Cannot send an invoice without a signed-in member and a workspace. Ask the user to sign in at https://agenticadvertising.org first.',
+      });
+    }
+    if (!orgId) {
+      await recordToolError(memberContext, 'confirm_send_invoice', 'no_workspace', { lookup_key: lookupKey });
       return JSON.stringify({
         success: false,
         error: 'Cannot send an invoice without a signed-in member and a workspace. Ask the user to sign in at https://agenticadvertising.org first.',
