@@ -8,6 +8,10 @@ required_tools:
   - get_products
   - create_media_buy
 
+requires_capability:
+  path: media_buy.supports_proposals
+  equals: true
+
 narrative: |
   Proposals are curated media plans that the seller generates alongside products. The buyer
   reviews proposals, refines them (adjust budget splits, swap products, add constraints),
