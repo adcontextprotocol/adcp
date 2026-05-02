@@ -710,9 +710,12 @@ interface CreativeManifestView {
 interface CreativeForEnforcement {
   creative_id: string;
   provenance?: Record<string, unknown>;
+  // sync_creatives carries assets directly on the creative entry
+  // (alongside format_id, click_url, etc.).
+  assets?: Record<string, { url?: unknown; provenance?: Record<string, unknown> }>;
   manifest?: CreativeManifestView;
-  // sync_creatives also carries provenance directly on the creative-asset
-  // and on a separate `creative_manifest` field per the spec.
+  // build_creative / preview_creative use the nested `creative_manifest`
+  // shape per the spec; sync_creatives does not.
   creative_manifest?: CreativeManifestView;
 }
 
@@ -752,7 +755,8 @@ function provenanceError(
     | 'PROVENANCE_DIGITAL_SOURCE_TYPE_MISSING'
     | 'PROVENANCE_DISCLOSURE_MISSING'
     | 'PROVENANCE_EMBEDDED_MISSING'
-    | 'PROVENANCE_VERIFIER_NOT_ACCEPTED',
+    | 'PROVENANCE_VERIFIER_NOT_ACCEPTED'
+    | 'PROVENANCE_CLAIM_CONTRADICTED',
   message: string,
   field: string,
 ): TaskError {
@@ -781,10 +785,10 @@ function provenanceError(
  * of scope for this initial implementation — the structural codes are
  * sufficient to exercise the wire contract end to end.
  */
-function enforceProvenancePolicy(
+async function enforceProvenancePolicy(
   creative: CreativeForEnforcement,
   policy: CreativePolicyView | null,
-): TaskError | null {
+): Promise<TaskError | null> {
   if (!policy) return null;
   const provenance = resolveManifestProvenance(creative);
   // creative_id is buyer-controlled — sanitize before interpolating into
@@ -877,6 +881,29 @@ function enforceProvenancePolicy(
         );
       }
     }
+  }
+
+  // 6. Truth-of-claim: invoke the verifier when accepted_verifiers is set
+  //    and reconcile its result against the buyer's digital_source_type
+  //    claim. Closes adcp#3802. Returns the verifier-emitted contradiction
+  //    metadata (audit-safe allowlist only — no detail_url, no extension
+  //    fields) for error.details.
+  const contradiction = await runProvenanceVerifier(creative, policy);
+  if (contradiction) {
+    const err = provenanceError(
+      'PROVENANCE_CLAIM_CONTRADICTED',
+      `Verifier ${sanitizeForError(contradiction.agent_url, 256)} (feature ${sanitizeForError(contradiction.feature_id, 64)}) returned ai_generated=${contradiction.observed_value} with confidence ${contradiction.confidence.toFixed(2)} — contradicts buyer claim digital_source_type="${sanitizeForError(contradiction.claimed_value, 64)}".`,
+      `${fieldRoot}.digital_source_type`,
+    );
+    (err as TaskError & { details?: Record<string, unknown> }).details = {
+      agent_url: contradiction.agent_url,
+      feature_id: contradiction.feature_id,
+      claimed_value: contradiction.claimed_value,
+      observed_value: contradiction.observed_value,
+      confidence: contradiction.confidence,
+      ...(contradiction.substituted_for ? { substituted_for: contradiction.substituted_for } : {}),
+    };
+    return err;
   }
 
   return null;
@@ -2454,7 +2481,7 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
     // accepted_verifiers BEFORE persisting the creative. Per-creative failure
     // is surfaced as action: 'failed' + errors[]; the surrounding session and
     // any other creatives in the batch are unaffected (best-effort processing).
-    const policyError = enforceProvenancePolicy(creative as unknown as CreativeForEnforcement, effectivePolicy);
+    const policyError = await enforceProvenancePolicy(creative as unknown as CreativeForEnforcement, effectivePolicy);
     if (policyError) {
       results.push({
         creative_id: creativeId,
@@ -3743,6 +3770,170 @@ interface ReportUsageArgs extends ToolArgs {
     vendor_cost: number;
     currency: string;
   }>;
+}
+
+// ── get_creative_features (truth-of-claim verifier; closes #3802) ──
+//
+// Governance-agent-shaped handler the training agent exposes so the
+// seller-side sync_creatives enforcement path can verify buyer-claimed
+// provenance. Returns deterministic AI-detection results derived from the
+// creative manifest's asset URLs — encoded in the URL filename pattern so
+// storyboards can drive both "claim confirmed" and "claim contradicted"
+// outcomes from the fixture without per-test stateful bookkeeping.
+//
+// URL pattern detection (case-insensitive substring match on each asset URL):
+//   - Contains "ai-generated-true" or "ai_gen_true"  -> ai_generated: true,  conf 0.95
+//   - Contains "ai-generated-false" or "ai_gen_false" -> ai_generated: false, conf 0.95
+//   - Otherwise: derive from buyer-claimed digital_source_type (verifier
+//     "agrees" with the claim by default). digital_capture / digital_creation /
+//     human_edits / composite_capture / data_driven_media -> ai_generated: false.
+//     trained_algorithmic_media / composite_with_trained_algorithmic_media /
+//     composite_synthetic / algorithmic_media -> ai_generated: true.
+//   - When neither URL pattern matches and digital_source_type is absent,
+//     return ai_generated: false with low confidence (0.3) — agnostic on
+//     missing claim. The storyboard's structural-rejection contract catches
+//     missing digital_source_type via PROVENANCE_DIGITAL_SOURCE_TYPE_MISSING
+//     before we reach the truth-of-claim path.
+//
+// The handler is documented and stable for storyboard authors: pick the URL
+// pattern that drives the test outcome, no fixture mutation needed.
+interface GetCreativeFeaturesArgs {
+  creative_manifest?: { provenance?: Record<string, unknown>; assets?: Record<string, { url?: unknown; provenance?: Record<string, unknown> }> };
+  feature_ids?: string[];
+}
+
+interface CreativeFeatureResult {
+  feature_id: string;
+  value: boolean | number | string;
+  confidence?: number;
+}
+
+const AI_TRUE_DST = new Set([
+  'trained_algorithmic_media',
+  'composite_with_trained_algorithmic_media',
+  'composite_synthetic',
+  'algorithmic_media',
+]);
+
+function detectAiFromManifest(creative_manifest: GetCreativeFeaturesArgs['creative_manifest']): { value: boolean; confidence: number } {
+  const assets = creative_manifest?.assets ?? {};
+  for (const asset of Object.values(assets)) {
+    const url = typeof asset?.url === 'string' ? asset.url.toLowerCase() : '';
+    if (url.includes('ai-generated-true') || url.includes('ai_gen_true')) return { value: true, confidence: 0.95 };
+    if (url.includes('ai-generated-false') || url.includes('ai_gen_false')) return { value: false, confidence: 0.95 };
+  }
+  const dst = creative_manifest?.provenance?.digital_source_type;
+  if (typeof dst === 'string') {
+    if (AI_TRUE_DST.has(dst)) return { value: true, confidence: 0.85 };
+    return { value: false, confidence: 0.85 };
+  }
+  return { value: false, confidence: 0.3 };
+}
+
+export async function handleGetCreativeFeatures(args: ToolArgs, _ctx: TrainingContext) {
+  const req = args as unknown as GetCreativeFeaturesArgs;
+  const requested = req.feature_ids?.length ? new Set(req.feature_ids) : null;
+  const ai = detectAiFromManifest(req.creative_manifest);
+
+  const allFeatures: CreativeFeatureResult[] = [
+    { feature_id: 'ai_generated', value: ai.value, confidence: ai.confidence },
+    { feature_id: 'ai_modified', value: false, confidence: 0.6 },
+    { feature_id: 'ai_confidence', value: ai.confidence },
+  ];
+  const results = requested ? allFeatures.filter(f => requested.has(f.feature_id)) : allFeatures;
+  return { results };
+}
+
+/**
+ * Run the seller-side truth-of-claim verifier on a creative manifest.
+ * In a real seller, this would invoke `get_creative_features` over the
+ * network against a governance agent on the seller's `accepted_verifiers`
+ * allowlist. The training agent acts as both seller and verifier in one
+ * process, so we call the handler directly. The wire contract is identical:
+ * the seller obtains a feature result and reconciles it against the buyer's
+ * provenance claim.
+ *
+ * Returns the verifier identity + result for `error.details` on
+ * PROVENANCE_CLAIM_CONTRADICTED, or null when the claim is confirmed.
+ */
+async function runProvenanceVerifier(
+  creative: CreativeForEnforcement,
+  policy: CreativePolicyView,
+): Promise<{ agent_url: string; feature_id: string; claimed_value: string; observed_value: boolean; confidence: number; substituted_for?: string } | null> {
+  const provenance = resolveManifestProvenance(creative);
+  const claimed = provenance?.digital_source_type;
+  if (typeof claimed !== 'string') return null; // no claim to refute; structural codes handle absence
+  if (!policy.accepted_verifiers?.length) return null;
+
+  // Pick the buyer's nominated verifier when on-list, else the first
+  // on-list entry the seller would use. The seller is the verifier-of-
+  // record per #3468 — buyer-asserted URLs are hints, not authoritative.
+  const buyerNominated = pickBuyerNominatedVerifierUrl(provenance);
+  const allowed = policy.accepted_verifiers;
+  const buyerCanonical = buyerNominated ? canonicalizeAgentUrl(buyerNominated) : null;
+  let chosen = allowed.find(v => buyerCanonical && canonicalizeAgentUrl(v.agent_url) === buyerCanonical);
+  let substituted: string | undefined;
+  if (!chosen) {
+    chosen = allowed[0];
+    substituted = buyerNominated ?? undefined;
+  }
+  const featureId = chosen.feature_id ?? 'ai_generated';
+
+  // In-process call to the verifier handler. Real sellers do this over
+  // the network; the contract result is the same. Synthesize a manifest
+  // from whichever shape the creative carries: sync_creatives puts
+  // assets at the top level, build_creative / preview_creative nest them
+  // under creative_manifest. Either path resolves to the same input.
+  const synthesized = creative.creative_manifest ?? creative.manifest ?? {
+    provenance: creative.provenance,
+    assets: creative.assets,
+  };
+  if (!synthesized.assets && creative.assets) {
+    synthesized.assets = creative.assets;
+  }
+  const features = await handleGetCreativeFeatures(
+    { creative_manifest: synthesized, feature_ids: [featureId] } as unknown as ToolArgs,
+    {} as unknown as TrainingContext,
+  ) as unknown as { results?: CreativeFeatureResult[] };
+  const result = features.results?.find(r => r.feature_id === featureId);
+  if (!result) return null;
+
+  const verifierSaysAi = result.value === true;
+  const claimsAi = AI_TRUE_DST.has(claimed);
+  const confidence = typeof result.confidence === 'number' ? result.confidence : 0;
+
+  // Contradiction: buyer says non-AI but verifier sees AI with confidence
+  // above the seller's threshold. The reverse direction (buyer claims AI
+  // but verifier sees non-AI) is NOT a contradiction — buyers may
+  // conservatively over-disclose. Threshold matches the storyboard
+  // assertion: 0.9 confidence is the established line for high-signal
+  // detector verdicts (see PROVENANCE_CLAIM_CONTRADICTED docstring).
+  const CONFIDENCE_THRESHOLD = 0.9;
+  if (verifierSaysAi && !claimsAi && confidence >= CONFIDENCE_THRESHOLD) {
+    return {
+      agent_url: chosen.agent_url,
+      feature_id: featureId,
+      claimed_value: claimed,
+      observed_value: verifierSaysAi,
+      confidence,
+      ...(substituted ? { substituted_for: substituted } : {}),
+    };
+  }
+  return null;
+}
+
+function pickBuyerNominatedVerifierUrl(provenance: Record<string, unknown> | undefined): string | null {
+  type Layer = { verify_agent?: { agent_url?: unknown } };
+  const layers: Layer[] = [];
+  const e = provenance?.embedded_provenance;
+  if (Array.isArray(e)) layers.push(...(e as Layer[]));
+  const w = provenance?.watermarks;
+  if (Array.isArray(w)) layers.push(...(w as Layer[]));
+  for (const layer of layers) {
+    const url = layer.verify_agent?.agent_url;
+    if (typeof url === 'string' && url.length > 0) return url;
+  }
+  return null;
 }
 
 export async function handleReportUsage(args: ToolArgs, ctx: TrainingContext) {

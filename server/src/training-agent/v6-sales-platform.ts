@@ -171,7 +171,15 @@ export class TrainingSalesPlatform
     },
 
     syncCreatives: async (creatives, ctx) => {
-      const v5Result = await handleSyncCreatives({ creatives } as unknown as ToolArgs, buildTrainingCtx(ctx.account));
+      // Thread brand domain through so `sessionKeyFromArgs` in the v5
+      // handler resolves to the same session the test-controller seeded
+      // creative_policy against. Without this, sync_creatives lands in
+      // `open:default` while the seeded products live on `open:<brand>`,
+      // and `aggregateCreativePolicy` returns null — provenance
+      // enforcement silently no-ops.
+      const brandDomain = (ctx.account as { ctx_metadata?: { brand_domain?: string } } | undefined)?.ctx_metadata?.brand_domain;
+      const args = brandDomain ? { creatives, brand: { domain: brandDomain } } : { creatives };
+      const v5Result = await handleSyncCreatives(args as unknown as ToolArgs, buildTrainingCtx(ctx.account));
       // v5 returns wire-wrapped `{ creatives: [...] }`; v6 SalesPlatform
       // wants rows directly — framework re-wraps.
       const wrapped = translateV5Result<{ creatives?: unknown[] }>(v5Result);
