@@ -50,7 +50,7 @@ Returns delivery report with aggregated totals and per-media-buy breakdowns:
 | `reporting_period` | Date range for report (start/end timestamps) |
 | `currency` | ISO 4217 currency code (USD, EUR, GBP, etc.) |
 | `attribution_window` | Attribution methodology: `post_click` and `post_view` (duration objects), and `model` (last_touch, first_touch, linear, time_decay, data_driven) |
-| `aggregated_totals` | Combined metrics across all media buys (impressions, spend, clicks, views, completed_views, conversions, conversion_value, roas, new_to_brand_rate, cost_per_acquisition, completion_rate, reach, reach_unit, frequency, media_buy_count) |
+| `aggregated_totals` | Combined metrics across all media buys (impressions, spend, clicks, views, completed_views, conversions, conversion_value, roas, new_to_brand_rate, cost_per_acquisition, completion_rate, reach, reach_unit, frequency, media_buy_count, metric_aggregates) |
 | `media_buy_deliveries` | Array of delivery data per media buy |
 
 ### Media Buy Delivery Object
@@ -72,6 +72,64 @@ Unless the seller explicitly declares otherwise, `get_media_buy_delivery` return
 Sellers **MAY** declare a finalization window in their capabilities (e.g., `delivery_reporting.finalization_window_hours`) and, once that window has elapsed for a reporting period, treat the numbers returned for that period as authoritative for billing — stable across subsequent calls, suitable for invoice reconciliation, and liable as the source of truth in a dispute. Callers **MUST NOT** assume finalization in the absence of such a declaration.
 
 When a buyer's independent measurement disagrees with these numbers, reconciliation happens out-of-band through the commercial relationship between counterparties, backed by the audit trail on both sides. AdCP 3.0 does not specify a structured dispute task.
+
+### Aggregated metric partitions (`metric_aggregates`)
+
+Cross-buy delivery values that vary by **qualifier** (measurement standard, transparency disclosure) are reported as a partitioned array on `aggregated_totals.metric_aggregates` rather than as flat scalars. This solves the apples-to-oranges sum problem at the aggregate layer: MRC and GroupM viewability define materially different thresholds and must never be combined into a single rate.
+
+Each row carries the same atomic unit as `package.committed_metrics` and `by_package[].missing_metrics`:
+
+```
+committed_metrics row : { scope, metric_id, qualifier, committed_at }
+missing_metrics row   : { scope, metric_id, qualifier }
+metric_aggregates row : { scope, metric_id, qualifier, value, ...components }
+```
+
+**Reconciliation is a row-level join on `(scope, metric_id, qualifier)`.** For each `committed_metrics` row, find the matching `metric_aggregates` row; absent matches surface as `missing_metrics`. No per-metric reconciliation logic, no traversal asymmetry between contract and delivery.
+
+**Granularity rule.** One row per `(metric_id, full-qualifier-set)`, reported at the finest available granularity. Buyers re-aggregate up if they want a coarser view. This eliminates rollup ambiguity and prevents accidental double-counting.
+
+**Unqualified metrics stay top-level.** `impressions`, `spend`, `media_buy_count`, and other metrics with no qualifier remain at the top of `aggregated_totals`. `metric_aggregates` is only used for metrics with non-empty qualifier sets.
+
+**Mutual exclusion (MUST).** For any `metric_id` appearing in `metric_aggregates`, the corresponding top-level scalar in `aggregated_totals` MUST be omitted — not zeroed. Sellers MUST NOT emit both. Avoids duplicate sources of truth.
+
+**Qualifier vocabulary** is closed today on both `committed_metrics` and `metric_aggregates` (`additionalProperties: false`, identical `viewability_standard` shape). The delivery vocabulary is **expected to diverge from contract** in future minors as transparency disclosures buyers don't commit to ship delivery-only (e.g., `tracker_firing` pending #3832). New qualifier keys ship explicitly in subsequent minors on either surface.
+
+**Qualifier-set drift across reports.** When a campaign gains a new qualifier mid-flight (e.g., adds `tracker_firing` partitioning in week 2 after only client-side firing in week 1), prior periods' rows remain valid at their original granularity. Buyers SHOULD NOT retroactively repartition; report supersession via `supersedes_window` is the documented path for window-level revisions.
+
+**Per-buy `totals` shape stays flat.** Each individual buy is single-qualifier by definition; only the cross-buy aggregate spans qualifiers and needs the partitioned shape. Per-buy `totals.viewability` continues to be a flat object with its own `standard` field.
+
+Example:
+
+```json
+{
+  "aggregated_totals": {
+    "impressions": 1000000,
+    "spend": 5000.00,
+    "media_buy_count": 3,
+    "metric_aggregates": [
+      {
+        "scope": "standard",
+        "metric_id": "viewable_rate",
+        "qualifier": { "viewability_standard": "mrc" },
+        "value": 0.7286,
+        "measurable_impressions": 700000,
+        "viewable_impressions": 510000
+      },
+      {
+        "scope": "standard",
+        "metric_id": "viewable_rate",
+        "qualifier": { "viewability_standard": "groupm" },
+        "value": 0.55,
+        "measurable_impressions": 180000,
+        "viewable_impressions": 99000
+      }
+    ]
+  }
+}
+```
+
+**Value typing dispatch.** Buyer agents MUST inspect `metric_id` before doing arithmetic. Rate metrics (`viewable_rate`, `completion_rate`) are 0.0–1.0; cost-per metrics are currency; count metrics are non-negative numbers; ROAS is a ratio. Same dispatch convention as `committed_metrics` — `metric_id` is the type tag.
 
 ## Common Scenarios
 
