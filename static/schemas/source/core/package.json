@@ -73,36 +73,79 @@
     },
     "committed_metrics": {
       "type": "array",
-      "description": "Frozen snapshot of the product's `reporting_capabilities.available_metrics` at the moment this package was created. Becomes the binding reporting contract for the package's lifetime, independent of subsequent product mutations. The seller stamps this on the `create_media_buy` response; once set, it MUST NOT change for the lifetime of the package. Sellers MUST reject `update_media_buy` requests that attempt to modify `committed_metrics` with a `validation_error` (suggested code: `IMMUTABLE_FIELD`). If the buyer/seller need to renegotiate the metric contract, that is a new buy. The `missing_metrics` field on `get_media_buy_delivery` is computed against `committed_metrics` when present, and against the product's current `available_metrics` when absent. Optional in v1: sellers without per-package snapshot infrastructure can adopt incrementally — absence is conformant, but it carries a known audit gap (without the snapshot, `missing_metrics` reconciles against the product's live state at report time, which may not reflect the contract at create time; sellers that omit `committed_metrics` accept this risk). Expected to become required at the next major once the audit pattern is established. Empty array (`[]`) is a valid frozen snapshot meaning 'this package commits to no metrics' — semantically distinct from omitting the field.",
-      "items": {
-        "$ref": "/schemas/enums/available-metric.json"
-      },
-      "minItems": 1,
-      "uniqueItems": true,
-      "examples": [
-        ["impressions", "spend", "completed_views", "completion_rate"],
-        ["impressions", "spend", "clicks", "ctr", "viewability"]
-      ]
-    },
-    "committed_vendor_metrics": {
-      "type": "array",
-      "description": "Frozen snapshot of the product's `reporting_capabilities.vendor_metrics` at the moment this package was created. Same contract semantics as `committed_metrics` but for vendor-defined metrics — buyers reconcile delivery against the snapshotted vendor list, not the product's live state. Optional in v1; absent means sellers without snapshot infrastructure fall back to the current `vendor_metrics` declaration (same audit-gap caveat as `committed_metrics`). MUST NOT change post-creation; sellers MUST reject `update_media_buy` attempts to modify with `validation_error`.",
+      "description": "The binding reporting contract for this package — what the seller has agreed to populate in delivery reports. Each entry carries an explicit `committed_at` timestamp, so the array also serves as the contract amendment ledger: day-1 commitments share `committed_at = create_media_buy.confirmed_at`; mid-flight additions carry their own timestamps. The `missing_metrics` field on `get_media_buy_delivery` reconciles against this list, filtering to entries where `committed_at < reporting_period.end` (a metric committed mid-flight is only audited from its commitment timestamp forward). Sellers stamp the day-1 set on the `create_media_buy` response; mid-flight additions are appended via `update_media_buy` (append-only — sellers MUST reject attempts to modify or remove existing entries with `validation_error`, suggested code: `IMMUTABLE_FIELD`). Optional in v1; absence means the seller does not provide an audit-grade contract and `missing_metrics` falls back to the product's live `available_metrics` (a known audit gap — buyers SHOULD treat absence as 'no audit-grade contract' rather than 'clean delivery'). Each entry uses an explicit `scope` discriminator: `standard` for entries from the closed `available-metric.json` enum, `vendor` for vendor-defined metrics anchored on a BrandRef. The unified shape is symmetric with `missing_metrics` and replaces the parallel-array design that shipped briefly in #3510.",
       "items": {
         "type": "object",
-        "properties": {
-          "vendor": {
-            "$ref": "/schemas/core/brand-ref.json"
-          },
-          "metric_id": {
-            "$ref": "/schemas/core/vendor-metric-id.json"
-          }
+        "discriminator": {
+          "propertyName": "scope"
         },
-        "required": ["vendor", "metric_id"],
-        "additionalProperties": false
+        "oneOf": [
+          {
+            "properties": {
+              "scope": {
+                "type": "string",
+                "const": "standard",
+                "description": "Standard metric from the closed `available-metric.json` enum."
+              },
+              "metric_id": {
+                "$ref": "/schemas/enums/available-metric.json",
+                "description": "Identifier for the standard metric."
+              },
+              "qualifier": {
+                "type": "object",
+                "description": "Measurement-standard qualifier for metrics whose definition varies by standard. Required when `metric_id` is one of `viewable_impressions`, `viewable_rate`, or `measurable_impressions` and the seller commits to a specific viewability standard — without this, the contract is ambiguous (MRC and GroupM viewability are materially different thresholds and not comparable, see `viewability-standard.json`). Symmetric on `missing_metrics`: a buyer expecting MRC viewability flags a GroupM-only delivery report as missing the MRC commitment. Reserved for additive standard qualifiers in future minors (e.g., reach unit, completion threshold) — schema is closed (`additionalProperties: false`).",
+                "properties": {
+                  "viewability_standard": {
+                    "$ref": "/schemas/enums/viewability-standard.json",
+                    "description": "Viewability standard the seller commits to for this metric. MUST be set when `metric_id` ∈ {`viewable_impressions`, `viewable_rate`, `measurable_impressions`} and the seller commits to a specific standard; absence means the contract leaves the standard unspecified and reconciliation falls back to whatever standard the delivery report carries on its `viewability.standard` field."
+                  }
+                },
+                "additionalProperties": false
+              },
+              "committed_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "ISO 8601 timestamp when this metric became part of the contract. Day-1 commitments use `create_media_buy.confirmed_at`; mid-flight additions use the time the amendment was accepted."
+              }
+            },
+            "required": ["scope", "metric_id", "committed_at"],
+            "additionalProperties": false
+          },
+          {
+            "properties": {
+              "scope": {
+                "type": "string",
+                "const": "vendor",
+                "description": "Vendor-defined metric, identified by the tuple `(vendor, metric_id)`."
+              },
+              "vendor": {
+                "$ref": "/schemas/core/brand-ref.json",
+                "description": "Vendor that defines and computes this metric. The vendor's `brand.json` `agents[type='measurement']` is the canonical anchor."
+              },
+              "metric_id": {
+                "$ref": "/schemas/core/vendor-metric-id.json",
+                "description": "Identifier for the metric within the vendor's vocabulary."
+              },
+              "committed_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "ISO 8601 timestamp when this vendor metric became part of the contract."
+              }
+            },
+            "required": ["scope", "vendor", "metric_id", "committed_at"],
+            "additionalProperties": false
+          }
+        ]
       },
       "minItems": 1,
       "examples": [
-        [{ "vendor": { "domain": "attentionvendor.example" }, "metric_id": "attention_units" }]
+        [
+          { "scope": "standard", "metric_id": "impressions",     "committed_at": "2026-04-29T10:53:00Z" },
+          { "scope": "standard", "metric_id": "spend",           "committed_at": "2026-04-29T10:53:00Z" },
+          { "scope": "standard", "metric_id": "completed_views", "committed_at": "2026-04-29T10:53:00Z" },
+          { "scope": "vendor",   "vendor": { "domain": "attentionvendor.example" }, "metric_id": "attention_units", "committed_at": "2026-04-29T10:53:00Z" },
+          { "scope": "standard", "metric_id": "viewable_rate",   "qualifier": { "viewability_standard": "mrc" }, "committed_at": "2026-05-30T14:22:00Z" }
+        ]
       ]
     },
     "creative_assignments": {

@@ -540,9 +540,10 @@ export function buildFormats(agentUrl: string): TrainingFormat[] {
           requirements: { mime_types: ['image/png', 'image/svg+xml'], max_file_size_bytes: 5_000_000 } },
       ],
     },
-    // Storyboard-hardcoded format ids (creative_lifecycle, creative_sales_agent).
-    // Aliased to close-enough shapes; storyboards pass a format_id string
-    // and don't care about subtle shape differences.
+    // Storyboard-hardcoded format ids (creative_lifecycle,
+    // media_buy_seller/creative_reception). Aliased to close-enough shapes;
+    // storyboards pass a format_id string and don't care about subtle
+    // shape differences.
     {
       format_id: { agent_url: agentUrl, id: 'video_30s' },
       name: '30-second video',

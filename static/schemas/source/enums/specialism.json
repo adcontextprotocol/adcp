@@ -5,7 +5,8 @@
   "description": "Specialized capability claims an agent can make. Each specialism maps to a compliance storyboard bundle published at /compliance/{version}/specialisms/{id}/. An agent asserts specialisms it supports in get_adcp_capabilities; the AAO compliance runner executes the matching storyboards to verify the claim.",
   "type": "string",
   "x-deprecated-enum-values": [
-    "signed-requests"
+    "signed-requests",
+    "sales-proposal-mode"
   ],
   "x-deprecated-enum-values-doc": "Enum values listed here are retained for backward compatibility but their corresponding storyboard has been relocated or removed. Build-time parity checks (scripts/build-compliance.cjs verifyEnumParity) skip filesystem-backing enforcement for these values. Targeted for removal in a future major version.",
   "enum": [
@@ -46,7 +47,7 @@
     "sales-catalog-driven": "Catalog-driven commerce with conversion tracking",
     "sales-guaranteed": "Guaranteed media buys with human IO approval",
     "sales-non-guaranteed": "Non-guaranteed auction-based media buys",
-    "sales-proposal-mode": "Media buys negotiated via proposal acceptance",
+    "sales-proposal-mode": "DEPRECATED in 3.1 — proposal-driven flows are conceptually part of `sales-guaranteed` (RFP → proposal → finalize → IO → live is one lifecycle). For 3.x, sellers that do proposals continue to declare BOTH `sales-guaranteed` AND `sales-proposal-mode` so the proposal flow grades under the proposal-mode specialism's existing `requires_scenarios`. Pure-direct-buy guaranteed sellers (auction PG, retail SKU; no RFP) declare only `sales-guaranteed`. This enum value is retained until 4.0 for backward compat. The clean merge — folding `proposal_finalize` into `sales-guaranteed.requires_scenarios` with capability-gated skip — needs a `supports_proposals` capability flag in `get_adcp_capabilities` so the runner can grade it as `not_applicable` for direct-buy sellers; tracked at #3844. At 4.0, with that flag in place, `sales-proposal-mode` is removed and proposal grading lives entirely under `sales-guaranteed`. See https://github.com/adcontextprotocol/adcp/issues/3823 (taxonomy consolidation).",
     "sales-social": "Social media advertising platform with self-service flows",
     "signal-marketplace": "Marketplace signal agent reselling third-party data",
     "signal-owned": "Owned signal agent exposing first-party segments",

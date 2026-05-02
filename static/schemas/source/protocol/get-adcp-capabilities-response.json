@@ -947,19 +947,28 @@
         },
         "required_for": {
           "type": "array",
-          "description": "AdCP protocol operation names (e.g., 'create_media_buy') for which this agent rejects unsigned requests with request_signature_required. Not MCP tool names, A2A skill names, or any transport-specific rename — verifiers MUST NOT accept operation names that are not defined by the AdCP protocol spec. Empty in 3.0 by default; sellers populate selectively during per-counterparty pilots. In 4.0 this list MUST include all spend-committing operations the agent supports (create_media_buy, acquire_*, etc.). Counterparties MUST sign any listed operation.",
+          "description": "AdCP protocol operation names (e.g., 'create_media_buy') for which this agent rejects unsigned requests with request_signature_required. Not MCP tool names, A2A skill names, or any transport-specific rename — verifiers MUST NOT accept operation names that are not defined by the AdCP protocol spec. Empty in 3.0 by default; sellers populate selectively during per-counterparty pilots. In 4.0 this list MUST include all spend-committing operations the agent supports (create_media_buy, acquire_*, etc.). Counterparties MUST sign any listed operation. Every operation listed MUST also appear in `supported_for` (an operation can't be required without being supported); see `x-adcp-validation`.",
           "items": {
             "type": "string"
           },
-          "default": []
+          "default": [],
+          "x-adcp-validation": {
+            "subset_of": "request_signing.supported_for",
+            "spec": "docs/building/implementation/security.mdx#signed-requests-transport-layer"
+          }
         },
         "warn_for": {
           "type": "array",
-          "description": "AdCP protocol operation names for which this agent verifies signatures when present and logs failures but does NOT reject the request. Used as a shadow-mode bridge between supported_for and required_for: the verifier surfaces failure rates in monitoring before flipping an operation to required. Precedence: required_for > warn_for > supported_for. An operation in required_for ignores warn_for. Counterparties SHOULD sign operations in warn_for; verifiers MUST NOT reject if the signature is missing or invalid.",
+          "description": "AdCP protocol operation names for which this agent verifies signatures when present and logs failures but does NOT reject the request. Used as a shadow-mode bridge between supported_for and required_for: the verifier surfaces failure rates in monitoring before flipping an operation to required. Precedence: required_for > warn_for > supported_for. An operation in required_for ignores warn_for. Counterparties SHOULD sign operations in warn_for; verifiers MUST NOT reject if the signature is missing or invalid. An operation MUST NOT appear in both `warn_for` and `required_for`; see `x-adcp-validation`.",
           "items": {
             "type": "string"
           },
-          "default": []
+          "default": [],
+          "x-adcp-validation": {
+            "disjoint_with": "request_signing.required_for",
+            "subset_of": "request_signing.supported_for",
+            "spec": "docs/building/implementation/security.mdx#signed-requests-transport-layer"
+          }
         },
         "supported_for": {
           "type": "array",
@@ -979,7 +988,19 @@
       "properties": {
         "supported": {
           "type": "boolean",
-          "description": "Whether this agent signs outbound webhooks with the AdCP RFC 9421 webhook profile. When false or absent, webhooks are delivered with legacy Bearer or HMAC-SHA256 auth only and receivers MUST NOT expect a Signature header."
+          "description": "Whether this agent signs outbound webhooks with the AdCP RFC 9421 webhook profile. When false or absent, webhooks are delivered with legacy Bearer or HMAC-SHA256 auth only and receivers MUST NOT expect a Signature header. When the seller advertises mutating-webhook emission (i.e., `media_buy.reporting_delivery_methods` includes `webhook` OR `media_buy.content_standards.supports_webhook_delivery` is true), this MUST be `true` — emitting state-changing webhooks unsigned is a downgrade vector that lets an on-path attacker forge delivery callbacks. See `x-adcp-validation`.",
+          "x-adcp-validation": {
+            "verifier_constraints": {
+              "must_equal_when": {
+                "value": true,
+                "any_of": [
+                  { "field": "media_buy.reporting_delivery_methods", "contains_item": "webhook" },
+                  { "field": "media_buy.content_standards.supports_webhook_delivery", "equals": true }
+                ]
+              }
+            },
+            "spec": "docs/building/implementation/webhooks.mdx"
+          }
         },
         "profile": {
           "type": "string",
@@ -1013,8 +1034,36 @@
     },
     "identity": {
       "type": "object",
-      "description": "Operator identity posture — key-scoping and compromise-response controls the agent operates. Fields are independent, all advisory in 3.x; receivers use them to reason about blast radius and revocation latency at onboarding rather than discovering the posture after an incident. Semantics of an empty object: `identity: {}` means \"posture block present but no posture claimed\" — schema-valid but advisory-neutral; receivers MUST treat it as equivalent to omitting the block (no capability claim inferred). Operators SHOULD populate at least one field to make a declaration meaningful.",
+      "description": "Operator identity posture — trust-root pointer (`brand_json_url`) plus key-scoping and compromise-response controls the agent operates. `brand_json_url` is **load-bearing** for signature verification: when the agent declares any signing posture (`request_signing.supported_for`/`required_for` non-empty, `webhook_signing.supported === true`, or any `key_origins` subfield), `brand_json_url` MUST be present (storyboard-enforced in 3.x; schema-required in 4.0). Verifiers use it to bootstrap from the agent URL to the operator's brand.json (and from there to signing keys); see [security.mdx §Discovering an agent's signing keys](https://adcontextprotocol.org/docs/building/implementation/security#discovering-an-agents-signing-keys-via-brand_json_url). The remaining fields (`per_principal_key_isolation`, `key_origins`, `compromise_notification`) are advisory and receivers use them to reason about blast radius and revocation latency at onboarding. Empty-object semantics: `identity: {}` means \"posture block present but no posture claimed\" — schema-valid but advisory-neutral and receivers MUST treat it as equivalent to omitting the block, **except** that an agent declaring a signing posture elsewhere in the response with an empty `identity` MUST be rejected by storyboard runners as missing `brand_json_url`.",
       "properties": {
+        "brand_json_url": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://",
+          "description": "HTTPS URL of the operator's brand.json (typically `https://{operator-domain}/.well-known/brand.json`). Trust-root pointer for this agent's signing keys. See [security.mdx §Discovering an agent's signing keys via `brand_json_url`](https://adcontextprotocol.org/docs/building/implementation/security#discovering-an-agents-signing-keys-via-brand_json_url) for the verifier algorithm and `x-adcp-validation` for structured constraints. Distinct from `sponsored_intelligence.brand_url`, which is a rendering pointer for SI agent visuals — verifiers MUST use this field for key discovery and MUST NOT fall back to `sponsored_intelligence.brand_url` as a trust-root pointer.",
+          "x-adcp-validation": {
+            "trust_root": true,
+            "required_when": {
+              "any_of": [
+                { "field": "request_signing.supported_for", "non_empty": true },
+                { "field": "request_signing.required_for", "non_empty": true },
+                { "field": "webhook_signing.supported", "equals": true },
+                { "field": "identity.key_origins", "any_subfield_present": true }
+              ]
+            },
+            "schema_required_when": {
+              "field": "adcp.supported_versions",
+              "any_item_matches_pattern": "^4\\."
+            },
+            "verifier_constraints": {
+              "agent_url_match": "byte_equal",
+              "origin_binding": "etld1_or_authorized_operators",
+              "key_origins_consistency": "mandatory_when_signing"
+            },
+            "distinct_from": "sponsored_intelligence.brand_url",
+            "spec": "docs/building/implementation/security.mdx#discovering-an-agents-signing-keys-via-brand_json_url"
+          }
+        },
         "per_principal_key_isolation": {
           "type": "boolean",
           "description": "When true, this multi-principal operator scopes signing keys per-principal so a single principal's key compromise does not silently re-scope across principals served by the same operator. `kid` values remain opaque to verifiers per RFC 7517; any operator-side naming convention (e.g., `{operator}:{principal}:{key_version}`) is internal bookkeeping and MUST NOT be parsed by verifiers. See docs/building/understanding/security-model.mdx.",
@@ -1022,7 +1071,7 @@
         },
         "key_origins": {
           "type": "object",
-          "description": "Map of signing-key purpose → publishing origin, so counterparties can verify origin separation (e.g., governance keys served from a separate origin than transport/webhook keys) at onboarding. Absent means the operator has not declared a separation scheme; receivers SHOULD assume shared-origin. See docs/building/implementation/security.mdx §Origin separation.",
+          "description": "Map of signing-key purpose → publishing origin, so counterparties can verify origin separation (e.g., governance keys served from a separate origin than transport/webhook keys) at onboarding. Absent means the operator has not declared a separation scheme; receivers SHOULD assume shared-origin. Every purpose listed MUST have a corresponding signing posture declared elsewhere — `request_signing` requires non-empty `request_signing.supported_for`/`required_for`; `webhook_signing` requires `webhook_signing.supported === true` — otherwise the consistency check at signature-verification time has nothing to anchor against. See `x-adcp-validation` and docs/building/implementation/security.mdx §Origin separation.",
           "properties": {
             "governance_signing": {
               "type": "string",
@@ -1045,7 +1094,18 @@
               "description": "Origin (scheme + host) serving the TMP-signing JWKS, when this operator participates in TMP."
             }
           },
-          "additionalProperties": false
+          "additionalProperties": false,
+          "x-adcp-validation": {
+            "verifier_constraints": {
+              "purpose_anchoring": {
+                "request_signing": "request_signing.supported_for | request_signing.required_for non-empty",
+                "webhook_signing": "webhook_signing.supported === true",
+                "governance_signing": "governance protocol declared in supported_protocols",
+                "tmp_signing": "trusted_match.surfaces non-empty (TMP participation)"
+              }
+            },
+            "spec": "docs/building/implementation/security.mdx#origin-separation"
+          }
         },
         "compromise_notification": {
           "type": "object",
@@ -1065,7 +1125,7 @@
           "additionalProperties": false
         }
       },
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "measurement": {
       "type": "object",

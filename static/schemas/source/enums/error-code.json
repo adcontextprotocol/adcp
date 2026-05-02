@@ -52,7 +52,17 @@
     "PERMISSION_DENIED",
     "SCOPE_INSUFFICIENT",
     "READ_ONLY_SCOPE",
-    "FIELD_NOT_PERMITTED"
+    "FIELD_NOT_PERMITTED",
+    "PROVENANCE_REQUIRED",
+    "PROVENANCE_DIGITAL_SOURCE_TYPE_MISSING",
+    "PROVENANCE_DISCLOSURE_MISSING",
+    "PROVENANCE_EMBEDDED_MISSING",
+    "PROVENANCE_VERIFIER_NOT_ACCEPTED",
+    "PROVENANCE_CLAIM_CONTRADICTED",
+    "BILLING_NOT_SUPPORTED",
+    "BILLING_NOT_PERMITTED_FOR_AGENT",
+    "PAYMENT_TERMS_NOT_SUPPORTED",
+    "BRAND_REQUIRED"
   ],
   "enumDescriptions": {
     "INVALID_REQUEST": "Request is malformed, missing required fields, or violates schema constraints. Recovery: correctable (check request parameters and fix).",
@@ -102,10 +112,20 @@
     "PERMISSION_DENIED": "The authenticated caller is not authorized for the requested action under the seller's own policies, or a required signed credential (e.g., a `governance_context` token on a spend-commit) is missing, fails verification, or was issued for a different plan, seller, or phase. Distinct from `AUTH_REQUIRED` (no credentials presented) and `GOVERNANCE_DENIED` (governance agent denied). Recovery: correctable (call `check_governance` to mint a valid token, or contact the seller to resolve the underlying permission).",
     "SCOPE_INSUFFICIENT": "The authenticated caller is not authorized for the invoked task — the task is not in the caller's `allowed_tasks` for this account (discoverable via the `authorization` object on sync_accounts / list_accounts responses). Distinct from `PERMISSION_DENIED` (generic authz failure, often credential-shaped) by being narrowly about task-level scope. Sellers SHOULD populate `error.details.introspection_hint` pointing at where the caller can re-read its scope (strawman: `{ task: 'list_accounts', account: {...} }`). Recovery: correctable in the sense that the request can be re-sent after the scope is broadened, but the agent cannot broaden its own scope — this requires operator intervention, and agents SHOULD surface rather than auto-retry.",
     "READ_ONLY_SCOPE": "The caller's scope is read-only; the invoked task would mutate state and was rejected. Distinct from `SCOPE_INSUFFICIENT` (task not in scope at all) — the task is in some scopes this seller supports, just not this caller's. Recovery: correctable but not agent-autonomous — use a non-mutating alternative, or surface to the operator to request a scope that permits mutation.",
-    "FIELD_NOT_PERMITTED": "A request field is not in the caller's `field_scopes` allowlist for this task. Sellers declaring `field_scopes` on the account's `authorization` object MUST reject any request that sets a non-allowlisted field with this code. Distinct from `VALIDATION_ERROR` (schema/business-rule violation) — the field is valid, just not writable by this caller. `error.field` MUST identify the exact offending field path (e.g., `packages[0].budget`); when multiple fields are disallowed, sellers SHOULD return one error per field, or MAY enumerate them in `error.details.fields`. Recovery: correctable and agent-autonomous — agent may drop the disallowed field(s) and retry."
+    "FIELD_NOT_PERMITTED": "A request field is not in the caller's `field_scopes` allowlist for this task. Sellers declaring `field_scopes` on the account's `authorization` object MUST reject any request that sets a non-allowlisted field with this code. Distinct from `VALIDATION_ERROR` (schema/business-rule violation) - the field is valid, just not writable by this caller. `error.field` MUST identify the exact offending field path (e.g., `packages[0].budget`); when multiple fields are disallowed, sellers SHOULD return one error per field, or MAY enumerate them in `error.details.fields`. Recovery: correctable and agent-autonomous - agent may drop the disallowed field(s) and retry.",
+    "PROVENANCE_REQUIRED": "Seller's `creative_policy.provenance_required` is true and the submitted creative has no `provenance` object on the manifest, on the creative-asset, or on any individual asset. Distinct from `CREATIVE_REJECTED` (generic content-policy failure) by being narrowly about provenance presence. Recovery: correctable (attach a provenance object - at minimum `digital_source_type` - and resubmit). `error.field` MUST point at the path where provenance was expected (e.g., `creatives[0].creative_manifest`).",
+    "PROVENANCE_DIGITAL_SOURCE_TYPE_MISSING": "Seller's `creative_policy.provenance_requirements.require_digital_source_type` is true and the submitted creative's resolved provenance (after inheritance) has no `digital_source_type` value, or has it set to null. Distinct from `PROVENANCE_REQUIRED` (no provenance object at all) - provenance is present, just missing this specific field. Recovery: correctable (set `provenance.digital_source_type` to a value from the `digital-source-type` enum and resubmit). `error.field` MUST point at the resolved provenance path that was inspected (e.g., `creatives[0].creative_manifest.provenance.digital_source_type`).",
+    "PROVENANCE_DISCLOSURE_MISSING": "Seller's `creative_policy.provenance_requirements.require_disclosure_metadata` is true and the submitted creative's resolved provenance has no `disclosure.required` boolean, or `disclosure.required` is true with no `disclosure.jurisdictions` entries. Recovery: correctable (set `provenance.disclosure.required` and, when true, populate `disclosure.jurisdictions`). `error.field` MUST point at `provenance.disclosure` (e.g., `creatives[0].creative_manifest.provenance.disclosure`).",
+    "PROVENANCE_EMBEDDED_MISSING": "Seller's `creative_policy.provenance_requirements.require_embedded_provenance` is true and the submitted creative's resolved provenance has no `embedded_provenance` array, or has it as an empty array. Used in pipelines where sidecar `c2pa.manifest_url` is stripped by intermediaries and the seller requires content-stream-resilient provenance. Recovery: correctable (attach at least one `embedded_provenance` entry from a supported provider and resubmit, optionally with a `verify_agent` pointer matching one of the seller's `creative_policy.accepted_verifiers`). `error.field` MUST point at `provenance.embedded_provenance` on the resolved manifest.",
+    "PROVENANCE_VERIFIER_NOT_ACCEPTED": "Buyer attached a `verify_agent.agent_url` on `embedded_provenance[]` or `watermarks[]` that does not match (canonicalized per /docs/reference/url-canonicalization: lowercase scheme and host, strip default port, normalize path dot-segments) any entry in the seller's `creative_policy.accepted_verifiers[].agent_url`. The seller does not call buyer-asserted endpoints outside its allowlist; this is the cross-check that closes the buyer-controlled-URL trust gap. `error.field` MUST point at the offending `verify_agent.agent_url` path; `error.details` SHOULD include a reference to the product whose `creative_policy.accepted_verifiers` the buyer should consult (the buyer already has this from `get_products`). Recovery: correctable (replace `verify_agent.agent_url` with one from the seller's published `accepted_verifiers`, drop the `verify_agent` entirely if the embedding is self-verifiable, or re-embed evidence using a verifier the seller accepts).",
+    "PROVENANCE_CLAIM_CONTRADICTED": "Seller invoked a governance agent from `creative_policy.accepted_verifiers` via `get_creative_features` and the verifier's result contradicts the buyer's provenance claim - e.g., buyer claims `digital_source_type: digital_capture` but the AI-detection feature returns `ai_generated: true` above the seller's confidence threshold. Distinct from the `PROVENANCE_*_MISSING` family (structural absence) by being an active refutation. `error.details` SHOULD be limited to the audit-safe allowlist `{ agent_url, feature_id, claimed_value, observed_value, confidence }`; sellers MUST NOT forward arbitrary verifier extension fields, `detail_url`, or any verifier response shape that may carry cross-tenant or PII data. When the seller calls a different on-list agent than the buyer nominated (the seller is the verifier-of-record), `error.details.agent_url` is the agent the seller actually called and `error.details.substituted_for` SHOULD carry the buyer's nominated `agent_url` so the buyer can reconcile. Recovery: correctable - buyer revises the provenance claim to match reality (or replaces the creative); auto-retry without correction will not pass.",
+    "BILLING_NOT_SUPPORTED": "The seller declines the requested `billing` value either at the seller-wide capability level (`supported_billing` does not include the value) or at the per-account-relationship level (e.g., the seller accepts `operator` billing in general but has no direct billing relationship with the operator on this specific account). The default reject code for billing-value mismatches; `error.details` SHOULD conform to `error-details/billing-not-supported.json` (`scope` ∈ `{\"capability\", \"account\"}` plus optional `supported_billing` echo for the `\"capability\"` scope) so callers can dispatch without parsing prose. Distinct from `BILLING_NOT_PERMITTED_FOR_AGENT`, which is narrowly scoped to the calling buyer agent's commercial relationship with the seller (passthrough-only vs agent-billable) rather than to the seller's capability or per-account state. Sellers MUST emit `BILLING_NOT_PERMITTED_FOR_AGENT` only when agent identity has been established via signed-request derivation or a credential-to-agent mapping in the seller's onboarding record; in all other cases (unauthenticated callers and bearer credentials not mapped to a specific agent record) sellers MUST return `BILLING_NOT_SUPPORTED` and MUST omit `error.details.scope` — emitting the per-agent code or the `\"account\"`-scope hint without established identity is a cross-tenant onboarding oracle (same uniform-response shape required by the `*_NOT_FOUND` family). Recovery: correctable (check `get_adcp_capabilities` for `supported_billing` and resubmit with a value the seller supports, or omit `billing` to accept the seller's default).",
+    "BILLING_NOT_PERMITTED_FOR_AGENT": "The seller's `supported_billing` capability accepts the requested model, but the calling buyer agent's commercial relationship with the seller does not — e.g., the agent is onboarded as passthrough-only (no payments relationship — only the operator can be invoiced) and `billing: 'agent'` or `billing: 'advertiser'` is rejected even though the seller supports both at the capability level. Distinct from `BILLING_NOT_SUPPORTED` (seller-wide capability) by being narrowly per-buyer-agent: the gate is the seller's onboarding record for this caller, not the seller's global wire capability. Sellers MUST emit this code only after agent identity has been established via signed-request derivation or a credential-to-agent mapping in the seller's onboarding record; callers without established identity MUST receive `BILLING_NOT_SUPPORTED` instead, to prevent the distinct code from acting as an onboarding oracle. The recovery shape is deliberately minimal — `error.details` MUST conform to `error-details/billing-not-permitted-for-agent.json` (`rejected_billing` plus an optional single `suggested_billing` retry value, typically `operator`) and MUST NOT carry the agent's full permitted-billing subset, rate cards, payment terms, credit limit, billing entity, or any other per-agent commercial state. Recovery: correctable (retry with `error.details.suggested_billing` when present; when absent, surface to a human at the buyer — the agent cannot unilaterally extend its commercial relationship and MUST NOT auto-retry, since payments-relationship onboarding with the seller is offline).",
+    "PAYMENT_TERMS_NOT_SUPPORTED": "The seller does not accept the requested `payment_terms` value for this account. Payment terms are never silently remapped — sellers either accept or reject. Distinct from `BILLING_NOT_SUPPORTED` (the `billing` enum) by being narrowly about the `payment_terms` enum on the same account. Recovery: correctable (omit `payment_terms` to accept the seller's default, retry with a different value the seller supports, or negotiate offline).",
+    "BRAND_REQUIRED": "A billable operation was attempted without a brand reference. Every billable operation requires either a seller-assigned `account_id` or a natural key including `brand`. Recovery: correctable (include `brand` — `domain` plus optional `brand_id` — on the request)."
   },
   "enumMetadata": {
-    "$comment": "Structured recovery classification and remediation hints for each error code. SDKs MUST consume this block instead of parsing 'Recovery: X' from enumDescriptions prose. Each entry is { recovery, suggestion }. recovery is one of: correctable (caller can fix and retry), transient (retry with backoff), terminal (no autonomous recovery — operator intervention required). enumDescriptions is retained for human readability and will continue to carry the canonical narrative; the recovery classification embedded in that prose is normative and MUST match the value here.",
+    "$comment": "Structured recovery classification and remediation hints for each error code. SDKs MUST consume this block instead of parsing 'Recovery: X' from enumDescriptions prose. Each entry is { recovery, suggestion }. recovery is one of: correctable (caller can fix and retry), transient (retry with backoff), terminal (no autonomous recovery - operator intervention required). enumDescriptions is retained for human readability and will continue to carry the canonical narrative; the recovery classification embedded in that prose is normative and MUST match the value here.",
     "INVALID_REQUEST": {
       "recovery": "correctable",
       "suggestion": "check request parameters and fix"
@@ -288,7 +308,7 @@
     },
     "SCOPE_INSUFFICIENT": {
       "recovery": "correctable",
-      "suggestion": "the agent cannot broaden its own scope — surface to the operator rather than auto-retry"
+      "suggestion": "the agent cannot broaden its own scope - surface to the operator rather than auto-retry"
     },
     "READ_ONLY_SCOPE": {
       "recovery": "correctable",
@@ -297,6 +317,46 @@
     "FIELD_NOT_PERMITTED": {
       "recovery": "correctable",
       "suggestion": "drop the disallowed field(s) and retry"
+    },
+    "PROVENANCE_REQUIRED": {
+      "recovery": "correctable",
+      "suggestion": "attach a provenance object - at minimum digital_source_type - and resubmit"
+    },
+    "PROVENANCE_DIGITAL_SOURCE_TYPE_MISSING": {
+      "recovery": "correctable",
+      "suggestion": "set provenance.digital_source_type to a value from the digital-source-type enum and resubmit"
+    },
+    "PROVENANCE_DISCLOSURE_MISSING": {
+      "recovery": "correctable",
+      "suggestion": "set provenance.disclosure.required and, when true, populate disclosure.jurisdictions"
+    },
+    "PROVENANCE_EMBEDDED_MISSING": {
+      "recovery": "correctable",
+      "suggestion": "attach at least one embedded_provenance entry from a supported provider and resubmit"
+    },
+    "PROVENANCE_VERIFIER_NOT_ACCEPTED": {
+      "recovery": "correctable",
+      "suggestion": "replace verify_agent.agent_url with one from the seller's published accepted_verifiers, drop verify_agent if the embedding is self-verifiable, or re-embed with a verifier the seller accepts"
+    },
+    "PROVENANCE_CLAIM_CONTRADICTED": {
+      "recovery": "correctable",
+      "suggestion": "revise the provenance claim to match the verifier's observation or replace the creative; auto-retry without correction will not pass"
+    },
+    "BILLING_NOT_SUPPORTED": {
+      "recovery": "correctable",
+      "suggestion": "check get_adcp_capabilities for supported_billing and resubmit with a supported value, or omit billing to accept the seller's default"
+    },
+    "BILLING_NOT_PERMITTED_FOR_AGENT": {
+      "recovery": "correctable",
+      "suggestion": "retry with error.details.suggested_billing (typically 'operator') when present; when absent, surface to a human at the buyer — the agent cannot unilaterally extend its commercial relationship and MUST NOT auto-retry"
+    },
+    "PAYMENT_TERMS_NOT_SUPPORTED": {
+      "recovery": "correctable",
+      "suggestion": "omit payment_terms to accept the seller's default, retry with a different supported value, or negotiate offline"
+    },
+    "BRAND_REQUIRED": {
+      "recovery": "correctable",
+      "suggestion": "include brand (domain plus optional brand_id) on the request"
     }
   }
 }

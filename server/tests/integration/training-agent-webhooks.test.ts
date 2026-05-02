@@ -84,7 +84,7 @@ describe('Training Agent webhook emission', () => {
           const catalog = buildCatalog();
           const product = catalog[0].product as { product_id: string; pricing_options: Array<{ pricing_option_id: string }> };
           return request(app)
-            .post('/api/training-agent/mcp')
+            .post('/api/training-agent/sales/mcp')
             .set('Authorization', AUTH)
             .set('Content-Type', 'application/json')
             .set('Accept', 'application/json, text/event-stream')
@@ -167,7 +167,7 @@ describe('Training Agent webhook emission', () => {
   it('does not emit when push_notification_config is absent', async () => {
     // Nothing to receive — just verify the MCP call succeeds without webhook plumbing.
     const response = await request(app)
-      .post('/api/training-agent/mcp')
+      .post('/api/training-agent/sales/mcp')
       .set('Authorization', AUTH)
       .set('Content-Type', 'application/json')
       .set('Accept', 'application/json, text/event-stream')

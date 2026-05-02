@@ -454,6 +454,18 @@ function main() {
     process.exit(1);
   }
 
+  // provides_state_for lint: same-phase substitution declarations on stateful
+  // steps must reference real, stateful, same-phase peers and the per-phase
+  // peer-graph must be acyclic. See adcontextprotocol/adcp#3734.
+  try {
+    execSync('node scripts/lint-storyboard-provides-state-for.cjs', {
+      cwd: path.join(__dirname, '..'),
+      stdio: 'inherit',
+    });
+  } catch {
+    process.exit(1);
+  }
+
   // Contradiction lint: no two storyboards may encode contradictory outcomes
   // for the same (task, request, prior-state, env) — a conformant agent
   // cannot satisfy both.
@@ -530,6 +542,53 @@ function main() {
     });
   } catch {
     process.exit(1);
+  }
+
+  // Check-enum lint: storyboards may only declare validations[].check values
+  // listed in runner-output-contract.yaml's `authored_check_kinds` enum.
+  // Synthesized codes (capture_path_not_resolvable, unresolved_substitution)
+  // are runner-emitted, not authored. The runtime forward-compat default
+  // (unknown kinds → not_applicable) handles cross-version skew; this lint
+  // catches typos at publish time. adcontextprotocol/adcp#3830 item 1.
+  try {
+    execSync('node scripts/lint-storyboard-check-enum.cjs', {
+      cwd: path.join(__dirname, '..'),
+      stdio: 'inherit',
+    });
+  } catch {
+    process.exit(1);
+  }
+
+  // Raw-mode-required lint: storyboards setting attestation_mode_required:
+  // "raw" on an upstream_traffic check MUST declare at least one
+  // payload_must_contain clause. Otherwise the raw flag has no operational
+  // value and just excludes digest-mode adopters from the conformance
+  // signal. adcontextprotocol/adcp#3847 item 2.
+  try {
+    execSync('node scripts/lint-storyboard-raw-mode-required.cjs', {
+      cwd: path.join(__dirname, '..'),
+      stdio: 'inherit',
+    });
+  } catch {
+    process.exit(1);
+  }
+
+  // Advisory-expiry lint (warnings only): surface storyboards declaring
+  // severity: advisory without expires_after_version (or permanent_advisory),
+  // so authors can confirm at PR review whether the drift is on purpose.
+  // adcontextprotocol/adcp#3847 item 1. The script exits 0 on rule
+  // violations (warnings, not errors); a non-zero exit here means the
+  // script itself crashed and SHOULD surface — don't silently swallow
+  // implementation bugs that mask the lint forever.
+  try {
+    execSync('node scripts/lint-storyboard-advisory-expiry.cjs', {
+      cwd: path.join(__dirname, '..'),
+      stdio: 'inherit',
+    });
+  } catch (err) {
+    console.error(`⚠ advisory-expiry lint crashed (not a rule violation — script bug):`);
+    console.error(`  ${err.message || err}`);
+    console.error(`  Continuing build, but the lint will be silent until this is fixed.`);
   }
 
   console.log(isRelease

@@ -116,7 +116,7 @@ Each testable snippet should:
 import { AdcpClient } from '@adcp/client';
 
 const client = new AdcpClient({
-  agentUrl: 'https://test-agent.adcontextprotocol.org/mcp',
+  agentUrl: 'https://test-agent.adcontextprotocol.org/sales/mcp',
   protocol: 'mcp',
   bearerToken: 'sk_your_api_key_here'
 });
@@ -179,7 +179,7 @@ Each testable snippet should demonstrate ONE concept:
 import { AdcpClient } from '@adcp/client';
 
 const client = new AdcpClient({
-  agentUrl: 'https://test-agent.adcontextprotocol.org/mcp',
+  agentUrl: 'https://test-agent.adcontextprotocol.org/sales/mcp',
   protocol: 'mcp',
   bearerToken: 'sk_your_api_key_here'
 });

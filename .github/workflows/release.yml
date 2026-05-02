@@ -69,3 +69,37 @@ jobs:
           createGithubReleases: true
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+
+      # Attach the protocol tarball + signature sidecars to the GitHub
+      # Release that changesets/action just created. `createGithubReleases:
+      # true` only writes the changelog body — files have to be uploaded
+      # separately. The `published` output is the canonical signal that a
+      # tag-and-release just happened on this run (not a Version Packages
+      # PR-creation run, where `published` is false).
+      #
+      # Tarballs and sidecars (.sha256, .sig, .crt) are written to
+      # dist/protocol/${VERSION}.tgz{,.sha256,.sig,.crt} by `npm run version`
+      # earlier in this job (build-protocol-tarball + sign-protocol-tarball).
+      # Without this step the artifacts ship to the repo's dist/ tree but
+      # are never attached as Release assets, leaving adopters who pin via
+      # release URL with a 404. v3.0.0 had assets only because they were
+      # uploaded manually; v3.0.1, v3.0.2, v3.0.3 all shipped empty.
+      - name: Upload protocol tarball to GitHub Release
+        if: steps.changesets.outputs.published == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./package.json').version")
+          TAG="v${VERSION}"
+          TARBALL="dist/protocol/${VERSION}.tgz"
+          if [ ! -f "${TARBALL}" ]; then
+            echo "::error::Tarball not found at ${TARBALL}. Did npm run version fail upstream?"
+            exit 1
+          fi
+          gh release upload "${TAG}" \
+            "${TARBALL}" \
+            "${TARBALL}.sha256" \
+            "${TARBALL}.sig" \
+            "${TARBALL}.crt" \
+            --clobber

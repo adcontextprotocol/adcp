@@ -71,12 +71,14 @@ curl -OL https://adcontextprotocol.org/protocol/3.1.0.tgz.crt
 cosign verify-blob \
   --signature 3.1.0.tgz.sig \
   --certificate 3.1.0.tgz.crt \
-  --certificate-identity-regexp '^https://github\.com/adcontextprotocol/adcp/\.github/workflows/release\.yml@refs/heads/.*$' \
+  --certificate-identity-regexp '^https://github\.com/adcontextprotocol/adcp/\.github/workflows/release\.yml@refs/(heads|tags)/.*$' \
   --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
   3.1.0.tgz
 ```
 
-`cosign verify-blob` exits non-zero if the signature was made by anything other than the AdCP release workflow, even if the SHA matches and TLS is valid. Use this in any pipeline that ingests the protocol bundle as an enforcement source. The `@adcp/client` `sync-schemas` command performs this verification automatically when the sidecars are present.
+`cosign verify-blob` exits non-zero if the signature was made by anything other than the AdCP release workflow, even if the SHA matches and TLS is valid. Use this in any pipeline that ingests the protocol bundle as an enforcement source. The `@adcp/sdk`, `adcp-client-python`, and `adcp-go` SDKs perform this verification automatically when the sidecars are present.
+
+The `refs/(heads|tags)/.*` wildcard is intentional — releases sign during the push-triggered workflow run, so the cert subject names the release branch (e.g. `refs/heads/3.0.x` for v3.0.1+, `refs/heads/main` for v3.0.0). The trust gate is upstream `release.yml`'s `on.push.branches` allowlist, not the consumer's regex. Literal-allowlist regexes (`(main|2\.6\.x)`-style) silently break every time a new maintenance branch is added — see [Verifying protocol tarballs](/docs/reference/verifying-protocol-tarballs) for the full trust model and the cert-subject-by-release lookup.
 
 Older releases that predate signing, and versions republished out of band (bypassing the signing workflow), remain checksum-only — clients should treat missing sidecars as a "checksum-only" trust level rather than a verification failure.
 

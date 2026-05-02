@@ -30,6 +30,7 @@ import {
 import { getPublicJwks } from "../services/verification-token.js";
 import { renderBadgeSvg, VALID_BADGE_ROLES } from "../services/badge-svg.js";
 import { resolveOwnerMembership } from "../services/membership-tiers.js";
+import { inferDiagnosticAgentType } from "../lib/diagnostic-agent-type-inference.js";
 import { isValidAdcpVersionShape } from "../services/adcp-taxonomy.js";
 import { buildAaoVerificationBlock } from "../services/aao-verification-enrichment.js";
 import { PUBLIC_TEST_AGENT } from "../config/test-agent.js";
@@ -560,15 +561,12 @@ registry.registerPath({
   operationId: "listAgents",
   summary: "List agents",
   description:
-    "List all registered and discovered agents. Optionally enrich with health checks, capabilities, and property summaries via query parameters. " +
+    "List all agents in the registry. Optionally enrich with health checks, capabilities, and property summaries via query parameters. " +
     "Measurement-vendor filters (`metric_id`, `accreditation`, `q`) imply `type=measurement` when `type` is unset; an explicit `type` other than `measurement` returns 400.",
   tags: ["Agent Discovery"],
   request: {
     query: z.object({
       type: z.enum(["brand", "rights", "measurement", "governance", "creative", "sales", "buying", "signals", "unknown"]).optional(),
-      source: z.enum(["registered", "discovered"]).optional().openapi({
-        description: "Filter agents by registration source. Omit to receive both.",
-      }),
       health: z.enum(["true"]).optional(),
       capabilities: z.enum(["true"]).optional(),
       properties: z.enum(["true"]).optional(),
@@ -595,7 +593,6 @@ registry.registerPath({
           schema: z.object({
             agents: z.array(FederatedAgentWithDetailsSchema),
             count: z.number().int(),
-            sources: z.object({ registered: z.number().int(), discovered: z.number().int() }),
           }),
         },
       },
@@ -609,7 +606,7 @@ registry.registerPath({
   path: "/api/registry/publishers",
   operationId: "listPublishers",
   summary: "List publishers",
-  description: "List all registered and discovered publishers.",
+  description: "List all registered publishers.",
   tags: ["Agent Discovery"],
   responses: {
     200: {
@@ -619,7 +616,6 @@ registry.registerPath({
           schema: z.object({
             publishers: z.array(FederatedPublisherSchema),
             count: z.number().int(),
-            sources: z.object({ registered: z.number().int(), discovered: z.number().int() }),
           }),
         },
       },
@@ -3659,20 +3655,14 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       const withProperties = req.query.properties === "true";
       const withCompliance = req.query.compliance === "true";
 
-      // Optional source filter — narrows the response to one trust level
-      // (registered = AAO-attested opt-in; discovered = crawled from
-      // adagents.json with no opt-in). Omit to receive both, preserving
-      // the historical default. Validate explicitly so unknown values
-      // produce a 400 instead of silently being ignored.
-      const sourceParam = req.query.source;
-      let sourceFilter: "registered" | "discovered" | undefined;
-      if (typeof sourceParam === "string" && sourceParam.length > 0) {
-        if (sourceParam !== "registered" && sourceParam !== "discovered") {
-          return res.status(400).json({
-            error: "Invalid source: expected 'registered' or 'discovered'",
-          });
-        }
-        sourceFilter = sourceParam;
+      // `?source=` is removed (#3772). The registry surface is registered-only;
+      // the parameter no longer has a defined behaviour. Reject explicitly so a
+      // caller passing `?source=discovered` gets a clear signal instead of a
+      // silently-merged response that happens to look right by coincidence.
+      if (typeof req.query.source === "string" && req.query.source.length > 0) {
+        return res.status(400).json({
+          error: "source query parameter is no longer supported (registry surface is registered-only)",
+        });
       }
 
       // Measurement-vendor filters (#3613). Repeatable params arrive as
@@ -3728,16 +3718,11 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         }
       }
 
-      const allFederatedAgents = await federatedIndex.listAllAgents(type, { includeMembersOnly });
-      let federatedAgents = sourceFilter
-        ? allFederatedAgents.filter((fa) => fa.source === sourceFilter)
-        : allFederatedAgents;
+      let federatedAgents = await federatedIndex.listAllAgents(type, { includeMembersOnly });
 
       // Apply measurement-vendor filters by intersecting with the snapshot
       // table. The snapshot is the only place metric_id / accreditation /
       // metric_id-substring lookups can be answered without per-agent fan-out.
-      // Counts in `sources` are computed below against the filtered set so
-      // the invariant `sum(sources) === count` holds for downstream UIs.
       if (hasMeasurementFilter) {
         const matchingUrls = await agentSnapshotDb.filterMeasurementAgents({
           metric_ids: metricIds,
@@ -3752,36 +3737,18 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         url: fa.url,
         type: isValidAgentType(fa.type) ? fa.type : ("unknown" as const),
         protocol: fa.protocol || "mcp",
-        // Description prefers registered member, then publisher endorsement,
-        // then bare publisher_domain — surfaces the strongest trust signal we
-        // have for this agent.
-        description:
-          fa.member?.display_name ||
-          fa.endorsed_by_publisher_member?.display_name ||
-          fa.discovered_from?.publisher_domain ||
-          "",
+        description: fa.member?.display_name || "",
         mcp_endpoint: fa.url,
         contact: {
           name: fa.member?.display_name || "",
           email: "",
           website: "",
         },
-        added_date: fa.discovered_at || new Date().toISOString().split("T")[0],
-        source: fa.source,
         member: fa.member,
-        discovered_from: fa.discovered_from,
-        // Publisher-side endorsement (option C from #3547). Mutually
-        // exclusive with `member`: registered agents never carry it.
-        endorsed_by_publisher_member: fa.endorsed_by_publisher_member,
       }));
 
-      const bySource = {
-        registered: federatedAgents.filter((a) => a.source === "registered").length,
-        discovered: federatedAgents.filter((a) => a.source === "discovered").length,
-      };
-
       if (!withHealth && !withCapabilities && !withProperties && !withCompliance) {
-        return res.json({ agents, count: agents.length, sources: bySource });
+        return res.json({ agents, count: agents.length });
       }
 
       // Bulk-fetch all enrichment data from DB snapshot tables up front.
@@ -3920,7 +3887,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         })
       );
 
-      res.json({ agents: enriched, count: enriched.length, sources: bySource });
+      res.json({ agents: enriched, count: enriched.length });
     } catch (error) {
       logger.error({ err: error, path: req.path }, "Failed to list agents");
       res.status(500).json({ error: "Failed to list agents" });
@@ -5508,11 +5475,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     try {
       const federatedIndex = crawler.getFederatedIndex();
       const publishers = await federatedIndex.listAllPublishers();
-      const bySource = {
-        registered: publishers.filter((p) => p.source === "registered").length,
-        discovered: publishers.filter((p) => p.source === "discovered").length,
-      };
-      res.json({ publishers, count: publishers.length, sources: bySource });
+      res.json({ publishers, count: publishers.length });
     } catch (error) {
       logger.error({ err: error, path: _req.path }, "Failed to list publishers");
       res.status(500).json({ error: "Failed to list publishers" });
@@ -5796,15 +5759,13 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       const agentInfo = await client.getAgentInfo();
       const tools = agentInfo.tools || [];
 
-      let agentType = "unknown";
-      const toolNames = tools.map((t: { name: string }) => t.name.toLowerCase());
-      if (toolNames.some((n: string) => n.includes("get_product") || n.includes("media_buy") || n.includes("create_media"))) {
-        agentType = "buying";
-      } else if (toolNames.some((n: string) => n.includes("signal") || n.includes("audience"))) {
-        agentType = "signals";
-      } else if (toolNames.some((n: string) => n.includes("creative") || n.includes("format") || n.includes("preview"))) {
-        agentType = "creative";
-      }
+      // Diagnostic agent-type inference. Shared helper between this
+      // endpoint and the equivalent in http.ts so polarity stays in sync
+      // across both. Pre-#3540 returned 'buying' for sales-tool exposure;
+      // #3774 corrected polarity and consolidated.
+      const agentType = inferDiagnosticAgentType(
+        tools.map((t: { name: string }) => t.name),
+      );
 
       const hostname = new URL(url).hostname;
       const agentName = agentInfo.name && agentInfo.name !== "discovery-client" ? agentInfo.name : hostname;
@@ -5836,7 +5797,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           logger.debug({ err: statsError, url }, "Failed to fetch creative formats");
           stats.format_count = 0;
         }
-      } else if (agentType === "buying") {
+      } else if (agentType === "sales") {
         stats.product_count = 0;
         stats.publisher_count = 0;
         try {

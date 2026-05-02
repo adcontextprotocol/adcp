@@ -16,10 +16,12 @@ import { orgRowMatchesLiveStripeSubInvariant } from './org-row-matches-live-stri
 import { stripeSubReflectedInOrgRowInvariant } from './stripe-sub-reflected-in-org-row.js';
 import { workosMembershipRowExistsInWorkosInvariant } from './workos-membership-row-exists-in-workos.js';
 import { usersHavePrimaryOrganizationInvariant } from './users-have-primary-organization.js';
+import { everyEntitledOrgHasResolvableTierInvariant } from './every-entitled-org-has-resolvable-tier.js';
 
 export const ALL_INVARIANTS: readonly Invariant[] = [
   // DB-only checks first (no external API calls).
   usersHavePrimaryOrganizationInvariant,
+  everyEntitledOrgHasResolvableTierInvariant,
   stripeCustomerOrgMetadataBidirectionalInvariant,
   oneActiveStripeSubPerOrgInvariant,
   stripeCustomerResolvesInvariant,

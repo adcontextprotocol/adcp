@@ -1,0 +1,79 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.3/core/insertion-order.json",
+  "title": "Insertion Order",
+  "description": "A signing wrapper attached to a committed proposal. The IO does not introduce new deal terms — all negotiated terms (performance standards, measurement terms, cancellation policy, pricing) live on the product and package. The IO exists for human signature workflows and provides summary fields so buyer agents can verify the IO matches the committed proposal before a human signs.",
+  "type": "object",
+  "properties": {
+    "io_id": {
+      "type": "string",
+      "description": "Unique identifier for this insertion order. Referenced by io_acceptance on create_media_buy.",
+      "maxLength": 255
+    },
+    "terms": {
+      "type": "object",
+      "description": "Summary fields echoed from the committed proposal for agent verification. Buyer agents use these to confirm the IO matches what was negotiated before a human signs. These are read-only summaries, not negotiation surfaces — deal terms live on products and packages.",
+      "properties": {
+        "advertiser": {
+          "type": "string",
+          "description": "Advertiser name or identifier",
+          "maxLength": 500
+        },
+        "publisher": {
+          "type": "string",
+          "description": "Publisher name or identifier",
+          "maxLength": 500
+        },
+        "total_budget": {
+          "type": "object",
+          "description": "Total committed budget",
+          "properties": {
+            "amount": {
+              "type": "number",
+              "minimum": 0
+            },
+            "currency": {
+              "type": "string",
+              "description": "ISO 4217 currency code",
+              "minLength": 3,
+              "maxLength": 3
+            }
+          },
+          "required": ["amount", "currency"]
+        },
+        "flight_start": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Campaign start date"
+        },
+        "flight_end": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Campaign end date"
+        },
+        "payment_terms": {
+          "type": "string",
+          "description": "Payment terms",
+          "enum": ["net_30", "net_60", "net_90", "prepaid", "due_on_receipt"]
+        }
+      },
+      "additionalProperties": true
+    },
+    "terms_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL to a human-readable document containing the full insertion order terms"
+    },
+    "signing_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL to an electronic signing service (e.g., DocuSign) for human signature workflows. When present, a human must sign before the buyer agent can proceed with create_media_buy."
+    },
+    "requires_signature": {
+      "type": "boolean",
+      "description": "Whether the buyer must accept this IO before creating a media buy. When true, create_media_buy requires an io_acceptance referencing this io_id."
+    }
+  },
+  "required": ["io_id", "requires_signature"],
+  "additionalProperties": true
+}

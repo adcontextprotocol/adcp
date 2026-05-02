@@ -17,7 +17,7 @@ const logger = createLogger('addie-member-tools');
 import { classifyProbeError, probeReasonLabel } from '../../utils/probe-error.js';
 import { validateExternalUrl } from '../../utils/url-security.js';
 import { parseOAuthClientCredentialsInput } from '../../routes/helpers/oauth-client-credentials-input.js';
-import { PUBLIC_TEST_AGENT, INTERNAL_PATH_AGENT_URL } from '../../config/test-agent.js';
+import { PUBLIC_TEST_AGENT, PUBLIC_TEST_AGENT_URLS, INTERNAL_PATH_AGENT_URL } from '../../config/test-agent.js';
 import type { AddieTool } from '../types.js';
 import type { MemberContext } from '../member-context.js';
 import { ToolError } from '../tool-error.js';
@@ -221,15 +221,41 @@ async function resolveAgentAuth(
 ): Promise<ResolvedAgentAuth> {
   let resolvedUrl = agentUrl;
 
-  // Redirect internal path URL to canonical hostname
-  if (resolvedUrl.toLowerCase() === INTERNAL_PATH_AGENT_URL.toLowerCase()) {
-    resolvedUrl = PUBLIC_TEST_AGENT.url;
+  // Canonicalize for comparison: strip trailing slash, query string, and
+  // fragment so saved `agent_contexts` rows with cosmetic variations
+  // ("…/sales/mcp/", "…/sales/mcp?retry=1") still resolve to the public
+  // token path.
+  const canonicalize = (u: string): string => {
+    try {
+      const parsed = new URL(u);
+      // Drop fragment and query — they don't change which agent is being addressed.
+      parsed.hash = '';
+      parsed.search = '';
+      let pathname = parsed.pathname;
+      if (pathname.length > 1 && pathname.endsWith('/')) pathname = pathname.slice(0, -1);
+      return `${parsed.protocol}//${parsed.host}${pathname}`.toLowerCase();
+    } catch {
+      // Not a parseable URL — fall back to lowercased input so the
+      // includes-check still has stable semantics.
+      return u.toLowerCase();
+    }
+  };
+
+  // Redirect internal path URL to the legacy back-compat alias on the
+  // canonical hostname. Callers using INTERNAL_PATH_AGENT_URL are referencing
+  // the single-URL multi-tool agent — preserve that semantics by routing to
+  // the legacy alias (v5 monolith), not a per-specialism tenant.
+  if (canonicalize(resolvedUrl) === canonicalize(INTERNAL_PATH_AGENT_URL)) {
+    resolvedUrl = PUBLIC_TEST_AGENT_URLS.legacy;
   }
 
   // Public test agent always uses the known public token — saved or explicit tokens
   // for this URL are ignored because they're likely incorrect (the public token is
-  // intentionally published and doesn't need per-user credentials).
-  if (resolvedUrl.toLowerCase() === PUBLIC_TEST_AGENT.url.toLowerCase()) {
+  // intentionally published and doesn't need per-user credentials). Match against
+  // any per-specialism URL or the legacy alias — they all hit the same Fly app.
+  const canonicalResolved = canonicalize(resolvedUrl);
+  const publicTestAgentUrls: string[] = Object.values(PUBLIC_TEST_AGENT_URLS).map(canonicalize);
+  if (publicTestAgentUrls.includes(canonicalResolved)) {
     return { authToken: PUBLIC_TEST_AGENT.token, authType: 'bearer', source: 'public', resolvedUrl };
   }
 
@@ -1176,8 +1202,8 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'save_agent',
     description:
-      'Save an agent URL to the organization\'s context and add it to the dashboard for compliance monitoring. New agents land in the dashboard with `members_only` visibility — discoverable to fellow Professional-tier (or higher) members, but not publicly listed in the directory or brand.json. To list publicly, the caller promotes the agent via the dashboard publish flow; that flow gates on an API-access subscription tier. Optionally store credentials securely (encrypted, never shown in conversations). Three auth modes, any of which may be combined with a new or existing save: (1) static bearer/basic via `auth_token`, (2) OAuth 2.0 client credentials (RFC 6749 §4.4, machine-to-machine) via `oauth_client_credentials`. Use this when users want to connect their agent, set up compliance monitoring, save their agent for testing, or provide credentials. If the user mentions their MCP endpoint requires auth, lives at a non-root path (e.g. /adcp/mcp), or shows up as offline after saving, suggest setting `health_check_url` for a liveness fallback while they fix the underlying URL.',
-    usage_hints: 'use for "connect my agent", "add agent for compliance monitoring", "save my agent", "remember this agent URL", "store my auth token", "configure client credentials", "save OAuth client credentials"',
+      'Register an agent in the AAO registry on behalf of the current organization. Adds the agent to the org\'s member profile; surfaces in `/dashboard/agents`. New agents land with `members_only` visibility (discoverable to other Professional-tier-or-higher AAO members; not publicly listed in the directory or brand.json). To list publicly, the caller promotes the agent via the dashboard; public visibility requires Professional tier or higher and a primary brand domain. Auth modes: (1) none — public agent, no credentials; (2) static `auth_token` + `auth_type` (`bearer` or `basic`, stored encrypted); (3) `oauth_client_credentials` for machine-to-machine (RFC 6749 §4.4). For interactive OAuth user authorization, save with no auth fields and have the user complete the dashboard\'s **Authorize** flow afterward — `save_agent` does not collect end-user OAuth state. The agent\'s `type` is resolved server-side from the capability snapshot; the schema does not accept a `type` field. If the user mentions their MCP endpoint requires auth, lives at a non-root path (e.g. /adcp/mcp), or shows up as offline after saving, suggest setting `health_check_url` for a liveness fallback while they fix the underlying URL. See the "Registering an Agent in the AAO Registry" section of the rules for the intake script.',
+    usage_hints: 'use for "register my agent", "add an agent", "save my agent", "store my auth token", "configure client credentials". When the user opens the conversation with a registration intent and no details, follow the intake script in the rules — do not call save_agent until you have `agent_url` and an explicit auth-mode choice.',
     input_schema: {
       type: 'object',
       properties: {

@@ -145,7 +145,7 @@ asyncio.run(create_campaign())
 
 ```bash CLI test=false
 npx @adcp/client@latest \
-  https://test-agent.adcontextprotocol.org/mcp \
+  https://test-agent.adcontextprotocol.org/sales/mcp \
   create_media_buy \
   '{"brand":{"domain":"acmecorp.com"},"packages":[{"product_id":"prod_d979b543","pricing_option_id":"cpm_usd_auction","format_ids":[{"agent_url":"https://creative.adcontextprotocol.org","id":"display_300x250_image"}],"budget":30000,"bid_price":5.00},{"product_id":"prod_e8fd6012","pricing_option_id":"cpm_usd_auction","format_ids":[{"agent_url":"https://creative.adcontextprotocol.org","id":"display_300x250_html"}],"budget":20000,"bid_price":4.50}],"start_time":"2025-06-01T00:00:00Z","end_time":"2025-08-31T23:59:59Z"}' \
   --auth $ADCP_AUTH_TOKEN
@@ -200,6 +200,7 @@ npx @adcp/client@latest \
 | `context` | object | No | Opaque correlation data echoed unchanged in the package response. Use to map seller-assigned `package_id` back to your internal line items, campaign structure, or tracking state. |
 | `measurement_terms` | [MeasurementTerms](/docs/media-buy/advanced-topics/pricing-models#measurement-terms-and-performance-standards) | No | Buyer's proposed billing measurement and makegood terms. Overrides product defaults. Seller accepts (echoed on confirmed package), rejects with `TERMS_REJECTED`, or adjusts. When omitted, product's `measurement_terms` apply. |
 | `performance_standards` | [PerformanceStandard[]](/docs/media-buy/advanced-topics/pricing-models#measurement-terms-and-performance-standards) | No | Buyer's proposed performance standards (viewability, IVT, completion rate, brand safety, attention score). Overrides product defaults. Seller accepts, rejects with `TERMS_REJECTED`, or adjusts. When omitted, product's `performance_standards` apply. |
+| `committed_metrics` | object[] | No | Buyer's proposed reporting contract — metrics the buyer wants the seller to commit to populating in delivery reports. Same negotiation pattern as `measurement_terms`/`performance_standards`: each entry tags `scope: "standard"` (with `metric_id` from the closed enum) or `scope: "vendor"` (with `vendor` BrandRef + vendor's `metric_id`). Request-side entries do NOT carry `committed_at` — that timestamp is stamped by the seller on accept. Seller accepts (echoes on response with `committed_at`), rejects with `TERMS_REJECTED`, or normalizes (echoes a different but compatible list). When omitted, the seller decides what to commit based on the product's `available_metrics` plus any `required_metrics` filter the buyer passed at discovery. |
 
 ## Response
 
@@ -214,12 +215,31 @@ npx @adcp/client@latest \
 
 #### Reporting contract on confirmed packages
 
-Each package in the response MAY carry `committed_metrics` and `committed_vendor_metrics` — frozen snapshots of the product's `reporting_capabilities.available_metrics` and `vendor_metrics` at the moment the buy was created. These become the binding reporting contract for the package's lifetime, independent of subsequent product mutations:
+Each package in the response MAY carry `committed_metrics` — the binding reporting contract the seller has agreed to populate in delivery reports for this package. The field is a unified array carrying both standard metrics (from the closed `available-metric.json` enum) and vendor-defined metrics (anchored on a BrandRef), with each entry tagged by an explicit `scope` discriminator and timestamped via `committed_at`:
 
-- `missing_metrics` on `get_media_buy_delivery` is computed against `committed_metrics` when present (against the product's current `available_metrics` when absent).
-- The fields MUST NOT change post-creation. Sellers MUST reject `update_media_buy` requests that attempt to modify either field with a `validation_error` (suggested code: `IMMUTABLE_FIELD`). Renegotiating the metric contract requires a new buy.
-- Optional in v1 — sellers without per-package snapshot infrastructure can adopt incrementally. Absence is conformant, but it carries a known audit gap: without the snapshot, `missing_metrics` reconciles against the product's live state at report time, which may not reflect what was committed at create time. Sellers that omit `committed_metrics` accept this risk; buyers SHOULD treat the absence as "no audit-grade contract" rather than "clean delivery." Expected to become required at the next major.
-- Empty array is rejected at the schema level (`minItems: 1`) — absence is the only "no snapshot" signal, eliminating ambiguity between "I committed to nothing" and "I didn't snapshot."
+```json
+{
+  "package_id": "pkg_001",
+  "committed_metrics": [
+    { "scope": "standard", "metric_id": "impressions",     "committed_at": "2026-04-29T10:53:00Z" },
+    { "scope": "standard", "metric_id": "completed_views", "committed_at": "2026-04-29T10:53:00Z" },
+    { "scope": "vendor",   "vendor": { "domain": "attentionvendor.example" },
+                           "metric_id": "attention_units", "committed_at": "2026-04-29T10:53:00Z" },
+    { "scope": "standard", "metric_id": "viewable_rate",
+                           "qualifier": { "viewability_standard": "mrc" },
+                           "committed_at": "2026-05-30T14:22:00Z" }
+  ]
+}
+```
+
+**How the contract works:**
+
+- **Day-1 entries** share `committed_at = confirmed_at`. The seller stamps the day-1 set on the `create_media_buy` response based on what they're prepared to deliver from the product's `reporting_capabilities`.
+- **Mid-flight additions** are appended via `update_media_buy` — append-only with their own `committed_at` timestamps. This lets a seller honestly say "Adelaide attention is now part of the contract from day 30 onward" without having to cancel and reissue the buy.
+- **Existing entries are immutable.** Sellers MUST reject `update_media_buy` requests that attempt to modify or remove existing entries with a `validation_error` (suggested code: `IMMUTABLE_FIELD`). New entries can be appended.
+- **Measurement-standard qualifier on standard metrics.** When `metric_id` is one of `viewable_impressions`, `viewable_rate`, `measurable_impressions` and the seller commits to a specific viewability standard (MRC and GroupM are materially different thresholds — see the `viewability-standard` enum), the entry MUST carry `qualifier.viewability_standard`. Without it the contract is ambiguous and reconciliation falls back to whatever `viewability.standard` the delivery report happens to use. Symmetric on `missing_metrics`: a buyer expecting MRC viewability flags a GroupM-only delivery report as missing the MRC commitment.
+- **Reconciliation:** `missing_metrics` on `get_media_buy_delivery` filters `committed_metrics` to entries where `committed_at < reporting_period.end`, then flags any that aren't populated in the report. A metric committed mid-flight is only audited from its commitment timestamp forward. Qualifiers are matched verbatim — a committed `{viewable_rate, mrc}` is not satisfied by a delivered `viewable_rate` carrying `viewability.standard: groupm`.
+- **Optional in v1.** Sellers without per-package snapshot infrastructure can adopt incrementally. Absence is conformant but carries a known audit gap: without the snapshot, `missing_metrics` reconciles against the product's live `available_metrics` at report time, which may not reflect what was committed at create time. Sellers that omit `committed_metrics` accept this risk; buyers SHOULD treat absence as "no audit-grade contract" rather than "clean delivery." Expected to become required at the next major.
 
 ### Error Response
 

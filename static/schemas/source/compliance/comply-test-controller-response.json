@@ -37,10 +37,11 @@
               "seed_creative",
               "seed_plan",
               "seed_media_buy",
-              "seed_creative_format"
+              "seed_creative_format",
+              "query_upstream_traffic"
             ]
           },
-          "description": "Scenarios this seller has implemented. Runners and sellers MUST accept unknown scenario strings (open-for-extension) — new scenarios may be added in additive minor bumps."
+          "description": "Scenarios this seller has implemented. Runners and sellers MUST accept unknown scenario strings (open-for-extension) — new scenarios may be added in additive minor bumps. Adopters who advertise `query_upstream_traffic` opt in to the upstream-traffic conformance contract; storyboards that declare `check: upstream_traffic` grade `not_applicable` against adopters who do not advertise it."
         },
         "context": {
           "$ref": "/schemas/core/context.json"
@@ -74,6 +75,11 @@
           {
             "required": [
               "forced"
+            ]
+          },
+          {
+            "required": [
+              "recorded_calls"
             ]
           }
         ]
@@ -134,6 +140,11 @@
             "required": [
               "forced"
             ]
+          },
+          {
+            "required": [
+              "recorded_calls"
+            ]
           }
         ]
       }
@@ -192,6 +203,11 @@
           {
             "required": [
               "forced"
+            ]
+          },
+          {
+            "required": [
+              "recorded_calls"
             ]
           }
         ]
@@ -267,6 +283,11 @@
             "required": [
               "simulated"
             ]
+          },
+          {
+            "required": [
+              "recorded_calls"
+            ]
           }
         ]
       }
@@ -293,6 +314,247 @@
       },
       "required": [
         "success"
+      ],
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "error"
+            ]
+          },
+          {
+            "required": [
+              "scenarios"
+            ]
+          },
+          {
+            "required": [
+              "previous_state"
+            ]
+          },
+          {
+            "required": [
+              "simulated"
+            ]
+          },
+          {
+            "required": [
+              "forced"
+            ]
+          },
+          {
+            "required": [
+              "recorded_calls"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "title": "UpstreamTrafficSuccess",
+      "description": "A query_upstream_traffic scenario returned the outbound HTTP calls the agent has made since the requested time window. Used by storyboard runners to apply `check: upstream_traffic` assertions. The mechanism raises the bar against unintentional façades — adapters (often LLM-generated) that satisfy AdCP schema requirements with synthetic placeholders without forwarding data upstream. Adopters self-report their own traffic; this contract is NOT an adversarial integrity check, and consumers MUST NOT treat upstream_traffic passing as cryptographic proof of adapter behavior. Synthetic vectors only: adopters MUST NOT enable query_upstream_traffic against a sandbox that processes production identifier values, regardless of attestation mode. Storyboards SHOULD use synthetic hashed inputs (e.g., the `acme-user-NNNN` form in the example below). The synthetic-vectors-only requirement applies to digest mode as well as raw — the digest carrying production hashed PII would still let a runner with the right precomputed digest set learn membership of arbitrary identifiers in the adopter's production user base (existence-oracle), which is exactly the threat synthetic vectors close. Privacy-conscious adopters use digest mode to support upstream_traffic conformance without raw-payload disclosure of synthetic test data — not to enable testing against production data. Caller scoping: adopters MUST scope recorded_calls to traffic caused by the requesting principal's session/auth context — cross-caller traffic MUST NOT be returned regardless of `since_timestamp`. Multi-tenant sandboxes MUST key the recording buffer on the comply_test_controller invocation's auth principal, not just process-global. Secret redaction: adopters MUST recursively redact values at keys matching the case-insensitive pattern `^(authorization|credentials?|token|api[_-]?key|password|secret|client[_-]secret|refresh[_-]token|access[_-]token|bearer|session[_-]token|offering[_-]token|cookie|set[_-]cookie)$` from the recorded payload before emission (raw mode) or before digest computation (digest mode). The redaction obligation is normative on the controller — runner-side redaction is a backstop, not a substitute.",
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean",
+          "const": true
+        },
+        "recorded_calls": {
+          "type": "array",
+          "description": "Outbound HTTP calls caused by the requesting principal in the requested window, ordered by `timestamp` ascending. Cross-caller calls MUST NOT appear here. Each item declares its `attestation_mode`: `raw` items carry the full `payload`; `digest` items carry `payload_digest_sha256` + `payload_length` + optional `identifier_match_proofs[]` instead, for adopters who can't return raw payloads under their privacy/data-residency policy.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "method": {
+                "type": "string",
+                "enum": [
+                  "GET",
+                  "POST",
+                  "PUT",
+                  "PATCH",
+                  "DELETE",
+                  "HEAD",
+                  "OPTIONS"
+                ],
+                "description": "HTTP method of the outbound call."
+              },
+              "endpoint": {
+                "type": "string",
+                "description": "Composed `<METHOD> <URL>` string used for `endpoint_pattern` matching, e.g. 'POST https://api.tiktok.com/v2/audience/upload'. Convenience field — the runner can also reconstruct from `method` + URL components."
+              },
+              "url": {
+                "type": "string",
+                "format": "uri",
+                "description": "Full URL of the outbound call (scheme + host + path + query). Treated as untrusted agent-controlled input by report renderers — see runner-output-contract.yaml > security.rendered_output_fencing."
+              },
+              "host": {
+                "type": "string",
+                "description": "Host portion of the URL, useful for grouping calls by upstream platform."
+              },
+              "path": {
+                "type": "string",
+                "description": "Path portion of the URL (without query string)."
+              },
+              "content_type": {
+                "type": "string",
+                "description": "Media type of the outbound request body, mirroring the agent's outbound `Content-Type` header (e.g., `application/json`, `application/x-www-form-urlencoded`, `multipart/form-data`, `text/plain`). In raw mode this describes the returned `payload`; in digest mode it describes the body the digest was computed over. Storyboard `payload_must_contain` JSONPath assertions are valid only when content_type is `application/json` or has a `+json` suffix AND attestation_mode is `raw` — digest mode and non-JSON content types grade `payload_must_contain` as not_applicable. Required so the runner can choose the right matcher deterministically."
+              },
+              "attestation_mode": {
+                "type": "string",
+                "enum": [
+                  "raw",
+                  "digest"
+                ],
+                "description": "Per-call attestation mode echoing the request's `params.attestation_mode`. Required on every recorded_call so the `oneOf` discriminator always has an explicit value to dispatch on — no implicit defaults inside oneOf branches. Adopters MAY unilaterally downgrade a `raw` request to `digest` for a specific call when their policy requires it (e.g., the call carried regulated PII the adopter can't return raw). The runner reads this field to know which assertions to apply."
+              },
+              "purpose": {
+                "type": "string",
+                "enum": [
+                  "platform_primary",
+                  "measurement",
+                  "attribution",
+                  "creative_serving",
+                  "identity",
+                  "other"
+                ],
+                "description": "Optional adopter-supplied semantic tag for the call's role. Values: `platform_primary` for the primary upstream platform the adapter is integrating with (e.g., a TikTok audience-upload call from a sales-social adapter); `measurement` for ancillary calls to measurement vendors (DV, IAS, Nielsen, MOAT); `attribution` for server-side conversion APIs (TTD Trans-API, Meta CAPI, AppsFlyer/Branch postbacks) that flow alongside primary platform calls in a buy-step; `creative_serving` for ad-server / CDN / tag-build calls (GAM tag generation, VAST/CDN fetches, creative trafficking); `identity` for ID-graph / hashing-service calls (LiveRamp, ID5, UID2); `other` for everything else (config fetches, internal telemetry, consent signal exchange). Lets storyboards scope `upstream_traffic` assertions via `purpose_filter` so a buyer-agent adapter that legitimately calls measurement vendors during a single buy step doesn't muddy the platform-primary assertion. Calls without a `purpose` field are treated as `purpose: other` for `purpose_filter` matching — adopters who haven't classified are matched only by storyboards filtering on `other` (or by storyboards with no `purpose_filter`). Self-reported, not adversarially trustworthy — same trust model as the rest of recorded_calls; misclassification by a façade is bounded by the runner's reporting of unclassified-call counts in `actual` when filters match zero."
+              },
+              "payload": {
+                "description": "Request body the agent sent. Required when `attestation_mode` is `raw` (or omitted); MUST be absent when `attestation_mode` is `digest`. Object when content_type is JSON-shaped and the controller decoded it; string otherwise. Adopters MUST apply the recursive secret-key redaction described in this branch's top-level description before emission — secrets at any depth (Authorization values inlined into JSON bodies, embedded JWTs, presigned-URL tokens, OAuth refresh tokens) MUST be replaced with the literal string `[redacted]`. Storyboards that assert `payload_must_contain` or `identifier_paths` are matching against THIS field — secrets MUST be redacted but storyboard-supplied identifiers (hashed PII, request correlation values) MUST NOT be redacted. Adopters SHOULD cap individual payload size at 64 KiB; payloads exceeding that SHOULD be truncated with a trailing `[…truncated]` marker — large payloads bloat compliance reports and the LLM-rendered context windows that consume them.",
+                "maxLength": 65536
+              },
+              "payload_digest_sha256": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$",
+                "description": "SHA-256 digest of the canonicalized outbound request body, lowercase hex (64 chars). Required when `attestation_mode` is `digest`; MUST be absent when `attestation_mode` is `raw`. Canonicalization order is normative: (1) controllers MUST apply the recursive secret-key redaction (same pattern as the raw-mode payload field) BEFORE computing the digest; (2) for `application/json` and `*+json` content types, controllers MUST then serialize the redacted body to RFC 8785 (JCS) canonical form — sorted keys, no extraneous whitespace — and digest the resulting bytes. Storyboard-supplied identifiers (hashed PII, request correlation values) MUST NOT be redacted before digest computation; they are the load-bearing match target for `identifier_match_proofs` and digesting them away makes echo verification impossible. Both `payload_digest_sha256` AND `identifier_match_proofs` MUST be computed against the same post-redaction canonical bytes — diverging the two surfaces breaks coherence between digest replay and identifier echo. JCS edge cases: payloads containing `NaN` or `Infinity` numbers MUST grade `not_applicable` for digest mode (RFC 8785 forbids them); payloads carrying numeric identifiers MUST serialize them as JSON strings before digest computation (adtech bid payloads regularly carry IDs outside ±2^53 where I-JSON / RFC 7493 number round-tripping diverges across implementations). For non-JSON content types the digest is computed over the post-redaction raw body bytes."
+              },
+              "payload_length": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Byte length of the post-redaction canonicalized body. Required in both `raw` and `digest` modes — symmetric across modes so runners can detect adopter-side truncation regardless of attestation choice. In raw mode this MUST equal the byte length of the `payload` value as serialized for transmission; in digest mode this is the length of the canonicalized body the digest covers. Mismatch between observed payload length and reported `payload_length` is a controller-side bug worth surfacing in the report."
+              },
+              "identifier_match_proofs": {
+                "type": "array",
+                "maxItems": 64,
+                "description": "Per-identifier echo proofs for digest-mode calls. Required when `attestation_mode` is `digest` AND the request supplied `params.identifier_value_digests`; MUST be absent or empty otherwise. Each entry corresponds to one digest from the request. Capped at 64 to match the request-side `params.identifier_value_digests` cap. Lets storyboards verify `identifier_paths` echo in digest mode without ever transmitting plaintext identifiers to the controller. SHA-256 is a privacy mechanism here, not a trust mechanism — controllers self-report `found` and a determined façade can return any boolean; consumers MUST NOT treat digest-mode passing as cryptographically more trustworthy than raw mode. Tokenization is normative: for `application/json` and `*+json` content types, controllers MUST scan exactly the JSON string-typed leaf values of the post-redaction canonicalized body — no substring matching, no word splitting, no case folding, no Unicode normalization. A token matches when its SHA-256 hash equals one of the requested digests byte-for-byte. For non-JSON content types (form-urlencoded, multipart, plain text), `identifier_match_proofs` MUST be empty and runner-side `identifier_paths` assertions targeting those calls grade `not_applicable` — token boundaries are not portably defined across non-JSON shapes.",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "identifier_value_sha256": {
+                      "type": "string",
+                      "pattern": "^[a-f0-9]{64}$",
+                      "description": "Echo of one digest from `params.identifier_value_digests` so the runner can pair this proof with the identifier it queried."
+                    },
+                    "found": {
+                      "type": "boolean",
+                      "description": "True if any string token in the recorded payload hashes to the queried digest. False otherwise."
+                    }
+                  },
+                  "required": [
+                    "identifier_value_sha256",
+                    "found"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "timestamp": {
+                "type": "string",
+                "format": "date-time",
+                "description": "ISO 8601 timestamp the adopter recorded the outbound call. MUST reflect the adopter's wall clock at the moment the outbound request was sent (not log-flush time), and MUST be monotonically non-decreasing across recorded_calls of a single response. Used by runners to scope assertions to a specific storyboard step's window — see runner-output-contract.yaml > validation_result for the timestamp boundary semantics."
+              },
+              "status_code": {
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 599,
+                "description": "HTTP status code returned by the upstream. Optional — adopters MAY omit when the call was instrumented before the response arrived."
+              }
+            },
+            "required": [
+              "method",
+              "endpoint",
+              "url",
+              "content_type",
+              "attestation_mode",
+              "payload_length",
+              "timestamp"
+            ],
+            "additionalProperties": false,
+            "oneOf": [
+              {
+                "title": "RawAttestation",
+                "description": "attestation_mode raw — payload is required; payload_digest_sha256 and identifier_match_proofs are absent. attestation_mode is required at the item level so the discriminator always has a value to dispatch on (no implicit defaults inside oneOf branches).",
+                "properties": {
+                  "attestation_mode": {
+                    "const": "raw"
+                  }
+                },
+                "required": [
+                  "attestation_mode",
+                  "payload"
+                ],
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "payload_digest_sha256"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "identifier_match_proofs"
+                      ]
+                    }
+                  ]
+                }
+              },
+              {
+                "title": "DigestAttestation",
+                "description": "attestation_mode digest — payload_digest_sha256 required, payload absent. identifier_match_proofs present when the request supplied identifier_value_digests.",
+                "properties": {
+                  "attestation_mode": {
+                    "const": "digest"
+                  }
+                },
+                "required": [
+                  "attestation_mode",
+                  "payload_digest_sha256"
+                ],
+                "not": {
+                  "required": [
+                    "payload"
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        "total_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total calls in the requested window before any pagination — `recorded_calls.length` may be smaller when `params.limit` truncated the response."
+        },
+        "truncated": {
+          "type": "boolean",
+          "description": "True when `total_count > recorded_calls.length`. Runners MAY raise the `limit` and re-query, but storyboards SHOULD declare assertions that fit within the default 100-call window — a truncated response is a signal that the storyboard step is causing more upstream activity than expected."
+        },
+        "since_timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Echo of the `since_timestamp` the runner requested (or the session-start timestamp the adopter substituted when the runner omitted it). Informational — the runner SHOULD use its own clock-bracket of when it issued the AdCP step request, not this echo, when attributing recorded_calls to a specific step. The controller is part of the adopter's claimed conformance; the echo is not adversarially trustworthy."
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": [
+        "success",
+        "recorded_calls",
+        "total_count",
+        "since_timestamp"
       ],
       "additionalProperties": true,
       "not": {
@@ -391,6 +653,11 @@
             "required": [
               "forced"
             ]
+          },
+          {
+            "required": [
+              "recorded_calls"
+            ]
           }
         ]
       }
@@ -485,6 +752,82 @@
         "error": "NOT_FOUND",
         "error_detail": "Creative cr-unknown not found",
         "current_state": null
+      }
+    },
+    {
+      "description": "Upstream traffic in raw attestation mode (default) — adapter forwarded synthetic hashed members to a hypothetical audience-upload endpoint, payload returned in full so the runner can apply payload_must_contain assertions.",
+      "data": {
+        "success": true,
+        "since_timestamp": "2026-05-02T14:30:00Z",
+        "total_count": 1,
+        "truncated": false,
+        "recorded_calls": [
+          {
+            "method": "POST",
+            "endpoint": "POST https://business-api.tiktok.com/open_api/v1.3/dmp/custom_audience/upload/",
+            "url": "https://business-api.tiktok.com/open_api/v1.3/dmp/custom_audience/upload/",
+            "host": "business-api.tiktok.com",
+            "path": "/open_api/v1.3/dmp/custom_audience/upload/",
+            "content_type": "application/json",
+            "purpose": "platform_primary",
+            "attestation_mode": "raw",
+            "payload": {
+              "advertiser_id": "1234567890",
+              "audience_name": "outdoor_enthusiasts_25_54",
+              "users": [
+                {
+                  "external_id": "acme-user-0001",
+                  "hashed_email": "a000000000000000000000000000000000000000000000000000000000000001"
+                },
+                {
+                  "external_id": "acme-user-0002",
+                  "hashed_phone": "b000000000000000000000000000000000000000000000000000000000000002"
+                }
+              ]
+            },
+            "payload_length": 387,
+            "timestamp": "2026-05-02T14:30:01.245Z",
+            "status_code": 200
+          }
+        ]
+      }
+    },
+    {
+      "description": "Upstream traffic in digest attestation mode — privacy-conscious adopter returns payload_digest_sha256 + payload_length + identifier_match_proofs[] (per-digest echo verification matching the request's identifier_value_digests) instead of raw payload. Synthetic vectors only: digest mode reduces what the runner sees, but the controller must still operate on synthetic test data.",
+      "data": {
+        "success": true,
+        "since_timestamp": "2026-05-02T14:30:00Z",
+        "total_count": 1,
+        "truncated": false,
+        "recorded_calls": [
+          {
+            "method": "POST",
+            "endpoint": "POST https://api.example.eu/v1/audience/members",
+            "url": "https://api.example.eu/v1/audience/members",
+            "host": "api.example.eu",
+            "path": "/v1/audience/members",
+            "content_type": "application/json",
+            "attestation_mode": "digest",
+            "payload_digest_sha256": "3f786850e387550fdab836ed7e6dc881de23001b1f8e64ab38b1e30a2ad7c92e",
+            "payload_length": 412,
+            "identifier_match_proofs": [
+              {
+                "identifier_value_sha256": "1f0c1bda935708f24218ee06d62f2a91dffaadb4cd5b7f9d33fcad66b66d97c4",
+                "found": true
+              },
+              {
+                "identifier_value_sha256": "9d4e1e23bd5b727046a9e3b4b7db57bd8d6ee684634008d1dad34b2e4b834d09",
+                "found": true
+              },
+              {
+                "identifier_value_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+                "found": false
+              }
+            ],
+            "timestamp": "2026-05-02T14:30:01.245Z",
+            "status_code": 200
+          }
+        ]
       }
     }
   ],

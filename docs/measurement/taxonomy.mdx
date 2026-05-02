@@ -1,0 +1,202 @@
+---
+title: Measurement Taxonomy
+sidebarTitle: Measurement Taxonomy
+description: "Three-layer model for AdCP measurement — metrics (delivery), verification (quality), attribution (outcomes) — and how each layer differs in source of truth, protocol home, and rate of change."
+"og:title": "AdCP — Measurement Taxonomy"
+---
+
+# Measurement Taxonomy
+
+Measurement is three things, not one. Treating them as one bucket is the source of most confusion in measurement RFCs (SSAI, identity loss, AI-content provenance, clean rooms) and most schema bloat in delivery responses. AdCP separates them deliberately.
+
+The three layers — **metrics**, **verification**, and **attribution** — answer different questions, are attested by different parties, live in different places in the protocol, and evolve at different speeds.
+
+## The three layers
+
+| Layer | Question | Source of truth | Protocol home | Rate of change |
+|---|---|---|---|---|
+| **Metrics** | Did it happen? | Seller | Delivery reporting | Slow (decade-scale) |
+| **Verification** | Did it count properly? | Third party | Performance standards + capabilities + manifest trackers + vendor-attested delivery values | Medium (environment-driven) |
+| **Attribution** | Did it cause an outcome? | Buyer | Handoff hooks (event sources, log-level signals) | Fast (model-driven) |
+
+### 1. Metrics — "did it happen?"
+
+Delivery facts: impressions, completes, quartiles, clicks, spend, reach, frequency.
+
+The seller is the source of truth — the seller served the ad and counts the event. Industry counting conventions (MRC, IAB) define what qualifies as an impression, what completes a video view, how to deduplicate. AdCP standardizes how sellers expose these counts; it does not redefine what they count.
+
+One nuance: some metrics in `available-metric.json` (ROAS, CPA, conversions, conversion_value, units_sold) are seller-reported but **attribution-derived** — the seller runs an attribution model over buyer-supplied event sources and reports the result. They live in delivery reporting because that's where every DSP and retail-media platform exposes them today, but the underlying event of truth is buyer-attested. Read these as *"attribution surfaced through delivery,"* not as pure delivery facts. The seller's number reflects the seller's attribution model over the buyer's events; reconciliation against buyer-side ground truth still belongs at the attribution boundary.
+
+In AdCP, metrics flow through delivery reporting:
+
+- [`get_media_buy_delivery`](/docs/media-buy/task-reference/get_media_buy_delivery) — current delivery state
+- [`provide_performance_feedback`](/docs/media-buy/task-reference/provide_performance_feedback) — buyer-side observed performance
+- [Optimization & Reporting](/docs/media-buy/media-buys/optimization-reporting) — how reporting connects to optimization goals
+
+Metrics evolve slowly. Definitions are governed by industry bodies; new metrics (viewable impressions, attention seconds) appear on decade timescales. Schema pressure here is low.
+
+### 2. Verification — "did it count properly?"
+
+Quality attestation: viewability, invalid traffic (IVT), brand safety, geo accuracy, context fitness, ad-content provenance.
+
+The whole point of verification is that it is *not* the seller's word. Buyers contract with third-party measurement vendors (Moat, IAS, DoubleVerify) precisely so an independent party can confirm the impression met quality thresholds. Verification requires execution paths that survive the delivery environment — historically OMID and VPAID running client-side; in SSAI, [SIVA](https://iabtechlab.com/standards/siva/) as the server-side workaround.
+
+In AdCP, verification has structured surface across the buy lifecycle, anchored on the vendor's `brand.json` measurement-agent record:
+
+- **Discovery.** Buyers filter products by `required_performance_standards` ("70% MRC viewability by DoubleVerify"), `required_metrics`, and `required_vendor_metrics` on [`get_products`](/docs/media-buy/task-reference/get_products). Sellers declare support via `reporting_capabilities.available_metrics`, `vendor_metrics`, and the `committed_metrics_supported` capability flag.
+- **Commitment.** [`performance-standard.json`](/docs/media-buy/task-reference/create_media_buy) binds `metric` + `threshold` + `standard` (e.g., MRC vs GroupM viewability) + `vendor` into the buy contract. The vendor is a `BrandRef` resolving to the vendor's `brand.json` `agents[type='measurement']` record. When a performance standard is committed, *creatives MUST include `tracker_script` or `tracker_pixel` assets from that vendor* — the protocol enforces the path. `committed_metrics` snapshots the reporting contract on the package at `create_media_buy` (a unified discriminated array carrying both standard metrics from the closed `available-metric.json` enum and vendor-defined metrics anchored on `BrandRef`, with each entry timestamped via `committed_at`) and is append-only for the buy's lifetime.
+- **Execution.** The [creative manifest](/docs/creative/creative-manifests) carries trackers and macros (`vast_tracker`, `daast_tracker`, universal macros) that fire at delivery so the third-party vendor records the event. Whether they fire client-side or server-side is the seller's implementation detail; the buyer's contract is on the metric, not the path.
+- **Reporting.** Standard verification metrics that have graduated into the closed `available-metric.json` enum (e.g., `viewability`) flow through their dedicated delivery scalars in [`delivery-metrics.json`](/docs/media-buy/task-reference/get_media_buy_delivery). Non-graduated vendor-defined metrics flow through `vendor_metric_values` with `measurable_impressions` as the coverage denominator. Vendor attribution is anchored at the contract level via `committed_metrics` and `performance_standards.vendor`, not on the delivery row itself. `missing_metrics` surfaces accountability gaps when the seller didn't deliver on a committed metric — when `committed_metrics` is present, reconciliation is exact and timestamp-aware; when absent, `missing_metrics` falls back to the product's live `available_metrics` with no commitment-timestamp filter and under-reports gaps. Buyers SHOULD treat absence of `committed_metrics` as *"no audit-grade contract,"* not *"clean delivery."*
+
+The vendor's full *dashboard* lives at the vendor (Moat, IAS, DV, HUMAN, etc.), but the attested numbers flow back through AdCP delivery reports. Measurement agents are first-class identities — discoverable via `brand.json` `agents[type='measurement']` (the BrandRef anchor), with the metric catalog (`metric_id`, `standard_reference`, `accreditations[]`, `unit`, `methodology_url`, `methodology_version`) served by the agent's [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) response under the `measurement` block. `brand.json` is the discovery point; the agent serves the catalog.
+
+#### Graduated verification metrics
+
+Verification metrics evolve at different rates of standardization, and the protocol gives them different levels of structural support based on where they sit in that gradient:
+
+- **Tier 1 — graduated.** Industry-published, MRC-or-equivalent accredited; multiple competing standards may exist. Gets a dedicated entry in the closed `available-metric.json` enum, a dedicated structured block in `delivery-metrics.json`, and (when standards are mutually incompatible) a `qualifier` slot on `committed_metrics` for disambiguation. **Viewability** is the canonical Tier 1 metric today — MRC and GroupM define materially different thresholds and require schema-enforced disambiguation via `qualifier.viewability_standard`.
+- **Tier 2 — vendor-extended.** Vendor-defined metrics with no industry-published standard. Sellers declare support via `reporting_capabilities.vendor_metrics`; values flow via `vendor_metric_values`; identity is anchored on the vendor's `BrandRef` and the catalog lives on the vendor's measurement-agent capabilities. **Attention scores, panel demographics, emissions per impression** sit here today.
+- **Tier 3 — asserted.** Free-form claims on products without structured vendor identity or standards-bearer attestation. Predates the BrandRef pattern and is being incrementally restructured upward.
+
+A metric graduates from Tier 2 to Tier 1 when an industry standards body publishes a measurement specification — anchored on standards-body publication, not vendor-count thresholds or informal convergence. The patterns that support Tier 1 (`qualifier` slot, dedicated delivery scalar, performance-standard binding) are reusable templates: viewability is the first instance, not a viewability-specific bespoke shape.
+
+Verification evolves at medium pace. Environment shifts — CTV, SSAI, walled gardens, cookieless, AI-generated content — drive new signal-loss problems and new protocols to recover them. Expect schema pressure on verification capabilities every one to three years.
+
+### 3. Attribution — "did it cause an outcome?"
+
+Buyer-side joins between delivery and outcomes: conversions, lift, multi-touch attribution, media mix modeling, incrementality.
+
+The seller doesn't know the conversion event. The buyer (or the buyer's measurement partner) holds outcome data and joins it to delivery. AdCP's role is making the join possible — exposing log-level signals, identity hooks, and handoff patterns to clean rooms — not running the model.
+
+In AdCP, attribution shows up at the *boundary*:
+
+- [`sync_event_sources`](/docs/media-buy/task-reference/sync_event_sources) — buyer pushes conversion event sources into seller platforms so the platform can optimize toward real outcomes
+- [`log_event`](/docs/media-buy/task-reference/log_event) — buyer-attested event delivery
+- [Conversion Tracking](/docs/media-buy/conversion-tracking/) — patterns that connect delivery to outcomes
+- [Trusted Match](/docs/trusted-match/) — identity resolution that makes the join possible without leaking PII
+
+The model itself (clean rooms, MMM, causal inference, agentic outcome attribution) lives entirely outside the protocol.
+
+Attribution evolves fastest. Clean-room patterns, MMM revival, causal AI, commerce-media attribution, and agentic outcome models all shift the attribution layer on quarter-to-year timescales. If attribution lived inside delivery schemas, it would force a schema break every cycle.
+
+## Why the separation matters
+
+Most measurement debates in the working group resolve faster once the layer is named:
+
+- **SSAI** ([#3759](https://github.com/adcontextprotocol/adcp/issues/3759)) is a *verification* problem. It does not change which metrics get reported; it changes which verification paths are valid and how rich the surviving signal is. The fix lives in capabilities + creative manifest trackers, not in delivery reporting.
+- **Identity loss** (cookieless, IDFA deprecation, walled-garden signal collapse) shows up in *attribution*, not metrics. The seller still serves and counts impressions; the buyer's join to outcomes degrades. Fixes belong at the attribution boundary (clean rooms, [Trusted Match](/docs/trusted-match/)), not in delivery payloads.
+- **AI-content provenance** is a *verification* concern (was this ad what the brand approved?), not an attribution concern. It belongs alongside other verification capabilities — see [Provenance Verification](/docs/governance/creative/provenance-verification) — not bolted onto outcome reporting.
+- **Outcome-based optimization goals** (CPA, ROAS, custom events) are an *attribution* concern surfaced as an optimization input. They belong at the event-source boundary, where the buyer hands over what the platform should optimize toward.
+
+When a proposal puts an attribution concept (lift, ROAS, MMM input) into delivery reporting, or a verification concept (OMID, SIVA) into attribution hooks, push back. The layer mismatch almost always means the proposal will accumulate edge cases until it breaks.
+
+## Working rule of thumb
+
+When evaluating where a measurement field belongs, ask **who is the source of truth?**
+
+- The **seller** counts it → metric → delivery reporting
+- A **third party** attests to it → verification → capabilities + creative manifest
+- The **buyer** owns the outcome → attribution → event-source / log-level handoff
+
+This single question resolves most placement debates. If two layers seem to claim the same field, the field is probably two fields wearing one name — split it.
+
+## The atomic unit: `(metric_id, qualifier)`
+
+The protocol's measurement primitives reduce to one tuple, indexed and reconciled the same way:
+
+- **`committed_metrics` rows**: `{ scope, metric_id, qualifier, committed_at }` — what the seller agreed to populate ([#3576](https://github.com/adcontextprotocol/adcp/pull/3576), shipped)
+- **`missing_metrics` rows**: `{ scope, metric_id, qualifier }` — what didn't show up ([#3576](https://github.com/adcontextprotocol/adcp/pull/3576), shipped)
+- **`metric_aggregates` rows**: `{ metric_id, qualifier, value, …components }` — what was actually delivered, partitioned by qualifier ([#3848](https://github.com/adcontextprotocol/adcp/issues/3848), proposed)
+
+Reconciliation collapses to a join on `(metric_id, qualifier)`. For each `committed_metrics` row, find the matching `metric_aggregates` row; absent matches surface as `missing_metrics`. No bespoke per-metric reconciliation logic, no traversal asymmetry between contract and delivery.
+
+The `qualifier` vocabulary differs by surface: contract is closed (`additionalProperties: false`, today carrying only `viewability_standard`); delivery is a deliberate **superset** (e.g., `tracker_firing` exists as a transparency disclosure that buyers don't commit to but sellers can expose post-delivery). The asymmetry is named, not accidental — the buyer commits to what they share vocabulary on, the seller exposes path-level transparency on what was delivered.
+
+When a future qualifier (`completion_threshold`, attention methodology if it standardizes) needs structural support, it plugs into the existing slot. No parallel `*_by_*` fields, no new aggregation surface, no schema break.
+
+## Boundaries with Signals and Governance
+
+Measurement is not the only third-party-attestation surface in AdCP. [Signals](/docs/signals/overview) and [Governance](/docs/governance/overview) also involve third parties, also produce attested artifacts, and also evolve faster than the core media-buy primitives. The boundaries are real but the protocols overlap in vendor and in lifecycle — Signals' own key-concepts page notes that signals are used "for targeting or measurement," and that ambiguity is the boundary in question.
+
+The clearest separation is by lifecycle moment and the question being asked:
+
+| Lifecycle moment | Question | Protocol home |
+|---|---|---|
+| Pre-decision | What should we do? | Signals |
+| Plan-time | Are we allowed to do this? | Governance (policy registry, plan check) |
+| Delivery | Did it happen? Did it count? | Measurement (metrics, verification) |
+| Post-delivery | What outcome did it cause? | Measurement (attribution) |
+| Continuous | Is the audit trail intact? | Governance (audit trail) |
+
+The same vendor often plays in multiple lanes. DoubleVerify, for example, sells pre-bid brand-safety *signals*, post-delivery *verification* attestations, and content-classification feeds consumed by *governance* policy enforcement. The vendor is one entity; the protocol surfaces are three because the timing, sources of truth, and consumption patterns differ.
+
+### Where the lines are crisp
+
+- **Signals are predictive; measurement is descriptive.** A pre-bid viewability score is a signal — an estimate of how likely an impression is to be viewable. A post-delivery viewability rate is measurement. Same methodology family, different question.
+- **Governance is normative; measurement is factual.** Governance asks "did this comply with the rules we set?" Measurement asks "what objectively happened?" An attribution model can disagree with a buyer's outcome goal without violating any policy; a brand-safety violation can occur even when delivery measured cleanly.
+- **Signals are inputs, measurement is outputs, governance is constraints.** The buying decision consumes signals, is bounded by governance, and produces facts that measurement records.
+
+### Where the lines blur
+
+- A pre-bid brand-safety classifier is sold as a *signal*; the same vendor's post-delivery report is *verification*. Same input data, different protocol home — driven by *when* the data is consumed.
+- A *governance* policy can require a *measurement* attestation as evidence ("this campaign must verify with an MRC-accredited vendor"). Measurement becomes a precondition for governance approval.
+- *Signals* feed *attribution* models — audience segments and identity signals are inputs to the lift or MMM model that produces outcome estimates.
+
+These overlaps are not bugs. They reflect how the measurement-and-data industry actually works: vendors operate across the lifecycle, and an event in one layer often becomes input to another. The protocol's job is to keep the *interfaces* clean — same vendor, multiple roles, multiple endpoints — not to collapse the lifecycle into a single surface.
+
+## Worked example: third-party viewability commitment
+
+A buyer needs DoubleVerify viewability at the MRC threshold on a CTV campaign. SSAI is in scope; the buyer doesn't know or care which products use it.
+
+**1. Discovery.** Buyer calls `get_products` with:
+
+```json
+{
+  "required_performance_standards": [
+    {
+      "metric": "viewability",
+      "threshold": 0.70,
+      "standard": "mrc",
+      "vendor": { "domain": "doubleverify.com" }
+    }
+  ]
+}
+```
+
+Products that cannot support DV's measurement on this inventory — for whatever plumbing reason, including SSAI environments where DV's path is degraded — are silently filtered out (filter-not-fail). Sellers do not declare "I am SSAI"; they declare *"I can deliver this performance standard with this vendor on this product."* The plumbing is the seller's problem.
+
+**2. Commitment.** Buyer calls `create_media_buy`. The `performance_standards` enter the buy contract; per `performance-standard.json`, *creatives MUST include `tracker_script` or `tracker_pixel` assets from `doubleverify.com`*. The seller returns `committed_metrics` (a unified array carrying both standard and vendor entries, each with `committed_at`) snapshotting the contract — append-only for the lifetime of the buy. The viewability commitment carries `qualifier.viewability_standard: "mrc"` so MRC and GroupM never reconcile against each other.
+
+**3. Execution.** The creative manifest carries DV's tracker assets. They fire — client-side, server-side, OMID, SIVA, whatever path the seller chose to honor the commitment. The buyer doesn't see the path.
+
+**4. Reporting.** Per-buy `totals` populate the standard `viewability` block (the graduated Tier 1 surface — `measurable_impressions`, `viewable_impressions`, `viewable_rate`, `standard`). Cross-buy `aggregated_totals` partition by qualifier via `metric_aggregates` ([#3848](https://github.com/adcontextprotocol/adcp/issues/3848), proposed) — same atomic unit as the contract, joined on `(metric_id, qualifier)`. If the seller fails to deliver any committed metric, it appears in `missing_metrics` — an accountability breach, surfaced in-protocol.
+
+**What this example shows.** The buyer never asks *"is this SSAI?"* The question they actually have — *"can my chosen verification vendor produce trustworthy viewability on this inventory?"* — is answered structurally by whether the product passes the filter. The seller's plumbing is a private implementation detail bound by a contract they signed at create-time. SSAI, CSAI, in-app, web, DOOH all flow through the same surface; none gets a special schema.
+
+This is verification working the way the layer is supposed to work: the buyer specifies the *outcome they need* (vendor + standard + threshold), the seller commits or excludes themselves, and accountability is structural, not narrative.
+
+## Open questions
+
+The taxonomy clarifies what's distinct, but two questions sit on the boundaries.
+
+### Should measurement get a dedicated protocol surface?
+
+Measurement agents are already first-class: vendors are discoverable as `brand.json` `agents[type='measurement']` (the BrandRef anchor), publish their metric catalog via `get_adcp_capabilities.measurement.metrics[]`, are referenced by `BrandRef` from `performance-standard.vendor`, `vendor_metrics`, and `committed_metrics` (vendor-scope entries), and emit attested values through `delivery-metrics.viewability` (graduated standards) and `vendor_metric_values` (non-graduated vendor metrics). The pattern is *"discoverable agent identity consumed across multiple protocols,"* not *"no protocol home."*
+
+The open question is whether that distributed pattern is right or whether measurement deserves a *peer protocol* alongside Signals and Governance — with its own task surface (e.g., `register_measurement`, `attest_outcome`, `dispute_measurement`) and its own specification page. Today, the measurement-agent contract is implicit, defined by the union of where the BrandRef gets consumed.
+
+**Case for status quo (distributed).** Measurement vendors already operate via OMID, MRC accreditation, and vendor SDKs. The protocol's job is making them callable from buyer/seller flows, which it does. A dedicated protocol risks duplicating what already works.
+
+**Case for peer protocol.** Dispute resolution, recount, and signed measurement attestation as a primary artifact (rather than a vendor field on a delivery row) might benefit from common primitives. If measurement-agent capabilities expand beyond *"report a value"* — into in-flight signal-survival reporting, predictive measurability, or independent governance audit — the distributed pattern strains.
+
+This question doesn't need an abstract answer. It will resolve as soon as a measurement-vendor capability surfaces that doesn't fit the current pattern.
+
+### Where do pre-bid measurement signals live?
+
+A pre-bid viewability score (predicted likelihood that an impression will be viewable) is sold by the same vendors that produce post-delivery viewability measurement. Today, predictions are *signals* (consumed pre-decision); measurements are *verification* (consumed post-delivery). Same vendor, same methodology family, two protocol homes. This works because the *consumption pattern* differs — but it's worth watching whether the duplication cost outweighs the layering benefit, especially as predictive measurement and post-delivery measurement converge in real-time bidding contexts.
+
+## What this protocol does not do
+
+AdCP does not run measurement models. It does not adjudicate between competing verification vendors. It does not define MRC counting conventions. It does not store or normalize attribution outputs.
+
+What AdCP does is make the right *connection points* exist — so the seller's metrics are queryable, the verifier's path is declarable and executable, and the buyer's outcome data has a place to attach. The measurement industry that grew up over thirty years sits on top of those connection points; the protocol does not replace it.

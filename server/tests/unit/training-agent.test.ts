@@ -2372,7 +2372,7 @@ describe('build_creative pricing', () => {
     // To test without pricing, we'd need a different session setup
   });
 
-  it('returns NOT_FOUND for unknown creative_id', async () => {
+  it('returns CREATIVE_NOT_FOUND for unknown creative_id', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result, isError } = await simulateCallTool(server, 'build_creative', {
       account,
@@ -2381,7 +2381,7 @@ describe('build_creative pricing', () => {
 
     // MCP layer wraps errors via adcpError, simulateCallTool unwraps adcp_error
     expect(isError).toBe(true);
-    expect(result.code).toBe('NOT_FOUND');
+    expect(result.code).toBe('CREATIVE_NOT_FOUND');
   });
 
   it('video formats get higher CPM', async () => {
@@ -2491,7 +2491,7 @@ describe('report_usage handler', () => {
 
     // All records rejected → MCP wraps as error
     expect(isError).toBe(true);
-    expect(result.code).toBe('NOT_FOUND');
+    expect(result.code).toBe('CREATIVE_NOT_FOUND');
   });
 
   it('returns INVALID_PRICING_OPTION when pricing_option_id mismatches', async () => {
@@ -2577,10 +2577,10 @@ describe('report_usage handler', () => {
     expect(result.accepted).toBe(1);
     const rejected = result.rejected as Array<Record<string, unknown>>;
     expect(rejected).toHaveLength(1);
-    expect(rejected[0].code).toBe('NOT_FOUND');
+    expect(rejected[0].code).toBe('CREATIVE_NOT_FOUND');
   });
 
-  it('returns NOT_FOUND for unknown signal_agent_segment_id', async () => {
+  it('returns SIGNAL_NOT_FOUND for unknown signal_agent_segment_id', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result, isError } = await simulateCallTool(server, 'report_usage', {
       account,
@@ -2596,7 +2596,7 @@ describe('report_usage handler', () => {
     });
 
     expect(isError).toBe(true);
-    expect(result.code).toBe('NOT_FOUND');
+    expect(result.code).toBe('SIGNAL_NOT_FOUND');
     expect(result.message).toContain('nonexistent_segment');
   });
 
@@ -4970,7 +4970,7 @@ describe('sync_plans input validation', () => {
     });
 
     expect(isError).toBe(true);
-    expect(result.code).toBe('validation_error');
+    expect(result.code).toBe('VALIDATION_ERROR');
   });
 
   it('returns validation error when plan is missing budget', async () => {
@@ -4985,7 +4985,7 @@ describe('sync_plans input validation', () => {
     });
 
     expect(isError).toBe(true);
-    expect(result.code).toBe('validation_error');
+    expect(result.code).toBe('VALIDATION_ERROR');
   });
 
   it('returns validation error when flight is empty object', async () => {
@@ -5001,7 +5001,7 @@ describe('sync_plans input validation', () => {
     });
 
     expect(isError).toBe(true);
-    expect(result.code).toBe('validation_error');
+    expect(result.code).toBe('VALIDATION_ERROR');
     expect(result.message).toContain('flight requires start and end');
   });
 
@@ -5018,7 +5018,7 @@ describe('sync_plans input validation', () => {
     });
 
     expect(isError).toBe(true);
-    expect(result.code).toBe('validation_error');
+    expect(result.code).toBe('VALIDATION_ERROR');
     expect(result.message).toContain('budget requires total (number) and currency (string)');
   });
 
@@ -7320,7 +7320,7 @@ describe('get_brand_identity handler', () => {
       brand_id: 'does_not_exist',
     });
 
-    expect(result.code).toBe('brand_not_found');
+    expect(result.code).toBe('BRAND_NOT_FOUND');
   });
 });
 
@@ -7486,7 +7486,7 @@ describe('human_review_required auto-flip and enforcement', () => {
       plans: [{ ...PLAN_BASE, policy_categories: ['fair_housing'], human_review_required: false }],
     });
     expect(isError).toBe(true);
-    expect(result.code).toBe('validation_error');
+    expect(result.code).toBe('VALIDATION_ERROR');
     expect(result.message).toContain('fair_housing');
   });
 
@@ -7636,7 +7636,7 @@ describe('human_review_required auto-flip and enforcement', () => {
       }],
     });
     expect(isError).toBe(true);
-    expect(result.code).toBe('validation_error');
+    expect(result.code).toBe('VALIDATION_ERROR');
     expect(result.message).toContain('human_override');
   });
 

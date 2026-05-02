@@ -13,9 +13,13 @@ import Stripe from "stripe";
 import { getPool } from "../../db/client.js";
 import { createLogger } from "../../logger.js";
 import { requireAuth, requireAdmin } from "../../middleware/auth.js";
-import { OrganizationDatabase, TIER_PRESERVING_STATUSES } from "../../db/organization-db.js";
+import {
+  OrganizationDatabase,
+  TIER_PRESERVING_STATUSES,
+  buildSubscriptionUpdate,
+} from "../../db/organization-db.js";
 import { stripe } from "../../billing/stripe-client.js";
-import { pickMembershipSub } from "../../billing/membership-prices.js";
+import { pickMembershipSubWithProductFetch } from "../../billing/membership-prices.js";
 
 const logger = createLogger("admin-accounts-billing");
 
@@ -57,8 +61,12 @@ export function setupAccountsBillingRoutes(
           revenue_events_synced?: number;
         } = { success: false };
 
-        const orgResult = await pool.query(
-          "SELECT workos_organization_id, stripe_customer_id FROM organizations WHERE workos_organization_id = $1",
+        const orgResult = await pool.query<{
+          workos_organization_id: string;
+          stripe_customer_id: string | null;
+          is_personal: boolean;
+        }>(
+          "SELECT workos_organization_id, stripe_customer_id, is_personal FROM organizations WHERE workos_organization_id = $1",
           [orgId]
         );
 
@@ -126,12 +134,12 @@ export function setupAccountsBillingRoutes(
         if (org.stripe_customer_id) {
           if (stripe) {
             try {
-              const customer = await stripe.customers.retrieve(
-                org.stripe_customer_id,
-                {
-                  expand: ["subscriptions"],
-                }
-              );
+              // First, confirm the customer exists / isn't deleted. Don't
+              // ask Stripe to expand subscriptions deeply on this call —
+              // `subscriptions.data.items.data.price.product` is 6 levels
+              // deep and exceeds Stripe's 4-level expansion limit (May
+              // 2026: that broke /sync for every org).
+              const customer = await stripe.customers.retrieve(org.stripe_customer_id);
 
               if (customer.deleted) {
                 syncResults.stripe = {
@@ -139,7 +147,19 @@ export function setupAccountsBillingRoutes(
                   error: "Customer has been deleted",
                 };
               } else {
-                const subscriptions = (customer as Stripe.Customer).subscriptions;
+                // List subs without product expansion (the price object
+                // comes back inline with lookup_key/unit_amount/etc., which
+                // is enough for the lookup_key fast path). For
+                // founding-era subs that lack the aao_membership_ prefix,
+                // pickMembershipSubWithProductFetch retrieves the product
+                // separately to check `metadata.category=membership` —
+                // one extra round-trip per non-matching candidate, which
+                // /sync (a manual admin action) can afford.
+                const subsResult = await stripe.subscriptions.list({
+                  customer: org.stripe_customer_id,
+                  status: 'all',
+                  limit: 10,
+                });
 
                 // Filter to membership subs before picking. A customer with a
                 // non-membership sub (one-off products, future ancillary subs)
@@ -148,34 +168,55 @@ export function setupAccountsBillingRoutes(
                 // guarantee ordering of `subscriptions.data`. Falls through to
                 // the invoice-fallback branch below when no membership sub is
                 // found, preserving prior behavior for invoice-billed orgs.
-                const subscription = subscriptions
-                  ? pickMembershipSub(subscriptions.data)
-                  : null;
+                // `stripe` is non-null inside this branch (guarded above)
+                // but TS narrowing doesn't carry through the closure.
+                const stripeClient = stripe;
+                const subscription = await pickMembershipSubWithProductFetch(
+                  subsResult.data,
+                  (productId) => stripeClient.products.retrieve(productId),
+                );
 
                 if (subscription) {
-                  const priceData = subscription.items.data[0]?.price;
+                  // Use the canonical writer so /sync, the webhook handler,
+                  // and lazy-reconcile all produce identical row state. The
+                  // prior inline UPDATE wrote only 6 fields, leaving
+                  // stripe_subscription_id / lookup_key / product / tier
+                  // NULL — which is how Adzymic ended up with status=active
+                  // but unresolvable tier (May 2026 incident).
+                  const payload = buildSubscriptionUpdate(
+                    subscription as Parameters<typeof buildSubscriptionUpdate>[0],
+                    org.is_personal,
+                  );
 
                   await pool.query(
                     `UPDATE organizations
                      SET subscription_status = $1,
-                         subscription_amount = $2,
-                         subscription_interval = $3,
-                         subscription_currency = $4,
-                         subscription_current_period_end = $5,
-                         subscription_canceled_at = $6,
+                         stripe_subscription_id = $2,
+                         subscription_current_period_end = $3,
+                         subscription_amount = $4,
+                         subscription_currency = $5,
+                         subscription_interval = $6,
+                         subscription_canceled_at = $7,
+                         subscription_product_id = $8,
+                         subscription_product_name = $9,
+                         subscription_price_id = $10,
+                         subscription_price_lookup_key = $11,
+                         membership_tier = $12,
                          updated_at = NOW()
-                     WHERE workos_organization_id = $7`,
+                     WHERE workos_organization_id = $13`,
                     [
-                      subscription.status,
-                      priceData?.unit_amount || null,
-                      priceData?.recurring?.interval || null,
-                      priceData?.currency || "usd",
-                      subscription.current_period_end
-                        ? new Date(subscription.current_period_end * 1000)
-                        : null,
-                      subscription.canceled_at
-                        ? new Date(subscription.canceled_at * 1000)
-                        : null,
+                      payload.subscription_status,
+                      payload.stripe_subscription_id,
+                      payload.subscription_current_period_end,
+                      payload.subscription_amount,
+                      payload.subscription_currency,
+                      payload.subscription_interval,
+                      payload.subscription_canceled_at,
+                      payload.subscription_product_id,
+                      payload.subscription_product_name,
+                      payload.subscription_price_id,
+                      payload.subscription_price_lookup_key,
+                      payload.membership_tier,
                       orgId,
                     ]
                   );
@@ -183,9 +224,9 @@ export function setupAccountsBillingRoutes(
                   syncResults.stripe = {
                     success: true,
                     subscription: {
-                      status: subscription.status,
-                      amount: priceData?.unit_amount ?? null,
-                      interval: priceData?.recurring?.interval ?? null,
+                      status: payload.subscription_status,
+                      amount: payload.subscription_amount,
+                      interval: payload.subscription_interval,
                       current_period_end: subscription.current_period_end ?? null,
                       canceled_at: subscription.canceled_at ?? null,
                     },
@@ -392,6 +433,13 @@ export function setupAccountsBillingRoutes(
                 }
               }
             } catch (error) {
+              // Log the actual error so future regressions like the May 2026
+              // 4-level-expand-depth issue surface in admin logs instead of
+              // silently returning a generic message.
+              logger.error(
+                { err: error, orgId, customerId: org.stripe_customer_id },
+                "Failed to sync from Stripe",
+              );
               syncResults.stripe = {
                 success: false,
                 error: "Failed to sync from Stripe",

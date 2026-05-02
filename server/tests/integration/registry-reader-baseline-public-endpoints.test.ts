@@ -305,21 +305,19 @@ describe('Registry reader baseline — public endpoints', () => {
 
     // ── /registry/publishers ───────────────────────────────────────
 
-    it('GET /api/registry/publishers includes our seeded publisher with discovered source', async () => {
+    it('GET /api/registry/publishers does not surface crawler-only publishers', async () => {
+      // Registry contains only publishers that members have explicitly
+      // enrolled. PUB_A in this fixture exists only in the crawler graph
+      // (discovered_publishers), so it must not appear in the public list.
       const res = await request(app).get('/api/registry/publishers');
       expect(res.status).toBe(200);
       expect(Array.isArray(res.body.publishers)).toBe(true);
-      expect(res.body.sources).toMatchObject({
-        registered: expect.any(Number),
-        discovered: expect.any(Number),
-      });
+      expect(res.body.sources).toBeUndefined();
 
       const ours = res.body.publishers.find(
         (p: { domain: string }) => p.domain === PUB_A
       );
-      expect(ours).toBeTruthy();
-      expect(ours.source).toBe('discovered');
-      expect(ours.has_valid_adagents).toBe(true);
+      expect(ours).toBeUndefined();
     });
 
     // ── /registry/operator ─────────────────────────────────────────
@@ -404,9 +402,11 @@ describe('Registry reader baseline — public endpoints', () => {
 
     // ── /registry/stats ────────────────────────────────────────────
 
-    it('GET /api/registry/stats reflects at least our seeded counts', async () => {
+    it('GET /api/registry/stats reflects at least our seeded auth-graph counts', async () => {
       const res = await request(app).get('/api/registry/stats');
       expect(res.status).toBe(200);
+      // The publisher-authorization graph still tracks the underlying
+      // authorizations and properties — surfaced under `auth_graph_*`.
       // Lower-bounds: our seed adds ≥2 agents, ≥1 publisher, ≥2 properties,
       // ≥2 authorizations (one each in adagents_json + agent_claim).
       expect(res.body.discovered_agents).toBeGreaterThanOrEqual(2);
@@ -421,80 +421,167 @@ describe('Registry reader baseline — public endpoints', () => {
 
     // ── /registry/agents ───────────────────────────────────────────
 
-    it('GET /api/registry/agents includes our seeded agents with full DSP-discovery projection', async () => {
+    it('GET /api/registry/agents?source=registered returns 400 (param removed, not deprecated)', async () => {
+      // The `?source=` filter is gone (#3772). Reject explicitly so a caller
+      // passing `?source=discovered` doesn't silently get the registered-only
+      // set — that's correct-by-coincidence on the registered case and
+      // wrong-by-coincidence on the discovered case.
+      const registered = await request(app).get('/api/registry/agents?source=registered');
+      expect(registered.status).toBe(400);
+      expect(registered.body.error).toMatch(/source/i);
+
+      const discovered = await request(app).get('/api/registry/agents?source=discovered');
+      expect(discovered.status).toBe(400);
+      expect(discovered.body.error).toMatch(/source/i);
+
+      const bogus = await request(app).get('/api/registry/agents?source=anything');
+      expect(bogus.status).toBe(400);
+    });
+
+    it('GET /api/registry/agents surfaces registered agents and excludes crawler-only agents', async () => {
+      // Pins both halves of the registered-only contract:
+      //   1. registered agents (member-enrolled) DO appear with member metadata,
+      //   2. crawler-only agents (in discovered_agents but not on any member
+      //      profile) do NOT appear.
+      // Without the positive case a future bug that makes listAllAgents return
+      // [] unconditionally would still pass — the negative-only assertion is
+      // true-by-default when the catalog is empty.
+      const REGISTERED_URL = `${AGENT_PREFIX}registered.registry-baseline.example`;
+      await pool.query(
+        `INSERT INTO organizations (workos_organization_id, name, created_at, updated_at)
+         VALUES ($1, 'Endpoint Baseline Org', NOW(), NOW())
+         ON CONFLICT (workos_organization_id) DO NOTHING`,
+        [ORG_ID]
+      );
+      await pool.query(
+        `INSERT INTO member_profiles (
+           workos_organization_id, display_name, slug,
+           agents, primary_brand_domain, is_public,
+           created_at, updated_at
+         ) VALUES ($1, 'Endpoint Baseline Org', $2, $3::jsonb, $4, true, NOW(), NOW())
+         ON CONFLICT (workos_organization_id) DO UPDATE SET
+           agents = EXCLUDED.agents,
+           primary_brand_domain = EXCLUDED.primary_brand_domain,
+           is_public = EXCLUDED.is_public,
+           updated_at = NOW()`,
+        [
+          ORG_ID,
+          MEMBER_SLUG,
+          JSON.stringify([
+            { url: REGISTERED_URL, name: 'Endpoint Registered', type: 'sales', visibility: 'public' },
+          ]),
+          PUB_A,
+        ]
+      );
+
       const res = await request(app).get('/api/registry/agents');
       expect(res.status).toBe(200);
       expect(Array.isArray(res.body.agents)).toBe(true);
-      expect(res.body.sources).toMatchObject({
-        registered: expect.any(Number),
-        discovered: expect.any(Number),
+      expect(res.body.sources).toBeUndefined();
+
+      // Positive: member-enrolled agent surfaces with the member ref.
+      const registered = res.body.agents.find(
+        (a: { url: string }) => a.url === REGISTERED_URL,
+      );
+      expect(registered).toBeTruthy();
+      expect(registered.member).toMatchObject({
+        slug: MEMBER_SLUG,
+        display_name: 'Endpoint Baseline Org',
       });
+      // `added_date` is dropped from the projection — we have no real
+      // enrollment-date source on the wire today, so the field is omitted
+      // rather than stamped with `today`.
+      expect(registered.added_date).toBeUndefined();
+
+      // Negative: crawler-only agents (seeded in discovered_agents only)
+      // must not appear.
+      const x = res.body.agents.find((a: { url: string }) => a.url === AGENT_X);
+      const y = res.body.agents.find((a: { url: string }) => a.url === AGENT_Y);
+      expect(x).toBeUndefined();
+      expect(y).toBeUndefined();
+    });
+
+    it('GET /api/registry/agents?properties=true does not surface crawler-only agents', async () => {
+      // The registered-only registry surface excludes agents that exist
+      // only in the crawler graph regardless of enrichment flags.
+      const res = await request(app).get('/api/registry/agents?properties=true');
+      expect(res.status).toBe(200);
 
       const x = res.body.agents.find((a: { url: string }) => a.url === AGENT_X);
       const y = res.body.agents.find((a: { url: string }) => a.url === AGENT_Y);
-      expect(x).toBeTruthy();
-      expect(y).toBeTruthy();
-      expect(x.source).toBe('discovered');
-      expect(x.type).toBe('sales');
-      expect(x.protocol).toBe('mcp');
-      // discovered_from is the DSP-discovery breadcrumb — sourced from
-      // the bulk-auth join via discovered_agents.source_domain. PR 4
-      // must not drop or rename this field.
-      expect(x.discovered_from).toMatchObject({ publisher_domain: PUB_A });
-      // added_date is sourced from discovered_at; pin presence as a
-      // non-empty string but not an exact value.
-      expect(typeof x.added_date).toBe('string');
-      expect(x.added_date.length).toBeGreaterThan(0);
+      expect(x).toBeUndefined();
+      expect(y).toBeUndefined();
     });
 
-    it('GET /api/registry/agents?properties=true enriches sales agents only', async () => {
-      // Post-#3540 (refs #3538 Problem 1b), enrichment runs on type='sales'
-      // — the agents that hold publisher authorizations and call
+    it('GET /api/registry/agents?properties=true enriches sales agents only (#3540 polarity)', async () => {
+      // Pins the #3540 invariant against the registered-only surface
+      // (refs #3538 Problem 1b). Enrichment runs on `type='sales'` — the
+      // agents that hold publisher authorizations and call
       // list_authorized_properties. Pre-#3540 the readers filtered on
-      // 'buying' (an inverted-but-aligned bug from #3495). This test pins
-      // the corrected polarity.
+      // `type='buying'` (an inverted-but-aligned bug from #3495). The
+      // discovered-agent removal must not silently drop this polarity
+      // assertion: a future refactor that re-introduces the inversion
+      // would otherwise skate through CI green.
       //
-      // Seed an additional buying-typed agent so we exercise the negative
-      // branch. AGENT_X (already seeded above as 'sales' with property auth
-      // on PUB_A's home) drives the positive branch.
-      const BUYER_URL = 'https://endpoint-buyer.registry-baseline.example';
-      await fedDb.upsertAgent({
-        agent_url: BUYER_URL,
-        source_type: 'adagents_json',
-        source_domain: PUB_B,
-        agent_type: 'buying',
-        protocol: 'mcp',
-        name: 'Endpoint Buyer',
-      });
-      // Authorize the buyer on the existing PUB_A home property. Post-#3540
-      // this auth must NOT produce enrichment, because the filter is now
-      // 'sales' and buying agents are excluded.
-      const props = await fedDb.getPropertiesForDomain(PUB_A);
-      const home = props.find((p) => p.name === 'Endpoint Home') as unknown as { id: string };
-      await fedDb.upsertAgentPropertyAuthorization({
-        agent_url: BUYER_URL,
-        property_id: home.id,
-      });
+      // Both agents are registered on the same member profile. Property
+      // authorizations on the auth-graph tables (agent_property_
+      // authorizations × discovered_properties) drive the enrichment;
+      // those rows are seeded by the outer beforeEach. AGENT_X is
+      // registered as sales, AGENT_Y as buying — same fixtures, opposite
+      // polarity.
+      await pool.query(
+        `INSERT INTO organizations (workos_organization_id, name, created_at, updated_at)
+         VALUES ($1, 'Endpoint Baseline Org', NOW(), NOW())
+         ON CONFLICT (workos_organization_id) DO NOTHING`,
+        [ORG_ID]
+      );
+      await pool.query(
+        `INSERT INTO member_profiles (
+           workos_organization_id, display_name, slug,
+           agents, primary_brand_domain, is_public,
+           created_at, updated_at
+         ) VALUES ($1, 'Endpoint Baseline Org', $2, $3::jsonb, $4, true, NOW(), NOW())
+         ON CONFLICT (workos_organization_id) DO UPDATE SET
+           agents = EXCLUDED.agents,
+           primary_brand_domain = EXCLUDED.primary_brand_domain,
+           is_public = EXCLUDED.is_public,
+           updated_at = NOW()`,
+        [
+          ORG_ID,
+          MEMBER_SLUG,
+          JSON.stringify([
+            { url: AGENT_X, name: 'Endpoint Sales X', type: 'sales', visibility: 'public' },
+            { url: AGENT_Y, name: 'Endpoint Buyer Y', type: 'buying', visibility: 'public' },
+          ]),
+          PUB_A,
+        ]
+      );
 
       const res = await request(app).get('/api/registry/agents?properties=true');
       expect(res.status).toBe(200);
 
-      // AGENT_X (sales, property auth on home) MUST be enriched.
+      // Sales agent: enriched. AGENT_X has property auth on PUB_A's
+      // home property, so publisher_domains and property_summary are
+      // populated.
       const x = res.body.agents.find((a: { url: string }) => a.url === AGENT_X);
       expect(x).toBeTruthy();
+      expect(x.type).toBe('sales');
       expect(x.publisher_domains).toEqual([PUB_A]);
       expect(x.property_summary).toMatchObject({
         total_count: 1,
-        publisher_count: 1,
         count_by_type: { website: 1 },
       });
 
       // Buying-typed agents must NOT receive property enrichment, even
-      // when ?properties=true is set. This is the inversion fix in #3540.
-      const buyer = res.body.agents.find((a: { url: string }) => a.url === BUYER_URL);
-      expect(buyer).toBeTruthy();
-      expect(buyer.publisher_domains).toBeUndefined();
-      expect(buyer.property_summary).toBeUndefined();
+      // when ?properties=true is set and even when the agent has rows
+      // in agent_property_authorizations. This is the inversion fix in
+      // #3540 — the polarity that must hold across the discovered-agent
+      // removal.
+      const y = res.body.agents.find((a: { url: string }) => a.url === AGENT_Y);
+      expect(y).toBeTruthy();
+      expect(y.type).toBe('buying');
+      expect(y.publisher_domains).toBeUndefined();
+      expect(y.property_summary).toBeUndefined();
     });
   });
 

@@ -359,6 +359,59 @@
           }
         }
       }
+    },
+    {
+      "if": {
+        "properties": {
+          "scenario": {
+            "const": "query_upstream_traffic"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "params": {
+            "type": "object",
+            "properties": {
+              "since_timestamp": {
+                "type": "string",
+                "format": "date-time",
+                "description": "ISO 8601 timestamp; only return calls recorded at or after this time. Default: session start. Used by storyboard runners to scope upstream_traffic assertions to a specific step's window."
+              },
+              "endpoint_pattern": {
+                "type": "string",
+                "description": "Optional server-side filter; reduces response size. Glob-style pattern matched against `<METHOD> <URL>`, e.g. 'POST */audience/upload' or 'POST *'. When omitted, all recorded calls in the window are returned."
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000,
+                "default": 100,
+                "description": "Maximum number of calls to return. The response carries `total_count` and `truncated` so the runner can detect overflow."
+              },
+              "attestation_mode": {
+                "type": "string",
+                "enum": [
+                  "raw",
+                  "digest"
+                ],
+                "default": "raw",
+                "description": "Requested response shape per recorded call. `raw` (default) returns full payload — the load-bearing assertion target for arbitrary `payload_must_contain` paths, and the existing v2.0.0 contract. `digest` returns only `payload_digest_sha256` + `payload_length` + `content_type` + optional `identifier_match_proofs[]`, so privacy-conscious adopters can support `upstream_traffic` conformance without raw-payload disclosure. Whether digest mode satisfies a given adopter's data-handling obligations (GDPR processor responsibilities, internal data-classification policy, contractual restrictions) is for that adopter's counsel to determine — the spec doesn't promise digest mode clears any specific legal bar. Synthetic-vectors-only still applies (see UpstreamTrafficSuccess top-level description in comply-test-controller-response.json): digest mode reduces what the runner sees, but the controller must still operate on synthetic test data, not production traffic — running queries against production payloads would let a runner with a precomputed digest set learn membership of arbitrary identifiers in the adopter's user base. Adopters MAY unilaterally downgrade a `raw` request to `digest` when their policy requires it; the response's per-call `attestation_mode` field echoes what was actually returned. Storyboards that strictly require raw introspection set `attestation_mode_required: \"raw\"` on their `upstream_traffic` check — calls returned in digest mode then grade not_applicable rather than failing."
+              },
+              "identifier_value_digests": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$"
+                },
+                "maxItems": 64,
+                "description": "When `attestation_mode` is `digest`, the runner MAY supply SHA-256 digests (lowercase hex, 64 chars) of identifier values it wants the controller to verify echo for. The controller scans each recorded call's payload for string tokens whose SHA-256 hash matches any digest in this list and returns booleans in `recorded_calls[].identifier_match_proofs[]`. Lets the runner verify `identifier_paths` echo without ever transmitting plaintext identifiers to the controller — the digest is the comparison key. Cap of 64 digests per query to bound the controller's work; storyboards with more identifiers SHOULD batch across multiple queries. Has no effect when `attestation_mode` is `raw` (the runner does the matching in-process against the full payload)."
+              }
+            },
+            "additionalProperties": true
+          }
+        }
+      }
     }
   ],
   "x-mutates-state": true,
@@ -380,9 +433,10 @@
         "seed_creative",
         "seed_plan",
         "seed_media_buy",
-        "seed_creative_format"
+        "seed_creative_format",
+        "query_upstream_traffic"
       ],
-      "description": "Test scenario to execute. 'list_scenarios' discovers supported scenarios. 'force_*' and 'simulate_*' trigger state transitions. 'seed_*' scenarios pre-populate fixtures (product, pricing option, creative, plan, media buy, creative format) so storyboards can reference them by stable ID without the implementer having to guess which IDs the conformance suite expects."
+      "description": "Test scenario to execute. 'list_scenarios' discovers supported scenarios. 'force_*' and 'simulate_*' trigger state transitions. 'seed_*' scenarios pre-populate fixtures (product, pricing option, creative, plan, media buy, creative format) so storyboards can reference them by stable ID without the implementer having to guess which IDs the conformance suite expects. 'query_upstream_traffic' returns outbound HTTP calls the agent has made since session start (or since a caller-supplied timestamp), so storyboard runners can assert upstream side-effects via `check: upstream_traffic`. The contract raises the bar against unintentional façades — adapters that satisfy AdCP schema requirements with synthetic placeholders. It is NOT an adversarial integrity check: adopters self-report their own traffic. Adopters MUST scope the response to traffic caused by the requesting principal's session/auth context — cross-caller traffic MUST NOT be returned, regardless of the supplied since_timestamp. Multi-tenant sandboxes MUST key the recording buffer on the comply_test_controller invocation's auth principal."
     },
     "params": {
       "type": "object",
@@ -643,6 +697,17 @@
               "id": "video_30s"
             }
           }
+        }
+      }
+    },
+    {
+      "description": "Query upstream traffic recorded since a storyboard step's request timestamp",
+      "data": {
+        "scenario": "query_upstream_traffic",
+        "params": {
+          "since_timestamp": "2026-05-02T14:30:00Z",
+          "endpoint_pattern": "POST *",
+          "limit": 100
         }
       }
     }

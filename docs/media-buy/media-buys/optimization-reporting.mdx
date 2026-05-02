@@ -177,7 +177,7 @@ The standard `available_metrics` enum is the closed protocol vocabulary. Vendor-
 
 - **Promotion path**: when the industry converges on a metric via a published standard, the spec adds it to the closed `available_metrics` enum and the vendor extensions become historical aliases. Promotion is anchored on standards-body publication, not on ad-hoc vendor convergence counts.
 
-- **v1 accountability scope**: standard `available_metrics` are subject to the `missing_metrics` contract on `get_media_buy_delivery`. Vendor metrics are advisory in v1 — buyers verify out-of-band via `measurable_impressions` coverage and direct calls to the vendor's measurement agent. The asymmetry reflects what the seller can credibly attest to: SSPs typically don't have proprietary measurement numbers in their delivery pipeline; those flow from the vendor's own infrastructure.
+- **Accountability scope**: when the seller stamps a vendor metric in `package.committed_metrics` (with `scope: "vendor"`), it is subject to the same `missing_metrics` contract on `get_media_buy_delivery` as standard metrics. Sellers who can't credibly attest to a vendor metric SHOULD NOT stamp it in `committed_metrics`; absence keeps the metric advisory and reconciliation falls back to `vendor_metric_values.measurable_impressions` coverage plus out-of-band verification via the vendor's measurement agent. The advisory-vs-accountable distinction is now explicit at the contract layer rather than asymmetric across metric scopes.
 
 #### Publisher Commitment
 

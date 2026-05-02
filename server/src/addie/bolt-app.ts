@@ -2453,7 +2453,7 @@ async function handleProspectClaim({ ack, body, client }: any): Promise<void> {
     const userResult = await pool.query<{ workos_user_id: string; first_name: string; email: string; is_admin: boolean }>(
       `SELECT u.workos_user_id, u.first_name, u.email,
               EXISTS(
-                SELECT 1 FROM org_memberships om
+                SELECT 1 FROM organization_memberships om
                 WHERE om.workos_user_id = u.workos_user_id
                   AND om.workos_organization_id = (
                     SELECT workos_organization_id FROM organizations WHERE slug = 'agenticadvertising-org' LIMIT 1
@@ -2474,6 +2474,16 @@ async function handleProspectClaim({ ack, body, client }: any): Promise<void> {
     }
 
     const user = userResult.rows[0];
+
+    if (!user.is_admin) {
+      await client.chat.postEphemeral({
+        channel: channelId,
+        user: userId,
+        text: 'Only AgenticAdvertising.org admins can claim prospects.',
+      });
+      logger.warn({ userId, workosUserId: user.workos_user_id, orgId }, 'Addie Bolt: Non-admin attempted prospect claim');
+      return;
+    }
 
     // Verify the org is still an active prospect
     const orgCheck = await pool.query<{ name: string; subscription_status: string | null; prospect_owner: string | null }>(

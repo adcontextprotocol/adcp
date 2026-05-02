@@ -1,0 +1,81 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.4/bundled/sponsored-intelligence/si-send-message-request.json",
+  "title": "SI Send Message Request",
+  "description": "Send a message to the brand agent within an active session",
+  "x-status": "experimental",
+  "x-mutates-state": true,
+  "type": "object",
+  "properties": {
+    "adcp_major_version": {
+      "type": "integer",
+      "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
+      "minimum": 1,
+      "maximum": 99
+    },
+    "idempotency_key": {
+      "type": "string",
+      "description": "Client-generated unique key for at-most-once execution. Each conversational turn is a distinct mutation of session transcript — without this key, a timeout-and-retry produces a duplicate turn and a duplicate model response. MUST be unique per (seller, request) pair. Use a fresh UUID v4 for each user turn.",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
+    "session_id": {
+      "type": "string",
+      "description": "Active session identifier",
+      "x-entity": "si_session"
+    },
+    "message": {
+      "type": "string",
+      "description": "User's message to the brand agent"
+    },
+    "action_response": {
+      "type": "object",
+      "description": "Response to a previous action_button (e.g., user clicked checkout)",
+      "properties": {
+        "action": {
+          "type": "string",
+          "description": "The action that was triggered"
+        },
+        "payload": {
+          "type": "object",
+          "description": "Action-specific response data"
+        }
+      },
+      "additionalProperties": true
+    },
+    "context": {
+      "title": "Context Object",
+      "description": "Opaque correlation data that is echoed unchanged in responses. Used for internal tracking, UI session IDs, trace IDs, and other caller-specific identifiers that don't affect protocol behavior. Context data is never parsed by AdCP agents - it's simply preserved and returned.",
+      "type": "object",
+      "additionalProperties": true
+    },
+    "ext": {
+      "title": "Extension Object",
+      "description": "Extension object for platform-specific, vendor-namespaced parameters. Extensions are always optional and must be namespaced under a vendor/platform key (e.g., ext.gam, ext.roku). Used for custom capabilities, partner-specific configuration, and features being proposed for standardization.",
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "session_id"
+  ],
+  "anyOf": [
+    {
+      "required": [
+        "message"
+      ]
+    },
+    {
+      "required": [
+        "action_response"
+      ]
+    }
+  ],
+  "additionalProperties": true,
+  "_bundled": {
+    "generatedAt": "2026-05-02T11:07:10.228Z",
+    "note": "This is a bundled schema with all $ref resolved inline. For the modular version with references, use the parent directory."
+  }
+}
