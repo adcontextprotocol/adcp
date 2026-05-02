@@ -5,11 +5,22 @@
  * at orgs we already think are subscribed and verifies Stripe agrees. This
  * one starts at Stripe and verifies our DB caught up.
  *
- * Motivating incident: a member paid for Professional, Stripe recorded the
- * subscription as `active`, the customer was correctly linked to her org —
- * but `customer.subscription.created` never updated the org row. She had
- * `subscription_status: NULL` for ~40 days while Stripe billed her, and was
- * blocked from paid certification content the whole time.
+ * "Reflected" means the row's `subscription_status` is entitled AND its
+ * `stripe_subscription_id` and tier-resolving product fields
+ * (`subscription_price_lookup_key` or `subscription_amount`) are populated.
+ * Status alone is not enough: a row with `status='active'` but NULL
+ * stripe_subscription_id / NULL lookup_key passes the gate but leaves the
+ * tier resolver returning null, which the dashboard renders as an
+ * Explorer/upgrade-to-Professional upsell to a paying member.
+ *
+ * Motivating incidents:
+ *   - Lina (Apr 2026): paid Professional, Stripe `active`, but
+ *     `customer.subscription.created` never updated the row. `subscription_status`
+ *     stayed NULL for ~40 days while she was blocked from paid content.
+ *   - Adzymic (May 2026): founding-member row had `subscription_status='active'`
+ *     manually set, but `stripe_subscription_id` / `subscription_price_lookup_key`
+ *     stayed NULL. Tier resolver returned null; dashboard rendered "Explorer"
+ *     and "Upgrade to Professional" to a paying corporate member.
  *
  * Detect-only by design. The framework's auto-remediation policy lives at
  * Phase 3+; for now violations are surfaced for an admin to act on via
@@ -51,12 +62,32 @@ interface OrgRow {
   stripe_customer_id: string;
   subscription_status: string | null;
   stripe_subscription_id: string | null;
+  subscription_price_lookup_key: string | null;
+  subscription_amount: number | null;
+}
+
+/**
+ * "Reflected in the org row" means more than `subscription_status` being set.
+ * The tier resolver and the dashboard depend on `stripe_subscription_id` and
+ * a tier-resolving product field (`subscription_price_lookup_key` or
+ * `subscription_amount`). A row with `status='active'` but those NULL is the
+ * partial-truth state founding-era orgs sat in for months: entitled by gate,
+ * but the dashboard renders an Explorer/upgrade-to-Professional teaser
+ * because tier resolves to null. Treat the row as reflected only when all
+ * three conditions hold.
+ */
+function isReflected(org: OrgRow): boolean {
+  if (!org.subscription_status) return false;
+  if (!ENTITLED_STATUSES.has(org.subscription_status as Stripe.Subscription.Status)) return false;
+  if (!org.stripe_subscription_id) return false;
+  if (!org.subscription_price_lookup_key && (org.subscription_amount ?? 0) <= 0) return false;
+  return true;
 }
 
 export const stripeSubReflectedInOrgRowInvariant: Invariant = {
   name: 'stripe-sub-reflected-in-org-row',
   description:
-    'Every membership subscription that is active or trialing in Stripe is reflected in the org row for its linked customer. Catches missed `customer.subscription.created` and `customer.subscription.updated` webhooks that leave a paying member with no entitlement in our DB.',
+    'Every membership subscription that is active or trialing in Stripe is fully reflected in the org row for its linked customer — entitled status PLUS populated stripe_subscription_id and tier-resolving product fields. Catches missed webhooks (Lina-class) and partial-truth rows where status was set manually but Stripe data never synced (Adzymic-class).',
   severity: 'critical',
   async check(ctx: InvariantContext): Promise<InvariantResult> {
     const { pool, stripe, logger } = ctx;
@@ -82,7 +113,8 @@ export const stripeSubReflectedInOrgRowInvariant: Invariant = {
 
     const orgsResult = await pool.query<OrgRow>(
       `SELECT workos_organization_id, name, stripe_customer_id,
-              subscription_status, stripe_subscription_id
+              subscription_status, stripe_subscription_id,
+              subscription_price_lookup_key, subscription_amount
          FROM organizations
         WHERE stripe_customer_id = ANY($1::text[])`,
       [customerIds],
@@ -133,21 +165,32 @@ export const stripeSubReflectedInOrgRowInvariant: Invariant = {
       }
 
       // Healthy: row reflects Stripe entitlement. No-op.
-      if (org.subscription_status && ENTITLED_STATUSES.has(org.subscription_status as Stripe.Subscription.Status)) {
+      if (isReflected(org)) {
         continue;
       }
 
-      // Lina-class: paying customer is being denied access. Stripe says
-      // entitled, our DB does not.
+      // Lina-class (status NULL) or Adzymic-class (status active but key fields
+      // NULL — tier resolver returns null, dashboard renders bogus upsell).
+      // Both surface as critical: a paying customer is either denied access or
+      // shown a Professional-upgrade teaser instead of their real tier.
+      const isPartialTruth =
+        org.subscription_status &&
+        ENTITLED_STATUSES.has(org.subscription_status as Stripe.Subscription.Status);
+
       violations.push({
         invariant: 'stripe-sub-reflected-in-org-row',
         severity: 'critical',
         subject_type: 'organization',
         subject_id: org.workos_organization_id,
-        message:
-          `Org "${org.name}" has paid membership subscription ${sub.id} live in Stripe ` +
-          `(${sub.status}) but DB row shows subscription_status=${JSON.stringify(org.subscription_status)}. ` +
-          `Member is incorrectly being denied entitlement.`,
+        message: isPartialTruth
+          ? `Org "${org.name}" has paid membership subscription ${sub.id} live in Stripe ` +
+            `(${sub.status}) but DB row is partial-truth: status=${JSON.stringify(org.subscription_status)}, ` +
+            `stripe_subscription_id=${JSON.stringify(org.stripe_subscription_id)}, ` +
+            `lookup_key=${JSON.stringify(org.subscription_price_lookup_key)}. ` +
+            `Tier resolver returns null, dashboard renders the wrong upsell.`
+          : `Org "${org.name}" has paid membership subscription ${sub.id} live in Stripe ` +
+            `(${sub.status}) but DB row shows subscription_status=${JSON.stringify(org.subscription_status)}. ` +
+            `Member is incorrectly being denied entitlement.`,
         details: {
           org_name: org.name,
           stripe_customer_id: customerId,
@@ -155,6 +198,9 @@ export const stripeSubReflectedInOrgRowInvariant: Invariant = {
           stripe_status: sub.status,
           db_subscription_status: org.subscription_status,
           db_stripe_subscription_id: org.stripe_subscription_id,
+          db_subscription_price_lookup_key: org.subscription_price_lookup_key,
+          db_subscription_amount: org.subscription_amount,
+          partial_truth: !!isPartialTruth,
           lookup_key,
           unit_amount,
         },

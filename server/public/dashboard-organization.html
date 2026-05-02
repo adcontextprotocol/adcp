@@ -1084,6 +1084,11 @@
     }
 
     function renderUpgradeTeaser(tierKey, orgId, healthData, orgRole) {
+      // Tier unresolved — paying member with NULL membership_tier. Don't
+      // render any upgrade prompt; that's how the Adzymic incident surfaced
+      // (Explorer-fallback drove a Professional upsell to a corporate member).
+      if (!tierKey) return '';
+
       const canUpgrade = orgRole === 'owner' || orgRole === 'admin';
       const teaser = NEXT_TIER_TEASER[tierKey];
       if (!teaser) {
@@ -1149,18 +1154,41 @@
       const el = document.getElementById('hub-content');
       el.style.display = 'block';
 
-      const tier = TIER_DETAILS[membership_tier] || DEFAULT_TIER;
+      // When membership_tier is null but the user is a member (is_member=true
+      // is implied — the page only renders for org members), the row is in a
+      // partial-truth state we shouldn't paper over with an Explorer/
+      // Professional upsell. Render a neutral "Active membership" state and
+      // skip the upgrade teaser. The `every-entitled-org-has-resolvable-tier`
+      // invariant flags these rows so an admin can heal them.
+      const tierUnresolved = !membership_tier;
+      const tier = tierUnresolved
+        ? { label: 'Active membership', contributor: 0, community: 0, price: 'Tier pending sync' }
+        : (TIER_DETAILS[membership_tier] || DEFAULT_TIER);
       const usage = seat_usage || { contributor: 0, community_only: 0 };
       const communityLimit = tier.community === -1 ? '&infin;' : tier.community;
-      const isFreeTier = !membership_tier || membership_tier === 'individual_academic';
-      const tierKey = membership_tier || 'individual_academic';
+      const isFreeTier = !tierUnresolved && membership_tier === 'individual_academic';
+      // Pass null when unresolved so renderUpgradeTeaser hides it; never
+      // silently default to 'individual_academic'.
+      const tierKey = tierUnresolved ? null : membership_tier;
       const valueSummary = TIER_VALUE_SUMMARY[tier.label] || '';
+
+      if (tierUnresolved) {
+        try {
+          console.error('[dashboard-organization] membership_tier unresolved for entitled org', { orgId });
+        } catch (_) { /* console may be unavailable */ }
+      }
 
       // Build team cert progress if available
       const teamCertHtml = certSummary ? renderTeamCertProgress(certSummary) : '';
 
-      // Membership card: simplified for free users, detailed for paid
-      const membershipCardContent = isFreeTier ? `
+      // Membership card: simplified for free users, detailed for paid,
+      // neutral for tier-unresolved (don't claim seat counts we don't know).
+      const membershipCardContent = tierUnresolved ? `
+        <div style="padding: var(--space-4); background: var(--color-warning-50, var(--color-success-50)); border-radius: var(--radius-lg);">
+          <div style="font-size: var(--text-lg); font-weight: var(--font-bold); color: var(--color-text-heading);">Active membership</div>
+          <div style="font-size: var(--text-xs); color: var(--color-text-secondary); margin-top: var(--space-1);">Your tier is pending a billing sync. <a href="mailto:support@agenticadvertising.org">Contact support</a> if this persists.</div>
+        </div>
+      ` : isFreeTier ? `
         <div style="padding: var(--space-4); background: var(--color-success-50); border-radius: var(--radius-lg);">
           <div style="font-size: var(--text-lg); font-weight: var(--font-bold); color: var(--color-text-heading);">1 community seat</div>
           <div style="font-size: var(--text-xs); color: var(--color-text-secondary); margin-top: var(--space-1);">Addie, certification, and training access</div>
