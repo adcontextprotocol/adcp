@@ -49,7 +49,63 @@
     },
     "metric_type": {
       "$ref": "/schemas/enums/metric-type.json",
-      "description": "The business metric being measured"
+      "description": "**Deprecated as of this minor.** The legacy free-form metric enum that mixes metrics, verification, and attribution into one list. New implementations SHOULD use `metric` (the discriminated `(scope, metric_id, qualifier)` row shape) and populate `metric_type` with a best-effort string for one-minor backwards compatibility. When both `metric` and `metric_type` are present, consumers MUST use `metric` for dispatch. Removed at the next major. See [docs/measurement/taxonomy](https://docs.adcontextprotocol.org/docs/measurement/taxonomy) for why the layered shape replaces the flat enum."
+    },
+    "metric": {
+      "type": "object",
+      "description": "The metric this feedback row pertains to, using the same `(scope, metric_id, qualifier)` row shape as `committed_metrics` and `metric_aggregates`. Preferred over the legacy `metric_type` field for new implementations. Brings performance-feedback into the same atomic unit and dispatch model as the rest of the measurement surface — buyer agents reconcile feedback against the contract surface using the row-level join on `(scope, metric_id, qualifier)`. Optional in v1 to permit incremental adoption alongside the deprecated `metric_type` field; expected to become required at the next major when `metric_type` is removed.",
+      "discriminator": {
+        "propertyName": "scope"
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "scope": {
+              "type": "string",
+              "const": "standard",
+              "description": "Standard metric from the closed `available-metric.json` enum."
+            },
+            "metric_id": {
+              "$ref": "/schemas/enums/available-metric.json",
+              "description": "Identifier for the standard metric."
+            },
+            "qualifier": {
+              "type": "object",
+              "description": "Disambiguator — same shape as `committed_metrics.qualifier`. Carry `viewability_standard` for MRC vs GroupM viewability feedback; carry `completion_source` for seller- vs vendor-attested completion feedback. Closed (`additionalProperties: false`); new keys ship explicitly in subsequent minors.",
+              "properties": {
+                "viewability_standard": {
+                  "$ref": "/schemas/enums/viewability-standard.json"
+                },
+                "completion_source": {
+                  "$ref": "/schemas/enums/completion-source.json"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "required": ["scope", "metric_id"],
+          "additionalProperties": false
+        },
+        {
+          "properties": {
+            "scope": {
+              "type": "string",
+              "const": "vendor",
+              "description": "Vendor-defined metric, identified by the tuple `(vendor, metric_id)`."
+            },
+            "vendor": {
+              "$ref": "/schemas/core/brand-ref.json",
+              "description": "Vendor that defines and computes this metric. Same identity discipline as `vendor_metric_value.vendor` and `committed_metrics` vendor-scope entries. Distinct from the row-level `vendor` field at the top of `performance-feedback`, which identifies the *source* of the feedback (the party producing it); this nested vendor identifies the *vendor that defines the metric* (which may or may not be the same party). Typically the same when third-party verification reports its own metric; can differ when a buyer's MMM tool reports on a separately-defined vendor metric."
+            },
+            "metric_id": {
+              "$ref": "/schemas/core/vendor-metric-id.json",
+              "description": "Identifier for the metric within the vendor's vocabulary."
+            }
+          },
+          "required": ["scope", "vendor", "metric_id"],
+          "additionalProperties": false
+        }
+      ]
     },
     "feedback_source": {
       "$ref": "/schemas/enums/feedback-source.json",

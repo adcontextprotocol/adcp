@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/enums/performance-standard-metric.json",
   "title": "Performance Standard Metric",
-  "description": "Performance metrics that support rate thresholds on media buys. Each metric specifies whether its threshold is a floor (must exceed) or ceiling (must not exceed).",
+  "description": "Performance metrics that support rate thresholds on media buys — the verification subset of the broader metric vocabulary. Each metric specifies whether its threshold is a floor (must exceed) or ceiling (must not exceed). Shared values with `available-metric.json` mirror the delivery vocabulary (`viewability` → `viewable_rate` family, `completion_rate` → same name); verification-only values (`ivt`, `brand_safety`, `attention_score`) are typically vendor-attested and do not appear in `available-metric.json` because they're not seller-reportable scalars — they flow through `vendor_metric_values` or vendor-scope `committed_metrics` entries with the matching `performance_standard.vendor` BrandRef anchoring identity.",
   "type": "string",
   "enum": [
     "viewability",

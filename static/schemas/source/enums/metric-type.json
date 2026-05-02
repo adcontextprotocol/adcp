@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/enums/metric-type.json",
-  "title": "Metric Type",
-  "description": "Performance metric types for feedback and optimization",
+  "title": "Metric Type (Deprecated)",
+  "description": "**Deprecated as of this minor.** Legacy free-form enum mixing metrics, verification, and attribution into one list with no layer alignment. New implementations SHOULD use `performance-feedback.metric` (the discriminated `(scope, metric_id, qualifier)` row shape) instead. This enum is retained for one-minor backwards compatibility on `performance-feedback.metric_type` and is removed at the next major. Migration guidance:\n\n- `viewability` → `{ scope: 'standard', metric_id: 'viewable_rate', qualifier: { viewability_standard: 'mrc' | 'groupm' } }` (or `viewable_impressions` / `measurable_impressions` depending on what's being fed back)\n- `click_through_rate` → `{ scope: 'standard', metric_id: 'ctr' }`\n- `completion_rate` → `{ scope: 'standard', metric_id: 'completion_rate', qualifier: { completion_source: 'seller_attested' | 'vendor_attested' } }`\n- `conversion_rate` → typically `{ scope: 'standard', metric_id: 'conversions' }` with a separate impressions-context, or a vendor-scope entry for an MMM/MTA conversion-rate variant\n- `brand_lift` → `{ scope: 'vendor', vendor: { domain: '...' }, metric_id: '<vendor brand lift metric>' }`\n- `brand_safety` → `{ scope: 'vendor', vendor: { domain: '...' }, metric_id: '<vendor brand safety metric>' }` (typically DV/IAS)\n- `overall_performance` → no replacement; use specific metrics or omit `metric_type` entirely (was a meta-bucket with no defined dispatch semantics)\n- `cost_efficiency` → no replacement; use specific cost-per metrics (`cost_per_acquisition`, `cost_per_click`, `cost_per_completed_view`) or `roas`",
   "type": "string",
   "enum": [
     "overall_performance",
