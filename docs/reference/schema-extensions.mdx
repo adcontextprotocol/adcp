@@ -38,7 +38,7 @@ The keyword is most useful for fields whose description currently carries a "MUS
   "description": "Brief one or two sentences for codegen JSDoc; full constraints live in x-adcp-validation and the linked spec.",
   "x-adcp-validation": {
     "trust_root": true,
-    "required_when": [ ... ],
+    "required_when": { "any_of": [ ... ] },
     "schema_required_when": { ... },
     "verifier_constraints": { ... },
     "distinct_from": "other.field.path",
@@ -52,8 +52,8 @@ The keyword is most useful for fields whose description currently carries a "MUS
 | Key | Type | Purpose |
 |---|---|---|
 | `trust_root` | boolean | Field is load-bearing for signature verification; verifiers MUST treat as authoritative. |
-| `required_when` | array of conditions | Storyboard-enforced required-when rules (3.x). Each condition is one of: `{ "field": "...", "non_empty": true }`, `{ "field": "...", "equals": <value> }`, `{ "field": "...", "any_subfield_present": true }`. The array is OR-joined; wrap with `{ "any_of": [...] }` or `{ "all_of": [...] }` for explicit boolean shape. |
-| `schema_required_when` | condition | When the rule promotes from storyboard-enforced to schema-required. Typically keyed on `adcp.supported_versions` containing a major version (e.g., 4 for the 4.0 cutover). |
+| `required_when` | object wrapping `any_of` / `all_of` | Storyboard-enforced required-when rules (3.x). The object has exactly one of `any_of` (OR-joined) or `all_of` (AND-joined), each containing an array of leaf conditions. Each leaf is one of: `{ "field": "...", "non_empty": true }`, `{ "field": "...", "equals": <value> }`, `{ "field": "...", "any_subfield_present": true }`. The wrapping object mirrors JSON Schema's `anyOf`/`allOf` precedent so tooling readers can reuse familiar boolean-combinator semantics. Bare arrays are NOT accepted — always wrap. |
+| `schema_required_when` | condition | When the rule promotes from storyboard-enforced to schema-required. Typically keyed on `adcp.supported_versions` matching a version pattern via `any_item_matches_pattern` (e.g., `"^4\\."` for the 4.0 cutover and any 4.x patch). |
 | `verifier_constraints` | object | Free-form key-value map of verifier-side rules. Keys are normative (e.g., `agent_url_match: "byte_equal"`); the storyboard runner enforces these against test vectors. |
 | `distinct_from` | string (dotted path) | Names another field that has a similar shape but different semantics, to defuse name confusion (e.g., `identity.brand_json_url` distinct from `sponsored_intelligence.brand_url`). Verifiers MUST NOT substitute one for the other. |
 | `spec` | string (relative path with anchor) | Pointer to the normative section in the docs that defines the field's full semantics. Always required when other sub-keys are present. |
@@ -70,7 +70,7 @@ The keyword is most useful for fields whose description currently carries a "MUS
 |---|---|---|
 | `identity.brand_json_url` | `static/schemas/source/protocol/get-adcp-capabilities-response.json` | Trust-root pointer for signing-key discovery; required-when rules tied to signing posture. See [security.mdx §Discovering an agent's signing keys](/docs/building/implementation/security#discovering-an-agents-signing-keys-via-brand_json_url). |
 
-This keyword landed in 3.x as the first structured-validation annotation. Other rule-bearing fields (`idempotency` discriminated union, `request_signing.warn_for`/`required_for` invariants, `webhook_signing.algorithms` allowlist) are candidates for migration in follow-up minors — tracked at [#TODO migrate prose-rules to x-adcp-validation](https://github.com/adcontextprotocol/adcp/issues).
+This keyword landed in 3.x as the first structured-validation annotation. Other rule-bearing fields (`idempotency` discriminated union, `request_signing.warn_for`/`required_for` invariants, `webhook_signing.algorithms` allowlist, `identity.key_origins` posture invariants) are candidates for migration in follow-up minors — tracked at [adcontextprotocol/adcp#3827](https://github.com/adcontextprotocol/adcp/issues/3827).
 
 ## Future extensions
 

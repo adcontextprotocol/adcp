@@ -223,7 +223,7 @@ The SDK is the only resolution path. There is no `mode="aao"`.
 
 ### CLI
 
-Each SDK ships an equivalent CLI for the "I have an agent URL, show me its keys" UX — `npx @adcp/client resolve <url>` (TS), `python -m adcp resolve <url>` (Python), `adcp-go resolve <url>` (Go):
+Each SDK ships an equivalent CLI for the "I have an agent URL, show me its keys" UX. Primary form: `npx @adcp/client resolve <url>` (TS), `adcp resolve <url>` (Python — installed as a console_scripts entry under `[project.scripts]`; `python -m adcp resolve <url>` is the equivalent fallback), and `adcp resolve <url>` (Go binary; the Go module path is `github.com/adcontextprotocol/adcp-go` but the installed binary is named `adcp`, distinct from the module name). Operators with both Python and Go installations on the same machine disambiguate by `$PATH` order or vendor:
 
 ```bash
 $ npx @adcp/client resolve https://buyer.example.com/mcp

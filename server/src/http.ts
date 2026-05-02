@@ -118,7 +118,7 @@ import { createNetworkHealthApiRouter } from "./routes/network-health.js";
 import { createBrandLogoRouter } from "./routes/brand-logos.js";
 import { createBrandFeedsRouter } from "./routes/brand-feeds.js";
 import { createTrainingAgentRouter } from "./training-agent/index.js";
-import { TRAINING_AGENT_HOSTNAMES, TRAINING_AGENT_HOSTNAME_DEPRECATED } from "./training-agent/config.js";
+import { TRAINING_AGENT_HOSTNAMES, TRAINING_AGENT_HOSTNAME_DEPRECATED, TRAINING_AGENT_URL } from "./training-agent/config.js";
 import { createCreativeAgentRouter } from "./creative-agent/index.js";
 import { sendWelcomeEmail, sendUserSignupEmail, sendDuplicateSubscriptionNotice, emailDb } from "./notifications/email.js";
 import { emailPrefsDb } from "./db/email-preferences-db.js";
@@ -630,14 +630,29 @@ export class HTTPServer {
     this.app.use(csrfProtection);
 
     // Serve brand.json for both AAO domains.
-    // AdCP domain redirects to the AAO house. AAO domain redirects to the DB-managed hosted brand.
+    // AdCP domain serves a "Brand Agent" record that lists the training agent
+    //   (test-agent.adcontextprotocol.org) so the keys-from-agent-URL discovery
+    //   chain in security.mdx (capabilities → identity.brand_json_url →
+    //   brand.json → agents[] → jwks_uri) terminates at the AdCP-hosted JWKS.
+    //   eTLD+1 of test-agent.adcontextprotocol.org and adcontextprotocol.org both
+    //   collapse to adcontextprotocol.org, so the step-3 origin-binding check
+    //   passes without `authorized_operators[]`.
+    // AAO domain redirects to the DB-managed hosted brand.
     this.app.get('/.well-known/brand.json', (req, res) => {
       res.setHeader('Cache-Control', 'public, max-age=3600');
       if (this.isAdcpDomain(req)) {
         return res.json({
           "$schema": "https://adcontextprotocol.org/schemas/latest/brand.json",
-          "house": "agenticadvertising.org",
-          "note": "AdCP is a sub-brand of AgenticAdvertising.org"
+          "agents": [
+            {
+              "type": "sales",
+              "id": "training_agent",
+              "url": `${TRAINING_AGENT_URL}/api/training-agent/mcp`,
+              "description": "AdCP training agent — public sandbox for protocol testing and certification.",
+              "jwks_uri": "https://adcontextprotocol.org/.well-known/jwks.json"
+            }
+          ],
+          "last_updated": new Date().toISOString().slice(0, 19) + 'Z'
         });
       }
       return res.json({

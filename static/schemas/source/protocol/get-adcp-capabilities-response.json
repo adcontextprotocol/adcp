@@ -1013,7 +1013,7 @@
     },
     "identity": {
       "type": "object",
-      "description": "Operator identity posture — trust-root pointer (`brand_json_url`) plus key-scoping and compromise-response controls the agent operates. `brand_json_url` is the load-bearing field — when the agent declares any signing posture, verifiers use it to bootstrap from the agent URL to the operator's brand.json (and from there to signing keys); see security.mdx §Discovering an agent's signing keys. Other fields are advisory in 3.x; receivers use them to reason about blast radius and revocation latency at onboarding rather than discovering the posture after an incident. Semantics of an empty object: `identity: {}` means \"posture block present but no posture claimed\" — schema-valid but advisory-neutral; receivers MUST treat it as equivalent to omitting the block (no capability claim inferred). Operators SHOULD populate at least one field to make a declaration meaningful.",
+      "description": "Operator identity posture — trust-root pointer (`brand_json_url`) plus key-scoping and compromise-response controls the agent operates. `brand_json_url` is **load-bearing** for signature verification: when the agent declares any signing posture (`request_signing.supported_for`/`required_for` non-empty, `webhook_signing.supported === true`, or any `key_origins` subfield), `brand_json_url` MUST be present (storyboard-enforced in 3.x; schema-required in 4.0). Verifiers use it to bootstrap from the agent URL to the operator's brand.json (and from there to signing keys); see [security.mdx §Discovering an agent's signing keys](https://adcontextprotocol.org/docs/building/implementation/security#discovering-an-agents-signing-keys-via-brand_json_url). The remaining fields (`per_principal_key_isolation`, `key_origins`, `compromise_notification`) are advisory and receivers use them to reason about blast radius and revocation latency at onboarding. Empty-object semantics: `identity: {}` means \"posture block present but no posture claimed\" — schema-valid but advisory-neutral and receivers MUST treat it as equivalent to omitting the block, **except** that an agent declaring a signing posture elsewhere in the response with an empty `identity` MUST be rejected by storyboard runners as missing `brand_json_url`.",
       "properties": {
         "brand_json_url": {
           "type": "string",
@@ -1022,17 +1022,17 @@
           "description": "HTTPS URL of the operator's brand.json (typically `https://{operator-domain}/.well-known/brand.json`). Trust-root pointer for this agent's signing keys. See [security.mdx §Discovering an agent's signing keys via `brand_json_url`](https://adcontextprotocol.org/docs/building/implementation/security#discovering-an-agents-signing-keys-via-brand_json_url) for the verifier algorithm and `x-adcp-validation` for structured constraints. Distinct from `sponsored_intelligence.brand_url`, which is a rendering pointer for SI agent visuals — verifiers MUST use this field for key discovery and MUST NOT fall back to `sponsored_intelligence.brand_url` as a trust-root pointer.",
           "x-adcp-validation": {
             "trust_root": true,
-            "required_when": [
-              { "any_of": [
+            "required_when": {
+              "any_of": [
                 { "field": "request_signing.supported_for", "non_empty": true },
                 { "field": "request_signing.required_for", "non_empty": true },
                 { "field": "webhook_signing.supported", "equals": true },
                 { "field": "identity.key_origins", "any_subfield_present": true }
-              ] }
-            ],
+              ]
+            },
             "schema_required_when": {
               "field": "adcp.supported_versions",
-              "contains_major": 4
+              "any_item_matches_pattern": "^4\\."
             },
             "verifier_constraints": {
               "agent_url_match": "byte_equal",
