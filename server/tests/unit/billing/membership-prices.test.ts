@@ -5,13 +5,14 @@
  * pattern that picks the wrong sub when a customer has a non-membership
  * sub stacked alongside a real membership.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import type Stripe from 'stripe';
 import {
   isMembershipLookupKey,
   isMembershipProductByMetadata,
   isMembershipSub,
   pickMembershipSub,
+  pickMembershipSubWithProductFetch,
 } from '../../../src/billing/membership-prices.js';
 
 function fakeSub(overrides: {
@@ -169,5 +170,81 @@ describe('pickMembershipSub', () => {
       }),
     ];
     expect(pickMembershipSub(subs)?.id).toBe('sub_founding');
+  });
+});
+
+describe('pickMembershipSubWithProductFetch', () => {
+  it('returns the lookup_key match without invoking fetchProduct (fast path)', async () => {
+    const fetchProduct = vi.fn();
+    const subs = [
+      fakeSub({ id: 'sub_member', lookup_key: 'aao_membership_explorer_50', product: 'prod_x' }),
+    ];
+    const result = await pickMembershipSubWithProductFetch(subs, fetchProduct);
+    expect(result?.id).toBe('sub_member');
+    expect(fetchProduct).not.toHaveBeenCalled();
+  });
+
+  it('falls back to product metadata when no lookup_key matches', async () => {
+    // Adzymic / Advertible / Bidcliq / Equativ shape: founding-era sub
+    // with no aao_membership_ lookup_key, but the product is tagged
+    // category=membership. The async picker fetches the product and
+    // recovers the classification.
+    const fetchProduct = vi.fn().mockResolvedValue({
+      id: 'prod_founding_corp',
+      metadata: { category: 'membership' },
+    });
+    const subs = [
+      fakeSub({ id: 'sub_founding', lookup_key: null, product: 'prod_founding_corp' }),
+    ];
+    const result = await pickMembershipSubWithProductFetch(subs, fetchProduct);
+    expect(result?.id).toBe('sub_founding');
+    expect(fetchProduct).toHaveBeenCalledWith('prod_founding_corp');
+  });
+
+  it('returns null when neither lookup_key nor product metadata matches', async () => {
+    const fetchProduct = vi.fn().mockResolvedValue({
+      id: 'prod_event',
+      metadata: { category: 'event' },
+    });
+    const subs = [
+      fakeSub({ id: 'sub_event', lookup_key: null, product: 'prod_event' }),
+    ];
+    const result = await pickMembershipSubWithProductFetch(subs, fetchProduct);
+    expect(result).toBeNull();
+  });
+
+  it('skips a candidate whose product fetch throws (does not crash the whole sync)', async () => {
+    // One bad fetch shouldn't tank the rest. The next candidate's product
+    // is a real membership; the picker should still find it.
+    const fetchProduct = vi.fn()
+      .mockRejectedValueOnce(new Error('Stripe transient'))
+      .mockResolvedValueOnce({
+        id: 'prod_founding',
+        metadata: { category: 'membership' },
+      });
+    const subs = [
+      fakeSub({ id: 'sub_bad', lookup_key: null, product: 'prod_bad' }),
+      fakeSub({ id: 'sub_good', lookup_key: null, product: 'prod_founding' }),
+    ];
+    const result = await pickMembershipSubWithProductFetch(subs, fetchProduct);
+    expect(result?.id).toBe('sub_good');
+  });
+
+  it('skips a sub whose price.product is not a string (already expanded by caller)', async () => {
+    // If a caller does expand the product inline, the sync function
+    // doesn't need a fetch — but pickMembershipSub (sync) would have
+    // caught it on the fast path. Here we cover the edge: expanded but
+    // non-membership. fetchProduct should not be called.
+    const fetchProduct = vi.fn();
+    const subs = [
+      fakeSub({
+        id: 'sub_expanded_event',
+        lookup_key: null,
+        product: { id: 'prod_event', metadata: { category: 'event' } },
+      }),
+    ];
+    const result = await pickMembershipSubWithProductFetch(subs, fetchProduct);
+    expect(result).toBeNull();
+    expect(fetchProduct).not.toHaveBeenCalled();
   });
 });
