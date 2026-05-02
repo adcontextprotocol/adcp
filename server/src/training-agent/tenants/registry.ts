@@ -59,24 +59,17 @@ const logger = createLogger('training-agent-tenants');
  * deployment should write a path-aware validator (or move brand.json to
  * host root and drop the no-op).
  *
- * Production guard: if NODE_ENV=production AND the deployment hasn't set
- * ALLOW_NOOP_JWKS_VALIDATOR=1, throw on the first request that initializes
- * the registry. Validation runs lazily, so the throw fires near-boot but
- * not at import time — operators triaging an incident should look in the
- * request stream, not the deploy log. Prevents accidental import of the
- * no-op validator into a production tenant registry that should be
- * enforcing JWKS validation.
+ * No production guard. An earlier version threw under `NODE_ENV=production`
+ * unless `ALLOW_NOOP_JWKS_VALIDATOR=1` was set, on the theory that an adopter
+ * might accidentally import the no-op into a production tenant registry that
+ * should be enforcing JWKS validation. In practice the only consumer of this
+ * file is THIS training agent's production deployment — and that deployment
+ * uses the no-op by design (path-mounted brand.json). The guard fired in
+ * production, marked every tenant `disabled`, and `resolveByRequest` returned
+ * null for every per-tenant POST. Removed.
  */
 const noopJwksValidator = {
   async validate() {
-    if (process.env.NODE_ENV === 'production' && !process.env.ALLOW_NOOP_JWKS_VALIDATOR) {
-      throw new Error(
-        'noopJwksValidator refused in production. Set ALLOW_NOOP_JWKS_VALIDATOR=1 ' +
-          'on the training agent deployment to acknowledge that path-routed multi-tenant ' +
-          'agents skip pre-flight JWKS validation by design (the public keys are still ' +
-          'advertised in the aggregated brand.json at the parent router).',
-      );
-    }
     return { ok: true as const };
   },
 };
