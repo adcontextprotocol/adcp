@@ -94,6 +94,63 @@
       },
       "minItems": 1
     },
+    "committed_metrics": {
+      "type": "array",
+      "description": "Buyer's proposed reporting contract for this package — the metrics the buyer wants the seller to commit to populating in delivery reports. Same negotiation pattern as `measurement_terms` and `performance_standards`: seller accepts (echoes on confirmed package with `committed_at` stamped), rejects with `TERMS_REJECTED` (with explanation of which entries were unworkable), or normalizes (echoes a different but compatible list — buyer can accept by retrying with the normalized terms). When absent, the seller decides what to commit based on the product's `available_metrics` and the buyer's `required_metrics` filter on `get_products`. Each entry uses an explicit `scope` discriminator (`standard` or `vendor`) and identifies the metric — request-side entries do NOT carry `committed_at`; that timestamp is stamped by the seller on accept. Constraints on what the buyer MAY propose: each `scope: standard` entry's `metric_id` MUST be in the product's `available_metrics`, and each `scope: vendor` entry's `(vendor, metric_id)` MUST appear in the product's `vendor_metrics` — sellers SHOULD reject with `TERMS_REJECTED` and reference the offending entry when the proposal exceeds product capability.",
+      "items": {
+        "type": "object",
+        "discriminator": {
+          "propertyName": "scope"
+        },
+        "oneOf": [
+          {
+            "properties": {
+              "scope": {
+                "type": "string",
+                "const": "standard",
+                "description": "Standard metric from the closed `available-metric.json` enum."
+              },
+              "metric_id": {
+                "$ref": "/schemas/enums/available-metric.json",
+                "description": "Identifier for the standard metric. MUST be present in the product's `reporting_capabilities.available_metrics`."
+              },
+              "qualifier": {
+                "type": "object",
+                "description": "Measurement-standard qualifier — same shape as on the response-side `committed_metrics`. Required when `metric_id` ∈ {`viewable_impressions`, `viewable_rate`, `measurable_impressions`} and the buyer wants to pin a specific viewability standard. See response-side description for full semantics.",
+                "properties": {
+                  "viewability_standard": {
+                    "$ref": "/schemas/enums/viewability-standard.json"
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "required": ["scope", "metric_id"],
+            "additionalProperties": false
+          },
+          {
+            "properties": {
+              "scope": {
+                "type": "string",
+                "const": "vendor",
+                "description": "Vendor-defined metric, identified by the tuple `(vendor, metric_id)`."
+              },
+              "vendor": {
+                "$ref": "/schemas/core/brand-ref.json",
+                "description": "Vendor that defines and computes this metric. The vendor's `brand.json` `agents[type='measurement']` is the canonical anchor."
+              },
+              "metric_id": {
+                "$ref": "/schemas/core/vendor-metric-id.json",
+                "description": "Identifier for the metric within the vendor's vocabulary. MUST be present in the product's `reporting_capabilities.vendor_metrics` for the same vendor."
+              }
+            },
+            "required": ["scope", "vendor", "metric_id"],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "minItems": 1
+    },
     "creative_assignments": {
       "type": "array",
       "description": "Assign existing library creatives to this package with optional weights and placement targeting",
