@@ -161,7 +161,7 @@ function buildMultimodalContentBlocks(
  * Action-claiming patterns mapped to the tools that should back them up.
  * Hoisted to module scope to avoid re-allocation on every response.
  */
-const HALLUCINATION_PATTERNS: ReadonlyArray<{ pattern: RegExp; expectedTools: string[] }> = [
+export const HALLUCINATION_PATTERNS: ReadonlyArray<{ pattern: RegExp; expectedTools: string[] }> = [
   { pattern: /invoice\s+(?:resent|sent)\s+successfully/i, expectedTools: ['resend_invoice', 'send_invoice', 'send_payment_request'] },
   { pattern: /(?:successfully\s+)?resent\s+(?:the\s+)?invoice/i, expectedTools: ['resend_invoice', 'send_invoice', 'send_payment_request'] },
   { pattern: /(?:billing\s+)?email\s+(?:updated|changed)\s+successfully/i, expectedTools: ['update_billing_email'] },
@@ -171,6 +171,15 @@ const HALLUCINATION_PATTERNS: ReadonlyArray<{ pattern: RegExp; expectedTools: st
   { pattern: /(?:I'?ve\s+|I\s+)?(?:created|generated|sent)\s+(?:a\s+)?payment\s+link/i, expectedTools: ['create_payment_link'] },
   { pattern: /(?:I'?ve\s+|I\s+)?(?:sent|delivered)\s+(?:a\s+)?(?:DM|direct message|notification)/i, expectedTools: ['send_member_dm', 'resolve_escalation'] },
   { pattern: /(?:I'?ve\s+|I\s+)?added\s+\S+(?:\s+\S+){0,5}\s+to\s+the\s+(?:meeting|call|series)/i, expectedTools: ['add_meeting_attendee'] },
+  // Fake-escalation patterns. `escalate_to_admin` is in the always-available
+  // tool set, so claiming an escalation/notification was made without firing
+  // it is the same class of fabrication as the rest. Real GitHub-issue tools
+  // count too because Addie sometimes describes filing a ticket as creating
+  // an issue.
+  { pattern: /ticket\s+#?\d+/i, expectedTools: ['escalate_to_admin', 'create_github_issue', 'draft_github_issue'] },
+  { pattern: /(?:the\s+)?team\s+(?:has\s+been\s+|will\s+be\s+|is\s+being\s+)notified/i, expectedTools: ['escalate_to_admin'] },
+  { pattern: /I'?ve\s+(?:flagged|escalated|notified)\s+(?:this|the\s+team|the\s+admins?)/i, expectedTools: ['escalate_to_admin'] },
+  { pattern: /(?:I'?ve\s+|I\s+just\s+)?(?:created|opened|filed)\s+(?:a\s+)?(?:support\s+)?(?:ticket|issue)\b/i, expectedTools: ['escalate_to_admin', 'create_github_issue', 'draft_github_issue'] },
 ];
 
 /**
@@ -178,7 +187,7 @@ const HALLUCINATION_PATTERNS: ReadonlyArray<{ pattern: RegExp; expectedTools: st
  * Returns a flag reason if the text claims to have completed an action
  * but no corresponding tool was actually called AND succeeded.
  */
-function detectHallucinatedAction(text: string, toolExecutions: ToolExecution[]): string | null {
+export function detectHallucinatedAction(text: string, toolExecutions: ToolExecution[]): string | null {
   for (const { pattern, expectedTools } of HALLUCINATION_PATTERNS) {
     if (pattern.test(text)) {
       // Check that a matching tool was called AND succeeded (not just called)
