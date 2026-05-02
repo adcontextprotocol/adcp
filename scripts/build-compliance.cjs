@@ -574,17 +574,21 @@ function main() {
   }
 
   // Advisory-expiry lint (warnings only): surface storyboards declaring
-  // severity: advisory without expires_after_version, so authors can
-  // confirm at PR review whether the drift is on purpose.
-  // adcontextprotocol/adcp#3847 item 1. Exits 0 even on warnings; drift
-  // is a judgment call, not a build error.
+  // severity: advisory without expires_after_version (or permanent_advisory),
+  // so authors can confirm at PR review whether the drift is on purpose.
+  // adcontextprotocol/adcp#3847 item 1. The script exits 0 on rule
+  // violations (warnings, not errors); a non-zero exit here means the
+  // script itself crashed and SHOULD surface — don't silently swallow
+  // implementation bugs that mask the lint forever.
   try {
     execSync('node scripts/lint-storyboard-advisory-expiry.cjs', {
       cwd: path.join(__dirname, '..'),
       stdio: 'inherit',
     });
-  } catch {
-    // Defensive: the script exits 0 by design even when warnings fire.
+  } catch (err) {
+    console.error(`⚠ advisory-expiry lint crashed (not a rule violation — script bug):`);
+    console.error(`  ${err.message || err}`);
+    console.error(`  Continuing build, but the lint will be silent until this is fixed.`);
   }
 
   console.log(isRelease

@@ -349,23 +349,40 @@ validation_result:
                               # (rollout gating during runner adoption
                               # windows).
     - severity_promoted_from_advisory
-                              # boolean (optional, present only when the
-                              # storyboard declared severity: advisory AND
-                              # expires_after_version was met by the
-                              # runner's own @adcp/sdk version, causing
-                              # the runner to promote the validation to
-                              # required at execution time. When true,
-                              # `severity` MUST be "required" (the
-                              # promoted value the runner applied) and the
-                              # report SHOULD render the original advisory
-                              # status alongside — e.g.,
-                              # "[REQUIRED — was advisory through SDK
-                              # {expires_after_version}; promoted at SDK
-                              # {runner_version}]". When absent or false,
-                              # the storyboard's declared severity was
-                              # applied verbatim. See storyboard-schema.yaml
-                              # > "Validation" > expires_after_version for
-                              # the author-side semantics.
+                              # boolean | absent. Tri-state contract:
+                              #   true  — storyboard declared
+                              #           expires_after_version AND
+                              #           runner_capability_version >=
+                              #           that value, so the runner
+                              #           promoted severity to "required"
+                              #           at execution time. `severity`
+                              #           MUST also be "required" (the
+                              #           promoted value).
+                              #   false — storyboard declared
+                              #           expires_after_version but
+                              #           runner_capability_version is
+                              #           older, so promotion did not fire.
+                              #           `severity` is the storyboard's
+                              #           declared advisory.
+                              #   absent — storyboard did not declare
+                              #           expires_after_version (severity
+                              #           applied verbatim) OR the check
+                              #           grades not_applicable due to
+                              #           forward-compat (no grading
+                              #           occurred, so no promotion was
+                              #           evaluated; per
+                              #           storyboard-schema.yaml >
+                              #           expires_after_version
+                              #           forward-compat ordering rule).
+                              # The tri-state is required so consumers can
+                              # distinguish "promoted" from "not promoted
+                              # because runner is too old" from "not
+                              # applicable" without re-reading the
+                              # storyboard. Reports SHOULD render the
+                              # promotion provenance on the true case —
+                              # e.g., "[REQUIRED — was advisory through
+                              # capability v{expires_after_version};
+                              # promoted at v{runner_capability_version}]".
 
 request:
   description: |
@@ -531,6 +548,16 @@ security:
       the rationale (façade-resistance: a façade declaring its anti-façade
       validations as advisory must not blend visually into required failures).
 
+      Promotion-provenance rendering: when a renderer constructs human
+      copy describing severity_promoted_from_advisory: true (e.g., "was
+      advisory through capability v{expires_after_version}; promoted at
+      v{runner_capability_version}"), the storyboard-supplied
+      expires_after_version value MUST be fenced. The semver lint rejects
+      malformed values at publish time, but defense-in-depth treats the
+      string as untrusted-author input when interpolated into LLM-rendered
+      surfaces. permanent_advisory.reason is also storyboard-author-controlled
+      and MUST be fenced when rendered.
+
 skip_result:
   description: |
     When a track, storyboard, phase, or step is skipped, runners MUST
@@ -651,6 +678,26 @@ run_summary:
     - schemas_used            # array of { schema_id, schema_url } so an
                               # implementor can re-validate locally against
                               # the exact artifacts the runner applied
+    - runner_capability_version
+                              # semver self-declared by the runner so
+                              # consumers can correlate a run's grading
+                              # behavior with the spec capability the
+                              # runner offers. Authors target capability
+                              # versions when they write
+                              # expires_after_version on advisory
+                              # validations (see storyboard-schema.yaml >
+                              # expires_after_version) and the runner's
+                              # promotion logic compares its declared
+                              # value against the storyboard's expiry. The
+                              # runner chooses what its capability version
+                              # corresponds to — @adcp/sdk semver, the
+                              # AdCP spec version it implements, or a
+                              # runner-binary version — and is responsible
+                              # for advancing it as new check kinds and
+                              # grading semantics ship. Adopters who run
+                              # multiple runners against the same agent
+                              # SHOULD select the highest-capability runner
+                              # for conformance grading.
   optional_fields:
     - validations_not_applicable  # count of validation_result entries graded
                                   # not_applicable due to forward-compat

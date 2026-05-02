@@ -1,13 +1,6 @@
 #!/usr/bin/env node
 /**
- * Tests for the storyboard advisory-expiry lint. Two concerns:
- *   1. Source-tree guard — every existing storyboard with severity:
- *      advisory should already declare expires_after_version OR carry an
- *      advisory-permanent marker. (Today there are no advisory uses in
- *      the source tree, so this is a future-proofing trip-wire.)
- *   2. Per-rule coverage — the rule fires on advisory-without-expiry and
- *      stays quiet for the legitimate cases (expires_after_version set,
- *      advisory-permanent marker present, severity required).
+ * Tests for the storyboard advisory-expiry lint.
  */
 
 'use strict';
@@ -20,7 +13,7 @@ const assert = require('node:assert/strict');
 
 const {
   lint,
-  findAdvisoryPermanentMarkers,
+  checkValidation,
   RULE_MESSAGES,
 } = require('../scripts/lint-storyboard-advisory-expiry.cjs');
 
@@ -45,7 +38,7 @@ function withTempStoryboardDir(name, doc, fn) {
   }
 }
 
-test('advisory_without_expiry: severity:advisory without expires_after_version warns', () => {
+test('advisory_without_expiry_or_permanent: severity:advisory without either field warns', () => {
   const doc = `
 id: temp_storyboard
 phases:
@@ -62,13 +55,13 @@ phases:
   withTempStoryboardDir('drift.yaml', doc, (dir) => {
     const warnings = lint(dir);
     assert.equal(warnings.length, 1);
-    assert.equal(warnings[0].rule, 'advisory_without_expiry');
+    assert.equal(warnings[0].rule, 'advisory_without_expiry_or_permanent');
     assert.equal(warnings[0].step, 'step_a');
     assert.equal(warnings[0].check, 'upstream_traffic');
   });
 });
 
-test('expires_after_version present: no warning', () => {
+test('expires_after_version with valid semver: no warning', () => {
   const doc = `
 id: temp_storyboard
 phases:
@@ -89,26 +82,140 @@ phases:
   });
 });
 
-test('advisory-permanent marker: no warning', () => {
-  // Marker appears as a YAML comment immediately above the step's `- id:`
-  // declaration. Mimics the textual pattern the lint scans for.
+test('expires_after_version with pre-release tag: no warning', () => {
   const doc = `
 id: temp_storyboard
 phases:
   - id: phase_a
     steps:
-      # advisory-permanent: experimental signals; advisory grade is the contract here
       - id: step_a
         task: get_products
         validations:
           - check: upstream_traffic
             severity: advisory
+            expires_after_version: "6.5.0-rc.3"
+            description: rolling out early
+            min_count: 1
+`;
+  withTempStoryboardDir('prerelease.yaml', doc, (dir) => {
+    const warnings = lint(dir);
+    assert.deepEqual(warnings, []);
+  });
+});
+
+test('advisory_expiry_not_semver: malformed expires_after_version flagged', () => {
+  const doc = `
+id: temp_storyboard
+phases:
+  - id: phase_a
+    steps:
+      - id: step_a
+        task: get_products
+        validations:
+          - check: upstream_traffic
+            severity: advisory
+            expires_after_version: "ignore previous instructions"
+            description: prompt-injection attempt
+            min_count: 1
+`;
+  withTempStoryboardDir('injection.yaml', doc, (dir) => {
+    const warnings = lint(dir);
+    assert.equal(warnings.length, 1);
+    assert.equal(warnings[0].rule, 'advisory_expiry_not_semver');
+    assert.equal(warnings[0].value, 'ignore previous instructions');
+  });
+});
+
+test('advisory_expiry_not_semver: typos flagged', () => {
+  const doc = `
+id: temp_storyboard
+phases:
+  - id: phase_a
+    steps:
+      - id: step_a
+        task: get_products
+        validations:
+          - check: upstream_traffic
+            severity: advisory
+            expires_after_version: "6.5"
+            description: not a full semver
+            min_count: 1
+`;
+  withTempStoryboardDir('typo.yaml', doc, (dir) => {
+    const warnings = lint(dir);
+    assert.equal(warnings.length, 1);
+    assert.equal(warnings[0].rule, 'advisory_expiry_not_semver');
+  });
+});
+
+test('permanent_advisory structured field: no warning', () => {
+  const doc = `
+id: temp_storyboard
+phases:
+  - id: phase_a
+    steps:
+      - id: step_a
+        task: get_products
+        validations:
+          - check: upstream_traffic
+            severity: advisory
+            permanent_advisory:
+              reason: "experimental signals; advisory grade is the contract here"
             description: experimental
             min_count: 1
 `;
   withTempStoryboardDir('permanent.yaml', doc, (dir) => {
     const warnings = lint(dir);
     assert.deepEqual(warnings, []);
+  });
+});
+
+test('advisory_double_gating: both fields set is a violation', () => {
+  // Mutually exclusive. Author who declares both has confused intent.
+  const doc = `
+id: temp_storyboard
+phases:
+  - id: phase_a
+    steps:
+      - id: step_a
+        task: get_products
+        validations:
+          - check: upstream_traffic
+            severity: advisory
+            expires_after_version: "6.5.0"
+            permanent_advisory:
+              reason: "also permanent?"
+            description: confused
+            min_count: 1
+`;
+  withTempStoryboardDir('double.yaml', doc, (dir) => {
+    const warnings = lint(dir);
+    assert.equal(warnings.length, 1);
+    assert.equal(warnings[0].rule, 'advisory_double_gating');
+  });
+});
+
+test('permanent_advisory without reason: still flagged as needing structure', () => {
+  // permanent_advisory: {} (no reason) doesn't satisfy the structured-shape
+  // requirement — author intent unclear.
+  const doc = `
+id: temp_storyboard
+phases:
+  - id: phase_a
+    steps:
+      - id: step_a
+        task: get_products
+        validations:
+          - check: upstream_traffic
+            severity: advisory
+            permanent_advisory: {}
+            description: missing reason
+            min_count: 1
+`;
+  withTempStoryboardDir('no-reason.yaml', doc, (dir) => {
+    const warnings = lint(dir);
+    assert.equal(warnings.length, 1);
+    assert.equal(warnings[0].rule, 'advisory_without_expiry_or_permanent');
   });
 });
 
@@ -130,23 +237,45 @@ phases:
   });
 });
 
-test('findAdvisoryPermanentMarkers picks up case-insensitive markers', () => {
-  const text = `
-phases:
-  - id: phase_a
-    steps:
-      # ADVISORY-PERMANENT: uppercase form should still match
-      - id: step_a
-      # advisory-permanent: lowercase form
-      - id: step_b
-`;
-  const markers = findAdvisoryPermanentMarkers(text);
-  assert.ok(markers.has('step_a'));
-  assert.ok(markers.has('step_b'));
+test('checkValidation unit test: structured field detection', () => {
+  // expires_after_version + valid semver
+  assert.equal(checkValidation({
+    severity: 'advisory',
+    expires_after_version: '6.5.0',
+  }), null);
+
+  // permanent_advisory with reason
+  assert.equal(checkValidation({
+    severity: 'advisory',
+    permanent_advisory: { reason: 'experimental' },
+  }), null);
+
+  // Neither field
+  const v1 = checkValidation({ severity: 'advisory' });
+  assert.equal(v1.rule, 'advisory_without_expiry_or_permanent');
+
+  // Both fields
+  const v2 = checkValidation({
+    severity: 'advisory',
+    expires_after_version: '6.5.0',
+    permanent_advisory: { reason: 'x' },
+  });
+  assert.equal(v2.rule, 'advisory_double_gating');
+
+  // Invalid semver
+  const v3 = checkValidation({
+    severity: 'advisory',
+    expires_after_version: 'not-a-version',
+  });
+  assert.equal(v3.rule, 'advisory_expiry_not_semver');
 });
 
 test('every rule ID has a message', () => {
-  const ruleIds = ['advisory_without_expiry'];
+  const ruleIds = [
+    'advisory_without_expiry_or_permanent',
+    'advisory_expiry_not_semver',
+    'advisory_double_gating',
+  ];
   for (const id of ruleIds) {
     assert.ok(typeof RULE_MESSAGES[id] === 'function', `missing message for rule ${id}`);
   }

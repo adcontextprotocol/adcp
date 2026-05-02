@@ -51,16 +51,43 @@ const yaml = require('js-yaml');
 const ROOT = path.resolve(__dirname, '..');
 const SOURCE_DIR = path.join(ROOT, 'static', 'compliance', 'source');
 
+const MODE_AGNOSTIC_FIELDS = [
+  'min_count',
+  'endpoint_pattern',
+  'identifier_paths',
+  'purpose_filter',
+  'since',
+];
+
+function presentModeAgnosticAssertions(validation) {
+  const present = [];
+  for (const field of MODE_AGNOSTIC_FIELDS) {
+    const value = validation[field];
+    if (value === undefined || value === null) continue;
+    if (Array.isArray(value) && value.length === 0) continue;
+    present.push(field);
+  }
+  return present;
+}
+
 const RULE_MESSAGES = {
-  raw_required_without_justification: () =>
-    'attestation_mode_required: "raw" set on an upstream_traffic check that ' +
-    'has no payload_must_contain clause. The raw requirement excludes every ' +
-    'adopter who supports query_upstream_traffic only in digest mode (privacy-' +
-    'conscious cohort) — and adds no value when all the assertions on this ' +
-    'check are mode-agnostic. Either add a payload_must_contain entry (the ' +
-    'raw-only assertion the flag protects), or drop attestation_mode_required ' +
-    'so digest-mode adopters can participate. See ' +
-    'static/compliance/source/universal/storyboard-schema.yaml > "upstream_traffic".',
+  raw_required_without_justification: (presentAssertions) => {
+    const enumeratedPresent = presentAssertions && presentAssertions.length > 0
+      ? `Present assertions on this check: ${presentAssertions.join(', ')} — all mode-agnostic. `
+      : '';
+    return (
+      'attestation_mode_required: "raw" set on an upstream_traffic check that ' +
+      'has no payload_must_contain clause. ' +
+      enumeratedPresent +
+      'The raw requirement excludes every adopter who supports ' +
+      'query_upstream_traffic only in digest mode (privacy-conscious cohort) — ' +
+      'and adds no value when all the assertions on this check work in digest ' +
+      'mode too. Either add a payload_must_contain entry (the raw-only assertion ' +
+      'the flag protects), or drop attestation_mode_required so digest-mode ' +
+      'adopters can participate. See ' +
+      'static/compliance/source/universal/storyboard-schema.yaml > "upstream_traffic".'
+    );
+  },
 };
 
 function isStoryboardYaml(rel) {
@@ -115,6 +142,7 @@ function lint(sourceDir = SOURCE_DIR) {
         step: hit.stepId,
         index: hit.index,
         rule: 'raw_required_without_justification',
+        present_assertions: presentModeAgnosticAssertions(hit.validation),
       });
     }
   }
@@ -144,7 +172,7 @@ function main() {
   }
   console.error(`✗ storyboard raw-mode-required lint: ${violations.length} violation(s)\n`);
   for (const v of violations) {
-    const msg = RULE_MESSAGES[v.rule] ? RULE_MESSAGES[v.rule]() : v.rule;
+    const msg = RULE_MESSAGES[v.rule] ? RULE_MESSAGES[v.rule](v.present_assertions) : v.rule;
     console.error(`  ${v.file} phase=${v.phase} step=${v.step} validations[${v.index}] (${v.rule})`);
     console.error(`    ${msg}`);
     console.error('');
@@ -156,6 +184,8 @@ if (require.main === module) main();
 
 module.exports = {
   RULE_MESSAGES,
+  MODE_AGNOSTIC_FIELDS,
+  presentModeAgnosticAssertions,
   walkUpstreamTrafficChecks,
   lint,
 };

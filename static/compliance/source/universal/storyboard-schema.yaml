@@ -691,41 +691,84 @@
 #                runner-spec version skew; severity handles author-managed
 #                rollout gating.
 # expires_after_version: string (optional, only meaningful when severity:
-#                advisory): semver of the runner / @adcp/sdk version after
-#                which the advisory MUST be promoted to "required" by the
-#                runner at execution time. Closes the advisory-drift
-#                problem: storyboards declared with severity: advisory
-#                during an adoption window get force-promoted once the
-#                runner catches up, so authors don't need to track every
-#                advisory entry across every PR.
+#                advisory): semver gating runtime promotion of this advisory
+#                to "required". Closes the advisory-drift problem:
+#                storyboards declared with severity: advisory during an
+#                adoption window get force-promoted once runners catch up,
+#                so authors don't need to track every advisory entry across
+#                every PR.
 #
-#                Runner behavior: at storyboard-load time, the runner
-#                compares its own @adcp/sdk version to expires_after_version
-#                (semver compare, runner version vs declared expiry). If
-#                runner version >= expires_after_version, the runner
-#                MUST treat severity as "required" regardless of what the
-#                storyboard declares — advisory failures then fail the step.
-#                The validation_result MUST carry the original
-#                `severity: advisory` field for transparency, plus a
-#                `severity_promoted_from_advisory: true` boolean so reports
-#                can render "this assertion was advisory through SDK
-#                {expires_after_version}; promoted to required at SDK
-#                {runner_version}."
+#                Versioning anchor: the comparison is against the runner's
+#                self-declared `runner_capability_version` (see
+#                runner-output-contract.yaml > run_summary), NOT against
+#                any specific implementation's package version. The runner
+#                chooses what its capability version corresponds to —
+#                @adcp/sdk semver, the AdCP spec version it implements, or
+#                a runner-binary version — and declares it in run_summary.
+#                Storyboard authors target the spec capability they need,
+#                not a specific SDK package; runners self-report the
+#                capability they offer.
 #
-#                A build-time lint (lint-storyboard-advisory-expiry.cjs)
-#                warns (not fails) when severity: advisory is declared
-#                without expires_after_version — the field is optional but
-#                the lint surfaces "is this drift on purpose?" at PR review
-#                time. Use case for omitting the field: a permanent
-#                advisory check that's not gated on a runner version
-#                (e.g., experimental signals where the spec authors
-#                explicitly want the advisory grade to persist). Lint
-#                output is informational; the field stays optional.
+#                Runner behavior: at storyboard-load time the runner
+#                compares its own runner_capability_version to
+#                expires_after_version using semver.gte. If
+#                runner_capability_version >= expires_after_version, the
+#                runner MUST promote severity to "required" — advisory
+#                failures then fail the step. The validation_result MUST
+#                carry severity_promoted_from_advisory: true to surface the
+#                promotion on rendered reports.
 #
-#                Format: a semver string compatible with Node's `semver`
-#                npm package (semver.satisfies / semver.gte). Pre-release
-#                tags are honored: "6.5.0-beta.1" promotes earlier than
-#                "6.5.0".
+#                Forward-compat ordering: when a storyboard declares both
+#                an unknown check kind (graded `not_applicable` per #3816's
+#                forward-compat clause) AND severity: advisory +
+#                expires_after_version, forward-compat resolves FIRST. The
+#                check grades not_applicable and severity_promoted_from_advisory
+#                MUST be absent — no promotion was evaluated because no
+#                grading occurred. Promotion only applies to checks the
+#                runner actually grades.
+#
+#                Pre-release tags: comparison uses standard semver including
+#                pre-releases (RFC §11). `6.5.0-rc.3 < 6.5.0`. Authors
+#                wanting "after 6.5.0 stable" write `6.5.0`; authors
+#                wanting "after any 6.5.0 pre-release" write `6.5.0-0`.
+#                The runner MUST use semver.gte semantics, not a custom
+#                comparator. Authors targeting a specific minor without
+#                regard to pre-release status SHOULD write the lowest
+#                pre-release form (`X.Y.0-0`) when they want to include
+#                early adopters running RC builds.
+#
+#                Permanent advisories — see `permanent_advisory` field
+#                below for declaring an advisory that's deliberately not
+#                gated on runner version.
+#
+#                Format: a semver-valid string. The build-time lint at
+#                scripts/lint-storyboard-advisory-expiry.cjs MUST validate
+#                the value via Node's `semver.valid()` and reject malformed
+#                values; this prevents typos AND bounds the trust surface
+#                on the value when it's interpolated into rendered reports.
+#
+# permanent_advisory: object (optional, only meaningful when severity:
+#                advisory and expires_after_version is absent): structured
+#                marker declaring this advisory is deliberately not gated
+#                on runner version. Use case: experimental signals where
+#                the spec authors explicitly want the advisory grade to
+#                persist regardless of runner adoption.
+#
+#                Shape:
+#                  permanent_advisory:
+#                    reason: "<text>"
+#
+#                Replaces the earlier `# advisory-permanent: <reason>` YAML
+#                comment marker (which broke under YAML round-tripping in
+#                editor formatters and downstream tooling). Structured
+#                field is greppable, schema-validatable, and the reason is
+#                machine-readable for dashboards.
+#
+#                Schema requirement: when severity: advisory is declared,
+#                exactly one of `expires_after_version` or
+#                `permanent_advisory` MUST be present. The build-time lint
+#                surfaces violations (warning, not error — drift is a
+#                judgment call).
 # path: string (JSON path to the field, e.g., "formats[0].format_id")
 # value: any (expected value — string, number, or boolean; required when check is "field_value";
 #             accepted (optional) when check is "field_value_or_absent")
