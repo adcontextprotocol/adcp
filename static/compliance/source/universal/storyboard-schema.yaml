@@ -649,6 +649,16 @@
 #
 # --- Validation ---
 #
+# CANONICAL CHECK ENUM
+# --------------------
+# The authored check kinds storyboards MAY declare in `step.validations[].check`
+# live in `runner-output-contract.yaml > authored_check_kinds` (structured
+# YAML; this file is comment-only documentation). The build-time lint
+# `scripts/lint-storyboard-check-enum.cjs` reads from there; runtime
+# forward-compat (unknown kinds → not_applicable) is documented in
+# runner-output-contract.yaml > validation_result. Add new kinds to that
+# enum AND document semantics here in the same PR.
+#
 # check: string (what to validate: "response_schema", "field_present",
 #                "envelope_field_present" (walks protocol-envelope.json instead of
 #                response_schema_ref — use for top-level envelope fields like `status`),
@@ -658,6 +668,28 @@
 #                "any_of", "refs_resolve", "a2a_submitted_artifact",
 #                "upstream_traffic" (asserts side-effects via comply_test_controller's
 #                query_upstream_traffic scenario — see "upstream_traffic" section below))
+# severity: string (optional, default "required"): "required" | "advisory".
+#                A "required" validation failure fails the step and contributes
+#                to steps_failed; this is the default. An "advisory" failure
+#                surfaces in the validation_result with passed: false but does
+#                NOT fail the step — the step grades on its remaining required
+#                validations. Advisory failures contribute to a distinct
+#                `validations_advisory_failed` counter on run_summary so they
+#                stay visible without polluting conformance verdicts.
+#
+#                Use case: a storyboard declares a check whose runner support
+#                is rolling out (e.g., upstream_traffic during the months
+#                between the contract spec landing and the @adcp/sdk runner
+#                shipping it). Authors flip severity: advisory while
+#                instrumentation matures, then drop the field (or set
+#                "required") once adoption is stable. Without this escape
+#                valve, the choice was binary: declare the check and break
+#                conformance for adopters who haven't caught up, or omit it
+#                entirely and lose the validation surface during rollout.
+#                Distinct from the runtime forward-compat default (unknown
+#                check kinds → not_applicable): forward-compat handles
+#                runner-spec version skew; severity handles author-managed
+#                rollout gating.
 # path: string (JSON path to the field, e.g., "formats[0].format_id")
 # value: any (expected value — string, number, or boolean; required when check is "field_value";
 #             accepted (optional) when check is "field_value_or_absent")
@@ -870,6 +902,35 @@
 #                              #   identifier_paths:
 #                              #     - "audiences[*].add[*].hashed_email"
 #                              #     - "audiences[*].add[*].external_id"
+#     purpose_filter: array of string (optional)
+#                              # Restrict the assertion to recorded_calls whose
+#                              # `purpose` field matches one of the listed
+#                              # values. Allowed values:
+#                              #   "platform_primary" | "measurement" |
+#                              #   "attribution" | "creative_serving" |
+#                              #   "identity" | "other"
+#                              # Use this when an adapter legitimately makes
+#                              # multiple kinds of upstream calls during a step
+#                              # — e.g., a sales-non-guaranteed buyer agent
+#                              # creating a campaign AND calling a measurement
+#                              # vendor AND posting an attribution event during
+#                              # the same create_media_buy. The storyboard
+#                              # scopes to `purpose_filter: [platform_primary]`
+#                              # so the other calls don't muddy the
+#                              # campaign-creation assertion.
+#                              # When omitted, the assertion considers all
+#                              # recorded_calls regardless of purpose. Calls
+#                              # without a `purpose` field (adopter didn't
+#                              # classify) are treated as `purpose: other` for
+#                              # filter matching — they're included by filters
+#                              # listing `other` and excluded by filters that
+#                              # don't. Runners MUST include a count of
+#                              # unclassified calls in the validation_result's
+#                              # `actual` when `purpose_filter` is set and
+#                              # zero recorded_calls match the filter, so a
+#                              # façade that misclassifies-into-`other` to
+#                              # dodge filtering produces a noisy zero rather
+#                              # than a silent one.
 #     since: prior_step_id (optional, default: this step's request timestamp)
 #                              # Bound the lookup window. By default, the
 #                              # runner queries traffic recorded since the
