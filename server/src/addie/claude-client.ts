@@ -176,10 +176,17 @@ export const HALLUCINATION_PATTERNS: ReadonlyArray<{ pattern: RegExp; expectedTo
   // it is the same class of fabrication as the rest. Real GitHub-issue tools
   // count too because Addie sometimes describes filing a ticket as creating
   // an issue.
-  { pattern: /ticket\s+#?\d+/i, expectedTools: ['escalate_to_admin', 'create_github_issue', 'draft_github_issue'] },
+  //
+  // The two creation-verb patterns require a first-person subject so we
+  // don't fire on "see ticket 42" or "Stripe opened a ticket on your behalf"
+  // — those are informational, not fabricated actions. The "team notified"
+  // pattern stays loose because it's the primary signal for the original
+  // failure shape ("Done — the team has been notified (ticket #228)") where
+  // no other pattern fits the punctuation context.
+  { pattern: /(?:I'?ve|I\s+just|I)\s+(?:created|opened|filed|generated)\s+(?:a\s+)?(?:support\s+)?ticket\s+#?\d+/i, expectedTools: ['escalate_to_admin', 'create_github_issue', 'draft_github_issue'] },
   { pattern: /(?:the\s+)?team\s+(?:has\s+been\s+|will\s+be\s+|is\s+being\s+)notified/i, expectedTools: ['escalate_to_admin'] },
   { pattern: /I'?ve\s+(?:flagged|escalated|notified)\s+(?:this|the\s+team|the\s+admins?)/i, expectedTools: ['escalate_to_admin'] },
-  { pattern: /(?:I'?ve\s+|I\s+just\s+)?(?:created|opened|filed)\s+(?:a\s+)?(?:support\s+)?(?:ticket|issue)\b/i, expectedTools: ['escalate_to_admin', 'create_github_issue', 'draft_github_issue'] },
+  { pattern: /(?:I'?ve|I\s+just)\s+(?:created|opened|filed)\s+(?:a\s+)?(?:support\s+)?(?:ticket|issue)\b/i, expectedTools: ['escalate_to_admin', 'create_github_issue', 'draft_github_issue'] },
 ];
 
 /**

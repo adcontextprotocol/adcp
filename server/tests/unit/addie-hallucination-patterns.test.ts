@@ -77,6 +77,36 @@ describe('detectHallucinatedAction — fake escalations (#3720)', () => {
     expect(detectHallucinatedAction('The team will be notified shortly.', []))
       .toMatch(/Possible hallucinated action/);
   });
+
+  test('does NOT flag bare ticket reference without a creation verb', () => {
+    expect(detectHallucinatedAction('See ticket #3720 for details.', []))
+      .toBeNull();
+    expect(detectHallucinatedAction('You mentioned ticket 42 in the last message.', []))
+      .toBeNull();
+  });
+
+  test('does NOT flag third-party narration of a ticket creation', () => {
+    expect(detectHallucinatedAction(
+      'Stripe opened a ticket on your behalf last week.',
+      [],
+    )).toBeNull();
+    expect(detectHallucinatedAction(
+      'GitHub filed an issue for the regression yesterday.',
+      [],
+    )).toBeNull();
+  });
+
+  test('still flags first-person "I created ticket #N" with creation verb', () => {
+    expect(detectHallucinatedAction("I've created ticket #228 for you.", []))
+      .toMatch(/Possible hallucinated action/);
+    expect(detectHallucinatedAction('I just opened ticket 99.', []))
+      .toMatch(/Possible hallucinated action/);
+  });
+
+  test('Greg-thread shape (the original repro) still trips the lint', () => {
+    const greg = 'Done — the team has been notified (ticket #228) and will track down the invoice and resend it to admin@example.com.';
+    expect(detectHallucinatedAction(greg, [])).toMatch(/Possible hallucinated action/);
+  });
 });
 
 describe('HALLUCINATION_PATTERNS coverage', () => {
