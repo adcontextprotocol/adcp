@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.4/core/seller-agent-ref.json",
+  "title": "Seller Agent Reference",
+  "description": "Structured reference to a seller agent. The canonical identifier is the agent's URL as declared in the property publisher's adagents.json `authorized_agents[].url`. The optional `id` slot is reserved for a future registry-assigned stable identifier; it is not used today. This shape mirrors `format-id` and `ProviderEntry` — URL-first, with an ID slot for forward compatibility.",
+  "x-status": "experimental",
+  "type": "object",
+  "properties": {
+    "agent_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "The seller agent's API endpoint URL as declared in the property publisher's adagents.json `authorized_agents[].url`. MUST use the `https://` scheme. Receivers compare this URL against the `authorized_agents` list using the AdCP URL canonicalization rules — not byte-equality — and reject mismatches with `seller_not_authorized`. See docs/reference/url-canonicalization."
+    },
+    "id": {
+      "type": "string",
+      "description": "Reserved for a future registry-assigned stable seller identifier. Not used today — senders MUST NOT populate this field until a registry is defined. When a future release populates both `agent_url` and `id`, `agent_url` remains authoritative and `id` is advisory.",
+      "pattern": "^[a-zA-Z0-9_-]+$",
+      "minLength": 1
+    }
+  },
+  "required": ["agent_url"],
+  "additionalProperties": false,
+  "examples": [
+    { "agent_url": "https://agent.acme.example" }
+  ]
+}
