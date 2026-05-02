@@ -118,3 +118,31 @@ export async function pickMembershipSubWithProductFetch(
   if (candidates.length === 0) return null;
   return candidates.find((s) => s.status === 'active') ?? candidates[0];
 }
+
+/**
+ * Per-sub variant of the same fast-path / product-fetch pattern. Used
+ * when walking a stream of subs (the `stripe-sub-reflected-in-org-row`
+ * invariant) where we filter rather than pick. `productCache` is shared
+ * across calls so a Stripe product backing many founding-era subs costs
+ * one `products.retrieve`, not one per sub.
+ */
+export async function isMembershipSubWithProductFetch(
+  sub: Stripe.Subscription,
+  fetchProduct: (productId: string) => Promise<Stripe.Product | Stripe.DeletedProduct>,
+  productCache?: Map<string, Stripe.Product | Stripe.DeletedProduct>,
+): Promise<boolean> {
+  if (isMembershipSub(sub)) return true;
+  const price = sub.items.data[0]?.price;
+  if (!price) return false;
+  const productId = typeof price.product === 'string' ? price.product : null;
+  if (!productId) return false;
+  const cached = productCache?.get(productId);
+  if (cached) return isMembershipProductByMetadata(cached);
+  try {
+    const product = await fetchProduct(productId);
+    productCache?.set(productId, product);
+    return isMembershipProductByMetadata(product);
+  } catch {
+    return false;
+  }
+}
