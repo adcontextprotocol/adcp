@@ -2577,14 +2577,6 @@ export async function handleGetAdcpCapabilities(_args: ToolArgs, ctx: TrainingCo
       required_for: signingCap.required_for,
       ...(signingCap.supported_for && { supported_for: signingCap.supported_for }),
     },
-    identity: {
-      brand_json_url: 'https://adcontextprotocol.org/.well-known/brand.json',
-      ...(signingCap.supported && {
-        key_origins: {
-          request_signing: 'https://adcontextprotocol.org',
-        },
-      }),
-    },
     protocol_version: '3.0',
     tasks,
     media_buy: {

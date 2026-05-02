@@ -561,28 +561,15 @@ export function createFrameworkTrainingAgentServer(ctx: TrainingContext): AdcpSe
       // response so training-agent-specific fields (publisher portfolio,
       // compliance_testing scenarios, per-domain targeting surface) surface
       // on `get_adcp_capabilities` without needing to replace the tool.
+      //
+      // Note: `identity.brand_json_url` emit is deferred until @adcp/sdk's
+      // pinned ADCP_VERSION ('3.0.1') publishes the schema with the new
+      // `identity` field — the storyboard runner validates against that
+      // pinned schema and rejects unknown sub-fields. Re-add once the SDK
+      // version with the field lands. The brand.json + e2e fixture wiring
+      // in this PR exercises the chain in --inproc mode; production wiring
+      // is a follow-up.
       overrides: {
-        // Trust-root pointer for keys-from-agent-URL discovery (security.mdx
-        // §Discovering an agent's signing keys via brand_json_url). Verifiers
-        // bootstrap from agent URL → identity.brand_json_url → brand.json →
-        // agents[] → jwks_uri. The training agent at test-agent.adcontextprotocol.org
-        // points at the AdCP-domain brand.json, which lists this agent's URL
-        // (byte-equal at step 5) and the JWKS URI matching key_origins below.
-        // `key_origins.request_signing` is emitted only when signing is supported
-        // so the step-7 consistency check fires meaningfully.
-        // `brand_json_url` landed in the schema's `identity` block in 3.x after
-        // the published @adcp/sdk type generation cycle; the runtime schema is
-        // a `z.core.$loose` object, so the field passes through to the on-wire
-        // response. Cast keeps the override compile-clean against the older
-        // generated type.
-        identity: {
-          brand_json_url: 'https://adcontextprotocol.org/.well-known/brand.json',
-          ...(signingCap.supported && {
-            key_origins: {
-              request_signing: 'https://adcontextprotocol.org',
-            },
-          }),
-        } as Record<string, unknown>,
         media_buy: {
           portfolio: {
             publisher_domains: PUBLISHERS.map(p => p.domain),
