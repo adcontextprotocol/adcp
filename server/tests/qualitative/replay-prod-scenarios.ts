@@ -10,7 +10,14 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { AddieRouter } from '../../src/addie/router.js';
-import type { RoutingContext, ExecutionPlan, ConfidenceTier } from '../../src/addie/router.js';
+import type { RoutingContext, ConfidenceTier } from '../../src/addie/router.js';
+import {
+  gradeRfcRun,
+  RFC_STUB_TOOLS,
+  stubToolResult,
+  type RfcExpectations,
+  type RfcRunObservations,
+} from '../../src/addie/testing/rfc-grader.js';
 
 const apiKey = process.env.ANTHROPIC_API_KEY;
 const adminApiKey = process.env.ADMIN_API_KEY;
@@ -70,6 +77,14 @@ interface Scenario {
   prodBehavior: string;
   /** What we expect now */
   expectedBehavior: string;
+  /**
+   * Tag for grading mode. 'rfc' scenarios get the multi-turn tool loop and
+   * rfc-grader scoring; everything else uses the legacy IGNORE/RESPOND
+   * prefix check. Default = legacy behavior.
+   */
+  category?: 'rfc';
+  /** Per-scenario RFC expectations — only consulted when category === 'rfc'. */
+  rfc?: RfcExpectations;
 }
 
 const scenarios: Scenario[] = [
@@ -176,6 +191,83 @@ const scenarios: Scenario[] = [
     prodBehavior: 'N/A',
     expectedBehavior: 'RESPOND with suggest/low — adjacent to domain, not core expertise',
   },
+
+  // ---- DM: RFC drafting (Jeffrey Mayer / DanAds, 2026-05-01) ----
+  // Same-Addie-different-answers failure: web-Addie drafted these RFCs
+  // without verifying against the spec; Slack-Addie (with knowledge tools
+  // routed in by channel context) corrected them. Goal: web-Addie should
+  // verify before drafting, regardless of surface.
+  {
+    name: 'RFC: CPQ pricing task',
+    who: 'Jeffrey Mayer (DanAds)',
+    message:
+      "draft this as a GitHub issue, but write it here so it can be shared via Slack since I don't have Github connected. The proposal: add a get_price_quote task between get_products and create_media_buy so buyer agents can submit targeting parameters and receive a firm calculated price before committing.",
+    source: 'dm',
+    prodBehavior:
+      'Web-Addie drafted the RFC without spec verification; Slack-Addie later corrected (pricing_options + buying_mode: refine + account already address most of this).',
+    expectedBehavior:
+      'RESPOND — verify spec via search_docs before drafting; cite pricing_options / buying_mode / account; reframe to the narrower real gap (valid_until, rate_basis, budget-conditional pricing).',
+    category: 'rfc',
+    rfc: {
+      expectedToolSets: ['knowledge'],
+      expectedToolCalls: ['search_docs'],
+      expectedFieldCitations: ['pricing_options', 'buying_mode', 'refine', 'account'],
+      shouldRefusePremise: true,
+    },
+  },
+  {
+    name: 'RFC: TMP direct-sold signals capability',
+    who: 'Jeffrey Mayer (DanAds)',
+    message:
+      'Validate this issue below against the AdCP spec, and determine if there is a solution already developed: Add a direct_sold_signals capability flag to trusted_match in get_adcp_capabilities with values "tmp_verified" or "not_supported", and a create_media_buy validation rule that rejects signals on guaranteed buys when capability is not_supported.',
+    source: 'dm',
+    prodBehavior:
+      'Web-Addie validated the proposal as-shaped; Slack-Addie later flagged the factual error (no trusted_match key in get_adcp_capabilities; signals.features is the right place).',
+    expectedBehavior:
+      'RESPOND — verify get_adcp_capabilities top-level keys; reject factual premise (no trusted_match object exists); propose narrower fix in signals.features.',
+    category: 'rfc',
+    rfc: {
+      expectedToolSets: ['knowledge'],
+      expectedToolCalls: ['search_docs', 'get_schema'],
+      expectedFieldCitations: ['get_adcp_capabilities', 'signals'],
+      shouldRefusePremise: true,
+    },
+  },
+  {
+    name: 'RFC: bilateral trust comment on #2392',
+    who: 'Jeffrey Mayer (DanAds)',
+    message:
+      'before adding the comment, draft the comment here for adding the buyer-identity direction, but more importantly, addressing bilateral trust. Issue #2392 seems to the the perspective of the Buyer Agent needing to trust the Seller Agent (get_products). Trust must be bilateral for both the Buyer and Seller.',
+    source: 'dm',
+    prodBehavior:
+      'Web-Addie drafted the comment without verifying issue #2392 scope or current trust-model docs.',
+    expectedBehavior:
+      "RESPOND — verify issue #2392 scope and existing trust docs before drafting; cite what's already covered.",
+    category: 'rfc',
+    rfc: {
+      expectedToolSets: ['knowledge'],
+      expectedToolCalls: ['search_docs'],
+      expectedFieldCitations: ['trust', 'identity'],
+      shouldRefusePremise: false,
+    },
+  },
+  {
+    name: 'RFC: brand.json verification',
+    who: 'Jeffrey Mayer (DanAds)',
+    message:
+      "/.well-known/brand.json — who determines a well known brand? Who validates this? A fraudulent company could declare themselves or be mistakenly categorized as well-known. Should we draft an issue?",
+    source: 'dm',
+    prodBehavior: 'Flagged as a topic; not yet drafted in current thread.',
+    expectedBehavior:
+      'RESPOND — verify current brand.json validation/verification model via search_docs before agreeing the gap is real.',
+    category: 'rfc',
+    rfc: {
+      expectedToolSets: ['knowledge'],
+      expectedToolCalls: ['search_docs'],
+      expectedFieldCitations: ['brand.json', 'verification'],
+      shouldRefusePremise: false,
+    },
+  },
 ];
 
 async function generateResponse(message: string, confidence: ConfidenceTier): Promise<string> {
@@ -193,7 +285,68 @@ async function generateResponse(message: string, confidence: ConfidenceTier): Pr
   return response.content[0].type === 'text' ? response.content[0].text : '(no text)';
 }
 
-async function runScenario(scenario: Scenario): Promise<void> {
+/**
+ * Multi-turn tool loop for RFC scenarios. Gives Sonnet the stub spec tools
+ * and runs until the model returns a final text response. Records every
+ * tool call so the grader can score whether search_docs / get_schema were
+ * invoked before any draft was emitted.
+ */
+async function generateRfcResponse(
+  message: string,
+  confidence: ConfidenceTier,
+): Promise<{ finalText: string; toolCalls: string[]; draftEmitted: boolean }> {
+  const calibration = buildConfidenceCalibration(confidence);
+  const basePrompt = await getSystemPrompt();
+  const systemPrompt = [basePrompt, calibration].filter(Boolean).join('\n\n');
+
+  const messages: Anthropic.MessageParam[] = [{ role: 'user', content: message }];
+  const toolCalls: string[] = [];
+  let draftEmitted = false;
+  let finalText = '';
+
+  // Cap the loop — RFC drafting should resolve in a few turns. A runaway
+  // loop usually means the stubs are mis-shaped; fail loud rather than burn
+  // budget.
+  const MAX_TURNS = 6;
+  for (let turn = 0; turn < MAX_TURNS; turn++) {
+    const response = await client.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 1500,
+      system: systemPrompt,
+      tools: RFC_STUB_TOOLS as unknown as Anthropic.Tool[],
+      messages,
+    });
+
+    const toolUseBlocks = response.content.filter(
+      (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use',
+    );
+    const textBlocks = response.content.filter(
+      (b): b is Anthropic.TextBlock => b.type === 'text',
+    );
+
+    if (toolUseBlocks.length > 0) {
+      messages.push({ role: 'assistant', content: response.content });
+      const toolResults: Anthropic.ToolResultBlockParam[] = toolUseBlocks.map((tu) => {
+        toolCalls.push(tu.name);
+        if (tu.name === 'draft_github_issue') draftEmitted = true;
+        return {
+          type: 'tool_result',
+          tool_use_id: tu.id,
+          content: stubToolResult(tu.name, tu.input),
+        };
+      });
+      messages.push({ role: 'user', content: toolResults });
+      continue;
+    }
+
+    finalText = textBlocks.map((t) => t.text).join('\n');
+    break;
+  }
+
+  return { finalText, toolCalls, draftEmitted };
+}
+
+async function runScenario(scenario: Scenario): Promise<boolean> {
   const ctx: RoutingContext = {
     message: scenario.message,
     source: scenario.source,
@@ -205,7 +358,7 @@ async function runScenario(scenario: Scenario): Promise<void> {
   const plan = await router.route(ctx);
 
   console.log(`\n${'═'.repeat(80)}`);
-  console.log(`SCENARIO: ${scenario.name}`);
+  console.log(`SCENARIO: ${scenario.name}${scenario.category ? ` [${scenario.category}]` : ''}`);
   console.log(`WHO: ${scenario.who} | SOURCE: ${scenario.source}${scenario.channelName ? ` (#${scenario.channelName})` : ''}`);
   console.log(`MESSAGE: "${scenario.message.substring(0, 120)}${scenario.message.length > 120 ? '...' : ''}"`);
   console.log(`${'─'.repeat(80)}`);
@@ -214,12 +367,46 @@ async function runScenario(scenario: Scenario): Promise<void> {
   console.log(`${'─'.repeat(80)}`);
   console.log(`ROUTER: action=${plan.action} | reason="${plan.reason}"`);
 
-  if (plan.action === 'respond') {
+  // RFC scenarios: multi-turn tool loop + rfc-grader scoring.
+  if (scenario.category === 'rfc' && plan.action === 'respond') {
     const confidence = plan.confidence;
     console.log(`CONFIDENCE: ${confidence}`);
     console.log(`TOOL SETS: [${plan.tool_sets.join(', ')}]`);
 
-    // Generate actual response
+    const { finalText, toolCalls, draftEmitted } = await generateRfcResponse(
+      scenario.message,
+      confidence,
+    );
+
+    console.log(`${'─'.repeat(80)}`);
+    console.log(`TOOL CALLS: [${toolCalls.join(', ') || '(none)'}]`);
+    console.log(`DRAFT EMITTED: ${draftEmitted}`);
+    console.log(`ADDIE WOULD SAY:`);
+    console.log(finalText.substring(0, 800) + (finalText.length > 800 ? '\n…' : ''));
+
+    const obs: RfcRunObservations = {
+      routerToolSets: plan.tool_sets,
+      toolCalls,
+      finalText,
+      draftEmitted,
+    };
+    const grade = gradeRfcRun(scenario.rfc ?? {}, obs);
+
+    console.log(`${'─'.repeat(80)}`);
+    console.log(
+      `RFC GRADE: router=${grade.routerOk ? '✅' : '❌'} tools=${grade.toolCallsOk ? '✅' : '❌'} citations=${grade.citationsOk ? '✅' : '❌'} premise=${grade.premiseOk ? '✅' : '❌'} → ${grade.passed ? '✅ PASS' : '❌ FAIL'}`,
+    );
+    if (grade.failures.length > 0) {
+      for (const f of grade.failures) console.log(`  - ${f}`);
+    }
+    return grade.passed;
+  }
+
+  // Legacy scenarios: shape-only, IGNORE/RESPOND prefix check.
+  if (plan.action === 'respond') {
+    const confidence = plan.confidence;
+    console.log(`CONFIDENCE: ${confidence}`);
+    console.log(`TOOL SETS: [${plan.tool_sets.join(', ')}]`);
     const response = await generateResponse(scenario.message, confidence);
     console.log(`${'─'.repeat(80)}`);
     console.log(`ADDIE WOULD SAY (${confidence}):`);
@@ -230,37 +417,37 @@ async function runScenario(scenario: Scenario): Promise<void> {
     console.log(`→ Addie reacts with :${plan.emoji}:`);
   }
 
-  // Grade
   const pass =
     (scenario.expectedBehavior.startsWith('IGNORE') && plan.action === 'ignore') ||
-    (scenario.expectedBehavior.startsWith('RESPOND') && plan.action === 'respond');
+    (scenario.expectedBehavior.startsWith('RESPOND') && plan.action !== 'ignore');
   console.log(`\nGRADE: ${pass ? '✅ PASS' : '❌ FAIL'}`);
+  return pass;
 }
 
 async function main() {
+  // Filter env: REPLAY_FILTER=rfc runs only RFC scenarios; useful for
+  // baseline-locking a specific failure mode without paying for the full
+  // battery on every iteration.
+  const filter = process.env.REPLAY_FILTER;
+  const filtered = filter ? scenarios.filter((s) => s.category === filter) : scenarios;
+
   console.log('Addie Qualitative Scenario Replay');
-  console.log(`Running ${scenarios.length} production scenarios...\n`);
+  console.log(
+    filter
+      ? `Running ${filtered.length} ${filter} scenarios (filtered from ${scenarios.length})...\n`
+      : `Running ${filtered.length} production scenarios...\n`,
+  );
 
   let passed = 0;
   let failed = 0;
 
-  for (const scenario of scenarios) {
+  for (const scenario of filtered) {
     try {
-      await runScenario(scenario);
-      // Simple pass check
-      const plan = await router.route({
-        message: scenario.message,
-        source: scenario.source,
-        isAAOAdmin: scenario.isAdmin ?? false,
-        memberContext: { is_member: true } as RoutingContext['memberContext'],
-        ...(scenario.channelName ? { channelName: scenario.channelName } : {}),
-      });
-      const expectedIgnore = scenario.expectedBehavior.startsWith('IGNORE');
-      const isCorrect = expectedIgnore ? plan.action === 'ignore' : plan.action !== 'ignore';
-      if (isCorrect) passed++;
+      const ok = await runScenario(scenario);
+      if (ok) passed++;
       else failed++;
     } catch (error) {
-      console.error(`ERROR: ${error}`);
+      console.error(`ERROR running "${scenario.name}":`, error);
       failed++;
     }
   }
