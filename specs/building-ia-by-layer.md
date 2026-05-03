@@ -108,6 +108,9 @@ Every existing page in `docs/building/`:
 | `building/aao-verified` | `building/verification/aao-verified` | The trust mark; sits at the end of the verification group. |
 | `building/operating-an-agent` | `building/operating/operating-an-agent` | |
 | `building/understanding/*` (6 pages) | `building/concepts/*` | Rename group; content unchanged. "Concepts" reads better than "Understanding AdCP" as a sibling to "Build by layer." |
+| `building/understanding/index` | `building/concepts/index` | Rename only; rewrite the group landing copy to match the new "Concepts" framing. |
+| `building/integration/index` | *delete* | Replaced by per-layer landings (L0, L1, L2). The current Foundations group landing has no equivalent under "Build by layer." Redirect to `building/by-layer/L0`. |
+| `building/implementation/index` | *delete* | Same — replaced by per-layer landings (L1, L3) plus `building/operating/`. Redirect to `building/by-layer/L3` (most-cited destination for current Implementation-group inbound links). |
 | `building/integration/mcp-guide` | `building/by-layer/L0/mcp-guide` | |
 | `building/integration/a2a-guide` | `building/by-layer/L0/a2a-guide` | |
 | `building/integration/a2a-response-format` | `building/by-layer/L0/a2a-response-format` | |

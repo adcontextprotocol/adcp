@@ -11,12 +11,12 @@ description: "Layered reference for AdCP implementers. The five layers (L0 wire,
 
 The first question when you sit down to build an AdCP agent is **where you want to spend your engineering time**. By the time a buyer's `create_media_buy` reaches your business logic, it has crossed five distinct layers — wire format, signing, auth, protocol semantics, and finally what you actually want to build. The lower you start, the more of the stack you own.
 
-This page lays out those layers, what an SDK provides at each one, and what's left for you to write either way. Use it to pick the entry point that fits your team — whether that's letting an SDK absorb the protocol surface so you can focus on the L4 logic that differentiates your agent, or going lower because you have a specific reason to. The cost decompositions further down ([per-component L3 breakdown](#why-sdks-matter-more-in-adcp-than-in-eg-http), [version-adaptation](#version-adaptation)) are there to make either choice deliberate rather than reflexive.
+This page lays out those layers, what an SDK provides at each one, and what's left for you to write either way. Use it to pick the entry point that fits your team — whether that's letting an SDK absorb the protocol surface so you can focus on the L4 logic that differentiates your agent, or going lower because you have a specific reason to. The cost decompositions further down ([per-component L3 breakdown](#why-sdks-matter-more-in-adcp-than-in-eg-http), [version-adaptation](#version-adaptation)) are there to make either choice deliberate.
 
 Two notes on framing before the layers:
 
-- **The protocol surface has grown.** AdCP 3.0 added mandatory idempotency, published lifecycle state machines, the [conformance test surface](/docs/building/implementation/comply-test-controller), RFC 9421 signatures as a baseline, and the recovery-classified error catalog. If you last evaluated SDKs against an earlier version, the line between "what the SDK does" and "what I'd write myself" has moved. Worth a look.
-- **AdCP looks like a thin protocol from the outside.** From the inside it has more L3 (state machines, idempotency, async-task contract, error semantics, conformance) than implementers tend to expect on a first read. The decompositions on this page exist so the L3 estimate is in the room from the start.
+- **The protocol surface has grown.** AdCP 3.0 added mandatory idempotency, published lifecycle state machines, the [conformance test surface](/docs/building/implementation/comply-test-controller), RFC 9421 signatures as a baseline, and the recovery-classified error catalog. If you last evaluated SDKs against an earlier version, the line between "what the SDK does" and "what I'd write myself" has moved.
+- **AdCP looks like a thin protocol from the outside.** From the inside it has more L3 (state machines, idempotency, async-task contract, error semantics, conformance) than implementers tend to expect on a first read. The decompositions on this page exist so the L3 estimate is visible up front.
 
 Audience: AdCP implementers in any language — whether you're building an agent, authoring an SDK, or evaluating one.
 
@@ -25,6 +25,8 @@ Audience: AdCP implementers in any language — whether you're building an agent
 The same five layers exist on both sides of an AdCP conversation — **agent (server)** and **caller (client)**. The work is asymmetric, though: an agent **enforces** the protocol (state machines, idempotency, error semantics, conformance surface, webhook emission), while a caller **consumes** it (reads state, supplies idempotency keys, handles errors, receives webhooks). L0 (wire) and L1 (signing) are mostly symmetric; L2 (auth) and especially L3 (protocol semantics) are where the surface diverges. L4 exists on both sides, but it's a different shape — the agent's L4 is its inventory and decisioning, the caller's L4 is its planning and buying logic.
 
 When this page describes a layer in agent-shaped terms, look for the *Client side* note at the end — it names the (typically smaller) caller-side surface. Most of the per-page cost commentary, the L3 person-month estimates, and the conformance discussion all describe the server side; building a caller is meaningfully lighter at L2–L3 because most of the work is consuming the protocol, not enforcing it.
+
+**Caller-only?** Skim the *Client side* notes on each layer below, then jump to [Server vs client at each layer](#server-vs-client-at-each-layer) for the cost comparison.
 
 ```mermaid
 %%{init: {"flowchart": {"htmlLabels": true, "wrappingWidth": 9999}, "themeVariables": {"fontSize": "14px"}}}%%
@@ -113,7 +115,7 @@ What's in it:
 
 If you have L0+L1+L2+L3, you have a complete AdCP protocol implementation. You still haven't done any business logic.
 
-*Client side:* the consumer-side mirror, which is much smaller. The client *reads* state machines (handles each terminal status correctly) rather than enforcing transitions. It *supplies* `idempotency_key` on retries rather than maintaining the cache. It *classifies* error codes by recovery semantics (`transient` → retry, `correctable` → fix and resubmit, `terminal` → don't retry) rather than choosing the right one to emit. It *polls or receives* async-task results and webhook callbacks rather than emitting them. There's no `comply_test_controller` surface to expose, and no conformance bar to certify against on the consumer side. The L3 person-month estimate later on this page is server-side; client L3 is days-to-weeks, mostly handler glue.
+*Client side:* the consumer-side mirror, which is much smaller. The client *reads* state machines (handles each terminal status correctly) rather than enforcing transitions. It *supplies* `idempotency_key` on retries rather than maintaining the cache. It *classifies* error codes by recovery semantics (`transient` → retry, `correctable` → fix and resubmit, `terminal` → don't retry) rather than choosing the right one to emit. It *polls or receives* async-task results and webhook callbacks rather than emitting them. There's no `comply_test_controller` surface to expose, and no conformance bar to certify against on the consumer side. The L3 person-month estimate later on this page is server-side; client L3 is weeks of handler glue, not months.
 
 ### L4 — Business logic
 
@@ -129,7 +131,7 @@ What's in it:
 
 This is the layer an AdCP SDK leaves to you, **and only this layer**.
 
-*Client side:* L4 is also yours, just a different shape. The caller's L4 is media planning, budget allocation, target-audience selection, deal evaluation, reporting ingest — whatever your buy-side application does with the agents it calls. The asymmetry runs through the whole stack: agent L4 differentiates *inventory*, caller L4 differentiates *demand*.
+*Client side:* L4 is also yours, just a different shape. The caller's L4 is media planning, budget allocation, target-audience selection, deal evaluation, reporting ingest — whatever your buy-side application does with the agents it calls. See [Calling an agent](/docs/protocol/calling-an-agent) for the spec-side reference. The asymmetry runs through the whole stack: agent L4 differentiates *inventory*, caller L4 differentiates *demand*.
 
 ## Server vs client at each layer
 
@@ -137,19 +139,19 @@ The same five layers; very different cost. Use this when sizing the work for a c
 
 | Layer | Agent (server) | Caller (client) |
 |---|---|---|
-| **L4** | Inventory, pricing, creative review, ad-server integration. Your competitive surface as a seller. | Planning, budgeting, agent selection, reporting consumption. Your competitive surface as a buyer. |
-| **L3** | **Enforces** state machines, idempotency, error semantics, conformance test surface, webhook emission. ~3–4 person-months. | **Consumes** the same. Reads state, supplies idempotency keys, classifies errors, polls/receives async + webhooks. Days to weeks. |
-| **L2** | Multi-tenant principal resolution, sandbox/live boundary, brand resolution, permission scoping. | Publishes own identity; looks up the agent it's calling. Order of magnitude smaller. |
+| **L4** | Inventory, pricing, creative review, ad-server integration. What differentiates you as a seller. | Planning, budgeting, agent selection, reporting consumption. What differentiates you as a buyer. |
+| **L3** | **Enforces** state machines, idempotency, error semantics, conformance test surface, webhook emission. ~3–4 person-months. | **Consumes** the same. Reads state, supplies idempotency keys, classifies errors, polls/receives async + webhooks. Weeks of handler glue. |
+| **L2** | Multi-tenant principal resolution, sandbox/live boundary, brand resolution, permission scoping. | Publishes own identity; looks up the agent it's calling. Much smaller surface. |
 | **L1** | Verifies inbound on every request; signs outbound webhooks. | Signs outbound on every request; verifies inbound webhooks. Same crypto, mirrored path. |
 | **L0** | Receives + parses + validates against schemas. | Serializes + sends + validates against schemas. Symmetric. |
 
-A from-scratch caller is a weeks-to-month job at L0–L3. A from-scratch agent is the [3–4 person-month L3 build](#why-sdks-matter-more-in-adcp-than-in-eg-http) decomposed below. The rest of this page concentrates on the agent side because that's where the cost lives — but the layer model and the SDK coverage matrix apply equally to a caller-only build.
+A from-scratch caller is a weeks-long job across L0–L3 — handler glue, signing, registry lookup, response parsing — not the [3–4 person-month L3 build](#why-sdks-matter-more-in-adcp-than-in-eg-http) the agent side requires. The rest of this page concentrates on the agent side because that's where the cost lives, but the layer model and the SDK coverage matrix apply equally to a caller-only build.
 
 ## What an SDK at each layer should provide
 
 Implementer-facing checklist. An SDK that claims coverage of layer L*n* should expose, at minimum, the primitives below. Adopters use this as a self-evaluation tool when picking an SDK; SDK authors use it as a build target.
 
-The checklist describes **server-side coverage** — the agent surface is where the bulk of an SDK's value lives. **Client-side coverage** at each layer is a subset: typed request builders + response parsers (L0), outbound signing + webhook verification (L1), agent-card publication + registry lookup (L2), state-machine *handlers* + idempotency-key generation + error-recovery classification + async-result polling (L3). A full-stack SDK ships both; SDK authors should treat the client surface as a parallel obligation, not an afterthought.
+The checklist describes **server-side coverage** — the agent surface is where the bulk of an SDK's value lives. **Client-side coverage** at each layer is a subset: typed request builders + response parsers (L0), outbound signing + webhook verification (L1), agent-card publication + registry lookup (L2), state-machine *handlers* + idempotency-key generation + error-recovery classification + async-result polling (L3). A full-stack SDK ships both.
 
 ### L0 coverage
 
@@ -194,7 +196,7 @@ Within a given language, the full-stack SDK is the default starting point. The l
 
 ### Current SDK coverage
 
-**Python and TypeScript are the first-class supported languages.** Both are committed to full L0–L4 coverage — TypeScript is GA across L0–L3 today; Python is finishing its 4.x cycle to the same bar. **Go** is moving in the same direction, with L0 and partial L1 in active development. **Other languages** are not on the official roadmap today, but we're open to community-maintained ports — if you want to help, see the [Builders Working Group](/docs/community/working-group) and the [Slack community](https://join.slack.com/t/agenticads/shared_invite/zt-3c5sxvdjk-x0rVmLB3OFHVUp~WutVWZg).
+**Python and TypeScript are the first-class languages.** Both are committed to full L0–L4 coverage — TypeScript is GA across L0–L3 today; Python is finishing its 4.x cycle to the same bar. **Go** is moving in the same direction, with L0 and partial L1 in active development. **Other languages** are not on the official roadmap today, but we're open to community-maintained ports — if you want to help, see the [Builders Working Group](/docs/community/working-group) and the [Slack community](https://join.slack.com/t/agenticads/shared_invite/zt-3c5sxvdjk-x0rVmLB3OFHVUp~WutVWZg).
 
 Snapshot of what each official SDK ships today. Refresh this table on SDK majors and on AdCP spec revs.
 
@@ -309,7 +311,7 @@ The from-scratch path that worked for 2.5 doesn't scale to 3.0, and 3.0 isn't wh
 
 ## Where the work actually lives
 
-Five recurring scope-surprises, in rough order of magnitude. Useful as a self-check whether you're scoping a from-scratch build or re-evaluating a hand-rolled one:
+Five places L3 cost concentrates, in rough order of magnitude. Useful as a self-check whether you're scoping a from-scratch build or re-evaluating a hand-rolled one:
 
 1. **L3 is most of the work.** State machines, idempotency, error catalog, async tasks — ~3–4 person-months before any L4 differentiation. See the [decomposition](#why-sdks-matter-more-in-adcp-than-in-eg-http) for per-component weeks.
 2. **Conformance is L3-driven.** Storyboards probe state transitions and error shapes (see [Conformance](/docs/building/conformance)). Without transition validators, the spec gets re-derived from test failures.
@@ -335,4 +337,4 @@ The reference mock-server is the **spec-compliance oracle** — a black-box AdCP
 - A full-stack AdCP SDK lifts you to L4. You write business logic; the SDK handles the protocol. Different language SDKs cover different subsets of L0–L3; pick one that matches how much of the protocol you want to inherit — see the [coverage matrix](#current-sdk-coverage).
 - **Version adaptation is an SDK feature, not an adopter project.** Per-call spec-version adapters, co-existence imports across SDK majors, and on-wire `adcp_major_version` negotiation let you talk to peers on any supported version without forking your handlers. Hand-rolled agents inherit the entire translation matrix forever.
 - Compliance comes in two flavors: **spec compliance** (mock-mode, protocol-only, L3 reference test) and **live compliance** (sandbox-mode, full-stack, L0–L4 end-to-end; planned).
-- If you last evaluated SDKs before 3.0, the comparison has moved — most of L3 (state machines, idempotency, conformance surface, expanded error catalog) shipped with 3.0. Worth a fresh look against today's coverage, not the one you remember.
+- If you last evaluated SDKs before 3.0, the comparison has moved — most of L3 (state machines, idempotency, conformance surface, expanded error catalog) shipped with 3.0. Re-evaluate against today's coverage, not the one you remember.
