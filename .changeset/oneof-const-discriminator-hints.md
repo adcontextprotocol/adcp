@@ -2,7 +2,7 @@
 "adcontextprotocol": patch
 ---
 
-Add `discriminator: { propertyName }` to 17 `oneOf` unions in `static/schemas/source/` whose variants already declare the same required property as a `const` with distinct string values.
+Add `discriminator: { propertyName }` to 16 `oneOf` unions in `static/schemas/source/` whose variants already declare the same required property as a `const` with distinct string values, and tighten `scripts/audit-oneof.mjs` to assert that any `discriminator.propertyName=X` is backed by every non-ref variant declaring `properties.X` as required const with distinct values.
 
 Affected schemas: `adagents.json`, `compliance/comply-test-controller-response.json`, `content-standards/artifact.json`, `core/activation-key.json`, `core/creative-item.json`, `core/deployment.json`, `core/destination.json`, `core/optimization-goal.json` (3 unions), `core/requirements/catalog-field-binding.json` (2 unions), `core/signal-pricing.json`, `creative/preview-creative-response.json`, `creative/preview-render.json`.
 
