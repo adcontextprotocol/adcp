@@ -291,9 +291,8 @@ phases:
             value: "audience_sync--delete_audience"
             description: "Context correlation_id returned unchanged"
           # Anti-façade: an adapter that returns a shape-valid delete response without
-          # forwarding the deletion to its upstream user graph fails this check.
-          # The audience_id is the same literal used in create_audience, so the echo
-          # confirms the specific test audience was the deletion target.
+          # forwarding the deletion to its upstream user graph fails this check. The
+          # identifier echo confirms the upstream call carries the correct audience ID.
           - check: upstream_traffic
             description: "delete_audience caused upstream traffic propagating the deletion to the upstream user graph"
             min_count: 1
