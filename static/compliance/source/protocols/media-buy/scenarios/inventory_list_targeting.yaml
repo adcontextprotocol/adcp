@@ -68,6 +68,7 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            sandbox: true
 
           context:
             correlation_id: "inventory_list_targeting--get_products_brief"
@@ -112,6 +113,7 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            sandbox: true
           idempotency_key: "inventory-list-targeting-create-v1"
           start_time: "2026-07-01T00:00:00Z"
           end_time: "2026-09-30T23:59:59Z"
@@ -169,6 +171,7 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            sandbox: true
           media_buy_ids:
             - "$context.media_buy_id"
 
@@ -212,6 +215,7 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            sandbox: true
           media_buy_id: "$context.media_buy_id"
           packages:
             - package_id: "$context.package_id"
@@ -248,6 +252,7 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+            sandbox: true
           media_buy_ids:
             - "$context.media_buy_id"
 
