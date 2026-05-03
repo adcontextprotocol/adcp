@@ -18,33 +18,25 @@ This page names the layers, says what each one contains, says what an SDK at eac
 
 ## The five layers
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│  L4 — Business logic                                        │ ← yours, always
-│  Inventory forecasting, pricing, creative review, upstream  │
-│  ad-server calls (GAM/FreeWheel/Kevel/etc.). The agent's    │
-│  competitive surface — what makes your agent yours.         │
-├─────────────────────────────────────────────────────────────┤
-│  L3 — Protocol semantics                                    │
-│  Lifecycle state machines, idempotency, error code catalog, │ ┐
-│  transition validation (NOT_CANCELLABLE vs INVALID_STATE),  │ │
-│  async-task contract, webhook emission, conformance test    │ │ what an
-│  surface, response envelope shaping.                        │ │ AdCP SDK
-├─────────────────────────────────────────────────────────────┤ │ provides
-│  L2 — Auth & registry                                       │ │
-│  Agent identity verification, brand resolution, AAO bridge, │ │
-│  multi-tenant account resolution, principal scoping,        │ │
-│  sandbox-vs-live account routing.                           │ │
-├─────────────────────────────────────────────────────────────┤ │
-│  L1 — Identity & signing                                    │ │
-│  RFC 9421 HTTP message signatures, public-key registries,   │ │
-│  signature verification, key rotation handling.             │ │
-├─────────────────────────────────────────────────────────────┤ ┘
-│  L0 — Wire & transport                                      │
-│  Bytes on the wire. JSON-over-HTTP framing, MCP message     │
-│  envelopes, A2A SSE streams, JSON schema validation,        │
-│  language-native type generation from the spec.             │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+%%{init: {"flowchart": {"htmlLabels": true, "wrappingWidth": 9999}, "themeVariables": {"fontSize": "14px"}}}%%
+flowchart TB
+    subgraph yours["yours, always"]
+        L4["<b>L4 — Business logic</b><br/>Inventory forecasting · pricing · creative review · upstream ad-server calls<br/>(GAM / FreeWheel / Kevel / your decisioning engine)<br/><i>The agent's competitive surface — what makes your agent yours</i>"]
+    end
+
+    subgraph sdk["what an AdCP SDK provides"]
+        direction TB
+        L3["<b>L3 — Protocol semantics</b><br/>Lifecycle state machines · idempotency · error catalog · transition validation<br/>Async-task contract · webhook emission · conformance surface · response envelope"]
+        L2["<b>L2 — Auth &amp; registry</b><br/>Agent identity verification · brand resolution · AAO bridge<br/>Multi-tenant account resolution · principal scoping · sandbox-vs-live routing"]
+        L1["<b>L1 — Identity &amp; signing</b><br/>RFC 9421 HTTP message signatures · public-key registries<br/>Signature verification · replay-window enforcement · key rotation"]
+        L0["<b>L0 — Wire &amp; transport</b><br/>JSON-over-HTTP framing · MCP message envelopes · A2A SSE streams<br/>JSON schema validation · language-native type generation"]
+        L3 ~~~ L2
+        L2 ~~~ L1
+        L1 ~~~ L0
+    end
+
+    L4 ~~~ L3
 ```
 
 ### L0 — Wire & transport
