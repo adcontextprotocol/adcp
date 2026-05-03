@@ -194,12 +194,12 @@ export const notificationRateLimiter = rateLimit({
 
 /**
  * Rate limiter for storyboard evaluation endpoints.
- * Limits: 5 evaluations per hour per user (each eval makes real HTTP calls to external agents).
+ * Limits: 10 evaluations per hour per user (each eval makes real HTTP calls to external agents).
  * AAO platform admins bypass this limit so they can debug and curate without hitting it.
  */
 export const storyboardEvalRateLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
-  max: 5,
+  max: 10,
   skipFailedRequests: true,
   skip: skipForAdmins,
   standardHeaders: true,
@@ -214,21 +214,22 @@ export const storyboardEvalRateLimiter = rateLimit({
       path: req.path,
     }, 'Rate limit exceeded for storyboard evaluation');
 
+    const retryAfter = parseRetryAfterSeconds(res.getHeader('Retry-After'));
     res.status(429).json({
       error: 'Too many requests',
-      message: 'Storyboard evaluation limit exceeded (5 per hour). Please try again later.',
-      retryAfter: Math.ceil(60 * 60),
+      message: 'Storyboard evaluation limit exceeded (10 per hour). Please try again later.',
+      ...(retryAfter !== undefined ? { retryAfter } : {}),
     });
   },
 });
 
 /**
  * Rate limiter for step-by-step storyboard execution.
- * More generous than full evaluation (30/hour vs 5/hour) since each step is one MCP call.
+ * More generous than full evaluation (60/hour vs 10/hour) since each step is one MCP call.
  */
 export const storyboardStepRateLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
-  max: 30,
+  max: 60,
   skipFailedRequests: true,
   skip: skipForAdmins,
   standardHeaders: true,
@@ -243,10 +244,11 @@ export const storyboardStepRateLimiter = rateLimit({
       path: req.path,
     }, 'Rate limit exceeded for storyboard step execution');
 
+    const retryAfter = parseRetryAfterSeconds(res.getHeader('Retry-After'));
     res.status(429).json({
       error: 'Too many requests',
-      message: 'Step execution limit exceeded (30 per hour). Please try again later.',
-      retryAfter: Math.ceil(60 * 60),
+      message: 'Step execution limit exceeded (60 per hour). Please try again later.',
+      ...(retryAfter !== undefined ? { retryAfter } : {}),
     });
   },
 });
