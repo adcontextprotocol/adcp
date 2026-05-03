@@ -1303,6 +1303,162 @@ export async function getChannelHistory(
   }
 }
 
+// =====================================================
+// PROFILE PHOTO API
+// getSlackUserProfile requires users.profile:read (or users:read) scope
+// setSlackUserPhoto requires an admin user token with users:write scope
+// (SLACK_ADMIN_USER_TOKEN env var — separate from the bot token)
+// =====================================================
+
+export interface SlackUserProfileFull {
+  image_512?: string;
+  image_192?: string;
+  image_72?: string;
+  image_48?: string;
+  display_name?: string;
+  real_name?: string;
+  email?: string;
+}
+
+/**
+ * Fetch a user's full profile (including original-size photo URL).
+ * Requires users.profile:read scope on the bot token.
+ */
+export async function getSlackUserProfile(userId: string): Promise<SlackUserProfileFull | null> {
+  try {
+    const response = await slackRequest<{ profile: SlackUserProfileFull }>('users.profile.get', {
+      user: userId,
+    });
+    return response.profile;
+  } catch (error) {
+    logger.warn({ error, userId }, 'Failed to fetch Slack user profile');
+    return null;
+  }
+}
+
+/**
+ * Upload a new profile photo for a user via `users.setPhoto`.
+ *
+ * Requires a user-level OAuth token with `users:write` scope stored in
+ * SLACK_ADMIN_USER_TOKEN. This is distinct from the bot token because Slack
+ * only allows user tokens (not bot tokens) to set another user's photo when
+ * the caller has workspace admin privileges.
+ *
+ * Returns `{ ok: true }` on success, `{ ok: false, error }` otherwise.
+ */
+export async function setSlackUserPhoto(
+  userId: string,
+  imageBuffer: Buffer,
+): Promise<{ ok: boolean; error?: string }> {
+  const adminToken = process.env.SLACK_ADMIN_USER_TOKEN;
+  if (!adminToken) {
+    return { ok: false, error: 'SLACK_ADMIN_USER_TOKEN not configured' };
+  }
+
+  try {
+    const form = new FormData();
+    form.append('user', userId);
+    form.append(
+      'image',
+      new Blob([imageBuffer], { type: 'image/jpeg' }),
+      'profile.jpg',
+    );
+
+    const response = await fetch(`${SLACK_API_BASE}/users.setPhoto`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${adminToken}`,
+      },
+      body: form,
+    });
+
+    const data = (await response.json()) as { ok: boolean; error?: string };
+    if (!data.ok) {
+      logger.warn({ userId, error: data.error }, 'Slack users.setPhoto failed');
+      return { ok: false, error: data.error };
+    }
+    return { ok: true };
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    logger.error({ error, userId }, 'Failed to set Slack user photo');
+    return { ok: false, error: msg };
+  }
+}
+
+// =====================================================
+// USER GROUP (BADGE) API
+// Requires usergroups:read + usergroups:write scopes
+// =====================================================
+
+export interface SlackUserGroup {
+  id: string;
+  handle: string;
+  name: string;
+  is_external: boolean;
+  date_delete: number;
+}
+
+export async function getSlackUserGroups(): Promise<SlackUserGroup[]> {
+  try {
+    // Omit include_disabled — Slack default is false, and passing false serializes
+    // as the string "false" which Slack treats as truthy and includes disabled groups.
+    const response = await slackRequest<{ usergroups: SlackUserGroup[] }>('usergroups.list');
+    return response.usergroups ?? [];
+  } catch (error) {
+    logger.error({ error }, 'Failed to list Slack user groups');
+    return [];
+  }
+}
+
+export async function createSlackUserGroup(
+  handle: string,
+  name: string,
+): Promise<SlackUserGroup | null> {
+  try {
+    const response = await slackPostRequest<{ usergroup: SlackUserGroup }>('usergroups.create', {
+      handle,
+      name,
+    });
+    logger.info({ id: response.usergroup.id, handle, name }, 'Created Slack user group');
+    return response.usergroup;
+  } catch (error) {
+    logger.error({ error, handle, name }, 'Failed to create Slack user group');
+    return null;
+  }
+}
+
+export async function getSlackUserGroupMembers(userGroupId: string): Promise<string[]> {
+  try {
+    const response = await slackRequest<{ users: string[] }>('usergroups.users.list', {
+      usergroup: userGroupId,
+    });
+    return response.users ?? [];
+  } catch (error) {
+    logger.error({ error, userGroupId }, 'Failed to get Slack user group members');
+    return [];
+  }
+}
+
+export async function setSlackUserGroupMembers(
+  userGroupId: string,
+  userIds: string[],
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    await slackPostRequest<{ ok: boolean }>('usergroups.users.update', {
+      usergroup: userGroupId,
+      users: userIds.join(','),
+    });
+    return { ok: true };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    logger.error(
+      { error: errorMessage, userGroupId, userCount: userIds.length },
+      'Failed to set Slack user group members',
+    );
+    return { ok: false, error: errorMessage };
+  }
+}
+
 /**
  * Get all messages from a channel within a time range
  * Handles pagination automatically with rate limiting
