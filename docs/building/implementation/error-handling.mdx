@@ -349,13 +349,13 @@ The `field` value identifies exactly what to strip; `details.permitted_fields` (
 
 The per-buyer-agent gate fires across three distinct rejection paths, each with its own discriminator so callers can dispatch without parsing prose:
 
-| Code | `details.scope` | `details.reason` | Meaning |
+| Code | `details.scope` | `details` payload | Meaning |
 |---|---|---|---|
-| `AGENT_SUSPENDED` | — (no `details.scope`; the code is the discriminator) | — | Agent's commercial relationship with the seller is temporarily paused. Re-onboarding may resolve; recovery is terminal. |
-| `AGENT_BLOCKED` | — (no `details.scope`; the code is the discriminator) | — | Agent's commercial relationship is permanently denied. No autonomous recovery. |
-| `PERMISSION_DENIED` | `"agent"` | `"sandbox_only"` | Agent is provisioned for sandbox traffic only and the request was against a non-sandbox account. Per [`error-details/agent-permission-denied.json`](https://adcontextprotocol.org/schemas/v3/error-details/agent-permission-denied.json), `additionalProperties: false`. |
+| `AGENT_SUSPENDED` | — (no `details.scope`; the code is the discriminator) | none | Agent's commercial relationship with the seller is temporarily paused. Re-onboarding may resolve; `recovery: "terminal"`. |
+| `AGENT_BLOCKED` | — (no `details.scope`; the code is the discriminator) | none | Agent's commercial relationship is permanently denied. No autonomous recovery; `recovery: "terminal"`. |
+| `PERMISSION_DENIED` | `"agent"` | `reason: "sandbox_only"` (preferred) **or** `status: "suspended" \| "blocked"` (DEPRECATED in 3.0.6) | Agent is provisioned for sandbox traffic only OR — back-compat path only — has a per-agent commercial status. Per [`error-details/agent-permission-denied.json`](https://adcontextprotocol.org/schemas/v3/error-details/agent-permission-denied.json), `additionalProperties: false` plus `oneOf` enforces exactly one of `status` or `reason`. |
 
-Per-agent commercial-status rejections (`AGENT_SUSPENDED`, `AGENT_BLOCKED`) follow the [`BILLING_NOT_PERMITTED_FOR_AGENT`](#billing-and-account-setup) precedent — the code itself is the discriminator and the response carries no explicit `error.details.scope` field. The `PERMISSION_DENIED + scope:"agent"` path is reserved for non-status provisioning gates whose `reason` is registered in the closed enum on `error-details/agent-permission-denied.json`. The `"agent"` value is a registered subset of the shared discriminator vocabulary in [`enums/error-scope.json`](https://adcontextprotocol.org/schemas/v3/enums/error-scope.json).
+Per-agent commercial-status rejections SHOULD use the dedicated `AGENT_SUSPENDED` / `AGENT_BLOCKED` codes (the same pattern as [`BILLING_NOT_PERMITTED_FOR_AGENT`](#billing-and-account-setup) — the code itself is the discriminator with no `error.details` payload). The `PERMISSION_DENIED + scope:"agent" + status:...` form is preserved only for back-compat with consumers pinned to 3.0.5 (which shipped that shape) and is scheduled for removal in 3.1. New seller integrations MUST emit the dedicated codes; consumers MUST handle either form during the deprecation window — branch on `error.code === 'AGENT_SUSPENDED' | 'AGENT_BLOCKED'` first, fall through to `details.status` only when neither dedicated code is emitted. The `PERMISSION_DENIED + scope:"agent" + reason:"sandbox_only"` path is the canonical home for non-status per-agent provisioning gates and is NOT deprecated. The `"agent"` scope value is a registered subset of the shared discriminator vocabulary in [`enums/error-scope.json`](https://adcontextprotocol.org/schemas/v3/enums/error-scope.json).
 
 **When to mint a new code vs. extend the `reason` enum.** Lifecycle-terminal per-agent states (suspended, blocked, future deny-list-style states) get dedicated codes — they carry distinct `recovery` classifications and warrant first-class discriminators. Non-status provisioning gates and transient rejections extend the `error-details/agent-permission-denied.json` `reason` enum (e.g., `sandbox_only`) instead; throttling-shaped rejections reuse `RATE_LIMITED`, not a new per-agent code. The dedicated-code-per-state pattern composes only because the lifecycle vocabulary is finite — not as an open registry for every new gate.
 
@@ -368,11 +368,12 @@ Normative requirements (apply to all three codes uniformly):
 - **No per-agent commercial state on any of the three paths.** None of `AGENT_SUSPENDED`, `AGENT_BLOCKED`, or `PERMISSION_DENIED + scope:"agent"` carry the agent's full permitted-billing subset, rate cards, payment terms, credit limit, billing entity, contact channels, custom reason strings, or any other per-agent commercial state — full-subset disclosure in a single probe is exactly the oracle the clamp prevents. `AGENT_SUSPENDED` / `AGENT_BLOCKED` carry no `error.details` payload; `PERMISSION_DENIED + scope:"agent"` MUST conform to `error-details/agent-permission-denied.json` (`scope` + registered `reason`, with `additionalProperties: false`). New `reason` values MUST be added to the schema's enum so cross-language SDKs can dispatch without parsing prose; future per-agent state surfaces (escalation channels, lift-policy URLs) belong on new dedicated codes with their own clamped details shapes, NOT by relaxing this shape. The schema's `additionalProperties: false` is a schema-validation guard; sellers MUST treat unrecognized or extension keys received from a seller-side composer as a defect and drop them before transmission.
 - **No autonomous retry on the per-agent gate.** All three codes are terminal in practice: `AGENT_SUSPENDED` and `AGENT_BLOCKED` declare it directly via `recovery: "terminal"` in `enumMetadata`; the `PERMISSION_DENIED + scope:"agent"` path is `correctable` at the wire level (matching the registered `PERMISSION_DENIED` classification) but is terminal-pending-onboarding in practice — the agent cannot unilaterally lift a sandbox-only provisioning. Buyer agents MUST surface to a human at the buyer rather than auto-retrying on any of the three; re-attempts only reinforce the gate.
 
-**Recovery dispatch — example.** Branch on `error.code` first; only fall through to `details.scope` for the `PERMISSION_DENIED` per-agent gate:
+**Recovery dispatch — example.** Branch on `error.code` first (dedicated codes preferred); fall through to `details.scope` for the `PERMISSION_DENIED` per-agent gate, handling both the canonical `reason` shape and the deprecated `status` back-compat form:
 
 ```javascript
 async function dispatchAuthzError(error) {
   // Per-agent commercial status — code is the discriminator, no details payload.
+  // Preferred path; sellers SHOULD emit these directly from 3.0.6.
   if (error.code === 'AGENT_SUSPENDED' || error.code === 'AGENT_BLOCKED') {
     return surfaceToHuman({ code: error.code });
   }
@@ -384,16 +385,18 @@ async function dispatchAuthzError(error) {
     return refreshGovernanceContextAndRetry(error);
   }
 
-  // Per-agent provisioning gate — terminal-pending-onboarding.
+  // Per-agent gate — terminal-pending-onboarding regardless of axis.
   if (error.details?.scope === 'agent') {
-    const { reason } = error.details;
-    // reason: 'sandbox_only'
-    return surfaceToHuman({ code: error.code, reason });
+    const { reason, status } = error.details;
+    // reason: 'sandbox_only'  |  status: 'suspended' | 'blocked' (deprecated, 3.0.5 back-compat)
+    return surfaceToHuman({ code: error.code, reason, status });
   }
 
   throw error;  // Unknown scope — surface rather than guess.
 }
 ```
+
+`details.status` is preserved here only for sellers still emitting the 3.0.5 shape; consumers SHOULD prefer `AGENT_SUSPENDED` / `AGENT_BLOCKED` when both are available, and MUST handle either during the deprecation window. The `status` axis is scheduled for removal in 3.1 — at which point this dispatch can drop the `status` branch.
 
 **Example envelope** for `AGENT_SUSPENDED`:
 

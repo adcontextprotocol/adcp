@@ -2,25 +2,49 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/error-details/agent-permission-denied.json",
   "title": "Agent Permission Denied Details",
-  "description": "Recommended details shape for `PERMISSION_DENIED` errors when the gate that fired is a non-status per-agent provisioning constraint (`scope: \"agent\"` plus a registered `reason`) — distinct from generic credential-shaped permission failures (no `scope`), from per-account/per-task authorization failures (`SCOPE_INSUFFICIENT`, `READ_ONLY_SCOPE`, `FIELD_NOT_PERMITTED`), and from per-agent commercial-status rejections (`AGENT_SUSPENDED` / `AGENT_BLOCKED`, which are their own discriminator codes and do NOT carry an explicit `scope` field). The shape carries a registered `reason` value identifying the gate; `additionalProperties: false` clamps it so adopters cannot invent ad-hoc per-agent state keys (rate cards, payment terms, credit limit, billing entity, custom reason strings) — full disclosure of the agent's commercial state in a single probe is a per-agent oracle the clamp prevents. New `reason` values MUST be registered in the schema's enum so cross-language SDKs can dispatch without parsing prose; future per-agent state additions belong on new dedicated codes (each with its own clamped details shape), NOT by relaxing this shape. The cross-tenant onboarding oracle clamp and its full channel-coverage requirements are normative in `error-handling.mdx` Per-Agent Authorization Gate — this schema description does not restate them to avoid drift; sellers MUST consult that section for the omit-on-unestablished-identity rule and the latency / headers / side-effects / observability parity requirements.",
+  "description": "Recommended details shape for `PERMISSION_DENIED` errors when the gate that fired is the calling buyer agent's commercial relationship with the seller (`scope: \"agent\"`) — distinct from generic credential-shaped permission failures (no `scope`) and from per-account/per-task authorization failures (`SCOPE_INSUFFICIENT`, `READ_ONLY_SCOPE`, `FIELD_NOT_PERMITTED`). The shape carries exactly one of `status` (DEPRECATED in 3.0.6 — sellers SHOULD emit dedicated `AGENT_SUSPENDED` / `AGENT_BLOCKED` codes instead, kept here only for back-compat with consumers pinned to 3.0.5; scheduled for removal in 3.1) or `reason` (a registered non-status per-agent provisioning gate, e.g., `sandbox_only` for an agent provisioned for sandbox traffic only). `additionalProperties: false` plus `oneOf` on `status`/`reason` clamp the shape so adopters cannot invent ad-hoc per-agent state keys (rate cards, payment terms, credit limit, billing entity, custom reason strings) or carry both axes simultaneously — full disclosure of the agent's commercial state in a single probe is a per-agent oracle the clamp prevents. New `reason` values MUST be registered in the schema's enum so cross-language SDKs can dispatch without parsing prose; future per-agent state additions belong on new dedicated codes (each with its own clamped details shape), NOT by relaxing this shape. The cross-tenant onboarding oracle clamp and its full channel-coverage requirements are normative in `error-handling.mdx` Per-Agent Authorization Gate — this schema description does not restate them to avoid drift; sellers MUST consult that section for the omit-on-unestablished-identity rule and the latency / headers / side-effects / observability parity requirements.",
   "type": "object",
   "properties": {
     "scope": {
       "const": "agent",
-      "description": "Discriminator that this `PERMISSION_DENIED` was triggered by a per-buyer-agent provisioning gate (as opposed to a generic credential-shaped failure). Registered subset of `enums/error-scope.json` — sellers MUST set this field exactly to `\"agent\"` for this shape, and MUST omit `scope` entirely when responding on the unauthenticated/unestablished-identity path required by the cross-tenant oracle clamp. The `AGENT_SUSPENDED` / `AGENT_BLOCKED` codes (per-agent commercial status) do NOT carry an explicit `scope` field — the code itself is the discriminator on those paths, mirroring `BILLING_NOT_PERMITTED_FOR_AGENT`."
+      "description": "Discriminator that this `PERMISSION_DENIED` was triggered by the per-buyer-agent commercial gate (as opposed to a generic credential-shaped failure). Registered subset of `enums/error-scope.json` — sellers MUST set this field exactly to `\"agent\"` for this shape, and MUST omit `scope` entirely when responding on the unauthenticated/unestablished-identity path required by the cross-tenant oracle clamp. The `AGENT_SUSPENDED` / `AGENT_BLOCKED` codes (per-agent commercial status) do NOT carry an explicit `scope` field — the code itself is the discriminator on those paths, mirroring `BILLING_NOT_PERMITTED_FOR_AGENT`."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["suspended", "blocked"],
+      "deprecated": true,
+      "description": "DEPRECATED in 3.0.6 — sellers SHOULD emit dedicated `AGENT_SUSPENDED` / `AGENT_BLOCKED` codes instead. The `status` axis is preserved here for back-compat with consumers pinned to 3.0.5 (which shipped this shape) and is scheduled for removal in 3.1. New seller integrations MUST use the dedicated codes; consumers MUST handle either form during the deprecation window — branch on `error.code === 'AGENT_SUSPENDED' | 'AGENT_BLOCKED'` first, fall through to `details.status` only when neither dedicated code is emitted. `\"suspended\"` — onboarded but the relationship is temporarily paused (re-onboarding may resolve). `\"blocked\"` — the relationship is permanently denied. MUST NOT be present together with `reason` (`oneOf` enforces exclusivity)."
     },
     "reason": {
       "type": "string",
       "enum": ["sandbox_only"],
-      "description": "Registered per-agent provisioning gate that fired. `\"sandbox_only\"` — the agent is provisioned for sandbox traffic only and the request was against a non-sandbox account. New `reason` values MUST be added here (the enum is closed by `additionalProperties: false`) so cross-language SDKs can dispatch without parsing prose."
+      "description": "Registered per-agent provisioning gate that fired. `\"sandbox_only\"` — the agent is provisioned for sandbox traffic only and the request was against a non-sandbox account. New `reason` values MUST be added here (the enum is closed by `additionalProperties: false`) so cross-language SDKs can dispatch without parsing prose. MUST NOT be present together with `status` (`oneOf` enforces exclusivity)."
     }
   },
-  "required": ["scope", "reason"],
+  "required": ["scope"],
   "additionalProperties": false,
+  "oneOf": [
+    {
+      "required": ["status"],
+      "not": { "required": ["reason"] }
+    },
+    {
+      "required": ["reason"],
+      "not": { "required": ["status"] }
+    }
+  ],
   "examples": [
     {
       "scope": "agent",
       "reason": "sandbox_only"
+    },
+    {
+      "scope": "agent",
+      "status": "suspended"
+    },
+    {
+      "scope": "agent",
+      "status": "blocked"
     }
   ]
 }
