@@ -1,0 +1,65 @@
+{
+  "name": "Numeric canonicalization with fractional percentages",
+  "spec_reference": "#plan-state-binding",
+  "description": "Exercises RFC 8785 §3.2.2.3 number serialization with fractional values (33.33, 33.334, 66.666) in budget.per_seller_max_pct and budget.allocations[*].max_pct. Pins implementer library choice: a hand-rolled `JSON.stringify + key sort` will likely diverge on edge cases (trailing zeros, scientific notation borderline) that a JCS-compliant library handles correctly.",
+  "plan_as_supplied": {
+    "plan_id": "plan_numeric_2026",
+    "brand": {
+      "domain": "example.com"
+    },
+    "objectives": "Exercise JCS numeric canonicalization with fractional budget-allocation percentages.",
+    "budget": {
+      "total": 100000,
+      "currency": "USD",
+      "reallocation_threshold": 5000,
+      "per_seller_max_pct": 33.33,
+      "allocations": {
+        "media_buy": {
+          "amount": 66667,
+          "max_pct": 66.666
+        },
+        "rights_license": {
+          "amount": 33333,
+          "max_pct": 33.334
+        }
+      }
+    },
+    "flight": {
+      "start": "2026-04-01T00:00:00Z",
+      "end": "2026-06-30T00:00:00Z"
+    }
+  },
+  "expected": {
+    "preimage": {
+      "plan_id": "plan_numeric_2026",
+      "brand": {
+        "domain": "example.com"
+      },
+      "objectives": "Exercise JCS numeric canonicalization with fractional budget-allocation percentages.",
+      "budget": {
+        "total": 100000,
+        "currency": "USD",
+        "reallocation_threshold": 5000,
+        "per_seller_max_pct": 33.33,
+        "allocations": {
+          "media_buy": {
+            "amount": 66667,
+            "max_pct": 66.666
+          },
+          "rights_license": {
+            "amount": 33333,
+            "max_pct": 33.334
+          }
+        }
+      },
+      "flight": {
+        "start": "2026-04-01T00:00:00Z",
+        "end": "2026-06-30T00:00:00Z"
+      }
+    },
+    "jcs_bytes": "{\"brand\":{\"domain\":\"example.com\"},\"budget\":{\"allocations\":{\"media_buy\":{\"amount\":66667,\"max_pct\":66.666},\"rights_license\":{\"amount\":33333,\"max_pct\":33.334}},\"currency\":\"USD\",\"per_seller_max_pct\":33.33,\"reallocation_threshold\":5000,\"total\":100000},\"flight\":{\"end\":\"2026-06-30T00:00:00Z\",\"start\":\"2026-04-01T00:00:00Z\"},\"objectives\":\"Exercise JCS numeric canonicalization with fractional budget-allocation percentages.\",\"plan_id\":\"plan_numeric_2026\"}",
+    "sha256_hex": "3c16152597702b471c673eaa7ad501c3ad6e9720f8ff0b5c47f6cb3db79e0da5",
+    "plan_hash": "PBYVJZdwK0ccZz6qetUBw61ulyD4_wtcR_bLPbeeDaU"
+  },
+  "$comment": "Computed with canonicalize@3.0.0 + Node.js crypto.createHash('sha256'). Re-verify if the canonicalize dependency is upgraded; numeric serialization edge cases (trailing zeros, scientific-notation thresholds) may shift across library versions."
+}
