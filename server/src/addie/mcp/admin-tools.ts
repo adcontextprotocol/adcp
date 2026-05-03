@@ -30,6 +30,7 @@ import { WorkingGroupDatabase } from '../../db/working-group-db.js';
 import { getPool, escapeLikePattern } from '../../db/client.js';
 import { MemberSearchAnalyticsDatabase } from '../../db/member-search-analytics-db.js';
 import { MemberDatabase } from '../../db/member-db.js';
+import { normalizeFoundingMemberGrant, foundingMemberFieldsTouched } from '../../services/founding-member-grant.js';
 import { BrandDatabase } from '../../db/brand-db.js';
 import {
   getPendingInvoices,
@@ -1456,7 +1457,16 @@ For logo changes, use update_member_logo instead.`,
         },
         is_public: { type: 'boolean', description: 'Whether profile is visible in the public member directory.' },
         show_in_carousel: { type: 'boolean', description: 'Whether profile appears in the homepage carousel.' },
-        is_founding_member: { type: 'boolean', description: 'Whether this member has founding member status. Admin-only. Use to grant founding status to members who joined late due to billing or other issues.' },
+        is_founding_member: { type: 'boolean', description: 'Whether this member has founding member status. Admin-only. Setting true requires founding_member_source.' },
+        founding_member_source: {
+          type: 'string',
+          enum: ['auto_pre_cutoff', 'manual_grandfather'],
+          description: 'Provenance for the founding member flag. Use "manual_grandfather" for admin overrides outside the auto-cutoff window.',
+        },
+        founding_member_granted_reason: {
+          type: 'string',
+          description: 'Free-text reason for a manual grandfather grant (e.g., "site issues blocked pre-deadline enrollment"). Recorded for audit.',
+        },
       },
     },
   },
@@ -7929,7 +7939,25 @@ Use add_committee_leader to assign a leader.`;
 
       if (input.is_founding_member !== undefined) {
         updates.is_founding_member = input.is_founding_member;
-        updatedFields.push('is_founding_member');
+      }
+      if (input.founding_member_source !== undefined) {
+        updates.founding_member_source = input.founding_member_source;
+      }
+      if (input.founding_member_granted_reason !== undefined) {
+        updates.founding_member_granted_reason = input.founding_member_granted_reason;
+      }
+
+      const foundingError = normalizeFoundingMemberGrant(updates);
+      if (foundingError) {
+        return `❌ ${foundingError.message}`;
+      }
+      // Mirror everything the helper actually wrote — including the
+      // server-set granted_at and any cleared metadata on revoke — so the
+      // user-facing report doesn't lie about which columns changed.
+      for (const field of foundingMemberFieldsTouched(updates)) {
+        if (!updatedFields.includes(field)) {
+          updatedFields.push(field);
+        }
       }
 
       if (updatedFields.length === 0) {
