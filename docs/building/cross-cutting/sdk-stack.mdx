@@ -200,15 +200,15 @@ Within a given language, the full-stack SDK is the default starting point. The l
 
 Snapshot of what each official SDK ships today. Refresh this table on SDK majors and on AdCP spec revs.
 
-*Last updated: 2026-05-03 — `@adcp/sdk` 6.7.0 GA on npm; `adcp` (Python) 4.x in flight; `adcp-go` in active development.*
+*Last updated: 2026-05-03.*
 
-| SDK | Version | L0 | L1 | L2 | L3 | Adopter writes |
-|---|---|---|---|---|---|---|
-| **`@adcp/sdk`** (TypeScript) — [adcontextprotocol/adcp-client](https://github.com/adcontextprotocol/adcp-client) | 6.7.0 GA | ✅ | ✅ | ✅ | ✅ | L4 only |
-| **`adcp`** (Python) — [adcontextprotocol/adcp-client-python](https://github.com/adcontextprotocol/adcp-client-python) | 4.x in flight | ✅ | ⚠️ | ⚠️ | ⚠️ | Row to refresh on 4.0 GA |
-| **`adcp-go`** — [adcontextprotocol/adcp-go](https://github.com/adcontextprotocol/adcp-go) | dev | ⚠️ | ❌ | ❌ | ❌ | Types + transport only today; L1–L3 in scope |
+| SDK | Version | L0 | L1 | L2 | L3 |
+|---|---|:-:|:-:|:-:|:-:|
+| **`@adcp/client`** (TS) | `6.9.0` GA | ✅ | ✅ | ✅ | ✅ |
+| **`adcp`** (Python) | `4.x` in flight | ✅ | ⚠️ | ⚠️ | ⚠️ |
+| **`adcp-go`** | dev | ⚠️ | ❌ | ❌ | ❌ |
 
-Legend: ✅ shipped · ⚠️ partial / in flight · ❌ not yet covered.
+Legend: ✅ shipped · ⚠️ partial / in flight · ❌ not yet covered. `@adcp/client` carries full L0–L3 — adopters write L4 only. Python is closing the gap on its 4.x cycle; Go ships types + transport today with L1–L3 in scope. See [Choose your SDK](/docs/building/by-layer/L4/choose-your-sdk) for install commands, package exports, and per-language gap detail.
 
 What "shipped" means at each layer is the L0–L3 checklist above — these rows should not claim ✅ until every checklist item is satisfied in the published SDK build. For coverage detail beyond this snapshot, see each SDK's repo.
 
