@@ -1,0 +1,87 @@
+id: sponsored_intelligence
+version: "1.0.0"
+status: preview
+title: "Sponsored intelligence platform"
+protocol: sponsored-intelligence
+category: sponsored_intelligence
+summary: "Conversational ad platform implementing the SI session lifecycle (si_get_offering, si_initiate_session, si_send_message, si_terminate_session)."
+track: si
+
+narrative: |
+  You run an AI platform that supports sponsored intelligence — conversational ad experiences
+  embedded in AI-powered search, chat, or assistant products. A buyer agent connects to
+  discover what SI offerings are available, initiate a session, exchange messages, and
+  terminate cleanly.
+
+  Agents claiming this specialism must declare sponsored_intelligence in supported_protocols
+  alongside the specialism entry in get_adcp_capabilities. The SI session lifecycle is
+  fundamentally conversational: the buyer provides context and the platform weaves sponsored
+  content into AI responses in a transparent and relevant way.
+
+  This specialism is marked preview because the underlying SI schemas carry x-status: experimental.
+  The compliance runner produces no stable pass/fail verdict until the schemas graduate.
+
+agent:
+  interaction_model: si_platform
+  capabilities:
+    - sponsored_intelligence
+  examples:
+    - "Conversational AI platform with sponsored content"
+    - "AI assistant with brand-sponsored responses"
+
+caller:
+  role: buyer_agent
+  example: "Nova Motors (advertiser)"
+
+prerequisites:
+  description: |
+    The caller needs brand context and campaign parameters for SI. The test kit provides
+    a sample brand (Nova Motors) with signal definitions suitable for conversational
+    ad experiences.
+  test_kit: "test-kits/nova-motors.yaml"
+
+requires_scenarios:
+  - si_baseline
+
+phases:
+  - id: capability_discovery
+    title: "Capability discovery"
+    narrative: |
+      The buyer calls get_adcp_capabilities to verify the agent declares both the
+      sponsored_intelligence protocol and the sponsored-intelligence specialism.
+      Both must be present for a conforming SI specialism claim.
+
+    steps:
+      - id: get_capabilities
+        title: "Check agent capabilities"
+        narrative: |
+          Verify that the agent declares sponsored_intelligence in supported_protocols
+          and sponsored-intelligence in specialisms. The specialism claim without the
+          parent protocol declaration is invalid per the AdCP compliance contract.
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: capability_discovery
+        stateful: false
+        expected: |
+          Return capabilities declaring:
+          - sponsored_intelligence in supported_protocols
+          - sponsored-intelligence in specialisms
+          - The sponsored_intelligence capability block fully populated
+        sample_request:
+          context:
+            correlation_id: "sponsored_intelligence--get_capabilities"
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json schema"
+          - check: field_present
+            path: "supported_protocols"
+            description: "Agent declares supported protocols"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "sponsored_intelligence--get_capabilities"
+            description: "Context correlation_id returned unchanged"
