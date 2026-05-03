@@ -1,10 +1,13 @@
 /**
  * /brand tenant — brand-rights specialism.
  *
- * Native: getBrandIdentity, getRights, acquireRights (3 methods on
- * BrandRightsPlatform). Merge seam: update_rights + creative_approval —
- * spec-published but not yet in `AdcpToolMap`, so they ride
- * `opts.customTools` until the spec adds them.
+ * Native: getBrandIdentity, getRights, acquireRights, updateRights (4 methods
+ * on BrandRightsPlatform — `update_rights` was promoted to framework-first-class
+ * registration in @adcp/sdk@6.7.0 / adcp-client#1349, so it lives on the
+ * platform interface now, not in customTools).
+ *
+ * Merge seam: creative_approval — spec-published but not yet in `AdcpToolMap`,
+ * so it rides `opts.customTools` until the spec adds it.
  */
 
 import { z } from 'zod';
@@ -12,7 +15,7 @@ import type { TenantConfig } from '@adcp/sdk/server';
 import { TrainingBrandPlatform } from '../v6-brand-platform.js';
 import { getTenantSigningMaterial } from './signing.js';
 import { customToolFor } from './custom-tool-helper.js';
-import { handleUpdateRights, handleCreativeApproval } from '../brand-handlers.js';
+import { handleCreativeApproval } from '../brand-handlers.js';
 
 const TENANT_ID = 'brand';
 
@@ -27,16 +30,6 @@ const BRAND_REF = z.object({
 }).passthrough().optional();
 
 const CONTEXT_REF = z.any().optional();
-
-const UPDATE_RIGHTS_SCHEMA = {
-  rights_id: z.string(),
-  end_date: z.string().optional(),
-  impression_cap: z.number().optional(),
-  paused: z.boolean().optional(),
-  account: ACCOUNT_REF,
-  brand: BRAND_REF,
-  context: CONTEXT_REF,
-};
 
 const CREATIVE_APPROVAL_SCHEMA = {
   rights_id: z.string().optional(),
@@ -69,12 +62,6 @@ export function buildBrandTenantConfig(host: string): {
       platform: new TrainingBrandPlatform() as any,
       serverOptions: {
         customTools: {
-          update_rights: customToolFor(
-            'update_rights',
-            'Update an existing rights grant — extend dates, adjust impression caps, or pause/resume.',
-            UPDATE_RIGHTS_SCHEMA,
-            handleUpdateRights,
-          ),
           creative_approval: customToolFor(
             'creative_approval',
             'Submit a generated creative for brand approval against rights grant terms.',
