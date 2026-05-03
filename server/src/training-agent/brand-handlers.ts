@@ -987,19 +987,14 @@ export async function handleAcquireRights(
         const msg = typeRemaining !== undefined && estimatedCommitment > typeRemaining
           ? `Estimated rights commitment $${estimatedCommitment.toFixed(0)} (${priceModel} @ ${basePrice} × ${estimatedImpressions.toLocaleString()} impressions) exceeds remaining rights_license allocation $${typeRemaining} on plan "${plan.planId}".`
           : `Estimated rights commitment $${estimatedCommitment.toFixed(0)} (${priceModel} @ ${basePrice} × ${estimatedImpressions.toLocaleString()} impressions) exceeds remaining budget $${remaining} on plan "${plan.planId}".`;
+        // acquire_rights governance denial is an application-level rejection,
+        // not a protocol error. The schema defines AcquireRightsRejected as the
+        // discriminated-union arm for this case (status: rejected + reason).
         return {
-          errors: [{
-            code: 'GOVERNANCE_DENIED',
-            message: msg,
-            details: {
-              findings: [{
-                category_id: 'budget_authority',
-                severity: 'critical',
-                explanation: msg,
-              }],
-              plan_id: plan.planId,
-            },
-          }],
+          rights_id: rightsId,
+          status: 'rejected',
+          brand_id: talent.brand_id,
+          reason: msg,
         };
       }
     }
