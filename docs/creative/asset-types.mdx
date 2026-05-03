@@ -275,10 +275,11 @@ VAST (Video Ad Serving Template) tags for third-party video ad serving.
 - `vpaid_enabled`: Whether VPAID (Video Player-Ad Interface Definition) is supported
 - `max_wrapper_depth`: Maximum allowed wrapper/redirect depth
 - `duration_ms`: Expected video duration in milliseconds (if known)
-- `tracking_events`: Array of supported tracking events. Valid values are defined by the [VAST Tracking Event](https://adcontextprotocol.org/schemas/v3/enums/vast-tracking-event.json) enum. Includes IAB VAST 4.2 TrackingEvents plus flattened representations of Impression, Error, VideoClicks, and ViewableImpression elements:
+- `tracking_events`: Array of supported tracking events. Valid values are defined by the [VAST Tracking Event](https://adcontextprotocol.org/schemas/v3/enums/vast-tracking-event.json) enum. Aligned to the IAB VAST 4.2 XSD `TrackingEvents_type/Tracking/@event` enumeration (vast_4.2.xsd lines 112–136), plus AdCP-flattened representations of `Impression`, `Error`, `VideoClicks`, and `ViewableImpression` elements:
   - **Playback**: `impression` (billing event), `creativeView`, `loaded`, `start`, `firstQuartile`, `midpoint`, `thirdQuartile`, `complete`
-  - **Interaction**: `mute`, `unmute`, `pause`, `resume`, `rewind`, `skip`, `playerExpand`, `playerCollapse`, `fullscreen` (pre-4.0 compat), `exitFullscreen` (pre-4.0 compat), `otherAdInteraction`, `interactiveStart` (SIMID)
-  - **Progress**: `progress` (for custom progress points via VAST `offset` attribute), `notUsed` (prefetched but not played)
+  - **Interaction**: `mute`, `unmute`, `pause`, `resume`, `rewind`, `skip`, `playerExpand`, `playerCollapse`, `fullscreen` (VAST 2.x/3.x compat), `exitFullscreen` (VAST 2.x/3.x compat), `otherAdInteraction`, `interactiveStart` (SIMID)
+  - **Non-linear / companion**: `acceptInvitation`, `adExpand`, `adCollapse`, `minimize`, `overlayViewDuration`
+  - **Progress**: `progress` (for custom progress points via VAST `offset` attribute)
   - **Click & close**: `clickTracking`, `customClick`, `close`, `closeLinear`
   - **Verification**: `viewable`, `notViewable`, `viewUndetermined`, `measurableImpression` (AdCP extension), `viewableImpression`
   - **Errors**: `error`
@@ -288,6 +289,45 @@ VAST (Video Ad Serving Template) tags for third-party video ad serving.
 - Programmatic video buying
 - Video ad networks
 - VPAID interactive video ads
+
+### VAST Tracker Asset
+
+A single URL bound to a VAST `TrackingEvents` event. Use this when the creative agent emits decomposed per-event URLs and the sales agent is responsible for assembling the VAST `TrackingEvents` block at serve time — as an alternative to shipping a complete VAST tag.
+
+**Example:**
+```json
+{
+  "asset_type": "vast_tracker",
+  "vast_event": "start",
+  "url": "https://tracker.example.com/start?cid={CREATIVE_ID}&mb={MEDIA_BUY_ID}"
+}
+```
+
+**Progress with offset:**
+```json
+{
+  "asset_type": "vast_tracker",
+  "vast_event": "progress",
+  "offset": "00:00:15.000",
+  "url": "https://tracker.example.com/15s"
+}
+```
+
+**Properties:**
+- `vast_event`: The event this URL fires on. Any VAST tracking-event enum value **except** `impression`, `clickTracking`, `customClick`, `error`, or any of `viewable` / `notViewable` / `viewUndetermined` / `measurableImpression` / `viewableImpression` — those live in dedicated VAST elements (`Impression`, `VideoClicks`, `Error`, `ViewableImpression`), not under `TrackingEvents` (see Tracker routing normative rule below). Common values: `start`, `firstQuartile`, `midpoint`, `thirdQuartile`, `complete`, `pause`, `resume`, `mute`, `unmute`, `skip`, `progress`.
+- `url`: Tracker URL. Supports [AdCP universal macros](/docs/creative/universal-macros).
+- `offset`: Required for `vast_event: "progress"`. VAST 4.2 offset format (`Tracking@offset`): `HH:MM:SS` or `HH:MM:SS.mmm` (two-digit hours, minutes 00–59, seconds 00–59, exactly 3 fractional digits when present) for absolute time, or an integer percentage 0–100 suffixed with `%`. Negative offsets are NOT permitted — the VAST 4.2 XSD pattern does not allow a leading minus.
+- `target`: Which VAST creative element scopes this tracker — `linear` (default), `non_linear`, or `companion`. VAST 4.2 places `<TrackingEvents>` under three different parents (`<Linear>`, `<NonLinearAds>`, `<CompanionAds>/<Companion>`) with different valid event sets — e.g., `acceptInvitation` is meaningful on `non_linear`/`companion`, `closeLinear` only on `linear`. Sales agents read this to place the tracker correctly during VAST assembly.
+
+**Target with non-linear event:**
+```json
+{
+  "asset_type": "vast_tracker",
+  "vast_event": "acceptInvitation",
+  "target": "non_linear",
+  "url": "https://tracker.example.com/accept"
+}
+```
 
 ### DAAST Asset
 
@@ -321,13 +361,15 @@ DAAST (Digital Audio Ad Serving Template) tags for third-party audio ad serving.
 - `content`: Inline DAAST XML content (required when delivery_type is "inline")
 - `daast_version`: DAAST specification version (1.0, 1.1)
 - `duration_ms`: Expected audio duration in milliseconds (if known)
-- `tracking_events`: Array of supported tracking events. Valid values are defined by the [DAAST Tracking Event](https://adcontextprotocol.org/schemas/v3/enums/daast-tracking-event.json) enum. Includes DAAST-applicable events plus flattened Impression, Error, and ViewableImpression elements:
-  - **Playback**: `impression` (billing event), `creativeView` (companion ad display), `loaded`, `start`, `firstQuartile`, `midpoint`, `thirdQuartile`, `complete`
-  - **Interaction**: `mute`, `unmute`, `pause`, `resume`, `skip`
-  - **Progress**: `progress`
+- `tracking_events`: Array of supported tracking events. Valid values are defined by the [DAAST Tracking Event](https://adcontextprotocol.org/schemas/v3/enums/daast-tracking-event.json) enum. Aligned to DAAST 1.1 §3.2.1.7 `<Tracking event="…">` values (the audio-applicable subset of VAST), plus `close` (DAAST 1.1 §3.2.4.2) and AdCP-flattened representations of `Impression`, `Error`, and the click children of `<AdInteractions>`:
+  - **Playback**: `impression` (billing event), `creativeView` (also used for companion display per DAAST 1.1 §3.2.2.7), `start`, `firstQuartile`, `midpoint`, `thirdQuartile`, `complete`
+  - **Interaction**: `mute`, `unmute`, `pause`, `resume`, `rewind`, `skip`
+  - **Progress**: `progress` (with `offset` attribute, DAAST 1.1 §3.2.4.3)
   - **Click & close**: `clickTracking`, `customClick`, `close`
-  - **Verification**: `viewable`, `notViewable`, `viewUndetermined`, `measurableImpression` (AdCP extension), `viewableImpression`
+  - **Verification (AdCP extensions, OM-SDK Audio)**: `viewable`, `notViewable`, `viewUndetermined`, `measurableImpression`, `viewableImpression`
   - **Errors**: `error`
+
+Video-only VAST events (`loaded`, `playerExpand`/`playerCollapse`, `fullscreen`/`exitFullscreen`, `acceptInvitation`, `adExpand`/`adCollapse`, `minimize`, `overlayViewDuration`, `interactiveStart`) are deliberately excluded — they have no defined audio semantics in DAAST 1.1.
 - `companion_ads`: Whether companion display ads are included
 
 **Use Cases:**
@@ -335,6 +377,72 @@ DAAST (Digital Audio Ad Serving Template) tags for third-party audio ad serving.
 - Podcast advertising networks
 - Streaming audio platforms
 - Radio-style digital audio ads
+
+### DAAST Tracker Asset
+
+Audio-side analogue of `vast_tracker`: a single URL bound to a DAAST `TrackingEvents` event.
+
+**Example:**
+```json
+{
+  "asset_type": "daast_tracker",
+  "daast_event": "complete",
+  "url": "https://tracker.example.com/complete?cid={CREATIVE_ID}"
+}
+```
+
+**Properties:**
+- `daast_event`: Any DAAST tracking-event enum value **except** `impression`, `clickTracking`, `customClick`, `error`, or any of `viewable` / `notViewable` / `viewUndetermined` / `measurableImpression` / `viewableImpression` (same element-routing rule as `vast_tracker` — those values belong in `Impression` / `<AdInteractions>` / `Error` / AdCP-extension verification slots, not `TrackingEvents`). Common values: `start`, `firstQuartile`, `midpoint`, `thirdQuartile`, `complete`, `pause`, `resume`, `mute`, `unmute`, `rewind`, `skip`, `progress`.
+- `url`: Tracker URL. Supports AdCP universal macros.
+- `offset`: Required for `daast_event: "progress"` (DAAST 1.1 §3.2.4.3). Same format as VAST 4.2 `Tracking@offset`. Negative offsets are NOT permitted.
+- `target`: Which DAAST creative element scopes this tracker — `linear` (default, DAAST 1.1 §3.2.1.7) or `companion` (DAAST 1.1 §3.2.2.7, where the only valid event is `creativeView`). DAAST has no `<NonLinearAds>` element — audio is linear or accompanied by a visual companion.
+
+## Creative / Sales Agent Boundary (VAST Assembly)
+
+AdCP separates **creative agents** (produce the assets a creative is made of) from **sales agents** (assemble those assets into the serving format the ad server expects). For VAST and DAAST, the boundary is normative:
+
+### Complete tag vs decomposed trackers
+
+A creative manifest MAY emit VAST trackers in **one** of two shapes. The creative agent chooses; the sales agent handles either.
+
+**Complete tag** — the creative agent hands off a hosted or inline VAST tag and the sales agent wraps it:
+
+```json
+{
+  "asset_type": "vast",
+  "delivery_type": "url",
+  "url": "https://adserver.example.com/vast.xml",
+  "vast_version": "4.2"
+}
+```
+
+**Decomposed trackers** — the creative agent emits per-event URLs; the sales agent assembles the `TrackingEvents` block:
+
+```json
+[
+  { "asset_type": "vast_tracker", "vast_event": "start",         "url": "..." },
+  { "asset_type": "vast_tracker", "vast_event": "firstQuartile", "url": "..." },
+  { "asset_type": "vast_tracker", "vast_event": "midpoint",      "url": "..." },
+  { "asset_type": "vast_tracker", "vast_event": "thirdQuartile", "url": "..." },
+  { "asset_type": "vast_tracker", "vast_event": "complete",      "url": "..." }
+]
+```
+
+### Normative rules
+
+1. **Wrapper is a sales-agent concern.** The creative agent MUST NOT emit a VAST `Wrapper` element. `Wrapper` is a multi-hop chaining construct — if the served VAST needs to be wrapped (for macro signing, SSAI-compatible envelope, or ad-server redirection), the **sales agent** constructs the wrapper at serve time around the creative agent's output. Emitting an inline VAST document with `Ad > InLine > Creatives` content (the pattern shown in [Universal Macros](/docs/creative/universal-macros)) is permitted and unchanged.
+2. **Assembly responsibilities.** The sales agent is responsible for constructing VAST envelope elements that assemble resources from the creative agent: `TrackingEvents` (from `vast_tracker` assets), `AdVerifications` (from OMID verification resources), and `Wrapper` / `VASTAdTagURI` (if chaining). The creative agent supplies the resources; the sales agent places them in the correct element. A dedicated `omid_verification` asset type for decomposing OMID resources is a planned follow-up.
+3. **Tracker routing by element.** VAST's tracker URLs live in three different elements and AdCP models them with three different asset shapes — don't cross the streams:
+   - `Impression` URL → `url` asset with `url_type: "tracker_pixel"` (not a `vast_tracker`).
+   - `TrackingEvents` events (start, quartiles, complete, pause, etc.) → `vast_tracker` asset with `vast_event`.
+   - `VideoClicks` URLs (`ClickThrough`, `ClickTracking`, `CustomClick`) → `url` asset (`url_type: "clickthrough"` for `ClickThrough`; click-tracker URLs use `url_type: "tracker_pixel"`).
+
+   The `vast_tracker` schema enforces this split: `vast_event` MUST NOT be `impression`, `clickTracking`, `customClick`, or `error`. The same rule applies to DAAST.
+4. **Mixing allowed.** A creative manifest MAY mix a complete `vast` tag with additional `vast_tracker` and `url` (impression / click) assets — the sales agent merges them into one VAST document at serve time.
+
+### SSAI caveat
+
+In server-side ad insertion (SSAI) environments — Yospace, AWS Elemental, MediaTailor — the stream-stitcher rewrites and re-signs the VAST XML before it reaches the player. Trackers that must survive SSAI need to be in the VAST document **before** stitching. AdCP does not today specify an SSAI-specific manifest shape; this is a known gap and a follow-on RFC topic.
 
 ## Common Properties
 
