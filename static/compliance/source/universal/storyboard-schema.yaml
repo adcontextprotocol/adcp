@@ -381,6 +381,21 @@
 #             storyboard run)
 #       path: string (JSON path against this step's response body, e.g.
 #             "media_buy_id", "accounts[0].account_id", "plans[0].plan_id")
+#
+#   Special path prefix `task_completion.<inner>`: when the immediate response
+#   is a non-terminal task envelope (status `submitted` / `working` /
+#   `input-required`, carrying a `task_id`), the runner polls `tasks/get`
+#   until the task reaches a terminal state and resolves `<inner>` against
+#   the completion artifact's `data` instead of the immediate response. Use
+#   for captures whose value only exists on the completion artifact — e.g.
+#   the seller-assigned `media_buy_id` on an IO-signing / async-signed HITL
+#   flow where `create_media_buy` returns `submitted` and the ID lands on
+#   the completion artifact. Without the prefix, the literal key
+#   `task_completion` is looked up on the immediate response, which fails
+#   as `capture_path_not_resolvable`. Requires runner >= adcp-client v6.7;
+#   older runners treat the prefix as a literal key. See adcp-client#1417
+#   (rationale) and adcp-client#1426 (implementation).
+#
 #   Runner behavior:
 #   - Captures occur AFTER the step's validations pass. A failed step MUST NOT
 #     populate the context accumulator — downstream $context.<name> references
