@@ -85,6 +85,12 @@ export const TOOL_CATALOG: Readonly<Record<string, readonly string[]>> = {
   acquire_rights: ['brand'],
   update_rights: ['brand'],
   creative_approval: ['brand'],
+
+  // sponsored intelligence
+  si_get_offering: ['si'],
+  si_initiate_session: ['si'],
+  si_send_message: ['si'],
+  si_terminate_session: ['si'],
 };
 
 /** Build the tool list a given tenant serves — inverse view of TOOL_CATALOG. */

@@ -78,7 +78,7 @@ describe('tenant routing smoke', () => {
       expect(body.version).toBe('1.0');
       expect(Array.isArray(body.agents)).toBe(true);
       const ids = body.agents.map(a => a.agent_id).sort();
-      expect(ids).toEqual(['brand', 'creative', 'creative-builder', 'governance', 'sales', 'signals']);
+      expect(ids).toEqual(['brand', 'creative', 'creative-builder', 'governance', 'sales', 'si', 'signals']);
       const sales = body.agents.find(a => a.agent_id === 'sales');
       expect(sales?.transport).toBe('mcp');
       expect(sales?.url).toMatch(/\/sales\/mcp$/);
