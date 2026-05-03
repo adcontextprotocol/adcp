@@ -200,12 +200,39 @@ Non-normative implementation note: a single-query pattern like `SELECT ... WHERE
 
 | Code | Recovery | Description | Resolution |
 |------|----------|-------------|------------|
-| `AUTH_REQUIRED` | correctable | Authentication is required or credentials are invalid | Provide credentials via auth header |
+| `AUTH_REQUIRED` | correctable* | Authentication is required, or presented credentials were rejected | Provide credentials when missing; escalate to operator when rejected — see the warning below |
 | `ACCOUNT_NOT_FOUND` | terminal | Account reference could not be resolved | Verify via `list_accounts` or contact seller |
 | `ACCOUNT_SETUP_REQUIRED` | correctable | Account needs setup before use | Check `details.setup` for URL or instructions |
 | `ACCOUNT_AMBIGUOUS` | correctable | Natural key resolves to multiple accounts | Pass explicit `account_id` or a more specific natural key |
 | `ACCOUNT_PAYMENT_REQUIRED` | terminal | Outstanding balance requires payment | Buyer must resolve billing |
 | `ACCOUNT_SUSPENDED` | terminal | Account has been suspended | Contact seller to resolve |
+
+<Warning>
+**`AUTH_REQUIRED` sub-cases — do not auto-retry rejected credentials.** The wire code carries two operationally distinct cases that agents MUST handle differently:
+
+- **Credentials missing** → provide credentials and retry once. Correctable inside the agent loop.
+- **Credentials presented but rejected** (expired, revoked, or malformed signature) → do **not** auto-retry; escalate to operator for credential rotation. Re-presenting a rejected credential against an SSO endpoint creates retry-storm patterns indistinguishable from brute-force probes — the seller's fraud detection may rate-limit, suspend, or alert on the calling agent.
+
+A future minor release splits this code into `AUTH_MISSING` (correctable) and `AUTH_INVALID` (terminal). Until then, agents branch on whether credentials were attached to the failing request:
+
+```javascript
+case 'AUTH_REQUIRED': {
+  // The caller's request builder records whether an auth header was attached.
+  // The error-handling SDK surfaces this on `error.request_had_credentials` (or you
+  // pass it in from your own request wrapper).
+  const requestHadCredentials = Boolean(error.request_had_credentials);
+  if (!requestHadCredentials) {
+    // Sub-case (a) — provide credentials and retry.
+    await refreshCredentials();
+    return retry();
+  }
+  // Sub-case (b) — credentials were presented and rejected.
+  // Treat as terminal at the application layer; surface to operator.
+  console.error('Credential rejected — needs human rotation:', error.message);
+  throw error;
+}
+```
+</Warning>
 
 ### Billing and Account Setup
 
@@ -591,9 +618,16 @@ async function handleAdcpError(error) {
 
   // Fall back to error code matching
   switch (error.code) {
-    case 'AUTH_REQUIRED':
-      await refreshCredentials();
-      return retry();
+    case 'AUTH_REQUIRED': {
+      // Two sub-cases share this code; see the AUTH_REQUIRED warning above.
+      const requestHadCredentials = Boolean(error.request_had_credentials);
+      if (!requestHadCredentials) {
+        await refreshCredentials();
+        return retry();
+      }
+      // Credentials were presented and rejected — surface to operator.
+      throw error;
+    }
 
     case 'INVALID_REQUEST':
       console.error('Validation error:', error);
