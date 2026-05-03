@@ -23,7 +23,14 @@
         },
         "required": {
           "type": "boolean",
-          "description": "Whether this asset is required (true) or optional (false). Required assets must be provided for a valid creative. Optional assets enhance the creative but are not mandatory."
+          "default": false,
+          "description": "Whether this asset is required (true) or optional (false). Required assets must be provided for a valid creative. Optional assets enhance the creative but are not mandatory. Only applies to buyer-provided slots (produced_by: 'buyer')."
+        },
+        "produced_by": {
+          "type": "string",
+          "enum": ["buyer", "build_creative"],
+          "default": "buyer",
+          "description": "Who produces this asset. 'buyer' (default) means the buyer provides this asset in build_creative input requests. 'build_creative' means the creative agent generates this asset in the response; buyers MUST NOT include it in input requests, and implementations MUST reject build_creative requests that supply a value for this slot."
         },
         "overlays": {
           "type": "array",
@@ -31,7 +38,14 @@
           "items": { "$ref": "/schemas/core/overlay.json" }
         }
       },
-      "required": ["item_type", "asset_id", "asset_type", "required"]
+      "required": ["item_type", "asset_id", "asset_type", "required"],
+      "if": {
+        "properties": { "produced_by": { "const": "build_creative" } },
+        "required": ["produced_by"]
+      },
+      "then": {
+        "properties": { "required": { "const": false } }
+      }
     },
     "baseGroupAsset": {
       "type": "object",
@@ -46,8 +60,14 @@
         },
         "required": {
           "type": "boolean",
-          "description": "Whether this asset is required within each repetition of the group",
+          "description": "Whether this asset is required within each repetition of the group. Only applies to buyer-provided slots (produced_by: 'buyer').",
           "default": false
+        },
+        "produced_by": {
+          "type": "string",
+          "enum": ["buyer", "build_creative"],
+          "default": "buyer",
+          "description": "Who produces this asset. 'buyer' (default) means the buyer provides this asset in build_creative input requests. 'build_creative' means the creative agent generates this asset in the response; buyers MUST NOT include it in input requests, and implementations MUST reject build_creative requests that supply a value for this slot."
         },
         "overlays": {
           "type": "array",
@@ -55,7 +75,14 @@
           "items": { "$ref": "/schemas/core/overlay.json" }
         }
       },
-      "required": ["asset_id", "asset_type", "required"]
+      "required": ["asset_id", "asset_type", "required"],
+      "if": {
+        "properties": { "produced_by": { "const": "build_creative" } },
+        "required": ["produced_by"]
+      },
+      "then": {
+        "properties": { "required": { "const": false } }
+      }
     }
   },
   "properties": {
@@ -195,7 +222,7 @@
     },
     "assets": {
       "type": "array",
-      "description": "Array of all assets supported for this format. Each asset is identified by its asset_id, which must be used as the key in creative manifests. Use the 'required' boolean on each asset to indicate whether it's mandatory.",
+      "description": "Array of all assets supported for this format. Each asset is identified by its asset_id, which must be used as the key in creative manifests. Use the 'required' boolean on each asset to indicate whether it's mandatory. Use 'produced_by' to distinguish slots the buyer provides in build_creative requests ('buyer', default) from slots the creative agent generates in the response ('build_creative').",
       "items": {
         "oneOf": [
           {
