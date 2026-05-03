@@ -1,29 +1,4 @@
 {
-  "$comment": "Per-storyboard exceptions for lint-storyboard-validations-paths.cjs. Each entry MUST carry a `reason` explaining why the lint can't statically verify the path against the response schema. Re-review during spec changes — if the runtime convention or envelope feature gets first-class schema treatment, remove the entry.",
-  "allowlist": [
-    {
-      "file": "static/compliance/source/universal/idempotency.yaml",
-      "step": "create_media_buy_initial",
-      "path": "replayed",
-      "reason": "`replayed` is the seller's idempotency-replay indicator (true on a replay, absent or false on a fresh request). The response schema declares `additionalProperties: true` and does not define `replayed` explicitly — it's a runtime convention idempotency-replay testing depends on. Lifting requires either (a) adding `replayed` to the spec response schema, or (b) the runner exposing a typed replay-detection check that doesn't go through path validation. Tracked separately."
-    },
-    {
-      "file": "static/compliance/source/universal/idempotency.yaml",
-      "step": "create_media_buy_replay",
-      "path": "replayed",
-      "reason": "Same as create_media_buy_initial — `replayed` is the seller's idempotency-replay indicator, runtime convention not in the spec schema."
-    },
-    {
-      "file": "static/compliance/source/universal/idempotency.yaml",
-      "step": "create_media_buy_fresh_key",
-      "path": "replayed",
-      "reason": "Same as create_media_buy_initial — `replayed` is the seller's idempotency-replay indicator, runtime convention not in the spec schema."
-    },
-    {
-      "file": "static/compliance/source/universal/schema-validation.yaml",
-      "step": "reversed_dates",
-      "path": "adcp_error",
-      "reason": "`adcp_error` is the envelope-level error field (transport layer per error-handling.mdx#envelope-vs-payload-errors-the-two-layer-model), not a payload-level field on the response schema. The runner extracts `adcp_error` from the transport envelope (MCP `structuredContent.adcp_error`, A2A artifact DataPart) — payload-schema validation can't reach it. Lifting requires the lint to recognize a small set of envelope-level path prefixes (`adcp_error.*`) and validate them against `core/error.json` directly."
-    }
-  ]
+  "$comment": "Per-storyboard exceptions for lint-storyboard-validations-paths.cjs. Each entry MUST carry a `reason` explaining why the lint can't statically verify the path against the response schema or envelope. Re-review during spec changes.",
+  "allowlist": []
 }

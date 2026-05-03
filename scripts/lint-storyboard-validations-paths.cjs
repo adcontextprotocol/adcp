@@ -101,6 +101,28 @@ function loadSchema(ref) {
 }
 
 /**
+ * `core/protocol-envelope.json` defines the fields wrapping every task
+ * response — `status`, `task_id`, `context_id`, `replayed`, `adcp_error`,
+ * `governance_context`, `push_notification_config`, etc. The envelope's
+ * top-level description explicitly states "Task response schemas should
+ * NOT include these fields - they are protocol-level concerns," so they
+ * never appear in the per-task response schemas this lint walks.
+ *
+ * Storyboards do assert on envelope fields (e.g., `path: "replayed"`,
+ * `path: "adcp_error"`), so the resolver falls back to the envelope when
+ * a top-level segment isn't found in the response schema. Only the FIRST
+ * segment is matched against the envelope — once we descend into an
+ * envelope property, further resolution proceeds normally.
+ */
+const ENVELOPE_REF = 'core/protocol-envelope.json';
+
+function isEnvelopeProperty(name) {
+  const envelope = loadSchema(ENVELOPE_REF);
+  if (!envelope || !envelope.properties) return false;
+  return Object.prototype.hasOwnProperty.call(envelope.properties, name);
+}
+
+/**
  * A node is a "pure extension point" when it declares `additionalProperties:
  * true` AND has no `properties` / `items` / composite variants. Examples:
  * `core/context.json` (opaque correlation data, by spec design) and
@@ -183,6 +205,20 @@ function* findStepsWithValidations(node, trail) {
   }
 }
 
+function pathResolvesAgainstResponseOrEnvelope(schema, segments) {
+  if (pathResolves(schema, segments)) return true;
+  // Fall back to the protocol envelope. Storyboards address envelope-level
+  // fields with bare top-level names (e.g., `replayed`, `adcp_error`,
+  // `status`), so we only consult the envelope when the FIRST segment
+  // matches an envelope property; subsequent segments resolve through
+  // the envelope's own definition of that field.
+  if (segments.length > 0 && isEnvelopeProperty(segments[0])) {
+    const envelope = loadSchema(ENVELOPE_REF);
+    if (envelope && pathResolves(envelope, segments)) return true;
+  }
+  return false;
+}
+
 function lintDoc(doc, filePath, allowlist = []) {
   const violations = [];
   if (!doc) return violations;
@@ -204,7 +240,7 @@ function lintDoc(doc, filePath, allowlist = []) {
       const rawPath = v.path;
       if (typeof rawPath !== 'string' || rawPath.length === 0) continue;
       const segments = parsePath(rawPath);
-      if (pathResolves(schema, segments)) continue;
+      if (pathResolvesAgainstResponseOrEnvelope(schema, segments)) continue;
       if (isAllowlisted(allowlist, filePath, step.stepId, rawPath)) continue;
       violations.push({
         rule: 'path_not_in_schema',
@@ -280,11 +316,14 @@ if (require.main === module) main();
 module.exports = {
   RULE_MESSAGES,
   PATH_BEARING_CHECKS,
+  ENVELOPE_REF,
   lint,
   lintDoc,
   loadSchema,
   loadAllowlist,
+  isEnvelopeProperty,
   pathResolves,
+  pathResolvesAgainstResponseOrEnvelope,
   parsePath,
   formatMessage,
 };
