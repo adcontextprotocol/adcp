@@ -23,6 +23,7 @@ import {
   handleUpdateRights,
 } from './brand-handlers.js';
 import { syncAccountsUpsert } from './v6-account-helpers.js';
+import { trainingBuyerAgentRegistry } from './buyer-agent-registry.js';
 import type { ToolArgs, TrainingContext } from './types.js';
 
 interface TrainingBrandMeta {
@@ -75,6 +76,7 @@ const trainingBrandAccounts: AccountStore<TrainingBrandMeta> = {
         name: 'Public Sandbox',
         status: 'active',
         ctx_metadata: {},
+        sandbox: true,
         authInfo: { kind: 'public' },
       };
     }
@@ -92,6 +94,7 @@ const trainingBrandAccounts: AccountStore<TrainingBrandMeta> = {
       ...(brandDomain != null && { brand: { domain: brandDomain } }),
       ...('operator' in ref && typeof ref.operator === 'string' && { operator: ref.operator }),
       ctx_metadata: { brand_domain: brandDomain },
+      sandbox: true,
       authInfo: { kind: 'api_key' },
     };
   },
@@ -116,6 +119,7 @@ export class TrainingBrandPlatform
 
   statusMappers = {};
   accounts: AccountStore<TrainingBrandMeta> = trainingBrandAccounts;
+  agentRegistry = trainingBuyerAgentRegistry;
 
   brandRights: BrandRightsPlatform<TrainingBrandMeta> = {
     getBrandIdentity: async (req, ctx) => {
