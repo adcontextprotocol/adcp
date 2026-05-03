@@ -4,6 +4,9 @@
   "title": "Activation Key",
   "description": "Universal identifier for using a signal on a destination platform. Can be either a segment ID or a key-value pair depending on the platform's targeting mechanism.",
   "type": "object",
+  "discriminator": {
+    "propertyName": "type"
+  },
   "oneOf": [
     {
       "properties": {

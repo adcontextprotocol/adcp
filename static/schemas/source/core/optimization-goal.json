@@ -3,6 +3,9 @@
   "$id": "/schemas/core/optimization-goal.json",
   "title": "Optimization Goal",
   "description": "A single optimization target for a package. Packages accept an array of optimization_goals. When multiple goals are present, priority determines which the seller focuses on — 1 is highest priority (primary goal); higher numbers are secondary. Duplicate priority values result in undefined seller behavior.",
+  "discriminator": {
+    "propertyName": "kind"
+  },
   "oneOf": [
     {
       "type": "object",
@@ -51,6 +54,9 @@
         },
         "target": {
           "description": "Target for this metric. When omitted, the seller optimizes for maximum metric volume within budget.",
+          "discriminator": {
+            "propertyName": "kind"
+          },
           "oneOf": [
             {
               "type": "object",
@@ -124,6 +130,9 @@
         },
         "target": {
           "description": "Target cost or return for this event goal. When omitted, the seller optimizes for maximum conversion count within budget — regardless of whether value_field is present on event sources. The presence of value_field alone does not change the optimization objective; it only makes value available for reporting. An explicit target of maximize_value or per_ad_spend is required to steer toward value.",
+          "discriminator": {
+            "propertyName": "kind"
+          },
           "oneOf": [
             {
               "type": "object",

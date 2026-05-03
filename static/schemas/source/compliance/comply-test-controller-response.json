@@ -480,6 +480,9 @@
               "timestamp"
             ],
             "additionalProperties": false,
+            "discriminator": {
+              "propertyName": "attestation_mode"
+            },
             "oneOf": [
               {
                 "title": "RawAttestation",
