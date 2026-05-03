@@ -1,0 +1,254 @@
+---
+title: Sponsored Intelligence
+sidebarTitle: Overview
+"og:image": /images/walkthrough/si-01-priyas-desk.png
+description: "Monetizing AI surfaces with AdCP — follow a growth marketer as she launches campaigns on an AI platform using the reversed data flow."
+"og:title": "AdCP — Sponsored Intelligence"
+---
+
+<img src="/images/walkthrough/si-01-priyas-desk.png" alt="A growth marketer sits at a clean desk with a single screen showing an AI assistant conversation alongside product catalog data flowing into it" style={{ width: '100%', borderRadius: '12px', marginBottom: '2rem' }} />
+
+<Note>
+**Experimental.** Sponsored Intelligence is part of AdCP 3.0 as an experimental surface (feature id `sponsored_intelligence.core`) — session lifecycle, UI components, identity/consent object shape, and capability negotiation may change between 3.x releases with at least 6 weeks' notice. Sellers implementing SI MUST declare `sponsored_intelligence.core` in `experimental_features`. See [experimental status](/dist/docs/3.0.5/reference/experimental-status) for the full contract. Planned changes track the [3.1.0 roadmap](https://github.com/adcontextprotocol/adcp/issues/2201).
+</Note>
+
+Priya is a growth marketer at Ridgeline Gear, a DTC outdoor brand. Her CEO just saw a competitor's product recommended in ChatGPT and wants to know: *"Why aren't we there?"*
+
+Priya knows programmatic. She's run display, social, and CTV campaigns. But AI platforms are different. There's no ad server. No bid request. No creative upload. The AI generates the ad from context — and right now, it has no context about Ridgeline.
+
+Like VAST defined how video ads are served, Sponsored Intelligence defines how advertising works on AI surfaces. It inverts the traditional model: instead of sending a thin bid request out, buyers push everything in — product catalogs, conversion events, brand identity, content standards, and optimization goals — so the platform's LLM can generate the right ad in the right moment with full information.
+
+## The reversed data flow
+
+<img src="/images/walkthrough/si-02-reversed-flow.png" alt="Split screen comparison: left side shows traditional programmatic with thin bid request arrows flowing OUT from a platform to remote bidders; right side shows Sponsored Intelligence with rich data — catalogs, events, brand identity — flowing IN to the AI platform where the LLM makes the decision" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+In traditional programmatic, the platform sends a bid request **out** — a page URL, device type, maybe a user ID — to a remote decision-maker. The decision-maker doesn't have the context. The context-holder doesn't make the decision.
+
+AI platforms reverse this. Buyers push everything **in** via AdCP. **The decision-maker is the context-holder.** That's the fundamental shift.
+
+The data flows in advance. The decision still happens in real time — but the decision-maker now has full context: what the user asked, what the brand sells, what success looks like, and what the brand's voice sounds like.
+
+<Accordion title="Programmatic language → Sponsored Intelligence terms">
+
+| What Priya knows | What SI calls it |
+|---|---|
+| Upload creatives to ad server | Push catalogs, brand identity, and events into the platform |
+| Bid request (platform sends context out) | Reversed data flow (buyer pushes data in) |
+| DSP selects ad remotely | Platform LLM generates ad with full context |
+| Audience segments and geo targeting | Conversational relevance and keyword intent |
+| Impressions, clicks, CTR | Engagements, clicks, cost per click |
+| Brand safety blocklists | [Content standards](/dist/docs/3.0.5/governance/content-standards/index) enforced at generation time |
+
+</Accordion>
+
+## How it works: Priya's first SI campaign
+
+Priya starts with NovaMind, a major AI assistant that sells its own sponsored placements. NovaMind is a first-party AI platform — explicit accounts, its own ad serving, its own measurement.
+
+### Step 1: Connect the account
+
+<img src="/images/walkthrough/si-03-connect-account.png" alt="Priya's buyer agent robot shakes hands with the NovaMind platform robot in front of a glowing portal, establishing a connection while account credentials flow between them" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+Priya's buyer agent connects to NovaMind and confirms Ridgeline's account — like verifying access with a new publisher:
+
+```javascript
+const accounts = await novamind.listAccounts({
+  account: {
+    brand: { domain: "ridgelinegear.com" }
+  }
+});
+// Returns Ridgeline's account — ready to sync data and buy inventory
+```
+
+### Step 2: Push the ingredients
+
+<img src="/images/walkthrough/si-04-push-ingredients.png" alt="Product catalog cards, a brand.json document, conversion event streams, and content standards documents flow from Ridgeline's system into NovaMind's platform through a glowing pipeline, assembling into a rich brand context inside the AI" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+Here's where SI diverges from everything Priya knows. Instead of uploading creatives, she pushes raw ingredients — and the platform assembles the ad. Priya's buyer agent handles the protocol; here's what happens under the hood:
+
+```javascript
+// Product catalog — a structured feed describing what Ridgeline sells
+// (like a Google Merchant Center feed, but consumed by the AI platform)
+await novamind.syncCatalogs({
+  account: { brand: { domain: "ridgelinegear.com" } },
+  catalogs: [{
+    catalog_id: "ridgeline-products-2026",
+    type: "product",
+    source: { url: "https://ridgelinegear.com/feeds/products.json" }
+  }]
+});
+
+// Conversion events — what success looks like
+await novamind.syncEventSources({
+  account: { brand: { domain: "ridgelinegear.com" } },
+  event_sources: [{
+    event_source_id: "ridgeline-conversions",
+    type: "conversion",
+    source: { url: "https://ridgelinegear.com/events/conversions" }
+  }]
+});
+```
+
+Priya also publishes [`brand.json`](/dist/docs/3.0.5/brand-protocol/brand-json) at `ridgelinegear.com/.well-known/brand.json` — voice, colors, visual guidelines that the platform reads when generating ads. And she sets [content standards](/dist/docs/3.0.5/governance/content-standards/index) that the platform enforces at decision time.
+
+<Note>
+**SI governance integration is planned.** Full protocol-level governance for Sponsored Intelligence — campaign registration via `sync_plans`, session-lifecycle checks via `check_governance`, content standards for AI-generated content, and property governance for AI assistant placements — is under development. See the [Governance overview](/dist/docs/3.0.5/governance/overview#sponsored-intelligence-planned) for current status. Today, SI platforms enforce governance at the application layer using content standards and brand identity.
+</Note>
+
+Together, these ingredients **are** the ad. Product catalogs feed creative generation. Conversion events close the optimization loop. Brand identity ensures the output sounds right. Content standards ensure it stays safe.
+
+### Step 3: Discover products
+
+<img src="/images/walkthrough/si-05-discover-products.png" alt="NovaMind presents a catalog of sponsored placement options to Priya's buyer agent: sponsored responses, AI search results, and a premium brand experience handoff — each displayed as glowing product cards" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+Priya discovers what NovaMind offers — same `get_products` she'd use for CTV or display:
+
+```javascript
+const products = await novamind.getProducts({
+  buying_mode: "brief",
+  brief: "Outdoor gear brand. Want to reach people asking about hiking, camping, and trail running. Budget $15K/month.",
+  brand: { domain: "ridgelinegear.com" },
+  account: { brand: { domain: "ridgelinegear.com" } }
+});
+```
+
+NovaMind returns products across the [SI product spectrum](/dist/docs/3.0.5/sponsored-intelligence/product-spectrum):
+
+| Product | How it works | Pricing |
+|---|---|---|
+| **Sponsored responses** | NovaMind generates a recommendation from Ridgeline's catalog when users ask about hiking gear | CPC |
+| **AI search results** | Ridgeline appears in keyword-triggered search results for "best hiking boots" | CPC |
+| **Brand experience handoff** | User deep-dives on Ridgeline products via a multi-turn conversation with Ridgeline's brand agent ([SI Chat Protocol](/dist/docs/3.0.5/sponsored-intelligence/si-chat-protocol)) | Per session |
+
+### Step 4: Create the media buy
+
+<img src="/images/walkthrough/si-06-create-buy.png" alt="Priya's buyer agent sends a create_media_buy request to NovaMind — a glowing contract document materializes between the two agents, with budget amounts, flight dates, and optimization goals visible as floating labels" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+Priya picks two products and creates a media buy:
+
+```javascript
+const buy = await novamind.createMediaBuy({
+  account: { brand: { domain: "ridgelinegear.com" } },
+  brand: { domain: "ridgelinegear.com" },
+  start_time: "2026-04-01T00:00:00Z",
+  end_time: "2026-06-30T23:59:59Z",
+  packages: [
+    {
+      product_id: "novamind_sponsored_outdoor",
+      budget: 10000,
+      pricing_option_id: "cpc_standard",
+      optimization_goals: [
+        { type: "cpa", target: 12.00, event_type: "purchase" }
+      ]
+    },
+    {
+      product_id: "novamind_search_hiking",
+      budget: 5000,
+      pricing_option_id: "cpc_keyword",
+      targeting_overlay: {
+        keywords: ["hiking boots", "trail running shoes", "camping gear"]
+      }
+    }
+  ]
+});
+```
+
+No creative to upload. No ad tags to traffic. NovaMind already has Ridgeline's product catalog, brand identity, and conversion events. It generates the right ad in the right moment from those ingredients.
+
+### Step 5: The ad moment
+
+<img src="/images/walkthrough/si-07-ad-moment.png" alt="An AI assistant conversation on a phone screen — a user asks 'what hiking boots should I get for the Appalachian Trail?' and the AI responds with a contextually relevant Ridgeline Trail Pro recommendation, with product details and a 'talk to Ridgeline' handoff button glowing below" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+A NovaMind user asks:
+
+> *"What hiking boots should I get for the Appalachian Trail?"*
+
+NovaMind's LLM has Ridgeline's product catalog, knows the Trail Pro 3000 matches this query, and generates a sponsored response:
+
+> *"For the AT, you want a boot that handles rocky terrain and variable weather. The **Ridgeline Trail Pro 3000** ($189) is built for exactly this — Gore-Tex waterproofing, Vibram outsole, and ankle support designed for multi-day hikes. It's rated 4.7/5 by AT thru-hikers."*
+>
+> *Sponsored by Ridgeline Gear* · [Talk to Ridgeline →]
+
+Every detail comes from the catalog Priya synced — the price, the features, the ratings. The voice matches `brand.json`. The [content standards](/dist/docs/3.0.5/governance/content-standards/index) Priya set ensure the platform won't make unsupported claims. The user sees a relevant, helpful recommendation, clearly labeled as sponsored.
+
+If the user taps "Talk to Ridgeline," NovaMind hands off to Ridgeline's brand agent via [SI Chat Protocol](/dist/docs/3.0.5/sponsored-intelligence/si-chat-protocol) — a multi-turn conversation where the user can ask about sizing, compare models, and start a purchase. All within the AI experience.
+
+### Step 6: Measure results
+
+<img src="/images/walkthrough/si-08-measure.png" alt="A clean dashboard showing SI campaign metrics — engagements, clicks, conversions, and cost per engagement — with a line chart trending upward and a callout showing 'CPA: $9.40, beating $12.00 target'" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+Priya monitors the same way she monitors any AdCP campaign:
+
+```javascript
+const delivery = await novamind.getMediaBuyDelivery({
+  account: { brand: { domain: "ridgelinegear.com" } },
+  media_buy_ids: [buy.media_buy_id],
+  include_package_daily_breakdown: true
+});
+```
+
+The reporting format is the same `get_media_buy_delivery` response Priya uses for CTV and display. One dashboard, all channels. Her existing measurement stack — media mix modeling, multi-touch attribution, incrementality testing — works the same way it always has.
+
+---
+
+## Scaling up: AI ad networks
+
+Priya's NovaMind campaign is working. Now she wants broader reach across dozens of AI surfaces — not just one platform. She connects to Gravity, an AI ad network.
+
+<img src="/images/walkthrough/si-09-network-topology.png" alt="A hub-and-spoke diagram: Gravity sits at the center as a network node, with spokes radiating out to a dozen different AI platforms — chat assistants, search copilots, coding tools, travel planners — each shown as a small robot at its own surface" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+AI ad networks aggregate inventory across many AI platforms into a single seller interface. Priya syncs her catalogs once to Gravity, and Gravity forwards them to its underlying platforms. One integration, many surfaces.
+
+| | First-party (NovaMind) | Ad network (Gravity) |
+|---|---|---|
+| **Inventory** | One AI platform's own placements | Aggregated across many AI platforms |
+| **Account model** | Explicit — Priya registers directly | Implicit — buyer agent declares brands via `sync_accounts`; the network verifies agent identity |
+| **Products** | NovaMind's own offerings | Products include `publisher_properties` showing which platforms serve them |
+| **Catalog flow** | Synced directly to NovaMind | Synced once to Gravity, forwarded to underlying platforms |
+
+The same protocol tasks work on both paths. Priya calls `get_products`, `create_media_buy`, and `get_media_buy_delivery` on Gravity exactly as she did on NovaMind — and exactly as she already does for her CTV and display campaigns through the [media buy protocol](/dist/docs/3.0.5/media-buy/index). She sees everything in one dashboard.
+
+At serving time, Gravity's underlying AI platforms use the [Trusted Match Protocol](/dist/docs/3.0.5/trusted-match) to match demand to conversations. TMP fans out to buyer agents, evaluates context and user eligibility, and the platform selects which offer to present — all within the LLM's generation latency. The buying layer (media buys, catalogs, reporting) stays the same; TMP handles real-time mediation underneath.
+
+<CardGroup cols={2}>
+  <Card title="Ad networks deep dive" icon="diagram-project" href="/dist/docs/3.0.5/sponsored-intelligence/networks">
+    Network topology, implicit account chains, catalog forwarding, and SI Chat Protocol routing through intermediaries.
+  </Card>
+  <Card title="How demand reaches AI assistants" icon="shield-halved" href="/dist/docs/3.0.5/trusted-match/ai-mediation">
+    How TMP mediates demand on AI surfaces — context matching, frequency caps, and LLM integration.
+  </Card>
+</CardGroup>
+
+## Protocol architecture
+
+SI uses two protocol layers:
+
+- **Buying** uses the [media buy protocol](/dist/docs/3.0.5/media-buy/index) — `get_products`, `create_media_buy`, `sync_catalogs`, `get_media_buy_delivery`. You buy SI inventory the same way you buy CTV or display. The `channels: ["sponsored_intelligence"]` field on products is what identifies SI inventory.
+- **Serving** uses the SI protocol — `si_initiate_session`, `si_send_message`, `si_terminate_session`. These tasks power the [SI Chat Protocol](/dist/docs/3.0.5/sponsored-intelligence/si-chat-protocol) brand experience handoffs.
+
+Most SI products (sponsored responses, AI search results) only involve the buying layer — the platform handles serving internally. SI Chat Protocol handoffs are the product type that spans both layers.
+
+## The full picture
+
+<img src="/images/walkthrough/si-10-full-picture.png" alt="A horizontal flow diagram showing Ridgeline's data flowing into both NovaMind (direct) and Gravity (network), which fans out to many AI platforms — all reporting back through the same unified delivery format to Priya's single dashboard" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+Priya's CEO asked *"Why aren't we there?"* — and now Ridgeline is recommended in AI conversations across multiple platforms. Priya didn't learn a dozen different systems. She pushed her ingredients into a standard protocol and let each platform generate the right ad from full context. The same `create_media_buy` that runs her CTV and display campaigns runs her SI campaigns too.
+
+Next quarter, she's adding brand experience handoffs via SI Chat Protocol — so when a user wants to go deep on Ridgeline products, they can have a full conversation with Ridgeline's brand agent without leaving the AI experience.
+
+## Go deeper
+
+<CardGroup cols={2}>
+  <Card title="Product spectrum" icon="layer-group" href="/dist/docs/3.0.5/sponsored-intelligence/product-spectrum">
+    The four SI product types — sponsored responses, AI search, generative display, and brand experience handoffs.
+  </Card>
+  <Card title="End-to-end workflow" icon="arrows-spin" href="/dist/docs/3.0.5/sponsored-intelligence/workflow">
+    Step-by-step from account setup through delivery reporting with code examples.
+  </Card>
+  <Card title="SI Chat Protocol" icon="comments" href="/dist/docs/3.0.5/sponsored-intelligence/si-chat-protocol">
+    The conversational brand experience protocol — session lifecycle, modalities, and commerce handoff.
+  </Card>
+  <Card title="Monetizing AI" icon="bullseye" href="/dist/docs/3.0.5/sponsored-intelligence/monetizing-ai">
+    Non-technical guide for brands, agencies, and SMBs getting started.
+  </Card>
+</CardGroup>

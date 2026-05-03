@@ -1,0 +1,317 @@
+---
+title: "Audit trail: internal vs shareable views"
+sidebarTitle: Audit trail
+description: "How AdCP's campaign governance audit trail splits into a full internal view and scoped shareable views, and what each counterparty can safely see."
+"og:title": "AdCP — Governance audit trail"
+---
+
+The protocol does not mandate what a buyer must share with a counterparty. It does give you the primitives to produce two distinct views of the same audit trail:
+
+- An **internal view** — the buyer's full record of every check, finding, budget movement, and human review. Used for self-protection, regulator audits, and internal compliance review.
+- A **shareable view** — a scoped subset, addressed to one counterparty (a seller, an agency, a third-party auditor). Reveals only what that party needs to verify their own action.
+
+Both are produced from [`get_plan_audit_logs`](/dist/docs/3.0.5/governance/campaign/tasks/get_plan_audit_logs). The split is a matter of filtering and field selection, not a separate protocol.
+
+## Why split at all
+
+Three reasons buyers maintain distinct views:
+
+1. **Strategy leakage.** Total authorized budget, channel allocation, and remaining headroom across all sellers are competitive signals. Note that derived ratios are not safer than raw amounts — `budget.utilization_pct` is a one-step inverse problem if a seller knows their own committed share. A single seller does not need to know the buyer's full plan to verify their own buy.
+2. **Cross-counterparty isolation.** Seller A has no business seeing the findings, governance contexts, or outcomes for Seller B. A shareable view is always scoped to the requesting party's `governance_context` values.
+3. **Internal review fields.** Human review reasons, drift metrics, and oversight thresholds are the buyer's own governance posture. They protect the buyer in a regulator audit; they are not addressed to a counterparty.
+
+## Field tagging
+
+The table below classifies every field in the [`get_plan_audit_logs`](/dist/docs/3.0.5/governance/campaign/tasks/get_plan_audit_logs#response) response by who can safely see it.
+
+| Field | Internal | Shareable with the specific seller | Shareable with regulator/auditor |
+|---|:-:|:-:|:-:|
+| `plans[].plan_id`, `plan_version` | yes | yes (when scoped) | yes |
+| `plans[].status` | yes | yes (when scoped) | yes |
+| `plans[].budget.authorized` | yes | no | yes |
+| `plans[].budget.committed` | yes | no | yes |
+| `plans[].budget.remaining` | yes | no | yes |
+| `plans[].budget.utilization_pct` | yes | no | yes |
+| `plans[].channel_allocation.*` | yes | no | yes |
+| `plans[].governed_actions[].governance_context` | yes | yes (own context only) | yes |
+| `plans[].governed_actions[].purchase_type` | yes | yes (own context only) | yes |
+| `plans[].governed_actions[].status` | yes | yes (own context only) | yes |
+| `plans[].governed_actions[].committed` | yes | yes (own context only) | yes |
+| `plans[].governed_actions[].check_count` | yes | yes (own context only) | yes |
+| `plans[].summary.checks_performed`, `outcomes_reported` | yes | no | yes |
+| `plans[].summary.statuses` | yes | no | yes |
+| `plans[].summary.findings_count` | yes | no | yes |
+| `plans[].summary.human_reviews[]` | yes | no | redact reason; share resolution + timestamp on request |
+| `plans[].summary.drift_metrics.*` | yes | no | available if the buyer's counterparty rules require disclosure |
+| `plans[].entries[].id`, `type`, `timestamp` | yes | yes (own context only) | yes |
+| `plans[].entries[].caller` | yes | yes (own context only) | yes |
+| `plans[].entries[].tool` | yes | yes (own context only) | yes |
+| `plans[].entries[].check_type`, `status` | yes | yes (own context only) | yes |
+| `plans[].entries[].mode` | yes | yes (own context only) | yes — distinguishes a `denied` from an `approved`-with-finding under `audit` |
+| `plans[].entries[].explanation` | yes | yes (own context only) | yes |
+| `plans[].entries[].categories_evaluated` | yes | yes (own context only) | yes |
+| `plans[].entries[].policies_evaluated` | yes | yes (own context only) | yes |
+| `plans[].entries[].findings[]` | yes | yes (own context only) | yes |
+| `plans[].entries[].plan_hash` | yes | yes (own context only) | yes — auditors verify this |
+| `plans[].entries[].governance_context` | yes | yes (own context only) | yes |
+| `plans[].entries[].purchase_type` | yes | yes (own context only) | yes |
+| `plans[].entries[].outcome`, `outcome_status` | yes | yes (own context only) | yes |
+| `plans[].entries[].committed_budget` | yes | yes (own context only) | yes |
+
+## Producing a shareable view
+
+To answer "what should I share with Seller X?", filter the audit query to the contexts that belong to that seller and drop plan-level aggregates.
+
+**Request scoped to one seller's actions:**
+
+```json
+{
+  "tool": "get_plan_audit_logs",
+  "arguments": {
+    "plan_ids": ["plan_q1_2026_launch"],
+    "governance_contexts": ["gc_mb_seller_456"],
+    "include_entries": true
+  }
+}
+```
+
+This narrows `governed_actions` and `entries` to the requested contexts. The buyer is still responsible for stripping `budget.*`, `channel_allocation.*`, `summary.findings_count`, `summary.statuses`, and `summary.drift_metrics` before forwarding — those summaries cover the entire plan and reveal totals across other sellers.
+
+**Minimum compliance attestation (no entries):**
+
+For counterparties who only need proof that a buy was governed — not the full trail — share a four-field attestation derived from the audit response:
+
+```json
+{
+  "governance_context": "gc_mb_seller_456",
+  "status": "approved",
+  "plan_hash": "oR0jFDEtzcwgPbNf-Ofd_fZHYfAyD1TRbzGOFBVCG-c",
+  "policies_evaluated": ["us_coppa", "alcohol_advertising"]
+}
+```
+
+The seller can verify the `plan_hash` against the plan revision they signed under, and the `policies_evaluated` list confirms which registry policies were applied. Nothing else about the buyer's portfolio is disclosed.
+
+## Regulator and auditor views
+
+A regulator typically asks for one of three things:
+
+1. **Did human oversight occur where required?** Share `summary.human_reviews[]` and the `requires_human_review` flag from the resolved policies. Reasons may be redacted or summarized; resolutions and timestamps should be intact.
+2. **Did the buy comply with a specific regulation?** Share entries scoped by `policies_evaluated` containing the regulation's `policy_id` (e.g., `us_coppa`). Include `plan_hash` so the regulator can verify against the plan revision.
+3. **Are oversight metrics within thresholds?** Share `summary.drift_metrics` and the policy-derived thresholds. A `human_review_rate` below `human_review_rate_min` is a signal worth explaining.
+
+The protocol does not define a regulator API. Counterparty rules govern the disclosure; the audit trail makes the disclosure possible.
+
+## Worked example: a clean buy
+
+A plan with $500K authorized for an OLV/display campaign. The orchestrator runs an intent check on `get_products`, then an execution check on `create_media_buy` for $150K, then reports the outcome. The full internal audit response:
+
+```json
+{
+  "$schema": "/schemas/3.0.5/governance/get-plan-audit-logs-response.json",
+  "plans": [
+    {
+      "plan_id": "plan_q1_2027_acme",
+      "plan_version": 1,
+      "status": "active",
+      "budget": {
+        "authorized": 500000,
+        "committed": 150000,
+        "remaining": 350000,
+        "utilization_pct": 30
+      },
+      "governed_actions": [
+        {
+          "governance_context": "11ab64d0-2e20-4b62-8964-b024cfc98d36",
+          "purchase_type": "media_buy",
+          "status": "active",
+          "committed": 150000,
+          "check_count": 1
+        }
+      ],
+      "summary": {
+        "checks_performed": 2,
+        "outcomes_reported": 1,
+        "statuses": { "approved": 2, "denied": 0, "conditions": 0 },
+        "findings_count": 0
+      },
+      "entries": [
+        {
+          "id": "chk_378be2f1",
+          "type": "check",
+          "timestamp": "2027-01-15T14:32:41.008Z",
+          "caller": "https://ads.seller-a.example",
+          "tool": "create_media_buy",
+          "check_type": "execution",
+          "mode": "enforce",
+          "purchase_type": "media_buy",
+          "governance_context": "11ab64d0-2e20-4b62-8964-b024cfc98d36",
+          "status": "approved",
+          "explanation": "All governance checks passed.",
+          "policies_evaluated": [],
+          "categories_evaluated": ["delegation_authority"],
+          "findings": []
+        },
+        {
+          "id": "out_9b2c1f04",
+          "type": "outcome",
+          "timestamp": "2027-01-15T14:32:41.105Z",
+          "outcome": "completed",
+          "committed_budget": 150000,
+          "purchase_type": "media_buy",
+          "governance_context": "11ab64d0-2e20-4b62-8964-b024cfc98d36"
+        }
+      ]
+    }
+  ]
+}
+```
+
+The seller's shareable view of the same trail is the `governed_actions[]` entry and the `entries[]` filtered to `governance_context = 11ab64d0...`. Plan-level `budget.authorized`, `budget.remaining`, and the `summary` aggregate stay buyer-side.
+
+## What violations look like
+
+Findings are how the audit trail communicates risk. Two patterns worth knowing:
+
+### Security-shaped finding: an unauthorized seller
+
+The plan declares `approved_sellers: ["https://ads.seller-approved.example"]`. A different seller calls `check_governance` and gets denied:
+
+```json
+{
+  "$schema": "/schemas/3.0.5/governance/check-governance-response.json",
+  "check_id": "chk_0ac8d7de",
+  "plan_id": "plan_2027_apex_athletic",
+  "status": "denied",
+  "explanation": "Denied: Caller https://ads.seller-rogue.example is not in the plan's approved sellers list.",
+  "categories_evaluated": ["delegation_authority", "seller_compliance"],
+  "policies_evaluated": [],
+  "findings": [
+    {
+      "category_id": "seller_compliance",
+      "severity": "critical",
+      "explanation": "Caller https://ads.seller-rogue.example is not in the plan's approved sellers list."
+    }
+  ]
+}
+```
+
+The corresponding plan summary records `statuses.denied: 1` and `findings_count: 1`. The unauthorized seller's `governance_context` is still recorded — the trail captures the attempt, not just the success.
+
+### Coaching-shaped finding: an Annex III prerequisite is missing
+
+A plan with `policy_categories: ["fair_lending"]` (mortgage, consumer credit, etc.) auto-flips `human_review_required: true`. If the brand profile doesn't expose a contestation contact, the check fails closed with an actionable explanation:
+
+```json
+{
+  "$schema": "/schemas/3.0.5/governance/check-governance-response.json",
+  "check_id": "chk_8360a36d",
+  "plan_id": "plan_2027_nova_mortgage",
+  "status": "denied",
+  "explanation": "Denied: Plan requires human review (Annex III / Art 22) but brand does not expose data_subject_contestation. Art 22(3) requires a discoverable contact point for the data subject to request human intervention, express their view, and contest the decision. Set brand.data_subject_contestation in brand.json.",
+  "categories_evaluated": ["data_subject_contestation", "delegation_authority"],
+  "policies_evaluated": [],
+  "findings": [
+    {
+      "category_id": "data_subject_contestation",
+      "severity": "critical",
+      "explanation": "Plan requires human review (Annex III / Art 22) but brand does not expose data_subject_contestation. Set brand.data_subject_contestation in brand.json."
+    }
+  ]
+}
+```
+
+The denial is also a coaching moment — the operator sees exactly what to fix. This is the shape good governance findings should take: a category, a severity, and a path forward.
+
+## The operator's dial: enforce / advisory / audit
+
+`mode` is set on the plan via [`sync_plans`](/dist/docs/3.0.5/governance/campaign/tasks/sync_plans) and is the operator's primary lever. The same caller, same payload, same finding produces three different outcomes depending on mode.
+
+**`mode: "enforce"`** — the buy is blocked at the governance layer:
+
+```json
+{
+  "$schema": "/schemas/3.0.5/governance/check-governance-response.json",
+  "check_id": "chk_enforce_001",
+  "plan_id": "plan_mode_enforce",
+  "status": "denied",
+  "explanation": "Denied: Caller https://ads.seller-rogue.example is not in the plan's approved sellers list.",
+  "categories_evaluated": ["delegation_authority", "seller_compliance"],
+  "policies_evaluated": [],
+  "findings": [
+    {
+      "category_id": "seller_compliance",
+      "severity": "critical",
+      "explanation": "Caller https://ads.seller-rogue.example is not in the plan's approved sellers list."
+    }
+  ]
+}
+```
+
+**`mode: "advisory"`** — the buy proceeds; the operator gets a critical finding to act on post-hoc:
+
+```json
+{
+  "$schema": "/schemas/3.0.5/governance/check-governance-response.json",
+  "check_id": "chk_advisory_001",
+  "plan_id": "plan_mode_advisory",
+  "status": "approved",
+  "explanation": "Approved with 1 advisory finding(s).",
+  "expires_at": "2027-01-15T15:32:41Z",
+  "categories_evaluated": ["delegation_authority", "seller_compliance"],
+  "policies_evaluated": [],
+  "findings": [
+    {
+      "category_id": "seller_compliance",
+      "severity": "critical",
+      "explanation": "Caller https://ads.seller-rogue.example is not in the plan's approved sellers list."
+    }
+  ]
+}
+```
+
+**`mode: "audit"`** — the buy proceeds silently; the finding is in the log for retrospective analysis:
+
+```json
+{
+  "$schema": "/schemas/3.0.5/governance/check-governance-response.json",
+  "check_id": "chk_audit_001",
+  "plan_id": "plan_mode_audit",
+  "status": "approved",
+  "explanation": "All governance checks passed.",
+  "expires_at": "2027-01-15T15:32:41Z",
+  "categories_evaluated": ["delegation_authority", "seller_compliance"],
+  "policies_evaluated": [],
+  "findings": [
+    {
+      "category_id": "seller_compliance",
+      "severity": "critical",
+      "explanation": "Caller https://ads.seller-rogue.example is not in the plan's approved sellers list."
+    }
+  ]
+}
+```
+
+The trade-off:
+
+| Mode | Velocity | Safety | When to use |
+|---|---|---|---|
+| `enforce` | Slowest — checks block buys | Highest — violations cannot ship | Production for regulated brands; default for new operators |
+| `advisory` | Full velocity | Findings surface but don't block | Rolling out a new policy; observing behavior before tightening |
+| `audit` | Full velocity | Findings logged silently | Backstop telemetry; never the only governance posture |
+
+A plan can shift modes between revisions — the governance decisions in the audit trail tell the truth about how each historical buy was governed. The operating mode should be visible on every audit entry; today it appears on the per-`check_governance` response but not consistently on `get_plan_audit_logs` responses ([#3156](https://github.com/adcontextprotocol/adcp/issues/3156)).
+
+## What the protocol guarantees
+
+Two invariants you can rely on when designing your shareable view:
+
+- **`plan_hash` is verifiable.** It is `base64url_no_pad(SHA-256(JCS(plan_payload)))` over the plan revision the check was evaluated against. Any party with the plan revision can recompute and byte-compare the digest. See [Plan binding and audit](/dist/docs/3.0.5/governance/campaign/specification#plan-binding-and-audit).
+- **Inline policies cannot relax registry policies.** A buyer's bespoke `policy` entries can only add restrictions on top of registry-sourced policies. So when a shareable view shows `policies_evaluated: ["us_coppa"]`, the counterparty can trust that the registry version of `us_coppa` was applied at its declared `enforcement` level — the buyer did not silently downgrade it. See [Policy Registry](/dist/docs/3.0.5/governance/policy-registry#policy-categories).
+
+## Related
+
+- [`get_plan_audit_logs`](/dist/docs/3.0.5/governance/campaign/tasks/get_plan_audit_logs) — request and response schema
+- [Campaign governance specification](/dist/docs/3.0.5/governance/campaign/specification) — plan binding, drift detection, governance context lifecycle
+- [Policy Registry](/dist/docs/3.0.5/governance/policy-registry) — policy versioning, `effective_date`, registry vs inline policies
+- [Annex III & Art 22 obligations](/dist/docs/3.0.5/governance/annex-iii-obligations) — when human review is required

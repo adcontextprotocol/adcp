@@ -1,0 +1,277 @@
+---
+title: A2A Response Extraction
+description: "How to extract AdCP response data from A2A Task objects: status-based branching, last-DataPart authority, wrapper rejection, and client implementation requirements."
+"og:title": "AdCP — A2A Response Extraction"
+---
+
+This page defines the normative algorithm for extracting AdCP response data from A2A Task objects and TaskStatusUpdateEvents. For the canonical response structure that sellers must produce, see [A2A Response Format](/dist/docs/3.0.5/building/integration/a2a-response-format). For error-specific extraction, see [Transport Error Mapping](/dist/docs/3.0.5/building/implementation/transport-errors).
+
+## AdCP Conventions on Top of A2A
+
+The rules on this page layer AdCP-specific semantics onto A2A. Non-AdCP A2A agents do not enforce them and should not be expected to produce conforming output.
+
+- **Single-artifact invariant.** AdCP tasks produce one artifact containing all output parts. Clients read from `artifacts[0]`. If a seller needs multiple distinct deliverables, they should be modeled as separate tasks — not multiple artifacts.
+- **Last-DataPart authority.** When multiple DataParts appear in one artifact (typical during streaming), the last one is authoritative. Earlier DataParts are superseded progress snapshots.
+- **First-DataPart for interim.** When multiple DataParts appear in `status.message.parts`, the first is used — interim updates are single-event snapshots, not accumulated.
+- **Wrapper rejection.** A DataPart whose `.data` is `{ response: {...} }` (single key named `response`) is treated as a framework-wrapper bug, not a valid payload.
+
+## Wire-Format Compatibility
+
+This algorithm handles both **A2A 1.0** and **v0.3** responses. Extraction must not assume one wire format — the same AdCP client may talk to both during the v0.3 compatibility period.
+
+**State values.** The `status.state` field arrives as either the ProtoJSON form (`"TASK_STATE_COMPLETED"`, `"TASK_STATE_WORKING"`, …) in 1.0 or the lowercase form (`"completed"`, `"working"`, …) in v0.3. Clients normalize before comparison.
+
+**Part shape.** A 1.0 DataPart has a non-null `data` field and no `kind`. A v0.3 DataPart has `kind: "data"` and a `data` field. Both satisfy "the `data` field is a non-null object." The same holds for TextParts (`text` field present) and FileParts (`url`/`raw` in 1.0, or `kind: "file"` in v0.3). Per A2A 1.0 §4.1.6, a Part is a strict `oneof` — exactly one of `text`, `raw`, `url`, or `data` is set. Clients receiving a Part with multiple content fields SHOULD treat it as malformed.
+
+**Streaming envelope.** A2A 1.0 wraps streaming responses and push-notification payloads in a `StreamResponse` oneof with exactly one of the keys `task`, `message`, `statusUpdate`, or `artifactUpdate` (A2A 1.0 §3.2.3, §4.3.3). Non-streaming responses (e.g., `tasks/get`, or v0.3 over HTTP) deliver the bare object. Extraction unwraps a single-key envelope before applying the algorithm below.
+
+## Status-Based Extraction
+
+The extraction location depends on the task's status. State names in this table are shown in normalized lowercase form — match against the normalized state, not the raw wire value.
+
+| Status | Type | Data Location | DataPart Selection |
+|---|---|---|---|
+| `completed` | Final | `.artifacts[0].parts[]` (fallback: `status.message.parts[]`) | Last DataPart |
+| `failed` | Final | `.artifacts[0].parts[]` (fallback: `status.message.parts[]`) | Last DataPart |
+| `canceled` | Final | `.artifacts[0].parts[]` | Last DataPart (typically none) |
+| `rejected` | Final (1.0) | `.artifacts[0].parts[]` | Last DataPart (carries `adcp_error` for policy/validation rejections) |
+| `working` | Interim | `status.message.parts[]` | First DataPart |
+| `submitted` | Interim | `status.message.parts[]` | First DataPart |
+| `input-required` | Interim | `status.message.parts[]` | First DataPart |
+| `auth-required` | Interim (1.0) | `status.message.parts[]` | First DataPart (carries auth challenge data — scheme, URL, scopes) |
+
+Final states fall back to `status.message.parts[]` when `.artifacts` is absent or empty — this covers servers that put a final payload in the status message rather than a separate artifact.
+
+Canceled tasks rarely carry data — extraction returns null when no DataPart is present, which is the expected case. Rejected tasks are expected to carry an `adcp_error` DataPart describing why the request was rejected (tier/policy/validation).
+
+## Extraction Algorithm
+
+Clients MUST extract AdCP data from A2A responses using these steps:
+
+0. **Unwrap stream envelopes.** If the input is an object with exactly one top-level key named `task`, `message`, `statusUpdate`, or `artifactUpdate` and that key's value is a non-null, non-array object, replace the input with that value (A2A 1.0 `StreamResponse` oneof). Bare `Task` / `TaskStatusUpdateEvent` objects — non-streaming responses or v0.3 — pass through unchanged. An `artifactUpdate` carries no task status; once unwrapped its `status.state` is absent and step 1 returns null.
+
+   Unwrap **exactly once**. Clients MUST NOT recurse. If the unwrapped inner object itself has the single-key envelope shape (`{ task: { task: {...} } }` or any combination), treat as malformed and return null — this is a nested-envelope smuggling attempt. An envelope whose inner value's top-level keys include any of `task` / `message` / `statusUpdate` / `artifactUpdate` MUST be rejected.
+
+   Bare `{ message }` envelopes (out-of-band agent messages) MUST be ignored by task-oriented extractors — step 1 returns null when the unwrapped object has no `status.state`. Webhook/SSE handlers MUST NOT return a `200 OK` acknowledgment for unrecognized `{ message }` envelopes; return `400 Bad Request` or silently discard at the transport layer to avoid acting as a presence oracle for attackers probing endpoints.
+1. **Read `status.state`.** If absent, return null. Normalize to lowercase form (`TASK_STATE_COMPLETED` → `completed`) before comparing. After normalization, the state MUST match one of the known final/interim tokens by **exact ASCII string equality**. Clients MUST NOT collapse repeated separators, trim whitespace, or apply Unicode case-folding beyond ASCII lowercase. Any other value — including novel `TASK_STATE_*` inputs the client does not recognize — is "unknown" and extraction returns null (step 4).
+2. **Final states** (`completed`, `failed`, `canceled`, `rejected`):
+   a. Look in `artifacts[0].parts[]` for DataParts (a Part whose `data` field is a non-null object — regardless of whether `kind` is present).
+   b. Use the **last** DataPart as authoritative (see [Last-DataPart Authority](#last-datapart-authority)).
+   c. **Reject wrappers**: If the DataPart's `.data` has a single key `response` containing an object, this is a framework wrapper bug. Throw or log an error.
+   d. Return `.data`.
+   e. **Fallback**: If no artifacts or no DataPart in artifacts, check `status.message.parts[]` using step 3.
+3. **Interim states** (`working`, `submitted`, `input-required`, `auth-required`):
+   a. Look in `status.message.parts[]` for DataParts.
+   b. Use the **first** DataPart.
+   c. Return `.data`, or null if no DataPart found.
+4. **Unknown states**: Return null. Forward-compatible clients SHOULD NOT throw on unrecognized status values.
+
+State normalization: strip a `TASK_STATE_` prefix, lowercase, replace underscores with hyphens. That maps both A2A 1.0 (`"TASK_STATE_INPUT_REQUIRED"`) and v0.3 (`"input-required"`) onto the same value.
+
+DataPart detection uses field presence — a 1.0 Part `{ "data": {...} }` and a v0.3 Part `{ "kind": "data", "data": {...} }` both satisfy the "non-null object `data` field" test.
+
+<CodeGroup>
+```javascript A2A Client
+function normalizeState(state) {
+  if (typeof state !== 'string') return null;
+  return state.replace(/^TASK_STATE_/, '').toLowerCase().replace(/_/g, '-');
+}
+
+function isDataPart(p) {
+  return p != null
+    && p.data != null
+    && typeof p.data === 'object'
+    && !Array.isArray(p.data);
+}
+
+// A2A 1.0 StreamResponse oneof: { task } | { message } | { statusUpdate } | { artifactUpdate }
+function unwrapStreamEnvelope(input) {
+  if (input == null || typeof input !== 'object' || Array.isArray(input)) return input;
+  const keys = Object.keys(input);
+  if (keys.length !== 1) return input;
+  const envelopeKeys = ['task', 'message', 'statusUpdate', 'artifactUpdate'];
+  if (envelopeKeys.includes(keys[0]) && typeof input[keys[0]] === 'object' && input[keys[0]] !== null) {
+    return input[keys[0]];
+  }
+  return input;
+}
+
+function extractAdcpResponseFromA2A(input) {
+  const task = unwrapStreamEnvelope(input);
+  const state = normalizeState(task?.status?.state);
+  if (!state) return null;
+
+  const FINAL = ['completed', 'failed', 'canceled', 'rejected'];
+  const INTERIM = ['working', 'submitted', 'input-required', 'auth-required'];
+
+  if (FINAL.includes(state)) {
+    // Final: last DataPart from artifacts[0]
+    const artifact = task.artifacts?.[0];
+    if (artifact?.parts) {
+      const dataParts = artifact.parts.filter(isDataPart);
+      if (dataParts.length > 0) {
+        const last = dataParts[dataParts.length - 1];
+        // Reject framework wrappers
+        const keys = Object.keys(last.data);
+        if (keys.length === 1 && keys[0] === 'response' && typeof last.data.response === 'object') {
+          throw new Error(
+            'Invalid response format: DataPart contains wrapper object {response: {...}}. ' +
+            'This is a server-side bug.'
+          );
+        }
+        return last.data;
+      }
+    }
+    // Fallback to status.message.parts
+    return extractFromMessage(task);
+  }
+
+  if (INTERIM.includes(state)) {
+    return extractFromMessage(task);
+  }
+
+  return null; // Unknown state
+}
+
+function extractFromMessage(task) {
+  const parts = task.status?.message?.parts;
+  if (!Array.isArray(parts)) return null;
+  const dataPart = parts.find(isDataPart);
+  return dataPart?.data ?? null;
+}
+```
+</CodeGroup>
+
+## Last-DataPart Authority
+
+For final states, the **last** DataPart in `artifacts[0].parts[]` is authoritative. During streaming, intermediate DataParts may contain stale progress data that gets superseded by the final result:
+
+```json
+{
+  "status": {"state": "TASK_STATE_COMPLETED"},
+  "artifacts": [{
+    "parts": [
+      {"text": "Found products"},
+      {"data": {"progress": 25}},
+      {"data": {"products": [...], "total": 12}}
+    ]
+  }]
+}
+```
+
+The extracted data is `{"products": [...], "total": 12}`, not `{"progress": 25}`.
+
+For interim states, the **first** DataPart is used because interim updates are single-event snapshots, not accumulated.
+
+## Wrapper Rejection
+
+Clients MUST reject DataParts where `.data` is wrapped in a framework-specific object:
+
+```json
+// REJECTED: wrapper detected
+{"data": {"response": {"products": [...]}}}
+
+// ACCEPTED: direct payload
+{"data": {"products": [...]}}
+```
+
+The detection rule: if `.data` has exactly one key named `response` whose value is an object, it is a wrapper. This is a server-side bug — clients should throw or log an error, not silently unwrap.
+
+Wrapper detection applies to **final states only** (artifacts). Interim status messages are lightweight progress snapshots — wrapper detection is not required for `status.message.parts`.
+
+**Exception**: A `.data` object that has `response` alongside other keys is NOT a wrapper:
+```json
+// NOT a wrapper — response is one of several keys
+{"data": {"response": {...}, "status": "completed", "errors": []}}
+```
+
+## Relationship to Error Extraction
+
+This algorithm extracts *any* AdCP data from A2A responses, including error payloads (`adcp_error`). Error-specific extraction ([Transport Error Mapping](/dist/docs/3.0.5/building/implementation/transport-errors)) is a specialization that checks for the `adcp_error` key in the extracted data.
+
+The transport-errors spec provides its own `extractAdcpErrorFromA2A` function that scans all artifacts for `adcp_error`. That function is optimized for error detection (scanning all parts for the error key). This function is the general-purpose extractor (last DataPart from first artifact). For failed tasks with a single `adcp_error` DataPart, both produce equivalent results.
+
+Typical client flow:
+
+```javascript
+function handleA2aResponse(task) {
+  const data = extractAdcpResponseFromA2A(task);
+
+  // Check if the extracted data is an error
+  if (data?.adcp_error) {
+    return handleError(data.adcp_error);
+  }
+
+  return handleSuccess(data);
+}
+```
+
+## Security Considerations
+
+### Seller-Controlled Data
+
+All data in `.artifacts[].parts[].data` and `status.message.parts[].data` is seller-controlled. The prompt injection, data boundary, and size limit requirements from [Transport Error Mapping](/dist/docs/3.0.5/building/implementation/transport-errors#security-considerations) apply.
+
+### Prototype Pollution
+
+Clients MUST NOT merge extracted DataPart payloads into application state via `Object.assign` or spread without filtering keys. Validate against the expected task response schema before merging.
+
+### FilePart URI Validation
+
+A2A responses may include FileParts. In 1.0 these are Parts carrying a `url` field (file by reference) or a `raw` field (base64 bytes); in v0.3 they carry `kind: "file"` with a `uri` field. Clients MUST validate that the URL uses the `https` scheme, contains no userinfo component, and matches an expected domain allowlist. Reject `javascript:`, `data:`, `file:`, and `http:` URIs. For `raw` parts, enforce a max decoded size before accepting.
+
+### Auth Challenge URL Validation
+
+When handling `auth-required`, the seller sends an auth challenge in `status.message.parts` — typically a DataPart with fields like `auth_scheme`, `challenge_url`, and `scopes`. A seller-controlled URL that the client opens or fetches is an OAuth-phishing and SSRF vector. Before initiating any user-facing or programmatic auth flow, clients MUST validate `challenge_url`:
+
+- Scheme MUST be `https`. Reject `http:`, `javascript:`, `data:`, `file:`.
+- URL MUST NOT contain a userinfo component (`user:pass@host` form).
+- Host MUST match the authenticated seller's registered auth origin for this agent card. Clients SHOULD maintain a per-agent allowlist seeded from the Agent Card's `supportedInterfaces[].url` origin or a declared `authOrigin` extension field — not derived from the task payload.
+- Any `redirect_uri`, `return_url`, or similar query parameter MUST be dropped or overwritten by the client before navigation. Never forward a seller-supplied redirect.
+- `scopes` MUST be treated as a request, not a grant. Show scopes to the user and obtain fresh consent for each challenge.
+
+Response-size and timeout bounds apply if the client fetches the challenge URL server-side (e.g., 256 KB response cap, 10 second timeout, redirect limit of 3).
+
+### Seller-Controlled String Hygiene
+
+All `adcp_error.message`, `adcp_error.details.*`, and status TextPart content is seller-controlled. Clients rendering these in UI MUST escape for the target context (HTML, Slack, CLI). Clients logging them MUST strip CRLF to prevent log-injection. This applies to all states carrying `adcp_error` (`failed`, `rejected`, system-initiated `canceled`) and to free-text `status.message`.
+
+### Size Limits
+
+Clients SHOULD enforce a maximum DataPart size (e.g., 1MB) before schema validation. Unlike error payloads (capped at 4096 bytes), success payloads can be larger but still need bounds.
+
+### Intermediary Injection
+
+The last-DataPart convention assumes the artifact is received intact from a single trusted sender. In multi-hop scenarios (buyer → orchestrator → seller), an intermediary could inject additional parts. Clients operating through intermediaries SHOULD validate that the artifact part count matches expectations.
+
+## Client Library Requirements
+
+Client libraries that implement this spec MUST:
+
+1. **Unwrap A2A 1.0 stream envelopes.** A single-key object with key `task`, `message`, `statusUpdate`, or `artifactUpdate` is a `StreamResponse` wrapper — unwrap to the inner object before applying the rest of the algorithm. Bare objects pass through unchanged.
+2. **Accept both A2A 1.0 and v0.3 wire shapes.** Normalize `status.state` before comparison (strip `TASK_STATE_` prefix, lowercase, underscores to hyphens). Detect DataParts by field presence (`data` is a non-null object), not by `kind`.
+3. **Branch on normalized state.** Final states (`completed`, `failed`, `canceled`, `rejected`) use artifacts; interim states (`working`, `submitted`, `input-required`, `auth-required`) use `status.message.parts`.
+4. **Use last DataPart for final states.** Skip DataParts with null, non-object, or array `.data`.
+5. **Use first DataPart for interim states.**
+6. **Detect and reject wrappers.** Single-key `{response: {...}}` payloads are bugs.
+7. **Fall back gracefully.** If artifacts are empty for a final state, check `status.message.parts`.
+8. **Handle unknown states.** Return null, do not throw.
+
+## Test Vectors
+
+Machine-readable test vectors are available at [`/static/test-vectors/a2a-response-extraction.json`](https://adcontextprotocol.org/test-vectors/a2a-response-extraction.json). Each vector contains:
+
+- `status`: the A2A task status
+- `path`: extraction path (`artifact`, `status_message`, or `none`)
+- `response`: the A2A Task or TaskStatusUpdateEvent
+- `expected_data`: the AdCP data that should be extracted (or `null`)
+- `expected_error_type`: if present, the extraction should throw (e.g., `wrapper_detected`)
+
+Client libraries SHOULD validate their extraction logic against these vectors.
+
+## See Also
+
+- [A2A Response Format](/dist/docs/3.0.5/building/integration/a2a-response-format) — canonical response structure for sellers
+- [Transport Error Mapping](/dist/docs/3.0.5/building/implementation/transport-errors) — error extraction from MCP and A2A
+- [MCP Response Extraction](/dist/docs/3.0.5/building/implementation/mcp-response-extraction) — equivalent spec for MCP
+- [A2A Guide](/dist/docs/3.0.5/building/integration/a2a-guide) — A2A transport integration

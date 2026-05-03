@@ -1,0 +1,267 @@
+---
+title: TMP for Mobile Apps
+description: How TMP integrates with mobile mediation SDKs to activate pre-negotiated AdCP packages alongside programmatic demand.
+"og:title": "AdCP TMP for Mobile Apps"
+---
+
+# TMP for Mobile Apps
+
+Mobile apps use mediation layers to select which ad network serves each impression. The mediator evaluates demand sources — ad networks, bidding partners, direct deals — and picks the winner. TMP integrates as an additional demand source within this model. It activates pre-negotiated AdCP packages that compete alongside existing network demand in the mediator's auction or waterfall.
+
+## How It Works Today
+
+A mobile publisher configures their mediation SDK with ad networks, waterfall priorities or in-app bidding rules, and placement definitions. When an ad opportunity arises, the mediator selects the best source based on expected revenue. AdCP packages have no path into this decision — they exist in the AdCP system but the mediation layer has no way to evaluate them.
+
+TMP bridges this gap. The publisher's app includes a TMP SDK that calls the TMP Router when an ad opportunity arises. Activated packages are passed to the mediation layer as custom demand sources with pre-negotiated CPMs. The mediator evaluates them alongside network bids using its standard selection logic.
+
+## Integration Model
+
+The TMP SDK sits between the app and the mediation layer. It does not replace the mediator — it feeds packages into it.
+
+```
+Ad opportunity
+  -> TMP SDK sends Context Match (content signals, placement context)
+  -> TMP SDK sends Identity Match (device token, all buyer packages)
+  -> TMP SDK joins results locally
+  -> Eligible, activated packages passed to mediator as demand sources
+  -> Mediator runs its auction / waterfall as usual
+  -> Winner serves
+```
+
+Two integration patterns cover most mobile ad formats:
+
+- **Activation**: The buyer activates a package by ID. The TMP SDK passes the package to the mediator with its pre-negotiated CPM. The mediator fetches the creative through its standard rendering path. This is the typical pattern for interstitials, rewarded video, and banners served through mediation. The product's `trusted_match` config declares activation as a supported response type.
+
+- **Creative**: The buyer returns a full creative manifest inline. The app renders the ad directly without going through the mediator. This is the typical pattern for native in-feed ads where the app controls the rendering. The product's `trusted_match` config declares creative as a supported response type.
+
+## Context Match
+
+When an ad opportunity arises, the TMP SDK sends a Context Match request to the router. The request describes the content context for the placement.
+
+### Interstitial Example
+
+A fitness app triggers an interstitial after a workout completes:
+
+#### Request
+
+```json
+{
+  "type": "context_match_request",
+  "request_id": "ctx-mob-7f3a91",
+  "property_rid": "01916f3a-b4e7-7000-8000-000000000030",
+  "property_id": "pulsefit-ios",
+  "property_type": "mobile_app",
+  "placement_id": "interstitial_main",
+  "artifact_refs": [
+    { "type": "custom", "value": "screen:workout-complete" },
+    { "type": "custom", "value": "screen:workout-summary" }
+  ]
+}
+```
+
+No package list is sent per request. The provider evaluates all eligible packages for the `interstitial_main` placement using its synced package set from media buy setup. The same packages are evaluated for every user — filtering by user would leak identity into the context path.
+
+#### Response
+
+```json
+{
+  "type": "context_match_response",
+  "request_id": "ctx-mob-7f3a91",
+  "offers": [
+    {
+      "package_id": "pkg-sports-inter-01"
+    },
+    {
+      "package_id": "pkg-nutrition-inter-02",
+      "summary": "Post-workout recovery shake promo"
+    }
+  ]
+}
+```
+
+Two packages activated. The sports gear and nutrition packages match the fitness content context. The telecom and auto packages did not match and are absent from the offers list. When the product's `trusted_match` config declares activation as the response type, offers carry just the `package_id` (plus an optional summary). The mediator will handle creative fetching.
+
+### Native Feed Example
+
+A recipe app shows sponsored content cards in its recipe feed:
+
+#### Request
+
+```json
+{
+  "type": "context_match_request",
+  "request_id": "ctx-mob-b2c419",
+  "property_rid": "01916f3a-c5f8-7000-8000-000000000031",
+  "property_id": "tastecraft-android",
+  "property_type": "mobile_app",
+  "placement_id": "banner_feed",
+  "artifact_refs": [
+    { "type": "url", "value": "https://tastecraft.example.com/weeknight-pasta-recipes" }
+  ]
+}
+```
+
+#### Response
+
+```json
+{
+  "type": "context_match_response",
+  "request_id": "ctx-mob-b2c419",
+  "offers": [
+    {
+      "package_id": "pkg-grocery-native-01",
+      "brand": { "domain": "freshmart.example.com" },
+      "price": { "amount": 6.50, "currency": "USD", "model": "cpm" },
+      "summary": "Pasta night ingredients — 20% off with in-app coupon",
+      "creative_manifest": {
+        "format_id": { "agent_url": "https://tastecraft.example.com", "id": "native_card" },
+        "assets": {
+          "headline": { "content": "Everything for pasta night" },
+          "body": { "content": "Fresh basil, San Marzano tomatoes, and artisan pasta. 20% off your next order." },
+          "image": { "url": "https://cdn.freshmart.example/campaigns/pasta-night-card.jpg", "width": 1200, "height": 628 },
+          "cta": { "content": "Shop Now" }
+        }
+      },
+      "macros": {
+        "campaign_ref": "fm-pasta-2026q2",
+        "promo_code": "PASTA20"
+      }
+    },
+    {
+      "package_id": "pkg-kitchenware-native-02",
+      "brand": { "domain": "ironpan.example.com", "brand_id": "ironpan" },
+      "summary": "Cast iron skillet — pairs with pasta recipes",
+      "creative_manifest": {
+        "format_id": { "agent_url": "https://tastecraft.example.com", "id": "native_card" },
+        "assets": {
+          "headline": { "content": "The only pan you need" },
+          "body": { "content": "Pre-seasoned 12-inch cast iron. Free shipping this week." },
+          "image": { "url": "https://cdn.ironpan.example/campaigns/skillet-card.jpg", "width": 1200, "height": 628 },
+          "cta": { "content": "Learn More" }
+        }
+      }
+    }
+  ]
+}
+```
+
+When the product's `trusted_match` config declares creative as the response type, the buyer returns full creative details inline. The app has everything it needs to render the native card without a separate creative fetch. The meal kit package (`pkg-meal-native-03`) did not match and is absent from the response.
+
+## Identity Match
+
+The TMP SDK sends an Identity Match request with a publisher-scoped device token. This request is structurally separate from Context Match — it carries no content signals and is sent with temporal decorrelation (a random delay of 100-2000ms).
+
+The `package_ids` list includes all active packages for the buyer, not just the packages from the current placement. Sending only the placement-specific subset would let the buyer correlate Identity Match with Context Match by comparing package sets.
+
+#### Request
+
+```json
+{
+  "type": "identity_match_request",
+  "request_id": "id-mob-e4d782",
+  "identities": [
+    { "user_token": "tok_idfv_a9c3e7", "uid_type": "publisher_first_party" },
+    { "user_token": "A1B2C3D4-E5F6-7890-1234-567890ABCDEF", "uid_type": "maid" }
+  ],
+  "consent": {
+    "gpp": "DBACNYA~CPXxRfAPXxRfAAfKABENB-CgAAAAAAAAAAYgAAAAAAAA"
+  },
+  "package_ids": [
+    "pkg-sports-inter-01",
+    "pkg-nutrition-inter-02",
+    "pkg-telecom-inter-03",
+    "pkg-auto-inter-04",
+    "pkg-sports-banner-05",
+    "pkg-nutrition-banner-06",
+    "pkg-sports-rewarded-07"
+  ]
+}
+```
+
+Seven package IDs — all active packages for this buyer across every placement and format, not just the two that were activated by Context Match.
+
+#### Response
+
+```json
+{
+  "type": "identity_match_response",
+  "request_id": "id-mob-e4d782",
+  "eligible_package_ids": [
+    "pkg-sports-inter-01",
+    "pkg-nutrition-inter-02",
+    "pkg-auto-inter-04",
+    "pkg-sports-banner-05",
+    "pkg-sports-rewarded-07"
+  ],
+  "ttl_sec": 60
+}
+```
+
+Only eligible packages are listed. The buyer computes eligibility from frequency caps, audience membership, purchase history, and any other identity-based signals. The reasons are opaque to the publisher. The publisher does not learn why `pkg-telecom-inter-03` is ineligible — just that it is absent from the list.
+
+The `ttl_sec` tells the router how long to cache this response. During the TTL window, the router uses cached eligibility to fill interstitials, banners, and rewarded ads without re-querying the buyer.
+
+## Joining and Activation
+
+The TMP SDK joins Context Match and Identity Match results locally. Only packages that appear in both responses — activated by context and eligible by identity — proceed to the mediator.
+
+### Interstitial Activation
+
+From the interstitial example above:
+
+| Package | Context Match | Identity Match | Result |
+|---|---|---|---|
+| `pkg-sports-inter-01` | Activated | Eligible | Passed to mediator |
+| `pkg-nutrition-inter-02` | Activated | Eligible | Passed to mediator |
+| `pkg-telecom-inter-03` | Not activated | Ineligible | Skipped |
+| `pkg-auto-inter-04` | Not activated | Eligible | Skipped (no context match) |
+
+Two packages pass: `pkg-sports-inter-01` and `pkg-nutrition-inter-02`. The TMP SDK registers them as custom demand sources in the mediation layer with their pre-negotiated CPMs.
+
+```
+Mediation auction:
+  Network A bid:       $6.50 CPM
+  Network B bid:       $5.20 CPM
+  pkg-sports-inter-01: $8.00 CPM (pre-negotiated)
+  pkg-nutrition-inter-02: $7.00 CPM (pre-negotiated)
+
+Winner: pkg-sports-inter-01 at $8.00 CPM
+  -> Mediator serves the sports gear interstitial
+```
+
+If no AdCP package wins, the mediator serves a network ad as usual. TMP ensures AdCP packages were considered — it does not override the mediator's selection logic.
+
+### Native Feed Activation
+
+For native ads where the product's `trusted_match` config declares creative as the response type, the app renders directly from the creative manifest returned in the Context Match response. The mediator is not involved. The app intersects the context match offers with `eligible_package_ids` from the identity match, picks the best eligible offer using its own ranking logic, and renders the native card using the `creative_manifest` assets.
+
+## Rewarded Video
+
+Rewarded video follows the same activation pattern as interstitials. The placement identifies the reward slot:
+
+```json
+{
+  "type": "context_match_request",
+  "request_id": "ctx-mob-c8f201",
+  "property_rid": "01916f3a-d6a9-7000-8000-000000000032",
+  "property_id": "puzzlequest-ios",
+  "property_type": "mobile_app",
+  "placement_id": "rewarded_video",
+  "artifact_refs": [
+    { "type": "custom", "value": "screen:level-complete-42" }
+  ]
+}
+```
+
+The mediator handles rewarded video completion callbacks and reward granting. TMP activates packages; the mediator manages the reward lifecycle.
+
+## Privacy Considerations
+
+Mobile TMP follows the same structural separation as all surfaces:
+
+- **Context Match** carries content signals and placement data. No device identifiers, no user tokens, no IDFA/IDFV in the request.
+- **Identity Match** carries only a publisher-scoped device token and the full list of buyer package IDs. No content signals, no screen names, no topic IDs.
+- **Temporal decorrelation** between the two requests prevents timing-based correlation. The TMP SDK introduces a random delay (100-2000ms) before sending the Identity Match request.
+- **Package set decorrelation**: Context Match sends no package list — the provider evaluates the same synced package set for every user on a placement. Identity Match sends all packages for the buyer. Neither path reveals which packages are relevant to the current opportunity.
+
+The publisher performs the intersection locally after both responses arrive. The buyer never sees the joined result.

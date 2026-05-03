@@ -1,0 +1,1015 @@
+---
+title: Collections and installments
+description: "AdCP collections and installments — model podcast, CTV, and streaming content as dimensions on media products. Enables collection-level targeting and installment-specific ad placement."
+"og:title": "AdCP — Collections and installments"
+testable: true
+---
+
+{/* Using latest because this schema is not yet released in any version.
+     Update to correct version alias after the next release. */}
+
+A [product](/dist/docs/3.0.5/media-buy/product-discovery/media-products) describes inventory along three independent axes:
+
+- **Publisher properties** — WHERE the ad runs (youtube.com, spotify.com)
+- **Collections / installments** — WHAT CONTENT the ad runs in or around (a specific series and its installments)
+- **Placements** — WHAT POSITION the ad appears in (pre-roll, mid-roll, host read)
+
+Collections and placements are parallel dimensions, not hierarchical. "Pre-roll" is a position. "Pinnacle Challenge" is content. A product combines them: "pre-roll on Pinnacle Challenge on Acme Streaming."
+
+## Channel mapping
+
+The collection/installment model maps to familiar concepts across media channels:
+
+| Channel | Collection = | Installment = | Example |
+|---|---|---|---|
+| Podcast | Program | Episode | "Serial" → "Chapter 1" |
+| Linear TV / CTV | Series | Episode / Airing | "Monday Night Football" → "Week 12" |
+| Print / Magazine | Publication | Issue | "Vogue Germany" → "May 2026" |
+| Newsletter | Publication | Edition | "Money Stuff" → "Tuesday March 24" |
+| YouTube / Social | Series | Video / Post | "Hot Ones" → "Gordon Ramsay" |
+| DOOH | Network / Loop | Rotation | "Times Square Loop" → "March Rotation" |
+| Influencer | Campaign | Post / Drop | "Spring Collection" → "Launch Post" |
+| Cinema | Run | Screening | "Summer Blockbuster Run" → "Opening Weekend" |
+| Radio | Program | Broadcast | "Morning Drive" → "March 24 Broadcast" |
+
+The `kind` field on each collection indicates how to interpret it and its installments.
+
+## The collection object
+
+A collection is a persistent content program that produces installments over time. Collections work like properties — publishers declare them in their `adagents.json`, and products reference them via `collections` selectors with `publisher_domain` and `collection_ids`.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `collection_id` | string | Yes | Publisher-assigned identifier. Declared in the publisher's `adagents.json`. Products reference collections via `collections` selectors. Use distribution identifiers for cross-seller matching. |
+| `kind` | string | No | What kind of content program: `series` (TV/podcast), `publication` (print issues), `event_series` (live events), `rotation` (DOOH). Defaults to `series`. |
+| `name` | string | Yes | Human-readable collection name |
+| `description` | string | No | What the collection is about |
+| `genre` | string[] | No | Genre tags. When `genre_taxonomy` is present, values are taxonomy IDs (e.g., IAB Content Taxonomy 3.0). Otherwise free-form. |
+| `genre_taxonomy` | string | No | Taxonomy system for genre values (e.g., `iab_content_3.0`). Recommended for machine-readable brand safety. |
+| `language` | string | No | Primary language (BCP 47) |
+| `content_rating` | object | No | Baseline rating: `system` + `rating`. Systems: `tv_parental`, `mpaa`, `podcast`, `esrb`, `bbfc`, `fsk`, `acb`, `custom`. Episodes can override. |
+| `cadence` | string | No | `daily`, `weekly`, `seasonal`, `event`, `irregular` |
+| `season` | string | No | Current or most recent season identifier (e.g., `"3"`, `"2026"`) |
+| `status` | string | No | `active`, `hiatus`, `ended`, `upcoming` |
+| `production_quality` | string | No | `professional`, `prosumer`, `ugc`. Seller-declared. Maps to OpenRTB `content.prodq`. |
+| `talent` | array | No | Hosts, recurring cast, creators. Each entry has `role`, `name`, and optional `brand_url` linking to [brand.json](/dist/docs/3.0.5/brand-protocol/brand-json). |
+| `special` | object | No | When present, this collection is a special — content anchored to a real-world event or occasion. See [specials and limited series](#specials-and-limited-series). |
+| `limited_series` | object | No | When present, this collection is a limited series — a bounded run with a defined arc and end date. See [specials and limited series](#specials-and-limited-series). |
+| `distribution` | array | No | Where this collection is distributed, with platform-specific identifiers per publisher. |
+| `deadline_policy` | object | No | Default deadline rules for installments. Agents compute absolute deadlines from `scheduled_at` minus `lead_days`. Episodes with explicit `deadlines` override. See [deadline policy](#deadline-policy). |
+| `related_collections` | array | No | Relationships to other collections: `spinoff`, `companion`, `sequel`, `prequel`, `crossover`. Each entry has `collection_id` + `relationship`. References are scoped to the same publisher's `adagents.json`. Symmetric types (`companion`, `crossover`) do not require both collections to declare. |
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/3.0.5/core/collection.json",
+  "collection_id": "pinnacle_challenge",
+  "name": "The Pinnacle Challenge",
+  "description": "Competition reality collection with extreme physical and mental challenges",
+  "genre": ["IAB1", "IAB1-6"],
+  "genre_taxonomy": "iab_content_3.0",
+  "language": "en",
+  "content_rating": {
+    "system": "tv_parental",
+    "rating": "TV-PG"
+  },
+  "cadence": "weekly",
+  "season": "1",
+  "status": "active",
+  "production_quality": "professional",
+  "talent": [
+    {
+      "role": "host",
+      "name": "Jordan Vega",
+      "brand_url": "https://jordanvega.example.com/brand.json"
+    }
+  ],
+  "distribution": [
+    {
+      "publisher_domain": "youtube.com",
+      "identifiers": [
+        { "type": "youtube_channel_id", "value": "UCexample123456" }
+      ]
+    },
+    {
+      "publisher_domain": "acmestreaming.example.com",
+      "identifiers": [
+        { "type": "imdb_id", "value": "tt9876543" }
+      ]
+    }
+  ]
+}
+```
+
+## The installment object
+
+An installment is a specific installment of a collection. Not all installments will be known in advance — a weekly podcast may only have next week's installment scheduled, and some installments may be tentative (a playoff Game 7 depends on Game 6).
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `installment_id` | string | Yes | Unique identifier within the collection |
+| `collection_id` | string | When needed | Parent collection. Required when the product spans multiple collections. |
+| `name` | string | No | Episode title |
+| `season` | string | No | Season identifier (e.g., `"1"`, `"2026"`) |
+| `installment_number` | string | No | Episode number within the season |
+| `scheduled_at` | datetime | No | When the installment airs or publishes |
+| `status` | string | No | `scheduled`, `tentative`, `live`, `postponed`, `cancelled`, `aired`, `published` |
+| `duration_seconds` | integer | No | Expected duration |
+| `flexible_end` | boolean | No | Whether end time is approximate (live events) |
+| `valid_until` | datetime | No | When this data expires. Agents should re-query before committing budget to tentative installments. |
+| `content_rating` | object | No | Overrides the collection's baseline when present |
+| `topics` | string[] | No | Installment-level content topics for brand safety. Uses collection's `genre_taxonomy` when present. |
+| `special` | object | No | Installment-specific event context. When present, this installment is anchored to a real-world event. Overrides the collection-level `special`. |
+| `guest_talent` | array | No | Installment-specific guests. Additive to the collection's recurring `talent`. |
+| `ad_inventory` | object | No | Break-based ad inventory configuration |
+| `deadlines` | object | No | Booking, cancellation, and material submission deadlines for this installment. See [installment deadlines](#installment-deadlines). |
+| `derivative_of` | object | No | When this installment is a clip, highlight, or recap derived from a full installment. Has `installment_id` + `type` (`clip`, `highlight`, `recap`, `trailer`, `bonus`). Source `installment_id` must be in the same response. |
+
+### Episode status lifecycle
+
+| Status | Meaning |
+|--------|---------|
+| `scheduled` | Confirmed, will happen |
+| `tentative` | May not happen (depends on external conditions) |
+| `live` | Currently airing or streaming right now |
+| `postponed` | Was scheduled but delayed to a future date |
+| `cancelled` | Will not happen |
+| `aired` | Already broadcast — for back-catalog and replay inventory |
+| `published` | Already released — for on-demand catch-up inventory |
+
+Expected transitions: `scheduled` or `tentative` → `live` → `aired` or `published`. A `scheduled` installment may become `postponed` (delayed) or `cancelled`. A `postponed` installment returns to `scheduled` when rescheduled. A `tentative` installment resolves to `scheduled`, `cancelled`, or `postponed`.
+
+### Inheritance from collections
+
+Episodes inherit collection-level fields they do not override:
+
+- **`content_rating`**: Episode value overrides collection baseline. When absent, the collection's rating applies.
+- **`special`**: Episode value overrides collection-level special. When absent, the collection's special applies. A regular collection can have event-anchored installments (e.g., a daily news collection with an election night special).
+- **`guest_talent`**: Additive to the collection's recurring `talent` — does not replace it.
+- **`topics`**: Additive context for brand safety, not a replacement for the collection's `genre`.
+
+Buyer agents evaluate both levels: the collection baseline provides the default safety profile, and installment fields refine it for specific installments.
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/3.0.5/core/installment.json",
+  "installment_id": "s1e03_the_wall",
+  "collection_id": "pinnacle_challenge",
+  "name": "The Wall",
+  "season": "1",
+  "installment_number": "3",
+  "scheduled_at": "2026-04-07T20:00:00Z",
+  "status": "scheduled",
+  "duration_seconds": 3600,
+  "valid_until": "2026-04-06T20:00:00Z",
+  "content_rating": {
+    "system": "tv_parental",
+    "rating": "TV-14"
+  },
+  "topics": ["IAB17-18"],
+  "guest_talent": [
+    {
+      "role": "guest",
+      "name": "Samira Okafor",
+      "brand_url": "https://samiraokafor.example.com/brand.json"
+    }
+  ],
+  "ad_inventory": {
+    "expected_breaks": 4,
+    "total_ad_seconds": 480,
+    "max_ad_duration_seconds": 120,
+    "unplanned_breaks": false,
+    "supported_formats": ["video", "audio"]
+  }
+}
+```
+
+## Installment deadlines
+
+Episodes can carry booking, cancellation, and material submission deadlines. These apply to any channel where inventory is tied to a scheduled unit — print issues, podcast installments, influencer posts, linear TV airings, DOOH rotations.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `booking_deadline` | datetime | Last date/time to book a placement in this installment |
+| `cancellation_deadline` | datetime | Last date/time to cancel without penalty |
+| `material_deadlines` | array | Ordered stages for creative material submission |
+
+Deadlines MUST be chronologically ordered: `booking_deadline` ≤ `cancellation_deadline` ≤ each `material_deadlines[n].due_at` (ascending by array index) ≤ the installment's `scheduled_at`. Buyer agents SHOULD reject installments where deadlines violate this ordering.
+
+Each material deadline has:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `stage` | string | Yes | Stage identifier (`draft`, `final`, or seller-defined) |
+| `due_at` | datetime | Yes | When materials for this stage are due |
+| `label` | string | No | What the seller needs (e.g., "Talking points", "Press-ready PDF with bleed") |
+
+The two-stage pattern — draft then final — covers a wide range of channels:
+
+| Channel | Draft stage | Final stage |
+|---------|-----------|------------|
+| Print | Raw artwork for review | Press-ready PDF with bleed |
+| Podcast (host read) | Talking points and brief | Approved script |
+| Influencer | Brand guidelines and key messages | Approved post content |
+| Linear TV | Rough cut | Encoded broadcast spot |
+| DOOH | Draft creative for review | Final assets per screen specs |
+
+### Podcast with deadlines
+
+```json
+{
+  "installment_id": "ep47",
+  "name": "The future of autonomous supply chains",
+  "scheduled_at": "2026-04-07T10:00:00Z",
+  "status": "scheduled",
+  "guest_talent": [
+    { "role": "guest", "name": "Kai Tanaka" }
+  ],
+  "deadlines": {
+    "booking_deadline": "2026-03-28T17:00:00Z",
+    "cancellation_deadline": "2026-03-31T17:00:00Z",
+    "material_deadlines": [
+      {
+        "stage": "draft",
+        "due_at": "2026-04-01T17:00:00Z",
+        "label": "Talking points and brand guidelines for host read"
+      },
+      {
+        "stage": "final",
+        "due_at": "2026-04-04T17:00:00Z",
+        "label": "Approved script"
+      }
+    ]
+  }
+}
+```
+
+### Print issue with deadlines
+
+```json
+{
+  "installment_id": "2026-05",
+  "name": "Mai 2026",
+  "season": "2026",
+  "installment_number": "5",
+  "scheduled_at": "2026-05-01T00:00:00+02:00",
+  "status": "scheduled",
+  "deadlines": {
+    "booking_deadline": "2026-03-15T17:00:00+01:00",
+    "cancellation_deadline": "2026-03-22T17:00:00+01:00",
+    "material_deadlines": [
+      {
+        "stage": "draft",
+        "due_at": "2026-03-29T17:00:00+01:00",
+        "label": "Raw artwork for review and color proofing"
+      },
+      {
+        "stage": "final",
+        "due_at": "2026-04-05T17:00:00+02:00",
+        "label": "Press-ready PDF/X-4, CMYK, 300 DPI, 3mm bleed"
+      }
+    ]
+  }
+}
+```
+
+### Influencer post with deadlines
+
+```json
+{
+  "installment_id": "post_2026_04_10",
+  "name": "Spring campaign post",
+  "scheduled_at": "2026-04-10T12:00:00Z",
+  "status": "scheduled",
+  "deadlines": {
+    "cancellation_deadline": "2026-04-03T17:00:00Z",
+    "material_deadlines": [
+      {
+        "stage": "draft",
+        "due_at": "2026-04-05T17:00:00Z",
+        "label": "Key messages, product images, and brand guidelines"
+      },
+      {
+        "stage": "final",
+        "due_at": "2026-04-08T17:00:00Z",
+        "label": "Approved post content and caption"
+      }
+    ]
+  }
+}
+```
+
+Deadlines are optional. Run-of-collection digital products typically omit them. The pattern is most valuable for guaranteed inventory with advance material requirements.
+
+## Deadline policy
+
+High-frequency collections (daily newspapers, weekly podcasts) would generate large payloads if every installment carried explicit deadlines. The `deadline_policy` on a collection declares lead-time rules that agents use to compute deadlines from each installment's `scheduled_at`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `booking_lead_days` | integer | Days before `scheduled_at` by which the placement must be booked |
+| `cancellation_lead_days` | integer | Days before `scheduled_at` by which cancellation is penalty-free |
+| `material_stages` | array | Default material submission stages with `stage`, `lead_days`, and optional `label` |
+| `business_days_only` | boolean | When true, lead_days counts Mon-Fri only. Defaults to false. |
+
+### Daily newspaper with policy
+
+Instead of enumerating deadlines for every issue, the collection declares the rule once:
+
+```json
+{
+  "collection_id": "bergedorfer_zeitung",
+  "name": "Bergedorfer Zeitung",
+  "kind": "publication",
+  "cadence": "daily",
+  "status": "active",
+  "deadline_policy": {
+    "booking_lead_days": 4,
+    "cancellation_lead_days": 3,
+    "material_stages": [
+      { "stage": "final", "lead_days": 2, "label": "Druckfertige PDF" }
+    ],
+    "business_days_only": true
+  }
+}
+```
+
+For the April 1 issue (`scheduled_at: "2026-04-01"`), an agent computes:
+- **Booking deadline**: 4 business days before = March 26
+- **Cancellation deadline**: 3 business days before = March 27
+- **Material due**: 2 business days before = March 28
+
+Episodes with explicit `deadlines` override the policy. A special edition with tighter turnaround declares its own deadlines; regular issues inherit from the policy.
+
+### Weekly podcast with policy
+
+```json
+{
+  "collection_id": "wonderstruck_weekly",
+  "name": "Wonderstruck Weekly",
+  "kind": "series",
+  "cadence": "weekly",
+  "deadline_policy": {
+    "booking_lead_days": 10,
+    "cancellation_lead_days": 7,
+    "material_stages": [
+      { "stage": "draft", "lead_days": 5, "label": "Talking points and brand guidelines" },
+      { "stage": "final", "lead_days": 3, "label": "Approved script for host read" }
+    ]
+  }
+}
+```
+
+### Policy vs explicit deadlines
+
+| Scenario | Use |
+|----------|-----|
+| Daily newspaper, consistent deadlines | `deadline_policy` on collection |
+| Weekly podcast, consistent deadlines | `deadline_policy` on collection |
+| Monthly magazine, varying lead times per issue | Explicit `deadlines` on each installment |
+| One-off special with tight turnaround | Explicit `deadlines` on that installment, policy covers the rest |
+
+When both are present, explicit installment `deadlines` take precedence. An agent SHOULD NOT compute deadlines from the policy for installments that have their own.
+
+## Specials and limited series
+
+Collections can carry optional annotations that signal their nature to buyer agents. These are composable — a collection can be both a special and a limited series (e.g., a 4-installment Olympics documentary).
+
+### Specials
+
+A special is content anchored to a real-world event or occasion. The `special` object can appear on both collections and installments. On a collection, it means the entire collection is event-anchored. On an installment, it means that specific installment is event-anchored (and overrides the collection-level special when present, following the same inheritance pattern as `content_rating`).
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | Yes | Name of the event (e.g., "Olympics 2028", "Super Bowl LXI") |
+| `category` | string | No | `awards`, `championship`, `concert`, `conference`, `election`, `festival`, `gala`, `holiday`, `premiere`, `product_launch`, `reunion`, `tribute` |
+| `starts` | datetime | No | When the event starts |
+| `ends` | datetime | No | When the event ends. Omit for single-day events. |
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/3.0.5/core/collection.json",
+  "collection_id": "apex_finals_2026",
+  "name": "Apex Championship Finals 2026",
+  "genre": ["IAB17", "IAB17-12"],
+  "genre_taxonomy": "iab_content_3.0",
+  "cadence": "event",
+  "status": "upcoming",
+  "special": {
+    "name": "Apex Championship Finals 2026",
+    "category": "championship",
+    "starts": "2026-05-18T19:00:00Z",
+    "ends": "2026-05-25T23:00:00Z"
+  },
+  "talent": [
+    { "role": "host", "name": "Deshawn Moreaux" }
+  ]
+}
+```
+
+The `special` field is distinct from `cadence`. Cadence describes release frequency (`event` = one-time or occasional). The `special` object describes what real-world event anchors the content and when it happens — information a buyer agent needs to evaluate timing relevance and premium pricing.
+
+### Limited series
+
+A limited series is a bounded content run with a defined arc. Unlike ongoing series, limited series have a planned end.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `total_installments` | integer | No | Planned number of installments |
+| `starts` | datetime | No | When the series begins |
+| `ends` | datetime | No | When the series ends |
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/3.0.5/core/collection.json",
+  "collection_id": "ember_s3",
+  "name": "The Ember",
+  "description": "Award-winning drama following a chef navigating the pressure of running a top restaurant",
+  "genre": ["IAB1", "IAB1-7"],
+  "genre_taxonomy": "iab_content_3.0",
+  "cadence": "weekly",
+  "status": "active",
+  "limited_series": {
+    "total_installments": 8,
+    "starts": "2026-02-28T21:00:00Z",
+    "ends": "2026-04-18T21:00:00Z"
+  }
+}
+```
+
+This tells buyer agents that The Ember is a finite opportunity — 8 installments over 7 weeks. The `limited_series` field is distinct from `season`: a collection can have seasons without being limited (ongoing series have seasons too), and a limited series is a structural commitment that the collection has a planned end.
+
+## How products reference collections
+
+Products reference collections via `collections` — an array of `{publisher_domain, collection_ids}` selectors that point to collections declared in the publisher's `adagents.json`. This is the same pattern as `publisher_properties`. Buyers resolve full collection objects from the publisher's `adagents.json`. Episodes are listed per-product in the `installments` array, since different products may scope different installments of the same collection.
+
+### Run-of-collection (no specific installments)
+
+A product can reference a collection without listing installments. This means "inventory across this collection, whatever installments air during the flight dates":
+
+```json
+{
+  "product_id": "pinnacle_run_of_collection",
+  "name": "Pinnacle Challenge Run of Show",
+  "collections": [{ "publisher_domain": "acmestreaming.example.com", "collection_ids": ["pinnacle_challenge"] }],
+  "placements": [
+    { "placement_id": "pre_roll", "name": "Pre-roll" }
+  ],
+  "delivery_type": "non_guaranteed",
+  "pricing_options": [
+    { "pricing_option_id": "cpm", "pricing_model": "cpm", "floor_price": 25.00, "currency": "USD" }
+  ]
+}
+```
+
+### Specific installments
+
+For premium or guaranteed buys, the seller scopes to specific installments:
+
+```json
+{
+  "product_id": "pinnacle_finale",
+  "name": "Pinnacle Challenge Season Finale Sponsorship",
+  "collections": [{ "publisher_domain": "acmestreaming.example.com", "collection_ids": ["pinnacle_challenge"] }],
+  "installments": [
+    {
+      "installment_id": "s1e10_finale",
+      "name": "The Grand Finale",
+      "scheduled_at": "2026-06-02T20:00:00Z",
+      "status": "scheduled",
+      "ad_inventory": {
+        "expected_breaks": 6,
+        "total_ad_seconds": 720,
+        "unplanned_breaks": false
+      }
+    }
+  ],
+  "delivery_type": "guaranteed",
+  "pricing_options": [
+    { "pricing_option_id": "flat", "pricing_model": "flat_rate", "fixed_price": 2000000, "currency": "USD" }
+  ]
+}
+```
+
+## get_products response structure
+
+Products reference collections via `collections` selectors — the same pattern as `publisher_properties`. Each selector has a `publisher_domain` and `collection_ids` array pointing to collections declared in that publisher's `adagents.json`. Buyers resolve full collection objects from `adagents.json`.
+
+```json
+{
+  "products": [
+    {
+      "product_id": "pinnacle_april_bundle",
+      "name": "Pinnacle Challenge April Sponsorship",
+      "collections": [{ "publisher_domain": "acmestreaming.example.com", "collection_ids": ["pinnacle_challenge"] }],
+      "installments": [
+        {
+          "installment_id": "s1e03",
+          "name": "The Wall",
+          "scheduled_at": "2026-04-07T20:00:00Z",
+          "status": "scheduled",
+          "content_rating": { "system": "tv_parental", "rating": "TV-14" },
+          "guest_talent": [{ "role": "guest", "name": "Samira Okafor" }],
+          "valid_until": "2026-04-06T20:00:00Z"
+        },
+        {
+          "installment_id": "s1e04",
+          "name": "TBD",
+          "scheduled_at": "2026-04-14T20:00:00Z",
+          "status": "tentative",
+          "valid_until": "2026-04-07T20:00:00Z"
+        }
+      ],
+      "placements": [
+        { "placement_id": "pre_roll", "name": "Pre-roll" },
+        { "placement_id": "mid_roll", "name": "Mid-roll" }
+      ],
+      "delivery_type": "guaranteed",
+      "pricing_options": [
+        { "pricing_option_id": "flat", "pricing_model": "flat_rate", "fixed_price": 500000, "currency": "USD" }
+      ]
+    }
+  ]
+}
+```
+
+## Canonical collection identity
+
+A collection's identity is **`{publisher_domain, collection_id}`** — scoped to the publisher that declares it in their `adagents.json`. This means any collection creator can serve as their own canonical registry.
+
+### Creator as canonical publisher
+
+A creator like MrBeast declares collections in `mrbeast.com/adagents.json`. Any seller packaging that creator's inventory — a YouTube sales house, a CTV distributor, the creator's own team — references the same canonical source:
+
+```json
+{
+  "products": [
+    {
+      "product_id": "beast_games_youtube",
+      "name": "Beast Games - YouTube Pre-roll",
+      "collections": [
+        { "publisher_domain": "mrbeast.com", "collection_ids": ["beast_games"] }
+      ],
+      "publisher_properties": [
+        { "publisher_domain": "youtube.com", "property_ids": ["UCX6OQ3DkcsbYNE6H8uQQuVA"] }
+      ],
+      "delivery_type": "non_guaranteed",
+      "pricing_options": [
+        { "pricing_option_id": "cpm", "pricing_model": "cpm", "floor_price": 18.00, "currency": "USD" }
+      ]
+    }
+  ]
+}
+```
+
+The buyer sees `mrbeast.com` + `beast_games` regardless of which seller or platform the inventory comes from. No cross-referencing of IMDb IDs or distribution identifiers needed — the creator's domain **is** the registry.
+
+### When creators don't publish adagents.json
+
+Not every collection has a creator-owned domain. A streaming platform's original series may only exist in that platform's `adagents.json`. In that case, the platform is the canonical publisher and `collections` points to their domain. Distribution identifiers on the collection object handle cross-seller matching when the same collection appears on multiple platforms without a single canonical source.
+
+### Identity resolution priority
+
+Buyer agents should resolve collection identity in this order:
+
+1. **Canonical publisher** — `publisher_domain` + `collection_id` from the creator's own `adagents.json`. Strongest signal.
+2. **Platform-independent identifiers** — `imdb_id`, `gracenote_id`, `eidr_id` from the collection's `distribution` array. Reliable cross-reference when no canonical publisher exists.
+3. **Platform-specific identifiers** — Spotify, Apple, YouTube IDs. Useful within a platform but not universal.
+
+## Discovery examples
+
+### CTV collection with installments
+
+A streaming platform selling sponsorships against a known collection with upcoming installments:
+
+```json
+{
+  "products": [
+    {
+      "product_id": "nova_kitchen_april",
+      "name": "Nova Kitchen - April Episodes",
+      "collections": [{ "publisher_domain": "novastreaming.example.com", "collection_ids": ["nova_kitchen"] }],
+      "publisher_properties": [{
+        "publisher_domain": "novastreaming.example.com",
+        "selection_type": "all"
+      }],
+      "installments": [
+        {
+          "installment_id": "s3e09",
+          "name": "Fire and Ice",
+          "scheduled_at": "2026-04-05T21:00:00Z",
+          "status": "scheduled",
+          "duration_seconds": 2700,
+          "ad_inventory": {
+            "expected_breaks": 3,
+            "total_ad_seconds": 360,
+            "max_ad_duration_seconds": 30,
+            "unplanned_breaks": false,
+            "supported_formats": ["video"]
+          }
+        },
+        {
+          "installment_id": "s3e10",
+          "scheduled_at": "2026-04-12T21:00:00Z",
+          "status": "tentative",
+          "valid_until": "2026-04-06T00:00:00Z"
+        }
+      ],
+      "placements": [
+        { "placement_id": "pre_roll", "name": "Pre-roll (15s)" },
+        { "placement_id": "mid_roll", "name": "Mid-roll (30s)" }
+      ],
+      "delivery_type": "guaranteed",
+      "pricing_options": [
+        { "pricing_option_id": "cpm_fixed", "pricing_model": "cpm", "fixed_price": 38.00, "currency": "USD" }
+      ]
+    }
+  ]
+}
+```
+
+### Related collections and derivative content
+
+A streaming platform offering a main collection and its companion after-collection, plus highlight clips:
+
+```json
+{
+  "products": [
+    {
+      "product_id": "nova_highlights",
+      "name": "Nova Kitchen Highlights Package",
+      "collections": [{ "publisher_domain": "novastreaming.example.com", "collection_ids": ["nova_kitchen"] }],
+      "installments": [
+        {
+          "installment_id": "s3e09",
+          "name": "Fire and Ice",
+          "status": "aired",
+          "duration_seconds": 2700
+        },
+        {
+          "installment_id": "s3e09_highlights",
+          "name": "Fire and Ice - Best Moments",
+          "status": "published",
+          "duration_seconds": 180,
+          "derivative_of": {
+            "installment_id": "s3e09",
+            "type": "highlight"
+          }
+        }
+      ],
+      "placements": [
+        { "placement_id": "pre_roll", "name": "Pre-roll (15s)" }
+      ],
+      "delivery_type": "non_guaranteed",
+      "pricing_options": [
+        { "pricing_option_id": "cpm", "pricing_model": "cpm", "floor_price": 12.00, "currency": "USD" }
+      ]
+    }
+  ]
+}
+```
+
+The highlight clip references its source installment via `derivative_of`. The companion after-collection is linked via `related_collections` on the main collection — buyers targeting Nova Kitchen can discover the after-collection as an additional reach opportunity.
+
+### Podcast with distribution
+
+A podcast network selling across multiple distribution platforms. The collection's `distribution` array in `adagents.json` captures the full distribution footprint; buyers use distribution identifiers for cross-seller matching:
+
+```json
+{
+  "products": [
+    {
+      "product_id": "wonderstruck_april",
+      "name": "Wonderstruck Weekly - April Episodes",
+      "collections": [{ "publisher_domain": "wonderstruck.example.com", "collection_ids": ["wonderstruck_weekly"] }],
+      "installments": [
+        {
+          "installment_id": "ep47",
+          "name": "The future of autonomous supply chains",
+          "scheduled_at": "2026-04-07T10:00:00Z",
+          "status": "scheduled",
+          "guest_talent": [
+            { "role": "guest", "name": "Kai Tanaka", "brand_url": "https://kaitanaka.example.com/brand.json" }
+          ]
+        },
+        {
+          "installment_id": "ep48",
+          "scheduled_at": "2026-04-14T10:00:00Z",
+          "status": "tentative"
+        },
+        {
+          "installment_id": "ep49",
+          "scheduled_at": "2026-04-21T10:00:00Z",
+          "status": "tentative"
+        }
+      ],
+      "placements": [
+        { "placement_id": "pre_roll", "name": "Pre-roll (30s)" },
+        { "placement_id": "mid_roll", "name": "Mid-roll host read (60s)" }
+      ],
+      "delivery_type": "guaranteed",
+      "pricing_options": [
+        { "pricing_option_id": "flat_monthly", "pricing_model": "flat_rate", "fixed_price": 15000, "currency": "USD" },
+        { "pricing_option_id": "per_episode", "pricing_model": "flat_rate", "fixed_price": 5000, "currency": "USD" }
+      ]
+    }
+  ]
+}
+```
+
+Tentative installments (ep48, ep49) have no names or guest info — they have not been produced yet. The buyer evaluates based on the collection's baseline profile and the known details of ep47.
+
+### Live event with tentative installments
+
+A sports league selling sponsorships against a live event series. Live broadcasts use `flexible_end` because game duration is unpredictable, and `unplanned_breaks` because ad breaks follow game flow (timeouts, period breaks) rather than a fixed schedule. The tentative Game 5 depends on the series outcome — it only happens if neither team wins in four games.
+
+```json
+{
+  "products": [
+    {
+      "product_id": "apex_finals_sponsorship",
+      "name": "Apex Championship Finals — Category Sponsorship",
+      "collections": [{ "publisher_domain": "apexleague.example.com", "collection_ids": ["apex_championship_2026"] }],
+      "installments": [
+        {
+          "installment_id": "finals_game4",
+          "name": "Game 4: Titan City vs Coastal FC",
+          "scheduled_at": "2026-05-18T19:00:00Z",
+          "status": "scheduled",
+          "flexible_end": true,
+          "ad_inventory": {
+            "expected_breaks": 8,
+            "total_ad_seconds": 960,
+            "max_ad_duration_seconds": 30,
+            "unplanned_breaks": true,
+            "supported_formats": ["video"]
+          }
+        },
+        {
+          "installment_id": "finals_game5",
+          "name": "Game 5 — If necessary",
+          "scheduled_at": "2026-05-21T19:00:00Z",
+          "status": "tentative",
+          "flexible_end": true,
+          "valid_until": "2026-05-19T06:00:00Z",
+          "ad_inventory": {
+            "expected_breaks": 8,
+            "total_ad_seconds": 960,
+            "max_ad_duration_seconds": 30,
+            "unplanned_breaks": true,
+            "supported_formats": ["video"]
+          }
+        }
+      ],
+      "placements": [
+        { "placement_id": "in_game_overlay", "name": "In-game overlay (10s)" },
+        { "placement_id": "halftime", "name": "Halftime feature (60s)" }
+      ],
+      "delivery_type": "guaranteed",
+      "exclusivity": "category",
+      "pricing_options": [
+        { "pricing_option_id": "per_game", "pricing_model": "flat_rate", "fixed_price": 750000, "currency": "USD" }
+      ]
+    }
+  ]
+}
+```
+
+This pattern combines several features designed for live inventory: `cadence: "event"` signals a non-recurring series, `flexible_end` tells buyers the broadcast length is approximate, and `unplanned_breaks: true` indicates ad breaks follow game flow rather than a predetermined schedule. The tentative Game 5 includes `valid_until` so buyer agents know when to re-query — if the series ends in four games, that installment will resolve to `cancelled`. Buyers should always check `valid_until` on tentative installments before committing budget.
+
+### Discovering collections
+
+Buyers discover collections through the standard `get_products` workflow. Natural language briefs drive collection selection:
+
+```json
+{
+  "buying_mode": "brief",
+  "brief": "Podcast sponsorships for technology collections reaching startup founders in April",
+  "filters": {
+    "channels": ["podcast"],
+    "start_date": "2026-04-01",
+    "end_date": "2026-04-30"
+  }
+}
+```
+
+The seller returns products with `collections` selectors. The buyer resolves full collection objects from each publisher's [adagents.json](/dist/docs/3.0.5/governance/property/adagents). There is no separate collection discovery endpoint — collections surface through product discovery and `adagents.json` crawling.
+
+## Brand safety
+
+Collections provide a two-level brand safety model: a collection baseline and per-installment overrides.
+
+### Collection baseline
+
+A collection's default brand safety profile comes from:
+- `content_rating` — the collection's declared rating system and value
+- `genre` — content categories (ideally using `genre_taxonomy` for machine-readable evaluation)
+- `talent` — hosts and recurring cast, with optional [brand.json](/dist/docs/3.0.5/brand-protocol/brand-json) references for deeper evaluation
+
+This is what buyers evaluate when individual installment content is not yet known.
+
+### Installment overrides
+
+When installment details are available, they can shift the safety profile:
+- A `content_rating` that differs from the collection baseline (this week is TV-14 instead of TV-PG)
+- `guest_talent` that changes the talent profile (a controversial guest)
+- `topics` that add installment-specific content signals
+
+### What is not modeled
+
+AdCP does not predict content safety for unknown future installments. A buyer who commits to "all April installments" buys based on the collection's baseline profile, accepting variation. The seller's content standards and the collection's track record are the buyer's basis for that decision.
+
+## Distribution identifiers
+
+Each collection's `distribution` array maps it to specific publisher platforms with platform-specific identifiers. This enables cross-seller matching: when two different sellers both offer products for the same collection, a buyer agent can match them via shared identifiers.
+
+### Cross-seller matching
+
+Platform-independent identifiers are the most reliable for deduplication:
+
+| Type | Example | Notes |
+|------|---------|-------|
+| `imdb_id` | `tt1234567` | Universal cross-platform reference |
+| `gracenote_id` | `EP012345678` | Industry standard for TV metadata |
+| `eidr_id` | `10.5240/XXXX-XXXX-XXXX-XXXX-XXXX-C` | ISO 10528 for audiovisual content |
+
+Shows SHOULD include at least one platform-independent identifier when available.
+
+### Platform-specific identifiers
+
+<CodeGroup>
+
+```json Podcast
+{
+  "distribution": [
+    {
+      "publisher_domain": "spotify.com",
+      "identifiers": [{ "type": "spotify_collection_id", "value": "4rOoJ6Egrf8K2IrywzwOMk" }]
+    },
+    {
+      "publisher_domain": "apple.com",
+      "identifiers": [{ "type": "apple_podcast_id", "value": "1234567890" }]
+    },
+    {
+      "publisher_domain": "feeds.example.com",
+      "identifiers": [{ "type": "rss_url", "value": "https://feeds.example.com/collection.xml" }]
+    }
+  ]
+}
+```
+
+```json Video / CTV
+{
+  "distribution": [
+    {
+      "publisher_domain": "youtube.com",
+      "identifiers": [{ "type": "youtube_channel_id", "value": "UCexample123456" }]
+    },
+    {
+      "publisher_domain": "acmestreaming.example.com",
+      "identifiers": [{ "type": "amazon_title_id", "value": "B0DFBT5GBP" }]
+    }
+  ]
+}
+```
+
+</CodeGroup>
+
+Available podcast types: `apple_podcast_id`, `spotify_collection_id`, `rss_url`, `podcast_guid`, `amazon_music_id`, `iheart_id`, `podcast_index_id`. Available video/CTV types: `youtube_channel_id`, `youtube_playlist_id`, `amazon_title_id`, `roku_channel_id`, `pluto_channel_id`, `tubi_id`, `peacock_id`, `tiktok_id`, `twitch_channel`. Other: `domain`, `substack_id`.
+
+## Ad inventory
+
+Episodes declare break-based ad inventory in the `ad_inventory` object:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `expected_breaks` | integer | Number of planned ad breaks |
+| `total_ad_seconds` | integer | Total seconds of ad time across all breaks |
+| `max_ad_duration_seconds` | integer | Maximum duration for a single ad within a break |
+| `unplanned_breaks` | boolean | `false`: all breaks pre-defined. `true`: breaks driven by live conditions (sports timeouts, live news). |
+| `supported_formats` | string[] | Format types supported in breaks (e.g., `"video"`, `"audio"`) |
+
+For non-break ad formats like host reads, custom integrations, or sponsorships, use product [placements](/dist/docs/3.0.5/media-buy/product-discovery/media-products#placements) instead. A podcast product might have a placement for "mid-roll host read (60s)" — that is a placement on the product, not part of `ad_inventory`.
+
+## Relationship to LEAP
+
+The installment model aligns with IAB Tech Lab's LEAP Forecasting API for live streaming events:
+
+| LEAP concept | AdCP equivalent |
+|-------------|----------------|
+| UpcomingEvent | Episode (`scheduled_at` + `status`) |
+| Content (AdCOM 1.0) | Show metadata (`genre`, `content_rating`, `talent`) |
+| AdInventoryConfiguration | Episode `ad_inventory` + product placements |
+| Event status | Episode `status` (`scheduled`, `tentative`, `cancelled`) |
+| Unplanned breaks | `ad_inventory.unplanned_breaks` |
+| Flexible end time | Episode `flexible_end` |
+
+LEAP targets SSP-to-DSP plumbing. AdCP operates at the agent-to-agent negotiation layer where buying decisions happen.
+
+## Collection targeting
+
+Products with multiple collections default to bundles — the buyer gets all listed collections. Sellers can set `collection_targeting_allowed: true` to let buyers target a subset, the same pattern as `property_targeting_allowed` for properties.
+
+| `collection_targeting_allowed` | Meaning |
+|---|---|
+| `false` (default) | Bundle — buyer gets all collections |
+| `true` | Buyer can select specific collections in the media buy |
+
+## Multi-collection bundles
+
+A single product can span multiple collections by listing multiple collection IDs in `collections`. When a product has multiple collections, each installment MUST include `collection_id` so the buyer agent knows which collection each installment belongs to.
+
+```json
+{
+  "products": [
+    {
+      "product_id": "technet_april_bundle",
+      "name": "TechNet Podcast Bundle - April",
+      "collections": [{ "publisher_domain": "technet.example.com", "collection_ids": ["tech_weekly", "startup_hour"] }],
+      "installments": [
+        { "installment_id": "tw_ep12", "collection_id": "tech_weekly", "scheduled_at": "2026-04-07T10:00:00Z", "status": "scheduled" },
+        { "installment_id": "tw_ep13", "collection_id": "tech_weekly", "scheduled_at": "2026-04-14T10:00:00Z", "status": "tentative" },
+        { "installment_id": "sh_ep30", "collection_id": "startup_hour", "scheduled_at": "2026-04-09T14:00:00Z", "status": "scheduled" },
+        { "installment_id": "sh_ep31", "collection_id": "startup_hour", "scheduled_at": "2026-04-16T14:00:00Z", "status": "tentative" }
+      ],
+      "delivery_type": "guaranteed",
+      "pricing_options": [
+        { "pricing_option_id": "bundle", "pricing_model": "flat_rate", "fixed_price": 25000, "currency": "USD" }
+      ]
+    }
+  ]
+}
+```
+
+### Print publication with issues
+
+A magazine publisher selling display ads across upcoming issues. Each issue is an installment with deadlines for booking, cancellation, and material delivery:
+
+```json
+{
+  "products": [
+    {
+      "product_id": "vogue_de_display_q2",
+      "name": "Vogue Germany — Display Ads, Q2 2026",
+      "channels": ["print"],
+      "collections": [{ "publisher_domain": "vogue.de", "collection_ids": ["vogue_de"] }],
+      "installments": [
+        {
+          "installment_id": "2026-04",
+          "name": "April 2026",
+          "season": "2026",
+          "installment_number": "4",
+          "scheduled_at": "2026-04-01T00:00:00+02:00",
+          "status": "scheduled",
+          "deadlines": {
+            "booking_deadline": "2026-02-15T17:00:00+01:00",
+            "cancellation_deadline": "2026-02-22T17:00:00+01:00",
+            "material_deadlines": [
+              { "stage": "draft", "due_at": "2026-03-01T17:00:00+01:00", "label": "Artwork for color proofing" },
+              { "stage": "final", "due_at": "2026-03-08T17:00:00+01:00", "label": "Press-ready PDF/X-4, CMYK, 300 DPI" }
+            ]
+          }
+        },
+        {
+          "installment_id": "2026-05",
+          "name": "Mai 2026",
+          "season": "2026",
+          "installment_number": "5",
+          "scheduled_at": "2026-05-01T00:00:00+02:00",
+          "status": "scheduled",
+          "deadlines": {
+            "booking_deadline": "2026-03-15T17:00:00+01:00",
+            "cancellation_deadline": "2026-03-22T17:00:00+01:00",
+            "material_deadlines": [
+              { "stage": "draft", "due_at": "2026-03-29T17:00:00+01:00", "label": "Artwork for color proofing" },
+              { "stage": "final", "due_at": "2026-04-05T17:00:00+02:00", "label": "Press-ready PDF/X-4, CMYK, 300 DPI" }
+            ]
+          }
+        }
+      ],
+      "placements": [
+        { "placement_id": "full_page", "name": "Full Page" },
+        { "placement_id": "dps", "name": "Double Page Spread" },
+        { "placement_id": "ifc", "name": "Inside Front Cover" }
+      ],
+      "delivery_type": "guaranteed",
+      "delivery_measurement": {
+        "provider": "IVW",
+        "notes": "Verified circulation, updated quarterly"
+      },
+      "pricing_options": [
+        { "pricing_option_id": "full_page", "pricing_model": "flat_rate", "fixed_price": 28000, "currency": "EUR" },
+        { "pricing_option_id": "dps", "pricing_model": "flat_rate", "fixed_price": 48000, "currency": "EUR" }
+      ]
+    }
+  ]
+}
+```
+
+The collection/installment model works identically for print publications and audio/video content. The installment's `deadlines` object replaces what the German OBS system handles through separate message exchanges — booking, cancellation, and material delivery are all visible upfront.
+
+## See also
+
+- [Media products](/dist/docs/3.0.5/media-buy/product-discovery/media-products) — the full product model
+- [Print ads](/dist/docs/3.0.5/creative/channels/print) — print-specific creative formats, physical dimensions, bleed, and DPI
+- [brand.json](/dist/docs/3.0.5/brand-protocol/brand-json) — talent identity and brand safety evaluation
+- [Product discovery](/dist/docs/3.0.5/media-buy/product-discovery) — how buyers discover inventory via `get_products`

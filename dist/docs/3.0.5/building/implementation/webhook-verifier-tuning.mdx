@@ -1,0 +1,149 @@
+---
+title: Webhook Verifier Tuning Guide
+sidebarTitle: Webhook Verifier Tuning
+description: "Non-normative tuning recipes for webhook verifier thresholds — starting values, baselining methodology, and attack-scenario walkthroughs."
+"og:title": "AdCP — Webhook Verifier Tuning Guide"
+---
+
+<Note>
+This document is non-normative. It provides **starting values** and a tuning methodology for the webhook verifier thresholds whose **structural shape** is specified in [Webhook Security](/dist/docs/3.0.5/building/implementation/security#webhook-security). The normative spec specifies only the category (short-window ratio, medium-window ratio, long-window ratio, proportional ceiling) and the requirement that thresholds be operator-configurable. This guide tells you where to start and how to tune.
+</Note>
+
+<Warning>
+**First-30-days oracle risk.** The starting values below are published, therefore attacker-known. A verifier running the shipped defaults is running against an oracle until operators tune the thresholds to their own traffic. **Operators MUST tune each threshold within 30 days of first deployment**; verifiers running published starting values past 30 days are running against a known attacker tuning target. Implementations SHOULD randomize each starting threshold on first deployment, drawing from a log-uniform distribution over [0.5×, 2×] the starting value (equivalently: ratio-uniform jitter with a 4× spread between the narrowest and widest defaults across a fleet). Narrower distributions (e.g., ±30%, giving only a 1.86× spread) let a disciplined attacker tune to 0.7× the published value and stay under every jittered deployment in the fleet; log-uniform over [0.5×, 2×] forces the attacker to cover a 4× range, which starts to cost meaningfully in attack volume. **Implementations SHOULD log or alarm a `threshold_tuning_overdue` event** when any threshold remains at its shipped starting value more than 30 days past the verifier's first admission — this gives the 30-day tuning rule a testable, auditable hook (without it, the rule is operator-diligence-only and silently fails when diligence lapses).
+</Warning>
+
+**Why this guide is separate from the spec.** Publishing concrete threshold values as normative defaults hands attackers an oracle — a disciplined attacker reads the spec and tunes their attack to stay just under the published values. The normative spec deliberately says *what shape the rule has*; this guide says *what numbers to start with*. Operators MUST treat these as starting values, observe their own traffic, and adjust.
+
+## The rule you're tuning
+
+Verifiers MUST track new-keyid admission pressure and SHOULD alert when the rate exceeds **any** of four thresholds (whichever triggers first). The normative spec names these four thresholds by category; this guide gives starting values for each category.
+
+## Starting values
+
+| # | Category | Starting formula | What it catches |
+|---|---|---|---|
+| **a** | Short-window ratio | `3× the 24-hour moving average` of new-keyid admission rate | Sudden spikes against a stable baseline — the classic "abnormal traffic volume" signal. |
+| **b** | Medium-window ratio | `2× the 30-day P95` | Multi-week ramp-up attacks. The 30-day P95 is dominated by the baseline-traffic tail, so a 2–3 week ramp cannot drift the reference into the attack. |
+| **c** | Long-window ratio | `1.5× the 90-day P99` | Multi-month ramp-up attacks. A 60–90 day staged compromise that drifts the 30-day P95 still trips the 90-day P99 because the P99 tail moves much more slowly. |
+| **d** | Proportional ceiling | `max(20 distinct new keyids, 10% × 30-day unique-keyid count) per 5-minute window` | Sparse-traffic verifiers whose moving averages and P95/P99 values are near zero (small operators), AND auto-scaling for operators of any size. |
+
+**These are starting values, not normative defaults.** A fresh deployment can use them day one. As traffic baselines stabilize, tighten or loosen based on the observed false-positive and false-negative rates.
+
+## Baselining methodology
+
+Before tuning the thresholds, establish the baseline shape of your verifier's traffic:
+
+1. **Collect 30 days of new-keyid admissions** without alarming. Instrument the rate but do not page operators.
+2. **Compute your deployment's P50, P95, P99** of new-keyid admissions per 5-minute window.
+3. **Track the unique-keyid count per 30-day sliding window.** This is the denominator for clause (d).
+4. **Document your median and peak legitimate onboarding batches.** If you routinely onboard 50 new signers per day (batched into a 10-minute window twice a week), clause (d)'s fixed floor of 20/5-min is too tight; raise it to match your largest legitimate batch.
+
+Once the baseline is known, each clause (a)/(b)/(c)/(d) becomes a concrete threshold in your deployment. The spec's OR-of-four shape means any one clause tripping is enough for an alert — so the thresholds do not need to agree on shape, they need to each close a different attacker pattern.
+
+## Attack-scenario walkthroughs
+
+### Scenario 1: Sudden mass-compromise
+
+An attacker compromises 100 signer keys over a weekend and begins sending webhooks from all 100 simultaneously starting Monday morning.
+
+- **What trips**: clause (a). The 24-hour moving average of new-keyid admissions is ~0 (on a stable verifier); 100 new keyids in one 5-min window is orders of magnitude above `3×` that.
+- **Alarm detail the operator needs**: which clause (a), so the triage team knows to look for a mass-compromise pattern rather than a single-key spike.
+
+### Scenario 2: Patient multi-week ramp
+
+An attacker compromises 5 keys in week 1, 10 in week 2, 20 in week 3, 40 in week 4 — doubling weekly, staying under any "3× yesterday" rule because today's rate is never more than 2× yesterday.
+
+- **What trips**: clause (b). The 30-day P95 is dominated by the first three weeks of baseline traffic, so `2×` that is roughly the normal peak; by week 4, 40 keyids/day is 8× the weekly baseline, well over the P95 anchor.
+- **Miss if you only had clause (a)**: yes. 2× daily ramping stays under 3× short-window MA permanently.
+
+### Scenario 3: Multi-quarter staged compromise
+
+An attacker compromises 1 key per day for 90 days — never triggering any daily-or-weekly ratio because today's rate is roughly equal to yesterday's.
+
+- **What trips**: clause (c). The 90-day P99 is anchored by baseline traffic much older than the attack; even the last 2 weeks of the ramp (days 76–90) register as above `1.5× baseline` P99.
+- **Miss if you only had clauses (a) and (b)**: yes. Monotonic slow ramps drift both the 24-hour MA and the 30-day P95 with them.
+
+### Scenario 4: Sparse-traffic verifier, burst attack
+
+A verifier with 20 total active signers and near-zero new-keyid traffic suddenly sees 15 new keyids in a 5-minute window.
+
+- **What trips**: nothing. The ratio rules (a)/(b)/(c) compare against near-zero baselines (`3× 0.01 = 0.03`) and would trip on any positive admission including legitimate single-seller onboarding — so they produce too much noise to alarm on at sparse-traffic verifiers. Clause (d)'s `max(20, 10%×20) = max(20, 2) = 20` fixed floor requires more than 20 new keyids per 5-min window before firing. 15 is under the floor.
+- **What the operator sees**: nothing. 15 new keyids at a sparse-traffic verifier is within normal bounds; operators running sparse-traffic verifiers SHOULD raise the fixed floor if routine onboarding regularly exceeds it, OR leave the floor at 20 if routine onboarding stays under (the attacker's ceiling becomes ≤20/window, which sharply limits aggregate pressure over reasonable windows).
+
+### Scenario 5: Large-verifier ceiling scaling
+
+A verifier with 10,000 active signers sees 500 new keyids in a 5-minute window.
+
+- **What trips**: nothing from clause (d). 10% × 10,000 = 1,000; 500 does not exceed the proportional floor. Depending on the verifier's baseline, clauses (a) or (b) might trip if 500/5-min is materially above the 24-hour moving average or the 30-day P95.
+- **What changes with scale**: at a small verifier (100 signers), 500 new keyids is 5× the entire signer base — obviously attack. Clause (d)'s `max(20, 10%×100) = 20` floor means 500 is 25× over, firing immediately. The proportional shape auto-scales.
+
+### Scenario 6: Onboarding-burst false positive
+
+A verifier onboarding 200 new sellers in a planned Tuesday batch trips clause (a) or (d) during the batch.
+
+- **What the operator does**: raises the fixed floor in clause (d) temporarily (documented in change-control), OR silences the alert for the known onboarding window. After the batch, floor returns to baseline. Document the raise so it can be audited and floored-back. Raised-floor windows SHOULD be kept as short and internally-scoped as possible — publicly-announced onboarding windows are an attacker planning signal (see Scenario 10).
+- **Why automatic revocation is wrong here**: the spec's `Alarms SHOULD route to incident response, not automatic revocation` rule exists specifically for this case. Machine-derivable "attack vs onboarding" is unreliable; operator context is the distinguishing signal.
+
+### Scenario 7: Legitimate key-rotation storm
+
+A peer seller's root CA is revoked and all 500 of their signing agents rotate to fresh `keyid`s within a 10-minute window. Your verifier sees 500 new keyids in one 5-min window and 0 in the next.
+
+- **What trips**: clauses (a) and likely (d). Shape is indistinguishable from Scenario 1 (sudden mass-compromise) at the rate-only level.
+- **What the operator does**: triage the alarm, recognize the event shape from the peer seller's notification (CA-compromise incidents are typically pre-announced to peers), mark as legitimate in the incident record, do NOT auto-revoke. If the peer did NOT pre-announce, treat exactly as Scenario 1 until peer contact confirms. **Do not silence the alarm preemptively based on peer announcements alone** — a compromised peer pre-announcement channel is itself an attacker tactic; the alarm firing and being triaged is the detection-in-depth layer.
+
+### Scenario 8: Thin-history window attack (days 1–90 post-deployment)
+
+A verifier deployed yesterday has no 30-day P95 data and no 90-day P99 data. Clauses (b) and (c) degrade gracefully to the clause (d) floor until the percentile windows mature. An attacker who knows the verifier is new stages a ramp that stays under clause (d)'s `max(20, 10%×count)` floor for the first 90 days, during which only clause (a) provides meaningful coverage.
+
+- **What trips**: clause (a) only — and only on sufficiently large short-window spikes. Clauses (b), (c), (d) all degrade to the floor-dominated case.
+- **What the operator does**: for new verifiers, SHOULD tighten clause (d)'s absolute floor below the published starting value (e.g., 10 instead of 20) for the first 90 days while P95/P99 mature. Treat this as a documented first-deployment posture, not permanent tuning — relax back to the mature-verifier floor once the percentile windows have real data.
+- **Why clauses (b)/(c)/(d) are not independent during warmup**: clause (c) explicitly degrades to `1.5× max(observed_P99, clause_d_floor)`, so during days 1–90 clauses (c) and (d) are redundant. This is a known limitation of the rule shape; the tightened-floor posture is the mitigation.
+
+### Scenario 9: Intermittent low-volume attack (rule-shape limitation)
+
+An attacker compromises 500 keys and emits 1 new keyid every 30 minutes across the fleet — roughly 48/day. Against a clause (d) floor of `max(20, 10% × 200-signer-count) = 20`/5-min, each 5-min window sees 0 or at most 1–2 new keyids. Over 30 days the attack admits 1,440 new keyids — which BECOMES part of the 30-day unique-keyid count clause (b) compares against. The attack is pre-baked into the baseline.
+
+- **What trips**: nothing.
+- **What the operator sees**: elevated unique-keyid count over 30 days, but no single-window alarm fires.
+- **Why this is a known limitation**: the admission-pressure rule closes volume-spike attacks, not low-rate long-duration attacks smoothed across long windows. **The per-keyid cap (step 9a) and the aggregate cache cap do NOT close this gap** — they bound cache size, not key-population growth, and 1,440 new keyids/month is ~0.014% of a 10M aggregate cap. At the rate-window level, every clause (a/b/c/d) trips at zero and the aggregate-cap alarm never fires. Operators with slow-drip key-population growth in their threat model **MUST layer application-level detection** (signer-reputation scoring, per-seller traffic-anomaly detection over business-meaningful windows like "signals delivered per billing period", new-keyid admission tracked against a declared-fleet-size expectation). Relying only on the admission-pressure rule plus the caps ships a verifier that has the attack class acknowledged in its spec but no actual detection for it.
+
+### Scenario 10: Onboarding-window-timed attack
+
+An attacker monitors the verifier operator's public announcements (product launches, fiscal-year boundaries, platform partnerships). The operator raises clause (d)'s floor to `200` for a scheduled Tuesday onboarding window per Scenario 6. The attacker times their mass-compromise to that Tuesday, riding the temporarily-raised floor.
+
+- **What trips**: nothing during the raised-floor window.
+- **What the operator does**: during raised-floor windows, alarms on clauses (a)/(b)/(c) SHOULD escalate to **mandatory human review, not auto-suppress**, even though clause (d) is intentionally loose. Keep raised-floor windows as short as possible and internally-scoped — avoid publicly announcing that "new-seller onboarding will happen on date X" in a form that attackers can schedule against. Where public announcements are unavoidable (regulatory disclosures, customer-facing launches), SHOULD increase out-of-band detection during the window (traffic-pattern analysis, seller-claim cross-validation, request-body sampling).
+
+### Scenario 11: Baseline reset at a mature verifier (failover, cache rebuild, config change)
+
+A mature verifier with 90 days of stable P95/P99 data fails over to a standby pool whose baseline-computation cache is empty. Clauses (b)/(c) degrade to the clause (d) floor-dominated case for the duration of the rebuild — mirroring Scenario 8 (thin-history window) but at a verifier that was supposed to be mature. An attacker who knows failover events happen (public status-page incidents, scheduled maintenance windows, observable response-time changes) can time an attack to land during the rebuild window.
+
+- **What trips**: clause (a) only (same as Scenario 8). Clauses (b)/(c) have no baseline data.
+- **What the operator does**: treat as a *temporary* thin-history posture. Persist baseline-statistic state across failover (Redis / shared dedup service) rather than rebuilding from the empty cache — the same infrastructure choice the spec already requires for the replay cache under cross-endpoint scoping also fixes this. If persistence is not possible, tighten clause (d)'s absolute floor during the rebuild window and escalate (a)/(b)/(c) alarms to human review per Scenario 10.
+- **Why this is spec-distinct from Scenario 8**: Scenario 8 is a first-deployment posture expected to stabilize in 90 days. Scenario 11 is a mature-verifier operational-event posture that can recur indefinitely if operators don't persist baselines across failover. Spec cannot mandate the persistence choice (deployment-internal); the tuning guide can call it out as a known attack-timing opportunity that operators are responsible for mitigating.
+
+## Tuning adjustments to consider
+
+| Observation | Adjustment |
+|---|---|
+| Too many false positives from clause (a) during legitimate bursts | Raise the clause (a) ratio from `3×` to `4×` or `5×`. Do NOT lower the threshold on clauses (b)/(c)/(d) to compensate — they catch different attacker shapes. |
+| Clause (d) fires on routine onboarding | Raise the fixed floor component of clause (d) to match the largest legitimate batch size. Keep the `10%×30d-unique-count` proportional part unchanged. |
+| Clause (c) never fires during red-team exercises that run for < 60 days | Expected — clause (c) is the multi-month anchor. Red-team exercises SHOULD include a 60-day slow-ramp scenario to validate clause (c) is correctly wired to the 90-day P99. |
+| Alarm shows clauses (a) and (d) both fired for the same event | Report the first clause that tripped in the alarm payload (per spec). Both clauses surfacing is informational, not a bug. |
+| Verifier is too small to have meaningful P99 data | Clause (c) degrades gracefully to `1.5× max(observed_P99, clause_d_floor)` — never lower than the proportional ceiling. Track for 90 days, then the P99 becomes meaningful. |
+
+## What NOT to do
+
+- **Do NOT publish your tuned threshold values externally.** Thresholds are deployment-internal operational parameters. This rule distinguishes three audiences:
+  - **Public disclosure** (blog posts, marketing copy, public config repositories, open-source defaults, conference talks): **prohibited**. This is the attacker oracle this guide exists to close.
+  - **Attested disclosure under NDA** to qualified security auditors, regulators, or contracted red teams: **permitted**. Detection-posture assessment is itself a defense-in-depth practice and SOC 2 / ISO 27001 audits may require it. The NDA scope SHOULD limit redistribution and mandate deletion at engagement close.
+  - **Internal operator runbooks, incident-response runbooks, version-controlled operator config**: **required**. The detecting team needs the values to triage effectively, and post-incident forensics require knowing what the thresholds were at the time of the event.
+- **Do NOT tune all four thresholds to the same value.** Each clause catches a different attacker pattern. Collapsing them loses detection coverage.
+- **Do NOT auto-revoke on alarm.** The alarm is a signal for incident response, not a remediation action. Automatic revocation of signer keys on admission-pressure alarm creates a denial-of-service vector: any party driving legitimate new-signer onboarding can trip the alarm and cause mass revocation.
+- **Do NOT hardcode the starting values in your deployment config.** Make each threshold a tunable parameter (e.g., environment variable, config file) so operators can adjust without code changes. Hardcoded starting values become de facto operator-visible defaults, which re-introduces the attacker oracle.
+
+## Related
+
+- [Webhook Security → Webhook replay dedup sizing](/dist/docs/3.0.5/building/implementation/security#webhook-replay-dedup-sizing) — normative spec for the rule this guide tunes. Scroll to the §Webhook replay dedup sizing heading directly beneath the 15-check verifier flow; the "New-keyid admission pressure" bullet is the rule whose four categories the tuning guide populates with starting values.
+- [Webhook verifier checklist](/dist/docs/3.0.5/building/implementation/security#webhook-callbacks) — the full 15-check flow. Step 14b (logging discipline) is a sub-step under step 14 (body well-formedness); its sanitization rules (non-printable classification, 32-byte UTF-8 codepoint-safe truncation, count cap at 4) apply to the diagnostic information this guide assumes alarms carry.

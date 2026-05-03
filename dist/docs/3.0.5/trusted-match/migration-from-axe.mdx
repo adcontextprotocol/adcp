@@ -1,0 +1,87 @@
+---
+title: Migrating from AXE to TMP
+sidebarTitle: AXE Migration
+description: "How to migrate from AXE segment targeting to TMP's offer and eligibility model — concept mapping, parallel operation, and cutover."
+"og:title": "AdCP Migrating from AXE to TMP"
+---
+
+# Migrating from AXE to TMP
+
+AXE and TMP solve the same problem — impression-time execution for pre-negotiated packages — with different architectures. AXE sends a full request (user + context + device) and returns opaque segment IDs. TMP splits the request into two structurally separated operations and returns offers and eligibility.
+
+This page maps AXE concepts to TMP equivalents and describes how to run both in parallel during migration.
+
+## Concept Mapping
+
+| AXE | TMP | Notes |
+|---|---|---|
+| `axei` (include segment) | Context Match offer | Package matched the content |
+| `axex` (exclude segment) | Package absent from `eligible_package_ids` | User fails suppression list, audience rule, or buyer-side frequency check |
+| `axem` (macro data) | Creative manifest + Offer `macros` + `{TMPX}` | Structured assets move to the creative manifest; dynamic key-values pass through Offer `macros`; per-user exposure tracking uses the `{TMPX}` macro from Identity Match |
+| Orchestrator AXE endpoint | TMP Router | Single binary with two isolated code paths |
+| Prebid Real-Time Data (RTD) module | TMP Prebid module | Replaces vendor-specific RTD modules with a single module |
+| `axe_integrations` URL | `trusted_match` capability | In `get_adcp_capabilities` response |
+| OpenRTB-style request | Context Match + Identity Match | Two requests instead of one bundled request |
+| Segment key-values on ad server | Targeting key-values from offers | Same GAM integration, different source |
+
+## What Changes for Each Role
+
+### Buyer agents
+
+**Before (AXE):** Upload audience segments to an orchestrator. Reference segment IDs in `axe_include_segment` / `axe_exclude_segment` on media buys.
+
+**After (TMP):** Expose Context Match and Identity Match endpoints. Evaluate packages against content signals (Context Match) and user eligibility (Identity Match) in real time. Return offers with creative manifests and eligibility decisions.
+
+**Key difference:** Your agent makes real-time decisions instead of pre-computing segment memberships. You have full control over targeting logic — no intermediary orchestrator.
+
+### Publishers
+
+**Before (AXE):** Enable the orchestrator's Prebid RTD module. Accept `axei`/`axex`/`axem` key-values. Create GAM line items targeting those key-values.
+
+**After (TMP):** Deploy a TMP Router (or use the TMP Prebid module). Accept offers and eligibility from the router. Set GAM targeting key-values from offer signals and pass through Offer `macros` for dynamic creative rendering. GAM line items target `adcp_pkg` instead of `axei`/`axex`.
+
+**Key difference:** The router replaces the orchestrator's RTD module. GAM line items reference package IDs instead of opaque segment IDs.
+
+### Orchestrators
+
+**Before (AXE):** Operate AXE endpoints, manage segment state, distribute Prebid RTD modules.
+
+**After (TMP):** Orchestrators can operate TMP Routers on behalf of publishers, or transition to a buyer-side role (operating buyer agent TMP endpoints). The orchestrator-as-middleman role is optional in TMP — buyers and publishers can connect directly through the router.
+
+## Parallel Operation
+
+During migration, publishers can run AXE and TMP simultaneously:
+
+1. **Keep existing AXE RTD module** in Prebid alongside the new TMP module
+2. **New media buys** use TMP (no `axe_include_segment` / `axe_exclude_segment`)
+3. **Existing media buys** continue using AXE segments until they expire
+4. **GAM line items** for both: AXE line items target `axei`/`axex`, TMP line items target `adcp_pkg`
+
+TMP provides real-time per-user exposure tracking via the [`{TMPX}` macro](/dist/docs/3.0.5/trusted-match/specification#tmpx-exposure-tokens). During parallel operation, both AXE and TMP impressions feed into the buyer's exposure store — AXE via the orchestrator's reporting, TMP via the buyer's impression pixel receiving encrypted TMPX tokens. There is no risk of double-counting because the buyer's exposure store deduplicates by user token and package ID regardless of source.
+
+### Cutover
+
+When all active media buys use TMP:
+
+1. Remove the orchestrator's RTD module from Prebid
+2. Remove AXE-targeted GAM line items
+3. Update `get_adcp_capabilities` to remove `axe_integrations` and keep `trusted_match`
+
+## Targeting Overlay Migration
+
+AXE targeting fields in `create_media_buy` map to TMP behavior:
+
+| AXE field | TMP equivalent |
+|---|---|
+| `axe_include_segment` | Context Match — buyer evaluates targeting in real time |
+| `axe_exclude_segment` | Identity Match — buyer checks suppression and audience rules |
+
+New media buys should omit AXE fields entirely. The buyer agent's Context Match and Identity Match logic replaces the orchestrator's segment evaluation.
+
+## What Doesn't Change
+
+- **`create_media_buy`** — Same task, same schema (minus AXE fields)
+- **`get_media_buy_delivery`** — Same delivery reporting
+- **`sync_creatives`** — Same creative sync
+- **GAM as the ad server** — TMP still sets key-values that GAM evaluates
+- **Geographic and other targeting overlays** — These are media buy fields, not execution-layer concerns

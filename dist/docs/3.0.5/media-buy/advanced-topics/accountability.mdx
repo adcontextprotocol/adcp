@@ -1,0 +1,232 @@
+---
+title: Accountability
+sidebarTitle: Accountability
+description: "How buyers and sellers negotiate, enforce, and resolve performance standards, measurement terms, and cancellation policies in AdCP guaranteed buys."
+"og:title": "AdCP — Accountability"
+---
+
+## Overview
+
+Guaranteed media buys in AdCP have three accountability surfaces:
+
+- **Performance standards** — rate thresholds for viewability, IVT, completion, brand safety, and attention (IAB T&Cs Section XI)
+- **Measurement terms** — who counts the billing metric and what remedies (makegoods) apply when thresholds are breached (IAB T&Cs Sections V, VII, IX)
+- **Cancellation policy** — notice period and cancellation fee for early termination (IAB T&Cs Section XII)
+
+These are structured, machine-readable fields — not free text. Buyer and seller agents negotiate them programmatically through the standard product discovery and buy creation workflow.
+
+## Lifecycle
+
+### 1. Discovery: Buyer States Requirements
+
+At `get_products`, the buyer filters for products that meet their performance requirements:
+
+```json
+{
+  "buying_mode": "brief",
+  "brief": "Premium video for CPG brand, Q3 flight",
+  "filters": {
+    "delivery_type": "guaranteed",
+    "required_performance_standards": [
+      {
+        "metric": "viewability",
+        "threshold": 0.70,
+        "standard": "mrc",
+        "vendor": { "domain": "doubleverify.com" }
+      },
+      {
+        "metric": "ivt",
+        "threshold": 0.05,
+        "vendor": { "domain": "doubleverify.com" }
+      }
+    ]
+  }
+}
+```
+
+Products that cannot meet these thresholds or do not support the specified vendors are excluded from results. The buyer is saying: "I need DoubleVerify for viewability at 70% MRC and IVT under 5%."
+
+### 2. Product Response: Seller Declares Defaults
+
+Returned products include the seller's default `performance_standards`, `measurement_terms`, and `cancellation_policy`:
+
+```json
+{
+  "product_id": "premium_video_q3",
+  "delivery_type": "guaranteed",
+  "performance_standards": [
+    { "metric": "viewability", "threshold": 0.70, "standard": "mrc", "vendor": { "domain": "doubleverify.com" } },
+    { "metric": "ivt", "threshold": 0.05, "vendor": { "domain": "doubleverify.com" } },
+    { "metric": "completion_rate", "threshold": 0.75, "vendor": { "domain": "doubleverify.com" } }
+  ],
+  "measurement_terms": {
+    "billing_measurement": {
+      "vendor": { "domain": "admanager.google.com" },
+      "max_variance_percent": 10
+    },
+    "makegood_policy": {
+      "available_remedies": ["additional_delivery", "credit", "invoice_adjustment"]
+    }
+  },
+  "cancellation_policy": {
+    "notice_period": { "interval": 30, "unit": "days" },
+    "cancellation_fee": { "type": "percent_remaining", "rate": 0.5 }
+  }
+}
+```
+
+The buyer can see all terms before committing budget.
+
+### 3. Refinement: Negotiate Before Committing
+
+Using `buying_mode: "refine"`, the buyer can propose changes to performance standards or measurement terms. This uses the same `required_performance_standards` filter — the seller responds with updated products reflecting what they can offer. Refinement is iterative and non-binding.
+
+### 4. Buy Creation: Buyer Proposes, Seller Accepts
+
+At `create_media_buy`, the buyer can propose different terms on the package request:
+
+```json
+{
+  "product_id": "premium_video_q3",
+  "budget": 50000,
+  "pricing_option_id": "cpm_usd_fixed",
+  "performance_standards": [
+    { "metric": "viewability", "threshold": 0.75, "standard": "mrc", "vendor": { "domain": "doubleverify.com" } },
+    { "metric": "ivt", "threshold": 0.03, "vendor": { "domain": "doubleverify.com" } }
+  ],
+  "measurement_terms": {
+    "billing_measurement": {
+      "vendor": { "domain": "campaignmanager.google.com" },
+      "max_variance_percent": 5
+    }
+  }
+}
+```
+
+The seller has three responses:
+- **Accept** — echo the buyer's terms on the confirmed package
+- **Reject** — return `TERMS_REJECTED` with details about which term failed and acceptable range
+- **Adjust** — return modified terms on the confirmed package (the buyer agent inspects the response to see what changed)
+
+When the buyer omits `performance_standards` or `measurement_terms`, the product's defaults apply.
+
+#### Measurement terms for phased-maturation channels
+
+Some channels produce billing-grade data in phases rather than delivering final numbers on day one — broadcast TV, DOOH, digital with IVT filtering, podcast downloads, and others. For these, the buyer proposes a `measurement_window` alongside the vendor, specifying which maturation stage the guarantee is reconciled against:
+
+```json
+{
+  "product_id": "primetime_30s_q4",
+  "budget": 250000,
+  "pricing_option_id": "unit_rate_30s",
+  "agency_estimate_number": "EST-2026-04821",
+  "measurement_terms": {
+    "billing_measurement": {
+      "vendor": { "domain": "videoamp.com" },
+      "measurement_window": "c7",
+      "max_variance_percent": 10
+    }
+  }
+}
+```
+
+The `measurement_window` references a `window_id` from the product's `reporting_capabilities.measurement_windows`. This tells both sides: "VideoAmp's C7 numbers are what we reconcile against." For a DOOH product it would be `"final"` (post-IVT/fraud-check); for digital it might be `"post_sivt"`. The same mechanism declares both which data is authoritative for billing and when it becomes available — reconciliation and invoicing clocks follow that declared availability. The `agency_estimate_number` is the financial reference that links the order to the agency's media plan — it travels with the order through the transaction lifecycle.
+
+### 5. Confirmed Package: The Contract
+
+The confirmed package reflects the agreed terms — the binding contract:
+
+```json
+{
+  "package_id": "pkg_001",
+  "product_id": "premium_video_q3",
+  "performance_standards": [
+    { "metric": "viewability", "threshold": 0.75, "standard": "mrc", "vendor": { "domain": "doubleverify.com" } },
+    { "metric": "ivt", "threshold": 0.03, "vendor": { "domain": "doubleverify.com" } }
+  ],
+  "measurement_terms": {
+    "billing_measurement": {
+      "vendor": { "domain": "campaignmanager.google.com" },
+      "max_variance_percent": 5
+    },
+    "makegood_policy": {
+      "available_remedies": ["additional_delivery", "credit", "invoice_adjustment"]
+    }
+  }
+}
+```
+
+### 6. Creative Enforcement
+
+When agreed `performance_standards` specify a vendor, creatives assigned to that package MUST include `tracker_script` or `tracker_pixel` URL assets from that vendor. Sales agents SHOULD reject creative assignments that lack required verification tags with `CREATIVE_REJECTED`.
+
+For example, if the agreed terms include DoubleVerify for viewability, every creative on the package must carry DV tags so viewability can be measured.
+
+**Formats without tracker support**: Not all formats accept third-party tracking assets. Broadcast TV spots, for instance, have no tracker slot — there is no pixel to fire on a television. Buyer agents should check the format's `assets` array for tracker slots before proposing performance standards that require creative-level verification. When a format does not support trackers, measurement comes from the vendor declared in `billing_measurement` (panel data, set-top box telemetry) rather than creative-embedded pixels. See [Format definitions](/dist/docs/3.0.5/creative/formats#third-party-tracker-support) for details.
+
+### 7. Breach and Resolution
+
+When a performance standard or billing measurement variance is breached, the seller proposes a remedy from the agreed `makegood_policy`:
+
+- **`additional_delivery`** — extend or add impressions (like-for-like, same or later campaign)
+- **`credit`** — credit toward future buys on the same account
+- **`invoice_adjustment`** — reduce the invoice for the current buy
+
+The buyer accepts or disputes.
+
+## Cancellation Policy
+
+Cancellation policy is not a negotiation surface. The seller declares it on the product; the buyer accepts it by creating a media buy. A guaranteed buy canceled without sufficient notice incurs the declared cancellation fee.
+
+**Cancellation fee types:**
+- `percent_remaining` — percentage of remaining committed spend (e.g., 50%)
+- `full_commitment` — buyer owes the full committed budget
+- `fixed_fee` — flat monetary amount
+- `none` — no cancellation fee
+
+## Insertion Orders
+
+The insertion order is a signing wrapper around a committed proposal. It does not introduce new deal terms. All negotiated terms live on products and packages. The IO's `terms` object provides summary fields (advertiser, publisher, budget, dates, payment terms) so buyer agents can verify the IO matches the proposal before a human signs via DocuSign or similar.
+
+## Vendor Identity and Measurement Agents
+
+All measurement and verification vendors are identified by domain using the standard [brand reference](/dist/docs/3.0.5/brand-protocol/brand-json) — the same system used for brands, operators, and accounts. Examples:
+
+- `{ "domain": "doubleverify.com" }` — DoubleVerify
+- `{ "domain": "integralads.com" }` — IAS
+- `{ "domain": "oracle.com", "brand_id": "moat" }` — MOAT
+- `{ "domain": "campaignmanager.google.com" }` — Google Campaign Manager
+- `{ "domain": "admanager.google.com" }` — Google Ad Manager
+- `{ "domain": "videoamp.com" }` — VideoAmp (broadcast/CTV measurement)
+- `{ "domain": "comscore.com" }` — Comscore (cross-platform measurement)
+
+The vendor's `brand.json` at their domain is the discovery point for their agent capabilities. Vendors declare agents in the `agents` array with `type: "measurement"`:
+
+```json
+{
+  "house": {
+    "domain": "doubleverify.com",
+    "name": "DoubleVerify",
+    "agents": [
+      {
+        "type": "measurement",
+        "url": "https://api.doubleverify.com/adcp/measurement",
+        "id": "dv_measurement"
+      }
+    ]
+  }
+}
+```
+
+This follows the same pattern used for all agent types in brand.json — brand, rights, governance, creative, buying, and signals agents are all discovered the same way.
+
+The buyer or seller queries the measurement agent for current rates against agreed performance standards, rather than waiting for post-campaign reporting. The measurement vendor participates as an agent, not a black box.
+
+### Relationship to Content Standards
+
+[Content standards agents](/dist/docs/3.0.5/governance/content-standards) validate WHAT was delivered (brand safety, content categorization). Performance standards measure HOW WELL it was delivered (viewability rates, IVT rates, completion rates). The vendor may be the same company — DoubleVerify provides both brand safety scoring and viewability measurement — but the concerns are distinct:
+
+- **Content standards**: `validate_content_delivery` — "was this ad placed next to safe content?"
+- **Performance standards**: measurement agent — "what percentage of impressions were viewable?"
+
+Both use agent-to-agent workflows. Content standards are already fully specified. Measurement agent interfaces are a follow-up to this specification.
