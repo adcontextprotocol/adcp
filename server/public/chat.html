@@ -5604,6 +5604,14 @@
       }
 
       function endVideoCall() {
+        // Best-effort: tell Tavus to release the session immediately so it
+        // doesn't hold a concurrent slot until the ~25min idle timeout.
+        if (videoConversationId) {
+          authFetch(`/api/addie/video/session/${encodeURIComponent(videoConversationId)}/end`, {
+            method: 'POST',
+          }).catch(() => {});
+        }
+
         videoCallActive = false;
         videoCallFrame.src = 'about:blank';
         videoPanel.classList.remove('active');

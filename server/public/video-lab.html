@@ -1,0 +1,1074 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Addie Video Lab (admin) - Agentic Advertising</title>
+  <link rel="icon" type="image/svg+xml" href="/addie-icon.svg">
+  <link rel="stylesheet" href="/design-system.css">
+  <!-- Daily JS SDK loaded from CDN. Lab is admin-only and experimental;
+       pin a version before promoting any of this to production. -->
+  <script src="https://unpkg.com/@daily-co/daily-js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: var(--font-sans);
+      background: var(--color-bg-page);
+      color: var(--color-text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .lab-header {
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--color-border);
+      background: var(--color-bg-card);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .lab-header img { width: 28px; height: auto; }
+    .lab-header h1 { font-size: 16px; font-weight: 600; color: var(--color-text-heading); }
+    .lab-badge {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      padding: 3px 8px;
+      border-radius: 4px;
+      background: var(--color-warning-50, #fef3c7);
+      color: var(--color-warning-700, #92400e);
+      border: 1px solid var(--color-warning-100, #fde68a);
+    }
+
+    /* Advanced settings — collapsible disclosure */
+    details.advanced {
+      margin-top: 16px;
+      border: 1px solid var(--color-border);
+      border-radius: 8px;
+      background: var(--color-bg-subtle, #f9fafb);
+    }
+    details.advanced summary {
+      cursor: pointer;
+      padding: 12px 16px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--color-text-heading);
+      list-style: none;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      user-select: none;
+    }
+    details.advanced summary::-webkit-details-marker { display: none; }
+    details.advanced summary::before {
+      content: '▶';
+      font-size: 9px;
+      color: var(--color-text-secondary);
+      transition: transform 0.15s;
+    }
+    details.advanced[open] summary::before { transform: rotate(90deg); }
+    details.advanced .settings-body {
+      padding: 0 16px 16px;
+      display: grid;
+      gap: 12px;
+    }
+    .setting-row {
+      display: grid;
+      gap: 4px;
+    }
+    .setting-row label {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--color-text-secondary);
+    }
+    .setting-row input[type="text"],
+    .setting-row textarea,
+    .setting-row select {
+      padding: 8px 10px;
+      border: 1px solid var(--color-border);
+      border-radius: 6px;
+      background: var(--color-bg-page);
+      color: var(--color-text);
+      font-size: 13px;
+      font-family: inherit;
+    }
+    .setting-row textarea {
+      resize: vertical;
+      min-height: 60px;
+    }
+    .setting-row .hint-inline {
+      font-size: 11px;
+      color: var(--color-text-muted, #94a3b8);
+    }
+    .setting-row.checkbox {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .setting-row.checkbox label {
+      font-size: 13px;
+      color: var(--color-text);
+      font-weight: normal;
+      cursor: pointer;
+    }
+    .duration-row { display: flex; align-items: center; gap: 10px; }
+    .duration-row input[type="range"] { flex: 1; }
+    .duration-row .duration-value {
+      font-variant-numeric: tabular-nums;
+      font-size: 13px;
+      color: var(--color-text);
+      min-width: 60px;
+    }
+    .settings-actions {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+      margin-top: 4px;
+    }
+    .reset-btn {
+      background: transparent;
+      border: 1px solid var(--color-border);
+      color: var(--color-text-secondary);
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .reset-btn:hover { color: var(--color-text); }
+    .lab-header-spacer { flex: 1; }
+    .lab-header a {
+      font-size: 13px;
+      color: var(--color-text-secondary);
+      text-decoration: none;
+    }
+    .lab-header a:hover { color: var(--color-brand); }
+
+    main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding: 24px;
+      gap: 24px;
+      max-width: 1100px;
+      width: 100%;
+      margin: 0 auto;
+    }
+
+    .panel {
+      background: var(--color-bg-card);
+      border: 1px solid var(--color-border);
+      border-radius: 12px;
+      padding: 20px;
+    }
+    .panel h2 {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--color-text-heading);
+      margin-bottom: 14px;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+    }
+
+    /* Pre-call device test */
+    .device-test {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 24px;
+    }
+    @media (max-width: 720px) {
+      .device-test { grid-template-columns: 1fr; }
+    }
+    .preview-tile {
+      aspect-ratio: 16 / 9;
+      background: #111;
+      border-radius: 8px;
+      overflow: hidden;
+      position: relative;
+    }
+    .preview-tile video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transform: scaleX(-1); /* mirror local preview only */
+      display: none; /* shown only after a stream is attached */
+    }
+    .preview-tile.streaming video {
+      display: block;
+    }
+    .preview-tile .empty-msg {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #888;
+      font-size: 13px;
+      text-align: center;
+      padding: 0 16px;
+    }
+    .preview-tile.streaming .empty-msg {
+      display: none;
+    }
+
+    .device-row { margin-bottom: 12px; }
+    .device-row label {
+      display: block;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--color-text-secondary);
+      margin-bottom: 4px;
+    }
+    .device-row select {
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid var(--color-border);
+      border-radius: 6px;
+      background: var(--color-bg-page);
+      color: var(--color-text);
+      font-size: 13px;
+    }
+
+    .start-row {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      margin-top: 16px;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 10px 18px;
+      border-radius: 8px;
+      border: 1px solid var(--color-border);
+      background: var(--color-bg-card);
+      color: var(--color-text);
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: opacity 0.15s, background 0.15s;
+    }
+    .btn:hover { opacity: 0.85; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn.primary { background: var(--color-brand); color: white; border-color: transparent; }
+    .btn.primary:hover { background: var(--color-brand-hover); opacity: 1; }
+    .btn.danger { background: var(--color-error-600); color: white; border-color: transparent; }
+    .btn.warn { background: #f59e0b; color: white; border-color: transparent; }
+
+    /* In-call layout */
+    #in-call { display: none; }
+    #in-call.active { display: block; }
+
+    .call-stage {
+      position: relative;
+      aspect-ratio: 16 / 9;
+      background: #111;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .call-stage video {
+      width: 100%;
+      height: 100%;
+      /* contain (not cover) so on a projector we don't crop Addie's face when
+         the screen aspect ratio differs from the source video. */
+      object-fit: contain;
+      background: #000;
+    }
+    /* Fullscreen / presenter — strip page chrome so Addie owns the screen */
+    :fullscreen .lab-header,
+    :-webkit-full-screen .lab-header,
+    body.presenter .lab-header {
+      display: none;
+    }
+    :fullscreen main,
+    :-webkit-full-screen main,
+    body.presenter main {
+      padding: 0;
+      max-width: none;
+    }
+    :fullscreen .lab-grid,
+    :-webkit-full-screen .lab-grid,
+    body.presenter .lab-grid {
+      grid-template-columns: 1fr;
+      gap: 0;
+    }
+    :fullscreen .panel:has(.event-log),
+    :-webkit-full-screen .panel:has(.event-log),
+    body.presenter .panel:has(.event-log) {
+      display: none;
+    }
+    :fullscreen .call-stage,
+    :-webkit-full-screen .call-stage,
+    body.presenter .call-stage {
+      aspect-ratio: auto;
+      height: calc(100vh - 80px);
+      border-radius: 0;
+    }
+    :fullscreen .panel,
+    :-webkit-full-screen .panel,
+    body.presenter .panel {
+      border-radius: 0;
+      border: none;
+    }
+    .stage-empty {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #888;
+      font-size: 14px;
+    }
+
+    .stage-overlay {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .quality-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: rgba(0,0,0,0.55);
+      color: white;
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.02em;
+    }
+    .quality-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #22c55e;
+    }
+    .quality-dot.warn { background: #f59e0b; }
+    .quality-dot.bad { background: #ef4444; }
+
+    .speaking-pill {
+      display: none;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: rgba(34, 197, 94, 0.85);
+      color: white;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .speaking-pill.active { display: inline-flex; }
+
+    .call-controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 16px;
+      align-items: center;
+    }
+    .control-spacer { flex: 1; }
+
+    /* Event log (right column on desktop, stacked on mobile) */
+    .lab-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+      gap: 24px;
+    }
+    @media (max-width: 920px) {
+      .lab-grid { grid-template-columns: 1fr; }
+    }
+    .event-log {
+      max-height: 320px;
+      overflow-y: auto;
+      background: #0f172a;
+      color: #cbd5e1;
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      font-size: 11px;
+      line-height: 1.55;
+      padding: 12px;
+      border-radius: 8px;
+    }
+    .event-log .ts { color: #64748b; }
+    .event-log .evt-emit { color: #fbbf24; }
+    .event-log .evt-recv { color: #60a5fa; }
+    .event-log .evt-info { color: #94a3b8; }
+    .event-log .evt-error { color: #f87171; }
+
+    #error-banner {
+      display: none;
+      background: var(--color-error-50);
+      border: 1px solid var(--color-error-100);
+      color: var(--color-error-600);
+      padding: 12px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+    }
+
+    .hint {
+      color: var(--color-text-secondary);
+      font-size: 12px;
+      margin-top: 6px;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <header class="lab-header">
+    <img src="/addie-avatar.svg" alt="Addie">
+    <h1>Video chat with Addie · Daily SDK</h1>
+    <span class="lab-badge">Beta</span>
+    <div class="lab-header-spacer"></div>
+    <a href="/video">→ Standard version</a>
+  </header>
+
+  <main>
+    <div id="error-banner"></div>
+
+    <!-- ============ Pre-call ============ -->
+    <section id="pre-call" class="panel">
+      <h2>Pre-call device test</h2>
+      <div class="device-test">
+        <div class="preview-tile" id="preview-tile">
+          <video id="preview-video" autoplay muted playsinline></video>
+          <div class="empty-msg" id="preview-empty-msg">Camera preview will appear here</div>
+        </div>
+        <div>
+          <div class="device-row">
+            <label for="cam-select">Camera</label>
+            <select id="cam-select"></select>
+          </div>
+          <div class="device-row">
+            <label for="mic-select">Microphone</label>
+            <select id="mic-select"></select>
+          </div>
+          <div class="device-row">
+            <label for="spk-select">Speaker</label>
+            <select id="spk-select"></select>
+            <p class="hint">Speaker selection works on Chrome/Edge. Safari/Firefox use the system default.</p>
+          </div>
+          <div class="start-row">
+            <button class="btn" id="test-btn" type="button">Test camera &amp; mic</button>
+            <button class="btn primary" id="join-btn" type="button" disabled>Start call with Addie</button>
+          </div>
+          <p class="hint" id="prejoin-hint">Click "Test camera &amp; mic" to grant browser permissions and verify your devices before joining. Joining creates a Tavus session.</p>
+        </div>
+      </div>
+
+      <details class="advanced" id="advanced-settings">
+        <summary>Advanced settings</summary>
+        <div class="settings-body">
+          <div class="setting-row">
+            <label for="opt-greeting">Custom greeting</label>
+            <input type="text" id="opt-greeting" maxlength="500" placeholder="Hi! I'm Addie. How can I help you today?">
+            <span class="hint-inline">First words Addie speaks. Leave blank to use the default.</span>
+          </div>
+          <div class="setting-row">
+            <label for="opt-context">Conversational context</label>
+            <textarea id="opt-context" maxlength="2000" placeholder="e.g. You're at AAO Foundry talking to publishers. Lead with how AdCP unlocks programmatic for them."></textarea>
+            <span class="hint-inline">Extra context appended to Addie's system prompt this session.</span>
+          </div>
+          <div class="setting-row">
+            <label for="opt-duration">Max call duration</label>
+            <div class="duration-row">
+              <input type="range" id="opt-duration" min="5" max="120" step="5" value="25">
+              <span class="duration-value"><span id="opt-duration-display">25</span> min</span>
+            </div>
+            <span class="hint-inline">Tavus auto-ends the call after this. Default 25 min.</span>
+          </div>
+          <div class="setting-row checkbox">
+            <input type="checkbox" id="opt-greenscreen">
+            <label for="opt-greenscreen">Greenscreen background <span class="hint-inline">(transparent — useful for keynote compositing)</span></label>
+          </div>
+          <div class="setting-row">
+            <label for="opt-language">Language</label>
+            <select id="opt-language">
+              <option value="">English (default)</option>
+              <option value="spanish">Spanish</option>
+              <option value="french">French</option>
+              <option value="german">German</option>
+              <option value="italian">Italian</option>
+              <option value="portuguese">Portuguese</option>
+              <option value="japanese">Japanese</option>
+              <option value="korean">Korean</option>
+              <option value="chinese">Chinese (Mandarin)</option>
+            </select>
+          </div>
+          <div class="settings-actions">
+            <button type="button" class="reset-btn" id="opt-reset">Reset to defaults</button>
+          </div>
+        </div>
+      </details>
+    </section>
+
+    <!-- ============ In-call ============ -->
+    <section id="in-call">
+      <div class="lab-grid">
+        <div class="panel">
+          <h2>Addie</h2>
+          <div class="call-stage" id="call-stage">
+            <video id="addie-video" autoplay playsinline></video>
+            <audio id="addie-audio" autoplay></audio>
+            <div class="stage-empty" id="stage-empty">Waiting for Addie to join…</div>
+            <div class="stage-overlay">
+              <span class="quality-pill" id="quality-pill" title="Network quality">
+                <span class="quality-dot" id="quality-dot"></span>
+                <span id="quality-label">Connecting…</span>
+              </span>
+              <span class="quality-pill" id="resolution-pill" title="Incoming Addie video resolution" style="display:none;">
+                <span id="resolution-label">—</span>
+              </span>
+              <span class="speaking-pill" id="speaking-pill">Speaking</span>
+            </div>
+          </div>
+          <div class="call-controls">
+            <button class="btn" id="mute-btn" type="button">🎤 Mute</button>
+            <button class="btn" id="cam-btn" type="button">📹 Camera off</button>
+            <button class="btn warn" id="interrupt-btn" type="button" title="Stop Addie speaking immediately (Space)">✋ Interrupt</button>
+            <button class="btn" id="fullscreen-btn" type="button" title="Toggle fullscreen (F)">⛶ <span id="fullscreen-label">Fullscreen</span></button>
+            <div class="control-spacer"></div>
+            <button class="btn danger" id="leave-btn" type="button">End call</button>
+          </div>
+          <p class="hint">Push-to-interrupt: hold <kbd>Space</kbd> to send an interrupt app-message to the Tavus persona while she's speaking.</p>
+        </div>
+
+        <div class="panel">
+          <h2>Event log</h2>
+          <div class="event-log" id="event-log"></div>
+          <p class="hint">Live trace of Daily events + app-messages. Useful for debugging Tavus protocol.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    // ====================================================================
+    // State + helpers
+    // ====================================================================
+    let call = null;
+    let conversationId = null;
+    let threadId = null;
+    let localPreviewStream = null;
+    let muted = false;
+    let camOff = false;
+    let addieParticipantId = null;
+    let resolutionPollTimer = null;
+
+    // Presenter mode: ?presenter=1 hides chrome from page-load, useful when
+    // launching directly into a projector/keynote setup.
+    const presenterMode = new URLSearchParams(window.location.search).get('presenter') === '1';
+    if (presenterMode) document.body.classList.add('presenter');
+
+    // ====================================================================
+    // Advanced settings (persisted to localStorage so they stick across
+    // refreshes and survive being handed off to a different operator)
+    // ====================================================================
+    const SETTINGS_KEY = 'addie-video-lab-settings-v1';
+    const DEFAULT_SETTINGS = {
+      greeting: '',
+      extraContext: '',
+      durationMin: 25,
+      greenscreen: false,
+      language: '',
+    };
+
+    function loadSettings() {
+      try {
+        const raw = localStorage.getItem(SETTINGS_KEY);
+        if (!raw) return { ...DEFAULT_SETTINGS };
+        return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+      } catch {
+        return { ...DEFAULT_SETTINGS };
+      }
+    }
+    function saveSettings(s) {
+      try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); } catch {}
+    }
+    function readSettingsFromForm() {
+      return {
+        greeting: document.getElementById('opt-greeting').value,
+        extraContext: document.getElementById('opt-context').value,
+        durationMin: Number(document.getElementById('opt-duration').value) || 25,
+        greenscreen: document.getElementById('opt-greenscreen').checked,
+        language: document.getElementById('opt-language').value,
+      };
+    }
+    function applySettingsToForm(s) {
+      document.getElementById('opt-greeting').value = s.greeting || '';
+      document.getElementById('opt-context').value = s.extraContext || '';
+      document.getElementById('opt-duration').value = String(s.durationMin || 25);
+      document.getElementById('opt-duration-display').textContent = String(s.durationMin || 25);
+      document.getElementById('opt-greenscreen').checked = !!s.greenscreen;
+      document.getElementById('opt-language').value = s.language || '';
+    }
+    function persistSettingsFromForm() {
+      const s = readSettingsFromForm();
+      saveSettings(s);
+      document.getElementById('opt-duration-display').textContent = String(s.durationMin);
+    }
+
+    const $ = (id) => document.getElementById(id);
+    const log = (kind, msg, data) => {
+      const el = $('event-log');
+      const ts = new Date().toLocaleTimeString('en-US', { hour12: false });
+      const line = document.createElement('div');
+      const klass = kind === 'emit' ? 'evt-emit' : kind === 'recv' ? 'evt-recv' : kind === 'error' ? 'evt-error' : 'evt-info';
+      const dataStr = data ? ' ' + JSON.stringify(data) : '';
+      line.innerHTML = `<span class="ts">${ts}</span> <span class="${klass}">${kind}</span> ${msg}${dataStr ? ' <span class="evt-info">' + escapeHtml(dataStr) + '</span>' : ''}`;
+      el.appendChild(line);
+      el.scrollTop = el.scrollHeight;
+    };
+    const escapeHtml = (s) => s.replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+    const showError = (msg) => {
+      const el = $('error-banner');
+      el.textContent = msg;
+      el.style.display = 'block';
+    };
+    const clearError = () => { $('error-banner').style.display = 'none'; };
+
+    // ====================================================================
+    // Pre-call: enumerate devices, render preview
+    // ====================================================================
+    async function populateDeviceLists() {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const fill = (selectId, kind) => {
+        const sel = $(selectId);
+        const matches = devices.filter(d => d.kind === kind);
+        sel.innerHTML = '';
+        matches.forEach((d, i) => {
+          const opt = document.createElement('option');
+          opt.value = d.deviceId;
+          opt.textContent = d.label || `${kind} ${i + 1}`;
+          sel.appendChild(opt);
+        });
+        return matches.length;
+      };
+      fill('cam-select', 'videoinput');
+      fill('mic-select', 'audioinput');
+      const speakerCount = fill('spk-select', 'audiooutput');
+      // Safari and Firefox don't enumerate audio outputs — hide the row entirely
+      // rather than showing an empty dropdown that looks broken.
+      const spkRow = $('spk-select')?.closest('.device-row');
+      if (spkRow) spkRow.style.display = speakerCount > 0 ? '' : 'none';
+    }
+
+    async function startLocalPreview() {
+      clearError();
+      log('info', 'getUserMedia: requesting camera + mic');
+      try {
+        const camId = $('cam-select').value || undefined;
+        const micId = $('mic-select').value || undefined;
+        if (localPreviewStream) {
+          localPreviewStream.getTracks().forEach(t => t.stop());
+          localPreviewStream = null;
+        }
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: camId ? { deviceId: { exact: camId } } : true,
+          audio: micId ? { deviceId: { exact: micId } } : true,
+        });
+        localPreviewStream = stream;
+        const v = $('preview-video');
+        v.srcObject = stream;
+        // Safari requires an explicit play() after assigning srcObject.
+        try { await v.play(); } catch (e) { log('error', `video.play() rejected: ${e.message}`); }
+        $('preview-tile').classList.add('streaming');
+        $('join-btn').disabled = false;
+        $('prejoin-hint').textContent = 'Devices look good. Click "Start call with Addie" to provision the Tavus session and join.';
+        log('info', 'getUserMedia: granted, preview attached');
+        // Re-enumerate now that we have permission — labels are filled in.
+        await populateDeviceLists();
+        // Re-select the device the user actually got (in case fallback was used)
+        const usedCam = stream.getVideoTracks()[0]?.getSettings()?.deviceId;
+        const usedMic = stream.getAudioTracks()[0]?.getSettings()?.deviceId;
+        if (usedCam) $('cam-select').value = usedCam;
+        if (usedMic) $('mic-select').value = usedMic;
+      } catch (err) {
+        const msg = `${err.name || 'Error'}: ${err.message}`;
+        log('error', `getUserMedia failed: ${msg}`);
+        console.error('[video-lab] getUserMedia failed', err);
+        showError(`Camera/mic test failed — ${msg}. Open Web Inspector console for full details.`);
+      }
+    }
+
+    // ====================================================================
+    // Join the Tavus → Daily room
+    // ====================================================================
+    async function startSession() {
+      clearError();
+      $('join-btn').disabled = true;
+
+      // Bundle the advanced-settings form values into the session create body
+      // so this user's settings shape this Tavus session only.
+      const formSettings = readSettingsFromForm();
+      const body = {
+        greeting: formSettings.greeting || undefined,
+        extraContext: formSettings.extraContext || undefined,
+        maxDurationSec: formSettings.durationMin ? formSettings.durationMin * 60 : undefined,
+        greenscreen: formSettings.greenscreen || undefined,
+        language: formSettings.language || undefined,
+      };
+      const sentKeys = Object.keys(body).filter((k) => body[k] !== undefined);
+      log('info', `POST /api/addie/video/session${sentKeys.length ? ` (settings: ${sentKeys.join(', ')})` : ''}`);
+
+      let conversationUrl;
+      try {
+        const res = await fetch('/api/addie/video/session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || `HTTP ${res.status}`);
+        }
+        const data = await res.json();
+        conversationUrl = data.conversation_url;
+        conversationId = data.conversation_id;
+        threadId = data.thread_id;
+        log('info', `session created: ${conversationId} thread=${threadId}`);
+      } catch (err) {
+        showError(`Could not create Tavus session: ${err.message}`);
+        $('join-btn').disabled = false;
+        return;
+      }
+
+      if (!conversationUrl?.startsWith('https://')) {
+        showError('Invalid conversation URL from server');
+        $('join-btn').disabled = false;
+        return;
+      }
+
+      // Free the local preview tracks; daily-js will manage its own streams.
+      if (localPreviewStream) {
+        localPreviewStream.getTracks().forEach(t => t.stop());
+        localPreviewStream = null;
+      }
+
+      // Hide pre-call, show in-call
+      $('pre-call').style.display = 'none';
+      $('in-call').classList.add('active');
+
+      // Create the Daily call object (headless — no iframe).
+      call = window.DailyIframe.createCallObject({
+        audioSource: $('mic-select').value || true,
+        videoSource: $('cam-select').value || true,
+      });
+      wireDailyEvents(call);
+
+      try {
+        await call.join({ url: conversationUrl, userName: 'AAO Admin (lab)' });
+        log('info', 'joined room');
+
+        // Apply chosen output device if supported.
+        const spkId = $('spk-select').value;
+        if (spkId && call.setOutputDevice) {
+          try {
+            await call.setOutputDevice({ outputDeviceId: spkId });
+          } catch (e) {
+            log('error', `setOutputDevice failed: ${e.message}`);
+          }
+        }
+      } catch (err) {
+        const msg = err?.message || err?.errorMsg || err?.error?.msg || JSON.stringify(err) || 'unknown';
+        showError(`Failed to join Daily room: ${msg}. Open Web Inspector → Console + Network tabs and click Start again to capture the failing request.`);
+        log('error', `join failed: ${msg}`);
+        console.error('[video-lab] daily.join failed', err);
+      }
+    }
+
+    function wireDailyEvents(daily) {
+      const events = [
+        'joined-meeting', 'left-meeting',
+        'participant-joined', 'participant-updated', 'participant-left',
+        'active-speaker-change', 'network-quality-change',
+        'app-message', 'error', 'camera-error',
+      ];
+      for (const evt of events) {
+        daily.on(evt, (e) => onDailyEvent(evt, e));
+      }
+    }
+
+    function onDailyEvent(evt, e) {
+      if (evt === 'joined-meeting') {
+        log('recv', 'joined-meeting');
+        renderParticipants();
+        return;
+      }
+      if (evt === 'participant-joined' || evt === 'participant-updated') {
+        log('recv', `${evt}: ${e?.participant?.user_name || e?.participant?.session_id}`);
+        renderParticipants();
+        return;
+      }
+      if (evt === 'participant-left') {
+        log('recv', `participant-left: ${e?.participant?.user_name || e?.participant?.session_id}`);
+        if (e?.participant?.session_id === addieParticipantId) {
+          addieParticipantId = null;
+          $('stage-empty').style.display = 'flex';
+          $('stage-empty').textContent = 'Addie left the call.';
+        }
+        return;
+      }
+      if (evt === 'active-speaker-change') {
+        const speaking = e?.activeSpeaker?.peerId === addieParticipantId;
+        $('speaking-pill').classList.toggle('active', !!speaking);
+        return;
+      }
+      if (evt === 'network-quality-change') {
+        // e.threshold = 'good' | 'low' | 'very-low'; e.quality = 0..100
+        const dot = $('quality-dot');
+        const label = $('quality-label');
+        dot.classList.remove('warn', 'bad');
+        if (e?.threshold === 'low') dot.classList.add('warn');
+        if (e?.threshold === 'very-low') dot.classList.add('bad');
+        label.textContent = `Network: ${e?.threshold ?? 'unknown'} (${e?.quality ?? '?'}/100)`;
+        return;
+      }
+      if (evt === 'app-message') {
+        log('recv', 'app-message', e?.data);
+        return;
+      }
+      if (evt === 'left-meeting') {
+        log('recv', 'left-meeting');
+        return;
+      }
+      if (evt === 'error' || evt === 'camera-error') {
+        const detail = {
+          errorMsg: e?.errorMsg,
+          errorType: e?.error?.type,
+          errorMessage: e?.error?.msg || e?.error?.message,
+          errorDetails: e?.error?.details,
+        };
+        log('error', `${evt}: ${e?.errorMsg || 'unknown'}`, detail);
+        console.error('[video-lab] daily error event', e);
+        return;
+      }
+      log('recv', evt);
+    }
+
+    function renderParticipants() {
+      if (!call) return;
+      const participants = call.participants();
+      // Tavus replica is the first non-local participant.
+      for (const [sid, p] of Object.entries(participants)) {
+        if (sid === 'local') continue;
+        if (!addieParticipantId) {
+          addieParticipantId = p.session_id;
+          log('info', `addie identified: session_id=${addieParticipantId} user_name=${p.user_name}`);
+        }
+        attachTracks(p);
+      }
+    }
+
+    function attachTracks(p) {
+      const videoEl = $('addie-video');
+      const audioEl = $('addie-audio');
+      const videoTrack = p.tracks?.video?.persistentTrack || p.tracks?.video?.track;
+      const audioTrack = p.tracks?.audio?.persistentTrack || p.tracks?.audio?.track;
+      if (videoTrack) {
+        const ms = new MediaStream([videoTrack]);
+        if (videoEl.srcObject !== ms) {
+          videoEl.srcObject = ms;
+          $('stage-empty').style.display = 'none';
+          startResolutionPolling(videoTrack);
+        }
+      }
+      if (audioTrack) {
+        const ms = new MediaStream([audioTrack]);
+        if (audioEl.srcObject !== ms) audioEl.srcObject = ms;
+      }
+    }
+
+    function startResolutionPolling(track) {
+      if (resolutionPollTimer) clearInterval(resolutionPollTimer);
+      const pill = $('resolution-pill');
+      const label = $('resolution-label');
+      const update = () => {
+        const settings = track.getSettings ? track.getSettings() : {};
+        const w = settings.width;
+        const h = settings.height;
+        const fps = settings.frameRate;
+        if (w && h) {
+          pill.style.display = '';
+          label.textContent = `${w}×${h}${fps ? ` @ ${Math.round(fps)}fps` : ''}`;
+        }
+      };
+      update();
+      resolutionPollTimer = setInterval(update, 2000);
+    }
+
+    // ====================================================================
+    // Fullscreen
+    // ====================================================================
+    function toggleFullscreen() {
+      const doc = document;
+      const elem = doc.documentElement;
+      const isFullscreen = doc.fullscreenElement || doc.webkitFullscreenElement;
+      if (isFullscreen) {
+        (doc.exitFullscreen || doc.webkitExitFullscreen).call(doc);
+      } else {
+        (elem.requestFullscreen || elem.webkitRequestFullscreen).call(elem);
+      }
+    }
+    function updateFullscreenLabel() {
+      const isFs = document.fullscreenElement || document.webkitFullscreenElement;
+      const label = $('fullscreen-label');
+      if (label) label.textContent = isFs ? 'Exit fullscreen' : 'Fullscreen';
+    }
+    document.addEventListener('fullscreenchange', updateFullscreenLabel);
+    document.addEventListener('webkitfullscreenchange', updateFullscreenLabel);
+
+    // ====================================================================
+    // Controls
+    // ====================================================================
+    function toggleMute() {
+      if (!call) return;
+      muted = !muted;
+      call.setLocalAudio(!muted);
+      $('mute-btn').textContent = muted ? '🔇 Unmute' : '🎤 Mute';
+      log('emit', `setLocalAudio(${!muted})`);
+    }
+
+    function toggleCam() {
+      if (!call) return;
+      camOff = !camOff;
+      call.setLocalVideo(!camOff);
+      $('cam-btn').textContent = camOff ? '📷 Camera on' : '📹 Camera off';
+      log('emit', `setLocalVideo(${!camOff})`);
+    }
+
+    function sendInterrupt() {
+      if (!call) return;
+      // Tavus listens for this app-message and stops the replica mid-utterance.
+      const payload = {
+        message_type: 'conversation',
+        event_type: 'conversation.interrupt',
+        conversation_id: conversationId,
+      };
+      call.sendAppMessage(payload, '*');
+      log('emit', 'app-message: conversation.interrupt', payload);
+      // Visual feedback
+      const btn = $('interrupt-btn');
+      btn.style.transform = 'scale(0.96)';
+      setTimeout(() => { btn.style.transform = ''; }, 120);
+    }
+
+    async function leave() {
+      if (!call) return;
+      // Tell Tavus to end the conversation server-side so the session
+      // releases immediately instead of holding a concurrent slot until
+      // the (~25min) idle timeout. Best-effort — UI teardown proceeds
+      // regardless.
+      if (conversationId) {
+        endTavusSession(conversationId).catch((err) =>
+          log('error', `end-session call failed: ${err.message || err}`)
+        );
+      }
+      try {
+        await call.leave();
+      } catch (err) {
+        log('error', `leave failed: ${err.message}`);
+      }
+      try { call.destroy(); } catch (_) {}
+      call = null;
+      addieParticipantId = null;
+      conversationId = null;
+      threadId = null;
+      if (resolutionPollTimer) { clearInterval(resolutionPollTimer); resolutionPollTimer = null; }
+      $('resolution-pill').style.display = 'none';
+      $('in-call').classList.remove('active');
+      $('pre-call').style.display = '';
+      $('join-btn').disabled = true;
+      $('prejoin-hint').textContent = 'Call ended. Click "Test camera & mic" again to start a new session.';
+      $('preview-tile').classList.remove('streaming');
+      $('preview-video').srcObject = null;
+    }
+
+    async function endTavusSession(convId) {
+      log('emit', `POST /api/addie/video/session/${convId}/end`);
+      const res = await fetch(`/api/addie/video/session/${encodeURIComponent(convId)}/end`, {
+        method: 'POST',
+      });
+      if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        throw new Error(`HTTP ${res.status} ${body.slice(0, 200)}`);
+      }
+      log('info', `tavus session ended: ${convId}`);
+    }
+
+    // ====================================================================
+    // Wiring
+    // ====================================================================
+    document.addEventListener('DOMContentLoaded', async () => {
+      // Restore advanced settings from localStorage and wire change persistence.
+      applySettingsToForm(loadSettings());
+      ['opt-greeting', 'opt-context', 'opt-duration', 'opt-greenscreen', 'opt-language'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('input', persistSettingsFromForm);
+        if (el && (el.tagName === 'SELECT' || el.type === 'checkbox')) {
+          el.addEventListener('change', persistSettingsFromForm);
+        }
+      });
+      document.getElementById('opt-reset')?.addEventListener('click', () => {
+        const defaults = { ...DEFAULT_SETTINGS };
+        applySettingsToForm(defaults);
+        saveSettings(defaults);
+      });
+
+      // Initial enumeration without permission gives anonymous device list,
+      // labels are empty until the user grants permission via "Test".
+      try {
+        await populateDeviceLists();
+      } catch (e) {
+        showError(`Cannot enumerate devices: ${e.message}`);
+      }
+
+      $('test-btn').addEventListener('click', startLocalPreview);
+      $('cam-select').addEventListener('change', () => { if (localPreviewStream) startLocalPreview(); });
+      $('mic-select').addEventListener('change', () => { if (localPreviewStream) startLocalPreview(); });
+      $('join-btn').addEventListener('click', startSession);
+      $('mute-btn').addEventListener('click', toggleMute);
+      $('cam-btn').addEventListener('click', toggleCam);
+      $('interrupt-btn').addEventListener('click', sendInterrupt);
+      $('fullscreen-btn').addEventListener('click', toggleFullscreen);
+      $('leave-btn').addEventListener('click', leave);
+
+      // Keyboard shortcuts during a call:
+      //   Space → interrupt
+      //   F     → toggle fullscreen
+      window.addEventListener('keydown', (e) => {
+        const t = e.target;
+        if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+        if (e.code === 'Space' && call) {
+          e.preventDefault();
+          sendInterrupt();
+        } else if ((e.key === 'f' || e.key === 'F') && call) {
+          e.preventDefault();
+          toggleFullscreen();
+        }
+      });
+    });
+
+    window.addEventListener('beforeunload', () => {
+      // Best-effort end-session ping. Use sendBeacon since fetch promises
+      // can be cancelled when the page unloads.
+      if (conversationId && navigator.sendBeacon) {
+        try {
+          navigator.sendBeacon(`/api/addie/video/session/${encodeURIComponent(conversationId)}/end`);
+        } catch (_) {}
+      }
+      if (call) {
+        try { call.leave(); call.destroy(); } catch (_) {}
+      }
+      if (localPreviewStream) {
+        localPreviewStream.getTracks().forEach(t => t.stop());
+      }
+    });
+  </script>
+</body>
+</html>

@@ -5,6 +5,7 @@ import { slowResponseTracker } from "./middleware/slow-response.js";
 import { requestMetrics } from "./middleware/request-metrics.js";
 import escapeHtml from "escape-html";
 import * as fs from "fs/promises";
+import { readFileSync } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { WorkOS, DomainDataState } from "@workos-inc/node";
@@ -456,10 +457,31 @@ function getAppConfigScript(user?: { id?: string; email: string; firstName?: str
     ? `<script src="/posthog-init.js" defer></script>`
     : '';
 
-  // csrf.js patches fetch() to include the X-CSRF-Token header on POSTs
-  const csrfScript = `<script src="/csrf.js"></script>`;
+  // csrf.js patches fetch() to include the X-CSRF-Token header on POSTs.
+  // Cache-bust the URL with a content hash so the wrapper updates without
+  // waiting for the browser's day-long cached copy of /csrf.js to expire.
+  const csrfScript = `<script src="/csrf.js?v=${getCsrfScriptVersion()}"></script>`;
 
   return `${configScript}\n${csrfScript}\n${posthogScript}`;
+}
+
+/**
+ * Hash of csrf.js content, used as the ?v= cache-bust query string.
+ * Cached at module-load time — rebuild/redeploy gets a new hash.
+ */
+let _csrfScriptVersion: string | null = null;
+function getCsrfScriptVersion(): string {
+  if (_csrfScriptVersion) return _csrfScriptVersion;
+  try {
+    const csrfPath = process.env.NODE_ENV === 'production'
+      ? path.join(__dirname, "../server/public/csrf.js")
+      : path.join(__dirname, "../public/csrf.js");
+    const buf = readFileSync(csrfPath);
+    _csrfScriptVersion = crypto.createHash("sha256").update(buf).digest("hex").slice(0, 8);
+  } catch {
+    _csrfScriptVersion = String(Date.now());
+  }
+  return _csrfScriptVersion;
 }
 
 /**

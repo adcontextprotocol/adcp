@@ -31,6 +31,22 @@
     return '/unknown';
   }
 
+  // Only attach X-CSRF-Token to same-origin requests. Cross-origin fetches
+  // (e.g. third-party SDKs like @daily-co/daily-js calling daily.co) trigger
+  // a CORS preflight that fails because the third-party server doesn't list
+  // X-CSRF-Token in Access-Control-Allow-Headers — and cross-origin requests
+  // don't need our CSRF token anyway (they can't read our session cookie).
+  function isSameOrigin(input) {
+    try {
+      var urlStr = typeof input === 'string' ? input : (input && input.url);
+      if (!urlStr) return true; // relative-ish; treat as same-origin
+      var url = new URL(urlStr, window.location.origin);
+      return url.origin === window.location.origin;
+    } catch (_) {
+      return true; // on parse failure, default to attaching (preserves prior behavior for relative URLs)
+    }
+  }
+
   function trackSlowFetch(input, method, durationMs, status) {
     if (durationMs < SLOW_THRESHOLD_MS) return;
     if (typeof window.posthog === 'undefined' || !window.posthog.capture) return;
@@ -52,6 +68,19 @@
 
     // GET/HEAD/OPTIONS: no CSRF, just track timing
     if (!isStateChanging(method)) {
+      return originalFetch.call(self, input, init).then(function (response) {
+        trackSlowFetch(input, method, performance.now() - start, response.status);
+        return response;
+      }, function (err) {
+        trackSlowFetch(input, method, performance.now() - start, 0);
+        throw err;
+      });
+    }
+
+    // Cross-origin state-changing fetches: pass through unmodified so we
+    // don't break third-party SDKs (Daily.co, Stripe, etc.) with a CORS
+    // preflight on a header those servers don't allowlist.
+    if (!isSameOrigin(input)) {
       return originalFetch.call(self, input, init).then(function (response) {
         trackSlowFetch(input, method, performance.now() - start, response.status);
         return response;
