@@ -24,7 +24,7 @@ import { query } from '../../db/client.js';
 import { getPool } from '../../db/client.js';
 import { createLogger } from '../../logger.js';
 import { notifySpecialistCredential } from '../jobs/credential-digest.js';
-import { TRAINING_AGENT_URL } from '../../training-agent/config.js';
+import { TRAINING_AGENT_URL, tenantUrlsForModule, type ModuleTenantUrls } from '../../training-agent/config.js';
 import { ToolError } from '../tool-error.js';
 import { stripe } from '../../billing/stripe-client.js';
 import { attemptStripeReconciliation } from '../../billing/lazy-reconcile.js';
@@ -35,6 +35,25 @@ const logger = createLogger('certification-tools');
  * Build a membership-required message that gives Addie context about the user's
  * account type so she can tailor the enrollment pitch appropriately.
  */
+/**
+ * Format a tenant-URL block for injection into Sage prompts. Single-tenant
+ * modules collapse to `agent_url: "..."`; multi-tenant emits a primary plus
+ * the full list so Sage can switch deterministically when a needed tool isn't
+ * on the primary. Empty pinning falls through to the legacy `/mcp` alias.
+ *
+ * Exported for unit-testing the prompt-shape output without standing up
+ * the full handlers.set() registry.
+ */
+export function formatTenantBlock(tenants: ModuleTenantUrls): string {
+  if (tenants.ids.length <= 1) {
+    return `agent_url: "${tenants.primary}"`;
+  }
+  const list = tenants.ids
+    .map((id, i) => `  - ${id} → ${tenants.all[i]}`)
+    .join('\n');
+  return `primary agent_url: "${tenants.primary}" — this module exercises multiple agents:\n${list}\n  Use the primary by default; switch to a sibling only when the tool you need isn't there. The discovery extension at /.well-known/adagents.json on any of these URLs lists which tools live on which agent.`;
+}
+
 function membershipRequiredMessage(moduleId: string, memberContext: MemberContext | null): string {
   const isPersonal = memberContext?.organization?.is_personal !== false;
   const orgName = memberContext?.organization?.name;
@@ -492,10 +511,27 @@ export async function buildCertificationContext(
   lines.push('**Protocol accuracy (non-negotiable)**: When a learner asks about protocol details (field definitions, message flows, terminology, agent roles), use search_docs or search_repos to verify before answering. Never construct protocol answers from general knowledge. If you cannot verify, say "I need to check that" and search. Teaching mode does not override accuracy — a wrong answer during certification is worse than saying "let me look that up."');
   lines.push('');
 
-  // Inject training agent URL for demos
-  const trainingAgentUrl = process.env.TRAINING_AGENT_URL || TRAINING_AGENT_URL;
+  // Inject training-agent URLs for demos. Pull the union of tenant_ids
+  // across in-progress modules so Sage gets a single deterministic source
+  // of truth even when a learner has work open in two specialisms at once.
+  const baseUrl = process.env.TRAINING_AGENT_URL || TRAINING_AGENT_URL;
+  const activeModules = await Promise.all(
+    inProgressModules.map((im) => certDb.getModule(im.module_id.toUpperCase())),
+  );
+  const seenIds = new Set<string>();
+  const unionIds: string[] = [];
+  for (const m of activeModules) {
+    if (!m) continue;
+    for (const id of m.tenant_ids ?? []) {
+      if (!seenIds.has(id)) {
+        seenIds.add(id);
+        unionIds.push(id);
+      }
+    }
+  }
+  const tenants = tenantUrlsForModule(unionIds.length > 0 ? unionIds : null, baseUrl);
   lines.push('');
-  lines.push(`**Sandbox training agent**: For all demos and exercises, use agent_url: "${trainingAgentUrl}/mcp". Use brand domain "demo.example.com" for the account.`);
+  lines.push(`**Sandbox training agent**: For all demos and exercises, use ${formatTenantBlock(tenants)}. Use brand domain "demo.example.com" for the account.`);
 
   // Inject cross-module learner profile from completed modules
   if (userId) {
@@ -1363,8 +1399,9 @@ export function createCertificationToolHandlers(
         }
 
         if (lp.demo_scenarios?.length) {
-          const trainingAgentUrl = process.env.TRAINING_AGENT_URL || TRAINING_AGENT_URL;
-          lines.push('', `## Demo scenarios (use agent_url: ${trainingAgentUrl}/mcp)`);
+          const baseUrl = process.env.TRAINING_AGENT_URL || TRAINING_AGENT_URL;
+          const tenants = tenantUrlsForModule(mod.tenant_ids, baseUrl);
+          lines.push('', `## Demo scenarios (use ${formatTenantBlock(tenants)})`);
           lines.push('YOU (Sage) run ONE demo early (turn 2-3) to ground concepts. Clearly label it as YOUR demonstration — say "Let me show you..." before calling the tool. Do NOT attribute tool results to the learner. After the demo, invite the learner to try the exercise themselves.');
           lp.demo_scenarios.forEach(ds => {
             lines.push(`### ${ds.description}`);
@@ -1486,12 +1523,13 @@ export function createCertificationToolHandlers(
         }
 
         if (lp.demo_scenarios?.length) {
-          const trainingAgentUrl = process.env.TRAINING_AGENT_URL || TRAINING_AGENT_URL;
-          lines.push(`**Live demos** (run these against the sandbox training agent at agent_url: ${trainingAgentUrl}/mcp):`);
+          const baseUrl = process.env.TRAINING_AGENT_URL || TRAINING_AGENT_URL;
+          const tenants = tenantUrlsForModule(mod.tenant_ids, baseUrl);
+          lines.push(`**Live demos** (run these against the sandbox training agent at ${formatTenantBlock(tenants)}):`);
           lp.demo_scenarios.forEach(ds => {
             lines.push(`- ${ds.description} (tools: ${ds.tools.join(', ')})`);
           });
-          lines.push(`When calling AdCP tools (get_products, create_media_buy, etc.) for demos, always use agent_url: "${trainingAgentUrl}/mcp". Use brand domain "demo.example.com" for the account.`);
+          lines.push(`When calling AdCP tools (get_products, create_media_buy, etc.) for demos, use ${formatTenantBlock(tenants)}. Use brand domain "demo.example.com" for the account.`);
           lines.push('');
         }
       }

@@ -29,6 +29,13 @@ export interface CertificationModule {
   lesson_plan: LessonPlan | null;
   exercise_definitions: ExerciseDefinition[] | null;
   assessment_criteria: AssessmentCriteria | null;
+  /**
+   * Ordered list of training-agent tenant ids this module exercises (primary
+   * first; later entries are "also in scope"). NULL means no pinning — Sage
+   * falls back to PUBLIC_TEST_AGENT.url + the discovery extension. Resolved
+   * to URLs via PUBLIC_TEST_AGENT_URLS at the prompt boundary.
+   */
+  tenant_ids: string[] | null;
 }
 
 export interface LessonPlan {
