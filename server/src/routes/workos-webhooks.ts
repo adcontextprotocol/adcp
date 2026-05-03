@@ -1382,14 +1382,18 @@ export async function backfillOrganizationDomains(): Promise<{
   try {
     const orgsResult = await pool.query<{
       workos_organization_id: string;
-      is_personal: boolean;
     }>(
-      `SELECT workos_organization_id, COALESCE(is_personal, false) AS is_personal
-       FROM organizations`,
+      `SELECT workos_organization_id FROM organizations`,
     );
 
     const BATCH_SIZE = 10;
-    const orgs = orgsResult.rows.filter(o => !o.is_personal);
+    // Include personal orgs — Individual Professional members can claim a
+    // verified brand domain, and `syncOrganizationDomains` correctly handles
+    // the personal-vs-company split (mirrors org_domains row + brand registry
+    // for all orgs; gates is_primary + organizations.email_domain for
+    // non-personal only). Filtering here would skip the recovery case for
+    // personal-tier brand claims.
+    const orgs = orgsResult.rows;
 
     for (let i = 0; i < orgs.length; i += BATCH_SIZE) {
       const batch = orgs.slice(i, i + BATCH_SIZE);
