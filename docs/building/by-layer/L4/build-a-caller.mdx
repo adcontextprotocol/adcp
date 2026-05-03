@@ -5,7 +5,7 @@ description: "Client-side guide for AdCP buyers and demand-side applications. In
 "og:title": "AdCP — Build a caller"
 ---
 
-If you're building the **buy side** — a DSP, planning tool, agentic client, or any application that calls AdCP agents to plan, buy, and report — this is the L4 starting page for you. Caller-side L0–L3 is weeks of handler glue, not the [3–4 person-month build](/docs/building/cross-cutting/sdk-stack#why-sdks-matter-more-in-adcp-than-in-eg-http) the agent side requires. The full-stack SDK in your language carries L0–L3; you write the calling logic, response handling, and whatever your application does with the data.
+If you're building the **buy side** — a DSP, planning tool, agentic client, or any application that calls AdCP agents to plan, buy, and report — start here. Caller-side L0–L3 is weeks of handler glue, not the [3–4 person-month build](/docs/building/cross-cutting/sdk-stack#why-sdks-matter-more-in-adcp-than-in-eg-http) the agent side requires. The full-stack SDK in your language carries L0–L3; you write the calling logic, response handling, and whatever your application does with the data.
 
 <Note>
 **Spec-level reference vs build-shaped guide.** This page walks you through the build. The wire-level invariants — every rule that applies to every mutating call — live at [Calling an AdCP agent](/docs/protocol/calling-an-agent). Read it once before going to production; refer back whenever you're debugging a wire-shape error.
@@ -55,6 +55,31 @@ The Go caller surface is in active development. See the [adcp-go README](https:/
 </Tab>
 </Tabs>
 
+## Authenticate
+
+Most agents require credentials before they'll respond to anything beyond `get_adcp_capabilities`. The SDK accepts auth at construction:
+
+<Tabs>
+<Tab title="Bearer / API key">
+```typescript
+const client = new ADCPClient({
+  agentUrl: 'https://sales.example.com',
+  authToken: process.env.ADCP_API_KEY,
+});
+```
+</Tab>
+<Tab title="Signed requests (RFC 9421)">
+```typescript
+const client = new ADCPClient({
+  agentUrl: 'https://sales.example.com',
+  signing: { keyId: 'your-key-id', privateKey: /* PEM or KMS handle */ },
+});
+```
+</Tab>
+</Tabs>
+
+If your first call returns a 401 / `AUTH_REQUIRED`, the credentials aren't reaching the agent — check the constructor option, not the request payload. See the [L1 security implementation profile](/docs/building/by-layer/L1/security) for the full credential model.
+
 ## First call: discover the agent
 
 Before calling tools by hand, ask the agent what it supports.
@@ -86,12 +111,12 @@ const buy = await client.createMediaBuy({
 
 Two things worth knowing on the first call:
 
-- **Generate a fresh `idempotency_key` per logical operation.** Same key on retry → server replays the same response. Fresh key after a failure is the most common way naïve callers create duplicate buys. See the [Idempotency rules](/docs/protocol/calling-an-agent#idempotency-replay-vs-new-operation).
+- **Generate a fresh `idempotency_key` per logical operation.** Same key on retry → server replays the same response. Fresh key after a failure creates duplicate buys. See the [Idempotency rules](/docs/protocol/calling-an-agent#idempotency-replay-vs-new-operation).
 - **`account` is a discriminated `oneOf`.** Pick one variant (`{account_id}` or `{brand, operator}`) and send only its required fields. Merging them fails both. See [`account` is `oneOf`](/docs/protocol/calling-an-agent#account-is-oneof--pick-exactly-one-variant).
 
 ## Handle the three response shapes
 
-Every mutating tool returns one of three shapes. Handle them explicitly — the SDK helps but doesn't decide for you.
+Every mutating tool returns one of three shapes. Handle them explicitly.
 
 ```typescript
 const response = await client.createMediaBuy({/* … */});
@@ -117,7 +142,7 @@ const result = await client.tasksGet({
 });
 ```
 
-The [Async responses section of Calling an agent](/docs/protocol/calling-an-agent#async-responses-status-submitted-means-queued) has the full polling contract. If you also configure webhooks, the same `result` payload arrives in the push notification — see [Receive webhooks](#receive-webhooks) below.
+The [Async responses section of Calling an agent](/docs/protocol/calling-an-agent#async-responses-status-submitted-means-queued) has the full polling contract. If you configure webhooks, the same `result` payload arrives in the push notification — see [Receive webhooks](#receive-webhooks) below.
 
 ## Recover from errors
 
@@ -145,16 +170,12 @@ switch (recovery) {
 
 ## Receive webhooks
 
-For async tasks, you can either poll or register a webhook. The webhook delivers the same `result` payload as a `tasks/get` with `include_result: true`. The SDK's `webhook-receiver` helper handles RFC 9421 signature verification, replay-window enforcement, and idempotent dedup of redelivered notifications:
+For async tasks, you can either poll or register a webhook. The webhook delivers the same `result` payload as a `tasks/get` with `include_result: true`. The SDK's `webhook-receiver` helper handles RFC 9421 signature verification (resolving keys via the agent's brand.json by default), replay-window enforcement, and idempotent dedup of redelivered notifications:
 
 ```typescript
 import { createWebhookReceiver } from '@adcp/client/webhooks';
 
-const receiver = createWebhookReceiver({
-  // Resolve the agent's public key for signature verification (typically
-  // via the agent's brand.json — the SDK handles the discovery dance).
-  resolveKey: async (keyid) => /* … */,
-});
+const receiver = createWebhookReceiver();
 
 app.post('/adcp-webhooks', async (req, res) => {
   const event = await receiver.handle(req); // throws on bad signature
@@ -162,23 +183,20 @@ app.post('/adcp-webhooks', async (req, res) => {
 });
 ```
 
-If you're hosting your own verifier instead of using the SDK helper, the [L1 webhook verifier tuning page](/docs/building/by-layer/L1/webhook-verifier-tuning) covers clock-skew handling, key-rotation transitions, and signature failure diagnostics.
+For custom key resolution (private keystore, KMS), pass `resolveKey` and other [verifier options](/docs/building/by-layer/L1/webhook-verifier-tuning) — the L1 page covers clock-skew handling, key-rotation transitions, and signature failure diagnostics.
 
 ## Ingest reporting
 
-Reporting is read-only and follows the same call/response shape as everything else. The two most common loops:
+Reporting is read-only and follows the same call/response shape as everything else. Pull delivery for the buys you own and iterate on a windowed cadence:
 
 ```typescript
-// Periodic poll — pull delivery for buys you own
 const delivery = await client.getMediaBuyDelivery({
   media_buy_ids: ['mb_123', 'mb_456'],
+  window: { start: '2026-05-01T00:00:00Z', end: '2026-05-02T00:00:00Z' },
 });
-
-// Stream-style — react to webhook deliveries that include performance updates
-// (when the seller supports performance webhooks)
 ```
 
-Caller L4 — what your application does with this — is up to you. Optimization, pacing alerts, attribution joins, dashboard rendering: that's where your team's value lives. The SDK takes you to the typed `delivery` object; everything past that is your application code.
+For sellers that support performance webhooks, you'll receive deltas via the same webhook receiver shown above; otherwise poll on whatever cadence your reporting needs. Caller L4 — optimization, pacing alerts, attribution joins, dashboards — is your application code on top of the typed `delivery` object.
 
 ## What you didn't have to write
 

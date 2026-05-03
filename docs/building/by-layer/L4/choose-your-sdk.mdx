@@ -5,37 +5,29 @@ description: "Pick the AdCP SDK for your language. Coverage matrix, install comm
 "og:title": "AdCP — Choose your SDK"
 ---
 
-The AdCP SDKs absorb L0–L3 (wire, signing, auth, protocol semantics) so you write L4 business logic. Pick the SDK in the language you're already in — there's no benefit to switching languages for protocol compliance, since all three SDKs target the same wire conformance bar.
+The AdCP SDKs absorb L0–L3 (wire, signing, auth, protocol semantics) so you write L4 business logic. Pick the SDK in the language you're already in — all three SDKs target the same wire conformance bar.
 
 For the layered model behind this — what each layer contains and what an SDK at each layer should provide — see the [SDK stack reference](/docs/building/cross-cutting/sdk-stack).
-
-## AdCP 3.0 support
-
-All three official SDKs ship AdCP 3.0. Pin to (or above) the minimum listed below and validate with the [storyboard test suite](/docs/building/verification/validate-your-agent).
-
-| SDK | 3.0-compatible from | Package |
-|---|---|---|
-| `@adcp/client` (JS/TS) | `5.13.0` | [npm](https://www.npmjs.com/package/@adcp/client) · [releases](https://github.com/adcontextprotocol/adcp-client/releases) |
-| `adcp` (Python) | `4.0.0` | [PyPI](https://pypi.org/project/adcp/) · [releases](https://github.com/adcontextprotocol/adcp-python/releases) |
-| `adcp-go` (Go) | `v1.0.0` | [releases](https://github.com/adcontextprotocol/adcp-go/releases) |
-
-If you are on an earlier major version, upgrade before working through the [3.0 migration guide](/docs/reference/migration/index).
 
 ## Coverage matrix
 
 What "shipped" means at each layer is the [L0–L3 checklist](/docs/building/cross-cutting/sdk-stack#what-an-sdk-at-each-layer-should-provide).
 
-*Last updated: 2026-05-03 — `@adcp/client` 6.7.0 GA on npm; `adcp` (Python) 4.x in flight; `adcp-go` in active development.*
+*Last updated: 2026-05-03.*
 
-| SDK | Version | L0 | L1 | L2 | L3 | Adopter writes |
-|---|---|---|---|---|---|---|
-| **`@adcp/client`** (TypeScript) — [adcp-client](https://github.com/adcontextprotocol/adcp-client) | 6.7.0 GA | ✅ | ✅ | ✅ | ✅ | L4 only |
-| **`adcp`** (Python) — [adcp-client-python](https://github.com/adcontextprotocol/adcp-client-python) | 4.x in flight | ✅ | ⚠️ | ⚠️ | ⚠️ | Row to refresh on 4.0 GA |
-| **`adcp-go`** — [adcp-go](https://github.com/adcontextprotocol/adcp-go) | dev | ⚠️ | ❌ | ❌ | ❌ | Types + transport only today; L1–L3 in scope |
+| SDK | Minimum 3.0 | Current | L0 | L1 | L2 | L3 | Adopter writes |
+|---|---|---|---|---|---|---|---|
+| **`@adcp/client`** (TypeScript) — [adcp-client](https://github.com/adcontextprotocol/adcp-client) | `5.13.0` | `6.7.0` GA | ✅ | ✅ | ✅ | ✅ | L4 only |
+| **`adcp`** (Python) — [adcp-client-python](https://github.com/adcontextprotocol/adcp-client-python) | `4.0.0` | `4.x` in flight | ✅ | ⚠️ | ⚠️ | ⚠️ | Coverage updates on 4.0 GA |
+| **`adcp-go`** — [adcp-go](https://github.com/adcontextprotocol/adcp-go) | `v1.0.0` | dev | ⚠️ | ❌ | ❌ | ❌ | Types + transport only today; L1–L3 in scope |
+
+Pin to **Minimum 3.0** for production; track **Current** to stay on the latest features. Pre-3.0 callers should work through the [3.0 migration guide](/docs/reference/migration/index) before upgrading.
+
+For Python today, the partial coverage means: outbound RFC 9421 signing not yet wired (L1), brand-resolution helpers in flight (L2), webhook emission still under construction (L3). Track [adcp-client-python releases](https://github.com/adcontextprotocol/adcp-client-python/releases) for the 4.0 GA cut. For Go, only types + transport are in main today — see [adcp-go README](https://github.com/adcontextprotocol/adcp-go) for what's in scope per release.
 
 Legend: ✅ shipped · ⚠️ partial / in flight · ❌ not yet covered.
 
-**Python and TypeScript are the first-class languages.** Both are committed to full L0–L4 coverage. **Go** is moving in the same direction. **Other languages** are not on the official roadmap; community-maintained ports are welcome — see the [Builders Working Group](/docs/community/working-group) and the [Slack community](https://join.slack.com/t/agenticads/shared_invite/zt-3c5sxvdjk-x0rVmLB3OFHVUp~WutVWZg).
+**Python and TypeScript carry full L0–L4 coverage as the first-class supported languages.** **Go** is moving in the same direction. **Other languages** are not on the official roadmap; community-maintained ports are welcome — see the [Builders Working Group](/docs/community/working-group) and the [Slack community](https://join.slack.com/t/agenticads/shared_invite/zt-3c5sxvdjk-x0rVmLB3OFHVUp~WutVWZg).
 
 ## JavaScript / TypeScript
 
