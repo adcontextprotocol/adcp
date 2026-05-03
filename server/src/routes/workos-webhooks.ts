@@ -28,6 +28,7 @@ import { tryAutoLinkWebsiteUserToSlack } from '../slack/sync.js';
 import { triageAndNotify } from '../services/prospect-triage.js';
 import { researchDomain, trackBackground } from '../services/brand-enrichment.js';
 import { isFreeEmailDomain } from '../utils/email-domain.js';
+import { canonicalizeBrandDomain, assertClaimableBrandDomain } from '../services/identifier-normalization.js';
 import { resolvePreferredOrganization, backfillPrimaryOrganization } from '../db/users-db.js';
 import { notifySystemError } from '../addie/error-notifier.js';
 import {
@@ -413,10 +414,7 @@ async function syncOrganizationDomains(org: OrganizationData): Promise<void> {
     return;
   }
 
-  if (orgCheck.rows[0].is_personal) {
-    logger.debug({ orgId: org.id, orgName: org.name }, 'Personal organization, skipping domain sync');
-    return;
-  }
+  const isPersonal = orgCheck.rows[0].is_personal === true;
 
   const client = await pool.connect();
   try {
@@ -429,11 +427,17 @@ async function syncOrganizationDomains(org: OrganizationData): Promise<void> {
     );
     const currentDomains = new Set(currentDomainsResult.rows.map(r => r.domain));
 
-    // Upsert each domain from WorkOS
+    // Upsert each domain from WorkOS — runs for ALL orgs. Personal-tier orgs
+    // can verify and own a brand domain; we record that fact. Squeeze
+    // prevention happens at the seat-cap layer, not by hiding ownership.
     const workOSDomains = new Set<string>();
     for (let i = 0; i < org.domains.length; i++) {
       const domainData = org.domains[i];
       workOSDomains.add(domainData.domain);
+
+      // is_primary + the email_domain update below drive auto-membership
+      // inference and only apply to non-personal orgs (see upsertOrganizationDomain).
+      const isPrimaryEligible = !isPersonal && i === 0;
 
       await client.query(
         `INSERT INTO organization_domains (
@@ -447,7 +451,7 @@ async function syncOrganizationDomains(org: OrganizationData): Promise<void> {
         [
           org.id,
           domainData.domain,
-          i === 0, // First domain is primary
+          isPrimaryEligible,
           domainData.state === 'verified',
         ]
       );
@@ -465,13 +469,18 @@ async function syncOrganizationDomains(org: OrganizationData): Promise<void> {
       }
     }
 
-    // Update the email_domain column on organizations with the primary domain
+    // Update organizations.email_domain only for non-personal orgs — this
+    // column is the auto-membership inference key and applying it to
+    // personal-tier orgs would let `@vastlint.org` users auto-resolve to a
+    // 1-seat individual sub.
     const primaryDomain = org.domains.length > 0 ? org.domains[0].domain : null;
-    await client.query(
-      `UPDATE organizations SET email_domain = $1, updated_at = NOW()
-       WHERE workos_organization_id = $2`,
-      [primaryDomain, org.id]
-    );
+    if (!isPersonal) {
+      await client.query(
+        `UPDATE organizations SET email_domain = $1, updated_at = NOW()
+         WHERE workos_organization_id = $2`,
+        [primaryDomain, org.id]
+      );
+    }
 
     await client.query('COMMIT');
 
@@ -480,7 +489,32 @@ async function syncOrganizationDomains(org: OrganizationData): Promise<void> {
       orgName: org.name,
       domainCount: org.domains.length,
       primaryDomain,
+      isPersonal,
     }, 'Synced organization domains');
+
+    // Mirror verified domains into the brand registry — independent of org
+    // tier (an Individual Professional member CAN own a verified brand).
+    const brandDb = new BrandDatabase();
+    for (const domainData of org.domains) {
+      if (domainData.state !== 'verified') continue;
+      const normalizedDomain = domainData.domain.toLowerCase();
+      try {
+        assertClaimableBrandDomain(canonicalizeBrandDomain(normalizedDomain));
+      } catch (err) {
+        logger.warn({
+          orgId: org.id,
+          domain: normalizedDomain,
+          reason: err instanceof Error ? err.message : String(err),
+        }, 'Skipping brand registry sync: domain is shared platform or public suffix');
+        continue;
+      }
+      try {
+        await brandDb.markBrandDomainVerified(normalizedDomain, org.id);
+        logger.info({ orgId: org.id, domain: normalizedDomain, isPersonal }, 'Synced verified domain to brand registry');
+      } catch (err) {
+        logger.error({ err, orgId: org.id, domain: normalizedDomain }, 'Failed to sync verified domain to brand registry');
+      }
+    }
   } catch (error) {
     await client.query('ROLLBACK');
     throw error;
@@ -514,6 +548,7 @@ async function upsertOrganizationDomain(domainData: OrganizationDomainEventData 
   const pool = getPool();
   const client = await pool.connect();
 
+  let isPersonal = false;
   try {
     await client.query('BEGIN');
 
@@ -533,18 +568,16 @@ async function upsertOrganizationDomain(domainData: OrganizationDomainEventData 
       return;
     }
 
-    if (orgCheck.rows[0].is_personal) {
-      await client.query('ROLLBACK');
-      logger.debug(
-        { orgId: domainData.organization_id, domain: domainData.domain },
-        'Personal organization, skipping domain upsert'
-      );
-      return;
-    }
+    isPersonal = orgCheck.rows[0].is_personal === true;
 
     // Normalize domain to lowercase
     const normalizedDomain = domainData.domain.toLowerCase();
 
+    // Mirror organization_domains for ALL orgs — this table reflects WorkOS
+    // truth about who owns which domain. The squeeze-prevention concern
+    // (multi-user companies sneaking onto a 1-seat individual sub) is
+    // enforced at the seat-cap layer (checkSeatAvailability), not by hiding
+    // the ownership claim in the data layer.
     await client.query(
       `INSERT INTO organization_domains (
         workos_organization_id, domain, verified, source
@@ -561,8 +594,13 @@ async function upsertOrganizationDomain(domainData: OrganizationDomainEventData 
       ]
     );
 
-    // If this is verified and there's no primary domain yet, make it primary (atomic)
-    if (domainData.state === 'verified') {
+    // is_primary + organizations.email_domain drive auto-membership inference
+    // (e.g. "any user signing up with @acme.com belongs to the Acme org").
+    // That's the actual squeeze surface for personal-tier orgs — a single
+    // individual sub shouldn't auto-claim every employee at vastlint.org.
+    // Skip the inference wiring for personal orgs; the verified row above
+    // still records the ownership fact.
+    if (!isPersonal && domainData.state === 'verified') {
       const updated = await client.query(
         `UPDATE organization_domains SET is_primary = true, updated_at = NOW()
          WHERE workos_organization_id = $1 AND domain = $2
@@ -574,7 +612,6 @@ async function upsertOrganizationDomain(domainData: OrganizationDomainEventData 
         [domainData.organization_id, normalizedDomain]
       );
 
-      // If we set this as primary, also update the email_domain column
       if (updated.rows.length > 0) {
         await client.query(
           `UPDATE organizations SET email_domain = $1, updated_at = NOW()
@@ -590,31 +627,50 @@ async function upsertOrganizationDomain(domainData: OrganizationDomainEventData 
       orgId: domainData.organization_id,
       domain: normalizedDomain,
       verified: domainData.state === 'verified',
+      isPersonal,
     }, 'Upserted organization domain');
 
     // Sync the brand registry: if WorkOS just confirmed the domain is owned
     // by this org, mirror ownership + verified flags into the brands row
-    // (#3176). Use the sync-only method — NOT applyVerifiedBrandClaim —
-    // because the webhook doesn't know the user's adopt-vs-fresh decision
-    // and would otherwise clobber a manifest the inline /verify route
-    // intentionally adopted seconds earlier.
+    // (#3176). Brand identity is orthogonal to org-membership inference —
+    // an Individual Professional member CAN own and verify a brand, that's
+    // the entire purpose of the tier. Run this for all orgs.
     //
-    // For dashboard-flipped domains (admin marked verified directly in the
-    // WorkOS console, no inline /verify call), this path is the ONLY writer.
-    // A failure here means the brand row will lag the WorkOS state until the
-    // next event for this domain — investigate logs if it surfaces.
+    // Use the sync-only method — NOT applyVerifiedBrandClaim — because the
+    // webhook doesn't know the user's adopt-vs-fresh decision and would
+    // otherwise clobber a manifest the inline /verify route intentionally
+    // adopted seconds earlier.
     if (domainData.state === 'verified') {
+      // Defense in depth: don't mirror shared-platform / public-suffix
+      // domains into the brand registry even if WorkOS marked them verified
+      // (e.g. an admin manually flipping `gmail.com` would otherwise let one
+      // org claim the brand identity for every Gmail-hosted property).
+      let claimable = true;
       try {
-        const brandDb = new BrandDatabase();
-        await brandDb.markBrandDomainVerified(normalizedDomain, domainData.organization_id);
-        logger.info({
+        assertClaimableBrandDomain(canonicalizeBrandDomain(normalizedDomain));
+      } catch (err) {
+        claimable = false;
+        logger.warn({
           orgId: domainData.organization_id,
           domain: normalizedDomain,
-        }, 'Synced verified domain to brand registry');
-      } catch (err) {
-        // Don't block the webhook on brand-registry sync errors — webhook
-        // idempotency is the whole point. Subsequent events will retry.
-        logger.error({ err, orgId: domainData.organization_id, domain: normalizedDomain }, 'Failed to sync verified domain to brand registry');
+          reason: err instanceof Error ? err.message : String(err),
+        }, 'Skipping brand registry sync: domain is shared platform or public suffix');
+      }
+
+      if (claimable) {
+        try {
+          const brandDb = new BrandDatabase();
+          await brandDb.markBrandDomainVerified(normalizedDomain, domainData.organization_id);
+          logger.info({
+            orgId: domainData.organization_id,
+            domain: normalizedDomain,
+            isPersonal,
+          }, 'Synced verified domain to brand registry');
+        } catch (err) {
+          // Don't block the webhook on brand-registry sync errors — webhook
+          // idempotency is the whole point. Subsequent events will retry.
+          logger.error({ err, orgId: domainData.organization_id, domain: normalizedDomain }, 'Failed to sync verified domain to brand registry');
+        }
       }
     }
   } catch (error) {
