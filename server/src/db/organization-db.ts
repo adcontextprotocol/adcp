@@ -1613,56 +1613,6 @@ export class OrganizationDatabase {
   }
 
   /**
-   * Sync organizations from WorkOS to local database.
-   * This should be called during server startup to ensure all WorkOS orgs exist locally.
-   * Only creates missing orgs - does not update existing ones.
-   */
-  async syncFromWorkOS(workos: WorkOS): Promise<{ synced: number; existing: number }> {
-    let synced = 0;
-    let existing = 0;
-
-    try {
-      // Paginate through all organizations from WorkOS (limit is per-page max)
-      let after: string | undefined;
-      do {
-        const orgs = await workos.organizations.listOrganizations({
-          limit: 100,
-          after,
-        });
-
-        for (const workosOrg of orgs.data) {
-          const localOrg = await this.getOrganization(workosOrg.id);
-
-          if (!localOrg) {
-            // organizations.name is VARCHAR(255); a few WorkOS orgs have
-            // longer names and would crash the whole sync on INSERT.
-            const name = workosOrg.name.slice(0, 255);
-            await this.createOrganization({
-              workos_organization_id: workosOrg.id,
-              name,
-            });
-            synced++;
-            logger.info({ orgId: workosOrg.id, name }, 'Synced organization from WorkOS');
-          } else {
-            existing++;
-          }
-        }
-
-        after = orgs.listMetadata?.after ?? undefined;
-      } while (after);
-
-      if (synced > 0) {
-        logger.info({ synced, existing }, 'WorkOS organization sync complete');
-      }
-
-      return { synced, existing };
-    } catch (error) {
-      logger.error({ error }, 'Failed to sync organizations from WorkOS');
-      throw error;
-    }
-  }
-
-  /**
    * Ensure a local organizations row exists for a WorkOS organization.
    * Fetches the org from WorkOS (for its name) and creates the local row if missing.
    * Safe to call on every login — cheap no-op when the row already exists.
@@ -1696,8 +1646,9 @@ export class OrganizationDatabase {
 
   /**
    * Sync Stripe customer IDs to local organization records.
-   * This should be called during server startup after WorkOS sync.
-   * Only updates orgs that exist locally but are missing stripe_customer_id.
+   * Called during server startup. Only updates orgs that already exist
+   * locally and are missing stripe_customer_id; orgs not yet present locally
+   * are skipped and will be filled in lazily on first login.
    */
   async syncStripeCustomers(): Promise<{ synced: number; skipped: number; conflicts: number }> {
     let synced = 0;
@@ -1711,7 +1662,8 @@ export class OrganizationDatabase {
       const localOrg = await this.getOrganization(workosOrgId);
 
       if (!localOrg) {
-        // Org doesn't exist locally - skip (WorkOS sync should have created it)
+        // Org doesn't exist locally yet — will be created lazily at first
+        // login via ensureOrganizationExists, then picked up on next sync.
         skipped++;
         continue;
       }
