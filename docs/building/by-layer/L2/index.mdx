@@ -1,0 +1,17 @@
+---
+title: L2 — Auth & registry
+sidebarTitle: L2 — Auth & registry
+description: "Auth-and-registry layer of the AdCP stack. Turns a verified identity into a scoped principal — which buyer, which brand, which advertiser account, which sandbox-vs-live tier."
+"og:title": "AdCP — L2 (Auth & registry)"
+---
+
+L2 turns a verified identity into a scoped principal. On the agent side: multi-tenant principal resolution, sandbox/live boundary, brand resolution, permission scoping. On the caller side: publish own identity, look up the agent it's calling — much smaller surface.
+
+See the [SDK stack reference](/docs/building/cross-cutting/sdk-stack#l2--auth--registry) for the full L2 contract.
+
+## Pages in this layer
+
+- **[Authentication](/docs/building/by-layer/L2/authentication)** — credentials and permissions.
+- **[Account state](/docs/building/by-layer/L2/account-state)** — multi-tenant account resolution.
+- **[Accounts and agents](/docs/building/by-layer/L2/accounts-and-agents)** — relationship between account scoping and agent identity.
+- **[Context & sessions](/docs/building/by-layer/L2/context-sessions)** — managing principal state across requests.

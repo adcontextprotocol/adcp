@@ -1,0 +1,270 @@
+---
+title: Task Lifecycle
+description: "AdCP task lifecycle: status values (submitted, working, input-required, completed, failed), state transitions, response structure, and polling patterns for all operations."
+"og:title": "AdCP — Task Lifecycle"
+---
+
+Every AdCP response includes a `status` field that tells you exactly what state the operation is in and what action you should take next. This is the foundation for handling any AdCP operation.
+
+:::note Transport-specific task management
+The status values and lifecycle described here are transport-independent — they apply regardless of how you access AdCP. The *mechanism* for tracking async tasks varies by transport:
+- **MCP**: Use [MCP Tasks](https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/tasks) — the client polls via `tasks/get` and retrieves results via `tasks/result` at the protocol level. See [MCP Guide](/docs/building/by-layer/L0/mcp-guide#async-operations-via-mcp-tasks).
+- **A2A**: Use native A2A task lifecycle with SSE streaming. See [A2A Guide](/docs/building/by-layer/L0/a2a-guide).
+- **REST**: Use AdCP's `task_id` with polling or [push notifications](/docs/building/by-layer/L3/webhooks).
+:::
+
+## Status Values
+
+AdCP uses the same status values as the [A2A protocol's TaskState enum](https://a2a-protocol.org/dev/specification/#63-taskstate-enum):
+
+| Status | Meaning | Your Action |
+|--------|---------|-------------|
+| `submitted` | Task queued, blocked on external dependency | Configure webhook, show "queued" indicator |
+| `working` | Agent actively processing (>30s) | Wait for result — out-of-band progress signal, not a polling trigger |
+| `input-required` | Needs information from you | Read `message` field, prompt user, send follow-up |
+| `completed` | Successfully finished | Process `data`, show success message |
+| `canceled` | User/system canceled task | Show cancellation notice, clean up |
+| `failed` | Error occurred | Show error from `message`, handle gracefully |
+| `rejected` | Agent rejected the request | Show rejection reason, don't retry |
+| `auth-required` | Authentication needed | Prompt for auth, retry with credentials |
+| `unknown` | Indeterminate state | Log for debugging, may need manual intervention |
+
+## Response Structure
+
+Every AdCP response uses a **flat structure** where task-specific fields are at the top level:
+
+```json
+{
+  "status": "completed",           // Always present: what state we're in
+  "message": "Found 5 products",   // Always present: human explanation
+  "context_id": "ctx-123",         // Session continuity
+  "context": {                     // Application-level context echoed back
+    "ui": "buyer_dashboard"
+  },
+  "products": [...]                // Task-specific fields at top level
+}
+```
+
+:::warning Single status field required
+Agents MUST NOT emit the legacy `task_status` or `response_status` fields alongside `status`. The `status` field is the single authoritative task state. Agents emitting either alongside `status` are non-conformant.
+:::
+
+## Status Handling
+
+### Basic Pattern
+
+```javascript
+function handleAdcpResponse(response) {
+  switch (response.status) {
+    case 'completed':
+      // Success - process the data (task fields are at top level)
+      showSuccess(response.message);
+      return processData(response);
+
+    case 'input-required':
+      // Need more info - prompt user
+      const userInput = await promptUser(response.message);
+      return sendFollowUp(response.context_id, userInput);
+
+    case 'working':
+      // Server is actively processing — just wait, result will arrive
+      showProgress(response.message);
+      return response;
+
+    case 'failed':
+      // Error - show message and handle gracefully
+      showError(response.message);
+      return handleError(response.errors);
+
+    case 'auth-required':
+      // Authentication needed
+      const credentials = await getAuth();
+      return retryWithAuth(credentials);
+
+    default:
+      // Unexpected status
+      console.warn('Unknown status:', response.status);
+      showMessage(response.message);
+  }
+}
+```
+
+### Clarification Flow
+
+When status is `input-required`, the message tells you what's needed:
+
+```json
+{
+  "status": "input-required",
+  "message": "I need more information about your campaign. What's your budget and target audience?",
+  "context_id": "ctx-123",
+  "products": [],
+  "suggestions": ["budget", "audience", "timing"]
+}
+```
+
+**Client handling:**
+```javascript
+if (response.status === 'input-required') {
+  // Extract what's needed from the message
+  const missingInfo = extractRequirements(response.message);
+
+  // Prompt user with specific questions
+  const answers = await promptForInfo(missingInfo);
+
+  // Send follow-up with same context_id
+  return sendMessage(response.context_id, answers);
+}
+```
+
+### Approval Flow
+
+Human approval at the task layer is modelled as `input-required` (when the buyer must respond, e.g. confirm a budget) or `submitted` (when the seller is waiting on an internal human, e.g. IO signing). These implement the [Embedded Human Judgment](/docs/governance/embedded-human-judgment) principle that judgment cannot be delegated to software — when an action exceeds autonomous authority, the system halts for human review rather than proceeding.
+
+> `pending_approval` is an Account status, not a task status and not a MediaBuy status. It indicates the seller is reviewing an account (credit, contracts) before it can be used. Don't reuse the name for task-level approval.
+
+```json
+{
+  "status": "input-required",
+  "message": "Media buy exceeds auto-approval limit ($100K). Please approve to proceed with campaign creation.",
+  "context_id": "ctx-123",
+  "approval_required": true,
+  "amount": 150000,
+  "reason": "exceeds_limit"
+}
+```
+
+**Client handling:**
+```javascript
+if (response.status === 'input-required' && response.approval_required) {
+  // Show approval UI
+  const approved = await showApprovalDialog(response.message, response);
+
+  // Send approval decision
+  const decision = approved ? "Approved" : "Rejected";
+  return sendMessage(response.context_id, decision);
+}
+```
+
+### Operations Over 30 Seconds
+
+Operations that take longer than 30 seconds return either `working` or `submitted`. These statuses mean different things:
+
+- **`working`**: The server is actively processing and will deliver the result when ready. No polling needed — the server sends progress out-of-band and the result arrives on the open connection.
+- **`submitted`**: The operation is blocked on an external dependency (human approval, publisher review). Configure a webhook or poll.
+
+```json
+{
+  "status": "submitted",
+  "message": "Media buy submitted for publisher approval",
+  "context_id": "ctx-123",
+  "task_id": "task-456"
+}
+```
+
+**Transport-specific handling for `submitted` operations:**
+- **MCP**: Use [MCP Tasks](/docs/building/by-layer/L0/mcp-guide#async-operations-via-mcp-tasks) or poll via `tasks/get`
+- **A2A**: Subscribe to SSE stream for real-time updates
+- **REST**: Use [push notifications](/docs/building/by-layer/L3/webhooks) (recommended) or poll with `task_id`
+
+## Status Progression
+
+Tasks progress through predictable states:
+
+```
+submitted → working → completed
+    ↓          ↓         ↑
+input-required → → → → →
+    ↓
+  failed
+```
+
+- **`submitted`**: Task queued, blocked on external dependency — configure webhook or poll
+- **`working`**: Agent actively processing (>30s) — wait for result, no polling needed
+- **`input-required`**: Need user input, continue conversation
+- **`completed`**: Success, process results
+- **`failed`**: Error, handle appropriately
+
+## Polling and Timeouts
+
+### Polling is for `submitted` only
+
+Don't poll for `working` — the server delivers the result on the open connection. Polling is a backup for `submitted` operations (webhooks are preferred).
+
+Send `include_result: true` to receive the terminal task payload on the polled response once the task reaches `status: completed`. The `result` object on the response carries the same shape the original task would have returned synchronously — for example, polling a `create_media_buy` task returns `result: { media_buy_id, packages, status }`. For `failed` tasks, read the existing `error` field instead. Webhooks remain the supported delivery mechanism (see [Push Notifications](/docs/building/by-layer/L3/webhooks)); `include_result` is the typed polling alternative for buyers that prefer pull over push.
+
+```javascript
+// Polling is only for 'submitted' operations
+async function pollForResult(taskId, pollInterval = 30_000) {
+  while (true) {
+    await sleep(pollInterval);
+
+    const response = await adcp.call('tasks/get', {
+      task_id: taskId,
+      include_result: true
+    });
+
+    if (['completed', 'failed', 'canceled'].includes(response.status)) {
+      // response.result carries the terminal payload when status === 'completed'
+      // response.error carries error details when status === 'failed'
+      return response;
+    }
+  }
+}
+```
+
+### Timeout Configuration
+
+```javascript
+const TIMEOUTS = {
+  sync: 30_000,         // 30 seconds — most operations complete here
+  working: 300_000,      // 5 minutes — connection timeout for active processing
+  interactive: 300_000,  // 5 minutes for human input
+  submitted: 86_400_000  // 24 hours for external dependencies
+};
+
+function getTimeout(status) {
+  if (status === 'submitted') return TIMEOUTS.submitted;
+  if (status === 'working') return TIMEOUTS.working;
+  if (status === 'input-required') return TIMEOUTS.interactive;
+  return TIMEOUTS.sync;
+}
+```
+
+## Task Reconciliation
+
+Use `tasks/list` to recover from lost state:
+
+```javascript
+// Find all pending operations
+const pending = await session.call('tasks/list', {
+  filters: {
+    statuses: ["submitted", "working", "input-required"]
+  }
+});
+
+// Reconcile with local state
+const missingTasks = pending.tasks.filter(task =>
+  !localState.hasTask(task.task_id)
+);
+
+// Resume tracking missing tasks
+for (const task of missingTasks) {
+  startPolling(task.task_id);
+}
+```
+
+## Best Practices
+
+1. **Always check status first** - Don't assume success
+2. **Handle all statuses** - Include a default case for unknown states
+3. **Preserve context_id** - Required for conversation continuity
+4. **Use task_id for tracking** - Especially for long-running operations
+5. **Implement timeouts** - Don't wait forever
+6. **Log status transitions** - Helps with debugging and auditing
+
+## Next Steps
+
+- **Async Operations**: See [Async Operations](/docs/building/by-layer/L3/async-operations) for handling different operation types
+- **Webhooks**: See [Webhooks](/docs/building/by-layer/L3/webhooks) for push notification patterns
+- **Error Handling**: See [Error Handling](/docs/building/by-layer/L3/error-handling) for error categories and recovery

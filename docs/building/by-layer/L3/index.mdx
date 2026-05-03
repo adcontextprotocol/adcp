@@ -1,0 +1,18 @@
+---
+title: L3 — Protocol semantics
+sidebarTitle: L3 — Protocol semantics
+description: "Protocol-semantics layer of the AdCP stack. Lifecycle state machines, idempotency, error catalog, async-task contract, conformance test surface, webhook emission. Where most of an SDK's value lives."
+"og:title": "AdCP — L3 (Protocol semantics)"
+---
+
+L3 enforces what AdCP *means* on the agent side. The wire shape is well-formed (L0); the caller is authentic (L1) and authorized (L2); now: is the request legal given the current state of the world?
+
+For agents, L3 is the bulk of the protocol surface — see the [SDK stack reference](/docs/building/cross-cutting/sdk-stack#l3--protocol-semantics) for the full per-component decomposition (~3–4 person-months from scratch). For callers, L3 is consumer-side: weeks of handler glue, classifying error codes and handling state transitions rather than enforcing them.
+
+## Pages in this layer
+
+- **[Task lifecycle](/docs/building/by-layer/L3/task-lifecycle)** — status values, transitions, polling.
+- **[Async operations](/docs/building/by-layer/L3/async-operations)** — sync, async, and interactive task handling.
+- **[Webhooks](/docs/building/by-layer/L3/webhooks)** — push notifications, signing, retry, idempotency.
+- **[Error handling](/docs/building/by-layer/L3/error-handling)** — error categories, codes, recovery classification.
+- **[`comply_test_controller`](/docs/building/by-layer/L3/comply-test-controller)** — sandbox-only conformance test surface.

@@ -106,61 +106,106 @@
                   "docs/protocol/multi-agent-discovery",
                   "docs/protocol/format-references",
                   {
-                    "group": "Understanding AdCP",
-                    "pages": [
-                      "docs/building/understanding/index",
-                      "docs/building/understanding/protocol-comparison",
-                      "docs/building/understanding/adcp-vs-openrtb",
-                      "docs/building/understanding/how-agents-communicate",
-                      "docs/building/understanding/security-model",
-                      "docs/building/understanding/industry-landscape"
-                    ]
-                  },
-                  "docs/building/where-to-start",
-                  "docs/building/sdk-stack",
-                  "docs/building/schemas-and-sdks",
-                  "docs/building/build-an-agent",
-                  "docs/building/migrate-from-hand-rolled",
-                  "docs/building/version-adaptation",
-                  "docs/building/get-test-ready",
-                  "docs/building/validate-your-agent",
-                  "docs/building/grading",
-                  "docs/building/operating-an-agent",
-                  "docs/building/compliance-catalog",
-                  "docs/building/conformance",
-                  "docs/building/aao-verified",
-                  {
-                    "group": "Foundations",
-                    "pages": [
-                      "docs/building/integration/index",
-                      "docs/building/integration/mcp-guide",
-                      "docs/building/integration/a2a-guide",
-                      "docs/building/integration/a2a-response-format",
-                      "docs/protocol/get_adcp_capabilities",
-                      "docs/building/integration/context-sessions",
-                      "docs/building/integration/authentication",
-                      "docs/building/integration/account-state",
-                      "docs/building/integration/accounts-and-agents"
-                    ]
-                  },
-                  {
-                    "group": "Implementation Patterns",
+                    "group": "Concepts",
                     "expanded": false,
                     "pages": [
-                      "docs/building/implementation/index",
-                      "docs/building/implementation/task-lifecycle",
-                      "docs/building/implementation/async-operations",
-                      "docs/building/implementation/webhooks",
-                      "docs/building/implementation/orchestrator-design",
-                      "docs/building/implementation/error-handling",
-                      "docs/building/implementation/transport-errors",
-                      "docs/building/implementation/mcp-response-extraction",
-                      "docs/building/implementation/a2a-response-extraction",
-                      "docs/building/implementation/security",
-                      "docs/building/implementation/webhook-verifier-tuning",
-                      "docs/building/implementation/seller-integration",
-                      "docs/building/implementation/storyboard-troubleshooting",
-                      "docs/building/implementation/known-ambiguities"
+                      "docs/building/concepts/index",
+                      "docs/building/concepts/protocol-comparison",
+                      "docs/building/concepts/adcp-vs-openrtb",
+                      "docs/building/concepts/how-agents-communicate",
+                      "docs/building/concepts/security-model",
+                      "docs/building/concepts/industry-landscape"
+                    ]
+                  },
+                  {
+                    "group": "Build by layer",
+                    "pages": [
+                      {
+                        "group": "L4 — Business logic",
+                        "pages": [
+                          "docs/building/by-layer/L4/index",
+                          "docs/building/by-layer/L4/build-an-agent",
+                          "docs/building/by-layer/L4/migrate-from-hand-rolled"
+                        ]
+                      },
+                      {
+                        "group": "L3 — Protocol semantics",
+                        "expanded": false,
+                        "pages": [
+                          "docs/building/by-layer/L3/index",
+                          "docs/building/by-layer/L3/task-lifecycle",
+                          "docs/building/by-layer/L3/async-operations",
+                          "docs/building/by-layer/L3/webhooks",
+                          "docs/building/by-layer/L3/error-handling",
+                          "docs/building/by-layer/L3/comply-test-controller"
+                        ]
+                      },
+                      {
+                        "group": "L2 — Auth & registry",
+                        "expanded": false,
+                        "pages": [
+                          "docs/building/by-layer/L2/index",
+                          "docs/building/by-layer/L2/authentication",
+                          "docs/building/by-layer/L2/account-state",
+                          "docs/building/by-layer/L2/accounts-and-agents",
+                          "docs/building/by-layer/L2/context-sessions"
+                        ]
+                      },
+                      {
+                        "group": "L1 — Identity & signing",
+                        "expanded": false,
+                        "pages": [
+                          "docs/building/by-layer/L1/index",
+                          "docs/building/by-layer/L1/security",
+                          "docs/building/by-layer/L1/webhook-verifier-tuning"
+                        ]
+                      },
+                      {
+                        "group": "L0 — Wire & transport",
+                        "expanded": false,
+                        "pages": [
+                          "docs/building/by-layer/L0/index",
+                          "docs/building/by-layer/L0/mcp-guide",
+                          "docs/building/by-layer/L0/a2a-guide",
+                          "docs/building/by-layer/L0/a2a-response-format",
+                          "docs/protocol/get_adcp_capabilities",
+                          "docs/building/by-layer/L0/mcp-response-extraction",
+                          "docs/building/by-layer/L0/a2a-response-extraction"
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "group": "Cross-cutting",
+                    "expanded": false,
+                    "pages": [
+                      "docs/building/cross-cutting/sdk-stack",
+                      "docs/building/cross-cutting/version-adaptation",
+                      "docs/building/cross-cutting/known-ambiguities"
+                    ]
+                  },
+                  "docs/building/schemas-and-sdks",
+                  {
+                    "group": "Verification & trust",
+                    "expanded": false,
+                    "pages": [
+                      "docs/building/verification/conformance",
+                      "docs/building/verification/compliance-catalog",
+                      "docs/building/verification/validate-your-agent",
+                      "docs/building/verification/grading",
+                      "docs/building/verification/get-test-ready",
+                      "docs/building/verification/aao-verified"
+                    ]
+                  },
+                  {
+                    "group": "Operating",
+                    "expanded": false,
+                    "pages": [
+                      "docs/building/operating/operating-an-agent",
+                      "docs/building/operating/orchestrator-design",
+                      "docs/building/operating/transport-errors",
+                      "docs/building/operating/seller-integration",
+                      "docs/building/operating/storyboard-troubleshooting"
                     ]
                   },
                   {
@@ -629,61 +674,106 @@
               "docs/protocol/multi-agent-discovery",
               "docs/protocol/format-references",
               {
-                "group": "Understanding AdCP",
-                "pages": [
-                  "docs/building/understanding/index",
-                  "docs/building/understanding/protocol-comparison",
-                  "docs/building/understanding/adcp-vs-openrtb",
-                  "docs/building/understanding/how-agents-communicate",
-                  "docs/building/understanding/security-model",
-                  "docs/building/understanding/industry-landscape"
-                ]
-              },
-              "docs/building/where-to-start",
-              "docs/building/sdk-stack",
-              "docs/building/schemas-and-sdks",
-              "docs/building/build-an-agent",
-              "docs/building/migrate-from-hand-rolled",
-              "docs/building/version-adaptation",
-              "docs/building/get-test-ready",
-              "docs/building/validate-your-agent",
-              "docs/building/grading",
-              "docs/building/operating-an-agent",
-              "docs/building/compliance-catalog",
-              "docs/building/conformance",
-              "docs/building/aao-verified",
-              {
-                "group": "Foundations",
-                "pages": [
-                  "docs/building/integration/index",
-                  "docs/building/integration/mcp-guide",
-                  "docs/building/integration/a2a-guide",
-                  "docs/building/integration/a2a-response-format",
-                  "docs/protocol/get_adcp_capabilities",
-                  "docs/building/integration/context-sessions",
-                  "docs/building/integration/authentication",
-                  "docs/building/integration/account-state",
-                  "docs/building/integration/accounts-and-agents"
-                ]
-              },
-              {
-                "group": "Implementation Patterns",
+                "group": "Concepts",
                 "expanded": false,
                 "pages": [
-                  "docs/building/implementation/index",
-                  "docs/building/implementation/task-lifecycle",
-                  "docs/building/implementation/async-operations",
-                  "docs/building/implementation/webhooks",
-                  "docs/building/implementation/orchestrator-design",
-                  "docs/building/implementation/error-handling",
-                  "docs/building/implementation/transport-errors",
-                  "docs/building/implementation/mcp-response-extraction",
-                  "docs/building/implementation/a2a-response-extraction",
-                  "docs/building/implementation/security",
-                  "docs/building/implementation/webhook-verifier-tuning",
-                  "docs/building/implementation/seller-integration",
-                  "docs/building/implementation/storyboard-troubleshooting",
-                  "docs/building/implementation/known-ambiguities"
+                  "docs/building/concepts/index",
+                  "docs/building/concepts/protocol-comparison",
+                  "docs/building/concepts/adcp-vs-openrtb",
+                  "docs/building/concepts/how-agents-communicate",
+                  "docs/building/concepts/security-model",
+                  "docs/building/concepts/industry-landscape"
+                ]
+              },
+              {
+                "group": "Build by layer",
+                "pages": [
+                  {
+                    "group": "L4 — Business logic",
+                    "pages": [
+                      "docs/building/by-layer/L4/index",
+                      "docs/building/by-layer/L4/build-an-agent",
+                      "docs/building/by-layer/L4/migrate-from-hand-rolled"
+                    ]
+                  },
+                  {
+                    "group": "L3 — Protocol semantics",
+                    "expanded": false,
+                    "pages": [
+                      "docs/building/by-layer/L3/index",
+                      "docs/building/by-layer/L3/task-lifecycle",
+                      "docs/building/by-layer/L3/async-operations",
+                      "docs/building/by-layer/L3/webhooks",
+                      "docs/building/by-layer/L3/error-handling",
+                      "docs/building/by-layer/L3/comply-test-controller"
+                    ]
+                  },
+                  {
+                    "group": "L2 — Auth & registry",
+                    "expanded": false,
+                    "pages": [
+                      "docs/building/by-layer/L2/index",
+                      "docs/building/by-layer/L2/authentication",
+                      "docs/building/by-layer/L2/account-state",
+                      "docs/building/by-layer/L2/accounts-and-agents",
+                      "docs/building/by-layer/L2/context-sessions"
+                    ]
+                  },
+                  {
+                    "group": "L1 — Identity & signing",
+                    "expanded": false,
+                    "pages": [
+                      "docs/building/by-layer/L1/index",
+                      "docs/building/by-layer/L1/security",
+                      "docs/building/by-layer/L1/webhook-verifier-tuning"
+                    ]
+                  },
+                  {
+                    "group": "L0 — Wire & transport",
+                    "expanded": false,
+                    "pages": [
+                      "docs/building/by-layer/L0/index",
+                      "docs/building/by-layer/L0/mcp-guide",
+                      "docs/building/by-layer/L0/a2a-guide",
+                      "docs/building/by-layer/L0/a2a-response-format",
+                      "docs/protocol/get_adcp_capabilities",
+                      "docs/building/by-layer/L0/mcp-response-extraction",
+                      "docs/building/by-layer/L0/a2a-response-extraction"
+                    ]
+                  }
+                ]
+              },
+              {
+                "group": "Cross-cutting",
+                "expanded": false,
+                "pages": [
+                  "docs/building/cross-cutting/sdk-stack",
+                  "docs/building/cross-cutting/version-adaptation",
+                  "docs/building/cross-cutting/known-ambiguities"
+                ]
+              },
+              "docs/building/schemas-and-sdks",
+              {
+                "group": "Verification & trust",
+                "expanded": false,
+                "pages": [
+                  "docs/building/verification/conformance",
+                  "docs/building/verification/compliance-catalog",
+                  "docs/building/verification/validate-your-agent",
+                  "docs/building/verification/grading",
+                  "docs/building/verification/get-test-ready",
+                  "docs/building/verification/aao-verified"
+                ]
+              },
+              {
+                "group": "Operating",
+                "expanded": false,
+                "pages": [
+                  "docs/building/operating/operating-an-agent",
+                  "docs/building/operating/orchestrator-design",
+                  "docs/building/operating/transport-errors",
+                  "docs/building/operating/seller-integration",
+                  "docs/building/operating/storyboard-troubleshooting"
                 ]
               },
               {
@@ -1327,6 +1417,182 @@
     }
   },
   "redirects": [
+    {
+      "source": "/docs/building/where-to-start",
+      "destination": "/docs/building"
+    },
+    {
+      "source": "/docs/building/build-an-agent",
+      "destination": "/docs/building/by-layer/L4/build-an-agent"
+    },
+    {
+      "source": "/docs/building/migrate-from-hand-rolled",
+      "destination": "/docs/building/by-layer/L4/migrate-from-hand-rolled"
+    },
+    {
+      "source": "/docs/building/sdk-stack",
+      "destination": "/docs/building/cross-cutting/sdk-stack"
+    },
+    {
+      "source": "/docs/building/version-adaptation",
+      "destination": "/docs/building/cross-cutting/version-adaptation"
+    },
+    {
+      "source": "/docs/building/operating-an-agent",
+      "destination": "/docs/building/operating/operating-an-agent"
+    },
+    {
+      "source": "/docs/building/conformance",
+      "destination": "/docs/building/verification/conformance"
+    },
+    {
+      "source": "/docs/building/compliance-catalog",
+      "destination": "/docs/building/verification/compliance-catalog"
+    },
+    {
+      "source": "/docs/building/validate-your-agent",
+      "destination": "/docs/building/verification/validate-your-agent"
+    },
+    {
+      "source": "/docs/building/grading",
+      "destination": "/docs/building/verification/grading"
+    },
+    {
+      "source": "/docs/building/get-test-ready",
+      "destination": "/docs/building/verification/get-test-ready"
+    },
+    {
+      "source": "/docs/building/aao-verified",
+      "destination": "/docs/building/verification/aao-verified"
+    },
+    {
+      "source": "/docs/building/understanding",
+      "destination": "/docs/building/concepts"
+    },
+    {
+      "source": "/docs/building/understanding/index",
+      "destination": "/docs/building/concepts"
+    },
+    {
+      "source": "/docs/building/understanding/protocol-comparison",
+      "destination": "/docs/building/concepts/protocol-comparison"
+    },
+    {
+      "source": "/docs/building/understanding/adcp-vs-openrtb",
+      "destination": "/docs/building/concepts/adcp-vs-openrtb"
+    },
+    {
+      "source": "/docs/building/understanding/how-agents-communicate",
+      "destination": "/docs/building/concepts/how-agents-communicate"
+    },
+    {
+      "source": "/docs/building/understanding/security-model",
+      "destination": "/docs/building/concepts/security-model"
+    },
+    {
+      "source": "/docs/building/understanding/industry-landscape",
+      "destination": "/docs/building/concepts/industry-landscape"
+    },
+    {
+      "source": "/docs/building/integration",
+      "destination": "/docs/building/by-layer/L0"
+    },
+    {
+      "source": "/docs/building/integration/index",
+      "destination": "/docs/building/by-layer/L0"
+    },
+    {
+      "source": "/docs/building/integration/mcp-guide",
+      "destination": "/docs/building/by-layer/L0/mcp-guide"
+    },
+    {
+      "source": "/docs/building/integration/a2a-guide",
+      "destination": "/docs/building/by-layer/L0/a2a-guide"
+    },
+    {
+      "source": "/docs/building/integration/a2a-response-format",
+      "destination": "/docs/building/by-layer/L0/a2a-response-format"
+    },
+    {
+      "source": "/docs/building/integration/authentication",
+      "destination": "/docs/building/by-layer/L2/authentication"
+    },
+    {
+      "source": "/docs/building/integration/account-state",
+      "destination": "/docs/building/by-layer/L2/account-state"
+    },
+    {
+      "source": "/docs/building/integration/accounts-and-agents",
+      "destination": "/docs/building/by-layer/L2/accounts-and-agents"
+    },
+    {
+      "source": "/docs/building/integration/context-sessions",
+      "destination": "/docs/building/by-layer/L2/context-sessions"
+    },
+    {
+      "source": "/docs/building/implementation",
+      "destination": "/docs/building/by-layer/L3"
+    },
+    {
+      "source": "/docs/building/implementation/index",
+      "destination": "/docs/building/by-layer/L3"
+    },
+    {
+      "source": "/docs/building/implementation/task-lifecycle",
+      "destination": "/docs/building/by-layer/L3/task-lifecycle"
+    },
+    {
+      "source": "/docs/building/implementation/async-operations",
+      "destination": "/docs/building/by-layer/L3/async-operations"
+    },
+    {
+      "source": "/docs/building/implementation/webhooks",
+      "destination": "/docs/building/by-layer/L3/webhooks"
+    },
+    {
+      "source": "/docs/building/implementation/error-handling",
+      "destination": "/docs/building/by-layer/L3/error-handling"
+    },
+    {
+      "source": "/docs/building/implementation/comply-test-controller",
+      "destination": "/docs/building/by-layer/L3/comply-test-controller"
+    },
+    {
+      "source": "/docs/building/implementation/security",
+      "destination": "/docs/building/by-layer/L1/security"
+    },
+    {
+      "source": "/docs/building/implementation/webhook-verifier-tuning",
+      "destination": "/docs/building/by-layer/L1/webhook-verifier-tuning"
+    },
+    {
+      "source": "/docs/building/implementation/mcp-response-extraction",
+      "destination": "/docs/building/by-layer/L0/mcp-response-extraction"
+    },
+    {
+      "source": "/docs/building/implementation/a2a-response-extraction",
+      "destination": "/docs/building/by-layer/L0/a2a-response-extraction"
+    },
+    {
+      "source": "/docs/building/implementation/orchestrator-design",
+      "destination": "/docs/building/operating/orchestrator-design"
+    },
+    {
+      "source": "/docs/building/implementation/transport-errors",
+      "destination": "/docs/building/operating/transport-errors"
+    },
+    {
+      "source": "/docs/building/implementation/seller-integration",
+      "destination": "/docs/building/operating/seller-integration"
+    },
+    {
+      "source": "/docs/building/implementation/storyboard-troubleshooting",
+      "destination": "/docs/building/operating/storyboard-troubleshooting"
+    },
+    {
+      "source": "/docs/building/implementation/known-ambiguities",
+      "destination": "/docs/building/cross-cutting/known-ambiguities"
+    },
     {
       "source": "/docs/reference/migrating-to-v3",
       "destination": "/docs/reference/whats-new-in-v3"
