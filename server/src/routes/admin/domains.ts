@@ -19,6 +19,8 @@ import {
 import { linkContactsByDomain } from "../../db/contacts-db.js";
 import { resolveOrgsByDomains } from "../../db/domain-resolution-db.js";
 import { complete, isLLMConfigured } from "../../utils/llm.js";
+import { BrandDatabase } from "../../db/brand-db.js";
+import { verifyDomainChallenge } from "../../services/brand-claim.js";
 
 const slackDb = new SlackDatabase();
 const logger = createLogger("admin-domains");
@@ -1155,6 +1157,53 @@ export function setupDomainRoutes(
           error: "Internal server error",
           message: "Unable to fetch organization domains",
         });
+      }
+    }
+  );
+
+  // POST /api/admin/organizations/:orgId/brand-claim/verify
+  // Force-sync the brand registry from WorkOS for an org's domain. Wraps the
+  // same verifyDomainChallenge service the user-facing /api/me/member-profile
+  // route uses, but takes orgId explicitly so it can be invoked with the
+  // ADMIN_API_KEY for orgs the caller doesn't belong to.
+  //
+  // Recovery path for cases where WorkOS shows the domain as `verified` but
+  // the local `brands` row wasn't written — e.g. a missed
+  // organization_domain.verified webhook. The verify service short-circuits
+  // on isVerifiedState and runs applyVerifiedBrandClaim directly, so no DNS
+  // round-trip is needed.
+  apiRouter.post(
+    "/organizations/:orgId/brand-claim/verify",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      const { orgId } = req.params;
+      const rawDomain = (req.body?.domain as string | undefined) ?? "";
+      const adoptPriorManifest = req.body?.adopt_prior_manifest === true;
+      if (!workos) {
+        return res.status(503).json({ error: "WorkOS not configured" });
+      }
+      if (!rawDomain) {
+        return res.status(400).json({ error: "domain is required" });
+      }
+      try {
+        const result = await verifyDomainChallenge({
+          workos,
+          brandDb: new BrandDatabase(),
+          orgId,
+          rawDomain,
+          adoptPriorManifest,
+        });
+        if (!result.ok) {
+          const status = result.code === "no_challenge" ? 404
+            : result.code === "still_pending" ? 400
+            : 500;
+          return res.status(status).json(result);
+        }
+        return res.json(result);
+      } catch (error) {
+        logger.error({ err: error, orgId, domain: rawDomain }, "Admin brand-claim verify failed");
+        return res.status(500).json({ error: "Internal server error" });
       }
     }
   );
