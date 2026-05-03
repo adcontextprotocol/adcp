@@ -157,7 +157,5 @@ phases:
         validations:
           - check: error_code
             allowed_values:
-              - "brand_not_found"
-              - "BRAND_NOT_FOUND"
-              - "NOT_FOUND"
-            description: "Error code indicates brand-not-found"
+              - "REFERENCE_NOT_FOUND"
+            description: "Error code indicates unknown brand; REFERENCE_NOT_FOUND is the canonical spec code (brands have no dedicated *_NOT_FOUND code — per error-handling.mdx use the generic fallback)"
