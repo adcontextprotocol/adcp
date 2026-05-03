@@ -29,10 +29,10 @@ are excluded from CI checks).
 ## docs.adcontextprotocol.org
 
 - https://docs.adcontextprotocol.org/docs/quickstart — 5-minute hands-on quickstart; no signup required
-- https://docs.adcontextprotocol.org/docs/building/build-an-agent — Skill-based agent generation guide
-- https://docs.adcontextprotocol.org/docs/building/validate-your-agent — Build-validate-fix loop and storyboard runner; replaces the deprecated interactive testing UI
-- https://docs.adcontextprotocol.org/docs/building/schemas-and-sdks — Schema access, CLI tools, and SDK exports
-- https://docs.adcontextprotocol.org/docs/building/understanding/adcp-vs-openrtb — AdCP vs OpenRTB comparison
+- https://docs.adcontextprotocol.org/docs/building/by-layer/L4/build-an-agent — Skill-based agent generation guide
+- https://docs.adcontextprotocol.org/docs/building/verification/validate-your-agent — Build-validate-fix loop and storyboard runner; replaces the deprecated interactive testing UI
+- https://docs.adcontextprotocol.org/docs/building/by-layer/L4/choose-your-sdk — Schema access, CLI tools, and SDK exports
+- https://docs.adcontextprotocol.org/docs/building/concepts/adcp-vs-openrtb — AdCP vs OpenRTB comparison
 - https://docs.adcontextprotocol.org/docs/registry — Registry reference
 - https://docs.adcontextprotocol.org/docs/registry#authentication — Registry authentication section
 - https://docs.adcontextprotocol.org/docs/aao/connect-addie — MCP client connection guide (Claude Desktop, Claude Code, ChatGPT, Cursor); includes OAuth reconnect workaround
@@ -65,4 +65,4 @@ substitute listed or call `search_docs`. Do not emit the hallucinated path.
 CRITICAL: Do NOT cite these URLs in any response. They are recorded here only
 as an audit trail so future editors know the URL exists and its status.
 
-- https://testing.adcontextprotocol.org — Deprecated Feb 2026; now auto-redirects to /docs/building/validate-your-agent. Use the redirect target instead. Note: `test-agent.adcontextprotocol.org` is a separate active service.
+- https://testing.adcontextprotocol.org — Deprecated Feb 2026; now auto-redirects to /docs/building/verification/validate-your-agent. Use the redirect target instead. Note: `test-agent.adcontextprotocol.org` is a separate active service.
