@@ -156,10 +156,15 @@ export class EventsDatabase {
    */
   async getEventByLumaUrlSlug(slug: string): Promise<Event | null> {
     const escaped = escapeLikePattern(slug);
+    // Match the slug as the trailing path segment regardless of optional
+    // trailing slash, query string, or fragment — luma.com/<slug>,
+    // luma.com/<slug>/, luma.com/<slug>?foo, luma.com/<slug>#bar.
     const result = await query<Event>(
       `SELECT * FROM events
        WHERE luma_url LIKE '%/' || $1 ESCAPE '\\'
+          OR luma_url LIKE '%/' || $1 || '/%' ESCAPE '\\'
           OR luma_url LIKE '%/' || $1 || '?%' ESCAPE '\\'
+          OR luma_url LIKE '%/' || $1 || '#%' ESCAPE '\\'
        LIMIT 1`,
       [escaped]
     );
