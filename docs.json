@@ -116,8 +116,12 @@
                       "docs/building/understanding/industry-landscape"
                     ]
                   },
+                  "docs/building/where-to-start",
+                  "docs/building/sdk-stack",
                   "docs/building/schemas-and-sdks",
                   "docs/building/build-an-agent",
+                  "docs/building/migrate-from-hand-rolled",
+                  "docs/building/version-adaptation",
                   "docs/building/get-test-ready",
                   "docs/building/validate-your-agent",
                   "docs/building/grading",
@@ -635,8 +639,12 @@
                   "docs/building/understanding/industry-landscape"
                 ]
               },
+              "docs/building/where-to-start",
+              "docs/building/sdk-stack",
               "docs/building/schemas-and-sdks",
               "docs/building/build-an-agent",
+              "docs/building/migrate-from-hand-rolled",
+              "docs/building/version-adaptation",
               "docs/building/get-test-ready",
               "docs/building/validate-your-agent",
               "docs/building/grading",
