@@ -255,6 +255,100 @@ describe('sync_accounts', () => {
     expect(errors[0].details.supported_billing).toEqual(['agent', 'operator', 'advertiser']);
   });
 
+  it('per-account gate: operator with no direct billing → BILLING_NOT_SUPPORTED scope: "account"', async () => {
+    // The training-agent's account-billing-relationships.ts treats any
+    // operator domain ending in `-no-direct-billing.example` as having
+    // no direct billing relationship for `billing: operator`. Submits
+    // expose the per-account sub-gate without the capability gate
+    // firing first (the value IS in supported_billing).
+    const { result } = await simulateCallTool(server, 'sync_accounts', {
+      accounts: [{
+        brand: { domain: 'acme.com' },
+        operator: 'agency.regional-no-direct-billing.example',
+        billing: 'operator',
+        sandbox: true,
+      }],
+    });
+
+    const acct = (result.accounts as Record<string, unknown>[])[0];
+    expect(acct.action).toBe('failed');
+    expect(acct.status).toBe('rejected');
+    const errors = acct.errors as Array<{
+      code: string;
+      recovery: string;
+      details: { scope: string; supported_billing: string[] };
+    }>;
+    expect(errors[0].code).toBe('BILLING_NOT_SUPPORTED');
+    expect(errors[0].recovery).toBe('correctable');
+    expect(errors[0].details.scope).toBe('account');
+    expect(errors[0].details.supported_billing).toEqual(['agent', 'operator', 'advertiser']);
+  });
+
+  it('per-account gate: same operator with billing: agent passes (gate is operator-billing-specific)', async () => {
+    // The convention only restricts `billing: operator` for no-direct-
+    // billing operators; agent and advertiser billing don't depend on
+    // per-operator onboarding state. This test pins the scope to the
+    // operator-billing combo so a future broadening doesn't silently
+    // break unrelated paths.
+    const { result } = await simulateCallTool(server, 'sync_accounts', {
+      accounts: [{
+        brand: { domain: 'acme.com' },
+        operator: 'agency.regional-no-direct-billing.example',
+        billing: 'agent',
+        sandbox: true,
+      }],
+    });
+
+    const acct = (result.accounts as Record<string, unknown>[])[0];
+    expect(acct.status).toBe('active');
+    expect(acct.billing).toBe('agent');
+  });
+
+  it('per-account gate: operator without the convention suffix passes', async () => {
+    // Pin: only operators ending in -no-direct-billing.example trigger
+    // the gate. This test guards against accidental over-broadening
+    // (e.g., a future regex tweak that matches "no-direct" anywhere).
+    const { result } = await simulateCallTool(server, 'sync_accounts', {
+      accounts: [{
+        brand: { domain: 'acme.com' },
+        operator: 'agency.no-direct-billing-but-not-suffix.example',
+        billing: 'operator',
+        sandbox: true,
+      }],
+    });
+
+    const acct = (result.accounts as Record<string, unknown>[])[0];
+    expect(acct.status).toBe('active');
+    expect(acct.billing).toBe('operator');
+  });
+
+  it('per-account gate composes with per-agent gate: passthrough principal still gets per-agent rejection on agent billing', async () => {
+    // Compositional test: a passthrough-only principal submitting
+    // billing: agent against a no-direct-billing operator gets the
+    // per-agent gate fire (account-scope gate doesn't apply because
+    // billing is `agent`, not `operator`). Confirms gate ordering
+    // doesn't hide the per-agent rejection.
+    const passthroughCtx: TrainingContext = {
+      mode: 'open',
+      principal: 'static:demo:demo-billing-passthrough-v1',
+    };
+    const passthroughServer = createTrainingAgentServer(passthroughCtx);
+
+    const { result } = await simulateCallTool(passthroughServer, 'sync_accounts', {
+      accounts: [{
+        brand: { domain: 'acme.com' },
+        operator: 'agency.regional-no-direct-billing.example',
+        billing: 'agent',
+        sandbox: true,
+      }],
+    });
+
+    const acct = (result.accounts as Record<string, unknown>[])[0];
+    expect(acct.status).toBe('rejected');
+    const errors = acct.errors as Array<{ code: string }>;
+    expect(errors[0].code).toBe('BILLING_NOT_PERMITTED_FOR_AGENT');
+  });
+
   it('passthrough-only principal: rejects billing: agent with BILLING_NOT_PERMITTED_FOR_AGENT', async () => {
     const passthroughCtx: TrainingContext = {
       mode: 'open',
