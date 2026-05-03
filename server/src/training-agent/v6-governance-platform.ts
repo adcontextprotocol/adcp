@@ -49,6 +49,7 @@ import {
   handleCalibrateContent,
   handleValidateContentDelivery,
 } from './content-standards-handlers.js';
+import { syncAccountsUpsert } from './v6-account-helpers.js';
 import type { ToolArgs, TrainingContext } from './types.js';
 
 interface TrainingGovernanceMeta {
@@ -121,6 +122,7 @@ const trainingGovernanceAccounts: AccountStore<TrainingGovernanceMeta> = {
       authInfo: { kind: 'api_key' },
     };
   },
+  upsert: syncAccountsUpsert,
 };
 
 export class TrainingGovernancePlatform
