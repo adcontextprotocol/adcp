@@ -201,4 +201,4 @@ phases:
         validations:
           - check: error_code
             value: "GOVERNANCE_DENIED"
-            description: "Error code indicates governance denial"
+            description: "Error code indicates governance denial — Case-2 wire placement: create_media_buy has no rejection arm, so GOVERNANCE_DENIED surfaces via errors[].code or adcp_error.code (per the two-layer model in error-handling.mdx)"
