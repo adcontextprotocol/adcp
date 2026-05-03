@@ -37,9 +37,15 @@ const logger = createLogger('certification-tools');
  */
 /**
  * Format a tenant-URL block for injection into Sage prompts. Single-tenant
- * modules collapse to `agent_url: "..."`; multi-tenant emits a primary plus
- * the full list so Sage can switch deterministically when a needed tool isn't
- * on the primary. Empty pinning falls through to the legacy `/mcp` alias.
+ * modules collapse to `agent_url: "..."` (one URL — Sage uses it). Multi-
+ * tenant emits a primary URL plus an internal sibling map gated behind an
+ * explicit error trigger, so Sage doesn't enumerate URLs to the learner
+ * and only switches when a tool call actually fails. Empty pinning falls
+ * through to the legacy `/mcp` alias.
+ *
+ * Tone matches the rest of `buildCertificationContext`: imperative,
+ * agent-only-context, no docs prose. The "Internal" tag is load-bearing —
+ * without it Sage paraphrases the URL list into the conversation.
  *
  * Exported for unit-testing the prompt-shape output without standing up
  * the full handlers.set() registry.
@@ -48,10 +54,15 @@ export function formatTenantBlock(tenants: ModuleTenantUrls): string {
   if (tenants.ids.length <= 1) {
     return `agent_url: "${tenants.primary}"`;
   }
-  const list = tenants.ids
+  const siblings = tenants.ids
     .map((id, i) => `  - ${id} → ${tenants.all[i]}`)
     .join('\n');
-  return `primary agent_url: "${tenants.primary}" — this module exercises multiple agents:\n${list}\n  Use the primary by default; switch to a sibling only when the tool you need isn't there. The discovery extension at /.well-known/adagents.json on any of these URLs lists which tools live on which agent.`;
+  return [
+    `agent_url (primary): "${tenants.primary}"`,
+    `**Internal — do not narrate to the learner**: this module also has tools on sibling agents. Default to the primary for every call. Only switch if a tool call returns an "unknown tool" or "not found" error — then GET \`/.well-known/adagents.json\` on the primary, read \`_training_agent_tenants\`, pick the sibling that owns the tool, retry. Do not enumerate siblings to the learner.`,
+    `Siblings (for sibling-switch lookups only):`,
+    siblings,
+  ].join('\n');
 }
 
 function membershipRequiredMessage(moduleId: string, memberContext: MemberContext | null): string {
@@ -514,10 +525,20 @@ export async function buildCertificationContext(
   // Inject training-agent URLs for demos. Pull the union of tenant_ids
   // across in-progress modules so Sage gets a single deterministic source
   // of truth even when a learner has work open in two specialisms at once.
+  // Module ids are canonically uppercase in the table; normalize once here
+  // and cache the lookups so the per-module loop below doesn't re-fetch.
   const baseUrl = process.env.TRAINING_AGENT_URL || TRAINING_AGENT_URL;
+  const normalizedInProgress = inProgressModules.map((im) => ({
+    ...im,
+    module_id: im.module_id.toUpperCase(),
+  }));
   const activeModules = await Promise.all(
-    inProgressModules.map((im) => certDb.getModule(im.module_id.toUpperCase())),
+    normalizedInProgress.map((im) => certDb.getModule(im.module_id)),
   );
+  const moduleCache = new Map<string, certDb.CertificationModule>();
+  activeModules.forEach((m, i) => {
+    if (m) moduleCache.set(normalizedInProgress[i].module_id, m);
+  });
   const seenIds = new Set<string>();
   const unionIds: string[] = [];
   for (const m of activeModules) {
@@ -531,7 +552,9 @@ export async function buildCertificationContext(
   }
   const tenants = tenantUrlsForModule(unionIds.length > 0 ? unionIds : null, baseUrl);
   lines.push('');
-  lines.push(`**Sandbox training agent**: For all demos and exercises, use ${formatTenantBlock(tenants)}. Use brand domain "demo.example.com" for the account.`);
+  lines.push('**Sandbox training agent**:');
+  lines.push(formatTenantBlock(tenants));
+  lines.push('Use brand domain "demo.example.com" for the account.');
 
   // Inject cross-module learner profile from completed modules
   if (userId) {
@@ -560,16 +583,17 @@ export async function buildCertificationContext(
     }
   }
 
-  for (const p of inProgressModules) {
+  for (const p of normalizedInProgress) {
     const startedAgo = p.started_at ? Math.round((Date.now() - new Date(p.started_at).getTime()) / 60000) : null;
     lines.push(`- **${p.module_id}** (in progress${startedAgo !== null ? `, started ${startedAgo} min ago` : ''})`);
 
-    // Include assessment dimensions and learning resources so they persist after trimming
+    // Include assessment dimensions and learning resources so they persist after trimming.
+    // `mod` was already fetched above into moduleCache — reuse it.
     try {
-      const [mod, checkpoint] = await Promise.all([
-        certDb.getModule(p.module_id),
-        userId ? certDb.getLatestCheckpoint(userId, p.module_id) : Promise.resolve(null),
-      ]);
+      const mod = moduleCache.get(p.module_id) ?? null;
+      const checkpoint = userId
+        ? await certDb.getLatestCheckpoint(userId, p.module_id)
+        : null;
       if (mod?.assessment_criteria) {
         const ac = mod.assessment_criteria as certDb.AssessmentCriteria;
         if (ac.dimensions?.length) {
@@ -1401,7 +1425,8 @@ export function createCertificationToolHandlers(
         if (lp.demo_scenarios?.length) {
           const baseUrl = process.env.TRAINING_AGENT_URL || TRAINING_AGENT_URL;
           const tenants = tenantUrlsForModule(mod.tenant_ids, baseUrl);
-          lines.push('', `## Demo scenarios (use ${formatTenantBlock(tenants)})`);
+          lines.push('', '## Demo scenarios');
+          lines.push(formatTenantBlock(tenants));
           lines.push('YOU (Sage) run ONE demo early (turn 2-3) to ground concepts. Clearly label it as YOUR demonstration — say "Let me show you..." before calling the tool. Do NOT attribute tool results to the learner. After the demo, invite the learner to try the exercise themselves.');
           lp.demo_scenarios.forEach(ds => {
             lines.push(`### ${ds.description}`);
@@ -1525,11 +1550,12 @@ export function createCertificationToolHandlers(
         if (lp.demo_scenarios?.length) {
           const baseUrl = process.env.TRAINING_AGENT_URL || TRAINING_AGENT_URL;
           const tenants = tenantUrlsForModule(mod.tenant_ids, baseUrl);
-          lines.push(`**Live demos** (run these against the sandbox training agent at ${formatTenantBlock(tenants)}):`);
+          lines.push('**Live demos** (run these against the sandbox training agent):');
+          lines.push(formatTenantBlock(tenants));
           lp.demo_scenarios.forEach(ds => {
             lines.push(`- ${ds.description} (tools: ${ds.tools.join(', ')})`);
           });
-          lines.push(`When calling AdCP tools (get_products, create_media_buy, etc.) for demos, use ${formatTenantBlock(tenants)}. Use brand domain "demo.example.com" for the account.`);
+          lines.push('Use brand domain "demo.example.com" for the account.');
           lines.push('');
         }
       }

@@ -23,12 +23,10 @@ describe('certification_modules.tenant_ids (migration 464)', () => {
     await closeDatabase();
   });
 
-  it('every module returns a tenant_ids field (non-null on seeded modules)', async () => {
+  it('every module has the tenant_ids column on its row', async () => {
     const modules = await getModules();
     expect(modules.length).toBeGreaterThanOrEqual(20);
     for (const m of modules) {
-      // Field is present on the row even if it's null on a future module
-      // we haven't classified — `tenant_ids` should be a string[] | null.
       expect(m).toHaveProperty('tenant_ids');
       if (m.tenant_ids !== null) {
         expect(Array.isArray(m.tenant_ids)).toBe(true);
@@ -55,18 +53,38 @@ describe('certification_modules.tenant_ids (migration 464)', () => {
     const c2 = await getModule('C2');
     expect(c2!.tenant_ids).toEqual(['brand', 'governance']);
 
-    // S5 (Sponsored Intelligence) is intrinsically cross-tenant.
-    const s5 = await getModule('S5');
-    expect(s5!.tenant_ids).toEqual(['brand', 'creative', 'governance']);
+    // S2 (creative mastery) covers both creative tenants.
+    const s2 = await getModule('S2');
+    expect(s2!.tenant_ids).toEqual(['creative', 'creative-builder']);
   });
 
-  it('A3 tour module declares all five user-facing tenants', async () => {
-    const a3 = await getModule('A3');
-    expect(a3!.tenant_ids).toContain('sales');
-    expect(a3!.tenant_ids).toContain('signals');
-    expect(a3!.tenant_ids).toContain('governance');
-    expect(a3!.tenant_ids).toContain('creative');
-    expect(a3!.tenant_ids).toContain('brand');
+  it('SI-dependent modules are intentionally NULL until an si tenant exists', async () => {
+    // A3 (tour), C3 (creative + SI), S5 (SI capstone) all teach `si_*`
+    // tools that no per-specialism tenant currently serves. Pinning them
+    // to a sibling would ship a confidently-wrong URL into Sage's prompt;
+    // staying NULL makes them fall back to the legacy `/mcp` alias, which
+    // also lacks SI but matches today's behavior. Tracked as follow-up.
+    for (const id of ['A3', 'C3', 'S5']) {
+      const m = await getModule(id);
+      expect(m).not.toBeNull();
+      expect(m!.tenant_ids).toBeNull();
+    }
+  });
+
+  it('B3 (publisher track) does not point at the buy-side signals tenant', async () => {
+    // B3 trains a publisher to build a sales agent. Signals is a buy-side
+    // discovery surface — publishers consume signal activations on their
+    // sales agent, they don't operate /signals/mcp.
+    const b3 = await getModule('B3');
+    expect(b3!.tenant_ids).toEqual(['sales']);
+  });
+
+  it('C1 does not pin governance — that is C2 territory', async () => {
+    // Governance is taught in C2 (per migration 288). C1 only covers
+    // multi-agent buying + media planning; pinning governance there
+    // adds a third URL with no matching lesson content.
+    const c1 = await getModule('C1');
+    expect(c1!.tenant_ids).not.toContain('governance');
   });
 
   it('tenantUrlsForModule resolves a real module to per-tenant URLs', async () => {

@@ -58,18 +58,22 @@ describe('formatTenantBlock', () => {
     expect(block).toBe(`agent_url: "${BASE}/mcp"`);
   });
 
-  it('emits primary + sibling list for multi-tenant modules', () => {
+  it('emits primary + sibling list with internal-only framing for multi-tenant modules', () => {
     const block = formatTenantBlock(
       tenantUrlsForModule(['brand', 'governance', 'creative'], BASE),
     );
-    // Primary URL must lead, every sibling must appear in declaration order,
-    // and Sage must be told to switch only when needed (the discovery
-    // extension is the documented escape hatch).
-    expect(block).toContain(`primary agent_url: "${BASE}/brand/mcp"`);
+    // Primary URL must lead and every sibling must appear in declaration order.
+    expect(block).toContain(`agent_url (primary): "${BASE}/brand/mcp"`);
     expect(block).toContain(`brand → ${BASE}/brand/mcp`);
     expect(block).toContain(`governance → ${BASE}/governance/mcp`);
     expect(block).toContain(`creative → ${BASE}/creative/mcp`);
-    expect(block).toContain('Use the primary by default');
+    // Block must be tagged as agent-only context — without this Sage
+    // paraphrases the URL list into the conversation.
+    expect(block).toContain('Internal — do not narrate to the learner');
+    // Switch trigger must be explicit + procedural, not aspirational.
+    expect(block).toContain('unknown tool');
     expect(block).toContain('/.well-known/adagents.json');
+    expect(block).toContain('_training_agent_tenants');
+    expect(block).toContain('Do not enumerate siblings to the learner');
   });
 });
