@@ -40,6 +40,11 @@ Use this when:
 - CDN distribution is needed
 - Managed brand services
 
+Optional fields (shared with House Redirect — see [Redirect ergonomics](#redirect-ergonomics)):
+- `redirect_reason`: structured signal for cache handling (`acquisition`, `rebrand`, `regional`, `legacy`, `consolidation`, `other`)
+- `redirect_effective_at`: ISO timestamp when the redirect became effective
+- `note`: free-text rationale
+
 ### 2. House Redirect
 
 Points to the house domain that contains the full brand portfolio:
@@ -54,12 +59,43 @@ Points to the house domain that contains the full brand portfolio:
 
 Optional fields:
 - `region`: ISO 3166-1 alpha-2 country code (e.g., "CN")
-- `note`: Explanation text
+- `redirect_reason`: structured signal for cache handling (see [Redirect ergonomics](#redirect-ergonomics))
+- `redirect_effective_at`: ISO timestamp when the redirect became effective
+- `note`: free-text rationale
 
 Use this when:
 - Brand domain is owned by a larger house
 - Regional/localized domains point to main house
 - Legacy domains redirect to canonical
+
+### Redirect ergonomics
+
+Both redirect variants accept optional `redirect_reason` and `redirect_effective_at` to help consumers handle redirect transitions without sitting on stale cached state.
+
+`redirect_reason` is an enum:
+
+| Value | Meaning | Caching guidance |
+|---|---|---|
+| `acquisition` | The owning entity was acquired (e.g., WPP buys Dentsu) | Shorten cache TTL until stable; many fields may move |
+| `rebrand` | The brand or house renamed/repositioned | Shorten cache TTL until stable |
+| `consolidation` | Sub-brands consolidated into the target | Shorten cache TTL until stable |
+| `regional` | Regional/localized domain points to main house | Stable; standard caching |
+| `legacy` | Old domain that redirects to canonical | Stable; standard caching |
+| `other` | Reason not captured by the above | Free-text rationale belongs in `note` |
+
+`redirect_effective_at` (ISO 8601 timestamp) tells caches "anything cached before this timestamp is stale." Consumers SHOULD re-fetch through the redirect when their cached entry's timestamp is older than `redirect_effective_at`.
+
+Example — acquisition redirect:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/brand.json",
+  "house": "wpp.com",
+  "redirect_reason": "acquisition",
+  "redirect_effective_at": "2026-04-15T00:00:00Z",
+  "note": "Acquired by WPP April 2026"
+}
+```
 
 ### 3. Brand Agent
 

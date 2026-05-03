@@ -1297,6 +1297,20 @@
           "pattern": "^https://",
           "description": "HTTPS URL of the authoritative brand.json file"
         },
+        "redirect_reason": {
+          "type": "string",
+          "enum": ["acquisition", "rebrand", "regional", "legacy", "consolidation", "other"],
+          "description": "Optional structured signal indicating why this redirect was put in place. Consumers SHOULD use this to inform cache TTL decisions: 'acquisition' / 'rebrand' / 'consolidation' suggest the resolved target is in transition and consumers SHOULD shorten cache TTL until stable. 'regional' / 'legacy' suggest a stable redirect with no special cache handling needed. Free-text rationale belongs in 'note'."
+        },
+        "redirect_effective_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Optional timestamp when this redirect became effective. Caches SHOULD treat anything cached before this timestamp as stale and re-fetch."
+        },
+        "note": {
+          "type": "string",
+          "description": "Optional human-readable rationale for the redirect."
+        },
         "last_updated": { "type": "string", "format": "date-time" }
       },
       "required": ["authoritative_location"],
@@ -1317,7 +1331,20 @@
           "pattern": "^[A-Z]{2}$",
           "description": "ISO 3166-1 alpha-2 country code if this is a regional domain"
         },
-        "note": { "type": "string" },
+        "redirect_reason": {
+          "type": "string",
+          "enum": ["acquisition", "rebrand", "regional", "legacy", "consolidation", "other"],
+          "description": "Optional structured signal indicating why this redirect was put in place. Consumers SHOULD use this to inform cache TTL decisions: 'acquisition' / 'rebrand' / 'consolidation' suggest the resolved target is in transition and consumers SHOULD shorten cache TTL until stable. 'regional' / 'legacy' suggest a stable redirect with no special cache handling needed. Free-text rationale belongs in 'note'."
+        },
+        "redirect_effective_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Optional timestamp when this redirect became effective. Caches SHOULD treat anything cached before this timestamp as stale and re-fetch."
+        },
+        "note": {
+          "type": "string",
+          "description": "Optional human-readable rationale for the redirect."
+        },
         "last_updated": { "type": "string", "format": "date-time" }
       },
       "required": ["house"],
