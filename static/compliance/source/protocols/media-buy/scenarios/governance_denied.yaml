@@ -167,6 +167,9 @@ phases:
         expected: |
           The buy is rejected because governance denied — the $50K buy exceeds
           the plan's $10K budget. The seller propagates the denial with findings.
+          Wire placement (Case 2): create_media_buy has no structured rejection arm,
+          so GOVERNANCE_DENIED goes to errors[].code + adcp_error.code. Transport
+          failure markers flip: HTTP 4xx / MCP isError: true / A2A failed.
         sample_request:
           brand:
             domain: "acmeoutdoor.example"
@@ -188,4 +191,4 @@ phases:
         validations:
           - check: error_code
             value: "GOVERNANCE_DENIED"
-            description: "Error code indicates governance denial"
+            description: "Error code indicates governance denial — Case-2 wire placement: create_media_buy has no rejection arm, so GOVERNANCE_DENIED surfaces via errors[].code or adcp_error.code (per the two-layer model in error-handling.mdx)"

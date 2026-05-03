@@ -155,18 +155,20 @@ phases:
             description: "Response matches get-rights-response.json schema"
 
       - id: acquire_rights_denied
-        title: "acquire_rights — governance denies"
+        title: "acquire_rights — governance denies via rejection arm"
         task: acquire_rights
         schema_ref: "brand/acquire-rights-request.json"
         response_schema_ref: "brand/acquire-rights-response.json"
         doc_ref: "/brand-protocol/tasks/acquire_rights"
-        expect_error: true
-        negative_path: payload_well_formed
+        expected_arm: "rejected"
         stateful: true
         expected: |
-          Brand agent rejects with:
-          - code: GOVERNANCE_DENIED
-          - findings propagated from the governance agent
+          Brand agent returns the AcquireRightsRejected arm — NOT errors[]:
+          - status: rejected (discriminator)
+          - reason populated, propagating governance findings
+          - errors[] absent (schema-enforced via not: { required: [errors] })
+          - Transport stays at HTTP 200 / MCP isError: false — governance denial
+            on acquire_rights is a structured business outcome, not a transport error
 
         sample_request:
           account:
@@ -195,9 +197,22 @@ phases:
           context:
             correlation_id: "brand_rights--governance_denied--acquire"
         validations:
-          - check: error_code
-            value: "GOVERNANCE_DENIED"
-            description: "Error code is GOVERNANCE_DENIED"
+          - check: response_schema
+            description: "Response validates against acquire-rights-response.json"
+          - check: field_value
+            path: "status"
+            value: "rejected"
+            description: "Rejection arm discriminator present — governance denial routes through the structured arm, not errors[]"
+          - check: field_present
+            path: "reason"
+            description: "reason populated — propagates governance findings to the buyer"
+          - check: field_absent
+            path: "errors"
+            description: "errors[] absent — GOVERNANCE_DENIED MUST NOT dual-emit on acquire_rights; rejection arm IS the canonical denial shape"
           - check: field_present
             path: "context"
-            description: "Response echoes back the context object even on errors"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "brand_rights--governance_denied--acquire"
+            description: "Context correlation_id returned unchanged"
