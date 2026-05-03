@@ -40,6 +40,11 @@ Use this when:
 - CDN distribution is needed
 - Managed brand services
 
+Optional fields (shared with House Redirect — see [Redirect ergonomics](#redirect-ergonomics)):
+- `redirect_reason`: structured signal for cache handling (`acquisition`, `rebrand`, `regional`, `legacy`, `consolidation`, `other`)
+- `redirect_effective_at`: ISO timestamp when the redirect became effective
+- `note`: free-text rationale
+
 ### 2. House Redirect
 
 Points to the house domain that contains the full brand portfolio:
@@ -54,12 +59,46 @@ Points to the house domain that contains the full brand portfolio:
 
 Optional fields:
 - `region`: ISO 3166-1 alpha-2 country code (e.g., "CN")
-- `note`: Explanation text
+- `redirect_reason`: structured signal for cache handling (see [Redirect ergonomics](#redirect-ergonomics))
+- `redirect_effective_at`: ISO timestamp when the redirect became effective
+- `note`: free-text rationale
 
 Use this when:
 - Brand domain is owned by a larger house
 - Regional/localized domains point to main house
 - Legacy domains redirect to canonical
+
+### Redirect ergonomics
+
+Both redirect variants accept optional `redirect_reason` and `redirect_effective_at` to help consumers handle redirect transitions without sitting on stale cached state.
+
+`redirect_reason` is an enum:
+
+| Value | Meaning | Caching guidance |
+|---|---|---|
+| `acquisition` | The owning entity was acquired (e.g., one holdco buys another) | Shorten cache TTL until stable; many fields may move |
+| `divestiture` | The owning entity spun out or sold off | Shorten cache TTL until stable; new ownership chain |
+| `rebrand` | The brand or house renamed/repositioned | Shorten cache TTL until stable |
+| `consolidation` | Sub-brands consolidated into the target | Shorten cache TTL until stable |
+| `regional` | Regional/localized domain points to main house | Stable; standard caching |
+| `legacy` | Old domain that redirects to canonical | Stable; standard caching |
+| `other` | Reason not captured by the above | Free-text rationale belongs in `note` |
+
+`redirect_effective_at` (ISO 8601 timestamp) is the hard cache invariant: caches **MUST** treat any entry cached before this timestamp as stale and re-fetch through the redirect. The TTL-shortening guidance above is a SHOULD; this timestamp is a MUST and is the load-bearing fix for cache poisoning during M&A and other transitions.
+
+This is the brand.json analogue to the migration patterns in IAB Tech Lab's [ads.txt](https://iabtechlab.com/ads-txt/) (`OWNERDOMAIN`) and [sellers.json](https://iabtechlab.com/sellers-json/) (`seller_type`), which historically relied on out-of-band coordination — there was no machine-readable transition signal. `redirect_reason` + `redirect_effective_at` close that gap for brand.json.
+
+Example — acquisition redirect:
+
+```json
+{
+  "$schema": "https://adcontextprotocol.org/schemas/v3/brand.json",
+  "house": "wpp.com",
+  "redirect_reason": "acquisition",
+  "redirect_effective_at": "2026-04-15T00:00:00Z",
+  "note": "Acquired by WPP April 2026"
+}
+```
 
 ### 3. Brand Agent
 
