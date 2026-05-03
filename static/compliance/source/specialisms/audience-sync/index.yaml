@@ -236,6 +236,21 @@ phases:
             path: "context.correlation_id"
             value: "audience_sync--create_audience"
             description: "Context correlation_id returned unchanged"
+          # Anti-façade: an adapter that returns a shape-valid sync_audiences
+          # response without forwarding the hashed identifiers to its upstream
+          # user-graph fails this check. Adopters who don't advertise
+          # query_upstream_traffic in list_scenarios grade not_applicable —
+          # opt-in by capability.
+          - check: upstream_traffic
+            description: "create_audience caused upstream traffic carrying the supplied hashed identifiers"
+            min_count: 1
+            endpoint_pattern: "POST *"
+            identifier_paths:
+              - "audiences[*].add[*].hashed_email"
+              - "audiences[*].add[*].external_id"
+            payload_must_contain:
+              - path: "users[*].hashed_email"
+                match: present
       - id: delete_audience
         title: "Delete test audience"
         narrative: |

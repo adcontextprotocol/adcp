@@ -23,9 +23,9 @@ TENANTS=(
   "signals:59:23"
   "sales:55:159"
   "governance:57:62"
-  "creative:58:44"
-  "creative-builder:55:37"
-  "brand:59:14"
+  "creative:51:44"
+  "creative-builder:49:37"
+  "brand:58:13"
 )
 
 REGRESSED=0

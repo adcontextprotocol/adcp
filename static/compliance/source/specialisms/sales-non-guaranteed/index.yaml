@@ -268,6 +268,16 @@ phases:
           - check: field_present
             path: "packages[0].package_id"
             description: "Seller assigns package_id — must be echoed in update_media_buy"
+          # Anti-façade: a real non-guaranteed buy creates line items / orders /
+          # campaigns in the seller's adserver or DSP. An adapter returning a
+          # shape-valid response with a fabricated media_buy_id but no upstream
+          # campaign created fails this check. Storyboards stay platform-agnostic —
+          # the assertion is "any upstream POST happened during this step",
+          # leaving the specific endpoint to the adopter's upstream stack.
+          - check: upstream_traffic
+            description: "create_media_buy caused upstream traffic creating the campaign"
+            min_count: 1
+            endpoint_pattern: "POST *"
   - id: monitor_pacing
     title: "Monitor win rates and pacing"
     narrative: |
