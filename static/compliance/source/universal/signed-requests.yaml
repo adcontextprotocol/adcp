@@ -19,7 +19,7 @@ narrative: |
   agent is a media-buy seller, a signals agent, a governance agent, a creative agent, or
   a brand agent. This universal storyboard certifies that an agent correctly implements
   the AdCP RFC 9421 request-signing verifier per
-  [`docs/building/implementation/security.mdx#signed-requests-transport-layer`](/docs/building/implementation/security#signed-requests-transport-layer).
+  [`docs/building/by-layer/L1/security.mdx#signed-requests-transport-layer`](/docs/building/by-layer/L1/security#signed-requests-transport-layer).
 
   **Gating.** This storyboard runs for any agent advertising `request_signing.supported: true`
   in `get_adcp_capabilities`. Agents that do not advertise support are not tested against

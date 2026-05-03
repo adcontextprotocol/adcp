@@ -18,7 +18,7 @@ narrative: |
   `list_creative_formats`, `get_products` without pricing) are public; operations
   that return tenant-scoped data or modify state (`list_creatives`, `create_media_buy`,
   `get_media_buy_delivery`, `sync_creatives`, etc.) require credentials. See
-  [/docs/building/integration/authentication](/docs/building/integration/authentication).
+  [/docs/building/by-layer/L2/authentication](/docs/building/by-layer/L2/authentication).
 
   AdCP accepts two credential mechanisms: static API keys (Authorization: Bearer <key>)
   or OAuth 2.0 + RFC 8707 resource indicators. An agent MUST implement at least one.

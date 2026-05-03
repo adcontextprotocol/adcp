@@ -181,10 +181,10 @@
                     "pages": [
                       "docs/building/cross-cutting/sdk-stack",
                       "docs/building/cross-cutting/version-adaptation",
-                      "docs/building/cross-cutting/known-ambiguities"
+                      "docs/building/cross-cutting/known-ambiguities",
+                      "docs/building/schemas-and-sdks"
                     ]
                   },
-                  "docs/building/schemas-and-sdks",
                   {
                     "group": "Verification & trust",
                     "expanded": false,
@@ -749,10 +749,10 @@
                 "pages": [
                   "docs/building/cross-cutting/sdk-stack",
                   "docs/building/cross-cutting/version-adaptation",
-                  "docs/building/cross-cutting/known-ambiguities"
+                  "docs/building/cross-cutting/known-ambiguities",
+                  "docs/building/schemas-and-sdks"
                 ]
               },
-              "docs/building/schemas-and-sdks",
               {
                 "group": "Verification & trust",
                 "expanded": false,

@@ -2,13 +2,13 @@
 
 Test vectors for the AdCP RFC 9421 request-signing profile. These fixtures drive cross-implementation conformance testing so a signer written in one SDK and a verifier written in another agree on the wire format.
 
-Specification: [Signed Requests (Transport Layer)](https://adcontextprotocol.org/docs/building/implementation/security#signed-requests-transport-layer) in `docs/building/implementation/security.mdx`.
+Specification: [Signed Requests (Transport Layer)](https://adcontextprotocol.org/docs/building/by-layer/L1/security#signed-requests-transport-layer) in `docs/building/by-layer/L1/security.mdx`.
 
 **Canonical URLs.** These vectors are served at `https://adcontextprotocol.org/compliance/{version}/test-vectors/request-signing/`, with `{version}` being either a specific release (e.g. `3.0.0`) or `latest` (tracks the most recent GA). Tree preserved — `keys.json`, `negative/*.json`, `positive/*.json` all resolvable. SDKs SHOULD fetch from the versioned CDN path and record the version under test rather than requiring a checkout of the spec repo. Example: `https://adcontextprotocol.org/compliance/latest/test-vectors/request-signing/positive/001-basic-post.json`.
 
 ## Scope
 
-These vectors exercise the [verifier checklist](https://adcontextprotocol.org/docs/building/implementation/security#verifier-checklist-requests) and the RFC 9421 profile constraints: covered components, signature parameters, tag namespace, alg allowlist, `adcp_use` key-purpose discriminator, replay dedup, revocation, and content-digest semantics. They do not exercise live JWKS fetch, brand.json discovery, or revocation-list polling — those require live endpoints and belong in integration suites.
+These vectors exercise the [verifier checklist](https://adcontextprotocol.org/docs/building/by-layer/L1/security#verifier-checklist-requests) and the RFC 9421 profile constraints: covered components, signature parameters, tag namespace, alg allowlist, `adcp_use` key-purpose discriminator, replay dedup, revocation, and content-digest semantics. They do not exercise live JWKS fetch, brand.json discovery, or revocation-list polling — those require live endpoints and belong in integration suites.
 
 ## File layout
 
@@ -152,7 +152,7 @@ Every vector is a single JSON file with this shape:
   - `revocation_list` — full signed-revocation-list object to preload as the current freshness snapshot. Used by `017-key-revoked.json` to assert the revocation check at step 9.
 - **`expected_signature_base`** — present on positive vectors and on `015-signature-invalid.json`. The canonical signature base string per RFC 9421 §2.5. Shape specifics that implementers get wrong: **lines are joined with a single `\n`** (LF, not CRLF); **there is no trailing newline** after the final `@signature-params` line; **components appear in the exact order listed in `Signature-Input`**, followed by `@signature-params` as the last line. The JSON string uses `\n` escapes which parse to real newline bytes at load time. Implementers can diff their computed base against this field BEFORE worrying about signatures — canonicalization disagreements are the #1 source of 9421 interop bugs, and checking the base is how you catch them.
 - **`expected_outcome.success`** — `true` for positive vectors, `false` for negative.
-- **`expected_outcome.error_code`** — stable code from the [transport error taxonomy](https://adcontextprotocol.org/docs/building/implementation/security#transport-error-taxonomy). Conformance requires **byte-for-byte match** on this code. Negative vectors only.
+- **`expected_outcome.error_code`** — stable code from the [transport error taxonomy](https://adcontextprotocol.org/docs/building/by-layer/L1/security#transport-error-taxonomy). Conformance requires **byte-for-byte match** on this code. Negative vectors only.
 - **`expected_outcome.failed_step`** — which step of the verifier checklist the rejection occurs at. Integer for numbered steps (`1`–`13`), or a string for lettered sub-steps (e.g. `"9a"` for the per-keyid cap check). Informational only — an implementation that rejects with the correct error code is conformant even if its internal step numbering differs. An implementation that rejects with a DIFFERENT error code is non-conformant (see [Conformance expectations](#conformance-expectations)). Negative vectors only.
 - **`$comment`** — free-form clarifying notes. Some vectors use `$comment` to describe test-harness setup or conformance edge cases.
 
