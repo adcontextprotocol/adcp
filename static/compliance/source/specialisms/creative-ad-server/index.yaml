@@ -69,8 +69,8 @@ fixtures:
         id: "vast_30s"
       pricing_options:
         - pricing_option_id: "po_vast_30s_cpm"
-          pricing_model: "cpm"
-          rate: 0.50
+          model: "cpm"
+          cpm: 0.50
           currency: "USD"
 
 phases:
@@ -147,7 +147,7 @@ phases:
           - format_id referencing the creative's format
           - name and status (approved, pending_review, rejected)
           - concept_id grouping related creatives across sizes
-          - pricing_options array with pricing_option_id, model, rate, currency —
+          - pricing_options array with pricing_option_id, model, cpm, currency —
             only when your agent bills through AdCP and include_pricing=true with
             an account provided. Agents that bill out of band omit this field.
 
