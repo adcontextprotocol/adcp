@@ -502,7 +502,7 @@ Storyboard runners check for the `compliance_testing` block before running deter
 Agents that implement `comply_test_controller` SHOULD include the `compliance_testing` capability block and list supported scenarios. Agents that only support a subset of scenarios (e.g., media buy status but not SI sessions) declare only those scenarios — the runner skips unsupported ones.
 
 :::note
-Compliance testing requires sandbox mode. The `comply_test_controller` tool returns `FORBIDDEN` if the account is not in sandbox.
+Compliance testing is sandbox-only at the deployment level — production deployments MUST NOT advertise this block or expose `comply_test_controller` on any surface. `FORBIDDEN` is returned only when an in-sandbox caller passes `params` that reference a non-sandbox account; live-mode probes for the tool by name receive the transport's standard unknown-tool error. See [Sandbox gating](/docs/building/implementation/comply-test-controller#sandbox-gating).
 :::
 
 ### webhook_signing
