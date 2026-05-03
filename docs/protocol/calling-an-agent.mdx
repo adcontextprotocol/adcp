@@ -43,6 +43,8 @@ Missing the key → `adcp_error.code: 'VALIDATION_ERROR'` with `/idempotency_key
 "account": { "account_id": "seller_assigned_id" }
 
 // variant 1: by natural key (brand + operator, optional sandbox)
+//   brand.domain — the buyer's brand domain (e.g., advertiser website)
+//   operator     — the seller agent's deployment hostname / brand.json identifier
 "account": { "brand": { "domain": "acme.com" }, "operator": "sales.example" }
 ```
 

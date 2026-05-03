@@ -32,10 +32,13 @@ For ~95% of adopters: **start at L4 with the full-stack SDK in your language.**
 
 <CardGroup cols={2}>
   <Card title="Build an agent" icon="server" href="/docs/building/by-layer/L4/build-an-agent">
-    Server side. Point a coding agent at a skill file, get a storyboard-compliant AdCP agent in 2–8 minutes.
+    Server side, with engineering capacity. Point a coding agent at a skill file, get a storyboard-compliant AdCP agent in 2–8 minutes (protocol layer only — see [Operating an agent](/docs/building/operating/operating-an-agent) for the full going-live scope).
   </Card>
   <Card title="Build a caller" icon="phone" href="/docs/building/by-layer/L4/build-a-caller">
     Client side. Install the SDK, write the calls, handle async responses and errors, ingest reporting. Weeks-of-handler-glue scope, not months.
+  </Card>
+  <Card title="Run a prebuilt agent" icon="cube" href="/docs/building/operating/operating-an-agent">
+    Small team or no engineering capacity. Self-host Prebid SalesAgent, or partner with a managed platform that runs an AdCP agent on your behalf. Configuration over code.
   </Card>
   <Card title="Migrate from hand-rolled" icon="code-merge" href="/docs/building/by-layer/L4/migrate-from-hand-rolled">
     Already running an AdCP agent built before the SDKs were mature? Swap one layer at a time, with conflict modes, per-step rollback, and intermediate states that pass conformance.
