@@ -151,11 +151,6 @@
       "variants": 15,
       "note": "shared-required=[∅]; 0:req=[∅] | 1:req=[∅] | 2:req=[∅] | 3:req=[∅] | 4:req=[∅] | 5:req=[∅] | 6:req=[∅] | 7:req=[∅] | 8:req=[∅] | 9:req=[∅] | 10:req=[∅] | 11:req=[∅] | 12:req=[∅] | 13:req=[∅] | 14:req=[item_type,asset_group_id,required,min_count,max_count,assets]"
     },
-    "core/format.json##/properties/assets/items/oneOf/14/properties/assets/items/oneOf": {
-      "kind": "dangerous",
-      "variants": 12,
-      "note": "shared-required=[∅]; 0:req=[∅] | 1:req=[∅] | 2:req=[∅] | 3:req=[∅] | 4:req=[∅] | 5:req=[∅] | 6:req=[∅] | 7:req=[∅] | 8:req=[∅] | 9:req=[∅] | 10:req=[∅] | 11:req=[∅]"
-    },
     "core/format.json##/properties/renders/items/oneOf": {
       "kind": "narrowable",
       "variants": 2,
@@ -195,11 +190,6 @@
       "kind": "narrowable",
       "variants": 3,
       "note": "0:[creatives] | 1:[errors] | 2:[status,task_id]"
-    },
-    "error-details/agent-permission-denied.json##/oneOf": {
-      "kind": "narrowable",
-      "variants": 2,
-      "note": "0:[status] | 1:[reason]"
     },
     "governance/sync-plans-request.json##/properties/plans/items/properties/budget/oneOf": {
       "kind": "narrowable",
