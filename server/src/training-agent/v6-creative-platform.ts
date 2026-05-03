@@ -23,6 +23,7 @@ import {
   handleGetCreativeDelivery,
   handleSyncCreatives,
 } from './task-handlers.js';
+import { syncAccountsUpsert } from './v6-account-helpers.js';
 import type { ToolArgs, TrainingContext } from './types.js';
 
 interface TrainingCreativeMeta {
@@ -95,6 +96,7 @@ const trainingCreativeAccounts: AccountStore<TrainingCreativeMeta> = {
       authInfo: { kind: 'api_key' },
     };
   },
+  upsert: syncAccountsUpsert,
 };
 
 export class TrainingCreativePlatform

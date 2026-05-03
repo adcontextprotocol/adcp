@@ -22,6 +22,7 @@ import {
   handleAcquireRights,
   handleUpdateRights,
 } from './brand-handlers.js';
+import { syncAccountsUpsert } from './v6-account-helpers.js';
 import type { ToolArgs, TrainingContext } from './types.js';
 
 interface TrainingBrandMeta {
@@ -94,6 +95,7 @@ const trainingBrandAccounts: AccountStore<TrainingBrandMeta> = {
       authInfo: { kind: 'api_key' },
     };
   },
+  upsert: syncAccountsUpsert,
 };
 
 export class TrainingBrandPlatform
