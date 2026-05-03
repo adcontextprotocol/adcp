@@ -166,12 +166,9 @@ phases:
           Brand agent returns the AcquireRightsRejected arm — NOT errors[]:
           - status: rejected (discriminator)
           - reason populated, propagating governance findings
-          - errors[] absent (the schema enforces this via not: { required: [errors] })
-          - adcp_error absent
+          - errors[] absent (schema-enforced via not: { required: [errors] })
           - Transport stays at HTTP 200 / MCP isError: false — governance denial
-            on acquire_rights is a structured business outcome, not a transport
-            error. GOVERNANCE_DENIED does NOT appear in errors[] or adcp_error
-            when the task defines a rejection arm.
+            on acquire_rights is a structured business outcome, not a transport error
 
         sample_request:
           account:
@@ -201,7 +198,7 @@ phases:
             correlation_id: "brand_rights--governance_denied--acquire"
         validations:
           - check: response_schema
-            description: "Response matches acquire-rights-response.json, enforcing not: { required: [errors] } on the rejected arm"
+            description: "Response validates against acquire-rights-response.json"
           - check: field_value
             path: "status"
             value: "rejected"
