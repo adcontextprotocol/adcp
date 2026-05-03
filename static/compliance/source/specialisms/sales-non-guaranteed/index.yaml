@@ -384,6 +384,14 @@ phases:
             path: "context.correlation_id"
             value: "sales_non_guaranteed--update_media_buy"
             description: "Context correlation_id returned unchanged"
+          # Anti-façade: a real update propagates bid/budget changes to the upstream
+          # auction platform. An adapter returning shape-valid responses without touching
+          # upstream fails this check. No identifier_paths here — media_buy_id is
+          # seller-assigned (dynamic context variable, not a buyer-supplied literal).
+          - check: upstream_traffic
+            description: "update_media_buy caused upstream traffic applying the bid/budget changes"
+            min_count: 1
+            endpoint_pattern: "POST *"
   - id: delivery
     title: "Delivery and auction metrics"
     narrative: |

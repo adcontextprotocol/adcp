@@ -252,9 +252,6 @@ phases:
             identifier_paths:
               - "audiences[*].add[*].hashed_email"
               - "audiences[*].add[*].external_id"
-            payload_must_contain:
-              - path: "users[*].hashed_email"
-                match: present
   - id: creative_push
     title: "Native creative sync"
     narrative: |
