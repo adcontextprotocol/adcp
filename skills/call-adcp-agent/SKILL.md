@@ -118,8 +118,14 @@ Every validation failure produces:
 - `issues[].pointer` — RFC 6901 JSON Pointer to the field.
 - `issues[].keyword` — AJV keyword (`required`, `type`, `oneOf`, `anyOf`, `additionalProperties`, `format`, `enum`).
 - `issues[].variants` — when the keyword is `oneOf` or `anyOf`, each entry lists one variant's `required` + declared `properties`. **Pick ONE variant**, send only its `required` fields. This is the fastest recovery path when you didn't know the field was a union.
+- `issues[].discriminator` — _implementation-dependent._ When the validator picks a "best surviving variant" of a const-discriminated union, this is the `[{field, value}, …]` pairs that variant requires. Reads as the validator's verdict on which branch you were inferred to be targeting. Example: `discriminator: [{field: 'type', value: 'key_value'}]` plus `pointer: '/deployments/0/activation_key/key'` and `keyword: 'required'` means "you picked the `key_value` activation_key variant and it requires top-level `key` and `value`." Compound discriminators like `audience-selector`'s `(type, value_type)` produce two-entry arrays.
+- `issues[].schemaId` — _implementation-dependent._ `$id` of the rejecting schema. For tools served from the bundled tree this is usually the response root; for flat-tree tools it can land on the deeper sub-schema. Diagnostic only; the actionable lever is `discriminator` + `variants` + `pointer`.
+- `issues[].allowedValues` — _implementation-dependent._ Closed enum lists for `keyword: 'enum'` issues. Picking from this list closes the case in one round.
+- `issues[].hint` — _implementation-dependent._ One-sentence curated recipe for known shape gotchas: discriminator nesting (`activation_key`, VAST `delivery_type`), shape mismatches (`format_id` object, `budget` number, `signal_ids` provenance objects), and discriminator merging (`account`). When present, the hint is the most-direct fix path; read it before walking variants. Absent on the long tail — no hint just means there's no curated rule for the pattern.
 
-Patch the pointers, don't re-guess what the skill or the `variants` already told you, resend. Three attempts should cover every field.
+The four `_implementation-dependent_` fields are emitted by validators that opt into them; sellers running schema-strict validation libraries surface them, others may not. Treat them as additive: their presence shortens recovery; their absence just means falling back to `pointer` + `keyword` + `variants`.
+
+**Recovery order**: read `hint` first (when present, it's the validated fix path); then `discriminator` (names which branch to fix); then `variants` (lists every option if you're not in a branch); then `pointer` + `keyword` + `message` for the leaf fix. Patch and resend. Three attempts should cover every field.
 
 ## Minimal working examples
 
@@ -225,6 +231,8 @@ Quick lookup before reading the full envelope. Match what you see in `adcp_error
 | Symptom | What it means | Fix |
 |---|---|---|
 | `keyword: 'oneOf'` with `variants[]` | Discriminated union — you sent fields from multiple variants, or none | Pick ONE variant from `variants[]`. Send only its `required` fields. |
+| `discriminator: [{field, value}]` on a `required` issue | Validator inferred which branch you targeted; you missed required fields IN that branch | Read the `discriminator` pair, fill the missing required fields at the same level (don't nest under the discriminator field name). |
+| `hint:` field present on the issue | Validator matched a curated shape-gotcha rule | Apply the hint directly — it's the validated fix path. |
 | 2-3 `additionalProperties` errors at the same pointer | You merged `oneOf` variants ({account_id, brand, operator, …}) | Drop to one variant. Don't keep "extra" fields "for completeness". |
 | `keyword: 'required'`, `pointer: '/idempotency_key'` | Mutating tool, no UUID | Generate fresh UUID per logical operation. Reuse it on retries. |
 | `keyword: 'type'` or `additionalProperties` at `/budget` | Sent `{amount, currency}` | `budget` is a number. Currency is implied by `pricing_option_id`. |
