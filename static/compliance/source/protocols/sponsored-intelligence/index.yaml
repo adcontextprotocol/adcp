@@ -114,7 +114,7 @@ phases:
 
         context_outputs:
           - name: offering_id
-            path: 'offering_id'
+            path: 'offering.offering_id'
         validations:
           - check: response_schema
             description: "Response matches si-get-offering-response.json schema"

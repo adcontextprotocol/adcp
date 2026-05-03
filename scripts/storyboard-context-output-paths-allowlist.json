@@ -1,0 +1,17 @@
+{
+  "$comment": "Per-storyboard exceptions for lint-storyboard-context-output-paths.cjs. Each entry MUST carry a `reason` explaining why the lint can't statically verify the path against the response schema. Re-review during spec changes — if the polymorphism the lint can't follow gets first-class schema treatment, remove the entry.",
+  "allowlist": [
+    {
+      "file": "static/compliance/source/universal/billing-gate-dispatch.yaml",
+      "step": "sync_accounts_passthrough_rejects_agent",
+      "path": "accounts[0].errors[0].details.suggested_billing",
+      "reason": "Captures from `error.details.suggested_billing`, which is defined in `error-details/billing-not-permitted-for-agent.json` (the per-error-code details schema selected by `error.code`). The lint can't follow error-details polymorphism keyed on the runtime error code — `core/error.json` declares `details` as `additionalProperties: true` because the structured shape lives in the error-details schemas. Capture is spec-conformant; lifting this requires extending the lint to switch on sibling `error.code` values."
+    },
+    {
+      "file": "static/compliance/source/universal/idempotency.yaml",
+      "step": "create_media_buy_initial",
+      "path": "idempotency_key",
+      "reason": "Captures the seller's echo of the request `idempotency_key` for replay-comparison in the next step. Response schemas declare `additionalProperties: true` and don't list `idempotency_key` explicitly — the echo is a runtime convention the storyboard depends on, not a spec requirement. Idempotency-replay testing inherently asserts on the echo; removing the convention would require redesigning how the runner threads request-side values into downstream comparisons."
+    }
+  ]
+}
