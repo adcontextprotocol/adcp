@@ -41,6 +41,7 @@ import { buildGovernanceTenantConfig } from './governance.js';
 import { buildCreativeTenantConfig } from './creative.js';
 import { buildCreativeBuilderTenantConfig } from './creative-builder.js';
 import { buildBrandTenantConfig } from './brand.js';
+import { buildSiTenantConfig } from './si.js';
 import { createLogger } from '../../logger.js';
 
 const logger = createLogger('training-agent-tenants');
@@ -212,6 +213,7 @@ export function createRegistryHolder(): RegistryHolder {
         const creative = buildCreativeTenantConfig(hostBase);
         const creativeBuilder = buildCreativeBuilderTenantConfig(hostBase);
         const brand = buildBrandTenantConfig(hostBase);
+        const si = buildSiTenantConfig(hostBase);
         // awaitFirstValidation:true blocks until the no-op validator
         // promotes the tenant to 'healthy'. Without it the first request
         // would race the background validation and see 'pending' (refused
@@ -223,9 +225,10 @@ export function createRegistryHolder(): RegistryHolder {
           reg.register(creative.tenantId, creative.config, { awaitFirstValidation: true }),
           reg.register(creativeBuilder.tenantId, creativeBuilder.config, { awaitFirstValidation: true }),
           reg.register(brand.tenantId, brand.config, { awaitFirstValidation: true }),
+          reg.register(si.tenantId, si.config, { awaitFirstValidation: true }),
         ]);
         logger.info(
-          { hostBase, tenants: ['signals', 'sales', 'governance', 'creative', 'creative-builder', 'brand'] },
+          { hostBase, tenants: ['signals', 'sales', 'governance', 'creative', 'creative-builder', 'brand', 'si'] },
           'Tenant registry initialized',
         );
         registry = reg;

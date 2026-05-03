@@ -36,7 +36,7 @@ const { createTrainingAgentRouter } = await import('../../src/training-agent/ind
 const { stopSessionCleanup } = await import('../../src/training-agent/state.js');
 const { toolsForTenant, TOOL_CATALOG } = await import('../../src/training-agent/tenants/tool-catalog.js');
 
-const TENANT_IDS = ['signals', 'sales', 'governance', 'creative', 'creative-builder', 'brand'] as const;
+const TENANT_IDS = ['signals', 'sales', 'governance', 'creative', 'creative-builder', 'brand', 'si'] as const;
 const AUTH = 'Bearer tool-catalog-drift-token';
 
 interface ToolListResponse {
