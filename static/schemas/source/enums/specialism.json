@@ -29,7 +29,8 @@
     "sales-social",
     "signal-marketplace",
     "signal-owned",
-    "signed-requests"
+    "signed-requests",
+    "sponsored-intelligence"
   ],
   "enumDescriptions": {
     "audience-sync": "Syncs buyer-provided audience segments into a platform for activation",
@@ -51,6 +52,7 @@
     "sales-social": "Social media advertising platform with self-service flows",
     "signal-marketplace": "Marketplace signal agent reselling third-party data",
     "signal-owned": "Owned signal agent exposing first-party segments",
-    "signed-requests": "DEPRECATED in 3.1 — reclassified to /compliance/{version}/universal/signed-requests.yaml. Advertise request_signing.supported: true in get_adcp_capabilities; this enum value is retained until 4.0 for backward compat but is no longer needed. See https://github.com/adcontextprotocol/adcp/issues/3075 (reclassification) and https://github.com/adcontextprotocol/adcp/issues/3078 (4.0 enum removal)."
+    "signed-requests": "DEPRECATED in 3.1 — reclassified to /compliance/{version}/universal/signed-requests.yaml. Advertise request_signing.supported: true in get_adcp_capabilities; this enum value is retained until 4.0 for backward compat but is no longer needed. See https://github.com/adcontextprotocol/adcp/issues/3075 (reclassification) and https://github.com/adcontextprotocol/adcp/issues/3078 (4.0 enum removal).",
+    "sponsored-intelligence": "PREVIEW — agent claim for SDKs that dispatch on specialism ID (parity with `signal-marketplace`, `creative-template`, etc.). The storyboard is a placeholder pointing back to the `sponsored-intelligence` protocol baseline (`si_get_offering` → `si_initiate_session` → `si_send_message` → `si_terminate_session`). Promotes to `stable` when the SI tools graduate from `x-status: experimental`. See https://github.com/adcontextprotocol/adcp/issues/3961."
   }
 }
