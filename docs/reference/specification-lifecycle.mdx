@@ -37,7 +37,7 @@ A section is in Draft when the working group has opened a scoped proposal on the
 
 **Decision authority**: Domain working group lead.
 
-**When the RFC process applies**: A material spec change — new task, schema change affecting existing fields, or change to normative prose — requires an approved [RFC](/docs/governance/rfc-process) before entering Draft. The RFC documents the motivation, alternatives considered, compatibility impact, and reviewer checklist. Lightweight changes (new optional fields with no behavioral consequence) may enter Draft via a PR with working group review in lieu of a formal RFC.
+**When the RFC process applies**: A material spec change — new task, schema change affecting existing fields, or change to normative prose — requires an approved [RFC](https://github.com/adcontextprotocol/adcp/issues/2437) before entering Draft. The RFC documents the motivation, alternatives considered, compatibility impact, and reviewer checklist. Lightweight changes (new optional fields with no behavioral consequence) may enter Draft via a PR with working group review in lieu of a formal RFC.
 
 ---
 
@@ -101,7 +101,7 @@ Draft  ──→  Proposed  ──→  Final  ──→  Deprecated  ──→  
 
 Draft may also be abandoned without reaching Proposed. A Final section may be Deprecated directly (no intermediate stage). There is no path from Sunset back to any prior stage — removed features are not restored; they are re-proposed from scratch if needed.
 
-Stage transitions (Draft → Proposed → Final, Final → Deprecated, etc.) are gated on an approved RFC — the RFC outcome (accepted / accepted-with-changes) is the trigger that authorises a contributor to open the spec PR that carries the transition. See [RFC process](/docs/governance/rfc-process).
+Stage transitions (Draft → Proposed → Final, Final → Deprecated, etc.) are gated on an approved RFC — the RFC outcome (accepted / accepted-with-changes) is the trigger that authorises a contributor to open the spec PR that carries the transition. See [RFC process (issue #2437)](https://github.com/adcontextprotocol/adcp/issues/2437).
 
 ---
 
@@ -118,7 +118,7 @@ Stage transitions (Draft → Proposed → Final, Final → Deprecated, etc.) are
 
 The procedures that govern who sits on the working group, voting thresholds, quorum, and escalation paths:
 
-- **RFC process** ([RFC process](/docs/governance/rfc-process)): proposal template, decision-record format, lifecycle from RFC to spec change
+- **RFC process** ([#2437](https://github.com/adcontextprotocol/adcp/issues/2437)): proposal template, decision-record format, lifecycle from RFC to spec change
 - **Working group charter** ([#2438](https://github.com/adcontextprotocol/adcp/issues/2438)): quorum, voting thresholds, roster, recusal policy — under active development
 
 The architecture committee is the defined decision authority for Final-stage graduation and Deprecated-stage entry. It is referenced in [Experimental Status](/docs/reference/experimental-status) and acts as the working group's ratifying body for stage transitions that carry a stability contract.
