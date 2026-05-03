@@ -134,17 +134,44 @@ export async function issueDomainChallenge(input: {
     const existing = await workos.organizations.getOrganization(orgId);
     const existingDomain = existing.domains.find(d => d.domain.toLowerCase() === domain);
     if (existingDomain) {
-      return {
-        ok: true,
-        domain,
-        workos_domain_id: existingDomain.id,
-        state: String(existingDomain.state),
-        verification_strategy: existingDomain.verificationStrategy ?? null,
-        verification_token: existingDomain.verificationToken ?? null,
-        verification_prefix: existingDomain.verificationPrefix ?? null,
-        already_verified: isVerifiedState(existingDomain.state),
-        prior_manifest_exists: priorManifestExists,
-      };
+      if (!isVerifiedState(existingDomain.state) &&
+          (existingDomain.verificationToken == null || existingDomain.verificationPrefix == null)) {
+        // Stale row: pending entry without a usable challenge token. WorkOS can
+        // return this when a domain was created in a different flow or abandoned
+        // mid-creation. Delete it so the create path issues a fresh challenge.
+        // (The SDK types verificationToken as string|undefined; == null catches both.)
+        logger.warn(
+          { orgId, domain, existingDomainId: existingDomain.id, state: existingDomain.state },
+          'brand-claim: stale domain entry with null token/prefix — deleting to allow re-issue',
+        );
+        try {
+          await workos.organizationDomains.deleteOrganizationDomain(existingDomain.id);
+        } catch (deleteErr: any) {
+          const deleteStatus = deleteErr?.status ?? deleteErr?.response?.status;
+          if (deleteStatus !== 404 && deleteStatus !== 410) {
+            logger.error(
+              { err: deleteErr, orgId, domain, existingDomainId: existingDomain.id },
+              'brand-claim: failed to delete stale domain entry',
+            );
+            return { ok: false, code: 'workos_error', message: 'Failed to clear stale domain entry before re-issuing challenge.' };
+          }
+          // 404/410: concurrent request already deleted it — fall through to create
+          logger.warn({ orgId, domain }, 'brand-claim: stale domain already deleted by a concurrent request');
+        }
+        // Fall through to create path below
+      } else {
+        return {
+          ok: true,
+          domain,
+          workos_domain_id: existingDomain.id,
+          state: String(existingDomain.state),
+          verification_strategy: existingDomain.verificationStrategy ?? null,
+          verification_token: existingDomain.verificationToken ?? null,
+          verification_prefix: existingDomain.verificationPrefix ?? null,
+          already_verified: isVerifiedState(existingDomain.state),
+          prior_manifest_exists: priorManifestExists,
+        };
+      }
     }
   } catch (err) {
     logger.warn({ err, orgId }, 'brand-claim: org pre-check failed, will attempt create');

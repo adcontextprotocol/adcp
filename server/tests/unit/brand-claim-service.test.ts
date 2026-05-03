@@ -17,6 +17,7 @@ type WorkOSStub = {
   organizations: { getOrganization: ReturnType<typeof vi.fn> };
   organizationDomains: {
     createOrganizationDomain: ReturnType<typeof vi.fn>;
+    deleteOrganizationDomain: ReturnType<typeof vi.fn>;
     verifyOrganizationDomain: ReturnType<typeof vi.fn>;
   };
 };
@@ -24,6 +25,7 @@ type WorkOSStub = {
 function makeWorkos(overrides: Partial<{
   getOrganization: any;
   createOrganizationDomain: any;
+  deleteOrganizationDomain: any;
   verifyOrganizationDomain: any;
 }> = {}): WorkOSStub {
   return {
@@ -32,6 +34,7 @@ function makeWorkos(overrides: Partial<{
     },
     organizationDomains: {
       createOrganizationDomain: overrides.createOrganizationDomain ?? vi.fn(),
+      deleteOrganizationDomain: overrides.deleteOrganizationDomain ?? vi.fn().mockResolvedValue(undefined),
       verifyOrganizationDomain: overrides.verifyOrganizationDomain ?? vi.fn(),
     },
   };
@@ -135,6 +138,136 @@ describe('issueDomainChallenge', () => {
     });
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.already_verified).toBe(true);
+  });
+
+  it('deletes stale entry and re-issues when existing domain has null verificationToken', async () => {
+    const freshCreate = {
+      id: 'dom_fresh',
+      state: 'pending',
+      verificationStrategy: 'dns',
+      verificationToken: 'tok_new',
+      verificationPrefix: '_workos-challenge',
+    };
+    const deleteFn = vi.fn().mockResolvedValue(undefined);
+    const workos = makeWorkos({
+      getOrganization: vi.fn().mockResolvedValue({
+        domains: [{
+          id: 'dom_stale',
+          domain: DOMAIN,
+          state: 'pending',
+          verificationStrategy: 'dns',
+          verificationToken: null,
+          verificationPrefix: '_workos-challenge',
+        }],
+      }),
+      deleteOrganizationDomain: deleteFn,
+      createOrganizationDomain: vi.fn().mockResolvedValue(freshCreate),
+    });
+    const result = await issueDomainChallenge({
+      workos: workos as any,
+      brandDb: makeBrandDb(),
+      orgId: ORG,
+      rawDomain: DOMAIN,
+    });
+    expect(deleteFn).toHaveBeenCalledWith('dom_stale');
+    expect(workos.organizationDomains.createOrganizationDomain).toHaveBeenCalled();
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.verification_token).toBe('tok_new');
+      expect(result.workos_domain_id).toBe('dom_fresh');
+    }
+  });
+
+  it('deletes stale entry and re-issues when existing domain has null verificationPrefix', async () => {
+    const freshCreate = {
+      id: 'dom_fresh2',
+      state: 'pending',
+      verificationStrategy: 'dns',
+      verificationToken: 'tok_new2',
+      verificationPrefix: '_workos-challenge',
+    };
+    const deleteFn = vi.fn().mockResolvedValue(undefined);
+    const workos = makeWorkos({
+      getOrganization: vi.fn().mockResolvedValue({
+        domains: [{
+          id: 'dom_stale2',
+          domain: DOMAIN,
+          state: 'pending',
+          verificationStrategy: 'dns',
+          verificationToken: 'tok_old',
+          verificationPrefix: null,
+        }],
+      }),
+      deleteOrganizationDomain: deleteFn,
+      createOrganizationDomain: vi.fn().mockResolvedValue(freshCreate),
+    });
+    const result = await issueDomainChallenge({
+      workos: workos as any,
+      brandDb: makeBrandDb(),
+      orgId: ORG,
+      rawDomain: DOMAIN,
+    });
+    expect(deleteFn).toHaveBeenCalledWith('dom_stale2');
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.verification_token).toBe('tok_new2');
+  });
+
+  it('returns workos_error when delete of stale entry fails with a non-404 status', async () => {
+    const workos = makeWorkos({
+      getOrganization: vi.fn().mockResolvedValue({
+        domains: [{
+          id: 'dom_stale3',
+          domain: DOMAIN,
+          state: 'pending',
+          verificationStrategy: 'dns',
+          verificationToken: null,
+          verificationPrefix: null,
+        }],
+      }),
+      deleteOrganizationDomain: vi.fn().mockRejectedValue({ status: 500 }),
+    });
+    const result = await issueDomainChallenge({
+      workos: workos as any,
+      brandDb: makeBrandDb(),
+      orgId: ORG,
+      rawDomain: DOMAIN,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe('workos_error');
+    expect(workos.organizationDomains.createOrganizationDomain).not.toHaveBeenCalled();
+  });
+
+  it('falls through to create when delete returns 404 (concurrent request already deleted)', async () => {
+    const freshCreate = {
+      id: 'dom_fresh3',
+      state: 'pending',
+      verificationStrategy: 'dns',
+      verificationToken: 'tok_concurrent',
+      verificationPrefix: '_workos-challenge',
+    };
+    const workos = makeWorkos({
+      getOrganization: vi.fn().mockResolvedValue({
+        domains: [{
+          id: 'dom_stale4',
+          domain: DOMAIN,
+          state: 'pending',
+          verificationStrategy: 'dns',
+          verificationToken: null,
+          verificationPrefix: null,
+        }],
+      }),
+      deleteOrganizationDomain: vi.fn().mockRejectedValue({ status: 404 }),
+      createOrganizationDomain: vi.fn().mockResolvedValue(freshCreate),
+    });
+    const result = await issueDomainChallenge({
+      workos: workos as any,
+      brandDb: makeBrandDb(),
+      orgId: ORG,
+      rawDomain: DOMAIN,
+    });
+    expect(workos.organizationDomains.createOrganizationDomain).toHaveBeenCalled();
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.verification_token).toBe('tok_concurrent');
   });
 
   it('disambiguates 422 collision via organization_domain_already_used code', async () => {
