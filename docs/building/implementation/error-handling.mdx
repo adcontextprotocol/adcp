@@ -121,6 +121,8 @@ AdCP exposes errors in two distinct places, and implementers need to populate th
 
 **Storyboard validators.** Prefer `check: error_code` over `check: field_present, path: "errors"` when asserting on a failed task's error code. `error_code` is shape-agnostic — the runner resolves it from either `adcp_error.code` (transport) or `errors[0].code` (payload). Direct `path: "errors"` checks pin the assertion to the payload shape and fail against agents that surface errors only via the transport envelope, even when the agent is conformant. See [Storyboard authoring — Asserting on errors](/docs/contributing/storyboard-authoring#asserting-on-errors).
 
+**Discriminated rejection arms.** When the task response defines a structured rejection arm (e.g., `AcquireRightsRejected`, `CreativeRejected` — see the wire-placement guidance on [`GOVERNANCE_DENIED`](https://adcontextprotocol.org/schemas/v3/enums/error-code.json) for the rule), the spec-correct denial response carries no error code on the wire — the rejection arm enforces `not: { required: [errors] }` at the schema layer. Asserting `check: error_code` will fail against a conformant agent. Assert on the discriminator instead: `check: field_value, path: "status", value: "rejected"`. This is the pattern for governance denial on `acquire_rights` and policy denial on `creative_approval`; assertions that mix the two paths (`error_code` for tasks with rejection arms, `field_value` for tasks without) bake non-spec opinions into the storyboard.
+
 ### Error Object Fields
 
 These fields are defined by the [`error.json`](https://adcontextprotocol.org/schemas/v3/core/error.json) schema:
