@@ -31,6 +31,8 @@ import { isFreeEmailDomain } from '../utils/email-domain.js';
 import { canonicalizeBrandDomain, assertClaimableBrandDomain } from '../services/identifier-normalization.js';
 import { resolvePreferredOrganization, backfillPrimaryOrganization } from '../db/users-db.js';
 import { notifySystemError } from '../addie/error-notifier.js';
+import { canAddSeat, type SeatType } from '../db/organization-db.js';
+import { sendToOrgAdmins, escapeSlackMrkdwn } from '../slack/org-group-dm.js';
 import {
   upsertOrganizationMembership,
   deleteOrganizationMembership,
@@ -91,6 +93,91 @@ interface OrganizationData {
 /**
  * Upsert organization membership to local database
  */
+/**
+ * Look up admin/owner emails for an org from the local membership mirror.
+ * Cheap query — no WorkOS round-trip — used by webhook-driven notifications
+ * (e.g. seat-cap refusal) where we want to nudge the human in the loop.
+ * Returns an empty array when no admins exist or the lookup fails; the
+ * caller decides whether to fall back to a system-error notification.
+ */
+async function getOrgAdminEmails(orgId: string): Promise<string[]> {
+  try {
+    const result = await getPool().query<{ email: string }>(
+      `SELECT email FROM organization_memberships
+       WHERE workos_organization_id = $1
+         AND role IN ('admin', 'owner')
+         AND email IS NOT NULL`,
+      [orgId]
+    );
+    return result.rows.map(r => r.email).filter(Boolean);
+  } catch (err) {
+    logger.warn({ err, orgId }, 'Failed to look up admin emails for org');
+    return [];
+  }
+}
+
+/**
+ * Notify org admins via Slack that we refused to mirror a webhook-driven
+ * membership add because the org is over its seat cap. Best-effort —
+ * Slack send failures don't block webhook processing (we already returned
+ * 200 to WorkOS at this point so retrying isn't useful).
+ */
+async function notifyAdminsOfRefusedMembership(input: {
+  orgId: string;
+  newUserEmail: string;
+  seatType: SeatType;
+  reason: string;
+}): Promise<void> {
+  try {
+    const adminEmails = await getOrgAdminEmails(input.orgId);
+    if (adminEmails.length === 0) {
+      logger.info({ orgId: input.orgId }, 'No admins for refused-membership notification — falling back to system error');
+      notifySystemError({
+        source: 'seat-cap-refusal',
+        errorMessage: `Refused webhook-driven membership for ${input.newUserEmail} on org ${input.orgId} (over cap), no Slack-mapped admins to notify`,
+      });
+      return;
+    }
+    const seatLabel = input.seatType === 'contributor' ? 'contributor' : 'community';
+    const safeEmail = escapeSlackMrkdwn(input.newUserEmail);
+    await sendToOrgAdmins(input.orgId, adminEmails, {
+      text: `Heads up: WorkOS tried to add ${input.newUserEmail} but you're at your ${seatLabel} seat cap`,
+      blocks: [
+        {
+          type: 'header',
+          text: { type: 'plain_text', text: 'Membership add over seat cap', emoji: true },
+        },
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `WorkOS tried to add *${safeEmail}* to your organization, but you're at your *${seatLabel}* seat cap. We didn't mirror the membership locally — they have the WorkOS record but won't appear in our team list, won't count toward billing, and won't get AAO features.\n\n${escapeSlackMrkdwn(input.reason)}`,
+          },
+        },
+        {
+          type: 'actions',
+          elements: [
+            {
+              type: 'button',
+              text: { type: 'plain_text', text: 'Upgrade plan', emoji: true },
+              url: 'https://agenticadvertising.org/membership',
+              action_id: 'seat_cap_refused_upgrade',
+            },
+            {
+              type: 'button',
+              text: { type: 'plain_text', text: 'Manage team', emoji: true },
+              url: `https://agenticadvertising.org/team?org=${input.orgId}`,
+              action_id: 'seat_cap_refused_manage',
+            },
+          ],
+        },
+      ],
+    });
+  } catch (err) {
+    logger.warn({ err, orgId: input.orgId }, 'Failed to notify admins of refused membership');
+  }
+}
+
 async function upsertMembership(
   membership: OrganizationMembershipData,
   user?: UserData
@@ -129,8 +216,36 @@ async function upsertMembership(
   // WorkOS rather than through one of our endpoints).
   const consumed = await consumeInvitationSeatType(membership.organization_id, userData.email);
   const hasExplicitSeatType = consumed !== null;
-  const seatType = consumed?.seat_type || 'community_only';
+  const seatType: SeatType = consumed?.seat_type === 'contributor' ? 'contributor' : 'community_only';
   const provisioningSource = consumed?.source || 'webhook';
+
+  // Seat-cap enforcement for un-staged membership adds. When the membership
+  // came through one of our invite endpoints, the cap was already checked at
+  // issue time and the row in invitation_seat_types reserved the seat — the
+  // consume above releases that reservation, so re-checking would always
+  // pass. Webhook-driven adds without a staged invite (SSO domain auto-join,
+  // dashboard direct add, API direct add) bypass our checks entirely. Refuse
+  // and notify so a multi-user company can't squeeze onto a 1-seat
+  // individual sub by adding members in WorkOS directly.
+  if (!hasExplicitSeatType) {
+    const availability = await canAddSeat(membership.organization_id, seatType);
+    if (!availability.allowed) {
+      logger.warn({
+        orgId: membership.organization_id,
+        userId: membership.user_id,
+        email: userData.email,
+        seatType,
+        reason: availability.reason,
+      }, 'Refusing to mirror webhook-driven membership: org over seat cap');
+      void notifyAdminsOfRefusedMembership({
+        orgId: membership.organization_id,
+        newUserEmail: userData.email,
+        seatType,
+        reason: availability.reason ?? 'Seat cap reached',
+      });
+      return;
+    }
+  }
 
   const { assigned_role } = await upsertOrganizationMembership({
     user_id: membership.user_id,
