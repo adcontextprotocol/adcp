@@ -1015,7 +1015,7 @@ export const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> 
   // Track A: Basics (all free)
   A1: [
     { label: 'Introduction to AdCP and agentic advertising', url: `${DOCS_BASE}/docs/intro` },
-    { label: 'Why AdCP — the fragmentation problem', url: `${DOCS_BASE}/docs/building/understanding` },
+    { label: 'Why AdCP — the fragmentation problem', url: `${DOCS_BASE}/docs/building/concepts` },
     { label: 'Media channel taxonomy', url: `${DOCS_BASE}/docs/reference/media-channel-taxonomy` },
     { label: 'Campaign governance — always-on compliance', url: `${DOCS_BASE}/docs/governance/campaign` },
   ],

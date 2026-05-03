@@ -1,0 +1,80 @@
+---
+title: Known spec ambiguities
+description: "Open AdCP spec gaps that affect compliance testing — with workarounds and issue links. Entries are removed as the underlying issues close."
+"og:title": "AdCP — Known spec ambiguities"
+---
+
+This page enumerates spec gaps that currently affect storyboard conformance. Each entry covers one of three patterns: a spec `MAY` branch where vectors assert one outcome, a response field storyboards assert that the schema does not yet require, or a testing-infrastructure quirk that prevents a vector from probing through the reference SDK.
+
+**Entries persist until the fix ships in a tagged `@adcp/client` or spec release** — closing the GitHub issue is not the removal trigger, because an implementer on an SDK version that predates the fix still hits the symptom. Each entry's Workaround names the release gate when relevant. If an entry here doesn't match what you're seeing, check the GitHub issue for the latest state — the fix may have landed in a release you haven't pulled yet.
+
+## How to use this page
+
+If a storyboard fails on a behavior you believe is spec-conformant, search this page for the storyboard name or the assertion text. Each entry describes the gap, the workaround that gets you past the blocker, and the issue that tracks the fix. Entries are removed when the fix ships in a tagged release, not when the issue closes — pair this page with the linked issue and the SDK / spec release notes for the authoritative state.
+
+For the opposite direction — failures that are **not** in this list and do have clean fixes — see the [storyboard troubleshooting guide](/docs/building/operating/storyboard-troubleshooting).
+
+## Current ambiguities
+
+### `check_governance` `conditions` field shape
+
+- **Schema**: `check-governance-response.json` defines `conditions[]` items as `{ field, required_value?, reason }` with `field` and `reason` required. The `status: conditions` status now requires `conditions` with `minItems: 1`.
+- **Resolution**: [#2603](https://github.com/adcontextprotocol/adcp/issues/2603). The schema tightening lands in the protocol patch release following this entry's removal.
+- **Workaround (until you pull the fix)**: emit `conditions[]` with the canonical `{ field, reason }` shape on every `status: conditions` response. Agents following the prose description already do this; the schema tightening just makes enforcement mechanical.
+
+### PRM required for non-OAuth agents
+
+- **Storyboard**: `universal/security.yaml` phases `oauth_discovery` + `mechanism_required`.
+- **Gap**: the RFC 9728 / RFC 8414 probes run for every agent by default. API-key-only sandboxes were standing up fake issuer URLs to "pass" the probes, which is worse than skipping them.
+- **Resolution**: [#2606](https://github.com/adcontextprotocol/adcp/issues/2606) — the storyboard narrative now explicitly directs API-key-only agents to declare `auth.api_key` in the test kit and omit PRM entirely. Optional-phase semantics make `oauth_discovery` failures non-fatal; `mechanism_required` passes via the API-key path.
+- **Workaround**: if your agent has no OAuth issuer, do not serve `/.well-known/oauth-protected-resource/...`. Declare `auth.api_key` in your test-kit and let the OAuth discovery phase fail silently.
+
+### Idempotency missing-key probe via SDK
+
+- **Storyboard**: `universal/idempotency.yaml` step `missing_key/create_media_buy_missing_key`.
+- **Gap**: the reference `@adcp/client` SDK auto-injects `idempotency_key` on mutating tasks, so a vector that tries to probe "missing key rejection" never reaches the agent with a missing key — the runner would inject one before dispatch.
+- **Resolution**: [#2607](https://github.com/adcontextprotocol/adcp/issues/2607) — the step declares `omit_idempotency_key: true`, which signals the runner to skip both its own `applyIdempotencyInvariant` and the SDK's auto-inject. The request arrives at your agent without a key, letting the vector probe the rejection path honestly.
+- **Workaround**: nothing required — honor the existing spec requirement (reject missing `idempotency_key` on mutating tasks with `INVALID_REQUEST` or `VALIDATION_ERROR`).
+
+### Response schema fields asserted by storyboards
+
+- **Storyboards**: `sales_catalog_driven` (catalog counts), `creative_ad_server` (pricing_options), `media_buy_seller/inventory_list_targeting` (property_list echo), `creative_ad_server` (vendor_cost required).
+- **Gap**: historical drift between what storyboard vectors assert and what the response schemas require.
+- **Resolution**: [#2604](https://github.com/adcontextprotocol/adcp/issues/2604). Audit complete:
+  - `sync-catalogs-response.json` now requires `item_count` on catalog entries when `action` is `created`/`updated`/`unchanged`.
+  - `property_list` / `collection_list` echo: already canonical via `packages[].targeting_overlay`.
+  - `list-creatives-response.json` `pricing_options`: already canonical (array, `minItems: 1`, items require `pricing_option_id`).
+  - `report-usage-request.json` `vendor_cost`: already required.
+- **Workaround**: emit `item_count` on every non-failed/non-deleted catalog entry. Conformant agents already do this; the schema tightening catches gaps at `response_schema` validation.
+
+### Rights-holder vs advertiser `brand_id` in brand protocol
+
+- **Storyboard**: `specialisms/brand-rights/index.yaml` phases `identity_discovery` + `rights_search`.
+- **Gap**: `get_brand_identity.brand_id` identifies the advertiser (e.g., `acme_outdoor`); `get_rights.brand_id` scopes the search to a specific rights-holder brand (e.g., talent like `daan_janssen`). Same field name, different entities — before the #2627 fix the storyboard threaded the advertiser id through to the rights-holder filter, and a conformant agent either returned empty rights (fail) or added a "return all when no match" fallback (masking bugs).
+- **Resolution**: [#2627](https://github.com/adcontextprotocol/adcp/issues/2627) — the storyboard now sends `buyer_brand` (advertiser for compatibility filtering) and omits the rights-holder `brand_id` filter so the agent returns its full catalog.
+- **Workaround**: treat `get_rights.brand_id` as a rights-holder filter only; populate `buyer_brand` for compatibility filtering against the buyer's `brand.json`.
+
+### Re-cancel error code — `NOT_CANCELLABLE` vs `INVALID_STATE`
+
+- **Storyboards**: `protocols/media-buy/state-machine.yaml > recancel_buy` and `scenarios/invalid_transitions.yaml > double_cancel/second_cancel`.
+- **Gap**: `specification.mdx` §128 (MAY `NOT_CANCELLABLE`) and §129 (MUST `INVALID_STATE` on terminal-state updates) both applied to re-cancel of a `canceled` buy. State-machine-first implementations returned `INVALID_STATE` per §129; cancellation-first implementations returned `NOT_CANCELLABLE`. Vectors historically pinned one.
+- **Resolution**: [#2617](https://github.com/adcontextprotocol/adcp/issues/2617) / [#2619](https://github.com/adcontextprotocol/adcp/pull/2619) + [#2628](https://github.com/adcontextprotocol/adcp/issues/2628) — §129 now carves out the cancellation case: when the terminal-state update IS a cancellation attempt, agents MUST return `NOT_CANCELLABLE`. Other illegal transitions (pause/resume on canceled) still return `INVALID_STATE`. Both storyboards now assert `NOT_CANCELLABLE` on re-cancel.
+- **Workaround**: return `NOT_CANCELLABLE` on `canceled: true` updates to buys already in `canceled`. Return `INVALID_STATE` on pause/resume of terminal-state buys. The cancellation-specific code wins on re-cancel; the generic code wins on everything else.
+
+### Branch-set step grading (`peer_branch_taken`)
+
+- **Storyboards**: any with parallel `optional: true` phases sharing a `contributes_to:` flag — canonical example `universal/schema-validation.yaml > past_start_reject_path` + `past_start_adjust_path` (aggregation flag `past_start_handled`).
+- **Gap**: a conformant agent picks one branch (e.g., rejects past `start_time`); the other branch's assertion (e.g., `field_present: media_buy_id`) fails because the agent took the opposite behavior. Runners before the #2629 fix surfaced this as `× (unknown step)` in the summary even though the `any_of` aggregate passed — implementers debugged a branch they weren't on.
+- **Resolution**: [#2629](https://github.com/adcontextprotocol/adcp/issues/2629) — runners now grade non-chosen branch steps with skip reason `peer_branch_taken` (distinct from `not_applicable`, which is reserved for protocol/specialism coverage gaps). See `storyboard-schema.yaml` § "Per-step grading in any_of branch patterns" for the authoring rules and `runner-output-contract.yaml > skip_result.reasons.peer_branch_taken` for the canonical `detail` shape.
+- **Workaround**: if your runner reports an unexpected branch failure, check whether a peer optional phase contributed the same `contributes_to` flag. If so, you're conformant on the branch you chose — the runner needs the #2629 update.
+
+### SDK request-builder overriding spec-conformant `sample_request`
+
+- **Storyboard**: `sales_catalog_driven` `optimization_loop/provide_feedback`, exposed via the `@adcp/client` compliance runner.
+- **Gap**: the storyboard's `sample_request` correctly declares `performance_index`, `metric_type`, `feedback_source` per the `provide-performance-feedback-request.json` schema. But `@adcp/client`'s internal `request-builder.js` had a hardcoded override for `provide_performance_feedback` that replaced the payload with a non-spec `feedback: { satisfaction, notes }` shape, so conformant agents rejected with `INVALID_REQUEST` and failed the vector.
+- **Resolution**: upstream [adcontextprotocol/adcp-client#689](https://github.com/adcontextprotocol/adcp-client/issues/689) + [#2626](https://github.com/adcontextprotocol/adcp/issues/2626) — remove the override and let the storyboard's `sample_request` drive the payload.
+- **Workaround**: bump to an `@adcp/client` release that includes the adcp-client#689 fix. Until then, the `provide_performance_feedback` vector will fail on any agent that validates its requests against the spec schema.
+
+## When an ambiguity isn't listed
+
+If you're blocked on a behavior you believe the spec leaves ambiguous but it's not on this list, open an issue at [adcontextprotocol/adcp](https://github.com/adcontextprotocol/adcp/issues/new). Include the storyboard, the vector's assertion text, the conformant branch you picked, and why you believe the spec allows it. The fastest resolutions come from issues that cite the specific spec paragraph and the specific vector assertion — that's enough for a maintainer to either point you at an existing fix or confirm the gap and schedule it.

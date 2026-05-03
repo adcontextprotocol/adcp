@@ -1,0 +1,15 @@
+---
+title: L1 — Identity & signing
+sidebarTitle: L1 — Identity & signing
+description: "Identity-and-signing layer of the AdCP stack. RFC 9421 HTTP message signatures, public-key resolution, replay-window enforcement, key rotation."
+"og:title": "AdCP — L1 (Identity & signing)"
+---
+
+L1 cryptographically verifies that the request came from who the headers claim it did, and that the body wasn't modified in transit. RFC 9421 HTTP message signatures with replay-window enforcement and key rotation. Symmetric on both sides — agents verify inbound and sign outbound webhooks; callers sign outbound and verify inbound webhooks.
+
+See the [SDK stack reference](/docs/building/cross-cutting/sdk-stack#l1--identity--signing) for the full L1 contract.
+
+## Pages in this layer
+
+- **[Security implementation profile](/docs/building/by-layer/L1/security)** — RFC 9421 wire details, KMS integration, replay-window tuning.
+- **[Webhook verifier tuning](/docs/building/by-layer/L1/webhook-verifier-tuning)** — clock-skew handling, key-rotation transitions, signature failure diagnostics.

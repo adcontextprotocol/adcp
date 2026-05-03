@@ -128,7 +128,7 @@ MCP is the primary integration method for tool-calling AI agents. AdCP tasks are
 - Each AdCP task maps to an MCP tool
 - Request/response schemas are defined as JSON Schema
 - Supports streaming for long-running operations
-- Guide: https://adcontextprotocol.org/docs/building/integration/mcp-guide
+- Guide: https://adcontextprotocol.org/docs/building/by-layer/L0/mcp-guide
 
 ### A2A (Agent-to-Agent Protocol)
 
@@ -137,7 +137,7 @@ A2A enables direct agent-to-agent communication for autonomous advertising workf
 - Task-based message exchange between agents
 - Supports asynchronous operations with status callbacks
 - Context sessions maintain state across multi-turn interactions
-- Guide: https://adcontextprotocol.org/docs/building/integration/a2a-guide
+- Guide: https://adcontextprotocol.org/docs/building/by-layer/L0/a2a-guide
 
 ## Relationship to existing standards
 
@@ -160,14 +160,14 @@ All AdCP request and response payloads are defined as JSON Schema. Schemas are p
 
 Adoption path:
 1. Quickstart — 5-minute curl example against the public test agent: https://adcontextprotocol.org/docs/quickstart
-2. Build an agent — point a coding agent at a SKILL.md from an AdCP SDK: https://adcontextprotocol.org/docs/building/build-an-agent
-3. Validate an agent — run storyboards against your endpoint to surface spec gaps: https://adcontextprotocol.org/docs/building/validate-your-agent
-4. Operate an agent — what sits behind the protocol (hosting, products, monitoring): https://adcontextprotocol.org/docs/building/operating-an-agent
+2. Build an agent — point a coding agent at a SKILL.md from an AdCP SDK: https://adcontextprotocol.org/docs/building/by-layer/L4/build-an-agent
+3. Validate an agent — run storyboards against your endpoint to surface spec gaps: https://adcontextprotocol.org/docs/building/verification/validate-your-agent
+4. Operate an agent — what sits behind the protocol (hosting, products, monitoring): https://adcontextprotocol.org/docs/building/operating/operating-an-agent
 
 For deeper reading:
-- Understand the architecture: https://adcontextprotocol.org/docs/building/understanding
-- Choose your transport (MCP or A2A): https://adcontextprotocol.org/docs/building/integration
-- Implementation patterns: https://adcontextprotocol.org/docs/building/implementation
+- Understand the architecture: https://adcontextprotocol.org/docs/building/concepts
+- Choose your transport (MCP or A2A): https://adcontextprotocol.org/docs/building/by-layer/L0
+- Implementation patterns: https://adcontextprotocol.org/docs/building/by-layer/L3
 - Schemas and SDKs: https://adcontextprotocol.org/docs/building/schemas-and-sdks
 
 ## SDKs

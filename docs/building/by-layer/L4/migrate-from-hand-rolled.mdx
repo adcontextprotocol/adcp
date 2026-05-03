@@ -1,0 +1,224 @@
+---
+title: Migrate from a hand-rolled agent
+sidebarTitle: Migrate from hand-rolled
+description: "Incremental migration path for adopters with a working AdCP agent in production. Inventory step, lowest-risk-first swap order, conflict modes (idempotency, account-mode, webhook signing, state-machine drift), per-step rollback playbook, intermediate states that pass conformance, and when not to migrate."
+"og:title": "AdCP — Migrate from a hand-rolled agent"
+---
+
+This guide is for adopters with a **working AdCP agent in production** who want to move to an official SDK without a flag-day rewrite. Your agent serves real traffic; you have engineers who built the current stack and will defend it; you can't afford a multi-week freeze. The path is incremental — swap one layer at a time, ship after each step, re-certify as you go.
+
+If you're greenfield, you're in the wrong doc — see [Build an Agent](/docs/building/by-layer/L4/build-an-agent). If you're still deciding whether to migrate at all, see [Where to start, Q3](/docs/building#three-questions-to-pick-your-layer).
+
+## 0. Inventory what you own today
+
+Before swapping anything, write down what your hand-rolled stack provides at each layer of [the AdCP stack](/docs/building/cross-cutting/sdk-stack). Use the L0–L3 checklists in that doc as the rubric. Mark each row: *shipped* / *partial* / *not yet*.
+
+This determines order of operations. The lowest-risk swap is usually the layer where you have the **least** coverage today, because there's the least existing behavior to reconcile.
+
+## 1. Get to spec compliance first, before changing any code
+
+Single most important step:
+
+1. Stand up a **mock-mode account** in your agent. (If you don't have the live/sandbox/mock distinction yet, see [Account-mode mismatch](#account-mode-mismatch) below — add the flag at your boundary first.)
+2. Route mock-mode traffic to the reference mock-server.
+3. Run the AdCP storyboards against your agent (see [Conformance](/docs/building/verification/conformance) and [Validate Your Agent](/docs/building/verification/validate-your-agent)).
+4. Read the pass/fail report.
+
+The failure list is your migration backlog, ordered. It converts "I think the SDK adds value" into "here are the storyboards we fail and which L3 component each one points at." Without this step you're buying an SDK based on a sales pitch instead of measured gap.
+
+You may discover you're more conformant than you thought (in which case the migration is smaller than you expected) or less (in which case the case for adopting the SDK strengthens). Either outcome is useful.
+
+## 2. Order of operations (lowest risk first)
+
+Recommended swap order:
+
+1. **Conformance test surface** ([`comply_test_controller`](/docs/building/by-layer/L3/comply-test-controller)). Pure additive — mock-mode traffic now goes through the SDK; live traffic untouched. Earns spec-compliance certification on the spot.
+2. **Error code catalog**. Replace your error-envelope construction with the SDK's error builders. Recovery classifications and code precedence (e.g., `NOT_CANCELLABLE` over `INVALID_STATE`) come for free. See [Error handling](/docs/building/by-layer/L3/error-handling).
+3. **Idempotency cache**. Riskiest swap — see [Two idempotency caches in series](#two-idempotency-caches-in-series). Spec contract: [Idempotency](/docs/building/by-layer/L1/security#idempotency).
+4. **Async-task store + dispatcher**. Adopt the SDK's `task_id` + terminal-artifact contract. Often touches your worker queue. See [Task lifecycle](/docs/building/by-layer/L3/task-lifecycle).
+5. **State machines**, one resource at a time. MediaBuy first ([lifecycle reference](/docs/media-buy/media-buys/lifecycle)) if it's where you spend the most maintenance time. Re-run lifecycle storyboards after each.
+6. **Webhook emission** (signed, retried, idempotent). Independent of 1–5; can be parallelized. See [Webhooks](/docs/building/by-layer/L3/webhooks).
+7. **RFC 9421 signing + verification**. Independent of everything above; can be parallelized. See [Security implementation](/docs/building/by-layer/L1/security).
+8. **Auth / account store**. Last. Your hand-rolled L2 probably encodes business decisions that don't move easily.
+
+You can stop at any step. Adopting at L3 (steps 1–6) without L2 is a perfectly valid endpoint — your auth layer keeps doing what it does, the SDK takes over protocol semantics. See [What you can leave hand-rolled](#5-what-you-can-leave-hand-rolled).
+
+## 3. Conflict modes to watch for
+
+These are the "two stacks fighting each other" failure modes that make incremental migration painful if you don't see them coming.
+
+### Two idempotency caches in series
+
+Your existing cache fields requests at the perimeter; the SDK's cache fields requests at the protocol boundary. Symptoms: same `idempotency_key` returns different envelopes depending on which cache hit first; cross-payload reuse is detected by one and not the other.
+
+**Resolution.** Pick one, retire the other. Usually retire yours — the SDK's enforces the *no-payload-echo* invariant on `IDEMPOTENCY_CONFLICT` (stolen-key read-oracle threat) and the cross-payload conflict detection that the spec mandates. If you need to keep your storage backend (Redis, Postgres), point the SDK's cache contract at it as a custom backend instead of forking the SDK.
+
+### Account-mode mismatch
+
+The SDK distinguishes `live` / `sandbox` / `mock` accounts (see [Sandbox](/docs/media-buy/advanced-topics/sandbox)). If your hand-rolled stack lacks the distinction, mock-mode storyboards may dispatch to live handlers. Symptoms: storyboards mutate production state; conformance certification refuses to dispatch.
+
+**Resolution.** Add the account-mode flag at your boundary before adopting the SDK's conformance controller. The `comply_test_controller` refuses to run against any account that isn't sandbox or mock — that refusal is a feature, not a bug.
+
+### Webhook signature ownership
+
+If both stacks try to sign outbound webhooks, the receiver sees two `Signature` headers (or one wins and the other is silently overwritten by the proxy). Either way, signatures don't verify.
+
+**Resolution.** Pick one signer at the boundary; usually the SDK's, since it tracks key rotation against the public key registry and handles the RFC 9421 canonicalization correctly. Keep your KMS-backed key material; configure the SDK's signing-provider abstraction to use it.
+
+### State machine drift
+
+Your hand-rolled state machine probably has edges the SDK rejects (e.g., direct `pending_creatives → completed` skipping `active`, or `active → canceled` without distinguishing the `NOT_CANCELLABLE` vs `INVALID_STATE` precedence). Symptoms: lifecycle storyboards fail with `INVALID_STATE` where you expected to succeed.
+
+**Resolution.** Run the lifecycle storyboards against your agent *before* swapping the state machine. Reconcile your edge set to the spec — fix obvious bugs, file spec issues for ambiguities. Then swap the SDK's state machine in; it'll enforce what you just hand-converged on.
+
+### Webhook delivery transport
+
+If your queue/worker stack delivers webhooks today, the SDK's emitter would double-deliver if you wire it on without retiring yours. Symptoms: receivers see duplicate idempotency keys with the same payload at slightly different times.
+
+**Resolution.** The SDK builds the envelope; how you ship it is yours. Configure the SDK to hand off to your existing transport instead of running its built-in HTTP delivery — that's the seam.
+
+### Schema validation collisions
+
+If you validate inbound payloads against your own schema bundle, and the SDK validates again at its boundary, you get either duplicate work (cheap) or contradictory verdicts (a real bug — your bundle drifted from the published schemas).
+
+**Resolution.** Retire your local validator after the SDK is in. While both run, treat any discrepancy as your bundle being stale, not the SDK being wrong.
+
+## 4. Intermediate states that pass conformance
+
+After each step, you can re-run mock-mode storyboards and re-certify. You don't need to finish the migration to claim conformance — you only need to pass the storyboards at whatever cut-line the SDK's conformance suite enforces.
+
+| After step | What you have | Conformance status |
+|---|---|---|
+| 1 | Conformance controller wired; agent unchanged | **Spec compliance** (mock-mode storyboards run against your unchanged L3) |
+| 2 | + SDK error envelopes | Same; better recovery semantics |
+| 3 | + SDK idempotency | Same; tighter security on cross-payload reuse |
+| 4 | + SDK async-task contract | Same; uniform task lifecycle |
+| 5 | + SDK state machines | Same; transition validation no longer your problem |
+| 6 | + SDK webhook envelope | Same; signed, retried, dedup-keyed |
+| 7 | + SDK signing | **Live compliance** (when that storyboard set ships) |
+| 8 | + SDK account store | Full L4-on-SDK |
+
+You ship after each step. Production traffic stays up.
+
+### Rollback per step
+
+Every step in the swap order should be reversible inside ~5 minutes. The general pattern: each swap is a **feature-flagged switch between your hand-rolled component and the SDK's**, not a deletion. You ship the swap behind a per-account flag, observe, then flip the default. Rollback is the same flag in the other direction.
+
+What to plan for, swap by swap:
+
+| Step | Revert mechanism | What state may have leaked | First thing to verify on rollback |
+|---|---|---|---|
+| 1. Conformance controller | Disable the SDK route on mock-mode accounts | None — mock-mode is sandbox-only by design | Mock storyboards still pass against your hand-rolled L3 |
+| 2. Error envelopes | Flip back to your error builder | Outbound envelopes from the swap window may carry SDK-shape error codes; downstream consumers that key off your old codes may have logged them | Your error-monitoring dashboard is reading the right envelope shape again |
+| 3. Idempotency cache | Flip back to your cache | **Both caches saw traffic during the swap window.** Same `idempotency_key` may now exist in both stores with different envelopes. After rollback, your cache is authoritative; flush the SDK's cache on revert | No `IDEMPOTENCY_CONFLICT` storms from the dual-cache window |
+| 4. Async-task contract | Flip back to your task store | Outstanding tasks that started under the SDK's contract may have a different terminal-artifact shape than your worker expects | Drain or abort tasks created during the swap window before the revert lands |
+| 5. State machines | Flip back to your state machine | The SDK may have rejected transitions your machine would have accepted (or vice versa). Affected resources are in a state your code may not know how to advance | Run a one-shot reconciliation query: "any resources in a state that's legal under both machines? Any in a state that's only legal under one?" |
+| 6. Webhook envelope | Flip back to your emitter | Receivers got SDK-shape webhooks during the swap window. They may have already acked. Don't re-emit on rollback | Your dedup table accepts both old and new `idempotency_key` shapes (transitional) |
+| 7. RFC 9421 signing | Flip back to your signer | Receivers got SDK-signed webhooks/responses during the window. Their key registry must still resolve your old `keyid` | Your old `keyid` is still published in your JWKS |
+| 8. Account store | Flip back to your store | Account resolution decisions made under the SDK's store may have routed traffic to different tenants than your store would have | Run a reconciliation on accounts that were resolved during the swap window before fully reverting |
+
+### The 2 a.m. production failure
+
+If swap N fails in production at 2 a.m., the on-call recipe:
+
+1. **Flip the per-account flag back** to your hand-rolled component for the affected accounts (or globally if you can't isolate the blast radius). This is the only step required to stop the bleeding.
+2. **Confirm the leakage row** above for that step. Most steps leave residual state somewhere — note what it is so the morning debug doesn't start cold.
+3. **Don't rerun the conformance suite mid-incident.** It runs against mock-mode; production failures are a different signal.
+4. **File the incident against the swap step**, not against the SDK in general. The migration guide's swap-order is the unit of investigation; the SDK's coverage matrix is downstream of that.
+
+**Don't plan for irreversible swaps.** If a step doesn't fit the flag-and-flip pattern (e.g., a destructive schema migration), do it as a separate, named project — not as part of the swap order.
+
+## 5. What you can leave hand-rolled
+
+The SDK is opinionated where the spec is opinionated, and pluggable where it isn't. You don't have to give up your existing infra:
+
+- **Signing provider.** Keep your KMS integration. The SDK accepts a custom signer.
+- **Account store.** Keep your multi-tenant routing. The SDK's account-store interface is the seam.
+- **Idempotency backend.** Keep your Redis / Postgres. The SDK's cache contract is pluggable.
+- **Webhook delivery transport.** Keep your queue. The SDK builds the envelope; how you ship it is yours.
+- **Schema validation library.** Keep your validator if you want; the SDK uses its own at its boundary, not yours.
+
+If your hand-rolled stack has good answers to these, swap them in as **configuration**, not as forks.
+
+## 6. Versioning during the migration
+
+Two version axes you'll be juggling:
+
+- **Spec version of your buyers.** A migration is a great moment to add per-call `adcpVersion` pinning so you stop forking handlers by buyer-version. See [Version Adaptation](/docs/building/cross-cutting/version-adaptation).
+- **SDK version.** Don't migrate to a legacy import path as a final state — migrate *through* it. The legacy subpath exists so you can adopt one specialism at a time on the new entry point while the rest stays on the old one. Greenfield code in the same project uses the new framework directly.
+
+### Worked example: two buyers, mid-swap
+
+You're on step 3 (idempotency), buyer A is on AdCP 2.5, buyer B is on AdCP 3.0. You've adopted the SDK's controller, error envelopes, and idempotency cache for the accounts you've cut over. Buyer A is mid-flight to the SDK; buyer B is greenfield on the SDK.
+
+Your inbound side: identify each peer's spec version up front (from the agent registry, the agent card, or the `adcp_version` field if present), pin `adcpVersion` on the agent / per call, and let the SDK adapt the wire shape. Example with `@adcp/sdk`:
+
+```ts
+import { ADCPMultiAgentClient } from '@adcp/sdk';
+
+const buyerA = new ADCPMultiAgentClient([{
+  id: 'buyer-a',
+  agent_uri: 'https://buyer-a.example.com/mcp/',
+  protocol: 'mcp',
+  auth_token: process.env.BUYER_A_TOKEN,
+  adcpVersion: 'v2.5',  // ← per-agent pin, no fork in handlers
+}]);
+
+const buyerB = new ADCPMultiAgentClient([{
+  id: 'buyer-b',
+  agent_uri: 'https://buyer-b.example.com/a2a',
+  protocol: 'a2a',
+  auth_token: process.env.BUYER_B_TOKEN,
+  adcpVersion: '3.0.5', // ← canonical / current
+}]);
+```
+
+Your outbound (server) side, declaring what *you* accept:
+
+```ts
+import { createAdcpServer } from '@adcp/sdk/server';
+
+createAdcpServer({
+  capabilities: {
+    major_versions: [2, 3],
+    supported_versions: ['v2.5', '3.0.5'],
+  },
+  // …handlers, all on the canonical 3.0 shape;
+  // 2.5 callers are translated by adapters at the SDK boundary.
+});
+```
+
+What this looks like for one call from each buyer, mid-step-3:
+
+| | Buyer A (2.5 wire) | Buyer B (3.0 wire) |
+|---|---|---|
+| **Inbound shape** | 2.5 `create_media_buy` | 3.0 `create_media_buy` |
+| **Adapter does** | Translates 2.5 → 3.0 shape | Pass-through |
+| **Your handler sees** | 3.0 typed object | 3.0 typed object (same) |
+| **Idempotency cache** | SDK's (you're on step 3) | SDK's |
+| **Error envelope** | SDK's, translated back to 2.5 on outbound | SDK's |
+| **Outbound shape** | 2.5 (translated by adapter on the way out) | 3.0 |
+
+One handler codebase. Two wire versions. Both buyers see the envelope shape they expect. Adopting `adcpVersion` pinning at step 3 is cheap — most of the version work is in the adapter modules, which the SDK already ships.
+
+If you fall back (rollback step 3 to your hand-rolled cache), buyer A still goes through the SDK's translation adapters — the version machinery and the idempotency machinery are independent. You don't re-fork your handler code on rollback.
+
+## 7. When to *not* migrate
+
+If your agent serves a frozen wire surface for a small set of named buyers and your engineers spend ~zero time on protocol maintenance, the migration ROI is low. Reasonable holds:
+
+- You're on AdCP 2.5, none of your buyers want 3.x, and you're willing to deprecate when they do.
+- Your conformance gap (from step 1) is small enough to fix in place without adopting the SDK.
+- You have a hard regulatory or operational reason for owning every layer end-to-end.
+
+In those cases, do step 1 anyway — route mock-mode through the reference mock-server for spec compliance certification — and revisit the migration question at AdCP 4.0 or when your buyer mix moves.
+
+The migration is for adopters whose **maintenance load is real and growing**. The cost claim ([~3–4 person-months for L0–L3 from scratch](/docs/building/cross-cutting/sdk-stack#why-sdks-matter-more-in-adcp-than-in-eg-http)) is what you're *buying back* by adopting incrementally — but only if that maintenance load actually exists.
+
+## See also
+
+- [The AdCP stack](/docs/building/cross-cutting/sdk-stack) — layered architecture reference
+- [Where to start](/docs/building) — decision page
+- [Version Adaptation](/docs/building/cross-cutting/version-adaptation) — three-mechanism reference
+- [Conformance](/docs/building/verification/conformance) — how the storyboard suite grades your agent
+- [Build an Agent](/docs/building/by-layer/L4/build-an-agent) — greenfield path; useful as a reference for what the L4-on-SDK end state looks like

@@ -258,7 +258,7 @@ scope:
 
 references:
   universal: static/compliance/source/universal/webhook-emission.yaml
-  spec_section: /docs/building/implementation/security.mdx#webhook-callbacks
+  spec_section: /docs/building/by-layer/L1/security.mdx#webhook-callbacks
   client_receiver_pr: https://github.com/adcontextprotocol/adcp-client/pull/629
   signing_upstream_pr: https://github.com/adcontextprotocol/adcp/pull/2423
   idempotency_upstream_pr: https://github.com/adcontextprotocol/adcp/pull/2417
