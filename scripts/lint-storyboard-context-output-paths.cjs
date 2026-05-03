@@ -93,12 +93,38 @@ function loadSchema(ref) {
 }
 
 /**
+ * A node is a "pure extension point" when it declares `additionalProperties:
+ * true` AND has no `properties` / `items` / composite variants. Examples:
+ * `core/context.json` (opaque correlation data, by spec design) and
+ * `error.details` (additionalProperties: true because the structured shape
+ * lives in per-error-code `error-details/<code>.json` schemas selected at
+ * runtime). Once we descend into one of these, any remaining path segments
+ * are accepted — the spec deliberately does not constrain what lives below.
+ *
+ * Mixed schemas (declared `properties` AND `additionalProperties: true`) are
+ * NOT pure extension points — those use `additionalProperties: true` for
+ * forward-compat extension, not as an open container, so paths through them
+ * MUST hit defined properties.
+ *
+ * Mirrors the rule in `lint-storyboard-validations-paths.cjs`.
+ */
+function isPureExtensionPoint(node) {
+  if (!node || typeof node !== 'object') return false;
+  if (node.additionalProperties !== true) return false;
+  if (node.properties && Object.keys(node.properties).length > 0) return false;
+  if (node.items) return false;
+  if (Array.isArray(node.oneOf) || Array.isArray(node.anyOf) || Array.isArray(node.allOf)) return false;
+  return true;
+}
+
+/**
  * Walk a JSON Schema node to determine whether a dotted path resolves to
  * any defined element. Follows `$ref`, descends through `properties.<name>`
  * for object steps and `items` for numeric-index steps, and accepts any
  * variant of `oneOf` / `anyOf` / `allOf` that resolves. Returns true when
- * EVERY segment was either resolved by a defined property/items or accepted
- * by at least one composite variant.
+ * EVERY segment was either resolved by a defined property/items, accepted
+ * by at least one composite variant, or descended into a pure extension
+ * point (e.g., `core/context.json`, `error.details`).
  *
  * Empty path resolves trivially (the root itself exists).
  */
@@ -136,6 +162,8 @@ function pathResolves(node, segments, seen = new Set()) {
       if (pathResolves(variant, segments, seen)) return true;
     }
   }
+
+  if (isPureExtensionPoint(node)) return true;
 
   return false;
 }
