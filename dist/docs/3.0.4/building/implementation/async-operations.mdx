@@ -1,0 +1,347 @@
+---
+title: Async Operations
+description: "AdCP async operations guide: handling synchronous, asynchronous, and interactive (input-required) task types with polling, SSE streaming, and timeout strategies."
+"og:title": "AdCP — Async Operations"
+---
+
+AdCP operations can take seconds, hours, or days. The server decides how to respond based on how long the operation will take and what's blocking it.
+
+## The 30-second rule
+
+Any AdCP task can return one of these statuses. The server chooses based on what it knows about the work involved:
+
+| Expected duration | Status | What the caller does |
+|---|---|---|
+| Under 30 seconds | `completed` / `failed` | Result is inline — done |
+| Over 30 seconds, server actively processing | `working` | Out-of-band progress signal. Connection stays open, result arrives when ready. Caller just waits |
+| Blocked on external dependency | `submitted` | Truly async — configure a webhook via `push_notification_config`. Result may take hours or days |
+| Blocked on human input | `input-required` | Caller provides the requested input to continue |
+
+**`working` is not async.** It's a progress signal the server sends out-of-band (via MCP status notifications or SSE) while it continues processing. The caller holds the connection and receives the result when it's ready — no polling, no webhooks. Think of it as "this is taking a moment, but I'm on it."
+
+**`submitted` is async.** The operation is blocked on something outside the server's control — publisher approval, human review, third-party processing. The caller should configure a webhook and move on.
+
+:::tip Webhooks for `submitted` operations
+**Webhooks** are the recommended approach for `submitted` operations — they work with any transport (MCP, A2A, REST) and handle operations that outlive a single session. See [Push Notifications](/dist/docs/3.0.4/building/implementation/webhooks).
+
+**Polling** via `tasks/get` works as a simpler alternative or backup. See the [polling pattern](#polling-for-submitted-operations) below.
+
+**MCP Tasks** handle async at the protocol level, but client support is still limited — most chat-based MCP clients (Claude Desktop, Cursor) don't yet support task-augmented tool calls. If you're building your own MCP client or using the JS SDK directly, MCP Tasks work well. See [MCP Guide](/dist/docs/3.0.4/building/integration/mcp-guide#async-operations-via-mcp-tasks).
+:::
+
+## Operation examples
+
+### Synchronous (instant)
+
+| Operation | Description |
+|-----------|-------------|
+| `get_adcp_capabilities` | Agent capability discovery |
+| `list_creative_formats` | Format catalog |
+| `build_creative` (library retrieval) | Resolving an existing `creative_id` |
+
+### May need human input
+
+| Operation | Description |
+|-----------|-------------|
+| `get_products` | When brief is vague or needs clarification |
+| `create_media_buy` | When approval is required |
+| `build_creative` (generation) | When creative direction or asset selection is needed |
+
+### May go async (`submitted`)
+
+| Operation | Description |
+|-----------|-------------|
+| `create_media_buy` | Publisher approval workflows |
+| `sync_creatives` | Asset review and transcoding pipelines |
+| `build_creative` (with review) | Human creative review before finalizing |
+| `activate_signal` | Platform deployment pipelines |
+
+These operations integrate with external systems or require human approval.
+
+## Timeout Configuration
+
+Set reasonable timeouts based on status:
+
+```javascript
+const TIMEOUTS = {
+  sync: 30_000,         // 30 seconds — most operations complete here
+  working: 300_000,      // 5 minutes — server is actively processing
+  interactive: 300_000,  // 5 minutes for human input
+  submitted: 86_400_000  // 24 hours for external dependencies
+};
+
+function getTimeout(status) {
+  if (status === 'submitted') return TIMEOUTS.submitted;
+  if (status === 'working') return TIMEOUTS.working;
+  if (status === 'input-required') return TIMEOUTS.interactive;
+  return TIMEOUTS.sync;
+}
+```
+
+`working` uses a connection timeout (how long to hold open), not a poll interval. The server sends progress out-of-band and delivers the result on the same connection. `submitted` uses a webhook delivery window — if you're also polling as backup, use a 30-second interval.
+
+## Human-in-the-Loop Workflows
+
+### Design Principles
+
+1. **Optional by default** - Approvals are configured per implementation
+2. **Clear messaging** - Users understand what they're approving
+3. **Timeout gracefully** - Don't block forever on human input
+4. **Audit trail** - Track who approved what when
+
+The human-in-the-loop patterns in async operations embody the [Embedded Human Judgment](/dist/docs/3.0.4/governance/embedded-human-judgment) framework — human judgment is embedded in system design, not bolted on afterward.
+
+### Approval Patterns
+
+```javascript
+async function handleApprovalWorkflow(response) {
+  if (response.status === 'input-required' && needsApproval(response)) {
+    // Show approval UI with context
+    const approval = await showApprovalUI({
+      title: "Campaign Approval Required",
+      message: response.message,
+      details: response,  // Task fields are at top level
+      approver: getCurrentUser()
+    });
+
+    // Send approval decision
+    const decision = {
+      approved: approval.approved,
+      notes: approval.notes,
+      approver_id: approval.approver_id,
+      timestamp: new Date().toISOString()
+    };
+
+    return sendFollowUp(response.context_id, decision);
+  }
+}
+```
+
+### Common Approval Triggers
+
+- **Budget thresholds**: Campaigns over $100K
+- **New advertisers**: First-time buyers
+- **Policy-sensitive content**: Certain industries or topics
+- **Manual inventory**: Premium placements requiring publisher approval
+
+## Progress Tracking
+
+### Progress Updates
+
+Long-running operations may provide progress information:
+
+```json
+{
+  "status": "working",
+  "message": "Processing creative assets...",
+  "task_id": "task-456",
+  "progress": 45,
+  "step": "transcoding_video",
+  "steps_completed": ["upload", "validation"],
+  "steps_remaining": ["transcoding_video", "thumbnail_generation", "cdn_distribution"]
+}
+```
+
+### Displaying Progress
+
+```javascript
+function displayProgress(response) {
+  if (response.progress !== undefined) {
+    updateProgressBar(response.progress);
+  }
+
+  if (response.step) {
+    updateStatusText(`Step: ${response.step}`);
+  }
+
+  if (response.steps_completed) {
+    updateStepsList(response.steps_completed, response.steps_remaining);
+  }
+
+  // Always show the message
+  updateMessage(response.message);
+}
+```
+
+## Protocol-Agnostic Patterns
+
+These patterns work with both MCP and A2A.
+
+### Product Discovery with Clarification
+
+```javascript
+async function discoverProducts(brief) {
+  let response = await adcp.send({
+    task: 'get_products',
+    brief: brief
+  });
+
+  // Handle clarification loop
+  while (response.status === 'input-required') {
+    const moreInfo = await promptUser(response.message);
+    response = await adcp.send({
+      context_id: response.context_id,
+      additional_info: moreInfo
+    });
+  }
+
+  if (response.status === 'completed') {
+    return response.products;  // Task fields are at top level
+  } else if (response.status === 'failed') {
+    throw new Error(response.message);
+  }
+}
+```
+
+### Campaign Creation with Approval
+
+```javascript
+async function createCampaign(packages, budget) {
+  let response = await adcp.send({
+    task: 'create_media_buy',
+    packages: packages,
+    total_budget: budget
+  });
+
+  // Handle approval if needed
+  if (response.status === 'input-required') {
+    const approved = await getApproval(response.message);
+    if (!approved) {
+      throw new Error('Campaign creation not approved');
+    }
+
+    response = await adcp.send({
+      context_id: response.context_id,
+      approved: true
+    });
+  }
+
+  // 'working' means the server is actively processing — result will arrive
+  // 'submitted' means blocked on external dependency — need webhook or polling
+  if (response.status === 'submitted') {
+    // Poll as backup (webhook is preferred — see Push Notifications)
+    response = await pollForResult(response.task_id);
+  }
+
+  if (response.status === 'completed') {
+    return response.media_buy_id;  // Task fields are at top level
+  } else {
+    throw new Error(response.message);
+  }
+}
+```
+
+### Polling for `submitted` Operations
+
+Polling is a backup for `submitted` operations when webhooks aren't configured or as a fallback. Don't poll for `working` — the server delivers the result on the open connection.
+
+```javascript
+// Polling tracks status to a terminal value. The completion payload
+// (e.g. media_buy_id, packages) is delivered to the webhook configured
+// on the original request via push_notification_config — see #3123 for
+// the planned 3.1 typed-result projection on tasks/get.
+async function pollUntilTerminal(taskId, options = {}) {
+  const { maxWait = 86_400_000, pollInterval = 30_000 } = options;
+  const startTime = Date.now();
+
+  while (true) {
+    if (Date.now() - startTime > maxWait) {
+      throw new Error('Operation timed out');
+    }
+
+    await sleep(pollInterval);
+
+    const response = await adcp.call('tasks/get', {
+      task_id: taskId
+    });
+
+    if (['completed', 'failed', 'canceled'].includes(response.status)) {
+      return response;
+    }
+  }
+}
+```
+
+## Asynchronous-First Design
+
+### Store State Persistently
+
+Don't rely on in-memory state for async operations:
+
+```javascript
+class AsyncOperationTracker {
+  constructor(db) {
+    this.db = db;
+  }
+
+  async startOperation(taskId, operationType, request) {
+    await this.db.operations.insert({
+      task_id: taskId,
+      type: operationType,
+      status: 'submitted',
+      request: request,
+      created_at: new Date(),
+      updated_at: new Date()
+    });
+  }
+
+  async updateStatus(taskId, status, result = null) {
+    await this.db.operations.update(
+      { task_id: taskId },
+      {
+        status: status,
+        result: result,
+        updated_at: new Date()
+      }
+    );
+  }
+
+  async getPendingOperations() {
+    return this.db.operations.find({
+      status: { $in: ['submitted', 'working', 'input-required'] }
+    });
+  }
+}
+```
+
+### Handle Restarts Gracefully
+
+Resume tracking after orchestrator restarts:
+
+```javascript
+async function onStartup() {
+  const tracker = new AsyncOperationTracker(db);
+  const pending = await tracker.getPendingOperations();
+
+  for (const operation of pending) {
+    // Check current status on server
+    const response = await adcp.call('tasks/get', {
+      task_id: operation.task_id
+    });
+
+    // Update local state
+    await tracker.updateStatus(operation.task_id, response.status, response);
+
+    // Resume polling if still pending
+    if (['submitted', 'working'].includes(response.status)) {
+      startPolling(operation.task_id);
+    }
+  }
+}
+```
+
+## Best Practices
+
+1. **Design async first** - Assume any operation could take time
+2. **Persist state** - Don't rely on in-memory tracking
+3. **Handle restarts** - Resume tracking on startup
+4. **Implement timeouts** - Don't wait forever
+5. **Show progress** - Keep users informed
+6. **Support cancellation** - Let users cancel long operations
+7. **Audit trail** - Log all status transitions
+
+## Next Steps
+
+- **Webhooks**: See [Webhooks](/dist/docs/3.0.4/building/implementation/webhooks) for push notifications instead of polling
+- **Task Lifecycle**: See [Task Lifecycle](/dist/docs/3.0.4/building/implementation/task-lifecycle) for status handling details
+- **Orchestrator Design**: See [Orchestrator Design](/dist/docs/3.0.4/building/implementation/orchestrator-design) for production patterns

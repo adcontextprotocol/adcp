@@ -1,0 +1,124 @@
+---
+title: Migrating from v2 to v3
+sidebarTitle: Migration guide
+description: "A complete guide to migrating AdCP integrations from v2.x to v3.0, with breaking changes, effort estimates, and deep-dive pages for each area."
+"og:title": "AdCP — Migrating from v2 to v3"
+---
+
+# Migrating from v2 to v3
+
+This page covers every breaking change when upgrading from AdCP 2.x to 3.0, with effort estimates and links to detailed migration pages. For new features see [What's new in v3](/dist/docs/3.0.4/reference/whats-new-in-v3); for release-candidate deltas see [prerelease upgrade notes](/dist/docs/3.0.4/reference/migration/prerelease-upgrades); for SDK versions that support 3.0 see [Schemas and SDKs](/dist/docs/3.0.4/building/schemas-and-sdks#adcp-3-0-support).
+
+<Warning>
+**v2 is unsupported as of 3.0 GA and fully deprecated on August 1, 2026 (UTC).** See the [v2 sunset page](/dist/docs/3.0.4/reference/v2-sunset) for the full timeline, AAO registry policy, and why v2 is not safe for interoperable production.
+</Warning>
+
+<Info>
+**Starting from v2?** See the [v3 readiness checklist](/dist/docs/3.0.4/reference/migration/v3-readiness) for the 8 minimum requirements to pass storyboard testing before working through this full migration.
+</Info>
+
+<Warning>
+**Upgrading from rc.3?** The [rc.3 → 3.0 prerelease upgrade notes](/dist/docs/3.0.4/reference/migration/prerelease-upgrades) cover additional breaking changes: capabilities model simplification, `account` required on `update_media_buy`, `preview_creative` schema flattening, `signal_id` required on signals, governance lifecycle changes, and the `pending_activation` status split.
+</Warning>
+
+## Migration checklist
+
+Each row is a breaking change. **Effort** indicates the typical work involved:
+
+- **Rename** — Field name changed, same semantics. Find-and-replace.
+- **Restructure** — Shape changed (e.g., string → object, single → array). Requires code changes.
+- **Remove** — Field existed in v2, removed in v3. Find-and-delete.
+- **New requirement** — Didn't exist in v2. Requires new implementation.
+
+| Area | Change | Effort | Details |
+|---|---|---|---|
+| Channels | `native` removed | Restructure | [Channels migration](/dist/docs/3.0.4/reference/migration/channels) |
+| Channels | `video` split into `olv`, `linear_tv`, `cinema` | Restructure | [Channels migration](/dist/docs/3.0.4/reference/migration/channels) |
+| Channels | 10 new channels added (including `sponsored_intelligence`) | Rename | [Channels migration](/dist/docs/3.0.4/reference/migration/channels) |
+| Pricing | `fixed_rate` → `fixed_price` | Rename | [Pricing migration](/dist/docs/3.0.4/reference/migration/pricing) |
+| Pricing | `price_guidance.floor` → `floor_price` | Rename | [Pricing migration](/dist/docs/3.0.4/reference/migration/pricing) |
+| Pricing | Price guidance restructured | Restructure | [Pricing migration](/dist/docs/3.0.4/reference/migration/pricing) |
+| Creatives | `creative_ids` → `creative_assignments` with weights | Restructure | [Creatives migration](/dist/docs/3.0.4/reference/migration/creatives) |
+| Creatives | Asset discovery via `assets` array | New requirement | [Creatives migration](/dist/docs/3.0.4/reference/migration/creatives) |
+| Catalogs | `promoted_offerings` → `sync_catalogs` | Restructure | [Catalogs migration](/dist/docs/3.0.4/reference/migration/catalogs) |
+| Geo targeting | Flat arrays → system specification required | Restructure | [Geo targeting migration](/dist/docs/3.0.4/reference/migration/geo-targeting) |
+| Optimization | `optimization_goal` (single) → `optimization_goals` (array, discriminated union) | Restructure | [Optimization goals migration](/dist/docs/3.0.4/reference/migration/optimization-goals) |
+| Brand identity | `brand_manifest` → `brand` ref (`{ domain, brand_id }`) | Restructure | [Brand identity migration](/dist/docs/3.0.4/reference/migration/brand-identity) |
+| Capability discovery | `adcp-extension.json` → `get_adcp_capabilities` | Restructure | [Capability discovery](/dist/docs/3.0.4/protocol/get_adcp_capabilities) |
+| Signals | Delivery flattening, pricing restructure | Restructure | [Signals migration](/dist/docs/3.0.4/reference/migration/signals) |
+| Audiences | `external_id` promoted to required top-level field | Restructure | [Audiences migration](/dist/docs/3.0.4/reference/migration/audiences) |
+| Attribution | Integer day counts → `Duration` objects | Restructure | [Attribution migration](/dist/docs/3.0.4/reference/migration/attribution) |
+| Products | `buying_mode` required on every `get_products` request | New requirement | [get_products reference](/dist/docs/3.0.4/media-buy/task-reference/get_products) |
+| Media buy status | `pending_activation` → `pending_start` | Rename | [Media buys](/dist/docs/3.0.4/media-buy/media-buys) |
+| Media buy status | `pending_creatives` added (no creatives assigned yet) | New requirement | [Media buys](/dist/docs/3.0.4/media-buy/media-buys) |
+| Task status | Legacy `task_status` and `response_status` fields MUST NOT be emitted alongside v3 `status` — remove both | Remove | [Task lifecycle](/dist/docs/3.0.4/building/implementation/task-lifecycle) |
+| Capabilities | `compliance_testing` capability block on `get_adcp_capabilities` | Additive | [Capability discovery](/dist/docs/3.0.4/protocol/get_adcp_capabilities#compliance_testing) |
+| Idempotency | `idempotency_key` required on all mutating requests (UUID v4) | New requirement | [Security § Idempotency](/dist/docs/3.0.4/building/implementation/security) |
+| Request signing | RFC 9421 Ed25519 signing profile (optional in 3.0, mandatory under AdCP Verified) | Additive | [Security § Request signing](/dist/docs/3.0.4/building/implementation/security) |
+| Webhook signing | Unified on RFC 9421 profile, baseline-required for sellers; HMAC fallback deprecated (removed in 4.0) | New requirement | [Webhooks](/dist/docs/3.0.4/building/implementation/webhooks) |
+| Webhook idempotency | `idempotency_key` required on every webhook payload | New requirement | [Webhooks § Reliability](/dist/docs/3.0.4/building/implementation/webhooks) |
+| Governance | `governance_context` is a signed JWS verified via governance agent JWKS | Restructure | [Governance](/dist/docs/3.0.4/governance/campaign) |
+| IO approval | `MediaBuy.pending_approval` removed — approval is a task-layer object | Restructure | [Media buy lifecycle](/dist/docs/3.0.4/media-buy/media-buys) |
+| Regulatory invariants | GDPR Art 22 / EU AI Act Annex III enforced via schema `if/then` | New requirement | [Governance § Annex III obligations](/dist/docs/3.0.4/governance/annex-iii-obligations) |
+
+<Warning>
+`buying_mode` on `get_products` is checked by storyboard testing. Sellers must handle all three buying modes (`browse`, `brief`, `refine`). See the [v3 readiness checklist](/dist/docs/3.0.4/reference/migration/v3-readiness) for details.
+</Warning>
+
+## New in v3 — required vs optional
+
+These capabilities are new in v3. None existed in v2, so there's nothing to migrate — but you should know which ones affect your integration.
+
+| Capability | Required? | Who needs it |
+|---|---|---|
+| Accounts protocol (`sync_accounts`, `list_accounts`) | Required for all buyers — use `sync_accounts` when `require_operator_auth: false` (implicit accounts), `list_accounts` when `true` (explicit accounts) | All buyers — the seller's `require_operator_auth` flag determines which task to call, not whether accounts are needed |
+| Brand Protocol (`brand.json`) | Recommended | All buyers — provides brand identity for creative generation |
+| Governance (content standards, property lists) | Optional | Buyers who need brand suitability enforcement |
+| Sponsored Intelligence | Optional | Buyers working with AI platforms that support conversational handoffs |
+| Registry API | Optional | Buyers who want programmatic agent/brand discovery |
+| Campaign Governance | Optional | Organizations with compliance or approval workflows |
+
+## Running v2 and v3 side by side
+
+Dual-support is a temporary migration tool, not a long-term posture. After August 1, 2026, v3-only is the required configuration — see the [v2 sunset page](/dist/docs/3.0.4/reference/v2-sunset).
+
+During migration, sellers can accept both v2 and v3 traffic and buyers can route to each seller on the correct version:
+
+1. **Check seller capabilities** — Call `get_adcp_capabilities` on each seller. A successful response means the seller supports v3; buyers declare their version via `adcp_major_version` and sellers advertise the versions they accept via `major_versions`. See [version negotiation](/dist/docs/3.0.4/reference/versioning#version-negotiation) for the full flow. A seller that does not respond to `get_adcp_capabilities` is v2-only.
+2. **Branch by seller** — Route v3-capable sellers through your v3 integration and v2-only sellers through your existing v2 code.
+3. **Migrate incrementally** — Start with the rename changes (pricing fields, channel updates), then tackle structural changes (creative assignments, optimization goals), then adopt new capabilities (accounts, governance) as needed.
+
+## Deep-dive pages
+
+<CardGroup cols={2}>
+  <Card title="Channels" icon="tv" href="/dist/docs/3.0.4/reference/migration/channels">
+    `native` removed, `video` split, 10 new channels
+  </Card>
+  <Card title="Pricing" icon="tag" href="/dist/docs/3.0.4/reference/migration/pricing">
+    Field renames and price guidance restructure
+  </Card>
+  <Card title="Creatives" icon="palette" href="/dist/docs/3.0.4/reference/migration/creatives">
+    Creative assignments with weights and asset discovery
+  </Card>
+  <Card title="Catalogs" icon="database" href="/dist/docs/3.0.4/reference/migration/catalogs">
+    `promoted_offerings` to first-class `sync_catalogs`
+  </Card>
+  <Card title="Geo targeting" icon="map" href="/dist/docs/3.0.4/reference/migration/geo-targeting">
+    System specification for global geo support
+  </Card>
+  <Card title="Optimization goals" icon="bullseye" href="/dist/docs/3.0.4/reference/migration/optimization-goals">
+    Single goal to array with discriminated union
+  </Card>
+  <Card title="Brand identity" icon="fingerprint" href="/dist/docs/3.0.4/reference/migration/brand-identity">
+    `brand_manifest` to `brand` ref via `brand.json`
+  </Card>
+  <Card title="Signals" icon="signal" href="/dist/docs/3.0.4/reference/migration/signals">
+    Delivery flattening and pricing restructure
+  </Card>
+  <Card title="Audiences" icon="users" href="/dist/docs/3.0.4/reference/migration/audiences">
+    `external_id` promotion to required field
+  </Card>
+  <Card title="Attribution" icon="link" href="/dist/docs/3.0.4/reference/migration/attribution">
+    Integer days to structured `Duration` objects
+  </Card>
+</CardGroup>

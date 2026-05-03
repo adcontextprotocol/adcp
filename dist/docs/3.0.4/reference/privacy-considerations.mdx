@@ -1,0 +1,123 @@
+---
+title: Privacy Considerations
+sidebarTitle: Privacy Considerations
+description: "Cross-protocol privacy entry point for AdCP implementers, compliance reviewers, and CISOs — what each protocol carries, what it does not, and where implementers must handle privacy themselves."
+"og:title": "AdCP — Privacy Considerations"
+---
+
+This page is the cross-protocol entry point for privacy in AdCP. It names the categories implementers and compliance reviewers need to think about, summarizes what each AdCP protocol carries and does not carry, and links to the deeper references. It does not replace any of them.
+
+If you need the deep architectural picture of a specific domain, follow the links. AdCP does not publish a Privacy Impact Assessment template; see [For DPOs and procurement reviewers](#for-dpos-and-procurement-reviewers) below for the inputs a deployer's DPO needs to assemble their own assessment.
+
+## What AdCP's privacy posture is — and isn't
+
+AdCP specifies a wire protocol between agents. It does not specify:
+
+- End-user authentication or consent capture (handled upstream)
+- Data-subject rights workflows (the buyer's responsibility)
+- Data residency (a configuration and contract property of individual agents)
+- Retention policy (the operator's responsibility)
+
+What AdCP does specify is the *shape* of what each protocol carries, the prohibitions on what it must not carry, and the structural separations that apply where the protocol is privacy-sensitive. Implementers are responsible for privacy controls at every boundary the protocol does not itself enforce.
+
+## Privacy posture by domain
+
+AdCP's privacy guarantees are not uniform across protocols. See [Privacy posture across domains](/dist/docs/3.0.4/protocol/architecture#privacy-posture-across-domains) for the full table. Summary:
+
+- **Trusted Match Protocol (TMP)** — **structural separation**. Context Match and Identity Match run on separated code paths; schemas prohibit crossover; TEE attestation (when deployed) makes the separation independently verifiable. See [TMP privacy architecture](/dist/docs/3.0.4/trusted-match/privacy-architecture).
+- **Media Buy, Creative, Signals, Governance** — **contractual confidentiality**. The parties exchanging data are bound by the account's terms, not by protocol-level separation.
+- **Sponsored Intelligence** — **per-session consent**. The user consents per session; networks that route sessions may see routing metadata. See [SI networks](/dist/docs/3.0.4/sponsored-intelligence/networks).
+- **Brand / Registry** — **public by design**. `brand.json` is discoverable at `/.well-known/brand.json`; the registry exposes public entity resolution.
+
+Governance gating (via campaign governance) operates independently of privacy posture: it can require human approval on budget, policy, or brand-safety grounds, but it does not change what data the underlying domain carries.
+
+## Privacy categories to think about
+
+### Data minimization
+
+AdCP minimizes the data that crosses protocol boundaries where it can:
+
+- When using `hashed_email` or `hashed_phone` in `sync_audiences`, buyers MUST SHA-256 hash normalized values before transport — the schemas for those fields do not accept cleartext. Non-hashed identifier types exist for other spaces; implementers MUST choose a hashed type when transporting email or phone.
+- TMP Context Match carries no user identity; TMP Identity Match carries no page context. Both are enforced at the schema level.
+- `governance_context` tokens can use `policy_decision_hash` instead of inline decisions when the buyer's compliance posture is sensitive.
+
+Implementers SHOULD review whether any fields they add to `ext` or `context` re-introduce data that the protocol minimized out.
+
+### Unsalted hashed identifiers are pseudonymous, not anonymous
+
+`hashed_email` and `hashed_phone` are **pseudonymous PII**. The email and E.164 namespaces are small enough that precomputed dictionaries and commercial reverse-lookup services recover plaintext from an unsalted SHA-256 hash; a hashed identifier is not equivalent to an anonymized identifier.
+
+Normative consequences:
+
+- Operator documentation, data-processing agreements, and compliance disclosures MUST NOT describe unsalted `hashed_email` or `hashed_phone` as "privacy-preserving", "anonymous", or "de-identified". Hashing is data minimization at the transport boundary, not anonymization.
+- `hashed_email` and `hashed_phone` MUST be treated as PII for retention, consent, access control, data-subject-access (GDPR Art. 15), and erasure (GDPR Art. 17) workflows. A subject-access request for an email address MUST resolve to records keyed by its hash where the operator retains the corresponding hashed record. (An operator that genuinely cannot re-identify — e.g., that stores only aggregated match counts or bloom-filter membership bits — may invoke GDPR Art. 11; that bar is higher than "we hashed it.")
+- Matching the above hashes against a seller's identity graph is a processing activity that needs its own lawful basis — hashing does not remove that requirement.
+
+A claim that a matching protocol is "privacy-preserving" requires a recognized primitive — salted hashing with operator-held secrets, HMAC with a cross-party shared secret, PSI (Private Set Intersection), or a TEE with attested separation. AdCP 3.0 does not define a salted or HMAC variant of `hashed_email`/`hashed_phone`; a standardized salted variant is tracked for a future minor release. Until then, implementers that need a privacy-preserving match MUST layer one of the above primitives above the protocol (e.g., clean-room processing, PAIR, or identity-graph tokenization as performed by UID2/RampID operators).
+
+### Separation
+
+Where two facts combined would create a privacy harm (e.g., identity + context at impression time), the protocol separates them. Structural separation is TMP-specific; other domains rely on contractual separation.
+
+### Transport
+
+All AdCP traffic is over HTTPS (see [Security — Identity](/dist/docs/3.0.4/building/understanding/security-model#layer-1-identity--who-is-actually-calling)). Signed requests (RFC 9421) are normative in 3.1. Transport security is a baseline assumption; the protocol builds on top of it.
+
+### Residency
+
+Residency is not carried in the protocol. An agent's residency posture is a configuration and a contract property — implementers MUST document it, and operators MUST configure it to meet EU / UK / other regional requirements where applicable. See the [Security Model — data handling and subprocessors checklist](/dist/docs/3.0.4/building/understanding/security-model#data-handling-and-subprocessors).
+
+### Retention
+
+The protocol describes cache retention for idempotency (see [Layer 3: Idempotency](/dist/docs/3.0.4/building/understanding/security-model#layer-3-idempotency--at-most-once-execution)) and audit-log retention for governance (see [Layer 5: Auditability](/dist/docs/3.0.4/building/understanding/security-model#layer-5-auditability--the-trail-survives-the-transaction)). Retention of other data — creative assets, campaign state, LLM prompts, conversation logs — is the operator's responsibility.
+
+### Processor / controller roles
+
+Who is a controller and who is a processor depends on the deployment. AdCP does not assign roles at the protocol layer. The typical allocation:
+
+- The buyer is typically a controller for the campaign they run.
+- A governance agent acts as a processor for the controller(s) it serves and often has **multi-customer blast radius** — treat it accordingly in due diligence.
+- A seller may be a controller for its own inventory data and a processor for buyer-scoped campaign data.
+- A TMP Router operator is typically a processor for both sides, operating under the separation guarantees described in [TMP privacy architecture](/dist/docs/3.0.4/trusted-match/privacy-architecture).
+
+Operators MUST document their role for each data flow and carry a DPA with each counterparty that reflects it.
+
+### Subprocessors and LLM providers
+
+Every LLM-powered agent has subprocessors: the LLM provider itself, plus any retrieval services, embeddings stores, or tool integrations. The DPA with each provider must be explicit about whether prompts, brand assets, first-party signals, or creative metadata may be retained or used for model training. See the [Security Model — data handling checklist](/dist/docs/3.0.4/building/understanding/security-model#data-handling-and-subprocessors).
+
+LLM subprocessors also introduce an **integrity** risk, not only a confidentiality one: untrusted text in briefs, creative metadata, or tool outputs can carry prompt-injection payloads that cause the agent to leak credentials, issue unauthorized tool calls, or tamper with outputs. See [Threats specific to agentic advertising](/dist/docs/3.0.4/building/understanding/security-model#threats-specific-to-agentic-advertising). This is out of scope for the protocol but in scope for every operator.
+
+## Boundaries implementers must handle
+
+The protocol does not enforce these; the operator must:
+
+- **End-user consent and data-subject rights** (GDPR Art. 15–22, CCPA).
+- **Purpose limitation** beyond what field shapes enforce.
+- **Cross-border data transfer controls** (SCCs, adequacy, UK IDTA).
+- **PII discovery in unstructured fields** (creative metadata, chat logs, brief text). AdCP does not scan `ext`, `context`, brief prose, or creative assets for PII.
+- **Log retention and PII redaction** in logs.
+- **Prompt-injection containment** for LLM-powered agents processing untrusted text.
+
+## For DPOs and procurement reviewers
+
+AdCP does not publish a Privacy Impact Assessment template. A PIA is a deployer artifact owned by the data controller and their counsel — every deployment's purpose, lawful basis, retention, residency, and subprocessor chain differs, and those are the parts that matter for a GDPR Art. 35 assessment. The protocol itself is not the controller and cannot stand in for that analysis.
+
+What AdCP provides instead is the set of protocol-level inputs a DPO needs to describe the AdCP portion of their processing. When assembling a PIA for a deployment that uses AdCP, the relevant inputs are:
+
+- **What each protocol carries and prohibits** — the [Privacy posture by domain](#privacy-posture-by-domain) summary above, plus the deep references linked from each domain.
+- **Controller / processor allocation** — the [Processor / controller roles](#processor--controller-roles) section above. Operators still MUST document their role per data flow and carry a DPA with each counterparty.
+- **Structural separation (TMP only)** — [TMP Privacy Architecture](/dist/docs/3.0.4/trusted-match/privacy-architecture), including TEE attestation when deployed.
+- **Threat model and operational controls** — the [Security Model](/dist/docs/3.0.4/building/understanding/security-model), including the [data handling and subprocessors checklist](/dist/docs/3.0.4/building/understanding/security-model#data-handling-and-subprocessors).
+- **LLM-provider subprocessor considerations** — the [Subprocessors and LLM providers](#subprocessors-and-llm-providers) section above, which covers both confidentiality (retention, training) and integrity (prompt injection).
+- **Explicit non-goals** — [Known Limitations](/dist/docs/3.0.4/reference/known-limitations), which names what the protocol does not do (no protocol-level PII transport, no residency mechanism, no breach-notification SLA, etc.) so the deployer knows which controls they own.
+
+Residency, retention, consent capture, data-subject rights workflows, cross-border transfer mechanisms, and purpose limitation are deployment concerns — AdCP does not enforce them at the protocol layer, and a template could not meaningfully cover them without becoming deployment-specific.
+
+## Related references
+
+- **[TMP Privacy Architecture](/dist/docs/3.0.4/trusted-match/privacy-architecture)** — the structural separation model, with TEE attestation details
+- **[Security Model](/dist/docs/3.0.4/building/understanding/security-model)** — threat model, layered defense, deployment checklist
+- **[Security (implementation reference)](/dist/docs/3.0.4/building/implementation/security)** — normative rules for auth, idempotency, SSRF, governance verification
+- **[Privacy posture across domains](/dist/docs/3.0.4/protocol/architecture#privacy-posture-across-domains)** — the summary table
+- **[Known Limitations](/dist/docs/3.0.4/reference/known-limitations)** — what the protocol does not do on privacy

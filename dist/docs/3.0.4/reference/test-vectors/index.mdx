@@ -1,0 +1,56 @@
+---
+title: Reference Test Vectors
+sidebarTitle: Reference test vectors
+description: "Machine-readable fixtures SDKs and implementations diff against to confirm wire-format agreement. Versioned alongside the spec; frozen at each release."
+"og:title": "AdCP — Reference Test Vectors"
+---
+
+**Status**: Request for Comments
+**Last Updated**: April 20, 2026
+
+## What these are
+
+Reference test vectors are machine-readable JSON fixtures pinned to specific wire-format rules in the spec. An SDK whose output matches a vector's `expected_*` field byte-for-byte has agreed with the reference on that rule's wire format — not a conformance claim (only [storyboards](/dist/docs/3.0.4/building/conformance) decide that), but a necessary precondition for interop. An SDK that diverges has an interop bug, even if its own tests pass.
+
+Vectors complement [storyboards](/dist/docs/3.0.4/building/conformance). Storyboards exercise an agent end-to-end to produce a pass/fail verdict; vectors exercise a library in isolation against frozen inputs. A vector tells a signer "this 9421 request MUST produce this signature base"; a storyboard tells an agent "when the buyer sends this request, you MUST respond with a result shaped like this." Most conformant stacks need both — vectors catch canonicalization drift inside a library; storyboards catch behavior drift at the wire.
+
+Vectors are not the conformance specification — the [storyboards](/dist/docs/3.0.4/building/conformance) are. Vectors are reference inputs the storyboards and SDK unit tests consume.
+
+## Versioning
+
+Vector sets published under the compliance tree — `request-signing`, `webhook-signing`, `plan-hash` — are versioned alongside the spec. The copy served at `/compliance/{version}/test-vectors/{set}/` is frozen at the GA release of that version; fixes that change a vector's bytes ship in the next AdCP minor release. `/compliance/latest/test-vectors/{set}/` tracks the most recent GA and moves under you between releases.
+
+The transport and response-extraction vectors served at `/test-vectors/{name}.json` are currently unversioned: each file is overwritten in place when it changes. SDKs that consume these fixtures SHOULD vendor a commit-pinned copy, for example fetching from `https://raw.githubusercontent.com/adcontextprotocol/adcp/<sha>/static/test-vectors/<name>.json` and recording `<sha>` in their lockfile, until these files are rolled into the versioned compliance tree.
+
+SDKs SHOULD fetch versioned paths where available and record the version under test. For pinned versions, the CDN copy at `/compliance/{version}/...` is the source of truth; `/compliance/latest/...` is a convenience alias, not a stable pin.
+
+## Published sets
+
+| Set | What it pins | Source | CDN |
+|---|---|---|---|
+| [`request-signing`](https://github.com/adcontextprotocol/adcp/tree/main/static/compliance/source/test-vectors/request-signing) | RFC 9421 request-signing profile: canonical signature base, covered components, signature params, tag namespace, alg allowlist, `adcp_use` discriminator, replay dedup, revocation, content-digest semantics, and URL canonicalization | `static/compliance/source/test-vectors/request-signing/` | `/compliance/latest/test-vectors/request-signing/` |
+| [`webhook-signing`](https://github.com/adcontextprotocol/adcp/tree/main/static/compliance/source/test-vectors/webhook-signing) | RFC 9421 webhook-signing profile: required covered components (content-digest mandatory — no `forbidden` opt-out), `adcp/webhook-signing/v1` tag, `adcp_use: "webhook-signing"` discriminator, `webhook_signature_*` error taxonomy; shares `@target-uri` canonicalization with `request-signing` | `static/compliance/source/test-vectors/webhook-signing/` | `/compliance/latest/test-vectors/webhook-signing/` |
+| [`plan-hash`](https://github.com/adcontextprotocol/adcp/tree/main/static/compliance/source/test-vectors/plan-hash) | JCS canonicalization of the `plan_hash` preimage: required-only baseline, full-optional, bookkeeping-stripped, omitted-vs-explicit-null, array-order sensitivity, `ext.trace_id` distinctness, Unicode non-normalization (RFC 8785 §3.2.5) | `static/compliance/source/test-vectors/plan-hash/` | `/compliance/latest/test-vectors/plan-hash/` |
+| [`transport-error-mapping`](https://github.com/adcontextprotocol/adcp/blob/main/static/test-vectors/transport-error-mapping.json) | Transport-layer error envelope shapes: the JSON-RPC (`error.code` / `data`) and A2A (task `status.message`) carriers for each documented AdCP transport error | `static/test-vectors/transport-error-mapping.json` | [`/test-vectors/transport-error-mapping.json`](https://adcontextprotocol.org/test-vectors/transport-error-mapping.json) |
+| [`mcp-response-extraction`](https://github.com/adcontextprotocol/adcp/blob/main/static/test-vectors/mcp-response-extraction.json) | Client extraction of the AdCP payload from MCP `tools/call` envelopes | `static/test-vectors/mcp-response-extraction.json` | [`/test-vectors/mcp-response-extraction.json`](https://adcontextprotocol.org/test-vectors/mcp-response-extraction.json) |
+| [`a2a-response-extraction`](https://github.com/adcontextprotocol/adcp/blob/main/static/test-vectors/a2a-response-extraction.json) | Client extraction of the AdCP payload from A2A task statuses and artifacts | `static/test-vectors/a2a-response-extraction.json` | [`/test-vectors/a2a-response-extraction.json`](https://adcontextprotocol.org/test-vectors/a2a-response-extraction.json) |
+| [`webhook-payload-extraction`](https://github.com/adcontextprotocol/adcp/blob/main/static/test-vectors/webhook-payload-extraction.json) | Receiver-side format detection and payload extraction for inbound AdCP webhooks | `static/test-vectors/webhook-payload-extraction.json` | [`/test-vectors/webhook-payload-extraction.json`](https://adcontextprotocol.org/test-vectors/webhook-payload-extraction.json) |
+| [`webhook-hmac-sha256`](https://github.com/adcontextprotocol/adcp/blob/main/static/test-vectors/webhook-hmac-sha256.json) *(legacy)* | HMAC-SHA-256 signature computation and byte-equality invariants for the legacy HMAC webhook profile. Deprecated in 3.x, removed in 4.0 per [Webhook callbacks](/dist/docs/3.0.4/building/implementation/webhooks#legacy-hmac-sha256-fallback-deprecated); new integrations use `webhook-signing` | `static/test-vectors/webhook-hmac-sha256.json` | [`/test-vectors/webhook-hmac-sha256.json`](https://adcontextprotocol.org/test-vectors/webhook-hmac-sha256.json) |
+
+**Start here**: every set's `README.md` in the source column documents file layout, key material, preconditions (e.g., runner state required for replay vectors), and how to wire the set into an SDK test loop. The README in the source tree is authoritative; the index on this page is a catalog, not an integration guide.
+
+Directory CDN paths (the three compliance-tree rows) are base paths for programmatic use — the CDN serves individual files, not directory listings. Browse the tree via the source column.
+
+## Test keys are public
+
+Every signing vector set ships private key material in `keys.json` so libraries can exercise signer and verifier roles against identical inputs. These keys are **valid only for grading against this suite**.
+
+Any production verifier that trusts a `kid` declared in one of the published `keys.json` files is exploitable — the private key is on the public CDN and anyone can forge signatures under that kid. At time of writing this includes `test-ed25519-2026`, `test-es256-2026`, `test-gov-2026`, `test-revoked-2026` (request-signing) and `test-ed25519-webhook-2026`, `test-es256-webhook-2026`, `test-wrong-purpose-2026`, `test-revoked-webhook-2026` (webhook-signing). Treat every `kid` that appears in any suite `keys.json` as untrusted outside grading, present or future.
+
+Production signers mint their own keypairs and publish under their own `jwks_uri`; production verifiers MUST NOT register any test `kid` in a trust store exposed to live traffic.
+
+## Planned coverage
+
+The sets above exercise transport, signing, and canonicalization rules that cross every surface. Task-level vectors — per-task request/response pairs covering happy path, each documented error code, lifecycle transitions, and idempotency replay/conflict/expired cases across the `media-buy/`, `creative/`, `signals/`, `curation/`, `brand-protocol/`, `trusted-match/`, and `sponsored-intelligence/` task directories — are scoped in [issue #2383](https://github.com/adcontextprotocol/adcp/issues/2383) against the **3.1** milestone and will land incrementally under this path between 3.0 GA and 3.1 release. (These are task directory names, not `supported_protocols` values; see the [Conformance Specification](/dist/docs/3.0.4/building/conformance#protocol-conformance) for the protocol taxonomy.)
+
+Until task-level vectors ship, the authoritative source for task shapes is the pair of [conformance storyboards](https://adcontextprotocol.org/compliance/latest/) (wire behavior) and [JSON Schemas](https://github.com/adcontextprotocol/adcp/tree/main/static/schemas/source) (request/response shapes). Neither yields ready-made fixtures — implementers derive expected shapes from the schema and confirm wire behavior by running the storyboards against their agent.

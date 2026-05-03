@@ -1,0 +1,698 @@
+---
+title: Registry API
+sidebarTitle: Overview
+description: "Public REST API for brand resolution, property lookup, agent discovery, and authorization in the AdCP ecosystem."
+"og:title": "AdCP — Registry API"
+---
+
+The AgenticAdvertising.org registry provides a public REST API for resolving brands and properties, discovering agents, and validating authorization in the AdCP ecosystem.
+
+## Base URL
+
+```
+https://agenticadvertising.org
+```
+
+Most endpoints are **public and require no authentication**. [Authenticated endpoints](#authenticated-endpoints) require a Bearer token.
+
+The full [OpenAPI 3.1 specification](https://agenticadvertising.org/openapi/registry.yaml) is available for code generation and tooling. It is also discoverable at `/.well-known/openapi.yaml`.
+
+## Quick Start
+
+Resolve a brand domain to its canonical identity:
+
+<CodeGroup>
+
+```bash cURL
+curl "https://agenticadvertising.org/api/brands/resolve?domain=acmecorp.com"
+```
+
+```javascript JavaScript
+const res = await fetch(
+  "https://agenticadvertising.org/api/brands/resolve?domain=acmecorp.com"
+);
+const brand = await res.json();
+console.log(brand.brand_name, brand.canonical_domain);
+```
+
+```python Python
+import requests
+
+brand = requests.get(
+    "https://agenticadvertising.org/api/brands/resolve",
+    params={"domain": "acmecorp.com"}
+).json()
+print(brand["brand_name"], brand["canonical_domain"])
+```
+
+</CodeGroup>
+
+```json Response
+{
+  "canonical_id": "acmecorp.com",
+  "canonical_domain": "acmecorp.com",
+  "brand_name": "Acme Corp",
+  "keller_type": "master",
+  "house_domain": "acmecorp.com",
+  "source": "brand_json"
+}
+```
+
+## Rate Limits
+
+| Endpoint | Limit |
+|----------|-------|
+| Bulk resolve (`/api/brands/resolve/bulk`, `/api/properties/resolve/bulk`) | 20 requests/minute per IP |
+| Save endpoints (`/api/brands/save`, `/api/properties/save`) | 60 requests/hour per user |
+| Crawl request (`/api/registry/crawl-request`) | 5 minutes per domain, 30 requests/hour per user |
+| All other endpoints | No limit |
+
+Rate-limited endpoints return `429 Too Many Requests` when the limit is exceeded.
+
+## Endpoint Groups
+
+<CardGroup cols={2}>
+  <Card title="Brand Resolution" icon="fingerprint" href="/dist/docs/3.0.4/registry/index#brand-resolution">
+    Resolve domains to canonical brand identities, fetch brand.json files, and browse the brand registry.
+  </Card>
+  <Card title="Property Resolution" icon="building" href="/dist/docs/3.0.4/registry/index#property-resolution">
+    Resolve publisher domains to property information, validate adagents.json, and browse properties.
+  </Card>
+  <Card title="Agent Discovery" icon="robot" href="/dist/docs/3.0.4/registry/index#agent-discovery">
+    List, search, and filter agents by inventory profile. Browse publishers and view registry statistics.
+  </Card>
+  <Card title="Change Feed" icon="clock-rotate-left" href="/dist/docs/3.0.4/registry/index#change-feed">
+    Poll a cursor-based feed of registry changes for local sync.
+  </Card>
+  <Card title="Lookups & Authorization" icon="shield-check" href="/dist/docs/3.0.4/registry/index#lookups--authorization">
+    Look up agents by domain, validate product authorization, and check property authorization in real time.
+  </Card>
+</CardGroup>
+
+### Brand Resolution
+
+These endpoints resolve domains to brand identities. The `source` field in the response indicates where the data came from:
+
+| Source | Meaning |
+|--------|---------|
+| `brand_json` | Resolved from the domain's `/.well-known/brand.json` file |
+| `enriched` | Enriched via Brandfetch API |
+| `community` | Submitted by a community member |
+
+All sources produce the same resolution response structure. To get full brand identity data (logos, colors, tone), use `/api/brands/enrich` or look up the brand in the registry.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/brands/resolve` | Resolve a domain to its canonical brand |
+| POST | `/api/brands/resolve/bulk` | Resolve up to 100 domains at once |
+| GET | `/api/brands/brand-json` | Fetch raw brand.json for a domain |
+| GET | `/api/brands/registry` | List all brands (search, pagination) |
+| GET | `/api/brands/enrich` | Enrich brand data via Brandfetch |
+| GET | `/api/brands/history` | Edit history for a brand |
+| POST | `/api/brands/save` | Save or update a community brand (auth required) |
+
+### Property Resolution
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/properties/resolve` | Resolve a domain to its property info |
+| POST | `/api/properties/resolve/bulk` | Resolve up to 100 domains at once |
+| GET | `/api/properties/registry` | List all properties (search, pagination) |
+| GET | `/api/properties/validate` | Validate a domain's adagents.json |
+| GET | `/api/properties/history` | Edit history for a property |
+| POST | `/api/properties/save` | Save or update a hosted property (auth required) |
+
+### Agent Discovery
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/registry/agents` | List all agents (filter by type, with enrichment) |
+| GET | `/api/registry/agents/search` | Search agents by inventory profile (auth required) |
+| GET | `/api/registry/publishers` | List all publishers |
+| GET | `/api/registry/stats` | Registry statistics |
+| POST | `/api/registry/crawl-request` | Request re-crawl of a publisher domain (auth required) |
+
+### Change Feed
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/registry/feed` | Poll cursor-based registry change feed (auth required) |
+
+
+### Lookups & Authorization
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/registry/lookup/domain/{domain}` | Find agents authorized for a domain |
+| GET | `/api/registry/lookup/property` | Find agents by property identifier |
+| GET | `/api/registry/lookup/agent/{agentUrl}/domains` | Get all domains for an agent |
+| POST | `/api/registry/validate/product-authorization` | Validate agent product authorization |
+| POST | `/api/registry/expand/product-identifiers` | Expand property selectors to identifiers |
+| GET | `/api/registry/validate/property-authorization` | Real-time authorization check |
+
+Authorization validation checks both sides: the publisher's `adagents.json` (does it authorize this agent with the claimed `delegation_type`?) and the operator's `brand.json` (does it declare this property with a matching `relationship`?).
+
+### Validation Tools
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/adagents/validate` | Validate adagents.json for a domain |
+| POST | `/api/adagents/create` | Generate adagents.json content |
+
+### Search
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/search` | Search across brands, publishers, and properties |
+| GET | `/api/manifest-refs/lookup` | Find manifest references for a domain |
+
+### Agent Probing
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/public/discover-agent` | Probe an agent URL for capabilities |
+| GET | `/api/public/agent-formats` | Get creative formats from an agent |
+| GET | `/api/public/agent-products` | Get products from a sales agent |
+| GET | `/api/public/validate-publisher` | Validate a publisher domain |
+
+## Activity history
+
+`GET /api/brands/history?domain={domain}` and `GET /api/properties/history?domain={domain}` return the edit history for a registry entry, newest first. These are public endpoints — no authentication required.
+
+```json Response
+{
+  "domain": "acmecorp.com",
+  "total": 3,
+  "revisions": [
+    {
+      "revision_number": 3,
+      "editor_name": "Pinnacle Media",
+      "edit_summary": "Updated logo URL",
+      "source": "community",
+      "is_rollback": false,
+      "created_at": "2026-03-01T12:34:56Z"
+    },
+    {
+      "revision_number": 2,
+      "editor_name": "system",
+      "edit_summary": "API: enriched via Brandfetch",
+      "source": "enriched",
+      "is_rollback": false,
+      "created_at": "2026-02-15T08:00:00Z"
+    }
+  ]
+}
+```
+
+Entries with `editor_name: "system"` were written by automated enrichment. When `is_rollback` is `true`, `rolled_back_to` contains the revision number that was restored. Pagination uses `limit` (max 100) and `offset` query parameters.
+
+## Anti-abuse and anti-homograph controls
+
+Because `/api/brands/save`, `/api/properties/save`, and the `adagents` validation endpoints accept domain strings from authenticated member organizations, the hosted registry applies a layered floor of anti-abuse controls at save time. These are operational behaviors of the AgenticAdvertising.org registry in the 3.x era — not a new wire surface — and exist so that typosquats, confusable lookalikes, and drive-by brand hijacks cannot get written into the index by a single authenticated caller.
+
+- **Domain normalization (IDNA 2008 + confusable detection).** Save endpoints SHOULD apply IDNA 2008 to normalize internationalized domain names to ASCII before persistence, and SHOULD then run Unicode confusable-detection (for example, ICU `uspoof` or equivalent) against two corpora: (1) already-registered entries in the index, and (2) a curated high-value-brand deny list maintained by the registry operator. The deny list catches typosquats of well-known brands before those brands themselves are registered (e.g., a `g00gle.com` submission collides with the deny-list entry even if Google has not yet claimed an index row). Ambiguous submissions — mixed-script labels, homograph collisions, disallowed Unicode classes — SHOULD be rejected or flagged for human review rather than silently committed.
+- **Ownership proof before commit.** Save endpoints MUST require evidence of domain control before a **new** brand or property entry is committed to the index — this is the threat that motivates the control, since an attacker with a compromised member API key would otherwise be free to bulk-register fresh confusable variants that have no prior entry to conflict with. For **revisions** to an existing community-source entry by the same authenticated organization, re-proof SHOULD be required on a rolling basis (for example, once the prior proof is older than 90 days) but MAY be skipped within that window. Accepted proofs are either a DNS TXT record at `_adcp-owner.{domain}` matching a server-issued nonce, or an HTTP challenge hosted at `/.well-known/adcp-ownership.txt` on the domain. Nonces MUST be single-use, scoped to the `(organization, domain)` pair, and MUST expire within **15 minutes** of issuance; verification MUST consume the nonce on success and invalidate it on failure. A leaked or unused nonce after expiry is dead. Revisions to an existing **authoritative** entry (i.e., one backed by `brand.json` / `adagents.json`) continue to follow the 409 Conflict semantics in [Save brand](#save-brand) and [Save property](#save-property); ownership proof covers the community-source save path.
+- **Per-organization rate limits on saves.** In addition to the per-IP rate limits documented in [Rate Limits](#rate-limits), save endpoints SHOULD apply per-organization limits so that a single compromised API key cannot bulk-register confusable variants. The hosted implementation uses a burst-tolerant cap (indicative: tens of saves per hour per org, low-hundreds per day per org); callers exceeding the per-org bucket receive `429 Too Many Requests`.
+
+These controls are enforced by the hosted AgenticAdvertising.org registry. Self-hosted mirrors consuming the [Change Feed](#change-feed) rely on the hosted registry's save-time checks and do not re-run them — which is consistent with the feed's advisory-identity posture (see `specs/registry-change-feed.md` §Advisory identity material): the feed is change-detection, not a trust anchor, and the publisher's own `adagents.json` pin remains the authoritative identity source (see [`adagents.json` §`signing_keys`](/dist/docs/3.0.4/governance/property/adagents#signing_keys)). Operators running an alternative registry implementation SHOULD apply equivalent save-time controls before accepting community-source writes.
+
+## Authentication
+
+Public endpoints (resolution, discovery, search) require no authentication. Write endpoints accept either an **organization API key** (server-to-server) or a **user JWT** obtained via OAuth 2.1 (interactive / agent clients). Both are sent in the `Authorization: Bearer ...` header.
+
+### Option A: Organization API key
+
+Long-lived, org-scoped. Best for server-to-server integrations where no user is present.
+
+1. Sign in at [agenticadvertising.org/dashboard/api-keys](https://agenticadvertising.org/dashboard/api-keys)
+2. Click **Create key** and copy the generated key
+
+Pass the key in the `Authorization` header:
+
+```
+Authorization: Bearer sk_...
+```
+
+### Option B: User SSO via OAuth 2.1
+
+Short-lived, user-scoped. Best for agent clients (MCP, AI assistants, custom apps) where a human is signing in to AAO. A single token works against both `/mcp` and the REST API.
+
+Discovery follows [RFC 8414](https://datatracker.ietf.org/doc/html/rfc8414) and [RFC 9728](https://datatracker.ietf.org/doc/html/rfc9728):
+
+- Authorization server metadata: `GET /.well-known/oauth-authorization-server`
+- Protected-resource metadata (REST API): `GET /.well-known/oauth-protected-resource/api`
+- Protected-resource metadata (MCP): `GET /.well-known/oauth-protected-resource/mcp`
+
+The flow is authorization code with PKCE. Dynamic client registration ([RFC 7591](https://datatracker.ietf.org/doc/html/rfc7591)) is available at `/register`. Users authenticate via AuthKit; the token is a WorkOS-signed JWT.
+
+```
+Authorization: Bearer <jwt>
+```
+
+A valid user JWT proves identity, not entitlement. Endpoints gated on organization membership or admin role (most write endpoints) still return `403` if the authenticated user lacks the required standing.
+
+### Authenticated endpoints
+
+These endpoints require a valid API key.
+
+#### Save brand
+
+`POST /api/brands/save`
+
+Save or update a community brand in the registry. For existing brands, creates a revision-tracked edit. Cannot edit authoritative brands managed via `brand.json` — those return `409 Conflict`.
+
+**Request body:**
+
+```json
+{
+  "domain": "acmecorp.com",
+  "brand_name": "Acme Corp",
+  "brand_manifest": {
+    "name": "Acme Corp",
+    "description": "A fictional company",
+    "logos": [{ "url": "https://acmecorp.com/logo.svg", "tags": ["icon"] }],
+    "colors": [{ "hex": "#FF5733", "type": "accent" }]
+  }
+}
+```
+
+`domain` and `brand_name` are required. `brand_manifest` (brand identity data) is optional. The brand's `source` is set to `"community"` by the server. Domains are normalized (protocol stripped, lowercased).
+
+<CodeGroup>
+
+```bash cURL
+curl -X POST "https://agenticadvertising.org/api/brands/save" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"domain":"acmecorp.com","brand_name":"Acme Corp"}'
+```
+
+```javascript JavaScript
+const res = await fetch(
+  "https://agenticadvertising.org/api/brands/save",
+  {
+    method: "POST",
+    headers: {
+      "Authorization": "Bearer YOUR_API_KEY",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      domain: "acmecorp.com",
+      brand_name: "Acme Corp",
+    }),
+  }
+);
+const result = await res.json();
+```
+
+```python Python
+import requests
+
+result = requests.post(
+    "https://agenticadvertising.org/api/brands/save",
+    headers={"Authorization": "Bearer YOUR_API_KEY"},
+    json={"domain": "acmecorp.com", "brand_name": "Acme Corp"},
+).json()
+```
+
+</CodeGroup>
+
+```json Response (create)
+{
+  "success": true,
+  "message": "Brand \"Acme Corp\" saved to registry",
+  "domain": "acmecorp.com",
+  "id": "br_abc123"
+}
+```
+
+```json Response (update)
+{
+  "success": true,
+  "message": "Brand \"Acme Corp\" updated in registry (revision 2)",
+  "domain": "acmecorp.com",
+  "id": "br_abc123",
+  "revision_number": 2
+}
+```
+
+#### Save property
+
+`POST /api/properties/save`
+
+Save or update a hosted property in the registry. For existing properties, creates a revision-tracked edit. Cannot edit authoritative properties managed via `adagents.json` — those return `409 Conflict`.
+
+**Request body:**
+
+```json
+{
+  "publisher_domain": "examplepub.com",
+  "authorized_agents": [
+    { "url": "https://agent.example.com", "authorized_for": "sell" }
+  ],
+  "properties": [
+    { "type": "website", "name": "Example Publisher" }
+  ],
+  "contact": {
+    "name": "Ad Ops",
+    "email": "adops@examplepub.com"
+  }
+}
+```
+
+`publisher_domain` and `authorized_agents` (each with a required `url` and optional `authorized_for`) are required. `properties` (each requiring `type` and `name`) and `contact` are optional. Domains are normalized (protocol stripped, lowercased).
+
+<CodeGroup>
+
+```bash cURL
+curl -X POST "https://agenticadvertising.org/api/properties/save" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "publisher_domain": "examplepub.com",
+    "authorized_agents": [{"url": "https://agent.example.com", "authorized_for": "sell"}],
+    "properties": [{"type": "website", "name": "Example Publisher"}]
+  }'
+```
+
+```javascript JavaScript
+const res = await fetch(
+  "https://agenticadvertising.org/api/properties/save",
+  {
+    method: "POST",
+    headers: {
+      "Authorization": "Bearer YOUR_API_KEY",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      publisher_domain: "examplepub.com",
+      authorized_agents: [{ url: "https://agent.example.com", authorized_for: "sell" }],
+      properties: [{ type: "website", name: "Example Publisher" }],
+    }),
+  }
+);
+const result = await res.json();
+```
+
+```python Python
+import requests
+
+result = requests.post(
+    "https://agenticadvertising.org/api/properties/save",
+    headers={"Authorization": "Bearer YOUR_API_KEY"},
+    json={
+        "publisher_domain": "examplepub.com",
+        "authorized_agents": [{"url": "https://agent.example.com", "authorized_for": "sell"}],
+        "properties": [{"type": "website", "name": "Example Publisher"}],
+    },
+).json()
+```
+
+</CodeGroup>
+
+```json Response (create)
+{
+  "success": true,
+  "message": "Hosted property created for examplepub.com",
+  "id": "prop_xyz789"
+}
+```
+
+```json Response (update)
+{
+  "success": true,
+  "message": "Property 'examplepub.com' updated (revision 2)",
+  "id": "prop_xyz789",
+  "revision_number": 2
+}
+```
+
+#### Change feed
+
+`GET /api/registry/feed`
+
+Poll a cursor-based feed of registry changes. Use this to keep a local copy of the registry in sync without re-fetching the full dataset. Events are ordered by UUID v7 `event_id`, providing monotonic cursor progression. The feed retains events for 90 days — expired cursors return `410 Gone`.
+
+**Query parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `cursor` | UUID | — | Resume after this event ID. Omit for the earliest available events. |
+| `types` | string | — | Comma-separated event type filters. Supports glob patterns (e.g. `property.*`). |
+| `limit` | number | 100 | Max events per page (1–10,000). |
+
+**Event types:**
+
+| Type | Description |
+|------|-------------|
+| `property.created` | A new property was added to the registry |
+| `property.updated` | Property metadata changed |
+| `property.merged` | Two property records were merged |
+| `property.stale` | Property failed re-crawl validation |
+| `property.reactivated` | A stale property passed re-crawl |
+| `agent.discovered` | A new agent was found via adagents.json |
+| `agent.removed` | An agent was removed from the registry |
+| `agent.profile_updated` | Agent inventory profile changed |
+| `publisher.adagents_changed` | A publisher's adagents.json was updated |
+| `authorization.granted` | An agent was authorized for a property |
+| `authorization.revoked` | An authorization was removed |
+
+<CodeGroup>
+
+```bash cURL
+curl "https://agenticadvertising.org/api/registry/feed?types=property.*&limit=50" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+```javascript JavaScript
+const res = await fetch(
+  "https://agenticadvertising.org/api/registry/feed?types=property.*&limit=50",
+  { headers: { Authorization: "Bearer YOUR_API_KEY" } }
+);
+const feed = await res.json();
+// Store feed.cursor for next poll
+```
+
+```python Python
+import requests
+
+feed = requests.get(
+    "https://agenticadvertising.org/api/registry/feed",
+    headers={"Authorization": "Bearer YOUR_API_KEY"},
+    params={"types": "property.*", "limit": 50},
+).json()
+# Store feed["cursor"] for next poll
+```
+
+</CodeGroup>
+
+```json Response
+{
+  "events": [
+    {
+      "event_id": "019539a0-1234-7000-8000-000000000001",
+      "event_type": "property.created",
+      "entity_type": "property",
+      "entity_id": "019539a0-b1c2-7000-8000-000000000002",
+      "payload": {},
+      "actor": "crawler",
+      "created_at": "2026-03-31T10:00:00.000Z"
+    }
+  ],
+  "cursor": "019539a0-1234-7000-8000-000000000001",
+  "has_more": true
+}
+```
+
+When `has_more` is `true`, pass the returned `cursor` value in the next request to continue polling. When `false`, you've reached the end of the current feed — poll again later with the same cursor to pick up new events.
+
+If the cursor has expired (older than 90 days or not found), the response is `410 Gone`:
+
+```json 410 Gone
+{
+  "error": "cursor_expired",
+  "message": "Cursor is older than 90-day retention window. Re-bootstrap from /registry/agents/search and /catalog/sync."
+}
+```
+
+#### Agent search
+
+`GET /api/registry/agents/search`
+
+Search agents by inventory profile — channels, markets, content categories, property types, and more. Filters use AND across dimensions and OR within a dimension. Results are ranked by a relevance score based on filter match breadth, inventory depth, and TMP support.
+
+**Query parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `channels` | CSV | — | Filter by channel (e.g. `ctv,olv,display`) |
+| `property_types` | CSV | — | Filter by property type (e.g. `ctv_app,website`) |
+| `markets` | CSV | — | Filter by market/country code (e.g. `US,GB`) |
+| `categories` | CSV | — | Filter by IAB content category (e.g. `IAB-7,IAB-7-1`) |
+| `tags` | CSV | — | Filter by tag (e.g. `premium,brand_safe`) |
+| `delivery_types` | CSV | — | Filter by delivery type (e.g. `guaranteed,programmatic`) |
+| `has_tmp` | boolean | — | Require TMP support (`true` or `false`) |
+| `min_properties` | number | — | Minimum number of properties in inventory |
+| `cursor` | string | — | Pagination cursor from a previous response |
+| `limit` | number | 50 | Max results per page (1–200) |
+
+Each CSV parameter accepts up to 100 values.
+
+<CodeGroup>
+
+```bash cURL
+curl "https://agenticadvertising.org/api/registry/agents/search?channels=ctv,olv&markets=US&has_tmp=true" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+```javascript JavaScript
+const res = await fetch(
+  "https://agenticadvertising.org/api/registry/agents/search?channels=ctv,olv&markets=US&has_tmp=true",
+  { headers: { Authorization: "Bearer YOUR_API_KEY" } }
+);
+const agents = await res.json();
+```
+
+```python Python
+import requests
+
+agents = requests.get(
+    "https://agenticadvertising.org/api/registry/agents/search",
+    headers={"Authorization": "Bearer YOUR_API_KEY"},
+    params={"channels": "ctv,olv", "markets": "US", "has_tmp": "true"},
+).json()
+```
+
+</CodeGroup>
+
+```json Response
+{
+  "results": [
+    {
+      "agent_url": "https://ads.streamhaus.example.com",
+      "channels": ["ctv", "olv"],
+      "property_types": ["ctv_app", "website"],
+      "markets": ["US", "GB", "CA"],
+      "categories": ["IAB-7", "IAB-7-1"],
+      "tags": ["premium"],
+      "delivery_types": ["guaranteed"],
+      "format_ids": [],
+      "property_count": 42,
+      "publisher_count": 3,
+      "has_tmp": true,
+      "category_taxonomy": null,
+      "relevance_score": 0.92,
+      "matched_filters": ["channels", "markets"],
+      "updated_at": "2026-03-31T10:00:00.000Z"
+    }
+  ],
+  "cursor": "MC45Mjpodh...",
+  "has_more": false
+}
+```
+
+The `matched_filters` array shows which filter dimensions matched, useful for understanding why a result was returned. The `relevance_score` combines filter match breadth, `ln(property_count + 1)` weighted at 0.1, and a 0.05 boost for TMP support.
+
+#### Crawl request
+
+`POST /api/registry/crawl-request`
+
+Request an immediate re-crawl of a publisher domain. Use this after updating an `adagents.json` file so the registry picks up changes without waiting for the next scheduled crawl. The crawl runs asynchronously — the endpoint returns `202 Accepted` immediately.
+
+Rate-limited to one request per domain every 5 minutes and 30 requests per user per hour.
+
+**Request body:**
+
+```json
+{
+  "domain": "examplepub.com"
+}
+```
+
+`domain` is required. Domains are normalized (lowercased, trimmed). The endpoint validates the domain format and performs a DNS lookup to reject private/reserved IP addresses.
+
+<CodeGroup>
+
+```bash cURL
+curl -X POST "https://agenticadvertising.org/api/registry/crawl-request" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"domain":"examplepub.com"}'
+```
+
+```javascript JavaScript
+const res = await fetch(
+  "https://agenticadvertising.org/api/registry/crawl-request",
+  {
+    method: "POST",
+    headers: {
+      "Authorization": "Bearer YOUR_API_KEY",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ domain: "examplepub.com" }),
+  }
+);
+const result = await res.json(); // 202
+```
+
+```python Python
+import requests
+
+result = requests.post(
+    "https://agenticadvertising.org/api/registry/crawl-request",
+    headers={"Authorization": "Bearer YOUR_API_KEY"},
+    json={"domain": "examplepub.com"},
+).json()
+```
+
+</CodeGroup>
+
+```json 202 Accepted
+{
+  "message": "Crawl request accepted",
+  "domain": "examplepub.com"
+}
+```
+
+```json 429 Too Many Requests
+{
+  "error": "Rate limit exceeded for this domain",
+  "retry_after": 245
+}
+```
+
+`retry_after` is the number of seconds to wait before retrying.
+
+#### Submit brand (legacy)
+
+`POST /api/brands/discovered/community`
+
+Submit a brand for review. This endpoint predates `/api/brands/save` — prefer the save endpoint for new integrations.
+
+### Error responses
+
+| Status | Description |
+|--------|-------------|
+| 400 | Missing required fields or invalid domain |
+| 401 | Missing or invalid API key |
+| 409 | Cannot edit an authoritative brand/property (managed via `brand.json` or `adagents.json`) |
+| 410 | Cursor expired (change feed — older than 90-day retention window) |
+| 429 | Rate limit exceeded |
+
+## Protocol vs REST API
+
+The AdCP protocol defines MCP and A2A tasks for agent-to-agent communication (e.g. `get_products`, `create_media_buy`). The registry REST API is separate — it provides HTTP endpoints for looking up entities in the AgenticAdvertising.org registry.
+
+**Use the REST API** for discovery and authorization:
+- Resolve brand or property domains before making protocol calls
+- Discover which agents exist and what they're authorized for
+- Validate authorization in real time during ad serving
+- Build integrations that browse or search the registry
+
+**Use MCP/A2A tasks** for transactional operations:
+- Fetching products from a sales agent (`get_products`)
+- Creating media buys (`create_media_buy`)
+- Building creatives (`build_creative`)
+- Getting signals (`get_signals`)
+
+A typical integration uses both: resolve a publisher domain via the registry API, then call the authorized agent's MCP endpoint to transact.
