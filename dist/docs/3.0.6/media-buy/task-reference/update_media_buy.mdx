@@ -1,0 +1,868 @@
+---
+title: update_media_buy
+description: "update_media_buy task — modify active AdCP campaigns with PATCH semantics. Update budgets, flight dates, targeting, status, and package-level settings."
+"og:title": "AdCP — update_media_buy"
+testable: true
+---
+
+
+Modify an existing media buy using PATCH semantics. Supports campaign-level and package-level updates.
+
+**Response Time**: Instant to days (status: `completed`, `working` < 120s, or `submitted` for manual review)
+
+## Scope
+
+`update_media_buy` operates on any `media_buy_id` returned by [`get_media_buys`](/dist/docs/3.0.6/media-buy/task-reference/get_media_buys), not just buys created via `create_media_buy`. Sales agents MUST NOT refuse updates on the basis that a buy was originally created outside AdCP (direct ad-server entry, legacy APIs, manual trafficking). Creation surface is not a supported axis of authorization; account ownership is.
+
+When a specific action is unsupported for a given buy for business reasons (contractual obligations, platform constraints, policy), the seller MUST omit only that action from `valid_actions` on the buy rather than silently rejecting the corresponding update. **Creation surface is not a business reason.** Sellers MUST NOT return `INVALID_STATE` on an otherwise-valid update against a non-AdCP-created buy, and MUST NOT return a buy with systematically empty `valid_actions` simply because it was booked outside AdCP — that pattern is indistinguishable from hiding the buy and violates the [Account Ownership vs. Creation Surface](/dist/docs/3.0.6/media-buy/specification#account-ownership-vs-creation-surface) rule.
+
+**PATCH Semantics**: Only specified fields are updated; omitted fields remain unchanged.
+
+**Request Schema**: [`/schemas/3.0.6/media-buy/update-media-buy-request.json`](https://adcontextprotocol.org/schemas/3.0.6/media-buy/update-media-buy-request.json)
+**Response Schema**: [`/schemas/3.0.6/media-buy/update-media-buy-response.json`](https://adcontextprotocol.org/schemas/3.0.6/media-buy/update-media-buy-response.json)
+
+## Quick Start
+
+Create a media buy, then pause it:
+
+<CodeGroup>
+
+```javascript JavaScript test=false
+import { testAgent } from '@adcp/client/testing';
+import { CreateMediaBuyResponseSchema, UpdateMediaBuyResponseSchema } from '@adcp/client';
+
+// First, create a media buy to update
+const uniqueRef = `test_campaign_${Date.now()}`;
+
+// Use dates in the future
+const startDate = new Date();
+startDate.setDate(startDate.getDate() + 7); // Start 1 week from now
+const endDate = new Date();
+endDate.setDate(endDate.getDate() + 37); // End 5 weeks from now
+
+const createResult = await testAgent.createMediaBuy({
+  brand: { domain: 'acmecorp.com' },
+  packages: [{
+    product_id: 'prod_d979b543',
+    pricing_option_id: 'cpm_usd_fixed',
+    format_ids: [{
+      agent_url: 'https://creative.adcontextprotocol.org',
+      id: 'display_300x250_image'
+    }],
+    budget: 800,
+    bid_price: 5.00
+  }],
+  start_time: startDate.toISOString(),
+  end_time: endDate.toISOString()
+});
+
+if (!createResult.success) {
+  throw new Error(`Create failed: ${createResult.error}`);
+}
+
+const created = CreateMediaBuyResponseSchema.parse(createResult.data);
+if ('errors' in created && created.errors) {
+  throw new Error(`Create failed: ${JSON.stringify(created.errors)}`);
+}
+
+console.log(`Created media buy ${created.media_buy_id}`);
+
+// Now update it - pause the campaign
+const updateResult = await testAgent.updateMediaBuy({
+  account: { brand: { domain: 'acmecorp.com' }, operator: 'acmecorp.com' },
+  media_buy_id: created.media_buy_id,
+  paused: true
+});
+
+if (!updateResult.success) {
+  throw new Error(`Update failed: ${updateResult.error}`);
+}
+
+const updated = UpdateMediaBuyResponseSchema.parse(updateResult.data);
+if ('errors' in updated && updated.errors) {
+  throw new Error(`Update failed: ${JSON.stringify(updated.errors)}`);
+}
+
+console.log(`Campaign ${updated.media_buy_id} paused`);
+```
+
+```python Python test=false
+import asyncio
+import time
+from datetime import datetime, timedelta
+from adcp.testing import test_agent
+
+async def create_and_pause_campaign():
+    # First, create a media buy to update
+    unique_ref = f"test_campaign_{int(time.time() * 1000)}"
+
+    # Use dates in the future
+    start_date = datetime.utcnow() + timedelta(days=7)
+    end_date = datetime.utcnow() + timedelta(days=37)
+
+    create_result = await test_agent.simple.create_media_buy(
+        brand={'domain': 'acmecorp.com'},
+        packages=[{
+            'product_id': 'prod_d979b543',
+            'pricing_option_id': 'cpm_usd_fixed',
+            'format_ids': [{
+                'agent_url': 'https://creative.adcontextprotocol.org',
+                'id': 'display_300x250_image'
+            }],
+            'budget': 800,
+            'bid_price': 5.00
+        }],
+        start_time=start_date.strftime('%Y-%m-%dT%H:%M:%SZ'),
+        end_time=end_date.strftime('%Y-%m-%dT%H:%M:%SZ')
+    )
+
+    if hasattr(create_result, 'errors') and create_result.errors:
+        raise Exception(f"Create failed: {create_result.errors}")
+
+    print(f"Created media buy {create_result.media_buy_id}")
+
+    # Now update it - pause the campaign
+    update_result = await test_agent.simple.update_media_buy(
+        account={'brand': {'domain': 'acmecorp.com'}, 'operator': 'acmecorp.com'},
+        media_buy_id=create_result.media_buy_id,
+        paused=True
+    )
+
+    if hasattr(update_result, 'errors') and update_result.errors:
+        raise Exception(f"Update failed: {update_result.errors}")
+
+    print(f"Campaign {update_result.media_buy_id} paused")
+
+asyncio.run(create_and_pause_campaign())
+```
+
+</CodeGroup>
+
+## Request Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `account` | [account-ref](/dist/docs/3.0.6/building/integration/accounts-and-agents#account-references) | Yes | Account that owns this media buy. Pass `{ "account_id": "..." }` or `{ "brand": {...}, "operator": "..." }`. Required for governance checks and account resolution. |
+| `media_buy_id` | string | Yes | Seller's media buy identifier to update |
+| `revision` | integer | No | Expected current revision for optimistic concurrency. Seller rejects with `CONFLICT` on mismatch. Obtain from `get_media_buys` or the most recent response. |
+| `start_time` | string | No | Updated campaign start time |
+| `end_time` | string | No | Updated campaign end time |
+| `paused` | boolean | No | Pause/resume entire media buy (`true` = paused, `false` = active) |
+| `canceled` | boolean | No | Cancel the entire media buy (irreversible). Must be `true` when present. Seller may reject with `NOT_CANCELLABLE`. |
+| `cancellation_reason` | string | No | Reason for cancellation |
+| `packages` | PackageUpdate[] | No | Package-level updates (see below) |
+| `reporting_webhook` | object | No | Update reporting webhook configuration (see below) |
+| `idempotency_key` | string | No | Unique key for safe retries. If an update with the same key has already been processed, the seller returns the original response. MUST be unique per (seller, request) pair. Min 16 chars. |
+| `invoice_recipient` | [BusinessEntity](/dist/docs/3.0.6/building/integration/accounts-and-agents#billing-entity-and-invoice-recipient) | No | Override who receives the invoice for this buy. The seller MUST validate authorization and include in `check_governance` when governance agents are configured. |
+| `new_packages` | PackageRequest[] | No | New packages to add to this media buy. Same shape as `create_media_buy` packages. Only supported by sellers that advertise `add_packages` in `valid_actions`. |
+| `push_notification_config` | object | No | Webhook for async operation notifications |
+
+`account` and `media_buy_id` are always required.
+
+### Reporting Webhook Object
+
+Configure automated delivery reporting for this media buy:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `url` | string | Yes | Webhook endpoint URL |
+| `authentication` | object | Yes | Auth config with `schemes` and `credentials` |
+| `reporting_frequency` | string | Yes | `hourly`, `daily`, or `monthly` |
+| `requested_metrics` | string[] | No | Specific metrics to include (defaults to all) |
+| `token` | string | No | Client token for validation (min 16 chars) |
+
+**Note**: `reporting_webhook` configures ongoing campaign reporting. `push_notification_config` is for async operation notifications (e.g., "notify me when this update completes").
+
+### Package Update Object
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `package_id` | string | Seller's package identifier to update |
+| `paused` | boolean | Pause/resume specific package (`true` = paused, `false` = active) |
+| `canceled` | boolean | Cancel this package (irreversible). Must be `true` when present. Seller may reject with `NOT_CANCELLABLE`. |
+| `cancellation_reason` | string | Reason for canceling this package |
+| `budget` | number | Updated budget allocation |
+| `impressions` | number | Updated impression goal for this package |
+| `start_time` | string | Updated flight start date/time in ISO 8601 format. Must fall within the media buy's date range. |
+| `end_time` | string | Updated flight end date/time in ISO 8601 format. Must fall within the media buy's date range. |
+| `pacing` | string | Updated pacing strategy |
+| `bid_price` | number | Updated bid price (auction products only). This is the exact bid/price to honor unless the selected pricing option has `max_bid: true`, in which case it is treated as the buyer's maximum willingness to pay (ceiling). |
+| `optimization_goals` | OptimizationGoal[] | Replace all optimization goals for this package. Uses replacement semantics — omit to leave goals unchanged. |
+| `targeting_overlay` | TargetingOverlay | Updated targeting restrictions |
+| `catalogs` | Catalog[] | Replace the catalogs this package promotes. Uses replacement semantics — omit to leave unchanged. |
+| `keyword_targets_add` | KeywordTarget[] | Keyword targets to add or upsert by (keyword, match_type) identity. On create, these are set as `keyword_targets` inside `targeting_overlay`. |
+| `keyword_targets_remove` | KeywordTarget[] | Keyword targets to remove by (keyword, match_type) identity. |
+| `negative_keywords_add` | NegativeKeyword[] | Negative keywords to append to this package. On create, these are set as `negative_keywords` inside `targeting_overlay`. |
+| `negative_keywords_remove` | NegativeKeyword[] | Negative keywords to remove from this package. |
+| `creative_assignments` | CreativeAssignment[] | Replace assigned creatives with optional weights and placement targeting |
+| `creatives` | CreativeAsset[] | Upload and assign new creatives inline (must not exist in library) |
+
+`package_id` is required to identify the package to update.
+
+## Response
+
+### Success Response
+
+| Field | Description |
+|-------|-------------|
+| `media_buy_id` | Media buy identifier |
+| `status` | Media buy status after the update (present when status changes, e.g., cancellation) |
+| `revision` | Revision number after this update. Use in subsequent requests for optimistic concurrency. |
+| `implementation_date` | ISO 8601 timestamp when changes take effect (null if pending approval) |
+| `invoice_recipient` | Updated invoice recipient, echoed from request when provided. Confirms the seller accepted the billing override. Bank details are omitted (write-only). |
+| `valid_actions` | Actions the buyer can perform after this update. Saves a round-trip to `get_media_buys`. |
+| `affected_packages` | Array of full Package objects showing complete state after update |
+
+### Error Response
+
+| Field | Description |
+|-------|-------------|
+| `errors` | Array of error objects explaining failure |
+
+**Note**: Responses use discriminated unions - you get either success fields OR errors, never both. Always check for `errors` before accessing success fields.
+
+## Common Scenarios
+
+### Update Package Budget
+
+Increase budget for a specific package:
+
+<CodeGroup>
+
+```javascript test=false JavaScript
+import { testAgent } from '@adcp/client/testing';
+import { UpdateMediaBuyResponseSchema } from '@adcp/client';
+
+const result = await testAgent.updateMediaBuy({
+  account: { account_id: 'acc_acme_001' },
+  media_buy_id: 'mb_12345',
+  packages: [{
+    package_id: 'pkg_001',
+    budget: 50000  // Increased from 30000
+  }]
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = UpdateMediaBuyResponseSchema.parse(result.data);
+
+if ('errors' in validated && validated.errors) {
+  throw new Error(`Update failed: ${JSON.stringify(validated.errors)}`);
+}
+
+const pkg = validated.affected_packages?.find(p => p.package_id === 'pkg_001');
+if (pkg) {
+  console.log(`Package budget updated to ${pkg.budget}`);
+}
+```
+
+```python test=false Python
+import asyncio
+from adcp.testing import test_agent
+from adcp.types import UpdateMediaBuyRequest
+
+async def increase_budget():
+    result = await test_agent.update_media_buy(
+        UpdateMediaBuyRequest(
+            account={'account_id': 'acc_acme_001'},
+            media_buy_id='mb_12345',
+            packages=[
+                {'package_id': 'pkg_001', 'budget': 50000}
+            ]
+        )
+    )
+
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Update failed: {result.errors}")
+
+    pkg = next((p for p in result.affected_packages if p.package_id == 'pkg_001'), None)
+    if pkg:
+        print(f"Package budget updated to {pkg.budget}")
+
+asyncio.run(increase_budget())
+```
+
+</CodeGroup>
+
+### Change Campaign Dates
+
+Extend campaign end date:
+
+<CodeGroup>
+
+```javascript test=false JavaScript
+import { testAgent } from '@adcp/client/testing';
+import { UpdateMediaBuyResponseSchema } from '@adcp/client';
+
+const result = await testAgent.updateMediaBuy({
+  account: { account_id: 'acc_acme_001' },
+  media_buy_id: 'mb_12345',
+  end_time: '2025-09-30T23:59:59Z'
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = UpdateMediaBuyResponseSchema.parse(result.data);
+
+if ('errors' in validated && validated.errors) {
+  throw new Error(`Update failed: ${JSON.stringify(validated.errors)}`);
+}
+
+console.log('Campaign end date extended');
+console.log(`Effective: ${validated.implementation_date}`);
+```
+
+```python test=false Python
+import asyncio
+from adcp.testing import test_agent
+from adcp.types import UpdateMediaBuyRequest
+
+async def extend_campaign():
+    result = await test_agent.update_media_buy(
+        UpdateMediaBuyRequest(
+            account={'account_id': 'acc_acme_001'},
+            media_buy_id='mb_12345',
+            end_time='2025-09-30T23:59:59Z'
+        )
+    )
+
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Update failed: {result.errors}")
+
+    print('Campaign end date extended')
+    print(f"Effective: {result.implementation_date}")
+
+asyncio.run(extend_campaign())
+```
+
+</CodeGroup>
+
+### Update Targeting
+
+Add or modify geographic restrictions:
+
+<CodeGroup>
+
+```javascript test=false JavaScript
+import { testAgent } from '@adcp/client/testing';
+import { UpdateMediaBuyResponseSchema } from '@adcp/client';
+
+const result = await testAgent.updateMediaBuy({
+  account: { account_id: 'acc_acme_001' },
+  media_buy_id: 'mb_12345',
+  packages: [{
+    package_id: 'pkg_001',
+    targeting_overlay: {
+      geo_countries: ['US', 'CA'],
+      geo_regions: ['US-CA', 'US-NY', 'US-TX', 'CA-ON', 'CA-QC']
+    }
+  }]
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = UpdateMediaBuyResponseSchema.parse(result.data);
+
+if ('errors' in validated && validated.errors) {
+  throw new Error(`Update failed: ${JSON.stringify(validated.errors)}`);
+}
+
+console.log('Targeting updated successfully');
+```
+
+```python test=false Python
+import asyncio
+from adcp.testing import test_agent
+from adcp.types import UpdateMediaBuyRequest
+
+async def update_targeting():
+    result = await test_agent.update_media_buy(
+        UpdateMediaBuyRequest(
+            account={'account_id': 'acc_acme_001'},
+            media_buy_id='mb_12345',
+            packages=[
+                {
+                    'package_id': 'pkg_001',
+                    'targeting_overlay': {
+                        'geo_countries': ['US', 'CA'],
+                        'geo_regions': ['US-CA', 'US-NY', 'US-TX', 'CA-ON', 'CA-QC']
+                    }
+                }
+            ]
+        )
+    )
+
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Update failed: {result.errors}")
+
+    print('Targeting updated successfully')
+
+asyncio.run(update_targeting())
+```
+
+</CodeGroup>
+
+### Replace Creatives
+
+Swap out creative assignments for a package:
+
+<CodeGroup>
+
+```javascript test=false JavaScript
+import { testAgent } from '@adcp/client/testing';
+import { UpdateMediaBuyResponseSchema } from '@adcp/client';
+
+const result = await testAgent.updateMediaBuy({
+  account: { account_id: 'acc_acme_001' },
+  media_buy_id: 'mb_12345',
+  packages: [{
+    package_id: 'pkg_001',
+    creative_assignments: [
+      { creative_id: 'creative_video_v2' },
+      { creative_id: 'creative_display_v2', weight: 60 }
+    ]
+  }]
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = UpdateMediaBuyResponseSchema.parse(result.data);
+
+if ('errors' in validated && validated.errors) {
+  throw new Error(`Update failed: ${JSON.stringify(validated.errors)}`);
+}
+
+const pkg = validated.affected_packages?.find(p => p.package_id === 'pkg_001');
+const assignmentCount = pkg?.creative_assignments?.length || 0;
+console.log(`Assigned ${assignmentCount} creatives`);
+```
+
+```python test=false Python
+import asyncio
+from adcp.testing import test_agent
+from adcp.types import UpdateMediaBuyRequest
+
+async def replace_creatives():
+    result = await test_agent.update_media_buy(
+        UpdateMediaBuyRequest(
+            account={'account_id': 'acc_acme_001'},
+            media_buy_id='mb_12345',
+            packages=[
+                {
+                    'package_id': 'pkg_001',
+                    'creative_assignments': [
+                        {'creative_id': 'creative_video_v2'},
+                        {'creative_id': 'creative_display_v2', 'weight': 60}
+                    ]
+                }
+            ]
+        )
+    )
+
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Update failed: {result.errors}")
+
+    pkg = next((p for p in result.affected_packages if p.package_id == 'pkg_001'), None)
+    assignment_count = len(pkg.creative_assignments) if pkg and pkg.creative_assignments else 0
+    print(f"Assigned {assignment_count} creatives")
+
+asyncio.run(replace_creatives())
+```
+
+</CodeGroup>
+
+### Multiple Package Updates
+
+Update multiple packages in one call:
+
+<CodeGroup>
+
+```javascript test=false JavaScript
+import { testAgent } from '@adcp/client/testing';
+import { UpdateMediaBuyResponseSchema } from '@adcp/client';
+
+const result = await testAgent.updateMediaBuy({
+  account: { account_id: 'acc_acme_001' },
+  media_buy_id: 'mb_12345',
+  packages: [
+    {
+      package_id: 'pkg_001',
+      budget: 50000,
+      pacing: 'front_loaded'
+    },
+    {
+      package_id: 'pkg_002',
+      budget: 30000,
+      paused: true
+    }
+  ]
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = UpdateMediaBuyResponseSchema.parse(result.data);
+
+if ('errors' in validated && validated.errors) {
+  throw new Error(`Update failed: ${JSON.stringify(validated.errors)}`);
+}
+
+console.log(`Updated ${validated.affected_packages?.length || 0} packages`);
+```
+
+```python test=false Python
+import asyncio
+from adcp.testing import test_agent
+from adcp.types import UpdateMediaBuyRequest
+
+async def update_multiple_packages():
+    result = await test_agent.update_media_buy(
+        UpdateMediaBuyRequest(
+            account={'account_id': 'acc_acme_001'},
+            media_buy_id='mb_12345',
+            packages=[
+                {
+                    'package_id': 'pkg_001',
+                    'budget': 50000,
+                    'pacing': 'front_loaded'
+                },
+                {
+                    'package_id': 'pkg_002',
+                    'budget': 30000,
+                    'paused': True
+                }
+            ]
+        )
+    )
+
+    if hasattr(result, 'errors') and result.errors:
+        raise Exception(f"Update failed: {result.errors}")
+
+    print(f"Updated {len(result.affected_packages)} packages")
+
+asyncio.run(update_multiple_packages())
+```
+
+</CodeGroup>
+
+### Cancel a Media Buy
+
+Cancel an entire media buy:
+
+```json
+{
+  "account": { "account_id": "acc_acme_001" },
+  "media_buy_id": "mb_12345",
+  "canceled": true,
+  "cancellation_reason": "Campaign strategy changed"
+}
+```
+
+**Success response:**
+```json
+{
+  "media_buy_id": "mb_12345",
+  "status": "canceled",
+  "revision": 4,
+  "implementation_date": "2025-06-15T10:00:00Z",
+  "affected_packages": []
+}
+```
+
+**`NOT_CANCELLABLE` error response:**
+```json
+{
+  "errors": [{
+    "code": "NOT_CANCELLABLE",
+    "message": "Media buy mb_12345 has contractual obligations preventing cancellation",
+    "suggestion": "Contact seller to discuss cancellation options"
+  }]
+}
+```
+
+**`INVALID_STATE` error response** (e.g., trying to update a completed media buy):
+```json
+{
+  "errors": [{
+    "code": "INVALID_STATE",
+    "message": "Media buy mb_12345 is in terminal state 'completed' and cannot be modified",
+    "suggestion": "Check current status via get_media_buys and adjust request"
+  }]
+}
+```
+
+**`REQUOTE_REQUIRED` error response** (update changes the parameter envelope the quote was priced against):
+```json
+{
+  "errors": [{
+    "code": "REQUOTE_REQUIRED",
+    "message": "Doubling budget and extending end_time into Q4 changes the pricing basis of proposal prop_abc123",
+    "details": {
+      "proposal_id": "prop_abc123",
+      "envelope_field": ["packages[0].budget", "end_time"]
+    },
+    "suggestion": "Call get_products with buying_mode='refine' against proposal_id prop_abc123 to obtain a fresh quote, then resubmit this update against the new proposal_id"
+  }]
+}
+```
+
+### Cancel a Package
+
+Cancel a single package while the media buy remains active:
+
+```json
+{
+  "account": { "account_id": "acc_acme_001" },
+  "media_buy_id": "mb_12345",
+  "packages": [
+    {
+      "package_id": "pkg_67890",
+      "canceled": true,
+      "cancellation_reason": "Underperforming — reallocating budget"
+    }
+  ]
+}
+```
+
+## What Can Be Updated
+
+### Campaign-Level Updates
+
+✅ **Can update:**
+- Start/end times (subject to seller approval)
+- Campaign status (active/paused/canceled)
+- Reporting webhook configuration (URL, frequency, metrics)
+
+❌ **Cannot update:**
+- Media buy ID
+- Brand reference
+- Original package product IDs
+
+### Package-Level Updates
+
+✅ **Can update:**
+- Budget allocation
+- Pacing strategy
+- Bid prices (auction products)
+- Optimization goal (event source, event type, target ROAS/CPA)
+- Targeting overlays
+- Creative assignments
+- Package status (active/paused/canceled)
+- Catalog reference (replace the catalog a catalog-driven package promotes)
+- Creative assignments (before the package's `creative_deadline`)
+
+❌ **Cannot update:**
+- Package ID
+- Product ID
+- Pricing option ID
+- Format IDs (creatives must match existing formats)
+
+## Error Handling
+
+Common errors and resolutions:
+
+| Error Code | Description | Resolution |
+|------------|-------------|------------|
+| `MEDIA_BUY_NOT_FOUND` | Media buy doesn't exist | Verify media_buy_id |
+| `PACKAGE_NOT_FOUND` | Package doesn't exist | Verify package_id |
+| `UPDATE_NOT_ALLOWED` | Field cannot be changed | See "What Can Be Updated" above |
+| `BUDGET_INSUFFICIENT` | New budget below minimum | Increase budget amount |
+| `POLICY_VIOLATION` | Update violates content policy | Review policy requirements |
+| `INVALID_STATE` | Operation not allowed in current state (e.g., updating completed/canceled media buy) | Check campaign status via `get_media_buys` |
+| `NOT_CANCELLABLE` | Media buy or package cannot be canceled | Check seller's cancellation policy or contact seller |
+| `CREATIVE_REJECTED` | Creative failed content policy review | Revise the creative per the seller's advertising policies |
+| `CREATIVE_DEADLINE_EXCEEDED` | Creative change submitted past the package's `creative_deadline` | Check package `creative_deadline` before submitting creative changes |
+| `CREATIVE_ID_EXISTS` | Creative ID already exists in library | Use a different `creative_id`, assign existing creatives via `creative_assignments`, or update via `sync_creatives` |
+| `BUDGET_EXCEEDED` | Operation would exceed allocated budget | Reduce the amount or increase media buy total budget |
+| `CONFLICT` | Revision mismatch — another update was applied since you last read | Re-read via `get_media_buys` and retry with current `revision` |
+| `REQUOTE_REQUIRED` | Requested change (budget, dates, volume, targeting) falls outside the envelope the original quote was priced against | Call `get_products` with `buying_mode: "refine"` against the existing `proposal_id` to obtain a fresh quote, then resubmit the update against the new `proposal_id`. Seller's `error.details.envelope_field` names which fields breached. |
+| `VALIDATION_ERROR` | Request format or business rule violation | Check error `field` and `message` for specifics |
+
+Example error response:
+
+```json
+{
+  "errors": [{
+    "code": "UNSUPPORTED_FEATURE",
+    "message": "Cannot change product_id for existing package",
+    "field": "packages[0].product_id",
+    "suggestion": "Create a new package with the desired product instead"
+  }]
+}
+```
+
+## Update Approval
+
+Some updates require seller approval and return pending status:
+
+- **Significant budget increases** (threshold varies by seller)
+- **Date range changes** affecting inventory availability
+- **Targeting changes** that alter campaign scope
+- **Creative changes** requiring policy review
+
+When approval is needed, `implementation_date` will be `null` and `affected_packages` contains the proposed state of each package that would be modified:
+
+```json
+{
+  "media_buy_id": "mb_12345",
+  "implementation_date": null,
+  "affected_packages": [
+    {
+      "package_id": "pkg_abc123",
+      "budget": 50000,
+      "status": "pending_start"
+    }
+  ]
+}
+```
+
+## PATCH Semantics
+
+Only specified fields are updated - omitted fields remain unchanged:
+
+```json
+{
+  "account": { "account_id": "acc_acme_001" },
+  "media_buy_id": "mb_12345",
+  "packages": [{
+    "package_id": "pkg_001",
+    "budget": 50000
+  }]
+}
+```
+
+**Array replacement**: When updating arrays (like `creative_assignments`), provide the complete new array:
+
+```json
+{
+  "account": { "account_id": "acc_acme_001" },
+  "media_buy_id": "mb_12345",
+  "packages": [{
+    "package_id": "pkg_001",
+    "creative_assignments": [
+      { "creative_id": "creative_video_v2" },
+      { "creative_id": "creative_display_v2", "weight": 60 }
+    ]
+  }]
+}
+```
+
+## Asynchronous Operations
+
+Updates may be asynchronous, especially with seller approval.
+
+### Response Patterns
+
+**Synchronous (completed immediately)** — campaign-level update (e.g., `paused: true`):
+```json
+{
+  "media_buy_id": "mb_12345",
+  "implementation_date": "2025-06-15T10:00:00Z",
+  "affected_packages": []
+}
+```
+
+**Synchronous (completed immediately)** — package-level update:
+```json
+{
+  "media_buy_id": "mb_12345",
+  "implementation_date": "2025-06-15T10:00:00Z",
+  "affected_packages": [
+    {
+      "package_id": "pkg_abc123",
+      "budget": 50000,
+      "status": "active"
+    }
+  ]
+}
+```
+
+**Asynchronous (processing)**:
+```json
+{
+  "status": "working",
+  "message": "Processing update..."
+}
+```
+Poll for completion or use webhooks/streaming.
+
+**Manual Approval Required**:
+```json
+{
+  "status": "submitted",
+  "message": "Update requires seller approval (2-4 hours)"
+}
+```
+Will take hours to days.
+
+### Protocol-Specific Handling
+
+AdCP tasks work across multiple protocols (MCP, A2A, REST). Each protocol handles async operations differently:
+
+- **Status checking**: Polling, webhooks, or streaming
+- **Updates**: Protocol-specific mechanisms
+- **Long-running tasks**: Different timeout and notification patterns
+
+See [Async Operations](/dist/docs/3.0.6/building/implementation/async-operations) for protocol-specific async patterns and examples.
+
+## Best Practices
+
+**1. Use Precise Updates**
+Update only what needs to change - don't resend unchanged values.
+
+**2. Budget Increases**
+Small incremental increases are more likely to be auto-approved than large jumps.
+
+**3. Pause Before Major Changes**
+Pause campaigns before making significant targeting or creative changes to avoid delivery issues.
+
+**4. Test with Small Changes**
+Test update workflows with minor changes before critical campaign modifications.
+
+**5. Monitor Status**
+Always check response status and `implementation_date` for approval requirements.
+
+**6. Validate Package State**
+Check `affected_packages` in response to confirm changes were applied correctly.
+
+## Usage Notes
+
+- Updates are atomic - either all changes apply or none do
+- Both media buys and packages can be referenced by publisher IDs
+- Pending states (`working`, `submitted`) are normal, not errors
+- Orchestrators MUST handle pending states as part of normal workflow
+- `implementation_date` indicates when changes take effect (null if pending approval)
+- **Inline creatives**: The `creatives` array creates NEW creatives only. To update existing creatives, use [`sync_creatives`](/dist/docs/3.0.6/creative/task-reference/sync_creatives). To assign existing library creatives, use `creative_assignments` in the Package Update object.
+
+<Note>
+**Campaign Governance — Modification Phase**
+
+When a buyer's account has governance agents configured, sellers MUST call [`check_governance`](/dist/docs/3.0.6/governance/campaign/tasks/check_governance) with `media_buy_id`, `planned_delivery`, and `phase: "modification"` before confirming an update. The governance agent validates change magnitude, budget reallocation, and new parameters against the campaign plan.
+
+See the [seller integration guide](/dist/docs/3.0.6/building/implementation/seller-integration#execution-checks) for the full execution check workflow and code example.
+</Note>
+
+## Next Steps
+
+After updating a media buy:
+
+1. **Verify Changes**: Use [`get_media_buy_delivery`](/dist/docs/3.0.6/media-buy/task-reference/get_media_buy_delivery) to confirm updates
+2. **Upload New Creatives**: Use [`sync_creatives`](/dist/docs/3.0.6/creative/task-reference/sync_creatives) if creative assignments changed
+3. **Monitor Performance**: Track impact of changes on campaign metrics
+4. **Optimize Further**: Use [`provide_performance_feedback`](/dist/docs/3.0.6/media-buy/task-reference/provide_performance_feedback) for ongoing optimization
+
+## Learn More
+
+- [Media Buy Lifecycle](/dist/docs/3.0.6/media-buy/media-buys/) - Complete campaign workflow
+- [Targeting](/dist/docs/3.0.6/media-buy/advanced-topics/targeting) - Targeting overlays and restrictions
+- [Async Operations](/dist/docs/3.0.6/building/implementation/async-operations) - Async patterns and status checking
+- [create_media_buy](/dist/docs/3.0.6/media-buy/task-reference/create_media_buy) - Initial campaign creation

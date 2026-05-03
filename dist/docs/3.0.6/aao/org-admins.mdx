@@ -1,0 +1,76 @@
+---
+title: AAO for Org Admins
+description: What organization admins can do — manage members, change tier, view billing, configure brand and agents.
+"og:title": "AdCP — AAO for Org Admins"
+---
+
+# AAO for Org Admins
+
+This page is for the person at your company who manages the AgenticAdvertising.org account: seat allocation, billing, brand configuration, agent declarations. For end-user docs see [AAO for Members](/dist/docs/3.0.6/aao/users). For Addie's full tool list, see the [Addie Tool Reference](/dist/docs/3.0.6/aao/addie-tools).
+
+You're an org admin if your account has the `admin` or `owner` role within your organization on AAO. The first person to set up a paid org is automatically the owner.
+
+## Membership tiers
+
+All AAO memberships are annual Stripe subscriptions. Upgrades prorate automatically; downgrades take effect at the next renewal.
+
+| Tier | Price | Contributor seats | Community-only seats | Payment |
+|---|---|---|---|---|
+| Explorer | $50/yr | 0 | 1 | Credit card |
+| Professional | $250/yr | 1 | 1 | Credit card |
+| Builder | $2,500/yr | 5 | 5 | Credit card |
+| Partner | $10,000/yr | 10 | 50 | Credit card or invoice |
+| Leader | $50,000/yr | 20+ | Unlimited | Credit card or invoice |
+
+**Contributor seats** include Slack, working groups, voting rights, directory listing, and everything in community-only. **Community-only seats** include Addie, certification, training, regional chapters — for team members who need to learn but don't need active collaboration access.
+
+## Manage seats
+
+- **Invite a teammate.** Ask Addie *"invite [email] to my org"* — she sends a Stripe-backed seat invitation. You must be admin or owner.
+- **Promote / demote.** Today this is escalation-only — ask Addie *"set [email] as admin in my org"* and she'll route the request. We're working on self-serve.
+- **Remove a member.** Escalation; the team handles this carefully so no certification credit is lost.
+
+## Billing
+
+- **View invoices.** Ask Addie *"show my invoices"* or visit [agenticadvertising.org/dashboard/billing](https://agenticadvertising.org/dashboard/billing). Org admins see the full org billing history.
+- **Update payment method / billing address.** Use the Stripe customer portal — link via *"open my billing portal"* (Addie has `create_customer_portal_session`).
+- **Generate an invoice or payment link.** *"Send me an invoice for Builder tier"* triggers `send_invoice` → confirm → `confirm_send_invoice`.
+- **Apply a coupon.** Tell Addie the coupon ID when generating the invoice.
+- **Upgrade tier.** *"Upgrade us to Partner"* — Stripe prorates the difference for the remainder of the current period.
+- **Downgrade tier.** Same flow; takes effect at next renewal.
+
+For refunds, custom contracts, currency changes, or out-of-cycle credits, Addie escalates to a human.
+
+## Brand identity
+
+Your `brand.json` published at `/.well-known/brand.json` is the canonical identity for your company in the AdCP ecosystem. AAO uses it to validate property authorizations and to enable agent discovery.
+
+- **Build a brand.json.** [agenticadvertising.org/brand](https://agenticadvertising.org/brand) is the visual builder.
+- **Verify domain ownership.** Ask Addie *"verify my brand for [domain]"* — she issues a DNS challenge via `request_brand_domain_challenge`. Add the TXT record, then *"check my brand verification"* (`verify_brand_domain_challenge`).
+- **Property catalog.** Properties listed in your brand.json are auto-discovered. To check what AAO has resolved for your domain, ask *"what properties are resolved for [domain]?"*.
+
+## Agent declarations (adagents.json)
+
+If you're a publisher, you publish `/.well-known/adagents.json` declaring which agents are authorized to sell your inventory.
+
+- **Build an adagents.json.** [agenticadvertising.org/adagents](https://agenticadvertising.org/adagents).
+- **Validate.** Ask Addie *"validate my adagents.json"* — `validate_adagents` checks shape and resolves authorizations.
+- **Probe a sales agent.** *"Probe [agent URL]"* runs `probe_adcp_agent` to confirm the agent responds, returns capabilities, and is registered.
+- **Listing not visible?** First check: is your member profile complete and your tier active? Then: *"check property resolution for [domain]"* — Addie can diagnose whether the registry crawler picked up your file.
+
+## Working group and committee leadership
+
+- **Lead a working group.** Working group leads can `list_committee_documents`, `create_working_group_post`, and approve/decline contributor membership requests.
+- **Council leadership.** Council leads have `attach_content_asset` and `propose_content` permissions on council resources.
+
+Ask Addie *"what can I do as a [WG/council] lead?"* and she'll list the leader-only tools available to your role.
+
+## What Addie escalates rather than self-serves
+
+- Tier changes outside the standard upgrade flow (custom contracts, prorations on invoice).
+- Refunds, voids, or out-of-cycle credits.
+- Member promotions / demotions / removals.
+- Account merges or domain changes after onboarding.
+- Anything involving deleted or orphaned data.
+
+For these, Addie collects context and routes to the AAO team — usually with a 1–2 business day SLA.

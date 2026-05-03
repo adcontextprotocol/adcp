@@ -1,0 +1,124 @@
+---
+title: "Verifying protocol tarballs"
+description: "Verify AdCP protocol bundle publisher identity with cosign keyless and the Sigstore transparency log."
+"og:title": "AdCP — Verifying protocol tarballs"
+---
+
+Every AdCP release publishes a `{version}.tgz` bundle (the full schema + compliance + OpenAPI tree at that version) along with three sidecars:
+
+| File | Role |
+|---|---|
+| `{version}.tgz.sha256` | SHA-256 checksum, in-transit integrity |
+| `{version}.tgz.sig` | Sigstore detached signature |
+| `{version}.tgz.crt` | Fulcio-issued signing certificate |
+
+The SHA-256 sidecar lives on the same origin as the tarball, so it only protects against transit tampering. The `.sig` + `.crt` pair proves the bundle came from the AdCP release workflow itself and was not swapped for a malicious one even if the host were compromised.
+
+This page covers how to verify those signatures correctly. SDK users (`@adcp/sdk`, `adcp-client-python`, `adcp-go`) get this verification for free on every `sync-schemas` / `download.sh` run. If you're consuming the bundle directly — pinning a specific version in a CI pipeline, ingesting it from a different language, or implementing a fresh adopter — read on.
+
+## Trust model
+
+AdCP uses **Sigstore keyless signing**. There is no long-lived private key. At release time:
+
+1. The `release.yml` workflow on `adcontextprotocol/adcp` runs on a GitHub Actions runner.
+2. The runner mints a short-lived OIDC token whose subject identifies the workflow and ref that produced the run.
+3. `cosign sign-blob --yes` exchanges that OIDC token at Sigstore's Fulcio CA for a short-lived X.509 certificate, then produces a detached signature using the cert's ephemeral private key.
+4. The signature, certificate, and a transparency log entry land in Sigstore's Rekor public log.
+5. The release pipeline commits `.sig` and `.crt` next to the tarball and uploads them to the GitHub Release.
+
+Verification on the consumer side then checks **two binding properties**:
+
+- **Signature authenticity** — the `.sig` was produced by the private key that the `.crt` certifies. Standard Sigstore math; no AdCP-specific.
+- **Identity binding** — the `.crt`'s subject names the AdCP release workflow specifically, with the issuer being GitHub Actions's OIDC provider. This is the AdCP-specific part.
+
+If both hold, you have proof that an AdCP release workflow run produced this exact tarball — provable end-to-end without trusting `adcontextprotocol.org` itself.
+
+## Recommended `cosign verify-blob` invocation
+
+```bash
+# Download the tarball + sidecars
+curl -OL https://adcontextprotocol.org/protocol/3.0.3.tgz
+curl -OL https://adcontextprotocol.org/protocol/3.0.3.tgz.sha256
+curl -OL https://adcontextprotocol.org/protocol/3.0.3.tgz.sig
+curl -OL https://adcontextprotocol.org/protocol/3.0.3.tgz.crt
+
+# Verify checksum first (cheap, catches in-transit corruption)
+shasum -a 256 -c 3.0.3.tgz.sha256
+
+# Verify Sigstore identity (proves publisher)
+cosign verify-blob \
+  --signature 3.0.3.tgz.sig \
+  --certificate 3.0.3.tgz.crt \
+  --certificate-identity-regexp '^https://github\.com/adcontextprotocol/adcp/\.github/workflows/release\.yml@refs/(heads|tags)/.*$' \
+  --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+  3.0.3.tgz
+```
+
+Both must exit zero before extracting. `cosign verify-blob` returns non-zero if the signature was made by anything other than the AdCP release workflow, even if the SHA matches and TLS is valid.
+
+## The identity regex, explained
+
+```
+^https://github\.com/adcontextprotocol/adcp/\.github/workflows/release\.yml@refs/(heads|tags)/.*$
+```
+
+Three pieces matter:
+
+- `https://github.com/adcontextprotocol/adcp/.github/workflows/release.yml` — the workflow file path. This is what makes the certificate AdCP-specific. A workflow in a different repo, or a different workflow file in this repo, won't match.
+- `refs/(heads|tags)/.*` — the ref the workflow ran against. Branch refs are what's used today (cosign signs during the push-triggered run, so the OIDC subject is `release.yml@refs/heads/<branch>`). Tag refs are forward-compat for any future post-tag re-signing flow.
+- `--certificate-oidc-issuer 'https://token.actions.githubusercontent.com'` — the OIDC issuer must be GitHub Actions itself. Even with the right repo and workflow path, a non-GitHub-Actions issuer would fail this check.
+
+### Why a regex, not an exact ref
+
+The first version of this regex was `^...refs/heads/(main|2\.6\.x)$` — a literal allowlist of release branches. It silently rejected v3.0.1+ when those releases moved to `refs/heads/3.0.x` (the maintenance branch added when the 3.0 line was cut). Any new maintenance branch broke verification across every consumer until each SDK was patched.
+
+Wildcarding the branch component doesn't weaken the trust model: the upstream `release.yml` workflow's own `on.push.branches` allowlist (currently `main`, `3.0.x`, `2.6.x`) is what determines which refs can produce a signature in the first place. Mirroring that list in every consumer's regex was a maintenance liability that added no defense.
+
+## Cert subjects on past releases
+
+For reference, here's what each release's certificate subject looked like:
+
+| Release | Triggering ref | Cert subject (subject only, full URL prefix omitted) |
+|---|---|---|
+| v3.0.0 | `main` (initial 3.0 cut) | `release.yml@refs/heads/main` |
+| v3.0.1 | `3.0.x` (after the line was cut) | `release.yml@refs/heads/3.0.x` |
+| v3.0.2 | `3.0.x` | `release.yml@refs/heads/3.0.x` |
+| v3.0.3 | `3.0.x` | `release.yml@refs/heads/3.0.x` |
+
+A future maintenance branch (e.g. `2.7.x`) would add `release.yml@refs/heads/2.7.x` without needing any consumer change.
+
+## When verification is not available
+
+Some releases legitimately ship without `.sig`/`.crt`:
+
+- **Pre-v3.0.0 (cosign signing wasn't wired in yet).** Treat as checksum-only. SDKs degrade to integrity-only verification rather than failing.
+- **Out-of-band republishes.** If a tarball is regenerated outside the `release.yml` workflow (e.g. a one-off rebuild), it has no Sigstore identity. The cosign sidecars will be absent. Treat as untrusted.
+
+Consumers should distinguish "sidecars absent" (degrade to checksum-only) from "sidecars present but verification failed" (hard fail). Don't conflate them — a present-but-invalid signature is a stronger negative signal than no signature at all.
+
+## SDK behavior
+
+All three first-party SDKs use this regex when fetching protocol bundles:
+
+| SDK | Verifies via |
+|---|---|
+| `@adcp/sdk` (TypeScript) | `scripts/sync-schemas.ts` shells out to `cosign verify-blob` when sidecars are present |
+| `adcp-client-python` | `scripts/sync_schemas.py` does the same |
+| `adcp-go` | `adcp/schemas/download.sh` does the same |
+
+If you maintain a fourth-party SDK, mirror the regex above. Stay away from literal-allowlist patterns — they will rot every time a new maintenance branch is cut.
+
+## Producer-side detail
+
+If you're contributing to the spec workflow itself: cosign signing happens during `npm run version` (chained from the `sign-protocol-tarball.sh` step) inside `release.yml`. The OIDC token is minted at signing time, so the cert subject reflects the trigger ref of that workflow run. Tag-based signing would require either:
+
+- A second workflow that runs on `release: published` and re-signs the tarball using the post-tag OIDC subject, or
+- Restructuring the release pipeline so signing happens after `changeset tag` and within a context where `refs/tags/*` is the active ref.
+
+Today's signed-from-branch shape is intentional — it lets every consumer verify a single canonical artifact without reasoning about tag-vs-branch identity. The regex's `refs/(heads|tags)/.*` is forward-compat in case that changes.
+
+## See also
+
+- [Schemas, compliance bundles, and SDKs](/dist/docs/3.0.6/building/schemas-and-sdks) — where these sidecars are described in the broader bundle-fetching flow
+- [Sigstore documentation](https://docs.sigstore.dev/) — keyless signing, transparency log, threat model
+- [`adcp#2273`](https://github.com/adcontextprotocol/adcp/issues/2273) — the change that introduced cosign signing

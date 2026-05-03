@@ -1,0 +1,239 @@
+---
+title: TMP for Buyer Agents
+sidebarTitle: Buyer Guide
+description: "How buyer agents integrate with TMP — responding to Context Match and Identity Match requests, structuring offers, and managing frequency caps."
+"og:title": "AdCP TMP for Buyer Agents"
+---
+
+# TMP for Buyer Agents
+
+As a buyer agent, you receive Context Match and Identity Match requests from TMP Routers and respond with offers and eligibility decisions. You never send requests — publishers initiate every interaction through their router.
+
+## What You Build
+
+A buyer agent exposes two HTTP/2 endpoints under a single base URL — `POST /context` for Context Match and `POST /identity` for Identity Match. The router dispatches by path:
+
+| Message type | Receives | Returns |
+|---|---|---|
+| `context_match_request` | Page/content signals, placement, geo | Offers with creative manifests |
+| `identity_match_request` | Opaque user token, all active package IDs | Eligible package IDs + TTL |
+
+Each endpoint handles one message type. Both must respond in under 50ms. The router enforces this budget and will skip slow providers.
+
+The [adcp-go](https://github.com/adcontextprotocol/adcp-go) SDK provides Go types, request parsing, and response builders for both endpoints.
+
+## Prerequisites
+
+Before TMP requests arrive, your packages must exist. A media buy contains one or more packages — TMP operates at the package level.
+
+1. **Create media buys** via `create_media_buy` with the publisher's sales agent
+2. **Sync creatives** via `sync_creatives` so the publisher has your creative assets
+3. **Register as a TMP provider** so the publisher's router knows your endpoints
+
+The router learns about your packages from the publisher's deal history. You don't push package lists to the router.
+
+## Responding to Context Match
+
+The router sends you page context. You evaluate your active packages against that context and return offers for packages that match.
+
+```json
+// Request you receive
+{
+  "type": "context_match_request",
+  "request_id": "ctx-8f3a2b",
+  "property_rid": "01916f3a-9c4e-7000-8000-000000000010",
+  "property_type": "website",
+  "placement_id": "article-sidebar",
+  "artifact_refs": [
+    { "type": "url", "value": "https://streamhaus.example/articles/hiking-gear-2026" }
+  ],
+  "context_signals": {
+    "topics": ["550", "710"],
+    "keywords": ["hiking", "gear", "outdoor"],
+    "sentiment": "positive"
+  },
+  "geo": { "country": "US", "region": "US-CO" }
+}
+```
+
+**What you do:**
+
+1. Look up your active packages for this `property_rid` and `placement_id`
+2. Evaluate each package's targeting against the context signals, geo, and artifact refs
+3. Return offers for packages that match, each with a creative manifest
+
+```json
+// Your response
+{
+  "type": "context_match_response",
+  "request_id": "ctx-8f3a2b",
+  "offers": [
+    {
+      "package_id": "acme-outdoor-q2",
+      "brand": { "domain": "acmeoutdoor.example.com" },
+      "summary": "Hiking gear seasonal promotion",
+      "creative_manifest": {
+        "format_id": { "agent_url": "https://streamhaus.example", "id": "sidebar_display" },
+        "assets": {
+          "headline": { "content": "Trail-ready gear for every summit" },
+          "image": { "url": "https://cdn.acme.example/hiking-hero.jpg", "width": 300, "height": 250 },
+          "cta": { "content": "Shop now" }
+        }
+      },
+      "price": { "amount": 12.50, "currency": "USD", "model": "cpm" }
+    }
+  ]
+}
+```
+
+**What you never receive** in Context Match: user IDs, device IDs, session tokens, IP addresses, or cookies. You cannot identify the user.
+
+## Responding to Identity Match
+
+The router sends you one or more opaque identity tokens and a list of ALL your active package IDs for this publisher. You resolve on whichever tokens you support, then check each package's eligibility rules against the resolved user.
+
+```json
+// Request you receive
+{
+  "type": "identity_match_request",
+  "request_id": "id-9c4e",
+  "identities": [
+    { "user_token": "opaque-token-abc123", "uid_type": "publisher_first_party" },
+    { "user_token": "ID5*7xYp...", "uid_type": "id5" }
+  ],
+  "package_ids": ["acme-outdoor-q2", "acme-winter-clearance", "acme-loyalty-retarget"],
+  "consent": { "gdpr": true, "tcf_consent": "CPxyz..." }
+}
+```
+
+**What you do:**
+
+1. Resolve the tokens against your identity graph on whichever `uid_type`s you support. Entry order in the request is not semantically significant — apply your own preference order per the buyer's own preference order. All entries identify the same user, so the first successful resolution is sufficient. When multiple identity types are present, buyers SHOULD prefer opaque provider IDs (UID2, EUID, ID5, RampID) over strongly re-identifying tokens like `hashed_email`; this neutralizes scenarios where a misconfigured or compromised router forwards only the highest-risk token.
+2. Check frequency caps: has this user exceeded the package's impression limit?
+3. Check audience rules: is this user in the target audience?
+4. Check suppression lists: should this user be excluded?
+5. Return eligibility for each package
+
+```json
+// Your response
+{
+  "type": "identity_match_response",
+  "request_id": "id-9c4e",
+  "eligible_package_ids": ["acme-outdoor-q2", "acme-loyalty-retarget"],
+  "ttl_sec": 60
+}
+```
+
+Return only the package IDs that pass your eligibility checks. Packages not in the list are treated as ineligible. The `ttl_sec` tells the router how long to cache this response — during that window, the router returns cached eligibility without re-querying you. The publisher uses cached eligibility to allocate across whatever placements exist. Set the TTL based on how quickly your eligibility state changes (frequency caps, audience updates, etc.).
+
+**What you never receive** in Identity Match: page URLs, content topics, keywords, article text, or any content signal. You cannot determine what the user is looking at.
+
+**Why you receive ALL packages**, not just the ones that matched in Context Match: this prevents you from inferring what content the user is viewing. If you only received packages that matched the hiking article, you'd know the user was reading about hiking. Receiving all packages preserves structural separation.
+
+## The Join Happens Publisher-Side
+
+You never see the combined result. The publisher's router:
+
+1. Intersects your Context Match offers with your Identity Match `eligible_package_ids`
+2. Only activates packages that appear in both responses
+3. Sets ad server targeting key-values for matched packages
+4. The ad server makes the final rendering decision
+
+You have no role in this step. The publisher controls activation.
+
+## Frequency Cap Management
+
+Cross-publisher frequency capping is the primary use case for Identity Match. Your agent maintains frequency state per user token:
+
+- **Count impressions** by user token + package ID
+- **Track recency** — when was the last impression for this token?
+- **Apply caps** from the media buy: `max_impressions` per `window`, minimum `recency` between exposures
+- **Exclude the package** from `eligible_package_ids` when a cap is hit
+- **Set `ttl_sec`** to reflect how long this eligibility is valid — a shorter TTL means the router re-checks sooner, which is useful when a cap is close to being reached
+
+Because Identity Match runs across all publishers using TMP, a user who saw your ad on Publisher A will correctly show as over-frequency on Publisher B — even though you can't see which publisher sent the request.
+
+### How Buyers Learn About Exposures
+
+The `tmpx` field on the Identity Match response carries a TMPX token — an HPKE-encrypted blob containing the user's resolved identity tokens. The publisher substitutes `{TMPX}` into creative tracking URLs. When the ad serves, your impression pixel receives the encrypted token. Your cluster master decrypts it, logs the exposure against the user, and replicates updated frequency state to read replicas. This gives you real-time per-user exposure signals without the publisher seeing user identity.
+
+See [TMPX Exposure Tokens](/dist/docs/3.0.6/trusted-match/specification#tmpx-exposure-tokens) for the encryption format and binary token structure.
+
+## Provider Registration
+
+Provider registration is an out-of-band process. After establishing a media buy via `create_media_buy`, coordinate with the publisher to provide your TMP base URL. This typically involves a commercial agreement and may require legal review, since the publisher will be sending content signals and identity tokens to your endpoints. The publisher then configures your provider entry in their router (see [router deployment](/dist/docs/3.0.6/trusted-match/router-architecture#deployment)).
+
+```json
+{
+  "provider_id": "acme-outdoor-us",
+  "endpoint": "https://us.tmp.acmeoutdoor.example/v1",
+  "context_match": true,
+  "identity_match": true,
+  "countries": ["US"],
+  "uid_types": ["uid2", "rampid", "id5"]
+}
+```
+
+When you support `identity_match`, you MUST declare `countries` (which country codes you serve) and `uid_types` (which identity types you resolve). The router uses these to filter Identity Match fan-out — without them, the router cannot route requests to your provider.
+
+You can support either or both endpoints. Context Match only means contextual targeting without frequency capping. Identity Match only means the publisher evaluates context locally from your media buy's targeting rules and calls you only for frequency checks. Both means full TMP integration.
+
+### Health endpoint
+
+You SHOULD expose `GET /health` at your base URL. Return HTTP `200` with `{"status": "ok"}` when ready. The publisher's router uses this for pre-flight checks and monitoring. It is not called during request fan-out — only on a background interval.
+
+## Error Handling
+
+When your agent cannot evaluate a request, return an error response:
+
+```json
+{
+  "type": "error",
+  "request_id": "ctx-8f3a2b",
+  "code": "provider_unavailable",
+  "message": "Targeting data temporarily unavailable"
+}
+```
+
+Common scenarios:
+- **No matching packages**: Return an empty `offers` array (not an error). This is the normal case when your packages don't match the content.
+- **Internal failure**: Return an error response. The router skips your provider and proceeds with other providers.
+- **Timeout**: If you can't respond within the latency budget, the router skips you. No error response needed — the router handles this.
+
+## The TTL Caching Contract
+
+The `ttl_sec` field on Identity Match responses is a caching contract between the buyer and the router:
+
+- The router caches the response for `ttl_sec` seconds, keyed by `{identities_hash, provider_id, package_ids_hash, consent_hash}` (see spec for canonical bytes). `identities_hash` is computed over the per-provider filtered subset you received — your cache partition is scoped to the identity types you resolve.
+- During that window, the router returns cached eligibility without re-querying the buyer
+- The publisher uses cached eligibility to allocate across whatever placements exist — a single pre-roll, a CTV ad pod, or a web page with multiple ad units
+- The buyer doesn't need to know how many placements exist or how the publisher allocates
+
+**Choosing a TTL**: Set the TTL based on how quickly your eligibility state changes. If frequency caps reset hourly, a 300-second TTL is reasonable. If a user is close to a cap limit, return a shorter TTL (e.g., 30 seconds) so the router re-checks sooner.
+
+## Performance Requirements
+
+| Metric | Target |
+|---|---|
+| Agent-side processing | < 30ms p95 |
+| End-to-end (publisher → router → agent → router → publisher) | < 50ms p95 |
+| Availability | 99.9% |
+| Error rate | < 0.1% |
+
+The 30ms agent-side budget accounts for network overhead between the router and your endpoint. The router tracks your latency percentiles and adaptively adjusts your timeout allocation. Consistently slow responses result in the router reducing your allocation or skipping your provider.
+
+## Measurement
+
+The publisher reports delivery via `get_media_buy_delivery`. Your agent queries delivery data to reconcile impressions, track pacing, and update frequency state.
+
+Buyers receive real-time per-user exposure signals via the `{TMPX}` macro. The Identity Match response includes an encrypted TMPX token that flows through creative tracking URLs to your impression pixel. Your cluster master decrypts the token and updates per-user frequency state in real time. `get_media_buy_delivery` provides aggregate delivery metrics for reconciliation and pacing — it is not the primary frequency input.
+
+## What's Different from OpenRTB
+
+| | OpenRTB | TMP |
+|---|---|---|
+| **You receive** | Full bid request (user + content + device) | Either content OR identity, never both |
+| **You return** | Bid price | Offer (creative manifest) or eligible package IDs + TTL |
+| **Auction** | Exchange runs auction | No auction — publisher joins locally |
+| **Frequency** | Per-DSP only | Cross-publisher via Identity Match |
+| **Integration** | Per-exchange SSP adapter | Two endpoints (context + identity), any surface |
