@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/product-format-declaration.json",
   "title": "Product Format Declaration",
-  "description": "Inline format declaration on a product. The `format_kind` discriminator names which canonical format the product narrows; `params` carries the canonical's parameter schema (slots, dimensions, durations, codecs, character limits, platform_extensions, tracking_extensions, etc.). Optional `capability_id` (stable identifier for routing when a product's `format_options` contains multiple declarations sharing the same `format_kind`) and `applies_to_channels` (subset of the product's declared channels this declaration applies to — lets a multi-channel product carry distinct format_options per channel). Discriminated-union shape generates clean tagged unions in TypeScript and Pydantic codegen. Replaces v1's named-format pattern (where products referenced a separately-defined format file via compound `format_id`). v1 named formats remain supported through the deprecation cycle; v2 product-bound declarations are opt-in.\n\n**Custom format_kind** (`format_kind: \"custom\"`): for adopter-defined shapes that don't fit the 11 canonicals (multi-placement takeover, roadblock, branded content, cross-screen sponsorship, sponsorship lockup, newsletter sponsorship, AR lens, playable, live event sponsorship). When `format_kind` is `custom`, the declaration MUST carry `format_shape` (recognized global pattern from the [format-shape vocabulary registry](/schemas/core/format-shape-vocabulary.json)) AND `format_schema` (URI+digest reference to a fetchable schema describing the actual `params` and `slots`). Buyer agents fetch the schema, validate manifests structurally, and reason about manifests without per-seller integration code. See [adcp#3666](https://github.com/adcontextprotocol/adcp/issues/3666) for the canonical promotion queue.",
+  "description": "Inline format declaration on a product. The `format_kind` discriminator names which canonical format the product narrows; `params` carries the canonical's parameter schema (slots, dimensions, durations, codecs, character limits, platform_extensions, tracking_extensions, etc.). Optional `capability_id` (stable identifier for routing when a product's `format_options` contains multiple declarations sharing the same `format_kind`), `display_name` (seller-controlled human-readable label for dashboard and catalog UIs), and `applies_to_channels` (subset of the product's declared channels this declaration applies to — lets a multi-channel product carry distinct format_options per channel). Discriminated-union shape generates clean tagged unions in TypeScript and Pydantic codegen. Replaces v1's named-format pattern (where products referenced a separately-defined format file via compound `format_id`). v1 named formats remain supported through the deprecation cycle; v2 product-bound declarations are opt-in.\n\n**Custom format_kind** (`format_kind: \"custom\"`): for adopter-defined shapes that don't fit the 11 canonicals (multi-placement takeover, roadblock, branded content, cross-screen sponsorship, sponsorship lockup, newsletter sponsorship, AR lens, playable, live event sponsorship). When `format_kind` is `custom`, the declaration MUST carry `format_shape` (recognized global pattern from the [format-shape vocabulary registry](/schemas/core/format-shape-vocabulary.json)) AND `format_schema` (URI+digest reference to a fetchable schema describing the actual `params` and `slots`). Buyer agents fetch the schema, validate manifests structurally, and reason about manifests without per-seller integration code. See [adcp#3666](https://github.com/adcontextprotocol/adcp/issues/3666) for the canonical promotion queue.",
   "type": "object",
   "required": ["format_kind", "params"],
   "discriminator": { "propertyName": "format_kind" },
@@ -10,6 +10,10 @@
     "capability_id": {
       "type": "string",
       "description": "Optional stable identifier for this format declaration. REQUIRED when the parent product's `format_options` contains multiple declarations sharing the same `format_kind` (so buyers can disambiguate which option a manifest targets via `manifest.capability_id`). Recommended for any declaration that may be referenced by capability_id over time. Format-internal (not a URI). Examples: 'flashtalking_image_300x250', 'pmax_responsive_search'."
+    },
+    "display_name": {
+      "type": "string",
+      "description": "Optional seller-controlled human-readable label for this format declaration. Used by buyer dashboards, catalog UIs, and reporting surfaces to show a seller's own naming ('Homepage Takeover', 'Branded Canvas', 'Reels Premium Video') rather than the raw `format_kind` or `capability_id`. Has no machine semantics — buyer agents route on `format_kind` and `capability_id`; `display_name` is purely for human presentation. Freeform; no enumeration. Sellers SHOULD keep it stable once published to avoid dashboard churn."
     },
     "applies_to_channels": {
       "type": "array",
@@ -223,6 +227,7 @@
           "digest": "sha256:e1d4f6a9c2b5e8d1f4a7c0b3e6d9f2a5c8b1e4d7f0a3c6b9e2d5f8a1c4b7e0a3"
         },
         "capability_id": "nytimes_homepage_takeover_premium",
+        "display_name": "Homepage Takeover — Premium Sponsorship",
         "applies_to_channels": ["display", "olv"],
         "params": {
           "components": [
