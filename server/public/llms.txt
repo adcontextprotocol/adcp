@@ -39,7 +39,7 @@ AdCP supports two transport mechanisms:
 - Governance domain: https://adcontextprotocol.org/docs/governance/overview
 - Sponsored intelligence: https://adcontextprotocol.org/docs/sponsored-intelligence/overview
 - Brand protocol: https://adcontextprotocol.org/docs/brand-protocol
-- Schemas and SDKs: https://adcontextprotocol.org/docs/building/schemas-and-sdks
+- Schemas and SDKs: https://adcontextprotocol.org/docs/building/by-layer/L4/choose-your-sdk
 - Release notes: https://adcontextprotocol.org/docs/reference/release-notes
 
 ## Adoption path

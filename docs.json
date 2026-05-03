@@ -124,7 +124,9 @@
                         "group": "L4 — Business logic",
                         "pages": [
                           "docs/building/by-layer/L4/index",
+                          "docs/building/by-layer/L4/choose-your-sdk",
                           "docs/building/by-layer/L4/build-an-agent",
+                          "docs/building/by-layer/L4/build-a-caller",
                           "docs/building/by-layer/L4/migrate-from-hand-rolled"
                         ]
                       },
@@ -165,6 +167,7 @@
                         "expanded": false,
                         "pages": [
                           "docs/building/by-layer/L0/index",
+                          "docs/building/by-layer/L0/schemas",
                           "docs/building/by-layer/L0/mcp-guide",
                           "docs/building/by-layer/L0/a2a-guide",
                           "docs/building/by-layer/L0/a2a-response-format",
@@ -181,8 +184,7 @@
                     "pages": [
                       "docs/building/cross-cutting/sdk-stack",
                       "docs/building/cross-cutting/version-adaptation",
-                      "docs/building/cross-cutting/known-ambiguities",
-                      "docs/building/schemas-and-sdks"
+                      "docs/building/cross-cutting/known-ambiguities"
                     ]
                   },
                   {
@@ -692,7 +694,9 @@
                     "group": "L4 — Business logic",
                     "pages": [
                       "docs/building/by-layer/L4/index",
+                      "docs/building/by-layer/L4/choose-your-sdk",
                       "docs/building/by-layer/L4/build-an-agent",
+                      "docs/building/by-layer/L4/build-a-caller",
                       "docs/building/by-layer/L4/migrate-from-hand-rolled"
                     ]
                   },
@@ -733,6 +737,7 @@
                     "expanded": false,
                     "pages": [
                       "docs/building/by-layer/L0/index",
+                      "docs/building/by-layer/L0/schemas",
                       "docs/building/by-layer/L0/mcp-guide",
                       "docs/building/by-layer/L0/a2a-guide",
                       "docs/building/by-layer/L0/a2a-response-format",
@@ -749,8 +754,7 @@
                 "pages": [
                   "docs/building/cross-cutting/sdk-stack",
                   "docs/building/cross-cutting/version-adaptation",
-                  "docs/building/cross-cutting/known-ambiguities",
-                  "docs/building/schemas-and-sdks"
+                  "docs/building/cross-cutting/known-ambiguities"
                 ]
               },
               {
@@ -1417,6 +1421,10 @@
     }
   },
   "redirects": [
+    {
+      "source": "/docs/building/schemas-and-sdks",
+      "destination": "/docs/building/by-layer/L0/schemas"
+    },
     {
       "source": "/docs/building/where-to-start",
       "destination": "/docs/building"

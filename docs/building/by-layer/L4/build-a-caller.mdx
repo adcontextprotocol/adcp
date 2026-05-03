@@ -1,0 +1,207 @@
+---
+title: Build a caller
+sidebarTitle: Build a caller
+description: "Client-side guide for AdCP buyers and demand-side applications. Install the SDK, discover an agent's capabilities, make calls, handle async responses and errors, and ingest reporting. Weeks of handler glue, not months."
+"og:title": "AdCP — Build a caller"
+---
+
+If you're building the **buy side** — a DSP, planning tool, agentic client, or any application that calls AdCP agents to plan, buy, and report — this is the L4 starting page for you. Caller-side L0–L3 is weeks of handler glue, not the [3–4 person-month build](/docs/building/cross-cutting/sdk-stack#why-sdks-matter-more-in-adcp-than-in-eg-http) the agent side requires. The full-stack SDK in your language carries L0–L3; you write the calling logic, response handling, and whatever your application does with the data.
+
+<Note>
+**Spec-level reference vs build-shaped guide.** This page walks you through the build. The wire-level invariants — every rule that applies to every mutating call — live at [Calling an AdCP agent](/docs/protocol/calling-an-agent). Read it once before going to production; refer back whenever you're debugging a wire-shape error.
+</Note>
+
+## Install the SDK
+
+The same SDKs that ship server primitives also ship the calling client. Install one and you have both.
+
+<Tabs>
+<Tab title="JavaScript/TypeScript">
+```bash
+npm install @adcp/client
+```
+
+```typescript
+import { ADCPClient } from '@adcp/client';
+
+const client = new ADCPClient({
+  agentUrl: 'https://sales.example.com',
+});
+```
+
+- [NPM Package](https://www.npmjs.com/package/@adcp/client)
+- [GitHub Repository](https://github.com/adcontextprotocol/adcp-client)
+</Tab>
+<Tab title="Python">
+```bash
+pip install adcp
+```
+
+```python
+from adcp import ADCPClient
+
+client = ADCPClient(agent_url="https://sales.example.com")
+```
+
+- [PyPI Package](https://pypi.org/project/adcp/)
+- [GitHub Repository](https://github.com/adcontextprotocol/adcp-client-python)
+</Tab>
+<Tab title="Go">
+```bash
+go get github.com/adcontextprotocol/adcp-go/adcp
+```
+
+The Go caller surface is in active development. See the [adcp-go README](https://github.com/adcontextprotocol/adcp-go) for current coverage.
+</Tab>
+</Tabs>
+
+## First call: discover the agent
+
+Before calling tools by hand, ask the agent what it supports.
+
+```typescript
+const capabilities = await client.getAdcpCapabilities();
+// → { supported_protocols: [...], adcp_versions: [...], features: {...} }
+```
+
+`get_adcp_capabilities` returns the agent's protocol coverage, AdCP version range, and feature flags. Use it to gate calls — if `media_buy` isn't in `supported_protocols`, don't call `create_media_buy` against this agent. See the [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) reference for the full response shape.
+
+For the rest of the discovery chain (agent card, `tools/list`, `get_schema`), see the [Discovery chain section of Calling an agent](/docs/protocol/calling-an-agent#discovery-chain).
+
+## Make a call
+
+Typed methods on the client correspond to AdCP tools. The SDK validates your request against the bundled schemas before sending and parses the response into a typed value.
+
+```typescript
+const products = await client.getProducts({
+  brief: 'Video campaign for pet owners, 18–34, US, $50K monthly',
+});
+
+const buy = await client.createMediaBuy({
+  idempotency_key: crypto.randomUUID(),
+  account: { brand: { domain: 'acme.com' }, operator: 'sales.example' },
+  packages: [/* … */],
+});
+```
+
+Two things worth knowing on the first call:
+
+- **Generate a fresh `idempotency_key` per logical operation.** Same key on retry → server replays the same response. Fresh key after a failure is the most common way naïve callers create duplicate buys. See the [Idempotency rules](/docs/protocol/calling-an-agent#idempotency-replay-vs-new-operation).
+- **`account` is a discriminated `oneOf`.** Pick one variant (`{account_id}` or `{brand, operator}`) and send only its required fields. Merging them fails both. See [`account` is `oneOf`](/docs/protocol/calling-an-agent#account-is-oneof--pick-exactly-one-variant).
+
+## Handle the three response shapes
+
+Every mutating tool returns one of three shapes. Handle them explicitly — the SDK helps but doesn't decide for you.
+
+```typescript
+const response = await client.createMediaBuy({/* … */});
+
+if ('errors' in response) {
+  // Error: don't retry without fixing — read response.adcp_error.issues[]
+  // for correctable failures (validation, oneOf, etc.)
+} else if (response.status === 'submitted') {
+  // Async: the work is queued, NOT done.
+  // Poll via tasks/get with response.task_id.
+} else {
+  // Sync success: response carries the completion payload directly.
+  // (e.g., response.media_buy_id, response.packages)
+}
+```
+
+For async, poll with `include_result: true` so the seller returns the completion payload once `status` transitions to `completed`:
+
+```typescript
+const result = await client.tasksGet({
+  task_id: submittedResponse.task_id,
+  include_result: true,
+});
+```
+
+The [Async responses section of Calling an agent](/docs/protocol/calling-an-agent#async-responses-status-submitted-means-queued) has the full polling contract. If you also configure webhooks, the same `result` payload arrives in the push notification — see [Receive webhooks](#receive-webhooks) below.
+
+## Recover from errors
+
+When you see `adcp_error` in a response, read `issues[]` and act based on `recovery`:
+
+```typescript
+const { code, recovery, issues } = response.adcp_error;
+
+switch (recovery) {
+  case 'correctable':
+    // Buyer-side fix. Patch the JSON pointers from issues[], resend with
+    // the SAME idempotency_key (fresh key = new operation).
+    break;
+  case 'transient':
+    // Retry with the SAME idempotency_key. Same key on retry replays the
+    // cached response if the work landed.
+    break;
+  case 'terminal':
+    // Human action required. Don't retry.
+    break;
+}
+```
+
+`issues[]` is the actionable part: each entry has a JSON Pointer (`pointer`), an Ajv keyword (`required`, `oneOf`, `enum`, etc.), and — for `oneOf` failures — a `variants[]` array listing each variant's required fields. See the [Error recovery section](/docs/protocol/calling-an-agent#error-recovery--read-issues) for the full envelope and recovery semantics.
+
+## Receive webhooks
+
+For async tasks, you can either poll or register a webhook. The webhook delivers the same `result` payload as a `tasks/get` with `include_result: true`. The SDK's `webhook-receiver` helper handles RFC 9421 signature verification, replay-window enforcement, and idempotent dedup of redelivered notifications:
+
+```typescript
+import { createWebhookReceiver } from '@adcp/client/webhooks';
+
+const receiver = createWebhookReceiver({
+  // Resolve the agent's public key for signature verification (typically
+  // via the agent's brand.json — the SDK handles the discovery dance).
+  resolveKey: async (keyid) => /* … */,
+});
+
+app.post('/adcp-webhooks', async (req, res) => {
+  const event = await receiver.handle(req); // throws on bad signature
+  // event.task_id, event.status, event.result
+});
+```
+
+If you're hosting your own verifier instead of using the SDK helper, the [L1 webhook verifier tuning page](/docs/building/by-layer/L1/webhook-verifier-tuning) covers clock-skew handling, key-rotation transitions, and signature failure diagnostics.
+
+## Ingest reporting
+
+Reporting is read-only and follows the same call/response shape as everything else. The two most common loops:
+
+```typescript
+// Periodic poll — pull delivery for buys you own
+const delivery = await client.getMediaBuyDelivery({
+  media_buy_ids: ['mb_123', 'mb_456'],
+});
+
+// Stream-style — react to webhook deliveries that include performance updates
+// (when the seller supports performance webhooks)
+```
+
+Caller L4 — what your application does with this — is up to you. Optimization, pacing alerts, attribution joins, dashboard rendering: that's where your team's value lives. The SDK takes you to the typed `delivery` object; everything past that is your application code.
+
+## What you didn't have to write
+
+Caller-side L0–L3 is weeks of handler glue because the SDK already shipped:
+
+- **L0** — typed request builders, response parsers, schema validation against the bundled schemas.
+- **L1** — outbound RFC 9421 signing (per-call), inbound webhook verification, key rotation.
+- **L2** — agent registry lookup, agent-card publication, credential composition.
+- **L3** — async-task polling, webhook receiver, idempotency-key generation helpers, error-recovery classification.
+
+The [SDK stack reference](/docs/building/cross-cutting/sdk-stack) decomposes each layer; the [server-vs-client comparison table](/docs/building/cross-cutting/sdk-stack#server-vs-client-at-each-layer) is the side-by-side view of the cost asymmetry.
+
+## What's next
+
+- **[Calling an agent](/docs/protocol/calling-an-agent)** — the canonical wire-contract reference. Read once before going to production.
+- **[Schemas](/docs/building/by-layer/L0/schemas)** — schema bundle, type generation, version pinning.
+- **[Webhooks](/docs/building/by-layer/L3/webhooks)** — push notifications, signing, retry, reliability patterns.
+- **[Error handling](/docs/building/by-layer/L3/error-handling)** — error categories, codes, recovery classification.
+- **[Validate your agent](/docs/building/verification/validate-your-agent)** — storyboards also exist for caller-side wire conformance; run them once your calls are working.
+
+Per-protocol task references:
+
+- [Media buy task reference](/docs/media-buy/task-reference/index)
+- [Creative task reference](/docs/creative/task-reference)
+- [Signals task reference](/docs/signals/tasks/get_signals)
+- [Brand protocol tasks](/docs/brand-protocol)

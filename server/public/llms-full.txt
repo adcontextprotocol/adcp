@@ -168,7 +168,7 @@ For deeper reading:
 - Understand the architecture: https://adcontextprotocol.org/docs/building/concepts
 - Choose your transport (MCP or A2A): https://adcontextprotocol.org/docs/building/by-layer/L0
 - Implementation patterns: https://adcontextprotocol.org/docs/building/by-layer/L3
-- Schemas and SDKs: https://adcontextprotocol.org/docs/building/schemas-and-sdks
+- Schemas and SDKs: https://adcontextprotocol.org/docs/building/by-layer/L4/choose-your-sdk
 
 ## SDKs
 

@@ -9,7 +9,7 @@ description: "Wire-level invariants every AdCP buyer must follow: idempotency_ke
 
 This page is the canonical buyer-side wire contract: the rules that don't live cleanly in any single task schema, but apply to every mutating call you'll make. If you're building a buyer (DSP, planning tool, agentic client) and calling out to AdCP sales, creative, signals, governance, SI, or brand agents, read this once.
 
-The agent-facing version of this content lives at [`skills/call-adcp-agent/SKILL.md`](https://github.com/adcontextprotocol/adcp/blob/main/skills/call-adcp-agent/SKILL.md) — bundled into the [protocol tarball](/docs/building/schemas-and-sdks) so SDKs can ship it to coding agents.
+The agent-facing version of this content lives at [`skills/call-adcp-agent/SKILL.md`](https://github.com/adcontextprotocol/adcp/blob/main/skills/call-adcp-agent/SKILL.md) — bundled into the [protocol tarball](/docs/building/by-layer/L0/schemas#one-shot-protocol-bundle) so SDKs can ship it to coding agents.
 
 ## Discovery chain
 
@@ -154,4 +154,5 @@ A common trap: **A2A `Task.state: 'completed'` is not the same as AdCP completio
 - [Protocol architecture](/docs/protocol/architecture) — how the protocol domains fit together.
 - [Required tasks](/docs/protocol/required-tasks) — which tasks an agent must implement to claim a specialism.
 - [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) — first call against any new agent.
-- [Schemas and SDKs](/docs/building/schemas-and-sdks) — how SDKs consume the protocol tarball (which now bundles `skills/`).
+- [Schemas](/docs/building/by-layer/L0/schemas) — how SDKs consume the protocol tarball (which now bundles `skills/`).
+- [Build a caller](/docs/building/by-layer/L4/build-a-caller) — build-shaped guide for the caller side: install, call, handle responses, ingest reporting.

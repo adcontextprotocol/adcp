@@ -34,8 +34,8 @@ For ~95% of adopters: **start at L4 with the full-stack SDK in your language.**
   <Card title="Build an agent" icon="server" href="/docs/building/by-layer/L4/build-an-agent">
     Server side. Point a coding agent at a skill file, get a storyboard-compliant AdCP agent in 2–8 minutes.
   </Card>
-  <Card title="Build a caller" icon="phone" href="/docs/protocol/calling-an-agent">
-    Client side. Install the SDK, write the calls, handle responses. Weeks-of-handler-glue scope, not months. **Note:** this link points to the protocol reference until the build-shaped guide ships in a later phase of the [docs IA reorg](https://github.com/adcontextprotocol/adcp/blob/main/specs/building-ia-by-layer.md).
+  <Card title="Build a caller" icon="phone" href="/docs/building/by-layer/L4/build-a-caller">
+    Client side. Install the SDK, write the calls, handle async responses and errors, ingest reporting. Weeks-of-handler-glue scope, not months.
   </Card>
   <Card title="Migrate from hand-rolled" icon="code-merge" href="/docs/building/by-layer/L4/migrate-from-hand-rolled">
     Already running an AdCP agent built before the SDKs were mature? Swap one layer at a time, with conflict modes, per-step rollback, and intermediate states that pass conformance.
@@ -63,7 +63,8 @@ If yes: re-evaluate against [today's SDK coverage](/docs/building/cross-cutting/
 
 Things every AdCP implementation needs, regardless of starting layer:
 
-- **[Schemas and SDKs](/docs/building/schemas-and-sdks)** — schema bundles, language-native types, current SDK coverage matrix.
+- **[Schemas](/docs/building/by-layer/L0/schemas)** — schema bundles, type generation, version pinning, supply-chain verification.
+- **[Choose your SDK](/docs/building/by-layer/L4/choose-your-sdk)** — language coverage matrix, install commands, package exports, CLI tools.
 - **[Version adaptation](/docs/building/cross-cutting/version-adaptation)** — per-call spec-version pinning, co-existence imports across SDK majors, on-wire `VERSION_UNSUPPORTED` negotiation. Lets you talk to peers on any supported version without forking handler code.
 - **[Conformance](/docs/building/verification/conformance)** — the L3 protocol bar every agent must reach. Storyboards probe state transitions, error shapes, and the async-task contract.
 - **[AAO Verified](/docs/building/verification/aao-verified)** — the public trust mark. Storyboard pass earns `(Spec)`; observed live traffic earns `(Live)`.
