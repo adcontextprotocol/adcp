@@ -317,7 +317,7 @@ phases:
             correlation_id: "sales_guaranteed--create_media_buy"
         context_outputs:
           - name: media_buy_id
-            path: "media_buy_id"
+            path: "task_completion.media_buy_id"
         validations:
           - check: response_schema
             description: "Response matches create-media-buy-response.json schema"
