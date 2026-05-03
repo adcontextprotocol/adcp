@@ -13,7 +13,7 @@ AdCP's trust posture rests on a single structural principle: **no single agent c
 
 What AdCP does not do is enforce deployer policy. The seams are hooks — the deployer wires them to their own governance platform, policy registry, and human-review workflow. The authority to approve a campaign stays with a human-defined rule; the protocol carries it, signs it, and makes it auditable.
 
-This page maps the six trust surfaces for CISOs, compliance reviewers, and procurement teams evaluating an AdCP deployment. For each surface: what AdCP provides, what it explicitly does not provide, and where to find the canonical detail.
+This page maps the seven trust surfaces for CISOs, compliance reviewers, and procurement teams evaluating an AdCP deployment. For each surface: what AdCP provides, what it explicitly does not provide, and where to find the canonical detail. Live work across all seven surfaces is tracked under the [Trust, Identity, and Governance master issue](https://github.com/adcontextprotocol/adcp/issues/TBD-master).
 
 ---
 
@@ -44,6 +44,28 @@ This page maps the six trust surfaces for CISOs, compliance reviewers, and procu
 **What AdCP does not provide.** Structural privacy applies only to TMP. Other domains rely on contractual confidentiality or per-session consent. AdCP does not carry a normative consent signal (IAB TCF, GPP, or equivalents). Cross-border transfer lawfulness is a contract and configuration property of the parties. See [Known Limitations — Security and Privacy](/docs/reference/known-limitations#security-and-privacy).
 
 → [Privacy Considerations](/docs/reference/privacy-considerations) · [Trusted Match Protocol](/docs/trusted-match/index)
+
+---
+
+## Identity
+
+**What AdCP provides.** Discoverable identity for every party an agent transacts with.
+
+A house publishes [`brand.json`](/docs/brand-protocol/brand-json) at `/.well-known/brand.json` declaring its corporate domain, brand portfolio with Keller-typed relationships (`master` / `sub_brand` / `endorsed` / `independent`), digital properties, authorized operators (agencies and partners by domain), house-level trademark claims, and per-agent JWKS URIs for verifiable signing keys. A publisher publishes [`adagents.json`](/docs/governance/property/adagents) declaring which sales agents are authorized to sell which properties or signal catalogs, with publisher-attested `signing_keys` per agent.
+
+A bilateral verification chain ties the two together: brand.json's `properties[].relationship` MUST match adagents.json's `delegation_type` for the inventory path to be valid. The brand-protocol's mutual-assertion model (RFC [#3533](https://github.com/adcontextprotocol/adcp/issues/3533)) — child brands declare a `parent_house`, parent houses reciprocate via `brand_refs[]` — produces a five-state trust signal (`inline` / `mutual_assertion` / `one_sided_brand` / `one_sided_house` / `standalone`) that downstream consumers can act on directly.
+
+The [AAO Verified](/docs/building/aao-verified) mark, with `(Spec)` and `(Live)` qualifiers, continuously attests behavioral conformance through canonical test campaigns running against a seller's real ad-server integration.
+
+**What AdCP does not provide — three gaps to know.**
+
+First: **no aggregated public-registry identity claims.** brand.json carries house-level trademark claims and self-asserted brand relationships. It does not carry a generalized `identifiers[]` block aggregating claims against public registries that already verify the relevant facts — LEI / GLEIF for legal entity, USPTO / EUIPO / WIPO Madrid for trademark registrations, Verified Mark Certificates for CA-attested trademark→domain bindings, Wikidata Q-IDs for public identity, SEC EDGAR CIK for public-company identity. Identity claims defend against spoof and lookalike domains; they do not defend against compromise of the legitimate brand.json's hosting infrastructure — that threat is addressed by the Security surface. The aggregation RFC for this layer is tracked under the trust master issue.
+
+Second: **no buyer-side authorization primitive symmetric to `adagents.json`.** A brand cannot declare which buyer agents are authorized to transact on their behalf in a single discoverable place. The closest existing primitive is `brand.json`'s `authorized_operators[]`, which scopes by operator domain — not by agent endpoint, and with no signed binding from the brand to a specific buyer-agent JWKS. A compromised agent at an authorized operator's domain can transact unilaterally on every brand that lists that operator. RFC [#2307](https://github.com/adcontextprotocol/adcp/issues/2307) proposes a buyer-side agents.json for request signing; the broader authorization-layer gap is tracked alongside it.
+
+Third: **no operator/human KYC primitive in the protocol.** The protocol does not carry an attestation that a human or organizational operator has been identity-verified by a KYC provider (Persona, Stripe Identity, Onfido) or rooted in an authoritative IdP. KYC is punted to the membership and account layer; protocol-side, only the cryptographic facts (which key signed which message) are normative. See [Known Limitations — Authentication and Identity](/docs/reference/known-limitations#authentication-and-identity).
+
+→ [brand.json](/docs/brand-protocol/brand-json) · [adagents.json and agent identity](/docs/governance/property/adagents) · [AAO Verified](/docs/building/aao-verified)
 
 ---
 
@@ -93,5 +115,9 @@ These are the wire-level hooks deployers implement. They are seams, not guarante
 | Request signing | RFC 9421 `Signature` / `Signature-Input` headers | Normative in 3.1; allowed in 3.0 |
 | Governance attestation | JWS-signed `governance_context` on `create_media_buy` | Verifiable by seller independently |
 | Regulated-category block | Schema-level rejection of `authority_level: agent_full` on `fair_housing`, `fair_lending`, `fair_employment` | Three categories only; others require governance-agent implementation |
+| Brand identity declaration | `brand.json` `house`, `brands[]`, `authorized_operators[]`, house-level `trademarks[]` | Discoverable; deployer / ecosystem resolves against public registries |
+| Mutual-assertion trust state | `brand.json` `parent_house` ↔ `brand_refs[]` (RFC #3533) | Five-state signal; deployer policy decides what's required |
+| Agent identity | `brand.json` `agents[].jwks_uri`, `adagents.json` `signing_keys` | Verifiable signing keys; key-transparency layer is 4.0 |
+| Behavioral verification | AAO Verified `(Live)` continuous attestation via canonical test campaigns | Issued and revoked by AAO; deployer trusts the mark, not the AdCP runtime |
 
 **See [Known Limitations](/docs/reference/known-limitations)** for what AdCP explicitly does not do — that page is the adversarial read this one assumes you've taken.
