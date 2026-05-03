@@ -25,13 +25,17 @@ Without a test controller, compliance testing is observational: fire an action, 
 
 ## Sandbox gating
 
-Sellers MUST NOT include `comply_test_controller` in the `tools/list` response for production connections. The tool should only appear when the connection is established with sandbox credentials (a sandbox API key, a sandbox OAuth scope, or a sandbox URL). This ensures production context windows are not taxed by test-only tooling and prevents accidental state manipulation.
+Sellers MUST NOT expose `comply_test_controller` on production deployments — to anyone, on any surface. The tool MUST be absent from `tools/list` (MCP) and from the agent card's `skills[]` (A2A); the `compliance_testing` block MUST be absent from `get_adcp_capabilities`; dispatch MUST return the transport's standard unknown-tool error (e.g., JSON-RPC `-32601 Method not found` for MCP, the unknown-skill rejection for A2A) — indistinguishable from the same-transport response of a seller that does not implement the tool. A production deployment that exposes the tool on any of these surfaces is non-conformant regardless of whether dispatch is gated.
 
-The mechanism for provisioning sandbox credentials is seller-specific and out of scope for this spec. Sellers MUST document their sandbox access mechanism so storyboard runners can connect appropriately.
+The canonical pattern is two deployments: one production (no controller wired), one sandbox/staging (controller wired for all comers). Sellers expose `comply_test_controller` only on sandbox/staging deployments; any principal that can authenticate to such a deployment can call it.
 
-The storyboard runner SHOULD verify that `comply_test_controller` is absent from `tools/list` on a production connection as a basic safety check.
+Sellers MAY instead run a single deployment with mixed sandbox/live principals and project the tool per-principal, gating on the resolved account's mode. This is an implementation pattern, not the canonical model. Sellers picking this pattern MUST gate all three surfaces consistently: `tools/list` (or `skills[]`), the `compliance_testing` capability block, and dispatch. Partial projection — e.g., gating `tools/list` but leaving the `compliance_testing` block visible to live principals, or returning `FORBIDDEN` (rather than unknown-tool) to a live principal who probes by name — is non-conformant; it reopens the discovery side channel that deployment-scoping closes.
 
-If a `comply_test_controller` call references a non-sandbox account, the controller MUST return `FORBIDDEN`. Sandbox gating is enforced per-request on the account reference, not just at tool registration time — the tool may be listed in a sandbox connection, but the caller could still reference a production account in the params.
+`FORBIDDEN` is reserved for the in-sandbox case where the caller is authorized to call the controller but `params` reference a non-sandbox account. Sandbox gating is enforced per-request on the account reference, not just at tool registration time.
+
+The mechanism for provisioning sandbox credentials and for separating production from sandbox/staging deployments is seller-specific and out of scope for this spec. Sellers MUST document their sandbox access mechanism so storyboard runners can connect appropriately.
+
+The storyboard runner MUST treat the presence of `comply_test_controller` in `tools/list` (or `skills[]`) or the presence of the `compliance_testing` block in `get_adcp_capabilities` on a connection it believes is production as a hard conformance failure.
 
 ## Tool definition
 
@@ -713,7 +717,7 @@ The runner distinguishes three outcome categories in deterministic mode:
 
 ### For sellers
 
-1. Gate `comply_test_controller` behind sandbox mode — it MUST NOT appear in `tools/list` for production connections
+1. Gate `comply_test_controller` at the deployment level — it MUST NOT appear in `tools/list` (or A2A `skills[]`), MUST NOT be advertised via the `compliance_testing` capability block, and MUST dispatch to unknown-tool on production deployments. See [Sandbox gating](#sandbox-gating) for the full rule.
 2. Reuse your production state machine logic — the controller should call the same internal transition functions, not bypass them
 3. Enforce transition rules — if `rejected` is terminal in production, `force_media_buy_status(rejected → active)` must fail via the controller too
 4. Reflect changes immediately — after a forced transition, the next `list_*` or `get_*` call must return the updated state
