@@ -10,7 +10,7 @@ description: "Single decision page for AdCP implementers. Pick the right entry p
 **`adcp comply` is now `npx @adcp/client@latest storyboard run`.** Running without a storyboard ID discovers your agent's tools and runs all matching storyboards — same behavior, one less concept. See [Validate Your Agent](/docs/building/validate-your-agent) for the updated CLI reference.
 </Info>
 
-You're about to write AdCP code. The first decision is **where you want to spend your engineering time** — letting an AdCP SDK handle the protocol surface so you focus on what makes your agent or caller yours, or going lower because you have a specific reason to.
+You're about to write AdCP code. The first decision is **where you want to spend your engineering time** — letting an AdCP SDK handle the protocol surface so you focus on what makes your agent or caller yours, or going lower.
 
 This page picks an entry point. The [SDK stack reference](/docs/building/sdk-stack) is the reasoning.
 
@@ -18,13 +18,13 @@ This page picks an entry point. The [SDK stack reference](/docs/building/sdk-sta
 
 Every AdCP request crosses five layers between the wire and your business logic:
 
-- **L0** — wire: bytes, JSON, schema validation, type generation.
-- **L1** — signing: RFC 9421 message signatures, key rotation.
-- **L2** — auth & registry: principal resolution, multi-tenant routing.
-- **L3** — protocol semantics: lifecycle state machines, idempotency, error catalog, async tasks, conformance test surface, webhooks.
-- **L4** — your business logic: inventory, pricing, creative review on the agent side; planning, buying, reporting on the caller side.
+- **L0** — wire: bytes, JSON, schema validation, type generation. *In SDKs:* `@adcp/sdk` types + transport adapters; `adcp` Python types.
+- **L1** — signing: RFC 9421 message signatures, key rotation. *In SDKs:* `@adcp/sdk` signing provider; `adcp` Python signing.
+- **L2** — auth & registry: principal resolution, multi-tenant routing. *In SDKs:* account-store + brand-resolution helpers.
+- **L3** — protocol semantics: lifecycle state machines, idempotency, error catalog, async tasks, conformance test surface, webhooks. *In SDKs:* server-construction entry point that wires all of the above.
+- **L4** — your business logic: inventory, pricing, creative review on the agent side; planning, buying, reporting on the caller side. *Not in any SDK — adopter writes this.*
 
-A full-stack AdCP SDK ships L0–L3 and leaves L4 to you. Picking a starting layer = picking how much of L0–L3 you take on yourself. The same five layers exist on both sides of an AdCP conversation — agent (server) and caller (client) — but the work is asymmetric. An agent **enforces** the protocol; a caller **consumes** it. Caller-side L0–L3 is weeks of handler glue; agent-side L0–L3 is a [3–4 person-month build](/docs/building/sdk-stack#why-sdks-matter-more-in-adcp-than-in-eg-http).
+A full-stack AdCP SDK ships L0–L3 and leaves L4 to you. Where you start determines how much of L0–L3 you own. The same five layers exist on both sides of an AdCP conversation — agent (server) and caller (client) — but the work is asymmetric. An agent **enforces** the protocol; a caller **consumes** it. Caller-side L0–L3 is weeks of handler glue; agent-side L0–L3 is a [3–4 person-month build](/docs/building/sdk-stack#why-sdks-matter-more-in-adcp-than-in-eg-http).
 
 ## Recommended path
 
@@ -32,10 +32,10 @@ For ~95% of adopters: **start at L4 with the full-stack SDK in your language.**
 
 <CardGroup cols={2}>
   <Card title="Build an agent" icon="server" href="/docs/building/build-an-agent">
-    Server side. Point a coding agent at a skill file, get a storyboard-compliant AdCP agent in 2–8 minutes. The default path for sellers, publishers, and platforms.
+    Server side. Point a coding agent at a skill file, get a storyboard-compliant AdCP agent in 2–8 minutes.
   </Card>
   <Card title="Build a caller" icon="phone" href="/docs/protocol/calling-an-agent">
-    Client side. Install the SDK, write the calls, handle responses. Lighter than the agent build (weeks, not months) — same SDK, smaller surface.
+    Client side. Install the SDK, write the calls, handle responses. Weeks-of-handler-glue scope, not months. **Note:** this link points to the protocol reference until the build-shaped guide ships in a later phase of the [docs IA reorg](https://github.com/adcontextprotocol/adcp/blob/main/specs/building-ia-by-layer.md).
   </Card>
   <Card title="Migrate from hand-rolled" icon="code-merge" href="/docs/building/migrate-from-hand-rolled">
     Already running an AdCP agent built before the SDKs were mature? Swap one layer at a time, with conflict modes, per-step rollback, and intermediate states that pass conformance.
@@ -45,21 +45,17 @@ For ~95% of adopters: **start at L4 with the full-stack SDK in your language.**
   </Card>
 </CardGroup>
 
-## Three questions to confirm your entry point
+After your first build: run [Validate your agent](/docs/building/validate-your-agent) to confirm conformance against the storyboards, then enroll for the [AAO Verified](/docs/building/aao-verified) trust mark.
 
-**1. Are you building a caller, an agent, or both?**
+## Two checks before you start
 
-- **Caller only** → start at L4 with [Calling an agent](/docs/protocol/calling-an-agent). The caller surface is small; you don't own L1–L3 at all.
-- **Agent (server)** → start at L4 with [Build an Agent](/docs/building/build-an-agent). This is where the bulk of the protocol surface lives.
-- **Both** → start with the agent build; the caller side is additive.
+**1. What's your team's value-add?**
 
-**2. What's your team's value-add?**
-
-- **Inventory, pricing, creative review, decisioning** (agent L4) or **planning, buying, reporting** (caller L4) → start at L4. Your competitive surface is what you build *on top of* the protocol, not the protocol itself.
+- **Inventory, pricing, creative review, decisioning** (agent L4) or **planning, buying, reporting** (caller L4) → start at L4.
 - **You're an SDK author / language porter, building a proxy, or integrating into a stack that already owns L0–L2** → go lower. Read the [SDK stack reference](/docs/building/sdk-stack) for what each layer must satisfy.
-- **Anything else** → default to L4. Going lower is rarely the win it looks like — see [what you give up](/docs/building/sdk-stack#where-can-you-start) for the concrete scope.
+- **Anything else** → default to L4. See [what you write at each layer](/docs/building/sdk-stack#where-can-you-start) before going lower.
 
-**3. Do you already have a working agent built before the SDKs were mature?**
+**2. Do you already have a working agent built before the SDKs were mature?**
 
 If yes: re-evaluate against [today's SDK coverage](/docs/building/sdk-stack#current-sdk-coverage), not the SDK you remember. Most of L3 (lifecycle state machines, idempotency, the conformance test surface, RFC 9421 baseline, expanded error catalog) was added with AdCP 3.0. The [migration guide](/docs/building/migrate-from-hand-rolled) walks the swap-one-layer-at-a-time path.
 
@@ -81,4 +77,4 @@ Things every AdCP implementation needs, regardless of starting layer:
 
 ## Audience
 
-AdCP implementers in any language — building an agent, building a caller, authoring an SDK, or evaluating one. **Python and TypeScript are the first-class languages** (TypeScript GA today, Python finishing 4.x); **Go** is in active development; community-maintained ports are welcome — see the [Builders Working Group](/docs/community/working-group).
+AdCP implementers in any language — building an agent, building a caller, authoring an SDK, or evaluating one. **Python and TypeScript are the first-class languages** (TypeScript GA today, Python finishing 4.x); **Go** has L0 and partial L1 in active development; community-maintained ports for other languages are welcome — see the [Builders Working Group](/docs/community/working-group).
