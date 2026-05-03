@@ -118,6 +118,30 @@ test('pathResolves treats bracket and dotted notation as equivalent for array in
   assert.equal(pathResolves(schema, parsePath('errors.0.code')), true);
 });
 
+test('pure extension points (error.details, context.*) accept any further segments', () => {
+  // sync-accounts-response defines accounts[].errors[] which $refs core/error.json,
+  // whose `details` is `additionalProperties: true` with no defined properties —
+  // a pure extension point because per-error-code structured details live in
+  // sibling `error-details/<code>.json` schemas, not on `core/error.json` itself.
+  const schema = loadSchema('account/sync-accounts-response.json');
+  assert.equal(
+    pathResolves(schema, parsePath('accounts[0].errors[0].details.suggested_billing')),
+    true,
+    'error.details.* should resolve via the pure-extension-point rule',
+  );
+});
+
+test('mixed schemas (declared properties + additionalProperties: true) stay strict', () => {
+  // si-get-offering-response.json has properties (offering, available, etc.)
+  // AND additionalProperties: true at the root. The additionalProperties is
+  // forward-compat extension, NOT an open container — the offering_id typo
+  // from #3937 was caught precisely because the lint stays strict here.
+  const schema = loadSchema('sponsored-intelligence/si-get-offering-response.json');
+  assert.equal(pathResolves(schema, parsePath('offering.offering_id')), true);
+  assert.equal(pathResolves(schema, parsePath('offering_id')), false);
+  assert.equal(pathResolves(schema, parsePath('not_a_real_field')), false);
+});
+
 test('parsePath accepts both bracket and dotted forms', () => {
   assert.deepEqual(parsePath('rights[0].rights_id'), ['rights', '0', 'rights_id']);
   assert.deepEqual(parsePath('rights.0.rights_id'), ['rights', '0', 'rights_id']);
