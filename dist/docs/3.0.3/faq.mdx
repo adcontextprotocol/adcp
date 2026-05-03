@@ -1,0 +1,356 @@
+---
+title: Frequently asked questions
+sidebarTitle: FAQ
+description: "Answers to common questions about AdCP — licensing (Apache 2.0, free to use), how it relates to OpenRTB and IAB standards, who maintains it (AgenticAdvertising.org), and how to start implementing."
+"og:title": "AdCP — Frequently asked questions"
+---
+
+## About agentic advertising
+
+<AccordionGroup>
+
+<Accordion title="How do ads work in AI assistants?">
+When you ask an AI assistant for a product recommendation, the assistant can surface relevant brands — similar to how a retail platform shows sponsored products when you search. The brand pushes its product catalog, brand identity, and content standards into the platform ahead of time. When a user's question matches, the AI generates a contextually relevant recommendation from that data. This is called [Sponsored Intelligence](/dist/docs/3.0.3/sponsored-intelligence/overview), and the content is always clearly labeled as sponsored — the same way sponsored search and retail media placements are labeled.
+</Accordion>
+
+<Accordion title="Can I advertise on ChatGPT, Perplexity, or other AI platforms?">
+AI platforms are beginning to offer advertising, and the market is growing. AdCP provides a standard protocol so your buyer agent can connect to any AI platform that implements it — without building a custom integration for each one. Your buyer agent discovers available inventory from connected sellers in real time via [`get_products`](/dist/docs/3.0.3/media-buy/task-reference/get_products).
+</Accordion>
+
+<Accordion title="How is this different from SEO for AI?">
+SEO for AI (sometimes called GAIO or generative AI optimization) focuses on getting your brand mentioned in organic AI responses by optimizing your public content. [Sponsored Intelligence](/dist/docs/3.0.3/sponsored-intelligence/overview) is paid advertising — brands push structured product data, brand identity, and optimization goals into AI platforms through a standard protocol, and the platform generates clearly labeled sponsored content. The two approaches are complementary, not competing.
+</Accordion>
+
+</AccordionGroup>
+
+<Note>
+**Experimental.** Sponsored Intelligence is part of AdCP 3.0 as an experimental surface (feature id `sponsored_intelligence.core`) — session lifecycle, UI components, identity/consent object shape, and capability negotiation may change between 3.x releases with at least 6 weeks' notice. Pilot implementations are encouraged; regulated or compliance-sensitive workflows should wait for graduation to stable. See [experimental status](/dist/docs/3.0.3/reference/experimental-status) for the full contract.
+</Note>
+
+For a practical guide to buying ads on AI platforms, see the [monetizing AI guide](/dist/docs/3.0.3/sponsored-intelligence/monetizing-ai). For the technical protocol walkthrough, see the [Sponsored Intelligence overview](/dist/docs/3.0.3/sponsored-intelligence/overview).
+
+## Buying AI media
+
+<AccordionGroup>
+
+<Accordion title="Do I need a buyer agent, or can I work through a partner?">
+Both paths work. Agencies, ad networks, and commerce platforms can implement AdCP on your behalf — you provide product data and brand guidelines, they handle the protocol plumbing across AI platforms. If you run programmatic in-house, you (or your engineering team) can build a buyer agent directly against AdCP. The [monetizing AI guide](/dist/docs/3.0.3/sponsored-intelligence/monetizing-ai#getting-started-by-role) walks through options for brands, agencies, and small businesses.
+</Accordion>
+
+<Accordion title="Can I control how AI platforms talk about my brand?">
+Yes. Brands push [brand identity](/dist/docs/3.0.3/brand-protocol/brand-json) (voice, visual guidelines, positioning) and [content standards](/dist/docs/3.0.3/governance/content-standards) (approved claims, topics to avoid, suitability rules) into AI platforms through the protocol. Platforms enforce these at generation time — before content is shown — rather than filtering after the fact. See [governance](/dist/docs/3.0.3/governance/overview) for the full model.
+</Accordion>
+
+<Accordion title="How much does it cost to advertise on AI platforms?">
+Pricing varies by platform and format. Common models include CPC (cost per click) for sponsored responses and AI search results, and per-session pricing for conversational brand experiences via SI Chat Protocol. Your buyer agent discovers available pricing from connected sellers through [`get_products`](/dist/docs/3.0.3/media-buy/task-reference/get_products) — each product lists its pricing options.
+</Accordion>
+
+<Accordion title="Which AI platforms can I reach today?">
+AI assistants, search copilots, and conversational platforms are live today. The ecosystem is early-stage and growing. Your buyer agent discovers available inventory from connected sellers in real time via [`get_products`](/dist/docs/3.0.3/media-buy/task-reference/get_products) — you always see what's currently reachable.
+</Accordion>
+
+<Accordion title="Do I need to change my measurement stack?">
+AdCP does not specify attribution or viewability — it is not an MRC-accredited measurement standard. The protocol carries the delivery and usage data that your existing IAS, DV, Nielsen, Comscore, or attribution tools consume; you keep your existing measurement contracts and accreditations. See [Known Limitations](/dist/docs/3.0.3/reference/known-limitations) for the full list of what AdCP does not standardize.
+</Accordion>
+
+<Accordion title="Can I use my existing agency?">
+Yes. AdCP is additive to existing agency relationships. Your agency can use buyer agents to extend their capabilities, or you can work with AdCP-certified practitioners.
+</Accordion>
+
+<Accordion title="How long does it take to get started?">
+If your agency already supports AdCP, you can be live in days. If not, the [monetizing AI guide](/dist/docs/3.0.3/sponsored-intelligence/monetizing-ai#getting-started-by-role) walks through options for brands, agencies, and small businesses — including working with an AdCP-certified partner.
+</Accordion>
+
+</AccordionGroup>
+
+<Card title="Read the buyer's guide" icon="book-open" href="/dist/docs/3.0.3/sponsored-intelligence/monetizing-ai">
+  What you need, what data to provide, and how to find a partner — whether you're a brand, agency, or small business.
+</Card>
+
+## About AdCP
+
+<AccordionGroup>
+
+<Accordion title="What is AdCP?">
+AdCP (Ad Context Protocol) is an open protocol that lets AI agents collaborate across advertising platforms using a standardized language — spanning product discovery, media buying, creative generation, audience activation, and brand governance.
+
+[Embedded human judgment](/dist/docs/3.0.3/governance/embedded-human-judgment) keeps humans accountable: agent actions are reviewed and approved before execution.
+
+AdCP is a specification — not a product, platform, or company. Anyone can implement it. Start with the [introduction](/dist/docs/3.0.3/intro) or the [building guide](/dist/docs/3.0.3/building).
+</Accordion>
+
+<Accordion title="Who created AdCP?">
+AdCP is developed and maintained by [AgenticAdvertising.org](https://agenticadvertising.org) (AAO), a Delaware nonprofit trade association (501(c)(6) status pending with the IRS) with four equal voting classes — Brands, Agencies, Publishers, and Technology Providers — and a target of ten elected seats per class at steady state.
+
+The Foundation currently operates under an interim board appointed at incorporation: Michael Blum (Scope3), Brian O'Kelley (Scope3), Pia Malovrh (Celtra), and Benjamin Masse (Triton Digital). The interim board is replaced by the elected board at the first Annual General Meeting on **May 6, 2026**. Two of four interim seats are Scope3-affiliated, reflecting Scope3's seed contributions; see [How is AAO related to Scope3?](#how-is-aao-related-to-scope3) for the full relationship, named recusal areas, and the transition to equal voting-class representation.
+
+Day-to-day protocol work happens in public working groups on [GitHub](https://github.com/adcontextprotocol/adcp), with every change auditable in Git history. Contributors and organizations who have shaped the protocol through issues, pull requests, and working-group participation are named in [CONTRIBUTORS.md](https://github.com/adcontextprotocol/adcp/blob/main/CONTRIBUTORS.md).
+</Accordion>
+
+<Accordion title="What is AgenticAdvertising.org's mission?">
+To pioneer a more intelligent, human-centric advertising future through agentic AI — pairing the scale of AI with the power of human judgment.
+
+Three pillars support the mission: [open standards](https://docs.adcontextprotocol.org) (AdCP), [education](/dist/docs/3.0.3/learning/overview) (the Academy and certification program), and [governance](/dist/docs/3.0.3/governance/overview) (frameworks that keep humans in the decisions that matter).
+</Accordion>
+
+<Accordion title="Is AdCP free and open to implement?">
+Yes. AdCP is open source under the [Apache 2.0 license](https://www.apache.org/licenses/LICENSE-2.0). There is no cost to use, implement, or license the protocol, and no permission required. The specification, [JSON schemas](https://adcontextprotocol.org/schemas/3.0.3/), and documentation are freely available — no fee, no license agreement, no membership requirement.
+</Accordion>
+
+<Accordion title="How mature is the protocol?">
+AdCP is at **3.0.1 — General Availability**, with 3.0 released April 2026. The protocol is stable and production-ready. See [Release notes](/dist/docs/3.0.3/reference/release-notes) for the full change log and [What's new in v3](/dist/docs/3.0.3/reference/whats-new-in-v3) for the 2.5 → 3.0 migration summary.
+
+The next major version (4.0) is targeted for early 2027. Under the [release cadence policy](/dist/docs/3.0.3/reference/versioning#release-cadence), majors are at least 18 months apart, the previous major receives security patches for at least 12 months after successor GA, and deprecation notices are published at least 6 months before removal. See [Versioning & Governance](/dist/docs/3.0.3/reference/versioning) for the full policy and 3.x stability guarantees. AdCP 2.5 remains security-patched until 2026-08-01 — see the [v2 sunset page](/dist/docs/3.0.3/reference/v2-sunset) for the end-of-life timeline.
+</Accordion>
+
+<Accordion title="I built against AdCP 2.5 — what changed?">
+AdCP 3.0 introduces breaking changes. Start with [what's new in v3](/dist/docs/3.0.3/reference/whats-new-in-v3) for the summary, then work through the [migration guides](/dist/docs/3.0.3/reference/migration) by topic — channels, pricing, creatives, catalogs, geo targeting, optimization goals, brand identity, and audiences. New protocol domains (accounts, governance, brand protocol) are additive; existing integrations can adopt them incrementally.
+</Accordion>
+
+</AccordionGroup>
+
+## How AdCP relates to other standards
+
+<AccordionGroup>
+
+<Accordion title="Does AdCP replace OpenRTB?">
+No. AdCP and OpenRTB operate at different layers and are complementary.
+
+| | OpenRTB | AdCP |
+|---|---------|------|
+| **Scope** | Impression-level transactions | Agent-level workflows |
+| **Operations** | Bid requests, bid responses, win notifications | Product discovery, media buy creation, creative generation, audience activation |
+| **Participants** | DSPs and SSPs | AI agents and advertising platforms |
+| **Timing** | Real-time (milliseconds) | Asynchronous (seconds to days) |
+
+A platform can implement both. For example, a publisher's AdCP agent might accept a [`create_media_buy`](/dist/docs/3.0.3/media-buy/task-reference/create_media_buy) task from a buyer agent, then use OpenRTB internally to execute the impression-level delivery. AdCP handles the workflow; OpenRTB handles the auction.
+</Accordion>
+
+<Accordion title="What is AdCP's relationship to IAB Tech Lab?">
+AdCP is a separate specification from IAB Tech Lab standards. AgenticAdvertising.org is an independent organization. However, AdCP is designed to be compatible with IAB standards — for example, AdCP's content taxonomy fields align with IAB content categories, and AdCP's audience segments can reference IAB audience taxonomy IDs.
+</Accordion>
+
+<Accordion title="How does AdCP compare to AAMP?">
+AAMP — [IAB Tech Lab's Agentic Advertising Management Protocols framework](https://iabtechlab.com/standards/) — is an emerging suite of agentic-advertising initiatives (including an Agent Registry and Agentic Audiences work streams). Based on AAMP materials published to date, AdCP and AAMP appear to operate at different layers of the stack and can coexist.
+
+Our read of the distinction: AdCP describes how a buyer agent and a seller agent negotiate, transact, and govern a media buy — product discovery, pricing, creative, governance, and execution. AAMP's work streams, as currently described, address impression-level concerns: how agents are discovered and identified inside the existing programmatic auction, and how agentic audiences move across that layer. A platform could implement both, with AdCP handling the buyer/seller workflow and AAMP's components plugging into the impression-level layer alongside OpenRTB.
+
+As of April 2026:
+
+| | AAMP | AdCP |
+|---|---|---|
+| **Layer** | Impression-level (within the RTB stack, per published work streams) | Buyer/seller workflow (product discovery, media buy, creative, governance, execution) |
+| **Maintainer** | IAB Tech Lab | AgenticAdvertising.org |
+| **Maturity** | Emerging framework across multiple sub-initiatives | 3.0 GA (released April 2026) |
+| **Scope** | Umbrella for multiple agentic initiatives | Single specification covering media buying, creative, signals, brand governance, and execution (TMP) |
+| **Governance verification** | Being defined | Signed governance context with 15-step verification (Layer 4 of the [security model](/dist/docs/3.0.3/building/understanding/security-model)) |
+| **Public schemas** | Being defined | [Published](https://adcontextprotocol.org/schemas/3.0.3/), Apache 2.0 |
+
+We do not yet publish a formal technical comparison because AAMP is still defining its normative surface. Implementers interested in both should watch both specifications as they stabilize.
+</Accordion>
+
+<Accordion title="How does AdCP compare to UCP and ACP?">
+Google's Universal Commerce Protocol (UCP) — developed with Shopify, Walmart, Target, and others — and OpenAI and Stripe's Agentic Commerce Protocol (ACP) standardize *commerce* in AI assistants: checkout, payments, and fulfillment. AdCP standardizes *advertising*: how offers get surfaced, how a brand agent engages a user, and how attribution flows back.
+
+These are different layers, not competing specifications.
+
+| Layer | Standard | What it does |
+|---|---|---|
+| Commerce | UCP, ACP | Checkout, payments, fulfillment, order status |
+| Advertising | AdCP | Sponsored discovery, media buying, creative, brand governance, attribution |
+
+The layers meet at the handoff. The [SI Chat Protocol](/dist/docs/3.0.3/sponsored-intelligence/si-chat-protocol) runs a conversational brand experience inside an AI assistant; when the user decides to buy, the host hands off to ACP or UCP for checkout, carrying the SI `session_id` through as context so the transaction can be attributed back to the sponsored conversation. The commerce protocol's own session owns the purchase flow. AdCP owns the path up to the handoff; the commerce protocol owns the transaction.
+
+A platform implementing both sees AdCP for "surface the right offer and engage the user" and UCP/ACP for "take the payment." Neither substitutes for the other.
+</Accordion>
+
+<Accordion title="Why not just roll our own protocol?">
+You can, and for some deployments that is the right call — proprietary internal protocols are fine when the scope stays inside a single organization.
+
+A shared protocol earns its cost when two conditions hold: (1) agents need to interoperate across organizational boundaries, and (2) the guarantees an implementer needs — idempotency, signed governance, structural privacy separation, conformance — are nontrivial to build from scratch. AdCP already specifies the wire, publishes schemas, runs conformance tests, and carries a signed-governance profile with 15-step verification (see the [security model](/dist/docs/3.0.3/building/understanding/security-model)). Rebuilding that internally is a real cost, and if you want counterparties to trust your internal protocol, you have to socialize it anyway.
+
+If AdCP is missing something you need, the cheaper path is usually: extend via `ext.{vendor}`, or propose a change to the working group. See the [contributing guide](https://github.com/adcontextprotocol/adcp/blob/main/CONTRIBUTING.md).
+</Accordion>
+
+<Accordion title="Why not use MCP directly without AdCP?">
+MCP defines *how* an agent calls a tool. AdCP defines *what* the agent says when it calls an advertising tool. An MCP server that exposes ad-buying tools without AdCP defines its own task shapes, its own response schemas, its own error codes, and its own governance semantics — and every buyer agent has to integrate one server at a time.
+
+AdCP is what makes the tools interchangeable. If every publisher's MCP server speaks AdCP's `create_media_buy`, one buyer agent can integrate with all of them. Without AdCP, "connect to a new publisher" is a new development task every time.
+
+Put differently: MCP is the transport, AdCP is the protocol. You use MCP to *carry* AdCP tasks — the same way HTTP carries REST payloads. See [Industry landscape](/dist/docs/3.0.3/building/understanding/industry-landscape) for how AdCP, OpenRTB, MCP, and A2A relate.
+</Accordion>
+
+<Accordion title="Why isn't AdCP an auction protocol?">
+AdCP is built for agentic workflows — direct-sold inventory, guaranteed deals, and commerce media — not the impression-level auction where OpenRTB already works. Buyers and sellers transact directly through their agents, with pricing surfaced via `pricing_options`, `price_guidance`, and (when the transaction warrants it) `price_breakdown`.
+
+The supply-path-optimization concerns that drove SPO disclosure in programmatic auctions look different in direct-sold transactions, where buyer and seller are authenticated counterparties rather than anonymous bidders. Buyers that want SPO-grade fee disclosure can require it through `buy_terms` as a condition of the purchase — the protocol supports it; it's not imposed as a protocol-wide mandate.
+</Accordion>
+
+<Accordion title="How does adagents.json relate to ads.txt and sellers.json?">
+`adagents.json` extends the authorization model for agentic buying while preserving the ads.txt/sellers.json relationship semantics. A publisher's `adagents.json` with `delegation_type` carries the same signal as an ads.txt `DIRECT` or `RESELLER` row, and `brand.json` properties with a `relationship` field carry the same signal as a sellers.json entry.
+
+The full crosswalk is in [Why adagents.json instead of ads.txt](/dist/docs/3.0.3/governance/property/adagents#why-adagents-json-instead-of-ads-txt).
+</Accordion>
+
+<Accordion title="Can an AI agent autonomously buy credit, insurance, housing, or employment ads?">
+These verticals fall under GDPR Art 22, EU AI Act Annex III, and US FHA / ECOA / EEOC. The policy-category mechanism already ships with `fair_housing`, `fair_lending`, and `fair_employment` entries in the registry.
+
+AdCP 3.0 GA will require campaigns declaring a regulated policy category to run with human review — `authority_level: agent_full` will not be accepted — with an Annex III category taxonomy and a data-subject contestation path added at the same time. Tracked in [#2310](https://github.com/adcontextprotocol/adcp/issues/2310). Until that ships, enforcement depends on the governance agent implementation, not a schema invariant. See the [governance overview](/dist/docs/3.0.3/governance/overview) for the full model.
+</Accordion>
+
+<Accordion title="Who governs AdCP?">
+AdCP is governed by AgenticAdvertising.Org (AAO), a pending 501(c)(6) trade association incorporated in Delaware. Governance is summarized in [CHARTER.md](https://github.com/adcontextprotocol/adcp/blob/main/CHARTER.md) in the repository, with the authoritative materials (Bylaws, Membership Agreement, IPR Policy, Antitrust Policy) at [agenticadvertising.org/governance](https://agenticadvertising.org/governance).
+
+The interim board (as of 2026-04-18) has four directors: Michael Blum (Scope3), Brian O'Kelley (Scope3), Pia Malovrh (Celtra), and Benjamin Masse (Triton Digital). The elected board — first Annual General Meeting on **May 6, 2026** — has equal representation across four voting classes (Brands, Agencies, Publishers, Technology Providers), with a target of ten seats per class. Day-to-day protocol work happens in [working groups](/dist/docs/3.0.3/community/working-group); change proposals flow through this repository.
+
+**Reference sell-side implementation lives at Prebid.** Development of the sell-side AI agent reference code was handed to the [Prebid community](https://www.prebid.org/) in February 2026, [reported by AdExchanger](https://www.adexchanger.com/ad-exchange-news/the-agentic-advertising-organization-hands-development-of-its-sell-side-agent-to-prebid/). AAO owns the specification; Prebid owns the reference software. Spec governance and reference-implementation development are intentionally separate organizations.
+</Accordion>
+
+<Accordion title="Do AdCP examples use real brand names?">
+No. All examples in docs, storyboards, and test vectors use fictional entities — Acme Outdoor, Nova Motors, Pinnacle Agency, StreamHaus, and the other names registered in `static/compliance/source/universal/fictional-entities.yaml`. Real brands, agencies, publishers, and vendors do not appear in normative examples. The editorial rule is enforced in [`CLAUDE.md`](https://github.com/adcontextprotocol/adcp/blob/main/CLAUDE.md) and called out in [CONTRIBUTING.md](https://github.com/adcontextprotocol/adcp/blob/main/CONTRIBUTING.md). Reviewers flag real-brand usage the same way they flag vendor leakage in schemas. This is a deliberate choice to keep the protocol neutral: the spec shouldn't favor one seller, agency, or vendor by name.
+</Accordion>
+
+<Accordion title="How is AAO related to Scope3?">
+**Two of four interim board seats are Scope3-affiliated.** The interim board has four directors: Michael Blum (Scope3), Brian O'Kelley (Scope3), Pia Malovrh (Celtra), and Benjamin Masse (Triton Digital). This composition reflects Scope3's seed contributions to AAO and transitions to an elected board at the first Annual General Meeting on **May 6, 2026**, which carries equal representation across four voting classes (Brands, Agencies, Publishers, Technology Providers) — ten seats per class at steady state.
+
+Scope3 contributed foundational IP and early funding. Specifically:
+
+- **CSBS (Common Sense Brand Standards)** — formerly "Scope3 Common Sense" — was donated to AAO and is now governed by AAO. The formal donation and rename are tracked in [#2305](https://github.com/adcontextprotocol/adcp/issues/2305).
+- **Property registry seed data** — the initial property universe and ad-infrastructure knowledge graph seeding the AAO property catalog was donated by Scope3.
+- **Seed funding loan** — Scope3 provided a seed funding loan to AAO, repaid from membership revenue on a scheduled basis. Terms are disclosed in the annual financial report to members.
+
+Brian co-founded both Scope3 and AAO and serves as AdCP lead architect; he does not hold executive authority at AAO, and Scope3 holds no voting rights, veto, or protocol-control privileges beyond those of any other member. Because of the dual role, he recuses from AAO decisions where Scope3 has a direct commercial interest — including any change to the default brand-safety framework, property-catalog data governance, and the terms of the seed-loan repayment.
+
+See [CHARTER.md](https://github.com/adcontextprotocol/adcp/blob/main/CHARTER.md) for the governance framework and [agenticadvertising.org/governance](https://agenticadvertising.org/governance) for the authoritative board list, funding disclosures, and recusal rules.
+</Accordion>
+
+<Accordion title="What if my buyer agent is compromised?">
+AdCP today uses bearer-token authentication between agents — see [authentication](/dist/docs/3.0.3/building/integration/authentication) for the shipped model.
+
+AdCP 3.1 will add request signing for mutating calls (`create_*`, `update_*`, `sync_*`, `activate_*`, `acquire_*`) via RFC 9421 HTTP Signatures or JWS-signed bodies as a normative requirement, with sellers verifying against the buyer's published signing keys. Bearer tokens alone will not be sufficient for mutating calls. Tracked in [#2307](https://github.com/adcontextprotocol/adcp/issues/2307).
+
+Governance decisions will also be signed so that a seller or regulator can verify a `governance_context` token genuinely came from the issuing governance agent. Tracked in [#2306](https://github.com/adcontextprotocol/adcp/issues/2306). Until those land, implementers should treat bearer auth as an interim floor, not the long-term contract.
+</Accordion>
+
+<Accordion title="Does AdCP support AI platforms and AI ad networks?">
+Yes. AdCP's `sponsored_intelligence` channel covers advertising within AI assistants, AI search engines, and generative AI experiences — including sponsored responses, AI search sponsored results, generative display, and brand experience handoffs via SI Chat Protocol. AI platforms and ad networks implement AdCP the same way any seller does: publish [`adagents.json`](/dist/docs/3.0.3/governance/property/adagents), implement [`get_products`](/dist/docs/3.0.3/media-buy/task-reference/get_products) with `channels: ["sponsored_intelligence"]`, and accept media buys. See the [Sponsored Intelligence protocol](/dist/docs/3.0.3/sponsored-intelligence/overview) for product modeling, workflows, and measurement.
+
+Sponsored Intelligence is an [experimental surface](/dist/docs/3.0.3/reference/experimental-status) in 3.0 (feature id `sponsored_intelligence.core`) — sellers implementing it MUST declare `sponsored_intelligence.core` in `experimental_features`, and buyers SHOULD check that declaration before relying on SI tasks. The surface may change between 3.x releases with at least 6 weeks' notice.
+</Accordion>
+
+<Accordion title="How does AdCP relate to MCP and A2A?">
+AdCP uses [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) and [A2A (Agent-to-Agent Protocol)](https://google.github.io/A2A/) as transport layers. Think of it this way:
+
+- **MCP and A2A** define how agents communicate (the transport)
+- **AdCP** defines what agents say about advertising (the domain)
+
+AdCP tasks are the same regardless of transport. A [`get_products`](/dist/docs/3.0.3/media-buy/task-reference/get_products) call has the same request schema and response schema whether it travels over MCP or A2A. See [protocol comparison](/dist/docs/3.0.3/building/understanding/protocol-comparison) for details on how the two transports differ.
+</Accordion>
+
+<Accordion title="Does AdCP compete with platform-specific APIs?">
+No. Platform APIs (self-serve dashboards, management APIs) serve a different purpose than AdCP. Platform APIs expose the full, proprietary feature set of a single platform. AdCP provides a standardized interface for common advertising operations across platforms.
+
+A platform that implements AdCP does not need to replace its existing API. AdCP sits alongside it, providing a standard interface that AI agents can use for cross-platform workflows.
+</Accordion>
+
+</AccordionGroup>
+
+## Certification
+
+<AccordionGroup>
+
+<Accordion title="How do I get certified?">
+Start a conversation with Addie, our AI teaching assistant. She'll guide you through [interactive modules](/dist/docs/3.0.3/learning/overview) at your own pace.
+</Accordion>
+
+<Accordion title="How long does certification take?">
+The Basics track has 3 modules, about 50 minutes total. Most learners finish in a few focused sessions. Practitioner tracks add 4 more modules (~90–105 minutes depending on your role track).
+</Accordion>
+
+<Accordion title="Is the certification free?">
+The Basics track is free and open to everyone. Practitioner and Specialist tracks require AgenticAdvertising.org membership.
+</Accordion>
+
+<Accordion title="Do I need to code?">
+Not for the Basics track. The Practitioner track includes a build project, but it uses vibe coding — you describe what you want in plain language and an AI agent writes the code.
+</Accordion>
+
+<Accordion title="Can a non-technical person build an advertising agent?">
+Yes. That's the point. The Practitioner build project is designed so that anyone — including marketing executives with zero coding experience — can build a working advertising agent through conversation with an AI coding assistant.
+</Accordion>
+
+<Accordion title="What is vibe coding?">
+Vibe coding means describing what you want in plain language and having an AI coding assistant build it. No syntax, no prior programming experience needed. You iterate by describing what to change — the AI handles the code. In the certification build project, you'll vibe-code a working advertising agent.
+</Accordion>
+
+<Accordion title="What if my build doesn't work the first time?">
+That's expected. Two or three iteration cycles is normal, not a sign you're failing. When you hit an error, copy it back to your AI coding assistant and describe what you were trying to do. Addie coaches you through the debug loop rather than debugging for you — you'll leave the program knowing how to iterate with AI on real projects.
+</Accordion>
+
+<Accordion title="Does everyone get the same assessment?">
+Yes. Every module has 3–5 required demonstrations — specific things you must do or explain during the conversation. These are identical for all learners, enforced by the system, and cannot be skipped. Addie adapts the *teaching* to your background, but the *bar* is the same for everyone. An experienced ad tech executive and a newcomer both verify the same core competencies. See [assessment fairness](/dist/docs/3.0.3/learning/instructional-design#assessment-fairness) for details.
+</Accordion>
+
+<Accordion title="What happens when the protocol changes?">
+AdCP evolves. When a protocol update changes what certified professionals should know, the system identifies which credentials are affected and notifies holders about what changed. Recertification is targeted — if the update affects creative workflows but not media buying, only creative-related credentials are flagged. You won't be asked to redo material that hasn't changed.
+</Accordion>
+
+</AccordionGroup>
+
+<Card title="Start the certification program" icon="play" href="https://agenticadvertising.org/chat">
+  Open Addie and say "I want to get certified." The Basics track is free — no account required.
+</Card>
+
+## Getting involved
+
+<AccordionGroup>
+
+<Accordion title="How do I start implementing AdCP?">
+Read the [introduction](/dist/docs/3.0.3/intro) for an overview, then explore the domain that matches your use case:
+
+- **Sell-side platforms**: Start with [media buy](/dist/docs/3.0.3/media-buy) to expose your inventory
+- **Creative platforms**: Start with [creative](/dist/docs/3.0.3/creative) to offer format discovery and ad generation
+- **Data providers**: Start with [signals](/dist/docs/3.0.3/signals/overview) to make audiences addressable by agents
+- **Orchestrators and agencies**: Start with the [integration guide](/dist/docs/3.0.3/building/integration) to connect to existing AdCP agents
+
+JSON schemas for all tasks are available at [adcontextprotocol.org/schemas](https://adcontextprotocol.org/schemas/3.0.3/).
+</Accordion>
+
+<Accordion title="Is this for individual practitioners, or just businesses and engineers?">
+Both. AgenticAdvertising.org membership is open to individuals and companies. If you work in advertising — as a trader, media planner, buyer, agency strategist, or any other role — you can join as an individual member and benefit from:
+
+- **Certification** — The Practitioner and Specialist tracks teach you how agentic advertising works and how to build advertising agents, regardless of technical background. The Basics track is free and open to everyone.
+- **Community** — Connect with others navigating the same transition from programmatic to agentic, across roles and companies.
+- **Working groups** — Participate in groups that shape protocol direction. Your operational perspective as a practitioner is valuable — protocols built only by engineers miss real-world workflow needs.
+- **Professional development** — Agentic advertising is early. Getting certified now positions you ahead of the curve as the industry adopts AI-driven workflows.
+
+You do not need to be an engineer or represent a company to join. Individual membership is designed for practitioners who want to learn, contribute, and stay ahead of the industry shift.
+</Accordion>
+
+<Accordion title="What does AgenticAdvertising.org membership provide?">
+Membership gives you access to the community, certification, and governance:
+
+- **Certification** — Practitioner and Specialist credential tracks, including a hands-on build project where you create a working advertising agent
+- **Working groups** — Participate in groups that shape protocol direction and vote on proposed changes
+- **Member directory** — List your organization's capabilities so others can find you as a partner or vendor
+- **Community** — Connect with implementers, practitioners, and decision-makers across the industry
+
+Membership is not required to implement AdCP or to complete the free Basics certification track. See the [working group](/dist/docs/3.0.3/community/working-group) page for how to get involved.
+</Accordion>
+
+<Accordion title="Can I contribute without being a member?">
+Yes. The protocol is developed in the open. You can:
+
+- File issues and feature requests on [GitHub](https://github.com/adcontextprotocol/adcp/issues)
+- Join the community Slack to ask questions and discuss implementations
+- Submit pull requests with bug fixes or documentation improvements
+- Build and publish your own AdCP implementation
+
+Membership is for individuals and organizations that want to go deeper — certification, working groups, and formal influence over protocol governance.
+</Accordion>
+
+</AccordionGroup>
+
+<Card title="Get started with AdCP" icon="rocket" href="/dist/docs/3.0.3/building">
+  Implementation guides, SDKs, and integration patterns.
+</Card>

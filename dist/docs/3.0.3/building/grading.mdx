@@ -1,0 +1,83 @@
+---
+title: Auth Graders
+sidebarTitle: Auth Graders
+description: "AdCP CLI graders for RFC 9421 request-signing conformance, OAuth handshake diagnosis, and Ed25519/P-256 signing key generation and verification."
+"og:title": "AdCP — Auth Graders"
+---
+
+`@adcp/client` 5.21+ ships CLI graders for authentication conformance. They are separate from the [compliance storyboards](/dist/docs/3.0.3/building/validate-your-agent) — storyboards test protocol behavior end-to-end; these graders test the authentication and signing layer specifically, giving per-vector diagnostics and hypothesis-ranked failure analysis.
+
+<Tip>
+All commands below use `npx @adcp/client@latest`. If you have `@adcp/client` installed globally (`npm install -g @adcp/client`) you can drop the `npx @adcp/client@latest` prefix and use `adcp` directly.
+</Tip>
+
+## Request-signing grader
+
+Validates RFC 9421 conformance against your agent end-to-end. Runs every signing vector and reports per-vector results so you can trace exactly which canonicalization rule or header coverage check is failing.
+
+```bash
+npx @adcp/client@latest grade request-signing <agent-url>
+```
+
+**What it checks:**
+- Signature base canonicalization (method, target-uri, authority, content-type, content-digest)
+- Covered-component completeness and ordering
+- `alg` and `kid` fields present and valid
+- Timestamp window (±60 s) and nonce uniqueness
+- Replay detection (if the agent advertises it)
+- Negative-vector rejection — each malformed request MUST produce the expected error code
+
+**When to use it:** before flipping any operation to `required_for` in `get_adcp_capabilities`; when a counterparty reports signature verification failures; when upgrading key algorithms (Ed25519 → P-256 or the reverse).
+
+## OAuth handshake diagnoser
+
+Probes an agent's OAuth discovery documents (RFC 9728 protected-resource metadata, RFC 8414 authorization-server metadata), performs the authorization code + PKCE flow, decodes the resulting JWT, and ranks hypotheses about what is wrong.
+
+```bash
+npx @adcp/client@latest diagnose-auth <alias|url>
+```
+
+The `<alias>` form uses a saved alias from `~/.adcp/config.json` (set via `npx @adcp/client@latest --save-auth <alias> <url>`).
+
+**What it probes:**
+- `/.well-known/oauth-protected-resource` — presence, `authorization_servers` list, HTTPS enforcement
+- `/.well-known/oauth-authorization-server` — issuer match, `token_endpoint`, `code_challenge_methods_supported`
+- Token endpoint response — token type, expiry, scope coverage
+- JWT claims — `iss`, `sub`, `aud`, `exp`, `iat` presence and validity
+- Cross-origin `authorization_servers` issuer pinning (flags if the resource metadata's AS URL doesn't match out-of-band config)
+
+**Output:** ranked hypothesis list, e.g., `1. token_endpoint not reachable (connection refused) — likely cause`, `2. issuer mismatch — AS URL returned by protected-resource does not match adagents.json`. Each hypothesis links to the relevant spec section.
+
+**When to use it:** when `AUTH_REQUIRED` errors persist after bearer token configuration; when dynamic client registration returns unexpected responses; when a new seller's OAuth setup fails silently.
+
+## Key generation
+
+Generate an Ed25519 or P-256 keypair formatted for publication at your agent's `jwks_uri`.
+
+```bash
+npx @adcp/client@latest signing generate-key
+```
+
+Outputs:
+- A private key file (PEM, for your agent's signing config)
+- A JWK with `"kid"`, `"use": "sig"`, `"key_ops": ["verify"]`, `"adcp_use": "request-signing"`, and `"alg": "EdDSA"` (or `"ES256"` for P-256) ready to paste into your JWKS endpoint
+
+**When to use it:** initial signing setup; key rotation (generate new, publish alongside old, drain in-flight requests, retire old).
+
+## Vector verifier
+
+Verify a single signing vector without running the full grader. Useful for debugging a specific canonicalization case during implementation.
+
+```bash
+npx @adcp/client@latest signing verify-vector
+```
+
+Reads a vector from stdin (JSON matching the test-vector schema at [`/compliance/latest/test-vectors/request-signing/`](https://adcontextprotocol.org/compliance/latest/test-vectors/request-signing/)) and reports whether your client's signature base matches the expected output.
+
+**When to use it:** while implementing a signing client to confirm each component rule in isolation before testing end-to-end.
+
+## Related
+
+- [Validate Your Agent](/dist/docs/3.0.3/building/validate-your-agent) — storyboard-based protocol compliance testing
+- [Authentication](/dist/docs/3.0.3/building/integration/authentication) — auth model overview, bearer tokens, RFC 9421 introduction
+- [Security implementation reference](/dist/docs/3.0.3/building/implementation/security#signed-requests-transport-layer) — full RFC 9421 profile, verifier checklist, key publication rules

@@ -1,0 +1,162 @@
+---
+title: "v3 readiness checklist"
+sidebarTitle: Readiness checklist
+description: "The 8 minimum requirements for seller agents to pass AdCP v3 storyboard testing."
+"og:title": "AdCP — v3 readiness checklist"
+---
+
+# v3 readiness checklist
+
+AdCP storyboard testing requires v3 protocol support. Agents that only support v2 will fail. This page covers the minimum changes to unblock integration testing with v3 buyers — not the full migration. For the complete list, see the [migration guide](/dist/docs/3.0.3/reference/migration).
+
+<Warning>
+Storyboard testing will hard-fail any agent that does not declare v3 support. Complete these 8 items first, then work through the [full migration checklist](/dist/docs/3.0.3/reference/migration). v2 is fully deprecated on August 1, 2026 (UTC) — see the [v2 sunset page](/dist/docs/3.0.3/reference/v2-sunset).
+</Warning>
+
+---
+
+## 1. Implement `get_adcp_capabilities`
+
+v3 buyers call this task first to discover what your agent supports. Without it, buyers cannot determine your protocol version, supported channels, pricing models, or features.
+
+This is the single most important change — it's how buyers (and storyboard testing) distinguish v3 agents from v2.
+
+Return at minimum: `major_versions: [3]`, `supported_protocols`, and your `features` object.
+
+<Card title="get_adcp_capabilities reference" icon="arrow-right" href="/dist/docs/3.0.3/protocol/get_adcp_capabilities">
+  Task specification and response schema.
+</Card>
+
+---
+
+## 2. Update channel taxonomy
+
+v3 replaces v2's 9 channels with 20 planning-oriented channels. Buyers send v3 channel values — your agent must recognize them.
+
+| Common v2 value | v3 replacement |
+|-----------------|----------------|
+| `video` | `olv`, `linear_tv`, or `cinema` |
+| `audio` | `radio` or `streaming_audio` |
+| `native` | Removed — native inventory is now part of `display` |
+| `retail` | `retail_media` |
+
+`display`, `social`, `ctv`, `podcast`, and `dooh` are unchanged.
+
+<Card title="Channel migration" icon="arrow-right" href="/dist/docs/3.0.3/reference/migration/channels">
+  Complete mapping table and examples.
+</Card>
+
+---
+
+## 3. Rename pricing fields
+
+Two field renames — same semantics, different names:
+
+| v2 field | v3 field |
+|----------|----------|
+| `fixed_rate` | `fixed_price` |
+| `price_guidance.floor` | `floor_price` (top-level) |
+
+Buyers validate against v3 schemas. The old field names cause schema validation failures.
+
+<Card title="Pricing migration" icon="arrow-right" href="/dist/docs/3.0.3/reference/migration/pricing">
+  Before/after examples and price guidance restructuring.
+</Card>
+
+---
+
+## 4. Support `creative_assignments`
+
+`creative_ids` (string array) is replaced by `creative_assignments` (object array) with delivery weighting and placement targeting.
+
+```json
+// v2
+{ "creative_ids": ["cr_001", "cr_002"] }
+
+// v3
+{ "creative_assignments": [
+    { "creative_id": "cr_001", "weight": 70 },
+    { "creative_id": "cr_002", "weight": 30 }
+  ]
+}
+```
+
+<Card title="Creatives migration" icon="arrow-right" href="/dist/docs/3.0.3/reference/migration/creatives">
+  Weighted assignments, placement targeting, and asset discovery.
+</Card>
+
+---
+
+## 5. Accept `brand` ref instead of `brand_manifest`
+
+Buyers pass brand identity as a reference (`{ domain, brand_id }`) instead of an inline manifest. Your agent resolves brand data from `brand.json` or the registry at execution time.
+
+```json
+// v2
+{ "brand_manifest": { "name": "Acme", "logo": "..." } }
+
+// v3
+{ "brand": { "domain": "acme.example.com", "brand_id": "acme_main" } }
+```
+
+<Card title="Brand identity migration" icon="arrow-right" href="/dist/docs/3.0.3/reference/migration/brand-identity">
+  BrandRef schema, resolution flow, and migration steps.
+</Card>
+
+---
+
+## 6. Handle `buying_mode` on `get_products`
+
+`buying_mode` is now required on every `get_products` request. Your agent must accept and handle it. The three modes are `browse`, `brief`, and `refine`.
+
+<Card title="get_products reference" icon="arrow-right" href="/dist/docs/3.0.3/media-buy/task-reference/get_products">
+  Full request schema including buying_mode.
+</Card>
+
+---
+
+## 7. Remove `buyer_ref` — use `idempotency_key`
+
+v3 removes `buyer_ref`, `buyer_campaign_ref`, and `campaign_ref` from all requests and responses. Seller-assigned `media_buy_id` and `package_id` are now the only canonical identifiers.
+
+If your agent relied on `buyer_ref` for deduplication, use the new `idempotency_key` field instead. `idempotency_key` (UUID v4) is **required** on every mutating request — agents MUST reject requests that omit it with `INVALID_REQUEST`, and MUST return `IDEMPOTENCY_CONFLICT` when a key is reused with a different payload. See the [idempotency implementation guide](/dist/docs/3.0.3/building/implementation/security#idempotency) for normative semantics.
+
+If your agent used `buyer_ref` for internal tracking or correlation (e.g. mapping to campaign IDs, session traces, or UI state), use the `context` field instead. `context` is an opaque object echoed unchanged in every response and webhook — agents must never parse or act on it.
+
+| v2 field | v3 replacement |
+|----------|----------------|
+| `buyer_ref` | Removed — use `media_buy_id` (seller-assigned) |
+| `buyer_campaign_ref` | Removed |
+| `campaign_ref` | Removed |
+| `buyer_ref` as implicit dedup | Explicit `idempotency_key` on mutating requests |
+| `buyer_ref` as correlation / tracking | `context` (opaque, echoed unchanged) |
+
+```json
+// v2 — buyer provides their own ref
+{ "buyer_ref": "camp-2024-q3", "start_time": "..." }
+
+// v3 — seller-assigned ID, explicit idempotency, context for tracking
+{
+  "idempotency_key": "550e8400-e29b-41d4-a716-446655440000",
+  "context": { "campaign": "camp-2024-q3", "trace_id": "abc-123" },
+  "start_time": "..."
+}
+```
+
+---
+
+## 8. Implement `sync_accounts`
+
+v3 buyers establish billing relationships before placing buys. Your agent must accept `sync_accounts` calls and return an account reference that buyers include on subsequent requests.
+
+<Card title="Accounts Protocol" icon="arrow-right" href="/dist/docs/3.0.3/accounts/overview">
+  Account provisioning, lifecycle, and the sync_accounts task.
+</Card>
+
+---
+
+## After these 8 items
+
+Once these are in place, run storyboard testing against your agent. The existing tracks (products, media buy, creative) validate v3 schemas in detail and will surface any remaining field-level issues.
+
+For the complete migration — including geo targeting, optimization goals, signals, audiences, and attribution — see the [full migration guide](/dist/docs/3.0.3/reference/migration).

@@ -1,0 +1,92 @@
+---
+title: Working group charter
+sidebarTitle: Working group charter
+description: "Operational charter for the AdCP Working Group: quorum, voting thresholds, cadence, recusal, and escalation."
+"og:title": "AdCP — Working group charter"
+---
+
+The AdCP Working Group (WG) develops, reviews, and maintains the Ad Context Protocol specification under Foundation governance. This charter records the operational rules the WG has adopted for its own meetings, decisions, and conduct.
+
+It operates under the Foundation's [Bylaws](https://agenticadvertising.org/governance), [IPR Policy](https://github.com/adcontextprotocol/adcp/blob/main/IPR_POLICY.md), and [Charter](https://github.com/adcontextprotocol/adcp/blob/main/CHARTER.md). In any conflict, those documents control.
+
+These thresholds are operative from the merge date of this document. The merge commit is the authoritative ratification record.
+
+## Participation
+
+The WG is open to:
+
+- **Voting participants** — employees of AgenticAdvertising.org Voting Member organizations. Each member organization holds one vote, exercised by a designated representative.
+- **Observers** — non-member practitioners, researchers, and interested parties. Observers may speak and comment in any forum but may not vote.
+
+**Active status** — a voting participant retains voting eligibility by meeting either threshold in each rolling eight-week window:
+
+- Attends ≥ 2 of the last 4 synchronous sessions, or
+- Participates in ≥ 3 of the last 4 async GitHub ballots (see [Meeting cadence](#meeting-cadence)).
+
+No application is required. Enrollment is at [agenticadvertising.org/governance](https://agenticadvertising.org/governance).
+
+## Decision classes and voting thresholds
+
+The WG uses three decision classes with corresponding quorum and pass-threshold rules. These thresholds were adopted by the WG at ratification of this charter and are the operative rules for all subsequent decisions.
+
+| Class | Examples | Quorum | Pass threshold |
+|---|---|---|---|
+| **Editorial** | Typos, broken-link fixes, non-semantic rewording, metadata-only updates | 3 voting participants | Simple majority (> 50%) |
+| **Normative** | Non-breaking additions: optional fields, new tasks, new enum values, new doc sections, new capabilities | 5 voting participants, ≥ 2 member orgs | ⅔ supermajority |
+| **Breaking** | Removing or renaming public surface identifiers, optional → required, semantic meaning changes, default value changes | 7 voting participants, ≥ 3 member orgs | ¾ supermajority |
+
+### Experimental surfaces
+
+Changes exclusively to surfaces marked `x-status: experimental` in schemas — or under `static/schemas/source/tmp/`, `static/schemas/source/sponsored-intelligence/`, or `static/schemas/source/a2ui/` — receive a downgraded decision class consistent with the [experimental surface policy](/dist/docs/3.0.3/reference/experimental-status):
+
+| Would be (stable) | Treated as (experimental) |
+|---|---|
+| Breaking | Normative |
+| Normative | Editorial |
+| Editorial | Editorial |
+
+When a PR promotes a surface from experimental to stable (removes `x-status: experimental`), the class is determined by the promoted surface's first stable contract, not its experimental history.
+
+### Classification challenge
+
+Any participant may challenge an Editorial classification within **72 hours** of the PR being posted to GitHub. A challenge requires a comment from the challenger plus a second from one other participant. A valid challenge elevates the PR to Normative treatment. The WG Chair records the outcome in the PR thread.
+
+## Meeting cadence
+
+- **Working sessions** — weekly, via video and the `#wg-adcp` Slack channel. Agendas are published at least 48 hours in advance.
+- **Minutes** — published to [`governance/minutes/`](https://github.com/adcontextprotocol/adcp/tree/main/governance/minutes) within 7 calendar days of each session.
+- **Session recordings** — available to AgenticAdvertising.org members via the members-only Slack archive. Recordings are access-restricted to protect participant candor and to comply with the antitrust safe-harbor provisions in [Article VII of the Bylaws](https://agenticadvertising.org/governance).
+- **Async ballots** — any participant may open an async GitHub ballot on a labeled issue. The ballot window is 5 calendar days. Async ballots count toward active-status tracking.
+
+## Escalation
+
+When the WG cannot reach the required threshold after the standard comment window:
+
+1. **Extended comment** — the WG Chair extends the window by 7 calendar days and posts a summary of outstanding objections in the issue thread.
+2. **Escalation to Foundation leadership** — if still unresolved, the Chair escalates in writing to Foundation leadership. During the interim period (before the first AGM), escalation goes to the **interim Board** directly. After the first AGM, escalation goes to the **Executive Committee**, which issues a binding resolution within 30 calendar days per [Bylaws § 4.14](https://agenticadvertising.org/governance).
+3. **Full Board vote** — if the Executive Committee (post-AGM) is deadlocked on a Breaking-class change, the matter is elevated to the full Board under the director voting rules in Article IV of the Bylaws.
+
+## Tie-break
+
+- **Editorial** — the WG Chair casts the deciding vote if the simple majority is exactly tied.
+- **Normative / Breaking** — no WG-level tie-break; escalate per the path above.
+
+## Recusal
+
+**General rule** — a voting participant must disclose any conflict before a vote and must recuse from the vote (but may remain in the discussion) when:
+
+- Their employer is a named party in the specific decision (for example, a registry listing or certification dispute involving their organization).
+- They have a financial interest in the outcome not shared by the general membership.
+- They or their employer hold a patent whose claims would be Necessary Claims on a change under vote. See the [IPR Policy](https://github.com/adcontextprotocol/adcp/blob/main/IPR_POLICY.md) for disclosure obligations.
+
+**Interim board concentration (through the first AGM)** — as disclosed in [CHARTER.md § 4.1](https://github.com/adcontextprotocol/adcp/blob/main/CHARTER.md#41-interim-board), two of the four interim directors (Michael Blum and Brian O'Kelley) represent Scope3. During the interim period, the general rule is supplemented as follows: any WG participant affiliated with Scope3 must declare before a vote any WG decision that would confer a specific material advantage to Scope3 (for example, decisions that prioritize infrastructure or tooling primarily developed or maintained by Scope3). If the advantage is not shared broadly with the membership, recusal from that vote is required. This is an addition to the general rule, not a substitution for it.
+
+Recusals are recorded in the meeting minutes.
+
+## Roster
+
+The current roster of voting participants and their member-organization affiliations is maintained at [agenticadvertising.org/governance](https://agenticadvertising.org/governance). The interim board composition is listed in [CHARTER.md § 4.1](https://github.com/adcontextprotocol/adcp/blob/main/CHARTER.md#41-interim-board).
+
+## Amendments
+
+Amendments to this charter follow Normative-class rules (⅔ supermajority, 5 voting participants, ≥ 2 member orgs). An amendment that reduces the quorum or pass threshold for Breaking-class decisions must itself pass under Breaking-class rules.

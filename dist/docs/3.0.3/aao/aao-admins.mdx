@@ -1,0 +1,60 @@
+---
+title: AAO for AAO Admins
+description: Internal reference — editorial moderation, escalation triage, system settings, and member directory operations for AAO staff.
+"og:title": "AdCP — AAO for AAO Admins"
+noindex: true
+---
+
+# AAO for AAO Admins
+
+This page is for AAO staff with the global admin role — people on the AgenticAdvertising.org team who run editorial review, escalation triage, member ops, and system administration. It is intentionally narrow and operational.
+
+This page is indexed by Addie's `search_docs` so she can answer admin questions correctly, but is `noindex: true` for search engines and is hidden from the public docs sidebar.
+
+For end-user docs see [AAO for Members](/dist/docs/3.0.3/aao/users). For org-admin docs see [AAO for Org Admins](/dist/docs/3.0.3/aao/org-admins). For the full list of Addie's tools see the [Addie Tool Reference](/dist/docs/3.0.3/aao/addie-tools).
+
+## Becoming an AAO admin
+
+AAO admin status is granted via `ADMIN_EMAILS` env var on the deployed app and (separately) the `is_aao_admin` column on the user record. Both must be set for full access — `ADMIN_EMAILS` lets you call admin tools from Addie; `is_aao_admin` lets you use the admin web UI at `/admin`.
+
+## Escalation triage
+
+Members and visitors can ask Addie to escalate when she can't help. Escalations land in the database and a Slack notification fires to the configured escalation channel.
+
+- **Review the queue.** Web UI at `/admin/addie` (Escalations tab), or ask Addie *"list open escalations"* (`list_escalations`).
+- **Auto-triage suggestions.** A scheduled job in `server/src/addie/jobs/escalation-triage.ts` proposes status transitions on open escalations with evidence (URL probes, related escalation IDs). Suggestions land in `escalation_triage_suggestions` and require admin accept/reject before applying — every close has an operator behind it.
+- **Resolve from any thread.** *"Resolve escalation 142, paid the invoice"* (`resolve_escalation`) — `wont_do` is the right status when a request is intentionally not actionable; `resolved` means the asked-for thing happened.
+- **Categories.** `capability_gap` (Addie's knowledge needs updating), `needs_human_action` (admin had to do something), `complex_request` (multi-step / judgment), `sensitive_topic` (legal/compliance/political), `other`.
+
+## Editorial moderation (perspectives)
+
+- **Review queue.** Web UI at `/admin/perspectives` shows `pending_review`. Or ask Addie *"list pending content"* (`list_pending_content`).
+- **Approve / decline.** *"Approve perspective [slug]"* (`approve_content`), *"reject perspective [slug] with reason ..."* (`reject_content`).
+- **Test posts.** Test perspectives published bypassing review (incident #271) come from the older publish path; the canonical path is `propose_content` → review → approve. If you see test content live without review, file an incident — that's a real bug, not a workflow.
+
+## Member directory ops
+
+- **List / get members.** *"Show member directory for [filter]"* (`list_members`, `get_member`). Public lookups are anonymous-safe; full contact details require admin.
+- **Send a payment request to a prospect.** `send_payment_request` (admin-tools.ts) issues an invite that the recipient signs in to accept. Their email is bound to the resulting Stripe customer at acceptance time, never trusted from caller-supplied input.
+- **Comp / discount membership.** Use `send_payment_request` with a $0 product or a coupon. For unusual cases (chapter leads, contributors), escalate or coordinate with billing manually.
+- **Promote / demote within an org.** Today this is a database operation; CLI scripts under `scripts/` cover the common cases. We're working on a tool surface.
+
+## System settings
+
+- **Escalation channel.** `system_settings.escalation_channel` controls where Addie posts escalation notifications. Update via the admin web UI.
+- **Working-group channels.** `system_settings.wg_channel_*` map each WG to its Slack channel.
+- **Audit log.** `system_settings_audit` records every change — review at `/admin/audit`.
+
+## Internal flags and gates
+
+- `ADMIN_EMAILS` — comma-separated env var, controls Addie admin tool registration.
+- `ALLOW_INSECURE_COOKIES` — dev only; do not set in prod.
+- `ANTHROPIC_API_KEY` — required for Addie chat to function at all.
+- `ANONYMOUS_DAILY_LIMIT_USD` — daily anonymous usage cap; gates `anonymousChat` model.
+
+## Things to escalate further (engineering, not ops)
+
+- Empty assistant messages on short follow-ups — investigation needed in `claude-client.ts`.
+- Duplicate-message bug (#124) — same response posted twice.
+- Stale `search_docs` index symptoms — run a probe via `npm run start` locally, call `searchDocs(query)` directly to confirm.
+- Anonymous-mode tool refusal — Addie sometimes deflects to sign-in even when the tool is in `ANONYMOUS_SAFE_KNOWLEDGE_TOOLS`. Behavior gap, not a bug in the registry.
