@@ -1,0 +1,124 @@
+---
+title: Specification lifecycle
+sidebarTitle: Specification lifecycle
+description: "How AdCP specification sections move from Draft to Final, who decides each transition, and what stability contract each stage carries for implementers."
+"og:title": "AdCP — Specification lifecycle"
+---
+
+Every section of the AdCP specification is at one of five stages. The stage tells an implementer how much stability to expect: a Draft section carries no contract; a Final section is protected by the full [3.x stability guarantees](/docs/reference/versioning#3x-stability-guarantees).
+
+---
+
+## Stages at a glance
+
+| Stage | Vocabulary match | Stability contract | Safe to build production systems against? |
+|---|---|---|---|
+| **Draft** | Pre-schema | None | No |
+| **Proposed** | Experimental (`x-status: experimental`) | [Experimental contract](/docs/reference/experimental-status#contract-for-experimental-surfaces) | With caution — may break with 6-week notice |
+| **Final** | Stable (no `x-status` marker) | Full [3.x guarantees](/docs/reference/versioning#3x-stability-guarantees) | Yes |
+| **Deprecated** | Stable, announced for removal | Same as Final until the removal release | Yes — but plan migration |
+| **Sunset** | Removed | None | No — feature is gone |
+
+The vocabulary match column is key: the spec stages and the schema annotations are two views of the same state. If a JSON Schema in `static/schemas/source/` has `"x-status": "experimental"`, the section it belongs to is at the **Proposed** stage. If it has no `x-status` marker and the schema has shipped in a GA release, it is at the **Final** stage.
+
+---
+
+## Stage definitions
+
+### Draft
+
+A section is in Draft when the working group has opened a scoped proposal on the GitHub milestone — a `spec / protocol` labeled issue with a defined scope — but no schema has been published in `static/schemas/source/` yet. Draft sections:
+
+- Carry **no stability contract of any kind**. Builders who proceed against a Draft section do so at their own risk and SHOULD track the relevant GitHub milestone for changes.
+- Are not declared in `get_adcp_capabilities`. A seller cannot claim conformance with a Draft section.
+- May be abandoned before reaching Proposed.
+
+**Entry**: A scoped spec issue is accepted onto the working group's active milestone. The domain working group lead confirms the scope is in window.
+
+**Decision authority**: Domain working group lead.
+
+**When the RFC process applies**: A material spec change — new task, schema change affecting existing fields, or change to normative prose — requires an approved [RFC](https://github.com/adcontextprotocol/adcp/issues/2437) before entering Draft. The RFC documents the motivation, alternatives considered, compatibility impact, and reviewer checklist. Lightweight changes (new optional fields with no behavioral consequence) may enter Draft via a PR with working group review in lieu of a formal RFC.
+
+---
+
+### Proposed
+
+A section is Proposed when its schema exists in `static/schemas/source/` with `"x-status": "experimental"` at the schema root or on the specific properties, **and** the seller implementing it declares the feature id in `experimental_features` on `get_adcp_capabilities`.
+
+The full Proposed-stage contract — including what may change with 6-week notice, what does not change (auth, transport, error envelope), and the seller declaration requirements — is specified in [Experimental Status](/docs/reference/experimental-status). That page governs; this page maps stage vocabulary to it.
+
+**Entry**: The schema is published in a 3.x release with `x-status: experimental`. The architecture committee review that accompanies the release confirms experimental status.
+
+**Decision authority**: Architecture committee, at release time.
+
+---
+
+### Final
+
+A section is Final when its schema is stable — `x-status: experimental` has been removed via a deliberate graduation PR reviewed by the architecture committee.
+
+The four graduation criteria are specified in [Experimental Status — Graduation to stable](/docs/reference/experimental-status#graduation-to-stable) — including the production signal requirement, cross-party validation bar (a second implementation running ≥45 days with at least one in production, or one implementation plus buyer integration), schema stability window, and the deliberate promotion PR. That page governs; this page maps stage vocabulary to it. The architecture committee reviews graduation PRs at each 3.x release.
+
+Once Final, a section is protected by the full [3.x stability guarantees](/docs/reference/versioning#3x-stability-guarantees): fields are never removed, enums are additive only, task names are never removed or renamed within the major version. **A Final section in 3.x remains Final — under the same guarantees — throughout the 4.0 development cycle.** A section under active 4.0 scoping is not retroactively downgraded; the 3.x contract holds until 3.x support ends. See [Support window for previous major](/docs/reference/versioning#support-window-for-previous-major).
+
+**Entry**: All four graduation criteria from experimental-status.mdx are met. Architecture committee approves and merges the graduation PR in a scheduled 3.x release.
+
+**Decision authority**: Architecture committee.
+
+---
+
+### Deprecated
+
+A section is Deprecated when a formal deprecation notice has been published in the release notes and changelog, and the 6-month countdown to removal has started. The section remains fully functional and under the 3.x stability guarantees during the deprecation window.
+
+The deprecation policy — 6-month minimum notice, feature persists through at least one full release cycle after deprecation, never removed within the same major version — is specified in [Versioning — Deprecation policy](/docs/reference/versioning#deprecation-policy).
+
+**Entry**: Deprecation notice lands in the release notes and changelog for a 3.x release. The replacement (if any) ships in the same release. The architecture committee confirms the removal target (always a major-version boundary).
+
+**Decision authority**: Architecture committee, with working group review.
+
+**Announcement**: Release notes entry with `deprecated` label + migration note, changelog entry, inline `@deprecated` annotation in the schema.
+
+---
+
+### Sunset
+
+A section is Sunset (removed) once the major-version boundary it was targeted for has shipped. By policy, a Deprecated section is never removed within the same major version — the earliest removal date is the GA of the next major. The v2 sunset timeline is documented on the [v2 sunset page](/docs/reference/v2-sunset).
+
+**Entry**: The successor major ships GA. The previously-deprecated fields, tasks, or schema properties are omitted from the new major's schemas.
+
+**Decision authority**: Implicit — the major-version release process carries the removal.
+
+---
+
+## Transition diagram
+
+```
+Draft  ──→  Proposed  ──→  Final  ──→  Deprecated  ──→  Sunset
+  └──→ (abandoned)          (stable)    (6-mo notice)    (removed at
+                                                          major boundary)
+```
+
+Draft may also be abandoned without reaching Proposed. A Final section may be Deprecated directly (no intermediate stage). There is no path from Sunset back to any prior stage — removed features are not restored; they are re-proposed from scratch if needed.
+
+Stage transitions (Draft → Proposed → Final, Final → Deprecated, etc.) are gated on an approved RFC — the RFC outcome (accepted / accepted-with-changes) is the trigger that authorises a contributor to open the spec PR that carries the transition. See [RFC process (issue #2437)](https://github.com/adcontextprotocol/adcp/issues/2437).
+
+---
+
+## How to check the current stage of a spec section
+
+1. **Schema marker**: Check the relevant schema in `static/schemas/source/`. `"x-status": "experimental"` → Proposed. No marker on a shipped schema → Final. Not in `static/schemas/source/` but referenced in an open GitHub milestone issue → Draft.
+2. **Experimental surfaces list**: The [Experimental Status](/docs/reference/experimental-status) page lists every currently-Proposed surface with its feature id and current status.
+3. **GitHub milestones**: Open issues on the active milestone represent Draft and Proposed work. Shipped items without `x-status` in the merged schema are Final.
+4. **Release notes**: Deprecated sections are called out with a `deprecated` label and removal target in every release's notes.
+
+---
+
+## Working group and governance
+
+The procedures that govern who sits on the working group, voting thresholds, quorum, and escalation paths:
+
+- **RFC process** ([#2437](https://github.com/adcontextprotocol/adcp/issues/2437)): proposal template, decision-record format, lifecycle from RFC to spec change
+- **Working group charter** ([#2438](https://github.com/adcontextprotocol/adcp/issues/2438)): quorum, voting thresholds, roster, recusal policy — under active development
+
+The architecture committee is the defined decision authority for Final-stage graduation and Deprecated-stage entry. It is referenced in [Experimental Status](/docs/reference/experimental-status) and acts as the working group's ratifying body for stage transitions that carry a stability contract.
