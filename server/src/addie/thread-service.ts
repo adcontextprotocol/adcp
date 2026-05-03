@@ -448,7 +448,13 @@ export class ThreadService {
     try {
       await client.query('BEGIN');
 
-      // Get next sequence number
+      // Serialize sequence-number assignment per thread. Without this, two
+      // concurrent addMessage calls on the same thread both observe the same
+      // MAX(sequence_number) under READ COMMITTED and assign the same next
+      // value, producing duplicate sequence numbers and nondeterministic
+      // ordering in getThreadMessages. Same pattern as billing/org-intake-lock.
+      await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [input.thread_id]);
+
       const seqResult = await client.query<{ next_seq: number }>(
         `SELECT COALESCE(MAX(sequence_number), 0) + 1 as next_seq
          FROM addie_thread_messages WHERE thread_id = $1`,
