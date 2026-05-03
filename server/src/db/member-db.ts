@@ -175,6 +175,10 @@ export class MemberDatabase {
       is_public: 'is_public',
       show_in_carousel: 'show_in_carousel',
       is_founding_member: 'is_founding_member',
+      founding_member_source: 'founding_member_source',
+      founding_member_granted_at: 'founding_member_granted_at',
+      founding_member_granted_reason: 'founding_member_granted_reason',
+      founding_member_granted_by: 'founding_member_granted_by',
     };
 
     const setClauses: string[] = [];

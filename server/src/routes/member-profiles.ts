@@ -1851,6 +1851,30 @@ export function createAdminMemberProfileRouter(config: MemberProfileRoutesConfig
       delete updates.created_at;
       delete updates.updated_at;
 
+      // founding_member_granted_by and founding_member_granted_at are set
+      // server-side below — strip any body-supplied values to prevent spoofing.
+      delete updates.founding_member_granted_by;
+      delete updates.founding_member_granted_at;
+
+      // Audit trail for is_founding_member grants
+      if (updates.is_founding_member === true) {
+        // Default to 'manual_grandfather' so existing callers that set the flag
+        // without a source continue to work (backward compatibility).
+        if (updates.founding_member_source == null) {
+          updates.founding_member_source = 'manual_grandfather';
+        }
+        // Block auto_pre_cutoff from being written via the API —
+        // that value is reserved for automated migrations (147/180/465).
+        if (updates.founding_member_source === 'auto_pre_cutoff') {
+          return res.status(400).json({
+            error: 'Invalid founding_member_source',
+            message: "auto_pre_cutoff is reserved for automated migrations. Use 'manual_grandfather' for admin grants.",
+          });
+        }
+        updates.founding_member_granted_by = req.user!.id;
+        updates.founding_member_granted_at = new Date();
+      }
+
       // Even an admin caller cannot pin an agent type that contradicts the
       // probed capability snapshot — see resolveAgentTypes() + issue #3495.
       if (Array.isArray(updates.agents)) {

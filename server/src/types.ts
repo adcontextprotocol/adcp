@@ -744,6 +744,10 @@ export interface MemberProfile {
   show_in_carousel: boolean;
   featured: boolean;
   is_founding_member: boolean;
+  founding_member_source?: string;
+  founding_member_granted_at?: Date;
+  founding_member_granted_reason?: string;
+  founding_member_granted_by?: string;
   created_at: Date;
   updated_at: Date;
 }
@@ -795,6 +799,11 @@ export interface UpdateMemberProfileInput {
   is_public?: boolean;
   show_in_carousel?: boolean;
   is_founding_member?: boolean;
+  founding_member_source?: string;
+  founding_member_granted_reason?: string;
+  // Set server-side from req.user — never accepted from request body
+  founding_member_granted_by?: string;
+  founding_member_granted_at?: Date | string;
 }
 
 export interface ListMemberProfilesOptions {
