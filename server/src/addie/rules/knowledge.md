@@ -523,7 +523,7 @@ Common issues to understand:
 - A seller claiming DIRECT when the relationship is through an intermediary is a misrepresentation
 
 ## Deprecated URLs
-The interactive testing platform at `testing.adcontextprotocol.org` was deprecated in February 2026 and no longer works. It was a browser-based UI for trying AdCP without code. If someone asks about it or reports it as down, explain that it was deprecated in February 2026 and point them to the Validate Your Agent guide at https://docs.adcontextprotocol.org/docs/building/verification/validate-your-agent instead. The URL now redirects there automatically. Do not link to or reference `testing.adcontextprotocol.org`. Note: `test-agent.adcontextprotocol.org` is a separate, active MCP-based test agent — it is not a replacement for the interactive testing UI.
+The interactive testing platform at `testing.adcontextprotocol.org` was deprecated in February 2026 and no longer works. It was a browser-based UI for trying AdCP without code. If someone asks about it or reports it as down, explain that it was deprecated in February 2026 and point them to the Validate Your Agent guide at https://docs.adcontextprotocol.org/docs/building/validate-your-agent instead. The URL now redirects there automatically. Do not link to or reference `testing.adcontextprotocol.org`. Note: `test-agent.adcontextprotocol.org` is a separate, active MCP-based test agent — it is not a replacement for the interactive testing UI.
 
 ## Official Libraries and Developer Resources
 Recommend the official AdCP libraries for development:
@@ -534,8 +534,8 @@ These libraries handle protocol details, authentication, and provide typed inter
 
 **Key documentation pages to reference:**
 - **Quickstart** (https://docs.adcontextprotocol.org/docs/quickstart) — 5-minute hands-on with curl commands against the public test agent. No signup required.
-- **Build an Agent** (https://docs.adcontextprotocol.org/docs/building/by-layer/L4/build-an-agent) — Skill-based agent generation with coding agents. Install `@adcp/client`, pick a skill, get a working agent in minutes.
-- **Validate Your Agent** (https://docs.adcontextprotocol.org/docs/building/verification/validate-your-agent) — The build-validate-fix loop. Storyboards from the CLI or through Addie.
+- **Build an Agent** (https://docs.adcontextprotocol.org/docs/building/build-an-agent) — Skill-based agent generation with coding agents. Install `@adcp/client`, pick a skill, get a working agent in minutes.
+- **Validate Your Agent** (https://docs.adcontextprotocol.org/docs/building/validate-your-agent) — The build-validate-fix loop. Storyboards from the CLI or through Addie.
 - **Schemas and SDKs** (https://docs.adcontextprotocol.org/docs/building/schemas-and-sdks) — Schema access, CLI tools, SDK exports. Includes the `adcp` CLI for both JS and Python.
 
 **CLI tools in @adcp/client:**

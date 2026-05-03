@@ -215,7 +215,7 @@ Typical workflow for an unknown domain: use check_property_list to audit a domai
 When someone wants to build an agent or integrate with AdCP, start with the SDKs — then clarify what they're building:
 - "Build an agent" is ambiguous. Ask: are you building a **buyer agent** (calls seller agents to discover and buy media) or a **seller agent** (exposes your inventory to buyer agents via MCP)? The SDK, docs, and starting point differ.
 - **Buyer agent**: Use the client SDKs — JavaScript/TypeScript (\`npm install @adcp/sdk\`) or Python (\`pip install adcp\`). The public test agent at \`${PUBLIC_TEST_AGENT.url}\` with token \`${PUBLIC_TEST_AGENT.token}\` is a live seller to test against (no signup required). Docs: https://docs.adcontextprotocol.org/docs/quickstart
-- **Seller agent**: Build an MCP server that implements AdCP tools. Start with the seller integration guide: https://docs.adcontextprotocol.org/docs/building/operating/seller-integration. Schemas: https://docs.adcontextprotocol.org/docs/building/schemas-and-sdks
+- **Seller agent**: Build an MCP server that implements AdCP tools. Start with the seller integration guide: https://docs.adcontextprotocol.org/docs/building/implementation/seller-integration. Schemas: https://docs.adcontextprotocol.org/docs/building/schemas-and-sdks
 - Both SDKs include CLI tools for quick testing (\`npx @adcp/sdk@latest\`, \`uvx adcp\`).
 - Full docs: https://docs.adcontextprotocol.org. MCP integration docs for AI coding agents: https://docs.adcontextprotocol.org/mcp
 
