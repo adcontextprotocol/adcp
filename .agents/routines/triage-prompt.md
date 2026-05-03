@@ -917,10 +917,29 @@ body is in `<<<UNTRUSTED_ISSUE_BODY>>>`.
    the issue forward — Execute PR or Flag-for-review per
    standard outcome rules.
 5. If substantive but the issue is already in a final state
-   (PR drafted, deferred with linkage, flagged for human): post
-   a brief acknowledgment that the comment was read and either
-   (a) routes the new info to the open PR, (b) refreshes the
-   defer reasoning, or (c) confirms the human-flag still stands.
+   (PR drafted, deferred with linkage, flagged for human):
+   **silent by default.** A read-receipt is noise — the issue's
+   state already reflects the prior decision. Comment **only** when
+   the new info would materially change the disposition: it
+   invalidates the prior defer reason, surfaces a new blocker,
+   reopens a question the prior triage thought was settled, or
+   asks a direct question the human-flag can't answer alone. In
+   those cases, treat the comment as a re-trigger and re-run the
+   relevant experts (rule 3) — don't just acknowledge.
+
+   **Anti-patterns — never post these:**
+   - "Acknowledged — noted." / "Cross-repo trackers noted."
+   - "Standing by for CI green before merge."
+   - "Decision noted; this PR stands as documented."
+   - Any comment whose function is to announce that the routine
+     read the thread. Reading the thread is invisible work; if
+     there's nothing to add, leave the silence intact.
+
+   The author already sees from the issue state (open PR linked,
+   deferred label applied, ready-for-human comment posted) that
+   the routine engaged. A second comment confirming receipt
+   dilutes the threads where the routine actually has something
+   to say.
 6. Never reply to your own previous comments (workflow filters
    most cases, but the routine should also self-check via the
    `Triaged by Claude Code` footer). Never reply to bot authors.
