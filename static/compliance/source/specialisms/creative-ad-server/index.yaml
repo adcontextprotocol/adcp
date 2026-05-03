@@ -264,9 +264,11 @@ phases:
           # Ad Manager, Kevel, Equativ, FreeWheel) — the storyboard asserts
           # "an upstream call happened" rather than naming a platform.
           - check: upstream_traffic
-            description: "build_creative caused upstream traffic to the ad server"
+            description: "build_creative caused upstream traffic to the ad server carrying the creative_id"
             min_count: 1
             endpoint_pattern: "POST *"
+            identifier_paths:
+              - "creative_id"
   - id: track_delivery
     title: "Track creative delivery"
     narrative: |

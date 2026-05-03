@@ -248,9 +248,6 @@ phases:
             identifier_paths:
               - "audiences[*].add[*].hashed_email"
               - "audiences[*].add[*].external_id"
-            payload_must_contain:
-              - path: "users[*].hashed_email"
-                match: present
       - id: delete_audience
         title: "Delete test audience"
         narrative: |
@@ -293,3 +290,11 @@ phases:
             path: "context.correlation_id"
             value: "audience_sync--delete_audience"
             description: "Context correlation_id returned unchanged"
+          # Anti-façade: an adapter that returns a shape-valid delete response without
+          # forwarding the deletion to its upstream user graph fails this check. The
+          # identifier echo confirms the upstream call carries the correct audience ID.
+          - check: upstream_traffic
+            description: "delete_audience caused upstream traffic propagating the deletion to the upstream user graph"
+            min_count: 1
+            identifier_paths:
+              - "audiences[*].audience_id"

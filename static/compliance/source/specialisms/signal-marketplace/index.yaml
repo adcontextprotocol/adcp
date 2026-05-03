@@ -314,8 +314,8 @@ phases:
           pricing_option_id: "$context.first_signal_pricing_option_id"
           destinations:
             - type: "platform"
-              platform: "the-trade-desk"
-              account: "agency-123-ttd"
+              platform: "pinnacle-dsp"
+              account: "agency-123-pd"
           idempotency_key: "$generate:uuid_v4#signal_marketplace_activate_platform"
           context:
             correlation_id: "signal_marketplace--activate_on_platform"
@@ -354,9 +354,8 @@ phases:
             min_count: 1
             endpoint_pattern: "POST *"
             since: search_by_spec
-            payload_must_contain:
-              - path: "segment_id"
-                match: present
+            identifier_paths:
+              - "signal_agent_segment_id"
   - id: agent_activation
     title: "Activate on a sales agent"
     narrative: |
