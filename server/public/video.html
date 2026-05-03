@@ -29,6 +29,25 @@
       background: var(--color-bg-card);
     }
 
+    body.presenter .page-header {
+      display: none;
+    }
+
+    body.presenter .main {
+      padding: 0;
+    }
+
+    /* Hide chrome whenever the document is fullscreened, regardless of
+       presenter flag, so the on-stage projector shows only Addie. */
+    :fullscreen .page-header,
+    :-webkit-full-screen .page-header {
+      display: none;
+    }
+    :fullscreen .main,
+    :-webkit-full-screen .main {
+      padding: 0;
+    }
+
     .page-header h1 {
       font-size: 22px;
       font-weight: 600;
@@ -160,15 +179,15 @@
       flex-shrink: 0;
       display: flex;
       justify-content: center;
+      gap: 8px;
       padding: 12px;
     }
 
-    .end-btn {
+    .end-btn,
+    .fullscreen-btn {
       display: inline-flex;
       align-items: center;
       gap: 8px;
-      background: var(--color-error-600);
-      color: white;
       border: none;
       border-radius: 8px;
       padding: 10px 20px;
@@ -178,8 +197,25 @@
       transition: opacity 0.15s ease;
     }
 
-    .end-btn:hover {
+    .end-btn {
+      background: var(--color-error-600);
+      color: white;
+    }
+
+    .fullscreen-btn {
+      background: var(--color-bg-card);
+      color: var(--color-text);
+      border: 1px solid var(--color-border);
+    }
+
+    .end-btn:hover,
+    .fullscreen-btn:hover {
       opacity: 0.85;
+    }
+
+    .fullscreen-btn svg {
+      width: 16px;
+      height: 16px;
     }
 
     /* Error state */
@@ -224,9 +260,18 @@
 
     <div id="call-container">
       <div class="frame-wrapper">
-        <iframe id="call-frame" allow="camera; microphone; autoplay; display-capture"></iframe>
+        <iframe id="call-frame" allow="camera; microphone; autoplay; display-capture; fullscreen" allowfullscreen></iframe>
       </div>
       <div class="call-controls">
+        <button class="fullscreen-btn" id="fullscreen-btn" onclick="toggleFullscreen()" title="Toggle fullscreen (F)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M8 3H5a2 2 0 0 0-2 2v3"></path>
+            <path d="M21 8V5a2 2 0 0 0-2-2h-3"></path>
+            <path d="M3 16v3a2 2 0 0 0 2 2h3"></path>
+            <path d="M16 21h3a2 2 0 0 0 2-2v-3"></path>
+          </svg>
+          <span id="fullscreen-label">Fullscreen</span>
+        </button>
         <button class="end-btn" onclick="endCall()">
           End conversation
         </button>
@@ -235,12 +280,55 @@
   </main>
 
   <script>
+    // Presenter mode: ?presenter=1 hides page chrome (header, padding) so the
+    // standalone video page can be projected at events without browser distractions.
+    const presenterMode = new URLSearchParams(window.location.search).get('presenter') === '1';
+    if (presenterMode) {
+      document.body.classList.add('presenter');
+    }
+
     function showState(state) {
       document.getElementById('pre-call').style.display = state === 'pre-call' ? 'block' : 'none';
       document.getElementById('loading').style.display = state === 'loading' ? 'block' : 'none';
       document.getElementById('call-container').style.display = state === 'active' ? 'flex' : 'none';
-      document.querySelector('.main').style.padding = state === 'active' ? '0' : '';
+      // Only override padding while NOT in presenter mode — presenter mode
+      // already sets padding:0 via CSS and we shouldn't reintroduce it.
+      if (!presenterMode) {
+        document.querySelector('.main').style.padding = state === 'active' ? '0' : '';
+      }
     }
+
+    function toggleFullscreen() {
+      const doc = document;
+      const elem = doc.documentElement;
+      const isFullscreen = doc.fullscreenElement || doc.webkitFullscreenElement;
+      if (isFullscreen) {
+        (doc.exitFullscreen || doc.webkitExitFullscreen).call(doc);
+      } else {
+        (elem.requestFullscreen || elem.webkitRequestFullscreen).call(elem);
+      }
+    }
+
+    function updateFullscreenLabel() {
+      const isFullscreen = document.fullscreenElement || document.webkitFullscreenElement;
+      const label = document.getElementById('fullscreen-label');
+      if (label) label.textContent = isFullscreen ? 'Exit fullscreen' : 'Fullscreen';
+    }
+    document.addEventListener('fullscreenchange', updateFullscreenLabel);
+    document.addEventListener('webkitfullscreenchange', updateFullscreenLabel);
+
+    // Keyboard shortcut: F toggles fullscreen during a call.
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'f' || e.key === 'F') {
+        const inCall = document.getElementById('call-container').style.display === 'flex';
+        const target = e.target;
+        const isTyping = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
+        if (inCall && !isTyping) {
+          e.preventDefault();
+          toggleFullscreen();
+        }
+      }
+    });
 
     function showError(message) {
       const el = document.getElementById('error-message');
@@ -248,6 +336,8 @@
       el.style.display = 'block';
       document.getElementById('start-btn').disabled = false;
     }
+
+    let activeConversationId = null;
 
     async function startCall() {
       document.getElementById('start-btn').disabled = true;
@@ -263,6 +353,7 @@
         }
         const data = await res.json();
         conversationUrl = data.conversation_url;
+        activeConversationId = data.conversation_id;
       } catch (err) {
         showState('pre-call');
         showError(err.message || 'Unable to connect. Please try again.');
@@ -280,11 +371,28 @@
     }
 
     function endCall() {
+      // Best-effort: tell Tavus to release the session so it doesn't hold a
+      // concurrent slot until the ~25min idle timeout.
+      if (activeConversationId) {
+        fetch(`/api/addie/video/session/${encodeURIComponent(activeConversationId)}/end`, {
+          method: 'POST',
+        }).catch(() => {});
+      }
+      activeConversationId = null;
       const frame = document.getElementById('call-frame');
       frame.src = 'about:blank';
       document.getElementById('start-btn').disabled = false;
       showState('pre-call');
     }
+
+    // Closing the tab mid-call should also release the Tavus session.
+    window.addEventListener('beforeunload', () => {
+      if (activeConversationId && navigator.sendBeacon) {
+        try {
+          navigator.sendBeacon(`/api/addie/video/session/${encodeURIComponent(activeConversationId)}/end`);
+        } catch (_) {}
+      }
+    });
   </script>
 </body>
 </html>

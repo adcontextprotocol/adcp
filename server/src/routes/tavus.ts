@@ -3,6 +3,7 @@ import { Router, type Request } from "express";
 import path from "path";
 import { fileURLToPath } from "url";
 import { v4 as uuidv4 } from "uuid";
+import { serveHtmlWithConfig } from "../utils/html-config.js";
 import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { createLogger } from "../logger.js";
 import { AddieClaudeClient, type RequestTools } from "../addie/claude-client.js";
@@ -79,7 +80,7 @@ import { AddieModelConfig } from "../config/models.js";
 import { CachedPostgresStore } from "../middleware/pg-rate-limit-store.js";
 import { sanitizeInput } from "../addie/security.js";
 import { getThreadService } from "../addie/thread-service.js";
-import { optionalAuth } from "../middleware/auth.js";
+import { optionalAuth, requireAdmin } from "../middleware/auth.js";
 import {
   getWebMemberContext,
   formatMemberContextForPrompt,
@@ -326,16 +327,109 @@ const sessionRateLimiter = rateLimit({
 });
 
 export function createTavusRouter() {
-  // Page router: serves GET /video
+  // Page router: serves GET /video and GET /video/lab.
+  // Both routes go through serveHtmlWithConfig so the global app config and
+  // csrf.js (which patches fetch to attach the X-CSRF-Token header) get
+  // injected. Without csrf.js, POSTs to /api/addie/video/session are rejected
+  // by the CSRF middleware.
   const pageRouter = Router();
-  pageRouter.get("/", (_req, res) => {
-    // Daily.co iframe needs camera, microphone, and autoplay permissions
+  pageRouter.get("/", optionalAuth, async (req, res) => {
     res.setHeader("Permissions-Policy", "camera=*, microphone=*, autoplay=*");
-    res.sendFile(path.join(__dirname, "../../public/video.html"));
+    await serveHtmlWithConfig(req, res, "video.html");
   });
 
-  // API router: POST /api/addie/video/session
+  // Admin-only experimental surface that connects to the same Tavus session
+  // via @daily-co/daily-js directly (no iframe), so we can prototype custom
+  // controls, push-to-interrupt, and pre-call device test.
+  pageRouter.get("/lab", requireAdmin, async (req, res) => {
+    res.setHeader("Permissions-Policy", "camera=*, microphone=*, autoplay=*");
+    await serveHtmlWithConfig(req, res, "video-lab.html");
+  });
+
+  // API router: POST /api/addie/video/session, POST /api/addie/video/session/:id/end
   const apiRouter = Router();
+
+  // End an active Tavus conversation. Releases the concurrent-conversation
+  // slot immediately so a new session can be created. Auth: must be the
+  // user who created the thread (or an AAO admin).
+  apiRouter.post("/session/:conversationName/end", optionalAuth, async (req, res) => {
+    if (!req.user) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+    const tavusApiKey = process.env.TAVUS_API_KEY;
+    if (!tavusApiKey) {
+      return res.status(503).json({ error: "Video chat not configured" });
+    }
+    const conversationName = req.params.conversationName;
+    if (!/^addie-[0-9a-f-]{36}$/.test(conversationName)) {
+      return res.status(400).json({ error: "Invalid conversation id" });
+    }
+
+    // Look up the thread we created for this conversation. We use it both
+    // to authorize the call (only the thread owner can end) and to recover
+    // the Tavus conversation_id from the conversation_url stored in context.
+    const threadService = getThreadService();
+    const thread = await threadService.getThreadByExternalId('video', conversationName).catch(() => null);
+
+    if (!thread) {
+      // No matching thread — could be a stale id or a session created by a
+      // different process. Fail closed; admins can clean up via Tavus
+      // dashboard / direct API call.
+      return res.status(404).json({ error: "Conversation not found" });
+    }
+    if (thread.user_id !== req.user.id) {
+      const userIsAdmin = await isWebUserAAOAdmin(req.user.id).catch(() => false);
+      if (!userIsAdmin) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+    }
+
+    // Tavus identifies conversations by their internal conversation_id, not
+    // the conversation_name we sent. We stash that id in thread.context at
+    // create time. Fall back to scanning the active list (with the name
+    // normalized — Tavus replaces "-" with " ") if context is missing.
+    let tavusConversationId: string | null =
+      (thread.context as { tavus_conversation_id?: string } | null)?.tavus_conversation_id ?? null;
+
+    if (!tavusConversationId) {
+      try {
+        const list = await fetch(`https://tavusapi.com/v2/conversations?status=active`, {
+          headers: { "x-api-key": tavusApiKey },
+        });
+        if (list.ok) {
+          const data = (await list.json()) as { data?: Array<{ conversation_id: string; conversation_name: string }> };
+          const normalized = conversationName.replace(/-/g, " ");
+          const match = data.data?.find((c) => c.conversation_name === normalized || c.conversation_name === conversationName);
+          if (match) tavusConversationId = match.conversation_id;
+        }
+      } catch (err) {
+        logger.warn({ err, conversationName }, "Tavus end: failed to list active conversations");
+      }
+    }
+
+    if (!tavusConversationId) {
+      // Already ended or not found — treat as success so the client
+      // tear-down completes cleanly.
+      return res.json({ ended: false, reason: "not_active" });
+    }
+
+    try {
+      const endRes = await fetch(
+        `https://tavusapi.com/v2/conversations/${tavusConversationId}/end`,
+        { method: "POST", headers: { "x-api-key": tavusApiKey } }
+      );
+      if (!endRes.ok) {
+        const text = await endRes.text();
+        logger.error({ status: endRes.status, error: text, conversationName }, "Tavus end: failed");
+        return res.status(502).json({ error: "Tavus end-call failed" });
+      }
+      logger.info({ conversationName, tavusConversationId }, "Tavus end: conversation released");
+      return res.json({ ended: true });
+    } catch (err) {
+      logger.error({ err, conversationName }, "Tavus end: error");
+      return res.status(500).json({ error: "Internal error" });
+    }
+  });
 
   apiRouter.post("/session", optionalAuth, sessionRateLimiter, async (req, res) => {
     if (!req.user) {
@@ -390,7 +484,16 @@ export function createTavusRouter() {
         return res.status(502).json({ error: "Failed to create video session" });
       }
 
-      const data = (await response.json()) as { conversation_url: string };
+      const data = (await response.json()) as { conversation_url: string; conversation_id: string };
+      // Tavus normalizes conversation_name (replaces "-" with " ") so we
+      // can't reliably round-trip lookup by name. Stash Tavus's internal
+      // conversation_id on the thread so end-call can call /conversations/:id/end
+      // directly without scanning the active list.
+      if (data.conversation_id) {
+        await threadService
+          .updateThreadContext(thread.thread_id, { tavus_conversation_id: data.conversation_id })
+          .catch((err) => logger.warn({ err, threadId: thread.thread_id }, "Tavus: failed to persist tavus_conversation_id"));
+      }
       return res.json({
         conversation_url: data.conversation_url,
         conversation_id: conversationName,
