@@ -233,8 +233,6 @@ phases:
         context_outputs:
           - name: initial_media_buy_id
             path: "media_buy_id"
-          - name: idempotency_key_a
-            path: "idempotency_key"
         expected: |
           Create a new media buy and return a media_buy_id. This establishes the
           canonical response that subsequent replays must match.
