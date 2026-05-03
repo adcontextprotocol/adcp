@@ -1041,11 +1041,30 @@
 #                              # parsePathWithWildcards from @adcp/sdk, which
 #                              # recognizes `[*]` only. Path matching only
 #                              # applies when recorded_calls[].content_type is
-#                              # JSON-shaped (application/json or *+json);
-#                              # against form-urlencoded, multipart, or other
-#                              # content types the runner falls back to
-#                              # substring matching for `match: present` and
-#                              # grades non-substring matches not_applicable.
+#                              # JSON-shaped — defined as `application/json`
+#                              # or any structured-syntax-suffix `*/*+json`
+#                              # per RFC 6839 §3.1 (e.g., `application/vnd.api+json`,
+#                              # `application/scim+json`). All other content
+#                              # types (form-urlencoded, multipart, plain text,
+#                              # newline-delimited JSON like `application/json-seq`,
+#                              # JSON Lines `application/jsonl`) take the non-
+#                              # JSON path. Against non-JSON ALL match modes
+#                              # (`present` / `equals` / `contains_any`) grade
+#                              # `not_applicable`. Earlier sketches downgraded
+#                              # `match: present` to a terminal-key substring
+#                              # search of the raw payload string; that
+#                              # heuristic creates false positives (a payload
+#                              # mentioning the key name in any context — URL
+#                              # fragment, comment, unrelated metadata field —
+#                              # would pass), which is exactly the anti-façade
+#                              # contract this surface exists to protect.
+#                              # Storyboards that need a "the upstream call
+#                              # carried this value" signal against non-JSON
+#                              # payloads use `identifier_paths` instead — that
+#                              # surface substring-searches storyboard-supplied
+#                              # VALUES (not path-derived strings), which is
+#                              # encoding-agnostic and doesn't suffer the
+#                              # false-positive surface.
 #                              # Shape:
 #                              #   - path: <dotted-with-[*] path>
 #                              #     match: present | equals | contains_any

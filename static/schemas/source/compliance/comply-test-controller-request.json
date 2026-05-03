@@ -380,7 +380,7 @@
               },
               "endpoint_pattern": {
                 "type": "string",
-                "description": "Optional server-side filter; reduces response size. Glob-style pattern matched against `<METHOD> <URL>`, e.g. 'POST */audience/upload' or 'POST *'. When omitted, all recorded calls in the window are returned."
+                "description": "Optional server-side filter; reduces response size. Wildcard pattern matched against `<METHOD> <URL>`, e.g. 'POST */audience/upload' or 'POST *'. When omitted, all recorded calls in the window are returned. **Grammar (normative):** `*` matches zero or more characters of any kind including `/`. No other characters have wildcard semantics — `?` is a literal question mark, `[` and `]` are literal brackets, etc. There is no escape mechanism — `*` is always a wildcard; if literal-asterisk matching is required, callers omit `endpoint_pattern` and filter response-side. Implementations MUST anchor the pattern (full-string match, not substring search). This narrow grammar is intentional — `endpoint_pattern` exists to discriminate platform endpoints (e.g., `POST */audience/upload` vs `POST */events/log`), not to express full path-segment grammars. Cross-runner determinism depends on this pinning: a runner that ships POSIX-glob semantics (`*` per-segment, `?` single-char-any) would grade the same storyboard differently than a runner picking the more permissive single-wildcard reading."
               },
               "limit": {
                 "type": "integer",
