@@ -33,18 +33,18 @@ describe('adcp-taxonomy enum sync', () => {
 });
 
 describe('specialism status', () => {
-  // No specialisms are currently marked `status: preview` in the compliance catalog —
-  // earlier preview specialisms (sales-exchange, sales-retail-media, sales-streaming-tv,
-  // measurement-verification) were removed from the enum entirely rather than retained
-  // behind a status flag. The preview mechanism remains in place for future use.
-
-  it('treats all current specialisms as stable', () => {
+  it('treats stable specialisms as stable', () => {
     expect(isStableSpecialism('sales-broadcast-tv')).toBe(true);
     expect(isStableSpecialism('creative-template')).toBe(true);
     expect(isStableSpecialism('property-lists')).toBe(true);
     expect(isStableSpecialism('collection-lists')).toBe(true);
     expect(isStableSpecialism('signed-requests')).toBe(true);
     expect(isStableSpecialism('governance-aware-seller')).toBe(true);
+  });
+
+  it('treats sponsored-intelligence as preview (first live preview specialism)', () => {
+    expect(isStableSpecialism('sponsored-intelligence')).toBe(false);
+    expect(getSpecialismStatus('sponsored-intelligence')).toBe('preview');
   });
 
   it('treats unknown specialisms as stable (safe default)', () => {
