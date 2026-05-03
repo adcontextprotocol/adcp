@@ -101,6 +101,9 @@
                     ]
                   },
                   "docs/protocol/architecture",
+                  "docs/protocol/design-principles",
+                  "docs/protocol/capabilities-explorer",
+                  "docs/spec-guidelines",
                   "docs/protocol/required-tasks",
                   "docs/protocol/calling-an-agent",
                   "docs/protocol/multi-agent-discovery",
