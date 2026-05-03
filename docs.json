@@ -207,6 +207,7 @@
                       "docs/building/operating/orchestrator-design",
                       "docs/building/operating/transport-errors",
                       "docs/building/operating/seller-integration",
+                      "docs/building/operating/tmp-provider",
                       "docs/building/operating/storyboard-troubleshooting"
                     ]
                   },
@@ -777,6 +778,7 @@
                   "docs/building/operating/orchestrator-design",
                   "docs/building/operating/transport-errors",
                   "docs/building/operating/seller-integration",
+                  "docs/building/operating/tmp-provider",
                   "docs/building/operating/storyboard-troubleshooting"
                 ]
               },
@@ -1592,6 +1594,10 @@
     {
       "source": "/docs/building/implementation/seller-integration",
       "destination": "/docs/building/operating/seller-integration"
+    },
+    {
+      "source": "/docs/building/implementation/tmp-provider",
+      "destination": "/docs/building/operating/tmp-provider"
     },
     {
       "source": "/docs/building/implementation/storyboard-troubleshooting",
