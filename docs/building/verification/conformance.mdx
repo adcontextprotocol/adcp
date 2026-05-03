@@ -157,6 +157,25 @@ Conformance is per-version; the suite is per-version. A 3.0-conformant agent is 
 
 ## When a storyboard fails
 
+When a failure surfaces a disagreement between the spec, the mock, and an SDK, the section below gives the triage order. For symptom-to-cause lookup, see the links at the end of this section.
+
+### Mock-server authority and failure triage
+
+The `adcp mock-server` is the reference wire implementation for stable surfaces. Use this triage order when a storyboard failure implicates the mock or an SDK:
+
+**Triage order: spec → mock → SDK.** The storyboards (and the schemas they reference) are canonical. The mock interprets the storyboards. The SDK consumes the protocol via the mock.
+
+| Condition | Default verdict | Next step |
+|---|---|---|
+| SDK wire shape **differs** from the mock's | SDK is wrong | File a bug against the SDK |
+| SDK wire shape **matches** the mock's, but a storyboard still fails | Mock is wrong | File an issue against `adcontextprotocol/adcp` to fix the mock |
+| Storyboard assertion conflicts with an otherwise-passing wire shape | Storyboard is wrong | File an issue against `adcontextprotocol/adcp` to fix the storyboard |
+| Spec text (storyboard prose or schema) explicitly contradicts the mock | Spec wins; mock is the bug | File an issue against `adcontextprotocol/adcp` to fix the mock |
+
+**Scope.** This triage order applies to stable surfaces only. Experimental surfaces (see [Experimental Status](/docs/reference/experimental-status)) are under active revision; mock behavior there is not yet authoritative.
+
+**Spec ambiguity vs. spec silence.** When spec text exists but is ambiguous, the mock's behavior pins the authoritative interpretation — that pinning is normative even if the prose has not yet been tightened. When the spec is entirely silent on a point and the mock has no behavior for it, the chain breaks; open a [known-ambiguities issue](/docs/building/cross-cutting/known-ambiguities) instead of treating the mock as authoritative.
+
 - **[Storyboard troubleshooting](/docs/building/operating/storyboard-troubleshooting)** — Error pattern → root cause → fix for the most common storyboard failures
 - **[Known spec ambiguities](/docs/building/cross-cutting/known-ambiguities)** — Open spec gaps with workarounds and issue links; entries are removed as underlying issues close
 
