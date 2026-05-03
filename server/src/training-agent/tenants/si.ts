@@ -31,7 +31,7 @@ const TRAINING_BRAND = {
   product_title: 'Nova Summer Collection',
 } as const;
 
-const activeSessions = new Map<string, { turnCount: number }>();
+const activeSessions = new Map<string, { turnCount: number; terminated: boolean }>();
 
 const CONTEXT_REF = z.any().optional();
 
@@ -81,7 +81,7 @@ const SI_TERMINATE_SESSION_SCHEMA = {
 };
 
 function makeSessionId(): string {
-  return `si_sess_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  return `si_sess_${crypto.randomUUID()}`;
 }
 
 export function buildSiTenantConfig(host: string): {
@@ -106,27 +106,28 @@ export function buildSiTenantConfig(host: string): {
             async (args: ToolArgs, _ctx: TrainingContext) => {
               const p = args as Record<string, unknown>;
               const includeProducts = Boolean(p['include_products'] ?? false);
-              const offeringId = String(p['offering_id'] ?? TRAINING_BRAND.offering_id);
+              const offeringId = String(p['offering_id'] ?? TRAINING_BRAND.offering_id).slice(0, 128);
+              const tokenSuffix = offeringId.replace(/[^a-z0-9]/gi, '_');
               return {
-                offering_id: offeringId,
                 available: true,
-                brand_name: TRAINING_BRAND.name,
-                brand_domain: TRAINING_BRAND.domain,
-                title: TRAINING_BRAND.product_title,
-                description:
-                  'Discover the latest Nova summer styles — conversational shopping powered by Sponsored Intelligence.',
-                offering_token: `otk_${Date.now()}_${offeringId.replace(/[^a-z0-9]/gi, '_')}`,
+                offering_token: `otk_${crypto.randomUUID()}_${tokenSuffix}`,
+                offering: {
+                  offering_id: offeringId,
+                  title: TRAINING_BRAND.product_title,
+                  summary:
+                    'Discover the latest Nova summer styles — conversational shopping powered by Sponsored Intelligence.',
+                },
                 ...(includeProducts && {
-                  products: [
+                  matching_products: [
                     {
                       product_id: 'nova-sun-dress-001',
-                      title: 'Nova Sun Dress',
+                      name: 'Nova Sun Dress',
                       price: '79.00',
                       currency: 'USD',
                     },
                     {
                       product_id: 'nova-linen-blazer-002',
-                      title: 'Nova Linen Blazer',
+                      name: 'Nova Linen Blazer',
                       price: '129.00',
                       currency: 'USD',
                     },
@@ -143,7 +144,7 @@ export function buildSiTenantConfig(host: string): {
             async (args: ToolArgs, _ctx: TrainingContext) => {
               const p = args as Record<string, unknown>;
               const sessionId = makeSessionId();
-              activeSessions.set(sessionId, { turnCount: 0 });
+              activeSessions.set(sessionId, { turnCount: 0, terminated: false });
               const intent = String(p['intent'] ?? 'browse').slice(0, 200);
               return {
                 session_id: sessionId,
@@ -191,6 +192,18 @@ export function buildSiTenantConfig(host: string): {
                   ],
                 };
               }
+              if (session.terminated) {
+                return {
+                  errors: [
+                    {
+                      code: 'SESSION_TERMINATED',
+                      message:
+                        'SI session has already been terminated. Initiate a new session via si_initiate_session.',
+                      recovery: 'correctable',
+                    },
+                  ],
+                };
+              }
               session.turnCount++;
               const msg = String(p['message'] ?? '').slice(0, 200);
               return {
@@ -227,9 +240,12 @@ export function buildSiTenantConfig(host: string): {
               const sessionId = String(p['session_id'] ?? '');
               const session = activeSessions.get(sessionId);
               const turns = session?.turnCount ?? 0;
-              activeSessions.delete(sessionId);
+              if (session) {
+                session.terminated = true;
+              }
               return {
                 session_id: sessionId,
+                terminated: true,
                 session_status: 'terminated',
                 termination_summary: {
                   reason: String(p['reason'] ?? 'user_exit'),

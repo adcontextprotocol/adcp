@@ -1,8 +1,8 @@
 /**
  * Multi-tenant TenantRegistry setup.
  *
- * Six per-specialism tenants — `/sales`, `/signals`, `/governance`,
- * `/creative`, `/creative-builder`, `/brand` — each with its own
+ * Seven per-specialism tenants — `/sales`, `/signals`, `/governance`,
+ * `/creative`, `/creative-builder`, `/brand`, `/si` — each with its own
  * `DecisioningPlatform` impl, ephemeral signing key, and specialism
  * declarations. Path-routed: tenants register with `agentUrl` like
  * `${CANONICAL_BASE}/<tenantId>`, the router binds tenantId at route
