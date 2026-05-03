@@ -5,6 +5,10 @@ description: "Layered reference for AdCP implementers. The five layers (L0 wire,
 "og:title": "AdCP — The AdCP stack"
 ---
 
+<Note>
+**AdCP is the transaction and control plane** — planning, deal creation, creative submission, reporting. Impression-time decisioning happens in adjacent protocols ([TMP](/docs/trusted-match), RTB, VAST). AdCP latency budgets are seconds, often async-by-design — not the millisecond budgets you'd expect from a serve-time protocol. If you came here looking for a serve-time auction surface, you want [TMP](/docs/trusted-match).
+</Note>
+
 Two audiences keep arriving at the same wrong conclusion:
 
 1. **Early implementers** who built before the SDKs were mature, looked at what the SDK shipped at the time, and decided to roll their own. Most of what the SDKs provide today didn't exist when they made that call — so their mental model of "what an SDK does" is frozen at AdCP 2.5 and a few hundred lines of transport glue.
@@ -186,6 +190,17 @@ For shape comparison purposes, here are the three coverage archetypes an SDK can
 | Transport + signing only | ✅ | ✅ | ⚠️ | ❌ | L2 + L3 + L4 |
 | Types-only / generated bindings | ✅ | ❌ | ❌ | ❌ | L1 + L2 + L3 + L4 |
 
+### Hosted implementations
+
+Different shape from an SDK: a **deployable agent** you run rather than a library you import. Adopters configure rather than code. Useful when you want an AdCP surface in front of an existing system without writing handler code yourself.
+
+| Implementation | Maintainer | Stack | Notes |
+|---|---|---|---|
+| **AdCP mock-server** | spec maintainers | Reference | The black-box AdCP agent storyboards run against. All language SDKs forward mock-mode traffic to it; shared infrastructure for [spec compliance](/docs/building/conformance). |
+| **Prebid SalesAgent** | [Prebid community](https://github.com/prebid/prebid-server) | Python | Open-source seller-side AdCP agent. Publishers run it as their AdCP-facing implementation; hand-rolled at L0–L3 today, evolving alongside the official SDKs. |
+
+Hosted implementations satisfy the same L3 conformance bar that SDKs do — the spec is implementation-agnostic. The difference is operational shape: a hosted implementation is a service you deploy and configure, an SDK is code you compile into your own service.
+
 The choice is a tradeoff between leverage and control. A full-stack SDK ships you the most code for free but couples you to its choices. A transport-only SDK gives you maximum control but signs you up for months of L1–L3 work before you can certify. Most production adopters want the full stack with the option to swap individual layers (custom signing provider, custom account store, custom idempotency backend) — which a well-architected full-stack SDK exposes as configuration, not as a fork.
 
 ## Where can you start?
@@ -233,6 +248,8 @@ A from-scratch AdCP agent is **~3–4 person-months of L3 work alone**, before a
 | Integration, conformance debugging, spec re-reading | **2–3 weeks** |
 
 That's **~14–18 weeks**, depending on team familiarity with HTTP message-signatures and lifecycle modeling. The estimate **excludes version-adaptation work** — every spec rev that adds a tool, an edge, or an error code adds rows to a translation matrix you carry forever. SDK adopters get those for free; from-scratch implementers pay them every release.
+
+This is a single-engineer-to-mock-conformance estimate. **At publisher / large-platform scale, multiply by ~2× to ~3×** for SRE, security review, KMS / HSM integration with existing key infrastructure, load testing, and on-call burden — none of which is L3 spec work, all of which is real cost before the surface is production-grade.
 
 Most teams that say *"I'll build from scratch"* count the wire shape (L0) and underestimate L3 by an order of magnitude.
 
