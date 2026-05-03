@@ -178,9 +178,26 @@ A from-scratch agent has to:
 
 Each of these compounds at every spec revision. SDKs absorb them so your team's effort goes into L4 differentiation, not into versioning plumbing.
 
+## What changed at L3 in 3.0
+
+If you're scoping a hand-rolled agent against today's spec, the L3 surface added with AdCP 3.0 is the largest delta from 2.5. Most of what an SDK does at L3 didn't exist as a published primitive before 3.0:
+
+- **Mandatory idempotency** — `idempotency_key` required on every mutating tool, with the `replayed: true` / `IDEMPOTENCY_CONFLICT` / `IDEMPOTENCY_EXPIRED` semantics declared on `get_adcp_capabilities`. See [Idempotency on Calling an agent](/docs/protocol/calling-an-agent#idempotency-replay-vs-new-operation).
+- **Published lifecycle state machines** — seven resource types (`MediaBuy`, `Creative`, `Account`, `SISession`, `CatalogItem`, `Proposal`, `Audience`) with legal-edge enforcement and the `NOT_CANCELLABLE` / `INVALID_STATE` precedence.
+- **Conformance test surface** — [`comply_test_controller`](/docs/building/by-layer/L3/comply-test-controller) (sandbox-only) so storyboards drive state deterministically. Replaces ad-hoc per-seller test endpoints.
+- **RFC 9421 signatures as a baseline** — optional in 3.0, mandatory under AAO Verified. Replaces the loose-bearer-token posture of 2.5.
+- **Expanded error catalog with recovery classification** — 18 standard error codes with `transient` / `correctable` / `terminal` recovery semantics. Hand-rolled 2.5 agents typically returned unstructured error strings.
+- **Async-task contract** — every mutating tool can be sync or async; the contract for which terminal artifact closes the task is specified.
+- **Webhook signing** — push notifications signed with the same RFC 9421 profile as outbound requests; replay-window + retry semantics specified.
+
+For the full 3.0 changelog (protocol-wide, not just L3), see [What's new in v3](/docs/reference/whats-new-in-v3). For the migration path, see [Migrate from a hand-rolled agent](/docs/building/by-layer/L4/migrate-from-hand-rolled).
+
+A from-scratch 2.5 agent was tractable; a from-scratch 3.0 agent is the [3–4 person-month L3 build](/docs/building/cross-cutting/sdk-stack#why-sdks-matter-more-in-adcp-than-in-eg-http) decomposed in the SDK stack reference. SDKs exist because L3 grew faster than implementers could hand-roll.
+
 ## See also
 
 - [The AdCP stack](/docs/building/cross-cutting/sdk-stack) — layered architecture reference
 - [Where to start](/docs/building) — decision page
 - [Versioning](/docs/reference/versioning) — spec-side version rules
+- [What's new in v3](/docs/reference/whats-new-in-v3) — protocol-wide 3.0 changelog
 - [Migrate from a hand-rolled agent](/docs/building/by-layer/L4/migrate-from-hand-rolled) — when adopting a stack with mid-flight buyers on different spec versions

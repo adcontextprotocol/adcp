@@ -7,7 +7,16 @@ description: "Identity-and-signing layer of the AdCP stack. RFC 9421 HTTP messag
 
 L1 cryptographically verifies that the request came from who the headers claim it did, and that the body wasn't modified in transit. RFC 9421 HTTP message signatures with replay-window enforcement and key rotation. Symmetric on both sides — agents verify inbound and sign outbound webhooks; callers sign outbound and verify inbound webhooks.
 
-See the [SDK stack reference](/docs/building/cross-cutting/sdk-stack#l1--identity--signing) for the full L1 contract.
+## What an SDK at L1 must provide
+
+If you're picking an SDK or porting one to a new language, this is the L1 build target:
+
+- **RFC 9421 message-signature signing** for outbound requests.
+- **RFC 9421 verification** for inbound requests, including replay-window enforcement on `created` / `expires` and `keyid`-based key lookup.
+- **A pluggable signing-provider abstraction** — in-process keys for development, KMS / HSM providers for production.
+- **Test fixtures or a verifier-test harness** so adopters can assert their signing wiring is correct without booting a full agent.
+
+For the cumulative cross-layer story (what L0+L1 buys you), see the [SDK stack reference](/docs/building/cross-cutting/sdk-stack#l1--identity--signing).
 
 ## Pages in this layer
 

@@ -15,7 +15,7 @@ This page lays out those layers, what an SDK provides at each one, and what's le
 
 Two notes on framing before the layers:
 
-- **The protocol surface has grown.** AdCP 3.0 added mandatory idempotency, published lifecycle state machines, the [conformance test surface](/docs/building/by-layer/L3/comply-test-controller), RFC 9421 signatures as a baseline, and the recovery-classified error catalog. If you last evaluated SDKs against an earlier version, the line between "what the SDK does" and "what I'd write myself" has moved.
+- **The protocol surface has grown.** AdCP 3.0 added [a substantial L3 floor](/docs/building/cross-cutting/version-adaptation#what-changed-at-l3-in-3-0) — mandatory idempotency, published lifecycle state machines, the conformance test surface, RFC 9421 signatures as a baseline, expanded error catalog. If you last evaluated SDKs against an earlier version, the line between "what the SDK does" and "what I'd write myself" has moved.
 - **AdCP looks like a thin protocol from the outside.** From the inside it has more L3 (state machines, idempotency, async-task contract, error semantics, conformance) than implementers tend to expect on a first read. The decompositions on this page exist so the L3 estimate is visible up front.
 
 Audience: AdCP implementers in any language — whether you're building an agent, authoring an SDK, or evaluating one.
@@ -305,7 +305,7 @@ Code-level recipes per mechanism live in [Version Adaptation](/docs/building/cro
 
 Versioning in AdCP is **continuous, not episodic**. Once 3.1 ships, you'll be talking to 3.0 and 3.1 callers simultaneously, indefinitely. Without translation adapters this is a fork in your codebase. With them it's a constructor flag.
 
-The spec itself has already done one of these crossings. **2.5 → 3.0** added mandatory idempotency, the [`comply_test_controller`](/docs/building/by-layer/L3/comply-test-controller) conformance surface, published lifecycle state machines, RFC 9421 signatures as a baseline, and an expanded error catalog with recovery classifications. A from-scratch 2.5 agent was tractable; a from-scratch 3.0 agent is the [~3–4 person-month L3 build](#why-sdks-matter-more-in-adcp-than-in-eg-http) decomposed above.
+The spec itself has already done one of these crossings. **2.5 → 3.0** added a substantial L3 floor — see [What changed at L3 in 3.0](/docs/building/cross-cutting/version-adaptation#what-changed-at-l3-in-3-0) for the canonical list. A from-scratch 2.5 agent was tractable; a from-scratch 3.0 agent is the [~3–4 person-month L3 build](#why-sdks-matter-more-in-adcp-than-in-eg-http) decomposed above.
 
 The from-scratch path that worked for 2.5 doesn't scale to 3.0, and 3.0 isn't where the spec stops. SDKs exist because L3 grew faster than implementers could hand-roll, and the version-adaptation surface keeps growing each release.
 
@@ -337,4 +337,4 @@ The reference mock-server is the **spec-compliance oracle** — a black-box AdCP
 - A full-stack AdCP SDK lifts you to L4. You write business logic; the SDK handles the protocol. Different language SDKs cover different subsets of L0–L3; pick one that matches how much of the protocol you want to inherit — see the [coverage matrix](#current-sdk-coverage).
 - **Version adaptation is an SDK feature, not an adopter project.** Per-call spec-version adapters, co-existence imports across SDK majors, and on-wire `adcp_major_version` negotiation let you talk to peers on any supported version without forking your handlers. Hand-rolled agents inherit the entire translation matrix forever.
 - Compliance comes in two flavors: **spec compliance** (mock-mode, protocol-only, L3 reference test) and **live compliance** (sandbox-mode, full-stack, L0–L4 end-to-end; planned).
-- If you last evaluated SDKs before 3.0, the comparison has moved — most of L3 (state machines, idempotency, conformance surface, expanded error catalog) shipped with 3.0. Re-evaluate against today's coverage, not the one you remember.
+- If you last evaluated SDKs before 3.0, the comparison has moved — see [the L3 floor 3.0 added](/docs/building/cross-cutting/version-adaptation#what-changed-at-l3-in-3-0). Re-evaluate against today's coverage, not the one you remember.

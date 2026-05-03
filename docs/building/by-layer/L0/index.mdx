@@ -7,10 +7,20 @@ description: "Wire-and-transport layer of the AdCP stack. JSON-over-HTTP framing
 
 L0 takes protocol bytes off the wire and turns them into typed in-memory values, or serializes outbound requests against the published schemas. Symmetric on both sides — same primitives, mirrored direction.
 
-See the [SDK stack reference](/docs/building/cross-cutting/sdk-stack#l0--wire--transport) for the full L0 contract.
+## What an SDK at L0 must provide
+
+If you're picking an SDK or porting one to a new language, this is the L0 build target:
+
+- **Generated language-native types** from the published JSON schemas (one type per request/response pair, plus shared resource types).
+- **A schema validator** wired against the bundled schemas — so adopters can validate inbound and outbound payloads without hand-rolling the schema-loading dance.
+- **Transport adapters** for at least one of \{MCP, A2A\}; ideally both. These typically wrap upstream protocol SDKs rather than reimplementing them.
+- **A schema-bundle accessor** that finds the right schema files for the active AdCP version without forcing the adopter to hardcode paths.
+
+For the cumulative cross-layer story (what L0+L1+L2+L3 buys you), see the [SDK stack reference](/docs/building/cross-cutting/sdk-stack#l0--wire--transport).
 
 ## Pages in this layer
 
+- **[Schemas](/docs/building/by-layer/L0/schemas)** — schema bundle, supply-chain verification, type generation, version pinning.
 - **[MCP guide](/docs/building/by-layer/L0/mcp-guide)** — `tools/call` envelope, JSON-RPC 2.0, transport adapter shape.
 - **[A2A guide](/docs/building/by-layer/L0/a2a-guide)** — SSE event streams, task framing, artifact extraction.
 - **[A2A response format](/docs/building/by-layer/L0/a2a-response-format)** — A2A wire-format reference.

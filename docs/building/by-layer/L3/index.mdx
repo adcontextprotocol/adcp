@@ -7,7 +7,21 @@ description: "Protocol-semantics layer of the AdCP stack. Lifecycle state machin
 
 L3 enforces what AdCP *means* on the agent side. The wire shape is well-formed (L0); the caller is authentic (L1) and authorized (L2); now: is the request legal given the current state of the world?
 
-For agents, L3 is the bulk of the protocol surface — see the [SDK stack reference](/docs/building/cross-cutting/sdk-stack#l3--protocol-semantics) for the full per-component decomposition (~3–4 person-months from scratch). For callers, L3 is consumer-side: weeks of handler glue, classifying error codes and handling state transitions rather than enforcing them.
+For agents, L3 is the bulk of the protocol surface — the [3–4 person-month from-scratch build](/docs/building/cross-cutting/sdk-stack#why-sdks-matter-more-in-adcp-than-in-eg-http) lives almost entirely here. For callers, L3 is consumer-side: weeks of handler glue, classifying error codes and handling state transitions rather than enforcing them.
+
+## What an SDK at L3 must provide
+
+If you're picking an SDK or porting one to a new language, this is the L3 build target:
+
+- **Lifecycle state-machine graphs** for all spec-defined resources, with a transition-assertion primitive that emits the spec-correct error code (`NOT_CANCELLABLE` / `INVALID_STATE` / etc.).
+- **Idempotency cache** with cross-payload conflict detection and the no-payload-echo invariant on `IDEMPOTENCY_CONFLICT` envelopes.
+- **Async-task store + dispatcher** — tools opt into async; the SDK returns `task_id`, accepts polling, and emits the terminal artifact.
+- **Webhook emitter** — signed, retried, idempotent.
+- **The conformance test surface** (`comply_test_controller`), wired to drive state deterministically when the resolved account is in sandbox or mock mode (and rejected otherwise).
+- **Per-resource persistence primitives** that handle the spec's echo contracts.
+- **Server-construction entry point** that ties all of the above together with sane defaults.
+
+For the cumulative cross-layer story (what L0+L1+L2+L3 buys you), see the [SDK stack reference](/docs/building/cross-cutting/sdk-stack#l3--protocol-semantics). For what changed at L3 between 2.5 and 3.0, see [What changed at L3 in 3.0](/docs/building/cross-cutting/version-adaptation#what-changed-at-l3-in-3-0).
 
 ## Pages in this layer
 

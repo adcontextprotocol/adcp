@@ -7,7 +7,16 @@ description: "Auth-and-registry layer of the AdCP stack. Turns a verified identi
 
 L2 turns a verified identity into a scoped principal. On the agent side: multi-tenant principal resolution, sandbox/live boundary, brand resolution, permission scoping. On the caller side: publish own identity, look up the agent it's calling — much smaller surface.
 
-See the [SDK stack reference](/docs/building/cross-cutting/sdk-stack#l2--auth--registry) for the full L2 contract.
+## What an SDK at L2 must provide
+
+If you're picking an SDK or porting one to a new language, this is the L2 build target:
+
+- **An account-store abstraction** that resolves an authenticated principal to a scoped account, with hooks for multi-tenant routing.
+- **Authentication primitives** for at least API-key and bearer-token shapes, plus a way to compose them.
+- **Brand-resolution / agent-registry lookup** — or a documented extension point if the SDK doesn't ship it natively.
+- **The sandbox-vs-live account flag**, enforced at the SDK boundary so the conformance-test surface refuses to dispatch on production accounts.
+
+For the cumulative cross-layer story (what L0+L1+L2 buys you), see the [SDK stack reference](/docs/building/cross-cutting/sdk-stack#l2--auth--registry).
 
 ## Pages in this layer
 
