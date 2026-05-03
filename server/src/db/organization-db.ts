@@ -176,6 +176,8 @@ export interface AuditLogEntry {
   resource_type: string;
   resource_id: string;
   details: Record<string, any>;
+  /** The actual authenticated WorkOS user when id-swap is in effect (non-primary binding). Merged into details automatically by recordAuditLog. */
+  auth_workos_user_id?: string;
 }
 
 /**
@@ -1036,6 +1038,9 @@ export class OrganizationDatabase {
    */
   async recordAuditLog(entry: AuditLogEntry): Promise<void> {
     const pool = getPool();
+    const details = entry.auth_workos_user_id
+      ? { ...entry.details, auth_workos_user_id: entry.auth_workos_user_id }
+      : entry.details;
     await pool.query(
       `INSERT INTO registry_audit_log (workos_organization_id, workos_user_id, action, resource_type, resource_id, details)
        VALUES ($1, $2, $3, $4, $5, $6)`,
@@ -1045,7 +1050,7 @@ export class OrganizationDatabase {
         entry.action,
         entry.resource_type,
         entry.resource_id,
-        JSON.stringify(entry.details),
+        JSON.stringify(details),
       ]
     );
   }

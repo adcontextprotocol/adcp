@@ -854,6 +854,7 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
       await orgDb.recordAuditLog({
         workos_organization_id: org_id,
         workos_user_id: req.user?.id ?? 'unknown',
+        auth_workos_user_id: req.user?.authWorkosUserId,
         action: previousCustomerId ? 'admin_stripe_link_replace' : 'admin_stripe_link',
         resource_type: 'subscription',
         resource_id: customerId,
@@ -1009,6 +1010,7 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
       await orgDb.recordAuditLog({
         workos_organization_id: org.workos_organization_id,
         workos_user_id: req.user?.id ?? 'unknown',
+        auth_workos_user_id: req.user?.authWorkosUserId,
         action: 'admin_stripe_unlink',
         resource_type: 'subscription',
         resource_id: customerId,

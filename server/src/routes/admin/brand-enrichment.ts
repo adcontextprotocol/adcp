@@ -510,6 +510,7 @@ export function setupBrandEnrichmentRoutes(apiRouter: Router): void {
                   prior_house_domain: priorRow.house_domain,
                   new_house_domain: house_domain || null,
                   admin_email: req.user!.email,
+                  ...(req.user!.authWorkosUserId && { auth_workos_user_id: req.user!.authWorkosUserId }),
                 }),
               ]
             );

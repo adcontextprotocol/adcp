@@ -293,7 +293,7 @@ export function setupCleanupRoutes(apiRouter: Router): void {
       }
 
       const user = (req as any).user;
-      const userId = user?.id || "unknown";
+      const userId = user?.authWorkosUserId ?? user?.id ?? "unknown";
 
       logger.info(
         { primary_org_id, secondary_org_id, userId, stripe_customer_resolution },
