@@ -24,9 +24,11 @@ const {
   lint,
   lintDoc,
   pathResolves,
+  pathResolvesAgainstResponseOrEnvelope,
   parsePath,
   loadSchema,
   loadAllowlist,
+  isEnvelopeProperty,
   PATH_BEARING_CHECKS,
 } = require('../scripts/lint-storyboard-validations-paths.cjs');
 
@@ -169,6 +171,51 @@ test('pathResolves descends through error.json $ref for errors[0].code', () => {
   const schema = loadSchema('media-buy/create-media-buy-response.json');
   assert.equal(pathResolves(schema, parsePath('errors[0].code')), true);
   assert.equal(pathResolves(schema, parsePath('errors[0].field')), true);
+});
+
+test('envelope-aware resolution: replayed and adcp_error resolve via protocol-envelope.json', () => {
+  // Both fields are defined on core/protocol-envelope.json (replayed line 30,
+  // adcp_error added in this PR). The envelope's top-level description states
+  // "Task response schemas should NOT include these fields - they are
+  // protocol-level concerns," so they don't appear on per-task response
+  // schemas. The lint falls back to the envelope when a top-level segment
+  // isn't found in the payload schema.
+  const schema = loadSchema('media-buy/create-media-buy-response.json');
+  assert.equal(
+    pathResolvesAgainstResponseOrEnvelope(schema, parsePath('replayed')),
+    true,
+    'replayed should resolve via envelope fallback',
+  );
+  assert.equal(
+    pathResolvesAgainstResponseOrEnvelope(schema, parsePath('adcp_error.code')),
+    true,
+    'adcp_error.code should resolve via envelope fallback into core/error.json',
+  );
+  assert.equal(
+    pathResolvesAgainstResponseOrEnvelope(schema, parsePath('status')),
+    true,
+    'status should resolve via envelope fallback',
+  );
+});
+
+test('isEnvelopeProperty identifies envelope fields', () => {
+  assert.equal(isEnvelopeProperty('replayed'), true);
+  assert.equal(isEnvelopeProperty('adcp_error'), true);
+  assert.equal(isEnvelopeProperty('status'), true);
+  assert.equal(isEnvelopeProperty('task_id'), true);
+  assert.equal(isEnvelopeProperty('context_id'), true);
+  assert.equal(isEnvelopeProperty('made_up_field'), false);
+});
+
+test('envelope fallback only fires when first segment is an envelope property', () => {
+  // A typo on a non-envelope-shaped path should still fail — the envelope
+  // fallback is keyed on the first segment matching an envelope property.
+  const schema = loadSchema('media-buy/create-media-buy-response.json');
+  assert.equal(
+    pathResolvesAgainstResponseOrEnvelope(schema, parsePath('definitely_not_real')),
+    false,
+    'non-envelope typos should still fail',
+  );
 });
 
 test('PATH_BEARING_CHECKS is the documented set', () => {
