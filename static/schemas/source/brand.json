@@ -14,6 +14,26 @@
       "description": "Brand identifier within the house portfolio. Lowercase alphanumeric with underscores. House chooses this ID.",
       "pattern": "^[a-z0-9_]+$"
     },
+    "brand_ref": {
+      "type": "object",
+      "description": "Reference to a pointer brand owned by this house. The child publishes its own canonical brand.json at the named domain. House-side declaration; mutual-assertion trust requires the child's house_domain to reciprocate. See RFC: docs/brand-protocol/proposals/distributed-brand-json-rfc.mdx",
+      "properties": {
+        "domain": {
+          "$ref": "#/definitions/domain",
+          "description": "Domain where the child's canonical brand.json lives"
+        },
+        "brand_id": {
+          "$ref": "#/definitions/brand_id",
+          "description": "Stable brand identifier within the house portfolio"
+        },
+        "managed_by": {
+          "$ref": "#/definitions/domain",
+          "description": "Optional domain of the entity that operationally manages this brand (e.g., an agency network within a holdco). House-declared, non-trust-bearing — used for grouping and discovery only. Verifiers MUST NOT use this field for trust or authorization decisions. The child does not need to reciprocate this claim."
+        }
+      },
+      "required": ["domain"],
+      "additionalProperties": false
+    },
     "localized_name": {
       "type": "object",
       "description": "A localized name with BCP 47 locale code key (e.g., 'en_US', 'fr_CA', 'zh_CN') and name value. Bare language codes ('en') are accepted as wildcards for backwards compatibility.",
@@ -1363,27 +1383,8 @@
         },
         "brand_refs": {
           "type": "array",
-          "description": "Pointer brands owned by this house (child-owned data). Each entry references a brand whose canonical document is published elsewhere — typically at the brand's own domain. Use when a child brand wants self-publish authority. Mutual-assertion trust: the pointed-to document's house_domain must equal this house's domain. A brand_id MUST NOT appear in both brands[] and brand_refs[]. See RFC: docs/brand-protocol/proposals/distributed-brand-json-rfc.mdx",
-          "items": {
-            "type": "object",
-            "description": "Reference to a pointer brand owned by this house. The child publishes its own canonical brand.json at the named domain.",
-            "properties": {
-              "domain": {
-                "$ref": "#/definitions/domain",
-                "description": "Domain where the child's canonical brand.json lives"
-              },
-              "brand_id": {
-                "$ref": "#/definitions/brand_id",
-                "description": "Stable brand identifier within the house portfolio"
-              },
-              "managed_by": {
-                "$ref": "#/definitions/domain",
-                "description": "Optional domain of the entity that operationally manages this brand (e.g., an agency network within a holdco). House-declared, non-trust-bearing — used for grouping and discovery, not validation. The child does not need to reciprocate this claim."
-              }
-            },
-            "required": ["domain"],
-            "additionalProperties": false
-          },
+          "description": "Pointer brands owned by this house (child-owned data). Each entry references a brand whose canonical document is published elsewhere — typically at the brand's own domain. Use when a child brand wants self-publish authority. Mutual-assertion trust: the pointed-to document's house_domain must equal this house's domain. A brand_id MUST NOT appear in both brands[] and brand_refs[]; brand_id values MUST be unique within brand_refs[]. See RFC: docs/brand-protocol/proposals/distributed-brand-json-rfc.mdx",
+          "items": { "$ref": "#/definitions/brand_ref" },
           "minItems": 1
         },
         "contact": { "$ref": "#/definitions/contact" },
@@ -1435,7 +1436,9 @@
               { "required": ["house"] },
               { "required": ["brands"] },
               { "required": ["brand_refs"] },
-              { "required": ["authorized_operators"] }
+              { "required": ["authorized_operators"] },
+              { "required": ["region"] },
+              { "required": ["note"] }
             ]
           }
         },
