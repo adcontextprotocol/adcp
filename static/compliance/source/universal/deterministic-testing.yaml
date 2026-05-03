@@ -1052,15 +1052,19 @@ phases:
         title: 'Verify messaging fails on terminated session'
         requires_tool: comply_test_controller
         narrative: |
-          Attempt to send a message on the terminated session. The agent should
-          return an error or terminated status.
+          Attempt to send a message on the terminated session. The agent must
+          reject with SESSION_TERMINATED — per si-send-message-response.json,
+          terminated sessions return error codes (SESSION_NOT_FOUND or
+          SESSION_TERMINATED) rather than a success response.
         task: si_send_message
         schema_ref: 'sponsored-intelligence/si-send-message-request.json'
         response_schema_ref: 'sponsored-intelligence/si-send-message-response.json'
         comply_scenario: deterministic_session
         stateful: true
+        expect_error: true
+        negative_path: payload_well_formed
         expected: |
-          The request should fail or return session_status: terminated. The agent
+          The request must fail with error code SESSION_TERMINATED. The agent
           must not accept messages on a terminated session.
 
         sample_request:
@@ -1071,15 +1075,13 @@ phases:
           context:
             correlation_id: "deterministic_testing--verify_terminated_session"
         validations:
-          - check: field_value
-            path: 'success'
-            allowed_values:
-              - false
-            description: 'Message on terminated session fails'
+          - check: error_code
+            value: 'SESSION_TERMINATED'
+            description: 'Message on terminated session fails with SESSION_TERMINATED'
 
           - check: field_present
             path: "context"
-            description: "Response echoes back the context object"
+            description: "Response echoes back the context object even on errors"
           - check: field_value
             path: "context.correlation_id"
             value: "deterministic_testing--verify_terminated_session"
