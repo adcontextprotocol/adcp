@@ -1299,13 +1299,13 @@
         },
         "redirect_reason": {
           "type": "string",
-          "enum": ["acquisition", "rebrand", "regional", "legacy", "consolidation", "other"],
-          "description": "Optional structured signal indicating why this redirect was put in place. Consumers SHOULD use this to inform cache TTL decisions: 'acquisition' / 'rebrand' / 'consolidation' suggest the resolved target is in transition and consumers SHOULD shorten cache TTL until stable. 'regional' / 'legacy' suggest a stable redirect with no special cache handling needed. Free-text rationale belongs in 'note'."
+          "enum": ["acquisition", "divestiture", "rebrand", "regional", "legacy", "consolidation", "other"],
+          "description": "Optional structured signal indicating why this redirect was put in place. Consumers SHOULD use this to inform cache TTL decisions: 'acquisition' / 'divestiture' / 'rebrand' / 'consolidation' suggest the resolved target is in transition and consumers SHOULD shorten cache TTL until stable. 'regional' / 'legacy' suggest a stable redirect with no special cache handling needed. Free-text rationale belongs in 'note'."
         },
         "redirect_effective_at": {
           "type": "string",
           "format": "date-time",
-          "description": "Optional timestamp when this redirect became effective. Caches SHOULD treat anything cached before this timestamp as stale and re-fetch."
+          "description": "Optional timestamp when this redirect became effective. Caches MUST treat any entry cached before this timestamp as stale and re-fetch through the redirect."
         },
         "note": {
           "type": "string",
@@ -1333,13 +1333,13 @@
         },
         "redirect_reason": {
           "type": "string",
-          "enum": ["acquisition", "rebrand", "regional", "legacy", "consolidation", "other"],
-          "description": "Optional structured signal indicating why this redirect was put in place. Consumers SHOULD use this to inform cache TTL decisions: 'acquisition' / 'rebrand' / 'consolidation' suggest the resolved target is in transition and consumers SHOULD shorten cache TTL until stable. 'regional' / 'legacy' suggest a stable redirect with no special cache handling needed. Free-text rationale belongs in 'note'."
+          "enum": ["acquisition", "divestiture", "rebrand", "regional", "legacy", "consolidation", "other"],
+          "description": "Optional structured signal indicating why this redirect was put in place. Consumers SHOULD use this to inform cache TTL decisions: 'acquisition' / 'divestiture' / 'rebrand' / 'consolidation' suggest the resolved target is in transition and consumers SHOULD shorten cache TTL until stable. 'regional' / 'legacy' suggest a stable redirect with no special cache handling needed. Free-text rationale belongs in 'note'."
         },
         "redirect_effective_at": {
           "type": "string",
           "format": "date-time",
-          "description": "Optional timestamp when this redirect became effective. Caches SHOULD treat anything cached before this timestamp as stale and re-fetch."
+          "description": "Optional timestamp when this redirect became effective. Caches MUST treat any entry cached before this timestamp as stale and re-fetch through the redirect."
         },
         "note": {
           "type": "string",

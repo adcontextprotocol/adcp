@@ -76,14 +76,17 @@ Both redirect variants accept optional `redirect_reason` and `redirect_effective
 
 | Value | Meaning | Caching guidance |
 |---|---|---|
-| `acquisition` | The owning entity was acquired (e.g., WPP buys Dentsu) | Shorten cache TTL until stable; many fields may move |
+| `acquisition` | The owning entity was acquired (e.g., one holdco buys another) | Shorten cache TTL until stable; many fields may move |
+| `divestiture` | The owning entity spun out or sold off | Shorten cache TTL until stable; new ownership chain |
 | `rebrand` | The brand or house renamed/repositioned | Shorten cache TTL until stable |
 | `consolidation` | Sub-brands consolidated into the target | Shorten cache TTL until stable |
 | `regional` | Regional/localized domain points to main house | Stable; standard caching |
 | `legacy` | Old domain that redirects to canonical | Stable; standard caching |
 | `other` | Reason not captured by the above | Free-text rationale belongs in `note` |
 
-`redirect_effective_at` (ISO 8601 timestamp) tells caches "anything cached before this timestamp is stale." Consumers SHOULD re-fetch through the redirect when their cached entry's timestamp is older than `redirect_effective_at`.
+`redirect_effective_at` (ISO 8601 timestamp) is the hard cache invariant: caches **MUST** treat any entry cached before this timestamp as stale and re-fetch through the redirect. The TTL-shortening guidance above is a SHOULD; this timestamp is a MUST and is the load-bearing fix for cache poisoning during M&A and other transitions.
+
+This is the brand.json analogue to the migration patterns in IAB Tech Lab's [ads.txt](https://iabtechlab.com/ads-txt/) (`OWNERDOMAIN`) and [sellers.json](https://iabtechlab.com/sellers-json/) (`seller_type`), which historically relied on out-of-band coordination — there was no machine-readable transition signal. `redirect_reason` + `redirect_effective_at` close that gap for brand.json.
 
 Example — acquisition redirect:
 
