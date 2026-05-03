@@ -20,6 +20,7 @@ import {
   handleGetBrandIdentity,
   handleGetRights,
   handleAcquireRights,
+  handleUpdateRights,
 } from './brand-handlers.js';
 import type { ToolArgs, TrainingContext } from './types.js';
 
@@ -126,6 +127,25 @@ export class TrainingBrandPlatform
     acquireRights: async (req, ctx) => {
       const result = await handleAcquireRights(req as ToolArgs, buildTrainingCtx(ctx.account));
       return translateV5Result(result);
+    },
+    updateRights: async (req, ctx) => {
+      const result = await handleUpdateRights(req as ToolArgs, buildTrainingCtx(ctx.account));
+      return translateV5Result(result);
+    },
+    reviewCreativeApproval: async () => {
+      // Webhook handler — the spec models creative approval as an HTTP
+      // webhook (POST to the seller's approval_webhook URL). The training
+      // agent is a single-process MCP/A2A server with no public HTTP
+      // surface for buyer-initiated webhooks, so this method is wired but
+      // not reachable. Throw a structured error so anything that does
+      // dispatch here gets a clean rejection rather than a silent stub.
+      throw new AdcpError('NOT_IMPLEMENTED', {
+        message:
+          'Training agent does not expose a creative-approval webhook receiver. ' +
+          'Production sellers mount this method behind the approval_webhook URL ' +
+          'they returned from acquire_rights.',
+        recovery: 'terminal',
+      });
     },
   };
 }
