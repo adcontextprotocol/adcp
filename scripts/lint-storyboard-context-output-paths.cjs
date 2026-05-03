@@ -185,6 +185,8 @@ function* findContextOutputSteps(node, trail) {
         responseRef: node.response_schema_ref,
         contextOutputs: node.context_outputs,
         stepId: typeof node.id === 'string' ? node.id : null,
+        expectedArm: typeof node.expected_arm === 'string' ? node.expected_arm : null,
+        expectError: node.expect_error === true,
         trail: [...trail],
       };
     }
@@ -194,12 +196,81 @@ function* findContextOutputSteps(node, trail) {
   }
 }
 
+/**
+ * Mirrors `findArmByDiscriminator` in lint-storyboard-validations-paths.cjs.
+ * See that file for the full design rationale of `expected_arm` annotations.
+ */
+function findArmByDiscriminator(node, expectedArm, seen = new Set()) {
+  if (!node || typeof node !== 'object') return null;
+  if (node.$ref) {
+    if (seen.has(node.$ref)) return null;
+    const next = new Set(seen);
+    next.add(node.$ref);
+    return findArmByDiscriminator(loadSchema(node.$ref), expectedArm, next);
+  }
+  const variants = node.oneOf || node.anyOf;
+  if (!Array.isArray(variants)) return null;
+  for (const variant of variants) {
+    if (!variant || typeof variant !== 'object') continue;
+    const props = variant.properties || {};
+    for (const propName of Object.keys(props)) {
+      const propSchema = props[propName];
+      if (propSchema && propSchema.const === expectedArm) {
+        return variant;
+      }
+    }
+  }
+  return null;
+}
+
+/** Mirrors `findErrorArm` in lint-storyboard-validations-paths.cjs. */
+function findErrorArm(node, seen = new Set()) {
+  if (!node || typeof node !== 'object') return null;
+  if (node.$ref) {
+    if (seen.has(node.$ref)) return null;
+    const next = new Set(seen);
+    next.add(node.$ref);
+    return findErrorArm(loadSchema(node.$ref), next);
+  }
+  const variants = node.oneOf || node.anyOf;
+  if (!Array.isArray(variants)) return null;
+  for (const variant of variants) {
+    if (!variant || typeof variant !== 'object') continue;
+    const required = Array.isArray(variant.required) ? variant.required : [];
+    if (!required.includes('errors')) continue;
+    const props = variant.properties || {};
+    let hasConstDiscriminator = false;
+    for (const propName of Object.keys(props)) {
+      if (props[propName] && props[propName].const !== undefined) {
+        hasConstDiscriminator = true;
+        break;
+      }
+    }
+    if (!hasConstDiscriminator) return variant;
+  }
+  return null;
+}
+
+/** Mirrors `resolveExpectedArmSchema` in lint-storyboard-validations-paths.cjs. */
+function resolveExpectedArmSchema(schema, expectedArm, expectError) {
+  if (typeof expectedArm === 'string' && expectedArm.length > 0) {
+    const arm = findArmByDiscriminator(schema, expectedArm);
+    if (!arm) return { error: 'unknown_expected_arm' };
+    return { schema: arm };
+  }
+  if (expectError) {
+    const arm = findErrorArm(schema);
+    if (arm) return { schema: arm };
+  }
+  return { schema };
+}
+
 function lintDoc(doc, filePath, allowlist = []) {
   const violations = [];
   if (!doc) return violations;
   for (const step of findContextOutputSteps(doc, [])) {
-    const schema = loadSchema(step.responseRef);
-    if (!schema) {
+    const fullSchema = loadSchema(step.responseRef);
+    if (!fullSchema) {
       violations.push({
         rule: 'response_schema_not_found',
         filePath,
@@ -208,6 +279,18 @@ function lintDoc(doc, filePath, allowlist = []) {
       });
       continue;
     }
+    const armResult = resolveExpectedArmSchema(fullSchema, step.expectedArm, step.expectError);
+    if (armResult.error === 'unknown_expected_arm') {
+      violations.push({
+        rule: 'unknown_expected_arm',
+        filePath,
+        stepId: step.stepId,
+        responseRef: step.responseRef,
+        expectedArm: step.expectedArm,
+      });
+      continue;
+    }
+    const schema = armResult.schema;
     for (let i = 0; i < step.contextOutputs.length; i++) {
       const out = step.contextOutputs[i];
       const rawPath = out?.path;
@@ -264,6 +347,10 @@ const RULE_MESSAGES = {
   },
   response_schema_not_found: ({ responseRef }) =>
     `response_schema_ref \`${responseRef}\` could not be loaded — fix the ref or the schema path.`,
+  unknown_expected_arm: ({ expectedArm, responseRef }) =>
+    `expected_arm \`${expectedArm}\` does not match any oneOf/anyOf branch in \`${responseRef}\`. ` +
+    'Match rule: a branch must declare some property with `const: "<expected_arm>"`. ' +
+    'Verify the discriminator value against the response schema.',
 };
 
 function formatMessage(violation) {
@@ -296,6 +383,9 @@ module.exports = {
   loadSchema,
   loadAllowlist,
   pathResolves,
+  findArmByDiscriminator,
+  findErrorArm,
+  resolveExpectedArmSchema,
   parsePath,
   formatMessage,
 };

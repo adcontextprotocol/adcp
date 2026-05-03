@@ -196,6 +196,8 @@ function* findStepsWithValidations(node, trail) {
         responseRef: node.response_schema_ref,
         validations: node.validations,
         stepId: typeof node.id === 'string' ? node.id : null,
+        expectedArm: typeof node.expected_arm === 'string' ? node.expected_arm : null,
+        expectError: node.expect_error === true,
         trail: [...trail],
       };
     }
@@ -203,6 +205,88 @@ function* findStepsWithValidations(node, trail) {
       yield* findStepsWithValidations(node[key], [...trail, key]);
     }
   }
+}
+
+/**
+ * Walk a node's `oneOf` / `anyOf` (after $ref / allOf flattening) looking
+ * for the variant whose discriminator matches `expectedArm`. The match rule:
+ * any property in that variant declares `const: "<expectedArm>"`. Returns
+ * the matching variant, or null when no variant matches (an authoring bug
+ * the lint surfaces as `unknown_expected_arm`).
+ */
+function findArmByDiscriminator(node, expectedArm, seen = new Set()) {
+  if (!node || typeof node !== 'object') return null;
+  if (node.$ref) {
+    if (seen.has(node.$ref)) return null;
+    const next = new Set(seen);
+    next.add(node.$ref);
+    return findArmByDiscriminator(loadSchema(node.$ref), expectedArm, next);
+  }
+  const variants = node.oneOf || node.anyOf;
+  if (!Array.isArray(variants)) return null;
+  for (const variant of variants) {
+    if (!variant || typeof variant !== 'object') continue;
+    const props = variant.properties || {};
+    for (const propName of Object.keys(props)) {
+      const propSchema = props[propName];
+      if (propSchema && propSchema.const === expectedArm) {
+        return variant;
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Find the response schema's "Error arm" — the oneOf branch whose `required`
+ * list includes `errors` and which has no const discriminator (so it isn't
+ * already const-tagged with a status value). Used as a fallback when a step
+ * has `expect_error: true` but no explicit `expected_arm`.
+ */
+function findErrorArm(node, seen = new Set()) {
+  if (!node || typeof node !== 'object') return null;
+  if (node.$ref) {
+    if (seen.has(node.$ref)) return null;
+    const next = new Set(seen);
+    next.add(node.$ref);
+    return findErrorArm(loadSchema(node.$ref), next);
+  }
+  const variants = node.oneOf || node.anyOf;
+  if (!Array.isArray(variants)) return null;
+  for (const variant of variants) {
+    if (!variant || typeof variant !== 'object') continue;
+    const required = Array.isArray(variant.required) ? variant.required : [];
+    if (!required.includes('errors')) continue;
+    const props = variant.properties || {};
+    let hasConstDiscriminator = false;
+    for (const propName of Object.keys(props)) {
+      if (props[propName] && props[propName].const !== undefined) {
+        hasConstDiscriminator = true;
+        break;
+      }
+    }
+    if (!hasConstDiscriminator) return variant;
+  }
+  return null;
+}
+
+/**
+ * Resolve which schema node the lint should validate paths against, given
+ * the step's `expected_arm` and `expect_error` annotations. Returns either:
+ *   { schema: <node> } — proceed normally with this schema (full or arm-restricted)
+ *   { error: 'unknown_expected_arm' } — author named an arm that doesn't exist
+ */
+function resolveExpectedArmSchema(schema, expectedArm, expectError) {
+  if (typeof expectedArm === 'string' && expectedArm.length > 0) {
+    const arm = findArmByDiscriminator(schema, expectedArm);
+    if (!arm) return { error: 'unknown_expected_arm' };
+    return { schema: arm };
+  }
+  if (expectError) {
+    const arm = findErrorArm(schema);
+    if (arm) return { schema: arm };
+  }
+  return { schema };
 }
 
 function pathResolvesAgainstResponseOrEnvelope(schema, segments) {
@@ -223,8 +307,8 @@ function lintDoc(doc, filePath, allowlist = []) {
   const violations = [];
   if (!doc) return violations;
   for (const step of findStepsWithValidations(doc, [])) {
-    const schema = loadSchema(step.responseRef);
-    if (!schema) {
+    const fullSchema = loadSchema(step.responseRef);
+    if (!fullSchema) {
       violations.push({
         rule: 'response_schema_not_found',
         filePath,
@@ -233,6 +317,18 @@ function lintDoc(doc, filePath, allowlist = []) {
       });
       continue;
     }
+    const armResult = resolveExpectedArmSchema(fullSchema, step.expectedArm, step.expectError);
+    if (armResult.error === 'unknown_expected_arm') {
+      violations.push({
+        rule: 'unknown_expected_arm',
+        filePath,
+        stepId: step.stepId,
+        responseRef: step.responseRef,
+        expectedArm: step.expectedArm,
+      });
+      continue;
+    }
+    const schema = armResult.schema;
     for (let i = 0; i < step.validations.length; i++) {
       const v = step.validations[i];
       if (!v || typeof v !== 'object') continue;
@@ -288,6 +384,10 @@ const RULE_MESSAGES = {
     '`scripts/storyboard-validations-paths-allowlist.json` with a `reason` string.',
   response_schema_not_found: ({ responseRef }) =>
     `response_schema_ref \`${responseRef}\` could not be loaded — fix the ref or the schema path.`,
+  unknown_expected_arm: ({ expectedArm, responseRef }) =>
+    `expected_arm \`${expectedArm}\` does not match any oneOf/anyOf branch in \`${responseRef}\`. ` +
+    'Match rule: a branch must declare some property with `const: "<expected_arm>"`. ' +
+    'Verify the discriminator value against the response schema.',
 };
 
 function formatMessage(violation) {
@@ -324,6 +424,9 @@ module.exports = {
   isEnvelopeProperty,
   pathResolves,
   pathResolvesAgainstResponseOrEnvelope,
+  findArmByDiscriminator,
+  findErrorArm,
+  resolveExpectedArmSchema,
   parsePath,
   formatMessage,
 };

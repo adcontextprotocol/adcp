@@ -488,6 +488,34 @@
 #   sparingly; prefer `negative_path: schema_invalid` for intentionally malformed
 #   negative-path fixtures.)
 #
+# expected_arm: string (optional — names the discriminator value of the `oneOf`
+#   arm this step expects the agent to return. When present, both the
+#   context-output-paths and validations-paths lints restrict path resolution
+#   to the matching arm only. Default behavior (no annotation) accepts a path
+#   that resolves through ANY oneOf arm — the right call for "no prior info,"
+#   but it lets a step capture or assert on a path that's defined on, say, the
+#   Acquired arm even when the storyboard semantically expects the Rejected
+#   arm. The annotation tightens that.
+#
+#   Match shape: the lint walks each `oneOf` / `anyOf` branch and looks for
+#   ANY property with `const: "<expected_arm>"`. The first matching branch
+#   is the expected arm; subsequent path resolution restricts to it.
+#
+#   Examples:
+#     expected_arm: "acquired"      # matches AcquireRightsAcquired (status.const = "acquired")
+#     expected_arm: "rejected"      # matches AcquireRightsRejected
+#     expected_arm: "pending_approval"  # matches AcquireRightsPendingApproval
+#
+#   When `expect_error: true` is set without `expected_arm`, the lint also
+#   tries to find an Error arm (one whose `required` list includes `errors`
+#   and which has no `status` const) and restricts to it. This covers
+#   `acquire_rights` / `creative_approval` / similar response shapes whose
+#   Error arm isn't const-discriminated.
+#
+#   When the named arm doesn't match any branch, the lint emits an
+#   `unknown_expected_arm` violation — an authoring bug to fix at storyboard
+#   author time, not at runtime.
+#
 # --- Phase (optional fields for conditional execution) ---
 #
 # optional: boolean (default false — see semantics below)
