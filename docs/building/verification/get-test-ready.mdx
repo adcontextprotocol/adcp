@@ -71,14 +71,14 @@ See the [Compliance test controller reference](/docs/building/by-layer/L3/comply
 
 ### Wiring the SDK scaffold
 
-`@adcp/client` (≥ 5.8.0) ships `createComplyController` so you wire your data layer to the controller without reimplementing tool registration, param validation, error envelopes, or re-seed idempotency.
+`@adcp/client` (≥ 5.13.0 for AdCP 3.0) ships `createComplyController` so you wire your data layer to the controller without reimplementing tool registration, param validation, error envelopes, or re-seed idempotency.
 
 ```bash
-npm install @adcp/client@^5.8.0
+npm install @adcp/client@^5.13.0
 ```
 
 <Note>
-The scaffold is TypeScript/JavaScript. Python, Go, and Java sellers implement the tool directly against the [schema](https://adcontextprotocol.org/schemas/v3/compliance/comply-test-controller-request.json) — the contract below (adapters, error codes, idempotency semantics) applies the same way. SDKs for other languages are tracked in [Schemas and SDKs](/docs/building/schemas-and-sdks).
+The scaffold is TypeScript/JavaScript. Python, Go, and Java sellers implement the tool directly against the [schema](https://adcontextprotocol.org/schemas/v3/compliance/comply-test-controller-request.json) — the contract below (adapters, error codes, idempotency semantics) applies the same way. SDKs for other languages are tracked in [Choose your SDK](/docs/building/by-layer/L4/choose-your-sdk).
 </Note>
 
 ```ts

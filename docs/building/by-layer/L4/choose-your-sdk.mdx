@@ -1,0 +1,129 @@
+---
+title: Choose your SDK
+sidebarTitle: Choose your SDK
+description: "Pick the AdCP SDK for your language. Coverage matrix, install commands, and what each SDK ships at L0–L3 so you can focus on L4 business logic."
+"og:title": "AdCP — Choose your SDK"
+---
+
+The AdCP SDKs absorb L0–L3 (wire, signing, auth, protocol semantics) so you write L4 business logic. Pick the SDK in the language you're already in — all three SDKs target the same wire conformance bar.
+
+For the layered model behind this — what each layer contains and what an SDK at each layer should provide — see the [SDK stack reference](/docs/building/cross-cutting/sdk-stack).
+
+## Coverage matrix
+
+What "shipped" means at each layer is the [L0–L3 checklist](/docs/building/cross-cutting/sdk-stack#what-an-sdk-at-each-layer-should-provide).
+
+*Last updated: 2026-05-03.*
+
+| SDK | Minimum 3.0 | Current | L0 | L1 | L2 | L3 | Adopter writes |
+|---|---|---|---|---|---|---|---|
+| **`@adcp/client`** (TypeScript) — [adcp-client](https://github.com/adcontextprotocol/adcp-client) | `5.13.0` | `6.7.0` GA | ✅ | ✅ | ✅ | ✅ | L4 only |
+| **`adcp`** (Python) — [adcp-client-python](https://github.com/adcontextprotocol/adcp-client-python) | `4.0.0` | `4.x` in flight | ✅ | ⚠️ | ⚠️ | ⚠️ | Coverage updates on 4.0 GA |
+| **`adcp-go`** — [adcp-go](https://github.com/adcontextprotocol/adcp-go) | `v1.0.0` | dev | ⚠️ | ❌ | ❌ | ❌ | Types + transport only today; L1–L3 in scope |
+
+Pin to **Minimum 3.0** for production; track **Current** to stay on the latest features. Pre-3.0 callers should work through the [3.0 migration guide](/docs/reference/migration/index) before upgrading.
+
+For Python today, the partial coverage means: outbound RFC 9421 signing not yet wired (L1), brand-resolution helpers in flight (L2), webhook emission still under construction (L3). Track [adcp-client-python releases](https://github.com/adcontextprotocol/adcp-client-python/releases) for the 4.0 GA cut. For Go, only types + transport are in main today — see [adcp-go README](https://github.com/adcontextprotocol/adcp-go) for what's in scope per release.
+
+Legend: ✅ shipped · ⚠️ partial / in flight · ❌ not yet covered.
+
+**Python and TypeScript carry full L0–L4 coverage as the first-class supported languages.** **Go** is moving in the same direction. **Other languages** are not on the official roadmap; community-maintained ports are welcome — see the [Builders Working Group](/docs/community/working-group) and the [Slack community](https://join.slack.com/t/agenticads/shared_invite/zt-3c5sxvdjk-x0rVmLB3OFHVUp~WutVWZg).
+
+## JavaScript / TypeScript
+
+[![npm version](https://img.shields.io/npm/v/@adcp/client)](https://www.npmjs.com/package/@adcp/client)
+
+```bash
+npm install @adcp/client
+```
+
+```javascript
+import { ADCPClient } from '@adcp/client';
+
+const client = new ADCPClient({
+  agentUrl: 'https://sales.example.com'
+});
+
+const products = await client.getProducts({
+  brief: 'Video campaign for pet owners'
+});
+```
+
+**Resources:**
+- [NPM Package](https://www.npmjs.com/package/@adcp/client)
+- [GitHub Repository](https://github.com/adcontextprotocol/adcp-client)
+
+**Package exports:**
+- `@adcp/client` — main API (caller + agent surface)
+- `@adcp/client/testing` — buyer-side storyboard runner (`runStoryboard`, `comply`, `testAgent`) and seller-side controller scaffold (`createComplyController` — see [Get Test-Ready](/docs/building/verification/get-test-ready))
+- `@adcp/client/server` — low-level server helpers (MCP tool registration, state stores, `handleTestControllerRequest`)
+- `@adcp/client/advanced` — advanced API features
+- `@adcp/client/types` — TypeScript type definitions
+
+## Python
+
+[![PyPI version](https://img.shields.io/pypi/v/adcp)](https://pypi.org/project/adcp/)
+
+```bash
+pip install adcp
+```
+
+```python
+from adcp import ADCPClient
+
+client = ADCPClient(agent_url='https://sales.example.com')
+
+products = client.get_products(
+    brief='Video campaign for pet owners'
+)
+```
+
+**Resources:**
+- [PyPI Package](https://pypi.org/project/adcp/)
+- [GitHub Repository](https://github.com/adcontextprotocol/adcp-client-python)
+
+## Go
+
+```bash
+go get github.com/adcontextprotocol/adcp-go/adcp
+```
+
+The Go SDK provides typed tool registration, response builders, and a compliance test controller. Types are generated from canonical AdCP schemas.
+
+| Component | Import |
+|-----------|--------|
+| Tool registration | `adcp.AddTool(server, name, desc, handler)` |
+| HTTP server | `adcp.Serve(createAgent)` |
+| Response builders | `adcp.ProductsResponse(data)`, `adcp.MediaBuyResponse(data)`, etc. |
+| Test controller | `adcp.RegisterTestController(server, store)` |
+| Skills | [github.com/adcontextprotocol/adcp-go/skills](https://github.com/adcontextprotocol/adcp-go/tree/main/skills) |
+
+See the [Go SDK README](https://github.com/adcontextprotocol/adcp-go) for the full API reference.
+
+**Resources:**
+- [GitHub Repository](https://github.com/adcontextprotocol/adcp-go)
+
+## CLI tools
+
+The JavaScript and Python SDKs include command-line tools for testing and development.
+
+### JavaScript CLI
+
+```bash
+npx @adcp/client@latest --help
+npx @adcp/client@latest get-products --agent https://sales.example.com --brief "CTV campaign"
+```
+
+### Python CLI
+
+```bash
+uvx adcp --help
+uvx adcp get-products --agent https://sales.example.com --brief "CTV campaign"
+```
+
+## What's next
+
+- **[Build an agent](/docs/building/by-layer/L4/build-an-agent)** — server-side L4 path. Skill files + coding agent.
+- **[Build a caller](/docs/building/by-layer/L4/build-a-caller)** — client-side L4 path. Install, call, handle responses, ingest reporting.
+- **[Schemas](/docs/building/by-layer/L0/schemas)** — schema bundle, type generation, version pinning.
+- **[Migrate from hand-rolled](/docs/building/by-layer/L4/migrate-from-hand-rolled)** — already running an AdCP agent built before the SDKs covered much? Swap one layer at a time.

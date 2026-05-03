@@ -1,12 +1,13 @@
 ---
-title: Schemas and SDKs
-description: "AdCP JSON schemas and SDKs for JavaScript, Python, and Go. Download schemas from GitHub or fetch at runtime. Includes setup for AI coding agents using Cursor, Windsurf, and Claude."
-"og:title": "AdCP — Schemas and SDKs"
+title: Schemas
+sidebarTitle: Schemas
+description: "AdCP JSON schemas: where to fetch them, the protocol tarball, schema versioning, bundled vs $ref-resolving variants, and how to verify supply-chain provenance via Sigstore."
+"og:title": "AdCP — Schemas"
 ---
 
-Get started integrating with AdCP using our schemas and official SDKs.
+The L0 wire layer is JSON-over-HTTP framed by published JSON Schemas. This page is the reference for getting the schemas — where they live, how to pin a version, how to verify supply-chain provenance, and the directory shape inside a release. If you're picking an SDK rather than the schemas themselves, see [Choose your SDK](/docs/building/by-layer/L4/choose-your-sdk).
 
-## Schema Access
+## Schema access
 
 AdCP schemas are available from two sources:
 
@@ -17,7 +18,7 @@ AdCP schemas are available from two sources:
 
 Both sources contain identical schemas. The GitHub repository includes all released versions with bundled schemas committed directly to the codebase.
 
-### One-shot protocol bundle
+## One-shot protocol bundle
 
 Syncing hundreds of individual schema files adds up. Every AdCP release also publishes a single gzipped tarball containing the complete protocol — schemas, compliance storyboards, and the OpenAPI registry — so clients can pull one artifact instead of crawling the tree.
 
@@ -55,7 +56,7 @@ Pull it once per version, cache by SHA, and you have everything needed to valida
 
 Available tarballs are also listed at [`/protocol/`](https://adcontextprotocol.org/protocol/).
 
-#### Verifying protocol bundle signatures
+### Verifying protocol bundle signatures
 
 The SHA-256 sidecar lives on the same origin as the tarball, so it only protects against in-transit tampering. For supply-chain protection — proving the bundle came from the AdCP release workflow and was not swapped for a malicious one even if the host were compromised — every released `{version}.tgz` is also published with a Sigstore detached signature.
 
@@ -82,7 +83,7 @@ The `refs/(heads|tags)/.*` wildcard is intentional — releases sign during the 
 
 Older releases that predate signing, and versions republished out of band (bypassing the signing workflow), remain checksum-only — clients should treat missing sidecars as a "checksum-only" trust level rather than a verification failure.
 
-### Compliance storyboards
+## Compliance storyboards
 
 Storyboards live alongside schemas at `/compliance/{version}/`. They define the test scenarios AAO runs to verify an agent's capability claims.
 
@@ -95,7 +96,7 @@ Storyboards live alongside schemas at `/compliance/{version}/`. They define the 
 
 Declare `supported_protocols` (for protocol baselines) and `specialisms` (for narrow capability claims) in `get_adcp_capabilities` — the compliance runner executes the matching bundles to verify. See the full [Compliance Catalog](/docs/building/verification/compliance-catalog) for every protocol and specialism an agent can claim.
 
-### Common Schemas
+## Common schemas
 
 | Schema | URL |
 |--------|-----|
@@ -104,121 +105,11 @@ Declare `supported_protocols` (for protocol baselines) and `specialisms` (for na
 | Creative Format | `https://adcontextprotocol.org/schemas/v3/core/format.json` |
 | Schema Registry | `https://adcontextprotocol.org/schemas/v3/index.json` |
 
-### For AI Coding Agents
-
 <Tip>
-Point your AI coding agent to **[https://docs.adcontextprotocol.org/mcp](https://docs.adcontextprotocol.org/mcp)** for MCP integration documentation.
+**For AI coding agents:** point your coding agent to **[https://docs.adcontextprotocol.org/mcp](https://docs.adcontextprotocol.org/mcp)** for MCP integration documentation.
 </Tip>
 
-## Client SDKs
-
-AdCP provides official SDKs for JavaScript/TypeScript, Python, and Go. These work for both client and server implementations.
-
-### AdCP 3.0 support
-
-All three official SDKs ship AdCP 3.0. Pin to (or above) the minimum listed below and validate with the [storyboard test suite](/docs/building/verification/validate-your-agent).
-
-| SDK | 3.0-compatible from | Package |
-|---|---|---|
-| `@adcp/client` (JS/TS) | `5.13.0` | [npm](https://www.npmjs.com/package/@adcp/client) · [releases](https://github.com/adcontextprotocol/adcp-client/releases) |
-| `adcp` (Python) | `4.0.0` | [PyPI](https://pypi.org/project/adcp/) · [releases](https://github.com/adcontextprotocol/adcp-python/releases) |
-| `adcp-go` (Go) | `v1.0.0` | [releases](https://github.com/adcontextprotocol/adcp-go/releases) |
-
-If you are on an earlier major version, upgrade before working through the [3.0 migration guide](/docs/reference/migration/index).
-
-### JavaScript / TypeScript
-
-[![npm version](https://img.shields.io/npm/v/@adcp/client)](https://www.npmjs.com/package/@adcp/client)
-
-```bash
-npm install @adcp/client
-```
-
-```javascript
-import { ADCPClient } from '@adcp/client';
-
-const client = new ADCPClient({
-  agentUrl: 'https://sales.example.com'
-});
-
-const products = await client.getProducts({
-  brief: 'Video campaign for pet owners'
-});
-```
-
-**Resources:**
-- [NPM Package](https://www.npmjs.com/package/@adcp/client)
-- [GitHub Repository](https://github.com/adcontextprotocol/adcp-client)
-
-**Package exports:**
-- `@adcp/client` — Main API
-- `@adcp/client/testing` — Buyer-side storyboard runner (`runStoryboard`, `comply`, `testAgent`) and seller-side controller scaffold (`createComplyController` — see [Get Test-Ready](/docs/building/verification/get-test-ready))
-- `@adcp/client/server` — Low-level server helpers (MCP tool registration, state stores, `handleTestControllerRequest`)
-- `@adcp/client/advanced` — Advanced API features
-- `@adcp/client/types` — TypeScript type definitions
-
-### Python
-
-[![PyPI version](https://img.shields.io/pypi/v/adcp)](https://pypi.org/project/adcp/)
-
-```bash
-pip install adcp
-```
-
-```python
-from adcp import ADCPClient
-
-client = ADCPClient(agent_url='https://sales.example.com')
-
-products = client.get_products(
-    brief='Video campaign for pet owners'
-)
-```
-
-**Resources:**
-- [PyPI Package](https://pypi.org/project/adcp/)
-- [GitHub Repository](https://github.com/adcontextprotocol/adcp-client-python)
-
-### Go
-
-```bash
-go get github.com/adcontextprotocol/adcp-go/adcp
-```
-
-The Go SDK provides typed tool registration, response builders, and a compliance test controller. Types are generated from canonical AdCP schemas.
-
-| Component | Import |
-|-----------|--------|
-| Tool registration | `adcp.AddTool(server, name, desc, handler)` |
-| HTTP server | `adcp.Serve(createAgent)` |
-| Response builders | `adcp.ProductsResponse(data)`, `adcp.MediaBuyResponse(data)`, etc. |
-| Test controller | `adcp.RegisterTestController(server, store)` |
-| Skills | [github.com/adcontextprotocol/adcp-go/skills](https://github.com/adcontextprotocol/adcp-go/tree/main/skills) |
-
-See the [Go SDK README](https://github.com/adcontextprotocol/adcp-go) for the full API reference.
-
-**Resources:**
-- [GitHub Repository](https://github.com/adcontextprotocol/adcp-go)
-
-## CLI Tools
-
-The JavaScript and Python SDKs include command-line tools for testing and development.
-
-### JavaScript CLI
-
-```bash
-npx @adcp/client@latest --help
-npx @adcp/client@latest get-products --agent https://sales.example.com --brief "CTV campaign"
-```
-
-### Python CLI
-
-```bash
-uvx adcp --help
-uvx adcp get-products --agent https://sales.example.com --brief "CTV campaign"
-```
-
-## Schema Versioning
+## Schema versioning
 
 AdCP uses semantic versioning. Choose the right path for your use case:
 
@@ -230,7 +121,7 @@ AdCP uses semantic versioning. Choose the right path for your use case:
 
 The same version semantics apply to `/schemas`, `/compliance`, and `/protocol/{version}.tgz` — one release cuts all three.
 
-### Production (Recommended)
+### Production (recommended)
 
 Pin to an exact version for stability:
 
@@ -251,7 +142,7 @@ const schema = await fetch(
 );
 ```
 
-### SDK Type Generation
+### SDK type generation
 
 ```bash
 # TypeScript
@@ -265,17 +156,17 @@ datamodel-codegen \
   --output models/product.py
 ```
 
-## Bundled Schemas
+## Bundled schemas
 
 For tools that don't support `$ref` resolution, use bundled schemas with all references resolved inline. Bundled schemas are available from both the website and GitHub:
 
-### Website Access
+### Website access
 
 ```
 https://adcontextprotocol.org/schemas/3.0.0/bundled/media-buy/create-media-buy-request.json
 ```
 
-### GitHub Access
+### GitHub access
 
 Bundled schemas are committed to the repository at `dist/schemas/{VERSION}/bundled/`:
 
@@ -288,7 +179,7 @@ ls adcp/dist/schemas/3.0.0/bundled/media-buy/
 curl https://raw.githubusercontent.com/adcontextprotocol/adcp/main/dist/schemas/3.0.0/bundled/media-buy/get-products-request.json
 ```
 
-### Directory Structure
+### Directory structure
 
 ```
 dist/schemas/{VERSION}/
@@ -306,7 +197,7 @@ dist/schemas/{VERSION}/
 └── index.json                    # Schema registry
 ```
 
-### Bundled Schema Categories
+### Bundled schema categories
 
 All request/response task schemas are bundled:
 
@@ -323,7 +214,7 @@ All request/response task schemas are bundled:
 
 See the [schema registry](https://adcontextprotocol.org/schemas/v3/index.json) for all available schemas.
 
-## Version Discovery
+## Version discovery
 
 ```bash
 # Get the full semver of the published schema bundle.
