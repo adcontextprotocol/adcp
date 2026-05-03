@@ -105,12 +105,34 @@ jobs:
           # 5.13 moved the cache dir from `latest` to the AdCP version
           # string (e.g. `3.0.0`). 5.23.0 renamed the package
           # `@adcp/client` -> `@adcp/sdk` and the compliance bundle moved
-          # with it. Resolve whichever subdir exists so the overlay step
-          # doesn't have to bump with every SDK release.
-          CACHE_ROOT="node_modules/@adcp/sdk/compliance/cache"
+          # with it. main is on `@adcp/sdk`; 3.0.x is still on `@adcp/client`.
+          # Try the new path first, fall back to the old one — without this
+          # fallback, 3.0.x silently skipped the overlay (the SDK rename was
+          # forward-merged to the workflow without reverting on 3.0.x), and
+          # every storyboard fell back to the SDK's frozen 3.0.0 snapshot
+          # which doesn't carry the `fixtures:` block. Result: pre-flight
+          # `comply_test_controller.seed_product` was never invoked, leaving
+          # `sales_guaranteed`, `sales_broadcast_tv`, `media_buy_seller`,
+          # `media_buy_seller/delivery_reporting`,
+          # `media_buy_seller/governance_approved`,
+          # `creative_generative/seller`, `governance_delivery_monitor`,
+          # `governance_spend_authority`, `idempotency`, `brand_baseline`
+          # and `brand_rights` all failing with PRODUCT_NOT_FOUND or
+          # similarly-shaped seed-prerequisite errors.
+          CACHE_ROOT=""
+          for candidate in node_modules/@adcp/sdk/compliance/cache node_modules/@adcp/client/compliance/cache; do
+            if [ -d "$candidate" ]; then
+              CACHE_ROOT="$candidate"
+              break
+            fi
+          done
+          if [ -z "$CACHE_ROOT" ]; then
+            echo "::warning::SDK compliance cache not found under @adcp/sdk or @adcp/client — skipping overlay"
+            exit 0
+          fi
           DST=$(find "$CACHE_ROOT" -mindepth 1 -maxdepth 1 -type d | head -1)
           if [ -z "$DST" ] || [ ! -d "$DST" ]; then
-            echo "::warning::SDK compliance cache not found under $CACHE_ROOT — skipping overlay"
+            echo "::warning::SDK compliance cache empty under $CACHE_ROOT — skipping overlay"
             exit 0
           fi
           echo "Overlaying onto $DST"
