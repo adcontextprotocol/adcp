@@ -20,12 +20,12 @@ bash "${SCRIPT_DIR}/overlay-compliance-cache.sh" || true
 # tenant:min_clean:min_passed — kept in sync with the matrix.include block in
 # .github/workflows/training-agent-storyboards.yml.
 TENANTS=(
-  "signals:59:23"
-  "sales:55:159"
-  "governance:57:62"
-  "creative:51:44"
-  "creative-builder:49:37"
-  "brand:58:13"
+  "signals:65:23"
+  "sales:62:212"
+  "governance:63:66"
+  "creative:56:69"
+  "creative-builder:52:51"
+  "brand:65:14"
 )
 
 REGRESSED=0

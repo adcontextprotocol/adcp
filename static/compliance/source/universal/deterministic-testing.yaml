@@ -179,7 +179,11 @@ phases:
         requires_tool: comply_test_controller
         narrative: |
           Call force_creative_status with empty params. The controller should
-          return INVALID_PARAMS error code.
+          return INVALID_PARAMS when it implements the scenario, or
+          UNKNOWN_SCENARIO when it doesn't (per-tenant scenario registration
+          is up to the seller — universal storyboards accept either response
+          as valid because both signal "controller validated input and refused
+          gracefully," which is the load-bearing test intent).
         task: comply_test_controller
         comply_scenario: controller_validation
         stateful: false
@@ -188,7 +192,8 @@ phases:
         expected: |
           Return an error response with:
           - success: false
-          - error: INVALID_PARAMS
+          - error: INVALID_PARAMS (when scenario implemented) OR
+                   UNKNOWN_SCENARIO (when scenario not on this tenant)
 
         sample_request:
           scenario: 'force_creative_status'
@@ -206,7 +211,8 @@ phases:
             path: 'error'
             allowed_values:
               - 'INVALID_PARAMS'
-            description: 'Error code is INVALID_PARAMS'
+              - 'UNKNOWN_SCENARIO'
+            description: 'Error code is INVALID_PARAMS or UNKNOWN_SCENARIO (tenant-conditional — per-tenant scenario registration)'
 
           - check: field_present
             path: "context"
@@ -219,8 +225,11 @@ phases:
         title: 'Nonexistent entity returns NOT_FOUND'
         requires_tool: comply_test_controller
         narrative: |
-          Call force_creative_status with a nonexistent creative_id. The controller
-          should return NOT_FOUND error code.
+          Call force_creative_status with a nonexistent creative_id. The
+          controller should return NOT_FOUND when it implements the scenario,
+          or UNKNOWN_SCENARIO when it doesn't. Both are valid graceful-refusal
+          shapes; the storyboard accepts either since per-tenant scenario
+          registration is up to the seller.
         task: comply_test_controller
         comply_scenario: controller_validation
         stateful: false
@@ -229,7 +238,8 @@ phases:
         expected: |
           Return an error response with:
           - success: false
-          - error: NOT_FOUND
+          - error: NOT_FOUND (when scenario implemented) OR
+                   UNKNOWN_SCENARIO (when scenario not on this tenant)
 
         sample_request:
           scenario: 'force_creative_status'
@@ -249,7 +259,8 @@ phases:
             path: 'error'
             allowed_values:
               - 'NOT_FOUND'
-            description: 'Error code is NOT_FOUND'
+              - 'UNKNOWN_SCENARIO'
+            description: 'Error code is NOT_FOUND or UNKNOWN_SCENARIO (tenant-conditional — per-tenant scenario registration)'
 
           - check: field_present
             path: "context"

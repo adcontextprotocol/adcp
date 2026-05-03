@@ -36,32 +36,33 @@ jobs:
         # SDK 6.0.0). Rising is fine; regressing fails CI.
         tenant: [signals, sales, governance, creative, creative-builder, brand]
         include:
-          # Floors lowered for the @adcp/sdk@6.7.0 bump. The bump exposed
-          # baseline regressions in deterministic_testing context echo,
-          # signed_requests /mcp-strict discovery, idempotency_key capture,
-          # error-code expectations, and seed-fixture acknowledgement —
-          # tracked separately. The training-agent change in this PR closes
-          # only the customTools collision that was masking everything as
-          # discovery_failed; the underlying baseline regressions need their
-          # own fixes. Floors will tighten back as each is closed.
+          # Floors raised back up after #3965 catch-up: the SDK 6.7.0 bump
+          # exposed baseline issues, but some were stale-cache phantoms
+          # (Class G error code already fixed in source — overlay reconciled
+          # it) and others are now closed (Class B widened error_code
+          # acceptance, Class D dead capture removed). Remaining failures
+          # cluster around context echo (Class A — adcp-client#1455 SDK gap),
+          # signed_requests /mcp-strict (predates bump), and a few
+          # tenant-specific baseline drift. Tracked in #3965; this PR ratchets
+          # floors back toward pre-bump levels as each class closes.
           - tenant: signals
-            min_clean_storyboards: 59
+            min_clean_storyboards: 65
             min_passing_steps: 23
           - tenant: sales
-            min_clean_storyboards: 55
-            min_passing_steps: 159
+            min_clean_storyboards: 62
+            min_passing_steps: 212
           - tenant: governance
-            min_clean_storyboards: 57
-            min_passing_steps: 62
+            min_clean_storyboards: 63
+            min_passing_steps: 66
           - tenant: creative
-            min_clean_storyboards: 51
-            min_passing_steps: 44
+            min_clean_storyboards: 56
+            min_passing_steps: 69
           - tenant: creative-builder
-            min_clean_storyboards: 49
-            min_passing_steps: 37
+            min_clean_storyboards: 52
+            min_passing_steps: 51
           - tenant: brand
-            min_clean_storyboards: 58
-            min_passing_steps: 13
+            min_clean_storyboards: 65
+            min_passing_steps: 14
     steps:
       - uses: actions/checkout@v6
 
