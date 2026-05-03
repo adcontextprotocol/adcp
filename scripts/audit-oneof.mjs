@@ -4,16 +4,22 @@
 // Tracking issue: https://github.com/adcontextprotocol/adcp/issues/3917
 //
 // Modes:
-//   node scripts/audit-oneof.mjs                # print human report to stdout
-//   node scripts/audit-oneof.mjs --json         # print full row data as JSON
-//   node scripts/audit-oneof.mjs --check        # diff against baseline; exit 1 on regression
-//   node scripts/audit-oneof.mjs --update       # rewrite baseline file
+//   node scripts/audit-oneof.mjs                       # print human report to stdout
+//   node scripts/audit-oneof.mjs --json                # print full row data as JSON
+//   node scripts/audit-oneof.mjs --file <path>         # restrict to one schema file (relative to static/schemas/source)
+//   node scripts/audit-oneof.mjs --check               # diff against baseline; exit 1 on regression
+//   node scripts/audit-oneof.mjs --update              # rewrite baseline (refuses to add new undiscriminated entries)
+//   node scripts/audit-oneof.mjs --update --accept-new # required to ratchet in NEW dangerous/narrowable entries
 //
 // Baseline lives at scripts/oneof-discriminators.baseline.json. The check
 // mode fails CI if (a) any new dangerous/narrowable oneOf appears that is
 // not already in the baseline, or (b) any baseline entry has regressed to
 // a worse status. Improvements (dangerous → discriminated) are accepted
 // silently but printed in the diff so they get reflected on --update.
+//
+// Known limitations: ref resolution is one hop; variants of the form
+// {allOf: [{$ref: ...}, {required: [...]}]} are not fused before classification
+// (they fall into `dangerous` and need the discriminator added at the parent).
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -65,6 +71,12 @@ function resolveRef(ref, sourceFile) {
       targetFile = path.resolve(path.dirname(sourceFile), filePart);
     }
   }
+  // Containment guard — refuse to follow refs that escape the schema tree.
+  const normalized = path.resolve(targetFile);
+  if (normalized !== SCHEMA_ROOT && !normalized.startsWith(SCHEMA_ROOT + path.sep)) {
+    return null;
+  }
+  targetFile = normalized;
   const schema = loadSchema(targetFile);
   if (!schema) return null;
   if (!fragment || fragment === '/') return { schema, file: targetFile };
@@ -217,8 +229,16 @@ function walk(node, ptr, sourceFile, out) {
   }
 }
 
-function audit() {
-  const files = walkFiles(SCHEMA_ROOT);
+function audit({ fileFilter } = {}) {
+  let files = walkFiles(SCHEMA_ROOT);
+  if (fileFilter) {
+    const target = path.resolve(SCHEMA_ROOT, fileFilter);
+    files = files.filter((f) => path.resolve(f) === target);
+    if (!files.length) {
+      process.stderr.write(`No schema file matched --file ${fileFilter} (resolved to ${target}).\n`);
+      process.exit(2);
+    }
+  }
   const all = [];
   for (const f of files) {
     const schema = loadSchema(f);
@@ -313,17 +333,42 @@ function printReport(result) {
   }
 }
 
-const args = new Set(process.argv.slice(2));
+const argv = process.argv.slice(2);
+const args = new Set(argv);
+function getArgValue(flag) {
+  const i = argv.indexOf(flag);
+  return i >= 0 && i + 1 < argv.length ? argv[i + 1] : null;
+}
+const fileFilter = getArgValue('--file');
 
 if (args.has('--update')) {
-  const result = audit();
+  const result = audit({ fileFilter });
+  if (fileFilter) {
+    process.stderr.write(`--update with --file is not supported (baseline must reflect the whole tree).\n`);
+    process.exit(2);
+  }
+  const baseline = loadBaseline();
+  const d = diff(result.rows, baseline);
+  if (d.added.length && !args.has('--accept-new')) {
+    process.stderr.write(
+      `\nRefusing to add ${d.added.length} NEW undiscriminated oneOf(s) to the baseline. The right fix is almost always to add a discriminator, not to ratchet the baseline. If you genuinely intend to accept these, re-run with \`--update --accept-new\`:\n\n`,
+    );
+    for (const r of d.added) {
+      process.stderr.write(`  ${r.kind === 'dangerous' ? '✗' : '⚠'} ${r.file} ${r.pointer} (${r.variants}) — ${r.note}\n`);
+    }
+    process.stderr.write(`\nSee https://github.com/adcontextprotocol/adcp/issues/3917 for the patterns to use.\n`);
+    process.exit(1);
+  }
   writeBaseline(result.rows);
   process.stdout.write(`Baseline written to ${path.relative(REPO_ROOT, BASELINE_PATH)}\n`);
+  if (d.added.length) {
+    process.stdout.write(`Accepted ${d.added.length} new undiscriminated entr${d.added.length === 1 ? 'y' : 'ies'} (--accept-new). Reviewers should scrutinize this baseline diff.\n`);
+  }
   process.exit(0);
 }
 
 if (args.has('--check')) {
-  const result = audit();
+  const result = audit({ fileFilter });
   const baseline = loadBaseline();
   const d = diff(result.rows, baseline);
   let failed = false;
@@ -355,7 +400,12 @@ if (args.has('--check')) {
   }
   if (failed) {
     process.stderr.write(
-      `\nSee https://github.com/adcontextprotocol/adcp/issues/3917 for context. Add a discriminator to the new oneOf, or accept the change with \`node scripts/audit-oneof.mjs --update\`.\n`,
+      `\nSee https://github.com/adcontextprotocol/adcp/issues/3917 for context.\n` +
+        `To fix: add a discriminator to the new oneOf. Two patterns work:\n` +
+        `  1. Schema-level \`discriminator: { propertyName: "<key>" }\` (see core/assets/asset-union.json).\n` +
+        `  2. Per-variant required const property with distinct values (see core/activation-key.json).\n` +
+        `To inspect locally: \`npm run audit:oneof\` (or \`node scripts/audit-oneof.mjs --file <path>\` for one file).\n` +
+        `If you genuinely intend to accept the new entry: \`node scripts/audit-oneof.mjs --update --accept-new\`.\n`,
     );
     process.exit(1);
   }
@@ -368,10 +418,10 @@ if (args.has('--check')) {
 }
 
 if (args.has('--json')) {
-  const result = audit();
+  const result = audit({ fileFilter });
   process.stdout.write(JSON.stringify(result, null, 2) + '\n');
   process.exit(0);
 }
 
-const result = audit();
+const result = audit({ fileFilter });
 printReport(result);
