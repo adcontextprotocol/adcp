@@ -2,7 +2,7 @@ id: brand_rights/governance_denied
 version: "1.0.0"
 title: "Brand agent rejects rights acquisition when governance denies"
 category: brand_rights
-summary: "Verifies that a brand agent propagates GOVERNANCE_DENIED when the buyer's governance plan denies a rights license."
+summary: "Verifies that a brand agent returns AcquireRightsRejected when the buyer's governance plan denies a rights license."
 track: brand
 required_tools:
   - sync_governance
@@ -18,8 +18,8 @@ narrative: |
 
   This scenario sets up a strict $50 governance plan, registers governance with the
   brand agent via sync_governance, then attempts to acquire rights whose pricing
-  exceeds the plan. The brand agent must return GOVERNANCE_DENIED with findings
-  propagated from the governance agent.
+  exceeds the plan. The brand agent must return AcquireRightsRejected (status:
+  rejected) with a reason explaining the governance denial.
 
   By default, the governance agent is the training agent at test-agent.adcontextprotocol.org.
   Override with --governance-agent-url to use a custom governance agent.
@@ -161,13 +161,12 @@ phases:
         schema_ref: "brand/acquire-rights-request.json"
         response_schema_ref: "brand/acquire-rights-response.json"
         doc_ref: "/brand-protocol/tasks/acquire_rights"
-        expect_error: true
-        negative_path: payload_well_formed
         stateful: true
         expected: |
-          Brand agent rejects with:
-          - code: GOVERNANCE_DENIED
-          - findings propagated from the governance agent
+          Brand agent returns AcquireRightsRejected:
+          - status: 'rejected'
+          - reason: explanation referencing the governance plan
+          - suggestions: optional array of remediation hints
 
         sample_request:
           account:
@@ -196,9 +195,21 @@ phases:
           context:
             correlation_id: "brand_rights--governance_denied--acquire"
         validations:
-          - check: error_code
-            value: "GOVERNANCE_DENIED"
-            description: "Error code is GOVERNANCE_DENIED"
+          - check: response_schema
+            description: "Response matches AcquireRightsRejected arm of acquire-rights-response.json"
+          - check: field_value
+            path: "status"
+            value: "rejected"
+            description: "Status indicates rejection"
+          - check: field_present
+            path: "rights_id"
+            description: "Denial carries the rights identifier"
+          - check: field_present
+            path: "brand_id"
+            description: "Denial carries the brand identifier"
+          - check: field_present
+            path: "reason"
+            description: "Denial includes explanation"
           - check: field_present
             path: "context"
-            description: "Response echoes back the context object even on errors"
+            description: "Response echoes back the context object"
