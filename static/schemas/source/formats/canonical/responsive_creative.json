@@ -2,12 +2,9 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/formats/canonical/responsive_creative.json",
   "title": "Canonical Format: Responsive Creative",
-  "description": "Buyer supplies a pool of typed assets (multiple headlines, descriptions, images, videos, logos); the surface algorithmically composes combinations per placement. **Composition is algorithmic** — surface picks combinations and reports per-asset performance breakdowns. Covers Google Responsive Display Ads (RDA), Responsive Search Ads (RSA), Performance Max (PMax), Demand Gen, and Meta Advantage+ creative. Industry term: \"Responsive\" (Google) / \"Advantage+ creative\" (Meta) / \"Dynamic Creative\" (older Meta term). Distinct from `sponsored_placement` (catalog-driven, deterministic) and `agent_placement` (AI-surface composition). The structured `slots` field below enumerates expected canonical asset_group_id slots; per-slot count/length narrowing lives in flat parameters (`headlines_min`, `headline_max_chars`, etc.).\n\n**Stability:** preview. Slot vocabulary and per-slot count limits track Google PMax and Meta Advantage+ surfaces, both of which still ship slot/count/policy changes regularly. Expect schema breakage in 3.2 once 2-3 adopters have built against this canonical and the slot vocabulary stabilizes across surfaces.",
+  "description": "Buyer supplies a pool of typed assets (multiple headlines, descriptions, images, videos, logos); the surface algorithmically composes combinations per placement. **Composition is algorithmic** — surface picks combinations and reports per-asset performance breakdowns. Covers Google Responsive Display Ads (RDA), Responsive Search Ads (RSA), Performance Max (PMax), Demand Gen, and Meta Advantage+ creative. Industry term: \"Responsive\" (Google) / \"Advantage+ creative\" (Meta) / \"Dynamic Creative\" (older Meta term). Distinct from `sponsored_placement` (catalog-driven, deterministic) and `agent_placement` (AI-surface composition). The structured `slots` field below enumerates expected canonical asset_group_id slots; per-slot count/length narrowing lives in flat parameters (`headlines_min`, `headline_max_chars`, etc.).",
   "allOf": [{ "$ref": "/schemas/formats/canonical/_base.json" }],
   "properties": {
-    "status": {
-      "default": "preview"
-    },
     "slots": {
       "default": [
         { "asset_group_id": "headlines", "asset_type": "text", "required": true, "min": 3, "max": 15 },

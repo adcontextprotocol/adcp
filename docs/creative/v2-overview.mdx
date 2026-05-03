@@ -30,7 +30,7 @@ v2 collapses today's separate format registry into product-bound declarations. A
 | **`provenance_required`** | When true, the product rejects unsigned synthesized assets. Builders attach C2PA-compatible provenance manifests. |
 | **`platform_extensions`** | URI+digest references to platform-specific extensions narrowing the canonical (pixel ID shapes, conversion event taxonomies). |
 | **`tracking_extensions`** | Subset of `platform_extensions` specifically scoped to tracking concerns (pixel IDs, viewability vendors, OM-SDK partners). |
-| **`status: preview`** | Canonical is shipped for early adoption but parameter shape MAY break in 3.2 once 2-3 adopters land. |
+| **`status` on canonicals** | Spec-maturity axis (`stable` / `preview` / `deprecated`). All canonicals are `preview` while v2 itself is in preview; per-canonical promotion to `stable` happens at 3.1 GA based on adopter evidence. |
 | **`since_version` / `migration_target_version`** | Release-precision lifecycle metadata on canonicals — when introduced, when stabilization or breaking revision is expected. |
 | **`validate_input`** | Spec-defined dry-run primitive — buyers verify a manifest against canonicals/products without committing to a render. |
 | **`build_creative`** | Creative-agent surface that produces a manifest from inputs (brief, scenes, brand). Sales agents do NOT expose `build_creative`. |
@@ -58,44 +58,37 @@ v2 collapses today's separate format registry into product-bound declarations. A
 
 Each canonical lives at `/schemas/formats/canonical/<name>.json`. Tracking model is **format-specific** (split by tracking model is why we have 11 instead of, say, 5).
 
-| Canonical | Status | What it is | Tracking |
-|---|---|---|---|
-| `image` | stable | Static image, file or hosted URL redirect | Impression pixel + click URL via `universal_macros` |
-| `html5` | stable | Interactive HTML5 banner (zip asset) | MRAID + OM-SDK + click-tag macro + backup image |
-| `display_tag` | stable | Third-party JS/iframe tag URL | Opaque to seller |
-| `image_carousel` | stable | Multi-card swipe (polymorphic image/video items) | Per-card pixels + carousel engagement |
-| `video_hosted` | stable | Direct video file, orientation parameter | OM-SDK + external impression/click/quartile trackers |
-| `video_vast` | stable | VAST tag (URL or inline XML), VAST 2-4.x | Inherent VAST events |
-| `audio_hosted` | stable | Direct audio file (or host-read produced via build_creative) | Standard audio impression/completion |
-| `audio_daast` | stable | DAAST tag | Inherent DAAST events |
-| `sponsored_placement` | stable | Retail-media catalog-driven (Amazon SP, Criteo SP, CitrusAd SP) | Per-item catalog-keyed events |
-| `responsive_creative` | **preview** | Buyer asset pool, surface composes combinations (Google Responsive Display/Search Ads, Performance Max, Demand Gen; Meta Advantage+ creative) | Per-asset performance breakdown |
-| `agent_placement` | **preview** | Sponsored placement composed by an AI surface in response to a user query (ChatGPT, Perplexity, voice assistants, sponsored search snippets). Distinct from `si_chat` (brand-owned conversation; user → brand's agent). | Mention-level impression + attribution |
-
-The two `preview` canonicals (`responsive_creative`, `agent_placement`) carry surfaces whose composition models are still settling — Google PMax / Meta Advantage+ for responsive; ChatGPT / Perplexity / voice assistants for agent_placement. Their parameter shape and tracking model MAY break in 3.2 once 2-3 adopters have built against them. Buyers SHOULD plan for migration; sellers SHOULD treat preview-canonical narrowing as experimental contract surface, not a long-term commitment. The other 9 canonicals are anchored in stable IAB / platform standards (IAB display dimensions, IAB VAST 4.2, IAB DAAST 1.1, retail-media catalog conventions) and are committed.
-
-**Stabilization rubric for preview canonicals.** A preview canonical is promoted to `stable` when (a) at least 2 production adopters have built against it AND (b) 90 consecutive days have passed without a breaking change to its parameter shape. The default escalation date is the next minor release after both conditions are met — i.e., `responsive_creative` and `agent_placement` re-evaluated for stable status by 3.3 if adopters land in 3.1-3.2. To avoid the coordination problem where `preview` reads as "don't build against this" and therefore never stabilizes, sellers shipping preview canonicals SHOULD also publish a `migration_target_version` (carried on the canonical's `_base.json` `migration_target_version` field) so adopters know when to expect either stabilization or a breaking revision.
-
-### Two stability axes: canonical `status` vs declaration `runtime_status`
-
-Stability splits across two independent axes — the spec-maturity axis on the canonical, and the adopter-runtime axis on each product-format declaration:
-
-| Axis | Field location | Question it answers |
+| Canonical | What it is | Tracking |
 |---|---|---|
-| **Spec maturity** | `params.status` on the canonical (`/schemas/formats/canonical/<name>.json`) | "Has the v2 working group stabilized this format definition?" Values: `stable` / `preview` / `deprecated`. |
-| **Adopter runtime** | `runtime_status` on the `ProductFormatDeclaration` (per-product) | "Does THIS seller's runtime actually honor what they declared on THIS product?" Values: `stable` / `preview` / `declared_only`. |
+| `image` | Static image, file or hosted URL redirect | Impression pixel + click URL via `universal_macros` |
+| `html5` | Interactive HTML5 banner (zip asset) | MRAID + OM-SDK + click-tag macro + backup image |
+| `display_tag` | Third-party JS/iframe tag URL | Opaque to seller |
+| `image_carousel` | Multi-card swipe (polymorphic image/video items) | Per-card pixels + carousel engagement |
+| `video_hosted` | Direct video file, orientation parameter | OM-SDK + external impression/click/quartile trackers |
+| `video_vast` | VAST tag (URL or inline XML), VAST 2-4.x | Inherent VAST events |
+| `audio_hosted` | Direct audio file (or host-read produced via build_creative) | Standard audio impression/completion |
+| `audio_daast` | DAAST tag | Inherent DAAST events |
+| `sponsored_placement` | Retail-media catalog-driven (Amazon SP, Criteo SP, CitrusAd SP) | Per-item catalog-keyed events |
+| `responsive_creative` | Buyer asset pool, surface composes combinations (Google Responsive Display/Search Ads, Performance Max, Demand Gen; Meta Advantage+ creative) | Per-asset performance breakdown |
+| `agent_placement` | Sponsored placement composed by an AI surface in response to a user query (ChatGPT, Perplexity, voice assistants, sponsored search snippets). Distinct from `si_chat` (brand-owned conversation; user → brand's agent). | Mention-level impression + attribution |
 
-The two vary independently. A `stable` canonical can have `declared_only` adopters (the spec is settled but the seller hasn't wired the runtime path yet — common during v2 migration when adopters port v1 catalog declarations forward but their adapters still implement only the asset-upload path). A `preview` canonical can have `stable` adopters (a seller built a real working runtime against the preview shape and their integration honors what they declared).
+### Status: every canonical is preview while v2 is preview
 
-Why both exist: without `runtime_status`, sellers in mid-migration silently lie about what they support. They declare the shiny new production-source axis (`item_production_model: seller_pre_rendered_from_brief`) on a forward-looking product, but the actual `sync_creatives` runtime is still a buyer-uploaded-bytes loop. Buyers discover the mismatch only at submission time — exactly what v2's canonical-as-contract is supposed to prevent.
+v2 itself is in preview through the 3.1 beta cycle. Until 3.1 GA ships, **every canonical is implicitly preview** — nothing is locked. The `status` field on each canonical schema (`stable | preview | deprecated`) defaults to `preview` during this window; per-canonical differentiation kicks in at GA, not before. Adopters building against the preview branch should treat all canonicals as experimental contract surface that MAY break before GA.
 
-The rule of thumb:
+**At 3.1 GA**, the working group promotes individual canonicals from `preview` to `stable` based on adopter evidence. The promotion rubric: a canonical promotes to `stable` when (a) at least 2 production adopters have built against it AND (b) 90 consecutive days have passed without a breaking change to its parameter shape. Canonicals lacking adopter validation stay `preview` past GA and re-evaluate on each subsequent minor release. The 9 IAB-anchored canonicals (image, html5, display_tag, image_carousel, video_hosted, video_vast, audio_hosted, audio_daast, sponsored_placement) are expected to clear the rubric quickly because they sit on top of established industry standards. The 3 surface-composed canonicals (responsive_creative, agent_placement, and arguably sponsored_placement given the gaps around match types / negatives / bid mods on retail-media surfaces) need adopter-shipped `format_schema` evidence before promotion. Sellers shipping any canonical SHOULD declare `migration_target_version` so adopters know when to expect either stabilization or a breaking revision.
 
-- Default `stable` (or omit the field). The runtime honors what's declared.
-- `preview` — the basic path works; advanced axes (per-item fan-out, brief-driven overrides, advanced `platform_extensions`) may be partial. Buyers should `validate_input` before committing.
-- `declared_only` — forward-looking declaration. Runtime not wired yet. Buyers MUST treat as informational; compliance storyboards skip-gate gracefully rather than fail; budget should not flow until upgraded to `preview` or `stable`.
+### `runtime_status` on each product declaration — separate axis from canonical `status`
 
-Sellers MUST upgrade the value as the runtime catches up. Buyers cache it like any other capability field; subsequent `get_products` responses surface the new value naturally.
+`status` on the canonical describes whether the working group has locked the spec definition (currently `preview` for all canonicals; per-canonical promotion at GA per the rubric above). `runtime_status` on each `ProductFormatDeclaration` is a separate axis describing whether THIS seller's runtime actually honors what they declared on THIS product. The two vary independently: a `preview` canonical can have a seller whose runtime fully honors the preview shape (`runtime_status: stable`); a future `stable` canonical can have sellers who declared aspirationally without wiring the runtime yet (`runtime_status: declared_only`).
+
+| `runtime_status` value | What it signals | Buyer action |
+|---|---|---|
+| `stable` (default, or omitted) | Adopter's runtime fully honors the declared format + production source. | Treat the declaration as a serving contract. |
+| `preview` | Basic path works; advanced axes (per-item fan-out, brief-driven overrides, advanced `platform_extensions`) may be partial. | `validate_input` or sandbox before committing budget. |
+| `declared_only` | Catalog declaration is forward-looking; runtime does NOT yet implement this path. | Treat as informational. Confirm via `validate_input` or a sandbox storyboard before purchase. Compliance storyboards SHOULD skip-gate `declared_only` entries gracefully rather than failing. |
+
+Why this axis exists: without `runtime_status`, sellers in mid-migration silently lie about what they support. They declare the shiny new production-source axis (`item_production_model: seller_pre_rendered_from_brief`) on a forward-looking product, but the actual `sync_creatives` runtime is still a buyer-uploaded-bytes loop. Buyers discover the mismatch only at submission time — exactly what v2's canonical-as-contract is supposed to prevent. Sellers MUST upgrade the value as the runtime catches up; buyers cache it like any other capability field.
 
 ## Two axes: composition (per-impression) vs production (who renders)
 
