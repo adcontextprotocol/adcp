@@ -323,6 +323,7 @@
     .module-item {
       display: flex;
       align-items: center;
+      flex-wrap: wrap;
       gap: var(--space-4);
       padding: var(--space-4) var(--space-6);
       border-bottom: var(--border-1) solid var(--color-border);
@@ -815,6 +816,131 @@
         grid-template-columns: 1fr;
       }
     }
+
+    /* =========================================================================
+       Assessment disclosure — on completed / tested-out module cards
+       ========================================================================= */
+    .assessment-disclosure-wrapper {
+      flex: 0 0 100%;
+      padding-top: var(--space-3);
+      border-top: var(--border-1) solid var(--color-border);
+    }
+
+    .assessment-disclosure > summary {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      cursor: pointer;
+      list-style: none;
+      user-select: none;
+    }
+
+    .assessment-disclosure > summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .assessment-disclosure > summary::before {
+      content: '\25B8\00A0';
+      font-size: 9px;
+      transition: transform var(--duration-normal) var(--ease-in-out);
+      display: inline-block;
+    }
+
+    .assessment-disclosure[open] > summary::before {
+      transform: rotate(90deg);
+    }
+
+    .assessment-disclosure > summary:focus-visible {
+      outline: 2px solid var(--color-brand);
+      outline-offset: 2px;
+      border-radius: 2px;
+    }
+
+    .assessment-disclosure-body {
+      margin-top: var(--space-3);
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+    }
+
+    .assessment-note {
+      margin-bottom: var(--space-2);
+    }
+
+    .assessment-dim-list {
+      list-style: none;
+      padding: 0;
+      margin: var(--space-2) 0 var(--space-3);
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-1);
+    }
+
+    .assessment-dim-list li {
+      color: var(--color-text-secondary);
+    }
+
+    .assessment-dim-list strong {
+      color: var(--color-text);
+    }
+
+    .assessment-link {
+      color: var(--color-brand);
+      text-decoration: none;
+    }
+
+    .assessment-link:hover {
+      text-decoration: underline;
+    }
+
+    .assessment-review-area {
+      margin-top: var(--space-3);
+      padding-top: var(--space-2);
+    }
+
+    .assessment-review-actions {
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      margin-top: var(--space-2);
+      flex-wrap: wrap;
+    }
+
+    .btn-review-request {
+      display: inline-flex;
+      align-items: center;
+      padding: var(--space-1) var(--space-3);
+      border-radius: var(--radius-md);
+      font-size: var(--text-sm);
+      font-weight: var(--font-medium);
+      cursor: pointer;
+      border: var(--border-1) solid var(--color-border);
+      background: var(--color-bg-card);
+      color: var(--color-text);
+      transition: border-color var(--duration-normal) var(--ease-in-out);
+    }
+
+    .btn-review-request:hover {
+      border-color: var(--color-brand);
+    }
+
+    .btn-review-request:disabled {
+      opacity: 0.6;
+      cursor: default;
+    }
+
+    .assessment-mailto-fallback {
+      color: var(--color-text-secondary);
+      text-decoration: none;
+      font-size: var(--text-sm);
+    }
+
+    .assessment-mailto-fallback:hover {
+      color: var(--color-brand);
+    }
+
+    .review-submitted {
+      color: var(--color-success-700);
+      margin: 0;
+    }
   </style>
 </head>
 <body>
@@ -882,6 +1008,7 @@
         certifications: [],
         credentials: [],
         myCredentials: [],
+        moduleDetails: {},
         isAuthenticated: false,
         isMember: false,
       };
@@ -1441,10 +1568,56 @@
         container.innerHTML = html;
       }
 
+      function renderAssessmentDisclosure(mod, status) {
+        var isTestedOut = status === 'tested_out';
+        var prog = state.progress.find(function(p) { return p.module_id === mod.id; });
+        var completedAt = prog && prog.completed_at
+          ? new Date(prog.completed_at).toISOString().split('T')[0] : '';
+        var mailtoSubject = encodeURIComponent(
+          'Assessment review — ' + mod.id + (completedAt ? ' (' + completedAt + ')' : '')
+        );
+        var mailtoHref = 'mailto:certification@agenticadvertising.org?subject=' + mailtoSubject;
+
+        var html = '<div class="assessment-disclosure-wrapper">';
+        if (isTestedOut) {
+          html += '<details class="assessment-disclosure">';
+        } else {
+          html += '<details class="assessment-disclosure" ontoggle="loadAssessmentDetails(\'' + esc(mod.id) + '\', this)">';
+        }
+        html += '<summary>About this assessment</summary>';
+        html += '<div class="assessment-disclosure-body">';
+
+        if (isTestedOut) {
+          html += '<p class="assessment-note">Completed via placement assessment'
+            + (completedAt ? ' on ' + esc(completedAt) : '') + '.'
+            + ' No rubric scoring was applied; your existing knowledge was verified through conversation.</p>';
+        } else {
+          html += '<p class="assessment-note">This module was marked complete'
+            + (completedAt ? ' on ' + esc(completedAt) : '') + '.</p>';
+          html += '<div id="dims-' + esc(mod.id) + '"></div>';
+        }
+
+        html += '<p><a href="/ai-disclosure#review" class="assessment-link">About Addie’s grading and your rights →</a></p>';
+        html += '<div class="assessment-review-area" id="review-area-' + esc(mod.id) + '">';
+        html += '<p class="assessment-note">Disagree with this assessment? AgenticAdvertising.org staff will review within 2 business days.</p>';
+        html += '<div class="assessment-review-actions">';
+        html += '<button type="button" class="btn-review-request" onclick="submitReviewRequest(event, \'' + esc(mod.id) + '\')">';
+        html += 'Request human review';
+        html += '</button>';
+        html += '<a href="' + mailtoHref + '" class="assessment-mailto-fallback">or email directly</a>';
+        html += '</div>';
+        html += '</div>';
+        html += '</div>';
+        html += '</details>';
+        html += '</div>';
+        return html;
+      }
+
       function renderModule(mod) {
         var status = getModuleStatus(mod.id, mod.is_free, mod.prerequisites);
         var canStart = status === 'available' || status === 'in_progress';
         var isLocked = status === 'locked';
+        var isComplete = status === 'completed' || status === 'tested_out';
 
         var html = '';
         html += '<div class="module-item' + (isLocked ? ' module-item-locked' : '') + '">';
@@ -1476,6 +1649,9 @@
           html += '    <button class="btn-start btn-start-secondary" disabled>Locked</button>';
         }
         html += '  </div>';
+        if (isComplete && state.isAuthenticated) {
+          html += renderAssessmentDisclosure(mod, status);
+        }
         html += '</div>';
         return html;
       }
@@ -1545,6 +1721,68 @@
         } catch (e) { /* continue anyway */ }
 
         window.location.href = '/chat?topic=certification&module=' + moduleId;
+      };
+
+      window.loadAssessmentDetails = async function(modId, detailsEl) {
+        if (!detailsEl.open) return;
+        if (modId in state.moduleDetails) return;
+        state.moduleDetails[modId] = null;
+
+        var contentEl = document.getElementById('dims-' + modId);
+        if (!contentEl) return;
+
+        try {
+          var resp = await fetch('/api/certification/modules/' + encodeURIComponent(modId), {credentials: 'include'});
+          if (!resp.ok) throw new Error('fetch failed');
+          var data = await resp.json();
+          var dims = (data.assessment_criteria && data.assessment_criteria.dimensions) || [];
+          state.moduleDetails[modId] = dims;
+          if (!dims.length) return;
+
+          var html = '<ul class="assessment-dim-list">';
+          dims.forEach(function(d) {
+            var label = d.name.replace(/_/g, ' ');
+            label = label.charAt(0).toUpperCase() + label.slice(1);
+            html += '<li><strong>' + esc(label) + '</strong>';
+            if (d.description) html += ' — ' + esc(d.description);
+            html += '</li>';
+          });
+          html += '</ul>';
+          contentEl.innerHTML = html;
+        } catch (e) {
+          delete state.moduleDetails[modId];
+        }
+      };
+
+      window.submitReviewRequest = async function(evt, modId) {
+        var btn = evt.currentTarget;
+        if (btn.disabled) return;
+        btn.disabled = true;
+        btn.textContent = 'Submitting…';
+
+        try {
+          var resp = await fetch('/api/me/certification/review-request', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            credentials: 'include',
+            body: JSON.stringify({module_id: modId})
+          });
+          var reviewArea = document.getElementById('review-area-' + modId);
+          if (resp.ok) {
+            if (reviewArea) {
+              var msg = document.createElement('p');
+              msg.className = 'review-submitted';
+              msg.textContent = 'Review requested — you’ll hear from us within 2 business days.';
+              reviewArea.replaceChildren(msg);
+            }
+          } else {
+            btn.disabled = false;
+            btn.textContent = 'Request human review';
+          }
+        } catch (e) {
+          btn.disabled = false;
+          btn.textContent = 'Request human review';
+        }
       };
 
       function esc(str) {

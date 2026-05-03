@@ -21,6 +21,7 @@ type AddieContext =
   | { type: 'prospect'; addiePosition: AddiePosition; addieAddress: string }
   | { type: 'working-group'; groupId: string; addiePosition: AddiePosition; addieAddress: string }
   | { type: 'feed'; slug: string }
+  | { type: 'certification'; addiePosition: AddiePosition; addieAddress: string }
   | { type: 'unrouted' };
 
 function parseEmailAddress(emailStr: string): { email: string; displayName: string | null; domain: string } {
@@ -91,6 +92,10 @@ function parseAddieContext(toAddresses: string[], ccAddresses: string[] = []): A
 
       if (context.startsWith('wg-')) {
         return { type: 'working-group', groupId: context.substring(3), addiePosition: position, addieAddress: email };
+      }
+
+      if (context === 'certification') {
+        return { type: 'certification', addiePosition: position, addieAddress: email };
       }
     }
   }
@@ -307,6 +312,43 @@ describe('Inbound Email Webhook', () => {
         'addie+prospect@agenticadvertising.org',
       ]);
       expect(result).toEqual({ type: 'feed', slug: 'feed-campaign-uk' });
+    });
+
+    it('should return certification context for addie+certification@updates.agenticadvertising.org in TO', () => {
+      const result = parseAddieContext(['addie+certification@updates.agenticadvertising.org']);
+      expect(result).toEqual({
+        type: 'certification',
+        addiePosition: 'to',
+        addieAddress: 'addie+certification@updates.agenticadvertising.org',
+      });
+    });
+
+    it('should return certification context for addie+certification in CC', () => {
+      const result = parseAddieContext(
+        ['hello@agenticadvertising.org'],
+        ['addie+certification@updates.agenticadvertising.org'],
+      );
+      expect(result).toEqual({
+        type: 'certification',
+        addiePosition: 'cc',
+        addieAddress: 'addie+certification@updates.agenticadvertising.org',
+      });
+    });
+
+    it('should return certification context for addie+certification on main domain', () => {
+      const result = parseAddieContext(['addie+certification@agenticadvertising.org']);
+      expect(result).toEqual({
+        type: 'certification',
+        addiePosition: 'to',
+        addieAddress: 'addie+certification@agenticadvertising.org',
+      });
+    });
+
+    it('should not treat certification as a plain prospect fallback', () => {
+      const result = parseAddieContext(['addie+certification@updates.agenticadvertising.org']);
+      expect(result.type).toBe('certification');
+      expect(result.type).not.toBe('prospect');
+      expect(result.type).not.toBe('unrouted');
     });
   });
 
