@@ -91,7 +91,7 @@
     },
     "account": {
       "type": "object",
-      "description": "Account management capabilities. Describes how accounts are established, what billing models are supported, and whether an account is required before browsing products.",
+      "description": "Account management capabilities. Required when media_buy is in supported_protocols; optional otherwise. Describes how accounts are established, what billing models are supported, and whether an account is required before browsing products.",
       "properties": {
         "require_operator_auth": {
           "type": "boolean",
@@ -126,12 +126,11 @@
           "description": "Whether this seller supports sandbox accounts for testing. Buyers can provision a sandbox account via sync_accounts with sandbox: true, and all requests using that account_id will be treated as sandbox — no real platform calls or spend.",
           "default": false
         }
-      },
-      "required": ["supported_billing"]
+      }
     },
     "media_buy": {
       "type": "object",
-      "description": "Media-buy protocol capabilities. Expected when media_buy is in supported_protocols. Sellers declaring media_buy should also include account with supported_billing.",
+      "description": "Media-buy protocol capabilities. Expected when media_buy is in supported_protocols. Sellers declaring media_buy MUST include account with supported_billing.",
       "properties": {
         "supported_pricing_models": {
           "type": "array",
@@ -1024,6 +1023,27 @@
   "required": [
     "adcp",
     "supported_protocols"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "supported_protocols": {
+            "type": "array",
+            "contains": { "const": "media_buy" }
+          }
+        },
+        "required": ["supported_protocols"]
+      },
+      "then": {
+        "required": ["account"],
+        "properties": {
+          "account": {
+            "required": ["supported_billing"]
+          }
+        }
+      }
+    }
   ],
   "additionalProperties": true
 }
