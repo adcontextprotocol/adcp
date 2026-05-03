@@ -7,6 +7,16 @@
  * `/api/training-agent/<tenant>/mcp` route as on the legacy `/mcp`
  * route.
  *
+ * **Tenant-independent account state** (by design). All six v6 platforms
+ * share a single in-process `accountStore` via `handleSyncAccounts`. A
+ * buyer calling `sync_accounts` on `/governance/mcp` provisions an
+ * account that's also visible to `/sales/mcp` — that's the spec posture:
+ * one buyer-seller account, all surfaces. Future contributors who try to
+ * "fix" cross-tenant visibility should consult the spec note in
+ * docs/building/integration/accounts-and-agents.mdx ("supported_protocols
+ * is not exhaustive — the accounts surface is implicit in every
+ * protocol agent") before reshaping.
+ *
  * Principal flows from the bearer authenticator (index.ts) through the
  * tenant router's req.auth bridge (tenants/router.ts) onto
  * `ResolveContext.authInfo.clientId` — that's where serve.js stamps the
