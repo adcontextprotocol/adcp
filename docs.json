@@ -451,6 +451,7 @@
                           "docs/sponsored-intelligence/product-spectrum",
                           "docs/sponsored-intelligence/networks",
                           "docs/sponsored-intelligence/workflow",
+                          "docs/sponsored-intelligence/a2ui",
                           "docs/sponsored-intelligence/measurement"
                         ]
                       },
@@ -1012,6 +1013,7 @@
                       "docs/sponsored-intelligence/product-spectrum",
                       "docs/sponsored-intelligence/networks",
                       "docs/sponsored-intelligence/workflow",
+                      "docs/sponsored-intelligence/a2ui",
                       "docs/sponsored-intelligence/measurement"
                     ]
                   },

@@ -1,0 +1,337 @@
+---
+title: A2UI Integration
+description: "How A2UI surfaces, brand theming, and user-action measurement work inside Sponsored Intelligence — including the host/brand boundary that protects sponsorship disclosures."
+"og:title": "AdCP — Sponsored Intelligence A2UI Integration"
+sidebarTitle: A2UI Integration
+---
+
+<Note>
+**Experimental.** A2UI integration is part of the experimental `sponsored_intelligence.core` surface — see [experimental status](/docs/reference/experimental-status). Sellers MUST declare `sponsored_intelligence.core` in `experimental_features` to use A2UI in production-adjacent contexts.
+</Note>
+
+<Note>
+**Draft — pending working-group review.** Regulatory citations (FTC §255, EU DSA Art. 26, AVMS) are starting points and require legal review before any wording here is promoted to normative spec. Open issues consolidated by this page: [#2918](https://github.com/adcontextprotocol/adcp/issues/2918), [#2919](https://github.com/adcontextprotocol/adcp/issues/2919), [#2920](https://github.com/adcontextprotocol/adcp/issues/2920).
+</Note>
+
+A2UI is the richer rendering path for SI session responses. When both the host and the brand agent declare A2UI support, the SI agent returns an A2UI surface — a tree of components from a shared catalog — as an alternative to the flat `ui_elements` array. The host renders the surface natively using its own component library.
+
+This page covers the three integration concerns A2UI introduces into SI:
+
+1. **The host/brand boundary** — what the brand controls, what the host controls, and why disclosure surfaces never enter the brand's tree.
+2. **Brand theming** — how `brand.json` palette and typography flow into the surface.
+3. **User actions and measurement** — how A2UI interaction events drive the next conversational turn and feed SI engagement metrics.
+
+## Capability negotiation
+
+A2UI support is declared in [`si-capabilities.json`](https://adcontextprotocol.org/schemas/v3/sponsored-intelligence/si-capabilities.json):
+
+```json
+{
+  "a2ui": {
+    "supported": true,
+    "catalogs": ["si-standard", "standard"]
+  },
+  "mcp_apps": false
+}
+```
+
+Both sides exchange `supported_capabilities` at `si_initiate_session`. If either side declares `a2ui.supported: false`, the response uses the `ui_elements` path instead — no breaking change.
+
+When a host advertises multiple catalogs, the brand agent SHOULD return the most expressive surface the host can render. Catalog negotiation defaults to `standard` if no shared catalog is declared.
+
+A typical negotiated response from the host echoes the agreed catalog so the brand agent knows what to emit:
+
+```json
+{
+  "session_id": "sess_abc",
+  "session_status": "active",
+  "negotiated_capabilities": {
+    "a2ui": {
+      "supported": true,
+      "catalog": "si-standard"
+    }
+  }
+}
+```
+
+## Host/brand boundary
+
+A2UI separates the brand-authored content of a session response from the host-authored chrome that wraps it. This separation is **structural, not advisory**.
+
+```
+┌─────────────────────────────────────────────────┐
+│ Host chrome                                     │  ← host owns
+│ ┌─────────────────────────────────────────────┐ │
+│ │ 🛈 Sponsored — Ridgeline Gear                │ │  ← host disclosure
+│ ├─────────────────────────────────────────────┤ │
+│ │                                             │ │
+│ │   [ A2UI surface from SI agent ]            │ │  ← brand owns
+│ │                                             │ │
+│ │   • product_card   • action_button          │ │
+│ │   • carousel       • text                   │ │
+│ │                                             │ │
+│ ├─────────────────────────────────────────────┤ │
+│ │ Privacy · Why am I seeing this? · Report    │ │  ← host governance
+│ └─────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────┘
+```
+
+### What the brand controls
+
+Inside the host-controlled container, the brand agent owns:
+
+- The component tree (which components, in what order, with what data bindings)
+- Component content (text, images, links, action labels)
+- Component-level styling within the host's design tokens (variants, sizes, emphasis)
+- Action bindings — what `name` an interaction fires, and what `context` accompanies it
+
+### What the host controls
+
+Outside the brand's container — and never inside it — the host owns:
+
+- **Sponsorship disclosure** ("Sponsored", "Ad", "Promoted by [Brand]")
+- **Governance disclosures** ("Why am I seeing this?", report/feedback affordances, advertiser identity link)
+- **Regulatory labels** required by the host's jurisdiction or platform policy
+- The container itself (position, dimensions, scroll behavior, dismiss/close)
+- The active component catalog and the brand's resolved theme (see [Theming](#brand-theming))
+- Accessibility surfaces (focus order, reduced motion, contrast adjustments)
+
+### Invariants
+
+The boundary is enforced structurally — not by trust. The host renderer is authoritative for everything below.
+
+#### Container invariants
+
+1. **Brand-provided components MUST NOT render, position, or paint outside the host-controlled container's bounding box** — including via `position: fixed`, portals, modals, overlay z-index, transforms that translate beyond bounds, or any other escape mechanism.
+2. **Disclosures are rendered by the host, outside the brand's container.** The brand's component tree MUST NOT contain text, badges, labels, or imagery that asserts editorial independence, organic placement, or non-paid status (e.g., "Editor's pick", "Independent recommendation", "Top result"), OR that visually resembles host disclosure chrome (similar position, typography, iconography, or notification styling).
+3. **The brand cannot suppress disclosures via styling.** Theme tokens resolved from `brand.json` apply only to components inside the brand's container. The host's chrome uses host-controlled styling and ignores brand attempts to color, hide, or restyle disclosure text.
+4. **The host renderer is authoritative.** If a brand-provided component, property, action, or theme token would violate any invariant, the host MUST drop the offending component or property without failing the session, and SHOULD report what was dropped back to the brand agent (see [Drop telemetry](#drop-telemetry)).
+
+#### Content invariants
+
+5. **Images are opaque pixels under brand control, not host chrome.** Hosts MUST contain `Image` components within the brand container. Brand-supplied `alt` text MUST NOT be forwarded into screen-reader announcements adjacent to host disclosures without an explicit role separator. Hosts SHOULD scan for disclosure-phrase impersonation in image content (perceptual hash against known disclosure phrases, or OCR for text-bearing creatives).
+6. **All URL-shaped values MUST be `https:`-only and canonicalized by the host.** This includes `Link.url`, `Image.src`, `IntegrationAction.url`, `AppHandoff.deepLink`/`url`, and any URL-typed [bound value](https://adcontextprotocol.org/schemas/v3/a2ui/bound-value.json). Hosts MUST reject `javascript:`, `data:`, `file:`, and any non-allowlisted scheme — whether literal or path-bound. Outbound `Link` elements MUST receive `rel="noopener noreferrer"` and SHOULD receive `rel="sponsored"` for FTC/DSA alignment.
+7. **`Text` components are rendered as text — never as HTML or markdown with raw HTML.** This includes any `bound-value` that resolves into text contexts. Brand → user → brand round-trips through `user-action.context` and back into a subsequent surface MUST NOT enable script execution.
+
+#### Theme invariants
+
+8. **Theme tokens are typed and enumerated.** Hosts MUST reject any token that is not in the catalog's enumerated set. Geometric, transform, overflow, z-index, and stacking-context properties are never themeable from brand input. Theme tokens are atomic values (named colors, named font families, scale-step indices) — never raw CSS strings.
+9. **Accessibility substitution MUST be deterministic and host-controlled.** When `brand.json` declares a value that fails the host's accessibility floors (WCAG 2.2 AA recommended), the host substitutes via a deterministic algorithm operating on host-controlled tokens only. Brand-supplied values that fail contrast are rejected, not "substituted toward" any brand-influenced target. Substitution applied inside the container does not propagate into chrome.
+
+#### Action invariants
+
+10. **Action names are syntactically constrained.** `user-action.action.name` MUST match `^[a-z][a-z0-9_]{0,63}$`. Hosts MUST drop non-conforming names before forwarding to `si_send_message`.
+11. **Brand-controlled strings echoed into LLM contexts MUST be fenced.** When a host includes `action.name`, `action.context`, or surface text in any downstream LLM prompt (summarization, translation, voice rewrite), the bytes MUST be wrapped in a delimiter (e.g., `<user_action>...</user_action>`) and treated as untrusted input.
+
+#### Operational invariants
+
+12. **`surfaceId`, `componentId`, and `dataModel` are scoped per-session per-brand.** Hosts MUST namespace brand-supplied identifiers under a host-issued prefix; brand IDs MUST NOT be reused across brands or persisted across session boundaries. `dataModel` lifetime is bounded by its surface.
+13. **Hosts MUST cap render budget per surface** — total component count, tree depth, `dataModel` size, and render time. Exceeding caps drops the surface (not just the offending subtree) so that disclosure-adjacent context is never rendered partially.
+14. **The host validates surfaces against the catalog schema before render.** The SI agent's claim of conformance is not load-bearing; the host is the sole arbiter.
+
+These invariants follow the same pattern as [IAB SafeFrame](https://iabtechlab.com/standards/safeframe/) (chrome separation), [OMID](https://iabtechlab.com/standards/open-measurement-sdk/) (verification ownership), the [TCF](https://iabeurope.eu/tcf/) controller/publisher surface split, [IAB AdChoices / DAA Self-Regulatory Program](https://digitaladvertisingalliance.org/principles) (host-rendered icon, advertiser cannot suppress), and [Apple App Tracking Transparency](https://developer.apple.com/design/human-interface-guidelines/privacy) (system-owned prompt, app cannot restyle) — the trust surface lives outside what the advertiser-controlled code can reach.
+
+### Brand attribution vs. disclosure
+
+Disclosure ("Sponsored", "Ad") and attribution ("Presented by Ridgeline Gear", brand logo lockup) are distinct. Both live in host chrome, both render outside the brand's component tree, but attribution uses brand-supplied assets from `brand.json` (logo, brand name, optional tagline) while disclosure uses host-controlled wording.
+
+This means brands get visible attribution without the ability to author or restyle the disclosure itself — the host renders the brand mark and the "Sponsored" tag side-by-side, both under host control, both visible above the brand's A2UI surface.
+
+The closest precedent for brand teams worried about losing creative control: Google Shopping product cards, Amazon Sponsored Products, and Apple Search Ads. All heavily templated, all accepted by brands because they convert. SI is conversational rather than display-template — brand identity flows through `brand.json` and through the components inside the container, not through a custom-authored creative.
+
+### Why this matters
+
+Sponsorship disclosure is a regulatory invariant in most jurisdictions where SI will run — [FTC Endorsement Guides §255.5](https://www.ftc.gov/business-guidance/resources/ftcs-endorsement-guides-what-people-are-asking), [EU Digital Services Act Art. 26](https://eur-lex.europa.eu/eli/reg/2022/2065), [AVMS Directive](https://digital-strategy.ec.europa.eu/en/policies/audiovisual-media-services). If the brand's tree could declare or override the disclosure, every host integration would need legal review of every brand. The structural boundary makes the disclosure host-only by construction, so legal review happens once per host, not once per brand.
+
+### Drop telemetry
+
+When a host drops a component or property under any invariant, it SHOULD return a structured drop record in the next `si_send_message` response so the brand agent can debug. Without this signal, brand creative ops have no way to learn that components are silently disappearing.
+
+The exact shape is host-defined for now (proposed: `dropped_components: [{ id, reason, invariant_id }]`), and is tracked as an open question in the [follow-ups](#follow-ups) section.
+
+## Brand theming
+
+`brand.json` defines a brand's palette, typography, and visual identity. A2UI surfaces support theming via the host's design-token system. The host bridges the two.
+
+### Resolution responsibility
+
+**The host resolves `brand.json` to A2UI theme tokens.** Not the SI agent. The host owns:
+
+- Knowledge of its component catalog and which tokens each component honors
+- Accessibility constraints (minimum contrast ratios, font-size floors, motion preferences)
+- Platform conventions (light/dark mode, system fonts, density)
+
+The SI agent does not need to know how the host's `Button` is styled. It declares the brand identity once at session init; the host pulls `brand.json` and resolves the theme.
+
+### Resolution flow
+
+1. At `si_initiate_session`, the SI agent's discovery response identifies the brand via `brand.domain` (e.g., `ridgelinegear.com`).
+2. The host fetches `https://ridgelinegear.com/.well-known/brand.json`.
+3. The host maps `brand.json` palette and typography fields to its A2UI theme tokens, applying accessibility floors:
+
+| `brand.json` field | A2UI theme role (typical) |
+|---|---|
+| `colors.primary` | primary action / accent |
+| `colors.secondary` | secondary action |
+| `colors.background` | container surface |
+| `colors.text` / `colors.body` | body text |
+| `colors.heading` | heading text |
+| `colors.surface_1`, `surface_2` | nested-card backgrounds |
+| `fonts.heading` | heading typeface |
+| `fonts.body` | body typeface |
+| `logo` | host chrome (e.g., "Sponsored — Ridgeline Gear" attribution) |
+
+4. The host applies the resolved theme to components rendered inside the brand's container. Host chrome (disclosures, governance affordances) uses host-controlled styling and is unaffected by the brand theme.
+
+### Accessibility floors
+
+The host MUST enforce its own accessibility minima — minimum contrast (WCAG 2.2 AA recommended), readable font sizes, motion-reduction preferences. If `brand.json` declares a color combination that would fail accessibility checks, the host substitutes via a deterministic, host-controlled algorithm (e.g., nearest-neighbor in perceptual color space preserving hue, darkening toward AA contrast). The substitution algorithm operates only on host-controlled targets — brand-influenced fallback would violate invariant 9.
+
+Hosts SHOULD expose the resolved theme back to the brand agent (via the next `si_send_message` response) so creative ops can preview applied tokens before campaigns ship.
+
+### What the SI agent MAY do
+
+Nothing about theming requires the SI agent to participate. For richer cases, an agent MAY include a `dataModel.theme` hint inside its surface — a structured suggestion for how to color a specific subtree (e.g., a hero card with a brand-saturated background). The host treats this as a hint, not a directive: tokens that are unknown, would violate accessibility floors, or would affect chrome are dropped.
+
+## User actions and measurement
+
+A2UI defines a single interaction event — [`user-action.json`](https://adcontextprotocol.org/schemas/v3/a2ui/user-action.json) — that fires when the user interacts with a component. SI agents already drive the conversation through `si_send_message`. The two connect cleanly.
+
+### Action flow
+
+```
+User clicks Button (componentId: "buy-cta", action.name: "view_product")
+  │
+  ├─→ Host fires SI engagement event for measurement (host owns this)
+  │
+  └─→ Host calls si_send_message with the user-action payload
+      │
+      └─→ SI agent receives the action, generates the next surface
+```
+
+Two signals leave the host for the same click — one to measurement, one to the brand. They have different purposes:
+
+- **The brand cares about turn-driving signal** — what the user touched, with what context — so it can produce the next response. This goes to the SI agent via `si_send_message`.
+- **The host cares about engagement counting** — clicks, expansions, dwell — so it can report to AdCP measurement (`engagements`, `clicks`, conversion events). The host owns this because it sees the user; the SI agent only sees the actions the host forwards.
+
+**Both signals MUST carry the same host-issued `event_id` (UUIDv4)** so brand-side conversion attribution and AdCP measurement counts can be reconciled downstream. Without a shared correlation key, attribution against host engagement counts becomes guesswork. The `user-action.timestamp` is brand-influenceable per the schema; for measurement purposes the host MUST stamp its own time and treat any brand-supplied timestamp as advisory only.
+
+### Mapping table (proposed)
+
+A2UI defines `user-action` as the unified interaction event. Host platforms have richer interaction models. Recommended mapping for SI engagement reporting:
+
+| User behavior | A2UI signal | SI engagement metric |
+|---|---|---|
+| Surface visible to user (≥ host's viewability threshold) | (host-detected, no A2UI event) | impression / view |
+| Click on `Button` / `Link` / `Card` action | `user-action` with action `name` | engagement, click (if URL navigation) |
+| Expand a `Carousel` / `Card` / collapsible | `user-action` with action `name: "expand"` (convention) | engagement |
+| Submit a `Form` / configurator | `user-action` with action `name: "submit"` (convention) | engagement, conversion (event-source dependent) |
+| Outbound click to brand domain | `user-action` with `external: true` link, plus host navigation event | click |
+| Add to cart / checkout initiated | `user-action` with action `name: "add_to_cart"` / `"checkout"` | conversion event via `sync_event_sources` |
+| Dismiss / close container | (host chrome, no A2UI event) | (host metric only) |
+
+<Note>
+**Open question.** Whether SI standardizes a vocabulary of action `name` values (e.g., `view_product`, `add_to_cart`, `checkout`, `expand`, `submit`) or leaves it host/brand-defined per session is unresolved. Standardizing improves cross-host portability of measurement; leaving it open preserves brand expressiveness. Tracked in [#2920](https://github.com/adcontextprotocol/adcp/issues/2920).
+</Note>
+
+### Who fires what
+
+| Event | Fired by | Sent to |
+|---|---|---|
+| Surface impression (viewability) | Host | AdCP measurement |
+| User action on component | Host | SI agent (via `si_send_message`) |
+| Engagement count (click/expand/submit) | Host | AdCP measurement |
+| Conversion event (purchase, lead, etc.) | Host (via `sync_event_sources`) | AdCP platform |
+| Action context for next turn | SI agent (in response surface) | Host (renders next surface) |
+
+The SI agent never reports measurement directly. The host counts what it sees. This matches the broader AdCP measurement model — see [Measurement](/docs/sponsored-intelligence/measurement).
+
+## Compliant and non-compliant examples
+
+### Compliant brand surface
+
+```json
+{
+  "session_id": "sess_abc",
+  "session_status": "active",
+  "response": {
+    "message": "Looking for waterproof hiking boots? Here are three picks.",
+    "surface": {
+      "surfaceId": "ridgeline-boot-results",
+      "catalogId": "si-standard",
+      "components": [
+        { "id": "root", "component": { "Carousel": { "items": ["card-1", "card-2", "card-3"] } } },
+        { "id": "card-1", "parentId": "root", "component": { "Card": {
+          "title": "Sierra Mid Waterproof",
+          "image": "https://cdn.ridgelinegear.com/sierra-mid.jpg",
+          "subtitle": "$189",
+          "action": { "name": "view_product", "context": { "sku": "RG-SM-2025" } }
+        }}}
+      ]
+    }
+  }
+}
+```
+
+The surface contains only product content. The host wraps it with a "Sponsored — Ridgeline Gear" label, a "Why am I seeing this?" affordance, and the close control.
+
+### Non-compliant — disclosure impersonation
+
+```json
+{
+  "components": [
+    { "id": "root", "component": { "Stack": { "children": ["fake-label", "card-1"] } } },
+    { "id": "fake-label", "parentId": "root", "component": { "Text": {
+      "text": "Editor's pick",
+      "variant": "label"
+    }}}
+  ]
+}
+```
+
+The brand-authored "Editor's pick" label sits inside the brand's container, but it visually contradicts the host's "Sponsored" disclosure. **The host renderer MUST drop or relabel this component**, or refuse to render the surface. This is the structural invariant working as designed: the host has the last word on what disclosure-shaped text the user sees.
+
+### Non-compliant — chrome impersonation
+
+```json
+{
+  "components": [
+    { "id": "root", "component": { "Banner": {
+      "icon": "info",
+      "text": "This recommendation is independent and not paid placement.",
+      "variant": "system"
+    }}}
+  ]
+}
+```
+
+A brand-authored "system" banner that mimics host chrome. **Drop.**
+
+## Integration actions and app handoff
+
+The `si-standard` catalog defines `IntegrationAction` and `AppHandoff` components that bridge the conversation to external destinations (host integrations, deep links, native apps). These widen the brand-controlled action surface and require host-side hardening:
+
+- Hosts MUST maintain an allowlist of integration types and deep-link schemes. Schemes outside the allowlist are dropped, including `javascript:`, `data:`, `file:`, and any host-private URL space (e.g., `myhost://settings/*`).
+- `AppHandoff.deepLink` and `IntegrationAction.url` follow the same `https:`-only canonicalization rule as `Link.url` (invariant 6).
+- Cross-app handoff MUST surface a confirmation step under host chrome ("Open in [App]?") before navigation. The brand cannot suppress or auto-confirm this.
+
+## Follow-ups
+
+This page surfaces several open questions that should be resolved before A2UI integration promotes from experimental to stable:
+
+- **Schema tightening** — `surface.json`, `component.json`, `user-action.json`, and `bound-value.json` currently set `additionalProperties: true`. Tightening these to closed sets (or moving extension fields into an explicit `extensions` bag) would convert several invariants from prose-enforced to schema-enforced.
+- **Reserved disclosure phrases** — invariant 2 currently relies on host-side heuristics. Consider a normative reserved-content list (regex or wordlist for "Sponsored", "Ad", "Promoted", "Editorial", etc.) hosts MUST sanitize from text-bearing components.
+- **Action-name vocabulary** — invariant 10 constrains syntax; the question of whether SI standardizes specific action names (`view_product`, `add_to_cart`, `checkout`, `expand`, `submit`) for cross-host measurement portability is unresolved. See [#2920](https://github.com/adcontextprotocol/adcp/issues/2920).
+- **`dataModel.theme` schema** — currently described as "structured suggestion"; should be defined formally before becoming load-bearing.
+- **Drop telemetry shape** — exact schema for what hosts return to brand agents when components are dropped (see [Drop telemetry](#drop-telemetry)).
+- **Substitution determinism** — the algorithm hosts use for accessibility substitution should be specified explicitly rather than left to host discretion, so brands can predict outcomes.
+- **`brand.json` rendering elevation** — this page implicitly elevates `brand.json` from discovery metadata to rendering input. Worth a one-line note in the `brand.json` documentation that hosts may consume it for theme resolution.
+
+## See also
+
+- [SI Specification](/docs/sponsored-intelligence/specification) — normative SI protocol contract
+- [Implementing SI Hosts](/docs/sponsored-intelligence/implementing-si-hosts) — host-side integration guide
+- [Implementing SI Agents](/docs/sponsored-intelligence/implementing-si-agents) — brand-side integration guide
+- [Measurement](/docs/sponsored-intelligence/measurement) — engagement metrics and conversion tracking
+- [A2UI v0.9](https://developers.googleblog.com/a2ui-v0-9-generative-ui/) — upstream specification
+- Schemas: [`a2ui/surface.json`](https://adcontextprotocol.org/schemas/v3/a2ui/surface.json), [`a2ui/component.json`](https://adcontextprotocol.org/schemas/v3/a2ui/component.json), [`a2ui/user-action.json`](https://adcontextprotocol.org/schemas/v3/a2ui/user-action.json), [`a2ui/si-catalog.json`](https://adcontextprotocol.org/schemas/v3/a2ui/si-catalog.json)
