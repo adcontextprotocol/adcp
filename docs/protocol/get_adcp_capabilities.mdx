@@ -491,6 +491,8 @@ Array of metrics this measurement agent computes.
 
 Compliance testing capabilities. The presence of this block declares that the agent supports deterministic testing via [`comply_test_controller`](/docs/building/implementation/comply-test-controller). Omit the block if the agent does not support compliance testing.
 
+**Production deployments MUST NOT include this block.** `comply_test_controller` is sandbox-only at the deployment level; advertising the capability on a production endpoint is non-conformant even if dispatch is gated. See [Compliance test controller § Sandbox gating](/docs/building/implementation/comply-test-controller#sandbox-gating).
+
 | Field | Type | Description |
 |-------|------|-------------|
 | `scenarios` | string[] | Compliance testing scenarios this agent supports. Possible values: `force_creative_status`, `force_account_status`, `force_media_buy_status`, `force_session_status`, `simulate_delivery`, `simulate_budget_spend`, `seed_product`, `seed_pricing_option`, `seed_creative`, `seed_plan`, `seed_media_buy`. Runners MUST accept unknown scenario strings — new scenarios may be added in additive minor bumps. |

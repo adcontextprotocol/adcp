@@ -25,13 +25,15 @@ Without a test controller, compliance testing is observational: fire an action, 
 
 ## Sandbox gating
 
-Sellers MUST NOT include `comply_test_controller` in the `tools/list` response for production connections. The tool should only appear when the connection is established with sandbox credentials (a sandbox API key, a sandbox OAuth scope, or a sandbox URL). This ensures production context windows are not taxed by test-only tooling and prevents accidental state manipulation.
+Sellers MUST NOT expose `comply_test_controller` on production deployments — to anyone, on any surface. The tool MUST be absent from `tools/list`, the `compliance_testing` block MUST be absent from `get_adcp_capabilities`, and dispatch MUST return an unknown-tool error if a caller probes by name. A production deployment that exposes the tool is non-conformant regardless of whether dispatch is gated. Sellers expose `comply_test_controller` only on sandbox/staging deployments; any principal that can authenticate to such a deployment can call it.
 
-The mechanism for provisioning sandbox credentials is seller-specific and out of scope for this spec. Sellers MUST document their sandbox access mechanism so storyboard runners can connect appropriately.
+Sellers MAY run a single deployment with mixed sandbox/live principals and project the tool per-principal — gating `tools/list` and capability projection on the resolved account's mode — but this is an implementation pattern, not the canonical model. The canonical pattern is two deployments: one production (no controller wired), one sandbox/staging (controller wired for all comers).
+
+The mechanism for provisioning sandbox credentials and for separating production from sandbox/staging deployments is seller-specific and out of scope for this spec. Sellers MUST document their sandbox access mechanism so storyboard runners can connect appropriately.
 
 The storyboard runner SHOULD verify that `comply_test_controller` is absent from `tools/list` on a production connection as a basic safety check.
 
-If a `comply_test_controller` call references a non-sandbox account, the controller MUST return `FORBIDDEN`. Sandbox gating is enforced per-request on the account reference, not just at tool registration time — the tool may be listed in a sandbox connection, but the caller could still reference a production account in the params.
+A live-mode principal probing `comply_test_controller` by name MUST receive the transport's standard unknown-tool error — byte-identical to a seller that does not implement the tool. `FORBIDDEN` is reserved for the in-sandbox case where the caller is authorized to call the controller but `params` reference a non-sandbox account; sandbox gating is enforced per-request on the account reference, not just at tool registration time.
 
 ## Tool definition
 
