@@ -780,6 +780,48 @@ Governance errors from the protocol layer (as opposed to governance decisions) u
 | `INVALID_REQUEST` | correctable | Missing required fields (e.g., `plan_id`, `caller`) |
 | `AUTH_REQUIRED` | correctable | Governance agent requires authentication |
 
+## Configuration Error Patterns
+
+`CONFIGURATION_ERROR` signals a seller-side deployment defect — an account declared with `mode: 'mock'` but no `mock_upstream_url`, a platform on `mode: 'live'` or `mode: 'sandbox'` with no `upstream_url`, a required environment variable unset on the seller process. The buyer cannot fix it; retries cannot resolve it; an operator at the seller has to. The catalog has no generic `INTERNAL_ERROR` code by design, and `CONFIGURATION_ERROR` is deliberately narrower — it covers the actionable slice where the remediation is "report this to the seller's operator." Opaque crashes that don't fit that profile remain catalog-uncoded; sellers MAY return platform-specific codes, and buyers fall back to the `recovery` classification per the [forward-compatibility rule](#recovery-classification).
+
+### Aggregate signal: per-request terminal, per-seller outage
+
+A single `CONFIGURATION_ERROR` is `terminal` for the request that received it — the buyer MUST surface to a human at the seller and MUST NOT auto-retry. Repeated `CONFIGURATION_ERROR` from the same seller in a short window is an operational signal of a different kind: a seller-side outage. Buyer-side dashboards and alerting SHOULD treat aggregate `CONFIGURATION_ERROR` rate per seller as an outage indicator (e.g., page on N occurrences in M minutes from a single seller), distinct from the per-request-terminal handling. This convergence matters because a buyer that buckets aggregate `CONFIGURATION_ERROR` with generic terminal errors loses the seller-isolated outage signal that motivated the code's existence.
+
+### error.message: operator-actionable, not deployment-internal
+
+The code itself is the discriminator — `CONFIGURATION_ERROR` carries no `error.details` shape (the [minimal-disclosure precedent](#per-agent-authorization-gate) of `AGENT_SUSPENDED` / `AGENT_BLOCKED` applies). `error.message` carries the diagnostic, and sellers SHOULD calibrate it to a level useful to a seller-side operator without leaking deployment internals to the buyer. The message is wire-visible — it MUST NOT include credentials, connection strings, full file paths, or stack traces.
+
+Useful (operator can act, buyer learns nothing exploitable):
+
+```json
+{
+  "code": "CONFIGURATION_ERROR",
+  "message": "account is mode='mock' but no mock_upstream_url declared in metadata; populate it in the AccountStore",
+  "recovery": "terminal"
+}
+```
+
+Not useful (the operator already knew there was a problem; the buyer learns where the seller's filesystem is):
+
+```json
+{
+  "code": "CONFIGURATION_ERROR",
+  "message": "configuration error",
+  "recovery": "terminal"
+}
+```
+
+Leaks (don't):
+
+```json
+{
+  "code": "CONFIGURATION_ERROR",
+  "message": "ECONNREFUSED postgres://admin:hunter2@10.0.1.42:5432/prod (at /opt/seller/src/db/pool.ts:127)",
+  "recovery": "terminal"
+}
+```
+
 ## Best Practices
 
 1. **Check `recovery` first** — it's the most reliable signal for how to handle an error
