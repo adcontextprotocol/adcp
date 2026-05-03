@@ -55,11 +55,11 @@ jobs:
             min_clean_storyboards: 63
             min_passing_steps: 66
           - tenant: creative
-            min_clean_storyboards: 56
-            min_passing_steps: 69
+            min_clean_storyboards: 64
+            min_passing_steps: 79
           - tenant: creative-builder
-            min_clean_storyboards: 52
-            min_passing_steps: 51
+            min_clean_storyboards: 58
+            min_passing_steps: 61
           - tenant: brand
             min_clean_storyboards: 65
             min_passing_steps: 14

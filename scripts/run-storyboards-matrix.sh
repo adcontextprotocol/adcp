@@ -23,8 +23,8 @@ TENANTS=(
   "signals:65:23"
   "sales:62:212"
   "governance:63:66"
-  "creative:56:69"
-  "creative-builder:52:51"
+  "creative:64:79"
+  "creative-builder:58:61"
   "brand:65:14"
 )
 
