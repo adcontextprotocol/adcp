@@ -19,6 +19,7 @@ import {
   handleBuildCreative,
   handlePreviewCreative,
   handleListCreatives,
+  handleListCreativeFormats,
   handleGetCreativeDelivery,
   handleSyncCreatives,
 } from './task-handlers.js';
@@ -127,6 +128,10 @@ export class TrainingCreativePlatform
     },
     listCreatives: async (req, ctx) => {
       const result = await handleListCreatives(req as ToolArgs, buildTrainingCtx(ctx.account));
+      return translateV5Result(result);
+    },
+    listCreativeFormats: async (req, ctx) => {
+      const result = await handleListCreativeFormats(req as ToolArgs, buildTrainingCtx(ctx.account));
       return translateV5Result(result);
     },
     getCreativeDelivery: async (filter, ctx) => {
