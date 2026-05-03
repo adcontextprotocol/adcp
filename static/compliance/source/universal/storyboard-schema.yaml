@@ -416,6 +416,16 @@
 #     grade as skipped with reason: prerequisite_failed citing this step.
 #     See runner-output-contract.yaml > validation_result for the output shape.
 #   - The accumulator is storyboard-run-scoped; values do not leak across runs.
+#   - Special path prefix `task_completion.<inner>`: when the immediate
+#     response is a non-terminal task envelope (status submitted/working,
+#     with a task_id), the runner polls `tasks/get` until the task exits
+#     {submitted, working}. On `completed`: resolves <inner> against the
+#     `result` payload; a missing path grades this step as
+#     capture_path_not_resolvable. On any other status (failed, canceled,
+#     rejected, auth-required, input-required, unknown): `result` is absent;
+#     the capture grades as capture_path_not_resolvable on this step;
+#     downstream $context.<name> references grade as prerequisite_failed
+#     citing this step. See adcp-client#1426 for the implementation.
 #
 # context_inputs: array of ContextInput objects (optional — inject captured
 #   context values into the request at a specific path AFTER the per-task
