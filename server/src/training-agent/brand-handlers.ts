@@ -670,13 +670,7 @@ export function handleGetBrandIdentity(
 
   const talent = BRAND_MAP.get(brandId);
   if (!talent) {
-    // BRAND_NOT_FOUND per the brand-protocol conformance suite
-    // (`@adcp/sdk/compliance/.../domains/brand/index.yaml` enumerates
-    // brand_not_found / BRAND_NOT_FOUND / NOT_FOUND as canonical) and
-    // skills/adcp-brand/SKILL.md. The universal error-handling.mdx puts
-    // brands in the REFERENCE_NOT_FOUND fallback list, which contradicts
-    // the brand-specific storyboard — feedback filed upstream to reconcile.
-    return { errors: [{ code: 'BRAND_NOT_FOUND', message: `No brand with id '${brandId}'` }] };
+    return { errors: [{ code: 'REFERENCE_NOT_FOUND', message: `No brand with id '${brandId}'`, field: 'brand_id' }] };
   }
 
   const requested = fields ?? [...ALL_FIELDS];
