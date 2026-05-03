@@ -80,7 +80,7 @@ import { AddieModelConfig } from "../config/models.js";
 import { CachedPostgresStore } from "../middleware/pg-rate-limit-store.js";
 import { sanitizeInput } from "../addie/security.js";
 import { getThreadService } from "../addie/thread-service.js";
-import { optionalAuth, requireAdmin } from "../middleware/auth.js";
+import { optionalAuth } from "../middleware/auth.js";
 import {
   getWebMemberContext,
   formatMemberContextForPrompt,
@@ -338,10 +338,11 @@ export function createTavusRouter() {
     await serveHtmlWithConfig(req, res, "video.html");
   });
 
-  // Admin-only experimental surface that connects to the same Tavus session
-  // via @daily-co/daily-js directly (no iframe), so we can prototype custom
-  // controls, push-to-interrupt, and pre-call device test.
-  pageRouter.get("/lab", requireAdmin, async (req, res) => {
+  // Experimental Daily-SDK rendering of the same Tavus session: custom
+  // controls, push-to-interrupt, advanced settings panel, pre-call device
+  // test. Public so anyone (logged in) can A/B against the iframe path on
+  // /video. Session creation itself still requires login + rate-limit.
+  pageRouter.get("/lab", optionalAuth, async (req, res) => {
     res.setHeader("Permissions-Policy", "camera=*, microphone=*, autoplay=*");
     await serveHtmlWithConfig(req, res, "video-lab.html");
   });
@@ -448,6 +449,32 @@ export function createTavusRouter() {
       const rawDisplayName = [req.user.firstName, req.user.lastName].filter(Boolean).join(" ") || req.user.email;
       const displayName = rawDisplayName.replace(/[\[\]<>{}]/g, "").slice(0, 100);
 
+      // Optional per-session overrides from the client. The lab page exposes
+      // these via an Advanced Settings panel; the standard /video page sends
+      // none of them and gets the defaults below.
+      const settings = (req.body ?? {}) as {
+        greeting?: string;
+        extraContext?: string;
+        maxDurationSec?: number;
+        greenscreen?: boolean;
+        language?: string;
+      };
+      const greeting = typeof settings.greeting === "string" && settings.greeting.trim()
+        ? settings.greeting.trim().slice(0, 500)
+        : `Hi ${displayName.split(" ")[0]}, I'm Addie! How can I help you today?`;
+      const extraContext = typeof settings.extraContext === "string"
+        ? settings.extraContext.trim().slice(0, 2000)
+        : "";
+      // Clamp duration: Tavus's effective max is 1 hour for most plans.
+      const maxDurationSec = typeof settings.maxDurationSec === "number" && Number.isFinite(settings.maxDurationSec)
+        ? Math.max(60, Math.min(7200, Math.round(settings.maxDurationSec)))
+        : undefined;
+      const greenscreen = settings.greenscreen === true;
+      // Tavus expects the full language name ("spanish") not an ISO code.
+      const language = typeof settings.language === "string" && /^[a-z]{3,20}$/.test(settings.language)
+        ? settings.language
+        : undefined;
+
       // Create a thread to track this video conversation
       const threadService = getThreadService();
       const thread = await threadService.getOrCreateThread({
@@ -459,20 +486,31 @@ export function createTavusRouter() {
         context: { persona_id: personaId },
       });
 
+      // Tavus appends conversational_context to the system message sent to
+      // our LLM endpoint. Always include the thread_id marker so we can
+      // correlate LLM calls; append the operator's free-form text after.
+      const baseContext = `[conductor:thread_id=${thread.thread_id}] The user's name is ${displayName}.`;
+      const conversationalContext = extraContext ? `${baseContext}\n\n${extraContext}` : baseContext;
+
+      const tavusBody: Record<string, unknown> = {
+        persona_id: personaId,
+        conversation_name: conversationName,
+        custom_greeting: greeting,
+        conversational_context: conversationalContext,
+      };
+      const properties: Record<string, unknown> = {};
+      if (maxDurationSec) properties.max_call_duration = maxDurationSec;
+      if (greenscreen) properties.apply_greenscreen = true;
+      if (language) properties.language = language;
+      if (Object.keys(properties).length) tavusBody.properties = properties;
+
       const response = await fetch("https://tavusapi.com/v2/conversations", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "x-api-key": tavusApiKey,
         },
-        body: JSON.stringify({
-          persona_id: personaId,
-          conversation_name: conversationName,
-          custom_greeting: `Hi ${displayName.split(" ")[0]}, I'm Addie! How can I help you today?`,
-          // Tavus appends this to the system message sent to our LLM endpoint,
-          // letting us correlate LLM calls back to the thread.
-          conversational_context: `[conductor:thread_id=${thread.thread_id}] The user's name is ${displayName}.`,
-        }),
+        body: JSON.stringify(tavusBody),
       });
 
       if (!response.ok) {

@@ -42,6 +42,102 @@
       color: var(--color-warning-700, #92400e);
       border: 1px solid var(--color-warning-100, #fde68a);
     }
+
+    /* Advanced settings — collapsible disclosure */
+    details.advanced {
+      margin-top: 16px;
+      border: 1px solid var(--color-border);
+      border-radius: 8px;
+      background: var(--color-bg-subtle, #f9fafb);
+    }
+    details.advanced summary {
+      cursor: pointer;
+      padding: 12px 16px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--color-text-heading);
+      list-style: none;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      user-select: none;
+    }
+    details.advanced summary::-webkit-details-marker { display: none; }
+    details.advanced summary::before {
+      content: '▶';
+      font-size: 9px;
+      color: var(--color-text-secondary);
+      transition: transform 0.15s;
+    }
+    details.advanced[open] summary::before { transform: rotate(90deg); }
+    details.advanced .settings-body {
+      padding: 0 16px 16px;
+      display: grid;
+      gap: 12px;
+    }
+    .setting-row {
+      display: grid;
+      gap: 4px;
+    }
+    .setting-row label {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--color-text-secondary);
+    }
+    .setting-row input[type="text"],
+    .setting-row textarea,
+    .setting-row select {
+      padding: 8px 10px;
+      border: 1px solid var(--color-border);
+      border-radius: 6px;
+      background: var(--color-bg-page);
+      color: var(--color-text);
+      font-size: 13px;
+      font-family: inherit;
+    }
+    .setting-row textarea {
+      resize: vertical;
+      min-height: 60px;
+    }
+    .setting-row .hint-inline {
+      font-size: 11px;
+      color: var(--color-text-muted, #94a3b8);
+    }
+    .setting-row.checkbox {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .setting-row.checkbox label {
+      font-size: 13px;
+      color: var(--color-text);
+      font-weight: normal;
+      cursor: pointer;
+    }
+    .duration-row { display: flex; align-items: center; gap: 10px; }
+    .duration-row input[type="range"] { flex: 1; }
+    .duration-row .duration-value {
+      font-variant-numeric: tabular-nums;
+      font-size: 13px;
+      color: var(--color-text);
+      min-width: 60px;
+    }
+    .settings-actions {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+      margin-top: 4px;
+    }
+    .reset-btn {
+      background: transparent;
+      border: 1px solid var(--color-border);
+      color: var(--color-text-secondary);
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .reset-btn:hover { color: var(--color-text); }
     .lab-header-spacer { flex: 1; }
     .lab-header a {
       font-size: 13px;
@@ -325,10 +421,10 @@
 <body>
   <header class="lab-header">
     <img src="/addie-avatar.svg" alt="Addie">
-    <h1>Addie Video Lab</h1>
-    <span class="lab-badge">Experimental · Admin</span>
+    <h1>Video chat with Addie · Daily SDK</h1>
+    <span class="lab-badge">Beta</span>
     <div class="lab-header-spacer"></div>
-    <a href="/video">→ Production /video page</a>
+    <a href="/video">→ Standard version</a>
   </header>
 
   <main>
@@ -363,6 +459,51 @@
           <p class="hint" id="prejoin-hint">Click "Test camera &amp; mic" to grant browser permissions and verify your devices before joining. Joining creates a Tavus session.</p>
         </div>
       </div>
+
+      <details class="advanced" id="advanced-settings">
+        <summary>Advanced settings</summary>
+        <div class="settings-body">
+          <div class="setting-row">
+            <label for="opt-greeting">Custom greeting</label>
+            <input type="text" id="opt-greeting" maxlength="500" placeholder="Hi! I'm Addie. How can I help you today?">
+            <span class="hint-inline">First words Addie speaks. Leave blank to use the default.</span>
+          </div>
+          <div class="setting-row">
+            <label for="opt-context">Conversational context</label>
+            <textarea id="opt-context" maxlength="2000" placeholder="e.g. You're at AAO Foundry talking to publishers. Lead with how AdCP unlocks programmatic for them."></textarea>
+            <span class="hint-inline">Extra context appended to Addie's system prompt this session.</span>
+          </div>
+          <div class="setting-row">
+            <label for="opt-duration">Max call duration</label>
+            <div class="duration-row">
+              <input type="range" id="opt-duration" min="5" max="120" step="5" value="25">
+              <span class="duration-value"><span id="opt-duration-display">25</span> min</span>
+            </div>
+            <span class="hint-inline">Tavus auto-ends the call after this. Default 25 min.</span>
+          </div>
+          <div class="setting-row checkbox">
+            <input type="checkbox" id="opt-greenscreen">
+            <label for="opt-greenscreen">Greenscreen background <span class="hint-inline">(transparent — useful for keynote compositing)</span></label>
+          </div>
+          <div class="setting-row">
+            <label for="opt-language">Language</label>
+            <select id="opt-language">
+              <option value="">English (default)</option>
+              <option value="spanish">Spanish</option>
+              <option value="french">French</option>
+              <option value="german">German</option>
+              <option value="italian">Italian</option>
+              <option value="portuguese">Portuguese</option>
+              <option value="japanese">Japanese</option>
+              <option value="korean">Korean</option>
+              <option value="chinese">Chinese (Mandarin)</option>
+            </select>
+          </div>
+          <div class="settings-actions">
+            <button type="button" class="reset-btn" id="opt-reset">Reset to defaults</button>
+          </div>
+        </div>
+      </details>
     </section>
 
     <!-- ============ In-call ============ -->
@@ -422,6 +563,54 @@
     // launching directly into a projector/keynote setup.
     const presenterMode = new URLSearchParams(window.location.search).get('presenter') === '1';
     if (presenterMode) document.body.classList.add('presenter');
+
+    // ====================================================================
+    // Advanced settings (persisted to localStorage so they stick across
+    // refreshes and survive being handed off to a different operator)
+    // ====================================================================
+    const SETTINGS_KEY = 'addie-video-lab-settings-v1';
+    const DEFAULT_SETTINGS = {
+      greeting: '',
+      extraContext: '',
+      durationMin: 25,
+      greenscreen: false,
+      language: '',
+    };
+
+    function loadSettings() {
+      try {
+        const raw = localStorage.getItem(SETTINGS_KEY);
+        if (!raw) return { ...DEFAULT_SETTINGS };
+        return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+      } catch {
+        return { ...DEFAULT_SETTINGS };
+      }
+    }
+    function saveSettings(s) {
+      try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); } catch {}
+    }
+    function readSettingsFromForm() {
+      return {
+        greeting: document.getElementById('opt-greeting').value,
+        extraContext: document.getElementById('opt-context').value,
+        durationMin: Number(document.getElementById('opt-duration').value) || 25,
+        greenscreen: document.getElementById('opt-greenscreen').checked,
+        language: document.getElementById('opt-language').value,
+      };
+    }
+    function applySettingsToForm(s) {
+      document.getElementById('opt-greeting').value = s.greeting || '';
+      document.getElementById('opt-context').value = s.extraContext || '';
+      document.getElementById('opt-duration').value = String(s.durationMin || 25);
+      document.getElementById('opt-duration-display').textContent = String(s.durationMin || 25);
+      document.getElementById('opt-greenscreen').checked = !!s.greenscreen;
+      document.getElementById('opt-language').value = s.language || '';
+    }
+    function persistSettingsFromForm() {
+      const s = readSettingsFromForm();
+      saveSettings(s);
+      document.getElementById('opt-duration-display').textContent = String(s.durationMin);
+    }
 
     const $ = (id) => document.getElementById(id);
     const log = (kind, msg, data) => {
@@ -513,10 +702,27 @@
     async function startSession() {
       clearError();
       $('join-btn').disabled = true;
-      log('info', 'POST /api/addie/video/session');
+
+      // Bundle the advanced-settings form values into the session create body
+      // so this user's settings shape this Tavus session only.
+      const formSettings = readSettingsFromForm();
+      const body = {
+        greeting: formSettings.greeting || undefined,
+        extraContext: formSettings.extraContext || undefined,
+        maxDurationSec: formSettings.durationMin ? formSettings.durationMin * 60 : undefined,
+        greenscreen: formSettings.greenscreen || undefined,
+        language: formSettings.language || undefined,
+      };
+      const sentKeys = Object.keys(body).filter((k) => body[k] !== undefined);
+      log('info', `POST /api/addie/video/session${sentKeys.length ? ` (settings: ${sentKeys.join(', ')})` : ''}`);
+
       let conversationUrl;
       try {
-        const res = await fetch('/api/addie/video/session', { method: 'POST' });
+        const res = await fetch('/api/addie/video/session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
           throw new Error(data.error || `HTTP ${res.status}`);
@@ -799,6 +1005,21 @@
     // Wiring
     // ====================================================================
     document.addEventListener('DOMContentLoaded', async () => {
+      // Restore advanced settings from localStorage and wire change persistence.
+      applySettingsToForm(loadSettings());
+      ['opt-greeting', 'opt-context', 'opt-duration', 'opt-greenscreen', 'opt-language'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('input', persistSettingsFromForm);
+        if (el && (el.tagName === 'SELECT' || el.type === 'checkbox')) {
+          el.addEventListener('change', persistSettingsFromForm);
+        }
+      });
+      document.getElementById('opt-reset')?.addEventListener('click', () => {
+        const defaults = { ...DEFAULT_SETTINGS };
+        applySettingsToForm(defaults);
+        saveSettings(defaults);
+      });
+
       // Initial enumeration without permission gives anonymous device list,
       // labels are empty until the user grants permission via "Test".
       try {

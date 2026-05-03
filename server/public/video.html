@@ -131,6 +131,48 @@
       cursor: not-allowed;
     }
 
+    .start-options {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    .start-btn-secondary {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--color-bg-card);
+      color: var(--color-text);
+      border: 1px solid var(--color-border);
+      border-radius: 8px;
+      padding: 12px 20px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      text-decoration: none;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .start-btn-secondary:hover {
+      border-color: var(--color-brand);
+      color: var(--color-brand);
+    }
+    .start-btn-secondary .badge {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      padding: 2px 6px;
+      border-radius: 3px;
+      background: var(--color-warning-50, #fef3c7);
+      color: var(--color-warning-700, #92400e);
+    }
+    .version-note {
+      font-size: 12px;
+      color: var(--color-text-muted, #94a3b8);
+      margin-top: 12px;
+    }
+
     /* Loading state */
     #loading {
       display: none;
@@ -247,9 +289,15 @@
       <span class="icon">🎥</span>
       <h2>Start a video conversation</h2>
       <p>Addie will join as a video avatar and can answer questions about AdCP, agentic advertising, and the AgenticAdvertising.org community.</p>
-      <button class="start-btn" id="start-btn" onclick="startCall()">
-        Start conversation
-      </button>
+      <div class="start-options">
+        <button class="start-btn" id="start-btn" onclick="startCall()">
+          Start conversation
+        </button>
+        <a class="start-btn-secondary" href="/video/lab">
+          Try the Daily SDK version <span class="badge">Beta</span>
+        </a>
+      </div>
+      <p class="version-note">Two flavors of the same Tavus session. The standard version uses Tavus's built-in player; the Daily SDK version adds push-to-interrupt, custom controls, and live settings.</p>
       <div id="error-message"></div>
     </div>
 
