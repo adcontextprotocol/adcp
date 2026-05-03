@@ -1,0 +1,866 @@
+---
+title: MCP Guide
+description: "AdCP MCP integration guide: tool call patterns, context_id management, response parsing, and wire format for Model Context Protocol implementations."
+"og:title": "AdCP — MCP Guide"
+---
+
+
+Transport-specific guide for integrating AdCP using the Model Context Protocol. For task handling, status management, and workflow patterns, see [Task Lifecycle](/dist/docs/3.0.6/building/implementation/task-lifecycle).
+
+## Testing AdCP via MCP
+
+You can test AdCP tasks using the [CLI tools](/dist/docs/3.0.6/building/schemas-and-sdks#cli-tools) or by chatting with [Addie](https://agenticadvertising.org), the AgenticAdvertising.org assistant.
+
+## Tool Call Patterns
+
+### Basic Tool Invocation
+
+```javascript
+// Standard MCP tool call
+const response = await mcp.call('get_products', {
+  brand: {
+    domain: "premiumpetfoods.com"
+  },
+  brief: "Video campaign for pet owners"
+});
+
+// All responses include status field (AdCP 1.6.0+)
+console.log(response.status);   // "completed" | "input-required" | "working" | etc.
+console.log(response.message);  // Human-readable summary
+```
+
+### Tool Call with Filters
+
+```javascript
+// Structured parameters
+const response = await mcp.call('get_products', {
+  brand: {
+    domain: "betnow.com"
+  },
+  brief: "Sports betting app for March Madness",
+  filters: {
+    channels: ["ctv"],
+    delivery_type: "guaranteed",
+    max_cpm: 50
+  }
+});
+```
+
+### Tool Call with Application-Level Context
+
+```javascript
+// Pass opaque application-level context; agents must carry it back
+const response = await mcp.call('build_creative', {
+  target_format_id: { agent_url: 'https://creative.agent', id: 'premium_bespoke_display' },
+  creative_manifest: { /* ... */ },
+  context: { ui: 'buyer_dashboard', session: '123' }
+});
+
+// Response includes the same context at the top level
+console.log(response.context); // { ui: 'buyer_dashboard', session: '123' }
+```
+
+## MCP Response Format
+
+**New in AdCP 1.6.0**: All responses include unified status field.
+
+MCP responses use a **flat structure** where task-specific fields are at the top level alongside protocol fields:
+
+```json
+{
+  "status": "completed",           // Unified status (see Core Concepts)
+  "message": "Found 5 products",   // Human-readable summary
+  "context_id": "ctx-abc123",      // MCP session continuity
+  "context": { "ui": "buyer_dashboard" }, // Application-level context echoed back
+  "products": [...],               // Task-specific data (flat, not nested)
+  "errors": [...]                  // Task-level errors/warnings
+}
+```
+
+### MCP-Specific Fields
+- **context_id**: Session identifier that you must manually manage
+- **context**: Opaque initiator-provided metadata echoed by agents
+- **status**: Same values as A2A protocol for consistency
+- Task-specific fields (e.g., `products`, `media_buy_id`, `creatives`) are at the top level, not wrapped in a `data` object
+
+**Status Handling**: See [Task Lifecycle](/dist/docs/3.0.6/building/implementation/task-lifecycle) for complete status handling patterns.
+
+## Available Tools
+
+All AdCP tasks are available as MCP tools:
+
+### Protocol Tools
+```javascript
+await mcp.call('get_adcp_capabilities', {...});  // Discover agent capabilities (start here)
+```
+
+### Media Buy Tools
+```javascript
+await mcp.call('get_products', {...});           // Discover inventory
+await mcp.call('list_creative_formats', {...});  // Get format specs
+await mcp.call('create_media_buy', {...});       // Create campaigns
+await mcp.call('update_media_buy', {...});       // Modify campaigns
+await mcp.call('sync_creatives', {...});         // Manage creative assets
+await mcp.call('get_media_buy_delivery', {...}); // Performance metrics
+await mcp.call('provide_performance_feedback', {...}); // Share outcomes
+```
+
+### Signals Tools
+```javascript
+await mcp.call('get_signals', {...});      // Discover audience signals
+await mcp.call('activate_signal', {...});  // Deploy signals to platforms
+```
+
+**Task Parameters**: See individual task documentation in [Media Buy](/dist/docs/3.0.6/media-buy) and [Signals](/dist/docs/3.0.6/signals/overview) sections.
+
+## Async Operations via MCP Tasks
+
+AdCP uses [MCP Tasks](https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/tasks) for long-running operations over MCP. This removes the LLM from the polling path — the client handles task lifecycle at the protocol level, and the model only sees the final result.
+
+:::warning Client support is limited
+Most chat-based MCP clients (Claude Desktop, Cursor) do not yet support MCP Tasks. If your client doesn't support task-augmented tool calls, use **webhooks** or **polling via `tasks/get`** instead — these work with any MCP client. See [Async Operations](/dist/docs/3.0.6/building/implementation/async-operations) and [Push Notifications](/dist/docs/3.0.6/building/implementation/webhooks) for transport-independent patterns.
+
+MCP Tasks are the right choice when you control the MCP client (e.g., building your own orchestrator with `@modelcontextprotocol/sdk`) or when client support matures.
+:::
+
+### SDK Implementation
+
+If you use the `@modelcontextprotocol/sdk` package, MCP Tasks support requires minimal code. Pass an `InMemoryTaskStore` (or your own `TaskStore` implementation) to the Server constructor — the SDK auto-registers handlers for `tasks/get`, `tasks/result`, `tasks/list`, and `tasks/cancel`:
+
+```typescript
+import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+import { InMemoryTaskStore } from '@modelcontextprotocol/sdk/experimental/tasks';
+
+const taskStore = new InMemoryTaskStore();
+
+const server = new Server(
+  { name: 'my-adcp-agent', version: '1.0.0' },
+  {
+    capabilities: {
+      tools: {},
+      tasks: {
+        list: {},
+        cancel: {},
+        requests: { tools: { call: {} } },
+      },
+    },
+    taskStore,
+  },
+);
+```
+
+In your `tools/call` handler, check for the `task` field and use the store:
+
+```typescript
+server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
+  const taskField = request.params.task;
+  const result = await executeMyTool(request.params);
+
+  if (!taskField) return result; // Synchronous path
+
+  // Task-augmented: extra.taskStore handles requestId, sessionId,
+  // and sends notifications/tasks/status on completion
+  const task = await extra.taskStore.createTask({ ttl: taskField.ttl });
+  await extra.taskStore.storeTaskResult(
+    task.taskId,
+    result.isError ? 'failed' : 'completed',
+    result,
+  );
+  return { task: await extra.taskStore.getTask(task.taskId) };
+});
+```
+
+The SDK handles polling, cancellation, TTL cleanup, and `_meta` injection for `tasks/result` responses. `InMemoryTaskStore` is non-persistent — for production, implement a `TaskStore` backed by your database.
+
+If you use `McpServer` instead of `Server`, register task-capable tools with `server.experimental.tasks.registerToolTask()` — the higher-level API enforces this for tools that declare `taskSupport`.
+
+:::warning Production task isolation
+`InMemoryTaskStore` does not scope tasks by session — any client that knows a task ID can read, cancel, or list it. For production, implement a `TaskStore` that filters by `sessionId` on every operation. Also clamp client-provided TTL values server-side and enforce rate limits on task creation.
+:::
+
+### Server Capabilities
+
+AdCP MCP servers declare `tasks` in their capabilities:
+
+```json
+{
+  "capabilities": {
+    "tools": {},
+    "tasks": {
+      "list": {},
+      "cancel": {},
+      "requests": {
+        "tools": { "call": {} }
+      }
+    }
+  }
+}
+```
+
+### Tool-Level Task Support
+
+Each tool declares whether it supports task-augmented execution via `execution.taskSupport`:
+
+| Tool | `taskSupport` | Rationale |
+|------|---------------|-----------|
+| `get_products` | `optional` | Complex searches, HITL clarification |
+| `create_media_buy` | `optional` | External systems, approval workflows |
+| `update_media_buy` | `optional` | External system updates |
+| `build_creative` | `optional` | Human creative review, long production renders |
+| `sync_creatives` | `optional` | Asset processing and transcoding |
+| `get_signals` | `optional` | Complex audience discovery |
+| `activate_signal` | `optional` | Platform deployment |
+| `sync_plans` | `optional` | Governance plan processing |
+| `check_governance` | `optional` | External policy evaluation |
+| `report_plan_outcome` | `optional` | External system updates |
+| `acquire_rights` | `optional` | Approval workflows |
+| `update_rights` | `optional` | External updates |
+| `get_rights` | `optional` | External lookups |
+| `get_adcp_capabilities` | `forbidden` | Instant, static |
+| `list_creative_formats` | `forbidden` | Instant catalog lookup |
+| `preview_creative` | `forbidden` | Renders existing manifest |
+| `list_creatives` | `forbidden` | Session state lookup |
+| `get_media_buys` | `forbidden` | Session state lookup |
+| `get_media_buy_delivery` | `forbidden` | Session state lookup |
+| `get_creative_delivery` | `forbidden` | Session state lookup |
+| `get_plan_audit_logs` | `forbidden` | Session state lookup |
+| `get_brand_identity` | `forbidden` | Instant lookup |
+
+Tools with `taskSupport: "optional"` can be called either way:
+- **Without `task` field**: Synchronous — returns the result directly
+- **With `task` field**: Returns a `CreateTaskResult` immediately; poll via `tasks/get`, retrieve the result via `tasks/result`
+
+### Invoking a Tool as a Task
+
+Include the `task` field in your `tools/call` request:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "name": "get_products",
+    "arguments": {
+      "buying_mode": "brief",
+      "brief": "Premium CTV inventory for luxury auto"
+    },
+    "task": {
+      "ttl": 3600000
+    }
+  }
+}
+```
+
+The server returns a task handle immediately:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "task": {
+      "taskId": "786512e2-9e0d-44bd-8f29-789f320fe840",
+      "status": "working",
+      "statusMessage": "Searching inventory for luxury auto CTV placements",
+      "createdAt": "2025-11-25T10:30:00Z",
+      "lastUpdatedAt": "2025-11-25T10:30:00Z",
+      "ttl": 3600000,
+      "pollInterval": 5000
+    }
+  }
+}
+```
+
+The client polls with `tasks/get` (respecting `pollInterval`) until the task reaches a terminal state (`completed`, `failed`, or `cancelled`), then retrieves the `CallToolResult` via `tasks/result`. To abort a running task, send `tasks/cancel` with the `taskId`.
+
+### AdCP Status Mapping
+
+AdCP uses a richer set of statuses than MCP Tasks. When serving over MCP, AdCP statuses map to MCP Task statuses:
+
+| AdCP Status | MCP Task Status | Notes |
+|-------------|-----------------|-------|
+| `working` | `working` | Direct mapping |
+| `submitted` | `working` | Use `statusMessage` to indicate queued state |
+| `input-required` | `input_required` | Server moves task to `input_required`, sends elicitation via `tasks/result` |
+| `completed` | `completed` | Direct mapping |
+| `failed` | `failed` | Direct mapping |
+| `rejected` | `failed` | Use `statusMessage` for rejection reason |
+| `canceled` | `cancelled` | Spelling difference (AdCP uses American, MCP uses British) |
+| `auth-required` | `input_required` | Elicitation requests credentials |
+
+### Webhooks for Long-Lived Operations
+
+MCP Tasks handles polling within the MCP session, but some AdCP operations outlive a single session (e.g., a media buy that takes 24 hours for publisher approval). For these, combine MCP Tasks with `push_notification_config`:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": {
+    "name": "create_media_buy",
+    "arguments": {
+      "buyer_ref": "nike_q1_2025",
+      "packages": [],
+      "push_notification_config": {
+        "url": "https://buyer.com/webhooks/adcp/create_media_buy/op_abc123",
+        "authentication": {
+          "schemes": ["HMAC-SHA256"],
+          "credentials": "shared_secret_32_chars"
+        }
+      }
+    },
+    "task": {
+      "ttl": 86400000
+    }
+  }
+}
+```
+
+The MCP Task tracks status within the session. If the session ends before the task completes, the webhook delivers the result independently. See [Push Notifications](/dist/docs/3.0.6/building/implementation/webhooks) for webhook payload formats and authentication.
+
+## Context Management (MCP-Specific)
+
+**Critical**: MCP requires manual context management. You must pass `context_id` to maintain conversation state.
+
+### Context Session Pattern
+
+```javascript
+class McpAdcpSession {
+  constructor(mcpClient) {
+    this.mcp = mcpClient;
+    this.contextId = null;
+  }
+
+  async call(tool, params, options = {}) {
+    const request = {
+      tool: tool,
+      arguments: { ...params }
+    };
+
+    // Include context from previous calls
+    if (this.contextId) {
+      request.arguments.context_id = this.contextId;
+    }
+
+    // Include webhook config in tool arguments
+    if (options.push_notification_config) {
+      request.arguments.push_notification_config = options.push_notification_config;
+    }
+
+    // Task augmentation for async operations
+    if (options.task) {
+      request.task = options.task;
+    }
+
+    const response = await this.mcp.callTool(request);
+
+    // Save context for next call
+    if (response.context_id) {
+      this.contextId = response.context_id;
+    }
+
+    return response;
+  }
+
+  reset() {
+    this.contextId = null;
+  }
+}
+```
+
+### Usage Examples
+
+#### Basic Session with Context
+```javascript
+const session = new McpAdcpSession(mcp);
+
+// First call - no context needed
+const products = await session.call('get_products', {
+  brief: "Sports campaign"
+});
+
+// Follow-up - context automatically included
+const refined = await session.call('get_products', {
+  brief: "Focus on premium CTV"
+});
+// Session remembers previous interaction
+```
+
+#### Async Operations with MCP Tasks
+
+For tools with `taskSupport: "optional"`, pass the `task` option to use MCP Tasks:
+
+```javascript
+const session = new McpAdcpSession(mcp);
+
+// Synchronous call (no task augmentation)
+const products = await session.call('get_products', {
+  buying_mode: 'brief',
+  brief: "Sports campaign"
+});
+
+// Task-augmented call for a long-running operation
+const result = await session.call('create_media_buy',
+  {
+    packages: [...],
+  },
+  {
+    task: { ttl: 86400000 },  // 24-hour TTL
+    push_notification_config: {  // Webhook backup for session-outliving ops
+      url: "https://buyer.com/webhooks/adcp/create_media_buy/op_abc123",
+      authentication: {
+        schemes: ["HMAC-SHA256"],
+        credentials: "shared_secret_32_chars"
+      }
+    }
+  }
+);
+
+// result is a CreateTaskResult — the client handles polling via tasks/get
+```
+
+**Webhook POST format:**
+```json
+{
+  "task_id": "task_456",
+  "status": "completed",
+  "timestamp": "2025-01-22T10:30:00Z",
+  "result": {
+    "media_buy_id": "mb_12345",
+    "packages": [...]
+  }
+}
+```
+
+**Note:** This example follows the recommended URL-based routing pattern where `task_type` and `operation_id` are passed in the URL (e.g., `/webhooks/adcp/create_media_buy/op_456`). While the schema still supports these fields in the payload for backward compatibility, they are deprecated.
+
+The `result` field contains the AdCP data payload. For `completed`/`failed` statuses, this is the full task response (e.g., `create-media-buy-response.json`). For other statuses, use the status-specific schemas (e.g., `create-media-buy-async-response-working.json`).
+
+#### MCP Webhook Envelope Fields
+
+The [`mcp-webhook-payload.json`](https://adcontextprotocol.org/schemas/3.0.6/core/mcp-webhook-payload.json) envelope includes:
+
+**Required fields:**
+- `task_id` — Unique task identifier for correlation
+- `status` — Current task status (completed, failed, working, input-required, etc.)
+- `timestamp` — ISO 8601 timestamp when webhook was generated
+
+**Optional fields:**
+- `domain` — AdCP domain ("media-buy" or "signals")
+- `context_id` — Conversation/session identifier
+- `message` — Human-readable context about the status change
+
+**Deprecated fields (supported but not recommended):**
+- `task_type` — Task name (e.g., "create_media_buy", "sync_creatives") - ⚠️ **Deprecated:** See [URL-Based Routing](#best-practice-url-based-routing)
+- `operation_id` — Correlates a sequence of updates for the same operation - ⚠️ **Deprecated:** See [URL-Based Routing](#best-practice-url-based-routing)
+
+**Data field:**
+- `result` — Task-specific AdCP payload (see Data Schema Validation below)
+
+#### Webhook Trigger Rules
+
+Webhooks are sent when **all** of these conditions are met:
+
+1. **Task type supports async** (e.g., `create_media_buy`, `sync_creatives`, `get_products`)
+2. **`pushNotificationConfig` is provided** in the request
+3. **Task runs asynchronously** — initial response is `working` or `submitted`
+
+If the initial response is already terminal (`completed`, `failed`, `rejected`), no webhook is sent—you already have the result.
+
+**Status changes that trigger webhooks:**
+- `working` → Progress update (task actively processing)
+- `input-required` → Human input needed
+- `completed` → Final result available
+- `failed` → Error details
+
+#### Data Schema Validation
+
+The `result` field in MCP webhooks uses status-specific schemas:
+
+| Status | Schema | Contents |
+|--------|--------|----------|
+| `completed` | `[task]-response.json` | Full task response (success branch) |
+| `failed` | `[task]-response.json` | Full task response (error branch) |
+| `working` | `[task]-async-response-working.json` | Progress info (`percentage`, `step`) |
+| `input-required` | `[task]-async-response-input-required.json` | Requirements, approval data |
+| `submitted` | `[task]-async-response-submitted.json` | Acknowledgment (usually minimal) |
+
+Schema reference: [`async-response-data.json`](https://adcontextprotocol.org/schemas/3.0.6/core/async-response-data.json)
+
+#### Webhook Handler Example
+
+```javascript
+const express = require('express');
+const app = express();
+
+app.post('/webhooks/adcp/:task_type/:agent_id/:operation_id', async (req, res) => {
+  const { task_type, agent_id, operation_id } = req.params;
+  const webhook = req.body;
+
+  // Verify webhook authenticity (HMAC-SHA256 example)
+  const signature = req.headers['x-adcp-signature'];
+  const timestamp = req.headers['x-adcp-timestamp'];
+  if (!verifySignature(webhook, signature, timestamp)) {
+    return res.status(401).json({ error: 'Invalid signature' });
+  }
+
+  // Handle status changes
+  switch (webhook.status) {
+    case 'input-required':
+      // Alert human that input is needed
+      await notifyHuman({
+        operation_id,
+        message: webhook.message,
+        context_id: webhook.context_id,
+        data: webhook.result
+      });
+      break;
+
+    case 'completed':
+      // Process the completed operation
+      if (task_type === 'create_media_buy') {
+        await handleMediaBuyCreated({
+          media_buy_id: webhook.result.media_buy_id,
+          packages: webhook.result.packages
+        });
+      }
+      break;
+
+    case 'failed':
+      // Handle failure
+      await handleOperationFailed({
+        operation_id,
+        error: webhook.result?.errors,
+        message: webhook.message
+      });
+      break;
+
+    case 'working':
+      // Update progress UI
+      await updateProgress({
+        operation_id,
+        percentage: webhook.result?.percentage,
+        message: webhook.message
+      });
+      break;
+
+    case 'canceled':
+      await handleOperationCanceled(operation_id, webhook.message);
+      break;
+  }
+
+  // Always return 200 for successful processing
+  res.status(200).json({ status: 'processed' });
+});
+
+function verifySignature(payload, signature, timestamp) {
+  const crypto = require('crypto');
+  const expectedSig = crypto
+    .createHmac('sha256', process.env.WEBHOOK_SECRET)
+    .update(timestamp + JSON.stringify(payload))
+    .digest('hex');
+  return signature === `sha256=${expectedSig}`;
+}
+```
+
+#### Task Management and Polling
+```javascript
+// Check status of specific task
+const taskStatus = await session.pollTask('task_456', true);
+if (taskStatus.status === 'completed') {
+  console.log('Result:', taskStatus.result);
+}
+
+// State reconciliation
+const reconciliation = await session.reconcileState();
+if (reconciliation.missing_from_client.length > 0) {
+  console.log('Found orphaned tasks:', reconciliation.missing_from_client);
+  // Start tracking these tasks
+}
+
+// List all pending operations
+const pending = await session.listPendingTasks();
+console.log(`${pending.tasks.length} operations in progress`);
+```
+
+### Context Expiration Handling
+
+```javascript
+async function handleContextExpiration(session, tool, params) {
+  try {
+    return await session.call(tool, params);
+  } catch (error) {
+    if (error.message?.includes('context not found')) {
+      // Context expired - start fresh
+      session.reset();
+      return session.call(tool, params);
+    }
+    throw error;
+  }
+}
+```
+
+**Key Difference**: Unlike A2A which manages context automatically, MCP requires explicit context_id management.
+
+## Handling Async Operations
+
+When a task returns `working` or `submitted` status, you need a way to receive the result. This applies whether or not your MCP client supports MCP Tasks — the patterns below work with any client.
+
+| Approach | Best For | Trade-offs |
+|----------|----------|------------|
+| **Webhooks** | Production systems, any task duration | Handles hours/days, but requires a public endpoint |
+| **Polling** | Simple integrations, short tasks | Easy to implement, but inefficient for long waits |
+| **MCP Tasks** | Custom clients using the MCP SDK | Protocol-native, but requires client support |
+
+### Option 1: Webhooks (recommended)
+
+Configure a webhook URL and the server will POST the result when the operation completes. This is the right approach for `submitted` operations that are blocked on external dependencies (publisher approval, human review).
+
+```javascript
+const response = await session.call('create_media_buy',
+  {
+    packages: [...],
+    budget: { total: 150000, currency: "USD" }
+  },
+  {
+    push_notification_config: {
+      url: "https://buyer.com/webhooks/adcp/create_media_buy/op_abc123",
+      authentication: {
+        schemes: ["HMAC-SHA256"],
+        credentials: "shared_secret_32_chars"
+      }
+    }
+  }
+);
+
+// If status is 'submitted', the server will POST the result to your webhook
+// No polling needed — just handle the webhook when it arrives
+```
+
+See [Push Notifications](/dist/docs/3.0.6/building/implementation/webhooks) for payload formats and authentication.
+
+### Option 2: Polling (backup)
+
+Use `tasks/get` as a backup for `submitted` operations, or when you can't expose a webhook endpoint:
+
+```javascript
+async function pollForResult(session, taskId, pollInterval = 30000) {
+  while (true) {
+    const response = await session.pollTask(taskId, true);
+
+    if (['completed', 'failed', 'canceled'].includes(response.status)) {
+      return response;
+    }
+
+    if (response.status === 'input-required') {
+      const input = await promptUser(response.message);
+      return session.call('create_media_buy', {
+        context_id: response.context_id,
+        additional_info: input
+      });
+    }
+
+    await new Promise(resolve => setTimeout(resolve, pollInterval));
+  }
+}
+```
+
+### Handling different statuses
+
+```javascript
+const initial = await session.call('create_media_buy', {
+  packages: [...],
+  budget: { total: 100000, currency: "USD" }
+});
+
+switch (initial.status) {
+  case 'completed':
+    // Done — result is inline
+    console.log('Created:', initial.media_buy_id);
+    break;
+
+  case 'working':
+    // Server is actively processing (>30s) — just wait, result will arrive
+    // No polling needed; 'working' is a progress signal, not a polling trigger
+    console.log('Processing:', initial.message);
+    break;
+
+  case 'submitted':
+    // Blocked on external dependency — use webhook or poll
+    console.log(`Task ${initial.task_id} queued for approval`);
+    break;
+
+  case 'input-required':
+    // Blocked on user input
+    console.log('Need more info:', initial.message);
+    break;
+}
+```
+
+## Integration Example
+
+```javascript
+// Initialize MCP session with context management
+const session = new McpAdcpSession(mcp);
+
+// Use unified status handling (see Core Concepts)
+async function handleAdcpCall(tool, params, options = {}) {
+  const response = await session.call(tool, params, options);
+  
+  switch (response.status) {
+    case 'input-required':
+      // Handle clarification (see Core Concepts for patterns)
+      const input = await promptUser(response.message);
+      return session.call(tool, { ...params, additional_info: input });
+      
+    case 'working':
+      // Server is actively processing — just wait, result will arrive
+      console.log('Processing:', response.message);
+      return response;
+
+    case 'submitted':
+      // Blocked on external dependency — webhook or poll
+      console.log(`Task ${response.task_id} submitted, webhook will notify`);
+      return { pending: true, task_id: response.task_id };
+      
+    case 'completed':
+      return response; // Task-specific fields are at the top level
+      
+    case 'failed':
+      throw new Error(response.message);
+  }
+}
+
+// Example usage
+const products = await handleAdcpCall('get_products', {
+  brief: "CTV campaign for luxury cars"
+});
+```
+
+## MCP-Specific Considerations
+
+### Tool Discovery
+```javascript
+// List available tools — use get_adcp_capabilities for runtime feature detection
+const tools = await mcp.listTools();
+
+// Check which tools support async execution
+const asyncTools = tools.filter(t => t.execution?.taskSupport === 'optional');
+```
+
+### AdCP Extension via MCP Server Card
+
+<Note>
+**Recommended**: Use [`get_adcp_capabilities`](/dist/docs/3.0.6/protocol/get_adcp_capabilities) for runtime capability discovery. The server card extension provides static metadata for tool catalogs and registries.
+</Note>
+
+MCP servers can declare AdCP support via a server card at `/.well-known/mcp.json` (or `/.well-known/server.json`). AdCP-specific metadata goes in the `_meta` field using the `adcontextprotocol.org` namespace.
+
+```json
+{
+  "name": "io.adcontextprotocol/media-buy-agent",
+  "version": "1.0.0",
+  "title": "AdCP Media Buy Agent",
+  "description": "AI-powered media buying agent implementing AdCP",
+  "tools": [
+    { "name": "get_products" },
+    { "name": "create_media_buy" },
+    { "name": "list_creative_formats" }
+  ],
+  "_meta": {
+    "adcontextprotocol.org": {
+      "adcp_version": "2.6.0",
+      "protocols_supported": ["media_buy"],
+      "extensions_supported": ["sustainability"]
+    }
+  }
+}
+```
+
+**Discovering AdCP support:**
+
+```javascript
+// Check both possible locations for MCP server card
+const serverCard = await fetch('https://sales.example.com/.well-known/mcp.json')
+  .then(r => r.ok ? r.json() : null)
+  .catch(() => null)
+  || await fetch('https://sales.example.com/.well-known/server.json')
+    .then(r => r.json());
+
+// Check for AdCP metadata
+const adcpMeta = serverCard?._meta?.['adcontextprotocol.org'];
+
+if (adcpMeta) {
+  console.log('AdCP Version:', adcpMeta.adcp_version);
+  console.log('Supported domains:', adcpMeta.protocols_supported);
+  // ["media_buy", "creative", "signals"]
+  console.log('Typed extensions:', adcpMeta.extensions_supported);
+  // ["sustainability"]
+}
+```
+
+**Benefits:**
+- Clients can discover AdCP capabilities without making test calls
+- Declare which protocol domains you implement (media_buy, creative, signals)
+- Declare which typed extensions you support (see [Context & Sessions](/dist/docs/3.0.6/building/integration/context-sessions#extension-fields-ext))
+- Enable compatibility checks based on version
+
+:::note
+The `adcp_version` field in server card metadata is a v2 convention and is not part of the v3 spec. For version negotiation, use [`get_adcp_capabilities`](/dist/docs/3.0.6/protocol/get_adcp_capabilities#version-negotiation) with the `adcp_major_version` field.
+:::
+
+**Note:** The `_meta` field uses reverse DNS namespacing per the [MCP server.json spec](https://github.com/modelcontextprotocol/registry/blob/main/docs/reference/server-json/generic-server-json.md). AdCP servers should support both `/.well-known/mcp.json` and `/.well-known/server.json` locations.
+
+### Parameter Validation
+```javascript
+// MCP provides tool schemas for validation
+const toolSchema = await mcp.getToolSchema('get_products');
+// Use schema to validate parameters before calling
+```
+
+### Error Handling
+
+AdCP errors are returned as tool-level responses with `isError: true` and the error in `structuredContent.adcp_error`. For the full extraction logic and JSON-RPC transport codes, see [Transport Error Mapping](/dist/docs/3.0.6/building/implementation/transport-errors).
+
+```javascript
+try {
+  const response = await session.call('get_products', params);
+
+  // Check for AdCP application errors (isError: true with structured data)
+  if (response.isError) {
+    const adcpError = response.structuredContent?.adcp_error;
+    if (adcpError) {
+      // Structured error with code, recovery, retry_after, etc.
+      console.log('AdCP error:', adcpError.code, adcpError.recovery);
+    }
+  }
+} catch (mcpError) {
+  // MCP transport errors (connection, auth, etc.)
+  // Check for AdCP-structured transport errors
+  const adcpError = mcpError.data?.adcp_error;
+  if (adcpError) {
+    console.log('Transport error:', adcpError.code);
+  } else {
+    console.error('MCP Error:', mcpError);
+  }
+}
+```
+
+## Best Practices
+
+1. **Use session wrapper** for automatic context management
+2. **Check status field** before processing response data  
+3. **Handle context expiration** gracefully with retries
+4. **Reference Core Concepts** for status handling patterns
+5. **Validate parameters** using MCP tool schemas when available
+
+## Next Steps
+
+- **Core Concepts**: Read [Task Lifecycle](/dist/docs/3.0.6/building/implementation/task-lifecycle) for status handling and workflows
+- **Task Reference**: See [Media Buy Tasks](/dist/docs/3.0.6/media-buy) and [Signals](/dist/docs/3.0.6/signals/overview)
+- **Protocol Comparison**: Compare with [A2A integration](/dist/docs/3.0.6/building/integration/a2a-guide)
+- **Examples**: Find complete workflow examples in Core Concepts
+
+**For status handling, async operations, and clarification patterns, see [Task Lifecycle](/dist/docs/3.0.6/building/implementation/task-lifecycle) - this guide focuses on MCP transport specifics only.**

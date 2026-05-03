@@ -1,0 +1,104 @@
+---
+title: update_content_standards
+description: "update_content_standards modifies an existing content standards configuration in AdCP, creating a new version for audit purposes."
+"og:title": "AdCP — update_content_standards"
+---
+
+# update_content_standards
+
+Update an existing content standards configuration. Creates a new version.
+
+**Response time**: < 1s
+
+## Request
+
+**Schema**: [update-content-standards-request.json](https://adcontextprotocol.org/schemas/3.0.6/content-standards/update-content-standards-request.json)
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `standards_id` | string | Yes | ID of the standards configuration to update |
+| `scope` | object | No | Updated scope |
+| `policies` | PolicyEntry[] | No | Updated array of policies. Replaces existing policies; use stable `policy_id` values to track policies across versions. |
+| `calibration_exemplars` | object | No | Updated training exemplars (pass/fail) |
+
+### Example Request
+
+```json
+{
+  "$schema": "/schemas/3.0.6/content-standards/update-content-standards-request.json",
+  "idempotency_key": "b0c1d2e3-f4a5-4678-b901-678901234567",
+  "standards_id": "nike_emea_safety",
+  "policies": [
+    {
+      "policy_id": "no_violence",
+      "policy_categories": ["brand_safety"],
+      "enforcement": "must",
+      "policy": "Avoid content depicting violence, weapons, or physical aggression."
+    },
+    {
+      "policy_id": "no_controversial_politics",
+      "policy_categories": ["brand_suitability"],
+      "enforcement": "must",
+      "policy": "Avoid controversial political content."
+    },
+    {
+      "policy_id": "no_adult_themes",
+      "policy_categories": ["brand_safety"],
+      "enforcement": "must",
+      "policy": "Avoid adult, sexual, or mature themes."
+    },
+    {
+      "policy_id": "no_hate_speech",
+      "policy_categories": ["brand_safety"],
+      "enforcement": "must",
+      "policy": "Block hate speech and illegal activities."
+    }
+  ],
+  "calibration_exemplars": {
+    "pass": [
+      { "type": "url", "value": "https://espn.com/nba/story/_/id/12345/lakers-win", "language": "en" },
+      { "type": "url", "value": "https://healthline.com/fitness/cardio-workout", "language": "en" },
+      { "type": "url", "value": "https://runnersworld.com/training/marathon-tips", "language": "en" }
+    ],
+    "fail": [
+      { "type": "url", "value": "https://tabloid.example.com/celebrity-scandal", "language": "en" },
+      { "type": "url", "value": "https://gambling.example.com/betting-guide", "language": "en" }
+    ]
+  }
+}
+```
+
+## Response
+
+**Schema**: [update-content-standards-response.json](https://adcontextprotocol.org/schemas/3.0.6/content-standards/update-content-standards-response.json)
+
+### Success Response
+
+```json
+{
+  "$schema": "/schemas/3.0.6/content-standards/update-content-standards-response.json",
+  "success": true,
+  "standards_id": "nike_emea_safety"
+}
+```
+
+### Error Response
+
+```json
+{
+  "$schema": "/schemas/3.0.6/content-standards/update-content-standards-response.json",
+  "success": false,
+  "errors": [
+    {
+      "code": "REFERENCE_NOT_FOUND",
+      "field": "standards_id",
+      "message": "Referenced resource does not exist or is not accessible"
+    }
+  ]
+}
+```
+
+## Related Tasks
+
+- [get_content_standards](./get_content_standards) - Get current configuration
+- [create_content_standards](./create_content_standards) - Create a new configuration

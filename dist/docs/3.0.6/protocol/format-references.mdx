@@ -1,0 +1,113 @@
+---
+title: Format References
+description: "Normative reference for format_id (structured identifier object) vs format (full definition object) in AdCP."
+"og:title": "AdCP — Format References"
+---
+
+AdCP uses two related but distinct concepts when working with creative formats. Their names are similar, which causes a recurring implementation error — this page defines both precisely and names the two failure modes.
+
+## format\_id — structured reference object
+
+`format_id` is **always a JSON object**, never a plain string. It identifies a format by the agent that declared it and the format's local slug:
+
+```json
+{
+  "agent_url": "https://creative.adcontextprotocol.org",
+  "id": "display_300x250"
+}
+```
+
+Optional dimension and duration fields extend it for parameterized template formats:
+
+```json
+{
+  "agent_url": "https://creative.adcontextprotocol.org",
+  "id": "display_static",
+  "width": 300,
+  "height": 250
+}
+```
+
+`format_id` is a **pointer** — it names a format without carrying its definition.
+
+## format — full definition object
+
+`format` is the complete specification of a creative format. It is returned by `list_creative_formats` and related tasks. A `format` object contains a `format_id` as one of its properties, plus the asset requirements, render specs, and all other metadata:
+
+```json
+{
+  "format_id": {
+    "agent_url": "https://creative.adcontextprotocol.org",
+    "id": "display_300x250"
+  },
+  "name": "Display Banner 300×250",
+  "assets": [
+    { "asset_id": "image", "asset_type": "image", "item_type": "individual", "required": true }
+  ],
+  "renders": [
+    { "role": "primary", "dimensions": { "width": 300, "height": 250 } }
+  ]
+}
+```
+
+A `format` is a **definition** — it describes what the format requires and how it renders.
+
+## Contrast at a glance
+
+| Concept | Field name | JSON type | Use |
+|---------|-----------|-----------|-----|
+| Format identifier | `format_id` | `object` — `{ agent_url, id }` | Pointer. Used in creative manifests, request filters, placement declarations. |
+| Format definition | `format` | `object` — full spec | Returned by `list_creative_formats`. Contains `format_id` as a nested field. |
+| Array of identifiers | `format_ids` | `array` of `format_id` objects | Filter parameter on `list_creatives`, `list_creative_formats`, and related requests. |
+| Array of definitions | `formats` | `array` of `format` objects | Response field on `list_creative_formats`. |
+
+## Two named failure modes
+
+### Anti-pattern A — string in a `format_id` slot
+
+Wrong — `format_id` must be an object, not a plain string:
+
+```json
+{ "format_id": "display_300x250" }
+```
+
+Correct:
+
+```json
+{ "format_id": { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250" } }
+```
+
+AJV error: `format_id must be of type object`. Cause: the `.id` string inside the `format_id` object looks like a self-contained name and is sometimes extracted and used directly.
+
+### Anti-pattern B — format\_id object in a `format` / `formats` slot
+
+Wrong — a `formats[]` element must be a full definition object, not a bare `format_id`:
+
+```json
+{
+  "formats": [
+    { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250" }
+  ]
+}
+```
+
+Correct:
+
+```json
+{
+  "formats": [
+    {
+      "format_id": { "agent_url": "https://creative.adcontextprotocol.org", "id": "display_300x250" },
+      "name": "Display Banner 300×250",
+      "assets": [ { "asset_id": "image", "asset_type": "image", "item_type": "individual", "required": true } ]
+    }
+  ]
+}
+```
+
+AJV error: `formats[0] must have required property 'name'`. Cause: `format_id` and `format` are both objects; the shorter object is sometimes put in the slot that expects the larger one.
+
+## See also
+
+- [Creative Formats](/dist/docs/3.0.6/creative/formats) — full format object structure, asset types, and render specs
+- [Template Format IDs](/dist/docs/3.0.6/creative/template-format-ids) — parameterized format IDs for dimension-variable templates

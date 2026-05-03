@@ -1,0 +1,111 @@
+---
+title: Roadmap
+description: "AdCP protocol roadmap: RFCs, epics, and development milestones tracked on our public GitHub Project board."
+"og:title": "AdCP — Roadmap"
+---
+
+The AdCP roadmap is a public [GitHub Project board](https://github.com/orgs/adcontextprotocol/projects/1) tracking protocol RFCs and epics across all domains. It shows what we're exploring, what's accepted, what's in progress, and what's shipped.
+
+<Card title="View the Roadmap" icon="map" href="https://github.com/orgs/adcontextprotocol/projects/1">
+  Live board with RFCs and epics across Creative, Media Buy, Signals, Governance, and more.
+</Card>
+
+---
+
+## How the Roadmap Works
+
+The board has four columns representing the lifecycle of a roadmap item:
+
+| Status | Meaning |
+|---|---|
+| **Exploring** | Under discussion, community input welcome |
+| **Accepted** | Committed and scoped, not yet started |
+| **In Progress** | Active work |
+| **Shipped** | Released and available |
+
+Each item has two fields:
+
+- **Protocol** — which area of the protocol it affects (Creative, Media Buy, Signals, Brand Protocol, Governance, SI, TMP, Platform, Website, Addie, Certification)
+- **Kind** — whether it's an **RFC** (protocol change needing community input) or an **Epic** (major deliverable spanning multiple PRs)
+
+---
+
+## What Belongs on the Roadmap
+
+Not every issue or PR belongs here. Roadmap items are protocol-level changes, new capabilities, and strategic initiatives that affect adopters. An issue qualifies if it meets at least two of:
+
+1. **Protocol surface** — changes what agents or platforms interact with
+2. **Audience impact** — would influence a prospective member's or builder's decision
+3. **Multi-issue scope** — spans more than one PR
+
+Bug fixes, minor improvements, and internal tooling stay in the [issue tracker](https://github.com/adcontextprotocol/adcp/issues).
+
+---
+
+## Adding Items to the Roadmap
+
+Any issue labeled `rfc` or `epic` is automatically added to the board. To propose a roadmap item:
+
+1. **Open a GitHub issue** describing the proposal
+2. **Add the `rfc` or `epic` label** (maintainers can also do this during triage)
+3. The issue appears in the **Exploring** column
+4. A maintainer sets the **Protocol** and **Kind** fields on the board
+
+---
+
+## Triage
+
+Each protocol area has a triage owner responsible for reviewing new issues weekly (~15 minutes) and deciding what gets the `rfc` or `epic` label. The triage owner also reviews the board monthly to ensure items reflect reality.
+
+| Protocol Area | Triage Owner |
+|---|---|
+| Creative | _TBD_ |
+| Media Buy | _TBD_ |
+| Signals | _TBD_ |
+| Brand Protocol | _TBD_ |
+| Governance | _TBD_ |
+| SI | _TBD_ |
+| TMP | _TBD_ |
+| Platform | _TBD_ |
+| Website | _TBD_ |
+| Addie | _TBD_ |
+| Certification | _TBD_ |
+
+Triage owners rotate quarterly. To volunteer, reach out in the relevant working group channel on Slack.
+
+---
+
+## Version Milestones
+
+Named milestones group roadmap items that will ship together in a future major version. Each milestone lists accepted RFCs — exploratory items (community input open) remain on the main board until maintainers decide to land them.
+
+### v4.0 — target early 2027
+
+v4.0 is the next **breaking-changes accumulation window**, targeted for early 2027 under the [release cadence policy](/dist/docs/3.0.6/reference/versioning#release-cadence). Breaking changes are gathered here so the ecosystem can plan a single migration window rather than chase per-minor deprecations. Items listed below are committed floor requirements for v4.0; additional items will be added here as RFCs are accepted.
+
+| Area | Item |
+|---|---|
+| Security (floor) | [Mandatory request signing for spend-committing operations (RFC 9421)](https://github.com/adcontextprotocol/adcp/issues/2307) — the 3.0 optional profile in `security.mdx` becomes required. Agents MUST sign spend-committing operations; sellers MUST verify. |
+
+This milestone is intentionally not a "security release." It is the version where accumulated breaking changes across protocol surfaces land together. Request signing is the current floor requirement; other accepted RFCs carrying breaking changes will be added here as they progress through the `rfc` label lifecycle on the main board.
+
+---
+
+## Release History
+
+For detailed release notes and version history, see:
+
+- **[Release Notes](./release-notes)** — per-version feature summaries
+- **[CHANGELOG.md](https://github.com/adcontextprotocol/adcp/blob/main/CHANGELOG.md)** — technical changelog
+- **[GitHub Releases](https://github.com/adcontextprotocol/adcp/releases)** — release archive
+- **[Versioning & Governance](./versioning)** — versioning model and release cadence
+
+---
+
+## Get Involved
+
+AdCP is developed in the open with active working groups on Slack.
+
+- **[Join the AgenticAds Slack](https://join.slack.com/t/agenticads/shared_invite/zt-3c5sxvdjk-x0rVmLB3OFHVUp~WutVWZg)**
+- **[GitHub Discussions](https://github.com/adcontextprotocol/adcp/discussions)**
+- **[Working Groups](../community/working-group)**

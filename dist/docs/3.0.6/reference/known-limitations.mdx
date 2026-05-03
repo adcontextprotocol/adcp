@@ -1,0 +1,80 @@
+---
+title: Known Limitations
+sidebarTitle: Known Limitations
+description: "Explicit non-goals and deferred items in AdCP 3.0 — what the protocol does not do, so implementers and reviewers can plan accordingly."
+"og:title": "AdCP — Known Limitations"
+---
+
+Knowing what a protocol doesn't do is part of evaluating it. This page consolidates the explicit non-goals and deferred items in AdCP 3.0 — things the protocol intentionally does not handle, things that have been scoped out for this cycle, and things that exist as mechanisms but aren't enforced at the protocol layer.
+
+Each limitation below is either a visible edge of the specification or a tracked follow-up. None is hidden.
+
+Surfaces shipped in 3.x but not yet frozen are listed separately — see [Experimental Status](/dist/docs/3.0.6/reference/experimental-status).
+
+## Security and privacy
+
+- **No end-user authentication.** AdCP authenticates agents, not the humans they act for. User-level identity, consent capture, and data-subject rights are handled upstream in the buyer's stack and are outside the protocol's scope.
+- **No protocol-level breach-notification SLA.** AdCP does not specify "seller MUST notify buyer within N hours of suspected key compromise." Notification commitments live in DPAs between parties. A future major version may tighten this.
+- **No coordinated vulnerability disclosure baked into the protocol.** Individual agent operators should publish `/.well-known/security.txt`; there is no normative AdCP requirement yet.
+- **No protocol-level PII transport.** The `hashed_email` and `hashed_phone` fields in `sync_audiences` require SHA-256 hashing on the buyer side — the schemas do not accept cleartext for those fields. Other identifier types exist for non-PII spaces. If you need cleartext PII on the wire, AdCP is not the right carrier.
+- **Hashed identifiers are pseudonymous, not anonymous.** SHA-256 hashes of email and phone remain pseudonymous identifiers under GDPR and CPRA and inherit the regulatory treatment of the underlying PII. AdCP does not claim de-identification.
+- **No protocol-level data-residency mechanism.** Residency is a configuration and contract property of individual agents; the protocol does not carry a normative residency tag.
+- **No protocol guarantee about LLM prompt-injection defense.** That is an operator concern on every LLM-powered agent in the loop. See the [Security Model — threats specific to agentic advertising](/dist/docs/3.0.6/building/understanding/security-model#threats-specific-to-agentic-advertising).
+- **Structural privacy applies only to TMP.** The Trusted Match Protocol enforces privacy structurally (separated code paths, schema prohibitions). Every other domain relies on contractual confidentiality or per-session consent. See [Privacy posture across domains](/dist/docs/3.0.6/protocol/architecture#privacy-posture-across-domains).
+- **No jurisdictionally-aware consent signal on the wire.** AdCP does not carry a normative consent tag (e.g., IAB TCF, GPP, or equivalents used to express compliance with regimes like Quebec's Law 25, Japan's APPI, or Brazil's LGPD). Lawful-basis determination, consent capture, and jurisdictional routing remain the responsibility of each party acting as controller or processor in its own stack, governed by the DPAs between them. A structured cross-agent consent signal is a candidate for future work.
+- **No consent-scope propagation across protocol boundaries.** A signal activated under one consent scope (e.g., `sync_audiences` from a CRM with first-party advertising consent) can be referenced downstream — re-targeted, attached to a different campaign, or composed with other signals — without a protocol-level mechanism enforcing scope alignment. Each party verifies scope compatibility off-protocol via DPAs and operational controls. Tracked for 3.1 in [#2540](https://github.com/adcontextprotocol/adcp/issues/2540).
+- **No protocol-level cross-border transfer mechanism.** AdCP does not carry SCC, IDTA, or adequacy-decision metadata. International-transfer lawfulness is a contract and configuration property of the parties.
+- **No versioned content-provenance chain.** AdCP carries right-use assertions and the `ai_generated_image` flag — the latter is a boolean marker, not a signed provenance assertion. The protocol does not specify a cryptographically signed provenance graph that accumulates assertions as a creative passes through generation, editing, and adaptation steps. Interoperation with emerging content-authenticity standards (CAI/C2PA) is tracked as future work.
+- **No retention or deletion SLA.** The protocol does not specify how long parties retain `sync_audiences` inputs, `report_usage` records, or task history. Retention windows and data-subject-request fulfillment live in DPAs between the parties.
+
+## Commerce and settlement
+
+- **No in-protocol payment or settlement.** `report_usage` provides the consumption data that feeds invoicing, but invoicing and settlement happen out-of-band through the buyer/seller commercial relationship.
+- **No cross-currency media buy.** Each media buy uses a single ISO 4217 currency (see `core/price.json`). If the buyer's budget currency differs from the seller's pricing currency, the buy either uses a matching currency or is rejected. FX rate pinning, risk attribution, and cross-currency reporting are deferred to a future version.
+- **No protocol-level delivery-dispute flow.** When buyer and seller delivery numbers disagree, reconciliation happens out-of-band through the commercial relationship (backed by the audit trail on both sides). A structured dispute task is a candidate for future work.
+
+## Measurement and attribution
+
+- **Not an attribution protocol.** AdCP carries exposure records, identifiers where permitted, and the outcome signals that feed attribution, but it does not specify an attribution model. Media-mix modeling, multi-touch attribution, and incrementality testing live in the buyer's measurement stack — fed by AdCP data ([`report_usage`](/dist/docs/3.0.6/accounts/tasks/report_usage) and task-level outputs) rather than computed by the protocol.
+
+## Authentication and identity
+
+- **No OAuth 2.1 + resource-indicators normative requirement.** AdCP authenticates agents using mTLS, pre-provisioned API keys, and RFC 9421 signed HTTP requests (the last normative in 3.1). These are deliberately chosen for mutual authentication between autonomous agents rather than delegated human-user authorization. OAuth 2.1 with resource indicators is an acceptable transport where an operator's infrastructure already standardizes on it, but it is not a protocol requirement and does not substitute for the three mechanisms above.
+- **Signed requests for mutating calls are normative in 3.1, not 3.0.** AdCP 3.0 allows bearer-token auth on mutating calls; 3.1 will require RFC 9421 signing or JWS-signed bodies. Tracked in [#2307](https://github.com/adcontextprotocol/adcp/issues/2307).
+- **No key-transparency anchoring in the registry.** The [AgenticAdvertising.org registry](/dist/docs/3.0.6/registry/index) resolves brand identity, property authorization, and agent discovery, and can cache the `signing_keys[]` declared in a publisher's [`adagents.json`](/dist/docs/3.0.6/governance/property/adagents#signing_keys). What it does not yet do is operate as a key-transparency log: there is no enrollment ceremony binding a domain to a root verification key, no append-only rotation record, and no cryptographic commitment that every verifier sees the same key history. So in 3.x, RFC 9421 buyer keys, governance JWS keys, agent signing keys, and pointer files are still ultimately rooted in the counterparty's own infrastructure — an attacker who controls a counterparty's CDN, DNS, or `/.well-known` path can serve attacker-controlled keys, and TLS does not close this because the certificate is valid for the compromised hostname. 3.x delivers trust-on-first-use with continuity (multi-source cross-check, publication-delay windows, out-of-band rotation signalling, rotation-validity discipline) — detectably raising the bar, but not cryptographically closing the gap. The full close is a key-transparency layer on top of the existing registry, with append-only rotation logs and JWKS wire compatibility, tracked as a 4.0 deliverable.
+
+## Governance
+
+- **Regulated-category human review is enforced at the schema level for the three named categories, at the governance-agent level for everything else.** 3.0 rejects `authority_level: agent_full` at the schema level on campaigns that declare `fair_housing`, `fair_lending`, or `fair_employment` (shipped via [#2310](https://github.com/adcontextprotocol/adcp/issues/2310), merged 2026-04-18). Any other regulated category — political, pharmaceutical, gambling, alcohol, tobacco, financial, crypto, cannabis/CBD, firearms, dietary-supplement health claims, child-directed — relies on the governance-agent implementation rather than a schema invariant.
+- **No protocol-mandated HITL on `sync_catalogs` or `sync_creatives`.** The universal task-lifecycle mechanism is available; no normative rule requires a human gate. `acquire_rights` is governed via the campaign-governance path ([purchase phase](/dist/docs/3.0.6/governance/campaign/specification#governance-phases)) when the buyer's plan is configured for it. See [How human-in-the-loop enters the protocol](/dist/docs/3.0.6/governance/embedded-human-judgment#how-human-in-the-loop-enters-the-protocol) for the two channels and the EHJ register for the normative rules on `check_governance`, `TERMS_REJECTED`, and lifecycle tasks.
+- **Regulated categories beyond `fair_housing`, `fair_lending`, and `fair_employment` have no first-class treatment.** Political advertising, pharmaceutical, gambling, alcohol, tobacco, financial promotions (including crypto and digital assets), cannabis/CBD, firearms, dietary-supplement health claims, and advertising directed at children rely on the general [campaign-governance](/dist/docs/3.0.6/governance/campaign/specification) mechanism (HITL gates, governance tasks) rather than category-specific schema rules. Regionally specific disclosure requirements (e.g., UK FCA s.21, EU MiCA, political ad registries, COPPA, the UK Children's Code, GDPR Article 8) sit in the seller's delivery stack and the buyer's compliance posture, not the protocol.
+
+## Conformance and testing
+
+- **Reference test vectors are partial.** [Conformance](/dist/docs/3.0.6/building/conformance) is defined by the storyboard suite, and the suite publishes request-signing and canonicalization vectors today — but a broader corpus of reference test vectors is tracked in [#2383](https://github.com/adcontextprotocol/adcp/issues/2383).
+- **AdCP Verified is self-attested in 3.0; the formal program launches with 3.1.** Today, agents publish their own signed `runner-output.json` — reproducible and re-runnable by any verifying party, but not AAO-audited. The training agent and official SDKs are being brought to full storyboard compliance over the 3.0 → 3.1 window on a 4–6 week cadence (training agent is at 32/55 clean today). When they pass cleanly and the ambiguous-storyboard work is done, AAO will run submitted agents against the canonical storyboard suite and maintain a public registry of Verified agents. The compliance runner and storyboards are themselves software at 3.0 — storyboard bugs, coverage gaps, and encoded-spec-intent ambiguities are legitimate GitHub issues alongside implementation bugs.
+- **No automated enforcement of platform agnosticism** beyond the `check:platform-agnostic` lint scanning property names. A richer check covering schema semantics is future work.
+- **No latency or response-time SLA.** The protocol has no normative expectations for how quickly an agent must respond (unlike OpenRTB's per-auction `tmax`). Buyers and sellers negotiate timing through the commercial relationship or through task-specific [accountability terms](/dist/docs/3.0.6/media-buy/advanced-topics/accountability). A structured SLA declaration is deferred.
+
+## What is outside the protocol
+
+AdCP specifies the wire. It does not specify — and cannot substitute for — any of the following:
+
+- **Secret storage.** Use KMS, Vault, Secrets Manager, or equivalent.
+- **Endpoint hardening.** WAF, rate limiting, DDoS protection, TLS configuration, OS patching, dependency scanning.
+- **Monitoring and incident response.** The protocol emits the signals worth watching (idempotency conflicts, governance failures, SSRF rejections). Detecting and responding to them is the operator's job.
+- **Human controls.** Approval thresholds, spend caps, pause authority — these are policy configurations inside the operator's agent or governance platform, not the protocol.
+- **Physical and personnel security.** The usual controls over who can touch production, who holds break-glass credentials, and who can push to main.
+- **Billing-grade metric accounting.** AdCP carries delivery and usage data end-to-end from the seller's ad delivery system, and [`report_usage`](/dist/docs/3.0.6/accounts/tasks/report_usage) feeds invoicing. The underlying delivery platform — or a buyer-specified measurement vendor — is the system of record for counting, audit, and MRC accreditation of the measurement methodology. AdCP itself is not MRC-accredited and does not seek accreditation; accreditation attaches to measurement systems, which sit downstream. AdCP is the wire and the contract, not the ledger.
+- **Invalid-traffic filtration and viewability measurement.** Buyers and sellers agree on verification vendors, thresholds, and remediation through [accountability terms](/dist/docs/3.0.6/media-buy/advanced-topics/accountability). GIVT/SIVT filtration (per MRC), viewability measurement (per the MRC Viewable Ad Impression standard), and brand-safety verification execute in the delivery stack or the chosen vendor layer (e.g., DoubleVerify, IAS, HUMAN).
+- **Accessibility conformance of served creatives.** WCAG, ADA, and EN 301 549 conformance of rendered ads sit with the creative supplier, the delivery stack, and the publisher's rendering context. AdCP does not carry accessibility-conformance assertions as normative fields.
+
+Think of AdCP as specifying the locks on the doors. The operator still owns the building.
+
+## Related
+
+- [Security Model](/dist/docs/3.0.6/building/understanding/security-model) — the threat model and layered defense
+- [Privacy Considerations](/dist/docs/3.0.6/reference/privacy-considerations) — cross-protocol privacy entry point
+- [Experimental Status](/dist/docs/3.0.6/reference/experimental-status) — surfaces shipped in 3.x but not yet frozen
+- [Versioning & Governance](/dist/docs/3.0.6/reference/versioning) — cadence, support windows, and how limitations become follow-ups
+- [Roadmap](/dist/docs/3.0.6/reference/roadmap) — what's coming next
