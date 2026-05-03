@@ -74,7 +74,7 @@ describe('brand protocol tools (training agent)', () => {
     it('returns error for unknown brand', async () => {
       const result = await call('get_brand_identity', { brand_id: 'nonexistent' });
       expect(result.errors).toBeDefined();
-      expect((result.errors as Array<{ code: string }>)[0].code).toBe('BRAND_NOT_FOUND');
+      expect((result.errors as Array<{ code: string }>)[0].code).toBe('REFERENCE_NOT_FOUND');
     });
 
     it('omits available_fields when talent lacks the requested authorized field', async () => {
