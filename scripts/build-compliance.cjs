@@ -523,6 +523,20 @@ function main() {
     process.exit(1);
   }
 
+  // Error-code spec lint: `check: error_code` validations may only cite codes
+  // defined in `static/schemas/source/enums/error-code.json`. The `value` and
+  // `allowed_values` fields are not validated by check-enum (which only checks
+  // the `check` keyword); this lint closes that gap.
+  // adcontextprotocol/adcp#3918 item 7.
+  try {
+    execSync('node scripts/lint-storyboard-error-code-spec.cjs', {
+      cwd: path.join(__dirname, '..'),
+      stdio: 'inherit',
+    });
+  } catch {
+    process.exit(1);
+  }
+
   console.log(isRelease
     ? `🚀 RELEASE BUILD: Creating compliance artifacts for AdCP v${version}`
     : `📦 Development build: Updating latest/ compliance`);

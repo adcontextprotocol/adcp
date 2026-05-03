@@ -27,6 +27,10 @@
       "$ref": "/schemas/core/brand-ref.json",
       "description": "The buyer's brand identity"
     },
+    "account": {
+      "$ref": "/schemas/core/account-ref.json",
+      "description": "Buyer's account with this brand agent. Needed for governance-aware acquisition — the brand agent resolves the registered governance endpoint from this account's sync_governance binding. When omitted, the agent falls back to buyer.domain for account resolution. Use the same account reference sent in sync_governance for this brand agent."
+    },
     "campaign": {
       "type": "object",
       "description": "Campaign details for rights clearance",
