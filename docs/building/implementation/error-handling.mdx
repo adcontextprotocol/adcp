@@ -465,6 +465,7 @@ The wire-level `recovery: "correctable"` on the sandbox-only path is the registe
 |------|----------|-------------|------------|
 | `RATE_LIMITED` | transient | Request rate exceeded | Wait for `retry_after` seconds, then retry |
 | `SERVICE_UNAVAILABLE` | transient | Seller service temporarily unavailable | Retry with exponential backoff |
+| `CONFIGURATION_ERROR` | terminal | Seller-side deployment misconfiguration (e.g., missing `mock_upstream_url`, undeclared `upstream_url`, unset env var). Distinct from `SERVICE_UNAVAILABLE` (transient) and `INVALID_REQUEST` (buyer-fixable) | Surface to the seller's operator; do not auto-retry — retries will not resolve a misconfigured deployment |
 | `CONFLICT` | transient | Concurrent modification detected | Re-read the resource and retry with current state |
 | `REFERENCE_NOT_FOUND` | correctable | Generic fallback for referenced resources without a dedicated not-found code. See [Not-found precedence](#standard-error-codes) | Verify the identifier via the appropriate discovery task; prefer a resource-specific code when one exists |
 
