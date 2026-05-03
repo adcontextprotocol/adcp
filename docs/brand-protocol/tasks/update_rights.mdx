@@ -113,6 +113,7 @@ Seconds for most updates. Pricing changes may require rights holder approval and
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `rights_id` | string | Yes | Rights grant identifier from `acquire_rights` |
+| `account` | account-ref | Conditional | Account context. Pass when the brand agent has a governance agent bound to this brand+operator via [`sync_governance`](/docs/accounts/tasks/sync_governance) — `update_rights` is a [modification-phase governance trigger](/docs/governance/campaign/specification#spend-commit-invocation), and the brand agent uses `account` to resolve the bound agent when computing the incremental commit delta. When both an inline `governance_context` token and a bound agent are present, the inline token wins. |
 | `end_date` | date | No | New end date (must be >= current end date) |
 | `impression_cap` | integer | No | New impression cap (must be >= impressions already delivered) |
 | `pricing_option_id` | string | No | Switch to a different pricing option from the original `get_rights` offering |

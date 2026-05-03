@@ -26,6 +26,10 @@
       "$ref": "/schemas/core/brand-ref.json",
       "description": "The buyer's brand identity"
     },
+    "account": {
+      "$ref": "/schemas/core/account-ref.json",
+      "description": "Account context for this acquisition. Used by the brand agent to resolve any governance agent previously bound for this brand+operator pair via sync_governance. When both an inline governance_context token (on the protocol envelope) and a bound governance agent are present, the inline token wins — brand agents MUST consult the agent identified by the inline token. When the request omits both `account` and an inline governance_context token, the brand agent treats the acquisition as ungoverned and the CPM-projection rule on `campaign.estimated_impressions` does not apply (sellers MAY refuse to transact ungoverned requests as a matter of commercial policy). Pass a natural key (brand, operator, optional sandbox) or a seller-assigned account_id from list_accounts."
+    },
     "campaign": {
       "type": "object",
       "description": "Campaign details for rights clearance",
@@ -60,7 +64,7 @@
         "estimated_impressions": {
           "type": "integer",
           "minimum": 0,
-          "description": "Estimated total impressions for the campaign. Required when the request carries an intent-phase governance_context token AND the selected pricing_option has model: 'cpm' — the brand agent projects commitment as (pricing_option.price / 1000) × estimated_impressions evaluated in pricing_option.currency. Brand agents MUST reject with INVALID_REQUEST (field: campaign.estimated_impressions) when CPM-priced rights are requested under a governance_context and this field is omitted or zero; implementer-chosen defaults are non-conformant. See the acquire_rights task reference for the full validation contract including currency-mismatch handling."
+          "description": "Estimated total impressions for the campaign. Required when the brand agent will project commitment against a governance plan AND the selected pricing_option has model: 'cpm' — projection equals (pricing_option.price / 1000) × estimated_impressions evaluated in pricing_option.currency. The brand agent will project commitment whenever the request is governance-aware via either (a) an intent-phase governance_context token on the protocol envelope, or (b) `account` resolving to an account that has a governance agent previously bound via sync_governance. Brand agents MUST reject with INVALID_REQUEST (field: campaign.estimated_impressions) in either path when CPM-priced rights are requested and this field is omitted or zero; implementer-chosen defaults are non-conformant. See the acquire_rights task reference for the full validation contract including currency-mismatch handling."
         },
         "start_date": {
           "type": "string",
