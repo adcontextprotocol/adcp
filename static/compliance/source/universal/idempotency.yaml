@@ -106,8 +106,11 @@ phases:
           Call get_adcp_capabilities and verify adcp.idempotency is declared with
           supported: true and a replay_ttl_seconds value. The block is REQUIRED —
           clients MUST NOT fall back to an assumed default, and a seller that omits
-          it is non-compliant. Sellers running this storyboard must declare
-          supported: true; supported: false sellers skip this storyboard entirely.
+          it is non-compliant. Sellers running this storyboard should declare
+          supported: true; sellers declaring supported: false pass this step with
+          advisory findings and cascade-skip the remaining idempotency phases (they
+          have no replay window to test). The full storyboard-level skip gate is
+          pending runner support for a precondition mechanism (adcontextprotocol/adcp#3919).
         task: get_adcp_capabilities
         schema_ref: "protocol/get-adcp-capabilities-request.json"
         response_schema_ref: "protocol/get-adcp-capabilities-response.json"
@@ -130,9 +133,15 @@ phases:
           - check: field_value
             path: "adcp.idempotency.supported"
             value: true
+            severity: advisory
+            permanent_advisory:
+              reason: "supported: false is a valid declaration meaning the agent does not deduplicate retries; these agents are not applicable for this storyboard and must not be failed. The check is advisory so capability_discovery passes cleanly for supported: false agents and downstream phases cascade-skip via missing_tool (not_applicable) rather than prerequisite_failed. Full storyboard-level skip (for agents that implement create_media_buy but declare supported: false) requires runner support for a precondition gate (see adcontextprotocol/adcp#3919)."
             description: "Agent declares supported: true for this storyboard (supported: false sellers skip)"
           - check: field_present
             path: "adcp.idempotency.replay_ttl_seconds"
+            severity: advisory
+            permanent_advisory:
+              reason: "replay_ttl_seconds is only required when adcp.idempotency.supported: true; supported: false agents correctly omit this field and must not be penalised for its absence."
             description: "Agent declares replay window TTL (required when supported: true)"
 
           - check: field_present
@@ -142,6 +151,9 @@ phases:
             path: "context.correlation_id"
             value: "idempotency--get_capabilities"
             description: "Context correlation_id returned unchanged"
+        context_outputs:
+          - name: idempotency_supported
+            path: "adcp.idempotency.supported"
 
   - id: missing_key
     title: "Reject requests without idempotency_key"
