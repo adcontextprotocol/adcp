@@ -130,21 +130,41 @@ export async function issueDomainChallenge(input: {
   // Idempotent re-issue: if the domain is already attached to this org
   // (pending or verified), surface the existing challenge instead of
   // creating a new one. WorkOS would reject the duplicate create anyway.
+  // Exception: a non-verified entry with null verificationToken/Prefix is
+  // broken state — there's no DNS record the user can publish, and every
+  // retry would echo nulls back. Delete and recreate so the user gets a
+  // fresh, usable challenge.
   try {
     const existing = await workos.organizations.getOrganization(orgId);
     const existingDomain = existing.domains.find(d => d.domain.toLowerCase() === domain);
     if (existingDomain) {
-      return {
-        ok: true,
-        domain,
-        workos_domain_id: existingDomain.id,
-        state: String(existingDomain.state),
-        verification_strategy: existingDomain.verificationStrategy ?? null,
-        verification_token: existingDomain.verificationToken ?? null,
-        verification_prefix: existingDomain.verificationPrefix ?? null,
-        already_verified: isVerifiedState(existingDomain.state),
-        prior_manifest_exists: priorManifestExists,
-      };
+      const verified = isVerifiedState(existingDomain.state);
+      const tokenMissing = !existingDomain.verificationToken || !existingDomain.verificationPrefix;
+      if (!verified && tokenMissing) {
+        logger.warn(
+          { orgId, domain, existingDomainId: existingDomain.id, state: String(existingDomain.state) },
+          'brand-claim: existing org-domain has null verification token/prefix; deleting to recreate',
+        );
+        try {
+          await workos.organizationDomains.deleteOrganizationDomain(existingDomain.id);
+        } catch (err) {
+          logger.error({ err, orgId, domain, existingDomainId: existingDomain.id }, 'brand-claim: failed to delete broken existing org-domain');
+          return { ok: false, code: 'workos_error', message: 'Failed to clear a broken pending challenge for this domain. Try again or contact support.' };
+        }
+        // Fall through to the create branch below.
+      } else {
+        return {
+          ok: true,
+          domain,
+          workos_domain_id: existingDomain.id,
+          state: String(existingDomain.state),
+          verification_strategy: existingDomain.verificationStrategy ?? null,
+          verification_token: existingDomain.verificationToken ?? null,
+          verification_prefix: existingDomain.verificationPrefix ?? null,
+          already_verified: verified,
+          prior_manifest_exists: priorManifestExists,
+        };
+      }
     }
   } catch (err) {
     logger.warn({ err, orgId }, 'brand-claim: org pre-check failed, will attempt create');

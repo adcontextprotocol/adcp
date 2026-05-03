@@ -18,6 +18,7 @@ type WorkOSStub = {
   organizationDomains: {
     createOrganizationDomain: ReturnType<typeof vi.fn>;
     verifyOrganizationDomain: ReturnType<typeof vi.fn>;
+    deleteOrganizationDomain: ReturnType<typeof vi.fn>;
   };
 };
 
@@ -25,6 +26,7 @@ function makeWorkos(overrides: Partial<{
   getOrganization: any;
   createOrganizationDomain: any;
   verifyOrganizationDomain: any;
+  deleteOrganizationDomain: any;
 }> = {}): WorkOSStub {
   return {
     organizations: {
@@ -33,6 +35,7 @@ function makeWorkos(overrides: Partial<{
     organizationDomains: {
       createOrganizationDomain: overrides.createOrganizationDomain ?? vi.fn(),
       verifyOrganizationDomain: overrides.verifyOrganizationDomain ?? vi.fn(),
+      deleteOrganizationDomain: overrides.deleteOrganizationDomain ?? vi.fn().mockResolvedValue(undefined),
     },
   };
 }
@@ -112,6 +115,97 @@ describe('issueDomainChallenge', () => {
       expect(result.already_verified).toBe(false);
     }
     expect(workos.organizationDomains.createOrganizationDomain).not.toHaveBeenCalled();
+  });
+
+  it('deletes and recreates when existing pending domain has null verification token (#3953)', async () => {
+    const deleteFn = vi.fn().mockResolvedValue(undefined);
+    const createFn = vi.fn().mockResolvedValue({
+      id: 'dom_fresh',
+      state: 'pending',
+      verificationStrategy: 'dns',
+      verificationToken: 'tok_fresh',
+      verificationPrefix: '_workos-challenge',
+    });
+    const workos = makeWorkos({
+      getOrganization: vi.fn().mockResolvedValue({
+        domains: [{
+          id: 'dom_broken',
+          domain: DOMAIN,
+          state: 'pending',
+          verificationStrategy: 'dns',
+          verificationToken: null,
+          verificationPrefix: null,
+        }],
+      }),
+      deleteOrganizationDomain: deleteFn,
+      createOrganizationDomain: createFn,
+    });
+    const result = await issueDomainChallenge({
+      workos: workos as any,
+      brandDb: makeBrandDb(),
+      orgId: ORG,
+      rawDomain: DOMAIN,
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.workos_domain_id).toBe('dom_fresh');
+      expect(result.verification_token).toBe('tok_fresh');
+      expect(result.verification_prefix).toBe('_workos-challenge');
+    }
+    expect(deleteFn).toHaveBeenCalledWith('dom_broken');
+    expect(createFn).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns workos_error when deleting a broken existing domain fails (#3953)', async () => {
+    const deleteFn = vi.fn().mockRejectedValue(new Error('delete failed'));
+    const createFn = vi.fn();
+    const workos = makeWorkos({
+      getOrganization: vi.fn().mockResolvedValue({
+        domains: [{
+          id: 'dom_broken',
+          domain: DOMAIN,
+          state: 'pending',
+          verificationToken: null,
+          verificationPrefix: null,
+        }],
+      }),
+      deleteOrganizationDomain: deleteFn,
+      createOrganizationDomain: createFn,
+    });
+    const result = await issueDomainChallenge({
+      workos: workos as any,
+      brandDb: makeBrandDb(),
+      orgId: ORG,
+      rawDomain: DOMAIN,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe('workos_error');
+    expect(createFn).not.toHaveBeenCalled();
+  });
+
+  it('preserves verified short-circuit even when token is null (treats as already-verified, no delete)', async () => {
+    const deleteFn = vi.fn();
+    const workos = makeWorkos({
+      getOrganization: vi.fn().mockResolvedValue({
+        domains: [{
+          id: 'dom_v',
+          domain: DOMAIN,
+          state: 'verified',
+          verificationToken: null,
+          verificationPrefix: null,
+        }],
+      }),
+      deleteOrganizationDomain: deleteFn,
+    });
+    const result = await issueDomainChallenge({
+      workos: workos as any,
+      brandDb: makeBrandDb(),
+      orgId: ORG,
+      rawDomain: DOMAIN,
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.already_verified).toBe(true);
+    expect(deleteFn).not.toHaveBeenCalled();
   });
 
   it('flags already_verified when existing domain state is verified', async () => {
