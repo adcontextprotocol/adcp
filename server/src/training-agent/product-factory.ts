@@ -859,8 +859,21 @@ export function buildCatalog(): CatalogProduct[] {
   // `pricing_option_id: "test-pricing"` / `"default"`, so the aliases
   // also publish those pricing options (shallow-cloned from the source
   // product's first pricing option with the expected id).
+  //
+  // Specialism storyboards (sales_guaranteed, sales_broadcast_tv) list
+  // products in their `fixtures.products` block with `controller_seeding:
+  // true`. On @adcp/sdk v6+, the storyboard runner fires seed_product
+  // before create_media_buy; on @adcp/client v5 (pinned on 3.0.x) that
+  // seeding pathway is absent. These aliases are the 3.0.x workaround —
+  // the static catalog stands in for what the runner would have seeded.
   const firstPublisher = PUBLISHERS[0];
   const ctvPublisher = PUBLISHERS.find(p => p.channels.includes('ctv')) ?? firstPublisher;
+  // Publisher with guaranteed-only delivery and CTV: viewpoint_sports.
+  const guaranteedCtvPublisher = PUBLISHERS.find(
+    p => p.channels.includes('ctv') && p.deliveryTypes.length === 1 && p.deliveryTypes[0] === 'guaranteed',
+  ) ?? ctvPublisher;
+  // Publisher with linear_tv channel: also viewpoint_sports.
+  const linearTvPublisher = PUBLISHERS.find(p => p.channels.includes('linear_tv')) ?? guaranteedCtvPublisher;
   const aliases: Array<{
     id: string;
     name: string;
@@ -893,6 +906,32 @@ export function buildCatalog(): CatalogProduct[] {
       name: 'Local Display Dynamic (storyboard fixture)',
       source: catalog.find(cp => cp.publisherId === firstPublisher.id),
       pricingAliases: ['cpm_standard'],
+    },
+    // sales_guaranteed specialism: guaranteed video products (3.0.x static workaround)
+    {
+      id: 'sports_preroll_q2_guaranteed',
+      name: 'Sports Preroll Q2 Guaranteed (storyboard fixture)',
+      source: catalog.find(cp => cp.publisherId === guaranteedCtvPublisher.id && (cp.product.channels ?? []).includes('ctv')),
+      pricingAliases: ['cpm_guaranteed_fixed'],
+    },
+    {
+      id: 'outdoor_ctv_q2_guaranteed',
+      name: 'Outdoor CTV Q2 Guaranteed (storyboard fixture)',
+      source: catalog.find(cp => cp.publisherId === guaranteedCtvPublisher.id && (cp.product.channels ?? []).includes('ctv')),
+      pricingAliases: ['cpm_guaranteed_fixed'],
+    },
+    // sales_broadcast_tv specialism: guaranteed linear TV products (3.0.x static workaround)
+    {
+      id: 'primetime_30s_mf',
+      name: 'Primetime 30s Multi-Flight (storyboard fixture)',
+      source: catalog.find(cp => cp.publisherId === linearTvPublisher.id && (cp.product.channels ?? []).includes('linear_tv')),
+      pricingAliases: ['unit_primetime_30'],
+    },
+    {
+      id: 'late_fringe_15s_mf',
+      name: 'Late Fringe 15s Multi-Flight (storyboard fixture)',
+      source: catalog.find(cp => cp.publisherId === linearTvPublisher.id && (cp.product.channels ?? []).includes('linear_tv')),
+      pricingAliases: ['unit_fringe_15'],
     },
   ];
   for (const alias of aliases) {
