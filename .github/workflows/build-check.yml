@@ -44,6 +44,9 @@ jobs:
       - name: Validate schemas
         run: npm run test:schemas && npm run test:json-schema && npm run test:extension-schemas && npm run test:composed
 
+      - name: Check oneOf discriminator baseline (adcp#3917)
+        run: npm run test:oneof-discriminators
+
       - name: Check policy registry publication completeness
         run: npm run check:registry
 
