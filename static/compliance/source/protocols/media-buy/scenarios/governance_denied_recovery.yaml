@@ -20,7 +20,11 @@ narrative: |
   correct it.
 
   By default, the governance agent is the training agent at test-agent.adcontextprotocol.org.
-  Override with --governance-agent-url to use a custom governance agent.
+  Override by supplying a different `governance_agent_url` in the run's initial context
+  (e.g., via `--context` on `adcp storyboard run` once the CLI supports it).
+
+context:
+  governance_agent_url: "https://test-agent.adcontextprotocol.org"
 
 agent:
   interaction_model: media_buy_seller

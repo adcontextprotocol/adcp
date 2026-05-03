@@ -272,6 +272,29 @@
 # See `docs/contributing/storyboard-authoring.md` for the author-workflow
 # side of kit selection.
 #
+# context: object (optional — initial values seeded into the runner's context
+#   accumulator before any step executes. Keys become $context.<key> references
+#   available throughout the storyboard run. Use this field to provide
+#   per-storyboard defaults for values that vary by operator topology (e.g.,
+#   a governance agent URL the runner can override at invocation time once the
+#   CLI supports --context on `storyboard run`).
+#
+#   Example:
+#     context:
+#       governance_agent_url: "https://test-agent.adcontextprotocol.org"
+#
+#   Precedence in the context accumulator (highest to lowest):
+#     1. Step `context_outputs:` captures (populated after a step passes)
+#     2. THIS field (storyboard-root `context:` block, fixed at run start)
+#     3. Test-kit substitutions where explicitly scoped into context
+#
+#   Values MUST be scalars (strings, numbers, booleans — JSON scalar types).
+#   Object and array values are not supported here — capture structured values
+#   from step responses via `context_outputs:` instead.
+#
+#   See "Context accumulator and substitution" below for the full precedence
+#   contract, runner substitution rules, and unresolved-substitution grading.)
+#
 # phases: array of Phase objects
 #
 # --- Phase ---
