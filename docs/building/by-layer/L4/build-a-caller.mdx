@@ -11,6 +11,10 @@ If you're building the **buy side** — a DSP, planning tool, agentic client, or
 **Spec-level reference vs build-shaped guide.** This page walks you through the build. The wire-level invariants — every rule that applies to every mutating call — live at [Calling an AdCP agent](/docs/protocol/calling-an-agent). Read it once before going to production; refer back whenever you're debugging a wire-shape error.
 </Note>
 
+<Tip>
+**Try it against a live agent.** AAO runs a public test agent at `https://test-agent.adcontextprotocol.org` with per-domain endpoints — `/sales/mcp`, `/creative/mcp`, `/signals/mcp`, `/governance/mcp`. Point your client at the matching endpoint and `getAdcpCapabilities()` works without auth. Use it to verify your install before pointing at a real seller.
+</Tip>
+
 ## Install the SDK
 
 The same SDKs that ship server primitives also ship the calling client. Install one and you have both.
@@ -112,7 +116,7 @@ const buy = await client.createMediaBuy({
 Two things worth knowing on the first call:
 
 - **Generate a fresh `idempotency_key` per logical operation.** Same key on retry → server replays the same response. Fresh key after a failure creates duplicate buys. See the [Idempotency rules](/docs/protocol/calling-an-agent#idempotency-replay-vs-new-operation).
-- **`account` is a discriminated `oneOf`.** Pick one variant (`{account_id}` or `{brand, operator}`) and send only its required fields. Merging them fails both. See [`account` is `oneOf`](/docs/protocol/calling-an-agent#account-is-oneof--pick-exactly-one-variant).
+- **`account` is a discriminated `oneOf`.** Pick one variant (`{account_id}` from `sync_accounts` / `list_accounts`, or `{brand, operator}` as the natural key — `brand.domain` is the buyer's brand domain, `operator` is the seller agent's deployment hostname or brand.json identifier) and send only its required fields. Merging them fails both. See [`account` is `oneOf`](/docs/protocol/calling-an-agent#account-is-oneof--pick-exactly-one-variant).
 
 ## Handle the three response shapes
 
