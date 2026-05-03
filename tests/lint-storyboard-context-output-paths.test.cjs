@@ -27,6 +27,8 @@ const {
   parsePath,
   loadSchema,
   loadAllowlist,
+  findArmByDiscriminator,
+  findErrorArm,
 } = require('../scripts/lint-storyboard-context-output-paths.cjs');
 
 test('source tree passes the context-output path lint', () => {
@@ -181,6 +183,80 @@ test('allowlist suppresses violations for documented exceptions', () => {
 
   const violations = lintDoc(doc, filePath, allowlist);
   assert.deepEqual(violations, []);
+});
+
+test('expected_arm: "acquired" restricts capture path resolution', () => {
+  // get_rights stores rights[0].rights_id; acquire_rights captures rights_id
+  // from the SAME response. With expected_arm: "acquired", capturing `terms`
+  // resolves (Acquired arm) but capturing `reason` does not (only Rejected).
+  const docOk = {
+    phases: [
+      {
+        id: 'p',
+        steps: [
+          {
+            id: 's',
+            task: 'acquire_rights',
+            response_schema_ref: 'brand/acquire-rights-response.json',
+            expected_arm: 'acquired',
+            context_outputs: [{ name: 'rights_id', path: 'rights_id' }],
+          },
+        ],
+      },
+    ],
+  };
+  assert.deepEqual(lintDoc(docOk, '/synth/test.yaml'), []);
+
+  const docWrongArm = {
+    phases: [
+      {
+        id: 'p',
+        steps: [
+          {
+            id: 's',
+            task: 'acquire_rights',
+            response_schema_ref: 'brand/acquire-rights-response.json',
+            expected_arm: 'acquired',
+            // `reason` is on Rejected arm only
+            context_outputs: [{ name: 'r', path: 'reason' }],
+          },
+        ],
+      },
+    ],
+  };
+  const violations = lintDoc(docWrongArm, '/synth/test.yaml');
+  assert.equal(violations.length, 1);
+  assert.equal(violations[0].rule, 'path_not_in_schema');
+});
+
+test('unknown_expected_arm fires for context_outputs steps too', () => {
+  const doc = {
+    phases: [
+      {
+        id: 'p',
+        steps: [
+          {
+            id: 's',
+            task: 'acquire_rights',
+            response_schema_ref: 'brand/acquire-rights-response.json',
+            expected_arm: 'no_such_arm',
+            context_outputs: [{ name: 'x', path: 'rights_id' }],
+          },
+        ],
+      },
+    ],
+  };
+  const violations = lintDoc(doc, '/synth/test.yaml');
+  assert.equal(violations.length, 1);
+  assert.equal(violations[0].rule, 'unknown_expected_arm');
+});
+
+test('findArmByDiscriminator and findErrorArm are exported and consistent across lints', () => {
+  const schema = loadSchema('brand/acquire-rights-response.json');
+  assert.ok(findArmByDiscriminator(schema, 'acquired'));
+  assert.ok(findArmByDiscriminator(schema, 'rejected'));
+  assert.equal(findArmByDiscriminator(schema, 'no_match'), null);
+  assert.ok(findErrorArm(schema));
 });
 
 test('loadAllowlist returns an array', () => {

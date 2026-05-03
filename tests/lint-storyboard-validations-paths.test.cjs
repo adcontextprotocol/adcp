@@ -29,6 +29,9 @@ const {
   loadSchema,
   loadAllowlist,
   isEnvelopeProperty,
+  findArmByDiscriminator,
+  findErrorArm,
+  resolveExpectedArmSchema,
   PATH_BEARING_CHECKS,
 } = require('../scripts/lint-storyboard-validations-paths.cjs');
 
@@ -259,6 +262,149 @@ test('allowlist suppresses violations for documented exceptions', () => {
 
   const violations = lintDoc(doc, filePath, allowlist);
   assert.deepEqual(violations, []);
+});
+
+test('expected_arm restricts path resolution to the matching oneOf arm', () => {
+  const schema = loadSchema('brand/acquire-rights-response.json');
+  const acquired = findArmByDiscriminator(schema, 'acquired');
+  assert.ok(acquired, 'acquired arm found');
+  // `terms` is on the Acquired arm only
+  assert.equal(pathResolves(acquired, parsePath('terms')), true);
+  // `reason` is only on the Rejected arm — NOT on Acquired, so should fail
+  assert.equal(pathResolves(acquired, parsePath('reason')), false);
+
+  const rejected = findArmByDiscriminator(schema, 'rejected');
+  assert.ok(rejected, 'rejected arm found');
+  assert.equal(pathResolves(rejected, parsePath('reason')), true);
+  assert.equal(pathResolves(rejected, parsePath('terms')), false);
+});
+
+test('findErrorArm finds the errors[]-required branch with no const discriminator', () => {
+  const schema = loadSchema('brand/acquire-rights-response.json');
+  const errorArm = findErrorArm(schema);
+  assert.ok(errorArm, 'error arm found');
+  // Error arm has `errors` required and no const status
+  assert.equal(pathResolves(errorArm, parsePath('errors[0].code')), true);
+  // Error arm has no rights_id
+  assert.equal(pathResolves(errorArm, parsePath('rights_id')), false);
+});
+
+test('expect_error: true without expected_arm restricts to the Error arm', () => {
+  const doc = {
+    phases: [
+      {
+        id: 'p',
+        steps: [
+          {
+            id: 's',
+            task: 'acquire_rights',
+            response_schema_ref: 'brand/acquire-rights-response.json',
+            expect_error: true,
+            // rights_id is on Acquired/PendingApproval/Rejected but NOT on Error.
+            // With expect_error: true, the lint should restrict to Error and flag this.
+            validations: [{ check: 'field_present', path: 'rights_id' }],
+          },
+        ],
+      },
+    ],
+  };
+
+  const violations = lintDoc(doc, '/synth/test.yaml');
+  assert.equal(violations.length, 1);
+  assert.equal(violations[0].rule, 'path_not_in_schema');
+});
+
+test('expect_error: true paths to errors[].code resolve correctly', () => {
+  const doc = {
+    phases: [
+      {
+        id: 'p',
+        steps: [
+          {
+            id: 's',
+            task: 'acquire_rights',
+            response_schema_ref: 'brand/acquire-rights-response.json',
+            expect_error: true,
+            validations: [{ check: 'field_present', path: 'errors[0].code' }],
+          },
+        ],
+      },
+    ],
+  };
+
+  const violations = lintDoc(doc, '/synth/test.yaml');
+  assert.deepEqual(violations, []);
+});
+
+test('expected_arm: "acquired" restricts path resolution', () => {
+  const docOk = {
+    phases: [
+      {
+        id: 'p',
+        steps: [
+          {
+            id: 's',
+            task: 'acquire_rights',
+            response_schema_ref: 'brand/acquire-rights-response.json',
+            expected_arm: 'acquired',
+            validations: [{ check: 'field_present', path: 'terms' }],
+          },
+        ],
+      },
+    ],
+  };
+  assert.deepEqual(lintDoc(docOk, '/synth/test.yaml'), []);
+
+  const docWrongArm = {
+    phases: [
+      {
+        id: 'p',
+        steps: [
+          {
+            id: 's',
+            task: 'acquire_rights',
+            response_schema_ref: 'brand/acquire-rights-response.json',
+            expected_arm: 'acquired',
+            // `reason` is on the Rejected arm, NOT on Acquired
+            validations: [{ check: 'field_present', path: 'reason' }],
+          },
+        ],
+      },
+    ],
+  };
+  const violations = lintDoc(docWrongArm, '/synth/test.yaml');
+  assert.equal(violations.length, 1);
+  assert.equal(violations[0].rule, 'path_not_in_schema');
+});
+
+test('unknown_expected_arm fires when no oneOf branch matches', () => {
+  const doc = {
+    phases: [
+      {
+        id: 'p',
+        steps: [
+          {
+            id: 's',
+            task: 'acquire_rights',
+            response_schema_ref: 'brand/acquire-rights-response.json',
+            expected_arm: 'no_such_arm_value',
+            validations: [{ check: 'field_present', path: 'terms' }],
+          },
+        ],
+      },
+    ],
+  };
+  const violations = lintDoc(doc, '/synth/test.yaml');
+  assert.equal(violations.length, 1);
+  assert.equal(violations[0].rule, 'unknown_expected_arm');
+  assert.equal(violations[0].expectedArm, 'no_such_arm_value');
+});
+
+test('resolveExpectedArmSchema returns full schema when no annotation present', () => {
+  const schema = loadSchema('brand/acquire-rights-response.json');
+  const result = resolveExpectedArmSchema(schema, null, false);
+  assert.equal(result.schema, schema);
+  assert.equal(result.error, undefined);
 });
 
 test('loadAllowlist enforces a reason field', () => {
