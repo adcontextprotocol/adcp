@@ -29,6 +29,7 @@ import {
 } from './task-handlers.js';
 import { handleProvidePerformanceFeedback } from './catalog-event-handlers.js';
 import { syncAccountsUpsert } from './v6-account-helpers.js';
+import { trainingBuyerAgentRegistry } from './buyer-agent-registry.js';
 import type { ToolArgs, TrainingContext } from './types.js';
 
 interface TrainingSalesMeta {
@@ -100,6 +101,7 @@ const trainingSalesAccounts: AccountStore<TrainingSalesMeta> = {
         name: 'Public Sandbox',
         status: 'active',
         ctx_metadata: {},
+        sandbox: true,
         authInfo: { kind: 'public' },
       };
     }
@@ -117,6 +119,7 @@ const trainingSalesAccounts: AccountStore<TrainingSalesMeta> = {
       ...(brandDomain != null && { brand: { domain: brandDomain } }),
       ...('operator' in ref && typeof ref.operator === 'string' && { operator: ref.operator }),
       ctx_metadata: { brand_domain: brandDomain },
+      sandbox: true,
       authInfo: { kind: 'api_key' },
     };
   },
@@ -160,6 +163,7 @@ export class TrainingSalesPlatform
 
   statusMappers = {};
   accounts: AccountStore<TrainingSalesMeta> = trainingSalesAccounts;
+  agentRegistry = trainingBuyerAgentRegistry;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   sales: SalesPlatform<TrainingSalesMeta> = {
