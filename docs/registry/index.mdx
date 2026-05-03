@@ -164,9 +164,20 @@ This returns every measurement agent enrolled in the registry by an AAO member.
 
 | Param | Match | Notes |
 |-------|-------|-------|
-| `metric_id=attention_units` | Exact match on `metrics[].metric_id` | Repeatable; multiple values are OR'd within the param. |
-| `accreditation=MRC` | Exact match on `metrics[].accreditations[].accrediting_body` | Repeatable. Vendor-asserted — `verified_by_aao` is always `false` in the response; renderers should mark these as vendor claims, not AAO endorsements. |
+| `metric_id=attention_units` | Exact match on `metrics[].metric_id` | Repeatable; multiple values are AND'd (vendor must carry all named metrics). |
+| `accreditation=MRC` | Exact match on `metrics[].accreditations[].accrediting_body` | Repeatable; multiple values are AND'd (vendor must carry all named accreditations). When combined with `metric_id`, a cross-product AND applies — see combined filter semantics below. Vendor-asserted — `verified_by_aao` is always `false` in the response; renderers should mark these as vendor claims, not AAO endorsements. |
 | `q=attention` | Case-insensitive substring on `metric_id` | v1 scope: metric_id only. Max 64 chars; SQL wildcards (`%`, `_`) rejected. Description/standard fuzzy search is a follow-up. |
+
+**Combined filter semantics.** When both `metric_id` and `accreditation` are present, per-metric semantics apply: the same `metrics[]` element must satisfy both constraints simultaneously. A vendor with an `attention_units` metric and a separately MRC-accredited `viewability` metric does **not** match — only a vendor whose `attention_units` metric itself carries MRC accreditation does.
+
+With multiple values, every `(metric_id, accreditation)` pair must be satisfied by at least one metrics element. This is a cross-product AND, not an OR within accreditation:
+
+```bash
+# Vendor must have MRC-accredited attention_units AND MRC-accredited emissions
+curl "https://agenticadvertising.org/api/registry/agents?metric_id=attention_units&metric_id=emissions&accreditation=MRC"
+```
+
+Using multiple `accreditation` values alongside multiple `metric_id` values produces an all-pairs AND (`M × N` constraints) and typically returns few or no results. Prefer single `accreditation` with multiple `metric_id` values for discovery.
 
 ```bash
 # All vendors offering attention measurement
