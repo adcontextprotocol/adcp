@@ -9,7 +9,15 @@
 --    AdCP task. The training agent has never served it. Replace with
 --    `si_initiate_session` — the correct entry point for the SI lifecycle.
 --
--- 2. S5 criterion IDs: The s5_ex1 success_criteria were defined as plain text
+-- 2. S5 s5_ex1 sandbox_actions gap: migration 303 rewrote S5's sandbox_actions
+--    to include si_initiate_session and si_send_message but omitted
+--    si_get_offering and si_terminate_session. The two new criterion IDs
+--    (s5_ex1_sc_session_lifecycle, s5_ex1_sc_offering_integration) require
+--    both tools to be prompted actions — adding criterion IDs for behaviors
+--    the exercise never asks the learner to perform fails the ASTM E3416-24
+--    required-demonstration test. Append both tools to sandbox_actions first.
+--
+-- 3. S5 criterion IDs: The s5_ex1 success_criteria were defined as plain text
 --    strings (migration 270 seed, overwritten verbatim by migrations 303/298).
 --    The _append_criterion helper (migration 407) adds stable IDs the
 --    recertification engine can target when SI experimental surfaces change.
@@ -32,8 +40,12 @@ UPDATE certification_modules
   SET tenant_ids = ARRAY['creative', 'brand', 'si']
   WHERE id = 'C3' AND tenant_ids IS NULL;
 
--- S5: specialist deep-dive — si is the sole primary tenant for the full
--- si_* session lifecycle capstone.
+-- S5: specialist deep-dive — si is the sole primary tenant. brand was
+-- considered (creative_approval for commerce handoff) but excluded: the
+-- si_terminate_session reason enum already covers handoff_transaction and
+-- handoff_complete as first-class termination reasons, and creative_approval
+-- does not appear in S5's sandbox_actions. The ACP checkout handoff is
+-- post-session and out of scope for the SI lifecycle exercise.
 UPDATE certification_modules
   SET tenant_ids = ARRAY['si']
   WHERE id = 'S5' AND tenant_ids IS NULL;
@@ -43,7 +55,7 @@ UPDATE certification_modules
 -- Replace `connect_to_si_agent` in sandbox_actions with `si_initiate_session`.
 -- The exercise intent (connecting to a brand SI agent) is preserved; only the
 -- tool name and guidance text change to match the actual protocol tool.
--- Safe to replay: the CASE condition matches only the phantom name.
+-- Safe to replay: the WHERE guard matches only when the phantom name is present.
 
 UPDATE certification_modules
   SET exercise_definitions = (
@@ -59,7 +71,7 @@ UPDATE certification_modules
                 WHEN act->>'tool' = 'connect_to_si_agent'
                 THEN jsonb_build_object(
                   'tool', 'si_initiate_session',
-                  'guidance', 'Initiate a session with the training SI brand agent. Provide an intent describing what the user is looking for. Examine the session_id, negotiated_capabilities, and the brand''s opening message — the host-side entry point to the SI Chat Protocol.'
+                  'guidance', 'Initiate a session with the training SI brand agent. Provide an intent describing what the user is looking for. Examine the session_id, negotiated_capabilities, and the brand''s opening message — note how the brand already incorporates your intent into its response. That bidirectional personalization is what distinguishes SI from impression-based formats.'
                 )
                 ELSE act
               END
@@ -75,7 +87,43 @@ UPDATE certification_modules
   WHERE id = 'C3'
     AND exercise_definitions::text LIKE '%connect_to_si_agent%';
 
--- ── 3. S5 stable criterion IDs ──────────────────────────────────────────────
+-- ── 3. S5 s5_ex1 sandbox_actions: add missing si_get_offering and si_terminate_session
+--
+-- Migration 303 wrote si_initiate_session and si_send_message but omitted the
+-- bookend tools. Both must be present as prompted actions before the criterion
+-- IDs in section 4 can be treated as demonstrated competencies under
+-- ASTM E3416-24. Safe to replay: WHERE guard requires the current actions list
+-- to lack si_get_offering (idempotent).
+
+UPDATE certification_modules
+  SET exercise_definitions = (
+    SELECT jsonb_agg(
+      CASE
+        WHEN ex->>'id' = 's5_ex1'
+        THEN jsonb_set(
+          ex,
+          '{sandbox_actions}',
+          ex->'sandbox_actions'
+            || jsonb_build_array(
+                 jsonb_build_object(
+                   'tool', 'si_get_offering',
+                   'guidance', 'Call si_get_offering with the training brand''s offering_id. Examine the returned offering_token — you will pass it to si_initiate_session to demonstrate session-continuity handoff.'
+                 ),
+                 jsonb_build_object(
+                   'tool', 'si_terminate_session',
+                   'guidance', 'Terminate the session with an appropriate reason code (user_exit, handoff_transaction, or handoff_complete). Verify turns_completed in the response.'
+                 )
+               )
+        )
+        ELSE ex
+      END
+    )
+    FROM jsonb_array_elements(exercise_definitions) ex
+  )
+  WHERE id = 'S5'
+    AND exercise_definitions::text NOT LIKE '%si_get_offering%';
+
+-- ── 4. S5 stable criterion IDs ──────────────────────────────────────────────
 --
 -- Re-declare the _append_criterion helper (CREATE OR REPLACE — idempotent)
 -- then stamp two semantic IDs onto s5_ex1. These IDs let the recertification
@@ -130,8 +178,8 @@ BEGIN
   END IF;
 
   UPDATE certification_modules
-    SET exercise_definitions = updated
-    WHERE id = p_module_id;
+  SET exercise_definitions = updated
+  WHERE id = p_module_id;
 END;
 $$ LANGUAGE plpgsql;
 
