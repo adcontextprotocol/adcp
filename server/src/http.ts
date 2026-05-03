@@ -110,6 +110,11 @@ import { CommunityDatabase } from "./db/community-db.js";
 import { OrgKnowledgeDatabase } from "./db/org-knowledge-db.js";
 import { WorkingGroupDatabase } from "./db/working-group-db.js";
 import { createAgentOAuthRouter } from "./routes/agent-oauth.js";
+import {
+  attachConformanceWS,
+  buildConformanceTokenRouter,
+  conformanceSessions,
+} from "./conformance/index.js";
 import { createRegistryApiRouter } from "./routes/registry-api.js";
 import { getPublicJwks } from "./services/verification-token.js";
 import { createCatalogApiRouter } from "./routes/catalog-api.js";
@@ -994,6 +999,11 @@ export class HTTPServer {
     // Mount Agent OAuth routes
     const agentOAuthRouter = createAgentOAuthRouter();
     this.app.use('/api/oauth/agent', agentOAuthRouter); // OAuth routes: /api/oauth/agent/start, /api/oauth/agent/callback
+
+    // Mount Addie conformance Socket Mode token endpoint. The WebSocket
+    // upgrade handler is attached to the http.Server in start() — see
+    // attachConformanceWS below.
+    this.app.use('/api/conformance', buildConformanceTokenRouter());
 
     // Mount Slack routes (public webhook endpoints)
     // All Slack routes under /api/slack/ for consistency
@@ -8819,6 +8829,7 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
     }
 
     this.server = this.app.listen(port, () => {
+      attachConformanceWS(this.server!);
       logger.info({
         port,
         webUi: `http://localhost:${port}`,
@@ -8906,6 +8917,13 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
     logger.info('Draining background work');
     await drainBackgroundWork();
     logger.info('Background work drained');
+
+    // Close any live conformance sockets so adopters get a clean
+    // close frame rather than a TCP reset on shutdown.
+    if (conformanceSessions.size() > 0) {
+      logger.info({ count: conformanceSessions.size() }, 'Closing conformance sockets');
+      await conformanceSessions.closeAll();
+    }
 
     // Close HTTP server
     if (this.server) {
