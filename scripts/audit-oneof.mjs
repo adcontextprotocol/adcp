@@ -146,6 +146,38 @@ function classify(oneOfArr, parentSchema, sourceFile) {
   }
 
   if (parentSchema && parentSchema.discriminator && parentSchema.discriminator.propertyName) {
+    const key = parentSchema.discriminator.propertyName;
+    // Enforce that every variant actually declares `properties.<key>` as a const
+    // (or single-element enum) and lists it in `required`, with distinct values
+    // across variants. Otherwise the discriminator hint is unbacked — exactly
+    // the two-sources-of-truth failure mode we want to prevent.
+    // Trust nested-union and pure-ref variants — their target may carry the
+    // const further down. We only catch the failure mode where a non-ref
+    // variant declares no const for the discriminator key, OR a const
+    // collides with another variant (the two-sources-of-truth drift).
+    const seen = new Set();
+    const violations = [];
+    for (let i = 0; i < variants.length; i++) {
+      const v = variants[i];
+      if (v.info.refOnly === 'nested-union' || v.info.refOnly === true) continue;
+      const prop = (v.info.properties || {})[key];
+      const constVal = prop && prop.const !== undefined ? prop.const : Array.isArray(prop?.enum) && prop.enum.length === 1 ? prop.enum[0] : undefined;
+      const isRequired = (v.info.required || []).includes(key);
+      if (constVal === undefined || !isRequired) {
+        violations.push(`${i}:missing const+required for "${key}"`);
+        continue;
+      }
+      const k = JSON.stringify(constVal);
+      if (seen.has(k)) violations.push(`${i}:duplicate "${key}" value ${k}`);
+      seen.add(k);
+    }
+    if (violations.length) {
+      return {
+        kind: 'dangerous',
+        variants,
+        note: `discriminator.propertyName="${key}" is set but unbacked: ${violations.join(' | ')}`,
+      };
+    }
     return {
       kind: 'discriminated',
       discriminator: parentSchema.discriminator.propertyName,

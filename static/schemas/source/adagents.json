@@ -153,6 +153,9 @@
           "type": "array",
           "description": "Array of sales agents authorized to make inventory from this file available to buyers. Authorization can be scoped to specific properties, collections, countries, and time windows, with optional delegation metadata indicating whether the path is direct, delegated, or network-mediated.",
           "items": {
+            "discriminator": {
+              "propertyName": "authorization_type"
+            },
             "oneOf": [
               {
                 "type": "object",

@@ -3,6 +3,9 @@
   "$id": "/schemas/core/deployment.json",
   "title": "Deployment",
   "description": "A signal deployment to a specific deployment target with activation status and key",
+  "discriminator": {
+    "propertyName": "type"
+  },
   "oneOf": [
     {
       "type": "object",

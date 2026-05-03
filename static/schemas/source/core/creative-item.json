@@ -3,6 +3,9 @@
   "$id": "/schemas/core/creative-item.json",
   "title": "Creative Item",
   "description": "Item within a multi-asset creative format. Used for carousel products, native ad components, and other formats composed of multiple distinct elements.",
+  "discriminator": {
+    "propertyName": "asset_kind"
+  },
   "oneOf": [
     {
       "type": "object",
