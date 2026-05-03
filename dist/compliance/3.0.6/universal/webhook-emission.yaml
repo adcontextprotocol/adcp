@@ -1,0 +1,337 @@
+id: webhook_emission
+version: "1.0.0"
+title: "Webhook emission — outbound webhook conformance (signing + idempotency)"
+category: core
+summary: "Any agent that emits webhooks MUST carry a stable idempotency_key across retries and — when the buyer has not opted into the deprecated HMAC fallback — MUST sign deliveries under the RFC 9421 webhook profile. Graded by a runner hosting a webhook receiver during storyboard execution."
+track: core
+
+narrative: |
+  Webhook emission is a cross-cutting capability, not a specialism. Sellers emit
+  webhooks on `create_media_buy` status changes. Rights agents emit revocation
+  notifications. Governance agents emit `collection_list_changed` and
+  `property_list_changed`. Content-standards agents emit artifact webhooks.
+  Every agent that accepts `push_notification_config` on any operation is in
+  scope for this universal — no capability flag, no opt-in.
+
+  Two load-bearing conformance requirements apply to every outbound webhook:
+
+  1. **`idempotency_key` is present on every payload and stable across retries.**
+     Required by adcontextprotocol/adcp#2417. Receivers dedupe on this field;
+     a sender that regenerates the key on retry breaks at-least-once delivery
+     semantics and creates duplicate side effects downstream.
+
+  2. **RFC 9421 webhook signing is baseline in 3.0** unless the buyer opts into
+     the deprecated HMAC fallback via `push_notification_config.authentication`.
+     Required by adcontextprotocol/adcp#2423. Signatures carry
+     `tag="adcp/webhook-signing/v1"`, cover `content-digest`, and verify
+     against the seller's brand.json-published JWKS.
+
+  Grading is observable-behavior only. The runner hosts a webhook receiver per
+  the contract at `test-kits/webhook-receiver-runner.yaml`, drives storyboards
+  that trigger webhooks from whatever operations the agent advertises, and
+  asserts on what the agent sends back.
+
+  This universal grades not_applicable when the runner does not host a webhook
+  receiver (e.g., lint-only runs against an agent that has no webhook-emitting
+  operations, or runs where the operator has not configured the receiver
+  contract). It grades not_applicable — never fail — for the signature phase
+  when the agent advertises the deprecated HMAC fallback as its preferred mode;
+  HMAC-signed webhooks still grade against the idempotency phases.
+
+  **Clean seam**: the runner does NOT reimplement signature verification or
+  idempotency dedup. It delegates to `@adcp/client` primitives —
+  `AsyncHandlerConfig.webhookDedup`, `WebhookMetadata.idempotency_key`, and
+  the 9421 webhook verifier once that lands in the client library. The same
+  code that production receivers rely on is what the conformance runner
+  exercises; a single bug fix in the library covers both surfaces.
+
+agent:
+  interaction_model: webhook_emitter
+  capabilities:
+    - emits_webhooks
+  examples:
+    - "Any AdCP seller that accepts push_notification_config on create_media_buy, update_media_buy, or equivalent async operations"
+    - "Rights agents that post revocation notifications"
+    - "Governance agents that emit collection_list_changed or property_list_changed webhooks"
+    - "Content-standards agents that emit artifact webhooks"
+
+caller:
+  role: compliance_runner
+  example: "AdCP Verified runner with webhook receiver capability"
+
+prerequisites:
+  description: |
+    The runner MUST be configured with a webhook receiver per the contract at
+    `test-kits/webhook-receiver-runner.yaml`. The receiver operates in one of
+    two modes: `loopback_mock` (intercepts at the `@adcp/client` AsyncHandler
+    layer — zero network deps, used for lint runs) or `proxy_url` (operator-
+    supplied HTTPS URL routing into the runner — used for AdCP Verified
+    grading). Runners without a receiver grade this universal as
+    not_applicable.
+
+    The agent under test MUST advertise the operations it supports in
+    `get_adcp_capabilities`. The runner drives whichever webhook-emitting
+    operations are advertised; operations the agent does not support are
+    skipped cleanly, not graded as failures.
+
+    Agents that sign webhooks with 9421 (the 3.0 baseline) MUST publish the
+    corresponding JWKS at the `jwks_uri` on their brand.json `agents[]` entry
+    so the runner's verifier can fetch it. Agents whose buyers have opted into
+    the deprecated HMAC fallback pass the idempotency phases but skip the
+    signature phase as not_applicable.
+  test_kit: "test-kits/webhook-receiver-runner.yaml"
+
+phases:
+  - id: capability_discovery
+    title: "Capability discovery"
+    narrative: |
+      Discover which async operations the agent supports so the runner knows
+      which to drive for webhook emission.
+
+    steps:
+      - id: get_capabilities
+        title: "Discover webhook-emitting operations"
+        narrative: |
+          The runner calls `get_adcp_capabilities` and inspects which async
+          operations the agent supports. If the agent advertises none that
+          accept `push_notification_config`, this universal does not apply
+          and grading returns not_applicable (not a failure).
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: capability_discovery
+        stateful: false
+        expected: |
+          Return a capabilities block including supported_protocols. Webhook-
+          emitting operations are discovered via the transport handshake
+          (MCP tools/list, A2A skills), not the capabilities body; grading
+          returns a stable not_applicable marker downstream when no webhook-
+          emitting operation resolves through
+          $test_kit.operations.primary_webhook_emitter.
+        sample_request:
+          context:
+            correlation_id: "webhook_emission--get_capabilities"
+        validations:
+          - check: field_present
+            path: "supported_protocols"
+            description: "Agent declares its supported AdCP protocols"
+
+  - id: idempotency_key_presence
+    title: "Every webhook payload carries idempotency_key"
+    narrative: |
+      The runner triggers a webhook-emitting operation with a
+      push_notification_config pointed at the runner's per-step receiver. The
+      first inbound webhook MUST carry an `idempotency_key` matching the
+      required pattern (`^[A-Za-z0-9_.:-]{16,255}$`). Absence of the field or
+      a pattern mismatch fails the phase.
+
+      This is the baseline conformance with adcontextprotocol/adcp#2417 —
+      receivers cannot dedupe without it, so "I forgot to emit the field" is
+      the single highest-impact publisher bug the universal catches.
+
+    steps:
+      - id: trigger_webhook_operation
+        title: "Trigger an operation that emits a webhook"
+        narrative: |
+          Runner calls the first operation the capability block advertises as
+          webhook-emitting (typically `create_media_buy` for sales agents,
+          `acquire_rights` for rights agents, etc.), passing
+          `push_notification_config.url = {{runner.webhook_url:trigger_webhook_operation}}`
+          — no `authentication` block (9421 is the baseline for conformance).
+        task: "$test_kit.operations.primary_webhook_emitter"
+        task_default: create_media_buy
+        schema_ref: "$test_kit.schemas.primary_request"
+        response_schema_ref: "$test_kit.schemas.primary_response"
+        doc_ref: "/building/implementation/webhooks"
+        comply_scenario: webhook_trigger
+        stateful: false
+        sample_request:
+          push_notification_config:
+            url: "{{runner.webhook_url:trigger_webhook_operation}}"
+          idempotency_key: "$generate:uuid_v4#webhook_emission_trigger"
+          context:
+            correlation_id: "webhook_emission--trigger_webhook_operation"
+        expected: |
+          Agent accepts the request and begins async execution. Response either
+          returns an immediate terminal status (no webhook needed) or an
+          interim status indicating async processing (webhook will follow).
+
+      - id: expect_webhook_presence
+        title: "Assert inbound webhook carries a valid idempotency_key"
+        narrative: |
+          Wait for a webhook at the per-step URL. When it arrives, validate
+          the payload against the webhook schema and assert the
+          idempotency_key is present and matches the required pattern.
+        task: expect_webhook
+        triggered_by: trigger_webhook_operation
+        filter:
+          operation_id: "{{prior_step.trigger_webhook_operation.operation_id}}"
+        timeout_seconds: 30
+        expect_idempotency_key: true
+        webhook_payload_schema_ref: "core/mcp-webhook-payload.json"
+        stateful: true
+        expected: |
+          Webhook arrives within 30 seconds. Payload validates against
+          mcp-webhook-payload.json. idempotency_key is present and matches
+          the pattern `^[A-Za-z0-9_.:-]{16,255}$`. Any other status fails the
+          phase with a specific error code: no_webhook_received,
+          schema_violation, missing_idempotency_key, or
+          invalid_idempotency_key_format.
+
+  - id: idempotency_key_stability
+    title: "idempotency_key is byte-identical across retries of the same event"
+    narrative: |
+      The runner's receiver deterministically returns HTTP 503 for the first
+      `count` deliveries, then 200. The runner records the idempotency_key on
+      every delivery and asserts all recorded keys are byte-identical. A
+      sender that regenerates the key on retry breaks at-least-once semantics
+      and fails the phase.
+
+      This is the conformance test that cannot be replaced by schema
+      validation — schema validation catches "no key at all" but not "wrong
+      key on retry." Only a live observation catches publisher-side retry
+      bugs.
+
+    steps:
+      - id: trigger_retry_scenario
+        title: "Trigger a webhook that will be retried via 5xx response"
+        narrative: |
+          Runner calls a webhook-emitting operation with
+          push_notification_config.url = {{runner.webhook_url:trigger_retry_scenario}}.
+          The runner's receiver at that URL returns 503 for the first 3
+          deliveries and 200 afterwards. Any conformant at-least-once sender
+          will retry on each 5xx and eventually succeed.
+        task: "$test_kit.operations.primary_webhook_emitter"
+        task_default: create_media_buy
+        schema_ref: "$test_kit.schemas.primary_request"
+        response_schema_ref: "$test_kit.schemas.primary_response"
+        doc_ref: "/building/implementation/webhooks"
+        comply_scenario: webhook_retry_trigger
+        stateful: false
+        sample_request:
+          push_notification_config:
+            url: "{{runner.webhook_url:trigger_retry_scenario}}"
+          idempotency_key: "$generate:uuid_v4#webhook_emission_retry_trigger"
+          context:
+            correlation_id: "webhook_emission--trigger_retry_scenario"
+        expected: |
+          Agent accepts the request and begins async execution. The webhook
+          it emits will be rejected with 503 by the runner and retried.
+
+      - id: expect_key_stable_across_retries
+        title: "Assert idempotency_key byte-identical across all deliveries"
+        narrative: |
+          Runner records every delivery and asserts all recorded keys are
+          byte-identical. Requires at least 2 deliveries observed within the
+          timeout window — a sender that doesn't retry at all cannot be
+          graded on retry stability.
+        task: expect_webhook_retry_keys_stable
+        triggered_by: trigger_retry_scenario
+        filter:
+          operation_id: "{{prior_step.trigger_retry_scenario.operation_id}}"
+        retry_trigger:
+          count: 3
+          http_status: 503
+        timeout_seconds: 90
+        expect_min_deliveries: 2
+        stateful: true
+        expected: |
+          At least 2 deliveries of the same logical event observed within
+          90 seconds; all deliveries carry byte-identical idempotency_key.
+          Fails with insufficient_retries if fewer than 2 deliveries arrive,
+          idempotency_key_rotated if the key changes across deliveries, or
+          idempotency_key_format_changed if a later delivery carries a
+          different-shaped value.
+
+  - id: signature_validity
+    title: "Webhook signatures validate under the 9421 profile (when 9421 is in effect)"
+    optional: true
+    skip_if: "agent.webhook_auth_mode == 'hmac_legacy'"
+    narrative: |
+      When the agent is emitting under the 9421 baseline (i.e., the buyer has
+      NOT opted into the deprecated HMAC fallback via
+      `push_notification_config.authentication`), every outbound webhook MUST
+      verify under the 14-step webhook verifier checklist per
+      docs/building/implementation/security.mdx#verifier-checklist-for-webhooks.
+      Verification is delegated to the `@adcp/client` 9421 webhook verifier —
+      this phase is gated on that verifier being available in the client
+      library (see test-kits/webhook-receiver-runner.yaml client_primitives
+      section). Until the client verifier lands, this phase grades as
+      not_applicable rather than skipping silently.
+
+      Agents whose buyers registered `push_notification_config.authentication`
+      (the legacy HMAC mode) skip this phase as not_applicable — they are
+      graded on the idempotency phases only. The deprecated HMAC scheme is
+      graded via the legacy webhook-hmac-sha256 test vectors.
+
+      Negative conformance — signatures that MUST be rejected with a specific
+      webhook_signature_* error code — is tested via static conformance
+      vectors at `/compliance/{version}/test-vectors/webhook-signing/` (follow-up),
+      not by this phase. This phase only grades positive-path agents emitting
+      conformant signatures on live traffic.
+
+    steps:
+      - id: trigger_signed_webhook
+        title: "Trigger a webhook the agent will sign"
+        narrative: |
+          Runner calls a webhook-emitting operation with no `authentication`
+          block on push_notification_config, forcing 9421 signing per the
+          baseline rule.
+        task: "$test_kit.operations.primary_webhook_emitter"
+        task_default: create_media_buy
+        schema_ref: "$test_kit.schemas.primary_request"
+        response_schema_ref: "$test_kit.schemas.primary_response"
+        doc_ref: "/building/implementation/webhooks"
+        comply_scenario: webhook_signed_trigger
+        stateful: false
+        sample_request:
+          push_notification_config:
+            url: "{{runner.webhook_url:trigger_signed_webhook}}"
+          idempotency_key: "$generate:uuid_v4#webhook_emission_signed_trigger"
+          context:
+            correlation_id: "webhook_emission--trigger_signed_webhook"
+        expected: |
+          Agent accepts the request; the webhook it emits will carry
+          Signature-Input, Signature, and Content-Digest headers per the
+          9421 webhook profile.
+
+      - id: expect_signature_valid
+        title: "Assert webhook signature verifies under the 9421 profile"
+        narrative: |
+          Runner delegates to the @adcp/client 9421 webhook verifier (14-step
+          checklist). A passing signature means: covered components include
+          `@method`, `@target-uri`, `@authority`, `content-type`,
+          `content-digest`; `tag` is `adcp/webhook-signing/v1`; `alg` is
+          allowlisted; `keyid` resolves via the agent's brand.json
+          `agents[]` jwks_uri; content-digest recomputes cleanly; nonce is
+          not replayed.
+        task: expect_webhook_signature_valid
+        triggered_by: trigger_signed_webhook
+        filter:
+          operation_id: "{{prior_step.trigger_signed_webhook.operation_id}}"
+        timeout_seconds: 30
+        require_tag: "adcp/webhook-signing/v1"
+        stateful: true
+        expected: |
+          Signature verifies under the 9421 webhook profile. Fails with the
+          specific webhook_signature_* error code on any checklist failure
+          (e.g., signature_invalid, signature_expired, signature_key_unknown,
+          signature_digest_mismatch, signature_tag_invalid). Not_applicable
+          if the client library doesn't yet implement 9421 webhook
+          verification.
+
+grading:
+  pass_criteria: |
+    Phases idempotency_key_presence and idempotency_key_stability MUST pass when
+    the agent advertises any webhook-emitting operation and the runner hosts a
+    webhook receiver. Phase signature_validity MUST pass when 9421 is in effect
+    (no HMAC fallback); legacy-HMAC agents skip that phase as not_applicable.
+    Agents that advertise no webhook-emitting operations grade the entire
+    universal as not_applicable. Runners without a webhook receiver grade the
+    entire universal as not_applicable.
+  report_format: |
+    Per-phase pass/fail/not_applicable, with per-step error codes on failure.
+    Retry-stability failures include a diff of the observed keys across
+    deliveries so operators can debug sender-side retry bugs without re-running
+    the full suite.
