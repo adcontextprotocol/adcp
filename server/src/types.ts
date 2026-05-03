@@ -744,6 +744,9 @@ export interface MemberProfile {
   show_in_carousel: boolean;
   featured: boolean;
   is_founding_member: boolean;
+  founding_member_source: 'auto_pre_cutoff' | 'manual_grandfather' | null;
+  founding_member_granted_at: Date | null;
+  founding_member_granted_reason: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -795,6 +798,14 @@ export interface UpdateMemberProfileInput {
   is_public?: boolean;
   show_in_carousel?: boolean;
   is_founding_member?: boolean;
+  founding_member_source?: 'auto_pre_cutoff' | 'manual_grandfather' | null;
+  founding_member_granted_reason?: string | null;
+  /**
+   * Server-set on grant; not accepted from API callers (would let an admin
+   * backdate provenance). The helper writes NOW() on grant and NULL on revoke.
+   * Migrations bypass this by writing the column directly.
+   */
+  founding_member_granted_at?: Date | null;
 }
 
 export interface ListMemberProfilesOptions {
