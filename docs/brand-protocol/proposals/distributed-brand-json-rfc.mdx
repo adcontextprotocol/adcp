@@ -166,6 +166,8 @@ Real holdcos delegate brand management to agency networks. WPP plc owns brands b
 
 If WPP changes the manager (BBH → directly managed → Ogilvy), only WPP's brand_refs[] entry updates. The leaf doesn't churn. If BBH disagrees with the management claim, that's a legal/business matter, not a protocol concern.
 
+**Normative:** `managed_by` MUST NOT be used for trust or authorization decisions. Verifiers MUST ignore it when evaluating mutual assertion, governance propagation, billable inclusion, or operator authorization. UIs SHOULD render it as a unilateral house claim (e.g., "WPP says BBH manages this"), and consumers SHOULD NOT aggregate cross-house ("BBH's portfolio") without independent confirmation from the named manager.
+
 ### Hosting is independent
 
 The data model says nothing about where bytes live. For pointer children, the canonical document is served at the pointed-to domain via the existing discovery contract (`domain.com/.well-known/brand.json`, with optional `authoritative_location` indirection). The hosting party is an implementation choice:
@@ -194,7 +196,19 @@ The spec already separates per-brand fields from house-level fields. The new sha
 
 There is no `house_attributes` block, no `house_attributes_overrides`, no `house_attributes_locked`. Houses publish their corporate-level fields in the existing house schema; brands publish their brand-level fields in their own canonical document; consumers walk `house_domain` to read corporate fields when needed.
 
-If a brand wants stricter compliance than its house (e.g., extra audience exclusions), it publishes those constraints at the brand level. House and brand constraints both apply; consumers respect the union.
+### Compliance fields: strictest-of resolution
+
+For **identity** fields (`name`, `names`, `logos`, `colors`, `fonts`, `tone`, `voice`, `tagline`, `visual_guidelines`, `avatar`), the brand-level value is authoritative; the house value is not consulted.
+
+For **compliance and governance** fields, the resolved value is the **strictest of** the house-level and brand-level values. A brand cannot weaken a house's governance assertions; it can only add stricter constraints. This applies to:
+
+- `data_subject_contestation` — both contacts SHOULD be presented to data subjects (consumers may use either; brand-level does NOT replace house-level)
+- `compliance_policies`, audience exclusions, regulated-category flags — resolved as union (more restrictions wins)
+- Future regulated-category fields as the spec formalizes them
+
+This is the load-bearing reason holdcos publish corporate-level governance: brand teams should not be able to soften compliance by self-publishing. Identity fields are brand-wins because that's what brand teams own; governance fields are strictest-of because that's how legal/compliance regimes actually work.
+
+The schema does not encode this rule; it's a resolution-layer semantic in the spec text. Validators and crawlers implement it; publishers may rely on it.
 
 ## Trust model
 
@@ -230,6 +244,10 @@ For inline children in `brands[]`, mutual assertion is implicit — the house au
 ### 5. Cryptographic signing / brand-agent endorsement (future, optional)
 
 Out of scope for v1. Future extensions: a house's brand-agent could sign attestations about its hosted brands; verifiable credentials; etc. Not needed to ship the data model.
+
+### Standalone brands
+
+A brand canonical document MAY omit `house_domain`. Such a document is a **standalone brand** — no house relationship, no mutual-assertion edge to evaluate. Even if some other house's `brand_refs[]` lists this brand, the absence of `house_domain` on the brand's own document is dispositive: the brand is treated as standalone, the third-party claim is one-sided supportive metadata only, and no governance/inheritance trust is extended.
 
 ### Conflict resolution
 
@@ -344,6 +362,18 @@ Single hop. No recursion, no max-depth, no cycle protection needed.
 - Reject a brand_id appearing in both `brands[]` and `brand_refs[]` of the same house.
 - Warn when a `house_domain` claim is not mutually-asserted by the named house (advisory only — single-sided claims are allowed by spec, just not trusted).
 
+## Conformance
+
+These invariants MUST be enforced by validators and crawlers; JSON Schema cannot express them directly:
+
+- **`brand_id` cross-array uniqueness.** A given `brand_id` MUST NOT appear in both `brands[]` and `brand_refs[]` of the same house. Publisher must choose one.
+- **`brand_id` within-array uniqueness.** A given `brand_id` MUST be unique within `brands[]` and unique within `brand_refs[]` of the same house.
+- **Mutual-assertion as the trust primitive.** Consumers MUST NOT extend governance trust (auto-provisioning, member-feature inheritance, billable seat inclusion, inherited compliance fields) through one-sided claims. Mutual assertion (child's `house_domain` matches a `brand_refs[]` entry on the named house) is the canonical trust edge.
+- **`managed_by` not a trust signal.** Consumers MUST NOT use `managed_by` for trust or authorization decisions. UIs SHOULD render it as a unilateral house claim.
+- **Standalone trumps third-party claim.** A brand canonical document with no `house_domain` is standalone, regardless of any third-party house's `brand_refs[]` claim about it.
+- **Compliance fields strictest-of.** For governance fields (`data_subject_contestation`, `compliance_policies`, audience exclusions, regulated-category flags), the resolved value is the union/strictest of house-level and brand-level. Brand-level publishers MUST NOT rely on weakening house-level assertions.
+- **180-day TTL.** Mutual-assertion edges that have not been re-validated within 180 days SHOULD be treated as one-sided regardless of last-known state.
+
 ## Open questions
 
 These need spec-owner / discussion input:
@@ -354,6 +384,12 @@ These need spec-owner / discussion input:
 4. **Migration timeline.** Both shapes coexist indefinitely; no forced cutover. If a deprecation is ever appropriate, that's a future RFC.
 5. **`search_brands` trust state surfacing.** The crawler computes `mutually_asserted: true|false` per brand. PR [#3486](https://github.com/adcontextprotocol/adcp/pull/3486) (search_brands discovery verb) doesn't currently surface this in response stubs. Follow-up: extend `SearchBrandResult` to carry the trust signal so DSPs can act on it. Out of scope for this RFC but explicitly tracked.
 
+## Prior art
+
+The mutual-assertion trust primitive proposed here mirrors the IAB Tech Lab's `ads.txt` / `sellers.json` reciprocal-publication model: a buyer is trusted as a seller's reseller iff both sides publish the relationship at well-known URLs. Same trust shape, same non-cryptographic "who claims what about whom" verification, same fallback to one-sided / unverified for partial publication. It's a deployed, durable industry pattern.
+
+Within AdCP, PR [#3468](https://github.com/adcontextprotocol/adcp/pull/3468) (provenance verifier contract — seller-publishes / buyer-represents / seller-confirms) uses the same family of construction for a different field family.
+
 ## References
 
 - [#3409](https://github.com/adcontextprotocol/adcp/issues/3409) — tracking issue
@@ -363,3 +399,4 @@ These need spec-owner / discussion input:
 - [Building a brand agent](/docs/brand-protocol/building-a-brand-agent) — the separate brand-agent MCP service spec
 - [#3378](https://github.com/adcontextprotocol/adcp/pull/3378) — brand-hierarchy auto-link (the trust model implemented in AAO crawler today)
 - [#3486](https://github.com/adcontextprotocol/adcp/pull/3486) — search_brands discovery verb (cross-cutting follow-up for trust-state surfacing)
+- [IAB Tech Lab ads.txt / sellers.json](https://iabtechlab.com/ads-txt/) — prior art for mutual-assertion trust at well-known URLs
