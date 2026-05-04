@@ -23,7 +23,7 @@ Agents in the `media_buy` domain declare specific flows they support via the `sp
 |---|---|---|
 | `sales-guaranteed` | stable | Guaranteed media buys with human IO approval |
 | `sales-non-guaranteed` | stable | Non-guaranteed auction-based media buys |
-| `sales-proposal-mode` | stable | Media buys negotiated via proposal acceptance |
+| `sales-proposal-mode` | deprecated | **Deprecated in 3.1.** Replace with `sales-guaranteed` + `media_buy.supports_proposals: true`. |
 | `sales-catalog-driven` | stable | Catalog-driven commerce with conversion tracking |
 | `sales-broadcast-tv` | stable | Broadcast linear TV with guaranteed inventory and FCC cancellation rules |
 | `sales-social` | stable | Social media advertising platform with self-service flows |
