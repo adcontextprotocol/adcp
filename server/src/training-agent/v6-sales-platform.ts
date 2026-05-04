@@ -58,9 +58,8 @@ function buildTrainingCtx(account: { authInfo?: { principal?: string } } | undef
  * explicitly. Same fix as syncCreatives — see comment there.
  */
 function brandDomainFromCtx(account: unknown): string | undefined {
-  return (account as { ctx_metadata?: { brand_domain?: string } } | undefined)?.ctx_metadata?.brand_domain;
+  return (account as { ctx_metadata?: TrainingSalesMeta } | undefined)?.ctx_metadata?.brand_domain;
 }
-
 
 /**
  * v5 → v6 envelope translator. v5 handlers return `{ errors: [...] }` for
