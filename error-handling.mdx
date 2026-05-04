@@ -1,0 +1,89 @@
+---
+title: Error Handling & Authentication
+description: Defines error responses, authentication requirements, and credential placement rules for AdCP endpoints.
+---
+
+# Error Handling & Authentication
+
+## Authentication Model
+
+All buyer-facing AdCP requests are dispatched over a transport (MCP, A2A, HTTP, or equivalent). Authentication credentials **MUST** arrive via that transport's authentication channel:
+
+- **HTTP**: `Authorization` header (e.g., `Bearer <token>`)
+- **MCP**: `authInfo` field on the transport context
+- **A2A**: Transport-level auth envelope per the A2A specification
+- **RFC 9421**: Message signatures in transport headers
+
+### Credential Placement
+
+Credentials **MUST NOT** be embedded in request arguments. Specifically:
+
+- Request arguments **MUST NOT** contain top-level credential fields (e.g., `access_token`, `api_key`).
+- Request arguments **MUST NOT** contain nested credential fields inside `context`, `ext`, `params`, or any other sub-object (e.g., `request.context.platform_access_token`, `request.ext.api_key`).
+- Server implementations **MUST NOT** look for credentials in request arguments. Servers **SHOULD** ignore credential-like fields found in request arguments rather than processing them.
+
+If a server receives a request that cannot be authenticated via the transport's authentication channel, it **MUST** return an `authentication_required` error, regardless of any credential material present in the request arguments.
+
+<Rationale>
+Embedding credentials in request arguments creates a recurring credential-smuggling vector. Different adopters independently invent ad-hoc placement patterns (`request.platform_access_token`, `request.context.platform_access_token`, `request.ext.platform_access_token`), each of which bypasses transport-level security controls, audit logging, and credential rotation. Requiring credentials on the transport channel ensures a single, well-defined authentication surface.
+</Rationale>
+
+## Error Response Format
+
+All AdCP error responses **MUST** include:
+
+| Field       | Type     | Required | Description                                                                 |
+|-------------|----------|----------|-----------------------------------------------------------------------------|
+| `error`     | `object` | Yes      | Error container                                                             |
+| `error.code`| `string` | Yes      | Machine-readable error code (see [Error Codes](#error-codes))              |
+| `error.message` | `string` | Yes   | Human-readable description of the error                                    |
+| `error.details` | `object` | No    | Additional structured context about the error                              |
+
+## Error Codes
+
+### Authentication & Authorization
+
+| Code                      | HTTP Status | Description                                                          |
+|---------------------------|-------------|----------------------------------------------------------------------|
+| `authentication_required` | 401         | No valid credentials were provided on the transport authentication channel. |
+| `authorization_denied`    | 403         | Credentials were valid but the caller lacks permission for the requested operation. |
+| `token_expired`           | 401         | The provided credentials have expired. The client should refresh and retry. |
+
+### Request Validation
+
+| Code                      | HTTP Status | Description                                                          |
+|---------------------------|-------------|----------------------------------------------------------------------|
+| `invalid_request`         | 400         | The request is malformed or missing required fields.                 |
+| `invalid_product`         | 400         | The specified product does not exist or is not available.            |
+| `invalid_media_buy`       | 400         | The specified media buy does not exist or is in an invalid state for the requested operation. |
+
+### Business Logic
+
+| Code                      | HTTP Status | Description                                                          |
+|---------------------------|-------------|----------------------------------------------------------------------|
+| `product_unavailable`     | 409         | The requested product exists but is currently unavailable (e.g., out of inventory). |
+| `policy_violation`        | 400         | The request violates publisher or platform policy.                   |
+| `budget_exceeded`         | 400         | The requested spend exceeds the allowed budget.                      |
+| `creative_rejected`       | 400         | The submitted creative was rejected by review.                       |
+
+### Server Errors
+
+| Code                      | HTTP Status | Description                                                          |
+|---------------------------|-------------|----------------------------------------------------------------------|
+| `internal_error`          | 500         | An unexpected server error occurred. The client may retry.           |
+| `service_unavailable`     | 503         | The service is temporarily unavailable. The client should retry with backoff. |
+
+## Error Handling Requirements
+
+### Servers
+
+- Servers **MUST** return structured error responses for all failure cases. Servers **MUST NOT** return unstructured error messages.
+- Servers **MUST** use the most specific applicable error code. Servers **SHOULD NOT** fall back to `internal_error` when a more specific code applies.
+- Servers **SHOULD** include `error.details` with enough context for the client to diagnose and resolve the issue without exposing sensitive internal information.
+- Servers **MUST** use the `authentication_required` error code (HTTP 401) when no valid credentials are found on the transport authentication channel. Servers **MUST NOT** attempt to extract credentials from request arguments as a fallback.
+
+### Clients
+
+- Clients **SHOULD** handle all documented error codes gracefully.
+- Clients **SHOULD** implement retry logic with exponential backoff for `service_unavailable` and `internal_error` responses.
+- Clients **MUST NOT** embed authentication credentials in request arguments. Credentials **MUST** be provided exclusively through the transport's authentication mechanism.
