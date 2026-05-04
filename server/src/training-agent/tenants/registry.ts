@@ -125,8 +125,16 @@ export function resolveTenantHost(_req: Request): string {
  * use Postgres — we run multiple Fly machines and an in-memory registry
  * would lose task state across instances (buyer creates a media buy on
  * machine A, polls on machine B, sees task-not-found). Test / dev fall back
- * to in-memory: tests don't initialize the postgres pool and the SDK's
- * `getPool()` throws if called before `initializeDatabase()`.
+ * to in-memory: tests don't initialize the postgres pool.
+ *
+ * The pool is resolved lazily through a `PgQueryable` adapter so
+ * `getPool()` doesn't fire at construction. `mountTenantRoutes()` runs
+ * before `initializeDatabase()` in the boot order — calling `getPool()`
+ * eagerly threw "Database not initialized," and the catch silently
+ * downgraded production to the in-memory registry on every cold boot,
+ * defeating the whole point of the Postgres backend. Deferring the
+ * lookup to first query keeps construction safe and lets the Postgres
+ * registry actually be used after the DB is up.
  *
  * Migration for `adcp_decisioning_tasks` lives at
  * `server/src/db/migrations/463_adcp_decisioning_tasks.sql`.
@@ -136,16 +144,10 @@ function pickTaskRegistry(): TaskRegistry {
   if (!isProd) {
     return createInMemoryTaskRegistry();
   }
-  try {
-    return createPostgresTaskRegistry({ pool: getPool() });
-  } catch (err) {
-    logger.error(
-      { err },
-      'Postgres task registry init failed in production — falling back to in-memory. ' +
-        'Multi-instance task polling will be flaky. Verify migration 463 ran and DATABASE_URL is set.',
-    );
-    return createInMemoryTaskRegistry();
-  }
+  const lazyPool = {
+    query: (text: string, values?: unknown[]) => getPool().query(text, values),
+  };
+  return createPostgresTaskRegistry({ pool: lazyPool });
 }
 
 /**
