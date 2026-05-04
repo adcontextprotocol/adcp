@@ -69,6 +69,27 @@ export function buildConformanceTokenRouter(): Router {
         activeSessions: conformanceSessions.list(),
       });
     });
+
+    // Dev-only storyboard trigger — lets a local smoke harness exercise
+    // the full PR #2 path (runStoryboardViaConformanceSocket) without
+    // needing the Addie chat surface. Requires a live conformance session
+    // for the supplied orgId (POST a token to /token first, connect from
+    // an adopter, then POST here). Production builds skip this entire block.
+    router.post('/_debug/run-storyboard', requireAuth, async (req: Request, res: Response) => {
+      const orgId = typeof req.body?.org_id === 'string' ? req.body.org_id : null;
+      const storyboardId = typeof req.body?.storyboard_id === 'string' ? req.body.storyboard_id : null;
+      if (!orgId || !storyboardId) {
+        res.status(400).json({ error: 'org_id and storyboard_id required' });
+        return;
+      }
+      try {
+        const { runStoryboardViaConformanceSocket } = await import('./run-storyboard-via-ws.js');
+        const result = await runStoryboardViaConformanceSocket(orgId, storyboardId);
+        res.json(result);
+      } catch (err) {
+        res.status(500).json({ error: (err as Error).message });
+      }
+    });
   }
 
   return router;
