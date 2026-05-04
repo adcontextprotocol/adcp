@@ -222,6 +222,41 @@ function mapOverallStatus(status: string): OverallRunStatus {
   }
 }
 
+/**
+ * Derive the effective overall status and track counters from a ComplianceResult.
+ *
+ * The SDK reports overall_status='partial' when every track returns 'silent' (all
+ * scenarios passed with no advisory observations — the best possible outcome).
+ * 'partial' maps to ComplianceStatus='degraded', which is wrong for a fully-clean
+ * run. When all active (non-skip) tracks are 'pass' or 'silent', override to
+ * 'passing' and recompute track counters so DB records stay consistent.
+ */
+function effectiveRunStatus(result: ComplianceResult): {
+  overall_status: OverallRunStatus;
+  tracks_passed: number;
+  tracks_failed: number;
+  tracks_partial: number;
+} {
+  const activeTracks = result.tracks.filter((t: TrackResult) => t.status !== 'skip');
+  if (
+    activeTracks.length > 0 &&
+    activeTracks.every((t: TrackResult) => t.status === 'pass' || t.status === 'silent')
+  ) {
+    return {
+      overall_status: 'passing',
+      tracks_passed: activeTracks.length,
+      tracks_failed: 0,
+      tracks_partial: 0,
+    };
+  }
+  return {
+    overall_status: mapOverallStatus(result.overall_status),
+    tracks_passed: result.summary.tracks_passed,
+    tracks_failed: result.summary.tracks_failed,
+    tracks_partial: result.summary.tracks_partial,
+  };
+}
+
 // ── Storyboard Status Derivation ─────────────────────────────────
 
 /**
@@ -488,17 +523,19 @@ export function complianceResultToDbInput(
     duration_ms: t.duration_ms,
   }));
 
+  const { overall_status, tracks_passed, tracks_failed, tracks_partial } = effectiveRunStatus(result);
+
   return {
     agent_url: agentUrl,
     lifecycle_stage: lifecycleStage,
-    overall_status: mapOverallStatus(result.overall_status),
+    overall_status,
     headline: result.summary.headline,
     total_duration_ms: result.total_duration_ms,
     tracks_json: tracksJson,
-    tracks_passed: result.summary.tracks_passed,
-    tracks_failed: result.summary.tracks_failed,
+    tracks_passed,
+    tracks_failed,
     tracks_skipped: result.summary.tracks_skipped,
-    tracks_partial: result.summary.tracks_partial,
+    tracks_partial,
     agent_profile_json: result.agent_profile,
     observations_json: result.observations,
     triggered_by: triggeredBy,

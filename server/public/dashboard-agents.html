@@ -1424,7 +1424,7 @@
         const clickableTrackPills = Object.entries(tracks)
           .filter(([, status]) => status !== 'skip' && status !== 'expected')
           .map(([track, status]) => {
-          const cls = status === 'pass' ? 'agent-track--pass'
+          const cls = status === 'pass' || status === 'silent' ? 'agent-track--pass'
             : status === 'fail' ? 'agent-track--fail'
             : status === 'partial' ? 'agent-track--partial'
             : 'agent-track--skip';
@@ -2599,7 +2599,7 @@
             return;
           }
 
-          const statusLabel = trackData.status === 'pass' ? 'Passing'
+          const statusLabel = trackData.status === 'pass' || trackData.status === 'silent' ? 'Passing'
             : trackData.status === 'fail' ? 'Failing'
             : trackData.status === 'partial' ? 'Partial' : trackData.status;
 
@@ -2670,7 +2670,7 @@
             let runTracks = '';
             if (run.tracks_json) {
               for (const t of run.tracks_json) {
-                const cls = t.status === 'pass' ? 'agent-track--pass'
+                const cls = t.status === 'pass' || t.status === 'silent' ? 'agent-track--pass'
                   : t.status === 'fail' ? 'agent-track--fail'
                   : t.status === 'partial' ? 'agent-track--partial'
                   : 'agent-track--skip';
