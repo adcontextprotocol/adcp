@@ -157,9 +157,13 @@ function pickTaskRegistry(): TaskRegistry {
  * deployments would silently share state across resolved tenants. Each
  * tenant `register()` runs `createAdcpServer` for that tenant's platform
  * and trips this guard if `stateStore` is absent. Wire `PostgresStateStore`
- * in production; fall back to a fresh `InMemoryStateStore` per
- * registry-construction in dev/test (matches the legacy v5 default and
- * keeps tests isolated).
+ * in production; use a fresh `InMemoryStateStore` in dev/test.
+ *
+ * The pool is resolved lazily through a `PgQueryable` adapter — calling
+ * `getPool()` at construction would fail because `mountTenantRoutes()`
+ * runs before `initializeDatabase()` in the boot order. Deferring the
+ * lookup to first query lets construction succeed; by the time a tool
+ * actually touches `ctx.store`, the pool is initialized.
  *
  * Migration: `server/src/db/migrations/466_adcp_state.sql`.
  */
@@ -168,16 +172,10 @@ function pickStateStore(): AdcpStateStore {
   if (!isProd) {
     return new InMemoryStateStore();
   }
-  try {
-    return new PostgresStateStore(getPool());
-  } catch (err) {
-    logger.error(
-      { err },
-      'Postgres state store init failed in production. Verify migration 466 ran and DATABASE_URL is set. ' +
-        'Falling back to in-memory will trip the SDK production guard — re-throwing.',
-    );
-    throw err;
-  }
+  const lazyPool = {
+    query: (text: string, values?: unknown[]) => getPool().query(text, values),
+  };
+  return new PostgresStateStore(lazyPool);
 }
 
 function buildDefaultServerOptions(): CreateAdcpServerFromPlatformOptions {
