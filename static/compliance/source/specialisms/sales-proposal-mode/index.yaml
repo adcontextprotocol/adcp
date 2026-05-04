@@ -227,6 +227,10 @@ phases:
           - check: field_present
             path: "products[0].format_ids[0].id"
             description: "Format IDs include id — must be accepted back in sync_creatives"
+        context_outputs:
+          - name: proposal_id
+            path: "proposals[0].proposal_id"
+
   - id: review_refine
     title: "Refine a proposal"
     narrative: |
@@ -259,7 +263,7 @@ phases:
           buying_mode: "refine"
           refine:
             - scope: "proposal"
-              proposal_id: "balanced_reach_q2"
+              proposal_id: "$context.proposal_id"
               ask: "Shift 60% of budget to CTV. Drop the display product and redistribute that budget to video."
             - scope: "request"
               ask: "All products must support frequency capping at 3 per day."
@@ -334,7 +338,7 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
-          proposal_id: "balanced_reach_q2"
+          proposal_id: "$context.proposal_id"
           total_budget:
             amount: 50000
             currency: "USD"
