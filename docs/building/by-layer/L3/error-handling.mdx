@@ -201,6 +201,7 @@ Non-normative implementation note: a single-query pattern like `SELECT ... WHERE
 | Code | Recovery | Description | Resolution |
 |------|----------|-------------|------------|
 | `AUTH_REQUIRED` | correctable* | Authentication is required, or presented credentials were rejected | Provide credentials when missing; escalate to operator when rejected — see the warning below |
+| `CREDENTIAL_IN_ARGS` | terminal | Buyer-principal credential was placed in request args (top-level, `context`, `ext`, or any nested location) instead of arriving on the transport's authentication channel | Do NOT auto-retry — auto-retry re-logs the credential. Move the credential onto the transport channel ([Credential placement](/docs/building/by-layer/L2/authentication#credential-placement)), rotate the leaked credential, then resubmit |
 | `ACCOUNT_NOT_FOUND` | terminal | Account reference could not be resolved | Verify via `list_accounts` or contact seller |
 | `ACCOUNT_SETUP_REQUIRED` | correctable | Account needs setup before use | Check `details.setup` for URL or instructions |
 | `ACCOUNT_AMBIGUOUS` | correctable | Natural key resolves to multiple accounts | Pass explicit `account_id` or a more specific natural key |
@@ -212,6 +213,8 @@ Non-normative implementation note: a single-query pattern like `SELECT ... WHERE
 
 - **Credentials missing** → provide credentials and retry once. Correctable inside the agent loop.
 - **Credentials presented but rejected** (expired, revoked, or malformed signature) → do **not** auto-retry; escalate to operator for credential rotation. Re-presenting a rejected credential against an SSO endpoint creates retry-storm patterns indistinguishable from brute-force probes — the seller's fraud detection may rate-limit, suspend, or alert on the calling agent.
+
+`CREDENTIAL_IN_ARGS` is the related — but distinct — case where the buyer placed a credential in the **task payload** instead of the transport's authentication channel. That code is `terminal` (auto-retry re-logs the credential) and the rule + carve-outs (push-notification webhook auth, relay topology) live in [Credential placement](/docs/building/by-layer/L2/authentication#credential-placement).
 
 A future minor release splits this code into `AUTH_MISSING` (correctable) and `AUTH_INVALID` (terminal). Until then, agents branch on whether credentials were attached to the failing request:
 
