@@ -187,7 +187,12 @@ function buildDefaultServerOptions(): CreateAdcpServerFromPlatformOptions {
  * a cached registry pinned to a stale port.
  */
 export interface RegistryHolder {
-  get(req: Request): Promise<TenantRegistry>;
+  /**
+   * Resolve the (possibly in-flight) tenant registry. Per-request handlers
+   * call this; the first caller triggers init, subsequent callers reuse
+   * the same promise.
+   */
+  get(): Promise<TenantRegistry>;
 }
 
 export function createRegistryHolder(): RegistryHolder {
@@ -195,11 +200,10 @@ export function createRegistryHolder(): RegistryHolder {
   let pendingInit: Promise<TenantRegistry> | null = null;
 
   return {
-    async get(req: Request): Promise<TenantRegistry> {
+    async get(): Promise<TenantRegistry> {
       if (registry) return registry;
       if (pendingInit) return pendingInit;
-      void req; // request only used for registry initialization timing; host is stable
-      pendingInit = (async () => {
+      const promise = (async () => {
         const hostBase = buildHostBaseUrl();
         const reg = createTenantRegistry({
           defaultServerOptions: buildDefaultServerOptions(),
@@ -231,7 +235,13 @@ export function createRegistryHolder(): RegistryHolder {
         registry = reg;
         return reg;
       })();
-      return pendingInit;
+      // Reset pendingInit on rejection so a transient init failure (e.g.,
+      // DNS hiccup during the no-op validator's first probe) doesn't
+      // poison every subsequent request with the same rejected promise
+      // until machine restart.
+      promise.catch(() => { pendingInit = null; });
+      pendingInit = promise;
+      return promise;
     },
   };
 }
