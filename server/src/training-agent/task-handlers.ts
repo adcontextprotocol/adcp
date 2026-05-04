@@ -2723,14 +2723,6 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   // Media buy cancellation
   const isCanceled = req.canceled === true;
   if (isCanceled) {
-    if (mb.canceledAt) {
-      return {
-        errors: [{
-          code: 'INVALID_STATE',
-          message: `Media buy ${mb.mediaBuyId} is already canceled (canceled_at ${mb.canceledAt}) and cannot be canceled again.`,
-        }],
-      };
-    }
     const reason = req.cancellation_reason;
     mb.canceledAt = now;
     mb.canceledBy = 'buyer';
