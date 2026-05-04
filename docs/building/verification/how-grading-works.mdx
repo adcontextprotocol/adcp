@@ -1,0 +1,129 @@
+---
+title: How grading works
+sidebarTitle: How grading works
+description: "How the AdCP compliance runner translates specialism declarations into a concrete set of graded storyboards — and how capability flags alter that set."
+"og:title": "AdCP — How compliance grading works"
+---
+
+The [Conformance Specification](/docs/building/verification/conformance#conformance-is-layered) defines three obligation layers: Universal, Protocol, and Specialism. This page explains what happens inside the Specialism layer: how a specialism manifest resolves to a set of graded scenarios, and how per-scenario capability gates can narrow or expand that set.
+
+## From declaration to graded scenarios
+
+When your agent declares a specialism in `get_adcp_capabilities`, the runner:
+
+1. Fetches the specialism manifest at `/compliance/{version}/specialisms/{id}/`.
+2. Reads the manifest's `requires_scenarios` list — an ordered set of scenario IDs the runner must grade.
+3. For each scenario, checks whether the scenario declares a `requires_capability` gate.
+4. If a gate is present, reads the named path from your `get_adcp_capabilities` response to decide whether to run or skip the scenario.
+
+The manifest drives the full scenario list; capability gates apply per-scenario on top of it.
+
+## Specialism manifests
+
+Each specialism's `requires_scenarios` field lists the scenarios the runner will grade. Example — the `sales-guaranteed` manifest declares eight required scenarios:
+
+```yaml
+# /compliance/{version}/specialisms/sales-guaranteed/ (source: static/compliance/source/specialisms/sales-guaranteed/index.yaml)
+id: sales_guaranteed
+requires_scenarios:
+  - media_buy_seller/refine_products
+  - media_buy_seller/delivery_reporting
+  - media_buy_seller/measurement_terms_rejected
+  - media_buy_seller/pending_creatives_to_start
+  - media_buy_seller/inventory_list_targeting
+  - media_buy_seller/inventory_list_no_match
+  - media_buy_seller/invalid_transitions
+  - media_buy_seller/proposal_finalize   # ← capability-gated
+```
+
+Seven of these run unconditionally for any `sales-guaranteed` agent. The eighth — `proposal_finalize` — carries a capability gate.
+
+## Capability gates
+
+A scenario can declare a `requires_capability` block. The runner reads the named path from your `get_adcp_capabilities` response and checks it against the expected value. If the check fails (the capability is absent or false), the scenario is skipped — the `skip` block will appear in runner output with `reason: not_applicable` — and does not contribute to `steps_failed`.
+
+```yaml
+# /compliance/{version}/protocols/media-buy/scenarios/proposal_finalize/ (source: static/compliance/source/protocols/media-buy/scenarios/proposal_finalize.yaml)
+id: media_buy_seller/proposal_finalize
+requires_capability:
+  path: media_buy.supports_proposals
+  equals: true
+```
+
+The gate is evaluated against your agent's live `get_adcp_capabilities` response at run time — the same call the runner makes during the universal `capability_discovery` storyboard.
+
+## Worked example
+
+**Scenario:** Priya's StreamHaus platform claims `sales-guaranteed` and declares `media_buy.supports_proposals: true`.
+
+```json
+{
+  "supported_protocols": ["media_buy"],
+  "specialisms": ["sales-guaranteed"],
+  "media_buy": {
+    "supports_proposals": true
+  }
+}
+```
+
+**Runner behavior:** all eight `requires_scenarios` run, including `proposal_finalize`. Priya's platform is graded on the full proposal lifecycle — brief with proposals, refine, finalize, and accept via `create_media_buy`.
+
+---
+
+**Scenario:** StreamHaus Direct is an auction-based PG platform — no proposal abstraction. It claims `sales-guaranteed` and declares `media_buy.supports_proposals: false`.
+
+```json
+{
+  "supported_protocols": ["media_buy"],
+  "specialisms": ["sales-guaranteed"],
+  "media_buy": {
+    "supports_proposals": false
+  }
+}
+```
+
+**Runner behavior:** seven scenarios run; `proposal_finalize` is skipped. The `skip` block in runner output is the authoritative signal:
+
+```json
+{
+  "storyboard_id": "media_buy_seller/proposal_finalize",
+  "skip": {
+    "reason": "not_applicable",
+    "detail": "requires_capability check: media_buy.supports_proposals must equal true — agent declared false"
+  }
+}
+```
+
+When the `skip` block is present, the step was not graded and does not count against `steps_failed`. The `skip.detail` string identifies the specific cause (capability gate, missing specialism declaration, or missing tool).
+
+<Note>
+**Absent = false.** The `supports_proposals` field has `"default": false` in the capabilities schema. Omitting it from your response is equivalent to declaring `false` — the runner skips capability-gated proposal scenarios. Declare `true` explicitly to opt in to grading.
+</Note>
+
+## Grading verdicts at a glance
+
+| Outcome | `skip.reason` | Meaning |
+|---------|---------------|---------|
+| Scenario passed | — (no `skip` block) | All validations passed; `passed: true` at the step level |
+| Scenario failed | — (no `skip` block) | One or more required validations failed; see `validations[]` for the failing field and `json_pointer` |
+| Scenario skipped | `not_applicable` | Step was not run. Check `skip.detail` to distinguish: capability gate evaluated false, specialism not declared, or prerequisite not met |
+| Required tool missing | `missing_tool` | Agent declared the specialism but did not expose a tool listed in `required_tools` |
+
+A run's overall compliance verdict is determined by `steps_failed`. Skipped steps (`skip` block present) do not contribute to that counter. The `skip.detail` field is the human-readable string that names the specific skip cause.
+
+## Where each piece lives
+
+| Artifact | URL path | Source |
+|----------|----------|--------|
+| Specialism manifest | `/compliance/{version}/specialisms/{id}/` | `static/compliance/source/specialisms/{id}/index.yaml` |
+| Scenario YAML | `/compliance/{version}/protocols/{protocol}/scenarios/{name}/` | `static/compliance/source/protocols/{protocol}/scenarios/{name}.yaml` |
+| Universal storyboards | `/compliance/{version}/universal/` | `static/compliance/source/universal/` |
+| Capabilities schema | `/schemas/v3/protocol/get-adcp-capabilities-response.json` | `static/schemas/source/protocol/get-adcp-capabilities-response.json` |
+
+The full specialism-to-scenario index is at [Compliance Catalog](/docs/building/verification/compliance-catalog). The runner output contract defining every skip reason and verdict shape is at `static/compliance/source/universal/runner-output-contract.yaml`.
+
+## Related
+
+- [Conformance Specification](/docs/building/verification/conformance) — the three-layer obligation model and the normative storyboard index
+- [Compliance Catalog](/docs/building/verification/compliance-catalog) — full taxonomy of protocols, specialisms, and universal storyboards
+- [Validate Your Agent](/docs/building/verification/validate-your-agent) — running the suite locally with `@adcp/client`

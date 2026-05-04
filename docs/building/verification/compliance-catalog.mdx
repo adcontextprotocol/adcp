@@ -163,7 +163,7 @@ The storyboard runner:
 **Implement the tools AND claim the specialism.** An agent that wires all of a specialism's required tools but omits the kebab-case ID from `capabilities.specialisms[]` will be graded **"No applicable tracks found"** by the runner — `tracks_passed = 0, tracks_failed = 0, tracks_skipped = 1`. This is a silent pass at the step level and a silent fail at the track level. The fix is to add the specialism ID (e.g., `"creative-generative"`) to your `get_adcp_capabilities` response.
 </Warning>
 
-If any `stable` storyboard fails, your agent is not compliant for that claim. See [Validate Your Agent](/docs/building/verification/validate-your-agent) for how to run the suite locally.
+If any `stable` storyboard fails, your agent is not compliant for that claim. See [Validate Your Agent](/docs/building/verification/validate-your-agent) for how to run the suite locally. For a detailed walkthrough of how the runner resolves specialism manifests into graded scenarios — including how capability flags like `media_buy.supports_proposals` gate individual scenarios — see [How grading works](/docs/building/verification/how-grading-works).
 
 ## Naming conventions
 

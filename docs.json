@@ -193,6 +193,7 @@
                     "pages": [
                       "docs/building/verification/conformance",
                       "docs/building/verification/compliance-catalog",
+                      "docs/building/verification/how-grading-works",
                       "docs/building/verification/validate-your-agent",
                       "docs/building/verification/grading",
                       "docs/building/verification/get-test-ready",
