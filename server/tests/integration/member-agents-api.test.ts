@@ -232,7 +232,7 @@ describe('Per-agent REST API (/api/me/agents)', () => {
     expect(res.body.warnings[0].code).toBe('visibility_downgraded');
   });
 
-  it('PATCH updates a single entry by url-encoded URL and ignores url changes in body', async () => {
+  it('PATCH updates a single entry by url-encoded URL when body.url matches path', async () => {
     const orgId = `${TEST_PREFIX}_patch`;
     const userId = `${TEST_PREFIX}_patch_user`;
     await seedOrg(pool, orgId, 'individual_professional');
@@ -243,10 +243,26 @@ describe('Per-agent REST API (/api/me/agents)', () => {
     const target = encodeURIComponent('https://existing.example/mcp');
     const res = await request(app)
       .patch(`/api/me/agents/${target}`)
-      .send({ name: 'Renamed', url: 'https://attempt-rename.example/mcp' });
+      .send({ name: 'Renamed' });
     expect(res.status).toBe(200);
     expect(res.body.agent.name).toBe('Renamed');
     expect(res.body.agent.url).toBe('https://existing.example/mcp');
+  });
+
+  it('PATCH returns 400 url_immutable when body.url disagrees with the path', async () => {
+    const orgId = `${TEST_PREFIX}_patch_url_immutable`;
+    const userId = `${TEST_PREFIX}_patch_url_immutable_user`;
+    await seedOrg(pool, orgId, 'individual_professional');
+    await provisionUser(userId, orgId);
+    await createProfile(orgId, 'patchurlimm');
+
+    (app as any).setCurrentUser(userId);
+    const target = encodeURIComponent('https://existing.example/mcp');
+    const res = await request(app)
+      .patch(`/api/me/agents/${target}`)
+      .send({ name: 'Renamed', url: 'https://attempt-rename.example/mcp' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('url_immutable');
   });
 
   it('PATCH returns 404 when the URL is not registered', async () => {
@@ -289,5 +305,32 @@ describe('Per-agent REST API (/api/me/agents)', () => {
     const target = encodeURIComponent('https://missing.example/mcp');
     const res = await request(app).delete(`/api/me/agents/${target}`);
     expect(res.status).toBe(404);
+  });
+
+  it('DELETE returns 409 unpublish_first when the agent is currently public', async () => {
+    const orgId = `${TEST_PREFIX}_delete_public`;
+    const userId = `${TEST_PREFIX}_delete_public_user`;
+    await seedOrg(pool, orgId, 'individual_professional');
+    await provisionUser(userId, orgId);
+    await memberDb.createProfile({
+      workos_organization_id: orgId,
+      display_name: 'Test deletepublic',
+      slug: 'deletepublic',
+      primary_brand_domain: 'deletepublic.example',
+      is_public: false,
+      agents: [{ url: 'https://pub.example/mcp', visibility: 'public' }],
+    });
+
+    (app as any).setCurrentUser(userId);
+    const target = encodeURIComponent('https://pub.example/mcp');
+    const res = await request(app).delete(`/api/me/agents/${target}`);
+    expect(res.status).toBe(409);
+    expect(res.body.error).toBe('unpublish_first');
+
+    // Profile JSONB must not have changed — refusing the delete is the
+    // whole point.
+    const profile = await memberDb.getProfileByOrgId(orgId);
+    expect(profile!.agents).toHaveLength(1);
+    expect(profile!.agents[0].url).toBe('https://pub.example/mcp');
   });
 });

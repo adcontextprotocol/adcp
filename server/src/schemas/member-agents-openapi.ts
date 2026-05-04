@@ -163,6 +163,10 @@ registry.registerPath({
         'No member profile exists yet — create one via `POST /api/me/member-profile`.',
       content: { 'application/json': { schema: ErrorSchema } },
     },
+    429: {
+      description: 'Rate limit exceeded',
+      content: { 'application/json': { schema: ErrorSchema } },
+    },
   },
 });
 
@@ -172,7 +176,7 @@ registry.registerPath({
   operationId: 'updateMemberAgent',
   summary: 'Update an agent',
   description:
-    'Update one registered agent identified by its `url`. The `url` field itself cannot be changed via PATCH — re-register at the new URL and DELETE the old entry to migrate. All other fields accept partial updates.',
+    'Update one registered agent identified by its `url`. The `url` field itself cannot be changed via PATCH — supplying a `url` in the body that differs from the path returns `400 url_immutable`; re-register at the new URL and DELETE the old entry to migrate. All other fields accept partial updates.',
   tags: ['Member Agents'],
   security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
@@ -190,7 +194,8 @@ registry.registerPath({
       content: { 'application/json': { schema: MemberAgentResponseSchema } },
     },
     400: {
-      description: 'No organization associated with this account',
+      description:
+        'No organization associated with this account, or `body.url` differs from the path (`url_immutable`).',
       content: { 'application/json': { schema: ErrorSchema } },
     },
     401: {
@@ -209,8 +214,10 @@ registry.registerPath({
   path: '/api/me/agents/{url}',
   operationId: 'removeMemberAgent',
   summary: 'Remove an agent',
-  description:
-    "Remove one registered agent identified by its `url`. If the agent's visibility was `public`, the entry is also removed from the published `brand.json` manifest as a side effect of subsequent visibility reconciliation.",
+  description: [
+    'Remove one registered agent identified by its `url`.',
+    'A currently-`public` agent is reflected in the published `brand.json` manifest. To prevent the registry catalog and `brand.json` from silently disagreeing, this endpoint returns `409 unpublish_first` when the agent is `public` — `PATCH /api/me/agents/{url}` with `visibility: "private"` first (or call `DELETE /api/me/member-profile/agents/{index}/publish` to reconcile the manifest), then re-issue the DELETE.',
+  ].join('\n\n'),
   tags: ['Member Agents'],
   security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
@@ -233,6 +240,11 @@ registry.registerPath({
     },
     404: {
       description: 'No member profile, or no agent registered at the given `url`.',
+      content: { 'application/json': { schema: ErrorSchema } },
+    },
+    409: {
+      description:
+        'Agent is currently `public` and reflected in `brand.json`; unpublish first.',
       content: { 'application/json': { schema: ErrorSchema } },
     },
   },
