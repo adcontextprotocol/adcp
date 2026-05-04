@@ -19,6 +19,9 @@ export interface PendingOAuthFlow {
   codeVerifier: string;
   redirectUri: string;
   agentUrl: string;
+  // RFC 8707 resource indicator forwarded into the token exchange so the
+  // issued access token's `aud` claim matches the MCP resource server.
+  resource?: string;
   pendingRequest?: {
     task: string;
     params: Record<string, unknown>;
@@ -35,6 +38,7 @@ interface StoredPendingOAuthFlow {
   codeVerifierIv: string;
   redirectUri: string;
   agentUrl: string;
+  resource?: string;
   pendingRequest?: {
     task: string;
     params: Record<string, unknown>;
