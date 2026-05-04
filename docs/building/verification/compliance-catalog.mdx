@@ -91,7 +91,7 @@ Specialisms are grouped below by parent protocol.
 |-----------|--------|---------|
 | `sales-guaranteed` | stable | Guaranteed media buys with human IO approval |
 | `sales-non-guaranteed` | stable | Non-guaranteed auction-based media buys |
-| `sales-proposal-mode` | stable | Media buys negotiated via proposal acceptance |
+| `sales-proposal-mode` | deprecated | **Deprecated in 3.1.** Drop this claim and replace with `sales-guaranteed` + `media_buy.supports_proposals: true`. See [#3823](https://github.com/adcontextprotocol/adcp/issues/3823). |
 | `sales-catalog-driven` | stable | Catalog-driven commerce with conversion tracking |
 | `sales-broadcast-tv` | stable | Broadcast linear TV with guaranteed inventory and FCC cancellation rules |
 | `sales-social` | stable | Social media advertising platform with self-service flows |
@@ -140,6 +140,73 @@ Specialisms are grouped below by parent protocol.
 | Specialism | Status | Purpose |
 |-----------|--------|---------|
 | `brand-rights` | stable | Brand identity and rights licensing (talent, music, stock media) |
+
+## Choosing a sales specialism
+
+The `sales-*` specialisms are not mutually exclusive — a hybrid platform with both a guaranteed direct desk and an auction floor should claim both `sales-guaranteed` and `sales-non-guaranteed`. Follow the steps below to resolve your claim.
+
+<Warning>
+**`sales-proposal-mode` is deprecated in 3.1.** Do not claim it for new agents. Existing agents that declare it must drop it entirely and replace it with `sales-guaranteed` + `media_buy.supports_proposals: true` in `get_adcp_capabilities`. See [#3823](https://github.com/adcontextprotocol/adcp/issues/3823).
+</Warning>
+
+<Steps>
+
+<Step title="Is your inventory channel-specific?">
+
+Three specialisms apply to specific delivery channels and have their own storyboards. If you only sell one of these channel types, claim only the matching specialism. If you also sell general display or video inventory outside these channels, continue to Step 2.
+
+| If you operate… | Claim |
+|---|---|
+| Broadcast linear TV with FCC cancellation rules | `sales-broadcast-tv` |
+| Catalog-driven dynamic ads (product listings, restaurant menus, hotel listings, local commerce) | `sales-catalog-driven` |
+| Social platform with platform-managed creative | `sales-social` |
+
+</Step>
+
+<Step title="What purchase model do you support?">
+
+| If you sell… | Claim |
+|---|---|
+| Guaranteed media (IO approval, fixed pricing) | `sales-guaranteed` → see Step 3 |
+| Auction / PMP non-guaranteed | `sales-non-guaranteed` |
+| Both guaranteed and non-guaranteed | `sales-guaranteed` + `sales-non-guaranteed` |
+
+</Step>
+
+<Step title="Set media_buy.supports_proposals (sales-guaranteed only)">
+
+`media_buy.supports_proposals` is a boolean in the `media_buy` capabilities block of your `get_adcp_capabilities` response. It gates whether the `proposal_finalize` compliance scenario runs.
+
+| If you… | Set |
+|---|---|
+| Accept RFPs, generate proposals, and finalize to committed status before IO | `media_buy.supports_proposals: true` |
+| Sell direct-buy guaranteed only (auction PG, retail SKU, quoted-rate — no RFP flow) | `media_buy.supports_proposals: false` (or omit — default is `false`) |
+
+```jsonc
+// Full-service guaranteed seller — proposal lifecycle graded
+{
+  "supported_protocols": ["media_buy"],
+  "specialisms": ["sales-guaranteed"],
+  "media_buy": {
+    "supports_proposals": true
+  }
+}
+```
+
+```jsonc
+// Direct-buy guaranteed seller — proposal scenario skipped as capability_unsupported
+{
+  "supported_protocols": ["media_buy"],
+  "specialisms": ["sales-guaranteed"],
+  "media_buy": {
+    "supports_proposals": false
+  }
+}
+```
+
+</Step>
+
+</Steps>
 
 ## How to claim
 

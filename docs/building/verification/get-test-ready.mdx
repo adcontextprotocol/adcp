@@ -23,12 +23,15 @@ You ship these three surfaces. The runner owns storyboard selection, fixture ord
 
 `get_adcp_capabilities` is how the runner picks which storyboards apply to you. It is also the [conformance](/docs/building/verification/conformance) contract: you are promising to pass every storyboard that matches what you declare.
 
-The example below is for a guaranteed + proposal seller. A broadcast-TV seller would claim `sales-broadcast-tv`; a creative-only agent would claim the `creative` protocol with `creative-hosting` or `creative-generative` specialisms; a signals provider would claim `signals`. The pattern is the same: declare only what you actually implement.
+The example below is for a full-service guaranteed seller (proposal lifecycle enabled). A direct-buy guaranteed seller would set `media_buy.supports_proposals: false` (or omit it). A broadcast-TV seller would claim `sales-broadcast-tv`; a creative-only agent would claim the `creative` protocol with `creative-ad-server` or `creative-generative` specialisms; a signals provider would claim `signals`. The pattern is the same: declare only what you actually implement.
 
 ```json
 {
-  "supported_protocols": ["media-buy", "creative"],
-  "specialisms": ["sales-guaranteed", "sales-proposal-mode"],
+  "supported_protocols": ["media_buy", "creative"],
+  "specialisms": ["sales-guaranteed"],
+  "media_buy": {
+    "supports_proposals": true
+  },
   "account": {
     "sandbox": true,
     "require_operator_auth": false
