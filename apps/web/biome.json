@@ -1,14 +1,18 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.0.0/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.4.13/schema.json",
   "files": {
-    "includes": ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx", "**/*.json"],
-    "ignoreUnknown": true,
-    "experimentalScannerIgnores": [
-      "node_modules",
-      "dist",
-      "ladle-build",
-      "src/routeTree.gen.ts"
-    ]
+    "includes": [
+      "**/*.ts",
+      "**/*.tsx",
+      "**/*.js",
+      "**/*.jsx",
+      "**/*.json",
+      "!node_modules",
+      "!dist",
+      "!ladle-build",
+      "!src/routeTree.gen.ts"
+    ],
+    "ignoreUnknown": true
   },
   "formatter": {
     "enabled": true,

@@ -3,7 +3,7 @@
  * does not match Ladle's `*.stories.tsx` glob.
  */
 
-import { useEffect, useState, type ReactNode } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 
 export type LadleMode = "light" | "dark";
 
@@ -57,13 +57,7 @@ export function StoryPage({
   );
 }
 
-export function Section({
-  title,
-  children,
-}: {
-  title: string;
-  children: ReactNode;
-}) {
+export function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="border-t border-border pt-8 mt-8 first:border-t-0 first:pt-0 first:mt-0">
       <h2 className="text-xl font-semibold text-foreground mb-4">{title}</h2>

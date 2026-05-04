@@ -20,7 +20,9 @@ export const All: Story = () => (
           Default
         </Button>
         <Button
-          onClick={() => toast.success("Saved successfully", { description: "Your changes are live." })}
+          onClick={() =>
+            toast.success("Saved successfully", { description: "Your changes are live." })
+          }
         >
           Success
         </Button>
@@ -33,7 +35,10 @@ export const All: Story = () => (
         >
           Error
         </Button>
-        <Button variant="outline" onClick={() => toast.info("FYI", { description: "Tip: keyboard shortcuts available." })}>
+        <Button
+          variant="outline"
+          onClick={() => toast.info("FYI", { description: "Tip: keyboard shortcuts available." })}
+        >
           Info
         </Button>
       </div>

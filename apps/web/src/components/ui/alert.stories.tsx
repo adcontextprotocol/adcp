@@ -41,8 +41,9 @@ export const All: Story = () => (
           <Info />
           <AlertTitle>Note</AlertTitle>
           <AlertDescription>
-            shadcn ships <code className="text-xs">default</code> + <code className="text-xs">destructive</code> only. For
-            success/warning/info we&apos;ll add custom variants when needed.
+            shadcn ships <code className="text-xs">default</code> +{" "}
+            <code className="text-xs">destructive</code> only. For success/warning/info we&apos;ll
+            add custom variants when needed.
           </AlertDescription>
         </Alert>
       </div>

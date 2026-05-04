@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 
-import { Section, StoryPage, useLadleMode, type LadleMode } from "./_lib";
+import { type LadleMode, Section, StoryPage, useLadleMode } from "./_lib";
 
 const SEMANTIC_TOKENS = [
   "background",
@@ -162,17 +162,13 @@ const USAGE: Record<SemanticToken, string> = {
     "Text on tinted success surfaces (e.g. bg-success/15). Saturated to stay legible on the soft tint.",
   warning:
     "Status color — pending, review, processing, draft. Used at /15 alpha for soft-tint warning badges. Pairs with --warning-foreground.",
-  "warning-foreground":
-    "Text on tinted warning surfaces (e.g. bg-warning/15).",
-  info:
-    "Status color — new, prospect, informational notices. Distinct from --primary so brand emphasis and informational signal don't collide. Pairs with --info-foreground.",
-  "info-foreground":
-    "Text on tinted info surfaces (e.g. bg-info/15).",
+  "warning-foreground": "Text on tinted warning surfaces (e.g. bg-warning/15).",
+  info: "Status color — new, prospect, informational notices. Distinct from --primary so brand emphasis and informational signal don't collide. Pairs with --info-foreground.",
+  "info-foreground": "Text on tinted info surfaces (e.g. bg-info/15).",
   border: "Border color — Card outline, Separator, custom borders. Used in: Badge.",
   input:
     "Input field border (separate from --border so they can diverge if you want a different input outline). Used in: Button (outline border), Input.",
-  ring:
-    "Focus outline — appears on keyboard-focused interactive elements. Used in: Button, Badge, Input, Dialog (and any focusable element).",
+  ring: "Focus outline — appears on keyboard-focused interactive elements. Used in: Button, Badge, Input, Dialog (and any focusable element).",
   "chart-1": "Data viz series color #1.",
   "chart-2": "Data viz series color #2.",
   "chart-3": "Data viz series color #3.",
@@ -196,14 +192,36 @@ const RELATED_STATES: Partial<Record<SemanticToken, ChildSample[]>> = {
   destructive: [
     { kind: "bg", bgVar: "--destructive", alpha: 60, usage: "Button bg (dark mode)" },
     { kind: "bg", bgVar: "--destructive", alpha: 25, usage: "Badge hover bg" },
-    { kind: "border", borderVar: "--destructive", alpha: 20, usage: "aria-invalid ring (light), focus ring" },
+    {
+      kind: "border",
+      borderVar: "--destructive",
+      alpha: 20,
+      usage: "aria-invalid ring (light), focus ring",
+    },
     { kind: "bg", bgVar: "--destructive", alpha: 15, usage: "Badge bg · Alert bg" },
     { kind: "bg", bgVar: "--destructive", alpha: 10, usage: "DropdownMenu destructive focus bg" },
   ],
   "destructive-foreground": [
-    { kind: "fg", bgVar: "--card", fgVar: "--destructive-foreground", usage: "Form error · Label required * · DropdownMenu destructive item" },
-    { kind: "fg", bgVar: "--destructive", alpha: 15, fgVar: "--destructive-foreground", usage: "Badge text · Alert title/description" },
-    { kind: "fg", bgVar: "--destructive", alpha: 25, fgVar: "--destructive-foreground", usage: "Badge hover text" },
+    {
+      kind: "fg",
+      bgVar: "--card",
+      fgVar: "--destructive-foreground",
+      usage: "Form error · Label required * · DropdownMenu destructive item",
+    },
+    {
+      kind: "fg",
+      bgVar: "--destructive",
+      alpha: 15,
+      fgVar: "--destructive-foreground",
+      usage: "Badge text · Alert title/description",
+    },
+    {
+      kind: "fg",
+      bgVar: "--destructive",
+      alpha: 25,
+      fgVar: "--destructive-foreground",
+      usage: "Badge hover text",
+    },
   ],
   "destructive-on-color": [
     { kind: "fg", bgVar: "--destructive", fgVar: "--destructive-on-color", usage: "Button text" },
@@ -213,16 +231,40 @@ const RELATED_STATES: Partial<Record<SemanticToken, ChildSample[]>> = {
     { kind: "bg", bgVar: "--success", alpha: 15, usage: "Badge bg" },
   ],
   "success-foreground": [
-    { kind: "fg", bgVar: "--success", alpha: 15, fgVar: "--success-foreground", usage: "Badge text" },
-    { kind: "fg", bgVar: "--success", alpha: 25, fgVar: "--success-foreground", usage: "Badge hover text" },
+    {
+      kind: "fg",
+      bgVar: "--success",
+      alpha: 15,
+      fgVar: "--success-foreground",
+      usage: "Badge text",
+    },
+    {
+      kind: "fg",
+      bgVar: "--success",
+      alpha: 25,
+      fgVar: "--success-foreground",
+      usage: "Badge hover text",
+    },
   ],
   warning: [
     { kind: "bg", bgVar: "--warning", alpha: 25, usage: "Badge hover bg" },
     { kind: "bg", bgVar: "--warning", alpha: 15, usage: "Badge bg" },
   ],
   "warning-foreground": [
-    { kind: "fg", bgVar: "--warning", alpha: 15, fgVar: "--warning-foreground", usage: "Badge text" },
-    { kind: "fg", bgVar: "--warning", alpha: 25, fgVar: "--warning-foreground", usage: "Badge hover text" },
+    {
+      kind: "fg",
+      bgVar: "--warning",
+      alpha: 15,
+      fgVar: "--warning-foreground",
+      usage: "Badge text",
+    },
+    {
+      kind: "fg",
+      bgVar: "--warning",
+      alpha: 25,
+      fgVar: "--warning-foreground",
+      usage: "Badge hover text",
+    },
   ],
   info: [
     { kind: "bg", bgVar: "--info", alpha: 25, usage: "Badge hover bg" },
@@ -230,35 +272,91 @@ const RELATED_STATES: Partial<Record<SemanticToken, ChildSample[]>> = {
   ],
   "info-foreground": [
     { kind: "fg", bgVar: "--info", alpha: 15, fgVar: "--info-foreground", usage: "Badge text" },
-    { kind: "fg", bgVar: "--info", alpha: 25, fgVar: "--info-foreground", usage: "Badge hover text" },
+    {
+      kind: "fg",
+      bgVar: "--info",
+      alpha: 25,
+      fgVar: "--info-foreground",
+      usage: "Badge hover text",
+    },
   ],
   "primary-foreground": [
-    { kind: "fg", bgVar: "--primary", fgVar: "--primary-foreground", usage: "Button text · Switch thumb · Avatar status indicator" },
+    {
+      kind: "fg",
+      bgVar: "--primary",
+      fgVar: "--primary-foreground",
+      usage: "Button text · Switch thumb · Avatar status indicator",
+    },
   ],
   "secondary-foreground": [
-    { kind: "fg", bgVar: "--secondary", fgVar: "--secondary-foreground", usage: "Button secondary text · Badge secondary text" },
+    {
+      kind: "fg",
+      bgVar: "--secondary",
+      fgVar: "--secondary-foreground",
+      usage: "Button secondary text · Badge secondary text",
+    },
   ],
   "accent-foreground": [
-    { kind: "fg", bgVar: "--accent", fgVar: "--accent-foreground", usage: "DropdownMenu item focus · Select option focus · Tabs trigger hover" },
+    {
+      kind: "fg",
+      bgVar: "--accent",
+      fgVar: "--accent-foreground",
+      usage: "DropdownMenu item focus · Select option focus · Tabs trigger hover",
+    },
   ],
   "muted-foreground": [
-    { kind: "fg", bgVar: "--background", fgVar: "--muted-foreground", usage: "Cross-surface helper text · Tabs trigger inactive · DropdownMenu shortcuts" },
-    { kind: "fg", bgVar: "--muted", fgVar: "--muted-foreground", usage: "Avatar fallback · Skeleton text" },
+    {
+      kind: "fg",
+      bgVar: "--background",
+      fgVar: "--muted-foreground",
+      usage: "Cross-surface helper text · Tabs trigger inactive · DropdownMenu shortcuts",
+    },
+    {
+      kind: "fg",
+      bgVar: "--muted",
+      fgVar: "--muted-foreground",
+      usage: "Avatar fallback · Skeleton text",
+    },
   ],
   "body-foreground": [
-    { kind: "fg", bgVar: "--card", fgVar: "--body-foreground", usage: "Card description · Alert description · Sheet description" },
-    { kind: "fg", bgVar: "--popover", fgVar: "--body-foreground", usage: "Popover description · Toast description" },
+    {
+      kind: "fg",
+      bgVar: "--card",
+      fgVar: "--body-foreground",
+      usage: "Card description · Alert description · Sheet description",
+    },
+    {
+      kind: "fg",
+      bgVar: "--popover",
+      fgVar: "--body-foreground",
+      usage: "Popover description · Toast description",
+    },
   ],
   muted: [
-    { kind: "bg", bgVar: "--muted", alpha: 50, usage: "Table row hover · Table footer · Has-aria-expanded row" },
+    {
+      kind: "bg",
+      bgVar: "--muted",
+      alpha: 50,
+      usage: "Table row hover · Table footer · Has-aria-expanded row",
+    },
   ],
   accent: [
-    { kind: "bg", bgVar: "--accent", alpha: 50, usage: "Button ghost hover (dark) · Dialog close hover" },
+    {
+      kind: "bg",
+      bgVar: "--accent",
+      alpha: 50,
+      usage: "Button ghost hover (dark) · Dialog close hover",
+    },
   ],
   input: [
     { kind: "bg", bgVar: "--input", alpha: 80, usage: "Switch unchecked bg (dark)" },
     { kind: "bg", bgVar: "--input", alpha: 50, usage: "Button outline hover bg (dark)" },
-    { kind: "bg", bgVar: "--input", alpha: 30, usage: "Input/Textarea bg (dark) · Tabs active bg (dark)" },
+    {
+      kind: "bg",
+      bgVar: "--input",
+      alpha: 30,
+      usage: "Input/Textarea bg (dark) · Tabs active bg (dark)",
+    },
   ],
   ring: [
     { kind: "border", borderVar: "--ring", alpha: 50, usage: "Focus-visible ring (3px outline)" },
@@ -275,6 +373,8 @@ function useResolved(names: readonly string[]): ResolvedToken[] {
   const namesKey = names.join(",");
   const [tokens, setTokens] = useState<ResolvedToken[]>([]);
 
+  // names array identity isn't stable across renders; namesKey captures the content.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: namesKey covers names content
   useEffect(() => {
     const resolved = names.map((name) => ({
       name,
@@ -295,19 +395,13 @@ function useResolved(names: readonly string[]): ResolvedToken[] {
       attributeFilter: ["data-theme"],
     });
     return () => observer.disconnect();
-    // names array identity isn't stable across renders; namesKey captures content.
-    // biome-ignore lint/correctness/useExhaustiveDependencies: namesKey covers names content
   }, [namesKey]);
 
   return tokens;
 }
 
 function isTextToken(name: string): boolean {
-  return (
-    name === "foreground" ||
-    name.endsWith("-foreground") ||
-    name.endsWith("-on-color")
-  );
+  return name === "foreground" || name.endsWith("-foreground") || name.endsWith("-on-color");
 }
 
 function isBorderToken(name: string): boolean {
@@ -318,9 +412,7 @@ function SemanticGrid({ filter }: { filter?: (name: SemanticToken) => boolean })
   const tokens = useResolved(SEMANTIC_TOKENS);
   const mode = useLadleMode();
   const refs = PRIMITIVE_REF[mode];
-  const displayed = filter
-    ? tokens.filter((t) => filter(t.name as SemanticToken))
-    : tokens;
+  const displayed = filter ? tokens.filter((t) => filter(t.name as SemanticToken)) : tokens;
 
   return (
     <>
@@ -362,24 +454,22 @@ function SemanticGrid({ filter }: { filter?: (name: SemanticToken) => boolean })
               <div className="flex flex-col gap-1 min-w-0 flex-1">
                 <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
                   <code className="text-sm font-mono text-foreground">{token.cssVar}</code>
-                  {ref ? (
-                    <code className="text-xs font-mono text-foreground">→ {ref}</code>
-                  ) : null}
+                  {ref ? <code className="text-xs font-mono text-foreground">→ {ref}</code> : null}
                   <code className="text-xs font-mono text-foreground">{token.raw}</code>
                 </div>
                 {usage ? <p className="text-xs text-body-foreground">{usage}</p> : null}
                 {related ? (
                   <div className="mt-2 flex flex-col gap-1.5 pt-2 border-t border-border">
-                    {related.map((sample, i) => {
-                      const sourceVar =
-                        sample.kind === "border" ? sample.borderVar : sample.bgVar;
+                    {related.map((sample) => {
+                      const sourceVar = sample.kind === "border" ? sample.borderVar : sample.bgVar;
                       const renderAsBorder = sample.kind === "border";
                       const bg = sample.alpha
                         ? `color-mix(in oklab, var(${sourceVar}) ${sample.alpha}%, transparent)`
                         : `var(${sourceVar})`;
                       const label = `${sourceVar}${sample.alpha ? ` / ${sample.alpha}%` : ""}`;
+                      const sampleKey = `${sample.kind}-${sourceVar}-${sample.alpha ?? "solid"}`;
                       return (
-                        <div key={i} className="flex items-center gap-3">
+                        <div key={sampleKey} className="flex items-center gap-3">
                           {renderAsBorder ? (
                             <div
                               className="h-6 w-12 shrink-0 rounded bg-card"
@@ -590,11 +680,11 @@ export const All: Story = () => (
         <strong>background/surface colors</strong> — use them with{" "}
         <code className="text-xs">bg-*</code>, <code className="text-xs">border-*</code>, or{" "}
         <code className="text-xs">ring-*</code>. Their <code className="text-xs">-foreground</code>{" "}
-        sibling is the text/icon color that sits on top. They&apos;re always used together —
-        e.g., Button uses <code className="text-xs">bg-primary</code> +{" "}
-        <code className="text-xs">text-primary-foreground</code> as a pair. Don&apos;t use a
-        surface token as text (e.g., <code className="text-xs">text-destructive</code>) —
-        reach for the foreground sibling instead.
+        sibling is the text/icon color that sits on top. They&apos;re always used together — e.g.,
+        Button uses <code className="text-xs">bg-primary</code> +{" "}
+        <code className="text-xs">text-primary-foreground</code> as a pair. Don&apos;t use a surface
+        token as text (e.g., <code className="text-xs">text-destructive</code>) — reach for the
+        foreground sibling instead.
         <br />
         <br />
         <strong>Text hierarchy (cross-surface):</strong>{" "}

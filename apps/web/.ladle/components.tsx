@@ -16,9 +16,7 @@ import "../src/styles/app.css";
  */
 export const Provider: GlobalProvider = ({ children }) => (
   <TooltipProvider>
-    <div className="min-h-screen bg-background text-foreground p-6">
-      {children}
-    </div>
+    <div className="min-h-screen bg-background text-foreground p-6">{children}</div>
     <Toaster />
   </TooltipProvider>
 );

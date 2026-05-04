@@ -10,10 +10,7 @@ export default {
 };
 
 export const All: Story = () => (
-  <StoryPage
-    title="Badge"
-    description="Compact label for status, counts, or short descriptors."
-  >
+  <StoryPage title="Badge" description="Compact label for status, counts, or short descriptors.">
     <Section title="Variants">
       <div className="flex flex-wrap gap-2">
         <Badge variant="secondary">Secondary</Badge>
@@ -30,8 +27,8 @@ export const All: Story = () => (
         <Badge variant="destructive">Destructive</Badge>
       </div>
       <p className="text-xs text-body-foreground mt-3 max-w-prose">
-        Canonical mapping: <code className="text-xs">active / live / approved</code> →
-        success · <code className="text-xs">pending / review</code> → warning ·
+        Canonical mapping: <code className="text-xs">active / live / approved</code> → success ·{" "}
+        <code className="text-xs">pending / review</code> → warning ·
         <code className="text-xs">prospect / new</code> → info ·
         <code className="text-xs">inactive / expired / archived</code> → neutral ·
         <code className="text-xs">error / failed / rejected</code> → destructive.

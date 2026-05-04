@@ -25,17 +25,11 @@ export default {
 };
 
 export const All: Story = () => (
-  <StoryPage
-    title="Typography"
-    description="Tailwind's default text-size scale and font weights."
-  >
+  <StoryPage title="Typography" description="Tailwind's default text-size scale and font weights.">
     <Section title="Type scale">
       <div className="space-y-3">
         {TYPE_SCALE.map((item) => (
-          <div
-            key={item.class}
-            className="flex items-baseline gap-6 border-b border-border pb-3"
-          >
+          <div key={item.class} className="flex items-baseline gap-6 border-b border-border pb-3">
             <code className="text-xs font-mono text-foreground w-24 shrink-0">{item.class}</code>
             <code className="text-xs font-mono text-foreground w-28 shrink-0">{item.size}</code>
             <span className={`${item.class} text-foreground`}>The quick brown fox</span>

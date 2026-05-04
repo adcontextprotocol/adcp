@@ -367,7 +367,8 @@ This stage absorbs what was previously a separate "component library buildout" s
 7. Function preservation: replicate exactly unless the PR explicitly flags a deliberate change.
 
 **Test infra:**
-- Vitest configured.
+- Vitest harness real (smoke test on `cn()`); component-level tests land alongside Stage 1 pilot pages.
+- GitHub Actions gate on `apps/web/**` paths: typecheck + biome lint (`--error-on-warnings`) + vitest + vite build. Independent of the root server precommit so `apps/web` has its own enforced CI even while server tests work through pre-existing ESM/CJS issues.
 - Playwright + @axe-core/playwright with ~30 baseline screenshot tests against current legacy HTML.
 - Visual regression also targets Ladle stories.
 
@@ -490,7 +491,8 @@ If Katie is at 80% capacity: 12-14 weeks. At 30%: 20+ weeks.
 
 ## Open questions
 
-- Bundle size budget (set after Stage 1 measurement on a real page)
+- **Bundle size budget** — Stage 0 baseline (empty router + all shadcn primitives loaded for Ladle): **96 kB gzip JS, 14 kB gzip CSS**. Set the budget at the end of Stage 1 once the first real pilot page (`admin-feeds`) is measured. Don't let this stay open past Stage 1.
+- **`radix-ui` umbrella vs per-component `@radix-ui/*`** — currently using the umbrella (`radix-ui` ^1.4.3) for ergonomics. Heavier than per-component but tree-shakes well in practice. Hold the swap until Stage 1 bundle data shows the per-component split is worth the import-fanout cost; revisit if `admin-feeds` blows the budget.
 - ~~Storybook (revisit after Stage 3)~~ — **resolved**: adopted Ladle in Stage 0, matching `agentic-api/packages/mcp-apps/`.
 - `@adcp/sdk` consumption vs custom fetch wrappers (lean toward custom wrapper since CSRF logic must live there anyway)
 - CI/CD interaction between `apps/web/dist` build and Fly.io deploy

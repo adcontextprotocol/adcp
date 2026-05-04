@@ -36,7 +36,9 @@ export const All: Story = () => (
         <div className="grid gap-1.5">
           <Label htmlFor="invalid-ta">Invalid</Label>
           <Textarea id="invalid-ta" aria-invalid="true" defaultValue="too short" />
-          <p className="text-xs text-destructive-foreground">Description must be at least 20 characters.</p>
+          <p className="text-xs text-destructive-foreground">
+            Description must be at least 20 characters.
+          </p>
         </div>
       </div>
     </Section>
