@@ -1456,9 +1456,14 @@
       } catch (error) {
         console.error('Load profile error:', error);
         document.getElementById('loading').style.display = 'none';
-        const msg = error.name === 'AbortError'
-          ? 'The server is taking too long to respond. Please try again in a moment.'
-          : 'Failed to load your profile. Please try again.';
+        let msg;
+        if (error.name === 'AbortError') {
+          msg = 'The server is taking too long to respond. Please try again in a moment.';
+        } else if (error.message) {
+          msg = error.message;
+        } else {
+          msg = 'Failed to load your profile. Please try again.';
+        }
         showError(msg);
       }
     }
@@ -2841,7 +2846,17 @@
     }
 
     function showError(message) {
-      const el = document.getElementById('error-message');
+      // #error-message lives inside #profile-form, which is display:none until
+      // a profile loads. Routing load-time errors there silently hides them.
+      // Fall back to the top-level #error-container when the form is hidden.
+      const form = document.getElementById('profile-form');
+      const formVisible = form && form.style.display !== 'none';
+      const el = formVisible
+        ? document.getElementById('error-message')
+        : document.getElementById('error-container');
+      if (!formVisible) {
+        el.className = 'alert alert-error';
+      }
       el.textContent = message;
       el.style.display = 'block';
       el.scrollIntoView({ behavior: 'smooth', block: 'center' });
