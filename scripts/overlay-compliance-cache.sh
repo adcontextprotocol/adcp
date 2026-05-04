@@ -21,7 +21,27 @@ SRC="${SRC:-static/compliance/source}"
 # and the compliance bundle moved with it. Resolve whichever subdir
 # exists so the overlay doesn't have to bump with every SDK release.
 CACHE_ROOT="node_modules/@adcp/sdk/compliance/cache"
-DST=$(find "$CACHE_ROOT" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | head -1)
+# SDK 6.11+ ships a `<version>.previous` sibling alongside `<version>` for
+# downgrade rollback. The runner reads from `<version>` (per ADCP_VERSION),
+# so the overlay MUST target that one — `find ... | head -1` picked
+# `.previous` non-deterministically on Linux ext4 in CI and left the live
+# cache with the SDK-bundled YAML.
+#
+# Strategy: read the SDK's pinned version from `node_modules/@adcp/sdk/ADCP_VERSION`
+# when present (canonical source of truth — the runner reads it the same way),
+# else fall back to the first non-`.previous` cache subdir.
+ADCP_VERSION_FILE="node_modules/@adcp/sdk/ADCP_VERSION"
+if [ -f "$ADCP_VERSION_FILE" ]; then
+  PINNED_VERSION=$(tr -d '[:space:]' < "$ADCP_VERSION_FILE")
+  DST="$CACHE_ROOT/$PINNED_VERSION"
+else
+  # Sort so the canonical version comes before `.previous` (the dot makes
+  # `.previous` lexicographically larger). Filter out `.previous` defensively.
+  DST=$(find "$CACHE_ROOT" -mindepth 1 -maxdepth 1 -type d 2>/dev/null \
+    | grep -v '\.previous$' \
+    | sort \
+    | head -1)
+fi
 
 if [ -z "$DST" ] || [ ! -d "$DST" ]; then
   echo "warning: SDK compliance cache not found under $CACHE_ROOT — skipping overlay"

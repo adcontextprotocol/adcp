@@ -176,6 +176,37 @@ export class TrainingSalesPlatform
 
     createMediaBuy: async (req, ctx) => {
       const v5Result = await handleCreateMediaBuy(req as ToolArgs, buildTrainingCtx(ctx.account));
+      // Detect the submitted-arm envelope the v5 handler returns when the
+      // `force_create_media_buy_arm` test-controller directive is set.
+      // The framework's projector rejects hand-rolled
+      // `{ status: 'submitted', task_id }` shapes — the only path into
+      // the submitted arm is `ctx.handoffToTask`. Pass the directive's
+      // task_id through `TaskHandoffOptions.task_id` so the response
+      // echoes the caller-supplied id (adcp-client#1554, SDK 6.11+).
+      // The handoff fn throws because the test directive only asserts
+      // on the immediate submitted envelope; no buyer polls completion
+      // in this scenario, so the throw surfaces a clean error if anyone
+      // ever does.
+      if (
+        v5Result &&
+        typeof v5Result === 'object' &&
+        (v5Result as { status?: unknown }).status === 'submitted' &&
+        typeof (v5Result as { task_id?: unknown }).task_id === 'string'
+      ) {
+        const submitted = v5Result as { task_id: string; message?: string };
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return ctx.handoffToTask(
+          async () => {
+            throw new AdcpError('NOT_IMPLEMENTED', {
+              recovery: 'terminal',
+              message:
+                'force_create_media_buy_arm directive issued the submitted envelope; ' +
+                'the test directive does not register a completion handler.',
+            });
+          },
+          { task_id: submitted.task_id },
+        ) as any;
+      }
       return translateV5Result(v5Result);
     },
 
