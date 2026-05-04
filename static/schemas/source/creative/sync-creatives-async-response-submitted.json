@@ -2,9 +2,31 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/creative/sync-creatives-async-response-submitted.json",
   "title": "Sync Creatives - Submitted",
-  "description": "Payload acknowledging sync_creatives task is queued for processing.",
+  "description": "Async task envelope returned when the whole sync_creatives operation cannot be confirmed before the response is emitted — for example, when the seller batches ingestion or when async review must settle before per-item results can be issued. The buyer polls tasks/get with task_id or receives a webhook when the task completes; the creatives array lands on the completion artifact, not this envelope.",
   "type": "object",
   "properties": {
+    "status": {
+      "type": "string",
+      "const": "submitted",
+      "description": "Task-level status literal. Discriminates this async envelope from the synchronous success shape, whose creatives array carries per-item approval state via CreativeStatus. See task-status.json for the full task-status enum."
+    },
+    "task_id": {
+      "type": "string",
+      "description": "Task handle the buyer uses with tasks/get, and that the seller references on push-notification callbacks. The creatives array is issued on the completion artifact, not here. Per AdCP wire conventions this is snake_case; A2A adapters MAY surface it as taskId, but the payload field emitted by the agent is task_id.",
+      "x-entity": "task"
+    },
+    "message": {
+      "type": "string",
+      "maxLength": 2000,
+      "description": "Optional human-readable explanation of why the task is submitted — e.g., 'Batch ingestion queued; typical turnaround 15-30 minutes.' Plain text only. Buyers MUST treat this as untrusted seller input: escape before rendering to HTML UIs, and sanitize or isolate before passing to an LLM prompt context — a hostile seller may inject prompt-injection payloads aimed at the buyer's agent."
+    },
+    "errors": {
+      "type": "array",
+      "description": "Optional advisory errors accompanying the submitted envelope. Use only for non-blocking warnings (e.g., throttled_severity advisories, governance observations). Terminal failures belong in the error branch, not here.",
+      "items": {
+        "$ref": "/schemas/core/error.json"
+      }
+    },
     "context": {
       "$ref": "/schemas/core/context.json"
     },
@@ -12,5 +34,6 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
+  "required": ["status", "task_id"],
   "additionalProperties": true
 }

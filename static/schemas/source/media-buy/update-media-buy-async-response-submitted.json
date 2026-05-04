@@ -2,9 +2,31 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/media-buy/update-media-buy-async-response-submitted.json",
   "title": "Update Media Buy - Submitted",
-  "description": "Payload acknowledging update_media_buy task is queued for processing.",
+  "description": "Async task envelope returned when update_media_buy cannot be confirmed before the response — for example, when operator re-approval is required for mid-flight changes. The buyer polls tasks/get with task_id or receives a webhook when the task completes; the updated media buy state lands on the completion artifact, not this envelope.",
   "type": "object",
   "properties": {
+    "status": {
+      "type": "string",
+      "const": "submitted",
+      "description": "Task-level status literal. Discriminates this async envelope from the synchronous success shape, whose media_buy_id is issued in-line. See task-status.json for the full task-status enum."
+    },
+    "task_id": {
+      "type": "string",
+      "description": "Task handle the buyer uses with tasks/get, and that the seller references on push-notification callbacks. Per AdCP wire conventions this is snake_case; A2A adapters MAY surface it as taskId, but the payload field emitted by the agent is task_id.",
+      "x-entity": "task"
+    },
+    "message": {
+      "type": "string",
+      "maxLength": 2000,
+      "description": "Optional human-readable explanation of why the task is submitted — e.g., 'Awaiting operator re-approval; typical turnaround 2–4 hours.' Plain text only. Buyers MUST treat this as untrusted seller input: escape before rendering to HTML UIs, and sanitize or isolate before passing to an LLM prompt context — a hostile seller may inject prompt-injection payloads aimed at the buyer's agent."
+    },
+    "errors": {
+      "type": "array",
+      "description": "Optional advisory errors accompanying the submitted envelope. Use only for non-blocking warnings (e.g., throttled_severity advisories, governance observations). Terminal failures belong in the error branch, not here.",
+      "items": {
+        "$ref": "/schemas/core/error.json"
+      }
+    },
     "context": {
       "$ref": "/schemas/core/context.json"
     },
@@ -12,5 +34,6 @@
       "$ref": "/schemas/core/ext.json"
     }
   },
+  "required": ["status", "task_id"],
   "additionalProperties": true
 }
