@@ -28,6 +28,9 @@ import {
   createTenantRegistry,
   createPostgresTaskRegistry,
   createInMemoryTaskRegistry,
+  InMemoryStateStore,
+  PostgresStateStore,
+  type AdcpStateStore,
   type TenantRegistry,
   type TaskRegistry,
   type CreateAdcpServerFromPlatformOptions,
@@ -145,6 +148,38 @@ function pickTaskRegistry(): TaskRegistry {
   }
 }
 
+/**
+ * Pick the state store. Mirrors `pickTaskRegistry` policy: Postgres in
+ * production, in-memory in dev/test.
+ *
+ * SDK 6.0.1 hard-refuses the module-singleton `InMemoryStateStore`
+ * default outside `{NODE_ENV=test, development}` because multi-tenant
+ * deployments would silently share state across resolved tenants. Each
+ * tenant `register()` runs `createAdcpServer` for that tenant's platform
+ * and trips this guard if `stateStore` is absent. Wire `PostgresStateStore`
+ * in production; fall back to a fresh `InMemoryStateStore` per
+ * registry-construction in dev/test (matches the legacy v5 default and
+ * keeps tests isolated).
+ *
+ * Migration: `server/src/db/migrations/466_adcp_state.sql`.
+ */
+function pickStateStore(): AdcpStateStore {
+  const isProd = process.env.NODE_ENV === 'production';
+  if (!isProd) {
+    return new InMemoryStateStore();
+  }
+  try {
+    return new PostgresStateStore(getPool());
+  } catch (err) {
+    logger.error(
+      { err },
+      'Postgres state store init failed in production. Verify migration 466 ran and DATABASE_URL is set. ' +
+        'Falling back to in-memory will trip the SDK production guard — re-throwing.',
+    );
+    throw err;
+  }
+}
+
 function buildDefaultServerOptions(): CreateAdcpServerFromPlatformOptions {
   return {
     name: 'adcp-training-agent',
@@ -152,6 +187,7 @@ function buildDefaultServerOptions(): CreateAdcpServerFromPlatformOptions {
     idempotency: getIdempotencyStore(),
     webhooks: getWebhookSigningMaterial(),
     taskRegistry: pickTaskRegistry(),
+    stateStore: pickStateStore(),
     mergeSeam: 'log-once',
     validation: { requests: 'off', responses: 'off' },
     // F11 — accept loopback push_notification_config.url in non-production.
