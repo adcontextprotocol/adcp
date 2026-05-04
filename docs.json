@@ -194,6 +194,7 @@
                       "docs/building/verification/conformance",
                       "docs/building/verification/compliance-catalog",
                       "docs/building/verification/validate-your-agent",
+                      "docs/building/verification/grading-model",
                       "docs/building/verification/grading",
                       "docs/building/verification/get-test-ready",
                       "docs/building/verification/aao-verified"
@@ -764,6 +765,7 @@
                   "docs/building/verification/conformance",
                   "docs/building/verification/compliance-catalog",
                   "docs/building/verification/validate-your-agent",
+                  "docs/building/verification/grading-model",
                   "docs/building/verification/grading",
                   "docs/building/verification/get-test-ready",
                   "docs/building/verification/aao-verified"
