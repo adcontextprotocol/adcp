@@ -65,7 +65,7 @@ function tenantMcpHandler(holder: RegistryHolder, tenantId: string) {
     }
 
     const host = resolveTenantHost(req);
-    const registry = await holder.get(req);
+    const registry = await holder.get();
     const resolved = registry.resolveByRequest(host, `/${tenantId}/mcp`);
     if (!resolved) {
       logger.warn(
@@ -148,6 +148,26 @@ export function mountTenantRoutes(
   middleware: TenantRouteMiddleware = {},
 ): void {
   const holder = createRegistryHolder();
+  // Eagerly start the 6-tenant registry init at mount time (server boot)
+  // instead of waiting for the first request. On a fresh Fly machine the
+  // cold init takes 30–60s — longer than the post-deploy smoke's 16s
+  // retry budget — which made every deploy fail the smoke even though
+  // production was healthy minutes later. Pre-warming shifts that work
+  // to before traffic arrives and lets the smoke catch real init bugs
+  // (#3854 in-memory task registry, #3869 noopJwksValidator under
+  // NODE_ENV=production) without false-failing on cold-start latency.
+  //
+  // The promise is fire-and-forget here: per-request handlers await the
+  // same in-flight promise via `holder.get()`, so a slow init still
+  // serves correctly — the eager call only ensures the work has started.
+  // Errors are logged; the holder resets `pendingInit` on rejection so
+  // the next request retries.
+  holder.get().catch((err) => {
+    logger.error(
+      { err },
+      'Eager tenant registry init failed at boot; per-request init will retry',
+    );
+  });
   const mw: RequestHandler[] = [];
   if (middleware.rateLimit) mw.push(middleware.rateLimit);
   if (middleware.requireAuth) mw.push(middleware.requireAuth);
