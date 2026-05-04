@@ -26,7 +26,7 @@
 # --- Schema definition ---
 
 id: runner_output_contract
-version: "2.0.0"
+version: "2.1.0"
 title: "Runner output contract"
 summary: "Required failure-detail shape that AdCP storyboard runners MUST emit so implementors can self-diagnose validation failures."
 
@@ -639,6 +639,71 @@ skip_result:
       consumers still see the specific cause. See
       DETAILED_SKIP_TO_CANONICAL in the conforming implementation for a
       concrete mapping.
+
+cascade_rules:
+  description: |
+    Rules governing when a runner MUST propagate `prerequisite_failed` to
+    downstream stateful steps and when it MUST NOT. These complement the
+    per-reason text in `skip_result.reasons`: the skip reason describes WHY
+    a step was skipped; cascade rules describe what effect that skip has on
+    later phases. Runners MUST evaluate these rules after per-step grading
+    completes, before downstream skip propagation runs.
+  default_cascade: |
+    When a stateful step produces `passed: false` (a genuine failure), or
+    skips with `prerequisite_failed`, `unsatisfied_contract`, or
+    `peer_branch_taken`, the runner MUST cascade `prerequisite_failed` to
+    downstream stateful phases so implementors know that dependent coverage
+    collapsed. Steps that skip with `peer_substituted` do NOT trigger the
+    cascade — the `provides_state_for` mechanism already waived it (see
+    `skip_result.reasons.peer_substituted`). Steps that skip with
+    `not_applicable`, `missing_tool`, or `missing_test_controller` do NOT
+    trigger the cascade when the `sole_stateful_step_exemption` below applies.
+  sole_stateful_step_exemption: |
+    When ALL of the following hold, the runner MUST NOT cascade
+    `prerequisite_failed` to downstream stateful phases:
+
+      1. The step grades `not_applicable`, `missing_tool`, or
+         `missing_test_controller`.
+      2. It is the sole stateful step in its phase (no other stateful step
+         exists in the same phase that could have established substitute state).
+      3. No same-phase peer step has declared `provides_state_for:
+         <this_step_id>`.
+
+    When these conditions are met, downstream phases evaluate independently —
+    their stateful steps do NOT receive `prerequisite_failed` from this step
+    and are graded on their own merits. The skipping step still emits its own
+    skip_result with the original reason (`not_applicable | missing_tool |
+    missing_test_controller`); the exemption suppresses only the cascade, not
+    the step's own skip reason.
+
+    Rationale: a sole stateful step has no peer that could have established
+    substitute state. The platform legitimately does not implement this pathway
+    (e.g., proposal-mode / implicit-account adopters that materialize account
+    state via the first `get_products` call rather than `sync_accounts`).
+    Cascading `prerequisite_failed` to all downstream stateful phases collapses
+    useful coverage on the framework paths the adopter does implement.
+
+    When the skipping step has at least one stateful peer in the phase, the
+    existing rules apply: `provides_state_for` declarations defer the cascade
+    (see `skip_result.reasons.peer_substituted`), and unrescued hard-missing
+    or real failures trip it.
+
+    Note on `not_applicable`: unlike `missing_tool` and
+    `missing_test_controller` (where the agent declared the specialism but
+    lacks the tool/controller), `not_applicable` means the agent did not
+    declare the specialism at all. The cascade exemption still applies because
+    the structural condition — no peer available to establish substitute state —
+    is identical. A sole-stateful-step `not_applicable` that cascades to all
+    downstream phases would collapse coverage for agents that legitimately omit
+    a pathway; the exemption prevents this collapse regardless of the specific
+    skip reason. Dashboard consumers that need to distinguish "agent does not
+    support the specialism" from "agent supports it via an alternate tool"
+    should read the step's `reason` field rather than inferring from whether
+    downstream phases ran.
+
+    References: adcp-client#1146 (original `not_applicable` exemption);
+    adcp-client#1545 (extension to `missing_tool` / `missing_test_controller`);
+    adcp-client-python#550 (adopter pattern that surfaced the cross-runner gap).
 
 run_summary:
   description: |
