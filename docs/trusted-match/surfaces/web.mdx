@@ -176,11 +176,11 @@ The TMP Prebid module is a Real-Time Data (RTD) module that replaces vendor-spec
 
 1. **On auction init**: Send Context Match request to the TMP router for each placement on the page.
 2. **On context match response**: Store offers and targeting signals.
-3. **After temporal delay** (100-2000ms, randomized): Send Identity Match request with the user's opaque token and ALL active package IDs for each buyer.
+3. **After temporal decorrelation**: Send Identity Match request with the user's identity tokens and ALL active package IDs for each buyer. Decorrelation has two parts — a random 100-2000ms delay AND randomized order: each auction has roughly equal probability of the Identity Match request being sent first or the Context Match request being sent first.
 4. **On identity match response**: Join with context match results. Set targeting key-values on the ad unit.
 5. **On bid request**: GAM receives the enriched ad request with TMP targeting keys and selects line items as normal.
 
-The temporal delay between context and identity requests is a privacy measure. It prevents timing-based correlation of the two request types.
+The temporal decorrelation between context and identity requests is a privacy measure. Random delay alone is insufficient — fixed ordering (Identity always after Context) leaks the pairing through ordering. The module randomizes both the delay and which request is sent first.
 
 ## Sequence Diagram
 
@@ -193,7 +193,9 @@ Page Load
   |                              |<- merge <--- offers + signals
   |<--- Context Match Response --
   |
-  |   (100-2000ms random delay)
+  |   (100-2000ms random delay; Context/Identity order randomized
+  |    per auction — diagram shows Context-first; Identity-first
+  |    runs the two phases in reverse)
   |
   |-- Prebid TMP Module ---> TMP Router (Identity)
   |                              |-- fan out --> Buyer Agent A
@@ -222,4 +224,4 @@ These constraints apply to all surfaces but are worth restating for the web case
 - **Context match carries no user data.** No cookies, no user tokens, no IP addresses. The provider evaluates the same synced package set for every user on a placement.
 - **Identity match carries no page data.** No URLs, no content signals, no placement IDs. The package_ids list includes all active packages for the buyer, not just the ones on this page.
 - **The publisher joins locally.** The router never sees both context and identity for the same impression. Only the publisher, who already has both the page context and the user identity, performs the intersection.
-- **Temporal decorrelation.** A random delay between the two requests prevents timing-based correlation at the network level.
+- **Temporal decorrelation.** A random delay between the two requests AND a randomized order (Context Match or Identity Match equally likely to be sent first) prevent timing- and order-based correlation at the network level. Random delay alone is insufficient because a fixed order leaks the pairing through ordering.

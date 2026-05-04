@@ -115,9 +115,10 @@ The publisher performs the intersection locally: which packages were both activa
 
 ## Temporal Decorrelation
 
-Even with separate code paths and different package sets, if Context Match and Identity Match requests arrive at a buyer at the same instant from the same publisher, timing correlation is possible. TMP addresses this:
+Even with separate code paths and different package sets, if Context Match and Identity Match requests arrive at a buyer at the same instant — or always in the same order — from the same publisher, timing or ordering correlation is possible. TMP addresses both:
 
 - Publishers SHOULD introduce a random delay between context and identity requests. The recommended range is 100-2000ms, uniformly distributed.
+- Publishers SHOULD also randomize the order: each opportunity SHOULD have a roughly equal probability of context match going first or identity match going first. A fixed order leaks the pairing through ordering even when the delay is randomized.
 - Publishers MAY batch Identity Match requests across multiple page views, further obscuring which context request each identity request corresponds to.
 - Publishers MAY route context and identity requests through different network paths.
 

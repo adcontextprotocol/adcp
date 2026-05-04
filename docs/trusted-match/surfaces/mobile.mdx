@@ -149,7 +149,7 @@ When the product's `trusted_match` config declares creative as the response type
 
 ## Identity Match
 
-The TMP SDK sends an Identity Match request with a publisher-scoped device token and the publisher's `seller_agent_url`. This request is structurally separate from Context Match — it carries no content signals and is sent with temporal decorrelation (a random delay of 100-2000ms).
+The TMP SDK sends an Identity Match request with a publisher-scoped device token and the publisher's `seller_agent_url`. This request is structurally separate from Context Match — it carries no content signals and is sent with temporal decorrelation: a random delay of 100-2000ms, plus randomized order (each opportunity has roughly equal probability of Context Match or Identity Match being sent first).
 
 The buyer resolves its active package set from `seller_agent_url`. When the SDK sends `package_ids` explicitly (as below), the list MUST include all active packages for the buyer, not just the packages from the current placement — sending only the placement-specific subset would let the buyer correlate Identity Match with Context Match by comparing package sets.
 
@@ -262,7 +262,7 @@ Mobile TMP follows the same structural separation as all surfaces:
 
 - **Context Match** carries content signals and placement data. No device identifiers, no user tokens, no IDFA/IDFV in the request.
 - **Identity Match** carries only a publisher-scoped device token and the full list of buyer package IDs. No content signals, no screen names, no topic IDs.
-- **Temporal decorrelation** between the two requests prevents timing-based correlation. The TMP SDK introduces a random delay (100-2000ms) before sending the Identity Match request.
+- **Temporal decorrelation** between the two requests prevents timing- and order-based correlation. The TMP SDK introduces a random delay (100-2000ms) AND randomizes which request is sent first — each opportunity has roughly equal probability of Context Match or Identity Match going first.
 - **Package set decorrelation**: Context Match sends no package list — the provider evaluates the same synced package set for every user on a placement. Identity Match sends all packages for the buyer. Neither path reveals which packages are relevant to the current opportunity.
 
 The publisher performs the intersection locally after both responses arrive. The buyer never sees the joined result.

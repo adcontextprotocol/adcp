@@ -26,7 +26,7 @@ Specific areas expected to evolve include TMPX exposure tokens, country-partitio
 | **Seller agent** | The buyer-side agent that sold the package into a publisher. Identified by the agent URL declared in the publisher's `adagents.json` `authorized_agents[].url`. Every `AvailablePackage` is bound to exactly one seller agent at sync time. |
 | **Eligibility** | List of eligible package IDs returned by Identity Match, plus a TTL caching contract. The buyer computes eligibility from frequency caps, audience membership, and other signals; the reasons are opaque to the publisher. |
 | **Artifact** | A typed content reference associated with a publisher property (article URL, episode EIDR, show Gracenote ID, music ISRC, product GTIN, conversation turn). Each artifact has a `type` and `value`. Referenced in context match requests. |
-| **Temporal decorrelation** | Random delay introduced between Context Match and Identity Match requests to prevent timing-based correlation. |
+| **Temporal decorrelation** | Random delay and random ordering between Context Match and Identity Match requests, preventing timing- and order-based correlation. |
 
 ## Message Types
 
@@ -390,6 +390,7 @@ The following requirements use RFC 2119 keywords (MUST, SHOULD, MAY).
 ### Temporal decorrelation
 
 - Publishers SHOULD introduce a random delay between Context Match and Identity Match requests. Recommended: 100-2000ms, uniformly distributed.
+- Publishers SHOULD also randomize the order of Context Match and Identity Match: each opportunity SHOULD have a roughly equal probability of Context Match being sent first or Identity Match being sent first. A fixed order — e.g., Identity Match always after Context Match — leaks the pairing through ordering even when the delay is randomized.
 - Publishers MAY batch Identity Match requests across multiple page views.
 - Publishers MAY route Context Match and Identity Match through different network paths.
 
