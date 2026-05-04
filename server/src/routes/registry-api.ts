@@ -79,7 +79,7 @@ import type { AdAgentsManager } from "../adagents-manager.js";
 import type { HealthChecker } from "../health.js";
 import type { CrawlerService } from "../crawler.js";
 import type { CapabilityDiscovery } from "../capabilities.js";
-import { AAO_HOST, aaoHostedBrandJsonUrl, aaoHostedAdagentsJsonUrl, expectedAdagentsJsonUrl } from "../config/aao.js";
+import { aaoHostedBrandJsonUrl, aaoHostedAdagentsJsonUrl, expectedAdagentsJsonUrl } from "../config/aao.js";
 import { fetchBrandData, isBrandfetchConfigured, ENRICHMENT_CACHE_MAX_AGE_MS } from "../services/brandfetch.js";
 import { extractPublisherPropertiesFromBrandJson } from "../services/brand-json-properties.js";
 import { syncHostedPropertyToFederatedIndex } from "../services/hosted-property-sync.js";
