@@ -16,7 +16,7 @@ A buyer agent exposes two HTTP/2 endpoints under a single base URL — `POST /co
 | Message type | Receives | Returns |
 |---|---|---|
 | `context_match_request` | Page/content signals, placement, geo | Offers with creative manifests |
-| `identity_match_request` | Seller agent URL, opaque user token, optional package ID list | Eligible package IDs + TTL |
+| `identity_match_request` | Seller agent URL, identity tokens, optional package ID list | Eligible package IDs + TTL |
 
 Each endpoint handles one message type. Both must respond in under 50ms. The router enforces this budget and will skip slow providers.
 
