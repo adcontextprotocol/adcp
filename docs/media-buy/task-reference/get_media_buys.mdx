@@ -145,8 +145,8 @@ Sellers MAY omit actions based on business rules (e.g., omit `cancel` when the m
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from '@adcp/client/testing';
-import { GetMediaBuysResponseSchema } from '@adcp/client';
+import { testAgent } from '@adcp/sdk/testing';
+import { GetMediaBuysResponseSchema } from '@adcp/sdk';
 
 const result = await testAgent.getMediaBuys({
   media_buy_ids: ['mb_12345']
@@ -218,8 +218,8 @@ asyncio.run(main())
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from '@adcp/client/testing';
-import { GetMediaBuysResponseSchema } from '@adcp/client';
+import { testAgent } from '@adcp/sdk/testing';
+import { GetMediaBuysResponseSchema } from '@adcp/sdk';
 
 const result = await testAgent.getMediaBuys({
   status_filter: 'active',
@@ -287,8 +287,8 @@ asyncio.run(main())
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from '@adcp/client/testing';
-import { GetMediaBuysResponseSchema } from '@adcp/client';
+import { testAgent } from '@adcp/sdk/testing';
+import { GetMediaBuysResponseSchema } from '@adcp/sdk';
 
 const result = await testAgent.getMediaBuys({
   media_buy_ids: ['mb_12345']

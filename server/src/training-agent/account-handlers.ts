@@ -11,6 +11,7 @@ import { sessionKeyFromArgs } from './state.js';
 import { getAgentUrl } from './config.js';
 import { encodeOffsetCursor, decodeOffsetCursor } from './pagination.js';
 import { getCommercialRelationship } from './commercial-relationships.js';
+import { isPerAccountBillingRestricted } from './account-billing-relationships.js';
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -397,6 +398,34 @@ export function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
           recovery: 'correctable',
           details: {
             scope: 'capability',
+            supported_billing: [...SUPPORTED_BILLINGS],
+          },
+        }],
+      });
+      continue;
+    }
+
+    // Per-account-relationship gate (BILLING_NOT_SUPPORTED, scope: "account").
+    // Distinct from the capability gate above: the seller's capability
+    // accepts the value, but the seller has no direct billing
+    // relationship for THIS specific operator on THIS account. See
+    // account-billing-relationships.ts for the operator-domain
+    // convention the training-agent uses to simulate per-(operator,
+    // billing) onboarding state. Recovery advice: same as the
+    // capability gate (try the next-most-permissive value the seller's
+    // supported_billing allows).
+    if (isPerAccountBillingRestricted(input.operator, input.billing)) {
+      results.push({
+        brand: input.brand,
+        operator: input.operator,
+        action: 'failed',
+        status: 'rejected',
+        errors: [{
+          code: 'BILLING_NOT_SUPPORTED',
+          message: `Operator '${input.operator}' has no direct billing relationship for '${input.billing}' billing. Try a different supported value.`,
+          recovery: 'correctable',
+          details: {
+            scope: 'account',
             supported_billing: [...SUPPORTED_BILLINGS],
           },
         }],

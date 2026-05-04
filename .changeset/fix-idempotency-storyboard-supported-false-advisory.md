@@ -1,0 +1,4 @@
+---
+---
+
+Fixes spurious FAILED grading on the universal idempotency storyboard for agents that correctly declare `adcp.idempotency.supported: false`. The `field_value: true` and `field_present: replay_ttl_seconds` checks in `capability_discovery` were required-severity, causing cascade FAILED results for fully-compliant read-only and creative agents that do not implement mutating operations. Both checks are now advisory with `permanent_advisory` markers so `capability_discovery` passes cleanly and downstream phases cascade-skip via `missing_tool` (not_applicable) rather than `prerequisite_failed` (FAILED). Also adds `context_outputs` on the `get_capabilities` step to capture `adcp.idempotency.supported` for future runner-side skip-gate work (adcp-client precondition gate for agents that implement `create_media_buy` but declare `supported: false`).

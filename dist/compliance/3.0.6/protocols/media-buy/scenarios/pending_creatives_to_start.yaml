@@ -1,0 +1,250 @@
+id: media_buy_seller/pending_creatives_to_start
+version: "1.0.0"
+title: "Creative sync unblocks pending_creatives → pending_start"
+category: media_buy_seller
+summary: "Verifies that a media buy created without creatives sits in pending_creatives until sync_creatives completes, then transitions to pending_start."
+track: media_buy
+required_tools:
+  - get_products
+  - create_media_buy
+  - sync_creatives
+  - get_media_buys
+
+narrative: |
+  When a buyer creates a media buy without creative_assignments, the seller cannot start
+  delivery until creatives are supplied. The seller must report status: pending_creatives
+  and, after sync_creatives attaches the required assets, transition the buy to
+  pending_start (awaiting flight start) or active (if already in flight).
+
+  This scenario walks the transition end-to-end: create the buy, confirm pending_creatives,
+  sync a creative, and confirm the status advances to pending_start. The transition
+  proves that the creative pipeline and the buy state machine are wired together — a
+  common integration gap when creative and media buy systems live on different backends.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - accepts_creatives
+  examples:
+    - "Any seller that requires creatives before starting delivery"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    Seller supports create_media_buy without creative_assignments and honors the
+    pending_creatives → pending_start transition when creatives are synced.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: setup
+    title: "Discover products and formats"
+    steps:
+      - id: get_products_brief
+        title: "Discover a product"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: full_sales_flow
+        stateful: false
+        expected: |
+          Return at least one product with format_ids and pricing options.
+        sample_request:
+          buying_mode: "brief"
+          brief: "Display inventory on outdoor lifestyle content. Q3 flight."
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+        context_outputs:
+          - path: "products[0].product_id"
+            key: "product_id"
+          - path: "products[0].pricing_options[0].pricing_option_id"
+            key: "pricing_option_id"
+          - path: "products[0].format_ids[0]"
+            key: "format_id"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_present
+            path: "products[0].format_ids[0].id"
+            description: "Product declares a format_id for creative sync"
+
+  - id: create_without_creatives
+    title: "Create media buy without creative_assignments"
+    narrative: |
+      The buyer intentionally omits creative_assignments. The seller must accept the
+      buy, persist it, and return status: pending_creatives with valid_actions
+      including sync_creatives.
+
+    steps:
+      - id: create_buy_no_creatives
+        title: "Create buy in pending_creatives"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: create_media_buy
+        stateful: true
+        expected: |
+          Media buy created with:
+          - media_buy_id assigned
+          - status: pending_creatives
+          - valid_actions including sync_creatives
+
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          idempotency_key: "pending-creatives-transition-v1"
+          start_time: "2026-08-01T00:00:00Z"
+          end_time: "2026-08-31T23:59:59Z"
+          packages:
+            - product_id: "$context.product_id"
+              budget: 10000
+              pricing_option_id: "$context.pricing_option_id"
+
+          context:
+            correlation_id: "pending_creatives_to_start--create_buy_no_creatives"
+        context_outputs:
+          - path: "media_buy_id"
+            key: "media_buy_id"
+          - path: "packages[0].package_id"
+            key: "package_id"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Seller assigns a media_buy_id"
+          - check: field_value
+            path: "status"
+            value: "pending_creatives"
+            description: "Status is pending_creatives because no creatives supplied"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "pending_creatives_to_start--create_buy_no_creatives"
+            description: "Context correlation_id returned unchanged"
+
+  - id: supply_creatives
+    title: "Supply creatives and assign to the package"
+    narrative: |
+      The buyer syncs a creative with the format the product requires, then updates the
+      media buy with creative_assignments so the seller can attach the asset to the
+      package and advance state.
+
+    steps:
+      - id: sync_creative
+        title: "Sync the creative asset"
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
+        doc_ref: "/creative/task-reference/sync_creatives"
+        comply_scenario: creative_lifecycle
+        stateful: true
+        expected: |
+          The seller ingests the creative and returns status active (or approved).
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          creatives:
+            - creative_id: "acme-outdoor-display-q3"
+              name: "Acme Outdoor Q3 display"
+              format_id: "$context.format_id"
+              assets:
+                image:
+                  asset_type: "image"
+                  url: "https://creative.acmeoutdoor.example/q3/display-300x250.jpg"
+                  width: 300
+                  height: 250
+                  mime_type: "image/jpeg"
+
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_pending_creatives_to_start_supply_creatives_sync_creative"
+          context:
+            correlation_id: "pending_creatives_to_start--sync_creative"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-creatives-response.json schema"
+
+      - id: assign_creative_to_package
+        title: "Assign the creative to the package"
+        task: update_media_buy
+        schema_ref: "media-buy/update-media-buy-request.json"
+        response_schema_ref: "media-buy/update-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/update_media_buy"
+        comply_scenario: media_buy_lifecycle
+        stateful: true
+        expected: |
+          The seller acknowledges the assignment and advances the buy state. The response
+          status should be pending_start (or active if the flight has started).
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_id: "$context.media_buy_id"
+          packages:
+            - package_id: "$context.package_id"
+              creative_assignments:
+                - creative_id: "acme-outdoor-display-q3"
+
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_pending_creatives_to_start_supply_creatives_assign_creative_to_package"
+          context:
+            correlation_id: "pending_creatives_to_start--assign_creative_to_package"
+        validations:
+          - check: response_schema
+            description: "Response matches update-media-buy-response.json schema"
+          - check: field_value
+            path: "status"
+            allowed_values: ["pending_start", "active"]
+            description: "Status advances out of pending_creatives once creatives attached"
+
+  - id: verify_transition
+    title: "Verify the status transition"
+    narrative: |
+      Independently of the update_media_buy response, call get_media_buys to confirm the
+      seller's stored state has advanced. This protects against sellers that return the
+      updated status in response but do not persist it.
+
+    steps:
+      - id: get_media_buy_after_sync
+        title: "Confirm pending_start after creative sync"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        comply_scenario: media_buy_lifecycle
+        stateful: true
+        expected: |
+          The media buy's persisted status is pending_start (or active). valid_actions
+          no longer includes sync_creatives as a required next step.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_ids:
+            - "$context.media_buy_id"
+
+          context:
+            correlation_id: "pending_creatives_to_start--get_media_buy_after_sync"
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buys-response.json schema"
+          - check: field_value
+            path: "media_buys[0].status"
+            allowed_values: ["pending_start", "active"]
+            description: "Persisted status is past pending_creatives"

@@ -9,7 +9,7 @@ description: "Wire-level invariants every AdCP buyer must follow: idempotency_ke
 
 This page is the canonical buyer-side wire contract: the rules that don't live cleanly in any single task schema, but apply to every mutating call you'll make. If you're building a buyer (DSP, planning tool, agentic client) and calling out to AdCP sales, creative, signals, governance, SI, or brand agents, read this once.
 
-The agent-facing version of this content lives at [`skills/call-adcp-agent/SKILL.md`](https://github.com/adcontextprotocol/adcp/blob/main/skills/call-adcp-agent/SKILL.md) — bundled into the [protocol tarball](/docs/building/schemas-and-sdks) so SDKs can ship it to coding agents.
+The agent-facing version of this content lives at [`skills/call-adcp-agent/SKILL.md`](https://github.com/adcontextprotocol/adcp/blob/main/skills/call-adcp-agent/SKILL.md) — bundled into the [protocol tarball](/docs/building/by-layer/L0/schemas#one-shot-protocol-bundle) so SDKs can ship it to coding agents.
 
 ## Discovery chain
 
@@ -18,7 +18,7 @@ Walk these in order on first contact with any new agent:
 1. **Agent card** (A2A) or **`tools/list`** (MCP): returns tool *names*. AdCP MCP servers no longer publish per-tool parameter schemas in `tools/list` — every tool shows `{type: 'object', properties: {}}`. Don't try to infer shape from there.
 2. **`get_adcp_capabilities`**: returns supported protocols, AdCP major versions, and feature flags. Tells you *which* tools this agent supports, not how to call them. See [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities).
 3. **`get_schema(tool_name)`** *(when the agent exposes it — pending standardization, see [#3057](https://github.com/adcontextprotocol/adcp/issues/3057))*: returns the JSON Schema for a specific tool's request/response.
-4. **Bundled schemas** (offline, authoritative): every published AdCP version ships JSON Schemas for every tool, signed via Sigstore. The path differs by SDK — the spec repo source uses `dist/schemas/<version>/bundled/`, `@adcp/client` puts them at `schemas/cache/<version>/bundled/` after `npm run sync-schemas`, Python and Go SDKs use their own conventions. Don't hardcode a path; let the SDK's loader find them. Once located, each schema lives at `<protocol>/<tool>-{request,response}.json`.
+4. **Bundled schemas** (offline, authoritative): every published AdCP version ships JSON Schemas for every tool, signed via Sigstore. The path differs by SDK — the spec repo source uses `dist/schemas/<version>/bundled/`, `@adcp/sdk` puts them at `schemas/cache/<version>/bundled/` after `npm run sync-schemas`, Python and Go SDKs use their own conventions. Don't hardcode a path; let the SDK's loader find them. Once located, each schema lives at `<protocol>/<tool>-{request,response}.json`.
 
 ## Idempotency: replay vs. new operation
 
@@ -43,6 +43,8 @@ Missing the key → `adcp_error.code: 'VALIDATION_ERROR'` with `/idempotency_key
 "account": { "account_id": "seller_assigned_id" }
 
 // variant 1: by natural key (brand + operator, optional sandbox)
+//   brand.domain — the buyer's brand domain (e.g., advertiser website)
+//   operator     — the seller agent's deployment hostname / brand.json identifier
 "account": { "brand": { "domain": "acme.com" }, "operator": "sales.example" }
 ```
 
@@ -154,4 +156,5 @@ A common trap: **A2A `Task.state: 'completed'` is not the same as AdCP completio
 - [Protocol architecture](/docs/protocol/architecture) — how the protocol domains fit together.
 - [Required tasks](/docs/protocol/required-tasks) — which tasks an agent must implement to claim a specialism.
 - [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) — first call against any new agent.
-- [Schemas and SDKs](/docs/building/schemas-and-sdks) — how SDKs consume the protocol tarball (which now bundles `skills/`).
+- [Schemas](/docs/building/by-layer/L0/schemas) — how SDKs consume the protocol tarball (which now bundles `skills/`).
+- [Build a caller](/docs/building/by-layer/L4/build-a-caller) — build-shaped guide for the caller side: install, call, handle responses, ingest reporting.

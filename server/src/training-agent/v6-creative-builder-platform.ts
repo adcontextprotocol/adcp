@@ -23,8 +23,11 @@ import {
 import {
   handleBuildCreative,
   handlePreviewCreative,
+  handleListCreativeFormats,
   handleSyncCreatives,
 } from './task-handlers.js';
+import { syncAccountsUpsert } from './v6-account-helpers.js';
+import { trainingBuyerAgentRegistry } from './buyer-agent-registry.js';
 import type { ToolArgs, TrainingContext } from './types.js';
 
 interface TrainingCreativeBuilderMeta {
@@ -77,6 +80,7 @@ const trainingBuilderAccounts: AccountStore<TrainingCreativeBuilderMeta> = {
         name: 'Public Sandbox',
         status: 'active',
         ctx_metadata: {},
+        sandbox: true,
         authInfo: { kind: 'public' },
       };
     }
@@ -94,9 +98,11 @@ const trainingBuilderAccounts: AccountStore<TrainingCreativeBuilderMeta> = {
       ...(brandDomain != null && { brand: { domain: brandDomain } }),
       ...('operator' in ref && typeof ref.operator === 'string' && { operator: ref.operator }),
       ctx_metadata: { brand_domain: brandDomain },
+      sandbox: true,
       authInfo: { kind: 'api_key' },
     };
   },
+  upsert: syncAccountsUpsert,
 };
 
 export class TrainingCreativeBuilderPlatform
@@ -114,6 +120,7 @@ export class TrainingCreativeBuilderPlatform
 
   statusMappers = {};
   accounts: AccountStore<TrainingCreativeBuilderMeta> = trainingBuilderAccounts;
+  agentRegistry = trainingBuyerAgentRegistry;
 
   creative: CreativeBuilderPlatform<TrainingCreativeBuilderMeta> = {
     buildCreative: async (req, ctx) => {
@@ -129,6 +136,10 @@ export class TrainingCreativeBuilderPlatform
     },
     previewCreative: async (req, ctx) => {
       const result = await handlePreviewCreative(req as ToolArgs, buildTrainingCtx(ctx.account));
+      return translateV5Result(result);
+    },
+    listCreativeFormats: async (req, ctx) => {
+      const result = await handleListCreativeFormats(req as ToolArgs, buildTrainingCtx(ctx.account));
       return translateV5Result(result);
     },
     syncCreatives: async (creatives, ctx) => {

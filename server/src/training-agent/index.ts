@@ -82,7 +82,16 @@ function buildBearerAuthenticator(): Authenticator | null {
   authenticators.push(verifyApiKey({
     verify: (token) => {
       if (!DEMO_TEST_KIT_KEY_PATTERN.test(token)) return null;
-      return { principal: `static:demo:${token}` };
+      // `extra.demo_token` flows through to BuyerAgentResolveInput.extra
+      // (per @adcp/sdk@6.8.0 attachAuthInfo / bearerOnly forwarding) so
+      // the BuyerAgentRegistry in buyer-agent-registry.ts can recognize
+      // the prefix family. The raw bearer doesn't survive AdcpCredential
+      // normalization (api_key carries SHA-256 hashed `key_id`); `extra`
+      // is the documented escape hatch for prefix-based test conventions.
+      return {
+        principal: `static:demo:${token}`,
+        extra: { demo_token: token },
+      };
     },
   }));
   if (workos) {

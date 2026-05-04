@@ -21,8 +21,8 @@ Sync a single advertiser account and check the resulting status:
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from "@adcp/client/testing";
-import { SyncAccountsResponseSchema } from "@adcp/client";
+import { testAgent } from "@adcp/sdk/testing";
+import { SyncAccountsResponseSchema } from "@adcp/sdk";
 
 const result = await testAgent.syncAccounts({
   accounts: [
@@ -170,8 +170,8 @@ If the buyer did not provide `push_notification_config`, poll [`list_accounts`](
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from "@adcp/client/testing";
-import { SyncAccountsResponseSchema } from "@adcp/client";
+import { testAgent } from "@adcp/sdk/testing";
+import { SyncAccountsResponseSchema } from "@adcp/sdk";
 
 const result = await testAgent.syncAccounts({
   accounts: [
@@ -248,8 +248,8 @@ asyncio.run(main())
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from "@adcp/client/testing";
-import { SyncAccountsResponseSchema } from "@adcp/client";
+import { testAgent } from "@adcp/sdk/testing";
+import { SyncAccountsResponseSchema } from "@adcp/sdk";
 
 const result = await testAgent.syncAccounts({
   accounts: [
@@ -317,8 +317,8 @@ When a seller declines a request, the account entry has `status: "rejected"`:
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from "@adcp/client/testing";
-import { SyncAccountsResponseSchema } from "@adcp/client";
+import { testAgent } from "@adcp/sdk/testing";
+import { SyncAccountsResponseSchema } from "@adcp/sdk";
 
 const result = await testAgent.syncAccounts({
   accounts: [

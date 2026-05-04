@@ -215,6 +215,16 @@ phases:
             - audience_id: "outdoor_enthusiasts_25_54"
               name: "Outdoor enthusiasts 25-54"
               description: "Adults 25-54 interested in hiking, camping, and outdoor gear"
+              # Realistic add[] payload forces adapters to call the upstream
+              # audience-upload endpoint rather than returning shape-valid
+              # responses from an empty-members branch. Hash values are
+              # fictional test vectors distinct from the audience_sync
+              # storyboard's fixtures to avoid cross-storyboard collision.
+              add:
+                - external_id: "acme-user-0001"
+                  hashed_email: "a000000000000000000000000000000000000000000000000000000000000001"
+                - external_id: "acme-user-0002"
+                  hashed_phone: "b000000000000000000000000000000000000000000000000000000000000002"
 
           idempotency_key: "$generate:uuid_v4#sales_social_audience_sync_sync_audiences"
           context:
@@ -230,6 +240,18 @@ phases:
             path: "context.correlation_id"
             value: "sales_social--sync_audiences"
             description: "Context correlation_id returned unchanged"
+          # Anti-façade: the adapter MUST forward the hashed identifiers to
+          # the upstream platform's audience-upload endpoint. Adopters who
+          # don't advertise query_upstream_traffic in list_scenarios grade
+          # this check not_applicable per the runner's forward-compat rule —
+          # opt-in by adopter capability.
+          - check: upstream_traffic
+            description: "sync_audiences caused upstream traffic carrying the supplied hashed identifiers"
+            min_count: 1
+            endpoint_pattern: "POST *"
+            identifier_paths:
+              - "audiences[*].add[*].hashed_email"
+              - "audiences[*].add[*].external_id"
   - id: creative_push
     title: "Native creative sync"
     narrative: |
@@ -522,6 +544,13 @@ phases:
             - event_type: "purchase"
               event_id: "evt_trail_pro_001"
               event_time: "2026-04-05T14:30:00Z"
+              # user_match prevents adapters from injecting synthetic placeholder
+              # identifiers to satisfy the upstream's required-field check.
+              # The hashed_email here matches the sync_audiences add[]
+              # member so an upstream_traffic identifier echo can confirm
+              # values were forwarded, not constants.
+              user_match:
+                hashed_email: "a000000000000000000000000000000000000000000000000000000000000001"
               # value/currency belong inside custom_data per event-custom-data.json;
               # additionalProperties: true on the parent silently swallowed them
               # at the wrong nesting level, meaning real upstreams never saw
@@ -544,6 +573,18 @@ phases:
             path: "context.correlation_id"
             value: "sales_social--log_event"
             description: "Context correlation_id returned unchanged"
+          # Anti-façade: the adapter MUST forward the conversion event to the
+          # upstream platform's event-tracking endpoint, carrying the supplied
+          # user_match identifier. A façade that injects a constant placeholder
+          # hash to satisfy the upstream's required-field check fails the
+          # identifier_paths echo — the constant won't match the storyboard's
+          # supplied value.
+          - check: upstream_traffic
+            description: "log_event caused upstream traffic carrying the supplied user_match identifier"
+            min_count: 1
+            endpoint_pattern: "POST *"
+            identifier_paths:
+              - "events[*].user_match.hashed_email"
   - id: financials
     title: "Account financials"
     narrative: |

@@ -22,6 +22,12 @@
  */
 
 export const TOOL_CATALOG: Readonly<Record<string, readonly string[]>> = {
+  // accounts — auto-registered by the framework on every tenant whose
+  // `accounts.upsert` is wired (see v6-account-helpers.ts). The training
+  // agent wires upsert on every v6 platform so sync_accounts is uniformly
+  // available; sellers using a real platform would scope this per-tenant.
+  sync_accounts: ['sales', 'signals', 'governance', 'creative', 'creative-builder', 'brand'],
+
   // sales
   get_products: ['sales'],
   create_media_buy: ['sales'],
@@ -29,7 +35,10 @@ export const TOOL_CATALOG: Readonly<Record<string, readonly string[]>> = {
   get_media_buys: ['sales'],
   get_media_buy_delivery: ['sales'],
   provide_performance_feedback: ['sales'],
-  list_creative_formats: ['sales'],
+  // list_creative_formats is framework-registered for any tenant claiming
+  // creative (sales, creative, creative-builder) — the SDK auto-advertises
+  // it. Catalog mirrors that advertisement so the drift test stays green.
+  list_creative_formats: ['sales', 'creative', 'creative-builder'],
 
   // creative — exposed on multiple tenants
   list_creatives: ['sales', 'creative', 'creative-builder'],

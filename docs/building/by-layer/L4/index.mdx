@@ -1,0 +1,17 @@
+---
+title: L4 — Business logic
+sidebarTitle: L4 — Business logic
+description: "Business-logic layer of the AdCP stack. What an SDK leaves to you: inventory and pricing on the agent side, planning and buying on the caller side. The default starting layer for ~95% of adopters."
+"og:title": "AdCP — L4 (Business logic)"
+---
+
+L4 is what makes your agent or caller yours. An AdCP SDK ships L0–L3 (wire, signing, auth, protocol semantics) and leaves L4 to you. For most adopters this is the right starting layer — your team's value-add lives here, not in re-implementing the protocol underneath.
+
+See the [SDK stack reference](/docs/building/cross-cutting/sdk-stack) for what each layer below contains and what an SDK at each layer must provide.
+
+## Pages in this layer
+
+- **[Choose your SDK](/docs/building/by-layer/L4/choose-your-sdk)** — language coverage matrix, install commands, package exports, CLI tools. Start here if you haven't picked an SDK.
+- **[Build an agent](/docs/building/by-layer/L4/build-an-agent)** — server side. Point a coding agent at a skill file; get a storyboard-compliant AdCP agent.
+- **[Build a caller](/docs/building/by-layer/L4/build-a-caller)** — client side. Install the SDK, discover the agent, make calls, handle responses, ingest reporting.
+- **[Migrate from hand-rolled](/docs/building/by-layer/L4/migrate-from-hand-rolled)** — already running an AdCP agent built before the SDKs were mature? Swap one layer at a time.

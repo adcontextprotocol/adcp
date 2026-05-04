@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.6/enums/collection-kind.json",
+  "title": "Collection Kind",
+  "description": "What kind of content program a collection represents. Determines how installments should be interpreted by buyer agents.",
+  "type": "string",
+  "enum": ["series", "publication", "event_series", "rotation"],
+  "enumDescriptions": {
+    "series": "TV or podcast program; installments are episodes",
+    "publication": "Print or newsletter title; installments are issues",
+    "event_series": "Live event program; installments are individual event airings",
+    "rotation": "DOOH scheduling container; installments are scheduling periods"
+  }
+}

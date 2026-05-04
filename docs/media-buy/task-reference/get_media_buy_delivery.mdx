@@ -138,8 +138,8 @@ Example:
 <CodeGroup>
 
 ```javascript JavaScript test=false
-import { testAgent } from '@adcp/client/testing';
-import { GetMediaBuyDeliveryResponseSchema } from '@adcp/client';
+import { testAgent } from '@adcp/sdk/testing';
+import { GetMediaBuyDeliveryResponseSchema } from '@adcp/sdk';
 
 // Get single media buy delivery report
 const result = await testAgent.getMediaBuyDelivery({
@@ -200,8 +200,8 @@ asyncio.run(main())
 <CodeGroup>
 
 ```javascript JavaScript test=false
-import { testAgent } from '@adcp/client/testing';
-import { GetMediaBuyDeliveryResponseSchema } from '@adcp/client';
+import { testAgent } from '@adcp/sdk/testing';
+import { GetMediaBuyDeliveryResponseSchema } from '@adcp/sdk';
 
 // Get all active media buys from context
 const result = await testAgent.getMediaBuyDelivery({
@@ -266,8 +266,8 @@ asyncio.run(main())
 <CodeGroup>
 
 ```javascript JavaScript test=false
-import { testAgent } from '@adcp/client/testing';
-import { GetMediaBuyDeliveryResponseSchema } from '@adcp/client';
+import { testAgent } from '@adcp/sdk/testing';
+import { GetMediaBuyDeliveryResponseSchema } from '@adcp/sdk';
 
 // Get month-to-date performance
 const now = new Date();
@@ -348,8 +348,8 @@ asyncio.run(main())
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from '@adcp/client/testing';
-import { GetMediaBuyDeliveryResponseSchema } from '@adcp/client';
+import { testAgent } from '@adcp/sdk/testing';
+import { GetMediaBuyDeliveryResponseSchema } from '@adcp/sdk';
 
 // Get both active and paused campaigns
 const result = await testAgent.getMediaBuyDelivery({
@@ -430,8 +430,8 @@ asyncio.run(main())
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from '@adcp/client/testing';
-import { GetMediaBuyDeliveryResponseSchema } from '@adcp/client';
+import { testAgent } from '@adcp/sdk/testing';
+import { GetMediaBuyDeliveryResponseSchema } from '@adcp/sdk';
 
 // Query by buyer reference instead of media buy ID
 const result = await testAgent.getMediaBuyDelivery({
@@ -497,8 +497,8 @@ asyncio.run(main())
 <CodeGroup>
 
 ```javascript JavaScript test=false
-import { testAgent } from '@adcp/client/testing';
-import { GetMediaBuyDeliveryResponseSchema } from '@adcp/client';
+import { testAgent } from '@adcp/sdk/testing';
+import { GetMediaBuyDeliveryResponseSchema } from '@adcp/sdk';
 
 // Get delivery for a specific advertiser account
 const result = await testAgent.getMediaBuyDelivery({

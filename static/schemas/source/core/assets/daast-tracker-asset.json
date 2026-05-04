@@ -1,0 +1,74 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/assets/daast-tracker-asset.json",
+  "title": "DAAST Tracker Asset",
+  "description": "A single tracker URL bound to a DAAST `TrackingEvents` event. Audio-side analogue of vast-tracker-asset. The `Impression` URL MUST be modeled as a `url` asset with `url_type: \"tracker_pixel\"`, not as a daast_tracker with `daast_event: \"impression\"`.",
+  "type": "object",
+  "properties": {
+    "asset_type": {
+      "type": "string",
+      "const": "daast_tracker",
+      "description": "Discriminator identifying this as a DAAST tracker asset. See /schemas/creative/asset-types for the registry."
+    },
+    "daast_event": {
+      "allOf": [
+        {
+          "$ref": "/schemas/enums/daast-tracking-event.json"
+        },
+        {
+          "not": {
+            "enum": [
+              "impression",
+              "clickTracking",
+              "customClick",
+              "error",
+              "viewable",
+              "notViewable",
+              "viewUndetermined",
+              "measurableImpression",
+              "viewableImpression"
+            ]
+          }
+        }
+      ],
+      "description": "The DAAST tracking event this URL fires on. MUST NOT be `impression` (model as `url` asset with `url_type: \"tracker_pixel\"`), `clickTracking` / `customClick` (click-tracking trackers go on their own URL asset), `error`, or any of the `ViewableImpression`-element children (`viewable`, `notViewable`, `viewUndetermined`, `measurableImpression`, `viewableImpression`)."
+    },
+    "url": {
+      "type": "string",
+      "format": "uri-template",
+      "description": "Tracker URL that fires when `daast_event` occurs. May carry AdCP universal macros; the sales agent or ad server URL-encodes substituted values at serve time. See docs/creative/universal-macros.mdx."
+    },
+    "offset": {
+      "type": "string",
+      "description": "DAAST `offset` attribute. Required when `daast_event` is `progress` (DAAST 1.1 §3.2.4.3); ignored otherwise. Same format as VAST 4.2 `Tracking@offset`: `HH:MM:SS` or `HH:MM:SS.mmm` for absolute time (two-digit hours, minutes 00–59, seconds 00–59), or an integer percentage 0–100 suffixed with `%`. Negative offsets are NOT permitted.",
+      "pattern": "^(\\d{2}:[0-5]\\d:[0-5]\\d(\\.\\d{3})?|(100|\\d{1,2})%)$"
+    },
+    "target": {
+      "type": "string",
+      "enum": ["linear", "companion"],
+      "default": "linear",
+      "description": "Which DAAST creative element this tracker scopes to — `linear` for `<Linear>/<TrackingEvents>` (DAAST 1.1 §3.2.1.7), `companion` for `<CompanionAds>/<Companion>/<TrackingEvents>` (DAAST 1.1 §3.2.2.7, where the only valid event is `creativeView`). DAAST has no `<NonLinearAds>` element. Defaults to `linear`. Sales agents use this to place the tracker in the correct location during DAAST assembly."
+    },
+    "provenance": {
+      "$ref": "/schemas/core/provenance.json",
+      "description": "Provenance metadata for this asset, overrides manifest-level provenance."
+    }
+  },
+  "required": [
+    "asset_type",
+    "daast_event",
+    "url"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": { "daast_event": { "const": "progress" } },
+        "required": ["daast_event"]
+      },
+      "then": {
+        "required": ["offset"]
+      }
+    }
+  ],
+  "additionalProperties": true
+}

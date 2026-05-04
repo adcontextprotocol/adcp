@@ -9,6 +9,7 @@
     "AUTH_REQUIRED",
     "RATE_LIMITED",
     "SERVICE_UNAVAILABLE",
+    "CONFIGURATION_ERROR",
     "POLICY_VIOLATION",
     "PRODUCT_NOT_FOUND",
     "PRODUCT_UNAVAILABLE",
@@ -68,9 +69,10 @@
   ],
   "enumDescriptions": {
     "INVALID_REQUEST": "Request is malformed, missing required fields, or violates schema constraints. Recovery: correctable (check request parameters and fix).",
-    "AUTH_REQUIRED": "Authentication is required to access this resource. Recovery: correctable (provide credentials via auth header).",
+    "AUTH_REQUIRED": "Authentication is required, or presented credentials were rejected. Recovery: correctable when credentials are missing; agents MUST NOT auto-retry presented-but-rejected credentials — escalate to operator for credential rotation. See `error-handling.mdx#auth_required-sub-cases` for the operational distinction.\n\nSub-cases (full guidance). The wire code carries two operationally distinct cases: (a) credentials missing — agent provides credentials and retries; (b) credentials presented but rejected (expired, revoked, or malformed signature) — agent SHOULD NOT auto-retry, since re-presenting a rejected credential against an SSO endpoint creates retry-storm patterns indistinguishable from brute-force probes. In sub-case (b) the agent SHOULD escalate to operator for credential rotation rather than loop. A future minor release splits this code into `AUTH_MISSING` (correctable) and `AUTH_INVALID` (terminal); until then, agents apply the same distinction at the application layer by branching on whether credentials were attached to the failing request.",
     "RATE_LIMITED": "Request rate exceeded. Retry after the retry_after interval. Recovery: transient.",
     "SERVICE_UNAVAILABLE": "Seller service is temporarily unavailable. Retry with exponential backoff. Recovery: transient.",
+    "CONFIGURATION_ERROR": "The seller's deployment is misconfigured in a way that prevents handling the request — the buyer cannot fix it, retrying will not help, and reporting to the seller's operator is the only remediation. Examples: account declared with `mode: 'mock'` but no `mock_upstream_url` populated; platform declared with `mode: 'live'` or `mode: 'sandbox'` but no `upstream_url` declared; required environment variable unset on the seller process. Distinct from `INVALID_REQUEST` (buyer-fixable; the request itself is malformed), `SERVICE_UNAVAILABLE` (transient; retry-with-backoff may succeed), `UNSUPPORTED_FEATURE` (capability mismatch — the seller does not implement the requested specialism), `ACCOUNT_SETUP_REQUIRED` (buyer-side onboarding incomplete; this code is seller-side deployment incomplete), and `GOVERNANCE_UNAVAILABLE` (governance-agent-scoped; transient). Wire placement. The deployment cannot produce a success artifact, so sellers MUST flip transport-level failure markers (HTTP 5xx, MCP `isError: true`, A2A `failed`) and populate both layers per the two-layer model in `error-handling.mdx#envelope-vs-payload-errors-the-two-layer-model`. The code itself is the discriminator; no `error.details` shape is defined for this code (mirroring the minimal-disclosure precedent of `AGENT_SUSPENDED` / `AGENT_BLOCKED`). Sellers SHOULD populate `error.message` with operator-actionable detail (which metadata key is missing, which env var is unset) and MUST NOT include credentials, connection strings, or stack traces — the message is wire-visible to the buyer. Recovery: terminal — the buyer MUST surface to the seller's operator and MUST NOT auto-retry (retries cannot resolve a misconfigured deployment until the operator intervenes).",
     "POLICY_VIOLATION": "Request violates the seller's content or advertising policies. Recovery: correctable (review policy requirements in the error details).",
     "PRODUCT_NOT_FOUND": "One or more referenced product IDs are unknown or expired. Recovery: correctable (remove invalid IDs and retry, or re-discover with get_products).",
     "PRODUCT_UNAVAILABLE": "The requested product is sold out or no longer available. Recovery: correctable (choose a different product).",
@@ -136,7 +138,7 @@
     },
     "AUTH_REQUIRED": {
       "recovery": "correctable",
-      "suggestion": "provide credentials via auth header"
+      "suggestion": "provide credentials when missing; do NOT auto-retry rejected credentials — escalate for rotation"
     },
     "RATE_LIMITED": {
       "recovery": "transient",
@@ -145,6 +147,10 @@
     "SERVICE_UNAVAILABLE": {
       "recovery": "transient",
       "suggestion": "retry with exponential backoff"
+    },
+    "CONFIGURATION_ERROR": {
+      "recovery": "terminal",
+      "suggestion": "surface to a human at the seller — the buyer cannot resolve a seller-side deployment misconfiguration and MUST NOT auto-retry"
     },
     "POLICY_VIOLATION": {
       "recovery": "correctable",

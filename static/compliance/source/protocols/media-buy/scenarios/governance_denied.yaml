@@ -19,7 +19,11 @@ narrative: |
   the denial back to the buyer.
 
   By default, the governance agent is the training agent at test-agent.adcontextprotocol.org.
-  Override with --governance-agent-url to use a custom governance agent.
+  Override by supplying a different `governance_agent_url` in the run's initial context
+  (e.g., via `--context` on `adcp storyboard run` once the CLI supports it).
+
+context:
+  governance_agent_url: "https://test-agent.adcontextprotocol.org"
 
 agent:
   interaction_model: media_buy_seller
@@ -167,6 +171,15 @@ phases:
         expected: |
           The buy is rejected because governance denied — the $50K buy exceeds
           the plan's $10K budget. The seller propagates the denial with findings.
+
+          Wire placement (Case-2 of the GOVERNANCE_DENIED rule). `create_media_buy`
+          has no structured rejection arm (its `oneOf` covers Success / Error /
+          Submitted only), so the seller populates `errors[].code: GOVERNANCE_DENIED`
+          in the payload AND `adcp_error.code: GOVERNANCE_DENIED` on the envelope per
+          the two-layer model, AND flips transport-level failure markers (HTTP 4xx /
+          MCP `isError: true` / A2A `failed`). Compare with `brand_rights/governance_denied`,
+          which exercises Case-1 (rejection arm is the canonical denial shape; no
+          error code on the wire; transport markers stay green).
         sample_request:
           brand:
             domain: "acmeoutdoor.example"

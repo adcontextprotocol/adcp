@@ -1015,7 +1015,7 @@ export const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> 
   // Track A: Basics (all free)
   A1: [
     { label: 'Introduction to AdCP and agentic advertising', url: `${DOCS_BASE}/docs/intro` },
-    { label: 'Why AdCP — the fragmentation problem', url: `${DOCS_BASE}/docs/building/understanding` },
+    { label: 'Why AdCP — the fragmentation problem', url: `${DOCS_BASE}/docs/building/concepts` },
     { label: 'Media channel taxonomy', url: `${DOCS_BASE}/docs/reference/media-channel-taxonomy` },
     { label: 'Campaign governance — always-on compliance', url: `${DOCS_BASE}/docs/governance/campaign` },
   ],
@@ -1046,7 +1046,7 @@ export const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> 
     { label: 'Catalogs and product data', url: `${DOCS_BASE}/docs/creative/catalogs` },
     { label: 'Capability discovery', url: `${DOCS_BASE}/docs/protocol/get_adcp_capabilities` },
     { label: 'Sponsored Intelligence guide', url: `${DOCS_BASE}/docs/sponsored-intelligence/monetizing-ai` },
-    { label: 'Seller integration guide', url: `${DOCS_BASE}/docs/building/implementation/seller-integration` },
+    { label: 'Seller integration guide', url: `${DOCS_BASE}/docs/building/operating/seller-integration` },
   ],
   B2: [
     { label: 'Publisher track overview', url: `${DOCS_BASE}/docs/learning/tracks/publisher` },
@@ -1075,9 +1075,9 @@ export const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> 
   ],
   B4: [
     { label: 'Publisher track overview', url: `${DOCS_BASE}/docs/learning/tracks/publisher` },
-    { label: 'Build an Agent (skill files and storyboards)', url: `${DOCS_BASE}/docs/building/build-an-agent` },
-    { label: 'Validate Your Agent (storyboard CLI)', url: `${DOCS_BASE}/docs/building/validate-your-agent` },
-    { label: 'Schemas and SDKs (adcp client library)', url: `${DOCS_BASE}/docs/building/schemas-and-sdks` },
+    { label: 'Build an Agent (skill files and storyboards)', url: `${DOCS_BASE}/docs/building/by-layer/L4/build-an-agent` },
+    { label: 'Validate Your Agent (storyboard CLI)', url: `${DOCS_BASE}/docs/building/verification/validate-your-agent` },
+    { label: 'Schemas and SDKs (adcp client library)', url: `${DOCS_BASE}/docs/building/by-layer/L4/choose-your-sdk` },
     { label: 'MCP integration guide', url: `${DOCS_BASE}/docs/building/integration/mcp-guide` },
     { label: 'get_products task reference', url: `${DOCS_BASE}/docs/media-buy/task-reference/get_products` },
     { label: 'create_media_buy task reference', url: `${DOCS_BASE}/docs/media-buy/task-reference/create_media_buy` },
@@ -1128,8 +1128,8 @@ export const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> 
   ],
   C4: [
     { label: 'Buyer track overview', url: `${DOCS_BASE}/docs/learning/tracks/buyer` },
-    { label: 'Validate Your Agent (testing workflow)', url: `${DOCS_BASE}/docs/building/validate-your-agent` },
-    { label: 'Schemas and SDKs (adcp client library)', url: `${DOCS_BASE}/docs/building/schemas-and-sdks` },
+    { label: 'Validate Your Agent (testing workflow)', url: `${DOCS_BASE}/docs/building/verification/validate-your-agent` },
+    { label: 'Schemas and SDKs (adcp client library)', url: `${DOCS_BASE}/docs/building/by-layer/L4/choose-your-sdk` },
     { label: 'Orchestrator design patterns', url: `${DOCS_BASE}/docs/building/implementation/orchestrator-design` },
     { label: 'Building a brand agent', url: `${DOCS_BASE}/docs/brand-protocol/building-a-brand-agent` },
     { label: 'get_products task reference', url: `${DOCS_BASE}/docs/media-buy/task-reference/get_products` },
@@ -1157,7 +1157,7 @@ export const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> 
   ],
   D3: [
     { label: 'Platform track overview', url: `${DOCS_BASE}/docs/learning/tracks/platform` },
-    { label: 'How AdCP compares to OpenRTB', url: `${DOCS_BASE}/docs/building/understanding/adcp-vs-openrtb` },
+    { label: 'How AdCP compares to OpenRTB', url: `${DOCS_BASE}/docs/building/concepts/adcp-vs-openrtb` },
     { label: 'Trusted Match Protocol', url: `${DOCS_BASE}/docs/trusted-match` },
     { label: 'TMP specification', url: `${DOCS_BASE}/docs/trusted-match/specification` },
     { label: 'TMP router architecture', url: `${DOCS_BASE}/docs/trusted-match/router-architecture` },
@@ -1165,9 +1165,9 @@ export const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> 
   ],
   D4: [
     { label: 'Platform track overview', url: `${DOCS_BASE}/docs/learning/tracks/platform` },
-    { label: 'Build an Agent (skill files and storyboards)', url: `${DOCS_BASE}/docs/building/build-an-agent` },
-    { label: 'Validate Your Agent (storyboard CLI)', url: `${DOCS_BASE}/docs/building/validate-your-agent` },
-    { label: 'Schemas and SDKs (adcp client library)', url: `${DOCS_BASE}/docs/building/schemas-and-sdks` },
+    { label: 'Build an Agent (skill files and storyboards)', url: `${DOCS_BASE}/docs/building/by-layer/L4/build-an-agent` },
+    { label: 'Validate Your Agent (storyboard CLI)', url: `${DOCS_BASE}/docs/building/verification/validate-your-agent` },
+    { label: 'Schemas and SDKs (adcp client library)', url: `${DOCS_BASE}/docs/building/by-layer/L4/choose-your-sdk` },
     { label: 'MCP integration guide', url: `${DOCS_BASE}/docs/building/integration/mcp-guide` },
     { label: 'Capability discovery', url: `${DOCS_BASE}/docs/protocol/get_adcp_capabilities` },
     { label: 'Authentication', url: `${DOCS_BASE}/docs/building/integration/authentication` },
@@ -1181,7 +1181,7 @@ export const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> 
     { label: 'Trusted Match Protocol', url: `${DOCS_BASE}/docs/trusted-match` },
     { label: 'Context Match and Identity Match', url: `${DOCS_BASE}/docs/trusted-match/context-and-identity` },
     { label: 'TMP Router architecture', url: `${DOCS_BASE}/docs/trusted-match/router-architecture` },
-    { label: 'AdCP and OpenRTB', url: `${DOCS_BASE}/docs/building/understanding/adcp-vs-openrtb` },
+    { label: 'AdCP and OpenRTB', url: `${DOCS_BASE}/docs/building/concepts/adcp-vs-openrtb` },
   ],
   S2: [
     { label: 'Creative protocol', url: `${DOCS_BASE}/docs/creative` },
@@ -1236,7 +1236,7 @@ export const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> 
     { label: 'Media channel taxonomy', url: `${DOCS_BASE}/docs/reference/media-channel-taxonomy` },
     { label: 'Catalogs and product data', url: `${DOCS_BASE}/docs/creative/catalogs` },
     { label: 'Generative creative', url: `${DOCS_BASE}/docs/creative/generative-creative` },
-    { label: 'Seller integration guide', url: `${DOCS_BASE}/docs/building/implementation/seller-integration` },
+    { label: 'Seller integration guide', url: `${DOCS_BASE}/docs/building/operating/seller-integration` },
     { label: 'Accounts and agent identity', url: `${DOCS_BASE}/docs/building/integration/accounts-and-agents` },
   ],
 };
@@ -2257,9 +2257,9 @@ export function createCertificationToolHandlers(
       return `get_build_phase_instructions is only for build project modules (B4, C4, D4). Module "${moduleId}" is not a build project.`;
     }
 
-    const BUILD_AN_AGENT_URL = 'https://docs.adcontextprotocol.org/docs/building/build-an-agent';
-    const VALIDATE_URL = 'https://docs.adcontextprotocol.org/docs/building/validate-your-agent';
-    const SDKS_URL = 'https://docs.adcontextprotocol.org/docs/building/schemas-and-sdks';
+    const BUILD_AN_AGENT_URL = 'https://docs.adcontextprotocol.org/docs/building/by-layer/L4/build-an-agent';
+    const VALIDATE_URL = 'https://docs.adcontextprotocol.org/docs/building/verification/validate-your-agent';
+    const SDKS_URL = 'https://docs.adcontextprotocol.org/docs/building/by-layer/L4/choose-your-sdk';
 
     if (moduleId === 'C4') {
       // Buyer track: SDK against the public test agent, no skill file

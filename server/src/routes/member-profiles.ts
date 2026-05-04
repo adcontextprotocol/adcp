@@ -37,6 +37,7 @@ import { createEscalation } from "../db/escalation-db.js";
 import { insertTypeReclassification } from "../db/type-reclassification-log-db.js";
 import { recordProfilePublishedIfNeeded } from "../services/profile-publish-event.js";
 import { gateAgentVisibilityForCaller, type VisibilityWarning } from "../services/agent-visibility-gate.js";
+import { normalizeFoundingMemberGrant } from "../services/founding-member-grant.js";
 
 const orgKnowledgeDb = new OrgKnowledgeDatabase();
 const snapshotDb = new AgentSnapshotDatabase();
@@ -661,6 +662,9 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       delete updates.updated_at;
       delete updates.featured; // Only admins can set featured
       delete updates.is_founding_member; // Only admins can set founding status
+      delete updates.founding_member_source;
+      delete updates.founding_member_granted_at;
+      delete updates.founding_member_granted_reason;
 
       // Enforce the tier gate on agent visibility so bulk-profile updates
       // cannot bypass the per-agent PATCH. Non-API-access callers may only
@@ -1850,6 +1854,14 @@ export function createAdminMemberProfileRouter(config: MemberProfileRoutesConfig
       delete updates.workos_organization_id;
       delete updates.created_at;
       delete updates.updated_at;
+
+      const foundingError = normalizeFoundingMemberGrant(updates);
+      if (foundingError) {
+        return res.status(400).json({
+          error: 'Invalid founding member update',
+          message: foundingError.message,
+        });
+      }
 
       // Even an admin caller cannot pin an agent type that contradicts the
       // probed capability snapshot — see resolveAgentTypes() + issue #3495.

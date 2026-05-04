@@ -6529,8 +6529,9 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
         if (memberships.data.length > 0) {
           const primaryOrgId = memberships.data[0].organizationId;
           const userName = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email;
-          // Ensure the org exists locally first — startup sync can miss orgs
-          // created in WorkOS after boot, and org_activities FKs to organizations.
+          // Ensure the org row exists locally before recording — orgs are
+          // created lazily on first login (and via webhook), and
+          // org_activities FKs to organizations.
           orgDb.ensureOrganizationExists(workos!, primaryOrgId)
             .then(() => orgDb.recordUserLogin({
               workos_user_id: user.id,
@@ -8735,21 +8736,14 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
       ]);
     }
 
-    // Sync organizations from WorkOS and Stripe to local database (dev environment support)
+    // Sync Stripe customer IDs and seed dev data. Organizations are created
+    // lazily via ensureOrganizationExists at first login and via the
+    // organization.created WorkOS webhook — no boot-time WorkOS list sync is
+    // needed (and listOrganizations requires a workspace-level API scope our
+    // production key doesn't carry, so it always failed on cold start; #3954).
     if (AUTH_ENABLED && workos) {
       const orgDb = new OrganizationDatabase();
 
-      // Sync WorkOS organizations first
-      try {
-        const result = await orgDb.syncFromWorkOS(workos);
-        if (result.synced > 0) {
-          logger.info({ synced: result.synced, existing: result.existing }, 'Synced organizations from WorkOS');
-        }
-      } catch (error) {
-        logger.warn({ error }, 'Failed to sync organizations from WorkOS (non-fatal)');
-      }
-
-      // Then sync Stripe customer IDs (method handles errors gracefully)
       try {
         await orgDb.syncStripeCustomers();
       } catch (error) {

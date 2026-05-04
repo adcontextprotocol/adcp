@@ -20,6 +20,8 @@ import {
   type AccountStore,
 } from '@adcp/sdk/server';
 import { handleGetSignals, handleActivateSignal } from './task-handlers.js';
+import { syncAccountsUpsert } from './v6-account-helpers.js';
+import { trainingBuyerAgentRegistry } from './buyer-agent-registry.js';
 import type { ToolArgs, TrainingContext } from './types.js';
 
 export interface TrainingConfig {
@@ -50,6 +52,7 @@ const trainingAccounts: AccountStore<TrainingMeta> = {
         name: 'Public Sandbox',
         status: 'active',
         ctx_metadata: {},
+        sandbox: true,
         authInfo: { kind: 'public' },
       };
     }
@@ -67,9 +70,11 @@ const trainingAccounts: AccountStore<TrainingMeta> = {
       ...(brandDomain != null && { brand: { domain: brandDomain } }),
       ...('operator' in ref && typeof ref.operator === 'string' && { operator: ref.operator }),
       ctx_metadata: { brand_domain: brandDomain },
+      sandbox: true,
       authInfo: { kind: 'api_key' },
     };
   },
+  upsert: syncAccountsUpsert,
 };
 
 /**
@@ -97,11 +102,15 @@ function translateV5Result<T extends object>(result: unknown): T {
 }
 
 /**
- * The v6 RequestContext exposes the resolved Account (with its `authInfo:
- * AuthPrincipal` already shaped by `accounts.resolve`), not the raw
- * transport-level auth. For the spike we just propagate the principal name
- * the resolver stamped on. Production flows would go through
- * `serve({ authenticate })` which feeds `ResolvedAuthInfo` to the resolver.
+ * Build a TrainingContext from a v6 RequestContext.Account.
+ *
+ * `accounts.resolve` stamps the AuthPrincipal onto the resolved Account's
+ * `authInfo` field (training-agent's resolver uses `{ kind: 'api_key' }`
+ * — no principal — so this path falls back to `'anonymous'` today). The
+ * authoritative principal source for the v6 path is `ctx.authInfo.clientId`
+ * on `ResolveContext`, populated by the tenant router's req.auth bridge —
+ * see `v6-account-helpers.ts` `trainingCtxFromResolveCtx` for the shape
+ * billing gates consume.
  */
 function buildTrainingCtx(account: { authInfo?: { principal?: string } } | undefined): TrainingContext {
   return {
@@ -150,6 +159,8 @@ export class TrainingPlatform implements DecisioningPlatform<TrainingConfig, Tra
   statusMappers = {};
 
   accounts: AccountStore<TrainingMeta> = trainingAccounts;
+
+  agentRegistry = trainingBuyerAgentRegistry;
 
   signals: SignalsPlatform<TrainingMeta> = {
     getSignals: async (req, ctx) => {

@@ -172,7 +172,7 @@ export function mountProtocolRoutes(app: Application, protocolPath: string): voi
           certificate_identity_regexp:
             "^https://github\\.com/adcontextprotocol/adcp/\\.github/workflows/release\\.yml@refs/heads/.*$",
           certificate_oidc_issuer: "https://token.actions.githubusercontent.com",
-          docs: "/docs/building/schemas-and-sdks#verifying-protocol-bundle-signatures",
+          docs: "/docs/building/by-layer/L0/schemas#verifying-protocol-bundle-signatures",
         },
         versions: versioned.map((name) => {
           const sidecars = sidecarsFor(name);

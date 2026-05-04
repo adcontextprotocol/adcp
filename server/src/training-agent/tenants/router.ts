@@ -38,6 +38,32 @@ function tenantMcpHandler(holder: RegistryHolder, tenantId: string) {
   return async (req: Request, res: Response): Promise<void> => {
     setCORSHeaders(res);
 
+    // Bridge `res.locals.trainingPrincipal` (set by the upstream
+    // `requireAuth` middleware) onto `req.auth` so the framework's MCP
+    // transport surfaces it as `ctx.authInfo` to platform handlers
+    // (`accounts.upsert`, `accounts.list`, etc.). Without this bridge,
+    // the framework runs without auth context and per-buyer-agent
+    // billing gates can't read the calling principal.
+    //
+    // Shape mirrors what `serve({ authenticate })` would set in
+    // @adcp/sdk's serve.js — `clientId` carries the principal string,
+    // `scopes` is empty (api-key path doesn't surface OAuth scopes).
+    // The training-agent's bearer auth produces `static:demo:<token>`
+    // / `static:primary` / `workos:<orgId>` principal shapes; downstream
+    // gates dispatch on those prefixes.
+    const principal = res.locals.trainingPrincipal as string | undefined;
+    if (principal && !(req as { auth?: unknown }).auth) {
+      // Shape mirrors @adcp/sdk@6.7.0 server/serve.js attachAuthInfo —
+      // `token: ''` matches the framework's no-token path verbatim, so any
+      // future shape-check that asserts field presence holds against this
+      // bridged value the same as against the framework's own.
+      (req as { auth: { token: string; clientId: string; scopes: string[] } }).auth = {
+        token: '',
+        clientId: principal,
+        scopes: [],
+      };
+    }
+
     const host = resolveTenantHost(req);
     const registry = await holder.get(req);
     const resolved = registry.resolveByRequest(host, `/${tenantId}/mcp`);

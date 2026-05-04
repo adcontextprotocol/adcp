@@ -1472,13 +1472,13 @@
               <div class="agent-meta-row-left">
                 <span>Last checked: ${escapeHtml(lastChecked)}</span>
                 <span class="agent-meta-sep" aria-hidden="true">·</span>
-                <label class="agent-toggle" title="Pause automated compliance and health checks">
-                  <input type="checkbox" class="monitoring-pause-toggle" data-agent-url="${escapeHtml(agent.url)}" ${cs.monitoring_paused ? 'checked' : ''}>
+                <label class="agent-toggle" title="${isPublic ? 'Pause automated compliance and health checks' : 'Re-enable monitoring (Show on registry) before pausing'}">
+                  <input type="checkbox" class="monitoring-pause-toggle" data-agent-url="${escapeHtml(agent.url)}" ${cs.monitoring_paused ? 'checked' : ''} ${isPublic ? '' : 'disabled'}>
                   <span class="agent-toggle-label">Pause</span>
                 </label>
-                <label class="agent-toggle" title="How often to re-run automated compliance checks">
+                <label class="agent-toggle" title="${isPublic ? 'How often to re-run automated compliance checks' : 'Monitoring is opted out — re-enable to schedule checks'}">
                   <span class="agent-toggle-label">Every</span>
-                  <select class="monitoring-interval-select agent-lifecycle-select" data-agent-url="${escapeHtml(agent.url)}" ${cs.monitoring_paused ? 'disabled' : ''}>
+                  <select class="monitoring-interval-select agent-lifecycle-select" data-agent-url="${escapeHtml(agent.url)}" ${(cs.monitoring_paused || !isPublic) ? 'disabled' : ''}>
                     <option value="6" ${(cs.check_interval_hours || 12) === 6 ? 'selected' : ''}>6h</option>
                     <option value="12" ${(cs.check_interval_hours || 12) === 12 ? 'selected' : ''}>12h</option>
                     <option value="24" ${(cs.check_interval_hours || 12) === 24 ? 'selected' : ''}>24h</option>
@@ -1487,7 +1487,7 @@
                     <option value="168" ${(cs.check_interval_hours || 12) === 168 ? 'selected' : ''}>Weekly</option>
                   </select>
                 </label>
-                ${cs.monitoring_paused ? '<span style="color: var(--color-warning-700, #b45309);">paused</span>' : ''}
+                ${!isPublic ? '<span style="color: var(--color-warning-700, #b45309);" title="Compliance opt-out skips this agent in the scheduled heartbeat. Tick \'Show on registry\' to re-enable.">monitoring opted out</span>' : (cs.monitoring_paused ? '<span style="color: var(--color-warning-700, #b45309);">paused</span>' : '')}
               </div>
               <div class="agent-meta-row-actions">
                 <button class="agent-connect-toggle agent-action-link" data-card-id="${cardId}" data-agent-url="${escapeHtml(agent.url)}">${hasAuth ? 'Update auth' : 'Connect agent'}</button>

@@ -22,8 +22,8 @@ Upload creative assets:
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from "@adcp/client/testing";
-import { SyncCreativesResponseSchema } from "@adcp/client";
+import { testAgent } from "@adcp/sdk/testing";
+import { SyncCreativesResponseSchema } from "@adcp/sdk";
 
 const result = await testAgent.syncCreatives({
   creatives: [
@@ -217,8 +217,8 @@ Upload multiple creatives in one call:
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from "@adcp/client/testing";
-import { SyncCreativesResponseSchema } from "@adcp/client";
+import { testAgent } from "@adcp/sdk/testing";
+import { SyncCreativesResponseSchema } from "@adcp/sdk";
 
 const result = await testAgent.syncCreatives({
   creatives: [
@@ -365,8 +365,8 @@ Use the creative agent to generate creatives from brand identity data. See the [
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from "@adcp/client/testing";
-import { SyncCreativesResponseSchema } from "@adcp/client";
+import { testAgent } from "@adcp/sdk/testing";
+import { SyncCreativesResponseSchema } from "@adcp/sdk";
 
 const result = await testAgent.syncCreatives({
   creatives: [
@@ -443,8 +443,8 @@ Validate creative configuration without uploading:
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from "@adcp/client/testing";
-import { SyncCreativesResponseSchema } from "@adcp/client";
+import { testAgent } from "@adcp/sdk/testing";
+import { SyncCreativesResponseSchema } from "@adcp/sdk";
 
 const result = await testAgent.syncCreatives({
   dry_run: true,
@@ -525,8 +525,8 @@ Update only specific creatives from a large library without affecting others:
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from "@adcp/client/testing";
-import { SyncCreativesResponseSchema } from "@adcp/client";
+import { testAgent } from "@adcp/sdk/testing";
+import { SyncCreativesResponseSchema } from "@adcp/sdk";
 
 // Update just 2 creatives out of 100+ in the library
 const result = await testAgent.syncCreatives({

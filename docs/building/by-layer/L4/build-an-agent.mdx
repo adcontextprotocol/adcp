@@ -1,0 +1,218 @@
+---
+title: Build an Agent
+sidebarTitle: Build an Agent
+description: "Use AdCP SDK skill files to generate storyboard-compliant agents with a coding agent in minutes."
+"og:title": "AdCP — Build an Agent"
+---
+
+The fastest way to build an AdCP agent is to point a coding agent (Claude Code, Codex, Cursor, Windsurf) at a skill file from an AdCP SDK. Each skill produces a protocol-compliant, storyboard-validated agent in 2–8 minutes.
+
+<Note>
+**Publisher without an engineering team?** Protocol compliance is one piece of going live — product management, activation into your ad server, and hosting are separate lifts. See **[Operating an Agent](/docs/building/operating/operating-an-agent)** for the three paths: partner with a managed platform, self-host a prebuilt agent, or build your own.
+</Note>
+
+## Install the SDK
+
+Each SDK handles protocol compliance — schema validation, error formats, version negotiation, and response builders — so you write business logic, not protocol plumbing.
+
+<Tabs>
+<Tab title="JavaScript/TypeScript">
+```bash
+npm install @adcp/sdk
+```
+
+The JS/TS SDK provides typed tool registration, response builders, and a built-in storyboard runner. Most agents in production use this SDK.
+
+- [NPM Package](https://www.npmjs.com/package/@adcp/sdk)
+- [GitHub Repository](https://github.com/adcontextprotocol/adcp-client)
+</Tab>
+<Tab title="Python">
+```bash
+pip install adcp
+```
+
+The Python SDK provides the same capabilities — subclass `ADCPHandler`, implement tools, and use response builders for every return value:
+
+```python
+from adcp.server import ADCPHandler, serve
+from adcp.server.responses import capabilities_response
+
+class MySeller(ADCPHandler):
+    async def get_adcp_capabilities(self, params, context=None):
+        return capabilities_response(["media_buy"])
+
+    # ... implement tools, use response builders for every return
+
+serve(MySeller(), name="my-seller")
+```
+
+Response builders (`adcp.server.responses`) handle schema compliance so you don't construct raw JSON. Use them for every tool return.
+
+- [PyPI Package](https://pypi.org/project/adcp/)
+- [GitHub Repository](https://github.com/adcontextprotocol/adcp-client-python)
+</Tab>
+<Tab title="Go">
+```bash
+go get github.com/adcontextprotocol/adcp-go/adcp
+```
+
+The Go SDK provides typed tool registration, response builders, and a compliance test controller. Types are generated from canonical AdCP schemas.
+
+| Component | Import |
+|-----------|--------|
+| Tool registration | `adcp.AddTool(server, name, desc, handler)` |
+| HTTP server | `adcp.Serve(createAgent)` |
+| Response builders | `adcp.ProductsResponse(data)`, `adcp.MediaBuyResponse(data)` |
+| Test controller | `adcp.RegisterTestController(server, store)` |
+
+See the [Go SDK README](https://github.com/adcontextprotocol/adcp-go) for complete examples.
+
+Response builders (`adcp.ProductsResponse()`, `adcp.MediaBuyResponse()`, etc.) handle schema compliance so you return typed structs, not raw JSON.
+
+- [GitHub Repository](https://github.com/adcontextprotocol/adcp-go)
+</Tab>
+</Tabs>
+
+<Info>
+**Use the SDK for your language.** All three SDKs — JS/TS, Python, and Go — handle schema validation, error formats, and protocol negotiation. You do not need to use a different language for protocol compliance.
+</Info>
+
+## Choose a skill
+
+Each SDK ships skills that walk a coding agent through building a specific agent type. Common skills across SDKs:
+
+- `build-seller-agent` — publisher, SSP, or media network selling inventory
+- `build-signals-agent` — CDP or data provider serving audience segments
+- `build-creative-agent` — ad server or CMP rendering creatives
+- `build-generative-seller-agent` — AI ad network generating ads from briefs
+- `build-retail-media-agent` — retail media network with catalog-driven creative
+
+For example, the JS/TS seller skill lives at [`adcp-client/skills/build-seller-agent/SKILL.md`](https://github.com/adcontextprotocol/adcp-client/tree/main/skills/build-seller-agent). Skill coverage and naming vary per language since each SDK includes implementation guidance specific to its stack. Browse the directory for your language:
+
+- **JS/TS** — [adcp-client/skills](https://github.com/adcontextprotocol/adcp-client/tree/main/skills)
+- **Python** — [adcp-client-python/skills](https://github.com/adcontextprotocol/adcp-client-python/tree/main/skills)
+- **Go** — [adcp-go/skills](https://github.com/adcontextprotocol/adcp-go/tree/main/skills)
+
+### Which domain and specialisms do you claim?
+
+Each agent declares its `supported_protocols` (domains) and `specialisms` on `get_adcp_capabilities`. Each skill's storyboard verifies the domain baseline — to also claim a specialism, your agent must pass that specialism's storyboard. Skills-to-specialism mapping:
+
+| Skill | Typical `supported_protocols` | Typical `specialisms` (pick one or combine) |
+|---|---|---|
+| `build-seller-agent` | `["media_buy", "creative"]` | `sales-guaranteed`, `sales-non-guaranteed`, `sales-proposal-mode` |
+| `build-generative-seller-agent` | `["media_buy", "creative"]` | `creative-generative` + `sales-non-guaranteed` |
+| `build-retail-media-agent` | `["media_buy", "creative"]` | `sales-catalog-driven` |
+| `build-signals-agent` | `["signals"]` | `signal-owned`, `signal-marketplace` |
+| `build-creative-agent` | `["creative"]` | `creative-ad-server`, `creative-template` |
+
+**Picking a sales specialism:**
+- **`sales-guaranteed`** — you sell with IO approval against rate cards or fixed CPMs. Direct-sold CTV, premium video, broadcast TV, OOH.
+- **`sales-non-guaranteed`** — you sell on a real-time auction with floor pricing. Programmatic display, OLV, audio.
+- **`sales-proposal-mode`** — you negotiate per-buy (custom pricing, custom packages, custom terms), no rate card. Premium publisher direct, sponsorship, native at scale.
+
+You can claim more than one if you genuinely operate that way — but each claim adds a storyboard you must pass. Claim only what you sell. See the [Compliance Catalog](/docs/building/verification/compliance-catalog) for the full taxonomy and per-specialism storyboards.
+
+Building a **brand rights** agent (licensing talent, music, stock media)? There's no skill today — see the [Brand Protocol docs](/docs/brand-protocol) and claim `brand-rights` under the `brand` domain.
+
+See the [Compliance Catalog](/docs/building/verification/compliance-catalog) for every domain and specialism with its storyboard and status (stable, preview, deprecated).
+
+Storyboard passing earns the **[AAO Verified (Spec)](/docs/building/verification/aao-verified)** qualifier — validated against seeded test data on a test-mode endpoint. Once your agent is running against real production inventory, consider enrolling in the **(Live)** qualifier, which adds continuous observability of real delivery on a dedicated compliance account. An agent can hold (Spec), (Live), or both; enterprise buyers that treat AdCP as production infrastructure filter on (Live).
+
+## Build the agent
+
+Point your coding agent at the skill file for your agent type. In Claude Code:
+
+<Tabs>
+<Tab title="JavaScript/TypeScript">
+```
+Fetch https://raw.githubusercontent.com/adcontextprotocol/adcp-client/main/skills/build-seller-agent/SKILL.md, then build a seller agent for a premium sports news publisher with guaranteed CTV and OLV inventory.
+```
+</Tab>
+<Tab title="Python">
+```
+Fetch https://raw.githubusercontent.com/adcontextprotocol/adcp-client-python/main/skills/build-seller-agent/SKILL.md, then build a seller agent for a premium sports news publisher with guaranteed CTV and OLV inventory.
+```
+
+Point at the `adcp-client-python` skill for your agent type. If the exact skill isn't there yet, browse [adcp-client-python/skills](https://github.com/adcontextprotocol/adcp-client-python/tree/main/skills) for the closest match.
+</Tab>
+<Tab title="Go">
+```
+Fetch https://raw.githubusercontent.com/adcontextprotocol/adcp-go/main/skills/build-seller-agent/SKILL.md, then build a seller agent for a premium sports publisher.
+```
+</Tab>
+</Tabs>
+
+In Cursor or Windsurf, download the skill file and include it as context with your prompt. Each skill walks the coding agent through:
+
+1. Business model decisions (what you sell, how you price, approval workflow)
+2. Tool registration with correct schemas
+3. Response shapes that pass storyboard validation
+4. Error handling and edge cases
+
+## Validate with storyboards
+
+<Note>
+The storyboard runner requires Node.js, regardless of what language your agent is written in.
+</Note>
+
+Once the agent is running, validate it against the matching storyboard:
+
+```bash
+# JS/TS agent
+npx tsx agent.ts &
+npx @adcp/sdk@latest storyboard run http://localhost:3001/mcp media_buy_seller --json
+
+# Python agent
+python agent.py &
+npx @adcp/sdk@latest storyboard run http://localhost:3001/mcp media_buy_seller --json
+
+# Go agent
+go run main.go &
+npx @adcp/sdk@latest storyboard run http://localhost:3001/mcp media_buy_seller --json
+```
+
+Storyboards exercise every required tool call and validate response shapes. The storyboard runner uses sandbox mode by default — your agent receives `sandbox: true` on all account references and should return simulated data without real platform calls. A passing run means your agent is protocol-compliant.
+
+```
+media_buy_seller (9 steps)
+  ✓ get_adcp_capabilities
+  ✓ sync_accounts
+  ✓ get_products
+  ✓ create_media_buy
+  ✓ list_creative_formats
+  ✓ sync_creatives
+  ✓ list_creatives
+  ✓ get_media_buy_delivery
+  ✓ provide_performance_feedback
+  9/9 passed
+```
+
+<Warning>
+**Protocol-compliant ≠ production-ready.** A passing run means your agent speaks AdCP correctly. Going live requires business infrastructure behind each tool call — products and pricing, activation into your ad server, order management, hosting, and discovery registration via `adagents.json`. See **[Operating an Agent](/docs/building/operating/operating-an-agent)** for the full list and whether to partner, self-host, or build.
+</Warning>
+
+<Tip>
+Each skill includes variant storyboards for different business models — non-guaranteed, guaranteed with approval, proposal mode, and more. Run `npx @adcp/sdk@latest storyboard list` to see all available storyboards.
+</Tip>
+
+See **[Validate Your Agent](/docs/building/verification/validate-your-agent)** for the full testing workflow — debugging failing steps, running compliance checks, and validating interactively through Addie.
+
+## Additional resources
+
+The JS/TS SDK includes documentation designed for both humans and coding agents:
+
+| Resource | JS/TS location | Purpose |
+|----------|----------------|---------|
+| Protocol spec | `node_modules/@adcp/sdk/docs/llms.txt` | Full protocol in one file — tools, types, error codes, examples |
+| Server guide | `node_modules/@adcp/sdk/docs/guides/BUILD-AN-AGENT.md` | Server-side implementation patterns |
+
+Python and Go equivalents are in each SDK's GitHub repository. See [adcp-client-python](https://github.com/adcontextprotocol/adcp-client-python) and [adcp-go](https://github.com/adcontextprotocol/adcp-go).
+
+## What's next
+
+- **[Validate Your Agent](/docs/building/verification/validate-your-agent)** — Storyboards, compliance checks, and the build-validate-fix loop
+- **[Operating an Agent](/docs/building/operating/operating-an-agent)** — What sits behind the protocol layer, and whether to partner, self-host, or build
+- **[Choose your SDK](/docs/building/by-layer/L4/choose-your-sdk)** — Schema access, CLI tools, and SDK package exports
+- **[MCP integration guide](/docs/building/by-layer/L0/mcp-guide)** — Transport, sessions, and auth details
+- **[Task lifecycle](/docs/building/by-layer/L3/task-lifecycle)** — Status values, transitions, and polling
+- **[Error handling](/docs/building/by-layer/L3/error-handling)** — Error categories, codes, and recovery

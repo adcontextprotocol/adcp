@@ -14,7 +14,7 @@ This page demonstrates the testable documentation feature with complete, working
 ### List Creative Formats
 
 ```javascript
-import { testAgent } from '@adcp/client/testing';
+import { testAgent } from '@adcp/sdk/testing';
 
 const result = await testAgent.listCreativeFormats({});
 
@@ -73,7 +73,7 @@ Mark a page `testable: true` ONLY when:
 - ALL code blocks are complete working examples
 - No code fragments or incomplete snippets
 - All examples use test agent credentials
-- Dependencies are installed (`@adcp/client`, `adcp`)
+- Dependencies are installed (`@adcp/sdk`, `adcp`)
 
 ### When NOT to Mark Pages as Testable
 

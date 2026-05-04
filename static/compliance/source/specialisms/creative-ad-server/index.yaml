@@ -69,8 +69,8 @@ fixtures:
         id: "vast_30s"
       pricing_options:
         - pricing_option_id: "po_vast_30s_cpm"
-          pricing_model: "cpm"
-          rate: 0.50
+          model: "cpm"
+          cpm: 0.50
           currency: "USD"
 
 phases:
@@ -147,7 +147,7 @@ phases:
           - format_id referencing the creative's format
           - name and status (approved, pending_review, rejected)
           - concept_id grouping related creatives across sizes
-          - pricing_options array with pricing_option_id, model, rate, currency —
+          - pricing_options array with pricing_option_id, model, cpm, currency —
             only when your agent bills through AdCP and include_pricing=true with
             an account provided. Agents that bill out of band omit this field.
 
@@ -257,6 +257,18 @@ phases:
             path: "context.correlation_id"
             value: "creative_ad_server--build_tag"
             description: "Context correlation_id returned unchanged"
+          # Anti-façade: a real ad-server adapter calls its upstream tag-build /
+          # creative-trafficking API. An adapter that fabricates a serving tag
+          # locally without touching the ad server fails this check. Permissive
+          # endpoint pattern because ad-server vendors differ widely (Google
+          # Ad Manager, Kevel, Equativ, FreeWheel) — the storyboard asserts
+          # "an upstream call happened" rather than naming a platform.
+          - check: upstream_traffic
+            description: "build_creative caused upstream traffic to the ad server carrying the creative_id"
+            min_count: 1
+            endpoint_pattern: "POST *"
+            identifier_paths:
+              - "creative_id"
   - id: track_delivery
     title: "Track creative delivery"
     narrative: |

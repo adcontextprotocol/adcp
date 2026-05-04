@@ -28,6 +28,8 @@ import {
   handleListCreativeFormats,
 } from './task-handlers.js';
 import { handleProvidePerformanceFeedback } from './catalog-event-handlers.js';
+import { syncAccountsUpsert } from './v6-account-helpers.js';
+import { trainingBuyerAgentRegistry } from './buyer-agent-registry.js';
 import type { ToolArgs, TrainingContext } from './types.js';
 
 interface TrainingSalesMeta {
@@ -82,6 +84,13 @@ function translateV5Result<T extends object>(result: unknown): T {
  * v6 mandates `accounts.resolve()` on every request; we synthesize an
  * Account from the wire reference (or from auth for no-account tools
  * like `provide_performance_feedback` and `list_creative_formats`).
+ *
+ * `upsert` delegates to the v5 `handleSyncAccounts` so the BILLING_NOT_SUPPORTED
+ * + BILLING_NOT_PERMITTED_FOR_AGENT gates (landed in #3851) fire identically
+ * on the v6 per-tenant `/api/training-agent/sales/mcp` route as on the
+ * legacy `/mcp` route. Principal flows from the bearer authenticator
+ * through `ctx.authInfo` into the v5 handler's `ctx.principal`, where the
+ * per-agent gate consults the commercial-relationships map.
  */
 const trainingSalesAccounts: AccountStore<TrainingSalesMeta> = {
   resolution: 'explicit',
@@ -92,6 +101,7 @@ const trainingSalesAccounts: AccountStore<TrainingSalesMeta> = {
         name: 'Public Sandbox',
         status: 'active',
         ctx_metadata: {},
+        sandbox: true,
         authInfo: { kind: 'public' },
       };
     }
@@ -109,9 +119,11 @@ const trainingSalesAccounts: AccountStore<TrainingSalesMeta> = {
       ...(brandDomain != null && { brand: { domain: brandDomain } }),
       ...('operator' in ref && typeof ref.operator === 'string' && { operator: ref.operator }),
       ctx_metadata: { brand_domain: brandDomain },
+      sandbox: true,
       authInfo: { kind: 'api_key' },
     };
   },
+  upsert: syncAccountsUpsert,
 };
 
 export class TrainingSalesPlatform
@@ -151,6 +163,7 @@ export class TrainingSalesPlatform
 
   statusMappers = {};
   accounts: AccountStore<TrainingSalesMeta> = trainingSalesAccounts;
+  agentRegistry = trainingBuyerAgentRegistry;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   sales: SalesPlatform<TrainingSalesMeta> = {

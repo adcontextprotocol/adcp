@@ -1,0 +1,495 @@
+---
+title: Push Notifications
+description: "AdCP push notifications: how sellers deliver async task status updates to your webhook endpoint via RFC 9421–signed POST requests (with legacy HMAC fallback). Setup, URL templates, and idempotency."
+"og:title": "AdCP — Push Notifications"
+---
+
+Push notifications let sellers deliver task status updates to you directly, instead of requiring you to poll. You provide a webhook URL in the task request; the seller POSTs status changes to that URL as the task progresses.
+
+## How it works
+
+1. A unique operation ID is generated per task invocation
+2. A webhook URL is built by substituting that ID (and other routing params) into a URL template
+3. `push_notification_config` is injected into the task request body with just the URL — no secret required
+4. The seller POSTs webhook notifications to your URL as the task status changes, signing each POST with its `adcp_use: "webhook-signing"` key published in its own brand.json `agents[]` entry
+5. You verify the signature against the seller's published JWKS and dedupe by `idempotency_key`
+6. Each notification echoes `operation_id` back in the payload so you can correlate it without parsing the URL
+
+```
+create_media_buy request
+  └── push_notification_config
+        └── url: "https://you.com/adcp/webhook/create_media_buy/agent_123/cd51e063-2b79-4a6d-afac-ed7789c3a443"
+              // No shared secret — the seller signs with its own key, you verify against
+              // its published JWKS. See "Signature verification" below.
+
+              ↓ seller processes task ↓
+
+POST https://you.com/adcp/webhook/create_media_buy/agent_123/cd51e063-2b79-4a6d-afac-ed7789c3a443
+  Signature-Input: sig1=("@method" "@target-uri" "@authority" "content-type" "content-digest");
+                   created=1706097600;expires=1706097900;nonce="...";keyid="seller-webhook-2025";
+                   alg="ed25519";tag="adcp/webhook-signing/v1"
+  Signature: sig1=:<base64url-unpadded>:
+  Content-Digest: sha-256=:<base64url-unpadded>:
+  Content-Type: application/json
+
+  {
+    "idempotency_key": "whk_01HW9D3H8FZP2N6R8T0V4X6Z9B",   ← dedup by this
+    "task_id": "task_456",
+    "operation_id": "cd51e063-2b79-4a6d-afac-ed7789c3a443",   ← echoed from your URL
+    "status": "completed",
+    "result": { ... }
+  }
+```
+
+If you're using the `@adcp/sdk` library, this entire flow is handled automatically. As a **buyer**, configure `webhookUrlTemplate` and your agent URL on the client; `push_notification_config` is injected into every outgoing task call, and incoming webhooks are verified against the seller's JWKS automatically. As a **seller emitting webhooks**, publish a webhook-signing JWK at your brand.json `agents[]` entry (with `adcp_use: "webhook-signing"`) and the client signs outgoing webhooks for you.
+
+:::warning Legacy HMAC fallback (deprecated)
+Buyers integrating with receivers that have not yet adopted the RFC 9421 webhook profile MAY opt into the legacy HMAC-SHA256 scheme by populating `push_notification_config.authentication.credentials`. That path is deprecated and removed in AdCP 4.0 — see [Legacy HMAC-SHA256 fallback](#legacy-hmac-sha256-fallback-deprecated) below. Because the inbound request that registers the webhook is typically not 9421-signed in 3.0, the `authentication` block is susceptible to on-path strip/inject — see [Downgrade and injection resistance](/docs/building/by-layer/L1/security#webhook-callbacks) for the operational mitigations.
+:::
+
+## Naming: snake_case vs camelCase
+
+This trips people up. There are two naming conventions in play:
+
+| Context | Field name | Example |
+|---------|-----------|---------|
+| **MCP task arguments** (AdCP JSON) | `push_notification_config` | `{ push_notification_config: { url: ... } }` |
+| **A2A configuration object** | `pushNotificationConfig` | `configuration: { pushNotificationConfig: { url: ... } }` |
+
+The AdCP field name is always **`push_notification_config`** (snake_case). It goes in the task request body alongside your other task parameters.
+
+For A2A, the A2A protocol wraps it in a `configuration` envelope using camelCase — but the object's contents are identical.
+
+## Adding push_notification_config to a request
+
+### MCP
+
+Include `push_notification_config` as a task argument, merged with the rest of your task parameters:
+
+```json
+{
+  "brand": { "brand_id": "acme" },
+  "start_time": { "type": "date", "date": "2025-03-01" },
+  "end_time": "2025-06-30T23:59:59Z",
+  "packages": [...],
+  "push_notification_config": {
+    "url": "https://you.com/webhooks/adcp/create_media_buy/op_abc123"
+  }
+}
+```
+
+`authentication` is omitted in the default case — the seller signs with its own `adcp_use: "webhook-signing"` key. Include `authentication.credentials` only if you need the legacy HMAC-SHA256 fallback.
+
+### A2A
+
+For A2A, skill parameters stay in `message.parts[].data.parameters`. The push notification config goes in the top-level `configuration` object:
+
+```json
+{
+  "message": {
+    "parts": [{
+      "kind": "data",
+      "data": {
+        "skill": "create_media_buy",
+        "parameters": {
+          "packages": [...]
+        }
+      }
+    }]
+  },
+  "configuration": {
+    "pushNotificationConfig": {
+      "url": "https://you.com/webhooks/adcp/create_media_buy/op_abc123"
+    }
+  }
+}
+```
+
+## Operation IDs and URL templates
+
+Operation IDs let you route incoming webhooks to the right handler. The typical pattern:
+
+1. Generate a unique ID per task call
+2. Embed it in the webhook URL path
+3. The seller echoes `operation_id` in the payload — no URL parsing needed
+
+**URL template pattern:**
+```
+https://you.com/webhooks/{task_type}/{agent_id}/{operation_id}
+```
+
+**Example (client library handles this automatically):**
+```typescript
+import { randomUUID } from 'crypto';
+
+const operationId = randomUUID(); // e.g. "cd51e063-2b79-4a6d-afac-ed7789c3a443"
+const webhookUrl = `https://you.com/adcp/webhook/create_media_buy/${agentId}/${operationId}`;
+
+// pass webhookUrl in push_notification_config.url
+```
+
+The seller's webhook payload will include `"operation_id": "cd51e063-2b79-4a6d-afac-ed7789c3a443"`, so your handler can route to the right pending operation without parsing the URL.
+
+### Echoing the caller's `context` object
+
+When the originating request carried a top-level `context` object, the seller MUST echo that same object verbatim in every webhook payload for the same operation, alongside `operation_id`. This is the same contract that applies to synchronous and async-status responses — see [Context and sessions — Normative echo contract](/docs/building/by-layer/L2/context-sessions#normative-echo-contract). The echo MUST carry through `working`, `input-required`, `completed`, `failed`, and `canceled` deliveries; dropping `context` between the initial response and a later webhook breaks buyer-side correlation exactly where it's needed most. Buyers routing by `context.trace_id` or `context.internal_campaign_id` rely on verbatim echo on every delivery.
+
+## When webhooks fire
+
+Webhooks are sent for each status change after the initial response, as long as `push_notification_config` is in the request.
+
+If the task completes synchronously (initial response is already `completed` or `failed`), no webhook is sent — you already have the result.
+
+**Status changes that trigger webhooks:**
+
+| Status | Meaning |
+|--------|---------|
+| `working` | Task is processing — may include progress info |
+| `input-required` | Waiting for human approval or clarification |
+| `completed` | Final result available |
+| `failed` | Task failed with error details |
+| `canceled` | Task was canceled |
+
+## Webhook payload formats
+
+### MCP
+
+```json
+{
+  "idempotency_key": "whk_01HW9D3H8FZP2N6R8T0V4X6Z9B",
+  "task_id": "task_456",
+  "operation_id": "cd51e063-2b79-4a6d-afac-ed7789c3a443",
+  "task_type": "create_media_buy",
+  "domain": "media-buy",
+  "status": "completed",
+  "timestamp": "2025-01-22T10:30:00Z",
+  "message": "Media buy created successfully",
+  "result": {
+    "media_buy_id": "mb_12345",
+    "packages": [
+      { "package_id": "pkg_001", "context": { "line_item": "li_ctv_sports" } }
+    ]
+  }
+}
+```
+
+Every webhook payload carries a required `idempotency_key` — a sender-generated key that is stable across retries of the same event. This is the canonical dedup field; see [Reliability](#reliability) below.
+
+### A2A
+
+A2A sends a `Task` object (for final states) or `TaskStatusUpdateEvent` (for progress). For final states (`completed`, `failed`), AdCP result data is in `.artifacts[0].parts[]`. For interim states (`working`, `input-required`), data is in `status.message.parts[]`.
+
+```json
+{
+  "id": "task_456",
+  "contextId": "ctx_123",
+  "status": {
+    "state": "completed",
+    "timestamp": "2025-01-22T10:30:00Z"
+  },
+  "artifacts": [{
+    "artifactId": "result",
+    "parts": [
+      { "kind": "text", "text": "Media buy created successfully" },
+      {
+        "kind": "data",
+        "data": {
+          "media_buy_id": "mb_12345",
+          "packages": [
+            { "package_id": "pkg_001", "context": { "line_item": "li_ctv_sports" } }
+          ]
+        }
+      }
+    ]
+  }]
+}
+```
+
+### Protocol comparison
+
+| | MCP | A2A |
+|---|---|---|
+| **Config field** | `push_notification_config` (in task args) | `configuration.pushNotificationConfig` (separate from skill params) |
+| **Envelope** | `mcp-webhook-payload.json` | Native `Task` / `TaskStatusUpdateEvent` |
+| **Result location** | `result` field | `.artifacts[0].parts[].data` (final) / `status.message.parts[].data` (interim) |
+| **Data schemas** | Identical AdCP schemas | Identical AdCP schemas |
+
+### Status-specific result data
+
+| Status | `result` / `data` contains |
+|--------|---------------------------|
+| `completed` / `failed` | Full task response |
+| `working` | Progress: `percentage`, `current_step`, `total_steps` |
+| `input-required` | Reason and any validation errors |
+| `submitted` | Minimal acknowledgment |
+
+## Signature verification
+
+Every AdCP 3.0 webhook is signed under the [RFC 9421 webhook profile](/docs/building/by-layer/L1/security#webhook-callbacks). The seller signs with its `adcp_use: "webhook-signing"` key published in its own brand.json `agents[]` entry; you verify against the seller's published JWKS. No shared secret crosses the wire.
+
+**Publisher sends three headers** (plus `Content-Type`):
+
+```
+Signature-Input: sig1=("@method" "@target-uri" "@authority" "content-type" "content-digest");
+                 created=<unix>;expires=<unix>;nonce=<base64url>;
+                 keyid=<kid>;alg="ed25519";tag="adcp/webhook-signing/v1"
+Signature: sig1=:<base64url-unpadded>:
+Content-Digest: sha-256=:<base64url-unpadded>:
+```
+
+Covered components are fixed: `@method`, `@target-uri`, `@authority`, `content-type`, `content-digest`. `content-digest` is REQUIRED — the body is the event; a signature that doesn't cover it isn't protecting the attack surface that matters.
+
+**Verification** follows the 14-step [request verifier checklist](/docs/building/by-layer/L1/security#verifier-checklist-requests) with three webhook substitutions:
+
+- Error codes use the `webhook_signature_*` prefix (see [Webhook error taxonomy](/docs/building/by-layer/L1/security#webhook-error-taxonomy)).
+- `tag` MUST be `adcp/webhook-signing/v1`.
+- Resolve `keyid` via the seller's `adagents.json` `agents[]` entry (you already have the seller's agent URL from your integration).
+
+**Receiver implementation sketch:**
+```typescript
+import { createRemoteJWKSet, jwtVerify } from 'jose';
+// Use a validated RFC 9421 library (e.g., `http-message-signatures`) pinned to the AdCP profile.
+
+app.post('/webhooks/adcp/*', async (req, res) => {
+  try {
+    // 1. Parse Signature-Input / Signature headers and reject on malformed.
+    // 2. Resolve keyid against the seller's adagents.json JWKS.
+    // 3. Run the AdCP webhook verifier checklist (14 steps).
+    await verifyAdcpWebhookSignature(req, {
+      sellerAgentUrl: req.sellerContext.agentUrl, // known from your integration
+      requiredTag: 'adcp/webhook-signing/v1',
+      allowedAlgs: ['ed25519', 'ecdsa-p256-sha256'],
+    });
+  } catch (err) {
+    return res.status(401)
+      .setHeader('WWW-Authenticate', `Signature error="${err.code}"`)
+      .end();
+  }
+
+  // 4. Dedup by idempotency_key before applying side effects (see Reliability below).
+  processWebhook(req.body);
+  res.status(200).end();
+});
+```
+
+:::caution Raw body and content-digest
+Your `Content-Digest` verification (step 11 of the checklist) requires the raw HTTP body bytes. Capture them before JSON parsing — any re-serialization will break the digest match.
+
+In Express:
+```typescript
+app.use(express.json({
+  verify: (req, _res, buf) => { (req as any).rawBody = buf.toString('utf-8'); },
+}));
+```
+:::
+
+:::note Replay protection
+The `created`/`expires`/`nonce` sig-params enforce a 5-minute max validity window and `(keyid, nonce)` replay dedup. See [Transport replay dedup](/docs/building/by-layer/L1/security#transport-replay-dedup) for the per-keyid cap and memory-bounding rules.
+:::
+
+### Legacy HMAC-SHA256 fallback (deprecated)
+
+:::warning Deprecated — removed in AdCP 4.0
+The HMAC-SHA256 scheme below is a compatibility affordance for 3.x only. New integrations SHOULD omit `push_notification_config.authentication` and use the [9421 webhook profile](#signature-verification) above. Sellers MAY decline to support the legacy scheme.
+:::
+
+Buyers can opt into HMAC-SHA256 by populating `push_notification_config.authentication.credentials`. When present, the seller signs with HMAC-SHA256 using a shared secret and includes a timestamp for replay protection.
+
+**Configuration (legacy):**
+```json
+{
+  "authentication": {
+    "schemes": ["HMAC-SHA256"],
+    "credentials": "your_shared_secret_min_32_chars"
+  }
+}
+```
+
+**Publisher sends two headers (legacy):**
+```
+X-ADCP-Signature: sha256=<hex digest>
+X-ADCP-Timestamp: <unix timestamp in seconds>
+```
+
+**Signature algorithm (legacy):**
+
+The signed message is `{unix_timestamp}.{raw_json_body}` — the Unix timestamp (in seconds), a dot, then the exact JSON bytes being sent in the HTTP body.
+
+```
+Signature = sha256= + hex( HMAC-SHA256( secret, "{timestamp}.{rawBody}" ) )
+```
+
+The `rawBody` **must** be the exact bytes sent on the wire. When serializing a JSON payload to produce the body, use **compact separators** (`","` and `":"`, no surrounding whitespace) — this matches JavaScript `JSON.stringify` and most HTTP-client defaults, and is what the receiver sees as `raw_body`. The common cross-SDK failure here is a signer that calls a language default which inserts spaces (e.g., Python `json.dumps(payload)`) while the HTTP client writes compact bytes on the wire — the signer then signs over bytes the receiver never sees. Use `json.dumps(payload, separators=(",", ":"))` (or equivalent) for byte-equality. See [Webhook Security — legacy normative rules](/docs/building/by-layer/L1/security#legacy-hmac-sha256-fallback-deprecated-removed-in-40) for the full rules on canonical on-wire form and verifier input handling.
+
+**Publisher implementation (legacy):**
+```typescript
+import { createHmac } from 'crypto';
+
+function signWebhook(rawBody: string, secret: string): { signature: string; timestamp: string } {
+  const timestamp = Math.floor(Date.now() / 1000).toString();
+  const message = `${timestamp}.${rawBody}`;
+  const hex = createHmac('sha256', secret).update(message).digest('hex');
+  return { signature: `sha256=${hex}`, timestamp };
+}
+```
+
+**Receiver implementation (legacy):**
+```typescript
+import { createHmac, timingSafeEqual } from 'crypto';
+
+function verifyWebhook(
+  rawBody: string, signature: string, timestamp: string, secret: string,
+): boolean {
+  const ts = parseInt(timestamp, 10);
+  if (isNaN(ts)) return false;
+  const now = Math.floor(Date.now() / 1000);
+  if (Math.abs(now - ts) > 300) return false;
+
+  const message = `${ts}.${rawBody}`;
+  const expected = `sha256=${createHmac('sha256', secret).update(message).digest('hex')}`;
+  if (signature.length !== expected.length) return false;
+  return timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
+}
+```
+
+Normative rules for the legacy scheme are in [Webhook Security](/docs/building/by-layer/L1/security#legacy-hmac-sha256-fallback-deprecated-removed-in-40).
+
+### Legacy Bearer token (deprecated)
+
+The A2A `authentication.schemes: ["Bearer"]` scheme is also supported for compatibility and removed in AdCP 4.0. Bearer provides no tamper protection on the body. The 9421 profile is stronger on signer identity (JWKS-anchored, rotatable, revocable) and key management (no shared secret on the wire); body-integrity protection is comparable to the legacy HMAC scheme since both cover the body bytes. Sellers SHOULD refuse Bearer for any mutating callback.
+
+```json
+{
+  "authentication": {
+    "schemes": ["Bearer"],
+    "credentials": "your_bearer_token_min_32_chars"
+  }
+}
+```
+
+```javascript
+app.post('/webhooks/adcp', (req, res) => {
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  if (token !== process.env.ADCP_WEBHOOK_TOKEN) return res.status(401).end();
+  processWebhook(req.body);
+  res.status(200).end();
+});
+```
+
+## Reliability
+
+Webhooks use **at-least-once delivery** — you may receive the same event more than once, and events may arrive out of order.
+
+### Dedup by `idempotency_key`
+
+Every webhook payload — MCP task envelope, governance list-change webhooks (`collection_list_changed`, `property_list_changed`), artifact push webhooks, and rights `revocation-notification` — carries a required `idempotency_key`. Publishers generate this key once per distinct event and reuse it on every retry. Receivers MUST dedupe by it.
+
+**Sender requirements:**
+- The key MUST be cryptographically random (UUID v4 recommended). Sequential, timestamp-only, or otherwise predictable values are non-conformant: receivers dedupe on the raw value, so a predictable key lets an attacker pre-seed a receiver's cache to suppress a later legitimate event.
+- The key MUST be stable across retries of the same event and MUST NOT be reused for a distinct event.
+
+**Receiver requirements:**
+- Dedup scope is `(authenticated sender identity, idempotency_key)`. "Authenticated sender identity" means the sender's cryptographic identity as established by signature verification — under the 9421 default, the resolved `keyid` → signer `agents[]` entry URL; under the legacy fallback, the credential binding from the verified HMAC secret or Bearer token. Never derive identity from a payload field. Keys from different senders MUST be kept in independent keyspaces; a receiver integrated with multiple sellers MUST NOT collapse them. During an HMAC→9421 migration, a receiver SHOULD map both sender-identity forms for the same logical seller to one keyspace so that a duplicate across schemes still dedupes.
+- **Cross-endpoint dedup (MUST).** A receiver that exposes more than one webhook endpoint (per-integration, per-environment, per-tenant, or per-pod in a horizontally-scaled fleet) MUST share the `(sender identity, idempotency_key)` keyspace across every endpoint a given sender can reach — per-pod in-memory caches are non-conformant. Without a shared tier, the same signed event replayed to a sibling endpoint executes twice. See [Webhook replay dedup sizing](/docs/building/by-layer/L1/security#webhook-replay-dedup-sizing) for the transport-layer companion rule on `(keyid, nonce)` scoping.
+- Dedup state MUST persist for at least 24h in durable storage that survives process restarts, pod replacements, and region failovers. Publishers SHOULD NOT retry beyond that window; retries arriving after the receiver's TTL will be reprocessed as fresh events. An in-memory-only cache (per-pod `Map` or LRU without a backing tier) is non-conformant — the asymmetry between the ~360 s signature-nonce window and the 24h idempotency window creates a **displaced-replay window** in which a legitimate signed retry (fresh nonce, same `idempotency_key`) passes signature verification and finds no cache entry because the receiver dropped in-memory state. Side effects run twice. Receivers whose cache tier cannot durably honor 24h MUST document the shorter effective window to every sender they integrate with — silent shortening is the unsafe mode.
+- Receivers SHOULD bound dedup cache size per sender and return `429 Too Many Requests` (or drop the connection) rather than grow unbounded — a misbehaving or hostile seller emitting high-volume fresh keys is otherwise a storage-amplification vector.
+- **Duplicates MUST be answered with `2xx`** (typically `200 OK`), not `409 Conflict`. At-least-once senders interpret any non-2xx response as "delivery failed" and retry with exponential back-off; returning `4xx` on a successfully-deduped event turns correct receiver behavior into a retry storm. A duplicate is a no-op, not an error.
+- Webhook receivers do **not** verify payload equivalence across key reuse. If a sender reuses a key with a changed payload (a sender bug), the receiver's cached first copy wins and the second is silently deduped. This differs from the request-side `IDEMPOTENCY_CONFLICT` behavior — senders are solely responsible for generating a fresh key on every distinct event.
+
+```javascript
+app.post('/webhooks/adcp', async (req, res) => {
+  const payload = req.body;
+  const { idempotency_key, task_id, status, timestamp, result } = payload;
+
+  // Scope dedup to the authenticated sender — never trust a payload field for identity.
+  const sender = req.verifiedSenderId; // set by 9421 verifier (keyid → agent URL) or legacy HMAC/Bearer middleware
+
+  // Dedup: same (sender, idempotency_key) within the replay window → already processed.
+  // Return 200 (not 409) so the sender stops retrying.
+  if (await db.webhookAlreadyProcessed(sender, idempotency_key)) {
+    return res.status(200).end();
+  }
+  await db.markWebhookProcessed(sender, idempotency_key); // before side effects — fail-closed on crash
+
+  // Ordering: separately, don't apply a stale status on top of a newer one.
+  // Ordering state is keyed on task_id, not idempotency_key — two distinct events
+  // (different keys) can still arrive out of order. Still a 200: we received it cleanly.
+  const task = await db.getTask(task_id);
+  if (task?.updated_at >= timestamp) {
+    return res.status(200).end();
+  }
+
+  await db.updateTask(task_id, { status, updated_at: timestamp, result });
+  await triggerBusinessLogic(task_id, status);
+  res.status(200).end();
+});
+```
+
+**Always implement polling as backup.** Webhooks can fail due to network issues or server downtime. Use a slower poll interval when webhooks are configured (e.g., every 2 minutes instead of 30 seconds), and stop polling once you receive a terminal status via webhook.
+
+## Best practices
+
+1. **Always implement polling as backup** — webhooks can fail; poll at a reduced interval (e.g. every 2 minutes) when webhooks are configured, and stop once you receive a terminal status
+2. **Dedupe by `idempotency_key`** — every payload carries a required key stable across retries; track processed keys for at least 24h
+3. **Return 2xx on duplicates** — a successfully-deduped event is a no-op, not an error; returning non-2xx triggers the sender's retry back-off and creates retry storms
+4. **Verify signatures before processing** — run the 9421 webhook verifier checklist (or the legacy HMAC check if you opted in) before any side effects
+5. **Acknowledge immediately** — return `200` before doing any heavy processing to avoid seller timeouts and unnecessary retries
+6. **Don't rely on URL structure** — use `operation_id` from the payload for routing, not URL parsing
+7. **Plan for HMAC removal in 4.0** — if you're currently on the legacy HMAC fallback, migrate to the 9421 webhook profile during 3.x
+
+## Payload extraction
+
+Webhook receivers need to detect the format and extract AdCP data. The buyer typically knows the format because it configured the transport, but defensive detection is useful for multi-format receivers.
+
+### Format detection
+
+| Signal | Format |
+|---|---|
+| `status` is a string, `task_id` present | MCP |
+| `status` is an object with `.state` | A2A |
+
+### Extraction
+
+**MCP webhooks:** Extract data from the `result` field directly.
+
+**A2A webhooks:** Use the [A2A response extraction](/docs/building/by-layer/L0/a2a-response-extraction) algorithm — final states extract from `.artifacts[0].parts[]` (last DataPart), interim states from `status.message.parts[]` (first DataPart).
+
+```javascript
+function extractAdcpResponseFromWebhook(payload, knownFormat) {
+  const format = knownFormat || detectFormat(payload);
+
+  if (format === 'mcp') return payload.result ?? null;
+  if (format === 'a2a') return extractAdcpResponseFromA2A(payload);
+  return null;
+}
+
+function detectFormat(payload) {
+  if (payload.status && typeof payload.status === 'object'
+      && !Array.isArray(payload.status) && payload.status.state) return 'a2a';
+  if (typeof payload.status === 'string' && payload.task_id) return 'mcp';
+  return null;
+}
+```
+
+### Security requirements
+
+- **Content-Type validation**: Senders MUST send `application/json`. Receivers MUST reject other types before signature verification.
+- **Payload size limit**: Receivers SHOULD enforce a 1MB limit. Reject before signature verification — computing a digest or HMAC over large payloads is a DoS vector. Return `413 Payload Too Large`.
+- **Deduplication**: `idempotency_key` is the canonical dedup field. Signature verification (9421 or legacy HMAC) plus replay dedup protect the transport; `idempotency_key` protects against duplicate side effects at the application layer.
+- **Format detection**: Auto-detection is a defensive fallback. Receivers SHOULD use the known format from their transport configuration (`knownFormat` parameter) rather than relying solely on payload inspection. A compromised intermediary could craft an ambiguous payload that routes extraction to the wrong path.
+
+### Test vectors
+
+Machine-readable test vectors are available at [`/static/test-vectors/webhook-payload-extraction.json`](https://adcontextprotocol.org/test-vectors/webhook-payload-extraction.json). Client libraries SHOULD validate their format detection and extraction logic against these vectors.
+
+## Reporting webhooks
+
+Reporting webhooks are separate from task status webhooks. They deliver periodic performance data for active media buys and are configured via `reporting_webhook` in `create_media_buy`, not via `push_notification_config`.
+
+See [Task Reference](/docs/media-buy/task-reference) for details on `reporting_webhook`.
+
+## Next steps
+
+- [Task Lifecycle](/docs/building/by-layer/L3/task-lifecycle) — status values and transitions
+- [Async Operations](/docs/building/by-layer/L3/async-operations) — handling long-running tasks
+- [Error Handling](/docs/building/by-layer/L3/error-handling) — webhook error patterns
