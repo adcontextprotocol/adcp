@@ -152,6 +152,8 @@ Cross-publisher frequency capping is the primary use case for Identity Match. Ca
 
 The protocol does not constrain how you count impressions, where policies live, or how you dedup across identities. It only defines the boundary: cap-fire events flow into the cap-state store; the IdentityMatch service checks presence at query time. See [Frequency-Cap Data Flow](/docs/trusted-match/identity-match-implementation) for the boundary contract and the reference cap-state store.
 
+When an fcap rule changes — a window shortens or lengthens, a `max_count` rises or falls, a policy is paused or removed, a package is reassigned — you MUST re-evaluate the affected `(user_identity, package)` cap-state entries against the new policy and push the appropriate updates: **delete** entries for users no longer over-cap, **extend** (overwrite with a new `expire_at`) entries that are still over-cap but whose window changed. The cap-state store doesn't store counts and can't re-evaluate on its own; the buyer's policy owner is the source of truth. See [Policy updates and cap-state re-evaluation](/docs/trusted-match/identity-match-implementation#policy-updates-and-cap-state-re-evaluation) for the event shapes.
+
 Because Identity Match runs across all publishers using TMP, a user who saw your ad on Publisher A will correctly show as over-frequency on Publisher B — even though you can't see which publisher sent the request.
 
 ### How Buyers Learn About Exposures

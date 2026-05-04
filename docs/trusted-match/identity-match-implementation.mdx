@@ -74,6 +74,23 @@ At query time, the Identity Match service receives a list of identities and a li
 
 Cap state is one input to eligibility. The Identity Match service also evaluates audience membership, package active state, audience freshness, and any other inputs the buyer cares about — see the [conformance invariants](/docs/trusted-match/specification#conformance-invariants-for-identitymatch-eligibility). The cap-state portion of that evaluation is the part this page defines.
 
+## Policy updates and cap-state re-evaluation
+
+Cap-state entries are written under whatever fcap policy was in force at cap-fire time. When the buyer's fcap policies change — a window shortens or lengthens, a `max_count` rises or falls, a policy is paused or removed, a package is reassigned to a different policy — the existing cap-state entries written under the old policy can become stale. Stale entries either suppress users who should now be eligible (over-suppression) or fail to suppress users who should now be capped (under-suppression).
+
+When a fcap rule changes, the buyer's policy owner (typically the impression tracker or a service in its pipeline) MUST re-evaluate every cap-state entry the rule applied to and push the appropriate update to the IdentityMatch cap-state store. Two event shapes cover the cases:
+
+| Event | When to push | Effect on cap-state |
+|---|---|---|
+| **Delete cap-state** | A user's exposure count under the new policy is below the new `max_count`, or the policy was removed/disabled, or the package was reassigned away from the policy. | Remove the `(user_identity, package)` entry — the user is no longer suppressed on that package. |
+| **Extend cap-state** | A user is still over-cap under the new policy, but the new `expire_at` differs from the existing entry — for example, the window was lengthened (push a later `expire_at`) or shortened (push an earlier `expire_at`). | Overwrite the entry with the new `expire_at`. |
+
+Re-evaluation runs over the buyer's own counting state (where impression history lives), not over the cap-state store — the cap-state store doesn't carry counts. The output is the set of delete-or-extend events to apply.
+
+The reference store in [`adcp-go/targeting/fcap`](https://github.com/adcontextprotocol/adcp-go/tree/main/targeting/fcap) implements extend natively (a second `RecordCap` for the same `(user_identity, field)` overwrites the prior `expire_at` via `HSETEX`). Delete is a future extension — today, the simplest workaround is to extend with an `expire_at` already in the past, which causes the entry to be treated as absent at the next query and to be reaped by the backend's TTL machinery.
+
+Re-evaluation can be expensive when a policy applies to many users. Buyers typically run it asynchronously: enqueue the policy-change event, sweep the affected user population in batches, push delete/extend events incrementally. The protocol does not constrain the cadence — only the eventual consistency requirement that cap-state must converge to what the current policies imply.
+
 ## Reference implementation
 
 The cap-state store API in [`adcp-go/targeting/fcap`](https://github.com/adcontextprotocol/adcp-go/tree/main/targeting/fcap) is the reference shape. It exposes two operations:

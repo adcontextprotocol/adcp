@@ -70,7 +70,11 @@ IsCapped(ctx,   userIdentity, field Field) (bool)      // query cap-state
 
 The IdentityMatch service reads cap-state on each `/identity` call. Writes come from the impression tracker (or a downstream service in its pipeline) on cap-fire. No new wire endpoints for impressions or policies. The IdentityMatch service stays narrow.
 
-### 7. `sync_audiences` is the audience on-ramp
+### 7. Policy updates trigger cap-state re-evaluation at the buyer
+
+Cap-state entries are written under whatever fcap policy was in force at cap-fire time. When policies change (window length, `max_count`, activation, package reassignment), the buyer's policy owner MUST re-evaluate every affected `(user_identity, package)` entry against the new policy and push delete-or-extend events to the cap-state store. The cap-state store carries no counts and can't re-evaluate on its own — the buyer's counting state is the source of truth. The protocol does not constrain re-evaluation cadence; only that cap-state must converge to what the current policies imply. See [docs/trusted-match/identity-match-implementation.mdx § Policy updates and cap-state re-evaluation](../docs/trusted-match/identity-match-implementation.mdx#policy-updates-and-cap-state-re-evaluation) for the event shapes.
+
+### 8. `sync_audiences` is the audience on-ramp
 
 The existing wire `sync_audiences` task has `add[]`/`remove[]` deltas of audience-member objects — exactly the CRUD shape the IdentityMatch backend needs for the audience side of eligibility. No schema extension required.
 
@@ -81,9 +85,10 @@ Today the cap-state store is keyed at `(user_identity, seller_agent_url, package
 ## Open questions
 
 1. **Cap-state extensions for advertiser/campaign/creative.** v1 keys at `(user_identity, seller_agent_url, package_id)`. Extending to broader cap dimensions without forcing the impression tracker to write N entries on each cap-fire is a follow-up workstream.
-2. **Identity-graph plug-point.** Whether the impression tracker canonicalizes identities before writing cap-state, or writes per-resolved-identity, is buyer-internal. The protocol does not require the IdentityMatch service to know about identity graphs.
-3. **Audience strength scores.** Per-segment scores are an open extension on the audience side of eligibility, separate from cap-state.
-4. **Production-deployment perf benchmarks.** Cap-state lookups are hash-field presence checks (HEXISTS), but real-world latency depends on backend choice, network co-location, and cluster sharding under load. Tracked as a rollout-plan deliverable.
+2. **Explicit delete primitive on the cap-state store.** The reference impl exposes `RecordCap` (write/extend) and `IsCapped` (presence) but no explicit delete. Re-evaluation today expresses "delete" as "extend with an `expire_at` already in the past." A first-class `DeleteCap` operation is a candidate primitive, especially as policy-change re-evaluation becomes a hot path.
+3. **Identity-graph plug-point.** Whether the impression tracker canonicalizes identities before writing cap-state, or writes per-resolved-identity, is buyer-internal. The protocol does not require the IdentityMatch service to know about identity graphs.
+4. **Audience strength scores.** Per-segment scores are an open extension on the audience side of eligibility, separate from cap-state.
+5. **Production-deployment perf benchmarks.** Cap-state lookups are hash-field presence checks (HEXISTS), but real-world latency depends on backend choice, network co-location, and cluster sharding under load. Tracked as a rollout-plan deliverable.
 
 ## Deferred security & privacy issues (follow-up)
 
