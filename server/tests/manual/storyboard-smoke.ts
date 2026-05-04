@@ -6,6 +6,12 @@
  *   npx tsx server/tests/manual/storyboard-smoke.ts
  *   npx tsx server/tests/manual/storyboard-smoke.ts --storyboard media_buy_seller
  *   npx tsx server/tests/manual/storyboard-smoke.ts --agent https://some-agent.example/mcp
+ *   npx tsx server/tests/manual/storyboard-smoke.ts --storyboard media_buy_state_machine --brand acmeoutdoor.example
+ *
+ * `--brand` is recommended for storyboards that reference a `test_kit`
+ * (e.g. media_buy_state_machine → acme-outdoor). See JSDoc on the
+ * `brandDomain` resolution below for the runner's positive-path /
+ * negative-path brand split that makes this matter.
  */
 
 import {

@@ -35,16 +35,34 @@ const logger = createLogger('training-agent-tenant-router');
  * compliance heartbeat runs once per agent at a time. A future fix
  * could pool servers per tenant for true parallelism — this lock is
  * the minimum-mass correctness change.
+ *
+ * Lock scope intentionally includes `flushDirtySessions` (DB I/O) and
+ * `server.close()`, not just `connect`/`handleRequest`. Session state
+ * mutations from request N must be persisted before request N+1 runs
+ * against the same shared server — narrowing the lock to just the
+ * transport window would race on the in-memory session-context state
+ * the v5 handlers mutate. DB-flush latency is acceptable here because
+ * the training agent's call pattern is sequential per tenant in the
+ * storyboard runner / heartbeat. Don't narrow the lock without first
+ * partitioning session state per request.
  */
 const tenantLocks = new Map<string, Promise<unknown>>();
 
 async function withTenantLock<T>(tenantId: string, fn: () => Promise<T>): Promise<T> {
   const previous = tenantLocks.get(tenantId) ?? Promise.resolve();
   // Chain this work after the prior in-flight request and store the new
-  // tail in the map. `.catch(() => {})` keeps the chain alive if a request
-  // throws — the next waiter still gets to run. The map entry is one
-  // promise per tenant; we don't GC because the cost is constant in N
-  // tenants (small) and tenant ids come from a fixed set.
+  // tail in the map. `.catch(() => {})` keeps the chain alive if a prior
+  // request rejects — the next waiter still gets to run. The original
+  // caller's rejection propagates via the `next` promise we return below
+  // (`.then(fn)` keeps the success/failure shape from `fn` itself); only
+  // the chain-keepalive copy swallows the prior error. Don't "fix" the
+  // catch by removing it: without it, one rejected request poisons every
+  // subsequent same-tenant request via the shared map entry.
+  //
+  // The map entry is one promise per tenant; we don't GC because the
+  // cost is constant in N tenants (small, fixed set: sales/signals/
+  // governance/creative/creative-builder/brand) and the entry is
+  // overwritten on every call.
   const next = previous.catch(() => {}).then(fn);
   tenantLocks.set(tenantId, next);
   return next;
