@@ -1,0 +1,145 @@
+---
+title: Compliance grading model
+sidebarTitle: Grading Model
+description: "How AdCP compliance grading works end-to-end: specialism declaration, scenario resolution, capability gates, and result interpretation."
+"og:title": "AdCP — Compliance grading model"
+---
+
+The compliance grading model determines which storyboards run against your agent and how the results roll up into a verdict. This page is for adopters who want to understand what they commit to when they declare a specialism, and for contributors who need to predict exactly which scenarios will run for a given capability declaration.
+
+## Specialism declaration
+
+Your agent declares its conformance claims in the `specialisms` field of the `get_adcp_capabilities` response:
+
+```json
+{
+  "supported_protocols": ["media-buy"],
+  "specialisms": ["sales-guaranteed"]
+}
+```
+
+Specialism IDs are kebab-case (e.g., `sales-guaranteed`, `sales-non-guaranteed`, `creative-generative`). The full vocabulary is in the [`specialism` enum schema](/schemas/latest/enums/specialism.json) and indexed in the [Compliance Catalog](/docs/building/verification/compliance-catalog).
+
+A specialism declaration is a conformance commitment: the runner evaluates every scenario the specialism requires, and failing scenarios count against your result. Declaring a specialism whose required tools you have not implemented produces a `failing` result — not a graceful skip.
+
+Each specialism claim also requires its parent protocol in `supported_protocols`. For example, `sales-guaranteed` requires `"media-buy"` in `supported_protocols`. The runner rejects a specialism claim whose parent protocol is missing.
+
+## How scenarios resolve
+
+The runner discovers which storyboards to run from your `get_adcp_capabilities` response. Resolution follows three layers:
+
+| Layer | Path | Who runs it |
+|---|---|---|
+| **Universal** | `/compliance/{version}/universal/` | Every AdCP agent |
+| **Protocol** | `/compliance/{version}/protocols/{protocol}/` | Any agent declaring the protocol in `supported_protocols` |
+| **Specialism** | `/compliance/{version}/specialisms/{id}/` | Any agent declaring the specialism ID |
+
+For each specialism, **two sources** contribute to the final scenario list:
+
+1. **The protocol baseline** — the protocol-level `index.yaml` defines core scenarios all implementations of that protocol must cover
+2. **The specialism's own `requires_scenarios`** — the specialism's `index.yaml` lists additional scenarios specific to that specialization
+
+The runner merges both lists, deduplicates, and then applies capability gates (see below). For `sales-guaranteed`, the resolved list from `static/compliance/source/specialisms/sales-guaranteed/index.yaml` is:
+
+```yaml
+requires_scenarios:
+  - media_buy_seller/refine_products
+  - media_buy_seller/delivery_reporting
+  - media_buy_seller/measurement_terms_rejected
+  - media_buy_seller/pending_creatives_to_start
+  - media_buy_seller/inventory_list_targeting
+  - media_buy_seller/inventory_list_no_match
+  - media_buy_seller/invalid_transitions
+  - media_buy_seller/proposal_finalize   # capability-gated — see below
+```
+
+Each scenario ID maps to a YAML file at `static/compliance/source/protocols/{protocol}/scenarios/{id}.yaml`. The storyboard runner — not the JS test helpers in `src/lib/testing/` — is the authoritative execution harness. The JS test helpers use a narrower set of scenarios and different fixture inputs.
+
+## Capability gates
+
+Some scenarios require a specific capability flag. The scenario YAML carries a `requires_capability` block:
+
+```yaml
+# static/compliance/source/protocols/media-buy/scenarios/proposal_finalize.yaml
+requires_capability:
+  path: media_buy.supports_proposals
+  equals: true
+```
+
+Gate semantics:
+
+- **Sellers that declare `media_buy.supports_proposals: true`** (or omit the field) are graded against the scenario.
+- **Sellers that explicitly declare `media_buy.supports_proposals: false`** skip the scenario with status `capability_unsupported`. Skipped-by-capability scenarios do not count as failures.
+
+This lets sellers on direct-buy paths (auction PG, retail SKU, quoted-rate) declare `supports_proposals: false` and skip proposal-lifecycle scenarios without failing. Full-service sellers declare `true` (or omit) and are graded against the full proposal flow.
+
+In `--json` output, a capability-gated skip appears in the step result as:
+
+```json
+{
+  "storyboard_id": "media_buy_seller/proposal_finalize",
+  "passed": true,
+  "skip": {
+    "reason": "capability_unsupported",
+    "detail": "requires_capability: media_buy.supports_proposals = true; agent declared false"
+  }
+}
+```
+
+## Reading results
+
+Run with `--json` for machine-readable output:
+
+```bash
+npx @adcp/client@latest storyboard run my-agent media_buy_seller --json
+```
+
+The top-level `overall_status` field rolls up all storyboards and scenarios:
+
+| Value | Meaning |
+|---|---|
+| `passing` | All required scenarios passed (capability-gated skips do not count against this) |
+| `partial` | Some scenarios passed, some failed |
+| `failing` | All required scenarios failed, or a fatal error prevented scoring |
+
+Key fields for diagnosing results:
+
+- **`tracks_passed`** — how many tracks (specialism groups) passed completely
+- **`steps_passed` / `steps_total`** — how many individual steps passed within a storyboard
+- **`storyboard_id`** — identifies which storyboard a result belongs to
+
+To find which exact scenario failed, pass `--json` and look for storyboards with `"passed": false`. Then run the failing storyboard in isolation:
+
+```bash
+npx @adcp/client@latest storyboard run my-agent media_buy_seller/proposal_finalize --debug
+```
+
+Or step-by-step for a single failing step:
+
+```bash
+npx @adcp/client@latest storyboard step my-agent media_buy_seller/proposal_finalize finalize_proposal --debug
+```
+
+See [Validate Your Agent](/docs/building/verification/validate-your-agent) for the full CLI reference, and [Storyboard troubleshooting](/docs/building/operating/storyboard-troubleshooting) for error patterns mapped to root causes.
+
+## Invariants
+
+Invariants are a separate failure axis from step-level validations. A run can have all individual step validations pass but still fail due to an invariant violation.
+
+The `sales-guaranteed` specialism declares:
+
+```yaml
+invariants:
+  - status.monotonic
+```
+
+The `status.monotonic` invariant rejects status transitions observed across steps that are not on the valid lifecycle graph — for example, a media buy transitioning from `active` back to `pending_creatives`. If your agent emits a status sequence that violates the monotonic constraint, the invariant fails independently of whether each individual step response was otherwise valid.
+
+When diagnosing a `partial` or `failing` result that has no obvious step-level failures, check `invariant_failures` in the `--json` output.
+
+## Related
+
+- **[Validate Your Agent](/docs/building/verification/validate-your-agent)** — CLI reference, sandbox mode, multi-instance testing
+- **[Compliance Catalog](/docs/building/verification/compliance-catalog)** — full taxonomy of protocols and specialisms
+- **[Conformance Specification](/docs/building/verification/conformance)** — normative statement of what "conformant" means
+- **[Storyboard authoring](/docs/contributing/storyboard-authoring)** — field conventions, scoping rules, and naming for contributors adding new scenarios
