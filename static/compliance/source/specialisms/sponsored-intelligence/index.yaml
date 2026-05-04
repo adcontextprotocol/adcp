@@ -24,7 +24,7 @@ narrative: |
   the `sponsored-intelligence` protocol baseline (which already covers the full session
   lifecycle); claiming this specialism today is graded as `{ status: "preview",
   passed: null }` per the preview-status contract in
-  /docs/building/compliance-catalog.
+  /docs/building/verification/compliance-catalog.
 
   This specialism promotes to `stable` (with required_tools and a graded storyboard)
   when the SI tools graduate from experimental. Sub-specialism splits may emerge as
