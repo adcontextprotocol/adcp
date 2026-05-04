@@ -120,23 +120,27 @@ See the [Go SDK README](https://github.com/adcontextprotocol/adcp-go) for the fu
 
 The JavaScript and Python SDKs include command-line tools for testing and development.
 
+Both SDKs share the same positional shape: `adcp <agent> [tool] [payload]`. The first positional is an alias, a built-in (`test-mcp`, `test-a2a`), or a URL — protocol is auto-detected. Save aliases with `--save-auth` to avoid retyping.
+
 ### JavaScript CLI
 
 ```bash
 npx @adcp/sdk@latest --help
-npx @adcp/sdk@latest mcp https://sales.example.com/mcp get_products '{"brief":"CTV campaign"}'
+npx @adcp/sdk@latest --save-auth my-agent https://sales.example.com/mcp
+npx @adcp/sdk@latest my-agent get_products '{"brief":"CTV campaign"}'
+# or against the built-in public test agent:
+npx @adcp/sdk@latest test-mcp get_products '{"brief":"CTV campaign"}'
 ```
 
-The CLI also drives storyboards (`adcp storyboard run`), the public test agent (`adcp test-mcp`), and registry diagnostics. See `--help` for the full surface.
+The CLI also drives storyboards (`adcp storyboard run`), conformance grading (`adcp grade`), and registry diagnostics. See `--help` for the full surface.
 
 ### Python CLI
 
 ```bash
 uvx adcp --help
-uvx adcp https://sales.example.com/mcp get_products '{"brief":"CTV campaign"}'
+uvx adcp --save-auth my-agent https://sales.example.com/mcp
+uvx adcp my-agent get_products '{"brief":"CTV campaign"}'
 ```
-
-Same positional shape as the JS CLI: `adcp <agent> [tool] [payload]`. Save aliases with `--save-auth` to avoid retyping URLs.
 
 ## What's next
 

@@ -276,9 +276,9 @@ pip install adcp          # Python
 ```
 
 ```javascript
-import { AdCPClient } from '@adcp/sdk';
+import { ADCPMultiAgentClient } from '@adcp/sdk';
 
-const client = new AdCPClient([{
+const client = new ADCPMultiAgentClient([{
   id: 'test',
   name: 'Test Agent',
   agent_uri: 'https://test-agent.adcontextprotocol.org/sales/mcp',
@@ -286,7 +286,7 @@ const client = new AdCPClient([{
   auth_token: process.env.ADCP_AUTH_TOKEN,
 }]);
 
-const result = await client.agent('test').executeTask('get_products', {
+const result = await client.agent('test').getProducts({
   brief: 'Video ads for pet food brand',
   brand: { domain: 'premiumpetfoods.com' },
 });
@@ -296,12 +296,12 @@ console.log(result.data.products);
 
 ## What's next
 
-- **[Build an Agent](/docs/building/build-an-agent)** — use skill files to generate a storyboard-compliant agent with a coding agent
-- **[Validate Your Agent](/docs/building/validate-your-agent)** — test your agent with storyboards and compliance checks
-- **[Compliance Catalog](/docs/building/compliance-catalog)** — the domains and specialisms an agent can claim, and the storyboards that verify each claim
-- **[MCP integration guide](/docs/building/integration/mcp-guide)** — transport, sessions, auth details
-- **[A2A integration guide](/docs/building/integration/a2a-guide)** — streaming, artifacts, push notifications
-- **[Media Buy Lifecycle](/docs/media-buy/media-buys/lifecycle)** — state machine, sequenced flow, guaranteed deal IO path, creative sync timing
+- **[Build an agent](/docs/building/by-layer/L4/build-an-agent)** — use skill files to generate a storyboard-compliant agent with a coding agent
+- **[Validate your agent](/docs/building/verification/validate-your-agent)** — test your agent with storyboards and compliance checks
+- **[Compliance Catalog](/docs/building/verification/compliance-catalog)** — the domains and specialisms an agent can claim, and the storyboards that verify each claim
+- **[MCP integration guide](/docs/building/by-layer/L0/mcp-guide)** — transport, sessions, auth details
+- **[A2A integration guide](/docs/building/by-layer/L0/a2a-guide)** — streaming, artifacts, push notifications
+- **[Media buy lifecycle](/docs/media-buy/media-buys/lifecycle)** — state machine, sequenced flow, guaranteed deal IO path, creative sync timing
 - **[Task reference](/docs/media-buy/task-reference)** — all available tasks with testable examples
-- **[Error handling](/docs/building/implementation/transport-errors)** — error codes, recovery strategies
-- **[Authentication](/docs/building/integration/authentication)** — production credential setup
+- **[Error handling](/docs/building/operating/transport-errors)** — error codes, recovery strategies
+- **[Authentication](/docs/building/by-layer/L2/authentication)** — production credential setup

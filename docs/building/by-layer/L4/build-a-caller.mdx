@@ -144,24 +144,17 @@ if ('errors' in response) {
   // Error: don't retry without fixing — read response.adcp_error.issues[]
   // for correctable failures (validation, oneOf, etc.)
 } else if (response.status === 'submitted') {
-  // Async: the work is queued, NOT done.
-  // Poll via tasks/get with response.task_id.
+  // Async: the work is queued, NOT done. The completion payload arrives
+  // later — either via webhook (preferred) or by polling tasks/get.
 } else {
   // Sync success: response carries the completion payload directly.
   // (e.g., response.media_buy_id, response.packages)
 }
 ```
 
-For async, poll with `include_result: true` so the seller returns the completion payload once `status` transitions to `completed`:
+The SDK steers you to webhooks for async completion. Configure `webhookUrlTemplate` and a status-change handler at construction; the SDK verifies the inbound webhook against the seller's JWKS and fires your handler with the same `result` shape that synchronous responses carry — see [Receive webhooks](#receive-webhooks) below.
 
-```typescript
-const result = await client.tasksGet({
-  task_id: submittedResponse.task_id,
-  include_result: true,
-});
-```
-
-The [Async responses section of Calling an agent](/docs/protocol/calling-an-agent#async-responses-status-submitted-means-queued) has the full polling contract. If you configure webhooks, the same `result` payload arrives in the push notification — see [Receive webhooks](#receive-webhooks) below.
+If you must poll instead of using webhooks (e.g. inside a one-shot script), call `tasks/get` directly via the underlying transport. The [Async responses section of Calling an agent](/docs/protocol/calling-an-agent#async-responses-status-submitted-means-queued) has the wire contract.
 
 ## Recover from errors
 
