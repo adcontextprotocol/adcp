@@ -5849,13 +5849,13 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         }),
       });
     } catch (error) {
-      logger.error({ err: error, url }, "Agent formats fetch error");
+      logger.warn({ err: error, url }, "Agent formats fetch failed");
 
       if (error instanceof Error && error.name === "TimeoutError") {
         return res.status(504).json({ error: "Connection timeout", message: "Agent did not respond within the timeout period" });
       }
 
-      return res.status(500).json({ error: "Failed to fetch formats" });
+      return res.status(502).json({ error: "Failed to fetch formats" });
     }
   });
 
@@ -5894,13 +5894,13 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         })),
       });
     } catch (error) {
-      logger.error({ err: error, url }, "Agent products fetch error");
+      logger.warn({ err: error, url }, "Agent products fetch failed");
 
       if (error instanceof Error && error.name === "TimeoutError") {
         return res.status(504).json({ error: "Connection timeout", message: "Agent did not respond within the timeout period" });
       }
 
-      return res.status(500).json({ error: "Failed to fetch products" });
+      return res.status(502).json({ error: "Failed to fetch products" });
     }
   });
 
