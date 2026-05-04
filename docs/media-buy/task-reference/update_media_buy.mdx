@@ -28,8 +28,8 @@ Create a media buy, then pause it:
 <CodeGroup>
 
 ```javascript JavaScript test=false
-import { testAgent } from '@adcp/client/testing';
-import { CreateMediaBuyResponseSchema, UpdateMediaBuyResponseSchema } from '@adcp/client';
+import { testAgent } from '@adcp/sdk/testing';
+import { CreateMediaBuyResponseSchema, UpdateMediaBuyResponseSchema } from '@adcp/sdk';
 
 // First, create a media buy to update
 const uniqueRef = `test_campaign_${Date.now()}`;
@@ -230,8 +230,8 @@ Increase budget for a specific package:
 <CodeGroup>
 
 ```javascript test=false JavaScript
-import { testAgent } from '@adcp/client/testing';
-import { UpdateMediaBuyResponseSchema } from '@adcp/client';
+import { testAgent } from '@adcp/sdk/testing';
+import { UpdateMediaBuyResponseSchema } from '@adcp/sdk';
 
 const result = await testAgent.updateMediaBuy({
   account: { account_id: 'acc_acme_001' },
@@ -293,8 +293,8 @@ Extend campaign end date:
 <CodeGroup>
 
 ```javascript test=false JavaScript
-import { testAgent } from '@adcp/client/testing';
-import { UpdateMediaBuyResponseSchema } from '@adcp/client';
+import { testAgent } from '@adcp/sdk/testing';
+import { UpdateMediaBuyResponseSchema } from '@adcp/sdk';
 
 const result = await testAgent.updateMediaBuy({
   account: { account_id: 'acc_acme_001' },
@@ -348,8 +348,8 @@ Add or modify geographic restrictions:
 <CodeGroup>
 
 ```javascript test=false JavaScript
-import { testAgent } from '@adcp/client/testing';
-import { UpdateMediaBuyResponseSchema } from '@adcp/client';
+import { testAgent } from '@adcp/sdk/testing';
+import { UpdateMediaBuyResponseSchema } from '@adcp/sdk';
 
 const result = await testAgent.updateMediaBuy({
   account: { account_id: 'acc_acme_001' },
@@ -415,8 +415,8 @@ Swap out creative assignments for a package:
 <CodeGroup>
 
 ```javascript test=false JavaScript
-import { testAgent } from '@adcp/client/testing';
-import { UpdateMediaBuyResponseSchema } from '@adcp/client';
+import { testAgent } from '@adcp/sdk/testing';
+import { UpdateMediaBuyResponseSchema } from '@adcp/sdk';
 
 const result = await testAgent.updateMediaBuy({
   account: { account_id: 'acc_acme_001' },
@@ -486,8 +486,8 @@ Update multiple packages in one call:
 <CodeGroup>
 
 ```javascript test=false JavaScript
-import { testAgent } from '@adcp/client/testing';
-import { UpdateMediaBuyResponseSchema } from '@adcp/client';
+import { testAgent } from '@adcp/sdk/testing';
+import { UpdateMediaBuyResponseSchema } from '@adcp/sdk';
 
 const result = await testAgent.updateMediaBuy({
   account: { account_id: 'acc_acme_001' },

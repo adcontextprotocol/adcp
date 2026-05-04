@@ -203,7 +203,7 @@ AdCP exposes errors in two distinct places. This page covers the **transport env
 
 | Layer | Key | When to populate | Readers |
 |---|---|---|---|
-| **Transport envelope** (this page) | `adcp_error` (MCP `structuredContent`, A2A `DataPart`, JSON-RPC `error.data`) | The task failed; transport needs a typed, extractable error signal | MCP hosts, A2A clients, `@adcp/client` |
+| **Transport envelope** (this page) | `adcp_error` (MCP `structuredContent`, A2A `DataPart`, JSON-RPC `error.data`) | The task failed; transport needs a typed, extractable error signal | MCP hosts, A2A clients, `@adcp/sdk` |
 | **Task payload** | `payload.errors[]` (or top-level `errors[]`) | The task ran; payload reports one or more issues (fatal or non-fatal warnings) | Business-logic consumers |
 
 A fatal task failure SHOULD populate **both** layers — see the canonical `protocol-envelope.json` examples and the `error-handling.mdx` reference for the normative SHOULD.
@@ -575,7 +575,7 @@ function handleError(error) {
 
 ## Client Library Requirements
 
-Client libraries (like `@adcp/client`) that implement this spec MUST:
+Client libraries (like `@adcp/sdk`) that implement this spec MUST:
 
 1. **Extract structured errors automatically.** Consumers should receive a typed error object with `code`, `recovery`, `retryAfter`, `field`, `suggestion`, and `details` — not a generic error with a message string.
 

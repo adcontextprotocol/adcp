@@ -464,7 +464,7 @@ curl -s $(curl -s https://cookingdaily.com/.well-known/adagents.json | jq -r '.a
 
 ### Using the AdCP client
 
-The `@adcp/client` package includes a network consistency checker that validates deployment across all managed domains and detects common failure modes:
+The `@adcp/sdk` package includes a network consistency checker that validates deployment across all managed domains and detects common failure modes:
 
 ```bash
 # Check all domains referencing an authoritative file
@@ -480,7 +480,7 @@ npx adcp check-network --url https://network.example.com/adagents/v2/adagents.js
 Programmatic usage:
 
 ```typescript
-import { NetworkConsistencyChecker } from '@adcp/client';
+import { NetworkConsistencyChecker } from '@adcp/sdk';
 
 const checker = new NetworkConsistencyChecker({
   authoritativeUrl: 'https://network.example.com/adagents/v2/adagents.json',
@@ -626,4 +626,4 @@ Publishers managing their own pointer file SHOULD serve it from the same infrast
 - [adagents.json Tech Spec](/docs/governance/property/adagents) — full schema reference, authorization patterns, and validation behavior
 - [Property Governance overview](/docs/governance/property) — how adagents.json fits into the broader governance model
 - [AdAgents.json Builder](https://agenticadvertising.org/adagents/builder) — interactive validator and file creator
-- [@adcp/client](https://github.com/adcontextprotocol/adcp-client) — TypeScript client library with network consistency checking
+- [@adcp/sdk](https://github.com/adcontextprotocol/adcp-client) — TypeScript client library with network consistency checking

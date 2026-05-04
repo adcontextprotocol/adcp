@@ -22,8 +22,8 @@ Upload a customer list and check its status:
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from "@adcp/client/testing";
-import { SyncAudiencesResponseSchema } from "@adcp/client";
+import { testAgent } from "@adcp/sdk/testing";
+import { SyncAudiencesResponseSchema } from "@adcp/sdk";
 import { createHash } from "crypto";
 
 const hashEmail = (email) =>
@@ -209,8 +209,8 @@ Check status of all existing audiences without making changes. The response incl
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from "@adcp/client/testing";
-import { SyncAudiencesResponseSchema } from "@adcp/client";
+import { testAgent } from "@adcp/sdk/testing";
+import { SyncAudiencesResponseSchema } from "@adcp/sdk";
 
 const result = await testAgent.syncAudiences({
   account: { account_id: "acct_12345" },
@@ -259,8 +259,8 @@ Upload a list of existing customers to suppress from acquisition campaigns:
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from "@adcp/client/testing";
-import { SyncAudiencesResponseSchema } from "@adcp/client";
+import { testAgent } from "@adcp/sdk/testing";
+import { SyncAudiencesResponseSchema } from "@adcp/sdk";
 import { createHash } from "crypto";
 
 const hashEmail = (email) =>
@@ -342,8 +342,8 @@ Update an audience incrementally — add new members and remove ones that no lon
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from "@adcp/client/testing";
-import { SyncAudiencesResponseSchema } from "@adcp/client";
+import { testAgent } from "@adcp/sdk/testing";
+import { SyncAudiencesResponseSchema } from "@adcp/sdk";
 import { createHash } from "crypto";
 
 const hashEmail = (email) =>
@@ -415,8 +415,8 @@ Remove a specific audience from the account without affecting others. Set `delet
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from "@adcp/client/testing";
-import { SyncAudiencesResponseSchema } from "@adcp/client";
+import { testAgent } from "@adcp/sdk/testing";
+import { SyncAudiencesResponseSchema } from "@adcp/sdk";
 
 const result = await testAgent.syncAudiences({
   account: { account_id: "acct_12345" },

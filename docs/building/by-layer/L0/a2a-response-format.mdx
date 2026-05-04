@@ -11,7 +11,7 @@ This document defines the **canonical structure** for AdCP responses transmitted
 
 Examples below use **A2A 1.0** wire format: Parts carry no `kind` discriminator (content type is implied by which field is set — `text`, `data`, `url`, or `raw`), roles are `ROLE_USER` / `ROLE_AGENT`, and task states are `TASK_STATE_*` (ProtoJSON canonical). See the [A2A Guide](/docs/building/by-layer/L0/a2a-guide#a2a-protocol-versions) for a side-by-side with v0.3.
 
-AdCP's top-level unified `status` field (returned by `@adcp/client`) continues to use the lowercase shorthand (`"completed"`, `"failed"`, `"working"`, `"input-required"`, `"submitted"`). That is an AdCP abstraction over `status.state` — not an A2A wire value.
+AdCP's top-level unified `status` field (returned by `@adcp/sdk`) continues to use the lowercase shorthand (`"completed"`, `"failed"`, `"working"`, `"input-required"`, `"submitted"`). That is an AdCP abstraction over `status.state` — not an A2A wire value.
 
 For v0.3 servers, the same DataPart becomes `{ "kind": "data", "data": {...} }` and states become lowercase. Extraction clients accept both shapes during the compatibility period.
 

@@ -5,10 +5,10 @@ description: "AdCP CLI graders for RFC 9421 request-signing conformance, OAuth h
 "og:title": "AdCP — Auth Graders"
 ---
 
-`@adcp/client` 5.21+ ships CLI graders for authentication conformance. They are separate from the [compliance storyboards](/docs/building/verification/validate-your-agent) — storyboards test protocol behavior end-to-end; these graders test the authentication and signing layer specifically, giving per-vector diagnostics and hypothesis-ranked failure analysis.
+`@adcp/sdk` 5.21+ ships CLI graders for authentication conformance. They are separate from the [compliance storyboards](/docs/building/verification/validate-your-agent) — storyboards test protocol behavior end-to-end; these graders test the authentication and signing layer specifically, giving per-vector diagnostics and hypothesis-ranked failure analysis.
 
 <Tip>
-All commands below use `npx @adcp/client@latest`. If you have `@adcp/client` installed globally (`npm install -g @adcp/client`) you can drop the `npx @adcp/client@latest` prefix and use `adcp` directly.
+All commands below use `npx @adcp/sdk@latest`. If you have `@adcp/sdk` installed globally (`npm install -g @adcp/sdk`) you can drop the `npx @adcp/sdk@latest` prefix and use `adcp` directly.
 </Tip>
 
 ## Request-signing grader
@@ -16,7 +16,7 @@ All commands below use `npx @adcp/client@latest`. If you have `@adcp/client` ins
 Validates RFC 9421 conformance against your agent end-to-end. Runs every signing vector and reports per-vector results so you can trace exactly which canonicalization rule or header coverage check is failing.
 
 ```bash
-npx @adcp/client@latest grade request-signing <agent-url>
+npx @adcp/sdk@latest grade request-signing <agent-url>
 ```
 
 **What it checks:**
@@ -34,10 +34,10 @@ npx @adcp/client@latest grade request-signing <agent-url>
 Probes an agent's OAuth discovery documents (RFC 9728 protected-resource metadata, RFC 8414 authorization-server metadata), performs the authorization code + PKCE flow, decodes the resulting JWT, and ranks hypotheses about what is wrong.
 
 ```bash
-npx @adcp/client@latest diagnose-auth <alias|url>
+npx @adcp/sdk@latest diagnose-auth <alias|url>
 ```
 
-The `<alias>` form uses a saved alias from `~/.adcp/config.json` (set via `npx @adcp/client@latest --save-auth <alias> <url>`).
+The `<alias>` form uses a saved alias from `~/.adcp/config.json` (set via `npx @adcp/sdk@latest --save-auth <alias> <url>`).
 
 **What it probes:**
 - `/.well-known/oauth-protected-resource` — presence, `authorization_servers` list, HTTPS enforcement
@@ -55,7 +55,7 @@ The `<alias>` form uses a saved alias from `~/.adcp/config.json` (set via `npx @
 Generate an Ed25519 or P-256 keypair formatted for publication at your agent's `jwks_uri`.
 
 ```bash
-npx @adcp/client@latest signing generate-key
+npx @adcp/sdk@latest signing generate-key
 ```
 
 Outputs:
@@ -69,7 +69,7 @@ Outputs:
 Verify a single signing vector without running the full grader. Useful for debugging a specific canonicalization case during implementation.
 
 ```bash
-npx @adcp/client@latest signing verify-vector
+npx @adcp/sdk@latest signing verify-vector
 ```
 
 Reads a vector from stdin (JSON matching the test-vector schema at [`/compliance/latest/test-vectors/request-signing/`](https://adcontextprotocol.org/compliance/latest/test-vectors/request-signing/)) and reports whether your client's signature base matches the expected output.

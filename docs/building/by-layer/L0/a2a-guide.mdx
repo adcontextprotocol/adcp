@@ -22,7 +22,7 @@ AdCP tracks the [A2A specification](https://a2a-protocol.org/latest/) under Linu
 | Task state | `"completed"`, `"working"`, … | `"TASK_STATE_COMPLETED"`, `"TASK_STATE_WORKING"`, … |
 | Timestamps | ISO-8601 | ISO-8601 UTC with ms precision (`YYYY-MM-DDTHH:mm:ss.sssZ`) |
 
-AdCP's own unified top-level `status` field (returned by `@adcp/client`) continues to use the lowercase shorthand (`"completed"`, `"working"`, …) — that is an AdCP abstraction over the raw A2A `status.state`, not an A2A wire value.
+AdCP's own unified top-level `status` field (returned by `@adcp/sdk`) continues to use the lowercase shorthand (`"completed"`, `"working"`, …) — that is an AdCP abstraction over the raw A2A `status.state`, not an A2A wire value.
 
 ### Dual-Version Compatibility
 
@@ -999,7 +999,7 @@ try {
 
 For uploading creative assets and handling validation errors, use the `sync_creatives` task. See [sync_creatives Task Reference](/docs/creative/task-reference/sync_creatives) for complete testable examples.
 
-The `@adcp/client` library handles A2A artifact extraction automatically, so you don't need to manually parse the response structure.
+The `@adcp/sdk` library handles A2A artifact extraction automatically, so you don't need to manually parse the response structure.
 
 ## Best Practices
 

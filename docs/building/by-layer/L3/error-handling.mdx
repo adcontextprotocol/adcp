@@ -16,7 +16,7 @@ Sellers can adopt error handling incrementally. Each level builds on the previou
 | **Level 2** | Add `recovery`, `retry_after`, `field`, and `suggestion` | Agents auto-retry transient errors and self-correct correctable ones |
 | **Level 3** | Use [transport bindings](/docs/building/operating/transport-errors) to put errors in `structuredContent` (MCP) or artifact `DataPart` (A2A) | Programmatic clients get typed errors without parsing text |
 
-**Level 1** is the minimum for a conformant implementation. **Level 2** is where agent-driven recovery becomes possible — without `recovery`, agents must guess from the error code. **Level 3** is where client libraries like `@adcp/client` can provide fully typed error objects.
+**Level 1** is the minimum for a conformant implementation. **Level 2** is where agent-driven recovery becomes possible — without `recovery`, agents must guess from the error code. **Level 3** is where client libraries like `@adcp/sdk` can provide fully typed error objects.
 
 ## Error Categories
 
@@ -251,7 +251,7 @@ Normative requirements:
 - **`BILLING_NOT_PERMITTED_FOR_AGENT` details shape is clamped.** `error.details` MUST conform to [`error-details/billing-not-permitted-for-agent.json`](https://adcontextprotocol.org/schemas/v3/error-details/billing-not-permitted-for-agent.json): `rejected_billing` (echoed) plus an optional single `suggested_billing` retry value. The schema sets `additionalProperties: false`. The shape MUST NOT carry the agent's full permitted-billing subset, rate cards, payment terms, credit limit, billing entity, or any other per-agent commercial state — full-subset disclosure in a single probe is exactly the oracle the clamp prevents.
 - **One-shot retry.** A buyer agent that retries with `error.details.suggested_billing` and receives a second `BILLING_NOT_PERMITTED_FOR_AGENT` MUST surface to a human rather than retrying again. Recovery is bounded to a single seller-suggested fallback; further iteration indicates seller misconfiguration or onboarding state the agent cannot resolve autonomously.
 
-**Recovery dispatch — example.** The two billing codes recover differently. Implementers SHOULD branch explicitly rather than collapsing to a single retry path. The snippet below uses the response shape returned directly by the seller (the `accounts[].errors[]` array on a `sync_accounts` response — see [task reference](/docs/accounts/tasks/sync_accounts)), not the `@adcp/client/testing` wrapper used elsewhere in task examples.
+**Recovery dispatch — example.** The two billing codes recover differently. Implementers SHOULD branch explicitly rather than collapsing to a single retry path. The snippet below uses the response shape returned directly by the seller (the `accounts[].errors[]` array on a `sync_accounts` response — see [task reference](/docs/accounts/tasks/sync_accounts)), not the `@adcp/sdk/testing` wrapper used elsewhere in task examples.
 
 ```javascript
 async function syncAccountsWithRecovery(client, account) {

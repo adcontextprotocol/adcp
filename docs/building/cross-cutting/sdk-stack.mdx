@@ -202,13 +202,13 @@ Snapshot of what each official SDK ships today. Refresh this table on SDK majors
 
 *Last updated: 2026-05-03.*
 
-| SDK | Version | L0 | L1 | L2 | L3 |
-|---|---|:-:|:-:|:-:|:-:|
-| **`@adcp/client`** (TS) | `6.9.0` GA | ✅ | ✅ | ✅ | ✅ |
-| **`adcp`** (Python) | `4.x` in flight | ✅ | ⚠️ | ⚠️ | ⚠️ |
-| **`adcp-go`** | dev | ⚠️ | ❌ | ❌ | ❌ |
+| SDK | Production GA | Beta / dev | L0 | L1 | L2 | L3 |
+|---|---|---|:-:|:-:|:-:|:-:|
+| **`@adcp/sdk`** (TS) | `6.9.0` | — | ✅ | ✅ | ✅ | ✅ |
+| **`adcp`** (Python) | `3.x` | `4.x` | ✅ | ⚠️ | ⚠️ | ⚠️ |
+| **`adcp-go`** | — | `v1.x` | ⚠️ | ❌ | ❌ | ❌ |
 
-Legend: ✅ shipped · ⚠️ partial / in flight · ❌ not yet covered. `@adcp/client` carries full L0–L3 — adopters write L4 only. Python is closing the gap on its 4.x cycle; Go ships types + transport today with L1–L3 in scope. See [Choose your SDK](/docs/building/by-layer/L4/choose-your-sdk) for install commands, package exports, and per-language gap detail.
+Legend: ✅ shipped · ⚠️ partial / in flight · ❌ not yet covered. **Production GA** is the line you should pin to today. **Beta / dev** is what's in flight on the next major. `@adcp/sdk` 6.x carries full L0–L3 — adopters write L4 only. Python 3.x is the production line with full L0; the 4.x rewrite (in beta) closes L1–L3. Go ships types + transport in dev; L1–L3 in scope. See [Choose your SDK](/docs/building/by-layer/L4/choose-your-sdk) for install commands, package exports, and per-language gap detail.
 
 What "shipped" means at each layer is the L0–L3 checklist above — these rows should not claim ✅ until every checklist item is satisfied in the published SDK build. For coverage detail beyond this snapshot, see each SDK's repo.
 
@@ -227,7 +227,7 @@ Different shape from an SDK: a **deployable agent** you run rather than a librar
 | Implementation | Maintainer | Stack | Notes |
 |---|---|---|---|
 | **AdCP mock-server** | spec maintainers | Reference | The black-box AdCP agent storyboards run against. All language SDKs forward mock-mode traffic to it; shared infrastructure for [spec compliance](/docs/building/verification/conformance). |
-| **Prebid SalesAgent** | [Prebid community](https://github.com/prebid/prebid-server) | Python | Open-source seller-side AdCP agent. Publishers run it as their AdCP-facing implementation; hand-rolled at L0–L3 today, evolving alongside the official SDKs. |
+| **Prebid SalesAgent** | [Prebid community](https://github.com/prebid/salesagent) | Python | Open-source seller-side AdCP agent. Publishers run it as their AdCP-facing implementation; hand-rolled at L0–L3 today, evolving alongside the official SDKs. |
 
 Hosted implementations satisfy the same L3 conformance bar that SDKs do — the spec is implementation-agnostic. The difference is operational shape: a hosted implementation is a service you deploy and configure, an SDK is code you compile into your own service.
 

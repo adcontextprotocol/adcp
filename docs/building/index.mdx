@@ -5,26 +5,36 @@ description: "Single decision page for AdCP implementers. Pick the right entry p
 "og:title": "AdCP — Building with AdCP"
 ---
 
-{/* Remove after 2026-04-25 */}
-<Info>
-**`adcp comply` is now `npx @adcp/client@latest storyboard run`.** Running without a storyboard ID discovers your agent's tools and runs all matching storyboards — same behavior, one less concept. See [Validate Your Agent](/docs/building/verification/validate-your-agent) for the updated CLI reference.
-</Info>
-
 You're about to write AdCP code. The first decision is **where you want to spend your engineering time** — letting an AdCP SDK handle the protocol surface so you focus on what makes your agent or caller yours, or going lower.
 
 This page picks an entry point. The [SDK stack reference](/docs/building/cross-cutting/sdk-stack) is the reasoning.
 
-## The five layers, in one paragraph
+## The five layers
 
-Every AdCP request crosses five layers between the wire and your business logic:
+Every AdCP request crosses five layers between the wire and your business logic. SDKs absorb L0–L3; **L4 is the part you write either way.**
 
-- **L0** — wire: bytes, JSON, schema validation, type generation. *In SDKs:* `@adcp/sdk` types + transport adapters; `adcp` Python types.
-- **L1** — signing: RFC 9421 message signatures, key rotation. *In SDKs:* `@adcp/sdk` signing provider; `adcp` Python signing.
-- **L2** — auth & registry: principal resolution, multi-tenant routing. *In SDKs:* account-store + brand-resolution helpers.
-- **L3** — protocol semantics: lifecycle state machines, idempotency, error catalog, async tasks, conformance test surface, webhooks. *In SDKs:* server-construction entry point that wires all of the above.
-- **L4** — your business logic: inventory, pricing, creative review on the agent side; planning, buying, reporting on the caller side. *Not in any SDK — adopter writes this.*
+```mermaid
+%%{init: {"flowchart": {"htmlLabels": true, "wrappingWidth": 9999}, "themeVariables": {"fontSize": "14px"}}}%%
+flowchart TB
+    subgraph yours["yours, always"]
+        L4["<b>L4 — Business logic</b><br/>Inventory · pricing · creative review · planning · buying · reporting<br/><i>What makes your agent or caller yours</i>"]
+    end
 
-A full-stack AdCP SDK ships L0–L3 and leaves L4 to you. Where you start determines how much of L0–L3 you own. The same five layers exist on both sides of an AdCP conversation — agent (server) and caller (client) — but the work is asymmetric. An agent **enforces** the protocol; a caller **consumes** it. Caller-side L0–L3 is weeks of handler glue; agent-side L0–L3 is a [3–4 person-month build](/docs/building/cross-cutting/sdk-stack#why-sdks-matter-more-in-adcp-than-in-eg-http).
+    subgraph sdk["what an AdCP SDK provides"]
+        direction TB
+        L3["<b>L3 — Protocol semantics</b><br/>Lifecycle state machines · idempotency · error catalog · async tasks · webhooks · conformance"]
+        L2["<b>L2 — Auth &amp; registry</b><br/>Principal resolution · brand resolution · multi-tenant account routing"]
+        L1["<b>L1 — Identity &amp; signing</b><br/>RFC 9421 message signatures · JWKS · replay-window · key rotation"]
+        L0["<b>L0 — Wire &amp; transport</b><br/>JSON-over-HTTP · MCP envelopes · A2A SSE · schema validation · typed bindings"]
+        L3 ~~~ L2
+        L2 ~~~ L1
+        L1 ~~~ L0
+    end
+
+    L4 ~~~ L3
+```
+
+Where you start determines how much of L0–L3 you own. The work is asymmetric across the two sides of an AdCP conversation: an agent **enforces** the protocol (~3–4 person-months at L0–L3); a caller **consumes** it (weeks of handler glue). The [SDK stack reference](/docs/building/cross-cutting/sdk-stack) decomposes each layer and the [server-vs-client comparison](/docs/building/cross-cutting/sdk-stack#server-vs-client-at-each-layer) makes the cost asymmetry concrete.
 
 ## Recommended path
 
@@ -38,7 +48,7 @@ For ~95% of adopters: **start at L4 with the full-stack SDK in your language.**
     Client side. Install the SDK, write the calls, handle async responses and errors, ingest reporting. Weeks-of-handler-glue scope, not months.
   </Card>
   <Card title="Run a prebuilt agent" icon="cube" href="/docs/building/operating/operating-an-agent">
-    Small team or no engineering capacity. Self-host Prebid SalesAgent, or partner with a managed platform that runs an AdCP agent on your behalf. Configuration over code.
+    Small team or no engineering capacity. Self-host [Prebid SalesAgent](https://github.com/prebid/salesagent), or partner with a managed platform that runs an AdCP agent on your behalf. Configuration over code.
   </Card>
   <Card title="Migrate from hand-rolled" icon="code-merge" href="/docs/building/by-layer/L4/migrate-from-hand-rolled">
     Already running an AdCP agent built before the SDKs were mature? Swap one layer at a time, with conflict modes, per-step rollback, and intermediate states that pass conformance.
@@ -79,7 +89,8 @@ Things every AdCP implementation needs, regardless of starting layer:
 - **[L0 — Wire & transport](/docs/building/by-layer/L0)** — MCP and A2A integration, schema validation, type generation.
 - **[L2 — Auth & registry](/docs/building/by-layer/L2)** — authentication, multi-tenant account state, principal scoping.
 - **[L3 — Protocol semantics](/docs/building/by-layer/L3)** — task lifecycle, async operations, webhooks, error handling, conformance test surface.
+- **[Talk to Addie](/docs/learning/overview)** — stuck on a concept? Addie is the AdCP teaching agent. She walks the protocol with you in conversation, and runs the certification path when you're ready to make it stick.
 
 ## Audience
 
-AdCP implementers in any language — building an agent, building a caller, authoring an SDK, or evaluating one. **Python and TypeScript are the first-class languages** (TypeScript GA today, Python finishing 4.x); **Go** has L0 and partial L1 in active development; community-maintained ports for other languages are welcome — see the [Builders Working Group](/docs/community/working-group).
+AdCP implementers in any language — building an agent, building a caller, authoring an SDK, or evaluating one. **Python and TypeScript are the first-class languages** (TypeScript GA on `@adcp/sdk` 6.x; Python GA on `adcp` 3.x with 4.x in beta); **Go** has L0 and partial L1 in active development; community-maintained ports for other languages are welcome — see the [Builders Working Group](/docs/community/working-group).

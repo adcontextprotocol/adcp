@@ -24,8 +24,8 @@ Create a simple media buy with two packages:
 <CodeGroup>
 
 ```javascript JavaScript test=false
-import { testAgent } from '@adcp/client/testing';
-import { CreateMediaBuyResponseSchema } from '@adcp/client';
+import { testAgent } from '@adcp/sdk/testing';
+import { CreateMediaBuyResponseSchema } from '@adcp/sdk';
 
 // Calculate dates dynamically - start tomorrow, end in 90 days
 const tomorrow = new Date();
@@ -144,7 +144,7 @@ asyncio.run(create_campaign())
 ```
 
 ```bash CLI test=false
-npx @adcp/client@latest \
+npx @adcp/sdk@latest \
   https://test-agent.adcontextprotocol.org/sales/mcp \
   create_media_buy \
   '{"brand":{"domain":"acmecorp.com"},"packages":[{"product_id":"prod_d979b543","pricing_option_id":"cpm_usd_auction","format_ids":[{"agent_url":"https://creative.adcontextprotocol.org","id":"display_300x250_image"}],"budget":30000,"bid_price":5.00},{"product_id":"prod_e8fd6012","pricing_option_id":"cpm_usd_auction","format_ids":[{"agent_url":"https://creative.adcontextprotocol.org","id":"display_300x250_html"}],"budget":20000,"bid_price":4.50}],"start_time":"2025-06-01T00:00:00Z","end_time":"2025-08-31T23:59:59Z"}' \
@@ -275,8 +275,8 @@ Add geographic restrictions and frequency capping:
 <CodeGroup>
 
 ```javascript JavaScript test=false
-import { testAgent } from '@adcp/client/testing';
-import { CreateMediaBuyResponseSchema } from '@adcp/client';
+import { testAgent } from '@adcp/sdk/testing';
+import { CreateMediaBuyResponseSchema } from '@adcp/sdk';
 
 // Calculate end date dynamically - 90 days from now
 const endDate = new Date();
@@ -373,8 +373,8 @@ Set a per_ad_spend target for conversion-optimized delivery. The product must de
 <CodeGroup>
 
 ```javascript JavaScript test=false
-import { testAgent } from '@adcp/client/testing';
-import { CreateMediaBuyResponseSchema } from '@adcp/client';
+import { testAgent } from '@adcp/sdk/testing';
+import { CreateMediaBuyResponseSchema } from '@adcp/sdk';
 
 const endDate = new Date();
 endDate.setDate(endDate.getDate() + 90);
@@ -518,8 +518,8 @@ Upload creatives at the same time as creating the campaign:
 <CodeGroup>
 
 ```javascript JavaScript test=false
-import { testAgent } from '@adcp/client/testing';
-import { CreateMediaBuyResponseSchema } from '@adcp/client';
+import { testAgent } from '@adcp/sdk/testing';
+import { CreateMediaBuyResponseSchema } from '@adcp/sdk';
 
 // Calculate end date dynamically - 90 days from now
 const endDate = new Date();
@@ -632,8 +632,8 @@ Receive automated reporting notifications:
 <CodeGroup>
 
 ```javascript JavaScript test=false
-import { testAgent } from '@adcp/client/testing';
-import { CreateMediaBuyResponseSchema } from '@adcp/client';
+import { testAgent } from '@adcp/sdk/testing';
+import { CreateMediaBuyResponseSchema } from '@adcp/sdk';
 
 // Calculate end date dynamically - 90 days from now
 const endDate = new Date();
@@ -734,8 +734,8 @@ Execute a proposal from `get_products` without manually constructing packages:
 <CodeGroup>
 
 ```javascript JavaScript test=false
-import { testAgent } from '@adcp/client/testing';
-import { CreateMediaBuyResponseSchema } from '@adcp/client';
+import { testAgent } from '@adcp/sdk/testing';
+import { CreateMediaBuyResponseSchema } from '@adcp/sdk';
 
 // Calculate end date dynamically - 90 days from now
 const endDate = new Date();

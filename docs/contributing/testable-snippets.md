@@ -41,7 +41,7 @@ Once a page is marked `testable: true`, all code blocks are executed:
 
 ````markdown
 ```javascript
-import { testAgent } from '@adcp/client/testing';
+import { testAgent } from '@adcp/sdk/testing';
 
 const products = await testAgent.getProducts({
   brief: 'Premium athletic footwear with innovative cushioning',
@@ -60,7 +60,7 @@ For simpler examples, use the built-in test helpers from client libraries:
 
 **JavaScript:**
 ```javascript
-import { testAgent, testAgentNoAuth } from '@adcp/client/testing';
+import { testAgent, testAgentNoAuth } from '@adcp/sdk/testing';
 
 // Authenticated access
 const fullCatalog = await testAgent.getProducts({
@@ -113,7 +113,7 @@ Each testable snippet should:
 **Good Example:**
 ```javascript
 // Example of a complete, testable snippet
-import { AdcpClient } from '@adcp/client';
+import { AdcpClient } from '@adcp/sdk';
 
 const client = new AdcpClient({
   agentUrl: 'https://test-agent.adcontextprotocol.org/sales/mcp',
@@ -176,7 +176,7 @@ Each testable snippet should demonstrate ONE concept:
 
 ```javascript
 // Good: Demonstrates authentication
-import { AdcpClient } from '@adcp/client';
+import { AdcpClient } from '@adcp/sdk';
 
 const client = new AdcpClient({
   agentUrl: 'https://test-agent.adcontextprotocol.org/sales/mcp',
@@ -289,7 +289,7 @@ Currently supported languages for testing:
 
 ### Limitations
 
-**Package Dependencies**: Snippets that import external packages (like `@adcp/client` or `adcp`) will only work if:
+**Package Dependencies**: Snippets that import external packages (like `@adcp/sdk` or `adcp`) will only work if:
 1. The package is installed in the repository's `node_modules`
 2. Or the package is listed in `devDependencies`
 
@@ -313,10 +313,10 @@ Example error output:
 ```
 Testing: quickstart.mdx:272 (javascript block #6)
   ✗ FAILED
-    Error: Cannot find module '@adcp/client'
+    Error: Cannot find module '@adcp/sdk'
 ```
 
-This indicates the `@adcp/client` package needs to be installed.
+This indicates the `@adcp/sdk` package needs to be installed.
 
 ## Contributing Guidelines
 
