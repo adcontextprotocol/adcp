@@ -98,6 +98,10 @@ phases:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
 
+        context_outputs:
+          - path: "proposals[0].proposal_id"
+            key: "proposal_id"
+
         validations:
           - check: response_schema
             description: "Response matches get-products-response.json schema"
@@ -137,7 +141,7 @@ phases:
           buying_mode: "refine"
           refine:
             - scope: "proposal"
-              proposal_id: "balanced_reach_q2"
+              proposal_id: "$context.proposal_id"
               ask: "Shift 60% of budget to CTV. Drop the display product and redistribute that budget to video."
             - scope: "request"
               ask: "All products must support frequency capping at 3 per day."
@@ -184,7 +188,7 @@ phases:
           buying_mode: "refine"
           refine:
             - scope: "proposal"
-              proposal_id: "balanced_reach_q2"
+              proposal_id: "$context.proposal_id"
               action: "finalize"
           account:
             brand:
@@ -230,7 +234,7 @@ phases:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
             sandbox: true
-          proposal_id: "balanced_reach_q2"
+          proposal_id: "$context.proposal_id"
           total_budget:
             amount: 50000
             currency: "USD"
