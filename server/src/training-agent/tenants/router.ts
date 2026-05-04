@@ -131,13 +131,29 @@ function tenantMcpHandler(holder: RegistryHolder, tenantId: string) {
       }
     }
 
+    // Create a fresh server per request. The MCP SDK requires a separate
+    // Protocol instance per connection — sharing a singleton server across
+    // concurrent POSTs triggers "Already connected to a transport."
+    // sessionIdGenerator:undefined (stateless mode) means each POST is
+    // self-contained; both server and transport are discarded after the
+    // response, matching standalone.ts and the SDK's own stateless examples.
+    const requestServer = holder.createServer(resolved.tenantId);
+    if (!requestServer) {
+      res.status(503).json({
+        jsonrpc: '2.0',
+        id: null,
+        error: { code: -32000, message: 'Tenant server factory unavailable; retry shortly' },
+      });
+      return;
+    }
+
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
       enableJsonResponse: true,
     });
 
     try {
-      await resolved.server.connect(transport);
+      await requestServer.connect(transport);
       logger.debug({ tenantId: resolved.tenantId, method: req.body?.method }, 'tenant MCP request');
       await runWithSessionContext(async () => {
         await transport.handleRequest(req, res, req.body);
@@ -153,9 +169,7 @@ function tenantMcpHandler(holder: RegistryHolder, tenantId: string) {
         });
       }
     } finally {
-      // Close server connection after handling — tenant servers are
-      // per-request transient, matching the v5 pattern.
-      await resolved.server.close().catch(() => {});
+      await requestServer.close().catch(() => {});
     }
   };
 }
