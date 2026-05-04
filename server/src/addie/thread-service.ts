@@ -448,11 +448,19 @@ export class ThreadService {
     try {
       await client.query('BEGIN');
 
+      // Cap how long a queued addMessage may wait on the per-thread advisory
+      // lock and on any single statement inside the transaction, so a wedged
+      // holder can't burn pool connections forever. Same pattern as
+      // billing/org-intake-lock; values are looser because the workload here
+      // is just an INSERT, not Stripe API calls.
+      await client.query(`SET LOCAL lock_timeout = '5000ms'`);
+      await client.query(`SET LOCAL statement_timeout = '10000ms'`);
+
       // Serialize sequence-number assignment per thread. Without this, two
       // concurrent addMessage calls on the same thread both observe the same
       // MAX(sequence_number) under READ COMMITTED and assign the same next
       // value, producing duplicate sequence numbers and nondeterministic
-      // ordering in getThreadMessages. Same pattern as billing/org-intake-lock.
+      // ordering in getThreadMessages.
       await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [input.thread_id]);
 
       const seqResult = await client.query<{ next_seq: number }>(
