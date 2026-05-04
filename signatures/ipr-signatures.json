@@ -279,6 +279,16 @@
       "repo": "adcontextprotocol/adcp",
       "pullRequestNo": 3484,
       "comment_id": 4338909329
+    },
+    {
+      "name": "ohalushchak-exadel",
+      "id": 37289463,
+      "created_at": "2026-05-04T10:32:07Z",
+      "method": "pr_comment",
+      "repo": "adcontextprotocol/adcp",
+      "pullRequestNo": 3687,
+      "comment_id": 4370317135,
+      "comment_url": "https://github.com/adcontextprotocol/adcp/pull/3687#issuecomment-4370317135"
     }
   ]
 }
