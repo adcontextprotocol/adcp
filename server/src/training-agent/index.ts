@@ -253,29 +253,7 @@ const TENANT_SPECIALISMS: Record<typeof TENANT_IDS[number], readonly string[]> =
   brand: ['brand-rights'],
 };
 
-/**
- * Result of `createTrainingAgentRouter`. The Express `router` mounts at
- * any path; `warmup()` triggers tenant-registry init and resolves once
- * all six tenants are registered + validated.
- *
- * Boot-time callers MUST `await warmup()` before binding the HTTP server
- * to a port. Without that, `app.listen()` accepts traffic while the
- * registry is still warming up — the post-deploy smoke probes the tenant
- * routes and gets 500s for the first ~minute, every deploy fails the
- * smoke (May 2026 — five consecutive deploys before this fix landed).
- *
- * Tests that don't exercise tenant routes (health checks, mocked-DB
- * scenarios) can skip `warmup()` entirely — the registry stays unbuilt
- * and the dependencies it pulls in (db/client.getPool, idempotency
- * store, etc.) don't get touched. That's why this is a function call,
- * not an eagerly-started Promise.
- */
-export interface TrainingAgentRouter {
-  router: Router;
-  warmup: () => Promise<void>;
-}
-
-export function createTrainingAgentRouter(): TrainingAgentRouter {
+export function createTrainingAgentRouter(): Router {
   const router = Router();
 
   startSessionCleanup();
@@ -301,7 +279,7 @@ export function createTrainingAgentRouter(): TrainingAgentRouter {
   // Per-tenant MCP routes — each tenant gets POST /<tenant>/mcp with bearer
   // auth + rate limiting. The tenant registry handles dispatch via
   // resolveByRequest(host, pathname).
-  const { warmup } = mountTenantRoutes(router, TENANT_IDS, {
+  mountTenantRoutes(router, TENANT_IDS, {
     rateLimit: mcpRateLimiter,
     requireAuth: requireTokenDefault,
   });
@@ -578,5 +556,5 @@ export function createTrainingAgentRouter(): TrainingAgentRouter {
   });
 
   logger.info({ tenants: TENANT_IDS }, 'Training agent routes configured');
-  return { router, warmup };
+  return router;
 }

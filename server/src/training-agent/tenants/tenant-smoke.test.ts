@@ -18,9 +18,7 @@ async function bootServer(): Promise<{ baseUrl: string; close: () => Promise<voi
       (req as unknown as { rawBody: string }).rawBody = buf.toString('utf8');
     },
   }));
-  const trainingAgent = createTrainingAgentRouter();
-  app.use('/api/training-agent', trainingAgent.router);
-  await trainingAgent.warmup();
+  app.use('/api/training-agent', createTrainingAgentRouter());
   const srv = http.createServer(app);
   await new Promise<void>(r => srv.listen(0, '127.0.0.1', () => r()));
   const port = (srv.address() as { port: number }).port;

@@ -93,9 +93,7 @@ describe('tool-catalog drift detection', () => {
   beforeAll(async () => {
     const app = express();
     app.use(express.json());
-    const trainingAgent = createTrainingAgentRouter();
-    app.use('/api/training-agent', trainingAgent.router);
-    await trainingAgent.warmup();
+    app.use('/api/training-agent', createTrainingAgentRouter());
     server = http.createServer(app);
     await new Promise<void>(resolve => server.listen(0, '127.0.0.1', () => resolve()));
     const port = (server.address() as AddressInfo).port;

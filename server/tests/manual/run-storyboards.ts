@@ -82,9 +82,7 @@ async function startLocalAgent(): Promise<{ url: string; close: () => Promise<vo
   // written to catch (presenceDetected flips and the `optional` OAuth phase
   // becomes a hard fail). api_key_path carries `auth_mechanism_verified`
   // on its own.
-  const trainingAgent = createTrainingAgentRouter();
-  app.use('/api/training-agent', trainingAgent.router);
-  await trainingAgent.warmup();
+  app.use('/api/training-agent', createTrainingAgentRouter());
   return await new Promise((resolve, reject) => {
     const srv = http.createServer(app);
     srv.listen(0, '127.0.0.1', () => {
