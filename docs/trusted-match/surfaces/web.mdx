@@ -71,7 +71,7 @@ Key points:
 
 ## Identity Match
 
-Separately, the TMP Prebid module sends an Identity Match request with the user's opaque token and the publisher's `seller_agent_url`. This request carries no page context. The buyer resolves its active package set from `seller_agent_url`; when the module sends `package_ids` explicitly (as below), the list MUST include ALL active packages for the buyer — not just the packages on this page.
+Separately, the TMP Prebid module sends an Identity Match request with the user's identity tokens and the publisher's `seller_agent_url`. This request carries no page context. The buyer resolves its active package set from `seller_agent_url`; when the module sends `package_ids` explicitly (as below), composition MUST be independent of the current page — either all-active (every active package for that buyer at this publisher) or fuzzed (a random sample padded with synthetic non-existent IDs the buyer will silently drop). The page-specific subset is forbidden.
 
 ### Identity Match Request
 
@@ -101,7 +101,7 @@ Separately, the TMP Prebid module sends an Identity Match request with the user'
 Key points:
 
 - `request_id` is unrelated to the context match `request_id`. The two must not be derivable from each other.
-- `package_ids` includes ALL active packages for the buyer across the entire site, not just the three that were on this placement's context match. Sending only the page-specific subset would let the buyer correlate identity with context by comparing package sets.
+- `package_ids` example shows all-active mode: every active package for the buyer across the entire site, not just the three that were on this placement's context match. The page-specific subset is forbidden — it would let the buyer correlate identity with context by comparing package sets. Fuzzed mode (a random sample padded with synthetic IDs the buyer silently drops) is also acceptable.
 - `identities` carries every token the publisher has available (UID2, ID5, LiveRamp, hashed email, publisher first-party). Each token is opaque — the buyer cannot reverse it to PII. Sending the full set maximizes match rate because different buyers resolve on different graphs.
 
 ### Identity Match Response
@@ -222,6 +222,6 @@ Most publishers run TMP alongside Prebid header bidding, which sources demand vi
 These constraints apply to all surfaces but are worth restating for the web case:
 
 - **Context match carries no user data.** No cookies, no user tokens, no IP addresses. The provider evaluates the same synced package set for every user on a placement.
-- **Identity match carries no page data.** No URLs, no content signals, no placement IDs. The package_ids list includes all active packages for the buyer, not just the ones on this page.
+- **Identity match carries no page data.** No URLs, no content signals, no placement IDs. The `package_ids` list, when sent, has composition independent of the current page (all-active or fuzzed) — never the page-specific subset.
 - **The publisher joins locally.** The router never sees both context and identity for the same impression. Only the publisher, who already has both the page context and the user identity, performs the intersection.
 - **Temporal decorrelation.** A random delay between the two requests AND a randomized order (Context Match or Identity Match equally likely to be sent first) prevent timing- and order-based correlation at the network level. Random delay alone is insufficient because a fixed order leaks the pairing through ordering.

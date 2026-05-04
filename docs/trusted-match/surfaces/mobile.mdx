@@ -151,7 +151,7 @@ When the product's `trusted_match` config declares creative as the response type
 
 The TMP SDK sends an Identity Match request with a publisher-scoped device token and the publisher's `seller_agent_url`. This request is structurally separate from Context Match — it carries no content signals and is sent with temporal decorrelation: a random delay of 100-2000ms, plus randomized order (each opportunity has roughly equal probability of Context Match or Identity Match being sent first).
 
-The buyer resolves its active package set from `seller_agent_url`. When the SDK sends `package_ids` explicitly (as below), the list MUST include all active packages for the buyer, not just the packages from the current placement — sending only the placement-specific subset would let the buyer correlate Identity Match with Context Match by comparing package sets.
+The buyer resolves its active package set from `seller_agent_url`. When the SDK sends `package_ids` explicitly (as below), composition MUST be independent of the current placement — either all-active (every active package for the buyer at this publisher) or fuzzed (a random sample padded with synthetic non-existent IDs the buyer silently drops). The placement-specific subset is forbidden — it would let the buyer correlate Identity Match with Context Match by comparing package sets.
 
 #### Request
 
@@ -179,7 +179,7 @@ The buyer resolves its active package set from `seller_agent_url`. When the SDK 
 }
 ```
 
-Seven package IDs — all active packages for this buyer across every placement and format, not just the two that were activated by Context Match.
+Seven package IDs — the example uses all-active mode (every active package for this buyer across every placement and format, not just the two that were activated by Context Match). A fuzzed list of similar size, padded with synthetic non-existent IDs the buyer silently drops, would satisfy the same privacy invariant.
 
 #### Response
 

@@ -90,7 +90,7 @@ The router sends you page context. You evaluate your active packages against tha
 
 ## Responding to Identity Match
 
-The router sends you the seller's `seller_agent_url` and one or more opaque identity tokens. Use `seller_agent_url` to look up the active package set you have registered for that seller, resolve identities on whichever tokens you support, then check each package's eligibility rules against the resolved user. The publisher MAY also send `package_ids` to scope evaluation explicitly; when present, treat it as the candidate set for this request.
+The router sends you the seller's `seller_agent_url` and one or more identity tokens. Use `seller_agent_url` to look up the active package set you have registered for that seller, resolve identities on whichever tokens you support, then check each package's eligibility rules against the resolved user. The publisher MAY also send `package_ids` to scope evaluation explicitly; when present, evaluate against the **intersection** of your registered active set and `package_ids`, and **silently drop** any IDs you don't recognize — both publisher modes (all-active and fuzzed/padded) rely on this behavior. Surfacing unknown IDs as errors would leak your registry membership back to the publisher.
 
 ```json
 // Request you receive

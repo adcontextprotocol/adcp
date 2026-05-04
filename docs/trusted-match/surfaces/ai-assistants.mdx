@@ -87,7 +87,7 @@ The buyer's offer includes `package_id` (required) along with optional fields: `
 
 ## Identity Match
 
-The platform sends an Identity Match request with a session token and the platform's `seller_agent_url`. The buyer resolves its active package set from `seller_agent_url`; when the platform sends `package_ids` explicitly (as below), the list MUST include ALL active packages for this buyer — not just the ones on the current page — to prevent the buyer from correlating this request with the context match by comparing package sets:
+The platform sends an Identity Match request with a session token and the platform's `seller_agent_url`. The buyer resolves its active package set from `seller_agent_url`; when the platform sends `package_ids` explicitly (as below), composition MUST be independent of the current page — either all-active (every active package for this buyer on the platform) or fuzzed (a random sample padded with synthetic non-existent IDs the buyer silently drops). The page-specific subset is forbidden — it would let the buyer correlate this request with the context match by comparing package sets:
 
 ```json
 {

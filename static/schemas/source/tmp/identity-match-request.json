@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/tmp/identity-match-request.json",
   "title": "Identity Match Request",
-  "description": "Sent by publisher to evaluate user eligibility for packages using an opaque identity token. MUST NOT contain page context. The request_id MUST NOT correlate with any context match request_id. The buyer resolves the active package set for this seller from `seller_agent_url`; if `package_ids` is provided, it MUST include ALL active packages for this buyer at this publisher (not just those on the current page) to prevent set-correlation attacks. Extension fields (ext, context) are intentionally omitted to prevent data leakage across the identity privacy boundary.",
+  "description": "Sent by publisher to evaluate user eligibility for packages using an opaque identity token. MUST NOT contain page context. The request_id MUST NOT correlate with any context match request_id. The buyer resolves the active package set for this seller from `seller_agent_url`; if `package_ids` is provided, its composition MUST be independent of the current placement (e.g., all-active or fuzzed; see field description) to prevent set-correlation attacks. Extension fields (ext, context) are intentionally omitted to prevent data leakage across the identity privacy boundary.",
   "type": "object",
   "x-status": "experimental",
   "properties": {
@@ -90,7 +90,7 @@
     },
     "package_ids": {
       "type": "array",
-      "description": "Optional. When omitted, the buyer evaluates eligibility against the full set of active packages it has registered for `seller_agent_url`. When provided, MUST include ALL active package identifiers for this buyer at this publisher — not just those on the current page — to prevent correlation with Context Match requests. When both `seller_agent_url` and `package_ids` are present, the buyer evaluates against the intersection of its registered active set and `package_ids`; IDs in `package_ids` that the buyer has not registered for this seller MUST be silently ignored (not surfaced as errors) to avoid leaking registry membership back to the publisher.",
+      "description": "Optional. When omitted, the buyer evaluates eligibility against the full set of active packages it has registered for `seller_agent_url`. When provided, the composition of `package_ids` MUST be statistically independent of the current placement — sending only the page-specific subset would let the buyer correlate Identity Match with Context Match by comparing package sets. Two acceptable modes: (a) **all-active** — include every active package this buyer has at this publisher; (b) **fuzzed** — include a random sample of active packages, optionally padded with synthetic non-existent IDs, drawn from a distribution that does not depend on the current placement. The buyer's silent-drop behavior on unknown IDs (specified below) is what makes synthetic-ID padding safe — they do not affect the response shape and cannot leak registry membership. When both `seller_agent_url` and `package_ids` are present, the buyer evaluates against the intersection of its registered active set and `package_ids`; IDs in `package_ids` that the buyer has not registered for this seller MUST be silently ignored (not surfaced as errors) to avoid leaking registry membership back to the publisher.",
       "items": {
         "type": "string"
       },

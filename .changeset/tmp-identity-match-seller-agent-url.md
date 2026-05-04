@@ -24,12 +24,13 @@ set itself.
   correlation risk.
 - Top-level description updated to reflect both modes.
 
-**Spec change.** `docs/trusted-match/specification.mdx` previously stated
-that seller identity MUST NOT appear in `identity_match_request` and that
-`package_ids` was the only scoping mechanism. That stance is reversed for
-Identity Match: the buyer needs the seller's URL to resolve its registered
-package set. The corresponding "What This Is Not" / SellerAgentRef
-guidance has been narrowed to apply only to `context_match_request`.
+**Spec changes alongside the schema.**
+
+- Reversed prior stance forbidding seller identity on `identity_match_request`. The "What This Is Not" / SellerAgentRef guidance has been narrowed to apply only to `context_match_request`.
+- Added a fail-closed rule: when `seller_agent_url` matches no seller for which the buyer has registered active packages, the buyer MUST return an empty `eligible_package_ids`, not fall back to another seller's set.
+- Defined precedence when both `seller_agent_url` and `package_ids` are present: buyer evaluates against the intersection of its registered active set and `package_ids`; unknown IDs are silently dropped (not error-surfaced) so the response cannot leak registry membership.
+- Reframed the package-set-decorrelation invariant as **statistical independence of `package_ids` from the current placement**, with two acceptable modes: all-active and fuzzed (random sample padded with synthetic non-existent IDs that the buyer silently drops). The page-specific subset remains forbidden.
+- Strengthened temporal decorrelation: random delay alone leaks the pairing through ordering. Publishers SHOULD also randomize whether Context Match or Identity Match is sent first — each opportunity SHOULD have a roughly equal probability either way.
 
 **Privacy boundary.** `seller_agent_url` identifies the seller agent, not
 the user; no leakage across the identity boundary. Routers do NOT strip

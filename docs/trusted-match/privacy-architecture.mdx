@@ -107,7 +107,7 @@ The TMPX token does not violate structural separation because:
 If the context path sent only the packages relevant to this page, and the identity path sent only those same packages, a buyer could compare the two sets and infer which page the identity request came from. TMP prevents this by requiring structurally different sets:
 
 - **Context Match** sends no package list. The provider evaluates its synced package set for the placement — stable per placement, the same for every user. Because no packages are sent per request, the publisher cannot accidentally leak identity through package filtering.
-- **Identity Match** sends `package_ids`: ALL active packages for the buyer across all placements and properties. The buyer evaluates the user against their full package portfolio.
+- **Identity Match** sends `package_ids` (or omits it entirely, in which case the buyer evaluates against its full registered active set for `seller_agent_url`). When sent, composition MUST be statistically independent of the current placement — either all-active (every active package for this buyer at this publisher) or fuzzed (a random sample optionally padded with synthetic non-existent IDs that the buyer silently drops). The buyer evaluates the user against this set, not against just the page-specific subset.
 
 The context set is scoped to one placement. The identity set is scoped to one buyer's entire active inventory. The two sets are structurally different, and neither reveals information about the other.
 

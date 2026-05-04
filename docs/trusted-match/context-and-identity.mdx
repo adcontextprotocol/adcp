@@ -226,6 +226,6 @@ Identity Match sends ALL active package IDs for a given buyer — not just those
 
 Package lists update when new media buys are created via `create_media_buy`. The router maintains the active package list per buyer, derived from the buyer's media buy history with the publisher.
 
-In Context Match, the optional `package_ids` field can narrow evaluation when the publisher has a specific reason — for example, CTV pod composition where only video packages apply. This does not affect Identity Match, which always sends ALL active packages.
+In Context Match, the optional `package_ids` field can narrow evaluation when the publisher has a specific reason — for example, CTV pod composition where only video packages apply. This does not affect Identity Match: when Identity Match sends `package_ids`, the composition must be independent of the current placement (all-active or fuzzed), not the placement-specific subset.
 
 Stale packages from expired or cancelled media buys should be removed from the active list within 1 hour. The router is responsible for this cleanup.
