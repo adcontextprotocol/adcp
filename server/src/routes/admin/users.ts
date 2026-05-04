@@ -1180,5 +1180,165 @@ export function createAdminUsersRouter(): Router {
     });
   });
 
+  // POST /api/admin/users/:userId/credentials/:credentialId/promote
+  //
+  // Make :credentialId the primary credential of the host's identity.
+  // Moves all of the current primary's app-state forward to :credentialId
+  // (so reads keyed on the canonical workos_user_id land on the right
+  // place), swaps `is_primary`, audit row.
+  //
+  // Use case: after a `link-existing` bind, the new credential ended up as
+  // the right one for the workspace the person actually wants (e.g., a
+  // work email that's a member of a paid org), but the canonical primary
+  // sits on a different credential whose org_memberships are a different
+  // (personal) workspace. Promote re-points the canonical so id-swap
+  // routes both sign-ins to the org-bearing credential.
+  //
+  // Implementation note: we run mergeUsers(newPrimary, currentPrimary)
+  // which moves data forward and demotes the old primary as a side
+  // effect (it becomes is_primary=FALSE). Both bindings are non-primary
+  // for a brief window between the mergeUsers commit and the follow-up
+  // UPDATE; during that window `attachIdentityId` finds no primary and
+  // skips the id-swap, so requests fall back to the auth user's slice of
+  // data — degraded but not broken. A failure of the follow-up UPDATE
+  // would persist that degraded state; the audit row records the intent
+  // and the recovery is a one-line UPDATE.
+  router.post('/:userId/credentials/:credentialId/promote', requireAuth, requireAdmin, async (req, res) => {
+    const adminEmail = req.user!.email;
+    const adminUserId = req.user!.id;
+    const adminAuthCredentialId = req.user!.authWorkosUserId ?? req.user!.id;
+    const userId = req.params.userId;
+    const newPrimaryId = req.params.credentialId;
+
+    if (newPrimaryId === userId) {
+      return res.status(400).json({ error: 'The credential to promote must differ from the host id in the URL' });
+    }
+
+    const pool = getPool();
+
+    // Validate: target is bound to host's identity, find current primary
+    const check = await pool.query<{
+      new_is_primary: boolean;
+      current_primary_id: string | null;
+      identity_id: string;
+    }>(
+      `SELECT
+          target.is_primary AS new_is_primary,
+          primary_iwu.workos_user_id AS current_primary_id,
+          target.identity_id
+        FROM identity_workos_users target
+        LEFT JOIN identity_workos_users primary_iwu
+          ON primary_iwu.identity_id = target.identity_id
+         AND primary_iwu.is_primary = TRUE
+       WHERE target.workos_user_id = $1
+         AND target.identity_id = (
+           SELECT identity_id FROM identity_workos_users WHERE workos_user_id = $2
+         )`,
+      [newPrimaryId, userId]
+    );
+
+    if (check.rows.length === 0) {
+      return res.status(404).json({ error: 'Credential not bound to this user' });
+    }
+    if (check.rows[0].new_is_primary) {
+      return res.json({ promoted: true, message: 'Already primary — no change.' });
+    }
+
+    const identityId = check.rows[0].identity_id;
+    const currentPrimaryId = check.rows[0].current_primary_id;
+
+    // Edge case: identity has no current primary (broken invariant from a
+    // prior partial promote, manual SQL, etc.). Just set the target as
+    // primary; nothing to move forward.
+    if (!currentPrimaryId) {
+      await pool.query(
+        `UPDATE identity_workos_users SET is_primary = TRUE WHERE workos_user_id = $1`,
+        [newPrimaryId]
+      );
+      logger.info(
+        { adminEmail, userId, newPrimaryId, identityId, recovered_orphan: true },
+        'Promote: identity had no current primary; set target as primary directly'
+      );
+      invalidateSessionsForUsers([newPrimaryId]);
+      return res.json({
+        promoted: true,
+        message: 'Promoted (no current primary to demote — invariant repaired).',
+      });
+    }
+
+    // Run mergeUsers to move data forward. mergeUsers' identity-rebind step
+    // sets the (former) primary to is_primary=FALSE; we then UPDATE the new
+    // primary to TRUE.
+    try {
+      await mergeUsers(newPrimaryId, currentPrimaryId, adminUserId);
+    } catch (err) {
+      logger.error(
+        { err, userId, newPrimaryId, currentPrimaryId },
+        'Promote: mergeUsers failed'
+      );
+      return res.status(500).json({ error: 'Failed to promote credential' });
+    }
+
+    try {
+      await pool.query(
+        `UPDATE identity_workos_users SET is_primary = TRUE WHERE workos_user_id = $1`,
+        [newPrimaryId]
+      );
+    } catch (err) {
+      logger.error(
+        { err, userId, newPrimaryId, currentPrimaryId, identityId },
+        'Promote: post-merge primary swap UPDATE failed — identity is left with NO primary; manual recovery: UPDATE identity_workos_users SET is_primary=TRUE WHERE workos_user_id=$newPrimaryId'
+      );
+      return res.status(500).json({
+        error: 'Promote partially completed',
+        message: 'App-state moved successfully, but the primary swap could not be persisted. Engineering needs to manually set is_primary on the new credential. Please contact engineering.',
+      });
+    }
+
+    // Audit row
+    try {
+      const auditOrg = await pool.query<{ workos_organization_id: string }>(
+        `SELECT workos_organization_id FROM organization_memberships
+          WHERE workos_user_id = $1 LIMIT 1`,
+        [newPrimaryId]
+      );
+      const auditOrgId = auditOrg.rows[0]?.workos_organization_id || 'system';
+      await pool.query(
+        `INSERT INTO registry_audit_log (
+          workos_organization_id, workos_user_id, action, resource_type, resource_id, details
+        ) VALUES ($1, $2, 'promote_credential_to_primary', 'user', $3, $4)`,
+        [
+          auditOrgId,
+          adminUserId,
+          newPrimaryId,
+          JSON.stringify({
+            host_user_id: userId,
+            identity_id: identityId,
+            previous_primary_id: currentPrimaryId,
+            new_primary_id: newPrimaryId,
+            acting_workos_user_id: adminAuthCredentialId,
+          }),
+        ]
+      );
+    } catch (err) {
+      logger.warn({ err, userId, newPrimaryId }, 'Promote: audit row insert failed (non-fatal)');
+    }
+
+    invalidateSessionsForUsers([userId, newPrimaryId, currentPrimaryId]);
+
+    logger.info(
+      { adminEmail, identityId, previous_primary_id: currentPrimaryId, new_primary_id: newPrimaryId },
+      'Admin promoted credential to primary'
+    );
+
+    return res.json({
+      promoted: true,
+      identity_id: identityId,
+      previous_primary_id: currentPrimaryId,
+      new_primary_id: newPrimaryId,
+      message: 'Credential is now primary. Sign-ins via either bound credential will route here.',
+    });
+  });
+
   return router;
 }
