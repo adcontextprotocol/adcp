@@ -149,9 +149,9 @@ When the product's `trusted_match` config declares creative as the response type
 
 ## Identity Match
 
-The TMP SDK sends an Identity Match request with a publisher-scoped device token. This request is structurally separate from Context Match — it carries no content signals and is sent with temporal decorrelation (a random delay of 100-2000ms).
+The TMP SDK sends an Identity Match request with a publisher-scoped device token and the publisher's `seller_agent_url`. This request is structurally separate from Context Match — it carries no content signals and is sent with temporal decorrelation: a random delay of 100-2000ms, plus randomized order (each opportunity has roughly equal probability of Context Match or Identity Match being sent first).
 
-The `package_ids` list includes all active packages for the buyer, not just the packages from the current placement. Sending only the placement-specific subset would let the buyer correlate Identity Match with Context Match by comparing package sets.
+The buyer resolves its active package set from `seller_agent_url`. When the SDK sends `package_ids` explicitly (as below), composition MUST be independent of the current placement — either all-active (every active package for the buyer at this publisher) or fuzzed (a random sample padded with synthetic non-existent IDs the buyer silently drops). The placement-specific subset is forbidden — it would let the buyer correlate Identity Match with Context Match by comparing package sets.
 
 #### Request
 
@@ -159,6 +159,7 @@ The `package_ids` list includes all active packages for the buyer, not just the 
 {
   "type": "identity_match_request",
   "request_id": "id-mob-e4d782",
+  "seller_agent_url": "https://mobile-publisher.example",
   "identities": [
     { "user_token": "tok_idfv_a9c3e7", "uid_type": "publisher_first_party" },
     { "user_token": "A1B2C3D4-E5F6-7890-1234-567890ABCDEF", "uid_type": "maid" }
@@ -178,7 +179,7 @@ The `package_ids` list includes all active packages for the buyer, not just the 
 }
 ```
 
-Seven package IDs — all active packages for this buyer across every placement and format, not just the two that were activated by Context Match.
+Seven package IDs — the example uses all-active mode (every active package for this buyer across every placement and format, not just the two that were activated by Context Match). A fuzzed list of similar size, padded with synthetic non-existent IDs the buyer silently drops, would satisfy the same privacy invariant.
 
 #### Response
 
@@ -261,7 +262,7 @@ Mobile TMP follows the same structural separation as all surfaces:
 
 - **Context Match** carries content signals and placement data. No device identifiers, no user tokens, no IDFA/IDFV in the request.
 - **Identity Match** carries only a publisher-scoped device token and the full list of buyer package IDs. No content signals, no screen names, no topic IDs.
-- **Temporal decorrelation** between the two requests prevents timing-based correlation. The TMP SDK introduces a random delay (100-2000ms) before sending the Identity Match request.
+- **Temporal decorrelation** between the two requests prevents timing- and order-based correlation. The TMP SDK introduces a random delay (100-2000ms) AND randomizes which request is sent first — each opportunity has roughly equal probability of Context Match or Identity Match going first.
 - **Package set decorrelation**: Context Match sends no package list — the provider evaluates the same synced package set for every user on a placement. Identity Match sends all packages for the buyer. Neither path reveals which packages are relevant to the current opportunity.
 
 The publisher performs the intersection locally after both responses arrive. The buyer never sees the joined result.

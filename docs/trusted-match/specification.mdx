@@ -26,7 +26,7 @@ Specific areas expected to evolve include TMPX exposure tokens, country-partitio
 | **Seller agent** | The buyer-side agent that sold the package into a publisher. Identified by the agent URL declared in the publisher's `adagents.json` `authorized_agents[].url`. Every `AvailablePackage` is bound to exactly one seller agent at sync time. |
 | **Eligibility** | List of eligible package IDs returned by Identity Match, plus a TTL caching contract. The buyer computes eligibility from frequency caps, audience membership, and other signals; the reasons are opaque to the publisher. |
 | **Artifact** | A typed content reference associated with a publisher property (article URL, episode EIDR, show Gracenote ID, music ISRC, product GTIN, conversation turn). Each artifact has a `type` and `value`. Referenced in context match requests. |
-| **Temporal decorrelation** | Random delay introduced between Context Match and Identity Match requests to prevent timing-based correlation. |
+| **Temporal decorrelation** | Random delay and random ordering between Context Match and Identity Match requests, preventing timing- and order-based correlation. |
 
 ## Message Types
 
@@ -174,16 +174,17 @@ Response-level targeting signals for ad server pass-through.
 
 ### IdentityMatchRequest
 
-Sent by the publisher (via router) to buyer agents. Contains one or more opaque identity tokens and package IDs. MUST NOT contain page context.
+Sent by the publisher (via router) to buyer agents. Contains the seller agent URL, one or more opaque identity tokens, and an optional package ID list. MUST NOT contain page context.
 
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `type` | string | Yes | `"identity_match_request"`. Message type discriminator for deserialization. |
 | `protocol_version` | string | No | TMP protocol version. Default: `1.0`. |
 | `request_id` | string | Yes | Unique request identifier. MUST NOT correlate with any Context Match request_id. |
+| `seller_agent_url` | string (URI) | Yes | API endpoint URL of the seller agent issuing this request. The buyer's identity-match service uses this to resolve the active package set it has registered for this seller; when `package_ids` is omitted, evaluation occurs against that full set. Compared using the [AdCP URL canonicalization rules](/docs/reference/url-canonicalization), not byte-equality. Consistent with `seller_agent.agent_url` on `AvailablePackage` and `agent_url` in `adagents.json`. |
 | `identities` | List\<Identity\> | Yes | One or more identity tokens for the user. Publishers SHOULD include every token they have available — the buyer resolves on whichever graph matches, maximizing match rate. Each entry is an independent identifier for the same user; buyers MUST NOT treat the combination as a new correlated identity. |
 | `consent` | Consent | No | Privacy consent signals. Buyers in regulated jurisdictions MUST NOT process identity tokens without consent information. |
-| `package_ids` | List\<string\> | Yes | ALL active packages for this buyer at this publisher. MUST include every active package, not just those on the current page, to prevent set-correlation with Context Match. |
+| `package_ids` | List\<string\> | No | When omitted, the buyer evaluates eligibility against the full set of active packages it has registered for `seller_agent_url`. When provided, composition MUST be statistically independent of the current placement. Two acceptable modes: **all-active** (every active package for this buyer at this publisher) or **fuzzed** (a random sample of active packages, optionally padded with synthetic non-existent IDs, drawn from a distribution that does not depend on the current placement). The page-specific subset is forbidden — it would let the buyer correlate with Context Match by comparing package sets. |
 | `country` | string | No | ISO 3166-1 alpha-2 country code. Routing directive — the router uses this to select the correct regional provider. The router MUST strip this field before forwarding to the buyer agent. Not an identity signal. |
 
 Each entry in `identities` is an `{user_token, uid_type}` pair:
@@ -329,11 +330,13 @@ TMP providers cache packages from many seller agents against many publishers. Th
 
 The canonical seller identity in AdCP is the agent URL declared in the property publisher's [adagents.json](https://adcontextprotocol.org/schemas/v3/adagents.json) `authorized_agents[].url` entry. TMP reuses that URL directly rather than introducing a parallel identifier space. The `id` slot on `SellerAgentRef` is reserved for a future registry-assigned opaque identifier and is not used today.
 
-**Placement rationale.** `seller_agent` lives on the cached `AvailablePackage` (sync time), not on `context_match_request` or `identity_match_request`:
+**Placement rationale.** Context Match and Identity Match are processed by different actors with different package visibility, so seller identity is on the wire for one but not the other: Context Match goes to the provider (which already has the sync-time binding), Identity Match goes to the buyer agent (which needs the seller URL to index its own registered active set). `seller_agent` lives on the cached `AvailablePackage` (sync time) and does not appear on `context_match_request`:
 
 - Sync time is when a provider first learns about a package; the binding is established once and reused for every subsequent evaluation.
-- Putting `seller_agent` on the request would either duplicate the sync-time binding (redundant) or open a path for request-time seller filtering, which re-introduces the identity- and allocation-leakage failure modes [Package set decorrelation](#package-set-decorrelation) exists to prevent.
+- Putting `seller_agent` on `context_match_request` would either duplicate the sync-time binding (redundant) or open a path for request-time seller filtering on the context path, which re-introduces the identity- and allocation-leakage failure modes [Package set decorrelation](#package-set-decorrelation) exists to prevent.
 - Publishers and routers can derive seller identity from `media_buy_id` via their own stores; providers cannot. Keeping attribution on the package serves the actor that actually needs it on the wire.
+
+`identity_match_request` carries `seller_agent_url` directly because the buyer's identity-match service needs it to resolve the active package set it has registered for that seller — that resolution happens at the buyer agent, not at the provider, and is keyed on seller URL rather than on a per-package binding. This is buyer-side scoping, not provider-side filtering, and so does not interact with the package-set decorrelation guarantee.
 
 **Offer echo.** `seller_agent` MAY appear on `offer.json` as an echo from the cached package, for publisher-side log pipelines that want one-hop attribution without rejoining to the media-buy store. The echo is non-authoritative — the cached `AvailablePackage` binding is source of truth. Providers and routers MUST overwrite a disagreeing echo with the cached binding before logging, forwarding, or emitting the offer downstream, and MUST NOT use the echo value in any field consumed for billing, reporting, or dispute resolution. A disagreement SHOULD be counted to a `seller_agent_echo_mismatch` metric for anomaly detection. Routers MAY stamp `seller_agent` on merge when providers omit it.
 
@@ -357,12 +360,12 @@ Providers SHOULD validate `seller_agent.agent_url` against the property publishe
 |---|---|---|
 | **Seller agent** | Include its own adagents-registered `agent_url` as `seller_agent.agent_url` on every `AvailablePackage` it syncs. MUST be the URL the publisher has attested in `authorized_agents[].url`. | No new behavior. The offer MAY echo `seller_agent`; omitting it is fine — the router can stamp from cache. |
 | **Publisher** | Keep `authorized_agents` in adagents.json accurate, including scope constraints (`property_ids`, `placement_ids`, `countries`, effective windows). | No new behavior. |
-| **Router** | No new behavior. | MAY stamp `seller_agent` on offers that arrive without it, using its cached package→seller binding. MUST NOT forward `seller_agent` into `context_match_request` or `identity_match_request`. |
+| **Router** | No new behavior. | MAY stamp `seller_agent` on offers that arrive without it, using its cached package→seller binding. MUST NOT forward `seller_agent` into `context_match_request`. (`identity_match_request` carries `seller_agent_url` directly per its schema; the router MUST forward it unchanged.) |
 | **Provider** | Validate `seller_agent.agent_url` against the property's adagents.json per [Sync-Time Validation](#sync-time-validation). Reject unauthorized packages with `seller_not_authorized`. Store the binding with the cached package. | Echo `seller_agent` on offers it produces. The cached binding is immutable for an in-flight decision, but providers MUST treat packages whose authorization has expired (removal from `authorized_agents` or `effective_until` passed) as `unknown_package` on subsequent requests until the package is re-synced. |
 
 ### What This Is Not
 
-- **Not a request-time filter.** Publishers, routers, and providers MUST NOT use `seller_agent` to scope, filter, or route `context_match_request` or `identity_match_request`. `package_ids` remains the only scoping mechanism.
+- **Not a request-time filter on Context Match.** Publishers, routers, and providers MUST NOT use `seller_agent` to scope, filter, or route `context_match_request`. `package_ids` is not present on Context Match either; package selection is provider-side based on the cached sync. `identity_match_request` does carry `seller_agent_url`, but only as the key the buyer agent uses to resolve its registered package set — not as a provider/router filter.
 - **Not a sellers.json bridge.** IAB sellers.json `seller_id` and TAG-IDs serve a distinct financial-audit identity space. They remain on `adagents.json` `contact` — TMP does not duplicate them.
 - **Not a cryptographic attestation.** The binding is publisher-attested via adagents.json over HTTPS. Signed TMP seller claims are a future enhancement and can layer onto `SellerAgentRef` through the reserved `id` slot or an `ext` field without breaking changes. When a future release populates both `agent_url` and `id`, `agent_url` remains authoritative and `id` is advisory — a disagreement between the two MUST NOT be used to upgrade trust above what the URL's adagents.json binding provides.
 
@@ -380,13 +383,17 @@ The following requirements use RFC 2119 keywords (MUST, SHOULD, MAY).
 ### Package set decorrelation
 
 - Context Match MUST NOT be filtered by user identity or audience. The provider evaluates its synced package set for the placement — the same packages for every user. No per-request package list is sent, so the publisher cannot accidentally leak identity through package filtering.
-- Identity Match `package_ids` MUST include ALL active packages for the buyer at this publisher, not just those available on the current page. Sending only the page-specific subset would allow a buyer to correlate Identity Match with Context Match by comparing package sets.
-- The publisher SHOULD maintain a cached list of all active package IDs per buyer and send the full set on every Identity Match request.
+- The publisher SHOULD omit `package_ids` from Identity Match and let the buyer evaluate against the full active set it has registered for `seller_agent_url`. When `package_ids` IS provided, its composition MUST be statistically independent of the current placement — sending only the page-specific subset would allow a buyer to correlate Identity Match with Context Match by comparing package sets. Two acceptable modes:
+  - **All-active.** Include every active package this buyer has at this publisher.
+  - **Fuzzed.** Include a random sample of active packages, optionally padded with synthetic non-existent IDs, drawn from a distribution that does not depend on the current placement. The silent-drop rule below makes synthetic-ID padding safe — unknown IDs do not affect response shape and cannot leak registry membership.
+- When both `seller_agent_url` and `package_ids` are present, the buyer evaluates against the intersection of its registered active set and `package_ids`; unknown IDs in `package_ids` MUST be silently ignored (not error-surfaced) so the response does not leak registry membership back to the publisher.
+- A publisher that maintains a cached list of all active package IDs per buyer MAY send the full set on every Identity Match request as a defense in depth, but the buyer-side resolution from `seller_agent_url` is the primary mechanism.
 - The publisher performs the intersection of context match offers and identity match eligibility locally, after both responses arrive.
 
 ### Temporal decorrelation
 
 - Publishers SHOULD introduce a random delay between Context Match and Identity Match requests. Recommended: 100-2000ms, uniformly distributed.
+- Publishers SHOULD also randomize the order of Context Match and Identity Match: each opportunity SHOULD have a roughly equal probability of Context Match being sent first or Identity Match being sent first. A fixed order — e.g., Identity Match always after Context Match — leaks the pairing through ordering even when the delay is randomized.
 - Publishers MAY batch Identity Match requests across multiple page views.
 - Publishers MAY route Context Match and Identity Match through different network paths.
 
