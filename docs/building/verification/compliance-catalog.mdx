@@ -91,7 +91,7 @@ Specialisms are grouped below by parent protocol.
 |-----------|--------|---------|
 | `sales-guaranteed` | stable | Guaranteed media buys with human IO approval |
 | `sales-non-guaranteed` | stable | Non-guaranteed auction-based media buys |
-| `sales-proposal-mode` | stable | Media buys negotiated via proposal acceptance |
+| `sales-proposal-mode` | deprecated | Proposal-mode selling — absorbed into `sales-guaranteed` + `media_buy.supports_proposals: true`. Do not claim for new agents. |
 | `sales-catalog-driven` | stable | Catalog-driven commerce with conversion tracking |
 | `sales-broadcast-tv` | stable | Broadcast linear TV with guaranteed inventory and FCC cancellation rules |
 | `sales-social` | stable | Social media advertising platform with self-service flows |
@@ -100,6 +100,10 @@ Specialisms are grouped below by parent protocol.
 
 <Note>
 **Coming in 3.1.** `sales-streaming-tv` (CTV / streaming), `sales-exchange` (programmatic SSP / exchange), and `sales-retail-media` (retail media network) are scheduled for 3.1. Sellers in those categories should claim `sales-guaranteed` or `sales-non-guaranteed` at 3.0 GA.
+</Note>
+
+<Note>
+**`sales-proposal-mode` deprecated.** Proposal-driven selling is now handled by `sales-guaranteed` with `media_buy.supports_proposals: true`. New agents should claim `sales-guaranteed`; the runner grades the proposal lifecycle (`media_buy_seller/proposal_finalize`) when `supports_proposals: true` and skips it when `false`. The `sales-proposal-mode` ID remains valid for existing implementations and will be removed in a future major version.
 </Note>
 
 <Note>
@@ -164,6 +168,22 @@ The storyboard runner:
 </Warning>
 
 If any `stable` storyboard fails, your agent is not compliant for that claim. See [Validate Your Agent](/docs/building/verification/validate-your-agent) for how to run the suite locally.
+
+## Capability-gated scenarios
+
+Some compliance scenarios only execute when the seller explicitly declares a matching capability flag in `get_adcp_capabilities`. Setting a flag to `false` opts out of the scenario — the runner grades it `capability_unsupported` (a skip, not a fail) rather than executing the steps. This lets sellers scope their compliance surface to the features they actually support.
+
+{/* Lint: NO automated enforcement — this table is maintained by hand against
+    requires_capability: blocks in static/compliance/source/protocols/**\/scenarios\/**\.yaml.
+    Verify this table when adding or removing a capability-gated scenario YAML. */}
+
+| Capability flag | Default (when absent) | When `true` | When `false` |
+|---|---|---|---|
+| `media_buy.supports_proposals` | treated as `true` — runs (graded) | `media_buy_seller/proposal_finalize` runs — graded as part of the `sales-guaranteed` storyboard | `capability_unsupported` — scenario skips, not a compliance fail |
+
+<Note>
+When `media_buy.supports_proposals` is omitted, the compliance runner treats it the same as `true` — the `proposal_finalize` scenario runs and is graded. To opt out, declare `false` explicitly. Direct-buy guaranteed sellers (auction PG, retail SKU, quoted-rate) declare `false`; full-service guaranteed sellers that generate curated proposals declare `true`.
+</Note>
 
 ## Naming conventions
 
