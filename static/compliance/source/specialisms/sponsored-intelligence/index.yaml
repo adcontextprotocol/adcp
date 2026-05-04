@@ -27,8 +27,12 @@ narrative: |
   /docs/building/compliance-catalog.
 
   This specialism promotes to `stable` (with required_tools and a graded storyboard)
-  when the SI tools graduate from experimental — at which point sub-specialism splits
-  (e.g., transactional-handoff vs. conversation-only SI) may also be introduced.
+  when the SI tools graduate from experimental. Sub-specialism splits may emerge as
+  the SI surface stabilizes — likely along axes like identity model (anonymous vs.
+  authenticated host-user), commerce capability (conversation-only vs. UI-component
+  vs. transactional handoff), or host surface (assistant vs. AI search vs. embedded).
+  The shape isn't committed; this narrative anticipates differentiation, it doesn't
+  specify it.
 
 agent:
   interaction_model: si_platform
