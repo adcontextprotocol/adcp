@@ -41,7 +41,7 @@ POST https://you.com/adcp/webhook/create_media_buy/agent_123/cd51e063-2b79-4a6d-
   }
 ```
 
-If you're using the `@adcp/client` library, this entire flow is handled automatically. As a **buyer**, configure `webhookUrlTemplate` and your agent URL on the client; `push_notification_config` is injected into every outgoing task call, and incoming webhooks are verified against the seller's JWKS automatically. As a **seller emitting webhooks**, publish a webhook-signing JWK at your brand.json `agents[]` entry (with `adcp_use: "webhook-signing"`) and the client signs outgoing webhooks for you.
+If you're using the `@adcp/sdk` library, this entire flow is handled automatically. As a **buyer**, configure `webhookUrlTemplate` and your agent URL on the client; `push_notification_config` is injected into every outgoing task call, and incoming webhooks are verified against the seller's JWKS automatically. As a **seller emitting webhooks**, publish a webhook-signing JWK at your brand.json `agents[]` entry (with `adcp_use: "webhook-signing"`) and the client signs outgoing webhooks for you.
 
 :::warning Legacy HMAC fallback (deprecated)
 Buyers integrating with receivers that have not yet adopted the RFC 9421 webhook profile MAY opt into the legacy HMAC-SHA256 scheme by populating `push_notification_config.authentication.credentials`. That path is deprecated and removed in AdCP 4.0 — see [Legacy HMAC-SHA256 fallback](#legacy-hmac-sha256-fallback-deprecated) below. Because the inbound request that registers the webhook is typically not 9421-signed in 3.0, the `authentication` block is susceptible to on-path strip/inject — see [Downgrade and injection resistance](/docs/building/by-layer/L1/security#webhook-callbacks) for the operational mitigations.

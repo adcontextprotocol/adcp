@@ -21,8 +21,8 @@ Discover products with a natural language brief:
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from '@adcp/client/testing';
-import { GetProductsResponseSchema } from '@adcp/client';
+import { testAgent } from '@adcp/sdk/testing';
+import { GetProductsResponseSchema } from '@adcp/sdk';
 
 const result = await testAgent.getProducts({
   buying_mode: 'brief',
@@ -81,7 +81,7 @@ You can also use structured filters instead of (or in addition to) a brief. In `
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from '@adcp/client/testing';
+import { testAgent } from '@adcp/sdk/testing';
 
 const result = await testAgent.getProducts({
   buying_mode: 'wholesale',
@@ -359,7 +359,7 @@ Declare a time budget when you need fast results and can accept partial data. Th
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from '@adcp/client/testing';
+import { testAgent } from '@adcp/sdk/testing';
 
 const result = await testAgent.getProducts({
   buying_mode: 'brief',
@@ -448,7 +448,7 @@ A response with incomplete data — products are returned but some scopes are mi
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from '@adcp/client/testing';
+import { testAgent } from '@adcp/sdk/testing';
 
 // wholesale mode: buyer applies their own audiences, no publisher curation
 const result = await testAgent.getProducts({
@@ -493,7 +493,7 @@ asyncio.run(discover_standard_catalog())
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from '@adcp/client/testing';
+import { testAgent } from '@adcp/sdk/testing';
 
 // Find products supporting both video and display
 const result = await testAgent.getProducts({
@@ -540,7 +540,7 @@ asyncio.run(discover_multi_format())
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from '@adcp/client/testing';
+import { testAgent } from '@adcp/sdk/testing';
 
 // Find products within budget and date range for specific countries and channels
 const result = await testAgent.getProducts({
@@ -605,7 +605,7 @@ asyncio.run(discover_with_budget_and_dates())
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from '@adcp/client/testing';
+import { testAgent } from '@adcp/sdk/testing';
 
 // Get products with property tags
 const result = await testAgent.getProducts({
@@ -656,7 +656,7 @@ asyncio.run(discover_property_tags())
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from '@adcp/client/testing';
+import { testAgent } from '@adcp/sdk/testing';
 
 // Find guaranteed delivery products for measurement
 const result = await testAgent.getProducts({
@@ -705,7 +705,7 @@ asyncio.run(discover_guaranteed())
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from '@adcp/client/testing';
+import { testAgent } from '@adcp/sdk/testing';
 
 // Find products that only accept IAB standard formats
 const result = await testAgent.getProducts({
@@ -752,7 +752,7 @@ Use `catalog` with a brand to discover advertising products that can promote you
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from '@adcp/client/testing';
+import { testAgent } from '@adcp/sdk/testing';
 
 // Discover retail media products for specific catalog items
 const result = await testAgent.getProducts({
@@ -857,7 +857,7 @@ Filter products to only those available on properties in your approved list:
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from '@adcp/client/testing';
+import { testAgent } from '@adcp/sdk/testing';
 
 // Filter products by property list from governance agent
 const result = await testAgent.getProducts({
@@ -978,7 +978,7 @@ See the difference between authenticated and unauthenticated access:
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent, testAgentNoAuth } from '@adcp/client/testing';
+import { testAgent, testAgentNoAuth } from '@adcp/sdk/testing';
 
 // WITH authentication - full catalog with pricing
 const fullCatalog = await testAgent.getProducts({

@@ -131,8 +131,8 @@ When catalog assets are present, buyers should sync the required catalogs via [`
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from '@adcp/client/testing';
-import { ListCreativeFormatsResponseSchema } from '@adcp/client';
+import { testAgent } from '@adcp/sdk/testing';
+import { ListCreativeFormatsResponseSchema } from '@adcp/sdk';
 
 // Get full specs for formats returned by get_products
 const result = await testAgent.listCreativeFormats({
@@ -191,8 +191,8 @@ asyncio.run(main())
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from '@adcp/client/testing';
-import { ListCreativeFormatsResponseSchema } from '@adcp/client';
+import { testAgent } from '@adcp/sdk/testing';
+import { ListCreativeFormatsResponseSchema } from '@adcp/sdk';
 
 // Find formats that accept images and text
 const result = await testAgent.listCreativeFormats({
@@ -247,8 +247,8 @@ asyncio.run(main())
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from '@adcp/client/testing';
-import { ListCreativeFormatsResponseSchema } from '@adcp/client';
+import { testAgent } from '@adcp/sdk/testing';
+import { ListCreativeFormatsResponseSchema } from '@adcp/sdk';
 
 // Find formats that accept JavaScript or HTML tags
 const result = await testAgent.listCreativeFormats({
@@ -307,8 +307,8 @@ asyncio.run(main())
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from '@adcp/client/testing';
-import { ListCreativeFormatsResponseSchema } from '@adcp/client';
+import { testAgent } from '@adcp/sdk/testing';
+import { ListCreativeFormatsResponseSchema } from '@adcp/sdk';
 
 // Find video formats
 const result = await testAgent.listCreativeFormats({
@@ -357,8 +357,8 @@ asyncio.run(main())
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from '@adcp/client/testing';
-import { ListCreativeFormatsResponseSchema } from '@adcp/client';
+import { testAgent } from '@adcp/sdk/testing';
+import { ListCreativeFormatsResponseSchema } from '@adcp/sdk';
 
 // Find mobile-optimized formats
 const result = await testAgent.listCreativeFormats({
@@ -405,8 +405,8 @@ asyncio.run(main())
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from '@adcp/client/testing';
-import { ListCreativeFormatsResponseSchema } from '@adcp/client';
+import { testAgent } from '@adcp/sdk/testing';
+import { ListCreativeFormatsResponseSchema } from '@adcp/sdk';
 
 // Find formats that adapt to container size
 const result = await testAgent.listCreativeFormats({
@@ -469,8 +469,8 @@ Serve-time dynamic creative (DCO platforms that render from data feeds at ad ser
 <CodeGroup>
 
 ```javascript test=false
-import { testAgent } from '@adcp/client/testing';
-import { ListCreativeFormatsResponseSchema } from '@adcp/client';
+import { testAgent } from '@adcp/sdk/testing';
+import { ListCreativeFormatsResponseSchema } from '@adcp/sdk';
 
 // I need portrait video — what can generate it?
 const result = await testAgent.listCreativeFormats({
@@ -521,8 +521,8 @@ asyncio.run(main())
 <CodeGroup>
 
 ```javascript test=false
-import { testAgent } from '@adcp/client/testing';
-import { ListCreativeFormatsResponseSchema } from '@adcp/client';
+import { testAgent } from '@adcp/sdk/testing';
+import { ListCreativeFormatsResponseSchema } from '@adcp/sdk';
 
 // I have a landscape 16:9 video — what can I transform it into?
 const result = await testAgent.listCreativeFormats({

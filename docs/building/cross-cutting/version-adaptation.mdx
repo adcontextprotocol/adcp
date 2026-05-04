@@ -29,7 +29,7 @@ import { ADCPMultiAgentClient } from '@adcp/sdk';
 const client = ADCPMultiAgentClient.simple(
   'https://legacy-agent.example.com/mcp/',
   {
-    authToken: process.env.AGENT_TOKEN,
+    auth_token: process.env.AGENT_TOKEN,
     adcpVersion: 'v2.5', // ← pin here
   },
 );

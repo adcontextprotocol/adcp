@@ -21,7 +21,7 @@ Check remaining credit before launching a campaign:
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from "@adcp/client/testing";
+import { testAgent } from "@adcp/sdk/testing";
 
 const result = await testAgent.getAccountFinancials({
   account: { account_id: "acc_acme_001" },
@@ -111,7 +111,7 @@ Returns financial data for the account. Only `account`, `currency`, `period`, an
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from "@adcp/client/testing";
+import { testAgent } from "@adcp/sdk/testing";
 
 const financials = await testAgent.getAccountFinancials({
   account: { account_id: "acc_acme_001" },
@@ -169,7 +169,7 @@ asyncio.run(main())
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from "@adcp/client/testing";
+import { testAgent } from "@adcp/sdk/testing";
 
 const financials = await testAgent.getAccountFinancials({
   account: {

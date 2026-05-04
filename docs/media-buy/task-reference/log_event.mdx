@@ -20,8 +20,8 @@ Log a purchase event:
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from "@adcp/client/testing";
-import { LogEventResponseSchema } from "@adcp/client";
+import { testAgent } from "@adcp/sdk/testing";
+import { LogEventResponseSchema } from "@adcp/sdk";
 
 const result = await testAgent.logEvent({
   event_source_id: "website_pixel",
@@ -179,8 +179,8 @@ Send multiple events in a single request:
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from "@adcp/client/testing";
-import { LogEventResponseSchema } from "@adcp/client";
+import { testAgent } from "@adcp/sdk/testing";
+import { LogEventResponseSchema } from "@adcp/sdk";
 
 const result = await testAgent.logEvent({
   event_source_id: "website_pixel",
@@ -319,8 +319,8 @@ Validate event integration without affecting production data:
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from "@adcp/client/testing";
-import { LogEventResponseSchema } from "@adcp/client";
+import { testAgent } from "@adcp/sdk/testing";
+import { LogEventResponseSchema } from "@adcp/sdk";
 
 const result = await testAgent.logEvent({
   event_source_id: "website_pixel",
@@ -409,8 +409,8 @@ Report offline conversions using CRM data:
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from "@adcp/client/testing";
-import { LogEventResponseSchema } from "@adcp/client";
+import { testAgent } from "@adcp/sdk/testing";
+import { LogEventResponseSchema } from "@adcp/sdk";
 
 const result = await testAgent.logEvent({
   event_source_id: "crm_import",

@@ -5,7 +5,7 @@ description: "What a sales agent operator must have in place before running stor
 "og:title": "AdCP — Get Test-Ready"
 ---
 
-Storyboards are the versioned buyer-simulation suite that decides whether your agent is published as **conformant**. Buyer agents filter on that status — overclaiming or failing storyboards is a public, permanent signal, not a CI warning. This page is the checklist between "I built an agent" and "I can run `npx @adcp/client@latest storyboard run`."
+Storyboards are the versioned buyer-simulation suite that decides whether your agent is published as **conformant**. Buyer agents filter on that status — overclaiming or failing storyboards is a public, permanent signal, not a CI warning. This page is the checklist between "I built an agent" and "I can run `npx @adcp/sdk@latest storyboard run`."
 
 ## The three surfaces the runner needs
 
@@ -71,10 +71,10 @@ See the [Compliance test controller reference](/docs/building/by-layer/L3/comply
 
 ### Wiring the SDK scaffold
 
-`@adcp/client` (≥ 5.13.0 for AdCP 3.0) ships `createComplyController` so you wire your data layer to the controller without reimplementing tool registration, param validation, error envelopes, or re-seed idempotency.
+`@adcp/sdk` (6.x is the production GA on AdCP 3.0) ships `createComplyController` so you wire your data layer to the controller without reimplementing tool registration, param validation, error envelopes, or re-seed idempotency.
 
 ```bash
-npm install @adcp/client@^5.13.0
+npm install @adcp/sdk
 ```
 
 <Note>
@@ -82,9 +82,9 @@ The scaffold is TypeScript/JavaScript. Python, Go, and Java sellers implement th
 </Note>
 
 ```ts
-import { createComplyController, TestControllerError } from '@adcp/client/testing';
+import { createComplyController, TestControllerError } from '@adcp/sdk/testing';
 // `server` is your AdcpServer or MCP server instance — see `createAdcpServer` in
-// `@adcp/client/server` if you need a reference setup.
+// `@adcp/sdk/server` if you need a reference setup.
 
 const controller = createComplyController({
   seed: {
@@ -151,7 +151,7 @@ sandboxGate: async (input) => {
 ```
 
 <Note>
-For custom MCP wrappers — AsyncLocalStorage for per-request auth, transport-level sandbox gating, session-backed stores — compose the lower-level `handleTestControllerRequest`, `toMcpResponse`, and `TOOL_INPUT_SHAPE` from `@adcp/client/server` directly.
+For custom MCP wrappers — AsyncLocalStorage for per-request auth, transport-level sandbox gating, session-backed stores — compose the lower-level `handleTestControllerRequest`, `toMcpResponse`, and `TOOL_INPUT_SHAPE` from `@adcp/sdk/server` directly.
 </Note>
 
 ## Step 4 — Run the storyboard runner
@@ -159,8 +159,8 @@ For custom MCP wrappers — AsyncLocalStorage for per-request auth, transport-le
 Once the three surfaces are in place, the runner takes over:
 
 ```bash
-npx @adcp/client@latest --save-auth my-agent http://localhost:3001/mcp
-npx @adcp/client@latest storyboard run my-agent
+npx @adcp/sdk@latest --save-auth my-agent http://localhost:3001/mcp
+npx @adcp/sdk@latest storyboard run my-agent
 ```
 
 The runner discovers your capabilities, obtains a sandbox account, seeds fixtures via the controller, and walks each matching storyboard. See [Validate Your Agent](/docs/building/verification/validate-your-agent) for the full CLI, debug flags, and Addie workflows.

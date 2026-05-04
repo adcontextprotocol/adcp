@@ -23,8 +23,8 @@ Sync the governance agent for an explicit account:
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from "@adcp/client/testing";
-import { SyncGovernanceResponseSchema } from "@adcp/client";
+import { testAgent } from "@adcp/sdk/testing";
+import { SyncGovernanceResponseSchema } from "@adcp/sdk";
 
 const result = await testAgent.syncGovernance({
   accounts: [
@@ -148,8 +148,8 @@ A single `sync_governance` call can register a distinct agent per account — ea
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from "@adcp/client/testing";
-import { SyncGovernanceResponseSchema } from "@adcp/client";
+import { testAgent } from "@adcp/sdk/testing";
+import { SyncGovernanceResponseSchema } from "@adcp/sdk";
 
 const result = await testAgent.syncGovernance({
   accounts: [

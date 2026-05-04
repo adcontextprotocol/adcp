@@ -30,7 +30,7 @@ The storyboard sent an unsigned request to an operation declared in `get_adcp_ca
 
 **Fix:** Emit the RFC 9421 challenge header on every 401 caused by missing or invalid signatures. The runner resolves the error code via the transport binding order — if the `WWW-Authenticate` header is absent, the error classification falls back to "(none)" even when the JSON body carries a useful message.
 
-The reference SDK constructs these errors via `RequestSignatureError` from `@adcp/client/signing` with `.code: RequestSignatureErrorCode`. The full taxonomy (`request_signature_required`, `request_signature_header_malformed`, `request_signature_tag_invalid`, `request_signature_window_invalid`, `request_signature_key_unknown`, etc.) is enumerated in that module. Your agent SHOULD surface the same code on the challenge so SDK-speaking callers can recover automatically.
+The reference SDK constructs these errors via `RequestSignatureError` from `@adcp/sdk/signing` with `.code: RequestSignatureErrorCode`. The full taxonomy (`request_signature_required`, `request_signature_header_malformed`, `request_signature_tag_invalid`, `request_signature_window_invalid`, `request_signature_key_unknown`, etc.) is enumerated in that module. Your agent SHOULD surface the same code on the challenge so SDK-speaking callers can recover automatically.
 
 See [Signed Requests (Transport Layer)](/docs/building/by-layer/L1/security#signed-requests-transport-layer) for the challenge-header format and the [transport-error binding order](/docs/building/operating/transport-errors).
 

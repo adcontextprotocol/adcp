@@ -15,50 +15,59 @@ What "shipped" means at each layer is the [L0–L3 checklist](/docs/building/cro
 
 *Last updated: 2026-05-03.*
 
-| SDK | Version | L0 | L1 | L2 | L3 |
-|---|---|:-:|:-:|:-:|:-:|
-| **`@adcp/client`** (TS) | `5.13.0` floor · `6.9.0` GA | ✅ | ✅ | ✅ | ✅ |
-| **`adcp`** (Python) | `4.0.0` floor · `4.x` in flight | ✅ | ⚠️ | ⚠️ | ⚠️ |
-| **`adcp-go`** | `v1.0.0` floor · dev | ⚠️ | ❌ | ❌ | ❌ |
+| SDK | Production GA | Beta / dev | L0 | L1 | L2 | L3 |
+|---|---|---|:-:|:-:|:-:|:-:|
+| **`@adcp/sdk`** (TS) | `6.9.0` | — | ✅ | ✅ | ✅ | ✅ |
+| **`adcp`** (Python) | `3.x` | `4.x` | ✅ | ⚠️ | ⚠️ | ⚠️ |
+| **`adcp-go`** | — | `v1.x` | ⚠️ | ❌ | ❌ | ❌ |
 
-Legend: ✅ shipped · ⚠️ partial / in flight · ❌ not yet covered. The **floor** version is the minimum that supports AdCP 3.0; **GA** / **in flight** / **dev** is the current published state.
+Legend: ✅ shipped · ⚠️ partial / in flight · ❌ not yet covered. **Production GA** is the line you should pin to today. **Beta / dev** is what's in flight on the next major.
 
-**`@adcp/client` ships full L0–L3** — adopters write L4 only. **`adcp` (Python)** is closing the gap on its 4.x cycle: outbound RFC 9421 signing not yet wired (L1), brand-resolution helpers in flight (L2), webhook emission still under construction (L3). Track [adcp-client-python releases](https://github.com/adcontextprotocol/adcp-client-python/releases) for the 4.0 GA cut. **`adcp-go`** ships types + transport in main today; see [adcp-go README](https://github.com/adcontextprotocol/adcp-go) for what's in scope per release.
+**`@adcp/sdk` 6.x ships full L0–L3** on AdCP 3.0 — adopters write L4 only. The 5.x line is on security-only support and not recommended for new builds; cut over to 6.x. **`adcp` (Python) 3.x is the production line** with full L0 type coverage; the 4.x rewrite (in beta on PyPI) closes the L1–L3 gap — outbound RFC 9421 signing, brand-resolution helpers, webhook emission. Track [adcp-client-python releases](https://github.com/adcontextprotocol/adcp-client-python/releases) for the 4.0 GA cut. **`adcp-go`** is in active development; types + transport land first, see [adcp-go README](https://github.com/adcontextprotocol/adcp-go) for what's in scope per release.
 
-Pin to the **floor** for production; track **GA** / **in flight** to stay current. Pre-3.0 callers should work through the [3.0 migration guide](/docs/reference/migration/index) before upgrading.
+Pre-3.0 callers should work through the [3.0 migration guide](/docs/reference/migration/index) before upgrading.
 
 **Python and TypeScript carry full L0–L4 coverage as the first-class supported languages.** **Go** is moving in the same direction. **Other languages** are not on the official roadmap; community-maintained ports are welcome — see the [Builders Working Group](/docs/community/working-group) and the [Slack community](https://join.slack.com/t/agenticads/shared_invite/zt-3c5sxvdjk-x0rVmLB3OFHVUp~WutVWZg).
 
 ## JavaScript / TypeScript
 
-[![npm version](https://img.shields.io/npm/v/@adcp/client)](https://www.npmjs.com/package/@adcp/client)
+[![npm version](https://img.shields.io/npm/v/@adcp/sdk)](https://www.npmjs.com/package/@adcp/sdk)
 
 ```bash
-npm install @adcp/client
+npm install @adcp/sdk
 ```
 
 ```javascript
-import { ADCPClient } from '@adcp/client';
+import { createSingleAgentClient } from '@adcp/sdk';
 
-const client = new ADCPClient({
-  agentUrl: 'https://sales.example.com'
+const client = createSingleAgentClient({
+  id: 'sales',
+  name: 'Sales agent',
+  agent_uri: 'https://sales.example.com',
+  protocol: 'mcp',
 });
 
 const products = await client.getProducts({
-  brief: 'Video campaign for pet owners'
+  brief: 'Video campaign for pet owners',
 });
 ```
 
 **Resources:**
-- [NPM Package](https://www.npmjs.com/package/@adcp/client)
+- [NPM Package](https://www.npmjs.com/package/@adcp/sdk)
 - [GitHub Repository](https://github.com/adcontextprotocol/adcp-client)
 
 **Package exports:**
-- `@adcp/client` — main API (caller + agent surface)
-- `@adcp/client/testing` — buyer-side storyboard runner (`runStoryboard`, `comply`, `testAgent`) and seller-side controller scaffold (`createComplyController` — see [Get Test-Ready](/docs/building/verification/get-test-ready))
-- `@adcp/client/server` — low-level server helpers (MCP tool registration, state stores, `handleTestControllerRequest`)
-- `@adcp/client/advanced` — advanced API features
-- `@adcp/client/types` — TypeScript type definitions
+- `@adcp/sdk` — main entry: caller (`createSingleAgentClient`, `ADCPMultiAgentClient`) and shared types
+- `@adcp/sdk/server` — agent-side server primitives (`createAdcpServerFromPlatform`, `createAdcpServer`, decisioning-platform interfaces)
+- `@adcp/sdk/server/legacy/v5` — legacy v5 handler-bag entry, still supported for mid-migration codebases
+- `@adcp/sdk/signing` — RFC 9421 signing primitives
+- `@adcp/sdk/signing/server` — webhook + request verifiers (`createWebhookVerifier`, `verifyRequestSignature`, `createExpressVerifier`)
+- `@adcp/sdk/signing/client` — outbound signing (`signRequest`, `signWebhook`, `createSigningFetch`)
+- `@adcp/sdk/testing` — buyer-side storyboard runner (`runStoryboard`, `comply`, `testAgent`) and seller-side controller scaffold (`createComplyController` — see [Get Test-Ready](/docs/building/verification/get-test-ready))
+- `@adcp/sdk/conformance` — assertion + storyboard helpers for conformance harnesses
+- `@adcp/sdk/schemas` — bundled AdCP JSON Schemas
+- `@adcp/sdk/types` — TypeScript type definitions
+- `@adcp/sdk/types/v2-5` — v2.5 type co-existence imports for cross-version callers
 
 ## Python
 
@@ -69,12 +78,16 @@ pip install adcp
 ```
 
 ```python
-from adcp import ADCPClient
+from adcp import ADCPClient, AgentConfig, Protocol, GetProductsRequest
 
-client = ADCPClient(agent_url='https://sales.example.com')
+client = ADCPClient(AgentConfig(
+    id='sales',
+    agent_uri='https://sales.example.com',
+    protocol=Protocol.MCP,
+))
 
-products = client.get_products(
-    brief='Video campaign for pet owners'
+result = await client.get_products(
+    GetProductsRequest(brief='Video campaign for pet owners'),
 )
 ```
 
@@ -110,16 +123,20 @@ The JavaScript and Python SDKs include command-line tools for testing and develo
 ### JavaScript CLI
 
 ```bash
-npx @adcp/client@latest --help
-npx @adcp/client@latest get-products --agent https://sales.example.com --brief "CTV campaign"
+npx @adcp/sdk@latest --help
+npx @adcp/sdk@latest mcp https://sales.example.com/mcp get_products '{"brief":"CTV campaign"}'
 ```
+
+The CLI also drives storyboards (`adcp storyboard run`), the public test agent (`adcp test-mcp`), and registry diagnostics. See `--help` for the full surface.
 
 ### Python CLI
 
 ```bash
 uvx adcp --help
-uvx adcp get-products --agent https://sales.example.com --brief "CTV campaign"
+uvx adcp https://sales.example.com/mcp get_products '{"brief":"CTV campaign"}'
 ```
+
+Same positional shape as the JS CLI: `adcp <agent> [tool] [payload]`. Save aliases with `--save-auth` to avoid retyping URLs.
 
 ## What's next
 

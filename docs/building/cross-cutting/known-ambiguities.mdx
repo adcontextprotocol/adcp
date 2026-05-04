@@ -6,7 +6,7 @@ description: "Open AdCP spec gaps that affect compliance testing — with workar
 
 This page enumerates spec gaps that currently affect storyboard conformance. Each entry covers one of three patterns: a spec `MAY` branch where vectors assert one outcome, a response field storyboards assert that the schema does not yet require, or a testing-infrastructure quirk that prevents a vector from probing through the reference SDK.
 
-**Entries persist until the fix ships in a tagged `@adcp/client` or spec release** — closing the GitHub issue is not the removal trigger, because an implementer on an SDK version that predates the fix still hits the symptom. Each entry's Workaround names the release gate when relevant. If an entry here doesn't match what you're seeing, check the GitHub issue for the latest state — the fix may have landed in a release you haven't pulled yet.
+**Entries persist until the fix ships in a tagged `@adcp/sdk` or spec release** — closing the GitHub issue is not the removal trigger, because an implementer on an SDK version that predates the fix still hits the symptom. Each entry's Workaround names the release gate when relevant. If an entry here doesn't match what you're seeing, check the GitHub issue for the latest state — the fix may have landed in a release you haven't pulled yet.
 
 ## How to use this page
 
@@ -32,7 +32,7 @@ For the opposite direction — failures that are **not** in this list and do hav
 ### Idempotency missing-key probe via SDK
 
 - **Storyboard**: `universal/idempotency.yaml` step `missing_key/create_media_buy_missing_key`.
-- **Gap**: the reference `@adcp/client` SDK auto-injects `idempotency_key` on mutating tasks, so a vector that tries to probe "missing key rejection" never reaches the agent with a missing key — the runner would inject one before dispatch.
+- **Gap**: the reference `@adcp/sdk` SDK auto-injects `idempotency_key` on mutating tasks, so a vector that tries to probe "missing key rejection" never reaches the agent with a missing key — the runner would inject one before dispatch.
 - **Resolution**: [#2607](https://github.com/adcontextprotocol/adcp/issues/2607) — the step declares `omit_idempotency_key: true`, which signals the runner to skip both its own `applyIdempotencyInvariant` and the SDK's auto-inject. The request arrives at your agent without a key, letting the vector probe the rejection path honestly.
 - **Workaround**: nothing required — honor the existing spec requirement (reject missing `idempotency_key` on mutating tasks with `INVALID_REQUEST` or `VALIDATION_ERROR`).
 
@@ -70,10 +70,10 @@ For the opposite direction — failures that are **not** in this list and do hav
 
 ### SDK request-builder overriding spec-conformant `sample_request`
 
-- **Storyboard**: `sales_catalog_driven` `optimization_loop/provide_feedback`, exposed via the `@adcp/client` compliance runner.
-- **Gap**: the storyboard's `sample_request` correctly declares `performance_index`, `metric_type`, `feedback_source` per the `provide-performance-feedback-request.json` schema. But `@adcp/client`'s internal `request-builder.js` had a hardcoded override for `provide_performance_feedback` that replaced the payload with a non-spec `feedback: { satisfaction, notes }` shape, so conformant agents rejected with `INVALID_REQUEST` and failed the vector.
+- **Storyboard**: `sales_catalog_driven` `optimization_loop/provide_feedback`, exposed via the `@adcp/sdk` compliance runner.
+- **Gap**: the storyboard's `sample_request` correctly declares `performance_index`, `metric_type`, `feedback_source` per the `provide-performance-feedback-request.json` schema. But `@adcp/sdk`'s internal `request-builder.js` had a hardcoded override for `provide_performance_feedback` that replaced the payload with a non-spec `feedback: { satisfaction, notes }` shape, so conformant agents rejected with `INVALID_REQUEST` and failed the vector.
 - **Resolution**: upstream [adcontextprotocol/adcp-client#689](https://github.com/adcontextprotocol/adcp-client/issues/689) + [#2626](https://github.com/adcontextprotocol/adcp/issues/2626) — remove the override and let the storyboard's `sample_request` drive the payload.
-- **Workaround**: bump to an `@adcp/client` release that includes the adcp-client#689 fix. Until then, the `provide_performance_feedback` vector will fail on any agent that validates its requests against the spec schema.
+- **Workaround**: bump to an `@adcp/sdk` release that includes the adcp-client#689 fix. Until then, the `provide_performance_feedback` vector will fail on any agent that validates its requests against the spec schema.
 
 ## When an ambiguity isn't listed
 

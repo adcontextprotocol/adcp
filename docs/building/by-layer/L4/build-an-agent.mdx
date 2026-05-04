@@ -18,12 +18,12 @@ Each SDK handles protocol compliance — schema validation, error formats, versi
 <Tabs>
 <Tab title="JavaScript/TypeScript">
 ```bash
-npm install @adcp/client
+npm install @adcp/sdk
 ```
 
 The JS/TS SDK provides typed tool registration, response builders, and a built-in storyboard runner. Most agents in production use this SDK.
 
-- [NPM Package](https://www.npmjs.com/package/@adcp/client)
+- [NPM Package](https://www.npmjs.com/package/@adcp/sdk)
 - [GitHub Repository](https://github.com/adcontextprotocol/adcp-client)
 </Tab>
 <Tab title="Python">
@@ -160,15 +160,15 @@ Once the agent is running, validate it against the matching storyboard:
 ```bash
 # JS/TS agent
 npx tsx agent.ts &
-npx @adcp/client@latest storyboard run http://localhost:3001/mcp media_buy_seller --json
+npx @adcp/sdk@latest storyboard run http://localhost:3001/mcp media_buy_seller --json
 
 # Python agent
 python agent.py &
-npx @adcp/client@latest storyboard run http://localhost:3001/mcp media_buy_seller --json
+npx @adcp/sdk@latest storyboard run http://localhost:3001/mcp media_buy_seller --json
 
 # Go agent
 go run main.go &
-npx @adcp/client@latest storyboard run http://localhost:3001/mcp media_buy_seller --json
+npx @adcp/sdk@latest storyboard run http://localhost:3001/mcp media_buy_seller --json
 ```
 
 Storyboards exercise every required tool call and validate response shapes. The storyboard runner uses sandbox mode by default — your agent receives `sandbox: true` on all account references and should return simulated data without real platform calls. A passing run means your agent is protocol-compliant.
@@ -192,7 +192,7 @@ media_buy_seller (9 steps)
 </Warning>
 
 <Tip>
-Each skill includes variant storyboards for different business models — non-guaranteed, guaranteed with approval, proposal mode, and more. Run `npx @adcp/client@latest storyboard list` to see all available storyboards.
+Each skill includes variant storyboards for different business models — non-guaranteed, guaranteed with approval, proposal mode, and more. Run `npx @adcp/sdk@latest storyboard list` to see all available storyboards.
 </Tip>
 
 See **[Validate Your Agent](/docs/building/verification/validate-your-agent)** for the full testing workflow — debugging failing steps, running compliance checks, and validating interactively through Addie.
@@ -203,8 +203,8 @@ The JS/TS SDK includes documentation designed for both humans and coding agents:
 
 | Resource | JS/TS location | Purpose |
 |----------|----------------|---------|
-| Protocol spec | `node_modules/@adcp/client/docs/llms.txt` | Full protocol in one file — tools, types, error codes, examples |
-| Server guide | `node_modules/@adcp/client/docs/guides/BUILD-AN-AGENT.md` | Server-side implementation patterns |
+| Protocol spec | `node_modules/@adcp/sdk/docs/llms.txt` | Full protocol in one file — tools, types, error codes, examples |
+| Server guide | `node_modules/@adcp/sdk/docs/guides/BUILD-AN-AGENT.md` | Server-side implementation patterns |
 
 Python and Go equivalents are in each SDK's GitHub repository. See [adcp-client-python](https://github.com/adcontextprotocol/adcp-client-python) and [adcp-go](https://github.com/adcontextprotocol/adcp-go).
 

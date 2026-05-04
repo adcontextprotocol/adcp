@@ -21,8 +21,8 @@ List all accounts this agent can operate:
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from "@adcp/client/testing";
-import { ListAccountsResponseSchema } from "@adcp/client";
+import { testAgent } from "@adcp/sdk/testing";
+import { ListAccountsResponseSchema } from "@adcp/sdk";
 
 const result = await testAgent.listAccounts({});
 
@@ -102,8 +102,8 @@ After `sync_accounts` returns `pending_approval`, poll until the account is read
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from "@adcp/client/testing";
-import { ListAccountsResponseSchema } from "@adcp/client";
+import { testAgent } from "@adcp/sdk/testing";
+import { ListAccountsResponseSchema } from "@adcp/sdk";
 
 async function waitForAccount(targetAccountId, maxAttempts = 20) {
   for (let i = 0; i < maxAttempts; i++) {
@@ -166,8 +166,8 @@ async def wait_for_account(target_account_id: str, max_attempts: int = 20):
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from "@adcp/client/testing";
-import { ListAccountsResponseSchema } from "@adcp/client";
+import { testAgent } from "@adcp/sdk/testing";
+import { ListAccountsResponseSchema } from "@adcp/sdk";
 
 const result = await testAgent.listAccounts({ status: "active" });
 

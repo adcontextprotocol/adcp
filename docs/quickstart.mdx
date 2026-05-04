@@ -271,12 +271,12 @@ See the [Security guide](/docs/building/implementation/security) and [Webhooks g
 The examples above use raw HTTP for clarity. In practice, use the AdCP client library which handles SSE parsing, retries, and authentication:
 
 ```bash
-npm install @adcp/client  # JavaScript/TypeScript
+npm install @adcp/sdk  # JavaScript/TypeScript
 pip install adcp          # Python
 ```
 
 ```javascript
-import { AdCPClient } from '@adcp/client';
+import { AdCPClient } from '@adcp/sdk';
 
 const client = new AdCPClient([{
   id: 'test',

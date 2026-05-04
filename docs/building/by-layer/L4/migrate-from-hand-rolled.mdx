@@ -180,11 +180,11 @@ import { createAdcpServer } from '@adcp/sdk/server';
 
 createAdcpServer({
   capabilities: {
-    major_versions: [2, 3],
-    supported_versions: ['v2.5', '3.0.5'],
+    major_versions: [3],
+    supported_versions: ['3.0.5'],
   },
   // …handlers, all on the canonical 3.0 shape;
-  // 2.5 callers are translated by adapters at the SDK boundary.
+  // 2.5 callers are translated by client-side adapters before they reach you.
 });
 ```
 

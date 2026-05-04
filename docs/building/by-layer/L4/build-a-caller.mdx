@@ -22,18 +22,23 @@ The same SDKs that ship server primitives also ship the calling client. Install 
 <Tabs>
 <Tab title="JavaScript/TypeScript">
 ```bash
-npm install @adcp/client
+npm install @adcp/sdk
 ```
 
 ```typescript
-import { ADCPClient } from '@adcp/client';
+import { createSingleAgentClient } from '@adcp/sdk';
 
-const client = new ADCPClient({
-  agentUrl: 'https://sales.example.com',
+const client = createSingleAgentClient({
+  id: 'sales',
+  name: 'Sales agent',
+  agent_uri: 'https://sales.example.com',
+  protocol: 'mcp',
 });
 ```
 
-- [NPM Package](https://www.npmjs.com/package/@adcp/client)
+For multi-agent fan-out (one client driving many sellers in parallel) use `ADCPMultiAgentClient` instead — same call surface, indexed by agent id.
+
+- [NPM Package](https://www.npmjs.com/package/@adcp/sdk)
 - [GitHub Repository](https://github.com/adcontextprotocol/adcp-client)
 </Tab>
 <Tab title="Python">
@@ -42,9 +47,13 @@ pip install adcp
 ```
 
 ```python
-from adcp import ADCPClient
+from adcp import ADCPClient, AgentConfig, Protocol
 
-client = ADCPClient(agent_url="https://sales.example.com")
+client = ADCPClient(AgentConfig(
+    id="sales",
+    agent_uri="https://sales.example.com",
+    protocol=Protocol.MCP,
+))
 ```
 
 - [PyPI Package](https://pypi.org/project/adcp/)
@@ -66,16 +75,22 @@ Most agents require credentials before they'll respond to anything beyond `get_a
 <Tabs>
 <Tab title="Bearer / API key">
 ```typescript
-const client = new ADCPClient({
-  agentUrl: 'https://sales.example.com',
-  authToken: process.env.ADCP_API_KEY,
+const client = createSingleAgentClient({
+  id: 'sales',
+  name: 'Sales agent',
+  agent_uri: 'https://sales.example.com',
+  protocol: 'mcp',
+  auth_token: process.env.ADCP_API_KEY,
 });
 ```
 </Tab>
 <Tab title="Signed requests (RFC 9421)">
 ```typescript
-const client = new ADCPClient({
-  agentUrl: 'https://sales.example.com',
+const client = createSingleAgentClient({
+  id: 'sales',
+  name: 'Sales agent',
+  agent_uri: 'https://sales.example.com',
+  protocol: 'mcp',
   signing: { keyId: 'your-key-id', privateKey: /* PEM or KMS handle */ },
 });
 ```
@@ -174,20 +189,11 @@ switch (recovery) {
 
 ## Receive webhooks
 
-For async tasks, you can either poll or register a webhook. The webhook delivers the same `result` payload as a `tasks/get` with `include_result: true`. The SDK's `webhook-receiver` helper handles RFC 9421 signature verification (resolving keys via the agent's brand.json by default), replay-window enforcement, and idempotent dedup of redelivered notifications:
+For async tasks, you can either poll or register a webhook. The webhook delivers the same `result` payload as a `tasks/get` with `include_result: true`. The SDK ships an RFC 9421 webhook verifier (`createWebhookVerifier` from `@adcp/sdk/signing/server`) that resolves keys via the seller's brand.json, enforces the replay window, and surfaces structured errors for the [webhook error taxonomy](/docs/building/by-layer/L1/security#webhook-error-taxonomy).
 
-```typescript
-import { createWebhookReceiver } from '@adcp/client/webhooks';
+If you wire the multi-agent client with a `webhookUrlTemplate` and status-change handlers (per the [@adcp/sdk README](https://github.com/adcontextprotocol/adcp-client#readme)), incoming webhooks are verified and dispatched into your handlers automatically — your HTTP route is one line that hands the request to the client.
 
-const receiver = createWebhookReceiver();
-
-app.post('/adcp-webhooks', async (req, res) => {
-  const event = await receiver.handle(req); // throws on bad signature
-  // event.task_id, event.status, event.result
-});
-```
-
-For custom key resolution (private keystore, KMS), pass `resolveKey` and other [verifier options](/docs/building/by-layer/L1/webhook-verifier-tuning) — the L1 page covers clock-skew handling, key-rotation transitions, and signature failure diagnostics.
+For the wire-level requirements your endpoint MUST satisfy regardless of how it's wired (covered components, `content-digest` enforcement, dedup discipline), see [L3 — Webhooks](/docs/building/by-layer/L3/webhooks#signature-verification).
 
 ## Ingest reporting
 
