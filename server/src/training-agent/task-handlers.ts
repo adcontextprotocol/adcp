@@ -1008,6 +1008,10 @@ const ACCOUNT_REF_SCHEMA = {
 // on the errors array.
 const ERROR_IN_BODY_TOOLS = new Set<string>([
   'update_media_buy',
+  // activate_signal returns { errors: [...] } on GOVERNANCE_DENIED so the
+  // storyboard's field_present path:"context" and error_code validations
+  // can inspect the response body rather than an adcp_error envelope.
+  'activate_signal',
 ]);
 
 // ── Tool definitions ──────────────────────────────────────────────
