@@ -33,6 +33,10 @@ vi.mock('../../src/middleware/auth.js', async (importOriginal) => ({
       emailVerified: true,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
+      // Tests can set X-Test-Admin-Identity header to simulate an admin
+      // who is bound to the same identity as the target — exercises the
+      // self-promote guard.
+      identityId: req.headers['x-test-admin-identity'] || undefined,
     };
     next();
   },
@@ -235,6 +239,25 @@ describe('admin promote credential to primary', () => {
       .post(`/api/admin/users/${HOST_USER_ID}/credentials/${TARGET_USER_ID}/promote`)
       .expect(404);
     expect(response.body.error).toMatch(/not bound/i);
+  });
+
+  it('refuses when the admin is signed in as a member of the target identity', async () => {
+    await setupBoundPair();
+
+    // Find the host's identity id
+    const identityRow = await pool.query<{ identity_id: string }>(
+      `SELECT identity_id FROM identity_workos_users WHERE workos_user_id = $1`,
+      [HOST_USER_ID]
+    );
+    const hostIdentityId = identityRow.rows[0].identity_id;
+
+    // Simulate an admin whose identityId == host's identityId via the test
+    // header the auth mock reads.
+    const response = await request(app)
+      .post(`/api/admin/users/${HOST_USER_ID}/credentials/${TARGET_USER_ID}/promote`)
+      .set('X-Test-Admin-Identity', hostIdentityId)
+      .expect(409);
+    expect(response.body.error).toMatch(/own credential/i);
   });
 
   it('repairs an orphan-no-primary state by setting the target as primary directly', async () => {

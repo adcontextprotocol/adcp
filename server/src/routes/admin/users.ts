@@ -1206,6 +1206,7 @@ export function createAdminUsersRouter(): Router {
   router.post('/:userId/credentials/:credentialId/promote', requireAuth, requireAdmin, async (req, res) => {
     const adminEmail = req.user!.email;
     const adminUserId = req.user!.id;
+    const adminIdentityId = req.user!.identityId;
     const adminAuthCredentialId = req.user!.authWorkosUserId ?? req.user!.id;
     const userId = req.params.userId;
     const newPrimaryId = req.params.credentialId;
@@ -1217,19 +1218,24 @@ export function createAdminUsersRouter(): Router {
     const pool = getPool();
 
     // Validate: target is bound to host's identity, find current primary
+    // and target's email (for the audit row + caller display).
     const check = await pool.query<{
       new_is_primary: boolean;
       current_primary_id: string | null;
       identity_id: string;
+      target_email: string | null;
     }>(
       `SELECT
           target.is_primary AS new_is_primary,
           primary_iwu.workos_user_id AS current_primary_id,
-          target.identity_id
+          target.identity_id,
+          target_user.email AS target_email
         FROM identity_workos_users target
         LEFT JOIN identity_workos_users primary_iwu
           ON primary_iwu.identity_id = target.identity_id
          AND primary_iwu.is_primary = TRUE
+        LEFT JOIN users target_user
+          ON target_user.workos_user_id = target.workos_user_id
        WHERE target.workos_user_id = $1
          AND target.identity_id = (
            SELECT identity_id FROM identity_workos_users WHERE workos_user_id = $2
@@ -1246,6 +1252,19 @@ export function createAdminUsersRouter(): Router {
 
     const identityId = check.rows[0].identity_id;
     const currentPrimaryId = check.rows[0].current_primary_id;
+    const targetEmail = check.rows[0].target_email;
+
+    // Refuse self-promote: an admin shouldn't mutate their own identity via
+    // this admin endpoint (it would shuffle their own session's app-state
+    // mid-request). If they need to promote one of their own credentials,
+    // they sign in as the target person and use the user-facing flow (or
+    // another admin handles it).
+    if (adminIdentityId && adminIdentityId === identityId) {
+      return res.status(409).json({
+        error: 'Cannot promote your own credential',
+        message: 'This identity belongs to the signed-in admin. Have a different admin perform the promote.',
+      });
+    }
 
     // Edge case: identity has no current primary (broken invariant from a
     // prior partial promote, manual SQL, etc.). Just set the target as
@@ -1266,11 +1285,12 @@ export function createAdminUsersRouter(): Router {
       });
     }
 
-    // Run mergeUsers to move data forward. mergeUsers' identity-rebind step
-    // sets the (former) primary to is_primary=FALSE; we then UPDATE the new
-    // primary to TRUE.
+    // Run mergeUsers with ensurePrimaryFlag so the data move, the secondary
+    // rebind, AND the new primary's is_primary=TRUE flip all happen in one
+    // transaction. This closes the window where the identity has zero
+    // primaries.
     try {
-      await mergeUsers(newPrimaryId, currentPrimaryId, adminUserId);
+      await mergeUsers(newPrimaryId, currentPrimaryId, adminUserId, { ensurePrimaryFlag: true });
     } catch (err) {
       logger.error(
         { err, userId, newPrimaryId, currentPrimaryId },
@@ -1279,23 +1299,10 @@ export function createAdminUsersRouter(): Router {
       return res.status(500).json({ error: 'Failed to promote credential' });
     }
 
-    try {
-      await pool.query(
-        `UPDATE identity_workos_users SET is_primary = TRUE WHERE workos_user_id = $1`,
-        [newPrimaryId]
-      );
-    } catch (err) {
-      logger.error(
-        { err, userId, newPrimaryId, currentPrimaryId, identityId },
-        'Promote: post-merge primary swap UPDATE failed — identity is left with NO primary; manual recovery: UPDATE identity_workos_users SET is_primary=TRUE WHERE workos_user_id=$newPrimaryId'
-      );
-      return res.status(500).json({
-        error: 'Promote partially completed',
-        message: 'App-state moved successfully, but the primary swap could not be persisted. Engineering needs to manually set is_primary on the new credential. Please contact engineering.',
-      });
-    }
-
-    // Audit row
+    // Audit row. mergeUsers writes its own merge_user audit; this adds the
+    // promote-specific record with target email + identity context. Failure
+    // here doesn't unwind the promote (the data + primary swap are
+    // committed) — log loud so we notice.
     try {
       const auditOrg = await pool.query<{ workos_organization_id: string }>(
         `SELECT workos_organization_id FROM organization_memberships
@@ -1316,12 +1323,13 @@ export function createAdminUsersRouter(): Router {
             identity_id: identityId,
             previous_primary_id: currentPrimaryId,
             new_primary_id: newPrimaryId,
+            target_email: targetEmail,
             acting_workos_user_id: adminAuthCredentialId,
           }),
         ]
       );
     } catch (err) {
-      logger.warn({ err, userId, newPrimaryId }, 'Promote: audit row insert failed (non-fatal)');
+      logger.error({ err, userId, newPrimaryId }, 'Promote: audit row insert failed (operation already committed)');
     }
 
     invalidateSessionsForUsers([userId, newPrimaryId, currentPrimaryId]);

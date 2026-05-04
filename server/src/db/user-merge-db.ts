@@ -108,6 +108,18 @@ export async function previewUserMerge(
   }
 }
 
+export interface MergeUsersOptions {
+  /**
+   * If true, also flip `is_primary = TRUE` on the primaryUserId binding
+   * inside the same transaction as the data move and the secondary
+   * rebind. Use this from the admin "promote credential to primary" flow
+   * where the primaryUserId arg is the credential being promoted (and
+   * may currently be is_primary=FALSE). Default false — the primary is
+   * already is_primary=TRUE in normal mergeUsers callers.
+   */
+  ensurePrimaryFlag?: boolean;
+}
+
 /**
  * Merge two user accounts. Moves all of the secondary user's app-state rows
  * to the primary, then binds the secondary's WorkOS user to the primary's
@@ -121,11 +133,13 @@ export async function previewUserMerge(
  *   credential (and target for app-state rows)
  * @param secondaryUserId - The WorkOS user ID to bind as a secondary sign-in
  * @param mergedBy - WorkOS user ID of the person initiating the merge
+ * @param options - See {@link MergeUsersOptions}
  */
 export async function mergeUsers(
   primaryUserId: string,
   secondaryUserId: string,
-  mergedBy: string
+  mergedBy: string,
+  options: MergeUsersOptions = {}
 ): Promise<UserMergeSummary> {
   const pool = getPool();
   const client = await pool.connect();
@@ -632,6 +646,19 @@ export async function mergeUsers(
       await client.query(
         `DELETE FROM identities WHERE id = $1`,
         [secondaryOldIdentityId]
+      );
+    }
+
+    // Promote-credential flow: primaryUserId is the credential being made
+    // primary (was non-primary before this call). Swap is_primary in the
+    // same transaction so the identity never has zero primaries — closes
+    // the gap that would let attachIdentityId fall open mid-promote.
+    if (options.ensurePrimaryFlag) {
+      await client.query(
+        `UPDATE identity_workos_users
+           SET is_primary = TRUE
+         WHERE workos_user_id = $1 AND identity_id = $2`,
+        [primaryUserId, primaryIdentityId]
       );
     }
 
