@@ -58,6 +58,7 @@ import {
   getPendingProposals,
 } from '../../db/industry-feeds-db.js';
 import { MemberDatabase } from '../../db/member-db.js';
+import { ensureMemberProfileExists } from '../../services/member-profile-autopublish.js';
 import { updateBrandIdentity, BrandIdentityError } from '../../services/brand-identity.js';
 import { canonicalizeBrandDomain } from '../../services/identifier-normalization.js';
 import { ComplianceDatabase } from '../../db/compliance-db.js';
@@ -5388,38 +5389,57 @@ export function createMemberToolHandlers(
       clientCredentials = parsed.creds;
     }
 
-    async function ensureAgentInProfile(displayName: string): Promise<void> {
-      if (!saveOrgId) return;
+    type ProfileWriteStatus =
+      | { ok: true; createdProfile: boolean }
+      | { ok: false; reason: string };
+
+    async function ensureAgentInProfile(displayName: string): Promise<ProfileWriteStatus> {
+      if (!saveOrgId) return { ok: false, reason: 'no-org-id' };
       try {
-        const profile = await memberDb.getProfileByOrgId(saveOrgId);
-        if (profile) {
-          const agents = profile.agents || [];
-          const existing = agents.find((a: any) => a.url === agentUrl);
-          if (!existing) {
-            // Default to members_only, not public. The public directory
-            // requires an API-access tier (Professional+); defaulting to
-            // 'public' here lets Addie implicitly publish an agent for an
-            // Explorer-tier caller who hasn't been tier-gated. Members_only
-            // keeps the agent discoverable to peer members with API access
-            // and lets the owner promote to public through the explicit,
-            // tier-checked /publish route when eligible.
-            agents.push({
-              url: agentUrl,
-              name: displayName,
-              visibility: 'members_only',
-              ...(healthCheckUrl ? { health_check_url: healthCheckUrl } : {}),
-            });
-            await memberDb.updateProfile(profile.id, { agents });
-          } else if (clearHealthCheckUrl && (existing as any).health_check_url) {
-            delete (existing as any).health_check_url;
-            await memberDb.updateProfile(profile.id, { agents });
-          } else if (healthCheckUrl && (existing as any).health_check_url !== healthCheckUrl) {
-            (existing as any).health_check_url = healthCheckUrl;
-            await memberDb.updateProfile(profile.id, { agents });
+        let profile = await memberDb.getProfileByOrgId(saveOrgId);
+        let createdProfile = false;
+        if (!profile) {
+          const orgName = memberContext?.organization?.name;
+          if (!orgName) {
+            return { ok: false, reason: 'no-org-name' };
           }
+          const result = await ensureMemberProfileExists({
+            orgId: saveOrgId,
+            orgName,
+            source: 'addie:save_agent',
+          });
+          profile = result.profile;
+          createdProfile = result.created;
         }
+
+        const agents = profile.agents || [];
+        const existing = agents.find((a: any) => a.url === agentUrl);
+        if (!existing) {
+          // Default to members_only, not public. The public directory
+          // requires an API-access tier (Professional+); defaulting to
+          // 'public' here lets Addie implicitly publish an agent for an
+          // Explorer-tier caller who hasn't been tier-gated. Members_only
+          // keeps the agent discoverable to peer members with API access
+          // and lets the owner promote to public through the explicit,
+          // tier-checked /publish route when eligible.
+          agents.push({
+            url: agentUrl,
+            name: displayName,
+            visibility: 'members_only',
+            ...(healthCheckUrl ? { health_check_url: healthCheckUrl } : {}),
+          });
+          await memberDb.updateProfile(profile.id, { agents });
+        } else if (clearHealthCheckUrl && (existing as any).health_check_url) {
+          delete (existing as any).health_check_url;
+          await memberDb.updateProfile(profile.id, { agents });
+        } else if (healthCheckUrl && (existing as any).health_check_url !== healthCheckUrl) {
+          (existing as any).health_check_url = healthCheckUrl;
+          await memberDb.updateProfile(profile.id, { agents });
+        }
+        return { ok: true, createdProfile };
       } catch (err) {
-        logger.warn({ err, agentUrl }, 'Addie: failed to add agent to member profile');
+        logger.warn({ err, agentUrl, orgId: saveOrgId }, 'Addie: failed to add agent to member profile');
+        return { ok: false, reason: err instanceof Error ? err.message : 'unknown error' };
       }
     }
 
@@ -5440,7 +5460,7 @@ export function createMemberToolHandlers(
         }
         context = await agentContextDb.getById(context.id);
 
-        await ensureAgentInProfile(agentName || context?.agent_name || new URL(agentUrl).hostname);
+        const profileStatus = await ensureAgentInProfile(agentName || context?.agent_name || new URL(agentUrl).hostname);
 
         let response = `✅ Updated saved agent: **${context?.agent_name || agentUrl}**\n\n`;
         if (authToken) {
@@ -5451,6 +5471,9 @@ export function createMemberToolHandlers(
         if (clientCredentials) {
           response += `🔐 OAuth client-credentials saved securely for token endpoint ${clientCredentials.token_endpoint}\n`;
           response += `_The client secret is encrypted and will never be shown again. The SDK exchanges and refreshes at test time._\n`;
+        }
+        if (!profileStatus.ok) {
+          response += `\n⚠️ Credentials are saved, but I couldn't update your dashboard listing right now (${profileStatus.reason}). The team has been notified.`;
         }
         return response;
       }
@@ -5474,7 +5497,7 @@ export function createMemberToolHandlers(
         context = await agentContextDb.getById(context.id);
       }
 
-      await ensureAgentInProfile(agentName || new URL(agentUrl).hostname);
+      const profileStatus = await ensureAgentInProfile(agentName || new URL(agentUrl).hostname);
 
       let response = `✅ Saved agent: **${context?.agent_name || agentUrl}**\n\n`;
       response += `**URL:** ${agentUrl}\n`;
@@ -5488,7 +5511,11 @@ export function createMemberToolHandlers(
         response += `\n🔐 OAuth client-credentials saved securely for token endpoint ${clientCredentials.token_endpoint}\n`;
         response += `_The client secret is encrypted and will never be shown again. The SDK exchanges and refreshes at test time._\n`;
       }
-      response += `\nThe agent has been added to your dashboard with **members_only** visibility — other Professional-tier members can discover it, but it won't appear in the public directory. To publish publicly, use the dashboard publish flow (requires a Professional or higher subscription). When you test this agent, I'll automatically use the saved credentials.`;
+      if (profileStatus.ok) {
+        response += `\nThe agent has been added to your dashboard with **members_only** visibility — other Professional-tier members can discover it, but it won't appear in the public directory. To publish publicly, use the dashboard publish flow (requires a Professional or higher subscription). When you test this agent, I'll automatically use the saved credentials.`;
+      } else {
+        response += `\n⚠️ The credentials are saved on the backend, but I couldn't add this agent to your dashboard listing right now (${profileStatus.reason}). The team has been notified — please check back shortly, or use the dashboard's manual register flow at https://agenticadvertising.org/dashboard/agents.`;
+      }
 
       return response;
     } catch (error) {
