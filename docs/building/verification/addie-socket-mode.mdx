@@ -1,0 +1,196 @@
+---
+title: Pair-program with Addie (Socket Mode)
+sidebarTitle: Pair with Addie
+description: "Connect your dev/staging AdCP agent to Addie via outbound WebSocket so she can run storyboards against it conversationally. No public DNS, no ngrok, no inbound exposure."
+"og:title": "AdCP — Pair-program with Addie"
+---
+
+**Status**: Available in preview behind `CONFORMANCE_SOCKET_ENABLED`
+**Last updated**: May 4, 2026
+
+When you're building an AdCP agent, the most useful loop is: run a storyboard against your in-progress server, see what fails, fix it, run again. Until now that meant standing up a public sandbox endpoint with TLS, DNS, auth, and firewall config — a real lift before you've written meaningful code, and a non-trivial security review at larger orgs.
+
+**Pair-programming with Addie via Socket Mode** collapses that to: install one library, paste a token, connect outbound. Addie sees your dev agent like any other AdCP server — no inbound exposure, no public surface — and can run any compliance storyboard against it in chat.
+
+## When to use Socket Mode (and when not to)
+
+| Use Socket Mode when… | Use the public-endpoint path when… |
+|---|---|
+| You're building or refactoring an agent and want fast feedback | You're ready for AAO's [(Spec) heartbeat](/docs/building/aao-verified) on a stable test endpoint |
+| Your dev agent runs on `localhost`, a Codespace, or behind a firewall | Your platform exposes a public test endpoint anyway |
+| You want Addie to run multiple storyboards interactively in chat | You want unattended, scheduled compliance runs |
+| You're a small team without infra to expose a sandbox endpoint | You operate at scale and prefer batch CI |
+
+Socket Mode is **not** a replacement for AAO Verified. Once your agent is stable, expose a real test endpoint and let the AAO heartbeat run continuously — that's what earns the public **AAO Verified (Spec)** badge. Socket Mode is the dev-loop channel before you get there (and after, when you're iterating on changes).
+
+<Note>
+**Dev/staging only by design.** Socket Mode is gated to non-production deployments, the same constraint as `comply_test_controller` per [adcp#3986](https://github.com/adcontextprotocol/adcp/issues/3986). Production agents do not expose this channel and AAO never enrolls production deployments via Socket Mode.
+</Note>
+
+## What you need
+
+1. **An AdCP MCP server you're actively developing.** It can be incomplete — that's the point. The simplest case is a JS/TS process running on your laptop with the MCP SDK installed.
+2. **An AAO account.** The conformance channel is bound to your WorkOS organization, so you need to be signed in to a member or trial org. Anonymous chat with Addie cannot use Socket Mode.
+3. **`@adcp/sdk` ≥ 6.9** in your dev project. The `ConformanceClient` primitive ships from `@adcp/sdk/server`.
+4. **Network egress to `addie.agenticadvertising.org` over WebSockets (port 443).** No inbound rules needed.
+
+That's it. No public DNS, no firewall changes, no ngrok, no certificate provisioning.
+
+## The five-minute setup
+
+### Step 1 — Ask Addie for a token
+
+In your Addie chat session, ask:
+
+> Give me a fresh conformance token
+
+Addie returns shell exports plus a copy-paste integration snippet:
+
+```
+**Conformance token issued.** Bound to your organization, expires in 1h.
+
+Paste these into your dev environment and start the conformance client:
+
+export ADCP_CONFORMANCE_URL=wss://addie.agenticadvertising.org/conformance/connect
+export ADCP_CONFORMANCE_TOKEN=eyJ…
+
+Three-line integration with @adcp/sdk ≥ 6.9: …
+```
+
+Tokens expire in one hour. When yours runs out, just ask Addie for a new one — there's no refresh endpoint by design.
+
+### Step 2 — Wire `ConformanceClient` into your dev server
+
+Three lines added to your existing AdCP server bootstrap:
+
+```ts
+import { ConformanceClient } from '@adcp/sdk/server';
+import { mcpServer } from './my-mcp-server';
+
+const conformance = new ConformanceClient({
+  url: process.env.ADCP_CONFORMANCE_URL!,
+  token: process.env.ADCP_CONFORMANCE_TOKEN!,
+  server: mcpServer,
+});
+
+await conformance.start();
+```
+
+`mcpServer` is the same `Server` instance you'd connect to `StreamableHTTPServerTransport` for normal traffic — no separate setup, no parallel server. `ConformanceClient` exposes it bidirectionally over the outbound WebSocket; Addie sees a normal MCP server on the other end.
+
+If you don't have an AdCP server yet, fork the [`hello_seller_adapter_social` example](https://github.com/adcontextprotocol/adcp-client/blob/main/examples/hello_seller_adapter_social.ts) — it's a worked starting point with the SDK's `createAdcpServerFromPlatform` helper.
+
+### Step 3 — Confirm the connection
+
+Run your dev server with the token and URL exported. You should see a status line:
+
+```
+[conformance] status=connecting
+[conformance] status=connected
+```
+
+Once `status=connected` lands, Addie has a live MCP client pointed at your dev server. The session stays open until you stop the process or your token expires.
+
+### Step 4 — Run a storyboard from chat
+
+Back in Addie chat:
+
+> Run `media_buy_state_machine` against my agent
+
+Addie dispatches the storyboard through the open socket and renders the result as a markdown report in chat:
+
+```
+### Conformance result — Media buy state machine lifecycle (media_buy_state_machine)
+
+**Overall:** ✅ PASSED
+**Steps passed/failed/skipped:** 8 / 0 / 1
+**Duration:** 1240 ms
+
+#### ✓ Capability discovery
+- ✓ passed — Check agent capabilities
+
+#### ✓ Create a media buy
+- ✓ passed — Discover products for media buy
+- ✓ passed — Create the test media buy
+
+#### ✓ Valid state transitions
+- ✓ passed — Pause the media buy
+- ✓ passed — Resume the media buy
+- ✓ passed — Cancel the media buy
+…
+```
+
+Failing steps include trimmed error text so you can fix in place and re-run without leaving the chat. Iterate until green.
+
+You can run any storyboard in the [Compliance Catalog](/docs/building/compliance-catalog) this way — sales, creative, signals, governance, signed requests, etc. Ask Addie what's available if you're not sure: *"What conformance storyboards apply to a sales agent?"*
+
+## What Addie can do once you're connected
+
+Beyond storyboard runs, the live MCP channel lets Addie:
+
+- **Diagnose failing steps interactively** — when a step fails, ask "why?" and Addie can re-call the same tool with different inputs to narrow the root cause
+- **Validate capability declarations** — *"Does my `get_adcp_capabilities` claim what I actually implement?"*
+- **Walk lifecycle states** — if you've wired `comply_test_controller`, Addie can drive deterministic state transitions and observe the results
+- **Suggest fixes against your real wire output** — *"Your `error_code` field is missing on this rejection — here's the fix"* — based on bytes she just saw, not generic advice
+
+## Privacy & safety
+
+The Socket Mode channel is built to keep the surface narrow:
+
+- **Dev/staging only.** Production deployments must not expose this channel — same deployment-scoped rule as `comply_test_controller` ([adcp#3986](https://github.com/adcontextprotocol/adcp/issues/3986)).
+- **Outbound from you.** Your dev box opens the connection to Addie. Addie has no way to reach into your network.
+- **Session-scoped.** You start the client; it runs until you stop the process. No persistent tunnel, no daemon.
+- **Org-scoped.** The token's WorkOS org claim is the only tenant boundary. Other orgs cannot reach your agent over the channel.
+- **Disconnect anytime.** Kill the client process and the socket closes; Addie's session for your org evicts immediately.
+- **What Addie sees stays in your Addie context.** Same data-handling posture as anything else you tell her in chat.
+
+If you'd prefer to inspect the channel yourself, the wire format is plain JSON-RPC 2.0 frames (the same shape MCP already uses) over `wss://`. Run `wscat` against the URL with your token and you'll see exactly what Addie sees.
+
+## Troubleshooting
+
+### Addie says "you're not mapped to an organization"
+
+You're chatting with Addie anonymously or your account isn't bound to a WorkOS org yet. Sign in to your member or trial org and try again.
+
+### `status=error` on connect; the server logs `401 Unauthorized`
+
+Token expired (1h TTL) or wrong token. Ask Addie for a fresh one. If a new token also 401s, your AAO membership may not have the conformance entitlement enabled — check your org's plan.
+
+### Storyboard report shows step 1 failed with `unknown tool get_adcp_capabilities`
+
+Your dev MCP server doesn't yet implement `get_adcp_capabilities`. That's the discovery tool every AdCP agent must expose. Implement it before running any storyboard — see [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) for the response shape.
+
+### Addie says "no conformance connection is live for your org"
+
+The socket isn't open. Either you haven't started the client yet, or it disconnected. Restart `ConformanceClient` and confirm `status=connected` before asking Addie to run anything.
+
+### Socket connects but every storyboard step skips
+
+Your `get_adcp_capabilities` response declares specialisms you haven't implemented. The runner skips steps that don't match the declared surface. Either implement the tools or trim the declaration.
+
+### How do I know what Addie is doing on the channel?
+
+The `onStatus` callback exposes every state transition (`connecting`, `connected`, `disconnected`, `error`). Pipe it to your dev logs:
+
+```ts
+new ConformanceClient({
+  url, token, server: mcpServer,
+  onStatus: (status, detail) => {
+    console.log(`[conformance] status=${status}`,
+      detail?.attempt ? `attempt=${detail.attempt}` : '',
+      detail?.error ? `error=${detail.error.message}` : '');
+  },
+});
+```
+
+For tool-level visibility, log inside your `setRequestHandler` callbacks — Addie's calls land there exactly like normal MCP traffic.
+
+## Reference
+
+- [`@adcp/sdk/server` `ConformanceClient`](https://github.com/adcontextprotocol/adcp-client/blob/main/src/lib/server/socket-mode/conformance-client.ts) — adopter-side primitive
+- [`get_adcp_capabilities`](/docs/protocol/get_adcp_capabilities) — the discovery tool every storyboard starts with
+- [Compliance Catalog](/docs/building/compliance-catalog) — full list of available storyboards
+- [Get Test-Ready](/docs/building/get-test-ready) — what your agent needs in place before any storyboard can pass
+- [AAO Verified](/docs/building/aao-verified) — the public trust mark you graduate to once your agent is stable
+- Channel design: [adcp#3991](https://github.com/adcontextprotocol/adcp/issues/3991)
+- Deployment-scoped controller rule: [adcp#3986](https://github.com/adcontextprotocol/adcp/issues/3986)
