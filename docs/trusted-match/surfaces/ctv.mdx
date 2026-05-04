@@ -87,12 +87,13 @@ For CTV creatives, the `creative_manifest` typically references a VAST URL rathe
 
 ### Identity Match Request
 
-Separately, the broadcaster sends an identity match request with a household token. The `package_ids` list includes ALL active packages for each buyer — not just the ones in this pod break. This prevents a buyer from correlating the identity request with a specific context request by comparing package sets.
+Separately, the broadcaster sends an identity match request with a household token and the broadcaster's `seller_agent_url`. The buyer resolves its active package set from `seller_agent_url`. When the broadcaster sends `package_ids` explicitly (as below), composition MUST be independent of the current pod break — either all-active (every active package for that buyer at this broadcaster) or fuzzed (a random sample padded with synthetic non-existent IDs the buyer silently drops). The pod-break-specific subset is forbidden — it would let the buyer correlate the identity request with a specific context request by comparing package sets.
 
 ```json
 {
   "type": "identity_match_request",
   "request_id": "id-7k2m-p4w1",
+  "seller_agent_url": "https://broadcaster.example",
   "identities": [
     { "user_token": "tok_household_q7w2", "uid_type": "publisher_first_party" },
     { "user_token": "ID5*mN4pQ...", "uid_type": "id5" }
@@ -114,7 +115,7 @@ Separately, the broadcaster sends an identity match request with a household tok
 }
 ```
 
-The list includes packages from other surfaces (web display, mobile native, audio). The broadcaster maintains a cached list of all active packages per buyer and sends the full set every time.
+The list includes packages from other surfaces (web display, mobile native, audio). The example uses all-active mode — the broadcaster maintains a cached list of all active packages per buyer and sends the full set every time. Fuzzed mode (random sample padded with synthetic IDs) is the equivalent privacy guarantee for broadcasters that prefer not to maintain that cache.
 
 ### Identity Match Response
 
@@ -194,7 +195,7 @@ Mid-roll break in "The Night Kitchen" S02E07
   --> Vaultline agent: no activation (financial services, no context fit)
   --> Driftmoto agent: no activation (motorcycle brand, no context fit)
 
-  Identity Match (after temporal decorrelation delay)
+  Identity Match (after temporal decorrelation — random delay + random order)
   --> Broadcaster sends request: all 9 active packages across all buyers
   --> Response: eligible_package_ids includes Sparklean, Greenleaf, Vaultline, Driftmoto-30s
   --> ttl_sec: 90 (covers the ad break)

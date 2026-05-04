@@ -141,6 +141,7 @@ Request from StreamHaus to Sam's buyer agent:
 {
   "type": "identity_match_request",
   "request_id": "id-7c9e1d",
+  "seller_agent_url": "https://streamhaus.example",
   "identities": [
     { "user_token": "opaque-streamhaus-token-abc123", "uid_type": "uid2" },
     { "user_token": "ID5*zP3wK...", "uid_type": "id5" }
@@ -166,7 +167,7 @@ Response from Sam's buyer agent:
 
 Only eligible packages are listed — `pkg-outdoor-audio` passes the buyer's checks. The `ttl_sec: 60` tells the router to cache this eligibility for 60 seconds.
 
-The `package_ids` in the request includes ALL of Sam's active packages — not just those relevant to the current page. Sending only the page-specific subset would let the buyer match package sets across Context Match and Identity Match, breaking the structural separation.
+The example sends `package_ids` explicitly, but the publisher MAY omit it — Sam's identity-match service resolves the active package set from `seller_agent_url`. When `package_ids` IS sent, its composition MUST be independent of the current page — either all-active (every Sam package at StreamHaus) or fuzzed (a random sample padded with synthetic IDs that Sam will silently drop). A page-specific subset is forbidden; it would let the buyer correlate package sets across Context Match and Identity Match, breaking the structural separation.
 
 </Accordion>
 

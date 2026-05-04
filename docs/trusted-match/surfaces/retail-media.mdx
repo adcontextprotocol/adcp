@@ -72,12 +72,13 @@ The buyer's offer summary helps the retailer judge relevance. The creative manif
 
 ## Identity Match
 
-The retailer sends an Identity Match request with the shopper's loyalty token. The `package_ids` include ALL active packages for this buyer — not just those on the current page — to prevent the buyer from correlating this request with the context match by comparing package sets:
+The retailer sends an Identity Match request with the shopper's loyalty token and the retailer's `seller_agent_url`. The buyer resolves its active package set from `seller_agent_url`; when the retailer sends `package_ids` explicitly (as below), composition MUST be independent of the current page — either all-active (every active package for this buyer at the retailer) or fuzzed (a random sample padded with synthetic non-existent IDs the buyer silently drops). The page-specific subset is forbidden — it would let the buyer correlate this request with the context match by comparing package sets:
 
 ```json
 {
   "type": "identity_match_request",
   "request_id": "id-retail-c7b2",
+  "seller_agent_url": "https://retailer.example",
   "identities": [
     { "user_token": "tok_loyalty_m3p7", "uid_type": "publisher_first_party" },
     { "user_token": "a1b2c3d4e5f67890abcdef...", "uid_type": "hashed_email" }
