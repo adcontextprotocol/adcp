@@ -20,3 +20,9 @@ export {
   type IssuedConformanceToken,
 } from './token.js';
 export { ConformanceWSServerTransport } from './ws-server-transport.js';
+export {
+  runStoryboardViaConformanceSocket,
+  ConformanceNotConnectedError,
+  StoryboardNotFoundError,
+  type RunStoryboardViaWsOptions,
+} from './run-storyboard-via-ws.js';

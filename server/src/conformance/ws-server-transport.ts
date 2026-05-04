@@ -36,6 +36,11 @@ export class ConformanceWSServerTransport implements Transport {
     this.sessionId = `conformance-${orgId}-${Date.now()}`;
   }
 
+  /** True when the local close path or the underlying socket has closed. */
+  isClosed(): boolean {
+    return this.closed;
+  }
+
   async start(): Promise<void> {
     this.socket.on('message', (data, isBinary) => {
       if (isBinary) {

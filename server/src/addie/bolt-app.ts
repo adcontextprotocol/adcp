@@ -80,6 +80,10 @@ import {
   createAuthGraderToolHandlers,
 } from './mcp/auth-grader-tools.js';
 import {
+  CONFORMANCE_TOOLS,
+  createConformanceToolHandlers,
+} from './mcp/conformance-tools.js';
+import {
   MEETING_TOOLS,
   createMeetingToolHandlers,
   canScheduleMeetings,
@@ -980,6 +984,20 @@ async function createUserScopedTools(
     allHandlers.set(name, handler);
   }
   logger.debug('Addie Bolt: Auth grader tools enabled');
+
+  // Conformance Socket Mode — issue tokens + run storyboards against an
+  // adopter dev/staging MCP server connected outbound to Addie. Gated
+  // behind CONFORMANCE_SOCKET_ENABLED so the chat surface stays dark
+  // until ops opts in. Server-side WS plumbing is always wired (see
+  // server/src/conformance/) — this flag only controls Addie's offer.
+  if (process.env.CONFORMANCE_SOCKET_ENABLED === '1' && memberContext) {
+    const conformanceHandlers = createConformanceToolHandlers(memberContext);
+    allTools.push(...CONFORMANCE_TOOLS);
+    for (const [name, handler] of conformanceHandlers) {
+      allHandlers.set(name, handler);
+    }
+    logger.debug('Addie Bolt: Conformance Socket Mode tools enabled');
+  }
 
   // Check if user is AAO admin (based on aao-admin working group membership)
   const userIsAdmin = slackUserId ? await isSlackUserAAOAdmin(slackUserId) : false;

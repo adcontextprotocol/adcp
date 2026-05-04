@@ -211,4 +211,70 @@ describe('conformance Socket Mode end-to-end', () => {
     await new Promise((r) => setTimeout(r, 100));
     expect(conformanceSessions.get(orgId)).toBeUndefined();
   });
+
+  it('keeps the new session after a same-org reconnect (no race-eviction)', async () => {
+    // Regression: an earlier version of ws-route's close listener removed
+    // the session by orgId only, so a same-org reconnect's displacement
+    // close on the prior socket would delete the just-registered new
+    // session. The fix: the close listener checks transport identity
+    // before removing.
+    const orgId = 'org_reconnect_race';
+    const { token: tokenA } = issueConformanceToken(orgId);
+    const { token: tokenB } = issueConformanceToken(orgId);
+
+    const wsA = new WebSocket(
+      `ws://127.0.0.1:${port}/conformance/connect?token=${encodeURIComponent(tokenA)}`,
+    );
+    const transportA = new AdopterWSTransport(wsA);
+    const serverA = buildAdopterServer();
+    await serverA.connect(transportA);
+    await waitForSession(orgId);
+    const firstSession = conformanceSessions.get(orgId);
+    expect(firstSession).toBeTruthy();
+
+    // Second connect from the same org displaces the first. The displaced
+    // socket's close handler must NOT remove the new session.
+    const wsB = new WebSocket(
+      `ws://127.0.0.1:${port}/conformance/connect?token=${encodeURIComponent(tokenB)}`,
+    );
+    const transportB = new AdopterWSTransport(wsB);
+    const serverB = buildAdopterServer();
+    await serverB.connect(transportB);
+
+    // Wait for displacement to settle.
+    const deadline = Date.now() + 2000;
+    while (Date.now() < deadline) {
+      const cur = conformanceSessions.get(orgId);
+      if (cur && cur !== firstSession) break;
+      await new Promise((r) => setTimeout(r, 20));
+    }
+
+    const newSession = conformanceSessions.get(orgId);
+    expect(newSession).toBeTruthy();
+    expect(newSession).not.toBe(firstSession);
+
+    // Give the displaced wsA's `close` event a beat to fire and (correctly)
+    // do nothing because the store now keys to wsB's transport.
+    await new Promise((r) => setTimeout(r, 100));
+    expect(conformanceSessions.get(orgId)).toBe(newSession);
+
+    await transportB.close();
+  });
+
+  it('rejects subprotocol probe with the wrong sentinel', async () => {
+    // Earlier code accepted `Sec-WebSocket-Protocol: mcp, <token>` as a
+    // fallback. The fix tightens it to require the explicit
+    // `adcp.conformance` sentinel.
+    const orgId = 'org_subprotocol';
+    const { token } = issueConformanceToken(orgId);
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/conformance/connect`, [
+      'mcp',
+      token,
+    ]);
+    const status = await new Promise<number | undefined>((resolve) => {
+      ws.once('error', () => resolve(undefined));
+      ws.once('unexpected-response', (_req, res) => resolve(res.statusCode));
+    });
+    expect(status).toBe(401);
+  });
 });
