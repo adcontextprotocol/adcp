@@ -198,6 +198,13 @@ export function buildSalesComplyConfig(): ComplyControllerConfig {
       pricing_option: cast(seedAdapter('seed_pricing_option')),
       media_buy: cast(seedAdapter('seed_media_buy')),
       creative: cast(seedAdapter('seed_creative')),
+      // /sales advertises list_creative_formats (the SDK auto-registers it for
+      // any tenant claiming a creative archetype) so the universal
+      // pagination_integrity_creative_formats storyboard fires here too. The
+      // seed adapter routes through the v5 handler's LOCAL_SCENARIOS path,
+      // populating the process-global seeded format pool that
+      // list_creative_formats reads.
+      creative_format: cast(seedAdapter('seed_creative_format')),
     },
     force: {
       media_buy_status: cast(forceAdapter('force_media_buy_status')),

@@ -21,7 +21,7 @@ bash "${SCRIPT_DIR}/overlay-compliance-cache.sh" || true
 # .github/workflows/training-agent-storyboards.yml.
 TENANTS=(
   "signals:66:54"
-  "sales:64:248"
+  "sales:65:252"
   "governance:65:101"
   "creative:66:114"
   "creative-builder:60:96"
