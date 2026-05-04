@@ -6,6 +6,12 @@
  *   npx tsx server/tests/manual/storyboard-smoke.ts
  *   npx tsx server/tests/manual/storyboard-smoke.ts --storyboard media_buy_seller
  *   npx tsx server/tests/manual/storyboard-smoke.ts --agent https://some-agent.example/mcp
+ *   npx tsx server/tests/manual/storyboard-smoke.ts --storyboard media_buy_state_machine --brand acmeoutdoor.example
+ *
+ * `--brand` is recommended for storyboards that reference a `test_kit`
+ * (e.g. media_buy_state_machine → acme-outdoor). See JSDoc on the
+ * `brandDomain` resolution below for the runner's positive-path /
+ * negative-path brand split that makes this matter.
  */
 
 import {
@@ -22,6 +28,17 @@ const TEST_AGENT_TOKEN = process.env.TEST_AGENT_TOKEN || PUBLIC_TEST_AGENT.token
 const args = process.argv.slice(2);
 const storyboardFilter = args.includes('--storyboard') ? args[args.indexOf('--storyboard') + 1] : undefined;
 const agentUrl = args.includes('--agent') ? args[args.indexOf('--agent') + 1] : TEST_AGENT_URL;
+// Run-scoped brand. Storyboards that reference a test_kit are written to
+// target the brand defined in that kit (e.g. acmeoutdoor.example for the
+// media-buy state machine, sourced from test-kits/acme-outdoor.yaml). The
+// SDK runner's `applyBrandInvariant` rewrites every step's brand to
+// `options.brand` when set; without it, positive-path steps default to
+// `test.example` via `resolveBrand`'s fallback while expect_error steps
+// pass the YAML's literal brand through unchanged — split-brain that
+// session-keys the create/update calls into different partitions and
+// surfaces as MEDIA_BUY_NOT_FOUND on the negative-path probes. Pass
+// `--brand acmeoutdoor.example` (or the kit-specific value) to align them.
+const brandDomain = args.includes('--brand') ? args[args.indexOf('--brand') + 1] : undefined;
 
 async function main() {
   console.log(`\n=== Storyboard Smoke Test ===`);
@@ -45,6 +62,7 @@ async function main() {
     try {
       const result = await runStoryboard(agentUrl, storyboard, {
         auth: { type: 'bearer', token: TEST_AGENT_TOKEN },
+        ...(brandDomain && { brand: { domain: brandDomain } }),
         timeout_ms: 30_000,
         dry_run: false,
       });
