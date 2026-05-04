@@ -31,7 +31,7 @@ import { createSingleAgentClient } from '@adcp/sdk';
 const client = createSingleAgentClient({
   id: 'sales',
   name: 'Sales agent',
-  agent_uri: 'https://sales.example.com',
+  agent_uri: 'https://sales.example.com/mcp',
   protocol: 'mcp',
 });
 ```
@@ -51,7 +51,7 @@ from adcp import ADCPClient, AgentConfig, Protocol
 
 client = ADCPClient(AgentConfig(
     id="sales",
-    agent_uri="https://sales.example.com",
+    agent_uri="https://sales.example.com/mcp",
     protocol=Protocol.MCP,
 ))
 ```
@@ -78,7 +78,7 @@ Most agents require credentials before they'll respond to anything beyond `get_a
 const client = createSingleAgentClient({
   id: 'sales',
   name: 'Sales agent',
-  agent_uri: 'https://sales.example.com',
+  agent_uri: 'https://sales.example.com/mcp',
   protocol: 'mcp',
   auth_token: process.env.ADCP_API_KEY,
 });
@@ -89,7 +89,7 @@ const client = createSingleAgentClient({
 const client = createSingleAgentClient({
   id: 'sales',
   name: 'Sales agent',
-  agent_uri: 'https://sales.example.com',
+  agent_uri: 'https://sales.example.com/mcp',
   protocol: 'mcp',
   signing: { keyId: 'your-key-id', privateKey: /* PEM or KMS handle */ },
 });

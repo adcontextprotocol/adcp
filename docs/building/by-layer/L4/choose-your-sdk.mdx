@@ -25,7 +25,7 @@ Legend: ✅ shipped · ⚠️ partial / in flight · ❌ not yet covered. **Prod
 
 **`@adcp/sdk` 6.x ships full L0–L3** on AdCP 3.0 — adopters write L4 only. The 5.x line is on security-only support and not recommended for new builds; cut over to 6.x. **`adcp` (Python) 3.x is the production line** with full L0 type coverage; the 4.x rewrite (in beta on PyPI) closes the L1–L3 gap — outbound RFC 9421 signing, brand-resolution helpers, webhook emission. Track [adcp-client-python releases](https://github.com/adcontextprotocol/adcp-client-python/releases) for the 4.0 GA cut. **`adcp-go`** is in active development; types + transport land first, see [adcp-go README](https://github.com/adcontextprotocol/adcp-go) for what's in scope per release.
 
-Pre-3.0 callers should work through the [3.0 migration guide](/docs/reference/migration/index) before upgrading.
+Pre-3.0 callers should work through the [3.0 migration guide](/docs/reference/migration/index) before upgrading. For procurement-grade context on the support window, see the [v2 sunset timeline](/docs/reference/v2-sunset) and [versioning & governance](/docs/reference/versioning).
 
 **Python and TypeScript carry full L0–L4 coverage as the first-class supported languages.** **Go** is moving in the same direction. **Other languages** are not on the official roadmap; community-maintained ports are welcome — see the [Builders Working Group](/docs/community/working-group) and the [Slack community](https://join.slack.com/t/agenticads/shared_invite/zt-3c5sxvdjk-x0rVmLB3OFHVUp~WutVWZg).
 
@@ -43,7 +43,7 @@ import { createSingleAgentClient } from '@adcp/sdk';
 const client = createSingleAgentClient({
   id: 'sales',
   name: 'Sales agent',
-  agent_uri: 'https://sales.example.com',
+  agent_uri: 'https://sales.example.com/mcp',
   protocol: 'mcp',
 });
 
@@ -82,7 +82,7 @@ from adcp import ADCPClient, AgentConfig, Protocol, GetProductsRequest
 
 client = ADCPClient(AgentConfig(
     id='sales',
-    agent_uri='https://sales.example.com',
+    agent_uri='https://sales.example.com/mcp',
     protocol=Protocol.MCP,
 ))
 
