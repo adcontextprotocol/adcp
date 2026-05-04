@@ -36,30 +36,28 @@ jobs:
         # SDK 6.0.0). Rising is fine; regressing fails CI.
         tenant: [signals, sales, governance, creative, creative-builder, brand]
         include:
-          # Floors raised back up after #3965 catch-up: the SDK 6.7.0 bump
-          # exposed baseline issues, but some were stale-cache phantoms
-          # (Class G error code already fixed in source — overlay reconciled
-          # it) and others are now closed (Class B widened error_code
-          # acceptance, Class D dead capture removed). Remaining failures
-          # cluster around context echo (Class A — adcp-client#1455 SDK gap),
-          # signed_requests /mcp-strict (predates bump), and a few
-          # tenant-specific baseline drift. Tracked in #3965; this PR ratchets
-          # floors back toward pre-bump levels as each class closes.
+          # SDK 6.9.0 bump closed #3965 Class E: ComplyControllerConfig.force
+          # gained typed slots for create_media_buy_arm + task_completion
+          # (adcp-client#1472/#1477), so the directive arm now reaches the
+          # dispatcher instead of falling through to UNKNOWN_SCENARIO. 6.9.0
+          # also added a strict account.mode gate on comply_test_controller —
+          # accounts.resolve in every tenant now stamps mode: 'sandbox'.
+          # Floors capture the resulting clean baseline.
           - tenant: signals
             min_clean_storyboards: 65
             min_passing_steps: 23
           - tenant: sales
-            min_clean_storyboards: 62
-            min_passing_steps: 212
-          - tenant: governance
             min_clean_storyboards: 63
-            min_passing_steps: 66
-          - tenant: creative
+            min_passing_steps: 217
+          - tenant: governance
             min_clean_storyboards: 64
-            min_passing_steps: 79
+            min_passing_steps: 70
+          - tenant: creative
+            min_clean_storyboards: 65
+            min_passing_steps: 83
           - tenant: creative-builder
-            min_clean_storyboards: 58
-            min_passing_steps: 61
+            min_clean_storyboards: 59
+            min_passing_steps: 65
           - tenant: brand
             min_clean_storyboards: 65
             min_passing_steps: 14
