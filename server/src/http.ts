@@ -99,6 +99,7 @@ import { createCommitteeRouters } from "./routes/committees.js";
 import { createContentRouter, createMyContentRouter } from "./routes/content.js";
 import { createMeetingRouters } from "./routes/meetings.js";
 import { createMemberProfileRouter, createAdminMemberProfileRouter } from "./routes/member-profiles.js";
+import { createMemberAgentsRouter } from "./routes/member-agents.js";
 import { createPublicPortraitRouter, createPortraitRouter, createAdminPortraitRouter } from "./routes/portraits.js";
 import { createCommunityRouters } from "./routes/community.js";
 import { createCertificationRouters } from "./routes/certification.js";
@@ -1213,6 +1214,15 @@ export class HTTPServer {
     this.app.use('/api/me/member-profile', memberProfileRouter); // User profile routes: /api/me/member-profile/*
     const adminMemberProfileRouter = createAdminMemberProfileRouter(memberProfileConfig);
     this.app.use('/api/admin/member-profiles', adminMemberProfileRouter); // Admin profile routes: /api/admin/member-profiles/*
+
+    // Per-agent REST surface for members — register/list/update/delete a
+    // single agent via API key or session, no full-profile round-trip.
+    const memberAgentsRouter = createMemberAgentsRouter({
+      memberDb,
+      orgDb,
+      invalidateMemberContextCache,
+    });
+    this.app.use('/api/me/agents', memberAgentsRouter);
 
     // Mount portrait routes
     this.app.use('/api/portraits', createPublicPortraitRouter());
