@@ -15,6 +15,7 @@ import { fileURLToPath } from "url";
 
 // Import triggers route & schema registration
 import "../server/src/routes/registry-api.js";
+import "../server/src/schemas/member-agents-openapi.js";
 import { registry } from "../server/src/schemas/registry.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -96,6 +97,7 @@ const TAG_DESCRIPTIONS: Record<string, string> = {
   "Brand Discovery": "Discover and crawl brand.json files across domains.",
   "Agent Compliance": "Agent compliance status, storyboard test results, and compliance history.",
   "Policy Registry": "Browse, resolve, and contribute governance policies for campaign compliance.",
+  "Member Agents": "Register, list, update, and remove agents on the caller's organization member profile. Authenticated programmatic surface for CI / scripts that don't want to round-trip the full member profile.",
 };
 
 const TAG_ORDER = Object.keys(TAG_DESCRIPTIONS);

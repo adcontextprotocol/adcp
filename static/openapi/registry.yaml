@@ -1325,6 +1325,7 @@ components:
               - signal-marketplace
               - signal-owned
               - signed-requests
+              - sponsored-intelligence
           description: Specialisms demonstrably passed (enums/specialism.json). Preview specialisms are excluded from stable badges.
         verification_modes:
           type: array
@@ -1737,6 +1738,130 @@ components:
         - canonical_domain
         - brand_name
         - source
+    MemberAgentListResponse:
+      type: object
+      properties:
+        agents:
+          type: array
+          items:
+            $ref: "#/components/schemas/MemberAgent"
+      required:
+        - agents
+    MemberAgent:
+      type: object
+      properties:
+        url:
+          type: string
+          format: uri
+          example: https://agent.example.com/mcp
+        visibility:
+          $ref: "#/components/schemas/MemberAgentVisibility"
+        name:
+          type: string
+        type:
+          $ref: "#/components/schemas/MemberAgentType"
+        health_check_url:
+          type: string
+          format: uri
+          description: Optional fallback liveness URL used by the health probe when the protocol handshake fails.
+      required:
+        - url
+        - visibility
+      description: Agent entry stored on a member profile.
+    MemberAgentVisibility:
+      type: string
+      enum:
+        - private
+        - members_only
+        - public
+      description: Visibility tier on the registry catalog. `private` = profile owner only; `members_only` = AAO API-tier members on operator lookup; `public` = listed in the public catalog and reflected in the org's `brand.json` (requires Professional tier or higher).
+    MemberAgentType:
+      type: string
+      enum:
+        - brand
+        - rights
+        - measurement
+        - governance
+        - creative
+        - sales
+        - buying
+        - signals
+        - unknown
+      description: Agent type. Resolved server-side from the agent's capability snapshot when one exists; the value submitted by the client is used only as a fallback when no snapshot is available, and is never trusted to override an inferred classification.
+    MemberAgentResponse:
+      type: object
+      properties:
+        agent:
+          $ref: "#/components/schemas/MemberAgent"
+        warnings:
+          type: array
+          items:
+            $ref: "#/components/schemas/MemberAgentVisibilityWarning"
+      required:
+        - agent
+    MemberAgentVisibilityWarning:
+      type: object
+      properties:
+        code:
+          type: string
+          enum:
+            - visibility_downgraded
+        agent_url:
+          type: string
+        requested:
+          type: string
+          enum:
+            - public
+        applied:
+          type: string
+          enum:
+            - members_only
+        reason:
+          type: string
+          enum:
+            - tier_required
+        message:
+          type: string
+      required:
+        - code
+        - agent_url
+        - requested
+        - applied
+        - reason
+        - message
+      description: Emitted when the tier gate downgrades a requested visibility.
+    MemberAgentInput:
+      type: object
+      properties:
+        url:
+          type: string
+          format: uri
+          example: https://agent.example.com/mcp
+        name:
+          type: string
+        visibility:
+          $ref: "#/components/schemas/MemberAgentVisibility"
+        type:
+          $ref: "#/components/schemas/MemberAgentType"
+        health_check_url:
+          type: string
+          format: uri
+      required:
+        - url
+      description: Request body for `POST /api/me/agents`.
+    MemberAgentPatch:
+      type: object
+      properties:
+        name:
+          type: string
+        visibility:
+          $ref: "#/components/schemas/MemberAgentVisibility"
+        type:
+          $ref: "#/components/schemas/MemberAgentType"
+        health_check_url:
+          type: string
+          format: uri
+      description: Request body for `PATCH /api/me/agents/{url}`. The `url` field cannot be changed via PATCH; re-register at the new URL and DELETE the old entry instead.
 paths:
   /api:
     get:
@@ -6705,6 +6830,179 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /api/me/agents:
+    get:
+      operationId: listMemberAgents
+      summary: List my registered agents
+      description: List the agents registered on the caller's organization member profile. Returns the same `agents[]` array stored on the profile, in the order members registered them.
+      tags:
+        - Member Agents
+      security:
+        - bearerAuth: []
+        - oauth2: []
+      responses:
+        "200":
+          description: Registered agents
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemberAgentListResponse"
+        "400":
+          description: No organization associated with this account
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No member profile exists yet — create one via `POST /api/me/member-profile`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    post:
+      operationId: registerMemberAgent
+      summary: Register an agent
+      description: |-
+        Register an agent on the caller's organization member profile.
+
+        Idempotent on `url`: re-posting the same `url` updates the entry in place rather than creating a duplicate. New entries return `201`; updates return `200`.
+
+        The `type` field is resolved server-side from the agent's capability snapshot — a client cannot pin a misclassification (e.g. registering a sales agent as `buying`).
+
+        `visibility: "public"` requires Professional tier or higher and a `primary_brand_domain` set on the profile. Non-API-tier callers who request `public` will have the entry stored as `members_only` instead, and the response will include a `visibility_downgraded` warning describing the coercion.
+      tags:
+        - Member Agents
+      security:
+        - bearerAuth: []
+        - oauth2: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MemberAgentInput"
+      responses:
+        "200":
+          description: Agent already registered at this `url`; entry updated in place.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemberAgentResponse"
+        "201":
+          description: Agent registered.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemberAgentResponse"
+        "400":
+          description: Missing or invalid `url`, or no organization associated with this account.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No member profile exists yet — create one via `POST /api/me/member-profile`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/me/agents/{url}:
+    patch:
+      operationId: updateMemberAgent
+      summary: Update an agent
+      description: Update one registered agent identified by its `url`. The `url` field itself cannot be changed via PATCH — re-register at the new URL and DELETE the old entry to migrate. All other fields accept partial updates.
+      tags:
+        - Member Agents
+      security:
+        - bearerAuth: []
+        - oauth2: []
+      parameters:
+        - schema:
+            type: string
+            description: The agent's `url`, URL-encoded (e.g. `https%3A%2F%2Fagent.example.com%2Fmcp`).
+          required: true
+          description: The agent's `url`, URL-encoded (e.g. `https%3A%2F%2Fagent.example.com%2Fmcp`).
+          name: url
+          in: path
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MemberAgentPatch"
+      responses:
+        "200":
+          description: Agent updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemberAgentResponse"
+        "400":
+          description: No organization associated with this account
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No member profile, or no agent registered at the given `url`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      operationId: removeMemberAgent
+      summary: Remove an agent
+      description: Remove one registered agent identified by its `url`. If the agent's visibility was `public`, the entry is also removed from the published `brand.json` manifest as a side effect of subsequent visibility reconciliation.
+      tags:
+        - Member Agents
+      security:
+        - bearerAuth: []
+        - oauth2: []
+      parameters:
+        - schema:
+            type: string
+            description: The agent's `url`, URL-encoded (e.g. `https%3A%2F%2Fagent.example.com%2Fmcp`).
+          required: true
+          description: The agent's `url`, URL-encoded (e.g. `https%3A%2F%2Fagent.example.com%2Fmcp`).
+          name: url
+          in: path
+      responses:
+        "204":
+          description: Agent removed.
+        "400":
+          description: No organization associated with this account
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No member profile, or no agent registered at the given `url`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 tags:
   - name: Brand Resolution
     description: Resolve advertiser domains to canonical brand identities.
@@ -6728,3 +7026,5 @@ tags:
     description: Agent compliance status, storyboard test results, and compliance history.
   - name: Policy Registry
     description: Browse, resolve, and contribute governance policies for campaign compliance.
+  - name: Member Agents
+    description: Register, list, update, and remove agents on the caller's organization member profile. Authenticated programmatic surface for CI / scripts that don't want to round-trip the full member profile.

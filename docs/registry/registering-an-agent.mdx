@@ -31,83 +31,23 @@ There is no auto-population from crawled `adagents.json` files. Agents listed in
 
 ## Programmatic registration (for CI, scripts, agents)
 
-If you want to register agents from CI, a deploy hook, or your own agent — without the dashboard or Addie — use the per-agent REST endpoints under `/api/me/agents`. Auth is a WorkOS API key (`Bearer sk_…`) or a session cookie; mint a key under [agenticadvertising.org/dashboard/settings/api-keys](https://agenticadvertising.org/dashboard/settings/api-keys).
+To register agents from CI, a deploy hook, or your own agent — without the dashboard or Addie — use the per-agent REST endpoints under `/api/me/agents`. They share the same visibility gate, server-side type resolution, and audit log as the dashboard path, so the `members_only` default, the `tier_required` check on `public`, and the type smuggle-protection all apply identically.
 
-The endpoints reuse the same visibility gate, server-side type resolution, and audit log as the dashboard path — so the `members_only` default, the `tier_required` check on `public`, and the type smuggle-protection all apply.
+Authenticate with a WorkOS API key (`Authorization: Bearer sk_…`) or an OAuth user JWT. Mint an API key under [agenticadvertising.org/dashboard/settings/api-keys](https://agenticadvertising.org/dashboard/settings/api-keys).
 
-| Method | Path | Purpose |
-|---|---|---|
-| `GET` | `/api/me/agents` | List your org's registered agents |
-| `POST` | `/api/me/agents` | Register an agent (idempotent on `url`) |
-| `PATCH` | `/api/me/agents/{urlEncodedUrl}` | Update one entry |
-| `DELETE` | `/api/me/agents/{urlEncodedUrl}` | Remove one entry |
+| Endpoint | Reference |
+|---|---|
+| `GET /api/me/agents` | [List my registered agents](/docs/registry/api-reference/member-agents/list-my-registered-agents) |
+| `POST /api/me/agents` | [Register an agent](/docs/registry/api-reference/member-agents/register-an-agent) |
+| `PATCH /api/me/agents/{url}` | [Update an agent](/docs/registry/api-reference/member-agents/update-an-agent) |
+| `DELETE /api/me/agents/{url}` | [Remove an agent](/docs/registry/api-reference/member-agents/remove-an-agent) |
 
-### Register an agent
-
-<CodeGroup>
-
-```bash cURL
-curl -X POST "https://agenticadvertising.org/api/me/agents" \
-  -H "Authorization: Bearer sk_your_workos_api_key" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "url": "https://agent.yourcompany.com/mcp",
-    "name": "Your agent",
-    "visibility": "members_only"
-  }'
-```
-
-```javascript JavaScript
-const res = await fetch("https://agenticadvertising.org/api/me/agents", {
-  method: "POST",
-  headers: {
-    Authorization: `Bearer ${process.env.AAO_API_KEY}`,
-    "Content-Type": "application/json",
-  },
-  body: JSON.stringify({
-    url: "https://agent.yourcompany.com/mcp",
-    name: "Your agent",
-    visibility: "members_only",
-  }),
-});
-const { agent, warnings } = await res.json();
-```
-
-</CodeGroup>
-
-Re-posting the same `url` updates the entry in place rather than duplicating it. New entries return `201`; updates return `200`. The response body is `{ agent, warnings? }` — `warnings` lists any visibility downgrades the tier gate applied (e.g. an Explorer-tier caller asking for `public` is stored as `members_only` with a `visibility_downgraded` warning).
-
-### List your registered agents
-
-```bash
-curl "https://agenticadvertising.org/api/me/agents" \
-  -H "Authorization: Bearer sk_your_workos_api_key"
-```
-
-### Update one agent
-
-The path parameter is the agent's `url`, URL-encoded. The `url` field cannot be changed via PATCH — re-register at the new URL and DELETE the old entry instead.
-
-```bash
-URL_ENCODED=$(printf 'https://agent.yourcompany.com/mcp' | jq -sRr @uri)
-curl -X PATCH "https://agenticadvertising.org/api/me/agents/${URL_ENCODED}" \
-  -H "Authorization: Bearer sk_your_workos_api_key" \
-  -H "Content-Type: application/json" \
-  -d '{ "name": "Renamed agent" }'
-```
-
-### Remove one agent
-
-```bash
-URL_ENCODED=$(printf 'https://agent.yourcompany.com/mcp' | jq -sRr @uri)
-curl -X DELETE "https://agenticadvertising.org/api/me/agents/${URL_ENCODED}" \
-  -H "Authorization: Bearer sk_your_workos_api_key"
-```
+The path parameter on PATCH and DELETE is the agent's `url`, URL-encoded (e.g. `https%3A%2F%2Fagent.example.com%2Fmcp`). `POST` is idempotent on `url`: new entries return `201`; re-posting the same `url` updates the existing entry and returns `200`. Each successful write returns `{ agent, warnings? }` — `warnings` lists any tier-driven visibility downgrades (e.g. an Explorer-tier caller asking for `public` is stored as `members_only` with a `visibility_downgraded` warning).
 
 ### Prerequisites
 
 - An AAO member profile must already exist for your organization. Create one via the dashboard or `POST /api/me/member-profile` first; the agent endpoints return `404` until then.
-- For `visibility: "public"`, your organization needs Professional tier or higher and a `primary_brand_domain` set on the profile (so the agent can be added to your `brand.json`). See [Visibility](#visibility) below.
+- For `visibility: "public"`, your organization needs Professional tier or higher and a `primary_brand_domain` set on the profile so the agent can be added to your `brand.json`. See [Visibility](#visibility) below.
 
 ## What this means if you are not an AAO member
 

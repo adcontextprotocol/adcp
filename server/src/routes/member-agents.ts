@@ -23,6 +23,10 @@ import { resolvePrimaryOrganization } from '../db/users-db.js';
 import type { AgentConfig } from '../types.js';
 import { resolveAgentTypes, logResolvedTypeChanges } from './member-profiles.js';
 import { gateAgentVisibilityForCaller } from '../services/agent-visibility-gate.js';
+// Side-effect import: registers OpenAPI paths + component schemas for these
+// routes. Lives in schemas/ to keep the spec generator's import graph free of
+// auth middleware (WorkOS init at module load).
+import '../schemas/member-agents-openapi.js';
 
 const logger = createLogger('member-agents-routes');
 
