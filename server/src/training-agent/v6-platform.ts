@@ -174,6 +174,16 @@ export class TrainingPlatform implements DecisioningPlatform<TrainingConfig, Tra
     activateSignal: async (req, ctx) => {
       const trainingCtx = buildTrainingCtx(ctx.account);
       const result = await handleActivateSignal(req as ToolArgs, trainingCtx);
+      const errs = (result as { errors?: unknown[] } | undefined)?.errors;
+      if (Array.isArray(errs) && errs.length > 0) {
+        // Return errors in body (not as thrown AdcpError) so the storyboard's
+        // error_code + field_present path:"context" validators can inspect the
+        // response body. Mirrors ERROR_IN_BODY_TOOLS on the legacy /mcp path.
+        const body: Record<string, unknown> = { errors: errs };
+        const callerCtx = (req as { context?: unknown }).context;
+        if (callerCtx !== undefined) body.context = callerCtx;
+        return body as never;
+      }
       return translateV5Result(result);
     },
   };
