@@ -5265,15 +5265,15 @@ export class HTTPServer {
                 limit: 100,
               });
 
-              const subscription = await pickMembershipSubWithProductFetch(
+              const picked = await pickMembershipSubWithProductFetch(
                 subsResult.data,
                 (productId) => stripeClient.products.retrieve(productId),
               );
-              if (!subscription || !(TIER_PRESERVING_STATUSES as readonly string[]).includes(subscription.status)) {
+              if (!picked || !(TIER_PRESERVING_STATUSES as readonly string[]).includes(picked.sub.status)) {
                 continue;
               }
 
-              const primaryItem = subscription.items.data[0];
+              const primaryItem = picked.sub.items.data[0];
               if (!primaryItem) {
                 continue;
               }
@@ -5285,7 +5285,11 @@ export class HTTPServer {
               );
               const isPersonal = orgRow.rows[0]?.is_personal ?? true;
 
-              const subUpdate = buildSubscriptionUpdate(subscription as any, isPersonal);
+              const subUpdate = buildSubscriptionUpdate(
+                picked.sub as any,
+                isPersonal,
+                picked.product?.metadata ?? null,
+              );
 
               // Update organization with subscription details and tier
               await pool.query(
