@@ -71,11 +71,14 @@ async function listTools(baseUrl: string, tenantId: string): Promise<string[]> {
   // Strip universal utility tools that the SDK auto-registers on every
   // tenant. The catalog deliberately doesn't track these because they
   // never form part of a "wrong tenant" hint — they're available
-  // everywhere. `tasks_get` is the MCP transport-level task-poll helper.
+  // everywhere. The MCP transport-level task-poll helper has shipped
+  // under both `tasks_get` (snake-case) and `tasks/get` (with slash, the
+  // current SDK 6.9 name); accept both so the filter survives renames.
   const NON_PROTOCOL_TOOLS = new Set([
     'get_adcp_capabilities',
     'comply_test_controller',
     'tasks_get',
+    'tasks/get',
   ]);
   return (body.result?.tools ?? [])
     .map(t => t.name)
