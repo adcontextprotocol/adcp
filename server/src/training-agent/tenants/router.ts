@@ -65,7 +65,37 @@ function tenantMcpHandler(holder: RegistryHolder, tenantId: string) {
     }
 
     const host = resolveTenantHost(req);
-    const registry = await holder.get();
+    const registry = await holder.get().catch((err: unknown) => {
+      // Surfacing the rejection here is what makes #3854 / #3869-class
+      // init bugs visible. Without it the rejection escapes to Express's
+      // default error handler — the smoke sees an HTML 500 with no JSON
+      // body and no log entry tying the error to the rejected promise.
+      logger.error(
+        {
+          err,
+          errMessage: err instanceof Error ? err.message : String(err),
+          errName: err instanceof Error ? err.name : undefined,
+          errStack: err instanceof Error ? err.stack : undefined,
+          errCause: err instanceof Error ? (err as Error & { cause?: unknown }).cause : undefined,
+          tenantId,
+          host,
+        },
+        'tenant registry init rejected — request failed before dispatch',
+      );
+      // 503 + Retry-After matches the SDK's documented contract for
+      // pending tenants (`tenant-registry.d.ts`: "host transport should
+      // respond 503 + Retry-After"). 5s is short enough that the smoke's
+      // 8s retry catches a transient warmup, long enough for a fresh
+      // Fly machine to finish per-tenant register.
+      res.setHeader('Retry-After', '5');
+      res.status(503).json({
+        jsonrpc: '2.0',
+        id: null,
+        error: { code: -32000, message: 'Tenant registry warming up; retry shortly' },
+      });
+      return null;
+    });
+    if (registry === null) return;
     const resolved = registry.resolveByRequest(host, `/${tenantId}/mcp`);
     if (!resolved) {
       logger.warn(
@@ -164,7 +194,13 @@ export function mountTenantRoutes(
   // the next request retries.
   holder.get().catch((err) => {
     logger.error(
-      { err },
+      {
+        err,
+        errMessage: err instanceof Error ? err.message : String(err),
+        errName: err instanceof Error ? err.name : undefined,
+        errStack: err instanceof Error ? err.stack : undefined,
+        errCause: err instanceof Error ? (err as Error & { cause?: unknown }).cause : undefined,
+      },
       'Eager tenant registry init failed at boot; per-request init will retry',
     );
   });
