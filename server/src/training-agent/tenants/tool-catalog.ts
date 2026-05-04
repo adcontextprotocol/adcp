@@ -47,7 +47,8 @@ export const TOOL_CATALOG: Readonly<Record<string, readonly string[]>> = {
   preview_creative: ['creative', 'creative-builder'],
   get_creative_delivery: ['creative', 'creative-builder'],
 
-  // signals
+  // signals — sync_governance rides customTools (governance-aware-seller pattern)
+  sync_governance: ['signals'],
   get_signals: ['signals'],
   activate_signal: ['signals'],
 
