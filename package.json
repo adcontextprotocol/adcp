@@ -90,7 +90,7 @@
     "dev:docs": "node scripts/dev-docs.mjs"
   },
   "dependencies": {
-    "@adcp/sdk": "^6.9.0",
+    "@adcp/sdk": "^6.11.0",
     "@anthropic-ai/sdk": "^0.91.1",
     "@asteasolutions/zod-to-openapi": "^8.5.0",
     "@contentauth/c2pa-node": "^0.5.4",

@@ -53,16 +53,16 @@ jobs:
             min_passing_steps: 54
           - tenant: sales
             min_clean_storyboards: 67
-            min_passing_steps: 252
+            min_passing_steps: 258
           - tenant: governance
             min_clean_storyboards: 65
-            min_passing_steps: 101
+            min_passing_steps: 102
           - tenant: creative
             min_clean_storyboards: 66
-            min_passing_steps: 114
+            min_passing_steps: 118
           - tenant: creative-builder
             min_clean_storyboards: 60
-            min_passing_steps: 96
+            min_passing_steps: 100
           - tenant: brand
             min_clean_storyboards: 66
             min_passing_steps: 45
