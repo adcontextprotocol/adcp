@@ -46,10 +46,12 @@ function postList(app: express.Application, authHeader: string | undefined) {
 describe('Training Agent conformance-handle bearer auth (issue #2841)', () => {
   let app: express.Application;
 
-  beforeAll(() => {
+  beforeAll(async () => {
     app = express();
     app.use(express.json());
-    app.use('/api/training-agent', createTrainingAgentRouter());
+    const trainingAgent = createTrainingAgentRouter();
+    app.use('/api/training-agent', trainingAgent.router);
+    await trainingAgent.warmup();
   });
 
   afterAll(() => {

@@ -575,6 +575,12 @@ export class HTTPServer {
   private catalogEventsDb: CatalogEventsDatabase;
   private agentProfilesDb: AgentInventoryProfilesDatabase;
   private registryRequestsDb = registryRequestsDb;
+  // Captured during route mounting; called from `start()` before
+  // `app.listen()` so the training-agent tenant registry is fully
+  // registered + validated before traffic arrives. Defaults to a no-op
+  // so tests that don't mount the training agent (e.g., health-check
+  // scenarios with mocked dependencies) still resolve cleanly.
+  private warmupTrainingAgent: () => Promise<void> = async () => {};
 
   constructor() {
     this.app = express();
@@ -1243,9 +1249,16 @@ export class HTTPServer {
     this.app.use('/api/me/linked-emails', createAccountLinkingRouter());
     handleEmailLinkVerification(this.app);
 
-    // Mount training agent (embedded AdCP sales agent for testing and certification)
-    const trainingAgentRouter = createTrainingAgentRouter();
-    this.app.use('/api/training-agent', trainingAgentRouter);
+    // Mount training agent (embedded AdCP sales agent for testing and certification).
+    // `warmup()` triggers per-tenant registry init and resolves once all six
+    // tenants are registered + validated; we capture it on `this` so `start()`
+    // can call it before binding the HTTP listener. Without that gate, the
+    // post-deploy smoke probes the tenant routes during the registration burst
+    // and gets 500s every deploy. We don't *trigger* warmup here — that
+    // would force registry init at construction time, ahead of test mocks.
+    const trainingAgent = createTrainingAgentRouter();
+    this.warmupTrainingAgent = trainingAgent.warmup;
+    this.app.use('/api/training-agent', trainingAgent.router);
 
     // Mount reference creative agent (canonical format definitions and preview rendering)
     const creativeAgentRouter = createCreativeAgentRouter();
@@ -1258,7 +1271,7 @@ export class HTTPServer {
         return res.redirect(301, 'https://docs.adcontextprotocol.org/docs/building/validate-your-agent');
       }
       if (TRAINING_AGENT_HOSTNAMES.has(req.hostname)) {
-        return trainingAgentRouter(req, res, next);
+        return trainingAgent.router(req, res, next);
       }
       if (req.hostname === 'creative.adcontextprotocol.org') {
         return creativeAgentRouter(req, res, next);
@@ -8814,6 +8827,21 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
       logger.info('Worker process: scheduled jobs and crawlers started');
     } else {
       logger.info('Web process: skipping scheduled jobs and crawlers');
+    }
+
+    // Block listen until the training-agent tenant registry is healthy.
+    // The 6-tenant registration burst takes 30–60s on a fresh Fly machine;
+    // accepting traffic before it completes means the post-deploy smoke
+    // probes during the warmup window and gets 500s on every deploy
+    // (May 2026: 5 consecutive deploys failed before this gate landed).
+    // Real init bugs (#3854, #3869 class) now surface as a boot crash
+    // and roll the deploy back, instead of dribbling 500s at users.
+    try {
+      await this.warmupTrainingAgent();
+      logger.info('Training agent tenant registry ready');
+    } catch (err) {
+      logger.error({ err }, 'Training agent tenant registry init failed at boot — refusing to bind listener');
+      throw err;
     }
 
     this.server = this.app.listen(port, () => {
