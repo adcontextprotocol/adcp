@@ -631,6 +631,133 @@ export async function mergeOrganizations(
     });
 
     // =====================================================
+    // 20a. Merge agent_contexts
+    // UNIQUE(organization_id, agent_url): keep primary's row on
+    // conflict so its agent_test_history (ON DELETE CASCADE) survives;
+    // secondary's history is removed when its row is deleted.
+    // =====================================================
+    const agentContextsMoved = await client.query(
+      `UPDATE agent_contexts
+       SET organization_id = $1, updated_at = NOW()
+       WHERE organization_id = $2
+         AND NOT EXISTS (
+           SELECT 1 FROM agent_contexts p
+           WHERE p.organization_id = $1 AND p.agent_url = agent_contexts.agent_url
+         )
+       RETURNING id`,
+      [primaryOrgId, secondaryOrgId]
+    );
+
+    const agentContextsDeleted = await client.query(
+      `DELETE FROM agent_contexts WHERE organization_id = $1 RETURNING id`,
+      [secondaryOrgId]
+    );
+
+    summary.tables_merged.push({
+      table_name: 'agent_contexts',
+      rows_moved: agentContextsMoved.rows.length,
+      rows_skipped_duplicate: agentContextsDeleted.rows.length,
+    });
+
+    if (agentContextsDeleted.rows.length > 0) {
+      summary.warnings.push(
+        `${agentContextsDeleted.rows.length} duplicate agent_contexts from secondary org were deleted (primary already had the same agent_url) — their test history was removed`
+      );
+    }
+
+    // =====================================================
+    // 20b. Merge person_relationships.prospect_org_id
+    // No unique constraint on prospect_org_id — straight reparent.
+    // =====================================================
+    const personRelResult = await client.query(
+      `UPDATE person_relationships
+       SET prospect_org_id = $1, updated_at = NOW()
+       WHERE prospect_org_id = $2
+       RETURNING id`,
+      [primaryOrgId, secondaryOrgId]
+    );
+
+    summary.tables_merged.push({
+      table_name: 'person_relationships',
+      rows_moved: personRelResult.rows.length,
+      rows_skipped_duplicate: 0,
+    });
+
+    // =====================================================
+    // 20c. Merge certification_goals
+    // UNIQUE(workos_organization_id, credential_id): keep primary on conflict.
+    // =====================================================
+    const certGoalsMoved = await client.query(
+      `UPDATE certification_goals
+       SET workos_organization_id = $1, updated_at = NOW()
+       WHERE workos_organization_id = $2
+         AND NOT EXISTS (
+           SELECT 1 FROM certification_goals p
+           WHERE p.workos_organization_id = $1
+             AND p.credential_id = certification_goals.credential_id
+         )
+       RETURNING id`,
+      [primaryOrgId, secondaryOrgId]
+    );
+
+    const certGoalsDeleted = await client.query(
+      `DELETE FROM certification_goals WHERE workos_organization_id = $1 RETURNING id`,
+      [secondaryOrgId]
+    );
+
+    summary.tables_merged.push({
+      table_name: 'certification_goals',
+      rows_moved: certGoalsMoved.rows.length,
+      rows_skipped_duplicate: certGoalsDeleted.rows.length,
+    });
+
+    // =====================================================
+    // 20d. Merge certification_expectations
+    // UNIQUE(workos_organization_id, email): keep primary on conflict.
+    // =====================================================
+    const certExpMoved = await client.query(
+      `UPDATE certification_expectations
+       SET workos_organization_id = $1
+       WHERE workos_organization_id = $2
+         AND NOT EXISTS (
+           SELECT 1 FROM certification_expectations p
+           WHERE p.workos_organization_id = $1
+             AND p.email = certification_expectations.email
+         )
+       RETURNING id`,
+      [primaryOrgId, secondaryOrgId]
+    );
+
+    const certExpDeleted = await client.query(
+      `DELETE FROM certification_expectations WHERE workos_organization_id = $1 RETURNING id`,
+      [secondaryOrgId]
+    );
+
+    summary.tables_merged.push({
+      table_name: 'certification_expectations',
+      rows_moved: certExpMoved.rows.length,
+      rows_skipped_duplicate: certExpDeleted.rows.length,
+    });
+
+    // =====================================================
+    // 20e. Merge user_goal_history.prospect_org_id
+    // No unique constraint on this column — straight reparent.
+    // =====================================================
+    const goalHistoryResult = await client.query(
+      `UPDATE user_goal_history
+       SET prospect_org_id = $1
+       WHERE prospect_org_id = $2
+       RETURNING id`,
+      [primaryOrgId, secondaryOrgId]
+    );
+
+    summary.tables_merged.push({
+      table_name: 'user_goal_history',
+      rows_moved: goalHistoryResult.rows.length,
+      rows_skipped_duplicate: 0,
+    });
+
+    // =====================================================
     // 21. Merge prospect notes
     // =====================================================
     if (secondaryOrg.prospect_notes && secondaryOrg.prospect_notes.trim()) {
@@ -838,6 +965,11 @@ export async function previewMerge(
     { table: 'event_sponsorships', column: 'organization_id' },
     { table: 'user_agreement_acceptances', column: 'workos_organization_id' },
     { table: 'org_admin_group_dms', column: 'workos_organization_id' },
+    { table: 'agent_contexts', column: 'organization_id' },
+    { table: 'person_relationships', column: 'prospect_org_id' },
+    { table: 'certification_goals', column: 'workos_organization_id' },
+    { table: 'certification_expectations', column: 'workos_organization_id' },
+    { table: 'user_goal_history', column: 'prospect_org_id' },
   ];
 
   for (const { table, column } of tables) {
