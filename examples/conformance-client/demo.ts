@@ -2,6 +2,8 @@
  * Smoke demo: stand up a tiny MCP server, connect to Addie via Socket
  * Mode, hold the connection until Ctrl-C.
  *
+ * Uses the published `ConformanceClient` from `@adcp/sdk/server` (6.9+).
+ *
  * Run:
  *   ADCP_CONFORMANCE_TOKEN=<token> \
  *   ADCP_CONFORMANCE_URL=ws://localhost:3000/conformance/connect \
@@ -16,7 +18,7 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
-import { ConformanceClient } from './src/index.js';
+import { ConformanceClient } from '@adcp/sdk/server';
 
 const url = process.env.ADCP_CONFORMANCE_URL ?? 'ws://localhost:3000/conformance/connect';
 const token = process.env.ADCP_CONFORMANCE_TOKEN;
@@ -61,7 +63,9 @@ const client = new ConformanceClient({
   token,
   server,
   onStatus: (status, detail) => {
-    console.log(`[conformance] status=${status}${detail?.attempt ? ` attempt=${detail.attempt}` : ''}${detail?.error ? ` error=${detail.error.message}` : ''}`);
+    const attempt = detail?.attempt ? ` attempt=${detail.attempt}` : '';
+    const error = detail?.error ? ` error=${detail.error.message}` : '';
+    console.log(`[conformance] status=${status}${attempt}${error}`);
   },
 });
 

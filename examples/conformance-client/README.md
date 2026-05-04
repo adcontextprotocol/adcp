@@ -1,4 +1,4 @@
-# Addie conformance client (prototype)
+# Addie conformance demo
 
 Three-line integration that lets your AdCP/MCP server connect outbound
 to Addie. Once connected, Addie can run storyboards against your dev
@@ -6,7 +6,7 @@ environment and surface bugs in chat — no public DNS, no ngrok, no
 inbound exposure.
 
 ```ts
-import { ConformanceClient } from '@adcp/conformance-client';
+import { ConformanceClient } from '@adcp/sdk/server';
 import { mcpServer } from './my-mcp-server.js';
 
 const client = new ConformanceClient({
@@ -18,11 +18,8 @@ const client = new ConformanceClient({
 await client.start();
 ```
 
-## Prototype location
-
-This package lives in `examples/` while we prototype the architecture.
-It will move to the `adcp-client` repo and publish to npm as
-`@adcp/conformance-client` before announcement.
+`ConformanceClient` ships from `@adcp/sdk` ≥ 6.9. Adopters who already
+install the SDK get it for free; no separate package to manage.
 
 ## Getting a token
 
@@ -33,7 +30,7 @@ when it expires.
 Alternatively, `POST /api/conformance/token` with a WorkOS session
 cookie or API key. Response: `{ token, url, expires_at, ttl_seconds }`.
 
-## Running the demo
+## Running this demo
 
 ```sh
 ADCP_CONFORMANCE_TOKEN=<token> \
