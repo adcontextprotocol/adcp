@@ -66,6 +66,45 @@ describe('tenant routing smoke', () => {
     }
   }, 15000);
 
+  it('handles concurrent back-to-back POSTs to the same tenant without 500s', async () => {
+    const { baseUrl, close } = await bootServer();
+    try {
+      const url = `${baseUrl}/signals/mcp`;
+      // Warm up: get through registry init
+      await fetch(url, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          accept: 'application/json, text/event-stream',
+          authorization: 'Bearer test-token',
+        },
+        body: JSON.stringify({
+          jsonrpc: '2.0', id: 0, method: 'initialize',
+          params: { protocolVersion: '2025-03-26', clientInfo: { name: 'x', version: '1' }, capabilities: {} },
+        }),
+      });
+      // Fire 5 concurrent tools/list calls to the same tenant endpoint.
+      // Before the fix, at least one of these would hit "Already connected
+      // to a transport" and return -32603.
+      const results = await Promise.all(
+        Array.from({ length: 5 }, (_, i) =>
+          fetch(url, {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+              accept: 'application/json, text/event-stream',
+              authorization: 'Bearer test-token',
+            },
+            body: JSON.stringify({ jsonrpc: '2.0', id: i + 1, method: 'tools/list', params: {} }),
+          }).then(r => r.status),
+        ),
+      );
+      expect(results).toEqual([200, 200, 200, 200, 200]);
+    } finally {
+      await close();
+    }
+  }, 20000);
+
   it('dispatches /signals/mcp tools/list and returns only signals-tenant tools', async () => {
     const { baseUrl, close } = await bootServer();
     try {
