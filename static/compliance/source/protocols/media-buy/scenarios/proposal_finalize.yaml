@@ -114,6 +114,9 @@ phases:
           - check: field_present
             path: "proposals[0].proposal_id"
             description: "Proposals have IDs"
+        context_outputs:
+          - name: proposal_id
+            path: "proposals[0].proposal_id"
 
   - id: refine_proposal
     title: "Refine the proposal"
@@ -141,7 +144,7 @@ phases:
           buying_mode: "refine"
           refine:
             - scope: "proposal"
-              proposal_id: "balanced_reach_q2"
+              proposal_id: "$context.proposal_id"
               ask: "Shift 60% of budget to CTV. Drop the display product and redistribute that budget to video."
             - scope: "request"
               ask: "All products must support frequency capping at 3 per day."
@@ -188,7 +191,7 @@ phases:
           buying_mode: "refine"
           refine:
             - scope: "proposal"
-              proposal_id: "balanced_reach_q2"
+              proposal_id: "$context.proposal_id"
               action: "finalize"
           account:
             brand:
@@ -234,7 +237,7 @@ phases:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
             sandbox: true
-          proposal_id: "balanced_reach_q2"
+          proposal_id: "$context.proposal_id"
           total_budget:
             amount: 50000
             currency: "USD"
@@ -245,3 +248,6 @@ phases:
         validations:
           - check: response_schema
             description: "Response matches create-media-buy-response.json schema"
+          - check: field_present
+            path: "proposal_id"
+            description: "Response echoes back the proposal_id that was accepted"

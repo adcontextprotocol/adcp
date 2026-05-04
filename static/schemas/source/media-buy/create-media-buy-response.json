@@ -72,6 +72,11 @@
         "context": {
           "$ref": "/schemas/core/context.json"
         },
+        "proposal_id": {
+          "type": "string",
+          "description": "ID of the proposal from which this media buy was created. Echoed from the create_media_buy request to confirm which proposal was accepted. Present only when the media buy was created from a proposal.",
+          "x-entity": "proposal"
+        },
         "ext": {
           "$ref": "/schemas/core/ext.json"
         }
