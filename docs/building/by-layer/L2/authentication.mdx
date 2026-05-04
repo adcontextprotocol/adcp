@@ -104,6 +104,28 @@ AdCP resolves tenant from the authenticated principal, not from request payloads
 
 Compliance storyboards in the training agent inject envelope identity on these calls as a sandbox routing convention, because the training agent has no authenticated-principal layer of its own — see [Storyboard authoring](/docs/contributing/storyboard-authoring). Production sellers do not require it.
 
+## Credential placement
+
+Credentials authenticating the **buyer principal** MUST arrive on the transport's authentication channel and MUST NOT be placed in the task payload — top-level, inside `context`, inside `ext`, or in any other nested location. The transport channel is:
+
+- **Bearer tokens over HTTP** — `Authorization: Bearer <token>` per [RFC 6750 §2](https://www.rfc-editor.org/rfc/rfc6750#section-2).
+- **RFC 9421 signed requests** — the `Signature` and `Signature-Input` headers per [RFC 9421 §2](https://www.rfc-editor.org/rfc/rfc9421#section-2). The signature itself is the credential; nothing in the payload authenticates the signer.
+- **MCP and A2A authentication framing** — the transport's authentication descriptor (e.g., MCP's `authInfo`, A2A's `authentication.schemes`). Discovery of the authentication requirement follows [RFC 9728 §3](https://www.rfc-editor.org/rfc/rfc9728#section-3) protected-resource metadata where applicable.
+- **Mutual TLS** — the peer certificate, per the mTLS row in the table above.
+
+The rule is transport-agnostic: it applies regardless of which mechanism the seller accepts. There is no AdCP version, capability, or seller policy under which a buyer principal authenticates via a payload field. A seller that detects a credential-shaped key in the payload (e.g., `<platform>_access_token`, `api_key`, `client_secret`, `bearer`, or `authorization` at any nesting depth) SHOULD reject the request with [`CREDENTIAL_IN_ARGS`](/docs/building/by-layer/L3/error-handling#authentication-and-access) under AdCP 3.1; the requirement upgrades to MUST 90 days after the 3.1 publication date. The code's recovery classification is `terminal` — agents MUST NOT auto-retry, since auto-retry re-logs the credential on each attempt and is itself the prompt-injection exfiltration surface this rule closes (see [Threats specific to agentic advertising](/docs/building/concepts/security-model#threats-specific-to-agentic-advertising)).
+
+### Carve-outs
+
+The following credential surfaces are **not** buyer-principal credentials and the rule above does not apply to them:
+
+- **`push_notification_config.authentication.credentials`** ([schema](https://adcontextprotocol.org/schemas/v3/core/push-notification-config.json)). This is the legacy Bearer / HMAC-SHA256 credential that the **seller** uses when calling **back** to the buyer's webhook endpoint. It authenticates the seller-as-caller against the buyer-as-receiver — orthogonal to the buyer-principal credential that authenticates the inbound AdCP request. The default 9421 webhook profile uses keys discovered via `brand.json` and crosses no shared secrets; the legacy block is a deprecated compatibility scheme removed in AdCP 4.0.
+- **Onboarding-time secrets exchanged out-of-band** — initial token issuance, OAuth dynamic registration responses, dashboard-issued API keys. These travel through the AAO authorization server or the seller's onboarding flow, not as AdCP task payloads.
+
+### Relay agents
+
+The agency / A2A relay topology (brand → relay → seller) authenticates **under the relay's own principal**. The relay either preserves the brand agent's RFC 9421 signature verbatim (pass-through model) or re-signs under its own key (re-signing model) — both options are described in [#2324](https://github.com/adcontextprotocol/adcp/issues/2324). Neither model permits forwarding the brand's transport credential as a relay-side payload field. Brand-agent identity, when the relay is the principal of record, MUST be carried in the request body as identity context (e.g., a buyer-side identity assertion verifiable by the seller against `adagents.json` / `authorized_operator[]`) — never as a forwarded transport credential. Relays MUST NOT echo or reattach buyer credentials in any args field on outbound seller-bound requests.
+
 ## Protocol Configuration
 
 Both MCP and A2A protocols use the same authentication header. Configure your client with:
