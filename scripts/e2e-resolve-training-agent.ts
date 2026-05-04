@@ -424,7 +424,9 @@ async function main(): Promise<void> {
     app.get('/.well-known/jwks.json', (_req, res) => {
       res.json(getPublicSigningJwks());
     });
-    app.use('/api/training-agent', createTrainingAgentRouter());
+    const trainingAgent = createTrainingAgentRouter();
+    app.use('/api/training-agent', trainingAgent.router);
+    await trainingAgent.warmup();
 
     try {
       const result = await resolveAgent(`${TRAINING_AGENT_URL}/api/training-agent/mcp`, {
