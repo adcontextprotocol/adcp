@@ -146,32 +146,28 @@ export function mountTenantRoutes(
   parent: Router,
   tenantIds: readonly string[],
   middleware: TenantRouteMiddleware = {},
-): { warmup: () => Promise<void> } {
+): void {
   const holder = createRegistryHolder();
-  // Mount routes synchronously, but DO NOT trigger registry init here —
-  // that would run during HTTPServer construction, before tests have a
-  // chance to mock the dependencies (`db/client.getPool`,
-  // `addie/idempotency.getIdempotencyStore`, etc.) used by the per-tenant
-  // server options.
+  // Eagerly start the 6-tenant registry init at mount time (server boot)
+  // instead of waiting for the first request. On a fresh Fly machine the
+  // cold init takes 30–60s — longer than the post-deploy smoke's 16s
+  // retry budget — which made every deploy fail the smoke even though
+  // production was healthy minutes later. Pre-warming shifts that work
+  // to before traffic arrives and lets the smoke catch real init bugs
+  // (#3854 in-memory task registry, #3869 noopJwksValidator under
+  // NODE_ENV=production) without false-failing on cold-start latency.
   //
-  // Caller pulls the trigger explicitly via `warmup()`, awaits it, and
-  // gets the same Promise the per-request handlers will resolve to. In
-  // production HTTPServer.start() awaits warmup() before app.listen() so
-  // the post-deploy smoke window doesn't race the 30–60s registration
-  // burst that broke 5 consecutive deploys (May 2026). Tests that don't
-  // need tenant init (health checks, mocked-DB tests) skip warmup and
-  // never trigger the lazy path.
-  const warmup = (): Promise<void> =>
-    holder.get().then(
-      () => undefined,
-      (err) => {
-        logger.error(
-          { err },
-          'Tenant registry init failed during warmup — per-request init will retry; caller may surface as a boot crash',
-        );
-        throw err;
-      },
+  // The promise is fire-and-forget here: per-request handlers await the
+  // same in-flight promise via `holder.get()`, so a slow init still
+  // serves correctly — the eager call only ensures the work has started.
+  // Errors are logged; the holder resets `pendingInit` on rejection so
+  // the next request retries.
+  holder.get().catch((err) => {
+    logger.error(
+      { err },
+      'Eager tenant registry init failed at boot; per-request init will retry',
     );
+  });
   const mw: RequestHandler[] = [];
   if (middleware.rateLimit) mw.push(middleware.rateLimit);
   if (middleware.requireAuth) mw.push(middleware.requireAuth);
@@ -202,6 +198,4 @@ export function mountTenantRoutes(
     res.setHeader('Cache-Control', 'public, max-age=300');
     res.json({ jwks: getAggregatedPublicJwks() });
   });
-
-  return { warmup };
 }

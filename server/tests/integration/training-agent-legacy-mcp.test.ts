@@ -26,12 +26,10 @@ const AUTH = 'Bearer test-token-for-legacy-mcp';
 describe('Training Agent legacy /mcp back-compat alias', () => {
   let app: express.Application;
 
-  beforeAll(async () => {
+  beforeAll(() => {
     app = express();
     app.use(express.json());
-    const trainingAgent = createTrainingAgentRouter();
-    app.use('/api/training-agent', trainingAgent.router);
-    await trainingAgent.warmup();
+    app.use('/api/training-agent', createTrainingAgentRouter());
   });
 
   afterAll(() => {
@@ -101,14 +99,12 @@ describe('Training Agent legacy /mcp back-compat alias', () => {
 describe('Tenant routes via host-based dispatch (no /api/training-agent prefix)', () => {
   let app: express.Application;
 
-  beforeAll(async () => {
+  beforeAll(() => {
     app = express();
     app.use(express.json());
     // Simulate `test-agent.adcontextprotocol.org/<path>` routing — the
     // router is mounted at root.
-    const trainingAgent = createTrainingAgentRouter();
-    app.use('/', trainingAgent.router);
-    await trainingAgent.warmup();
+    app.use('/', createTrainingAgentRouter());
   });
 
   afterAll(() => {
