@@ -18,6 +18,38 @@ import { getAggregatedPublicJwks } from './signing.js';
 
 const logger = createLogger('training-agent-tenant-router');
 
+/**
+ * Per-tenant connect-handle-close serializer.
+ *
+ * The framework hands us one `DecisioningAdcpServer` instance per tenant.
+ * Each MCP request creates a fresh `StreamableHTTPServerTransport`,
+ * `.connect()`s the shared server to it, handles the request, and
+ * `.close()`s. Two requests against the same tenant overlap mid-handler
+ * and the second `.connect()` throws "Already connected to a transport"
+ * — surfaced as intermittent 500s under back-to-back load (adcp#4084).
+ *
+ * Serialize the connect-handle-close window per tenant so the shared
+ * server only ever has one transport bound at a time. Throughput is
+ * gated by the in-flight request's wallclock; the storyboard runner's
+ * sequential dispatch makes this a non-issue in practice, and the
+ * compliance heartbeat runs once per agent at a time. A future fix
+ * could pool servers per tenant for true parallelism — this lock is
+ * the minimum-mass correctness change.
+ */
+const tenantLocks = new Map<string, Promise<unknown>>();
+
+async function withTenantLock<T>(tenantId: string, fn: () => Promise<T>): Promise<T> {
+  const previous = tenantLocks.get(tenantId) ?? Promise.resolve();
+  // Chain this work after the prior in-flight request and store the new
+  // tail in the map. `.catch(() => {})` keeps the chain alive if a request
+  // throws — the next waiter still gets to run. The map entry is one
+  // promise per tenant; we don't GC because the cost is constant in N
+  // tenants (small) and tenant ids come from a fixed set.
+  const next = previous.catch(() => {}).then(fn);
+  tenantLocks.set(tenantId, next);
+  return next;
+}
+
 function setCORSHeaders(res: Response): void {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
@@ -131,32 +163,36 @@ function tenantMcpHandler(holder: RegistryHolder, tenantId: string) {
       }
     }
 
-    const transport = new StreamableHTTPServerTransport({
-      sessionIdGenerator: undefined,
-      enableJsonResponse: true,
-    });
-
-    try {
-      await resolved.server.connect(transport);
-      logger.debug({ tenantId: resolved.tenantId, method: req.body?.method }, 'tenant MCP request');
-      await runWithSessionContext(async () => {
-        await transport.handleRequest(req, res, req.body);
-        await flushDirtySessions();
+    // Serialize the connect/handle/close window per tenant — see
+    // `withTenantLock` above for the race this prevents (adcp#4084).
+    await withTenantLock(resolved.tenantId, async () => {
+      const transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: undefined,
+        enableJsonResponse: true,
       });
-    } catch (err) {
-      logger.error({ err, tenantId: resolved.tenantId }, 'tenant MCP error');
-      if (!res.headersSent) {
-        res.status(500).json({
-          jsonrpc: '2.0',
-          id: null,
-          error: { code: -32603, message: 'Internal server error' },
+
+      try {
+        await resolved.server.connect(transport);
+        logger.debug({ tenantId: resolved.tenantId, method: req.body?.method }, 'tenant MCP request');
+        await runWithSessionContext(async () => {
+          await transport.handleRequest(req, res, req.body);
+          await flushDirtySessions();
         });
+      } catch (err) {
+        logger.error({ err, tenantId: resolved.tenantId }, 'tenant MCP error');
+        if (!res.headersSent) {
+          res.status(500).json({
+            jsonrpc: '2.0',
+            id: null,
+            error: { code: -32603, message: 'Internal server error' },
+          });
+        }
+      } finally {
+        // Close server connection after handling — tenant servers are
+        // per-request transient, matching the v5 pattern.
+        await resolved.server.close().catch(() => {});
       }
-    } finally {
-      // Close server connection after handling — tenant servers are
-      // per-request transient, matching the v5 pattern.
-      await resolved.server.close().catch(() => {});
-    }
+    });
   };
 }
 

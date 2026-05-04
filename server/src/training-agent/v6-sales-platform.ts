@@ -204,6 +204,10 @@ export class TrainingSalesPlatform
                 'the test directive does not register a completion handler.',
             });
           },
+          // @ts-expect-error — @adcp/sdk 6.11 added the caller-supplied task_id
+          // option per adcp-client#1554 but the published .d.ts only declares
+          // the single-arg signature. Runtime accepts the second arg correctly;
+          // remove this directive when 6.12+ ships the matching typing.
           { task_id: submitted.task_id },
         ) as any;
       }
