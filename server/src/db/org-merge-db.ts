@@ -12,6 +12,7 @@
 
 import { getPool } from './client.js';
 import { createLogger } from '../logger.js';
+import { encrypt, decrypt } from './encryption.js';
 import { WorkOS } from '@workos-inc/node';
 
 const logger = createLogger('org-merge-db');
@@ -635,18 +636,63 @@ export async function mergeOrganizations(
     // UNIQUE(organization_id, agent_url): keep primary's row on
     // conflict so its agent_test_history (ON DELETE CASCADE) survives;
     // secondary's history is removed when its row is deleted.
+    //
+    // Encrypted token columns are AES-256-GCM with a PBKDF2 key derived
+    // from organization_id (see ./encryption.ts). Reparenting requires
+    // decrypting with secondary salt and re-encrypting with primary salt,
+    // otherwise GCM auth-tag verification fails on every subsequent read
+    // and saved tokens become permanently unusable.
     // =====================================================
-    const agentContextsMoved = await client.query(
-      `UPDATE agent_contexts
-       SET organization_id = $1, updated_at = NOW()
-       WHERE organization_id = $2
+    const ENCRYPTED_AGENT_CONTEXT_FIELDS = [
+      ['auth_token_encrypted', 'auth_token_iv'],
+      ['oauth_access_token_encrypted', 'oauth_access_token_iv'],
+      ['oauth_refresh_token_encrypted', 'oauth_refresh_token_iv'],
+      ['oauth_client_secret_encrypted', 'oauth_client_secret_iv'],
+      ['oauth_cc_client_secret_encrypted', 'oauth_cc_client_secret_iv'],
+    ] as const;
+
+    const moveableRows = await client.query(
+      `SELECT id,
+              auth_token_encrypted, auth_token_iv,
+              oauth_access_token_encrypted, oauth_access_token_iv,
+              oauth_refresh_token_encrypted, oauth_refresh_token_iv,
+              oauth_client_secret_encrypted, oauth_client_secret_iv,
+              oauth_cc_client_secret_encrypted, oauth_cc_client_secret_iv
+       FROM agent_contexts
+       WHERE organization_id = $1
          AND NOT EXISTS (
            SELECT 1 FROM agent_contexts p
-           WHERE p.organization_id = $1 AND p.agent_url = agent_contexts.agent_url
-         )
-       RETURNING id`,
-      [primaryOrgId, secondaryOrgId]
+           WHERE p.organization_id = $2 AND p.agent_url = agent_contexts.agent_url
+         )`,
+      [secondaryOrgId, primaryOrgId]
     );
+
+    let agentContextsReencryptedFields = 0;
+    for (const row of moveableRows.rows) {
+      const setClauses: string[] = ['organization_id = $1', 'updated_at = NOW()'];
+      const values: (string | null)[] = [primaryOrgId];
+      let nextIdx = 2;
+
+      for (const [encCol, ivCol] of ENCRYPTED_AGENT_CONTEXT_FIELDS) {
+        const ciphertext = row[encCol];
+        const iv = row[ivCol];
+        if (ciphertext && iv) {
+          const plaintext = decrypt(ciphertext, iv, secondaryOrgId);
+          const reencrypted = encrypt(plaintext, primaryOrgId);
+          setClauses.push(`${encCol} = $${nextIdx++}`);
+          values.push(reencrypted.encrypted);
+          setClauses.push(`${ivCol} = $${nextIdx++}`);
+          values.push(reencrypted.iv);
+          agentContextsReencryptedFields++;
+        }
+      }
+
+      values.push(row.id);
+      await client.query(
+        `UPDATE agent_contexts SET ${setClauses.join(', ')} WHERE id = $${nextIdx}`,
+        values
+      );
+    }
 
     const agentContextsDeleted = await client.query(
       `DELETE FROM agent_contexts WHERE organization_id = $1 RETURNING id`,
@@ -655,9 +701,16 @@ export async function mergeOrganizations(
 
     summary.tables_merged.push({
       table_name: 'agent_contexts',
-      rows_moved: agentContextsMoved.rows.length,
+      rows_moved: moveableRows.rows.length,
       rows_skipped_duplicate: agentContextsDeleted.rows.length,
     });
+
+    if (agentContextsReencryptedFields > 0) {
+      logger.info(
+        { fields: agentContextsReencryptedFields, rows: moveableRows.rows.length },
+        'Re-encrypted agent_contexts token fields under primary org salt'
+      );
+    }
 
     if (agentContextsDeleted.rows.length > 0) {
       summary.warnings.push(
