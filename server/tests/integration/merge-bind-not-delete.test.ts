@@ -54,6 +54,24 @@ describe('mergeUsers (bind, don\'t delete)', () => {
   });
 
   async function cleanup() {
+    // addie_threads.person_id has no CASCADE, and person_relationships has no
+    // FK to users(workos_user_id), so deleting users wouldn't reach either.
+    // Drop the threads first so the person_relationships DELETE can succeed.
+    await pool.query(
+      `DELETE FROM addie_threads
+        WHERE person_id IN (
+          SELECT id FROM person_relationships WHERE workos_user_id IN ($1, $2)
+        )`,
+      [PRIMARY_ID, SECONDARY_ID]
+    );
+    await pool.query(
+      `DELETE FROM person_relationships WHERE workos_user_id IN ($1, $2)`,
+      [PRIMARY_ID, SECONDARY_ID]
+    );
+    await pool.query(
+      `DELETE FROM addie_prompt_telemetry WHERE workos_user_id IN ($1, $2)`,
+      [PRIMARY_ID, SECONDARY_ID]
+    );
     await pool.query(`DELETE FROM users WHERE workos_user_id IN ($1, $2)`, [PRIMARY_ID, SECONDARY_ID]);
     await pool.query(`DELETE FROM organizations WHERE workos_organization_id = $1`, [ORG_ID]);
   }
@@ -156,5 +174,83 @@ describe('mergeUsers (bind, don\'t delete)', () => {
       [SECONDARY_ID]
     );
     expect(secondaryStill.rows).toHaveLength(1);
+  });
+
+  it('repoints addie_threads and person_events to the primary\'s person_relationship before deleting the secondary\'s', async () => {
+    // Both users have a person_relationships row (the path that previously
+    // failed with FK 23503 on addie_threads_person_id_fkey).
+    const primaryRel = await pool.query<{ id: string }>(
+      `INSERT INTO person_relationships (workos_user_id, email, stage)
+       VALUES ($1, 'primary@test.example', 'exploring') RETURNING id`,
+      [PRIMARY_ID]
+    );
+    const secondaryRel = await pool.query<{ id: string }>(
+      `INSERT INTO person_relationships (workos_user_id, email, stage)
+       VALUES ($1, 'secondary@test.example', 'exploring') RETURNING id`,
+      [SECONDARY_ID]
+    );
+    const primaryRelId = primaryRel.rows[0].id;
+    const secondaryRelId = secondaryRel.rows[0].id;
+
+    // Thread keyed to secondary's person_relationship — the row that hit FK
+    // violations under the old code path.
+    const thread = await pool.query<{ thread_id: string }>(
+      `INSERT INTO addie_threads (channel, external_id, user_type, person_id)
+       VALUES ('slack', 'C_test_merge_pr', 'slack', $1) RETURNING thread_id`,
+      [secondaryRelId]
+    );
+    await pool.query(
+      `INSERT INTO person_events (person_id, event_type, data)
+       VALUES ($1, 'message_received', '{}'::jsonb)`,
+      [secondaryRelId]
+    );
+
+    await mergeUsers(PRIMARY_ID, SECONDARY_ID, PRIMARY_ID);
+
+    const threadAfter = await pool.query<{ person_id: string }>(
+      `SELECT person_id FROM addie_threads WHERE thread_id = $1`,
+      [thread.rows[0].thread_id]
+    );
+    expect(threadAfter.rows[0].person_id).toBe(primaryRelId);
+
+    const eventAfter = await pool.query<{ count: string }>(
+      `SELECT COUNT(*) as count FROM person_events WHERE person_id = $1 AND event_type = 'message_received'`,
+      [primaryRelId]
+    );
+    expect(parseInt(eventAfter.rows[0].count, 10)).toBe(1);
+
+    const secondaryRelAfter = await pool.query(
+      `SELECT 1 FROM person_relationships WHERE id = $1`,
+      [secondaryRelId]
+    );
+    expect(secondaryRelAfter.rows).toHaveLength(0);
+  });
+
+  it('merges addie_prompt_telemetry on (workos_user_id, rule_id), keeping primary\'s row when both have one for the same rule', async () => {
+    // Same rule on both — primary's counters survive, secondary's are dropped.
+    await pool.query(
+      `INSERT INTO addie_prompt_telemetry (workos_user_id, rule_id, shown_count, clicked_count)
+       VALUES ($1, 'shared_rule', 5, 2),
+              ($2, 'shared_rule', 9, 4),
+              ($2, 'unique_rule', 1, 0)`,
+      [PRIMARY_ID, SECONDARY_ID]
+    );
+
+    await mergeUsers(PRIMARY_ID, SECONDARY_ID, PRIMARY_ID);
+
+    const after = await pool.query<{ rule_id: string; shown_count: number; clicked_count: number }>(
+      `SELECT rule_id, shown_count, clicked_count FROM addie_prompt_telemetry
+       WHERE workos_user_id = $1 ORDER BY rule_id`,
+      [PRIMARY_ID]
+    );
+    expect(after.rows).toHaveLength(2);
+    expect(after.rows[0]).toMatchObject({ rule_id: 'shared_rule', shown_count: 5, clicked_count: 2 });
+    expect(after.rows[1]).toMatchObject({ rule_id: 'unique_rule', shown_count: 1, clicked_count: 0 });
+
+    const secondaryAfter = await pool.query(
+      `SELECT 1 FROM addie_prompt_telemetry WHERE workos_user_id = $1`,
+      [SECONDARY_ID]
+    );
+    expect(secondaryAfter.rows).toHaveLength(0);
   });
 });

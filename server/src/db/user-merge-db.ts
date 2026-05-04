@@ -86,6 +86,9 @@ export async function previewUserMerge(
       { name: 'seat_upgrade_requests', col: 'workos_user_id' },
       { name: 'user_email_aliases', col: 'workos_user_id' },
       { name: 'email_link_tokens', col: 'primary_workos_user_id' },
+      { name: 'agent_test_runs', col: 'workos_user_id' },
+      { name: 'certification_expectations', col: 'workos_user_id' },
+      { name: 'addie_prompt_telemetry', col: 'workos_user_id' },
     ];
 
     for (const table of tables) {
@@ -249,12 +252,42 @@ export async function mergeUsers(
       rows_skipped_duplicate: secondaryPrefs.rows.length,
     });
 
-    // person_relationships: UNIQUE(workos_user_id) — keep primary's, delete secondary's
-    const primaryRelExists = await client.query(
-      `SELECT 1 FROM person_relationships WHERE workos_user_id = $1`,
+    // person_relationships: UNIQUE(workos_user_id) — keep primary's, delete
+    // secondary's. addie_threads.person_id and person_events.person_id are
+    // FKs to person_relationships.id; repoint them to the primary's row before
+    // the DELETE so addie_threads doesn't block with a 23503 (no CASCADE) and
+    // person_events doesn't silently CASCADE-delete the secondary's history.
+    const primaryRel = await client.query<{ id: string }>(
+      `SELECT id FROM person_relationships WHERE workos_user_id = $1`,
       [primaryUserId]
     );
-    if (primaryRelExists.rows.length > 0) {
+    if (primaryRel.rows.length > 0) {
+      const primaryRelId = primaryRel.rows[0].id;
+      const secondaryRel = await client.query<{ id: string }>(
+        `SELECT id FROM person_relationships WHERE workos_user_id = $1`,
+        [secondaryUserId]
+      );
+      const secondaryRelId = secondaryRel.rows[0]?.id;
+      if (secondaryRelId) {
+        const threadsMoved = await client.query(
+          `UPDATE addie_threads SET person_id = $1 WHERE person_id = $2 RETURNING 1`,
+          [primaryRelId, secondaryRelId]
+        );
+        const eventsMoved = await client.query(
+          `UPDATE person_events SET person_id = $1 WHERE person_id = $2 RETURNING 1`,
+          [primaryRelId, secondaryRelId]
+        );
+        summary.tables_merged.push({
+          table_name: 'addie_threads',
+          rows_moved: threadsMoved.rows.length,
+          rows_skipped_duplicate: 0,
+        });
+        summary.tables_merged.push({
+          table_name: 'person_events',
+          rows_moved: eventsMoved.rows.length,
+          rows_skipped_duplicate: 0,
+        });
+      }
       const deleted = await client.query(
         `DELETE FROM person_relationships WHERE workos_user_id = $1 RETURNING 1`,
         [secondaryUserId]
@@ -265,6 +298,8 @@ export async function mergeUsers(
         rows_skipped_duplicate: deleted.rows.length,
       });
     } else {
+      // Primary has no person_relationships row — UPDATE keeps the same .id,
+      // so addie_threads / person_events pointers stay valid automatically.
       await mergeWithUpdate('person_relationships');
     }
 
@@ -341,6 +376,12 @@ export async function mergeUsers(
     await mergeWithUpdate('certification_attempts');
     await mergeWithUpdate('teaching_checkpoints');
     await mergeWithUpdate('certification_learner_feedback');
+    await mergeWithUpdate('agent_test_runs');
+    await mergeWithUpdate('certification_expectations');
+
+    // addie_prompt_telemetry: PK(workos_user_id, rule_id) — keep primary's
+    // counters where both have a row for the same rule, otherwise move.
+    await mergeWithConflict('addie_prompt_telemetry', 'rule_id');
     await mergeWithUpdate('flagged_conversations', 'reviewed_by');
     await mergeWithUpdate('email_contacts');
     await mergeWithUpdate('email_events');
@@ -620,6 +661,9 @@ export async function mergeUsers(
           tables_affected: summary.tables_merged
             .filter(t => t.rows_moved > 0 || t.rows_skipped_duplicate > 0)
             .map(t => t.table_name),
+          tables_merged: summary.tables_merged.filter(
+            t => t.rows_moved > 0 || t.rows_skipped_duplicate > 0
+          ),
         }),
       ]
     );
