@@ -96,6 +96,10 @@ describe('PublisherLookupResult schema', () => {
       domain: 'voxmedia.com',
       member: { slug: 'voxmedia', display_name: 'Vox Media' },
       adagents_valid: true,
+      hosting: {
+        mode: 'self' as const,
+        expected_url: 'https://voxmedia.com/.well-known/adagents.json',
+      },
       properties: [
         {
           id: 'theverge',
@@ -119,6 +123,7 @@ describe('PublisherLookupResult schema', () => {
     if (result.success) {
       expect(result.data.properties).toHaveLength(1);
       expect(result.data.authorized_agents).toHaveLength(1);
+      expect(result.data.hosting.mode).toBe('self');
     }
   });
 
@@ -127,6 +132,10 @@ describe('PublisherLookupResult schema', () => {
       domain: 'unknown.com',
       member: null,
       adagents_valid: false,
+      hosting: {
+        mode: 'none' as const,
+        expected_url: 'https://unknown.com/.well-known/adagents.json',
+      },
       properties: [],
       authorized_agents: [],
     };
@@ -140,6 +149,28 @@ describe('PublisherLookupResult schema', () => {
       domain: 'test.com',
       member: null,
       adagents_valid: null,
+      hosting: {
+        mode: 'none' as const,
+        expected_url: 'https://test.com/.well-known/adagents.json',
+      },
+      properties: [],
+      authorized_agents: [],
+    };
+
+    const result = PublisherLookupResultSchema.safeParse(data);
+    expect(result.success).toBe(true);
+  });
+
+  it('validates aao_hosted mode with hosted_url', () => {
+    const data = {
+      domain: 'sasha-media.com',
+      member: null,
+      adagents_valid: null,
+      hosting: {
+        mode: 'aao_hosted' as const,
+        hosted_url: 'https://agenticadvertising.org/publisher/sasha-media.com/.well-known/adagents.json',
+        expected_url: 'https://sasha-media.com/.well-known/adagents.json',
+      },
       properties: [],
       authorized_agents: [],
     };

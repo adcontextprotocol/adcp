@@ -34,8 +34,8 @@
     }
     // Detail pages under /brand/view highlight brands tab
     if (link.tab === 'brands' && path.startsWith('/brand/view')) return true;
-    // Detail pages under /property/view highlight properties tab
-    if (link.tab === 'properties' && path.startsWith('/property/view')) return true;
+    // Detail pages under /property/view or /publisher highlight properties tab
+    if (link.tab === 'properties' && (path.startsWith('/property/view') || path.startsWith('/publisher/'))) return true;
     // /policies standalone page
     if (link.tab === 'policies' && path === '/policies') return true;
     // /members standalone page

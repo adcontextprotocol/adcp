@@ -26,6 +26,14 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vites
 import request from 'supertest';
 import type { Pool } from 'pg';
 
+// Set WorkOS env before vi.mock factories run — auth.ts constructs WorkOS
+// at module load and the factory's vi.importActual triggers that load.
+// Hoisted block runs before mock factories regardless of file ordering.
+vi.hoisted(() => {
+  process.env.WORKOS_API_KEY = process.env.WORKOS_API_KEY ?? 'test';
+  process.env.WORKOS_CLIENT_ID = process.env.WORKOS_CLIENT_ID ?? 'client_test';
+});
+
 // Bypass WorkOS auth — the registry feed requires `requireAuth`. Stamp
 // every request with a fixed test user. Other public registry endpoints
 // use `optAuth` (no-op without a session), so the pass-through here is
@@ -288,19 +296,118 @@ describe('Registry reader baseline — public endpoints', () => {
       });
 
       // Authorized agents: includes both adagents_json and agent_claim
-      // sources, projected as {url, authorized_for, source}.
+      // sources, projected as {url, authorized_for, source}. Each agent
+      // also carries a per-publisher rollup of property authorization.
+      const agentsByUrl = new Map(
+        res.body.authorized_agents.map((a: { url: string }) => [a.url, a])
+      );
+      // AGENT_X: property-level row exists for `home` only → 1 of 2.
+      expect(agentsByUrl.get(AGENT_X)).toMatchObject({
+        url: AGENT_X,
+        authorized_for: 'all',
+        source: 'adagents_json',
+        properties_authorized: 1,
+        properties_total: 2,
+      });
+      // AGENT_Y: property-level row exists for `mobile` only → 1 of 2.
+      expect(agentsByUrl.get(AGENT_Y)).toMatchObject({
+        url: AGENT_Y,
+        source: 'agent_claim',
+        properties_authorized: 1,
+        properties_total: 2,
+      });
+    });
+
+    it('GET /api/registry/publisher reports publisher-wide auth as N of N', async () => {
+      // Drop AGENT_X's property-level row so only the publisher-wide
+      // authorization remains. The rollup should collapse to "all".
+      await pool.query(
+        `DELETE FROM agent_property_authorizations
+         WHERE agent_url = $1
+           AND property_id IN (
+             SELECT id FROM discovered_properties WHERE publisher_domain = $2
+           )`,
+        [AGENT_X, PUB_A]
+      );
+
+      const res = await request(app).get(
+        `/api/registry/publisher?domain=${encodeURIComponent(PUB_A)}`
+      );
+      expect(res.status).toBe(200);
       const agentsByUrl = new Map(
         res.body.authorized_agents.map((a: { url: string }) => [a.url, a])
       );
       expect(agentsByUrl.get(AGENT_X)).toMatchObject({
         url: AGENT_X,
-        authorized_for: 'all',
+        properties_authorized: 2,
+        properties_total: 2,
+      });
+    });
+
+    // ── /registry/publisher/authorization ──────────────────────────
+
+    it('GET /api/registry/publisher/authorization returns the per-property breakdown', async () => {
+      const res = await request(app).get(
+        `/api/registry/publisher/authorization?domain=${encodeURIComponent(PUB_A)}&agent=${encodeURIComponent(AGENT_X)}`
+      );
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({
+        publisher_domain: PUB_A,
+        agent_url: AGENT_X,
+        authorized: 1,
+        total: 2,
+        publisher_wide: false,
         source: 'adagents_json',
       });
-      expect(agentsByUrl.get(AGENT_Y)).toMatchObject({
-        url: AGENT_Y,
-        source: 'agent_claim',
+      expect(res.body.unauthorized_properties).toHaveLength(1);
+      expect(res.body.unauthorized_properties[0]).toMatchObject({
+        name: 'Endpoint Mobile',
       });
+    });
+
+    it('GET /api/registry/publisher/authorization reports publisher-wide as N of N with no unauthorized list', async () => {
+      // Drop AGENT_X's property-level row → only publisher-wide remains.
+      await pool.query(
+        `DELETE FROM agent_property_authorizations
+         WHERE agent_url = $1
+           AND property_id IN (
+             SELECT id FROM discovered_properties WHERE publisher_domain = $2
+           )`,
+        [AGENT_X, PUB_A]
+      );
+
+      const res = await request(app).get(
+        `/api/registry/publisher/authorization?domain=${encodeURIComponent(PUB_A)}&agent=${encodeURIComponent(AGENT_X)}`
+      );
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({
+        authorized: 2,
+        total: 2,
+        publisher_wide: true,
+        unauthorized_properties: [],
+      });
+    });
+
+    it('GET /api/registry/publisher/authorization 404s when the agent is not authorized', async () => {
+      const res = await request(app).get(
+        `/api/registry/publisher/authorization?domain=${encodeURIComponent(PUB_A)}&agent=${encodeURIComponent('https://unknown-agent.example')}`
+      );
+      expect(res.status).toBe(404);
+    });
+
+    it('GET /api/registry/publisher/authorization returns 400 when params are missing', async () => {
+      const res = await request(app).get(
+        `/api/registry/publisher/authorization?domain=${encodeURIComponent(PUB_A)}`
+      );
+      expect(res.status).toBe(400);
+    });
+
+    it('GET /api/registry/publisher/authorization tolerates trailing slash on agent URL', async () => {
+      const res = await request(app).get(
+        `/api/registry/publisher/authorization?domain=${encodeURIComponent(PUB_A)}&agent=${encodeURIComponent(AGENT_X + '/')}`
+      );
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({ publisher_domain: PUB_A, authorized: 1, total: 2 });
     });
 
     // ── /registry/publishers ───────────────────────────────────────

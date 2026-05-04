@@ -3024,6 +3024,51 @@ export class HTTPServer {
       await this.serveHtmlWithConfig(req, res, 'property-viewer.html');
     });
 
+    // GET /publisher/:domain/.well-known/adagents.json - AAO-hosted
+    // adagents.json for a publisher that has opted into AAO hosting. The
+    // publisher saves their authorized agents + properties via the hosted
+    // property flow; this endpoint serves the canonical document so the
+    // publisher can either paste the snippet at their own /.well-known
+    // path OR point a CNAME / redirect at AAO. Returns 404 unless a public
+    // hosted-property row exists. Must register before the /publisher
+    // wildcard route below.
+    this.app.get('/publisher/:domain/.well-known/adagents.json', async (req, res) => {
+      // Local domain shape check — keeps malformed input out of the DB
+      // lookup and out of structured logs / metrics. Mirrors the regex used
+      // by /api/registry/publisher (see routes/registry-api.ts:isValidDomain).
+      const validDomainRe = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/;
+      let domain: string;
+      try {
+        domain = decodeURIComponent(req.params.domain).toLowerCase();
+      } catch {
+        return res.status(400).json({ error: 'Malformed domain' });
+      }
+      if (domain.length > 253 || !validDomainRe.test(domain)) {
+        return res.status(400).json({ error: 'Invalid domain' });
+      }
+      try {
+        const hosted = await this.propertyDb.getHostedPropertyByDomain(domain);
+        if (!hosted || !hosted.is_public) {
+          return res.status(404).json({ error: 'No AAO-hosted adagents.json for this domain', domain });
+        }
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Cache-Control', 'public, max-age=300');
+        return res.json(hosted.adagents_json);
+      } catch (error) {
+        logger.error({ error }, 'Failed to serve hosted adagents.json');
+        return res.status(500).json({ error: 'Failed to serve adagents.json' });
+      }
+    });
+
+    // GET /publisher/:domain - Unified publisher self-service page. Wildcard
+    // captures dots; the page reads the domain from the path and calls
+    // /api/registry/publisher to render properties + per-agent authorization
+    // rollup.
+    this.app.get('/publisher/*domain', async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'publisher-home.html');
+    });
+
     // GET /brand/:id/brand.json - Serve hosted brand.json
     this.app.get('/brand/:id/brand.json', async (req, res) => {
       try {
