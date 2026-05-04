@@ -45,12 +45,14 @@ jobs:
             # (#3081) now passes 4 steps instead of grading not_applicable.
             # 384→388 after bumping @adcp/client to 5.18.0 (#3191) and
             # implementing force_task_completion (#3194).
+            # 388→384 on 3.0.x: @adcp/client@5.21.1 routes some steps
+            # differently than 5.18.0 (overlay fix in #4008 follow-up).
             # Passing-step asymmetry with framework mode is intentional:
             # the two modes declare different capabilities, so the
             # storyboard runner skips a different subset of steps in each.
             # Both modes pass every step they run.
             min_clean_storyboards: 53
-            min_passing_steps: 388
+            min_passing_steps: 384
           - mode: framework
             flag_value: '1'
             # 390→393 after bumping @adcp/client to 5.15 + seller catalog
@@ -67,8 +69,10 @@ jobs:
             # injection — the upstream fix for #940. Framework parity with
             # legacy fully restored; passing-step asymmetry remains because
             # framework declares more capabilities (more steps run, all pass).
+            # 401→397 on 3.0.x: @adcp/client@5.21.1 skips 4 additional
+            # steps compared to 5.18.0 (overlay fix in #4008 follow-up).
             min_clean_storyboards: 53
-            min_passing_steps: 401
+            min_passing_steps: 397
     steps:
       - uses: actions/checkout@v6
 
@@ -108,6 +112,10 @@ jobs:
           # with it. Resolve whichever subdir exists so the overlay step
           # doesn't have to bump with every SDK release.
           CACHE_ROOT="node_modules/@adcp/sdk/compliance/cache"
+          if [ ! -d "$CACHE_ROOT" ]; then
+            # 3.0.x uses @adcp/client (renamed to @adcp/sdk at 5.23.0).
+            CACHE_ROOT="node_modules/@adcp/client/compliance/cache"
+          fi
           DST=$(find "$CACHE_ROOT" -mindepth 1 -maxdepth 1 -type d | head -1)
           if [ -z "$DST" ] || [ ! -d "$DST" ]; then
             echo "::warning::SDK compliance cache not found under $CACHE_ROOT — skipping overlay"
@@ -117,7 +125,14 @@ jobs:
           # Mirror every source file onto the cache. New files (storyboards,
           # specialisms) get added; existing files are overwritten so the
           # branch's edits always win.
-          (cd "$SRC" && find . -type f) | while read -r rel; do
+          #
+          # Exclude specialisms/sales-guaranteed/index.yaml on 3.0.x: the
+          # source version uses context_outputs.path "task_completion.media_buy_id"
+          # which requires tasks/get polling added after @adcp/client@5.21.1.
+          # Keep the bundled version so the v5.21.1 runner's direct-SUCCESS
+          # extraction still works.
+          (cd "$SRC" && find . -type f \
+            ! -path "./specialisms/sales-guaranteed/index.yaml") | while read -r rel; do
             target="$DST/${rel#./}"
             mkdir -p "$(dirname "$target")"
             cp "$SRC/${rel#./}" "$target"
