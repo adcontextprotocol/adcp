@@ -1,0 +1,53 @@
+name: apps/web check
+
+on:
+  pull_request:
+    branches: [main, develop, "3.0.x", "2.6.x"]
+    paths:
+      - "apps/web/**"
+      - ".github/workflows/apps-web-check.yml"
+  push:
+    branches: [main, develop, "3.0.x", "2.6.x"]
+    paths:
+      - "apps/web/**"
+      - ".github/workflows/apps-web-check.yml"
+
+concurrency:
+  group: apps-web-check-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  check:
+    name: Typecheck + Lint + Test + Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Generate route tree
+        run: npm run router:generate
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm run test
+
+      - name: Build
+        run: npm run build
