@@ -52,7 +52,7 @@ jobs:
             min_clean_storyboards: 66
             min_passing_steps: 54
           - tenant: sales
-            min_clean_storyboards: 65
+            min_clean_storyboards: 67
             min_passing_steps: 252
           - tenant: governance
             min_clean_storyboards: 65

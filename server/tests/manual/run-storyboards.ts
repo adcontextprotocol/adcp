@@ -136,7 +136,25 @@ const KNOWN_FAILING_STORYBOARDS: ReadonlyMap<string, string> = new Map([
  * upstream issue and skipping the whole storyboard would lose passing
  * coverage. Track every entry with a linked issue.
  */
-const KNOWN_FAILING_STEPS: ReadonlyMap<string, string> = new Map([]);
+const KNOWN_FAILING_STEPS: ReadonlyMap<string, string> = new Map([
+  // The v5 createMediaBuy handler returns a hand-rolled
+  // `{ status: 'submitted', task_id }` envelope when the
+  // `force_create_media_buy_arm` directive is set. The v6 framework's
+  // projector rejects that shape (`from-platform.js:1438`) — the only
+  // way into the submitted arm is via `ctx.handoffToTask(fn)`, which
+  // assigns a framework-issued task_id. The test-controller directive
+  // requires the seller to return the CALLER-supplied task_id, so
+  // `handoffToTask` cannot satisfy the contract until the SDK exposes
+  // a `{ task_id }` overload. Tracked at adcp-client#1554.
+  ['media_buy_seller/create_media_buy_async/create_media_buy_submitted', 'adcp-client#1554 — handoffToTask needs caller-supplied task_id overload to satisfy force_create_media_buy_arm contract'],
+  // The SDK storyboard runner drops extension params (e.g.
+  // `vendor_metric_values`) from `comply_test_controller` requests
+  // before they reach the wire — the agent's `simulate_delivery`
+  // handler never sees the array, so the downstream
+  // get_media_buy_delivery assertion finds nothing on
+  // `by_package[].vendor_metric_values`. Tracked at adcp-client#1552.
+  ['media_buy_seller/vendor_metric_accountability/get_delivery_with_vendor_metrics', 'adcp-client#1552 — runner drops vendor_metric_values from comply_test_controller params before wire'],
+]);
 
 function isApplicable(sb: Storyboard): boolean {
   if (filter && !sb.id.includes(filter) && !(sb.category ?? '').includes(filter)) return false;
