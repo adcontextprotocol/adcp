@@ -49,6 +49,18 @@ function buildTrainingCtx(account: { authInfo?: { principal?: string } } | undef
   };
 }
 
+/**
+ * Extract the brand domain from a resolved v6 Account so v5 handlers can
+ * derive the correct session key via sessionKeyFromArgs. The v6 SDK resolves
+ * `account.brand.domain` into `ctx_metadata.brand_domain` on the Account
+ * object but does NOT re-inject it into domain-level args (req / filter /
+ * patch), so handlers that rely on sessionKeyFromArgs need it threaded in
+ * explicitly. Same fix as syncCreatives — see comment there.
+ */
+function brandDomainFromCtx(account: unknown): string | undefined {
+  return (account as { ctx_metadata?: { brand_domain?: string } } | undefined)?.ctx_metadata?.brand_domain;
+}
+
 
 /**
  * v5 → v6 envelope translator. v5 handlers return `{ errors: [...] }` for
@@ -180,19 +192,18 @@ export class TrainingSalesPlatform
     },
 
     updateMediaBuy: async (buyId, patch, ctx) => {
-      const args = { media_buy_id: buyId, ...(patch as unknown as Record<string, unknown>) };
+      const brandDomain = brandDomainFromCtx(ctx.account);
+      // brand placed after patch spread so it takes precedence over any brand
+      // field the SDK might include in patch.
+      const args = brandDomain
+        ? { media_buy_id: buyId, ...(patch as unknown as Record<string, unknown>), brand: { domain: brandDomain } }
+        : { media_buy_id: buyId, ...(patch as unknown as Record<string, unknown>) };
       const v5Result = await handleUpdateMediaBuy(args as ToolArgs, buildTrainingCtx(ctx.account));
       return translateV5Result(v5Result);
     },
 
     syncCreatives: async (creatives, ctx) => {
-      // Thread brand domain through so `sessionKeyFromArgs` in the v5
-      // handler resolves to the same session the test-controller seeded
-      // creative_policy against. Without this, sync_creatives lands in
-      // `open:default` while the seeded products live on `open:<brand>`,
-      // and `aggregateCreativePolicy` returns null — provenance
-      // enforcement silently no-ops.
-      const brandDomain = (ctx.account as { ctx_metadata?: { brand_domain?: string } } | undefined)?.ctx_metadata?.brand_domain;
+      const brandDomain = brandDomainFromCtx(ctx.account);
       const args = brandDomain ? { creatives, brand: { domain: brandDomain } } : { creatives };
       const v5Result = await handleSyncCreatives(args as unknown as ToolArgs, buildTrainingCtx(ctx.account));
       // v5 returns wire-wrapped `{ creatives: [...] }`; v6 SalesPlatform
@@ -202,13 +213,21 @@ export class TrainingSalesPlatform
     },
 
     getMediaBuyDelivery: async (filter, ctx) => {
-      const result = await handleGetMediaBuyDelivery(filter as ToolArgs, buildTrainingCtx(ctx.account));
+      const brandDomain = brandDomainFromCtx(ctx.account);
+      const args = brandDomain
+        ? { ...(filter as unknown as Record<string, unknown>), brand: { domain: brandDomain } }
+        : filter;
+      const result = await handleGetMediaBuyDelivery(args as ToolArgs, buildTrainingCtx(ctx.account));
       return translateV5Result(result);
     },
 
     // Optional read-side methods.
     getMediaBuys: async (req, ctx) => {
-      const result = await handleGetMediaBuys(req as ToolArgs, buildTrainingCtx(ctx.account));
+      const brandDomain = brandDomainFromCtx(ctx.account);
+      const args = brandDomain
+        ? { ...(req as unknown as Record<string, unknown>), brand: { domain: brandDomain } }
+        : req;
+      const result = await handleGetMediaBuys(args as ToolArgs, buildTrainingCtx(ctx.account));
       return translateV5Result(result);
     },
 
@@ -218,7 +237,11 @@ export class TrainingSalesPlatform
     },
 
     listCreatives: async (req, ctx) => {
-      const result = await handleListCreatives(req as ToolArgs, buildTrainingCtx(ctx.account));
+      const brandDomain = brandDomainFromCtx(ctx.account);
+      const args = brandDomain
+        ? { ...(req as unknown as Record<string, unknown>), brand: { domain: brandDomain } }
+        : req;
+      const result = await handleListCreatives(args as ToolArgs, buildTrainingCtx(ctx.account));
       return translateV5Result(result);
     },
 
