@@ -36,31 +36,36 @@ jobs:
         # SDK 6.0.0). Rising is fine; regressing fails CI.
         tenant: [signals, sales, governance, creative, creative-builder, brand]
         include:
-          # SDK 6.9.0 bump closed #3965 Class E: ComplyControllerConfig.force
-          # gained typed slots for create_media_buy_arm + task_completion
-          # (adcp-client#1472/#1477), so the directive arm now reaches the
-          # dispatcher instead of falling through to UNKNOWN_SCENARIO. 6.9.0
-          # also added a strict account.mode gate on comply_test_controller —
-          # accounts.resolve in every tenant now stamps mode: 'sandbox'.
-          # Floors capture the resulting clean baseline.
+          # #3965 Class C closed by per-tenant /<tenant>/mcp-strict route
+          # restoration. The 6.0.0 multi-tenant migration (#3713) dropped the
+          # legacy /mcp-strict; the signed_requests conformance storyboard
+          # (gated on request_signing.supported and required_for) failed at
+          # discovery on every tenant. Per-tenant strict mounts share one v5
+          # monolith handler stamped with ctx.strict — request-signing is a
+          # transport-layer property, not specialism-specific. The strict
+          # authenticator carries STRICT_REQUIRED_FOR + mcpToolNameResolver
+          # and is wrapped by enforceSigningWhenWebhookAuthPresent so vectors
+          # 001 (request_signature_required) and 027 (webhook auth unsigned)
+          # both fire correctly. Floors capture the +31 step lift per tenant
+          # from the storyboard's positive + negative conformance vectors.
           - tenant: signals
-            min_clean_storyboards: 65
-            min_passing_steps: 23
+            min_clean_storyboards: 66
+            min_passing_steps: 54
           - tenant: sales
-            min_clean_storyboards: 63
-            min_passing_steps: 217
-          - tenant: governance
             min_clean_storyboards: 64
-            min_passing_steps: 70
+            min_passing_steps: 248
+          - tenant: governance
+            min_clean_storyboards: 65
+            min_passing_steps: 101
           - tenant: creative
-            min_clean_storyboards: 65
-            min_passing_steps: 83
+            min_clean_storyboards: 66
+            min_passing_steps: 114
           - tenant: creative-builder
-            min_clean_storyboards: 59
-            min_passing_steps: 65
+            min_clean_storyboards: 60
+            min_passing_steps: 96
           - tenant: brand
-            min_clean_storyboards: 65
-            min_passing_steps: 14
+            min_clean_storyboards: 66
+            min_passing_steps: 45
     steps:
       - uses: actions/checkout@v6
 
