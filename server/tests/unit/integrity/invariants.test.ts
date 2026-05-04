@@ -13,10 +13,11 @@ import { orgRowMatchesLiveStripeSubInvariant } from '../../../src/audit/integrit
 import { stripeSubReflectedInOrgRowInvariant } from '../../../src/audit/integrity/invariants/stripe-sub-reflected-in-org-row.js';
 import { workosMembershipRowExistsInWorkosInvariant } from '../../../src/audit/integrity/invariants/workos-membership-row-exists-in-workos.js';
 import { everyEntitledOrgHasResolvableTierInvariant } from '../../../src/audit/integrity/invariants/every-entitled-org-has-resolvable-tier.js';
+import { uniqueOrgPerEmailDomainInvariant } from '../../../src/audit/integrity/invariants/unique-org-per-email-domain.js';
 import { ALL_INVARIANTS, getInvariantByName } from '../../../src/audit/integrity/invariants/index.js';
 import type { InvariantContext } from '../../../src/audit/integrity/types.js';
 
-const EXPECTED_INVARIANT_COUNT = 8;
+const EXPECTED_INVARIANT_COUNT = 9;
 
 const mockPoolQuery = vi.fn();
 const mockStripeCustomersRetrieve = vi.fn();
@@ -931,5 +932,161 @@ describe('stripe-sub-reflected-in-org-row partial-truth', () => {
 
     const result = await stripeSubReflectedInOrgRowInvariant.check(makeCtx());
     expect(result.violations).toEqual([]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// unique-org-per-email-domain
+// ─────────────────────────────────────────────────────────────────────────
+
+describe('unique-org-per-email-domain', () => {
+  // Helper: each row mirrors what the invariant's CTE returns. Field names
+  // match the SQL (snake_case from pg, including the `created_at::text` cast
+  // that gives ISO strings instead of Date objects).
+  function row(overrides: {
+    workos_organization_id: string;
+    name: string;
+    email_domain: string;
+    created_at: string;
+    member_count: number;
+    has_stripe_customer: boolean;
+    has_active_subscription: boolean;
+    member_status?: string;
+  }) {
+    return {
+      workos_organization_id: overrides.workos_organization_id,
+      name: overrides.name,
+      email_domain: overrides.email_domain,
+      created_at: overrides.created_at,
+      member_count: overrides.member_count,
+      has_stripe_customer: overrides.has_stripe_customer,
+      has_active_subscription: overrides.has_active_subscription,
+      member_status: overrides.member_status ?? (overrides.has_active_subscription ? 'member' : 'prospect'),
+    };
+  }
+
+  it('passes when every email_domain has exactly one org', async () => {
+    mockPoolQuery.mockResolvedValueOnce({ rows: [] });
+
+    const result = await uniqueOrgPerEmailDomainInvariant.check(makeCtx());
+
+    expect(result.checked).toBe(0);
+    expect(result.violations).toEqual([]);
+  });
+
+  it('flags April-20-import shape: empty stub vs. populated December row', async () => {
+    // The most common pattern from the May 2026 audit: a 0-member stub
+    // created by the unconditional re-import on April 20, alongside a
+    // populated row from the original December import.
+    mockPoolQuery.mockResolvedValueOnce({
+      rows: [
+        row({
+          workos_organization_id: 'org_dec_real',
+          name: 'DoubleVerify',
+          email_domain: 'doubleverify.com',
+          created_at: '2025-12-31T15:24:06.000Z',
+          member_count: 7,
+          has_stripe_customer: true,
+          has_active_subscription: true,
+        }),
+        row({
+          workos_organization_id: 'org_apr_stub',
+          name: 'Doubleverify',
+          email_domain: 'doubleverify.com',
+          created_at: '2026-04-20T03:47:40.000Z',
+          member_count: 0,
+          has_stripe_customer: false,
+          has_active_subscription: false,
+        }),
+      ],
+    });
+
+    const result = await uniqueOrgPerEmailDomainInvariant.check(makeCtx());
+
+    expect(result.checked).toBe(2);
+    expect(result.violations).toHaveLength(1);
+    const v = result.violations[0];
+    expect(v.severity).toBe('warning');
+    expect(v.subject_id).toBe('org_apr_stub');
+    expect((v.details as { keeper: { workos_organization_id: string } }).keeper.workos_organization_id)
+      .toBe('org_dec_real');
+    expect(v.message).toContain('DoubleVerify');
+    expect(v.message).toContain('7 members');
+    expect(v.remediation_hint).toContain('DELETE FROM organizations');
+  });
+
+  it('emits one violation per duplicate when three rows share a domain', async () => {
+    mockPoolQuery.mockResolvedValueOnce({
+      rows: [
+        row({ workos_organization_id: 'org_keep',  name: 'Acme', email_domain: 'acme.com', created_at: '2025-12-01T00:00:00Z', member_count: 5, has_stripe_customer: true,  has_active_subscription: true }),
+        row({ workos_organization_id: 'org_dup_a', name: 'Acme', email_domain: 'acme.com', created_at: '2026-01-01T00:00:00Z', member_count: 0, has_stripe_customer: false, has_active_subscription: false }),
+        row({ workos_organization_id: 'org_dup_b', name: 'Acme', email_domain: 'acme.com', created_at: '2026-04-20T00:00:00Z', member_count: 0, has_stripe_customer: false, has_active_subscription: false }),
+      ],
+    });
+
+    const result = await uniqueOrgPerEmailDomainInvariant.check(makeCtx());
+
+    expect(result.violations).toHaveLength(2);
+    const subjects = result.violations.map((v) => v.subject_id).sort();
+    expect(subjects).toEqual(['org_dup_a', 'org_dup_b']);
+    // Both violations name the same keeper.
+    for (const v of result.violations) {
+      expect((v.details as { keeper: { workos_organization_id: string } }).keeper.workos_organization_id)
+        .toBe('org_keep');
+    }
+  });
+
+  it('keeps the row with active subscription even if it was created later', async () => {
+    // Real-world ordering: a stub got created first, then the actual
+    // company signed up and got a Stripe sub. The active-sub row should
+    // win regardless of created_at order.
+    mockPoolQuery.mockResolvedValueOnce({
+      rows: [
+        row({ workos_organization_id: 'org_old_stub', name: 'Acme', email_domain: 'acme.com', created_at: '2025-01-01T00:00:00Z', member_count: 0, has_stripe_customer: false, has_active_subscription: false }),
+        row({ workos_organization_id: 'org_real',     name: 'Acme', email_domain: 'acme.com', created_at: '2026-04-20T00:00:00Z', member_count: 3, has_stripe_customer: true,  has_active_subscription: true }),
+      ],
+    });
+
+    const result = await uniqueOrgPerEmailDomainInvariant.check(makeCtx());
+
+    expect(result.violations).toHaveLength(1);
+    expect(result.violations[0].subject_id).toBe('org_old_stub');
+    expect((result.violations[0].details as { keeper: { workos_organization_id: string } }).keeper.workos_organization_id)
+      .toBe('org_real');
+  });
+
+  it('breaks ties on created_at when scores are equal (older row wins)', async () => {
+    // Two stubs with identical scores. Older one is the canonical keeper.
+    mockPoolQuery.mockResolvedValueOnce({
+      rows: [
+        row({ workos_organization_id: 'org_dec', name: 'X', email_domain: 'x.com', created_at: '2025-12-31T00:00:00Z', member_count: 0, has_stripe_customer: false, has_active_subscription: false }),
+        row({ workos_organization_id: 'org_apr', name: 'X', email_domain: 'x.com', created_at: '2026-04-20T00:00:00Z', member_count: 0, has_stripe_customer: false, has_active_subscription: false }),
+      ],
+    });
+
+    const result = await uniqueOrgPerEmailDomainInvariant.check(makeCtx());
+
+    expect(result.violations).toHaveLength(1);
+    expect(result.violations[0].subject_id).toBe('org_apr'); // April stub flagged
+    expect((result.violations[0].details as { keeper: { workos_organization_id: string } }).keeper.workos_organization_id)
+      .toBe('org_dec');
+  });
+
+  it('does not flag personal workspaces (filtered by SQL — invariant relies on the CTE)', async () => {
+    // Personal workspaces share email_domain by construction (the user's
+    // personal email maps to a single domain like gmail.com). The
+    // invariant's CTE filters them out with `is_personal = false`, so the
+    // mock just returns nothing — confirms the predicate doesn't double-
+    // count personal-org pairs as a duplicate-company finding.
+    mockPoolQuery.mockResolvedValueOnce({ rows: [] });
+
+    const result = await uniqueOrgPerEmailDomainInvariant.check(makeCtx());
+
+    expect(result.violations).toEqual([]);
+    // Spot-check that the SQL excludes personal workspaces — guards
+    // against a future refactor that drops the predicate and starts
+    // flagging gmail.com pairs as company duplicates.
+    const sql = (mockPoolQuery.mock.calls[0] as [string, unknown[]])[0];
+    expect(sql).toMatch(/is_personal/);
   });
 });
