@@ -3,11 +3,15 @@
  *
  * Lets members register, list, update, and remove individual agents
  * without round-tripping the full profile via PUT /api/me/member-profile.
- * Reuses the same visibility gate, server-side type resolution, and
- * audit log as the bulk-profile path so callers cannot smuggle past
- * the tier check.
+ * Reuses the same visibility gate and server-side type resolution as
+ * the bulk-profile path so callers cannot smuggle past the tier check.
+ * Type-resolution flips (the smuggle-protection events themselves) are
+ * audit-logged; pure renames and deletes are not — same scope as the
+ * bulk PUT path.
  *
  * Auth: WorkOS session OR Bearer API key (`requireAuth` handles both).
+ * Multi-org callers may pass `?org=…` to target a non-primary org;
+ * verification goes through `resolveUserOrgMembership`.
  *
  * Concurrency: writes go through a `SELECT … FOR UPDATE` on
  * `member_profiles` so two parallel POSTs/PATCHes/DELETEs serialize
@@ -16,6 +20,7 @@
  */
 
 import { Router } from 'express';
+import { WorkOS } from '@workos-inc/node';
 import { createLogger } from '../logger.js';
 import { requireAuth } from '../middleware/auth.js';
 import { brandCreationRateLimiter } from '../middleware/rate-limit.js';
@@ -26,6 +31,7 @@ import {
   resolveMembershipTier,
 } from '../db/organization-db.js';
 import { resolvePrimaryOrganization } from '../db/users-db.js';
+import { resolveUserOrgMembership } from '../utils/resolve-user-org-membership.js';
 import { getPool } from '../db/client.js';
 import type { AgentConfig } from '../types.js';
 import { resolveAgentTypes, logResolvedTypeChanges } from './member-profiles.js';
@@ -43,6 +49,13 @@ const logger = createLogger('member-agents-routes');
 export interface MemberAgentsRouterConfig {
   memberDb: MemberDatabase;
   orgDb: OrganizationDatabase;
+  /**
+   * WorkOS client. Required when callers may pass `?org=` to target a
+   * non-primary organization; verification of membership against that org
+   * goes through WorkOS. Pass `null` only in dev/test where the resolver
+   * can short-circuit on the local memberships cache.
+   */
+  workos: WorkOS | null;
   invalidateMemberContextCache: () => void;
 }
 
@@ -68,13 +81,41 @@ type RouteResult =
   | { kind: 'commit'; next: AgentConfig[]; status: number; meta?: Record<string, unknown> };
 
 export function createMemberAgentsRouter(config: MemberAgentsRouterConfig): Router {
-  const { orgDb, invalidateMemberContextCache } = config;
+  const { orgDb, workos, invalidateMemberContextCache } = config;
   const router = Router();
 
+  /**
+   * Pick the org to act on. Honors `?org=…` for multi-org callers (matching
+   * the `PUT /api/me/member-profile` pattern); falls back to the user's
+   * primary org when not supplied. Returns null and writes the error
+   * response when the caller has no associated org or asks for an org
+   * they're not a member of.
+   */
   async function resolveOrgOrSendError(
     req: import('express').Request,
     res: import('express').Response,
   ): Promise<string | null> {
+    const requestedOrgId =
+      typeof req.query.org === 'string' && req.query.org.length > 0
+        ? req.query.org
+        : null;
+
+    if (requestedOrgId) {
+      const membership = await resolveUserOrgMembership(
+        workos,
+        req.user!.id,
+        requestedOrgId,
+      );
+      if (!membership) {
+        res.status(403).json({
+          error: 'Not authorized',
+          message: 'User is not a member of the requested organization',
+        });
+        return null;
+      }
+      return requestedOrgId;
+    }
+
     const orgId = await resolvePrimaryOrganization(req.user!.id);
     if (!orgId) {
       res.status(400).json({ error: 'No organization associated with this account' });

@@ -9,6 +9,14 @@
 import { z } from 'zod';
 import { registry, ErrorSchema } from './registry.js';
 
+const OrgQuerySchema = z.object({
+  org: z.string().optional().openapi({
+    description:
+      "WorkOS organization id to act on. Defaults to the caller's primary organization. Use this from a multi-org session (or when shelling with a user JWT) to target a non-primary org. Verification goes through WorkOS membership lookup; non-members get `403`.",
+    example: 'org_01HXZAB123',
+  }),
+});
+
 const MemberAgentVisibilitySchema = z
   .enum(['private', 'members_only', 'public'])
   .openapi('MemberAgentVisibility', {
@@ -103,6 +111,7 @@ registry.registerPath({
     "List the agents registered on the caller's organization member profile. Returns the same `agents[]` array stored on the profile, in the order members registered them.",
   tags: ['Member Agents'],
   security: [{ bearerAuth: [] }, { oauth2: [] }],
+  request: { query: OrgQuerySchema },
   responses: {
     200: {
       description: 'Registered agents',
@@ -114,6 +123,11 @@ registry.registerPath({
     },
     401: {
       description: 'Authentication required',
+      content: { 'application/json': { schema: ErrorSchema } },
+    },
+    403: {
+      description:
+        '`?org=` was supplied but the caller is not a member of that organization.',
       content: { 'application/json': { schema: ErrorSchema } },
     },
     404: {
@@ -138,6 +152,7 @@ registry.registerPath({
   tags: ['Member Agents'],
   security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
+    query: OrgQuerySchema,
     body: { content: { 'application/json': { schema: MemberAgentInputSchema } } },
   },
   responses: {
@@ -156,6 +171,11 @@ registry.registerPath({
     },
     401: {
       description: 'Authentication required',
+      content: { 'application/json': { schema: ErrorSchema } },
+    },
+    403: {
+      description:
+        '`?org=` was supplied but the caller is not a member of that organization.',
       content: { 'application/json': { schema: ErrorSchema } },
     },
     404: {
@@ -180,6 +200,7 @@ registry.registerPath({
   tags: ['Member Agents'],
   security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
+    query: OrgQuerySchema,
     params: z.object({
       url: z.string().openapi({
         description:
@@ -202,6 +223,11 @@ registry.registerPath({
       description: 'Authentication required',
       content: { 'application/json': { schema: ErrorSchema } },
     },
+    403: {
+      description:
+        '`?org=` was supplied but the caller is not a member of that organization.',
+      content: { 'application/json': { schema: ErrorSchema } },
+    },
     404: {
       description: 'No member profile, or no agent registered at the given `url`.',
       content: { 'application/json': { schema: ErrorSchema } },
@@ -221,6 +247,7 @@ registry.registerPath({
   tags: ['Member Agents'],
   security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
+    query: OrgQuerySchema,
     params: z.object({
       url: z.string().openapi({
         description:
@@ -236,6 +263,11 @@ registry.registerPath({
     },
     401: {
       description: 'Authentication required',
+      content: { 'application/json': { schema: ErrorSchema } },
+    },
+    403: {
+      description:
+        '`?org=` was supplied but the caller is not a member of that organization.',
       content: { 'application/json': { schema: ErrorSchema } },
     },
     404: {

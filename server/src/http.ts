@@ -1220,6 +1220,7 @@ export class HTTPServer {
     const memberAgentsRouter = createMemberAgentsRouter({
       memberDb,
       orgDb,
+      workos,
       invalidateMemberContextCache,
     });
     this.app.use('/api/me/agents', memberAgentsRouter);

@@ -84,11 +84,52 @@ describe('Per-agent REST API (/api/me/agents)', () => {
       next();
     });
 
+    // Minimal WorkOS stub: only `listOrganizationMemberships` is called by
+    // `resolveUserOrgMembership` on the prod path, and only when `?org=`
+    // is supplied. The stub serves whatever membership rows the current
+    // test seeded in the local `organization_memberships` table — so the
+    // `?org=` path mirrors what real WorkOS would have answered for a
+    // legitimately-multi-org user.
+    const fakeWorkos = {
+      userManagement: {
+        listOrganizationMemberships: async ({
+          userId,
+          organizationId,
+        }: {
+          userId: string;
+          organizationId?: string;
+        }) => {
+          const args: unknown[] = [userId];
+          let where = `workos_user_id = $1`;
+          if (organizationId) {
+            args.push(organizationId);
+            where += ` AND workos_organization_id = $2`;
+          }
+          const rows = await pool.query<{
+            workos_organization_id: string;
+            role: string;
+          }>(
+            `SELECT workos_organization_id, role FROM organization_memberships WHERE ${where}`,
+            args,
+          );
+          return {
+            data: rows.rows.map((r) => ({
+              userId,
+              organizationId: r.workos_organization_id,
+              status: 'active' as const,
+              role: { slug: r.role || 'member' },
+            })),
+          };
+        },
+      },
+    } as any;
+
     app.use(
       '/api/me/agents',
       createMemberAgentsRouter({
         memberDb,
         orgDb,
+        workos: fakeWorkos,
         invalidateMemberContextCache: () => {},
       }),
     );
@@ -118,6 +159,15 @@ describe('Per-agent REST API (/api/me/agents)', () => {
     );
   }
 
+  async function provisionMembership(userId: string, orgId: string, role = 'member') {
+    await pool.query(
+      `INSERT INTO organization_memberships (workos_user_id, workos_organization_id, role, status, created_at, updated_at)
+       VALUES ($1, $2, $3, 'active', NOW(), NOW())
+       ON CONFLICT (workos_user_id, workos_organization_id) DO UPDATE SET role = EXCLUDED.role, status = 'active'`,
+      [userId, orgId, role],
+    );
+  }
+
   async function createProfile(orgId: string, slug: string) {
     await memberDb.createProfile({
       workos_organization_id: orgId,
@@ -132,6 +182,10 @@ describe('Per-agent REST API (/api/me/agents)', () => {
   beforeEach(async () => {
     await pool.query(
       `DELETE FROM member_profiles WHERE workos_organization_id LIKE $1`,
+      [`${TEST_PREFIX}%`],
+    );
+    await pool.query(
+      `DELETE FROM organization_memberships WHERE workos_organization_id LIKE $1`,
       [`${TEST_PREFIX}%`],
     );
     await pool.query(`DELETE FROM users WHERE primary_organization_id LIKE $1`, [
@@ -305,6 +359,78 @@ describe('Per-agent REST API (/api/me/agents)', () => {
     const target = encodeURIComponent('https://missing.example/mcp');
     const res = await request(app).delete(`/api/me/agents/${target}`);
     expect(res.status).toBe(404);
+  });
+
+  it('?org=… targets a non-primary org when the user is a member', async () => {
+    const primaryOrg = `${TEST_PREFIX}_org_primary`;
+    const secondaryOrg = `${TEST_PREFIX}_org_secondary`;
+    const userId = `${TEST_PREFIX}_multi_org_user`;
+    await seedOrg(pool, primaryOrg, 'individual_professional');
+    await seedOrg(pool, secondaryOrg, 'individual_professional');
+    await provisionUser(userId, primaryOrg);
+    await provisionMembership(userId, secondaryOrg);
+    await createProfile(secondaryOrg, 'multiorg');
+
+    (app as any).setCurrentUser(userId);
+    const res = await request(app)
+      .post(`/api/me/agents?org=${secondaryOrg}`)
+      .send({ url: 'https://multi.example/mcp', visibility: 'private' });
+    expect(res.status).toBe(201);
+    expect(res.body.agent.url).toBe('https://multi.example/mcp');
+
+    // Primary org's profile must be untouched — `?org=` is the addressable
+    // identifier.
+    const primary = await memberDb.getProfileByOrgId(primaryOrg);
+    expect(primary).toBeNull();
+    const secondary = await memberDb.getProfileByOrgId(secondaryOrg);
+    expect(secondary!.agents.some((a) => a.url === 'https://multi.example/mcp')).toBe(true);
+  });
+
+  it('?org=… returns 403 when the user is not a member', async () => {
+    const ownOrg = `${TEST_PREFIX}_org_own`;
+    const strangerOrg = `${TEST_PREFIX}_org_stranger`;
+    const userId = `${TEST_PREFIX}_org_403_user`;
+    await seedOrg(pool, ownOrg, 'individual_professional');
+    await seedOrg(pool, strangerOrg, 'individual_professional');
+    await provisionUser(userId, ownOrg);
+    await provisionMembership(userId, ownOrg);
+
+    (app as any).setCurrentUser(userId);
+    const res = await request(app)
+      .get(`/api/me/agents?org=${strangerOrg}`);
+    expect(res.status).toBe(403);
+  });
+
+  it('POST resolves type server-side from capability snapshot, ignoring smuggled client value', async () => {
+    const orgId = `${TEST_PREFIX}_smuggle`;
+    const userId = `${TEST_PREFIX}_smuggle_user`;
+    await seedOrg(pool, orgId, 'individual_professional');
+    await provisionUser(userId, orgId);
+    await createProfile(orgId, 'smuggle');
+
+    // Seed a capability snapshot that classifies this URL as `sales`.
+    // resolveAgentTypes() reads the most recent snapshot per URL via
+    // bulkGetCapabilities; even if the client claims `buying`, the
+    // snapshot wins.
+    const targetUrl = 'https://smuggle.example/mcp';
+    await pool.query(
+      `INSERT INTO agent_capabilities_snapshot
+         (agent_url, protocol, inferred_type, last_discovered)
+       VALUES ($1, 'mcp', 'sales', NOW())
+       ON CONFLICT (agent_url) DO UPDATE SET inferred_type = EXCLUDED.inferred_type`,
+      [targetUrl],
+    );
+
+    (app as any).setCurrentUser(userId);
+    const res = await request(app)
+      .post('/api/me/agents')
+      .send({ url: targetUrl, type: 'buying', visibility: 'private' });
+    expect(res.status).toBe(201);
+    // The server-resolved type wins. The smuggle attempt was harmless.
+    expect(res.body.agent.type).toBe('sales');
+    const profile = await memberDb.getProfileByOrgId(orgId);
+    const stored = profile!.agents.find((a) => a.url === targetUrl);
+    expect(stored?.type).toBe('sales');
   });
 
   it('DELETE returns 409 unpublish_first when the agent is currently public', async () => {

@@ -6840,6 +6840,15 @@ paths:
       security:
         - bearerAuth: []
         - oauth2: []
+      parameters:
+        - schema:
+            type: string
+            description: WorkOS organization id to act on. Defaults to the caller's primary organization. Use this from a multi-org session (or when shelling with a user JWT) to target a non-primary org. Verification goes through WorkOS membership lookup; non-members get `403`.
+            example: org_01HXZAB123
+          required: false
+          description: WorkOS organization id to act on. Defaults to the caller's primary organization. Use this from a multi-org session (or when shelling with a user JWT) to target a non-primary org. Verification goes through WorkOS membership lookup; non-members get `403`.
+          name: org
+          in: query
       responses:
         "200":
           description: Registered agents
@@ -6855,6 +6864,12 @@ paths:
                 $ref: "#/components/schemas/Error"
         "401":
           description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "`?org=` was supplied but the caller is not a member of that organization."
           content:
             application/json:
               schema:
@@ -6881,6 +6896,15 @@ paths:
       security:
         - bearerAuth: []
         - oauth2: []
+      parameters:
+        - schema:
+            type: string
+            description: WorkOS organization id to act on. Defaults to the caller's primary organization. Use this from a multi-org session (or when shelling with a user JWT) to target a non-primary org. Verification goes through WorkOS membership lookup; non-members get `403`.
+            example: org_01HXZAB123
+          required: false
+          description: WorkOS organization id to act on. Defaults to the caller's primary organization. Use this from a multi-org session (or when shelling with a user JWT) to target a non-primary org. Verification goes through WorkOS membership lookup; non-members get `403`.
+          name: org
+          in: query
       requestBody:
         content:
           application/json:
@@ -6907,6 +6931,12 @@ paths:
                 $ref: "#/components/schemas/Error"
         "401":
           description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "`?org=` was supplied but the caller is not a member of that organization."
           content:
             application/json:
               schema:
@@ -6941,6 +6971,14 @@ paths:
           description: The agent's `url`, URL-encoded (e.g. `https%3A%2F%2Fagent.example.com%2Fmcp`).
           name: url
           in: path
+        - schema:
+            type: string
+            description: WorkOS organization id to act on. Defaults to the caller's primary organization. Use this from a multi-org session (or when shelling with a user JWT) to target a non-primary org. Verification goes through WorkOS membership lookup; non-members get `403`.
+            example: org_01HXZAB123
+          required: false
+          description: WorkOS organization id to act on. Defaults to the caller's primary organization. Use this from a multi-org session (or when shelling with a user JWT) to target a non-primary org. Verification goes through WorkOS membership lookup; non-members get `403`.
+          name: org
+          in: query
       requestBody:
         content:
           application/json:
@@ -6961,6 +6999,12 @@ paths:
                 $ref: "#/components/schemas/Error"
         "401":
           description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "`?org=` was supplied but the caller is not a member of that organization."
           content:
             application/json:
               schema:
@@ -6991,6 +7035,14 @@ paths:
           description: The agent's `url`, URL-encoded (e.g. `https%3A%2F%2Fagent.example.com%2Fmcp`).
           name: url
           in: path
+        - schema:
+            type: string
+            description: WorkOS organization id to act on. Defaults to the caller's primary organization. Use this from a multi-org session (or when shelling with a user JWT) to target a non-primary org. Verification goes through WorkOS membership lookup; non-members get `403`.
+            example: org_01HXZAB123
+          required: false
+          description: WorkOS organization id to act on. Defaults to the caller's primary organization. Use this from a multi-org session (or when shelling with a user JWT) to target a non-primary org. Verification goes through WorkOS membership lookup; non-members get `403`.
+          name: org
+          in: query
       responses:
         "204":
           description: Agent removed.
@@ -7002,6 +7054,12 @@ paths:
                 $ref: "#/components/schemas/Error"
         "401":
           description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "`?org=` was supplied but the caller is not a member of that organization."
           content:
             application/json:
               schema:
