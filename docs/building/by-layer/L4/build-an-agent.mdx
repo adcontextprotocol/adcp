@@ -99,18 +99,18 @@ Each agent declares its `supported_protocols` (domains) and `specialisms` on `ge
 
 | Skill | Typical `supported_protocols` | Typical `specialisms` (pick one or combine) |
 |---|---|---|
-| `build-seller-agent` | `["media_buy", "creative"]` | `sales-guaranteed`, `sales-non-guaranteed`, `sales-proposal-mode` |
+| `build-seller-agent` | `["media_buy", "creative"]` | `sales-guaranteed`, `sales-non-guaranteed` |
 | `build-generative-seller-agent` | `["media_buy", "creative"]` | `creative-generative` + `sales-non-guaranteed` |
 | `build-retail-media-agent` | `["media_buy", "creative"]` | `sales-catalog-driven` |
 | `build-signals-agent` | `["signals"]` | `signal-owned`, `signal-marketplace` |
 | `build-creative-agent` | `["creative"]` | `creative-ad-server`, `creative-template` |
 
-**Picking a sales specialism:**
-- **`sales-guaranteed`** — you sell with IO approval against rate cards or fixed CPMs. Direct-sold CTV, premium video, broadcast TV, OOH.
-- **`sales-non-guaranteed`** — you sell on a real-time auction with floor pricing. Programmatic display, OLV, audio.
-- **`sales-proposal-mode`** — you negotiate per-buy (custom pricing, custom packages, custom terms), no rate card. Premium publisher direct, sponsorship, native at scale.
+**Picking a sales specialism:** See [Choosing a sales specialism](/docs/building/verification/compliance-catalog#choosing-a-sales-specialism) in the Compliance Catalog for the full decision tree. Quick reference:
+- **`sales-guaranteed`** — IO approval, fixed pricing. Set `media_buy.supports_proposals: true` if you support RFP/proposal flows; `false` (or omit) for direct-buy only.
+- **`sales-non-guaranteed`** — auction / PMP.
+- **`sales-broadcast-tv`**, **`sales-catalog-driven`**, **`sales-social`** — channel-specific; see the decision tree.
 
-You can claim more than one if you genuinely operate that way — but each claim adds a storyboard you must pass. Claim only what you sell. See the [Compliance Catalog](/docs/building/verification/compliance-catalog) for the full taxonomy and per-specialism storyboards.
+You can claim more than one. See the [Compliance Catalog](/docs/building/verification/compliance-catalog) for the full taxonomy and per-specialism storyboards.
 
 Building a **brand rights** agent (licensing talent, music, stock media)? There's no skill today — see the [Brand Protocol docs](/docs/brand-protocol) and claim `brand-rights` under the `brand` domain.
 
