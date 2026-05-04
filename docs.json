@@ -103,7 +103,6 @@
                   "docs/protocol/architecture",
                   "docs/protocol/required-tasks",
                   "docs/protocol/calling-an-agent",
-                  "docs/protocol/multi-agent-discovery",
                   "docs/protocol/format-references",
                   {
                     "group": "Concepts",
@@ -673,7 +672,6 @@
               "docs/protocol/architecture",
               "docs/protocol/required-tasks",
               "docs/protocol/calling-an-agent",
-              "docs/protocol/multi-agent-discovery",
               "docs/protocol/format-references",
               {
                 "group": "Concepts",

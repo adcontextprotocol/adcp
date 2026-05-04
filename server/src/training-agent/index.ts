@@ -451,32 +451,6 @@ export function createTrainingAgentRouter(): Router {
     res.json(getPublicJwks());
   });
 
-  // Multi-agent topology manifest — RFC 5785 well-known, origin-scoped.
-  // Lists every per-specialism tenant served from this origin in a single
-  // fetch. See docs/protocol/multi-agent-discovery and
-  // static/schemas/source/adcp-agents.json.
-  router.get('/.well-known/adcp-agents.json', (req: Request, res: Response) => {
-    const baseUrl = getBaseUrl(req);
-    const agentUrl = `${baseUrl}${req.baseUrl}`;
-    res.setHeader('Cache-Control', 'public, max-age=300');
-    res.json({
-      $schema: '/schemas/adcp-agents.json',
-      version: '1.0',
-      agents: TENANT_IDS.map(tenantId => ({
-        agent_id: tenantId,
-        url: `${agentUrl}/${tenantId}/mcp`,
-        transport: 'mcp' as const,
-        specialisms: TENANT_SPECIALISMS[tenantId],
-        auth_hint: 'shared_bearer',
-      })),
-      contact: {
-        name: 'AdCP Training Agent',
-        url: 'https://adcontextprotocol.org',
-      },
-      last_updated: STARTUP_TIME,
-    });
-  });
-
   // adagents.json discovery. Schema-conformant per
   // `static/schemas/source/adagents.json`:
   //   - `authorized_agents[]` is a discriminated union — sales agents use
@@ -540,11 +514,10 @@ export function createTrainingAgentRouter(): Router {
         first_party: { name: 'First-party signals', description: 'Publisher subscriber and CDP audience signals' },
       },
       // Custom extension (allowed under schema's additionalProperties:true).
-      // Lists per-specialism tenants alongside the standard authorization
-      // entries — including tenants that don't fit the schema's
-      // authorized_agents discriminator (governance, creative,
-      // creative-builder, brand). Standard topology discovery is at
-      // /.well-known/adcp-agents.json above.
+      // Lists all six per-specialism tenants so a developer hitting
+      // adagents.json gets the full multi-tenant picture in one request —
+      // even for tenants that don't fit the schema's authorized_agents
+      // discriminator (governance, creative, creative-builder, brand).
       _training_agent_tenants: TENANT_IDS.map(tenantId => ({
         tenant_id: tenantId,
         url: `${agentUrl}/${tenantId}/mcp`,
