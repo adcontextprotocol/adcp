@@ -49,8 +49,8 @@ jobs:
           # both fire correctly. Floors capture the +31 step lift per tenant
           # from the storyboard's positive + negative conformance vectors.
           - tenant: signals
-            min_clean_storyboards: 66
-            min_passing_steps: 54
+            min_clean_storyboards: 67
+            min_passing_steps: 58
           - tenant: sales
             min_clean_storyboards: 67
             min_passing_steps: 258
