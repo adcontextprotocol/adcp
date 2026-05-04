@@ -223,6 +223,29 @@ export function tierFromLookupKey(lookupKey: string | null | undefined): Members
 }
 
 /**
+ * Resolve tier from a Stripe product's `metadata.tier` field. Used for
+ * founding-era prices that Stripe auto-created (e.g., from manual invoice
+ * lines or Payment Links): the price's `lookup_key` is locked, so the
+ * tier convention had to move to the parent product. The product's
+ * metadata also carries `category=membership` for classification; this
+ * helper decodes the tier value separately.
+ *
+ * Returns null when metadata is missing, `tier` is unset, or the value
+ * isn't a recognized `MembershipTier`. Conservative on unknown strings
+ * so a typo on the Stripe side can't grant the wrong entitlement.
+ */
+export function tierFromProductMetadata(
+  metadata: Record<string, string> | null | undefined,
+): MembershipTier | null {
+  if (!metadata) return null;
+  const raw = metadata.tier;
+  if (!raw) return null;
+  return (VALID_MEMBERSHIP_TIERS as readonly string[]).includes(raw)
+    ? (raw as MembershipTier)
+    : null;
+}
+
+/**
  * Input shape for `resolveMembershipTier`. Kept as a named type so the
  * companion SQL helpers below can declare a matching row type, and so
  * a future resolver change that needs a new column surfaces every
@@ -342,6 +365,18 @@ export interface SubscriptionUpdatePayload {
 /**
  * Extract subscription fields from a Stripe subscription object.
  * Single source of truth for tier resolution — all write paths should use this.
+ *
+ * Tier resolver chain:
+ *   1. `lookup_key` on the price (fast path, modern convention)
+ *   2. `metadata.tier` on the product (for founding-era prices Stripe
+ *      auto-created with locked lookup_keys; metadata is editable on the
+ *      product so we move the convention there)
+ *   3. amount-based inference from price unit_amount + interval + is_personal
+ *
+ * The `productMetadata` arg is optional — webhook handlers that have an
+ * inline-expanded product on the sub get it for free; callers that fetch
+ * the product separately (admin /sync) pass it explicitly. Without it,
+ * the resolver gracefully falls through to amount inference.
  */
 export function buildSubscriptionUpdate(
   subscription: {
@@ -354,11 +389,12 @@ export function buildSubscriptionUpdate(
       currency: string;
       recurring: { interval: string } | null;
       id: string;
-      product: string | { id: string; name?: string };
+      product: string | { id: string; name?: string; metadata?: Record<string, string> };
       lookup_key: string | null;
     } }> };
   },
   isPersonal: boolean,
+  productMetadata?: Record<string, string> | null,
 ): SubscriptionUpdatePayload {
   const priceData = subscription.items?.data?.[0]?.price;
   const amount = priceData?.unit_amount ?? null;
@@ -369,8 +405,15 @@ export function buildSubscriptionUpdate(
   const productId = typeof productRef === 'string' ? productRef : productRef?.id ?? null;
   const productName = typeof productRef === 'object' ? productRef?.name ?? null : null;
 
+  // Prefer caller-supplied metadata; otherwise read from an inline-expanded
+  // product object if present.
+  const effectiveMetadata = productMetadata
+    ?? (typeof productRef === 'object' ? productRef?.metadata ?? null : null);
+
   const membershipTier = (TIER_PRESERVING_STATUSES as readonly string[]).includes(subscription.status)
-    ? (tierFromLookupKey(lookupKey) ?? inferMembershipTier(amount, interval, isPersonal))
+    ? (tierFromLookupKey(lookupKey)
+        ?? tierFromProductMetadata(effectiveMetadata)
+        ?? inferMembershipTier(amount, interval, isPersonal))
     : null;
 
   return {

@@ -76,6 +76,19 @@ export function pickMembershipSub(subscriptions: readonly Stripe.Subscription[])
 }
 
 /**
+ * Result of `pickMembershipSubWithProductFetch`. The product is included
+ * when classification went through the metadata-fallback path so callers
+ * can read product-level signals (e.g., `metadata.tier`) without a
+ * second `products.retrieve` round-trip. `product` is undefined when
+ * the sub matched on the lookup_key fast path — the caller didn't
+ * fetch the product, so we don't have one to hand back.
+ */
+export interface PickedMembershipSub {
+  sub: Stripe.Subscription;
+  product?: Stripe.Product;
+}
+
+/**
  * Async picker that falls back to a per-product metadata fetch when
  * `lookup_key` doesn't match. Founding-era subs lack the lookup_key
  * convention, but the path Stripe needs to expand for product metadata
@@ -92,13 +105,13 @@ export function pickMembershipSub(subscriptions: readonly Stripe.Subscription[])
 export async function pickMembershipSubWithProductFetch(
   subscriptions: readonly Stripe.Subscription[],
   fetchProduct: (productId: string) => Promise<Stripe.Product | Stripe.DeletedProduct>,
-): Promise<Stripe.Subscription | null> {
+): Promise<PickedMembershipSub | null> {
   const fast = pickMembershipSub(subscriptions);
-  if (fast) return fast;
+  if (fast) return { sub: fast };
 
   // Fall back to product-metadata classification on subs whose price
   // has a `product` id but no membership lookup_key.
-  const candidates: Stripe.Subscription[] = [];
+  const candidates: PickedMembershipSub[] = [];
   for (const sub of subscriptions) {
     const price = sub.items.data[0]?.price;
     if (!price) continue;
@@ -106,8 +119,8 @@ export async function pickMembershipSubWithProductFetch(
     if (!productId) continue;
     try {
       const product = await fetchProduct(productId);
-      if (isMembershipProductByMetadata(product)) {
-        candidates.push(sub);
+      if (isMembershipProductByMetadata(product) && !('deleted' in product && product.deleted)) {
+        candidates.push({ sub, product: product as Stripe.Product });
       }
     } catch {
       // Skip a sub whose product can't be retrieved; the lookup-key path
@@ -116,7 +129,7 @@ export async function pickMembershipSubWithProductFetch(
     }
   }
   if (candidates.length === 0) return null;
-  return candidates.find((s) => s.status === 'active') ?? candidates[0];
+  return candidates.find((c) => c.sub.status === 'active') ?? candidates[0];
 }
 
 /**

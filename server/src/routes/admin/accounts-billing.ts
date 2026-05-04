@@ -171,21 +171,29 @@ export function setupAccountsBillingRoutes(
                 // `stripe` is non-null inside this branch (guarded above)
                 // but TS narrowing doesn't carry through the closure.
                 const stripeClient = stripe;
-                const subscription = await pickMembershipSubWithProductFetch(
+                const picked = await pickMembershipSubWithProductFetch(
                   subsResult.data,
                   (productId) => stripeClient.products.retrieve(productId),
                 );
 
-                if (subscription) {
+                if (picked) {
                   // Use the canonical writer so /sync, the webhook handler,
                   // and lazy-reconcile all produce identical row state. The
                   // prior inline UPDATE wrote only 6 fields, leaving
                   // stripe_subscription_id / lookup_key / product / tier
                   // NULL — which is how Adzymic ended up with status=active
                   // but unresolvable tier (May 2026 incident).
+                  //
+                  // Pass the picked product's metadata when present —
+                  // founding-era products carry `tier=<membership_tier>`
+                  // there because the auto-created price's lookup_key is
+                  // immutable in Stripe. Without this, tier resolution
+                  // falls through to amount inference, which fails for
+                  // $0 comp-style subs (Advertible — May 2026).
                   const payload = buildSubscriptionUpdate(
-                    subscription as Parameters<typeof buildSubscriptionUpdate>[0],
+                    picked.sub as Parameters<typeof buildSubscriptionUpdate>[0],
                     org.is_personal,
+                    picked.product?.metadata ?? null,
                   );
 
                   await pool.query(
@@ -227,8 +235,8 @@ export function setupAccountsBillingRoutes(
                       status: payload.subscription_status,
                       amount: payload.subscription_amount,
                       interval: payload.subscription_interval,
-                      current_period_end: subscription.current_period_end ?? null,
-                      canceled_at: subscription.canceled_at ?? null,
+                      current_period_end: picked.sub.current_period_end ?? null,
+                      canceled_at: picked.sub.canceled_at ?? null,
                     },
                   };
                   syncResults.updated = true;

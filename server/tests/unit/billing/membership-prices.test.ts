@@ -181,7 +181,7 @@ describe('pickMembershipSubWithProductFetch', () => {
       fakeSub({ id: 'sub_member', lookup_key: 'aao_membership_explorer_50', product: 'prod_x' }),
     ];
     const result = await pickMembershipSubWithProductFetch(subs, fetchProduct);
-    expect(result?.id).toBe('sub_member');
+    expect(result?.sub.id).toBe('sub_member');
     expect(fetchProduct).not.toHaveBeenCalled();
   });
 
@@ -198,7 +198,7 @@ describe('pickMembershipSubWithProductFetch', () => {
       fakeSub({ id: 'sub_founding', lookup_key: null, product: 'prod_founding_corp' }),
     ];
     const result = await pickMembershipSubWithProductFetch(subs, fetchProduct);
-    expect(result?.id).toBe('sub_founding');
+    expect(result?.sub.id).toBe('sub_founding');
     expect(fetchProduct).toHaveBeenCalledWith('prod_founding_corp');
   });
 
@@ -228,7 +228,7 @@ describe('pickMembershipSubWithProductFetch', () => {
       fakeSub({ id: 'sub_good', lookup_key: null, product: 'prod_founding' }),
     ];
     const result = await pickMembershipSubWithProductFetch(subs, fetchProduct);
-    expect(result?.id).toBe('sub_good');
+    expect(result?.sub.id).toBe('sub_good');
   });
 
   it('skips a sub whose price.product is not a string (already expanded by caller)', async () => {
