@@ -16,7 +16,7 @@ A buyer agent exposes two HTTP/2 endpoints under a single base URL — `POST /co
 | Message type | Receives | Returns |
 |---|---|---|
 | `context_match_request` | Page/content signals, placement, geo | Offers with creative manifests |
-| `identity_match_request` | Seller agent URL, identity tokens, optional package ID list | Eligible package IDs + TTL |
+| `identity_match_request` | Seller agent URL, identity tokens, optional package ID list | Eligible package IDs + `serve_window_sec` |
 
 Each endpoint handles one message type. Both must respond in under 50ms. The router enforces this budget and will skip slow providers.
 
@@ -121,11 +121,11 @@ The router sends you the seller's `seller_agent_url` and one or more identity to
   "type": "identity_match_response",
   "request_id": "id-9c4e",
   "eligible_package_ids": ["acme-outdoor-q2", "acme-loyalty-retarget"],
-  "ttl_sec": 60
+  "serve_window_sec": 60
 }
 ```
 
-Return only the package IDs that pass your eligibility checks. Packages not in the list are treated as ineligible. The `ttl_sec` tells the router how long to cache this response — during that window, the router returns cached eligibility without re-querying you. The publisher uses cached eligibility to allocate across whatever placements exist. Set the TTL based on how quickly your eligibility state changes (frequency caps, audience updates, etc.).
+Return only the package IDs that pass your eligibility checks. Packages not in the list are treated as ineligible. The `serve_window_sec` is a **per-package single-shot fcap**: after the publisher serves the user one impression on each eligible package within this window, the publisher MUST re-query Identity Match before serving from those packages again. Default 60s, max 300s. This is not a router response cache TTL — see [The serve-window contract](#the-serve-window-contract).
 
 **What you never receive** in Identity Match: page URLs, content topics, keywords, article text, or any content signal. You cannot determine what the user is looking at.
 
@@ -144,21 +144,23 @@ You have no role in this step. The publisher controls activation.
 
 ## Frequency Cap Management
 
-Cross-publisher frequency capping is the primary use case for Identity Match. Your agent maintains frequency state per user token:
+Cross-publisher frequency capping is the primary use case for Identity Match. Cap policy and counting live in your **impression tracker**; the Identity Match service consumes only cap-fire signals at query time. The split:
 
-- **Count impressions** by user token + package ID
-- **Track recency** — when was the last impression for this token?
-- **Apply caps** from the media buy: `max_impressions` per `window`, minimum `recency` between exposures
-- **Exclude the package** from `eligible_package_ids` when a cap is hit
-- **Set `ttl_sec`** to reflect how long this eligibility is valid — a shorter TTL means the router re-checks sooner, which is useful when a cap is close to being reached
+- **Impression tracker** receives pixel fires, decodes the TMPX token, and applies whatever fcap policies you maintain — counting impressions across whatever dimensions you cap on (package, campaign, advertiser, creative, line item) for each resolved user identity, with whatever windowing and dedup logic your policy engine uses.
+- **On the impression that exhausts a cap**, the impression tracker writes a cap-fire entry — `(user_identity, package) capped until <expireAt>` — into the Identity Match cap-state store.
+- **Identity Match service** at query time excludes any package with a cap-fire entry against any of the request's identities from `eligible_package_ids`.
+
+The protocol does not constrain how you count impressions, where policies live, or how you dedup across identities. It only defines the boundary: cap-fire events flow into the cap-state store; the IdentityMatch service checks presence at query time. See [Frequency-Cap Data Flow](/docs/trusted-match/identity-match-implementation) for the boundary contract and the reference cap-state store.
 
 Because Identity Match runs across all publishers using TMP, a user who saw your ad on Publisher A will correctly show as over-frequency on Publisher B — even though you can't see which publisher sent the request.
 
 ### How Buyers Learn About Exposures
 
-The `tmpx` field on the Identity Match response carries a TMPX token — an HPKE-encrypted blob containing the user's resolved identity tokens. The publisher substitutes `{TMPX}` into creative tracking URLs. When the ad serves, your impression pixel receives the encrypted token. Your cluster master decrypts it, logs the exposure against the user, and replicates updated frequency state to read replicas. This gives you real-time per-user exposure signals without the publisher seeing user identity.
+The `tmpx` field on the Identity Match response carries a TMPX token — an HPKE-encrypted blob containing the user's resolved identity tokens. The publisher substitutes `{TMPX}` into creative tracking URLs. When the ad serves, your impression pixel receives the encrypted token. Your impression tracker decrypts it, applies your fcap policy logic against the resolved identities, and (when a cap fires) writes a cap-fire entry to the Identity Match cap-state store. Most production deployments separate decode (synchronous, at intake) from policy evaluation and cap-state writes (asynchronous, behind a queue) for buffering.
 
-See [TMPX Exposure Tokens](/docs/trusted-match/specification#tmpx-exposure-tokens) for the encryption format and binary token structure.
+This gives you real-time per-user exposure signals without the publisher seeing user identity.
+
+See [TMPX Exposure Tokens](/docs/trusted-match/specification#tmpx-exposure-tokens) for the encryption format and binary token structure, and [Frequency-Cap Data Flow](/docs/trusted-match/identity-match-implementation) for the cap-state store boundary contract.
 
 ## Provider Registration
 
@@ -201,16 +203,18 @@ Common scenarios:
 - **Internal failure**: Return an error response. The router skips your provider and proceeds with other providers.
 - **Timeout**: If you can't respond within the latency budget, the router skips you. No error response needed — the router handles this.
 
-## The TTL Caching Contract
+## The serve-window contract
 
-The `ttl_sec` field on Identity Match responses is a caching contract between the buyer and the router:
+The `serve_window_sec` field on Identity Match responses is a **per-package single-shot fcap** between the buyer and the publisher:
 
-- The router caches the response for `ttl_sec` seconds, keyed by `{identities_hash, provider_id, package_ids_hash, consent_hash}` (see spec for canonical bytes). `identities_hash` is computed over the per-provider filtered subset you received — your cache partition is scoped to the identity types you resolve.
-- During that window, the router returns cached eligibility without re-querying the buyer
-- The publisher uses cached eligibility to allocate across whatever placements exist — a single pre-roll, a CTV ad pod, or a web page with multiple ad units
-- The buyer doesn't need to know how many placements exist or how the publisher allocates
+- For each package in `eligible_package_ids`, the publisher MAY serve the user **at most one impression** on that package within `serve_window_sec` seconds.
+- After the publisher has served one impression on each eligible package, the publisher MUST re-query Identity Match before serving any of those packages to the same user again.
+- Multi-impression frequency capping (5/day, 100/month, etc.) is separate. It lives in your buyer-side state and is updated out-of-band via TMPX impression callbacks regardless of `serve_window_sec`. The serve window is the protocol-level throttle; multi-impression caps are buyer-internal policy.
 
-**Choosing a TTL**: Set the TTL based on how quickly your eligibility state changes. If frequency caps reset hourly, a 300-second TTL is reasonable. If a user is close to a cap limit, return a shorter TTL (e.g., 30 seconds) so the router re-checks sooner.
+The router MAY apply an internal deduplication cache keyed by `{identities_hash, provider_id, package_ids_hash, consent_hash}` (see spec for canonical bytes), but the publisher's binding contract is the serve-window throttle, not the router's cache window.
+
+**Choosing a serve_window_sec value**: Default 60 seconds. Range 1–300. Anything longer than 300 makes per-package fcap too coarse for typical campaigns. Anything shorter than your IdentityMatch round-trip just adds load. 60 is a good default; tune downward if eligibility state shifts faster (close to a cap, audience just changed) or upward (max 300) if your IdentityMatch service is at load and the campaigns are tolerant of coarser fcap.
+
 
 ## Performance Requirements
 
@@ -234,7 +238,7 @@ Buyers receive real-time per-user exposure signals via the `{TMPX}` macro. The I
 | | OpenRTB | TMP |
 |---|---|---|
 | **You receive** | Full bid request (user + content + device) | Either content OR identity, never both |
-| **You return** | Bid price | Offer (creative manifest) or eligible package IDs + TTL |
+| **You return** | Bid price | Offer (creative manifest) or eligible package IDs + serve window |
 | **Auction** | Exchange runs auction | No auction — publisher joins locally |
 | **Frequency** | Per-DSP only | Cross-publisher via Identity Match |
 | **Integration** | Per-exchange SSP adapter | Two endpoints (context + identity), any surface |

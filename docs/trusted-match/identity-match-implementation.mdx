@@ -1,0 +1,99 @@
+---
+title: Identity Match Frequency-Cap Data Flow
+sidebarTitle: Frequency-Cap Data Flow
+description: "Boundary contract between the impression tracker and the Identity Match service for frequency capping — the data flow only. Internal counting, policy evaluation, and storage layout are buyer-internal concerns."
+"og:title": "AdCP TMP Identity Match Frequency-Cap Data Flow"
+---
+
+# Identity Match Frequency-Cap Data Flow
+
+This page describes how frequency-cap state reaches the Identity Match service and how Identity Match consumes it at eligibility time. It defines **the data flow only** — what crosses the boundary between the impression tracker and the Identity Match service. Internal mechanics (how the impression tracker counts impressions, where policies live, what storage layout the Identity Match service uses, how identities are deduplicated upstream) are buyer-internal concerns and are out of scope here.
+
+The wire spec lives in the [TMP specification](/docs/trusted-match/specification); the conformance invariants the Identity Match service must satisfy are also normative there. The reference implementation of the Identity Match cap-state store ships in [`adcp-go/targeting/fcap`](https://github.com/adcontextprotocol/adcp-go/tree/main/targeting/fcap).
+
+## Roles
+
+| Component | Responsibility |
+|---|---|
+| **Identity Match service** | At query time, returns `eligible_package_ids` — the subset of requested packages the user is not currently capped on (and that pass other eligibility checks). It does not count impressions and does not own fcap policies. |
+| **Impression tracker** | Receives pixel fires, decodes TMPX, applies the buyer's fcap policies (counting, windowing, multi-identity dedup, whatever the buyer's policy logic does), and signals "cap fired" to the Identity Match cap-state store on the impression that exhausts a cap. |
+| **Identity Match cap-state store** | Records `(user_identity, package) → cap-until` entries with TTL. Queried by the Identity Match service at eligibility time. Written by the impression tracker (or a downstream service in its pipeline). |
+
+The split is deliberate: counting impressions, evaluating windows, and deciding when a cap fires are buyer-internal policy concerns that vary across buyers and across campaigns. The Identity Match service stays narrow — it answers "is this user currently capped on this package?" and nothing more. New cap dimensions (advertiser, campaign, creative — see [extensions](#future-extensions)) plug into the same boundary contract without changing the service.
+
+## End-to-end flow
+
+```
+1. Identity Match query
+   publisher → router → Identity Match service
+   Identity Match looks up cap state for each (identity, package) pair
+   returns eligible_package_ids + tmpx (HPKE-encrypted resolved identities)
+
+2. Ad serves; creative tracking URL fires pixel with {TMPX}
+   publisher's player/page → impression tracker
+
+3. Impression tracker decodes TMPX
+   → resolved identities + signed package context (seller_agent_url, package_id)
+
+4. Impression tracker applies the buyer's fcap policies
+   → counts this exposure against whatever dimensions the buyer caps on
+     (package, campaign, advertiser, creative, line item, …) for each
+     resolved identity, using whatever policy logic and storage the buyer
+     runs internally
+
+5. If this impression exhausts a cap (i.e., it is the last allowed exposure
+   under one of the buyer's policies), the impression tracker (or a
+   downstream service in its pipeline) writes a cap-fire entry to the
+   Identity Match cap-state store:
+     (user_identity, package) capped until <expireAt>
+
+6. Subsequent Identity Match queries for that user see the cap-state entry
+   and exclude the package from eligible_package_ids until the entry expires
+```
+
+Steps 1, 2, and 6 cross the wire and are normatively defined in the [TMP specification](/docs/trusted-match/specification). Steps 3 and 5 cross the impression-tracker → cap-state-store boundary and are defined on this page. Step 4 is buyer-internal — the protocol does not constrain it.
+
+## The cap-fire event
+
+When a buyer's policy evaluation determines that an impression has exhausted a cap, the impression tracker writes a cap-fire entry to the Identity Match cap-state store. Each entry consists of:
+
+| Field | Description |
+|---|---|
+| `user_identity` | The resolved identity token (e.g., `rampid:abc`, `id5:def`, `maid:ghi`) the cap fired on. If a single impression resolved to multiple identities and the policy fired on all of them, the impression tracker writes one entry per identity. |
+| `seller_agent_url` | The seller agent the package belongs to. Disambiguates identical `package_id` strings across sellers. |
+| `package_id` | The package the cap fired on. |
+| `expire_at` | Wall-clock time at which the cap expires. The cap-state store enforces this as a TTL — entries are absent after `expire_at`. |
+
+A single cap-fire event typically corresponds to one entry; a cap that fires on multiple resolved identities or multiple packages produces one entry per `(identity, package)` pair, all sharing the same `expire_at` if the buyer's policy is the same.
+
+The cap-state store does not record per-impression counts, policy definitions, or window configurations. Its only job is to answer "is this `(user_identity, package)` currently capped?" The buyer's policy logic — counting, windowing, choosing dimensions to cap on, deciding when to fire — lives entirely in the impression tracker.
+
+## The eligibility query
+
+At query time, the Identity Match service receives a list of identities and a list of candidate packages. For each candidate package, it checks the cap-state store for any matching `(identity, package)` entry across the user's identities. If any entry exists, the package is excluded from `eligible_package_ids`. This is a presence check, not a count.
+
+Cap state is one input to eligibility. The Identity Match service also evaluates audience membership, package active state, audience freshness, and any other inputs the buyer cares about — see the [conformance invariants](/docs/trusted-match/specification#conformance-invariants-for-identitymatch-eligibility). The cap-state portion of that evaluation is the part this page defines.
+
+## Reference implementation
+
+The cap-state store API in [`adcp-go/targeting/fcap`](https://github.com/adcontextprotocol/adcp-go/tree/main/targeting/fcap) is the reference shape. It exposes two operations:
+
+```go
+RecordCap(ctx, userIdentity string, fields []Field, expireAt time.Time) error
+IsCapped(ctx, userIdentity string, field Field) (bool, error)
+```
+
+— plus batch variants for both. `Field` is `{SellerAgentURL, PackageID}`. The reference store is backed by Valkey 9 hashes, hashed by user identity, with one hash field per `(seller_agent_url, package_id)` tuple and a TTL set to `expire_at`. Other backends (Aerospike, DynamoDB, in-memory, anything) are conformant if they satisfy the boundary contract above.
+
+## Future extensions
+
+Today the cap-state store is keyed at `(user_identity, seller_agent_url, package_id)`. Future protocol versions may extend the field to additional dimensions — advertiser, campaign, creative, line item — so a buyer can express caps that span multiple packages without writing N entries on every cap-fire. The boundary contract on this page is unchanged by such extensions: the impression tracker writes cap-fire entries; the Identity Match service checks presence at query time.
+
+## See also
+
+- [TMP Specification](/docs/trusted-match/specification) — wire spec, TMPX format, conformance invariants
+- [Buyer Guide](/docs/trusted-match/buyer-guide) — buyer agent integration, Context Match + Identity Match flows
+- [Migration from AXE](/docs/trusted-match/migration-from-axe) — for buyers transitioning from AXE-shaped pipelines, including the OpenRTB User.eids cross-walk
+- [Privacy architecture](/docs/trusted-match/privacy-architecture) — what each party learns
+- [Router architecture](/docs/trusted-match/router-architecture) — provider registration, fan-out, latency
+- [`adcp-go/targeting/fcap`](https://github.com/adcontextprotocol/adcp-go/tree/main/targeting/fcap) — reference cap-state store in Go
