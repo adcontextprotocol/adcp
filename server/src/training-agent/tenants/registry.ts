@@ -204,32 +204,58 @@ export function createRegistryHolder(): RegistryHolder {
       if (registry) return registry;
       if (pendingInit) return pendingInit;
       const promise = (async () => {
+        const t0 = Date.now();
+        logger.info('Tenant registry init starting');
         const hostBase = buildHostBaseUrl();
         const reg = createTenantRegistry({
           defaultServerOptions: buildDefaultServerOptions(),
           jwksValidator: noopJwksValidator,
           autoValidate: true,
         });
-        const signals = buildSignalsTenantConfig(hostBase);
-        const sales = buildSalesTenantConfig(hostBase);
-        const governance = buildGovernanceTenantConfig(hostBase);
-        const creative = buildCreativeTenantConfig(hostBase);
-        const creativeBuilder = buildCreativeBuilderTenantConfig(hostBase);
-        const brand = buildBrandTenantConfig(hostBase);
+        const tCreate = Date.now();
+        const configs = [
+          { id: 'signals', cfg: buildSignalsTenantConfig(hostBase) },
+          { id: 'sales', cfg: buildSalesTenantConfig(hostBase) },
+          { id: 'governance', cfg: buildGovernanceTenantConfig(hostBase) },
+          { id: 'creative', cfg: buildCreativeTenantConfig(hostBase) },
+          { id: 'creative-builder', cfg: buildCreativeBuilderTenantConfig(hostBase) },
+          { id: 'brand', cfg: buildBrandTenantConfig(hostBase) },
+        ] as const;
+        const tConfigs = Date.now();
         // awaitFirstValidation:true blocks until the no-op validator
         // promotes the tenant to 'healthy'. Without it the first request
         // would race the background validation and see 'pending' (refused
         // traffic) for the first ~10ms.
-        await Promise.all([
-          reg.register(signals.tenantId, signals.config, { awaitFirstValidation: true }),
-          reg.register(sales.tenantId, sales.config, { awaitFirstValidation: true }),
-          reg.register(governance.tenantId, governance.config, { awaitFirstValidation: true }),
-          reg.register(creative.tenantId, creative.config, { awaitFirstValidation: true }),
-          reg.register(creativeBuilder.tenantId, creativeBuilder.config, { awaitFirstValidation: true }),
-          reg.register(brand.tenantId, brand.config, { awaitFirstValidation: true }),
-        ]);
+        await Promise.all(
+          configs.map(async ({ id, cfg }) => {
+            const start = Date.now();
+            try {
+              await reg.register(cfg.tenantId, cfg.config, { awaitFirstValidation: true });
+              logger.info({ tenantId: id, elapsedMs: Date.now() - start }, 'Tenant registered');
+            } catch (err) {
+              logger.error(
+                {
+                  err,
+                  errMessage: err instanceof Error ? err.message : String(err),
+                  errStack: err instanceof Error ? err.stack : undefined,
+                  tenantId: id,
+                  elapsedMs: Date.now() - start,
+                },
+                'Tenant register failed',
+              );
+              throw err;
+            }
+          }),
+        );
         logger.info(
-          { hostBase, tenants: ['signals', 'sales', 'governance', 'creative', 'creative-builder', 'brand'] },
+          {
+            hostBase,
+            createMs: tCreate - t0,
+            configBuildMs: tConfigs - tCreate,
+            registerMs: Date.now() - tConfigs,
+            totalMs: Date.now() - t0,
+            tenants: configs.map(c => c.id),
+          },
           'Tenant registry initialized',
         );
         registry = reg;

@@ -65,7 +65,33 @@ function tenantMcpHandler(holder: RegistryHolder, tenantId: string) {
     }
 
     const host = resolveTenantHost(req);
-    const registry = await holder.get();
+    let registry;
+    try {
+      registry = await holder.get();
+    } catch (err) {
+      // Surfacing the rejection here is what made #3854/#3869-class bugs
+      // visible. Without this, init failures escape to Express's default
+      // error handler — the smoke sees an HTML 500 with no JSON body and
+      // no log entry tying the error to the rejected promise.
+      logger.error(
+        {
+          err,
+          errMessage: err instanceof Error ? err.message : String(err),
+          errName: err instanceof Error ? err.name : undefined,
+          errStack: err instanceof Error ? err.stack : undefined,
+          errCause: err instanceof Error ? (err as Error & { cause?: unknown }).cause : undefined,
+          tenantId,
+          host,
+        },
+        'tenant registry init rejected — request failed before dispatch',
+      );
+      res.status(503).json({
+        jsonrpc: '2.0',
+        id: null,
+        error: { code: -32000, message: 'Tenant registry warming up; retry shortly' },
+      });
+      return;
+    }
     const resolved = registry.resolveByRequest(host, `/${tenantId}/mcp`);
     if (!resolved) {
       logger.warn(
@@ -164,7 +190,13 @@ export function mountTenantRoutes(
   // the next request retries.
   holder.get().catch((err) => {
     logger.error(
-      { err },
+      {
+        err,
+        errMessage: err instanceof Error ? err.message : String(err),
+        errName: err instanceof Error ? err.name : undefined,
+        errStack: err instanceof Error ? err.stack : undefined,
+        errCause: err instanceof Error ? (err as Error & { cause?: unknown }).cause : undefined,
+      },
       'Eager tenant registry init failed at boot; per-request init will retry',
     );
   });
