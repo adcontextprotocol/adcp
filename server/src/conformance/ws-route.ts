@@ -33,19 +33,20 @@ interface AliveSocket extends WebSocket {
 }
 
 function extractToken(req: http.IncomingMessage): string | null {
-  const url = new URL(req.url ?? '/', 'http://placeholder');
-  const queryToken = url.searchParams.get('token');
-  if (queryToken) return queryToken;
-
+  // Prefer the `Sec-WebSocket-Protocol: adcp.conformance, <token>` form —
+  // headers are not surfaced in access logs by default. Fall back to a
+  // `?token=` query param for browser clients (which can't set custom
+  // WebSocket headers); operators running this surface should treat
+  // adopter-facing access logs as token-equivalent within the 1h TTL.
   const subprotocols = req.headers['sec-websocket-protocol'];
   if (typeof subprotocols === 'string') {
     const parts = subprotocols.split(',').map((s) => s.trim());
     const adcpIdx = parts.findIndex((p) => p === 'adcp.conformance');
     if (adcpIdx !== -1 && parts[adcpIdx + 1]) return parts[adcpIdx + 1];
-    if (parts[0] === 'mcp' && parts[1]) return parts[1];
   }
 
-  return null;
+  const url = new URL(req.url ?? '/', 'http://placeholder');
+  return url.searchParams.get('token');
 }
 
 export function attachConformanceWS(httpServer: http.Server): void {
@@ -114,8 +115,16 @@ async function onConnection(ws: AliveSocket, orgId: string): Promise<void> {
     { capabilities: {} },
   );
 
+  // Identity-keyed eviction: only remove the session entry if it still
+  // points at *this* transport. A same-org reconnect closes the prior
+  // socket via `register()`'s last-writer-wins displacement, which fires
+  // this listener for the *prior* socket — without the identity check, it
+  // would delete the freshly-registered new session and leave the org in
+  // a permanently-unreachable state until the next disconnect.
   ws.once('close', () => {
-    conformanceSessions.remove(orgId);
+    if (conformanceSessions.get(orgId)?.transport === transport) {
+      conformanceSessions.remove(orgId);
+    }
   });
 
   try {
@@ -127,6 +136,14 @@ async function onConnection(ws: AliveSocket, orgId: string): Promise<void> {
     } catch {
       // ignore
     }
+    return;
+  }
+
+  // If the adopter disconnected during initialize, skip registration —
+  // the close listener already ran (no-op against an empty store) and
+  // registering now would leak a session whose underlying socket is gone.
+  if (ws.readyState !== ws.OPEN) {
+    logger.debug({ orgId }, 'conformance adopter disconnected during initialize');
     return;
   }
 

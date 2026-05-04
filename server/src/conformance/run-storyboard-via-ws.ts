@@ -62,6 +62,16 @@ export async function runStoryboardViaConformanceSocket(
     throw new ConformanceNotConnectedError(orgId);
   }
 
+  // Liveness check — a session can linger in the store for one tick if
+  // the adopter disconnected between the runner's session lookup and a
+  // displaced same-org connect's eviction. Treat a closed transport as
+  // not-connected so the runner returns the connect-the-client hint
+  // rather than dispatching into a dead AgentClient.
+  if (session.transport.isClosed()) {
+    conformanceSessions.remove(orgId);
+    throw new ConformanceNotConnectedError(orgId);
+  }
+
   const storyboard = getStoryboard(storyboardId);
   if (!storyboard) {
     throw new StoryboardNotFoundError(storyboardId);

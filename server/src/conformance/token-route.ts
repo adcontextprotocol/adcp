@@ -72,22 +72,54 @@ export function buildConformanceTokenRouter(): Router {
 
     // Dev-only storyboard trigger — lets a local smoke harness exercise
     // the full PR #2 path (runStoryboardViaConformanceSocket) without
-    // needing the Addie chat surface. Requires a live conformance session
-    // for the supplied orgId (POST a token to /token first, connect from
-    // an adopter, then POST here). Production builds skip this entire block.
+    // needing the Addie chat surface. Production builds skip this entire
+    // block.
+    //
+    // Tenant scoping: normal authenticated callers (WorkOS users / API
+    // keys) MUST run against their own resolved org. The static admin
+    // API key (which has no tenant binding) is allowed to drive any
+    // connected session by supplying `org_id` in the body — this is the
+    // intended escape hatch for local smoke tools. Any user reaching
+    // this endpoint is already on a non-production deployment with the
+    // static admin key configured; the smoke-tool privilege is
+    // consistent with the rest of the surface admin already touches.
     router.post('/_debug/run-storyboard', requireAuth, async (req: Request, res: Response) => {
-      const orgId = typeof req.body?.org_id === 'string' ? req.body.org_id : null;
+      const isStaticAdmin = (req as Request & { isStaticAdminApiKey?: boolean })
+        .isStaticAdminApiKey === true;
+      const callerOrgId = await resolveCallerOrgId(req);
+      const bodyOrgId = typeof req.body?.org_id === 'string' ? req.body.org_id : null;
+
+      let targetOrgId: string;
+      if (isStaticAdmin) {
+        if (!bodyOrgId) {
+          res.status(400).json({ error: 'org_id required for admin smoke' });
+          return;
+        }
+        targetOrgId = bodyOrgId;
+      } else {
+        if (!callerOrgId) {
+          res.status(403).json({ error: 'no_organization' });
+          return;
+        }
+        if (bodyOrgId && bodyOrgId !== callerOrgId) {
+          res.status(403).json({ error: 'forbidden', message: 'org_id must match caller' });
+          return;
+        }
+        targetOrgId = callerOrgId;
+      }
+
       const storyboardId = typeof req.body?.storyboard_id === 'string' ? req.body.storyboard_id : null;
-      if (!orgId || !storyboardId) {
-        res.status(400).json({ error: 'org_id and storyboard_id required' });
+      if (!storyboardId) {
+        res.status(400).json({ error: 'storyboard_id required' });
         return;
       }
       try {
         const { runStoryboardViaConformanceSocket } = await import('./run-storyboard-via-ws.js');
-        const result = await runStoryboardViaConformanceSocket(orgId, storyboardId);
+        const result = await runStoryboardViaConformanceSocket(targetOrgId, storyboardId);
         res.json(result);
       } catch (err) {
-        res.status(500).json({ error: (err as Error).message });
+        logger.error({ err, targetOrgId, storyboardId }, 'debug run-storyboard failed');
+        res.status(500).json({ error: 'run_failed' });
       }
     });
   }
