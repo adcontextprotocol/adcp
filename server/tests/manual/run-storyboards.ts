@@ -174,11 +174,31 @@ function brandFromKit(kit: LoadedTestKit | undefined): StoryboardRunOptions['bra
 }
 
 /**
+ * Per-tenant probe-task override for security_baseline's auth probes.
+ *
+ * The shared test-kit (`acme-outdoor.yaml`) declares
+ * `auth.probe_task: list_creatives`. Tenants that serve `list_creatives`
+ * (sales, creative, creative-builder) work with the default. /signals
+ * doesn't serve it but does serve `get_signals` — both are on the SDK
+ * runner's allowlist of probe-safe tasks (auth-required, read-only,
+ * accept empty body). /governance and /brand have no allowlisted tool
+ * they actually serve, so security_baseline continues to fail there
+ * until the runner's allowlist widens or those tenants gain one of
+ * the allowlisted tools.
+ */
+const PROBE_TASK_BY_TENANT: Record<string, string> = {
+  signals: 'get_signals',
+};
+
+/**
  * Thread the test-kit's `auth.api_key` / `auth.probe_task` through to the
  * runner so `api_key_path` in security_baseline (and any future kit-gated
  * phase) executes instead of being skipped by `skip_if: "!test_kit.auth.api_key"`.
  * `probe_task` is required by the runner whenever `auth` is declared — surface
  * missing values as a hard failure rather than silently defaulting.
+ *
+ * When `TENANT_PATH` matches a known tenant, override `probe_task` with a
+ * tool that tenant actually serves (see `PROBE_TASK_BY_TENANT`).
  */
 function testKitOptionsFromKit(kit: LoadedTestKit | undefined): StoryboardRunOptions['test_kit'] | undefined {
   const auth = kit?.auth;
@@ -186,10 +206,12 @@ function testKitOptionsFromKit(kit: LoadedTestKit | undefined): StoryboardRunOpt
   if (!auth.probe_task) {
     throw new Error('test kit declares auth.api_key without auth.probe_task — required by runner');
   }
+  const tenantPath = process.env.TENANT_PATH;
+  const probeTask = (tenantPath && PROBE_TASK_BY_TENANT[tenantPath]) ?? auth.probe_task;
   return {
     auth: {
       ...(auth.api_key !== undefined && { api_key: auth.api_key }),
-      probe_task: auth.probe_task,
+      probe_task: probeTask,
     },
   };
 }
