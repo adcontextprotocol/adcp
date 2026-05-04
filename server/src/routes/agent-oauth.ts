@@ -104,6 +104,28 @@ function generateState(): string {
 }
 
 /**
+ * Compute the RFC 8707 resource indicator for an agent URL.
+ *
+ * MCP servers (per the 2025-06+ authorization spec) reject access tokens
+ * whose `aud` claim doesn't match the MCP resource server. The resource
+ * indicator is the canonical agent URL (origin + path) with no query or
+ * fragment and no trailing slash on the path — see RFC 8707 §2 and the
+ * MCP authorization spec on canonicalization.
+ */
+function canonicalResourceForAgent(agentUrl: string): string | undefined {
+  try {
+    const u = new URL(agentUrl);
+    u.search = '';
+    u.hash = '';
+    let path = u.pathname;
+    if (path.length > 1 && path.endsWith('/')) path = path.slice(0, -1);
+    return `${u.origin}${path}`;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Exchange authorization code for tokens
  */
 async function exchangeCodeForTokens(
@@ -112,7 +134,8 @@ async function exchangeCodeForTokens(
   codeVerifier: string,
   redirectUri: string,
   clientId: string,
-  clientSecret?: string
+  clientSecret?: string,
+  resource?: string,
 ): Promise<OAuthTokens> {
   const params = new URLSearchParams({
     grant_type: 'authorization_code',
@@ -124,6 +147,10 @@ async function exchangeCodeForTokens(
 
   if (clientSecret) {
     params.set('client_secret', clientSecret);
+  }
+
+  if (resource) {
+    params.set('resource', resource);
   }
 
   const response = await fetch(tokenUrl, {
@@ -311,6 +338,13 @@ export function createAgentOAuthRouter(): Router {
       const { verifier, challenge } = generatePKCE();
       const state = generateState();
 
+      // RFC 8707 resource indicator. Required by MCP authorization spec
+      // (2025-06+) so the issued access token's `aud` claim matches the
+      // MCP resource server — without it, agents accept the OAuth flow
+      // but reject every subsequent bearer-token request, which surfaces
+      // to the user as "I authorized but Test still asks me to authorize".
+      const resource = canonicalResourceForAgent(agentContext.agent_url);
+
       // Store pending flow in PostgreSQL
       await agentOAuthFlowsDb.setPendingFlow(state, {
         agentContextId: agent_context_id,
@@ -319,6 +353,7 @@ export function createAgentOAuthRouter(): Router {
         codeVerifier: verifier,
         redirectUri,
         agentUrl: agentContext.agent_url,
+        ...(resource && { resource }),
         pendingRequest,
         returnTo,
       });
@@ -331,6 +366,12 @@ export function createAgentOAuthRouter(): Router {
       authUrl.searchParams.set('state', state);
       authUrl.searchParams.set('code_challenge', challenge);
       authUrl.searchParams.set('code_challenge_method', 'S256');
+      if (resource) {
+        authUrl.searchParams.set('resource', resource);
+      }
+      if (metadata.scopes_supported && metadata.scopes_supported.length > 0) {
+        authUrl.searchParams.set('scope', metadata.scopes_supported.join(' '));
+      }
 
       logger.info({ agentUrl: agentContext.agent_url, state }, 'Starting OAuth flow');
 
@@ -396,7 +437,8 @@ export function createAgentOAuthRouter(): Router {
         flow.codeVerifier,
         flow.redirectUri,
         client.client_id,
-        client.client_secret
+        client.client_secret,
+        flow.resource,
       );
 
       // Save tokens
