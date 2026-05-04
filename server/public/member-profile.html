@@ -746,7 +746,7 @@
   <div class="container">
     <div id="loading" class="loading">Loading your profile...</div>
 
-    <div id="error-container" style="display: none;"></div>
+    <div id="error-container" role="alert" style="display: none;"></div>
 
     <div id="no-profile" class="card no-profile" style="display: none;">
       <h2>Create Your Member Profile</h2>
@@ -2859,7 +2859,11 @@
       }
       el.textContent = message;
       el.style.display = 'block';
-      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      // Only scroll for in-form errors; #error-container sits at the top of
+      // the page where scrolling would push the nav off-screen.
+      if (formVisible) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
     }
 
     function hideMessages() {
