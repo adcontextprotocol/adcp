@@ -106,6 +106,41 @@ Specialisms are grouped below by parent protocol.
 `audience-sync` moved from the `governance` protocol to `media-buy` to match its tool family. If your agent claims `audience-sync` but only declares `governance` in `supported_protocols`, add `media_buy` to `supported_protocols` — the runner now expects the media-buy baseline to run alongside the audience-sync storyboard.
 </Note>
 
+### creative
+
+| Specialism | Status | Purpose |
+|-----------|--------|---------|
+| `creative-ad-server` | stable | Creative ad server with tag-based delivery |
+| `creative-generative` | stable | Generative creative agent producing assets on demand |
+| `creative-template` | stable | Creative template and transformation agent |
+
+### signals
+
+| Specialism | Status | Purpose |
+|-----------|--------|---------|
+| `signal-owned` | stable | Owned signal agent exposing first-party segments |
+| `signal-marketplace` | stable | Marketplace signal agent reselling third-party data |
+
+### governance
+
+| Specialism | Status | Purpose |
+|-----------|--------|---------|
+| `content-standards` | stable | Content standards enforcement (brand safety, policy compliance) |
+| `property-lists` | stable | Property list governance — curated inclusion and exclusion lists for targeting and delivery compliance |
+| `collection-lists` | stable | Collection list governance — curated inclusion and exclusion lists of content programs (shows, series, podcasts) for program-level brand safety |
+| `governance-delivery-monitor` | stable | Campaign delivery monitoring with drift detection |
+| `governance-spend-authority` | stable | Conditional spend approval and human-in-the-loop governance |
+
+<Note>
+**Coming in 3.1.** `measurement-verification` (third-party viewability, attribution, brand-safety, and SI-outcome verification) is scheduled for 3.1 under a dedicated `measurement` protocol.
+</Note>
+
+### brand
+
+| Specialism | Status | Purpose |
+|-----------|--------|---------|
+| `brand-rights` | stable | Brand identity and rights licensing (talent, music, stock media) |
+
 ## Choosing a sales specialism
 
 The `sales-*` specialisms are not mutually exclusive — a hybrid platform with both a guaranteed direct desk and an auction floor should claim both `sales-guaranteed` and `sales-non-guaranteed`. Follow the steps below to resolve your claim.
@@ -118,15 +153,13 @@ The `sales-*` specialisms are not mutually exclusive — a hybrid platform with 
 
 <Step title="Is your inventory channel-specific?">
 
-Three specialisms apply to specific delivery channels. They have their own storyboards and are not substitutes for the purchase-model specialisms — if you sell outside these channels (or alongside them), also follow Steps 2–3.
+Three specialisms apply to specific delivery channels and have their own storyboards. If you only sell one of these channel types, claim only the matching specialism. If you also sell general display or video inventory outside these channels, continue to Step 2.
 
 | If you operate… | Claim |
 |---|---|
 | Broadcast linear TV with FCC cancellation rules | `sales-broadcast-tv` |
 | Catalog-driven dynamic ads (product listings, restaurant menus, hotel listings, local commerce) | `sales-catalog-driven` |
 | Social platform with platform-managed creative | `sales-social` |
-
-If none apply, skip to Step 2.
 
 </Step>
 
@@ -174,41 +207,6 @@ If none apply, skip to Step 2.
 </Step>
 
 </Steps>
-
-### creative
-
-| Specialism | Status | Purpose |
-|-----------|--------|---------|
-| `creative-ad-server` | stable | Creative ad server with tag-based delivery |
-| `creative-generative` | stable | Generative creative agent producing assets on demand |
-| `creative-template` | stable | Creative template and transformation agent |
-
-### signals
-
-| Specialism | Status | Purpose |
-|-----------|--------|---------|
-| `signal-owned` | stable | Owned signal agent exposing first-party segments |
-| `signal-marketplace` | stable | Marketplace signal agent reselling third-party data |
-
-### governance
-
-| Specialism | Status | Purpose |
-|-----------|--------|---------|
-| `content-standards` | stable | Content standards enforcement (brand safety, policy compliance) |
-| `property-lists` | stable | Property list governance — curated inclusion and exclusion lists for targeting and delivery compliance |
-| `collection-lists` | stable | Collection list governance — curated inclusion and exclusion lists of content programs (shows, series, podcasts) for program-level brand safety |
-| `governance-delivery-monitor` | stable | Campaign delivery monitoring with drift detection |
-| `governance-spend-authority` | stable | Conditional spend approval and human-in-the-loop governance |
-
-<Note>
-**Coming in 3.1.** `measurement-verification` (third-party viewability, attribution, brand-safety, and SI-outcome verification) is scheduled for 3.1 under a dedicated `measurement` protocol.
-</Note>
-
-### brand
-
-| Specialism | Status | Purpose |
-|-----------|--------|---------|
-| `brand-rights` | stable | Brand identity and rights licensing (talent, music, stock media) |
 
 ## How to claim
 
