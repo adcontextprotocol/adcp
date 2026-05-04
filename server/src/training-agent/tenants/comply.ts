@@ -201,6 +201,8 @@ export function buildSalesComplyConfig(): ComplyControllerConfig {
     },
     force: {
       media_buy_status: cast(forceAdapter('force_media_buy_status')),
+      create_media_buy_arm: cast(forceAdapter('force_create_media_buy_arm')),
+      task_completion: cast(forceAdapter('force_task_completion')),
     },
     simulate: {
       delivery: cast(simulateAdapter('simulate_delivery')),
