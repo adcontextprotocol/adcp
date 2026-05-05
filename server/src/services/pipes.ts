@@ -58,17 +58,48 @@ export function buildPipesReturnTo(
 
 export async function getGitHubAuthorizeUrl(workosUserId: string, returnTo: string): Promise<string> {
   const workos = getWorkos();
-  const response = await workos.post<{ user_id: string; return_to: string }>(
-    `/data-integrations/${GITHUB_PROVIDER}/authorize`,
-    { user_id: workosUserId, return_to: returnTo },
-    {},
-  );
-  const data = (response && typeof response === 'object' && 'data' in response ? response.data : response) as { url?: string };
-  if (!data?.url) {
-    logger.error({ workosUserId, response }, 'Pipes authorize response missing url');
-    throw new Error('Pipes authorize response missing url');
+  let returnToHost = '';
+  try {
+    returnToHost = new URL(returnTo).host;
+  } catch {
+    // returnTo is unparseable; leave host empty so the log captures that fact
   }
-  return data.url;
+  try {
+    const response = await workos.post<{ user_id: string; return_to: string }>(
+      `/data-integrations/${GITHUB_PROVIDER}/authorize`,
+      { user_id: workosUserId, return_to: returnTo },
+      {},
+    );
+    const data = (response && typeof response === 'object' && 'data' in response ? response.data : response) as { url?: string };
+    if (!data?.url) {
+      logger.error({ workosUserId, returnToHost, response }, 'Pipes authorize response missing url');
+      throw new Error('Pipes authorize response missing url');
+    }
+    return data.url;
+  } catch (error) {
+    const e = error as {
+      status?: number;
+      requestID?: string;
+      error?: string;
+      errorDescription?: string;
+      rawData?: unknown;
+    };
+    logger.error(
+      {
+        err: error,
+        workosUserId,
+        returnToHost,
+        provider: GITHUB_PROVIDER,
+        workosStatus: e?.status,
+        workosRequestId: e?.requestID,
+        workosError: e?.error,
+        workosErrorDescription: e?.errorDescription,
+        workosRawData: e?.rawData,
+      },
+      'Pipes authorize request failed',
+    );
+    throw error;
+  }
 }
 
 export type ConnectedAccountResult =
