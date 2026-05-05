@@ -150,11 +150,11 @@ describe('Hosted property → federated index sync', () => {
     expect(agentsByUrl.get(AGENT_X)).toMatchObject({
       url: AGENT_X,
       authorized_for: 'all',
-      source: 'adagents_json',
+      source: 'aao_hosted',
     });
     expect(agentsByUrl.get(AGENT_Y)).toMatchObject({
       url: AGENT_Y,
-      source: 'adagents_json',
+      source: 'aao_hosted',
     });
   });
 

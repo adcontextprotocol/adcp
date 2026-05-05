@@ -57,6 +57,7 @@
       .badge-source-discovered    { background: #ede9fe; color: #5b21b6; }
       .badge-source-brand_json    { background: #fef3c7; color: #92400e; }
       .badge-source-agent_claim   { background: #f3e8ff; color: #6b21a8; }
+      .badge-source-aao_hosted    { background: #fef3c7; color: #92400e; }
       .badge-valid    { background: #d1fae5; color: #065f46; }
       .badge-invalid  { background: #fee2e2; color: #991b1b; }
       .badge-unknown  { background: var(--color-bg-subtle); color: var(--color-text-muted); }
@@ -487,6 +488,7 @@
         discovered: 'found by crawler',
         brand_json: 'from your brand.json',
         agent_claim: 'agent self-claim',
+        aao_hosted: 'AAO-hosted (origin not yet verified)',
       };
       function sourceLabel(s) {
         return SOURCE_LABELS[s] || s;

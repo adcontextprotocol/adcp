@@ -13,10 +13,24 @@ public hosted property into `discovered_properties`,
 `/api/properties/save` (create + edit) and the Addie approval /
 enrichment path.
 
+Trust-label split: sync writes `source='aao_hosted'` (new value), NOT
+`source='adagents_json'`. `adagents_json` is reserved for rows where the
+publisher's origin actually serves the document (crawler-verified,
+including via the `authoritative_location` stub pattern). Until origin
+verification happens, AAO-hosted authorization is the publisher's stated
+intent — not an origin-attested claim. The agent rollup surfaces this
+to callers via the `source` field, and the publisher page renders
+"AAO-hosted (origin not yet verified)" on those rows.
+
 Reconciliation semantics:
-- `agent_publisher_authorizations` rows are fully reconciled — agents
-  removed from the manifest are deleted (we own the `source='adagents_json'`
-  label for this domain when AAO hosts).
+- `agent_publisher_authorizations` rows are fully reconciled, scoped to
+  `source='aao_hosted'` for this publisher_domain. Crawler-written
+  `adagents_json` rows for the same domain are left untouched (they
+  represent verified origin facts).
+- `discovered_publishers.has_valid_adagents` is NOT set by the sync —
+  that flag means the publisher's origin actually serves a valid
+  document, which AAO hosting alone does not establish. The crawler is
+  the only writer that should flip it.
 - `discovered_publishers` row uses a stable AAO sentinel value
   (`aao://hosted`) for `discovered_by_agent` so re-syncs collapse to one
   row regardless of agent ordering.

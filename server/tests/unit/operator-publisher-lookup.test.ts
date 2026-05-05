@@ -179,6 +179,31 @@ describe('PublisherLookupResult schema', () => {
     expect(result.success).toBe(true);
   });
 
+  it('validates aao_hosted source on agent rows (origin-not-verified label)', () => {
+    const data = {
+      domain: 'sasha-media.com',
+      member: null,
+      adagents_valid: null,
+      hosting: {
+        mode: 'aao_hosted' as const,
+        hosted_url: 'https://agenticadvertising.org/publisher/sasha-media.com/.well-known/adagents.json',
+        expected_url: 'https://sasha-media.com/.well-known/adagents.json',
+      },
+      properties: [],
+      authorized_agents: [
+        {
+          url: 'https://agent.example',
+          source: 'aao_hosted' as const,
+          properties_authorized: 0,
+          properties_total: 0,
+          publisher_wide: true,
+        },
+      ],
+    };
+    const result = PublisherLookupResultSchema.safeParse(data);
+    expect(result.success).toBe(true);
+  });
+
   it('validates self_invalid hosting mode', () => {
     const data = {
       domain: 'broken.example',

@@ -9,10 +9,20 @@
  * agent authorization graph that powers `/api/registry/publisher` and the
  * downstream lookups.
  *
+ * Trust-label semantics:
+ *  - Sync writes `source='aao_hosted'` rows, NOT `source='adagents_json'`.
+ *    `adagents_json` is reserved for rows where the publisher's origin
+ *    actually serves the document (crawler-verified, including following
+ *    `authoritative_location` stubs). Until origin verification happens,
+ *    AAO-hosted authorization is the publisher's stated intent — not
+ *    an origin-attested claim. Mixing the two labels would over-claim
+ *    on the agent's behalf.
+ *
  * Reconciliation semantics:
- *  - Authorizations: full reconcile. We own `source='adagents_json'` rows
- *    for this publisher_domain — the hosted document IS the publisher's
- *    adagents.json claim, so any row not in the new manifest is removed.
+ *  - Authorizations: full reconcile, scoped to `source='aao_hosted'` for
+ *    this publisher_domain. We own that source label exclusively;
+ *    crawler-written `adagents_json` rows for the same domain are left
+ *    untouched (they represent verified origin facts).
  *  - Properties: additive only. `discovered_properties` has no source
  *    column, so we cannot safely distinguish hosted-written rows from
  *    crawler-written rows. Removed properties persist until manually
@@ -129,7 +139,10 @@ export async function syncHostedPropertyToFederatedIndex(
         agent_url: agentUrl,
         publisher_domain: domain,
         authorized_for: typeof a.authorized_for === 'string' ? a.authorized_for : undefined,
-        source: 'adagents_json',
+        // `aao_hosted` rather than `adagents_json` — the publisher's
+        // origin has not been verified yet. Promotion to the stronger
+        // label is an explicit verification step (future work).
+        source: 'aao_hosted',
       });
       result.authorizations_reconciled++;
     } catch (err) {
@@ -138,21 +151,22 @@ export async function syncHostedPropertyToFederatedIndex(
     }
   }
 
-  // Reconcile: delete any (publisher_domain, source='adagents_json') rows
-  // not in the current manifest. Hosted is authoritative for this source
-  // label, so stale crawler rows for the same source are also cleaned up.
+  // Reconcile: delete any (publisher_domain, source='aao_hosted') rows
+  // not in the current manifest. Scoped to `aao_hosted` only — we don't
+  // touch crawler-written `adagents_json` rows or `agent_claim` rows,
+  // both of which represent attestations we don't own.
   try {
     const removeResult = validAgentUrls.length > 0
       ? await query(
           `DELETE FROM agent_publisher_authorizations
             WHERE publisher_domain = $1
-              AND source = 'adagents_json'
+              AND source = 'aao_hosted'
               AND agent_url <> ALL($2::text[])`,
           [domain, validAgentUrls],
         )
       : await query(
           `DELETE FROM agent_publisher_authorizations
-            WHERE publisher_domain = $1 AND source = 'adagents_json'`,
+            WHERE publisher_domain = $1 AND source = 'aao_hosted'`,
           [domain],
         );
     result.authorizations_removed = removeResult.rowCount ?? 0;
@@ -163,11 +177,14 @@ export async function syncHostedPropertyToFederatedIndex(
 
   // Publisher row, keyed on the stable sentinel — survives agent-list
   // reordering and missing-agent edge cases without leaking duplicate rows.
+  // We deliberately do NOT set has_valid_adagents=true here — that flag
+  // means the publisher's origin actually serves a valid document, which
+  // hosted-on-AAO does not establish until origin verification happens.
+  // The crawler is the only writer that should flip has_valid_adagents.
   try {
     await fedDb.upsertPublisher({
       domain,
       discovered_by_agent: AAO_HOSTED_SENTINEL,
-      has_valid_adagents: true,
     });
     result.publisher_synced = true;
   } catch (err) {

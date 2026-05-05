@@ -574,7 +574,10 @@ const PublisherPropertySchema = z.object({
 const PublisherAuthorizedAgentSchema = z.object({
   url: z.string(),
   authorized_for: z.string().optional(),
-  source: z.enum(["adagents_json", "agent_claim"]),
+  source: z.enum(["adagents_json", "aao_hosted", "agent_claim"]).openapi({
+    description:
+      "How strongly this authorization is attested. `adagents_json`: the publisher's origin actually serves a valid adagents.json (origin-verified). `aao_hosted`: AAO is hosting the canonical document on the publisher's behalf — represents publisher intent but origin has NOT been verified to redirect to AAO. `agent_claim`: the agent claimed it; publisher has not confirmed.",
+  }),
   properties_authorized: z.number().int().nonnegative().optional().openapi({
     description:
       "Count of this publisher's properties the agent is authorized to sell. Absent when `rollup_truncated` is set (call `/api/registry/publisher/authorization` for the per-agent count) or when properties are entirely brand.json-hydrated (no adagents.json claim has actually been made about them).",

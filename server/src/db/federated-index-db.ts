@@ -30,7 +30,21 @@ export interface DiscoveredPublisher {
 }
 
 /**
- * Agent-publisher authorization (from adagents.json or agent claims)
+ * Agent-publisher authorization.
+ *
+ * `source` distinguishes how strongly the row is attested:
+ *  - `adagents_json`: the publisher's origin actually serves a valid
+ *    adagents.json (either directly at /.well-known or via a stub with
+ *    `authoritative_location`). Origin-verified.
+ *  - `aao_hosted`: AAO is hosting the canonical document on the
+ *    publisher's behalf, but the publisher's origin has NOT been
+ *    verified to point at us yet. The hosted document represents the
+ *    publisher's intent; it does not yet carry the same trust weight as
+ *    an origin-verified row. Promotion to `adagents_json` requires a
+ *    successful round-trip fetch of the publisher's /.well-known.
+ *  - `agent_claim`: the agent claimed authorization via a
+ *    list_authorized_properties response; the publisher has not
+ *    confirmed it.
  */
 export interface AgentPublisherAuthorization {
   id?: string;
@@ -38,7 +52,7 @@ export interface AgentPublisherAuthorization {
   publisher_domain: string;
   authorized_for?: string;
   property_ids?: string[];
-  source: 'adagents_json' | 'agent_claim';
+  source: 'adagents_json' | 'aao_hosted' | 'agent_claim';
   discovered_at?: Date;
   last_validated?: Date;
 }
