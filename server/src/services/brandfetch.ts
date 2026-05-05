@@ -226,8 +226,16 @@ export async function fetchBrandData(domain: string): Promise<BrandfetchEnrichme
         return result;
       }
 
+      const isRetryableStatus = response.status === 429 || (response.status >= 500 && response.status < 600);
+      if (isRetryableStatus && attempt < BRANDFETCH_MAX_RETRIES) {
+        const delay = BRANDFETCH_RETRY_DELAY_MS * Math.pow(2, attempt);
+        logger.warn({ status: response.status, domain: normalizedDomain, attempt, delay }, 'Brandfetch transient error, retrying');
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+
       if (response.status !== 200) {
-        logger.error({ status: response.status, domain: normalizedDomain }, 'Brandfetch API error');
+        logger.warn({ status: response.status, domain: normalizedDomain }, 'Brandfetch API non-2xx response');
         return {
           success: false,
           domain: normalizedDomain,
@@ -240,7 +248,7 @@ export async function fetchBrandData(domain: string): Promise<BrandfetchEnrichme
         const text = Buffer.from(response.data as Buffer).toString('utf-8');
         data = JSON.parse(text) as BrandfetchResponse;
       } catch {
-        logger.error({ domain: normalizedDomain }, 'Brandfetch returned invalid JSON');
+        logger.warn({ domain: normalizedDomain }, 'Brandfetch returned invalid JSON');
         return {
           success: false,
           domain: normalizedDomain,
@@ -270,7 +278,7 @@ export async function fetchBrandData(domain: string): Promise<BrandfetchEnrichme
       }
 
       const message = error instanceof Error ? error.message : 'Unknown error';
-      logger.error({ error, domain: normalizedDomain, attempt }, 'Brandfetch fetch error');
+      logger.warn({ error, domain: normalizedDomain, attempt }, 'Brandfetch fetch failed after retries');
       return {
         success: false,
         domain: normalizedDomain,
