@@ -17,6 +17,7 @@ export interface PublisherPropertyFromBrandJson {
   identifiers: Array<{ type: string; value: string }>;
   tags: string[];
   source: "brand_json";
+  delegation_type?: "direct" | "delegated" | "ad_network";
 }
 
 interface RawBrandJsonProperty {
@@ -38,6 +39,14 @@ function readPropertyArray(value: unknown): RawBrandJsonProperty[] {
  * the result is the first N unique identifiers in document order.
  */
 const MAX_BRAND_JSON_PROPERTIES = 5000;
+
+// Known brand.json relationship values. Only these are emitted as tags or
+// delegation_type to guard against arbitrary input from publisher-controlled
+// manifests. "owned" has no adagents.json delegation_type counterpart so it
+// is tag-only; the other three are also surfaced as a structured field.
+const KNOWN_RELATIONSHIPS = ["owned", "direct", "delegated", "ad_network"] as const;
+const DELEGATION_TYPES = ["direct", "delegated", "ad_network"] as const;
+type DelegationType = (typeof DELEGATION_TYPES)[number];
 
 /**
  * Inferred identifier shape for a property type. brand.json's `identifier`
@@ -67,8 +76,19 @@ export function extractPublisherPropertiesFromBrandJson(
     const propType = typeof p.type === "string" && p.type ? p.type : "website";
     const relationship = typeof p.relationship === "string" ? p.relationship : undefined;
 
+    // Only emit a tag for known relationship values — relationship is from
+    // a publisher-controlled manifest and must not flow through unvalidated.
+    const knownRelationship = KNOWN_RELATIONSHIPS.includes(
+      relationship as (typeof KNOWN_RELATIONSHIPS)[number],
+    )
+      ? relationship
+      : undefined;
     const tags: string[] = [];
-    if (relationship) tags.push(`relationship:${relationship}`);
+    if (knownRelationship) tags.push(`relationship:${knownRelationship}`);
+
+    const delegation_type = DELEGATION_TYPES.includes(relationship as DelegationType)
+      ? (relationship as DelegationType)
+      : undefined;
 
     seen.set(id, {
       type: propType,
@@ -76,6 +96,7 @@ export function extractPublisherPropertiesFromBrandJson(
       identifiers: deriveIdentifiers(propType, id),
       tags,
       source: "brand_json",
+      delegation_type,
     });
     return true;
   }

@@ -23,7 +23,27 @@ describe('extractPublisherPropertiesFromBrandJson', () => {
       tags: ['relationship:owned'],
       source: 'brand_json',
     });
+    // 'owned' has no adagents.json counterpart — delegation_type is not set
+    expect(result[0].delegation_type).toBeUndefined();
     expect(result[1].tags).toEqual(['relationship:direct']);
+    expect(result[1].delegation_type).toBe('direct');
+  });
+
+  it('maps relationship to delegation_type for bilateral-verification values', () => {
+    const result = extractPublisherPropertiesFromBrandJson({
+      properties: [
+        { identifier: 'a.example', type: 'website', relationship: 'direct' },
+        { identifier: 'b.example', type: 'website', relationship: 'delegated' },
+        { identifier: 'c.example', type: 'website', relationship: 'ad_network' },
+        { identifier: 'd.example', type: 'website', relationship: 'owned' },
+        { identifier: 'e.example', type: 'website' },
+      ],
+    });
+    expect(result[0].delegation_type).toBe('direct');
+    expect(result[1].delegation_type).toBe('delegated');
+    expect(result[2].delegation_type).toBe('ad_network');
+    expect(result[3].delegation_type).toBeUndefined();
+    expect(result[4].delegation_type).toBeUndefined();
   });
 
   it('extracts brands[].properties[] (house manifest shape)', () => {
@@ -34,6 +54,17 @@ describe('extractPublisherPropertiesFromBrandJson', () => {
       ],
     });
     expect(result.map((p) => p.name)).toEqual(['a.example', 'b.example']);
+  });
+
+  it('maps delegation_type through brands[].properties[] (house manifest shape)', () => {
+    const result = extractPublisherPropertiesFromBrandJson({
+      brands: [
+        { name: 'Sub A', properties: [{ identifier: 'a.example', type: 'website', relationship: 'delegated' }] },
+        { name: 'Sub B', properties: [{ identifier: 'b.example', type: 'website', relationship: 'owned' }] },
+      ],
+    });
+    expect(result[0].delegation_type).toBe('delegated');
+    expect(result[1].delegation_type).toBeUndefined();
   });
 
   it('dedupes the same identifier across top-level and house shapes', () => {

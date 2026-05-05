@@ -5830,6 +5830,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         identifiers?: Array<{ type: string; value: string }>;
         tags?: string[];
         source: "adagents_json" | "discovered" | "brand_json";
+        delegation_type?: "direct" | "delegated" | "ad_network";
       };
 
       let projectedProperties: ProjectedProperty[] = properties.map(p => ({
