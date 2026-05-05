@@ -1931,6 +1931,7 @@ export class HTTPServer {
       res.redirect(301, `/account${query}#notifications`);
     });
     this.app.get('/dashboard/api-keys', (req, res) => serveDashboardPage(req, res, 'dashboard-api-keys.html'));
+    this.app.get('/dashboard/inventory', (req, res) => serveDashboardPage(req, res, 'dashboard-inventory.html'));
     this.app.get('/dashboard/addie', (_req, res) => res.redirect('/chat'));
 
     // Legal page redirects — canonical paths are /legal/terms and /legal/privacy

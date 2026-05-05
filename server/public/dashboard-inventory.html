@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Publisher Inventory - AgenticAdvertising.org</title>
+  <link rel="icon" href="/addie-icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/design-system.css">
+  <script src="/nav.js"></script>
+  <script src="/dashboard-nav.js"></script>
+  <style>
+    body { background: var(--color-bg-page); }
+
+    .hub-container {
+      max-width: var(--container-xl);
+      margin: 0 auto;
+      padding: var(--space-8) var(--space-4);
+    }
+
+    .hub-loading {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 200px;
+      gap: var(--space-3);
+      color: var(--color-text-secondary);
+    }
+
+    .spinner {
+      width: 32px;
+      height: 32px;
+      border: 3px solid var(--color-gray-200);
+      border-top-color: var(--color-brand);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .page-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-6);
+      margin-bottom: var(--space-8);
+      flex-wrap: wrap;
+    }
+
+    .page-header h1 {
+      font-size: var(--text-3xl);
+      font-weight: var(--font-bold);
+      color: var(--color-text-heading);
+      margin: 0;
+    }
+
+    .page-header p {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      margin: var(--space-1) 0 0;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: var(--space-16) var(--space-4);
+      color: var(--color-text-secondary);
+    }
+
+    .empty-state p { font-size: var(--text-sm); margin: var(--space-2) 0 0; }
+
+    .domain-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: var(--text-sm);
+    }
+
+    .domain-table th {
+      text-align: left;
+      padding: var(--space-2) var(--space-3);
+      border-bottom: 2px solid var(--color-border);
+      font-weight: var(--font-semibold);
+      color: var(--color-text-secondary);
+      font-size: var(--text-xs);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .domain-table td {
+      padding: var(--space-3);
+      border-bottom: 1px solid var(--color-border);
+      color: var(--color-text-primary);
+      vertical-align: middle;
+    }
+
+    .domain-table tr:last-child td { border-bottom: none; }
+
+    .domain-table tr:hover td { background: var(--color-bg-subtle); }
+
+    .domain-link {
+      font-weight: var(--font-semibold);
+      color: var(--color-primary-600);
+      text-decoration: none;
+    }
+    .domain-link:hover { text-decoration: underline; }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-1);
+      padding: 2px var(--space-2);
+      border-radius: var(--radius-full);
+      font-size: 11px;
+      font-weight: var(--font-semibold);
+      line-height: 1.4;
+    }
+
+    .badge--public { background: var(--color-success-50); color: var(--color-success-700); }
+    .badge--private { background: var(--color-gray-100); color: var(--color-text-secondary); }
+    .badge--verified { background: var(--color-primary-50); color: var(--color-primary-700); }
+    .badge--unverified { background: var(--color-warning-50); color: var(--color-warning-700); }
+    .badge--hosted { background: var(--color-purple-50, #f5f3ff); color: var(--color-purple-700, #6d28d9); }
+
+    .count-cell { font-variant-numeric: tabular-nums; }
+
+    .error-banner {
+      background: var(--color-error-50);
+      border: 1px solid var(--color-error-200);
+      border-radius: var(--radius-md);
+      padding: var(--space-4);
+      color: var(--color-error-700);
+      font-size: var(--text-sm);
+      margin-bottom: var(--space-6);
+    }
+  </style>
+</head>
+<body>
+  <div id="nav-placeholder"></div>
+
+  <div class="hub-container">
+    <div class="page-header">
+      <div>
+        <h1>Publisher Inventory</h1>
+        <p>Hosted domains managed by your organization</p>
+      </div>
+    </div>
+
+    <div id="loading" class="hub-loading">
+      <div class="spinner"></div>
+      <span>Loading inventory&hellip;</span>
+    </div>
+
+    <div id="error-banner" class="error-banner" style="display:none"></div>
+
+    <div id="content" style="display:none">
+      <div id="empty-state" class="empty-state" style="display:none">
+        <strong>No hosted domains yet</strong>
+        <p>Domains your organization hosts via AAO will appear here once created.</p>
+      </div>
+      <table id="domain-table" class="domain-table" style="display:none">
+        <thead>
+          <tr>
+            <th>Domain</th>
+            <th>Status</th>
+            <th>Origin verified</th>
+            <th>Agents</th>
+            <th>Properties</th>
+            <th>Last updated</th>
+          </tr>
+        </thead>
+        <tbody id="table-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    (async () => {
+      const loading = document.getElementById('loading');
+      const content = document.getElementById('content');
+      const errorBanner = document.getElementById('error-banner');
+      const emptyState = document.getElementById('empty-state');
+      const domainTable = document.getElementById('domain-table');
+      const tableBody = document.getElementById('table-body');
+
+      try {
+        const res = await fetch('/api/dashboard/inventory', { credentials: 'include' });
+        if (res.status === 401) {
+          window.location.href = '/login?return=' + encodeURIComponent(window.location.pathname);
+          return;
+        }
+        if (!res.ok) {
+          const j = await res.json().catch(() => ({}));
+          throw new Error(j.error || `HTTP ${res.status}`);
+        }
+        const { domains } = await res.json();
+
+        loading.style.display = 'none';
+        content.style.display = '';
+
+        if (!domains || domains.length === 0) {
+          emptyState.style.display = '';
+          return;
+        }
+
+        domainTable.style.display = '';
+        for (const d of domains) {
+          const tr = document.createElement('tr');
+
+          const updated = d.updated_at
+            ? new Date(d.updated_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+            : '—';
+
+          tr.innerHTML = `
+            <td><a class="domain-link" href="${escapeHtml(d.registry_url)}" target="_blank">${escapeHtml(d.domain)}</a></td>
+            <td>${d.is_public
+              ? '<span class="badge badge--public">Public</span>'
+              : '<span class="badge badge--private">Private</span>'}</td>
+            <td>${d.domain_verified
+              ? '<span class="badge badge--verified">Verified</span>'
+              : '<span class="badge badge--unverified">Pending</span>'}</td>
+            <td class="count-cell">${d.agent_count}</td>
+            <td class="count-cell">${d.property_count}</td>
+            <td>${escapeHtml(updated)}</td>
+          `;
+          tableBody.appendChild(tr);
+        }
+      } catch (err) {
+        loading.style.display = 'none';
+        errorBanner.textContent = 'Failed to load inventory: ' + (err.message || err);
+        errorBanner.style.display = '';
+      }
+
+      function escapeHtml(str) {
+        return String(str)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;');
+      }
+    })();
+  </script>
+</body>
+</html>

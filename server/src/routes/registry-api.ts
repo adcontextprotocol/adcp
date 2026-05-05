@@ -3454,6 +3454,44 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     }
   });
 
+  // ── Publisher Inventory Dashboard ─────────────────────────────
+  //
+  // Returns the caller's hosted-property inventory scoped to their WorkOS org.
+  // Read-only — no write path here. Bulk-edit is deferred pending merge-strategy
+  // design and domain_verified security gating (see issue #4113).
+
+  router.get("/dashboard/inventory", requireAuth!, async (req, res) => {
+    try {
+      const orgId = await resolvePrimaryOrganization(req.user!.id);
+      if (!orgId) {
+        return res.json({ domains: [] });
+      }
+      const hosted = await propertyDb.listHostedPropertiesByOrg(orgId);
+      const domains = hosted.map((h) => {
+        const agents = Array.isArray(h.adagents_json?.authorized_agents)
+          ? (h.adagents_json.authorized_agents as unknown[]).length
+          : 0;
+        const properties = Array.isArray(h.adagents_json?.properties)
+          ? (h.adagents_json.properties as unknown[]).length
+          : 0;
+        return {
+          domain: h.publisher_domain,
+          is_public: h.is_public,
+          domain_verified: h.domain_verified,
+          source_type: h.source_type,
+          agent_count: agents,
+          property_count: properties,
+          registry_url: `/publisher/${encodeURIComponent(h.publisher_domain)}`,
+          updated_at: h.updated_at,
+        };
+      });
+      return res.json({ domains });
+    } catch (err) {
+      logger.error({ err }, 'Failed to load publisher inventory');
+      return res.status(500).json({ error: 'Failed to load publisher inventory' });
+    }
+  });
+
   // ── Property List Check ────────────────────────────────────────
 
   router.post("/properties/check", bulkResolveRateLimiter, async (req, res) => {
