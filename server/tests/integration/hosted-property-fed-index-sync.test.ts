@@ -221,6 +221,42 @@ describe('Hosted property → federated index sync', () => {
     expect(res.body.authorized_agents[0].url).toBe(AGENT_X);
   });
 
+  it('reconciles properties on re-sync: properties removed from the manifest are deleted', async () => {
+    const initial = await propertyDb.createHostedProperty({
+      publisher_domain: PUB,
+      adagents_json: {
+        authorized_agents: [{ url: AGENT_X }],
+        properties: [
+          { type: 'website', name: PUB, identifiers: [{ type: 'domain', value: PUB }] },
+          { type: 'mobile_app', name: `${PUB} app` },
+        ],
+      },
+      is_public: true,
+      source_type: 'community',
+    });
+    await syncHostedPropertyToFederatedIndex(initial);
+
+    let res = await request(app).get(`/api/registry/publisher?domain=${encodeURIComponent(PUB)}`);
+    expect(res.body.properties).toHaveLength(2);
+
+    // Re-sync with only one property — the removed one should be deleted.
+    await pool.query(
+      `UPDATE hosted_properties SET adagents_json = $2 WHERE publisher_domain = $1`,
+      [PUB, JSON.stringify({
+        authorized_agents: [{ url: AGENT_X }],
+        properties: [{ type: 'website', name: PUB, identifiers: [{ type: 'domain', value: PUB }] }],
+      })],
+    );
+    const updated = await propertyDb.getHostedPropertyByDomain(PUB);
+    if (!updated) throw new Error('expected hosted property to exist');
+    const result = await syncHostedPropertyToFederatedIndex(updated);
+    expect(result.properties_removed).toBe(1);
+
+    res = await request(app).get(`/api/registry/publisher?domain=${encodeURIComponent(PUB)}`);
+    expect(res.body.properties).toHaveLength(1);
+    expect(res.body.properties[0].name).toBe(PUB);
+  });
+
   it('skips entries without required fields without throwing', async () => {
     const hosted = await propertyDb.createHostedProperty({
       publisher_domain: PUB,
