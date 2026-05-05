@@ -415,6 +415,9 @@
     .agent-action-link:hover {
       text-decoration: underline;
     }
+    .agent-action-link--danger {
+      color: var(--color-error-600, #c0392b);
+    }
     .agent-auth-section {
       margin-top: var(--space-3);
       padding-top: var(--space-3);
@@ -1273,6 +1276,50 @@
       }
     };
 
+    // DELETE the agent and re-render on success.
+    // Public agents are reflected in brand.json and the API rejects with
+    // 409 unpublish_first — surface that as an actionable prompt offering
+    // to flip visibility to private and retry the delete.
+    window.deleteAgent = async function deleteAgent(index, opts) {
+      const skipConfirm = !!(opts && opts.skipConfirm);
+      const agent = pageState.agents[index];
+      if (!agent) return;
+      const hostname = (() => {
+        try { return new URL(agent.url).hostname; } catch { return agent.url; }
+      })();
+      if (!skipConfirm && !confirm(`Delete agent ${hostname}?\n\n${agent.url}\n\nThis removes it from your registered agents. You can re-register it later.`)) {
+        return;
+      }
+      const orgQs = pageState.orgId ? `?org=${encodeURIComponent(pageState.orgId)}` : '';
+      try {
+        const resp = await fetch(`/api/me/agents/${encodeURIComponent(agent.url)}${orgQs}`, {
+          method: 'DELETE',
+          credentials: 'include',
+        });
+        if (resp.status === 204) {
+          pageState.agents = pageState.agents.filter((_, i) => i !== index);
+          pageState.complianceMap?.delete(agent.url);
+          renderPage(pageState.agents, pageState.complianceMap, pageState.orgId);
+          return;
+        }
+        const data = await resp.json().catch(() => ({}));
+        if (resp.status === 409 && data.error === 'unpublish_first') {
+          if (confirm(`This agent is currently Public and listed in brand.json. Set it to Private and then delete?`)) {
+            await window.setAgentVisibility(index, 'private');
+            // setAgentVisibility re-renders pageState; re-find by url.
+            const refreshed = pageState.agents.findIndex(a => a.url === agent.url);
+            if (refreshed !== -1 && pageState.agents[refreshed].visibility !== 'public') {
+              await window.deleteAgent(refreshed, { skipConfirm: true });
+            }
+          }
+          return;
+        }
+        alert(data.message || data.error || `Failed to delete agent (HTTP ${resp.status})`);
+      } catch (err) {
+        alert('Failed to delete agent: ' + (err?.message || err));
+      }
+    };
+
     function renderAgentsSection(agents, complianceMap, orgId) {
       if (!agents || agents.length === 0) {
         return `
@@ -1391,6 +1438,12 @@
             </div>
             ${bodyHtml}
             ${visibilitySelectorHtml}
+            <div class="agent-meta-row">
+              <span></span>
+              <div class="agent-meta-row-actions">
+                <button class="agent-action-link agent-action-link--danger" onclick="deleteAgent(${index})">Delete</button>
+              </div>
+            </div>
           </div>`;
         }
 
@@ -1411,7 +1464,10 @@
             ${renderVerificationPanel(null, agent.url, hasAuth)}
             <div class="agent-meta-row">
               <span></span>
-              <button class="agent-storyboard-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">Test your agent</button>
+              <div class="agent-meta-row-actions">
+                <button class="agent-storyboard-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">Test your agent</button>
+                <button class="agent-action-link agent-action-link--danger" onclick="deleteAgent(${index})">Delete</button>
+              </div>
             </div>
             <div class="agent-storyboard-panel" id="${cardId}-storyboard" style="display:none;"></div>
           </div>`;
@@ -1494,6 +1550,7 @@
                 <button class="agent-history-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">History</button>
                 <button class="agent-requests-btn agent-action-link" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">Requests</button>
                 <button class="agent-storyboard-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}" data-agent-tracks="${escapeHtml(JSON.stringify(tracks))}">Test</button>
+                <button class="agent-action-link agent-action-link--danger" onclick="deleteAgent(${index})">Delete</button>
               </div>
             </div>
             <div id="${cardId}-connect" style="display:none;border-top:1px solid var(--color-border);margin-top:var(--space-3);padding-top:var(--space-3);">
