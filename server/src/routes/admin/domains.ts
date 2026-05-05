@@ -270,16 +270,30 @@ export function setupDomainRoutes(
           prospect_notes ||
           `Discovered via Slack. ${domainInfo.user_count} user(s) in Slack workspace: ${slackUserNames}`;
 
+        // email_domain set at INSERT (don't depend on the WorkOS
+        // organization.updated webhook — if it misses, later @domain signups
+        // can never auto-link to this org).
         const result = await pool.query(
           `INSERT INTO organizations (
             workos_organization_id,
             name,
             prospect_status,
             prospect_source,
-            prospect_notes
-          ) VALUES ($1, $2, $3, $4, $5)
+            prospect_notes,
+            email_domain
+          ) VALUES ($1, $2, $3, $4, $5, $6)
           RETURNING *`,
-          [workosOrg.id, orgName, "prospect", "slack_discovery", notes]
+          [workosOrg.id, orgName, "prospect", "slack_discovery", notes, normalizedDomain]
+        );
+
+        // Mirror the domain into organization_domains so findPayingOrgForDomain
+        // and the upcoming claim-existing-org flow can locate this prospect by
+        // domain even before the webhook fires.
+        await pool.query(
+          `INSERT INTO organization_domains (workos_organization_id, domain, is_primary, verified, source)
+           VALUES ($1, $2, true, true, 'admin_discovery')
+           ON CONFLICT (domain) DO NOTHING`,
+          [workosOrg.id, normalizedDomain]
         );
 
         // Auto-enrich the new organization in the background
@@ -451,15 +465,25 @@ export function setupDomainRoutes(
             const sourceLabel = source === 'email' ? 'email contacts' : 'Slack';
             const notes = `Discovered via ${sourceLabel}. ${contextCount} contact(s): ${contextUsers.join(", ")}`;
 
+            // email_domain set at INSERT (don't depend on the WorkOS webhook).
             await pool.query(
               `INSERT INTO organizations (
                 workos_organization_id,
                 name,
                 prospect_status,
                 prospect_source,
-                prospect_notes
-              ) VALUES ($1, $2, $3, $4, $5)`,
-              [workosOrg.id, orgName, "prospect", sourceType, notes]
+                prospect_notes,
+                email_domain
+              ) VALUES ($1, $2, $3, $4, $5, $6)`,
+              [workosOrg.id, orgName, "prospect", sourceType, notes, normalizedDomain]
+            );
+
+            // Mirror into organization_domains for auto-link / claim flows.
+            await pool.query(
+              `INSERT INTO organization_domains (workos_organization_id, domain, is_primary, verified, source)
+               VALUES ($1, $2, true, true, 'admin_discovery')
+               ON CONFLICT (domain) DO NOTHING`,
+              [workosOrg.id, normalizedDomain]
             );
 
             // Auto-enrich in background
@@ -740,16 +764,26 @@ export function setupDomainRoutes(
           prospect_notes ||
           `Discovered via email contacts. ${contactsResult.rows.length} contact(s): ${contactNames}`;
 
+        // email_domain set at INSERT (don't depend on the WorkOS webhook).
         const result = await pool.query(
           `INSERT INTO organizations (
             workos_organization_id,
             name,
             prospect_status,
             prospect_source,
-            prospect_notes
-          ) VALUES ($1, $2, $3, $4, $5)
+            prospect_notes,
+            email_domain
+          ) VALUES ($1, $2, $3, $4, $5, $6)
           RETURNING *`,
-          [workosOrg.id, orgName, "prospect", "email_discovery", notes]
+          [workosOrg.id, orgName, "prospect", "email_discovery", notes, normalizedDomain]
+        );
+
+        // Mirror into organization_domains for auto-link / claim flows.
+        await pool.query(
+          `INSERT INTO organization_domains (workos_organization_id, domain, is_primary, verified, source)
+           VALUES ($1, $2, true, true, 'admin_discovery')
+           ON CONFLICT (domain) DO NOTHING`,
+          [workosOrg.id, normalizedDomain]
         );
 
         // Auto-enrich the new organization in the background
