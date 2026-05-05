@@ -450,6 +450,20 @@
         <div id="invitationsList"></div>
       </div>
 
+      <!-- Claim a sales-touched prospect org by domain -->
+      <div id="claimOrgSection" class="invitations-section" style="display: none;">
+        <h3>We've been tracking your company</h3>
+        <p style="color: var(--color-text-secondary); margin-bottom: var(--space-3); font-size: var(--text-sm);">
+          A record exists for <strong id="claimOrgName"></strong> based on your email domain. Claim it to consolidate the work
+          our team's already done, or skip and we'll create a separate workspace.
+        </p>
+        <div style="display: flex; gap: var(--space-3); align-items: center;">
+          <button class="btn" id="claimOrgButton">Claim this organization</button>
+          <a href="#" id="claimOrgSkip" style="color: var(--color-text-secondary); font-size: var(--text-sm);">Skip and continue with a fresh workspace</a>
+        </div>
+        <div id="claimOrgError" class="error" style="display: none; margin-top: var(--space-3);"></div>
+      </div>
+
       <!-- Step 1: Individual vs Company Selection -->
       <div id="step1Section" class="options">
         <p style="color: var(--color-text-secondary); margin-bottom: var(--space-4); font-size: var(--text-sm);">Are you joining as an individual or on behalf of a company?</p>
@@ -915,6 +929,8 @@
             loadInvitations(),
             loadJoinableOrganizations()
           ]);
+          // Surface ?claim_org= banner from /auth/callback domain match
+          showClaimOrgBannerIfPresent();
         }
 
         // Show main content
@@ -956,6 +972,53 @@
       } catch (error) {
         console.error('Failed to load invitations:', error);
       }
+    }
+
+    function showClaimOrgBannerIfPresent() {
+      const params = new URLSearchParams(window.location.search);
+      const claimOrg = params.get('claim_org');
+      const claimOrgName = params.get('claim_org_name');
+      if (!claimOrg) return;
+
+      const section = document.getElementById('claimOrgSection');
+      const nameEl = document.getElementById('claimOrgName');
+      const button = document.getElementById('claimOrgButton');
+      const skip = document.getElementById('claimOrgSkip');
+      const errorEl = document.getElementById('claimOrgError');
+      if (!section || !nameEl || !button || !skip || !errorEl) return;
+
+      nameEl.textContent = claimOrgName || 'your organization';
+      section.style.display = 'block';
+
+      button.addEventListener('click', async () => {
+        button.disabled = true;
+        button.textContent = 'Claiming...';
+        errorEl.style.display = 'none';
+        try {
+          const response = await fetch('/api/organizations/' + encodeURIComponent(claimOrg) + '/claim', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+          });
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok) {
+            throw new Error(data.message || 'Claim failed');
+          }
+          window.location.href = '/dashboard';
+        } catch (err) {
+          errorEl.textContent = err.message || 'Failed to claim organization. Please contact support.';
+          errorEl.style.display = 'block';
+          button.disabled = false;
+          button.textContent = 'Claim this organization';
+        }
+      });
+
+      skip.addEventListener('click', (e) => {
+        e.preventDefault();
+        // Strip query params — user opted out, treat the rest of onboarding normally.
+        history.replaceState(null, '', window.location.pathname);
+        section.style.display = 'none';
+      });
     }
 
     async function loadJoinableOrganizations() {

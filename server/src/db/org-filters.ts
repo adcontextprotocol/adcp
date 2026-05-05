@@ -498,3 +498,101 @@ export async function findPayingOrgForDomain(domain: string): Promise<DomainOwne
     return null;
   }
 }
+
+// =============================================================================
+// Find claimable prospect org for a domain (sales-touched but unmembered)
+// =============================================================================
+
+export interface ClaimableProspectOrg {
+  organization_id: string;
+  organization_name: string;
+  /** The domain row that matched (already lowercased). */
+  matched_domain: string;
+  /** True if the org has a Stripe customer (sales has touched it). */
+  has_stripe_customer: boolean;
+  /** When the prospect was created — surfaced in UI to give the user context. */
+  created_at: Date;
+}
+
+/**
+ * Find a non-personal org that the user could plausibly claim — a prospect
+ * org owned by a verified domain matching the user's email, with no existing
+ * members and no active subscription.
+ *
+ * Distinct from findPayingOrgForDomain: that helper is the auto-link path
+ * (silently joins the user to a paying org). This one is the user-prompted
+ * claim path: surface the unjoined prospect at signup so the user can choose
+ * to claim it instead of silently being routed to a personal workspace, the
+ * way Voise Tech's employees were.
+ *
+ * Anti-hijack guards:
+ *   - Only matches non-personal orgs.
+ *   - Only matches if the org has zero existing organization_memberships
+ *     rows. The first claimer becomes the owner; once anyone has joined, the
+ *     org is theirs to invite from.
+ *   - Only matches if the org has no active subscription (paying orgs are
+ *     handled by findPayingOrgForDomain's auto-link path).
+ *   - Domain match goes through organization_domains.verified=true OR
+ *     organizations.email_domain. We don't walk brand-hierarchy here —
+ *     prospect orgs don't have the trust gates a paying parent does.
+ *
+ * The caller (POST /api/organizations/:orgId/claim) re-validates these
+ * conditions transactionally before adding the WorkOS membership.
+ */
+export async function findClaimableProspectOrgForDomain(
+  domain: string,
+): Promise<ClaimableProspectOrg | null> {
+  const normalizedDomain = domain.trim().toLowerCase();
+  if (!normalizedDomain) return null;
+
+  const pool = getPool();
+
+  try {
+    const result = await pool.query<{
+      workos_organization_id: string;
+      name: string;
+      matched_domain: string;
+      has_stripe_customer: boolean;
+      created_at: Date;
+    }>(
+      `SELECT
+         o.workos_organization_id,
+         o.name,
+         LOWER(COALESCE(od.domain, o.email_domain)) AS matched_domain,
+         (o.stripe_customer_id IS NOT NULL) AS has_stripe_customer,
+         o.created_at
+       FROM organizations o
+       LEFT JOIN organization_domains od
+         ON od.workos_organization_id = o.workos_organization_id
+        AND LOWER(od.domain) = $1
+        AND od.verified = true
+       WHERE o.is_personal = FALSE
+         AND (LOWER(o.email_domain) = $1 OR od.workos_organization_id IS NOT NULL)
+         AND o.subscription_status IS NULL
+         AND NOT EXISTS (
+           SELECT 1 FROM organization_memberships m
+           WHERE m.workos_organization_id = o.workos_organization_id
+         )
+       ORDER BY o.created_at ASC
+       LIMIT 1`,
+      [normalizedDomain],
+    );
+
+    if (result.rows.length === 0) return null;
+
+    const row = result.rows[0];
+    return {
+      organization_id: row.workos_organization_id,
+      organization_name: row.name,
+      matched_domain: row.matched_domain,
+      has_stripe_customer: row.has_stripe_customer,
+      created_at: row.created_at,
+    };
+  } catch (error) {
+    logger.error(
+      { err: error, domain: normalizedDomain },
+      'Failed to find claimable prospect org for domain',
+    );
+    return null;
+  }
+}
