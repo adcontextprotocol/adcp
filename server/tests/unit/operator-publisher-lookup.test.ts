@@ -96,6 +96,10 @@ describe('PublisherLookupResult schema', () => {
       domain: 'voxmedia.com',
       member: { slug: 'voxmedia', display_name: 'Vox Media' },
       adagents_valid: true,
+      hosting: {
+        mode: 'self' as const,
+        expected_url: 'https://voxmedia.com/.well-known/adagents.json',
+      },
       properties: [
         {
           id: 'theverge',
@@ -119,6 +123,7 @@ describe('PublisherLookupResult schema', () => {
     if (result.success) {
       expect(result.data.properties).toHaveLength(1);
       expect(result.data.authorized_agents).toHaveLength(1);
+      expect(result.data.hosting.mode).toBe('self');
     }
   });
 
@@ -127,6 +132,10 @@ describe('PublisherLookupResult schema', () => {
       domain: 'unknown.com',
       member: null,
       adagents_valid: false,
+      hosting: {
+        mode: 'none' as const,
+        expected_url: 'https://unknown.com/.well-known/adagents.json',
+      },
       properties: [],
       authorized_agents: [],
     };
@@ -140,10 +149,121 @@ describe('PublisherLookupResult schema', () => {
       domain: 'test.com',
       member: null,
       adagents_valid: null,
+      hosting: {
+        mode: 'none' as const,
+        expected_url: 'https://test.com/.well-known/adagents.json',
+      },
       properties: [],
       authorized_agents: [],
     };
 
+    const result = PublisherLookupResultSchema.safeParse(data);
+    expect(result.success).toBe(true);
+  });
+
+  it('validates aao_hosted mode with hosted_url', () => {
+    const data = {
+      domain: 'sasha-media.com',
+      member: null,
+      adagents_valid: null,
+      hosting: {
+        mode: 'aao_hosted' as const,
+        hosted_url: 'https://agenticadvertising.org/publisher/sasha-media.com/.well-known/adagents.json',
+        expected_url: 'https://sasha-media.com/.well-known/adagents.json',
+      },
+      properties: [],
+      authorized_agents: [],
+    };
+
+    const result = PublisherLookupResultSchema.safeParse(data);
+    expect(result.success).toBe(true);
+  });
+
+  it('validates aao_hosted source on agent rows (origin-not-verified label)', () => {
+    const data = {
+      domain: 'sasha-media.com',
+      member: null,
+      adagents_valid: null,
+      hosting: {
+        mode: 'aao_hosted' as const,
+        hosted_url: 'https://agenticadvertising.org/publisher/sasha-media.com/.well-known/adagents.json',
+        expected_url: 'https://sasha-media.com/.well-known/adagents.json',
+      },
+      properties: [],
+      authorized_agents: [
+        {
+          url: 'https://agent.example',
+          source: 'aao_hosted' as const,
+          properties_authorized: 0,
+          properties_total: 0,
+          publisher_wide: true,
+        },
+      ],
+    };
+    const result = PublisherLookupResultSchema.safeParse(data);
+    expect(result.success).toBe(true);
+  });
+
+  it('validates self_invalid hosting mode', () => {
+    const data = {
+      domain: 'broken.example',
+      member: null,
+      adagents_valid: false,
+      hosting: {
+        mode: 'self_invalid' as const,
+        expected_url: 'https://broken.example/.well-known/adagents.json',
+      },
+      properties: [],
+      authorized_agents: [],
+    };
+    const result = PublisherLookupResultSchema.safeParse(data);
+    expect(result.success).toBe(true);
+  });
+
+  it('validates per-agent publisher_wide flag', () => {
+    const data = {
+      domain: 'voxmedia.com',
+      member: null,
+      adagents_valid: true,
+      hosting: {
+        mode: 'self' as const,
+        expected_url: 'https://voxmedia.com/.well-known/adagents.json',
+      },
+      properties: [{ id: 'theverge', type: 'website', name: 'The Verge' }],
+      authorized_agents: [
+        {
+          url: 'https://agent-a.example',
+          source: 'adagents_json' as const,
+          properties_authorized: 1,
+          properties_total: 1,
+          publisher_wide: true,
+        },
+        {
+          url: 'https://agent-b.example',
+          source: 'adagents_json' as const,
+          properties_authorized: 0,
+          properties_total: 1,
+          publisher_wide: false,
+        },
+      ],
+    };
+    const result = PublisherLookupResultSchema.safeParse(data);
+    expect(result.success).toBe(true);
+  });
+
+  it('validates rollup_truncated as { cap, total_agents }', () => {
+    const data = {
+      domain: 'big.example',
+      member: null,
+      adagents_valid: true,
+      hosting: {
+        mode: 'self' as const,
+        expected_url: 'https://big.example/.well-known/adagents.json',
+      },
+      properties: [],
+      authorized_agents: [],
+      rollup_truncated: { cap: 50, total_agents: 137 },
+    };
     const result = PublisherLookupResultSchema.safeParse(data);
     expect(result.success).toBe(true);
   });

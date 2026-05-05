@@ -565,12 +565,43 @@ const PublisherPropertySchema = z.object({
   name: z.string().optional(),
   identifiers: z.array(PropertyIdentifierSchema).optional(),
   tags: z.array(z.string()).optional(),
+  source: z.enum(["adagents_json", "discovered", "brand_json"]).optional().openapi({
+    description:
+      "Where this property came from. `adagents_json`/`discovered` come from the federated index (publisher's own adagents.json or crawler discovery). `brand_json` is hydrated from the publisher's brand.json when no federated-index data exists yet.",
+  }),
 });
 
 const PublisherAuthorizedAgentSchema = z.object({
   url: z.string(),
   authorized_for: z.string().optional(),
-  source: z.enum(["adagents_json", "agent_claim"]),
+  source: z.enum(["adagents_json", "aao_hosted", "agent_claim"]).openapi({
+    description:
+      "How strongly this authorization is attested. `adagents_json`: the publisher's origin actually serves a valid adagents.json (origin-verified). `aao_hosted`: AAO is hosting the canonical document on the publisher's behalf — represents publisher intent but origin has NOT been verified to redirect to AAO. `agent_claim`: the agent claimed it; publisher has not confirmed.",
+  }),
+  properties_authorized: z.number().int().nonnegative().optional().openapi({
+    description:
+      "Count of this publisher's properties the agent is authorized to sell. Absent when `rollup_truncated` is set (call `/api/registry/publisher/authorization` for the per-agent count) or when properties are entirely brand.json-hydrated (no adagents.json claim has actually been made about them).",
+  }),
+  properties_total: z.number().int().nonnegative().optional().openapi({
+    description: "Total number of properties this publisher exposes through the registry. Same value across all agents in the response. Absent when `properties_authorized` is absent.",
+  }),
+  publisher_wide: z.boolean().optional().openapi({
+    description:
+      "True when the agent has only a publisher-wide authorization row and `properties_authorized` was synthesized as `properties_total`. False when the agent has property-level authorization rows. Absent when the rollup is absent.",
+  }),
+});
+
+const PublisherHostingSchema = z.object({
+  mode: z.enum(["self", "self_invalid", "aao_hosted", "none"]).openapi({
+    description:
+      "Where this publisher's adagents.json lives. `self` = publisher hosts a valid file at their own /.well-known. `self_invalid` = publisher's /.well-known returns a file that fails validation (fixable misconfiguration, not absence). `aao_hosted` = the publisher hosts a stub at their own /.well-known whose `authoritative_location` points at AAO's canonical document. `none` = no adagents.json configured yet.",
+  }),
+  hosted_url: z.string().optional().openapi({
+    description: "Canonical AAO-hosted adagents.json URL. Present iff `mode === 'aao_hosted'`. Publishers reference this URL from their own /.well-known stub via the `authoritative_location` field (see https://docs.adcontextprotocol.org/docs/governance/property/adagents).",
+  }),
+  expected_url: z.string().openapi({
+    description: "Where adagents.json *should* live for this domain — the publisher's own /.well-known path. Always populated, regardless of `mode`.",
+  }),
 });
 
 export const PublisherLookupResultSchema = z
@@ -578,8 +609,16 @@ export const PublisherLookupResultSchema = z
     domain: z.string().openapi({ example: "voxmedia.com" }),
     member: MemberRefSchema.nullable(),
     adagents_valid: z.boolean().nullable(),
+    hosting: PublisherHostingSchema,
     properties: z.array(PublisherPropertySchema),
     authorized_agents: z.array(PublisherAuthorizedAgentSchema),
+    rollup_truncated: z.object({
+      cap: z.number().int().positive().openapi({ description: "Maximum number of agents for which the rollup is computed in a single response." }),
+      total_agents: z.number().int().nonnegative().openapi({ description: "Total authorized-agent count for this publisher (the full population the cap was applied to)." }),
+    }).optional().openapi({
+      description:
+        "Set when the publisher has more authorized agents than the per-agent rollup cap. Above the cap, agents beyond `cap` are returned without `properties_authorized` / `properties_total` / `publisher_wide`; call `/api/registry/publisher/authorization?domain=X&agent=Y` for the per-agent count. Lets a caller decide whether to fan out individual calls or stop reading.",
+    }),
   })
   .openapi("PublisherLookupResult");
 

@@ -1,0 +1,698 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Publisher | AgenticAdvertising.org</title>
+    <link rel="icon" href="/addie-icon.svg" type="image/svg+xml" />
+    <!-- Agent-discoverable JSON alternate. The href is filled in client-side
+         once the domain is resolved from the URL path; agents that follow
+         this link land on the rich /api/registry/publisher payload. -->
+    <link id="api-alternate" rel="alternate" type="application/json" href="" />
+    <link rel="stylesheet" href="/design-system.css" />
+    <link rel="stylesheet" href="/layout.css" />
+    <style>
+      body { padding-top: var(--nav-height); background: var(--color-surface); }
+      .container {
+        max-width: var(--container-lg);
+        margin: 0 auto;
+        padding: var(--space-8) var(--space-4);
+      }
+
+      .explainer {
+        background: linear-gradient(135deg, var(--color-primary-50, #eef2ff) 0%, var(--color-bg-card) 100%);
+        border: var(--border-1) solid var(--color-border);
+        border-radius: var(--radius-lg);
+        padding: var(--space-6);
+        margin-bottom: var(--space-6);
+      }
+      .explainer h2 { margin: 0 0 var(--space-2); font-size: var(--text-lg); }
+      .explainer p { margin: 0 0 var(--space-3); color: var(--color-text-muted); }
+      .explainer .cta-row { display: flex; gap: var(--space-3); flex-wrap: wrap; }
+
+      .header-card {
+        background: var(--color-bg-card);
+        border: var(--border-1) solid var(--color-border);
+        border-radius: var(--radius-lg);
+        padding: var(--space-6);
+        margin-bottom: var(--space-6);
+      }
+      .header-row {
+        display: flex; justify-content: space-between; align-items: flex-start;
+        flex-wrap: wrap; gap: var(--space-4);
+      }
+      .header-domain { font-family: var(--font-mono); font-size: var(--text-2xl); font-weight: var(--font-bold); }
+      .header-status {
+        display: flex; gap: var(--space-2); flex-wrap: wrap; align-items: center;
+      }
+
+      .badge {
+        display: inline-flex; align-items: center;
+        font-size: var(--text-xs); font-weight: var(--font-semibold);
+        padding: 4px 10px; border-radius: var(--radius-full);
+        text-transform: uppercase; letter-spacing: 0.04em;
+      }
+      .badge-member { background: var(--color-primary-100); color: var(--color-primary-800); }
+      .badge-source-adagents_json { background: #dbeafe; color: #1e40af; }
+      .badge-source-discovered    { background: #ede9fe; color: #5b21b6; }
+      .badge-source-brand_json    { background: #fef3c7; color: #92400e; }
+      .badge-source-agent_claim   { background: #f3e8ff; color: #6b21a8; }
+      .badge-source-aao_hosted    { background: #fef3c7; color: #92400e; }
+      .badge-valid    { background: #d1fae5; color: #065f46; }
+      .badge-invalid  { background: #fee2e2; color: #991b1b; }
+      .badge-unknown  { background: var(--color-bg-subtle); color: var(--color-text-muted); }
+      .badge-mode-aao_hosted { background: #d1fae5; color: #065f46; }
+      .badge-mode-self        { background: #dbeafe; color: #1e40af; }
+      .badge-mode-none        { background: var(--color-bg-subtle); color: var(--color-text-muted); }
+
+      .stats {
+        display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        gap: var(--space-3); margin-top: var(--space-4);
+      }
+      .stat {
+        background: var(--color-bg-subtle);
+        border-radius: var(--radius-md);
+        padding: var(--space-3) var(--space-4);
+      }
+      .stat-value { font-size: var(--text-xl); font-weight: var(--font-bold); }
+      .stat-label { font-size: var(--text-xs); color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+
+      .panel {
+        background: var(--color-bg-card);
+        border: var(--border-1) solid var(--color-border);
+        border-radius: var(--radius-lg);
+        margin-bottom: var(--space-6);
+        overflow: hidden;
+      }
+      .panel-header {
+        padding: var(--space-4) var(--space-6);
+        border-bottom: var(--border-1) solid var(--color-border);
+        display: flex; justify-content: space-between; align-items: center;
+        gap: var(--space-3); flex-wrap: wrap;
+      }
+      .panel-title { font-size: var(--text-base); font-weight: var(--font-semibold); }
+      .panel-subtitle { font-size: var(--text-sm); color: var(--color-text-muted); margin-top: 2px; }
+      .panel-body { padding: var(--space-2) 0; }
+
+      .row {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: var(--space-4);
+        padding: var(--space-3) var(--space-6);
+        border-bottom: var(--border-1) solid var(--color-border-light);
+      }
+      .row:last-child { border-bottom: none; }
+      .row-main { min-width: 0; }
+      .row-name { font-weight: var(--font-semibold); word-break: break-all; }
+      .row-meta {
+        font-size: var(--text-sm);
+        color: var(--color-text-muted);
+        margin-top: 2px;
+        display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap;
+      }
+      .row-side {
+        font-size: var(--text-sm);
+        color: var(--color-text-muted);
+        white-space: nowrap;
+        align-self: center;
+      }
+      .auth-fraction { font-weight: var(--font-semibold); color: var(--color-text); }
+
+      .agent-row {
+        cursor: pointer;
+        transition: var(--transition-colors);
+      }
+      .agent-row:hover { background: var(--color-bg-subtle); }
+      .agent-detail {
+        padding: var(--space-3) var(--space-6) var(--space-4);
+        background: var(--color-bg-subtle);
+        border-bottom: var(--border-1) solid var(--color-border-light);
+        font-size: var(--text-sm);
+      }
+      .agent-detail h4 {
+        font-size: var(--text-xs); text-transform: uppercase;
+        letter-spacing: 0.04em; color: var(--color-text-muted);
+        margin: 0 0 var(--space-2); font-weight: var(--font-semibold);
+      }
+      .agent-detail ul {
+        list-style: none; padding: 0; margin: 0 0 var(--space-3);
+      }
+      .agent-detail ul li {
+        padding: 4px 0; word-break: break-all;
+      }
+      .agent-detail .empty-mini { color: var(--color-text-muted); font-style: italic; }
+
+      .empty {
+        padding: var(--space-6); text-align: center;
+        color: var(--color-text-muted); font-size: var(--text-sm);
+      }
+      .help-callout {
+        margin: var(--space-3) var(--space-6) var(--space-4);
+        padding: var(--space-3) var(--space-4);
+        background: var(--color-bg-subtle);
+        border-left: 3px solid var(--color-brand);
+        border-radius: var(--radius-md);
+        font-size: var(--text-sm);
+        color: var(--color-text-secondary);
+      }
+      .help-callout strong { color: var(--color-text); }
+      .actions {
+        display: flex; gap: var(--space-3); flex-wrap: wrap;
+        padding: var(--space-4) var(--space-6);
+        background: var(--color-bg-subtle);
+        border-top: var(--border-1) solid var(--color-border);
+      }
+      .actions a, .actions button {
+        font-size: var(--text-sm); font-weight: var(--font-semibold);
+        padding: 8px 14px; border-radius: var(--radius-md);
+        text-decoration: none; cursor: pointer; border: none;
+      }
+      .actions .primary { background: var(--color-brand); color: white; }
+      .actions .secondary {
+        background: var(--color-bg-card);
+        color: var(--color-text);
+        border: var(--border-1) solid var(--color-border);
+      }
+
+      .hosting-detail {
+        padding: var(--space-4) var(--space-6);
+        font-size: var(--text-sm);
+      }
+      .hosting-detail p { margin: 0 0 var(--space-3); color: var(--color-text-secondary); }
+      .hosting-detail code {
+        display: inline-block;
+        background: var(--color-bg-subtle);
+        padding: 2px 8px; border-radius: var(--radius-sm);
+        font-family: var(--font-mono); font-size: var(--text-sm);
+        word-break: break-all;
+      }
+      .hosting-detail .url-block {
+        display: block;
+        padding: var(--space-2) var(--space-3);
+        margin-bottom: var(--space-2);
+      }
+
+      .loading-state, .error-state { padding: var(--space-12); text-align: center; }
+      .hidden { display: none !important; }
+      .spinner {
+        width: 24px; height: 24px; margin: 0 auto var(--space-3);
+        border: 3px solid var(--color-border);
+        border-top-color: var(--color-brand);
+        border-radius: 50%; animation: spin 0.7s linear infinite;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+  </head>
+  <body>
+    <div id="adcp-nav"></div>
+    <script src="/nav.js"></script>
+
+    <div class="container">
+      <div id="loading-state" class="loading-state">
+        <div class="spinner"></div>
+        <p>Loading publisher data&hellip;</p>
+      </div>
+
+      <div id="error-state" class="error-state hidden">
+        <h2 id="error-title">Publisher not found</h2>
+        <p id="error-message">We couldn't load this publisher.</p>
+      </div>
+
+      <div id="content" class="hidden">
+        <!-- Cold-visitor explainer (shown only when nothing is registered) -->
+        <div id="explainer" class="explainer hidden">
+          <h2>This is your publisher page on AAO</h2>
+          <p>
+            AgenticAdvertising.org is a public index of which AI sales agents
+            are authorized to sell each publisher's inventory. The
+            authoritative source is the <code>adagents.json</code> file you
+            publish on your own domain — AAO crawls and caches it so buyers
+            don't have to.
+          </p>
+          <p>
+            If you don't host your own yet, AAO can act as your registry of
+            record: you (or the community) declare your properties and
+            authorized agents here, and AAO serves the canonical document
+            until you're ready to take it over.
+          </p>
+          <div class="cta-row" id="explainer-ctas"></div>
+        </div>
+
+        <div class="header-card">
+          <div class="header-row">
+            <div>
+              <div class="header-domain" id="domain-title"></div>
+              <div id="member-line" style="margin-top: 4px; color: var(--color-text-muted); font-size: var(--text-sm);"></div>
+            </div>
+            <div class="header-status" id="status-badges"></div>
+          </div>
+          <div class="stats">
+            <div class="stat">
+              <div class="stat-value" id="stat-properties">0</div>
+              <div class="stat-label">Properties</div>
+            </div>
+            <div class="stat">
+              <div class="stat-value" id="stat-agents">0</div>
+              <div class="stat-label">Authorized agents</div>
+            </div>
+            <div class="stat">
+              <div class="stat-value" id="stat-source">&mdash;</div>
+              <div class="stat-label">Property source</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Hosting panel -->
+        <div class="panel">
+          <div class="panel-header">
+            <div>
+              <div class="panel-title">adagents.json hosting</div>
+              <div class="panel-subtitle" id="hosting-subtitle"></div>
+            </div>
+            <div id="hosting-mode-badge"></div>
+          </div>
+          <div class="hosting-detail" id="hosting-detail"></div>
+          <div class="actions" id="hosting-actions"></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <div>
+              <div class="panel-title">Properties</div>
+              <div class="panel-subtitle" id="properties-subtitle"></div>
+            </div>
+          </div>
+          <div class="panel-body" id="properties-body"></div>
+          <div class="actions">
+            <a class="primary" id="edit-properties-link" href="#">Edit properties</a>
+            <a class="secondary" id="generate-adagents-link" href="/adagents/builder">Generate adagents.json</a>
+          </div>
+        </div>
+
+        <!-- Lead-with-next-step card. Shown when the publisher has
+             properties on file but no authorized agents — typically because
+             their brand.json was hydrated but no adagents.json has been
+             written. Hidden otherwise. -->
+        <div id="next-step" class="hidden"></div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <div>
+              <div class="panel-title">Authorized agents</div>
+              <div class="panel-subtitle">Click an agent to see which properties it can sell</div>
+            </div>
+          </div>
+          <div class="panel-body" id="agents-body"></div>
+          <div id="agents-help" class="hidden"></div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const escapeHtml = (s) =>
+        String(s ?? '')
+          .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+      function getDomain() {
+        const path = window.location.pathname;
+        const m = path.match(/^\/publisher\/(.+?)\/?$/);
+        if (m) return decodeURIComponent(m[1]);
+        const params = new URLSearchParams(window.location.search);
+        return params.get('domain') || '';
+      }
+
+      function appUser() {
+        return (window.__APP_CONFIG__ && window.__APP_CONFIG__.user) || null;
+      }
+
+      function showError(title, message) {
+        document.getElementById('loading-state').classList.add('hidden');
+        document.getElementById('content').classList.add('hidden');
+        document.getElementById('error-state').classList.remove('hidden');
+        document.getElementById('error-title').textContent = title;
+        document.getElementById('error-message').textContent = message;
+      }
+
+      function renderStatusBadges(data) {
+        const el = document.getElementById('status-badges');
+        const parts = [];
+        if (data.member && data.member.slug) {
+          parts.push(`<span class="badge badge-member">Member</span>`);
+        }
+        if (data.adagents_valid === true) {
+          parts.push(`<span class="badge badge-valid">adagents.json valid</span>`);
+        } else if (data.adagents_valid === false) {
+          parts.push(`<span class="badge badge-invalid">adagents.json invalid</span>
+            <button id="show-validation-errors" type="button" style="margin-left: 6px; font-size: var(--text-xs); background: none; border: none; color: var(--color-brand); cursor: pointer; text-decoration: underline; padding: 0;">why?</button>`);
+        } else {
+          parts.push(`<span class="badge badge-unknown">adagents.json not yet crawled</span>`);
+        }
+        el.innerHTML = parts.join('');
+        const btn = document.getElementById('show-validation-errors');
+        if (btn) btn.addEventListener('click', () => showValidationDetail(data.domain));
+      }
+
+      async function showValidationDetail(domain) {
+        let detail = document.getElementById('validation-detail');
+        if (!detail) {
+          detail = document.createElement('div');
+          detail.id = 'validation-detail';
+          detail.className = 'help-callout';
+          detail.style.margin = 'var(--space-3) 0 0';
+          document.querySelector('.header-card').appendChild(detail);
+        } else if (!detail.classList.contains('hidden')) {
+          detail.classList.add('hidden');
+          return;
+        }
+        detail.classList.remove('hidden');
+        detail.innerHTML = '<em>Loading validation errors&hellip;</em>';
+        try {
+          const res = await fetch('/api/adagents/validate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ domain }),
+          });
+          const body = await res.json();
+          const errors = (body && body.data && body.data.validation && body.data.validation.errors) || [];
+          if (!errors.length) {
+            detail.innerHTML = '<em>No structured errors returned. The fetch may have failed at the network layer — check that <code>' + escapeHtml(`https://${domain}/.well-known/adagents.json`) + '</code> is reachable.</em>';
+            return;
+          }
+          const list = errors
+            .slice(0, 8)
+            .map((e) => `<li><strong>${escapeHtml(e.field || 'document')}:</strong> ${escapeHtml(e.message || String(e))}</li>`)
+            .join('');
+          detail.innerHTML = `<strong>Validation errors</strong>
+            <ul style="margin: var(--space-2) 0 0; padding-left: var(--space-4);">${list}</ul>`;
+        } catch {
+          detail.innerHTML = '<em>Could not load validation detail.</em>';
+        }
+      }
+
+      function renderExplainer(data) {
+        // Only show the cold-visitor explainer when the page has nothing
+        // useful — no properties, no agents, no member, no valid adagents.
+        const isEmpty =
+          (!data.properties || data.properties.length === 0) &&
+          (!data.authorized_agents || data.authorized_agents.length === 0) &&
+          !data.member &&
+          data.hosting && data.hosting.mode === 'none';
+        const explainer = document.getElementById('explainer');
+        if (!isEmpty) { explainer.classList.add('hidden'); return; }
+        const user = appUser();
+        const ctas = [];
+        if (user) {
+          ctas.push(`<a class="primary" href="/property/view/${encodeURIComponent(data.domain)}">Claim this domain</a>`);
+        } else {
+          ctas.push(`<a class="primary" href="/login?return_to=${encodeURIComponent(window.location.pathname)}">Sign in to claim</a>`);
+        }
+        ctas.push(`<a class="secondary" href="/adagents-landing">What is adagents.json?</a>`);
+        document.getElementById('explainer-ctas').innerHTML = ctas.join('');
+        explainer.classList.remove('hidden');
+      }
+
+      function renderHosting(data) {
+        const hosting = data.hosting || { mode: 'none', expected_url: '' };
+        const subtitle = document.getElementById('hosting-subtitle');
+        const detail = document.getElementById('hosting-detail');
+        const badge = document.getElementById('hosting-mode-badge');
+        const actions = document.getElementById('hosting-actions');
+
+        const labels = {
+          aao_hosted: 'AAO-hosted',
+          self: 'Self-hosted',
+          self_invalid: 'Self-hosted (invalid)',
+          none: 'Not yet configured',
+        };
+        const subtitles = {
+          aao_hosted: 'AAO serves the canonical document via the publisher’s authoritative_location pointer.',
+          self: 'This publisher serves a valid adagents.json from their own domain.',
+          self_invalid: 'A file exists at /.well-known/adagents.json but failed validation.',
+          none: 'No adagents.json is published for this domain yet.',
+        };
+        subtitle.textContent = subtitles[hosting.mode] || '';
+        const modeClass = hosting.mode === 'self_invalid' ? 'badge-invalid' : `badge-mode-${escapeHtml(hosting.mode)}`;
+        badge.innerHTML = `<span class="badge ${modeClass}">${escapeHtml(labels[hosting.mode] || hosting.mode)}</span>`;
+
+        if (hosting.mode === 'aao_hosted') {
+          // Spec-conformant pattern: publisher hosts a stub at their own
+          // /.well-known/adagents.json with `authoritative_location` set
+          // to AAO's hosted URL. Bare CNAME / 301 redirect from /.well-known
+          // is not blessed by the spec and breaks strict buy-side
+          // verifiers (TLS chain ends at AAO instead of the publisher).
+          detail.innerHTML = `
+            <p>AAO serves the canonical adagents.json document at:</p>
+            <code class="url-block">${escapeHtml(hosting.hosted_url || '')}</code>
+            <p>Recommended setup: place a small stub at <code>${escapeHtml(hosting.expected_url)}</code> with an <code>authoritative_location</code> field pointing to the AAO URL. Buyers fetch your origin (preserving your TLS chain) and follow the pointer to the AAO-served body.</p>
+            <p style="color: var(--color-text-muted); font-size: var(--text-xs); margin-top: var(--space-3);"><strong>Buy-side note:</strong> some strict verifiers may treat a bare CNAME/redirect to AAO as a soft trust signal because the TLS chain ends at AAO. The <code>authoritative_location</code> stub avoids that.</p>
+          `;
+          actions.innerHTML = `
+            <a class="secondary" href="${escapeHtml(hosting.hosted_url || '#')}" target="_blank" rel="noopener">View hosted file</a>
+            <a class="secondary" href="/property/view/${encodeURIComponent(data.domain)}">Manage hosted properties</a>
+          `;
+        } else if (hosting.mode === 'self') {
+          detail.innerHTML = `
+            <p>AAO fetches <code>${escapeHtml(hosting.expected_url)}</code> directly. Update that file to change which agents are authorized.</p>
+          `;
+          actions.innerHTML = `
+            <a class="secondary" href="${escapeHtml(hosting.expected_url)}" target="_blank" rel="noopener">Open self-hosted file</a>
+            <a class="secondary" href="/adagents/builder?domain=${encodeURIComponent(data.domain)}">Update adagents.json</a>
+          `;
+        } else if (hosting.mode === 'self_invalid') {
+          detail.innerHTML = `
+            <p>AAO found a file at <code>${escapeHtml(hosting.expected_url)}</code> but it failed validation. Click "why?" next to the badge above for the structured error list.</p>
+            <p>This is a fixable misconfiguration, not a missing record — buyers may still see an "invalid" status until you correct the file.</p>
+          `;
+          actions.innerHTML = `
+            <a class="secondary" href="${escapeHtml(hosting.expected_url)}" target="_blank" rel="noopener">Open self-hosted file</a>
+            <a class="secondary" href="/adagents/builder?domain=${encodeURIComponent(data.domain)}">Re-generate adagents.json</a>
+          `;
+        } else {
+          detail.innerHTML = `
+            <p>You have two options for publishing adagents.json:</p>
+            <p>1. <strong>Self-host:</strong> generate the file and put it at <code>${escapeHtml(hosting.expected_url)}</code>. No account needed — but you control the file forever.</p>
+            <p>2. <strong>Let AAO host it</strong> <span style="color: var(--color-text-muted);">(requires free registration)</span>: we serve the canonical document. You place a small stub at your own <code>/.well-known/adagents.json</code> with an <code>authoritative_location</code> field pointing to AAO. Switch back to self-hosting by editing the stub.</p>
+          `;
+          actions.innerHTML = `
+            <a class="primary" href="/adagents/builder?domain=${encodeURIComponent(data.domain)}">Generate adagents.json</a>
+            <a class="secondary" href="/property/view/${encodeURIComponent(data.domain)}">Set up AAO hosting</a>
+          `;
+        }
+      }
+
+      // Plain-English source labels. The wire format uses protocol-internal
+      // strings; the page should not.
+      const SOURCE_LABELS = {
+        adagents_json: 'in your adagents.json',
+        discovered: 'found by crawler',
+        brand_json: 'from your brand.json',
+        agent_claim: 'agent self-claim',
+        aao_hosted: 'AAO-hosted (origin not yet verified)',
+      };
+      function sourceLabel(s) {
+        return SOURCE_LABELS[s] || s;
+      }
+
+      function renderProperties(props) {
+        const body = document.getElementById('properties-body');
+        const subtitle = document.getElementById('properties-subtitle');
+        if (!props.length) {
+          body.innerHTML = '<div class="empty">No properties registered yet. Add your inventory or point us at your brand.json.</div>';
+          subtitle.textContent = '0 properties';
+          return;
+        }
+        const sources = Array.from(new Set(props.map((p) => p.source).filter(Boolean)));
+        subtitle.textContent =
+          `${props.length} ${props.length === 1 ? 'property' : 'properties'}`
+          + (sources.length ? ' · ' + sources.map(sourceLabel).join(', ') : '');
+        body.innerHTML = props
+          .map((p) => {
+            const idents = (p.identifiers || [])
+              .map((i) => `<code>${escapeHtml(i.type)}=${escapeHtml(i.value)}</code>`)
+              .join(' ');
+            const tags = (p.tags || [])
+              .map((t) => `<span class="badge badge-unknown" title="${escapeHtml(t)}">${escapeHtml(t)}</span>`)
+              .join('');
+            const source = p.source
+              ? `<span class="badge badge-source-${escapeHtml(p.source)}" title="${escapeHtml(p.source)}">${escapeHtml(sourceLabel(p.source))}</span>`
+              : '';
+            return `<div class="row">
+              <div class="row-main">
+                <div class="row-name">${escapeHtml(p.name || p.id || '(unnamed)')}</div>
+                <div class="row-meta">
+                  <span>${escapeHtml(p.type || 'unknown')}</span>
+                  ${idents}
+                  ${tags}
+                </div>
+              </div>
+              <div class="row-side">${source}</div>
+            </div>`;
+          })
+          .join('');
+      }
+
+      function renderAgents(domain, agents, properties) {
+        const body = document.getElementById('agents-body');
+        const help = document.getElementById('agents-help');
+        const nextStep = document.getElementById('next-step');
+        if (!agents.length) {
+          body.innerHTML = '';
+          // When the publisher has properties (typically hydrated from
+          // brand.json) but no authorized agents, the most common reaction
+          // is "the page is broken — I declared everything." Lead with a
+          // standalone next-step card *above* the agents panel rather than
+          // bury an explanatory callout inside it.
+          const onlyBrandJson = properties && properties.length > 0
+            && properties.every((p) => p.source === 'brand_json');
+          if (properties && properties.length > 0) {
+            help.classList.add('hidden');
+            if (nextStep) {
+              nextStep.classList.remove('hidden');
+              nextStep.innerHTML = `<div class="explainer" style="background: linear-gradient(135deg, var(--color-warning-50, #fef3c7) 0%, var(--color-bg-card) 100%);">
+                <h2>Next: declare who can sell this inventory</h2>
+                <p>${onlyBrandJson
+                  ? 'Your <code>brand.json</code> told us <em>what</em> you publish. <code>adagents.json</code> is a separate document that declares <em>who</em> is authorized to sell it. They are not the same record.'
+                  : 'You have properties on file but no authorized sales agents yet.'}
+                  Generate an <code>adagents.json</code> to authorize one or more agents — buyers consult that document to verify which agents may transact your inventory.</p>
+                <div class="cta-row">
+                  <a class="primary" href="/adagents/builder?domain=${encodeURIComponent(domain)}">Generate adagents.json</a>
+                  <a class="secondary" href="https://docs.adcontextprotocol.org/docs/governance/property/adagents" target="_blank" rel="noopener">Read the spec</a>
+                </div>
+              </div>`;
+            }
+            body.innerHTML = '<div class="empty">No authorized agents recorded yet — see the card above for next steps.</div>';
+          } else {
+            help.classList.add('hidden');
+            if (nextStep) nextStep.classList.add('hidden');
+            body.innerHTML = '<div class="empty">No authorized agents recorded for this publisher yet.</div>';
+          }
+          return;
+        }
+        if (nextStep) nextStep.classList.add('hidden');
+        help.classList.add('hidden');
+        body.innerHTML = agents
+          .map((a, i) => {
+            const auth = (typeof a.properties_authorized === 'number' && typeof a.properties_total === 'number')
+              ? `<span class="auth-fraction">${a.properties_authorized} of ${a.properties_total}</span> properties authorized`
+              : 'authorization scope unknown';
+            const sourceBadge = a.source
+              ? `<span class="badge badge-source-${escapeHtml(a.source)}">${escapeHtml(a.source.replace('_', '.'))}</span>`
+              : '';
+            const scope = a.authorized_for
+              ? `<span style="color: var(--color-text-muted);">${escapeHtml(a.authorized_for)}</span>`
+              : '';
+            return `<div class="agent-row row" data-agent-index="${i}" data-agent-url="${escapeHtml(a.url)}">
+              <div class="row-main">
+                <div class="row-name">${escapeHtml(a.url)}</div>
+                <div class="row-meta">${sourceBadge} ${scope}</div>
+              </div>
+              <div class="row-side">${auth}</div>
+            </div>
+            <div class="agent-detail hidden" id="agent-detail-${i}"></div>`;
+          })
+          .join('');
+        // Attach click handlers — toggle expand/collapse, lazy-load detail.
+        body.querySelectorAll('.agent-row').forEach((row) => {
+          row.addEventListener('click', () => toggleAgentDetail(domain, row));
+        });
+      }
+
+      const detailCache = new Map();
+
+      async function toggleAgentDetail(domain, rowEl) {
+        const idx = rowEl.getAttribute('data-agent-index');
+        const agentUrl = rowEl.getAttribute('data-agent-url');
+        const detail = document.getElementById(`agent-detail-${idx}`);
+        if (!detail.classList.contains('hidden')) {
+          detail.classList.add('hidden');
+          return;
+        }
+        if (!detailCache.has(agentUrl)) {
+          detail.innerHTML = '<div class="empty-mini">Loading authorization detail&hellip;</div>';
+          detail.classList.remove('hidden');
+          try {
+            const res = await fetch(
+              `/api/registry/publisher/authorization?domain=${encodeURIComponent(domain)}&agent=${encodeURIComponent(agentUrl)}`
+            );
+            if (res.ok) {
+              detailCache.set(agentUrl, await res.json());
+            } else {
+              detail.innerHTML = '<div class="empty-mini">Could not load authorization detail.</div>';
+              return;
+            }
+          } catch {
+            detail.innerHTML = '<div class="empty-mini">Could not load authorization detail.</div>';
+            return;
+          }
+        }
+        const data = detailCache.get(agentUrl);
+        if (data.publisher_wide) {
+          detail.innerHTML = `<div class="empty-mini">This agent has a publisher-wide authorization — it can sell every property under this domain.</div>`;
+        } else {
+          const unauth = (data.unauthorized_properties || [])
+            .map((p) => `<li>${escapeHtml(p.name || p.id || '(unnamed)')} <span style="color: var(--color-text-muted);">(${escapeHtml(p.type || 'unknown')})</span></li>`)
+            .join('');
+          detail.innerHTML = `
+            <h4>Authorized for ${data.authorized} of ${data.total} properties</h4>
+            ${unauth ? `<h4 style="margin-top: var(--space-3);">Not authorized for</h4><ul>${unauth}</ul>` : ''}
+          `;
+        }
+        detail.classList.remove('hidden');
+      }
+
+      async function load() {
+        const domain = getDomain();
+        if (!domain) {
+          showError('Missing domain', 'No publisher domain in the URL.');
+          return;
+        }
+        document.title = `${domain} | AgenticAdvertising.org`;
+        const alt = document.getElementById('api-alternate');
+        if (alt) alt.setAttribute('href', `/api/registry/publisher?domain=${encodeURIComponent(domain)}`);
+        try {
+          const res = await fetch(`/api/registry/publisher?domain=${encodeURIComponent(domain)}`);
+          if (!res.ok) {
+            showError('Lookup failed', `Server returned ${res.status}.`);
+            return;
+          }
+          const data = await res.json();
+
+          document.getElementById('loading-state').classList.add('hidden');
+          document.getElementById('content').classList.remove('hidden');
+          document.getElementById('domain-title').textContent = data.domain;
+
+          const memberLine = document.getElementById('member-line');
+          if (data.member && data.member.display_name) {
+            memberLine.innerHTML = `Member: <a href="/m/${escapeHtml(data.member.slug)}">${escapeHtml(data.member.display_name)}</a>`;
+          } else {
+            memberLine.textContent = 'Not yet registered as an AAO member.';
+          }
+
+          renderStatusBadges(data);
+          renderExplainer(data);
+          renderHosting(data);
+
+          const props = Array.isArray(data.properties) ? data.properties : [];
+          const agents = Array.isArray(data.authorized_agents) ? data.authorized_agents : [];
+
+          document.getElementById('stat-properties').textContent = props.length;
+          document.getElementById('stat-agents').textContent = agents.length;
+          const sources = Array.from(new Set(props.map((p) => p.source).filter(Boolean)));
+          document.getElementById('stat-source').textContent = sources.length ? sources.join(', ') : '—';
+
+          renderProperties(props);
+          renderAgents(data.domain, agents, props);
+
+          document.getElementById('edit-properties-link').href =
+            `/property/view/${encodeURIComponent(data.domain)}`;
+        } catch (err) {
+          console.error(err);
+          showError('Lookup failed', 'Network error or server is unavailable.');
+        }
+      }
+
+      load();
+    </script>
+  </body>
+</html>

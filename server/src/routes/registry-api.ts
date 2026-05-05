@@ -79,8 +79,10 @@ import type { AdAgentsManager } from "../adagents-manager.js";
 import type { HealthChecker } from "../health.js";
 import type { CrawlerService } from "../crawler.js";
 import type { CapabilityDiscovery } from "../capabilities.js";
-import { AAO_HOST, aaoHostedBrandJsonUrl } from "../config/aao.js";
+import { aaoHostedBrandJsonUrl, aaoHostedAdagentsJsonUrl, expectedAdagentsJsonUrl } from "../config/aao.js";
 import { fetchBrandData, isBrandfetchConfigured, ENRICHMENT_CACHE_MAX_AGE_MS } from "../services/brandfetch.js";
+import { extractPublisherPropertiesFromBrandJson } from "../services/brand-json-properties.js";
+import { syncHostedPropertyToFederatedIndex } from "../services/hosted-property-sync.js";
 import { PropertyCheckService } from "../services/property-check.js";
 import { PropertyCheckDatabase } from "../db/property-check-db.js";
 import { BulkPropertyCheckService } from "../services/bulk-property-check.js";
@@ -708,7 +710,16 @@ registry.registerPath({
     "**This endpoint is unauthenticated and returns the same response shape for every caller.** " +
     "Compare to `/api/registry/operator`, where AAO membership tier and profile ownership unlock " +
     "additional agent visibility (`members_only`, `private`). AAO membership does not change the " +
-    "`/publisher` response today.",
+    "`/publisher` response today.\n\n" +
+    "**Property source precedence:** authoritative adagents.json properties win over crawler-discovered " +
+    "rows; both win over brand.json hydration. Each property carries a `source` field (`adagents_json` / " +
+    "`discovered` / `brand_json`).\n\n" +
+    "**Per-agent rollup:** each entry in `authorized_agents` may carry `properties_authorized` + " +
+    "`properties_total` + `publisher_wide`. The rollup is suppressed (fields absent) when (a) properties " +
+    "are entirely brand.json-hydrated — no adagents.json claim has been made — or (b) the publisher has " +
+    "more than 50 authorized agents (above-cap entries are returned without rollup; `rollup_truncated` " +
+    "is set with `{ cap, total_agents }`). Use `/api/registry/publisher/authorization?domain=X&agent=Y` " +
+    "for the per-agent count when the index rollup is absent.",
   tags: ["Authorization Lookups"],
   request: {
     query: z.object({
@@ -718,6 +729,47 @@ registry.registerPath({
   responses: {
     200: { description: "Publisher lookup result", content: { "application/json": { schema: PublisherLookupResultSchema } } },
     400: { description: "Missing domain", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: "get",
+  path: "/api/registry/publisher/authorization",
+  operationId: "lookupPublisherAgentAuthorization",
+  summary: "Per-agent authorization rollup",
+  description:
+    "Returns whether a given agent is authorized for a publisher domain and how many of the publisher's properties it can sell. When the agent has property-level authorization rows, the count is the intersection with the publisher's property set; when it only has a publisher-wide row, the count equals the total. Returns 404 when the agent has no authorization (publisher-wide or property-level) for the domain.",
+  tags: ["Authorization Lookups"],
+  request: {
+    query: z.object({
+      domain: z.string().openapi({ example: "voxmedia.com" }),
+      agent: z.string().openapi({ example: "https://sales.pubmatic.com/mcp" }),
+    }),
+  },
+  responses: {
+    200: {
+      description: "Authorization rollup",
+      content: {
+        "application/json": {
+          schema: z.object({
+            publisher_domain: z.string(),
+            agent_url: z.string(),
+            authorized: z.number().int().nonnegative().openapi({ description: "Count of publisher's properties the agent can sell." }),
+            total: z.number().int().nonnegative().openapi({ description: "Total properties the publisher exposes." }),
+            publisher_wide: z.boolean().openapi({ description: "True when the agent has only a publisher-wide authorization (no property-level rows). In that case `authorized` equals `total`." }),
+            source: z.enum(["adagents_json", "agent_claim"]),
+            authorized_for: z.string().optional(),
+            unauthorized_properties: z.array(z.object({
+              id: z.string().optional(),
+              name: z.string().optional(),
+              type: z.string().optional(),
+            })).openapi({ description: "Properties the agent is NOT authorized for. Empty when publisher_wide is true." }),
+          }),
+        },
+      },
+    },
+    400: { description: "Missing domain or agent", content: { "application/json": { schema: ErrorSchema } } },
+    404: { description: "No authorization record for this agent on this publisher", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
 
@@ -3366,6 +3418,11 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           editor_name: `${req.user!.firstName || ""} ${req.user!.lastName || ""}`.trim() || req.user!.email,
         });
 
+        // Mirror the updated hosted document into the federated index so
+        // /api/registry/publisher reflects the new authorized agents +
+        // properties immediately. No-op when the property is not public.
+        await syncHostedPropertyToFederatedIndex(property);
+
         return res.json({
           success: true,
           message: `Property "${publisher_domain}" updated in registry (revision ${revision_number})`,
@@ -3379,6 +3436,12 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         adagents_json: adagentsJson,
         source_type: "community",
       });
+
+      // Sync runs on create even though the new row is private by default —
+      // when an admin later flips is_public=true via the approval flow, that
+      // path also calls sync. Call here too so the function is the one
+      // place we wire propagation, regardless of which write path runs first.
+      await syncHostedPropertyToFederatedIndex(saved);
 
       return res.json({
         success: true,
@@ -5573,37 +5636,223 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       const memberDb = new MemberDatabase();
       const federatedIndex = crawler.getFederatedIndex();
 
-      const [profile, properties, authorizations, adagentsValid] = await Promise.all([
+      const [profile, properties, authorizations, adagentsValid, hostedProperty] = await Promise.all([
         memberDb.getProfileByDomain(domain),
         federatedIndex.getPropertiesForDomain(domain),
         federatedIndex.getAuthorizationsForDomain(domain),
         federatedIndex.hasValidAdagents(domain),
+        propertyDb.getHostedPropertyByDomain(domain),
       ]);
 
       const member = profile
         ? { slug: profile.slug, display_name: profile.display_name }
         : null;
 
+      // Hosting state. `aao_hosted` when a public hosted-property row
+      // exists for this domain (publisher hosts a stub at their own
+      // /.well-known whose `authoritative_location` points at AAO's
+      // canonical document). `self` when the publisher's own /.well-known
+      // returned a valid adagents.json. `self_invalid` when the publisher
+      // has /.well-known but it failed validation — distinct from `none`
+      // because it's a fixable misconfiguration rather than absence.
+      const aaoHosted = !!(hostedProperty && hostedProperty.is_public);
+      const hosting = {
+        mode: (
+          aaoHosted ? "aao_hosted"
+          : adagentsValid === true ? "self"
+          : adagentsValid === false ? "self_invalid"
+          : "none"
+        ) as "self" | "self_invalid" | "aao_hosted" | "none",
+        hosted_url: aaoHosted ? aaoHostedAdagentsJsonUrl(domain) : undefined,
+        expected_url: expectedAdagentsJsonUrl(domain),
+      };
+
+      type ProjectedProperty = {
+        id?: string;
+        type?: string;
+        name?: string;
+        identifiers?: Array<{ type: string; value: string }>;
+        tags?: string[];
+        source: "adagents_json" | "discovered" | "brand_json";
+      };
+
+      let projectedProperties: ProjectedProperty[] = properties.map(p => ({
+        id: p.property_id,
+        type: p.property_type,
+        name: p.name,
+        identifiers: p.identifiers,
+        tags: p.tags,
+        source: "discovered",
+      }));
+
+      // Fallback: if the federated index has nothing for this domain, hydrate
+      // from the publisher's brand.json so that publishers who already
+      // declared their properties there don't see "0 properties". Hosted
+      // brand wins over discovered (hosted is owner-curated).
+      if (projectedProperties.length === 0) {
+        const hostedBrand = await brandDb.getHostedBrandByDomain(domain);
+        const manifest = hostedBrand?.brand_json
+          ?? (await brandDb.getDiscoveredBrandByDomain(domain))?.brand_manifest;
+        projectedProperties = extractPublisherPropertiesFromBrandJson(
+          manifest as Record<string, unknown> | null | undefined,
+        );
+      }
+
+      // Per-agent property authorization rollup. For each authorized agent
+      // we expose `properties_authorized` + `properties_total` + a
+      // `publisher_wide` flag so a caller can tell whether the count came
+      // from real property-level rows (intersection) or was synthesized
+      // from a publisher-wide authorization (= total). Without
+      // `publisher_wide`, "12 of 12" is ambiguous between "this agent has
+      // 12 property rows" and "publisher-wide, count synthesized."
+      //
+      // Suppress the rollup entirely when all projected properties came
+      // from brand.json hydration — those are "we know this publisher
+      // owns these properties" facts, not authorization claims. Reporting
+      // "publisher-wide → N of N" would over-claim that the agent is
+      // authorized for properties no adagents.json has actually scoped to.
+      //
+      // Cap the fan-out: each agent triggers a non-trivial DB query and
+      // the endpoint is unauthenticated. Pathological hosted docs with
+      // hundreds of agents would otherwise turn a single anonymous
+      // request into hundreds of queries. Above the cap, agents are
+      // returned without rollup fields and `rollup_truncated` exposes
+      // the cap + total so callers can decide whether to fan out
+      // individual calls to /api/registry/publisher/authorization.
+      const PER_AGENT_ROLLUP_CAP = 50;
+      const propertiesTotal = projectedProperties.length;
+      const allBrandJsonHydrated =
+        propertiesTotal > 0 && projectedProperties.every(p => p.source === "brand_json");
+      const skipRollup = allBrandJsonHydrated;
+      const propertyDbIdSet = new Set(
+        properties.map(p => p.id).filter((id): id is string => Boolean(id)),
+      );
+      const rollupTruncatedLen = authorizations.length > PER_AGENT_ROLLUP_CAP;
+      const agentsToRollup = skipRollup
+        ? []
+        : rollupTruncatedLen
+          ? authorizations.slice(0, PER_AGENT_ROLLUP_CAP)
+          : authorizations;
+      const agentPropertyCounts = new Map<string, number>();
+      await Promise.all(
+        agentsToRollup.map(async a => {
+          const agentProps = await federatedIndex.getPropertiesForAgent(a.agent_url);
+          const matching = agentProps.filter(
+            p => p.publisher_domain === domain && p.id && propertyDbIdSet.has(p.id),
+          );
+          agentPropertyCounts.set(a.agent_url, matching.length);
+        }),
+      );
+
       res.json({
         domain,
         member,
         adagents_valid: adagentsValid,
-        properties: properties.map(p => ({
-          id: p.property_id,
-          type: p.property_type,
-          name: p.name,
-          identifiers: p.identifiers,
-          tags: p.tags,
-        })),
-        authorized_agents: authorizations.map(a => ({
-          url: a.agent_url,
-          authorized_for: a.authorized_for,
-          source: a.source,
-        })),
+        hosting,
+        properties: projectedProperties,
+        authorized_agents: authorizations.map(a => {
+          if (skipRollup) {
+            return {
+              url: a.agent_url,
+              authorized_for: a.authorized_for,
+              source: a.source,
+            };
+          }
+          const matched = agentPropertyCounts.get(a.agent_url);
+          if (matched === undefined) {
+            // Truncated: rollup not computed for this agent.
+            return {
+              url: a.agent_url,
+              authorized_for: a.authorized_for,
+              source: a.source,
+            };
+          }
+          // No property-level rows → publisher-wide → authorized for all.
+          const publisherWide = matched === 0;
+          const authorized = publisherWide ? propertiesTotal : matched;
+          return {
+            url: a.agent_url,
+            authorized_for: a.authorized_for,
+            source: a.source,
+            properties_authorized: authorized,
+            properties_total: propertiesTotal,
+            publisher_wide: publisherWide,
+          };
+        }),
+        rollup_truncated: rollupTruncatedLen
+          ? { cap: PER_AGENT_ROLLUP_CAP, total_agents: authorizations.length }
+          : undefined,
       });
     } catch (error) {
       logger.error({ err: error, path: req.path }, "Publisher lookup failed");
       res.status(500).json({ error: "Publisher lookup failed" });
+    }
+  });
+
+  router.get("/registry/publisher/authorization", async (req, res) => {
+    const rawDomain = req.query.domain as string;
+    const rawAgent = req.query.agent as string;
+    if (!rawDomain || !rawAgent) {
+      return res.status(400).json({ error: "Missing required query params: domain, agent" });
+    }
+    try {
+      const domain = extractDomain(rawDomain);
+      if (!isValidDomain(domain)) {
+        return res.status(400).json({ error: "Invalid domain" });
+      }
+      // Canonicalize the agent URL the same way the writer does so trailing
+      // slashes and case-only variants don't yield false 404s.
+      const agentUrl = canonicalizeAgentUrl(rawAgent);
+      if (!agentUrl) {
+        return res.status(400).json({ error: "Invalid agent URL" });
+      }
+      const federatedIndex = crawler.getFederatedIndex();
+
+      const [properties, authorizations] = await Promise.all([
+        federatedIndex.getPropertiesForDomain(domain),
+        federatedIndex.getAuthorizationsForDomain(domain),
+      ]);
+
+      const auth = authorizations.find(a => canonicalizeAgentUrl(a.agent_url) === agentUrl);
+      if (!auth) {
+        return res.status(404).json({
+          error: "Agent has no authorization for this publisher",
+          domain,
+          agent_url: agentUrl,
+        });
+      }
+
+      const total = properties.length;
+      const propertyDbIdSet = new Set(
+        properties.map(p => p.id).filter((id): id is string => Boolean(id)),
+      );
+      const agentProps = await federatedIndex.getPropertiesForAgent(agentUrl);
+      const matched = agentProps.filter(
+        p => p.publisher_domain === domain && p.id && propertyDbIdSet.has(p.id),
+      );
+
+      const publisherWide = matched.length === 0;
+      const authorized = publisherWide ? total : matched.length;
+      const matchedIds = new Set(matched.map(p => p.id));
+      const unauthorized = publisherWide
+        ? []
+        : properties
+            .filter(p => !p.id || !matchedIds.has(p.id))
+            .map(p => ({ id: p.property_id, name: p.name, type: p.property_type }));
+
+      return res.json({
+        publisher_domain: domain,
+        agent_url: agentUrl,
+        authorized,
+        total,
+        publisher_wide: publisherWide,
+        source: auth.source,
+        authorized_for: auth.authorized_for,
+        unauthorized_properties: unauthorized,
+      });
+    } catch (error) {
+      logger.error({ err: error, path: req.path }, "Publisher authorization lookup failed");
+      return res.status(500).json({ error: "Publisher authorization lookup failed" });
     }
   });
 
