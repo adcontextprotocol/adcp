@@ -441,14 +441,18 @@ describe('AdAgentsManager', () => {
 
       mockedSafeFetch.mockResolvedValue({
         status: 200,
-        data: { name: 'Agent' },
+        data: buf({ name: 'Agent' }),
         headers: { 'content-type': 'text/plain' },
       });
 
       const results = await manager.validateAgentCards(agents);
 
       expect(results[0].valid).toBe(false);
-      expect(results[0].errors.some(e => e.includes('content-type'))).toBe(true);
+      // SUT must hit the "JSON parsed but wrong content-type" branch (parsed
+      // is an object, content-type isn't application/json) — not the
+      // "couldn't parse at all" fallback. Pin the exact message so the test
+      // doesn't silently start passing through the wrong path.
+      expect(results[0].errors.some(e => e.includes('Should be application/json'))).toBe(true);
     }, 10000);
 
     it('detects HTML instead of JSON', async () => {
@@ -485,13 +489,17 @@ describe('AdAgentsManager', () => {
 
       mockedSafeFetch.mockResolvedValue({
         status: 200,
-        data: { name: 'Agent' },
+        data: buf({ name: 'Agent' }),
         headers: { 'content-type': 'application/json' },
       });
 
       const results = await manager.validateAgentCards(agents);
 
       expect(results).toHaveLength(2);
+      // Pin valid:true so the parallel test exercises the JSON-parse success
+      // path, not a silently-broken Buffer.from(plainObject) fallback.
+      expect(results[0].valid).toBe(true);
+      expect(results[1].valid).toBe(true);
       expect(results[0].agent_url).toBe('https://agent1.example.com');
       expect(results[1].agent_url).toBe('https://agent2.example.com');
     });

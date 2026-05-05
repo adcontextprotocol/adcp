@@ -1,6 +1,6 @@
 import { PropertyDefinition, PlacementDefinition } from './types.js';
 import { AAO_UA_VALIDATOR } from './config/user-agents.js';
-import { safeFetchAxiosLike } from './utils/url-security.js';
+import { safeFetchAxiosLike, classifySafeFetchError } from './utils/url-security.js';
 
 export interface ValidationError {
   field: string;
@@ -203,7 +203,7 @@ export class AdAgentsManager {
       // Decode as UTF-8 regardless of Content-Type charset declaration
       let adagentsData: unknown;
       try {
-        const text = Buffer.from(response.data as Buffer).toString('utf-8');
+        const text = response.data.toString('utf-8');
         adagentsData = JSON.parse(text);
       } catch {
         result.errors.push({
@@ -240,22 +240,8 @@ export class AdAgentsManager {
       result.valid = result.errors.length === 0;
 
     } catch (error) {
-      // safeFetch surfaces AbortError on timeout, TypeError on
-      // network failure, and a thrown `Error` for SSRF gate rejection
-      // (private IP / loopback / link-local). Classify into the same
-      // user-visible buckets the previous axios-shaped code emitted.
-      const err = error as Error & { name?: string; cause?: { code?: string } };
-      const code = err.cause?.code;
-      const msg = err.message ?? '';
-      if (err.name === 'AbortError' || /aborted|timeout/i.test(msg)) {
-        result.errors.push({ field: 'timeout', message: 'Request timed out after 10 seconds', severity: 'error' });
-      } else if (code === 'ENOTFOUND' || code === 'ECONNREFUSED' || /ENOTFOUND|ECONNREFUSED|EAI_/i.test(msg)) {
-        result.errors.push({ field: 'connection', message: `Cannot connect to ${normalizedDomain}`, severity: 'error' });
-      } else if (msg) {
-        result.errors.push({ field: 'network', message: msg, severity: 'error' });
-      } else {
-        result.errors.push({ field: 'unknown', message: 'Unknown error occurred', severity: 'error' });
-      }
+      const classified = classifySafeFetchError(error, normalizedDomain);
+      result.errors.push({ ...classified, severity: 'error' });
     }
 
     return result;
@@ -328,7 +314,7 @@ export class AdAgentsManager {
       // Decode as UTF-8 regardless of Content-Type charset declaration
       let authData: unknown;
       try {
-        const text = Buffer.from(response.data as Buffer).toString('utf-8');
+        const text = response.data.toString('utf-8');
         authData = JSON.parse(text);
       } catch {
         result.errors.push({
