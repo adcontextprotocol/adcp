@@ -107,6 +107,11 @@ export async function syncHostedPropertyToFederatedIndex(
   // crawler-written row ('adagents_json'), source_type is NOT updated —
   // the crawler's origin-verified label wins. Reconciliation below deletes
   // rows we own (source_type='aao_hosted') that are no longer in the manifest.
+  //
+  // We push the key before the try/catch (safe-side choice): if the upsert
+  // fails transiently, the row is still kept out of the delete set this pass,
+  // giving the next sync a chance to re-upsert it. The alternative (push on
+  // success only) would delete DB rows on transient errors and risk data loss.
   const validPropertyKeys: Array<{ name: string; property_type: string }> = [];
   for (const p of properties) {
     if (typeof p.name !== 'string' || !p.name) continue;
