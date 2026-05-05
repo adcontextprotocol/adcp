@@ -4718,6 +4718,50 @@ export class HTTPServer {
             break;
           }
 
+          case 'checkout.session.expired': {
+            // 24h passed with no completion. The user clicked our link, started
+            // a Stripe Checkout, didn't finish, and now (if they bookmarked it
+            // or were emailed the URL by sales) sees Stripe's "session expired"
+            // page. We can't intercept that — the URL is on Stripe's domain —
+            // but we can record the abandonment so Addie's relationship loop
+            // can offer to send a fresh link via email/Slack.
+            const session = event.data.object as Stripe.Checkout.Session;
+            const workosUserId = session.metadata?.workos_user_id;
+            const workosOrgId = session.metadata?.workos_organization_id;
+            const sessionId = session.id;
+
+            logger.info(
+              {
+                event: 'checkout_session_expired',
+                sessionId,
+                workosUserId,
+                workosOrgId,
+                customerId: typeof session.customer === 'string' ? session.customer : null,
+                amountTotal: session.amount_total,
+                expiresAt: session.expires_at,
+              },
+              'Stripe Checkout Session expired before completion',
+            );
+
+            if (workosUserId) {
+              try {
+                const relationship = await relationshipDb.getRelationshipByWorkosId(workosUserId);
+                if (relationship) {
+                  await personEvents.recordEvent(relationship.id, 'checkout_session_expired', {
+                    data: {
+                      session_id: sessionId,
+                      workos_organization_id: workosOrgId ?? null,
+                      amount_total: session.amount_total,
+                    },
+                  });
+                }
+              } catch (err) {
+                logger.warn({ err, workosUserId, sessionId }, 'Failed to record checkout_session_expired person event');
+              }
+            }
+            break;
+          }
+
           default:
             logger.debug({ eventType: event.type }, 'Unhandled webhook event type');
         }

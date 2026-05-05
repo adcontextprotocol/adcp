@@ -38,7 +38,8 @@ export type PersonEventType =
   | 'invite_accepted'       // recipient signed in and accepted
   | 'invite_revoked'        // admin revoked before accept
   | 'invite_expired'        // expires_at passed without accept/revoke (sweep)
-  | 'tool_error';           // an Addie tool refused / errored — data carries { tool, reason, ... }
+  | 'tool_error'            // an Addie tool refused / errored — data carries { tool, reason, ... }
+  | 'checkout_session_expired'; // Stripe Checkout Session expired without payment (24h default TTL)
 
 export interface PersonEvent {
   id: number;

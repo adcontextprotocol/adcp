@@ -2021,6 +2021,25 @@ export function createOrganizationsRouter(): Router {
         });
       }
 
+      // Refuse to open the customer portal for an org that has never had a
+      // subscription. The portal manages an *existing* subscription — it
+      // does not initiate one. Sabarish/Voise Tech opened the portal four
+      // times before realizing they couldn't pay through it; the silent
+      // dead end looks broken to a customer.
+      //
+      // We only block when subscription_status is NULL — never had a sub.
+      // past_due / unpaid / incomplete / trialing / canceled all benefit
+      // from the portal: that's where users update a card, retry a failed
+      // charge, or restart a canceled sub. Blocking those would replace
+      // one dead end with another.
+      if (!org.subscription_status) {
+        return res.status(400).json({
+          error: 'No subscription on file',
+          message: 'The billing portal manages an existing subscription. Start one from the membership page first.',
+          membership_url: '/dashboard/membership',
+        });
+      }
+
       // Create Stripe customer if needed (row-level lock prevents duplicate creation)
       const stripeCustomerId = await orgDb.getOrCreateStripeCustomer(orgId, () =>
         createStripeCustomer({
