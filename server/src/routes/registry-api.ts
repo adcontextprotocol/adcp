@@ -642,8 +642,11 @@ registry.registerPath({
   method: "get",
   path: "/api/registry/lookup/domain/{domain}",
   operationId: "lookupDomain",
-  summary: "Domain lookup",
-  description: "Find all agents authorized for a given publisher domain.",
+  summary: "Domain lookup (deprecated)",
+  description:
+    "**Deprecated.** Use `/api/registry/publisher?domain=X` for richer data including hosting state, " +
+    "per-agent rollup, and brand.json fallback. This endpoint will be removed in a future release.",
+  deprecated: true,
   tags: ["Authorization Lookups"],
   request: { params: z.object({ domain: z.string().openapi({ example: "examplepub.com" }) }) },
   responses: {
@@ -5857,6 +5860,8 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
   });
 
   router.get("/registry/lookup/domain/:domain", async (req, res) => {
+    res.setHeader("Deprecation", "true");
+    res.setHeader("Link", `</api/registry/publisher?domain=${encodeURIComponent(req.params.domain)}>; rel="successor-version"`);
     try {
       const federatedIndex = crawler.getFederatedIndex();
       const domain = req.params.domain;
