@@ -17,6 +17,20 @@ vi.mock('../../src/middleware/auth.js', async () => {
   };
 });
 
+// Bypass the bootstrap rate limiter — its CachedPostgresStore would otherwise
+// retain state across tests in the same suite and across suites in the same
+// process. Each individual test still exercises the limiter's `skip` rule
+// (legacy bodies vs. bootstrap bodies) implicitly through the route dispatch.
+vi.mock('../../src/middleware/rate-limit.js', async () => {
+  const actual = await vi.importActual<typeof import('../../src/middleware/rate-limit.js')>(
+    '../../src/middleware/rate-limit.js',
+  );
+  return {
+    ...actual,
+    memberProfileBootstrapRateLimiter: (_req: any, _res: any, next: any) => next(),
+  };
+});
+
 import express from 'express';
 import request from 'supertest';
 import type { Pool } from 'pg';
@@ -112,18 +126,29 @@ describe('POST /api/me/member-profile (REST bootstrap)', () => {
     await pool.query(`DELETE FROM organization_memberships WHERE workos_organization_id LIKE $1`, [
       `${TEST_PREFIX}%`,
     ]);
+    await pool.query(`DELETE FROM registry_audit_log WHERE workos_organization_id LIKE $1`, [
+      `${TEST_PREFIX}%`,
+    ]);
     await pool.query(`DELETE FROM organizations WHERE workos_organization_id LIKE $1`, [
       `${TEST_PREFIX}%`,
     ]);
     await closeDatabase();
   });
 
-  async function seedOrg(orgId: string) {
+  async function seedOrg(
+    orgId: string,
+    overrides: Partial<{ name: string; company_type: string | null; revenue_tier: string | null; membership_tier: string | null }> = {},
+  ) {
+    const name = overrides.name ?? 'Acme Media';
     await pool.query(
-      `INSERT INTO organizations (workos_organization_id, name, is_personal, created_at, updated_at)
-       VALUES ($1, $2, false, NOW(), NOW())
-       ON CONFLICT (workos_organization_id) DO UPDATE SET name = EXCLUDED.name`,
-      [orgId, 'Placeholder Co'],
+      `INSERT INTO organizations (workos_organization_id, name, is_personal, company_type, revenue_tier, membership_tier, created_at, updated_at)
+       VALUES ($1, $2, false, $3, $4, $5, NOW(), NOW())
+       ON CONFLICT (workos_organization_id) DO UPDATE SET
+         name = EXCLUDED.name,
+         company_type = EXCLUDED.company_type,
+         revenue_tier = EXCLUDED.revenue_tier,
+         membership_tier = EXCLUDED.membership_tier`,
+      [orgId, name, overrides.company_type ?? null, overrides.revenue_tier ?? null, overrides.membership_tier ?? null],
     );
     await pool.query(
       `INSERT INTO organization_memberships (workos_user_id, workos_organization_id, role, email, created_at, updated_at)
@@ -136,6 +161,9 @@ describe('POST /api/me/member-profile (REST bootstrap)', () => {
   beforeEach(async () => {
     currentUserEmail = 'owner@acme.example';
     currentUserId = 'user_boot_owner';
+    await pool.query(`DELETE FROM registry_audit_log WHERE workos_organization_id LIKE $1`, [
+      `${TEST_PREFIX}%`,
+    ]);
     await pool.query(`DELETE FROM organization_domains WHERE workos_organization_id LIKE $1`, [
       `${TEST_PREFIX}%`,
     ]);
@@ -286,6 +314,124 @@ describe('POST /api/me/member-profile (REST bootstrap)', () => {
 
     expect(res.status).toBe(404);
     expect(res.body.error).toBe('No organization');
+  });
+
+  it('rejects paid membership_tier values with 400', async () => {
+    const orgId = `${TEST_PREFIX}_paid_tier`;
+    await seedOrg(orgId);
+
+    const res = await request(app)
+      .post('/api/me/member-profile')
+      .send({
+        organization_name: 'Acme',
+        company_type: 'publisher',
+        corporate_domain: 'acme.example',
+        membership_tier: 'company_leader',
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('Paid tier requires checkout');
+
+    const orgRow = await pool.query<{ membership_tier: string | null }>(
+      `SELECT membership_tier FROM organizations WHERE workos_organization_id = $1`,
+      [orgId],
+    );
+    expect(orgRow.rows[0].membership_tier).toBeNull();
+  });
+
+  it('accepts the free Explorer tier (individual_academic)', async () => {
+    const orgId = `${TEST_PREFIX}_free_tier`;
+    await seedOrg(orgId);
+
+    const res = await request(app)
+      .post('/api/me/member-profile')
+      .send({
+        organization_name: 'Acme',
+        company_type: 'publisher',
+        corporate_domain: 'acme.example',
+        membership_tier: 'individual_academic',
+      });
+
+    expect(res.status).toBe(201);
+
+    const orgRow = await pool.query<{ membership_tier: string | null }>(
+      `SELECT membership_tier FROM organizations WHERE workos_organization_id = $1`,
+      [orgId],
+    );
+    expect(orgRow.rows[0].membership_tier).toBe('individual_academic');
+  });
+
+  it('does not overwrite pre-existing org metadata; surfaces metadata_unchanged warning', async () => {
+    const orgId = `${TEST_PREFIX}_no_overwrite`;
+    await seedOrg(orgId, {
+      name: 'Pre-Curated Co',
+      company_type: 'agency',
+      revenue_tier: '50m_250m',
+    });
+
+    const res = await request(app)
+      .post('/api/me/member-profile')
+      .send({
+        organization_name: 'Programmatic Override',
+        company_type: 'publisher',
+        revenue_tier: '5m_50m',
+        corporate_domain: 'acme.example',
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.warnings).toEqual([
+      expect.objectContaining({
+        code: 'metadata_unchanged',
+        fields: expect.arrayContaining(['name', 'company_type', 'revenue_tier']),
+      }),
+    ]);
+
+    const orgRow = await pool.query<{ name: string; company_type: string; revenue_tier: string }>(
+      `SELECT name, company_type, revenue_tier FROM organizations WHERE workos_organization_id = $1`,
+      [orgId],
+    );
+    expect(orgRow.rows[0]).toMatchObject({
+      name: 'Pre-Curated Co',
+      company_type: 'agency',
+      revenue_tier: '50m_250m',
+    });
+
+    // The response profile reflects the persisted org row, not the body.
+    expect(res.body.profile.organization_name).toBe('Pre-Curated Co');
+    expect(res.body.profile.company_type).toBe('agency');
+  });
+
+  it('writes a member_profile_bootstrapped audit log entry on success', async () => {
+    const orgId = `${TEST_PREFIX}_audit`;
+    await seedOrg(orgId);
+
+    const res = await request(app)
+      .post('/api/me/member-profile')
+      .send({
+        organization_name: 'Acme Audit',
+        company_type: 'publisher',
+        corporate_domain: 'acme.example',
+      });
+    expect(res.status).toBe(201);
+
+    const auditRows = await pool.query<{ action: string; workos_user_id: string; resource_type: string; details: any }>(
+      `SELECT action, workos_user_id, resource_type, details FROM registry_audit_log WHERE workos_organization_id = $1 AND action = 'member_profile_bootstrapped'`,
+      [orgId],
+    );
+    expect(auditRows.rows).toHaveLength(1);
+    expect(auditRows.rows[0]).toMatchObject({
+      action: 'member_profile_bootstrapped',
+      workos_user_id: currentUserId,
+      resource_type: 'member_profile',
+    });
+    const details = typeof auditRows.rows[0].details === 'string'
+      ? JSON.parse(auditRows.rows[0].details)
+      : auditRows.rows[0].details;
+    expect(details).toMatchObject({
+      corporate_domain: 'acme.example',
+      company_type: 'publisher',
+    });
+    expect(typeof details.slug).toBe('string');
   });
 
   it('still routes legacy display_name + slug bodies to the original handler', async () => {

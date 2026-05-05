@@ -27,6 +27,14 @@ import { COMPANY_TYPE_VALUES } from "../config/company-types.js";
 import { getCompanyDomain } from "../utils/email-domain.js";
 import { emailPrefsDb } from "../db/email-preferences-db.js";
 import { slugify } from "../services/collection-feed-sync.js";
+import { memberProfileBootstrapRateLimiter } from "../middleware/rate-limit.js";
+
+// Membership tiers a caller may set via the REST bootstrap body. Paid tiers
+// (`individual_professional`, `company_*`) require a successful Stripe
+// checkout — accepting them here would let a caller stamp a paid tier on
+// the org row without billing, fooling any downstream gate that reads
+// `membership_tier` directly without also checking `subscription_status`.
+const BOOTSTRAP_ALLOWED_MEMBERSHIP_TIERS = ['individual_academic'] as const;
 import { VALID_MEMBER_OFFERINGS, isValidAgentVisibility, isValidAgentType } from "../types.js";
 import type { MemberBrandInfo, AgentVisibility, AgentConfig, AgentType } from "../types.js";
 import type { CrawlerService } from "../crawler.js";
@@ -305,11 +313,25 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
           message: `revenue_tier must be one of: ${VALID_REVENUE_TIERS.join(', ')}`,
         });
       }
-      if (membership_tier !== undefined && (typeof membership_tier !== 'string' || !(VALID_MEMBERSHIP_TIERS as readonly string[]).includes(membership_tier))) {
-        return res.status(400).json({
-          error: 'Invalid membership_tier',
-          message: `membership_tier must be one of: ${VALID_MEMBERSHIP_TIERS.join(', ')}`,
-        });
+      if (membership_tier !== undefined) {
+        if (typeof membership_tier !== 'string' || !(VALID_MEMBERSHIP_TIERS as readonly string[]).includes(membership_tier)) {
+          return res.status(400).json({
+            error: 'Invalid membership_tier',
+            message: `membership_tier must be one of: ${VALID_MEMBERSHIP_TIERS.join(', ')}`,
+          });
+        }
+        // Paid tiers cannot be claimed via this endpoint — they require a
+        // successful Stripe checkout. Accepting `company_leader` etc. here
+        // would write the tier to the org row without billing, and any
+        // downstream gate that reads `membership_tier` directly (rather
+        // than `subscription_status`) could be fooled into granting paid
+        // entitlements. Direct callers to the dashboard /membership page.
+        if (!(BOOTSTRAP_ALLOWED_MEMBERSHIP_TIERS as readonly string[]).includes(membership_tier)) {
+          return res.status(400).json({
+            error: 'Paid tier requires checkout',
+            message: `membership_tier '${membership_tier}' requires a Stripe checkout session — it cannot be claimed via this endpoint. Either omit, set 'individual_academic', or complete checkout via /membership and let the webhook stamp the paid tier on the org.`,
+          });
+        }
       }
       let normalizedBrandDomain: string | null = null;
       if (primary_brand_domain !== undefined && primary_brand_domain !== null && primary_brand_domain !== '') {
@@ -416,14 +438,39 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       // First-time bootstrap: persist the org metadata captured on the form,
       // then ensure the corporate domain is recorded as verified (so brand
       // resolution + the agent endpoints work), then create the profile.
-      const orgUpdates: Record<string, unknown> = { name: trimmedName };
-      if (typeof company_type === 'string') orgUpdates.company_type = company_type;
-      if (typeof revenue_tier === 'string') orgUpdates.revenue_tier = revenue_tier;
-      if (typeof membership_tier === 'string') orgUpdates.membership_tier = membership_tier;
-      try {
-        await orgDb.updateOrganization(targetOrgId, orgUpdates);
-      } catch (err) {
-        logger.warn({ err, orgId: targetOrgId }, 'Failed to update org metadata during member-profile bootstrap');
+      //
+      // Org metadata writes are first-time-only. If a field is already set
+      // (e.g. an admin set `company_type` via the dashboard, or the org
+      // was bootstrapped in a prior call), we do not overwrite — we surface
+      // a `metadata_unchanged` warning instead so the caller knows their
+      // body value was ignored. Without this gate, any caller with a
+      // matching email domain could clobber org-level fields a workspace
+      // admin had already curated.
+      const existingOrg = await orgDb.getOrganization(targetOrgId);
+      const orgUpdates: Record<string, unknown> = {};
+      const metadataIgnored: string[] = [];
+      const considerField = (
+        bodyValue: unknown,
+        column: 'name' | 'company_type' | 'revenue_tier' | 'membership_tier',
+      ): void => {
+        if (bodyValue === undefined || bodyValue === null || bodyValue === '') return;
+        const currentValue = existingOrg ? (existingOrg as any)[column] : null;
+        if (currentValue === null || currentValue === undefined || currentValue === '') {
+          (orgUpdates as any)[column] = bodyValue;
+        } else if (currentValue !== bodyValue) {
+          metadataIgnored.push(column);
+        }
+      };
+      considerField(trimmedName, 'name');
+      considerField(company_type, 'company_type');
+      considerField(revenue_tier, 'revenue_tier');
+      considerField(membership_tier, 'membership_tier');
+      if (Object.keys(orgUpdates).length > 0) {
+        try {
+          await orgDb.updateOrganization(targetOrgId, orgUpdates);
+        } catch (err) {
+          logger.warn({ err, orgId: targetOrgId }, 'Failed to update org metadata during member-profile bootstrap');
+        }
       }
 
       // Mirror the email-verified domain insert from the org creation path.
@@ -470,6 +517,32 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         }
       }
 
+      // Audit-log the bootstrap so org-level mutations (verified domain
+      // insert, metadata writes) are attributable. Failures here must not
+      // roll back the profile create — the row is already on disk and the
+      // call has materially succeeded — so we log-and-swallow.
+      try {
+        await orgDb.recordAuditLog({
+          workos_organization_id: targetOrgId,
+          workos_user_id: user.id,
+          action: 'member_profile_bootstrapped',
+          resource_type: 'member_profile',
+          resource_id: profile.id,
+          details: {
+            slug,
+            corporate_domain: corporateDomain,
+            updated_fields: Object.keys(orgUpdates),
+            ignored_fields: metadataIgnored,
+            ...(typeof company_type === 'string' ? { company_type } : {}),
+            ...(typeof revenue_tier === 'string' ? { revenue_tier } : {}),
+            ...(typeof membership_tier === 'string' ? { membership_tier } : {}),
+            ...(typeof marketing_opt_in === 'boolean' ? { marketing_opt_in } : {}),
+          },
+        });
+      } catch (err) {
+        logger.warn({ err, orgId: targetOrgId, profileId: profile.id }, 'Failed to write audit log for member-profile bootstrap');
+      }
+
       invalidateMemberContextCache();
 
       const refreshedOrg = await orgDb.getOrganization(targetOrgId);
@@ -478,10 +551,22 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         orgId: targetOrgId,
         slug,
         durationMs: Date.now() - startTime,
+        metadataIgnored,
       }, 'POST /api/me/member-profile (bootstrap) completed');
+
+      const warnings: Array<Record<string, unknown>> = [];
+      if (metadataIgnored.length > 0) {
+        warnings.push({
+          code: 'metadata_unchanged',
+          fields: metadataIgnored,
+          message:
+            'Some org metadata fields were already set on the organization and were not overwritten. Update them via the dashboard or PUT /api/organizations/:orgId if you need to change them.',
+        });
+      }
 
       return res.status(201).json({
         profile: toSpecMemberProfile(profile, refreshedOrg, corporateDomain),
+        ...(warnings.length ? { warnings } : {}),
       });
     } catch (error) {
       logger.error({ err: error, durationMs: Date.now() - startTime }, 'POST /api/me/member-profile (bootstrap) error');
@@ -587,8 +672,10 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
     }
   });
 
-  // POST /api/me/member-profile - Create member profile for current user's organization
-  router.post('/', requireAuth, async (req, res) => {
+  // POST /api/me/member-profile - Create member profile for current user's organization.
+  // The bootstrap rate limiter `skip`s legacy `display_name`+`slug` bodies, so
+  // the dashboard profile-edit flow keeps its prior unmetered behavior.
+  router.post('/', requireAuth, memberProfileBootstrapRateLimiter, async (req, res) => {
     const startTime = Date.now();
     logger.info({ userId: req.user?.id, org: req.query.org }, 'POST /api/me/member-profile started');
     // Dispatch on body shape: the public REST bootstrap contract

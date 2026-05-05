@@ -1911,18 +1911,19 @@ components:
         membership_tier:
           type: string
           enum:
-            - individual_professional
             - individual_academic
-            - company_standard
-            - company_icl
-            - company_leader
-          description: Initial membership tier. Defaults to no tier (free Explorer) if omitted. Paid tiers (`company_*`, `individual_professional`) require billing details to be configured on the AAO dashboard via Stripe checkout before activation.
+          description: |-
+            Initial membership tier. Only `individual_academic` (the free Explorer baseline) is accepted on this endpoint — paid tiers must come through a Stripe checkout session via the AAO `/membership` dashboard, and the webhook stamps the paid tier on the org row. Sending a paid tier value here returns `400 "Paid tier requires checkout"`.
       required:
         - organization_name
         - company_type
         - corporate_domain
       description: |-
         Request body for `POST /api/me/member-profile`. Creates the organization member profile that backs the per-agent registry endpoints. Fails with `403` if the caller's email domain does not match `corporate_domain`.
+
+        Org metadata fields (`organization_name`, `company_type`, `revenue_tier`, `membership_tier`) are written to the organization row **only when the field is currently null**. If a value is already set (e.g. an admin curated it via the dashboard), the body value is silently ignored and the response surfaces a `metadata_unchanged` warning naming the affected fields. This prevents a programmatic bootstrap from clobbering admin-curated metadata on subsequent calls.
+
+        The endpoint is rate-limited at 15 failed attempts per hour per user — successful calls do not count. The legacy `display_name`+`slug` body shape (used by the AAO dashboard profile-edit form) bypasses the rate limit and the bootstrap flow entirely; that shape continues to return `409` on conflict and writes the full profile body as before.
     MemberProfile:
       type: object
       properties:
@@ -7274,7 +7275,8 @@ paths:
               schema:
                 $ref: "#/components/schemas/MemberProfileResponse"
         "400":
-          description: Missing or invalid required field (e.g. malformed `corporate_domain`, blank `organization_name`).
+          description: |-
+            One of: missing or invalid required field (`organization_name`, `company_type`, `corporate_domain`); malformed `corporate_domain`; or `membership_tier` is set to a paid tier (`individual_professional`, `company_*`) — those require a Stripe checkout session and cannot be claimed via this endpoint.
           content:
             application/json:
               schema:
@@ -7293,7 +7295,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
         "429":
-          description: Rate limit exceeded (this endpoint is rate-limited per IP to prevent abuse).
+          description: Rate limit exceeded (15 failed attempts per hour per user; successful calls do not count).
           content:
             application/json:
               schema:

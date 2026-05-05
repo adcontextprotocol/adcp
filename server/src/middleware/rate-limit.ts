@@ -134,6 +134,46 @@ export const orgCreationRateLimiter = rateLimit({
 });
 
 /**
+ * Rate limiter for the public REST bootstrap path on `POST /api/me/member-profile`.
+ * Same envelope as `orgCreationRateLimiter` — 15 failed attempts per hour per
+ * user, successful calls don't count — but `skip`s requests whose body does
+ * not match the bootstrap shape so the legacy dashboard profile-create path
+ * (`display_name` + `slug`) keeps its prior unmetered behavior.
+ */
+export const memberProfileBootstrapRateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 15,
+  skipSuccessfulRequests: true,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: new CachedPostgresStore('mp-bootstrap:'),
+  keyGenerator: generateKey,
+  validate: { keyGeneratorIpFallback: false },
+  skip: (req) => {
+    const body = (req as any).body;
+    if (!body || typeof body !== 'object') return true;
+    const isBootstrapShape =
+      typeof body.organization_name === 'string'
+      && typeof body.corporate_domain === 'string'
+      && typeof body.display_name !== 'string'
+      && typeof body.slug !== 'string';
+    return !isBootstrapShape;
+  },
+  handler: (req: Request, res: Response) => {
+    logger.warn({
+      userId: (req as any).user?.id,
+      ip: req.ip,
+      path: req.path,
+    }, 'Rate limit exceeded for member-profile bootstrap');
+    res.status(429).json({
+      error: 'Too many requests',
+      message: 'Too many member-profile bootstrap attempts. Please wait an hour and try again.',
+      retryAfter: Math.ceil(60 * 60),
+    });
+  },
+});
+
+/**
  * Rate limiter for brand creation (community submissions)
  * Limits: 60 submissions per hour per user/IP
  */
