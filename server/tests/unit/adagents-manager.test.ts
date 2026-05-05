@@ -1,13 +1,38 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
+
+vi.mock('../../src/utils/url-security.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/utils/url-security.js')>();
+  return {
+    ...actual,
+    safeFetchAxiosLike: vi.fn(),
+  };
+});
+
+// Mock @adcp/sdk so MCP validation doesn't try a real network connect.
+// The MCP path dynamically imports the SDK; without this mock, a missing
+// agent test waits on the SDK's connect-then-timeout (5s) plus library
+// init overhead, which can blow the test timeout.
+vi.mock('@adcp/sdk', () => {
+  class AdCPClient {
+    constructor() {}
+    agent() {
+      return {
+        getAgentInfo: () => Promise.reject(new Error('mock: MCP unreachable')),
+      };
+    }
+  }
+  return {
+    AdCPClient,
+    is401Error: () => false,
+  };
+});
+
 import { AdAgentsManager } from '../../src/adagents-manager.js';
 import type { AuthorizedAgent, AdAgentsJson } from '../../src/types.js';
-import axios from 'axios';
+import { safeFetchAxiosLike } from '../../src/utils/url-security.js';
 
-// Mock axios
-vi.mock('axios');
-const mockedAxios = vi.mocked(axios, true);
+const mockedSafeFetch = vi.mocked(safeFetchAxiosLike);
 
-// Helper: simulate arraybuffer response (how axios delivers data with responseType: 'arraybuffer')
 function buf(data: unknown): Buffer {
   return Buffer.from(JSON.stringify(data));
 }
@@ -17,11 +42,7 @@ describe('AdAgentsManager', () => {
 
   beforeEach(() => {
     manager = new AdAgentsManager();
-    vi.clearAllMocks();
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
+    mockedSafeFetch.mockReset();
   });
 
   describe('validateDomain', () => {
@@ -37,7 +58,7 @@ describe('AdAgentsManager', () => {
         last_updated: new Date().toISOString(),
       };
 
-      mockedAxios.get.mockResolvedValue({
+      mockedSafeFetch.mockResolvedValue({
         status: 200,
         data: buf(validAdAgents),
         headers: { 'content-type': 'application/json' },
@@ -53,7 +74,7 @@ describe('AdAgentsManager', () => {
     });
 
     it('normalizes domain by removing protocol', async () => {
-      mockedAxios.get.mockResolvedValue({
+      mockedSafeFetch.mockResolvedValue({
         status: 200,
         data: buf({ authorized_agents: [{ url: 'https://agent.example.com', authorized_for: 'Test' }] }),
         headers: { 'content-type': 'application/json' },
@@ -66,7 +87,7 @@ describe('AdAgentsManager', () => {
     });
 
     it('normalizes domain by removing trailing slash', async () => {
-      mockedAxios.get.mockResolvedValue({
+      mockedSafeFetch.mockResolvedValue({
         status: 200,
         data: buf({ authorized_agents: [{ url: 'https://agent.example.com', authorized_for: 'Test' }] }),
         headers: { 'content-type': 'application/json' },
@@ -78,7 +99,7 @@ describe('AdAgentsManager', () => {
     });
 
     it('detects missing adagents.json (404)', async () => {
-      mockedAxios.get.mockResolvedValue({
+      mockedSafeFetch.mockResolvedValue({
         status: 404,
         data: '<html>Not Found</html>',
         headers: { 'content-type': 'text/html' },
@@ -93,11 +114,11 @@ describe('AdAgentsManager', () => {
     });
 
     it('handles network connection errors', async () => {
-      mockedAxios.get.mockRejectedValue({
-        isAxiosError: true,
-        code: 'ENOTFOUND',
-      });
-      mockedAxios.isAxiosError = vi.fn().mockReturnValue(true);
+      mockedSafeFetch.mockRejectedValue(
+        Object.assign(new Error('getaddrinfo ENOTFOUND nonexistent.example.com'), {
+          cause: { code: 'ENOTFOUND' },
+        })
+      );
 
       const result = await manager.validateDomain('nonexistent.example.com');
 
@@ -106,11 +127,9 @@ describe('AdAgentsManager', () => {
     });
 
     it('handles request timeout', async () => {
-      mockedAxios.get.mockRejectedValue({
-        isAxiosError: true,
-        code: 'ECONNABORTED',
-      });
-      mockedAxios.isAxiosError = vi.fn().mockReturnValue(true);
+      mockedSafeFetch.mockRejectedValue(
+        Object.assign(new Error('The operation was aborted'), { name: 'AbortError' })
+      );
 
       const result = await manager.validateDomain('slow.example.com');
 
@@ -119,7 +138,7 @@ describe('AdAgentsManager', () => {
     });
 
     it('detects missing authorized_agents field', async () => {
-      mockedAxios.get.mockResolvedValue({
+      mockedSafeFetch.mockResolvedValue({
         status: 200,
         data: buf({ $schema: 'https://adcontextprotocol.org/schemas/v2/adagents.json' }),
         headers: { 'content-type': 'application/json' },
@@ -132,7 +151,7 @@ describe('AdAgentsManager', () => {
     });
 
     it('detects invalid authorized_agents type', async () => {
-      mockedAxios.get.mockResolvedValue({
+      mockedSafeFetch.mockResolvedValue({
         status: 200,
         data: buf({ authorized_agents: 'not an array' }),
         headers: { 'content-type': 'application/json' },
@@ -145,7 +164,7 @@ describe('AdAgentsManager', () => {
     });
 
     it('warns about missing optional $schema field', async () => {
-      mockedAxios.get.mockResolvedValue({
+      mockedSafeFetch.mockResolvedValue({
         status: 200,
         data: buf({ authorized_agents: [{ url: 'https://agent.example.com', authorized_for: 'Test' }] }),
         headers: { 'content-type': 'application/json' },
@@ -158,7 +177,7 @@ describe('AdAgentsManager', () => {
     });
 
     it('warns about missing last_updated field', async () => {
-      mockedAxios.get.mockResolvedValue({
+      mockedSafeFetch.mockResolvedValue({
         status: 200,
         data: buf({ authorized_agents: [{ url: 'https://agent.example.com', authorized_for: 'Test' }] }),
         headers: { 'content-type': 'application/json' },
@@ -173,7 +192,7 @@ describe('AdAgentsManager', () => {
 
   describe('validateAgent', () => {
     it('validates required url field', async () => {
-      mockedAxios.get.mockResolvedValue({
+      mockedSafeFetch.mockResolvedValue({
         status: 200,
         data: buf({ authorized_agents: [{ authorized_for: 'Test' }] }),
         headers: { 'content-type': 'application/json' },
@@ -186,7 +205,7 @@ describe('AdAgentsManager', () => {
     });
 
     it('validates url is a valid URL', async () => {
-      mockedAxios.get.mockResolvedValue({
+      mockedSafeFetch.mockResolvedValue({
         status: 200,
         data: buf({
           authorized_agents: [
@@ -206,7 +225,7 @@ describe('AdAgentsManager', () => {
     });
 
     it('requires HTTPS for agent URLs', async () => {
-      mockedAxios.get.mockResolvedValue({
+      mockedSafeFetch.mockResolvedValue({
         status: 200,
         data: buf({
           authorized_agents: [
@@ -226,7 +245,7 @@ describe('AdAgentsManager', () => {
     });
 
     it('validates required authorized_for field', async () => {
-      mockedAxios.get.mockResolvedValue({
+      mockedSafeFetch.mockResolvedValue({
         status: 200,
         data: buf({
           authorized_agents: [
@@ -245,7 +264,7 @@ describe('AdAgentsManager', () => {
     });
 
     it('validates authorized_for is not empty', async () => {
-      mockedAxios.get.mockResolvedValue({
+      mockedSafeFetch.mockResolvedValue({
         status: 200,
         data: buf({
           authorized_agents: [
@@ -266,7 +285,7 @@ describe('AdAgentsManager', () => {
     });
 
     it('validates authorized_for length constraint', async () => {
-      mockedAxios.get.mockResolvedValue({
+      mockedSafeFetch.mockResolvedValue({
         status: 200,
         data: buf({
           authorized_agents: [
@@ -286,7 +305,7 @@ describe('AdAgentsManager', () => {
     });
 
     it('validates property_ids is an array', async () => {
-      mockedAxios.get.mockResolvedValue({
+      mockedSafeFetch.mockResolvedValue({
         status: 200,
         data: buf({
           authorized_agents: [
@@ -307,7 +326,7 @@ describe('AdAgentsManager', () => {
     });
 
     it('warns about duplicate agent URLs', async () => {
-      mockedAxios.get.mockResolvedValue({
+      mockedSafeFetch.mockResolvedValue({
         status: 200,
         data: buf({
           authorized_agents: [
@@ -340,12 +359,12 @@ describe('AdAgentsManager', () => {
         },
       ];
 
-      mockedAxios.get.mockResolvedValue({
+      mockedSafeFetch.mockResolvedValue({
         status: 200,
-        data: {
+        data: buf({
           name: 'Test Agent',
           capabilities: ['media-buy'],
-        },
+        }),
         headers: { 'content-type': 'application/json' },
       });
 
@@ -366,7 +385,7 @@ describe('AdAgentsManager', () => {
       ];
 
       let callCount = 0;
-      mockedAxios.get.mockImplementation((url) => {
+      mockedSafeFetch.mockImplementation((url) => {
         callCount++;
         if (url === 'https://agent.example.com/.well-known/agent-card.json') {
           return Promise.resolve({
@@ -377,7 +396,7 @@ describe('AdAgentsManager', () => {
         }
         return Promise.resolve({
           status: 200,
-          data: { name: 'Agent' },
+          data: buf({ name: 'Agent' }),
           headers: { 'content-type': 'application/json' },
         });
       });
@@ -396,10 +415,13 @@ describe('AdAgentsManager', () => {
         },
       ];
 
-      mockedAxios.get.mockResolvedValue({
-        status: 404,
-        data: {},
-        headers: {},
+      // A2A endpoints (GET) return 404, MCP preflight (POST) fails so the
+      // MCP path bails out before the live @adcp/sdk import.
+      mockedSafeFetch.mockImplementation(async (_url, opts) => {
+        if (opts?.method === 'POST') {
+          throw new Error('Network error');
+        }
+        return { status: 404, data: buf({}), headers: {} };
       });
 
       const results = await manager.validateAgentCards(agents);
@@ -407,7 +429,7 @@ describe('AdAgentsManager', () => {
       expect(results[0].valid).toBe(false);
       // Error is prefixed with A2A: since both protocols are tried
       expect(results[0].errors.some(e => e.includes('No agent card found'))).toBe(true);
-    }, 10000);
+    }, 20000);
 
     it('detects wrong content-type for agent card', async () => {
       const agents: AuthorizedAgent[] = [
@@ -417,16 +439,20 @@ describe('AdAgentsManager', () => {
         },
       ];
 
-      mockedAxios.get.mockResolvedValue({
+      mockedSafeFetch.mockResolvedValue({
         status: 200,
-        data: { name: 'Agent' },
+        data: buf({ name: 'Agent' }),
         headers: { 'content-type': 'text/plain' },
       });
 
       const results = await manager.validateAgentCards(agents);
 
       expect(results[0].valid).toBe(false);
-      expect(results[0].errors.some(e => e.includes('content-type'))).toBe(true);
+      // SUT must hit the "JSON parsed but wrong content-type" branch (parsed
+      // is an object, content-type isn't application/json) — not the
+      // "couldn't parse at all" fallback. Pin the exact message so the test
+      // doesn't silently start passing through the wrong path.
+      expect(results[0].errors.some(e => e.includes('Should be application/json'))).toBe(true);
     }, 10000);
 
     it('detects HTML instead of JSON', async () => {
@@ -437,9 +463,9 @@ describe('AdAgentsManager', () => {
         },
       ];
 
-      mockedAxios.get.mockResolvedValue({
+      mockedSafeFetch.mockResolvedValue({
         status: 200,
-        data: '<html><body>Website</body></html>',
+        data: Buffer.from('<html><body>Website</body></html>'),
         headers: { 'content-type': 'text/html' },
       });
 
@@ -461,15 +487,19 @@ describe('AdAgentsManager', () => {
         },
       ];
 
-      mockedAxios.get.mockResolvedValue({
+      mockedSafeFetch.mockResolvedValue({
         status: 200,
-        data: { name: 'Agent' },
+        data: buf({ name: 'Agent' }),
         headers: { 'content-type': 'application/json' },
       });
 
       const results = await manager.validateAgentCards(agents);
 
       expect(results).toHaveLength(2);
+      // Pin valid:true so the parallel test exercises the JSON-parse success
+      // path, not a silently-broken Buffer.from(plainObject) fallback.
+      expect(results[0].valid).toBe(true);
+      expect(results[1].valid).toBe(true);
       expect(results[0].agent_url).toBe('https://agent1.example.com');
       expect(results[1].agent_url).toBe('https://agent2.example.com');
     });
@@ -556,7 +586,7 @@ describe('AdAgentsManager', () => {
       };
 
       let callCount = 0;
-      mockedAxios.get.mockImplementation((url) => {
+      mockedSafeFetch.mockImplementation((url) => {
         callCount++;
         if (url.includes('/.well-known/adagents.json')) {
           return Promise.resolve({
@@ -582,7 +612,7 @@ describe('AdAgentsManager', () => {
     });
 
     it('rejects non-HTTPS authoritative locations', async () => {
-      mockedAxios.get.mockResolvedValue({
+      mockedSafeFetch.mockResolvedValue({
         status: 200,
         data: buf({
           authoritative_location: 'http://insecure.example.com/adagents.json',
@@ -597,7 +627,7 @@ describe('AdAgentsManager', () => {
     });
 
     it('rejects invalid authoritative locations', async () => {
-      mockedAxios.get.mockResolvedValue({
+      mockedSafeFetch.mockResolvedValue({
         status: 200,
         data: buf({
           authoritative_location: 'not-a-valid-url',
@@ -616,7 +646,7 @@ describe('AdAgentsManager', () => {
         authoritative_location: 'https://cdn.example.com/adagents.json',
       };
 
-      mockedAxios.get.mockImplementation((url) => {
+      mockedSafeFetch.mockImplementation((url) => {
         if (url.includes('/.well-known/adagents.json')) {
           return Promise.resolve({
             status: 200,
@@ -647,7 +677,7 @@ describe('AdAgentsManager', () => {
         authoritative_location: 'https://cdn2.example.com/adagents.json',
       };
 
-      mockedAxios.get.mockImplementation((url) => {
+      mockedSafeFetch.mockImplementation((url) => {
         if (url.includes('/.well-known/adagents.json')) {
           return Promise.resolve({
             status: 200,
@@ -675,7 +705,7 @@ describe('AdAgentsManager', () => {
         authoritative_location: 'https://cdn.example.com/adagents.json',
       };
 
-      mockedAxios.get.mockImplementation((url) => {
+      mockedSafeFetch.mockImplementation((url) => {
         if (url.includes('/.well-known/adagents.json')) {
           return Promise.resolve({
             status: 200,
@@ -683,13 +713,9 @@ describe('AdAgentsManager', () => {
             headers: { 'content-type': 'application/json' },
           });
         } else {
-          return Promise.reject({
-            isAxiosError: true,
-            message: 'Network error',
-          });
+          return Promise.reject(new Error('Network error'));
         }
       });
-      mockedAxios.isAxiosError = vi.fn().mockReturnValue(true);
 
       const result = await manager.validateDomain('example.com');
 
@@ -707,17 +733,16 @@ describe('AdAgentsManager', () => {
         },
       ];
 
-      // A2A endpoints return 404, MCP preflight returns 200 with valid JSON-RPC
-      mockedAxios.get.mockResolvedValue({
-        status: 404,
-        data: {},
-        headers: {},
-      });
-      // MCP preflight POST returns non-401 so it continues to the AdCPClient path
-      mockedAxios.post.mockResolvedValue({
-        status: 200,
-        data: { jsonrpc: '2.0', result: {} },
-        headers: { 'content-type': 'application/json' },
+      // A2A endpoints (GET) return 404, MCP preflight (POST) returns 200 with valid JSON-RPC
+      mockedSafeFetch.mockImplementation(async (_url, opts) => {
+        if (opts?.method === 'POST') {
+          return {
+            status: 200,
+            data: buf({ jsonrpc: '2.0', result: {} }),
+            headers: { 'content-type': 'application/json' },
+          };
+        }
+        return { status: 404, data: buf({}), headers: {} };
       });
 
       // vi.doMock does not intercept dynamic imports inside the SUT.
@@ -740,14 +765,13 @@ describe('AdAgentsManager', () => {
         },
       ];
 
-      // A2A endpoints return 404
-      mockedAxios.get.mockResolvedValue({
-        status: 404,
-        data: {},
-        headers: {},
+      // A2A endpoints (GET) return 404, MCP preflight (POST) fails
+      mockedSafeFetch.mockImplementation(async (_url, opts) => {
+        if (opts?.method === 'POST') {
+          throw new Error('Network error');
+        }
+        return { status: 404, data: buf({}), headers: {} };
       });
-      // MCP preflight POST fails
-      mockedAxios.post.mockRejectedValue(new Error('Network error'));
 
       const results = await manager.validateAgentCards(agents);
 
@@ -771,7 +795,7 @@ describe('AdAgentsManager', () => {
       expect(result.valid).toBe(true);
       expect(result.errors).toHaveLength(0);
       expect(result.domain).toBe('proposed');
-      expect(mockedAxios.get).not.toHaveBeenCalled();
+      expect(mockedSafeFetch).not.toHaveBeenCalled();
     });
 
     it('detects invalid agents in proposal', () => {
@@ -807,7 +831,7 @@ describe('AdAgentsManager', () => {
   describe('Signals Support', () => {
     describe('validateSignal', () => {
       it('validates a valid binary signal', async () => {
-        mockedAxios.get.mockResolvedValue({
+        mockedSafeFetch.mockResolvedValue({
           status: 200,
           data: buf({
             authorized_agents: [
@@ -832,7 +856,7 @@ describe('AdAgentsManager', () => {
       });
 
       it('validates a valid categorical signal', async () => {
-        mockedAxios.get.mockResolvedValue({
+        mockedSafeFetch.mockResolvedValue({
           status: 200,
           data: buf({
             authorized_agents: [
@@ -857,7 +881,7 @@ describe('AdAgentsManager', () => {
       });
 
       it('validates a valid numeric signal with range', async () => {
-        mockedAxios.get.mockResolvedValue({
+        mockedSafeFetch.mockResolvedValue({
           status: 200,
           data: buf({
             authorized_agents: [
@@ -882,7 +906,7 @@ describe('AdAgentsManager', () => {
       });
 
       it('detects missing signal id', async () => {
-        mockedAxios.get.mockResolvedValue({
+        mockedSafeFetch.mockResolvedValue({
           status: 200,
           data: buf({
             authorized_agents: [
@@ -905,7 +929,7 @@ describe('AdAgentsManager', () => {
       });
 
       it('detects invalid signal id pattern', async () => {
-        mockedAxios.get.mockResolvedValue({
+        mockedSafeFetch.mockResolvedValue({
           status: 200,
           data: buf({
             authorized_agents: [
@@ -929,7 +953,7 @@ describe('AdAgentsManager', () => {
       });
 
       it('detects missing signal name', async () => {
-        mockedAxios.get.mockResolvedValue({
+        mockedSafeFetch.mockResolvedValue({
           status: 200,
           data: buf({
             authorized_agents: [
@@ -952,7 +976,7 @@ describe('AdAgentsManager', () => {
       });
 
       it('detects invalid value_type', async () => {
-        mockedAxios.get.mockResolvedValue({
+        mockedSafeFetch.mockResolvedValue({
           status: 200,
           data: buf({
             authorized_agents: [
@@ -976,7 +1000,7 @@ describe('AdAgentsManager', () => {
       });
 
       it('warns about categorical signal without allowed_values', async () => {
-        mockedAxios.get.mockResolvedValue({
+        mockedSafeFetch.mockResolvedValue({
           status: 200,
           data: buf({
             authorized_agents: [
@@ -1000,7 +1024,7 @@ describe('AdAgentsManager', () => {
       });
 
       it('validates numeric signal range min > max', async () => {
-        mockedAxios.get.mockResolvedValue({
+        mockedSafeFetch.mockResolvedValue({
           status: 200,
           data: buf({
             authorized_agents: [
@@ -1025,7 +1049,7 @@ describe('AdAgentsManager', () => {
       });
 
       it('validates standard signal category', async () => {
-        mockedAxios.get.mockResolvedValue({
+        mockedSafeFetch.mockResolvedValue({
           status: 200,
           data: buf({
             authorized_agents: [
@@ -1050,7 +1074,7 @@ describe('AdAgentsManager', () => {
       });
 
       it('warns about non-standard signal category', async () => {
-        mockedAxios.get.mockResolvedValue({
+        mockedSafeFetch.mockResolvedValue({
           status: 200,
           data: buf({
             authorized_agents: [
@@ -1075,7 +1099,7 @@ describe('AdAgentsManager', () => {
       });
 
       it('errors when signal category is not a string', async () => {
-        mockedAxios.get.mockResolvedValue({
+        mockedSafeFetch.mockResolvedValue({
           status: 200,
           data: buf({
             authorized_agents: [
@@ -1102,7 +1126,7 @@ describe('AdAgentsManager', () => {
 
     describe('signal_tags validation', () => {
       it('validates valid signal_tags', async () => {
-        mockedAxios.get.mockResolvedValue({
+        mockedSafeFetch.mockResolvedValue({
           status: 200,
           data: buf({
             authorized_agents: [
@@ -1124,7 +1148,7 @@ describe('AdAgentsManager', () => {
       });
 
       it('warns about signal tags used but not defined', async () => {
-        mockedAxios.get.mockResolvedValue({
+        mockedSafeFetch.mockResolvedValue({
           status: 200,
           data: buf({
             authorized_agents: [
@@ -1144,7 +1168,7 @@ describe('AdAgentsManager', () => {
       });
 
       it('detects duplicate signal IDs', async () => {
-        mockedAxios.get.mockResolvedValue({
+        mockedSafeFetch.mockResolvedValue({
           status: 200,
           data: buf({
             authorized_agents: [
@@ -1167,7 +1191,7 @@ describe('AdAgentsManager', () => {
 
     describe('signal authorization types', () => {
       it('validates signal_ids authorization type', async () => {
-        mockedAxios.get.mockResolvedValue({
+        mockedSafeFetch.mockResolvedValue({
           status: 200,
           data: buf({
             authorized_agents: [
@@ -1192,7 +1216,7 @@ describe('AdAgentsManager', () => {
       });
 
       it('validates signal_tags authorization type', async () => {
-        mockedAxios.get.mockResolvedValue({
+        mockedSafeFetch.mockResolvedValue({
           status: 200,
           data: buf({
             authorized_agents: [
@@ -1219,7 +1243,7 @@ describe('AdAgentsManager', () => {
       });
 
       it('warns when signal_ids authorization has no matching signals', async () => {
-        mockedAxios.get.mockResolvedValue({
+        mockedSafeFetch.mockResolvedValue({
           status: 200,
           data: buf({
             authorized_agents: [
@@ -1244,7 +1268,7 @@ describe('AdAgentsManager', () => {
       });
 
       it('warns when signal_ids authorization type but no signal_ids array', async () => {
-        mockedAxios.get.mockResolvedValue({
+        mockedSafeFetch.mockResolvedValue({
           status: 200,
           data: buf({
             authorized_agents: [
@@ -1265,7 +1289,7 @@ describe('AdAgentsManager', () => {
       });
 
       it('errors when signal_ids is not an array', async () => {
-        mockedAxios.get.mockResolvedValue({
+        mockedSafeFetch.mockResolvedValue({
           status: 200,
           data: buf({
             authorized_agents: [

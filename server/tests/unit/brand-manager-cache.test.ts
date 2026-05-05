@@ -1,10 +1,17 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import axios from 'axios';
-import { BrandManager } from '../../src/brand-manager.js';
 
-// Mock axios
-vi.mock('axios');
-const mockedAxios = vi.mocked(axios, true);
+vi.mock('../../src/utils/url-security.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/utils/url-security.js')>();
+  return {
+    ...actual,
+    safeFetchAxiosLike: vi.fn(),
+  };
+});
+
+import { BrandManager } from '../../src/brand-manager.js';
+import { safeFetchAxiosLike } from '../../src/utils/url-security.js';
+
+const mockedSafeFetch = vi.mocked(safeFetchAxiosLike);
 
 describe('BrandManager caching', () => {
   let manager: BrandManager;
@@ -36,7 +43,7 @@ describe('BrandManager caching', () => {
         ],
       };
 
-      mockedAxios.get.mockResolvedValueOnce({
+      mockedSafeFetch.mockResolvedValueOnce({
         status: 200,
         data: Buffer.from(JSON.stringify(mockBrandJson)),
       });
@@ -44,19 +51,19 @@ describe('BrandManager caching', () => {
       // First call - should fetch
       const result1 = await manager.validateDomain('acme.com');
       expect(result1.valid).toBe(true);
-      expect(mockedAxios.get).toHaveBeenCalledTimes(1);
+      expect(mockedSafeFetch).toHaveBeenCalledTimes(1);
 
       // Second call - should use cache
       const result2 = await manager.validateDomain('acme.com');
       expect(result2.valid).toBe(true);
-      expect(mockedAxios.get).toHaveBeenCalledTimes(1); // Still 1
+      expect(mockedSafeFetch).toHaveBeenCalledTimes(1); // Still 1
 
       // Results should be identical
       expect(result1.variant).toBe(result2.variant);
     });
 
     it('caches failed lookups separately', async () => {
-      mockedAxios.get.mockResolvedValueOnce({
+      mockedSafeFetch.mockResolvedValueOnce({
         status: 404,
         data: null,
       });
@@ -64,12 +71,12 @@ describe('BrandManager caching', () => {
       // First call - should fetch and fail
       const result1 = await manager.validateDomain('missing.com');
       expect(result1.valid).toBe(false);
-      expect(mockedAxios.get).toHaveBeenCalledTimes(1);
+      expect(mockedSafeFetch).toHaveBeenCalledTimes(1);
 
       // Second call - should use failed lookup cache
       const result2 = await manager.validateDomain('missing.com');
       expect(result2.valid).toBe(false);
-      expect(mockedAxios.get).toHaveBeenCalledTimes(1); // Still 1
+      expect(mockedSafeFetch).toHaveBeenCalledTimes(1); // Still 1
     });
 
     it('bypasses cache with skipCache option', async () => {
@@ -89,18 +96,18 @@ describe('BrandManager caching', () => {
         ],
       };
 
-      mockedAxios.get.mockResolvedValue({
+      mockedSafeFetch.mockResolvedValue({
         status: 200,
         data: Buffer.from(JSON.stringify(mockBrandJson)),
       });
 
       // First call
       await manager.validateDomain('fresh.com');
-      expect(mockedAxios.get).toHaveBeenCalledTimes(1);
+      expect(mockedSafeFetch).toHaveBeenCalledTimes(1);
 
       // Second call with skipCache - should fetch again
       await manager.validateDomain('fresh.com', { skipCache: true });
-      expect(mockedAxios.get).toHaveBeenCalledTimes(2);
+      expect(mockedSafeFetch).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -125,7 +132,7 @@ describe('BrandManager caching', () => {
         ],
       };
 
-      mockedAxios.get.mockResolvedValueOnce({
+      mockedSafeFetch.mockResolvedValueOnce({
         status: 200,
         data: Buffer.from(JSON.stringify(mockBrandJson), 'utf-8'),
       });
@@ -157,7 +164,7 @@ describe('BrandManager caching', () => {
         ],
       };
 
-      mockedAxios.get.mockResolvedValue({
+      mockedSafeFetch.mockResolvedValue({
         status: 200,
         data: Buffer.from(JSON.stringify(mockBrandJson)),
       });
@@ -174,11 +181,11 @@ describe('BrandManager caching', () => {
       const result2 = await manager.resolveBrand('example.com');
       expect(result2).not.toBeNull();
       expect(result2?.brand_name).toBe('Example');
-      expect(mockedAxios.get).not.toHaveBeenCalled(); // Should not fetch
+      expect(mockedSafeFetch).not.toHaveBeenCalled(); // Should not fetch
     });
 
     it('caches null results for failed resolutions', async () => {
-      mockedAxios.get.mockResolvedValueOnce({
+      mockedSafeFetch.mockResolvedValueOnce({
         status: 404,
         data: null,
       });
@@ -192,7 +199,7 @@ describe('BrandManager caching', () => {
       // Second call - should use cache (no fetch)
       const result2 = await manager.resolveBrand('notfound.com');
       expect(result2).toBeNull();
-      expect(mockedAxios.get).not.toHaveBeenCalled();
+      expect(mockedSafeFetch).not.toHaveBeenCalled();
     });
 
     it('bypasses cache with skipCache option', async () => {
@@ -212,7 +219,7 @@ describe('BrandManager caching', () => {
         ],
       };
 
-      mockedAxios.get.mockResolvedValue({
+      mockedSafeFetch.mockResolvedValue({
         status: 200,
         data: Buffer.from(JSON.stringify(mockBrandJson)),
       });
@@ -224,7 +231,7 @@ describe('BrandManager caching', () => {
 
       // Second call with skipCache
       await manager.resolveBrand('bypass.com', { skipCache: true });
-      expect(mockedAxios.get).toHaveBeenCalled();
+      expect(mockedSafeFetch).toHaveBeenCalled();
     });
   });
 
@@ -246,7 +253,7 @@ describe('BrandManager caching', () => {
         ],
       };
 
-      mockedAxios.get.mockResolvedValue({
+      mockedSafeFetch.mockResolvedValue({
         status: 200,
         data: Buffer.from(JSON.stringify(mockBrandJson)),
       });
@@ -285,7 +292,7 @@ describe('BrandManager caching', () => {
         ],
       };
 
-      mockedAxios.get.mockResolvedValue({
+      mockedSafeFetch.mockResolvedValue({
         status: 200,
         data: Buffer.from(JSON.stringify(mockBrandJson)),
       });
