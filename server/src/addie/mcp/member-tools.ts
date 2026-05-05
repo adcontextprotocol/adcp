@@ -5593,24 +5593,76 @@ export function createMemberToolHandlers(
 
     const agentUrl = input.agent_url as string;
 
+    type ProfileRemoveStatus =
+      | { ok: true; removedFromProfile: boolean; agentName: string | null }
+      | { ok: false; reason: 'public' | 'error' };
+
+    // Mirrors ensureAgentInProfile (used by save_agent): remove_saved_agent
+    // must clear the entry from member_profiles.agents too, otherwise the
+    // dashboard at /dashboard/agents keeps showing a phantom row after
+    // agent_contexts is gone. Refuses to drop a `public` entry — that would
+    // desync brand.json (same rule as DELETE /api/me/agents/:url).
+    async function removeAgentFromProfile(): Promise<ProfileRemoveStatus> {
+      if (!removeOrgId) return { ok: false, reason: 'error' };
+      try {
+        const profile = await memberDb.getProfileByOrgId(removeOrgId);
+        if (!profile) return { ok: true, removedFromProfile: false, agentName: null };
+        const agents = profile.agents || [];
+        const existing = agents.find((a: any) => a.url === agentUrl);
+        if (!existing) return { ok: true, removedFromProfile: false, agentName: null };
+        if ((existing as any).visibility === 'public') {
+          return { ok: false, reason: 'public' };
+        }
+        const next = agents.filter((a: any) => a.url !== agentUrl);
+        await memberDb.updateProfile(profile.id, { agents: next });
+        return { ok: true, removedFromProfile: true, agentName: (existing as any).name ?? null };
+      } catch (err) {
+        logger.warn({ err, agentUrl, orgId: removeOrgId }, 'Addie: failed to remove agent from member profile');
+        return { ok: false, reason: 'error' };
+      }
+    }
+
     try {
-      // Find the agent
       const context = await agentContextDb.getByOrgAndUrl(removeOrgId, agentUrl);
 
-      if (!context) {
+      // Credentials before listing: if the second step throws, a stale dashboard
+      // row is cosmetic; a stale credential row means a token we said was gone
+      // is still callable. Pre-check the public-visibility guard before either
+      // write so we don't drop credentials and then refuse the listing change.
+      if (context) {
+        const profile = await memberDb.getProfileByOrgId(removeOrgId);
+        const entry = profile?.agents?.find((a: any) => a.url === agentUrl);
+        if (entry && (entry as any).visibility === 'public') {
+          return `Can't remove **${context.agent_name || agentUrl}** — it's listed publicly. Make it private first, then remove.`;
+        }
+        await agentContextDb.delete(context.id);
+      }
+
+      const profileResult = await removeAgentFromProfile();
+
+      if (!context && profileResult.ok && !profileResult.removedFromProfile) {
         return `No saved agent found with URL: ${agentUrl}\n\nUse \`list_saved_agents\` to see your saved agents.`;
       }
 
-      const agentName = context.agent_name || agentUrl;
+      if (!profileResult.ok) {
+        if (profileResult.reason === 'public') {
+          return `Can't remove **${context?.agent_name || agentUrl}** — it's listed publicly. Make it private first, then remove.`;
+        }
+        // Credentials are gone (if context existed); the listing didn't update.
+        return `⚠️ Removed credentials for **${context?.agent_name || agentUrl}**, but couldn't update your dashboard listing. Try again in a moment, or refresh https://agenticadvertising.org/dashboard/agents to see whether the entry cleared.`;
+      }
 
-      // Delete it
-      await agentContextDb.delete(context.id);
+      const agentName = context?.agent_name || profileResult.agentName || agentUrl;
 
       let response = `✅ Removed saved agent: **${agentName}**\n\n`;
-      if (context.has_auth_token) {
+      if (context?.has_auth_token) {
         response += `🔐 The stored auth token has been permanently deleted.\n`;
       }
-      response += `All test history for this agent has also been removed.`;
+      if (context) {
+        response += `All test history for this agent has also been removed.`;
+      } else if (profileResult.removedFromProfile) {
+        response += `Looks like the credentials were already cleared earlier.`;
+      }
 
       return response;
     } catch (error) {
