@@ -16,6 +16,7 @@ import { fileURLToPath } from "url";
 // Import triggers route & schema registration
 import "../server/src/routes/registry-api.js";
 import "../server/src/schemas/member-agents-openapi.js";
+import "../server/src/schemas/onboarding-openapi.js";
 import { registry } from "../server/src/schemas/registry.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -89,6 +90,7 @@ const doc = generator.generateDocument({
 // is intentionally first — it sits directly under the prose
 // `Registering an agent` page in the side nav.
 const TAG_DESCRIPTIONS: Record<string, string> = {
+  "Onboarding": "Bootstrap a third-party integration into the AAO registry. Create or adopt the caller's organization (`POST /api/organizations`), then immediately register agents — `POST /api/me/agents` auto-creates the member profile on first call, so no separate profile-create round trip is required.",
   "Member Agents": "Register, list, update, and remove agents on the caller's organization member profile. Authenticated programmatic surface for CI / scripts that don't want to round-trip the full member profile.",
   "Brand Resolution": "Resolve advertiser domains to canonical brand identities.",
   "Property Resolution": "Resolve publisher domains to their property configurations and authorized agents.",
