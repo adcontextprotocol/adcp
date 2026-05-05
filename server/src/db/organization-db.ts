@@ -837,11 +837,13 @@ export class OrganizationDatabase {
     company_type?: CompanyType;
     revenue_tier?: RevenueTier;
     membership_tier?: MembershipTier;
+    email_domain?: string;
   }): Promise<Organization> {
     const pool = getPool();
+    const normalizedDomain = data.email_domain?.trim().toLowerCase() || null;
     const result = await pool.query(
-      `INSERT INTO organizations (workos_organization_id, name, is_personal, company_type, revenue_tier, membership_tier)
-       VALUES ($1, $2, $3, $4, $5, $6)
+      `INSERT INTO organizations (workos_organization_id, name, is_personal, company_type, revenue_tier, membership_tier, email_domain)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
        RETURNING *`,
       [
         data.workos_organization_id,
@@ -850,6 +852,7 @@ export class OrganizationDatabase {
         data.company_type || null,
         data.revenue_tier || null,
         data.membership_tier || null,
+        data.is_personal ? null : normalizedDomain,
       ]
     );
     return result.rows[0];

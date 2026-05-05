@@ -739,12 +739,14 @@ export function createPublicBillingRouter(): Router {
           try {
             const workosOrg = await workos!.organizations.getOrganization(orgId);
             if (workosOrg) {
+              const primaryDomain = workosOrg.domains?.[0]?.domain;
               org = await orgDb.createOrganization({
                 workos_organization_id: workosOrg.id,
                 name: workosOrg.name,
+                email_domain: primaryDomain,
               });
               logger.info(
-                { orgId, name: workosOrg.name },
+                { orgId, name: workosOrg.name, email_domain: primaryDomain },
                 "On-demand synced organization from WorkOS"
               );
             }

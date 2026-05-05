@@ -63,12 +63,55 @@ describe('organization-db', () => {
 
       expect(mockPool.query).toHaveBeenCalledWith(
         expect.stringContaining('INSERT INTO organizations'),
-        ['org_123', 'Test Org', false, null, null, null]
+        ['org_123', 'Test Org', false, null, null, null, null]
       );
       expect(result).toMatchObject({
         workos_organization_id: 'org_123',
         name: 'Test Org',
       });
+    });
+
+    test('persists email_domain (lowercased, trimmed) for non-personal orgs', async () => {
+      mockPool.query.mockResolvedValueOnce({
+        rows: [{ workos_organization_id: 'org_voise', name: 'Voise Tech', email_domain: 'voisetech.com' }],
+      });
+
+      const { OrganizationDatabase } = await import('../../server/src/db/organization-db.js');
+      const orgDb = new OrganizationDatabase();
+
+      await orgDb.createOrganization({
+        workos_organization_id: 'org_voise',
+        name: 'Voise Tech',
+        email_domain: '  Voisetech.COM  ',
+      });
+
+      expect(mockPool.query).toHaveBeenCalledWith(
+        expect.stringContaining('INSERT INTO organizations'),
+        ['org_voise', 'Voise Tech', false, null, null, null, 'voisetech.com']
+      );
+    });
+
+    test('forces email_domain NULL on personal orgs even if one is supplied', async () => {
+      // Personal-tier email_domain stays NULL by design — the column is the
+      // auto-membership inference key and must not light up for individual subs.
+      mockPool.query.mockResolvedValueOnce({
+        rows: [{ workos_organization_id: 'org_personal', name: 'Personal' }],
+      });
+
+      const { OrganizationDatabase } = await import('../../server/src/db/organization-db.js');
+      const orgDb = new OrganizationDatabase();
+
+      await orgDb.createOrganization({
+        workos_organization_id: 'org_personal',
+        name: 'Personal',
+        is_personal: true,
+        email_domain: 'someone.dev',
+      });
+
+      expect(mockPool.query).toHaveBeenCalledWith(
+        expect.stringContaining('INSERT INTO organizations'),
+        ['org_personal', 'Personal', true, null, null, null, null]
+      );
     });
 
     test('handles errors gracefully', async () => {
