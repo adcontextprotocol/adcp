@@ -34,10 +34,10 @@ Reconciliation semantics:
 - `discovered_publishers` row uses a stable AAO sentinel value
   (`aao://hosted`) for `discovered_by_agent` so re-syncs collapse to one
   row regardless of agent ordering.
-- `discovered_properties` is additive only — the table has no source
-  column, so we cannot safely distinguish hosted-written rows from
-  crawler-written rows. Removed properties persist until manually cleared.
-  Tracked as a follow-up.
+- `discovered_properties` now has full reconcile support (see PR #4111).
+  Properties removed from the hosted manifest are deleted on re-sync.
+  The `source` column added in migration 467 enables source-aware
+  conflict handling; the reconcile runs under a domain-scoped advisory lock.
 
 Also: rate-limit the per-agent rollup on `/api/registry/publisher` to
 50 agents per request to bound fan-out on an unauthenticated endpoint.

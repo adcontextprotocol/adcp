@@ -76,6 +76,7 @@ export interface DiscoveredProperty {
   name: string;
   identifiers: PropertyIdentifier[];
   tags?: string[];
+  source?: 'crawler' | 'aao_hosted';  // Write-path discriminator (migration 467)
   discovered_at?: Date;
   last_validated?: Date;
   expires_at?: Date;
@@ -548,14 +549,15 @@ export class FederatedIndexDatabase {
   async upsertProperty(property: DiscoveredProperty): Promise<DiscoveredProperty> {
     const result = await query<DiscoveredProperty>(
       `INSERT INTO discovered_properties (
-         property_id, publisher_domain, property_type, name, identifiers, tags, expires_at
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+         property_id, publisher_domain, property_type, name, identifiers, tags, expires_at, source
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        ON CONFLICT (publisher_domain, name, property_type) DO UPDATE SET
          property_id = COALESCE(EXCLUDED.property_id, discovered_properties.property_id),
          identifiers = EXCLUDED.identifiers,
          tags = EXCLUDED.tags,
          last_validated = NOW(),
-         expires_at = EXCLUDED.expires_at
+         expires_at = EXCLUDED.expires_at,
+         source = CASE WHEN discovered_properties.source = 'crawler' THEN 'crawler' ELSE EXCLUDED.source END
        RETURNING *`,
       [
         property.property_id || null,
@@ -565,6 +567,7 @@ export class FederatedIndexDatabase {
         JSON.stringify(property.identifiers),
         property.tags || [],
         property.expires_at || null,
+        property.source || 'crawler',
       ]
     );
     return this.deserializeProperty(result.rows[0]);
