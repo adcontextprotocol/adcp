@@ -564,10 +564,17 @@ const PublisherPropertySchema = z.object({
   type: z.string().optional(),
   name: z.string().optional(),
   identifiers: z.array(PropertyIdentifierSchema).optional(),
-  tags: z.array(z.string()).optional(),
+  tags: z.array(z.string()).optional().openapi({
+    description:
+      "Arbitrary string tags on this property. The `relationship:` prefix tag (e.g. `relationship:owned`) is deprecated in favour of the `delegation_type` field and will be removed in a future release.",
+  }),
   source: z.enum(["adagents_json", "discovered", "brand_json"]).optional().openapi({
     description:
       "Where this property came from. `adagents_json`/`discovered` come from the federated index (publisher's own adagents.json or crawler discovery). `brand_json` is hydrated from the publisher's brand.json when no federated-index data exists yet.",
+  }),
+  delegation_type: z.enum(["direct", "delegated", "ad_network"]).optional().openapi({
+    description:
+      "Delegation relationship declared in brand.json. Populated only when `source` is `brand_json` — for `adagents_json` and `discovered` sources the authoritative value is on the matching `authorized_agents` entry. Mirrors adagents.json `delegation_type` for bilateral verification: `direct` = publisher treats this as a direct buying path, even if a third party operates the software; `delegated` = a rep firm or manager is authorized to sell on the publisher's behalf (operator-declared, unilateral until corroborated by the publisher's adagents.json); `ad_network` = sold as part of a network/exchange package. `owned` properties have no `delegation_type` — ownership is implicit and has no adagents.json counterpart.",
   }),
 });
 
