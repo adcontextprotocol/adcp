@@ -21,6 +21,7 @@ import type { Logger } from 'pino';
 import type { Pool } from 'pg';
 import type { OrganizationDatabase, Organization } from '../db/organization-db.js';
 import { resolveWorkosUserForSubscription } from './resolve-subscription-user.js';
+import { buildSubscriptionSummary, type SubscriptionSummary } from './subscription-summary.js';
 
 export interface ActivationAdminContext {
   userEmail: string;
@@ -44,8 +45,12 @@ export interface HandleSubscriptionCreatedArgs {
     customerEmail: string;
     productName?: string;
     amount?: number;
+    listAmount?: number;
+    discountSummary?: string;
     currency?: string;
     interval?: string;
+    paymentStatus?: SubscriptionSummary['paymentStatus'];
+    invoiceTermsDays?: number;
   }) => Promise<boolean>;
 }
 
@@ -264,8 +269,12 @@ export async function handleSubscriptionCreated(
     customerEmail: userEmail,
     productName: productInfo.productName,
     amount: productInfo.amount,
-    currency: subscription.currency,
+    listAmount: productInfo.listAmount,
+    discountSummary: productInfo.discountSummary,
+    currency: productInfo.currency ?? subscription.currency,
     interval: productInfo.interval,
+    paymentStatus: productInfo.paymentStatus,
+    invoiceTermsDays: productInfo.invoiceTermsDays,
   }).catch((err) => logger.error({ err }, 'Failed to send Slack notification'));
 
   return activationAdminContext;
@@ -275,22 +284,6 @@ async function fetchProductInfo(
   stripe: Stripe,
   subscription: Stripe.Subscription,
   logger: Logger,
-): Promise<{ productName?: string; amount?: number; interval?: string }> {
-  const firstItem = subscription.items?.data?.[0];
-  if (!firstItem?.price) return {};
-
-  const amount = firstItem.price.unit_amount || undefined;
-  const interval = firstItem.price.recurring?.interval;
-  let productName: string | undefined;
-
-  if (firstItem.price.product) {
-    try {
-      const product = (await stripe.products.retrieve(firstItem.price.product as string)) as Stripe.Product;
-      productName = product.name;
-    } catch (err) {
-      logger.debug({ err }, 'Failed to retrieve Stripe product metadata (non-critical)');
-    }
-  }
-
-  return { productName, amount, interval };
+): Promise<SubscriptionSummary> {
+  return buildSubscriptionSummary(stripe, subscription, logger);
 }
