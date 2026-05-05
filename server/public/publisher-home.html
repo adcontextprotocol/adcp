@@ -324,7 +324,7 @@
           <div class="panel-header">
             <div>
               <div class="panel-title" id="hero-title">What we found at this domain</div>
-              <div class="panel-subtitle" id="hero-subtitle"></div>
+              <div class="panel-subtitle" id="hero-subtitle" aria-live="polite"></div>
             </div>
           </div>
           <div class="hero-cards" id="hero-cards"></div>
@@ -526,14 +526,117 @@
         } else if (!haveAnything) {
           heroActions.push(`<a class="primary" href="/login?return_to=${encodeURIComponent(window.location.pathname)}">Sign in to claim</a>`);
         }
+        // Refresh button. Re-running a crawl is the only way to pick up a
+        // change to the publisher's adagents.json or brand.json — the page
+        // only auto-crawls on the first view, so without this button a
+        // publisher who updates their file has no way to invalidate the
+        // cached row. Logged-in users hit the auth-gated crawl endpoint
+        // directly; logged-out users get a sign-in CTA so we don't expose
+        // a public refresh trigger.
+        if (user) {
+          heroActions.push(`<button type="button" class="secondary" id="hero-refresh">Refresh now</button>`);
+        } else {
+          heroActions.push(`<a class="secondary" href="/login?return_to=${encodeURIComponent(window.location.pathname)}">Sign in to refresh</a>`);
+        }
         heroActions.push(`<a class="secondary" href="/adagents-landing">What is adagents.json?</a>`);
         actions.innerHTML = heroActions.join('');
+
+        const refreshBtn = document.getElementById('hero-refresh');
+        if (refreshBtn) refreshBtn.addEventListener('click', () => triggerRefresh(data.domain));
 
         // Auto-refresh when the server told us a crawl is in flight.
         // 4 seconds is enough for a single-domain crawl in most cases;
         // larger budgets risk the user navigating away.
         if (data.auto_crawl_triggered) {
           setTimeout(() => load(), 4000);
+        }
+      }
+
+      // Manual refresh — re-runs the crawl for this domain. Called by the
+      // "Refresh now" button in the hero. Auth-gated server-side, so we
+      // expect this only fires for logged-in users (the renderHero gate
+      // hides the button otherwise). On success we swap the hero into
+      // its checking-state and reload the publisher data after a short
+      // delay, the same shape as auto-crawl-on-view.
+      //
+      // In-flight guard: a hero re-render (triggered by `auto_crawl_triggered`
+      // or a successful refresh) replaces #hero-refresh in the DOM. A pending
+      // call would write to a detached node, and a second click on the new
+      // node would race with the first. The flag short-circuits the second.
+      let refreshInFlight = false;
+      async function triggerRefresh(domain) {
+        if (refreshInFlight) return;
+        refreshInFlight = true;
+        const btn = document.getElementById('hero-refresh');
+        const subtitle = document.getElementById('hero-subtitle');
+        // Restore-button helper. Reads the current hero-refresh node every
+        // time so we always touch the live DOM, even if the hero was
+        // re-rendered while the request was pending.
+        const restoreButton = (text = 'Refresh now') => {
+          const cur = document.getElementById('hero-refresh');
+          if (cur) { cur.disabled = false; cur.textContent = text; }
+        };
+        const setSubtitle = (text) => {
+          const cur = document.getElementById('hero-subtitle');
+          if (cur) cur.textContent = text;
+        };
+        if (btn) {
+          btn.disabled = true;
+          btn.textContent = 'Refreshing…';
+          btn.setAttribute('aria-busy', 'true');
+        }
+        try {
+          const res = await fetch('/api/registry/crawl-request', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ domain }),
+          });
+          if (res.status === 202) {
+            setSubtitle('Refreshing — fetching your files now.');
+            // Same cadence as auto_crawl_triggered. Crawl is async on the
+            // server, so 4s is the empirical sweet spot for a single domain.
+            // load() handles its own UI on success — but if it fails (network
+            // drop, server 500), the subtitle would be stuck on
+            // "Refreshing…" with no button. Restore on failure.
+            setTimeout(async () => {
+              try {
+                await load();
+              } catch (loadErr) {
+                console.warn('Refresh load() failed', loadErr);
+                setSubtitle('Refresh sent — reload the page to see updates.');
+                restoreButton();
+              } finally {
+                refreshInFlight = false;
+              }
+            }, 4000);
+            return;
+          }
+          if (res.status === 429) {
+            const body = await res.json().catch(() => ({}));
+            const wait = Number.isFinite(body.retry_after) ? Math.max(1, Math.ceil(body.retry_after)) : 60;
+            setSubtitle(`Just refreshed — try again in ${wait}s.`);
+            if (btn) btn.textContent = `Wait ${wait}s`;
+            setTimeout(() => {
+              restoreButton();
+              setSubtitle('Here’s what AAO has on file for this domain.');
+              refreshInFlight = false;
+            }, wait * 1000);
+            return;
+          }
+          if (res.status === 401 || res.status === 403) {
+            window.location.href = `/login?return_to=${encodeURIComponent(window.location.pathname)}`;
+            return;
+          }
+          const body = await res.json().catch(() => ({}));
+          setSubtitle(body.error ? `Refresh failed: ${body.error}` : 'Refresh failed — please try again.');
+          restoreButton();
+          refreshInFlight = false;
+        } catch (err) {
+          console.warn('Refresh fetch failed', err);
+          setSubtitle('Refresh failed — check your connection.');
+          restoreButton();
+          refreshInFlight = false;
         }
       }
 
