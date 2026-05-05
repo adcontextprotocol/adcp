@@ -13,6 +13,16 @@ vi.hoisted(() => {
   process.env.WORKOS_CLIENT_ID = process.env.WORKOS_CLIENT_ID ?? 'client_test';
 });
 
+// Generate ephemeral signing keys for the AAO document signer so the
+// route emits an `_aao_envelope`. The keys are set BEFORE imports so
+// the lazy init inside the signer picks them up on first call.
+async function generateSigningKeysAndSetEnv(): Promise<void> {
+  const { generateKeyPair, exportPKCS8, exportSPKI } = await import('jose');
+  const { publicKey, privateKey } = await generateKeyPair('EdDSA', { crv: 'Ed25519', extractable: true });
+  process.env.AAO_DOCUMENT_SIGNING_PRIVATE_KEY = Buffer.from(await exportPKCS8(privateKey), 'utf8').toString('base64');
+  process.env.AAO_DOCUMENT_SIGNING_PUBLIC_KEY = Buffer.from(await exportSPKI(publicKey), 'utf8').toString('base64');
+}
+
 vi.mock('../../src/middleware/auth.js', async () => {
   const actual = await vi.importActual<Record<string, unknown>>(
     '../../src/middleware/auth.js'
@@ -106,7 +116,54 @@ describe('AAO-hosted /publisher/{domain}/.well-known/adagents.json', () => {
     expect(res.status).toBe(200);
     expect(res.headers['content-type']).toMatch(/^application\/json/);
     expect(res.headers['access-control-allow-origin']).toBe('*');
-    expect(res.body).toEqual(adagents);
+    // Body wraps the adagents.json content; envelope may or may not be
+    // present depending on whether signing keys were configured. The
+    // adagents fields must always round-trip.
+    expect(res.body).toMatchObject(adagents);
+  });
+
+  it('embeds an _aao_envelope when document-signing keys are configured', async () => {
+    await generateSigningKeysAndSetEnv();
+    // Reset signer state so the lazy init re-reads env vars from this test.
+    const { _resetForTesting } = await import('../../src/services/aao-document-signer.js');
+    _resetForTesting();
+
+    const adagents = {
+      authorized_agents: [{ url: 'https://agent.example.com', authorized_for: 'all' }],
+      properties: [{ type: 'website', name: PUB_PUBLIC }],
+    };
+    await propertyDb.createHostedProperty({
+      publisher_domain: PUB_PUBLIC,
+      adagents_json: adagents,
+      is_public: true,
+      source_type: 'community',
+    });
+
+    const res = await request(app).get(
+      `/publisher/${encodeURIComponent(PUB_PUBLIC)}/.well-known/adagents.json`
+    );
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject(adagents);
+    expect(res.body._aao_envelope).toBeDefined();
+    expect(res.body._aao_envelope).toMatchObject({
+      key_id: 'aao-document-1',
+      publisher_domain: PUB_PUBLIC,
+    });
+    expect(typeof res.body._aao_envelope.jws).toBe('string');
+    expect(res.body._aao_envelope.jws.split('.').length).toBe(3);
+
+    // Verify the JWS round-trips: the payload IS the canonical document.
+    const { jwtVerify, importJWK } = await import('jose');
+    const { getDocumentSigningJwk } = await import('../../src/services/aao-document-signer.js');
+    const jwk = getDocumentSigningJwk();
+    expect(jwk).not.toBeNull();
+    const key = await importJWK(jwk!, 'EdDSA');
+    const { payload } = await jwtVerify(res.body._aao_envelope.jws, key, {
+      issuer: 'https://aao.org',
+      audience: 'aao-hosted-adagents',
+      subject: PUB_PUBLIC,
+    });
+    expect(payload).toMatchObject(adagents);
   });
 
   it('returns 404 when the hosted property exists but is_public=false', async () => {

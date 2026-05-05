@@ -19,6 +19,7 @@ import { createLogger, processRole } from "./logger.js";
 import { CapabilityDiscovery } from "./capabilities.js";
 import { inferDiagnosticAgentType } from "./lib/diagnostic-agent-type-inference.js";
 import { getPublicSigningJwks } from "./security/jwks.js";
+import { signHostedAdagentsDocument } from "./services/aao-document-signer.js";
 import { PublisherTracker } from "./publishers.js";
 import { PropertiesService } from "./properties.js";
 import { AdAgentsManager } from "./adagents-manager.js";
@@ -3051,10 +3052,20 @@ export class HTTPServer {
         if (!hosted || !hosted.is_public) {
           return res.status(404).json({ error: 'No AAO-hosted adagents.json for this domain', domain });
         }
+        // Embed an AAO-signed envelope so verifiers have a provenance
+        // signal that doesn't depend on the TLS chain (which terminates
+        // at AAO). The JWS payload IS the canonical document body —
+        // verifiers decode the JWT and trust that payload over the outer
+        // wrapper. When signing is disabled (no env keys), we fall back
+        // to serving the unsigned document; existing consumers continue
+        // to work.
+        const body = { ...(hosted.adagents_json || {}) } as Record<string, unknown>;
+        const envelope = await signHostedAdagentsDocument(body, domain);
+        if (envelope) body._aao_envelope = envelope;
         res.setHeader('Content-Type', 'application/json');
         res.setHeader('Access-Control-Allow-Origin', '*');
         res.setHeader('Cache-Control', 'public, max-age=300');
-        return res.json(hosted.adagents_json);
+        return res.json(body);
       } catch (error) {
         logger.error({ error }, 'Failed to serve hosted adagents.json');
         return res.status(500).json({ error: 'Failed to serve adagents.json' });

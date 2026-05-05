@@ -13,12 +13,14 @@
  */
 
 import { createPublicKey } from 'node:crypto';
+import type { JWK } from 'jose';
 import {
   REQUEST_SIGNING_PUBLIC_KEY_PEM,
   REQUEST_SIGNING_KID,
   WEBHOOK_SIGNING_PUBLIC_KEY_PEM,
   WEBHOOK_SIGNING_KID,
 } from './expected-public-key.js';
+import { getDocumentSigningJwk } from '../services/aao-document-signer.js';
 
 interface PublicJwk {
   kty: string;
@@ -34,14 +36,34 @@ interface PublicJwk {
 let cached: { keys: PublicJwk[] } | null = null;
 
 export function getPublicSigningJwks(): { keys: PublicJwk[] } {
-  if (cached) return cached;
-  cached = {
-    keys: [
-      pemToAdcpJwk(REQUEST_SIGNING_PUBLIC_KEY_PEM, REQUEST_SIGNING_KID, 'request-signing'),
-      pemToAdcpJwk(WEBHOOK_SIGNING_PUBLIC_KEY_PEM, WEBHOOK_SIGNING_KID, 'webhook-signing'),
-    ],
+  // The static request/webhook JWKs are derived once and cached. The
+  // document-signing JWK is conditionally appended each call so the JWKS
+  // accurately reflects whether the env-based signing key is loaded
+  // (otherwise dev / non-signing deployments would publish a phantom key).
+  if (!cached) {
+    cached = {
+      keys: [
+        pemToAdcpJwk(REQUEST_SIGNING_PUBLIC_KEY_PEM, REQUEST_SIGNING_KID, 'request-signing'),
+        pemToAdcpJwk(WEBHOOK_SIGNING_PUBLIC_KEY_PEM, WEBHOOK_SIGNING_KID, 'webhook-signing'),
+      ],
+    };
+  }
+  const documentJwk = getDocumentSigningJwk();
+  if (!documentJwk) return cached;
+  // Best-effort cast: jose's JWK type widens to include all fields, but
+  // our published shape is narrower. The signer guarantees the four
+  // OKP/Ed25519 fields plus `adcp_use` so the cast is safe at runtime.
+  const docKey: PublicJwk = {
+    kty: documentJwk.kty as string,
+    crv: documentJwk.crv as string,
+    x: documentJwk.x as string,
+    kid: documentJwk.kid as string,
+    alg: documentJwk.alg as string,
+    use: documentJwk.use as string,
+    adcp_use: (documentJwk as JWK & { adcp_use: string }).adcp_use,
+    key_ops: ['verify'],
   };
-  return cached;
+  return { keys: [...cached.keys, docKey] };
 }
 
 function pemToAdcpJwk(pem: string, kid: string, adcpUse: 'request-signing' | 'webhook-signing'): PublicJwk {
