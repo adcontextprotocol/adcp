@@ -2020,6 +2020,19 @@ export function createOrganizationsRouter(): Router {
         });
       }
 
+      // Refuse to open the customer portal for an org without an active
+      // subscription. The portal manages an existing subscription — it does
+      // not initiate one. Sabarish/Voise Tech opened the portal four times
+      // before realizing they couldn't pay through it; the silent dead end
+      // looks broken to a customer.
+      if (!org.subscription_status || org.subscription_status !== 'active' || org.subscription_canceled_at) {
+        return res.status(400).json({
+          error: 'No active subscription',
+          message: 'The billing portal manages an existing subscription. Start one from the membership page first.',
+          membership_url: '/dashboard/membership',
+        });
+      }
+
       // Create Stripe customer if needed (row-level lock prevents duplicate creation)
       const stripeCustomerId = await orgDb.getOrCreateStripeCustomer(orgId, () =>
         createStripeCustomer({
