@@ -436,16 +436,21 @@
         badge.innerHTML = `<span class="badge ${modeClass}">${escapeHtml(labels[hosting.mode] || hosting.mode)}</span>`;
 
         if (hosting.mode === 'aao_hosted') {
-          // Spec-conformant pattern: publisher hosts a stub at their own
-          // /.well-known/adagents.json with `authoritative_location` set
-          // to AAO's hosted URL. Bare CNAME / 301 redirect from /.well-known
-          // is not blessed by the spec and breaks strict buy-side
-          // verifiers (TLS chain ends at AAO instead of the publisher).
+          // The only supported pattern is the `authoritative_location`
+          // stub: publisher hosts a small file at their own /.well-known
+          // pointing at AAO's hosted body. The publisher's TLS attests
+          // the pointer; AAO serves the body. Buyers chain trust through
+          // the publisher's origin as the spec intends. We do NOT
+          // accommodate CNAME / TLS-redirect patterns — they would put
+          // AAO behind the publisher's identity and break the spec's
+          // origin-attestation model.
           detail.innerHTML = `
-            <p>AAO serves the canonical adagents.json document at:</p>
-            <code class="url-block">${escapeHtml(hosting.hosted_url || '')}</code>
-            <p>Recommended setup: place a small stub at <code>${escapeHtml(hosting.expected_url)}</code> with an <code>authoritative_location</code> field pointing to the AAO URL. Buyers fetch your origin (preserving your TLS chain) and follow the pointer to the AAO-served body.</p>
-            <p style="color: var(--color-text-muted); font-size: var(--text-xs); margin-top: var(--space-3);"><strong>Buy-side note:</strong> some strict verifiers may treat a bare CNAME/redirect to AAO as a soft trust signal because the TLS chain ends at AAO. The <code>authoritative_location</code> stub avoids that.</p>
+            <p>Place this 4-line stub at <code>${escapeHtml(hosting.expected_url)}</code> on your own domain:</p>
+            <code class="url-block">{
+  "$schema": "https://adcontextprotocol.org/schemas/v1/adagents.json",
+  "authoritative_location": "${escapeHtml(hosting.hosted_url || '')}"
+}</code>
+            <p>Buyers fetch your origin, your TLS attests the file, and they follow <code>authoritative_location</code> to the AAO-served body. AAO never sits behind your TLS — your origin remains the trust root for your authorization record.</p>
           `;
           actions.innerHTML = `
             <a class="secondary" href="${escapeHtml(hosting.hosted_url || '#')}" target="_blank" rel="noopener">View hosted file</a>
@@ -470,9 +475,9 @@
           `;
         } else {
           detail.innerHTML = `
-            <p>You have two options for publishing adagents.json:</p>
-            <p>1. <strong>Self-host:</strong> generate the file and put it at <code>${escapeHtml(hosting.expected_url)}</code>. No account needed — but you control the file forever.</p>
-            <p>2. <strong>Let AAO host it</strong> <span style="color: var(--color-text-muted);">(requires free registration)</span>: we serve the canonical document. You place a small stub at your own <code>/.well-known/adagents.json</code> with an <code>authoritative_location</code> field pointing to AAO. Switch back to self-hosting by editing the stub.</p>
+            <p>You have two options for publishing adagents.json. Either way, the file lives at <code>${escapeHtml(hosting.expected_url)}</code> on your own domain — that's what buyers fetch and that's where your TLS attests it.</p>
+            <p>1. <strong>Self-host the full document:</strong> generate the file with your authorized agents and properties, put it at the URL above. No account needed.</p>
+            <p>2. <strong>Self-host a stub, let AAO host the body</strong> <span style="color: var(--color-text-muted);">(requires free registration)</span>: place a small file at the URL above with an <code>authoritative_location</code> pointer to an AAO URL. AAO serves the body; your origin still attests the pointer.</p>
           `;
           actions.innerHTML = `
             <a class="primary" href="/adagents/builder?domain=${encodeURIComponent(data.domain)}">Generate adagents.json</a>
