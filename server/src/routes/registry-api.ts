@@ -5761,7 +5761,14 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       // crawl. The IP-keyed `agentReadRateLimiter` mounted above bounds
       // the breadth of distinct-domain enumeration too.
       const adagentsNeverCrawled = adagentsValid === null;
-      const brandNeverCrawled = !brandRow;
+      // "Stub without manifest" counts as never-crawled for re-crawl
+      // purposes: a previous crawl may have written a brand row whose
+      // brand_name comes from the publisher's domain literal (the
+      // discovery path stamps that even when the manifest fetch failed)
+      // but never landed a brand_manifest. We were treating those rows
+      // as "already crawled" and refusing to retry — leaving publishers
+      // who actually serve a brand.json forever marked as missing one.
+      const brandNeverCrawled = !brandRow || !brandRow.has_brand_manifest;
       let autoCrawlTriggered = false;
       if ((adagentsNeverCrawled || brandNeverCrawled) && shouldAutoCrawl(domain)) {
         // Re-validate: returns null on private/loopback/link-local IPs
@@ -5918,10 +5925,17 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           expected_url: hosting.expected_url,
         } as { status: 'valid' | 'invalid' | 'unknown' | 'checking'; expected_url: string },
         brand_json: {
-          status: brandRow
-            ? (brandRow.has_brand_manifest ? 'present' : 'unknown')
-            : (autoCrawlTriggered ? 'checking' : 'unknown'),
-          name: brandRow?.brand_name,
+          // `present` = a row exists with a manifest. `checking` =
+          // we just kicked off a crawl (either no row, or a stub
+          // without a manifest from a prior failed crawl). `unknown`
+          // = row exists with no manifest and we didn't re-trigger
+          // (debounced).
+          status: brandRow?.has_brand_manifest
+            ? 'present'
+            : autoCrawlTriggered
+              ? 'checking'
+              : 'unknown',
+          name: brandRow?.has_brand_manifest ? brandRow.brand_name : undefined,
         } as { status: 'present' | 'unknown' | 'checking'; name?: string },
       };
 
