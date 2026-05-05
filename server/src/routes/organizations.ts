@@ -16,6 +16,7 @@ import {
   getDevUser,
 } from "../middleware/auth.js";
 import { invitationRateLimiter, orgCreationRateLimiter } from "../middleware/rate-limit.js";
+import { invalidateMembershipCache } from "../db/org-filters.js";
 import { validateOrganizationName, validateEmail } from "../middleware/validation.js";
 import { OrganizationDatabase, CompanyType, RevenueTier, VALID_REVENUE_TIERS, VALID_MEMBERSHIP_TIERS, getSeatUsage, getSeatLimits, canAddSeat, getUserSeatType, resolveMembershipTier, checkAndUpdateSeatWarning, resetSeatWarningIfNeeded, createSeatUpgradeRequest, getSeatUpgradeRequest, listSeatUpgradeRequests, resolveSeatUpgradeRequest, hasPendingSeatRequest } from "../db/organization-db.js";
 import { COMPANY_TYPE_VALUES } from "../config/company-types.js";
@@ -2292,6 +2293,8 @@ export function createOrganizationsRouter(): Router {
   // user to WorkOS as the org's first member.
   //
   // Anti-hijack guards (re-checked inside a row lock):
+  //   - Caller's WorkOS email must be verified (the domain match is the
+  //     entire trust signal — an unverified email isn't a trust signal).
   //   - Org must be non-personal.
   //   - Org must have no active subscription (paying orgs auto-link via the
   //     verified-domain path; they're not "claimable").
@@ -2300,9 +2303,29 @@ export function createOrganizationsRouter(): Router {
   //     else can claim.
   //   - The user's verified WorkOS email domain must match the org's
   //     email_domain or a verified organization_domains row.
+  //
+  // Concurrency model: the row lock taken on the org persists for the full
+  // duration of the WorkOS createOrganizationMembership call. Two concurrent
+  // claims on the same org serialize on the lock — the second one observes
+  // the membership row inserted by the WorkOS webhook (or by a prior tx that
+  // hasn't committed yet) and falls through to the "already claimed" 409.
   router.post('/:orgId/claim', requireAuth, async (req, res) => {
     const user = req.user!;
     const { orgId } = req.params;
+
+    if (!user.emailVerified) {
+      return res.status(403).json({
+        error: 'Email not verified',
+        message: 'Verify your email before claiming an organization.',
+      });
+    }
+
+    if (!workos) {
+      return res.status(500).json({
+        error: 'Auth not configured',
+        message: 'WorkOS is not configured on this server',
+      });
+    }
 
     const userDomain = user.email.split('@')[1]?.toLowerCase();
     if (!userDomain) {
@@ -2315,6 +2338,7 @@ export function createOrganizationsRouter(): Router {
     const pool = getPool();
     const client = await pool.connect();
 
+    let claimResult: { ok: true } | { ok: false; status: number; body: Record<string, unknown> };
     try {
       await client.query('BEGIN');
 
@@ -2335,64 +2359,105 @@ export function createOrganizationsRouter(): Router {
 
       if (orgRows.rows.length === 0) {
         await client.query('ROLLBACK');
-        return res.status(404).json({ error: 'Organization not found' });
+        claimResult = { ok: false, status: 404, body: { error: 'Organization not found' } };
+      } else {
+        const org = orgRows.rows[0];
+
+        if (org.is_personal) {
+          await client.query('ROLLBACK');
+          claimResult = {
+            ok: false,
+            status: 400,
+            body: { error: 'Not claimable', message: 'Personal workspaces cannot be claimed' },
+          };
+        } else if (org.subscription_status) {
+          await client.query('ROLLBACK');
+          claimResult = {
+            ok: false,
+            status: 400,
+            body: {
+              error: 'Not claimable',
+              message: 'This organization already has an active subscription. Ask an existing member to invite you instead.',
+            },
+          };
+        } else {
+          // Domain-match check: user's email domain must equal email_domain
+          // OR appear as a verified organization_domains row.
+          const domainMatchRow = await client.query<{ matched: boolean }>(
+            `SELECT (
+               LOWER($2) = LOWER(COALESCE($3, ''))
+               OR EXISTS (
+                 SELECT 1 FROM organization_domains od
+                 WHERE od.workos_organization_id = $1
+                   AND LOWER(od.domain) = LOWER($2)
+                   AND od.verified = true
+               )
+             ) AS matched`,
+            [orgId, userDomain, org.email_domain],
+          );
+          if (!domainMatchRow.rows[0]?.matched) {
+            await client.query('ROLLBACK');
+            claimResult = {
+              ok: false,
+              status: 403,
+              body: {
+                error: 'Domain mismatch',
+                message: `Your email domain (${userDomain}) does not match this organization's verified domain.`,
+              },
+            };
+          } else {
+            // Anti-hijack: zero existing memberships.
+            const memberCount = await client.query<{ n: string }>(
+              `SELECT COUNT(*)::text AS n FROM organization_memberships
+               WHERE workos_organization_id = $1`,
+              [orgId],
+            );
+            if (Number(memberCount.rows[0]?.n ?? 0) > 0) {
+              await client.query('ROLLBACK');
+              claimResult = {
+                ok: false,
+                status: 409,
+                body: {
+                  error: 'Already claimed',
+                  message: 'This organization already has members. Ask an existing member to invite you.',
+                },
+              };
+            } else {
+              // Add the user to WorkOS *inside* the still-open tx so the row
+              // lock prevents a second concurrent claim from observing the
+              // empty membership table while we're mid-flight. Use 'admin' —
+              // the existing webhook auto-promotes the first admin to owner.
+              let workosFailed = false;
+              try {
+                await workos.userManagement.createOrganizationMembership({
+                  userId: user.id,
+                  organizationId: orgId,
+                  roleSlug: 'admin',
+                });
+              } catch (err: unknown) {
+                const code = (err as { code?: string } | null)?.code;
+                if (code === 'organization_membership_already_exists') {
+                  // Benign — they're already a member. Treat as success.
+                } else {
+                  logger.error({ err, orgId, userId: user.id }, 'WorkOS createOrganizationMembership failed during claim');
+                  workosFailed = true;
+                }
+              }
+              if (workosFailed) {
+                await client.query('ROLLBACK');
+                claimResult = {
+                  ok: false,
+                  status: 500,
+                  body: { error: 'Failed to add membership' },
+                };
+              } else {
+                await client.query('COMMIT');
+                claimResult = { ok: true };
+              }
+            }
+          }
+        }
       }
-
-      const org = orgRows.rows[0];
-
-      if (org.is_personal) {
-        await client.query('ROLLBACK');
-        return res.status(400).json({
-          error: 'Not claimable',
-          message: 'Personal workspaces cannot be claimed',
-        });
-      }
-
-      if (org.subscription_status) {
-        await client.query('ROLLBACK');
-        return res.status(400).json({
-          error: 'Not claimable',
-          message: 'This organization already has an active subscription. Ask an existing member to invite you instead.',
-        });
-      }
-
-      // Domain-match check: user's email domain must equal email_domain
-      // OR appear as a verified organization_domains row.
-      const domainMatchRow = await client.query<{ matched: boolean }>(
-        `SELECT (
-           LOWER($2) = LOWER(COALESCE($3, ''))
-           OR EXISTS (
-             SELECT 1 FROM organization_domains od
-             WHERE od.workos_organization_id = $1
-               AND LOWER(od.domain) = LOWER($2)
-               AND od.verified = true
-           )
-         ) AS matched`,
-        [orgId, userDomain, org.email_domain],
-      );
-      if (!domainMatchRow.rows[0]?.matched) {
-        await client.query('ROLLBACK');
-        return res.status(403).json({
-          error: 'Domain mismatch',
-          message: `Your email domain (${userDomain}) does not match this organization's verified domain.`,
-        });
-      }
-
-      // Anti-hijack: zero existing memberships.
-      const memberCount = await client.query<{ n: string }>(
-        `SELECT COUNT(*)::text AS n FROM organization_memberships
-         WHERE workos_organization_id = $1`,
-        [orgId],
-      );
-      if (Number(memberCount.rows[0]?.n ?? 0) > 0) {
-        await client.query('ROLLBACK');
-        return res.status(409).json({
-          error: 'Already claimed',
-          message: 'This organization already has members. Ask an existing member to invite you.',
-        });
-      }
-
-      await client.query('COMMIT');
     } catch (lockErr) {
       await client.query('ROLLBACK').catch(() => {});
       logger.error({ err: lockErr, orgId, userId: user.id }, 'Claim pre-validation failed');
@@ -2402,29 +2467,14 @@ export function createOrganizationsRouter(): Router {
       client.release();
     }
 
-    // Add the user to WorkOS. Use 'admin' since they're the first member —
-    // membership upsertion in the webhook auto-promotes the first admin to
-    // owner (#3856) so we don't need to set 'owner' directly here.
-    if (!workos) {
-      return res.status(500).json({
-        error: 'Auth not configured',
-        message: 'WorkOS is not configured on this server',
-      });
+    if (!claimResult.ok) {
+      return res.status(claimResult.status).json(claimResult.body);
     }
-    try {
-      await workos.userManagement.createOrganizationMembership({
-        userId: user.id,
-        organizationId: orgId,
-        roleSlug: 'admin',
-      });
-    } catch (err: unknown) {
-      const code = (err as { code?: string } | null)?.code;
-      if (code !== 'organization_membership_already_exists') {
-        logger.error({ err, orgId, userId: user.id }, 'WorkOS createOrganizationMembership failed during claim');
-        return res.status(500).json({ error: 'Failed to add membership' });
-      }
-      // Membership already exists — fall through and treat as success.
-    }
+
+    // Membership-resolution cache may have a stale "no membership" entry for
+    // this user/org pair. Drop it so the next request resolves the new
+    // membership without waiting for the WorkOS webhook to fire.
+    invalidateMembershipCache(orgId);
 
     await orgDb.recordAuditLog({
       workos_organization_id: orgId,
