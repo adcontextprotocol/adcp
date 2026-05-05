@@ -3467,13 +3467,27 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       if (!hosted) {
         return res.status(404).json({ error: 'No hosted property for this domain' });
       }
-      // Org-ownership check: only the org that owns the hosted property
-      // (or an admin) may trigger verification. Mirrors the auth model
-      // used by the existing edit path.
+      // Org-ownership check fails CLOSED on NULL ownership. The
+      // upstream `/api/properties/save` create path can leave the row
+      // with no `workos_organization_id` (community-edit pattern), and
+      // a "fail open if NULL" check would let any authenticated caller
+      // trigger verification on a squatted/unclaimed row — promoting
+      // source labels for a domain they don't actually own. Require
+      // either an explicit org match OR admin. The broader squatting
+      // risk in the create path is a separate fix (needs DNS / well-
+      // known domain-ownership challenge before write).
       const callerOrgId = await resolveCallerOrgId(req);
       const isAdmin = (req.user as { isAdmin?: boolean })?.isAdmin === true;
-      if (!isAdmin && hosted.workos_organization_id && hosted.workos_organization_id !== callerOrgId) {
-        return res.status(403).json({ error: 'Not authorized to verify this domain' });
+      if (!isAdmin) {
+        if (!hosted.workos_organization_id) {
+          return res.status(403).json({
+            error: 'Hosted property has no claimed owner — origin verification requires a claimed owner or an admin trigger',
+            domain,
+          });
+        }
+        if (hosted.workos_organization_id !== callerOrgId) {
+          return res.status(403).json({ error: 'Not authorized to verify this domain' });
+        }
       }
       const outcome = await verifyHostedPropertyOrigin({ hosted });
       return res.json(outcome);
