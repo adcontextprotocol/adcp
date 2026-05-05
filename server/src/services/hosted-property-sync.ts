@@ -123,6 +123,26 @@ export async function syncHostedPropertyToFederatedIndex(
   }
 
   // Agents: upsert each, then reconcile authorizations.
+  //
+  // Pre-check: an earlier verification may have promoted some of these
+  // (agent_url, publisher_domain) pairs to source='adagents_json'. The
+  // `agent_publisher_authorizations` conflict key is
+  // `(agent_url, publisher_domain, source)` — writing `aao_hosted`
+  // alongside an existing `adagents_json` row for the same agent leaves
+  // BOTH rows in place, and the readers don't dedupe across sources.
+  // Result: the publisher would surface the same agent twice on
+  // /api/registry/publisher. To avoid that, query the existing
+  // `adagents_json` rows once up-front and skip writing `aao_hosted`
+  // for any agent already promoted; the verifier owns the source label
+  // for those rows.
+  const existingPromoted = await query<{ agent_url: string }>(
+    `SELECT agent_url
+       FROM agent_publisher_authorizations
+      WHERE publisher_domain = $1 AND source = 'adagents_json'`,
+    [domain],
+  );
+  const promotedSet = new Set(existingPromoted.rows.map(r => r.agent_url));
+
   const validAgentUrls: string[] = [];
   for (const a of agents) {
     if (typeof a.url !== 'string' || !a.url) continue;
@@ -135,13 +155,18 @@ export async function syncHostedPropertyToFederatedIndex(
         source_domain: domain,
       });
       result.agents_synced++;
+      // Skip the `aao_hosted` write when an `adagents_json` row already
+      // exists for this (agent_url, publisher_domain) — verifier owns
+      // that label, sync would otherwise leave a duplicate row.
+      if (promotedSet.has(agentUrl)) continue;
       await fedDb.upsertAuthorization({
         agent_url: agentUrl,
         publisher_domain: domain,
         authorized_for: typeof a.authorized_for === 'string' ? a.authorized_for : undefined,
         // `aao_hosted` rather than `adagents_json` — the publisher's
         // origin has not been verified yet. Promotion to the stronger
-        // label is an explicit verification step (future work).
+        // label happens via the origin verifier
+        // (services/hosted-property-origin-verifier.ts).
         source: 'aao_hosted',
       });
       result.authorizations_reconciled++;

@@ -44,6 +44,7 @@ import { PropertyDatabase } from '../../src/db/property-db.js';
 import { HTTPServer } from '../../src/http.js';
 import { syncHostedPropertyToFederatedIndex } from '../../src/services/hosted-property-sync.js';
 import { verifyHostedPropertyOrigin } from '../../src/services/hosted-property-origin-verifier.js';
+import { aaoHostedAdagentsJsonUrl } from '../../src/config/aao.js';
 
 const PUB = 'origin-verifier-pub.registry-baseline.example';
 const AGENT = 'https://agent.origin-verifier.registry-baseline.example';
@@ -110,7 +111,7 @@ describe('hosted-property origin verifier', () => {
     const fetchImpl = vi.fn().mockResolvedValue({
       status: 200,
       body: JSON.stringify({
-        authoritative_location: `https://agenticadvertising.org/publisher/${PUB}/.well-known/adagents.json`,
+        authoritative_location: aaoHostedAdagentsJsonUrl(PUB),
       }),
     });
 
@@ -144,11 +145,45 @@ describe('hosted-property origin verifier', () => {
       fetchImpl,
     });
     expect(outcome.verified).toBe(false);
-    if (!outcome.verified) expect(outcome.reason).toBe('fetch_failed');
+    if (!outcome.verified) expect(outcome.reason).toBe('not_found');
 
     const res = await request(app).get(`/api/registry/publisher?domain=${encodeURIComponent(PUB)}`);
     expect(res.body.authorized_agents[0].source).toBe('aao_hosted');
     expect(res.body.hosting.origin_verified_at).toBeNull();
+    expect(res.body.hosting.origin_last_checked_at).toBeTruthy();
+  });
+
+  it('treats 5xx as transient (does not demote, stamps last_checked)', async () => {
+    const hosted = await propertyDb.createHostedProperty({
+      publisher_domain: PUB,
+      adagents_json: { authorized_agents: [{ url: AGENT }], properties: [] },
+      is_public: true,
+      source_type: 'community',
+    });
+    await syncHostedPropertyToFederatedIndex(hosted);
+
+    // First, succeed — establish a verified state.
+    const ok = vi.fn().mockResolvedValue({
+      status: 200,
+      body: JSON.stringify({
+        authoritative_location: aaoHostedAdagentsJsonUrl(PUB),
+      }),
+    });
+    await verifyHostedPropertyOrigin({ hosted: (await propertyDb.getHostedPropertyByDomain(PUB))!, fetchImpl: ok });
+
+    // Now a 503 — must NOT demote (spec mandates 7-day cap on transient failures).
+    const fail = vi.fn().mockResolvedValue({ status: 503, body: 'Service Unavailable' });
+    const outcome = await verifyHostedPropertyOrigin({
+      hosted: (await propertyDb.getHostedPropertyByDomain(PUB))!,
+      fetchImpl: fail,
+    });
+    expect(outcome.verified).toBe(false);
+    if (!outcome.verified) expect(outcome.reason).toBe('transient');
+
+    const res = await request(app).get(`/api/registry/publisher?domain=${encodeURIComponent(PUB)}`);
+    // Source remains promoted; verification is unchanged.
+    expect(res.body.authorized_agents[0].source).toBe('adagents_json');
+    expect(res.body.hosting.origin_verified_at).toBeTruthy();
     expect(res.body.hosting.origin_last_checked_at).toBeTruthy();
   });
 
@@ -176,7 +211,7 @@ describe('hosted-property origin verifier', () => {
     expect(res.body.authorized_agents[0].source).toBe('aao_hosted');
   });
 
-  it('verifies via full-document echo when publisher serves the same authorized_agents set', async () => {
+  it('does NOT verify via document echo (path was dropped on protocol review)', async () => {
     const adagents = {
       authorized_agents: [{ url: AGENT, authorized_for: 'all' }],
       properties: [{ type: 'website', name: PUB }],
@@ -189,15 +224,17 @@ describe('hosted-property origin verifier', () => {
     });
     await syncHostedPropertyToFederatedIndex(hosted);
 
-    // Publisher serves the same authorized_agents set (no
-    // authoritative_location) — counts as document echo.
+    // Publisher serves an inline copy (matching authorized_agents set,
+    // no authoritative_location). The previous "document echo"
+    // heuristic accepted this; spec says only the stub pattern is
+    // valid, so we now reject and emit `no_authoritative_location`.
     const fetchImpl = vi.fn().mockResolvedValue({ status: 200, body: JSON.stringify(adagents) });
     const outcome = await verifyHostedPropertyOrigin({
       hosted: (await propertyDb.getHostedPropertyByDomain(PUB))!,
       fetchImpl,
     });
-    expect(outcome.verified).toBe(true);
-    if (outcome.verified) expect(outcome.reason).toBe('document_echo');
+    expect(outcome.verified).toBe(false);
+    if (!outcome.verified) expect(outcome.reason).toBe('no_authoritative_location');
   });
 
   it('demotes adagents_json → aao_hosted when verification fails after a previous success', async () => {
@@ -213,7 +250,7 @@ describe('hosted-property origin verifier', () => {
     const okFetch = vi.fn().mockResolvedValue({
       status: 200,
       body: JSON.stringify({
-        authoritative_location: `https://agenticadvertising.org/publisher/${PUB}/.well-known/adagents.json`,
+        authoritative_location: aaoHostedAdagentsJsonUrl(PUB),
       }),
     });
     await verifyHostedPropertyOrigin({
@@ -250,8 +287,48 @@ describe('hosted-property origin verifier', () => {
     if (!outcome.verified) expect(outcome.reason).toBe('transient');
 
     const after = await propertyDb.getHostedPropertyByDomain(PUB);
-    // origin_last_checked_at unchanged — transient errors don't stamp it.
-    expect(after?.origin_last_checked_at).toEqual(before?.origin_last_checked_at);
+    // origin_verified_at is preserved across transient errors — a
+    // network blip MUST NOT flip a previously-verified row. But
+    // origin_last_checked_at IS stamped so the UI can show "checked
+    // X minutes ago" honestly even when the result was transient.
+    expect(after?.origin_verified_at ?? null).toEqual(before?.origin_verified_at ?? null);
+    expect(after?.origin_last_checked_at).toBeTruthy();
+    if (before?.origin_last_checked_at) {
+      expect(after!.origin_last_checked_at!.getTime())
+        .toBeGreaterThanOrEqual(before.origin_last_checked_at.getTime());
+    }
+  });
+
+  it('classifies DNS NXDOMAIN as permanent unresolvable, demotes if previously verified', async () => {
+    const hosted = await propertyDb.createHostedProperty({
+      publisher_domain: PUB,
+      adagents_json: { authorized_agents: [{ url: AGENT }], properties: [] },
+      is_public: true,
+      source_type: 'community',
+    });
+    await syncHostedPropertyToFederatedIndex(hosted);
+
+    // Establish a verified state first.
+    const ok = vi.fn().mockResolvedValue({
+      status: 200,
+      body: JSON.stringify({ authoritative_location: aaoHostedAdagentsJsonUrl(PUB) }),
+    });
+    await verifyHostedPropertyOrigin({ hosted: (await propertyDb.getHostedPropertyByDomain(PUB))!, fetchImpl: ok });
+
+    // Now NXDOMAIN — safeFetch surfaces this as an Error whose message
+    // contains "ENOTFOUND" / "EAI_". Verifier classifies as permanent
+    // and demotes.
+    const fetchImpl = vi.fn().mockRejectedValue(Object.assign(new Error('getaddrinfo ENOTFOUND foo'), { code: 'ENOTFOUND' }));
+    const outcome = await verifyHostedPropertyOrigin({
+      hosted: (await propertyDb.getHostedPropertyByDomain(PUB))!,
+      fetchImpl,
+    });
+    expect(outcome.verified).toBe(false);
+    if (!outcome.verified) expect(outcome.reason).toBe('unresolvable');
+
+    const res = await request(app).get(`/api/registry/publisher?domain=${encodeURIComponent(PUB)}`);
+    expect(res.body.authorized_agents[0].source).toBe('aao_hosted');
+    expect(res.body.hosting.origin_verified_at).toBeNull();
   });
 
   // ── Trigger endpoint ───────────────────────────────────────────

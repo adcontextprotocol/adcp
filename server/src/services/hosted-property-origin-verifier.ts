@@ -47,6 +47,7 @@
  *     would flip a verified publisher unverified.)
  */
 
+import { canonicalTargetUri } from '@adcp/sdk/signing';
 import { safeFetch } from '../utils/url-security.js';
 import { aaoHostedAdagentsJsonUrl, expectedAdagentsJsonUrl } from '../config/aao.js';
 import { PropertyDatabase } from '../db/property-db.js';
@@ -62,33 +63,68 @@ const MAX_RESPONSE_BYTES = 1_000_000;
 const FETCH_TIMEOUT_MS = 10_000;
 
 export type VerificationOutcome =
-  | { verified: true; reason: 'authoritative_location_pointer' | 'document_echo'; checked_at: Date }
+  | { verified: true; reason: 'authoritative_location_pointer'; checked_at: Date }
   | { verified: false; reason: VerificationFailureReason; checked_at: Date; detail?: string };
 
 export type VerificationFailureReason =
-  | 'fetch_failed'
-  | 'non_200_response'
-  | 'invalid_json'
-  | 'no_authoritative_location'
-  | 'authoritative_location_mismatch'
-  | 'transient'; // network / timeout — not actually a failure, leaves verified state alone
+  | 'not_found'                       // 404 — publisher origin returned no document
+  | 'invalid_json'                    // 200 with body that doesn't parse
+  | 'no_authoritative_location'       // 200 with parsed body but missing authoritative_location
+  | 'authoritative_location_mismatch' // 200 with authoritative_location pointing somewhere other than us
+  | 'unresolvable'                    // DNS NXDOMAIN, private/loopback IP, scheme mismatch — permanent
+  | 'transient';                      // 5xx / 429 / 3xx / network timeout / ECONN* — leaves persisted state alone
 
 interface VerifyHostedOriginInput {
   hosted: HostedProperty;
   /** Override fetcher for tests. Production uses safeFetch. */
   fetchImpl?: (url: string) => Promise<{ status: number; body: string }>;
   /** Override DB writer for tests. */
-  propertyDb?: { recordOriginVerification: PropertyDatabase['recordOriginVerification'] };
+  propertyDb?: {
+    recordOriginVerification: PropertyDatabase['recordOriginVerification'];
+    touchOriginLastCheckedAt: PropertyDatabase['touchOriginLastCheckedAt'];
+  };
 }
 
-function normalizeUrl(url: string): string {
+/**
+ * Spec-canonical URL form for `authoritative_location` comparison. Uses
+ * the SDK's `canonicalTargetUri` so we follow the same eight-step
+ * algorithm (RFC 3986 + IDN A-label + remove_dot_segments + default-port
+ * stripping + fragment removal) the rest of the protocol uses.
+ *
+ * Returns null when canonicalization fails (malformed URL, raw non-ASCII
+ * authority, etc.) — caller treats null as "does not match."
+ */
+function canonicalize(url: string): string | null {
   try {
-    const u = new URL(url);
-    let pathname = u.pathname.replace(/\/+$/, '');
-    return `${u.protocol}//${u.host.toLowerCase()}${pathname}${u.search}`;
+    return canonicalTargetUri(url);
   } catch {
-    return url.trim();
+    return null;
   }
+}
+
+/**
+ * Classify an error thrown by `safeFetch` into permanent vs. transient.
+ *
+ * `safeFetch` throws on URL-validation issues (private IP, loopback,
+ * non-http scheme), DNS NXDOMAIN, fetch-time SSRF guard rejections, and
+ * connect/abort errors. The first group is permanent — the publisher's
+ * origin is unreachable or unresolvable, full stop. The second group
+ * (network timeouts, ECONN*, AbortError) is transient — a network blip
+ * MUST NOT flip a previously-verified row.
+ *
+ * The verifier classifies these so the caller can decide whether to
+ * demote (permanent) or leave state alone (transient).
+ */
+function classifyFetchError(err: unknown): 'unresolvable' | 'transient' {
+  if (!(err instanceof Error)) return 'transient';
+  const msg = err.message || '';
+  // safeFetch / validateFetchUrl signatures (see utils/url-security.ts)
+  if (
+    /private|loopback|link-local|metadata|invalid host|invalid url|invalid scheme|unresolvable|ENOTFOUND|EAI_/i.test(msg)
+  ) {
+    return 'unresolvable';
+  }
+  return 'transient';
 }
 
 async function defaultFetch(url: string): Promise<{ status: number; body: string }> {
@@ -144,24 +180,64 @@ export async function verifyHostedPropertyOrigin(
   const fetchImpl = input.fetchImpl ?? defaultFetch;
   const propertyDb = input.propertyDb ?? new PropertyDatabase();
   const domain = hosted.publisher_domain.toLowerCase();
-  const expectedAaoUrl = normalizeUrl(aaoHostedAdagentsJsonUrl(domain));
+  const expectedAaoUrl = canonicalize(aaoHostedAdagentsJsonUrl(domain));
   const publisherOriginUrl = expectedAdagentsJsonUrl(domain);
+
+  // Local helper: stamp last_checked_at on every outcome (including
+  // transient) so the UI can show "checked X minutes ago" honestly.
+  // For permanent failures we ALSO clear origin_verified_at; transient
+  // uses `touchOriginLastCheckedAt` which preserves the verified
+  // timestamp without bumping it — a network blip MUST NOT flip a
+  // previously-good publisher to unverified, AND it must not "refresh"
+  // the verified timestamp either.
+  const stampChecked = async (verified: boolean | 'preserve') => {
+    if (verified === 'preserve') {
+      await propertyDb.touchOriginLastCheckedAt(domain);
+    } else {
+      await propertyDb.recordOriginVerification(domain, verified);
+    }
+  };
 
   let response: { status: number; body: string };
   try {
     response = await fetchImpl(publisherOriginUrl);
   } catch (err) {
-    logger.warn({ err, domain, publisherOriginUrl }, 'Origin verification fetch failed');
-    // Transient — don't change the persisted verification state.
+    const kind = classifyFetchError(err);
+    logger.warn({ err, domain, publisherOriginUrl, kind }, 'Origin verification fetch threw');
+    if (kind === 'unresolvable') {
+      // Permanent — origin literally cannot serve a document. Demote.
+      await stampChecked(false);
+      await demoteIfPreviouslyVerified(domain, hosted, propertyDb);
+      return { verified: false, reason: 'unresolvable', checked_at: new Date(), detail: (err as Error).message };
+    }
+    // Transient — leave persisted verification state alone, but stamp
+    // last_checked_at so the UI shows the attempt.
+    await stampChecked('preserve');
     return { verified: false, reason: 'transient', checked_at: new Date(), detail: (err as Error).message };
   }
 
+  // Spec-conformant cache rules (see managed-networks.mdx §security):
+  // 5xx and 429 MUST NOT shorten the verified lifetime. Treat as transient.
+  // 3xx — we requested with `redirect: 'manual'`, so a redirect lands
+  // here too. Treat as transient (publisher may have a redirect chain
+  // we don't follow yet) rather than as a hard demote.
+  if (response.status >= 500 || response.status === 429 || (response.status >= 300 && response.status < 400)) {
+    await stampChecked('preserve');
+    return {
+      verified: false,
+      reason: 'transient',
+      checked_at: new Date(),
+      detail: `HTTP ${response.status}`,
+    };
+  }
+
+  // 4xx (typically 404) is the publisher saying "no document." Permanent.
   if (response.status !== 200) {
-    await propertyDb.recordOriginVerification(domain, false);
+    await stampChecked(false);
     await demoteIfPreviouslyVerified(domain, hosted, propertyDb);
     return {
       verified: false,
-      reason: response.status === 404 ? 'fetch_failed' : 'non_200_response',
+      reason: 'not_found',
       checked_at: new Date(),
       detail: `HTTP ${response.status}`,
     };
@@ -171,49 +247,42 @@ export async function verifyHostedPropertyOrigin(
   try {
     parsed = JSON.parse(response.body);
   } catch {
-    await propertyDb.recordOriginVerification(domain, false);
+    await stampChecked(false);
     await demoteIfPreviouslyVerified(domain, hosted, propertyDb);
     return { verified: false, reason: 'invalid_json', checked_at: new Date() };
   }
 
-  // Path 1: stub with authoritative_location
+  // ONE supported shape: stub with `authoritative_location` pointing
+  // exactly at our hosted URL (after spec canonicalization). The
+  // previously-supported "document echo" path (publisher serves a body
+  // whose authorized_agents URL set matches AAO's) was dropped on
+  // protocol-review feedback — it has no spec footing and accepts a
+  // shape the publisher hasn't actually declared as AAO-authoritative.
   const authLoc = typeof parsed.authoritative_location === 'string' ? parsed.authoritative_location : undefined;
-  if (authLoc) {
-    if (normalizeUrl(authLoc) === expectedAaoUrl) {
-      await propertyDb.recordOriginVerification(domain, true);
-      const manifestAgents = readManifestAgentUrls(hosted.adagents_json || {});
-      const promotion = await promoteVerifiedAuthorizations(domain, manifestAgents);
-      logger.info({ domain, promoted: promotion.promoted }, 'Origin verified via authoritative_location pointer');
-      return { verified: true, reason: 'authoritative_location_pointer', checked_at: new Date() };
-    }
-    await propertyDb.recordOriginVerification(domain, false);
+  if (!authLoc) {
+    await stampChecked(false);
+    await demoteIfPreviouslyVerified(domain, hosted, propertyDb);
+    return { verified: false, reason: 'no_authoritative_location', checked_at: new Date() };
+  }
+
+  const canonicalPublisherPointer = canonicalize(authLoc);
+  if (!expectedAaoUrl || !canonicalPublisherPointer || canonicalPublisherPointer !== expectedAaoUrl) {
+    await stampChecked(false);
     await demoteIfPreviouslyVerified(domain, hosted, propertyDb);
     return {
       verified: false,
       reason: 'authoritative_location_mismatch',
       checked_at: new Date(),
-      detail: `expected ${expectedAaoUrl}, got ${normalizeUrl(authLoc)}`,
+      detail: `expected ${expectedAaoUrl ?? '(unparsable AAO URL)'}, got ${canonicalPublisherPointer ?? authLoc}`,
     };
   }
 
-  // Path 2: full document echo. Lighter check — same authorized_agents
-  // url set is sufficient. (A full byte-equal compare would be brittle
-  // against whitespace/key-order differences.)
-  const publisherAgentUrls = new Set(readManifestAgentUrls(parsed));
-  const hostedAgentUrls = new Set(readManifestAgentUrls(hosted.adagents_json || {}));
-  const sameSet =
-    publisherAgentUrls.size === hostedAgentUrls.size &&
-    [...publisherAgentUrls].every(u => hostedAgentUrls.has(u));
-  if (sameSet && publisherAgentUrls.size > 0) {
-    await propertyDb.recordOriginVerification(domain, true);
-    await promoteVerifiedAuthorizations(domain, [...publisherAgentUrls]);
-    logger.info({ domain }, 'Origin verified via full-document echo');
-    return { verified: true, reason: 'document_echo', checked_at: new Date() };
-  }
-
-  await propertyDb.recordOriginVerification(domain, false);
-  await demoteIfPreviouslyVerified(domain, hosted, propertyDb);
-  return { verified: false, reason: 'no_authoritative_location', checked_at: new Date() };
+  // Verified.
+  await stampChecked(true);
+  const manifestAgents = readManifestAgentUrls(hosted.adagents_json || {});
+  const promotion = await promoteVerifiedAuthorizations(domain, manifestAgents);
+  logger.info({ domain, promoted: promotion.promoted }, 'Origin verified via authoritative_location pointer');
+  return { verified: true, reason: 'authoritative_location_pointer', checked_at: new Date() };
 }
 
 /**

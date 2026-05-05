@@ -858,6 +858,25 @@ export class PropertyDatabase {
     );
     return result.rows[0] ? this.deserializeHostedProperty(result.rows[0]) : null;
   }
+
+  /**
+   * Touch only `origin_last_checked_at`, leaving `origin_verified_at`
+   * untouched. Used by the verifier when the publisher's origin
+   * returns a transient response (5xx, 429, 3xx, or a network error
+   * not classified as permanent) — we want the UI to show the attempt
+   * happened, but a network blip MUST NOT flip a previously-verified
+   * row to unverified.
+   */
+  async touchOriginLastCheckedAt(publisherDomain: string): Promise<HostedProperty | null> {
+    const result = await query<HostedProperty>(
+      `UPDATE hosted_properties
+          SET origin_last_checked_at = NOW()
+        WHERE publisher_domain = $1
+        RETURNING *`,
+      [publisherDomain.toLowerCase()],
+    );
+    return result.rows[0] ? this.deserializeHostedProperty(result.rows[0]) : null;
+  }
 }
 
 // Singleton export

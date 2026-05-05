@@ -61,7 +61,41 @@ column for "verified publishers" queries.
 Tests
 -----
 
-8 new integration tests covering the full DB round-trip: stub-points-at-AAO
-(promotes), 404 (does not promote), wrong pointer (does not promote),
-document echo (promotes via second path), demote-after-previous-success,
-transient errors leave state alone, plus the trigger endpoint plumbing.
+10 integration tests across two files covering: stub-points-at-AAO
+(promotes), 404 (demotes), 5xx (transient — does NOT demote a
+previously-verified row, per spec 7-day cap), wrong pointer (demotes),
+document-echo path is now explicitly rejected, demote-after-previous-
+success, NXDOMAIN classified as permanent unresolvable, transient
+errors stamp last_checked but leave verified alone, trigger-endpoint
+plumbing, and the squat-prevention auth gate (NULL-ownership rows
+can't be verified by non-admins).
+
+Review fixes
+------------
+
+Protocol review (ad-tech-protocol-expert):
+- URL comparison now uses `canonicalTargetUri` from `@adcp/sdk/signing`
+  (RFC 3986 + IDN A-label + remove_dot_segments + default-port stripping
+  + fragment removal) instead of a custom `normalizeUrl`. Matches the
+  spec's eight-step canonical algorithm exactly so default ports,
+  punycode, dot-segments, etc. compare correctly.
+- Document-echo path dropped. The spec recognizes only two adagents.json
+  shapes (inline body OR stub with `authoritative_location`); accepting
+  a third "agent-set match" shape had no spec footing and could be
+  exploited by a malicious publisher echoing only the agent-URL set
+  while serving forged `properties[]`.
+- Demotion semantics tightened. 5xx / 429 / 3xx are now classified as
+  `transient` and leave the persisted state alone (spec mandates a
+  7-day cap on transient failures, which a per-fetch demote violates).
+  Only 404 + parseable-but-mismatched bodies trigger demotion.
+
+Code review:
+- Sync now skips writing `aao_hosted` rows for agents that already have
+  a promoted `adagents_json` row, eliminating the duplicate-row leak
+  on re-sync after verification.
+- Transient errors now stamp `origin_last_checked_at` (without touching
+  `origin_verified_at`) via the new `touchOriginLastCheckedAt` helper.
+  Previously the UI could show "never checked" after a successful API
+  call that landed in the transient branch.
+- DNS NXDOMAIN / SSRF-validation throws are reclassified as
+  `unresolvable` (permanent), no longer silently masked as transient.
