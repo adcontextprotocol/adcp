@@ -5622,7 +5622,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     }
   });
 
-  router.get("/registry/publisher", async (req, res) => {
+  router.get("/registry/publisher", agentReadRateLimiter, async (req, res) => {
     const rawDomain = req.query.domain as string;
     if (!rawDomain) {
       return res.status(400).json({ error: "Missing required query param: domain" });
@@ -5651,20 +5651,51 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       // record. Debounced per-domain so a tight refresh loop or a
       // popular domain doesn't hammer the crawler. Fire-and-forget; the
       // page polls / refreshes to pick up fresh data.
+      //
+      // SSRF gate: feed the domain through `validateCrawlDomain` (DNS
+      // resolution + private-IP check) before invoking the crawler.
+      // Without this gate, `?domain=internal.svc.cluster.local` would
+      // turn an unauthenticated GET into an internal-network probe via
+      // AAO's egress. The manual crawl-request endpoint already does
+      // this; auto-crawl was missing the same gate.
+      //
+      // `crawlSingleDomain` already invokes `scanBrandForDomain`
+      // internally (crawler.ts), so we only call the brand scan
+      // standalone when adagents was already crawled but brand wasn't —
+      // otherwise we'd double-fetch /.well-known/brand.json.
+      //
+      // NOTE: the per-domain debouncer is process-local. Behind a load
+      // balancer the first request to each instance can fire its own
+      // crawl. The IP-keyed `agentReadRateLimiter` mounted above bounds
+      // the breadth of distinct-domain enumeration too.
       const adagentsNeverCrawled = adagentsValid === null;
       const brandNeverCrawled = !brandRow;
       let autoCrawlTriggered = false;
       if ((adagentsNeverCrawled || brandNeverCrawled) && shouldAutoCrawl(domain)) {
-        autoCrawlTriggered = true;
-        if (adagentsNeverCrawled) {
-          crawler.crawlSingleDomain(domain).catch((err: Error) => {
-            logger.warn({ err, domain }, 'Auto-crawl (adagents) failed');
-          });
+        // Re-validate: returns null on private/loopback/link-local IPs
+        // and rejects unresolvable hostnames. We accept the result of
+        // validateCrawlDomain only when it returns the same domain we
+        // already validated — any rewrite would mean a discrepancy.
+        let crawlSafe = false;
+        try {
+          const validated = await validateCrawlDomain(domain);
+          crawlSafe = validated === domain;
+        } catch (err) {
+          logger.debug({ err, domain }, 'Auto-crawl skipped — validateCrawlDomain rejected');
         }
-        if (brandNeverCrawled) {
-          crawler.scanBrandForDomain(domain).catch((err: Error) => {
-            logger.warn({ err, domain }, 'Auto-crawl (brand) failed');
-          });
+        if (crawlSafe) {
+          autoCrawlTriggered = true;
+          if (adagentsNeverCrawled) {
+            // crawlSingleDomain handles brand internally too.
+            crawler.crawlSingleDomain(domain).catch((err: Error) => {
+              logger.warn({ err, domain, ip: req.ip }, 'Auto-crawl (adagents) failed');
+            });
+          } else if (brandNeverCrawled) {
+            // adagents already crawled, only the brand is missing.
+            crawler.scanBrandForDomain(domain).catch((err: Error) => {
+              logger.warn({ err, domain, ip: req.ip }, 'Auto-crawl (brand) failed');
+            });
+          }
         }
       }
 
@@ -6900,17 +6931,21 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     return true;
   }
 
-  // Periodic cleanup of stale rate limit entries to prevent memory growth
+  // Periodic cleanup of stale rate limit entries to prevent memory
+  // growth. Eviction threshold is INTENTIONALLY larger than the debounce
+  // window — if cleanup deleted an entry at exactly `windowMs`, the next
+  // request could re-fire immediately, eliminating the debounce. 2× the
+  // window keeps real-world callers safely inside the debounce.
   const rateLimitCleanupInterval = setInterval(() => {
     const now = Date.now();
     for (const [domain, timestamp] of crawlRequestRateLimits) {
-      if (now - timestamp > CRAWL_RATE_LIMIT_MS) crawlRequestRateLimits.delete(domain);
+      if (now - timestamp > 2 * CRAWL_RATE_LIMIT_MS) crawlRequestRateLimits.delete(domain);
     }
     for (const [member, state] of memberCrawlCounts) {
       if (now - state.windowStart > MEMBER_CRAWL_WINDOW_MS) memberCrawlCounts.delete(member);
     }
     for (const [domain, timestamp] of autoCrawlLastFired) {
-      if (now - timestamp > AUTO_CRAWL_DEBOUNCE_MS) autoCrawlLastFired.delete(domain);
+      if (now - timestamp > 2 * AUTO_CRAWL_DEBOUNCE_MS) autoCrawlLastFired.delete(domain);
     }
   }, CRAWL_RATE_LIMIT_MS);
   rateLimitCleanupInterval.unref(); // Don't prevent process exit

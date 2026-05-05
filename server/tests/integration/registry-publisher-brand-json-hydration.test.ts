@@ -53,6 +53,19 @@ vi.mock('../../src/billing/stripe-client.js', () => ({
   createBillingPortalSession: vi.fn().mockResolvedValue(null),
 }));
 
+// Short-circuit the SSRF DNS check for the auto-crawl path. The
+// `.registry-baseline.example` test domains don't resolve to a public
+// IP (RFC 2606 reserved), so the production `validateCrawlDomain` would
+// reject them and skip auto-crawl. We want to exercise the auto-crawl
+// branch in tests, so the mock returns the input domain unchanged.
+vi.mock('../../src/utils/url-security.js', async () => {
+  const actual = await vi.importActual<Record<string, unknown>>('../../src/utils/url-security.js');
+  return {
+    ...actual,
+    validateCrawlDomain: async (domain: string) => domain.toLowerCase(),
+  };
+});
+
 import { HTTPServer } from '../../src/http.js';
 import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
@@ -224,6 +237,29 @@ describe('Registry publisher endpoint — brand.json hydration', () => {
     expect(res.body.hosting.hosted_url).toBeUndefined();
   });
 
+  it('does NOT auto-crawl when validateCrawlDomain rejects (SSRF gate)', async () => {
+    // Override the global mock for this one case. We want to exercise
+    // the path where the SSRF gate refuses the domain — auto-crawl
+    // should be skipped, no `auto_crawl_triggered` flag in the response.
+    const urlSecurity = await import('../../src/utils/url-security.js');
+    const original = urlSecurity.validateCrawlDomain;
+    (urlSecurity as unknown as { validateCrawlDomain: typeof original }).validateCrawlDomain = async () => {
+      throw new Error('Invalid host: test rejection');
+    };
+    try {
+      const ssrfTarget = `ssrf-target-${Date.now()}.registry-baseline.example`;
+      const res = await request(app).get(`/api/registry/publisher?domain=${encodeURIComponent(ssrfTarget)}`);
+      expect(res.status).toBe(200);
+      expect(res.body.auto_crawl_triggered).toBeUndefined();
+      // Status falls back to `unknown` (not `checking`) because the
+      // gate prevented us from kicking off any crawl.
+      expect(res.body.files.adagents_json.status).toBe('unknown');
+      expect(res.body.files.brand_json.status).toBe('unknown');
+    } finally {
+      (urlSecurity as unknown as { validateCrawlDomain: typeof original }).validateCrawlDomain = original;
+    }
+  });
+
   it('returns files.adagents_json.status=checking and auto_crawl_triggered=true on first lookup of an unknown domain', async () => {
     // No brand row, no hosted property, never crawled — first GET should
     // kick off an auto-crawl and surface the checking states.
@@ -232,8 +268,10 @@ describe('Registry publisher endpoint — brand.json hydration', () => {
     expect(res.status).toBe(200);
     expect(res.body.auto_crawl_triggered).toBe(true);
     expect(res.body.files).toBeDefined();
-    expect(['checking', 'unknown']).toContain(res.body.files.adagents_json.status);
-    expect(['checking', 'unknown']).toContain(res.body.files.brand_json.status);
+    // First hit: auto_crawl_triggered=true and the never-crawled files
+    // are reported as `checking` (not `unknown`).
+    expect(res.body.files.adagents_json.status).toBe('checking');
+    expect(res.body.files.brand_json.status).toBe('checking');
 
     // Second hit within the debounce window does NOT re-trigger.
     const res2 = await request(app).get(`/api/registry/publisher?domain=${encodeURIComponent(fresh)}`);

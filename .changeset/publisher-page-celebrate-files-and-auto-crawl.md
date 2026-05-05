@@ -59,3 +59,30 @@ Playwright across three persona states (brand-only, AAO-hosted,
 cold visitor) — hero cards render correctly, hosting panel auto-opens
 when nothing's set up and stays collapsed when there's a working
 record. Zero console errors.
+
+Security review fixes
+---------------------
+
+Two Must Fix items from the security review addressed:
+
+1. **SSRF gate on auto-crawl**: auto-crawl now runs `validateCrawlDomain`
+   (DNS resolution + private-IP check) before invoking the crawler.
+   Previously, an unauthenticated `?domain=internal.svc.cluster.local`
+   could turn into an internal-network probe via AAO's egress.
+2. **IP rate limit**: `/api/registry/publisher` now uses the existing
+   `agentReadRateLimiter` (240 req/min per IP, IPv6 /64-masked).
+   Previously, an attacker iterating distinct hostnames could turn AAO
+   into an HTTP probe-from-the-cloud reflector.
+
+Plus reviewer-flagged correctness fixes: `crawlSingleDomain` already
+calls `scanBrandForDomain` internally so we no longer double-fire,
+cleanup-interval threshold is now 2× the debounce window to avoid the
+boundary race that let domains re-fire mid-window, IP is logged on
+auto-crawl warnings.
+
+Out of scope (filed as #4129): migrate `adagents-manager` and
+`brand-manager` from plain axios to `safeFetch` for connect-time DNS-
+rebind defense. This PR's `validateCrawlDomain` gate catches the obvious
+internal-name case but `safeFetch`'s connect-time `lookup` hook is
+needed to close the rebind TOCTOU window. Out of scope here because it
+touches the scheduled-crawler call sites too.
