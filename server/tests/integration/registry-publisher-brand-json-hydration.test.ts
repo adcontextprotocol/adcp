@@ -225,6 +225,32 @@ describe('Registry publisher endpoint — brand.json hydration', () => {
     );
   });
 
+  it('re-triggers brand crawl when a stub row exists without a manifest', async () => {
+    // Set up a brand row that mirrors the production state we saw on
+    // wonderstruck.org: brand row exists (the discovery path stamps a
+    // brand_name from the domain literal), but has_brand_manifest is
+    // false because a prior crawl came up empty. The auto-crawl logic
+    // must NOT treat this as "already crawled" — the publisher's
+    // origin may now actually serve a brand.json that we never picked
+    // up. Re-trigger and surface `checking`.
+    const stubDomain = `stub-no-manifest-${Date.now()}.registry-baseline.example`;
+    await brandDb.upsertDiscoveredBrand({
+      domain: stubDomain,
+      brand_name: stubDomain, // domain-literal placeholder, no real metadata
+      source_type: 'community',
+      has_brand_manifest: false,
+    });
+
+    const res = await request(app).get(`/api/registry/publisher?domain=${encodeURIComponent(stubDomain)}`);
+    expect(res.status).toBe(200);
+    expect(res.body.auto_crawl_triggered).toBe(true);
+    // Status reflects the in-flight re-crawl.
+    expect(res.body.files.brand_json.status).toBe('checking');
+    // Name is suppressed when there's no real manifest — the
+    // domain-literal placeholder is misleading.
+    expect(res.body.files.brand_json.name).toBeUndefined();
+  });
+
   it('reports hosting.mode=none when no adagents.json is configured', async () => {
     const res = await request(app).get(
       `/api/registry/publisher?domain=${encodeURIComponent(PUB_BRAND_ONLY)}`
