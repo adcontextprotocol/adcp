@@ -1001,8 +1001,9 @@
               <!-- Agent cards will be added here -->
             </div>
 
-            <div style="margin-top: 20px">
+            <div style="margin-top: 20px; display: flex; gap: 12px; flex-wrap: wrap">
               <button class="btn" onclick="addAgent()">➕ Add Agent</button>
+              <button class="btn btn-secondary" onclick="openRegistryPicker()">🔍 Import from registry</button>
             </div>
           </div>
 
@@ -1319,6 +1320,44 @@
               <button class="btn btn-secondary" onclick="closeAgentModal()">Cancel</button>
               <button class="btn" onclick="saveAgent()">💾 Save Agent</button>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Registry Picker Modal -->
+      <div id="registry-picker-modal" class="modal" style="display: none">
+        <div class="modal-content" style="max-width: 600px">
+          <div class="modal-header">
+            <h3>Import from registry</h3>
+            <button class="modal-close" onclick="closeRegistryPicker()">✖️</button>
+          </div>
+          <div class="modal-body">
+            <div class="form-group">
+              <label>Search by platform name</label>
+              <input
+                type="text"
+                id="registry-picker-search"
+                placeholder="e.g. Magnite, OpenX, Index Exchange…"
+                oninput="filterRegistryPicker(this.value)"
+              />
+            </div>
+            <div
+              id="registry-picker-list"
+              style="
+                max-height: 360px;
+                overflow-y: auto;
+                border: var(--border-1) solid var(--color-border);
+                border-radius: var(--radius-md);
+              "
+            ></div>
+          </div>
+          <div class="modal-footer">
+            <span
+              id="registry-picker-selected-count"
+              style="flex: 1; font-size: var(--text-sm); color: var(--color-text-muted); align-self: center"
+            ></span>
+            <button class="btn btn-secondary" onclick="closeRegistryPicker()">Cancel</button>
+            <button class="btn" onclick="importFromRegistry()">Import selected</button>
           </div>
         </div>
       </div>
@@ -4042,6 +4081,148 @@
         document.getElementById('json-preview-toggle').textContent = '📄 View JSON ▼';
 
         console.log('Reset adagents.json creator to domain entry step');
+      }
+
+      // ============================================================================
+      // Registry Picker
+      // ============================================================================
+
+      let registryAgents = [];
+      let registryFetchController = null;
+
+      async function openRegistryPicker() {
+        const list = document.getElementById('registry-picker-list');
+        document.getElementById('registry-picker-search').value = '';
+        document.getElementById('registry-picker-selected-count').textContent = '';
+        list.textContent = 'Loading…';
+        document.getElementById('registry-picker-modal').style.display = 'flex';
+
+        if (registryFetchController) registryFetchController.abort();
+        registryFetchController = new AbortController();
+        const signal = registryFetchController.signal;
+
+        try {
+          const res = await fetch('/api/registry/agents?type=sales', { signal });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const data = await res.json();
+          registryAgents = (data.agents || [])
+            .slice()
+            .sort((a, b) => (b.stats?.publisher_count || 0) - (a.stats?.publisher_count || 0));
+          renderRegistryPicker('');
+        } catch (err) {
+          if (err.name !== 'AbortError') {
+            list.textContent = 'Failed to load agents from registry. Please try again.';
+          }
+        }
+      }
+
+      function filterRegistryPicker(query) {
+        renderRegistryPicker(query.toLowerCase().trim());
+      }
+
+      function renderRegistryPicker(query) {
+        const list = document.getElementById('registry-picker-list');
+        const filtered = query
+          ? registryAgents.filter(
+              a =>
+                (a.name || '').toLowerCase().includes(query) ||
+                (a.url || '').toLowerCase().includes(query)
+            )
+          : registryAgents;
+
+        if (filtered.length === 0) {
+          list.textContent = registryAgents.length === 0 ? 'No sales agents found in registry.' : 'No matching agents.';
+          updateRegistryPickerCount();
+          return;
+        }
+
+        list.innerHTML = '';
+        filtered.forEach(agent => {
+          const alreadyAdded = state.agents.some(a => a.url === agent.url);
+
+          const row = document.createElement('label');
+          row.style.cssText =
+            'display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border-bottom: var(--border-1) solid var(--color-border); cursor: pointer;';
+          if (alreadyAdded) row.style.opacity = '0.5';
+
+          const checkbox = document.createElement('input');
+          checkbox.type = 'checkbox';
+          checkbox.value = agent.url;
+          checkbox.disabled = alreadyAdded;
+          checkbox.style.marginTop = '3px';
+          checkbox.addEventListener('change', updateRegistryPickerCount);
+
+          const info = document.createElement('div');
+          info.style.flex = '1';
+
+          const nameEl = document.createElement('div');
+          nameEl.style.cssText = 'font-weight: 600; font-size: 14px;';
+          nameEl.textContent = agent.name || agent.url;
+
+          const urlEl = document.createElement('div');
+          urlEl.style.cssText =
+            'font-size: 12px; color: var(--color-text-muted); font-family: var(--font-mono); margin-top: 2px; word-break: break-all;';
+          urlEl.textContent = agent.url;
+
+          const metaEl = document.createElement('div');
+          metaEl.style.cssText = 'font-size: 12px; color: var(--color-text-secondary); margin-top: 4px;';
+          if (alreadyAdded) {
+            metaEl.textContent = 'Already in your list';
+          } else {
+            const count = agent.stats?.publisher_count;
+            metaEl.textContent =
+              count != null
+                ? `${count} publisher${count === 1 ? '' : 's'} already authorize this agent`
+                : '';
+          }
+
+          info.appendChild(nameEl);
+          info.appendChild(urlEl);
+          if (metaEl.textContent) info.appendChild(metaEl);
+
+          row.appendChild(checkbox);
+          row.appendChild(info);
+          list.appendChild(row);
+        });
+
+        updateRegistryPickerCount();
+      }
+
+      function updateRegistryPickerCount() {
+        const selected = document.querySelectorAll('#registry-picker-list input[type="checkbox"]:checked').length;
+        const el = document.getElementById('registry-picker-selected-count');
+        el.textContent = selected > 0 ? `${selected} agent${selected === 1 ? '' : 's'} selected` : '';
+      }
+
+      function closeRegistryPicker() {
+        document.getElementById('registry-picker-modal').style.display = 'none';
+      }
+
+      function importFromRegistry() {
+        const checkboxes = document.querySelectorAll('#registry-picker-list input[type="checkbox"]:checked');
+        if (checkboxes.length === 0) {
+          alert('Select at least one agent to import.');
+          return;
+        }
+        let added = 0;
+        checkboxes.forEach(cb => {
+          const url = cb.value;
+          try {
+            const parsed = new URL(url);
+            if (parsed.protocol !== 'https:') return;
+          } catch {
+            return;
+          }
+          if (!state.agents.some(a => a.url === url)) {
+            state.agents.push({ url, authorized_for: '', delegation_type: 'direct' });
+            added++;
+          }
+        });
+        closeRegistryPicker();
+        render();
+        if (added > 0) {
+          alert(`${added} agent${added === 1 ? '' : 's'} added. Open each card to set the authorization scope.`);
+        }
       }
 
       // Initialize on page load
