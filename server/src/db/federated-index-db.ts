@@ -76,6 +76,7 @@ export interface DiscoveredProperty {
   name: string;
   identifiers: PropertyIdentifier[];
   tags?: string[];
+  source_type?: 'adagents_json' | 'aao_hosted';
   discovered_at?: Date;
   last_validated?: Date;
   expires_at?: Date;
@@ -548,8 +549,8 @@ export class FederatedIndexDatabase {
   async upsertProperty(property: DiscoveredProperty): Promise<DiscoveredProperty> {
     const result = await query<DiscoveredProperty>(
       `INSERT INTO discovered_properties (
-         property_id, publisher_domain, property_type, name, identifiers, tags, expires_at
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+         property_id, publisher_domain, property_type, name, identifiers, tags, source_type, expires_at
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        ON CONFLICT (publisher_domain, name, property_type) DO UPDATE SET
          property_id = COALESCE(EXCLUDED.property_id, discovered_properties.property_id),
          identifiers = EXCLUDED.identifiers,
@@ -564,6 +565,7 @@ export class FederatedIndexDatabase {
         property.name,
         JSON.stringify(property.identifiers),
         property.tags || [],
+        property.source_type || 'adagents_json',
         property.expires_at || null,
       ]
     );

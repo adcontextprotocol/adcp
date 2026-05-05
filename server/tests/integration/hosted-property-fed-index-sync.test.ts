@@ -221,6 +221,102 @@ describe('Hosted property → federated index sync', () => {
     expect(res.body.authorized_agents[0].url).toBe(AGENT_X);
   });
 
+  it('reconciles properties on re-sync: properties removed from the manifest are deleted', async () => {
+    const initial = await propertyDb.createHostedProperty({
+      publisher_domain: PUB,
+      adagents_json: {
+        authorized_agents: [{ url: AGENT_X }],
+        properties: [
+          { type: 'website', name: PUB },
+          { type: 'mobile_app', name: `${PUB} app` },
+        ],
+      },
+      is_public: true,
+      source_type: 'community',
+    });
+    await syncHostedPropertyToFederatedIndex(initial);
+
+    // Sanity: both properties present.
+    let res = await request(app).get(
+      `/api/registry/publisher?domain=${encodeURIComponent(PUB)}`
+    );
+    expect(res.body.properties).toHaveLength(2);
+
+    // Re-sync with only one property — the other should be removed.
+    await pool.query(
+      `UPDATE hosted_properties SET adagents_json = $2 WHERE publisher_domain = $1`,
+      [PUB, JSON.stringify({
+        authorized_agents: [{ url: AGENT_X }],
+        properties: [{ type: 'website', name: PUB }],
+      })],
+    );
+    const updated = await propertyDb.getHostedPropertyByDomain(PUB);
+    if (!updated) throw new Error('expected hosted property to exist');
+    const result = await syncHostedPropertyToFederatedIndex(updated);
+    expect(result.properties_removed).toBe(1);
+
+    res = await request(app).get(
+      `/api/registry/publisher?domain=${encodeURIComponent(PUB)}`
+    );
+    expect(res.body.properties).toHaveLength(1);
+    expect(res.body.properties[0].name).toBe(PUB);
+  });
+
+  it('removes all aao_hosted properties when the manifest is emptied', async () => {
+    const initial = await propertyDb.createHostedProperty({
+      publisher_domain: PUB,
+      adagents_json: {
+        authorized_agents: [{ url: AGENT_X }],
+        properties: [{ type: 'website', name: PUB }],
+      },
+      is_public: true,
+      source_type: 'community',
+    });
+    await syncHostedPropertyToFederatedIndex(initial);
+
+    await pool.query(
+      `UPDATE hosted_properties SET adagents_json = $2 WHERE publisher_domain = $1`,
+      [PUB, JSON.stringify({ authorized_agents: [{ url: AGENT_X }], properties: [] })],
+    );
+    const updated = await propertyDb.getHostedPropertyByDomain(PUB);
+    if (!updated) throw new Error('expected hosted property to exist');
+    const result = await syncHostedPropertyToFederatedIndex(updated);
+    expect(result.properties_removed).toBe(1);
+
+    const res = await request(app).get(
+      `/api/registry/publisher?domain=${encodeURIComponent(PUB)}`
+    );
+    expect(res.body.properties).toHaveLength(0);
+  });
+
+  it('does not remove crawler-written properties when reconciling hosted rows', async () => {
+    // Simulate a crawler-written row by inserting with source_type='adagents_json'
+    await pool.query(
+      `INSERT INTO discovered_properties (publisher_domain, property_type, name, identifiers, source_type)
+       VALUES ($1, 'website', $2, '[]', 'adagents_json')
+       ON CONFLICT (publisher_domain, name, property_type) DO NOTHING`,
+      [PUB, `${PUB}-crawler-only`],
+    );
+
+    const hosted = await propertyDb.createHostedProperty({
+      publisher_domain: PUB,
+      adagents_json: {
+        authorized_agents: [{ url: AGENT_X }],
+        properties: [],  // empty — should not delete the crawler row
+      },
+      is_public: true,
+      source_type: 'community',
+    });
+    const result = await syncHostedPropertyToFederatedIndex(hosted);
+    expect(result.properties_removed).toBe(0);  // crawler row is untouched
+
+    const { rows } = await pool.query<{ name: string }>(
+      `SELECT name FROM discovered_properties WHERE publisher_domain = $1 AND source_type = 'adagents_json'`,
+      [PUB],
+    );
+    expect(rows.some(r => r.name === `${PUB}-crawler-only`)).toBe(true);
+  });
+
   it('skips entries without required fields without throwing', async () => {
     const hosted = await propertyDb.createHostedProperty({
       publisher_domain: PUB,

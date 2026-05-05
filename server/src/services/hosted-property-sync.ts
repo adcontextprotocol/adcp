@@ -23,11 +23,13 @@
  *    this publisher_domain. We own that source label exclusively;
  *    crawler-written `adagents_json` rows for the same domain are left
  *    untouched (they represent verified origin facts).
- *  - Properties: additive only. `discovered_properties` has no source
- *    column, so we cannot safely distinguish hosted-written rows from
- *    crawler-written rows. Removed properties persist until manually
- *    cleared. Tracked as a follow-up — adding a `source` column to
- *    `discovered_properties` would let us reconcile here too.
+ *  - Properties: full reconcile, scoped to `source_type='aao_hosted'`.
+ *    We write `source_type='aao_hosted'` on upsert; the crawler writes
+ *    `source_type='adagents_json'`. On conflict (same publisher_domain,
+ *    name, property_type), source_type is NOT updated — the crawler's
+ *    origin-verified label wins and the row is not managed by hosted
+ *    reconciliation. Rows exclusively written by this sync are deleted
+ *    when the manifest drops them.
  *  - Publisher row: keyed by stable sentinel (`AAO_HOSTED_SENTINEL`) so
  *    re-syncs collapse to the same row regardless of which agent is first
  *    in the manifest.
@@ -49,6 +51,7 @@ export const AAO_HOSTED_SENTINEL = 'aao://hosted';
 
 export interface HostedSyncResult {
   properties_synced: number;
+  properties_removed: number;
   agents_synced: number;
   authorizations_reconciled: number;
   authorizations_removed: number;
@@ -87,6 +90,7 @@ export async function syncHostedPropertyToFederatedIndex(
 ): Promise<HostedSyncResult> {
   const result: HostedSyncResult = {
     properties_synced: 0,
+    properties_removed: 0,
     agents_synced: 0,
     authorizations_reconciled: 0,
     authorizations_removed: 0,
@@ -99,17 +103,22 @@ export async function syncHostedPropertyToFederatedIndex(
   const agents = readAgents(adagents);
   const properties = readProperties(adagents);
 
-  // Properties: additive upsert (see file-level comment for why removal
-  // is not yet supported).
+  // Properties: upsert with source_type='aao_hosted'. On conflict with a
+  // crawler-written row ('adagents_json'), source_type is NOT updated —
+  // the crawler's origin-verified label wins. Reconciliation below deletes
+  // rows we own (source_type='aao_hosted') that are no longer in the manifest.
+  const validPropertyKeys: Array<{ name: string; property_type: string }> = [];
   for (const p of properties) {
     if (typeof p.name !== 'string' || !p.name) continue;
     const propType = typeof p.type === 'string' && p.type ? p.type : 'website';
+    validPropertyKeys.push({ name: p.name, property_type: propType });
     try {
       await fedDb.upsertProperty({
         property_id: typeof p.property_id === 'string' ? p.property_id : undefined,
         publisher_domain: domain,
         property_type: propType,
         name: p.name,
+        source_type: 'aao_hosted',
         identifiers: Array.isArray(p.identifiers)
           ? (p.identifiers as Array<{ type: string; value: string }>)
           : [],
@@ -120,6 +129,38 @@ export async function syncHostedPropertyToFederatedIndex(
       result.errors++;
       logger.warn({ err, domain, name: p.name }, 'Failed to upsert hosted property row');
     }
+  }
+
+  // Reconcile: delete (publisher_domain, source_type='aao_hosted') rows not
+  // in the current manifest, keyed on (name, property_type) to match the
+  // upsert conflict target. Crawler rows (source_type='adagents_json') are
+  // never touched. When the manifest is empty, delete all aao_hosted rows.
+  try {
+    const removeResult = validPropertyKeys.length > 0
+      ? await query(
+          `DELETE FROM discovered_properties
+            WHERE publisher_domain = $1
+              AND source_type = 'aao_hosted'
+              AND NOT EXISTS (
+                SELECT 1 FROM UNNEST($2::text[], $3::text[]) AS m(mn, mt)
+                 WHERE m.mn = discovered_properties.name
+                   AND m.mt = discovered_properties.property_type
+              )`,
+          [
+            domain,
+            validPropertyKeys.map(k => k.name),
+            validPropertyKeys.map(k => k.property_type),
+          ],
+        )
+      : await query(
+          `DELETE FROM discovered_properties
+            WHERE publisher_domain = $1 AND source_type = 'aao_hosted'`,
+          [domain],
+        );
+    result.properties_removed = removeResult.rowCount ?? 0;
+  } catch (err) {
+    result.errors++;
+    logger.warn({ err, domain }, 'Failed to reconcile hosted properties');
   }
 
   // Agents: upsert each, then reconcile authorizations.
