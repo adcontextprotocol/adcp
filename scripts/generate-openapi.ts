@@ -15,6 +15,7 @@ import { fileURLToPath } from "url";
 
 // Import triggers route & schema registration
 import "../server/src/routes/registry-api.js";
+import "../server/src/schemas/member-agents-openapi.js";
 import { registry } from "../server/src/schemas/registry.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -83,8 +84,12 @@ const doc = generator.generateDocument({
   security: [],
 });
 
-// Tag descriptions for the generated spec
+// Tag descriptions for the generated spec.
+// Mintlify renders nav groups in the order of this map, so "Member Agents"
+// is intentionally first — it sits directly under the prose
+// `Registering an agent` page in the side nav.
 const TAG_DESCRIPTIONS: Record<string, string> = {
+  "Member Agents": "Register, list, update, and remove agents on the caller's organization member profile. Authenticated programmatic surface for CI / scripts that don't want to round-trip the full member profile.",
   "Brand Resolution": "Resolve advertiser domains to canonical brand identities.",
   "Property Resolution": "Resolve publisher domains to their property configurations and authorized agents.",
   "Agent Discovery": "Browse the federated agent network, search agent inventory profiles, publisher index, and registry statistics.",

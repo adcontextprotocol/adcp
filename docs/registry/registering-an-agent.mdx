@@ -29,6 +29,26 @@ There is one path: **an AAO member adds the agent to their member profile** via 
 
 There is no auto-population from crawled `adagents.json` files. Agents listed in third-party `adagents.json` files populate the publisher-authorization graph used by [Operator lookup](/docs/registry/api-reference/authorization-lookups/operator-lookup), `/api/registry/lookup/domain`, and `hasValidAdagents`, but they do not create catalog entries.
 
+## Programmatic registration (for CI, scripts, agents)
+
+To register agents from CI, a deploy hook, or your own agent — without the dashboard or Addie — use the per-agent REST endpoints under `/api/me/agents`. They share the same visibility gate, server-side type resolution, and audit log as the dashboard path, so the `members_only` default, the `tier_required` check on `public`, and the type smuggle-protection all apply identically.
+
+Authenticate with a WorkOS API key (`Authorization: Bearer sk_…`) or an OAuth user JWT. Mint an API key under [agenticadvertising.org/dashboard/api-keys](https://agenticadvertising.org/dashboard/api-keys).
+
+| Endpoint | Reference |
+|---|---|
+| `GET /api/me/agents` | [List my registered agents](/docs/registry/api-reference/member-agents/list-my-registered-agents) |
+| `POST /api/me/agents` | [Register an agent](/docs/registry/api-reference/member-agents/register-an-agent) |
+| `PATCH /api/me/agents/{url}` | [Update an agent](/docs/registry/api-reference/member-agents/update-an-agent) |
+| `DELETE /api/me/agents/{url}` | [Remove an agent](/docs/registry/api-reference/member-agents/remove-an-agent) |
+
+The path parameter on PATCH and DELETE is the agent's `url`, URL-encoded (e.g. `https%3A%2F%2Fagent.example.com%2Fmcp`). `POST` is idempotent on `url`: new entries return `201`; re-posting the same `url` updates the existing entry and returns `200`. Each successful write returns `{ agent, warnings? }` — `warnings` lists any tier-driven visibility downgrades (e.g. an Explorer-tier caller asking for `public` is stored as `members_only` with a `visibility_downgraded` warning).
+
+### Prerequisites
+
+- An AAO member profile must already exist for your organization. Create one via the dashboard or `POST /api/me/member-profile` first; the agent endpoints return `404` until then.
+- For `visibility: "public"`, your organization needs Professional tier or higher and a `primary_brand_domain` set on the profile so the agent can be added to your `brand.json`. See [Visibility](#visibility) below.
+
 ## What this means if you are not an AAO member
 
 You cannot self-register today. Your operator must be an AAO member to enroll your agent in the registry catalog.
