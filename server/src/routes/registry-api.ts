@@ -3460,7 +3460,8 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
   // Read-only — no write path here. Bulk-edit is deferred pending merge-strategy
   // design and domain_verified security gating (see issue #4113).
 
-  router.get("/dashboard/inventory", requireAuth!, async (req, res) => {
+  if (!authMiddleware) throw new Error('requireAuth middleware is required for /dashboard/inventory');
+  router.get("/dashboard/inventory", authMiddleware, async (req, res) => {
     try {
       const orgId = await resolvePrimaryOrganization(req.user!.id);
       if (!orgId) {

@@ -216,8 +216,8 @@
             <td>${d.domain_verified
               ? '<span class="badge badge--verified">Verified</span>'
               : '<span class="badge badge--unverified">Pending</span>'}</td>
-            <td class="count-cell">${d.agent_count}</td>
-            <td class="count-cell">${d.property_count}</td>
+            <td class="count-cell">${Number(d.agent_count)}</td>
+            <td class="count-cell">${Number(d.property_count)}</td>
             <td>${escapeHtml(updated)}</td>
           `;
           tableBody.appendChild(tr);
