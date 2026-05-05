@@ -29,10 +29,9 @@
     },
     "serve_window_sec": {
       "type": "integer",
-      "description": "Per-package single-shot fcap window, in seconds. After serving the user one impression on each eligible package within this window, the publisher MUST re-query Identity Match before serving from those packages again. This is NOT a router response cache TTL — it is a buyer-asserted serve throttle. Multi-impression frequency caps are handled separately by the buyer's impression tracker, which writes cap-fire events to the IdentityMatch cap-state store at the boundary regardless of this window. Default 60. Maximum 300 — longer windows reduce IdentityMatch load but coarsen fcap granularity below what most campaigns require.",
+      "description": "Per-package single-shot fcap window, in seconds. After serving the user one impression on each eligible package within this window, the publisher MUST re-query Identity Match before serving from those packages again. This is NOT a router response cache TTL — it is a buyer-asserted serve throttle. Multi-impression frequency caps are handled separately by the buyer's impression tracker, which writes cap-fire events to the IdentityMatch cap-state store at the boundary regardless of this window. Maximum 300 — longer windows reduce IdentityMatch load but coarsen fcap granularity below what most campaigns require.",
       "minimum": 1,
-      "maximum": 300,
-      "default": 60
+      "maximum": 300
     },
     "tmpx": {
       "type": "string",
