@@ -160,11 +160,16 @@ describe('Per-agent REST API (/api/me/agents)', () => {
   }
 
   async function provisionMembership(userId: string, orgId: string, role = 'member') {
+    // organization_memberships has no `status` column — `status: 'active'` is
+    // synthesized by the fakeWorkos stub when it reconstructs the WorkOS-shaped
+    // response. `email` is NOT NULL on the real schema.
     await pool.query(
-      `INSERT INTO organization_memberships (workos_user_id, workos_organization_id, role, status, created_at, updated_at)
-       VALUES ($1, $2, $3, 'active', NOW(), NOW())
-       ON CONFLICT (workos_user_id, workos_organization_id) DO UPDATE SET role = EXCLUDED.role, status = 'active'`,
-      [userId, orgId, role],
+      `INSERT INTO organization_memberships
+         (workos_user_id, workos_organization_id, role, email, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, NOW(), NOW())
+       ON CONFLICT (workos_user_id, workos_organization_id)
+         DO UPDATE SET role = EXCLUDED.role`,
+      [userId, orgId, role, `${userId}@example.com`],
     );
   }
 
