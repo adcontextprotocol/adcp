@@ -710,7 +710,16 @@ registry.registerPath({
     "**This endpoint is unauthenticated and returns the same response shape for every caller.** " +
     "Compare to `/api/registry/operator`, where AAO membership tier and profile ownership unlock " +
     "additional agent visibility (`members_only`, `private`). AAO membership does not change the " +
-    "`/publisher` response today.",
+    "`/publisher` response today.\n\n" +
+    "**Property source precedence:** authoritative adagents.json properties win over crawler-discovered " +
+    "rows; both win over brand.json hydration. Each property carries a `source` field (`adagents_json` / " +
+    "`discovered` / `brand_json`).\n\n" +
+    "**Per-agent rollup:** each entry in `authorized_agents` may carry `properties_authorized` + " +
+    "`properties_total` + `publisher_wide`. The rollup is suppressed (fields absent) when (a) properties " +
+    "are entirely brand.json-hydrated — no adagents.json claim has been made — or (b) the publisher has " +
+    "more than 50 authorized agents (above-cap entries are returned without rollup; `rollup_truncated` " +
+    "is set with `{ cap, total_agents }`). Use `/api/registry/publisher/authorization?domain=X&agent=Y` " +
+    "for the per-agent count when the index rollup is absent.",
   tags: ["Authorization Lookups"],
   request: {
     query: z.object({
@@ -5639,13 +5648,21 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         ? { slug: profile.slug, display_name: profile.display_name }
         : null;
 
-      // Hosting state. `aao_hosted` only when a public hosted-property row
-      // exists for this domain (i.e. the publisher opted into AAO serving
-      // their adagents.json). `self` when the publisher has a valid live
-      // adagents.json. Otherwise `none`.
+      // Hosting state. `aao_hosted` when a public hosted-property row
+      // exists for this domain (publisher hosts a stub at their own
+      // /.well-known whose `authoritative_location` points at AAO's
+      // canonical document). `self` when the publisher's own /.well-known
+      // returned a valid adagents.json. `self_invalid` when the publisher
+      // has /.well-known but it failed validation — distinct from `none`
+      // because it's a fixable misconfiguration rather than absence.
       const aaoHosted = !!(hostedProperty && hostedProperty.is_public);
       const hosting = {
-        mode: (aaoHosted ? "aao_hosted" : adagentsValid === true ? "self" : "none") as "self" | "aao_hosted" | "none",
+        mode: (
+          aaoHosted ? "aao_hosted"
+          : adagentsValid === true ? "self"
+          : adagentsValid === false ? "self_invalid"
+          : "none"
+        ) as "self" | "self_invalid" | "aao_hosted" | "none",
         hosted_url: aaoHosted ? aaoHostedAdagentsJsonUrl(domain) : undefined,
         expected_url: expectedAdagentsJsonUrl(domain),
       };
@@ -5682,34 +5699,40 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       }
 
       // Per-agent property authorization rollup. For each authorized agent
-      // we expose `properties_authorized: M of properties_total: N` so a
-      // caller (UI, downstream service) can render "X of Y authorized" without
-      // re-walking the property graph itself. Property-level rows present →
-      // intersection count. None present → publisher-wide authorization →
-      // count equals total. Brand.json-hydrated properties are not in the
-      // federated index yet, so per-agent counts collapse to total in that
-      // path — matches the semantic that hydrated properties are "best known"
-      // rather than authoritatively scoped per agent.
+      // we expose `properties_authorized` + `properties_total` + a
+      // `publisher_wide` flag so a caller can tell whether the count came
+      // from real property-level rows (intersection) or was synthesized
+      // from a publisher-wide authorization (= total). Without
+      // `publisher_wide`, "12 of 12" is ambiguous between "this agent has
+      // 12 property rows" and "publisher-wide, count synthesized."
       //
-      // Cap the fan-out: each agent triggers a non-trivial DB query and the
-      // endpoint is unauthenticated. A pathological hosted document with
-      // hundreds of authorized agents would otherwise turn a single anonymous
-      // request into hundreds of queries. Above the cap, return the agents
-      // without the rollup and a `truncated` flag so callers can hit
-      // `/api/registry/publisher/authorization` for individual checks.
+      // Suppress the rollup entirely when all projected properties came
+      // from brand.json hydration — those are "we know this publisher
+      // owns these properties" facts, not authorization claims. Reporting
+      // "publisher-wide → N of N" would over-claim that the agent is
+      // authorized for properties no adagents.json has actually scoped to.
+      //
+      // Cap the fan-out: each agent triggers a non-trivial DB query and
+      // the endpoint is unauthenticated. Pathological hosted docs with
+      // hundreds of agents would otherwise turn a single anonymous
+      // request into hundreds of queries. Above the cap, agents are
+      // returned without rollup fields and `rollup_truncated` exposes
+      // the cap + total so callers can decide whether to fan out
+      // individual calls to /api/registry/publisher/authorization.
       const PER_AGENT_ROLLUP_CAP = 50;
       const propertiesTotal = projectedProperties.length;
-      // `id` in the projection is the adagents.json slug; the federated
-      // index also exposes a stable database id on the source rows. Match on
-      // the database id to avoid false negatives when slugs collide or
-      // properties were discovered without an explicit slug.
+      const allBrandJsonHydrated =
+        propertiesTotal > 0 && projectedProperties.every(p => p.source === "brand_json");
+      const skipRollup = allBrandJsonHydrated;
       const propertyDbIdSet = new Set(
         properties.map(p => p.id).filter((id): id is string => Boolean(id)),
       );
-      const rollupTruncated = authorizations.length > PER_AGENT_ROLLUP_CAP;
-      const agentsToRollup = rollupTruncated
-        ? authorizations.slice(0, PER_AGENT_ROLLUP_CAP)
-        : authorizations;
+      const rollupTruncatedLen = authorizations.length > PER_AGENT_ROLLUP_CAP;
+      const agentsToRollup = skipRollup
+        ? []
+        : rollupTruncatedLen
+          ? authorizations.slice(0, PER_AGENT_ROLLUP_CAP)
+          : authorizations;
       const agentPropertyCounts = new Map<string, number>();
       await Promise.all(
         agentsToRollup.map(async a => {
@@ -5728,6 +5751,13 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         hosting,
         properties: projectedProperties,
         authorized_agents: authorizations.map(a => {
+          if (skipRollup) {
+            return {
+              url: a.agent_url,
+              authorized_for: a.authorized_for,
+              source: a.source,
+            };
+          }
           const matched = agentPropertyCounts.get(a.agent_url);
           if (matched === undefined) {
             // Truncated: rollup not computed for this agent.
@@ -5738,16 +5768,20 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
             };
           }
           // No property-level rows → publisher-wide → authorized for all.
-          const authorized = matched > 0 ? matched : propertiesTotal;
+          const publisherWide = matched === 0;
+          const authorized = publisherWide ? propertiesTotal : matched;
           return {
             url: a.agent_url,
             authorized_for: a.authorized_for,
             source: a.source,
             properties_authorized: authorized,
             properties_total: propertiesTotal,
+            publisher_wide: publisherWide,
           };
         }),
-        rollup_truncated: rollupTruncated || undefined,
+        rollup_truncated: rollupTruncatedLen
+          ? { cap: PER_AGENT_ROLLUP_CAP, total_agents: authorizations.length }
+          : undefined,
       });
     } catch (error) {
       logger.error({ err: error, path: req.path }, "Publisher lookup failed");

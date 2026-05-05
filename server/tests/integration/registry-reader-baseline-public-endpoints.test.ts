@@ -308,6 +308,7 @@ describe('Registry reader baseline — public endpoints', () => {
         source: 'adagents_json',
         properties_authorized: 1,
         properties_total: 2,
+        publisher_wide: false,
       });
       // AGENT_Y: property-level row exists for `mobile` only → 1 of 2.
       expect(agentsByUrl.get(AGENT_Y)).toMatchObject({
@@ -315,6 +316,7 @@ describe('Registry reader baseline — public endpoints', () => {
         source: 'agent_claim',
         properties_authorized: 1,
         properties_total: 2,
+        publisher_wide: false,
       });
     });
 
@@ -341,6 +343,7 @@ describe('Registry reader baseline — public endpoints', () => {
         url: AGENT_X,
         properties_authorized: 2,
         properties_total: 2,
+        publisher_wide: true,
       });
     });
 

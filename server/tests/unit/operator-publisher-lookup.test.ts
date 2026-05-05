@@ -178,4 +178,68 @@ describe('PublisherLookupResult schema', () => {
     const result = PublisherLookupResultSchema.safeParse(data);
     expect(result.success).toBe(true);
   });
+
+  it('validates self_invalid hosting mode', () => {
+    const data = {
+      domain: 'broken.example',
+      member: null,
+      adagents_valid: false,
+      hosting: {
+        mode: 'self_invalid' as const,
+        expected_url: 'https://broken.example/.well-known/adagents.json',
+      },
+      properties: [],
+      authorized_agents: [],
+    };
+    const result = PublisherLookupResultSchema.safeParse(data);
+    expect(result.success).toBe(true);
+  });
+
+  it('validates per-agent publisher_wide flag', () => {
+    const data = {
+      domain: 'voxmedia.com',
+      member: null,
+      adagents_valid: true,
+      hosting: {
+        mode: 'self' as const,
+        expected_url: 'https://voxmedia.com/.well-known/adagents.json',
+      },
+      properties: [{ id: 'theverge', type: 'website', name: 'The Verge' }],
+      authorized_agents: [
+        {
+          url: 'https://agent-a.example',
+          source: 'adagents_json' as const,
+          properties_authorized: 1,
+          properties_total: 1,
+          publisher_wide: true,
+        },
+        {
+          url: 'https://agent-b.example',
+          source: 'adagents_json' as const,
+          properties_authorized: 0,
+          properties_total: 1,
+          publisher_wide: false,
+        },
+      ],
+    };
+    const result = PublisherLookupResultSchema.safeParse(data);
+    expect(result.success).toBe(true);
+  });
+
+  it('validates rollup_truncated as { cap, total_agents }', () => {
+    const data = {
+      domain: 'big.example',
+      member: null,
+      adagents_valid: true,
+      hosting: {
+        mode: 'self' as const,
+        expected_url: 'https://big.example/.well-known/adagents.json',
+      },
+      properties: [],
+      authorized_agents: [],
+      rollup_truncated: { cap: 50, total_agents: 137 },
+    };
+    const result = PublisherLookupResultSchema.safeParse(data);
+    expect(result.success).toBe(true);
+  });
 });

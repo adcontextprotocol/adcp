@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Publisher | AgenticAdvertising.org</title>
     <link rel="icon" href="/addie-icon.svg" type="image/svg+xml" />
+    <!-- Agent-discoverable JSON alternate. The href is filled in client-side
+         once the domain is resolved from the URL path; agents that follow
+         this link land on the rich /api/registry/publisher payload. -->
+    <link id="api-alternate" rel="alternate" type="application/json" href="" />
     <link rel="stylesheet" href="/design-system.css" />
     <link rel="stylesheet" href="/layout.css" />
     <style>
@@ -284,6 +288,12 @@
           </div>
         </div>
 
+        <!-- Lead-with-next-step card. Shown when the publisher has
+             properties on file but no authorized agents — typically because
+             their brand.json was hydrated but no adagents.json has been
+             written. Hidden otherwise. -->
+        <div id="next-step" class="hidden"></div>
+
         <div class="panel">
           <div class="panel-header">
             <div>
@@ -411,21 +421,30 @@
         const labels = {
           aao_hosted: 'AAO-hosted',
           self: 'Self-hosted',
+          self_invalid: 'Self-hosted (invalid)',
           none: 'Not yet configured',
         };
         const subtitles = {
-          aao_hosted: 'AAO serves the canonical adagents.json for this domain.',
-          self: 'This publisher serves adagents.json from their own domain.',
+          aao_hosted: 'AAO serves the canonical document via the publisher’s authoritative_location pointer.',
+          self: 'This publisher serves a valid adagents.json from their own domain.',
+          self_invalid: 'A file exists at /.well-known/adagents.json but failed validation.',
           none: 'No adagents.json is published for this domain yet.',
         };
         subtitle.textContent = subtitles[hosting.mode] || '';
-        badge.innerHTML = `<span class="badge badge-mode-${escapeHtml(hosting.mode)}">${escapeHtml(labels[hosting.mode] || hosting.mode)}</span>`;
+        const modeClass = hosting.mode === 'self_invalid' ? 'badge-invalid' : `badge-mode-${escapeHtml(hosting.mode)}`;
+        badge.innerHTML = `<span class="badge ${modeClass}">${escapeHtml(labels[hosting.mode] || hosting.mode)}</span>`;
 
         if (hosting.mode === 'aao_hosted') {
+          // Spec-conformant pattern: publisher hosts a stub at their own
+          // /.well-known/adagents.json with `authoritative_location` set
+          // to AAO's hosted URL. Bare CNAME / 301 redirect from /.well-known
+          // is not blessed by the spec and breaks strict buy-side
+          // verifiers (TLS chain ends at AAO instead of the publisher).
           detail.innerHTML = `
-            <p>Point your domain at AAO's hosted document, or copy the URL below into a CNAME / 301 redirect from your own <code>/.well-known/adagents.json</code>:</p>
+            <p>AAO serves the canonical adagents.json document at:</p>
             <code class="url-block">${escapeHtml(hosting.hosted_url || '')}</code>
-            <p>Buyers will continue to fetch <code>${escapeHtml(hosting.expected_url)}</code>; the redirect resolves transparently.</p>
+            <p>Recommended setup: place a small stub at <code>${escapeHtml(hosting.expected_url)}</code> with an <code>authoritative_location</code> field pointing to the AAO URL. Buyers fetch your origin (preserving your TLS chain) and follow the pointer to the AAO-served body.</p>
+            <p style="color: var(--color-text-muted); font-size: var(--text-xs); margin-top: var(--space-3);"><strong>Buy-side note:</strong> some strict verifiers may treat a bare CNAME/redirect to AAO as a soft trust signal because the TLS chain ends at AAO. The <code>authoritative_location</code> stub avoids that.</p>
           `;
           actions.innerHTML = `
             <a class="secondary" href="${escapeHtml(hosting.hosted_url || '#')}" target="_blank" rel="noopener">View hosted file</a>
@@ -433,23 +452,44 @@
           `;
         } else if (hosting.mode === 'self') {
           detail.innerHTML = `
-            <p>AAO crawls <code>${escapeHtml(hosting.expected_url)}</code> directly. Update that file to change which agents are authorized.</p>
+            <p>AAO fetches <code>${escapeHtml(hosting.expected_url)}</code> directly. Update that file to change which agents are authorized.</p>
           `;
           actions.innerHTML = `
             <a class="secondary" href="${escapeHtml(hosting.expected_url)}" target="_blank" rel="noopener">Open self-hosted file</a>
             <a class="secondary" href="/adagents/builder?domain=${encodeURIComponent(data.domain)}">Update adagents.json</a>
           `;
+        } else if (hosting.mode === 'self_invalid') {
+          detail.innerHTML = `
+            <p>AAO found a file at <code>${escapeHtml(hosting.expected_url)}</code> but it failed validation. Click "why?" next to the badge above for the structured error list.</p>
+            <p>This is a fixable misconfiguration, not a missing record — buyers may still see an "invalid" status until you correct the file.</p>
+          `;
+          actions.innerHTML = `
+            <a class="secondary" href="${escapeHtml(hosting.expected_url)}" target="_blank" rel="noopener">Open self-hosted file</a>
+            <a class="secondary" href="/adagents/builder?domain=${encodeURIComponent(data.domain)}">Re-generate adagents.json</a>
+          `;
         } else {
           detail.innerHTML = `
             <p>You have two options for publishing adagents.json:</p>
             <p>1. <strong>Self-host:</strong> generate the file and put it at <code>${escapeHtml(hosting.expected_url)}</code>. No account needed — but you control the file forever.</p>
-            <p>2. <strong>Let AAO host it</strong> <span style="color: var(--color-text-muted);">(requires free registration)</span>: we serve the canonical document and you point a CNAME or redirect at us. Switch back to self-hosting any time.</p>
+            <p>2. <strong>Let AAO host it</strong> <span style="color: var(--color-text-muted);">(requires free registration)</span>: we serve the canonical document. You place a small stub at your own <code>/.well-known/adagents.json</code> with an <code>authoritative_location</code> field pointing to AAO. Switch back to self-hosting by editing the stub.</p>
           `;
           actions.innerHTML = `
             <a class="primary" href="/adagents/builder?domain=${encodeURIComponent(data.domain)}">Generate adagents.json</a>
             <a class="secondary" href="/property/view/${encodeURIComponent(data.domain)}">Set up AAO hosting</a>
           `;
         }
+      }
+
+      // Plain-English source labels. The wire format uses protocol-internal
+      // strings; the page should not.
+      const SOURCE_LABELS = {
+        adagents_json: 'in your adagents.json',
+        discovered: 'found by crawler',
+        brand_json: 'from your brand.json',
+        agent_claim: 'agent self-claim',
+      };
+      function sourceLabel(s) {
+        return SOURCE_LABELS[s] || s;
       }
 
       function renderProperties(props) {
@@ -460,10 +500,10 @@
           subtitle.textContent = '0 properties';
           return;
         }
-        const sources = new Set(props.map((p) => p.source).filter(Boolean));
+        const sources = Array.from(new Set(props.map((p) => p.source).filter(Boolean)));
         subtitle.textContent =
           `${props.length} ${props.length === 1 ? 'property' : 'properties'}`
-          + (sources.size ? ' · sourced from ' + Array.from(sources).join(', ') : '');
+          + (sources.length ? ' · ' + sources.map(sourceLabel).join(', ') : '');
         body.innerHTML = props
           .map((p) => {
             const idents = (p.identifiers || [])
@@ -473,7 +513,7 @@
               .map((t) => `<span class="badge badge-unknown" title="${escapeHtml(t)}">${escapeHtml(t)}</span>`)
               .join('');
             const source = p.source
-              ? `<span class="badge badge-source-${escapeHtml(p.source)}">${escapeHtml(p.source.replace('_', '.'))}</span>`
+              ? `<span class="badge badge-source-${escapeHtml(p.source)}" title="${escapeHtml(p.source)}">${escapeHtml(sourceLabel(p.source))}</span>`
               : '';
             return `<div class="row">
               <div class="row-main">
@@ -493,24 +533,41 @@
       function renderAgents(domain, agents, properties) {
         const body = document.getElementById('agents-body');
         const help = document.getElementById('agents-help');
+        const nextStep = document.getElementById('next-step');
         if (!agents.length) {
           body.innerHTML = '';
-          // Contextual help: properties exist but no agents → most common
-          // confusing state for someone who came in via brand.json.
+          // When the publisher has properties (typically hydrated from
+          // brand.json) but no authorized agents, the most common reaction
+          // is "the page is broken — I declared everything." Lead with a
+          // standalone next-step card *above* the agents panel rather than
+          // bury an explanatory callout inside it.
+          const onlyBrandJson = properties && properties.length > 0
+            && properties.every((p) => p.source === 'brand_json');
           if (properties && properties.length > 0) {
-            help.classList.remove('hidden');
-            help.innerHTML = `<div class="help-callout">
-              <strong>No agents authorized yet.</strong> brand.json describes
-              <em>what</em> you publish — adagents.json declares <em>who</em>
-              can sell it. They are separate documents. Generate an
-              adagents.json above to authorize a sales agent.
-            </div>`;
+            help.classList.add('hidden');
+            if (nextStep) {
+              nextStep.classList.remove('hidden');
+              nextStep.innerHTML = `<div class="explainer" style="background: linear-gradient(135deg, var(--color-warning-50, #fef3c7) 0%, var(--color-bg-card) 100%);">
+                <h2>Next: declare who can sell this inventory</h2>
+                <p>${onlyBrandJson
+                  ? 'Your <code>brand.json</code> told us <em>what</em> you publish. <code>adagents.json</code> is a separate document that declares <em>who</em> is authorized to sell it. They are not the same record.'
+                  : 'You have properties on file but no authorized sales agents yet.'}
+                  Generate an <code>adagents.json</code> to authorize one or more agents — buyers consult that document to verify which agents may transact your inventory.</p>
+                <div class="cta-row">
+                  <a class="primary" href="/adagents/builder?domain=${encodeURIComponent(domain)}">Generate adagents.json</a>
+                  <a class="secondary" href="https://docs.adcontextprotocol.org/docs/governance/property/adagents" target="_blank" rel="noopener">Read the spec</a>
+                </div>
+              </div>`;
+            }
+            body.innerHTML = '<div class="empty">No authorized agents recorded yet — see the card above for next steps.</div>';
           } else {
             help.classList.add('hidden');
+            if (nextStep) nextStep.classList.add('hidden');
             body.innerHTML = '<div class="empty">No authorized agents recorded for this publisher yet.</div>';
           }
           return;
         }
+        if (nextStep) nextStep.classList.add('hidden');
         help.classList.add('hidden');
         body.innerHTML = agents
           .map((a, i) => {
@@ -589,6 +646,8 @@
           return;
         }
         document.title = `${domain} | AgenticAdvertising.org`;
+        const alt = document.getElementById('api-alternate');
+        if (alt) alt.setAttribute('href', `/api/registry/publisher?domain=${encodeURIComponent(domain)}`);
         try {
           const res = await fetch(`/api/registry/publisher?domain=${encodeURIComponent(domain)}`);
           if (!res.ok) {

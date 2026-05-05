@@ -168,6 +168,50 @@ describe('Registry publisher endpoint — brand.json hydration', () => {
     expect(res.body.properties).toEqual([]);
   });
 
+  it('does NOT compute per-agent rollup when all properties are brand_json-sourced', async () => {
+    // Set up a brand.json hydration scenario AND an authorized agent.
+    // Without rollup suppression, the agent would be reported as
+    // authorized for N of N properties — over-claiming, since no
+    // adagents.json has actually scoped this agent to those properties.
+    await brandDb.upsertDiscoveredBrand({
+      domain: PUB_BRAND_ONLY,
+      brand_name: 'Sasha Media',
+      source_type: 'brand_json',
+      has_brand_manifest: true,
+      brand_manifest: {
+        name: 'Sasha Media',
+        properties: [
+          { identifier: PUB_BRAND_ONLY, type: 'website', relationship: 'owned' },
+        ],
+      },
+    });
+    // Plant an agent claim — without an adagents.json this is the only
+    // path agents can appear here.
+    await pool.query(
+      `INSERT INTO agent_publisher_authorizations (agent_url, publisher_domain, source)
+       VALUES ($1, $2, 'agent_claim')
+       ON CONFLICT DO NOTHING`,
+      ['https://claiming-agent.brand-hydrate.example', PUB_BRAND_ONLY],
+    );
+
+    const res = await request(app).get(
+      `/api/registry/publisher?domain=${encodeURIComponent(PUB_BRAND_ONLY)}`
+    );
+    expect(res.status).toBe(200);
+    expect(res.body.properties).toHaveLength(1);
+    expect(res.body.authorized_agents).toHaveLength(1);
+    const agent = res.body.authorized_agents[0];
+    expect(agent.properties_authorized).toBeUndefined();
+    expect(agent.properties_total).toBeUndefined();
+    expect(agent.publisher_wide).toBeUndefined();
+
+    // Cleanup the planted authorization (other tests use the same domain).
+    await pool.query(
+      `DELETE FROM agent_publisher_authorizations WHERE agent_url = $1`,
+      ['https://claiming-agent.brand-hydrate.example'],
+    );
+  });
+
   it('reports hosting.mode=none when no adagents.json is configured', async () => {
     const res = await request(app).get(
       `/api/registry/publisher?domain=${encodeURIComponent(PUB_BRAND_ONLY)}`
