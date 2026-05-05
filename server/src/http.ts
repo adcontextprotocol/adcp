@@ -75,7 +75,7 @@ import { createAddieChatRouter } from "./routes/addie-chat.js";
 import { createTavusRouter } from "./routes/tavus.js";
 import { createSiChatRoutes } from "./routes/si-chat.js";
 import { sendAccountLinkedMessage, invalidateMemberContextCache, isAddieBoltReady } from "./addie/index.js";
-import { invalidateMembershipCache } from "./db/org-filters.js";
+import { invalidateMembershipCache, findClaimableProspectOrgForDomain } from "./db/org-filters.js";
 import * as relationshipDb from "./db/relationship-db.js";
 import * as personEvents from "./db/person-events-db.js";
 import { isWebUserAAOAdmin } from "./addie/mcp/admin-tools.js";
@@ -6820,8 +6820,32 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
         // Redirect to dashboard or onboarding
         logger.debug({ returnTo, membershipCount: memberships.data.length }, 'Final redirect decision');
         if (memberships.data.length === 0) {
-          logger.debug('No organizations found, redirecting to onboarding');
-          res.redirect('/onboarding.html');
+          // Before sending the user to fresh-onboarding, check whether a
+          // sales-touched prospect org exists for their email domain that
+          // they could claim. Without this, @voisetech.com employees land
+          // on personal workspaces and the prospect org sits orphaned.
+          let onboardingPath = '/onboarding.html';
+          try {
+            const emailDomain = user.email.split('@')[1]?.toLowerCase();
+            if (emailDomain) {
+              const claimable = await findClaimableProspectOrgForDomain(emailDomain);
+              if (claimable) {
+                const params = new URLSearchParams({
+                  claim_org: claimable.organization_id,
+                  claim_org_name: claimable.organization_name,
+                });
+                onboardingPath = `/onboarding.html?${params.toString()}`;
+                logger.info(
+                  { workosUserId: user.id, email: user.email, claimOrg: claimable.organization_id },
+                  'Surfacing claimable prospect org at signup',
+                );
+              }
+            }
+          } catch (claimErr) {
+            logger.warn({ err: claimErr, email: user.email }, 'findClaimableProspectOrgForDomain failed; continuing without claim hint');
+          }
+          logger.debug({ onboardingPath }, 'No organizations found, redirecting to onboarding');
+          res.redirect(onboardingPath);
         } else {
           // If returnTo is an AdCP URL, bridge the session via auto-submitting form POST
           // so the user lands on AdCP already authenticated (session stays out of URL)
