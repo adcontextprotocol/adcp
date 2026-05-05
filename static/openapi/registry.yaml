@@ -1862,6 +1862,114 @@ components:
           type: string
           format: uri
       description: Request body for `PATCH /api/me/agents/{url}`. The `url` field cannot be changed via PATCH; re-register at the new URL and DELETE the old entry instead.
+    MemberCompanyType:
+      type: string
+      enum:
+        - publisher
+        - advertiser
+        - agency
+        - dsp
+        - ssp
+        - measurement
+        - identity
+        - infrastructure
+        - other
+      description: Coarse classification of the member organization's role in the open ad ecosystem. Drives default verification badges and the member profile's display category.
+    MemberRevenueTier:
+      type: string
+      enum:
+        - under_1m
+        - 1m_to_10m
+        - 10m_to_100m
+        - 100m_to_1b
+        - over_1b
+      description: Annual revenue band, USD. Used for tier-based pricing and aggregated industry stats; not exposed on the public profile.
+    CreateMemberProfileInput:
+      type: object
+      properties:
+        organization_name:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: Display name for the organization (shown on the member profile and in the registry catalog).
+          example: Acme Media
+        company_type:
+          $ref: "#/components/schemas/MemberCompanyType"
+        revenue_tier:
+          $ref: "#/components/schemas/MemberRevenueTier"
+        corporate_domain:
+          type: string
+          description: "Canonical domain for the organization. Must match the email domain of the authenticated caller (e.g. an `@acme.com` user can only create a profile for `acme.com`). Personal email domains (gmail.com, yahoo.com, etc.) are rejected — register as an individual via the dashboard onboarding instead."
+          example: acme.com
+        primary_brand_domain:
+          type: string
+          description: The brand domain whose `brand.json` will reflect this profile's `public` agents. Optional at creation; required before any agent can be set to `visibility: \"public\"`.
+          example: acme.com
+        marketing_opt_in:
+          type: boolean
+          default: false
+          description: Whether the caller agreed to receive AAO marketing communications. Independent of Terms of Service consent (which is required and recorded server-side from the request context).
+        membership_tier:
+          type: string
+          enum:
+            - free
+            - builder
+            - professional
+          description: Initial membership tier. Defaults to `free` if omitted. Tiers above `free` may require billing details to be configured on the AAO dashboard before activation.
+      required:
+        - organization_name
+        - company_type
+        - corporate_domain
+      description: |-
+        Request body for `POST /api/me/member-profile`. Creates the organization member profile that backs the per-agent registry endpoints. Fails with `403` if the caller's email domain does not match `corporate_domain`.
+    MemberProfile:
+      type: object
+      properties:
+        organization_id:
+          type: string
+          description: WorkOS organization id for the new profile.
+          example: org_01HXZAB123
+        organization_name:
+          type: string
+          example: Acme Media
+        company_type:
+          $ref: "#/components/schemas/MemberCompanyType"
+        revenue_tier:
+          $ref: "#/components/schemas/MemberRevenueTier"
+        corporate_domain:
+          type: string
+        primary_brand_domain:
+          type: string
+        membership_tier:
+          type: string
+          enum:
+            - free
+            - builder
+            - professional
+        created_at:
+          type: string
+          format: date-time
+        agents:
+          type: array
+          items:
+            $ref: "#/components/schemas/MemberAgent"
+          description: Convenience snapshot of registered agents — initially empty for a freshly created profile. Use `GET /api/me/agents` for the canonical list.
+      required:
+        - organization_id
+        - organization_name
+        - company_type
+        - corporate_domain
+        - membership_tier
+        - created_at
+        - agents
+      description: The member profile shape returned from `POST /api/me/member-profile` and `GET /api/me/member-profile`.
+    MemberProfileResponse:
+      type: object
+      properties:
+        profile:
+          $ref: "#/components/schemas/MemberProfile"
+      required:
+        - profile
 paths:
   /api:
     get:
@@ -7076,9 +7184,122 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /api/me/member-profile:
+    get:
+      operationId: getMemberProfile
+      summary: Get my member profile
+      description: |-
+        Return the organization member profile for the caller's primary org (or `?org=` if supplied). This is the canonical "do I have a member profile yet?" check — clients hitting `404` from `GET /api/me/agents` should call this to confirm before prompting onboarding.
+      tags:
+        - Member Profile
+      security:
+        - bearerAuth: []
+        - oauth2: []
+      parameters:
+        - schema:
+            type: string
+            description: WorkOS organization id to act on. Defaults to the caller's primary organization.
+            example: org_01HXZAB123
+          required: false
+          name: org
+          in: query
+      responses:
+        "200":
+          description: Member profile.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemberProfileResponse"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "`?org=` was supplied but the caller is not a member of that organization."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No member profile exists yet — create one via `POST /api/me/member-profile`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    post:
+      operationId: createMemberProfile
+      summary: Create my member profile
+      description: |-
+        Bootstrap a new organization member profile. This is the **first-time onboarding** call that has historically been reachable only through the AAO dashboard's `/onboarding` form — making it a public REST surface lets registry API consumers (e.g. SSP/publisher integrations like the Scope3 storefront) drive the entire registration flow programmatically, without iframes or cross-domain redirects.
+
+        The caller must already be authenticated via OAuth (the user's own WorkOS session). The profile is created on the caller's primary WorkOS organization unless `?org=` is supplied; in either case, the caller's email domain must match `corporate_domain` (personal email domains like gmail.com / yahoo.com are rejected).
+
+        Idempotent on `(organization_id, corporate_domain)`: re-posting for an organization that already has a profile returns `200` with the existing profile and a `profile_already_exists` warning, instead of `409`.
+
+        Once the profile exists, follow up with `POST /api/me/agents` to register agents.
+      tags:
+        - Member Profile
+      security:
+        - bearerAuth: []
+        - oauth2: []
+      parameters:
+        - schema:
+            type: string
+            description: WorkOS organization id to act on. Defaults to the caller's primary organization.
+            example: org_01HXZAB123
+          required: false
+          name: org
+          in: query
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMemberProfileInput"
+      responses:
+        "200":
+          description: A profile already exists for this organization; the existing profile is returned and no fields are mutated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemberProfileResponse"
+        "201":
+          description: Member profile created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemberProfileResponse"
+        "400":
+          description: Missing or invalid required field (e.g. malformed `corporate_domain`, blank `organization_name`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            One of: `?org=` was supplied but the caller is not a member of that organization; or the caller's email domain does not match the supplied `corporate_domain`; or the caller's email is on a personal-email domain (gmail.com, yahoo.com, etc.) and cannot create a corporate profile.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Rate limit exceeded (this endpoint is rate-limited per IP to prevent abuse).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 tags:
   - name: Member Agents
     description: Register, list, update, and remove agents on the caller's organization member profile. Authenticated programmatic surface for CI / scripts that don't want to round-trip the full member profile.
+  - name: Member Profile
+    description: Bootstrap and inspect the organization member profile. The profile is the prerequisite for the per-agent endpoints under `Member Agents`.
   - name: Brand Resolution
     description: Resolve advertiser domains to canonical brand identities.
   - name: Property Resolution
