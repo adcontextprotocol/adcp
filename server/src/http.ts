@@ -7422,12 +7422,24 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
     // Used by Addie/Slack messages so a stale or session-less click can't land on
     // WorkOS' generic "couldn't complete the connection" error page.
     this.app.get('/connect/github', requireAuth, async (req, res) => {
+      const reqHost = req.get('host') || '';
+      const reqProto = req.protocol;
+      const requestedReturnTo = typeof req.query.return_to === 'string' ? req.query.return_to : null;
       try {
-        const returnTo = buildPipesReturnTo(req.get('host') || '', req.protocol, req.query.return_to);
+        const returnTo = buildPipesReturnTo(reqHost, reqProto, req.query.return_to);
         const url = await getGitHubAuthorizeUrl(req.user!.id, returnTo);
         return res.redirect(302, url);
       } catch (error) {
-        logger.error({ err: error }, 'Failed to start GitHub connect via /connect/github');
+        logger.error(
+          {
+            err: error,
+            reqHost,
+            reqProto,
+            requestedReturnTo,
+            workosUserId: req.user?.id,
+          },
+          'Failed to start GitHub connect via /connect/github',
+        );
         return res.status(502).send('Could not start GitHub connection. Please try again in a moment, or visit /member-hub to connect from there.');
       }
     });
