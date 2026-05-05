@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/tmp/identity-match-response.json",
   "title": "Identity Match Response",
-  "description": "Response indicating which packages the user is eligible for. The ttl_sec field defines a caching contract: the router caches this response and returns cached eligibility without re-querying the buyer during the TTL window. Extension fields (ext, context) are intentionally omitted to prevent data leakage across the identity privacy boundary.",
+  "description": "Response indicating which packages the user is eligible for. The serve_window_sec field defines a per-package single-shot fcap: after serving the user one impression on each eligible package, the publisher MUST re-query Identity Match before serving from those packages again. Extension fields (ext, context) are intentionally omitted to prevent data leakage across the identity privacy boundary.",
   "type": "object",
   "allOf": [
     {
@@ -27,11 +27,11 @@
         "type": "string"
       }
     },
-    "ttl_sec": {
+    "serve_window_sec": {
       "type": "integer",
-      "description": "How long the router should cache this response, in seconds. The router returns cached eligibility without re-querying the buyer during this window. A value of 0 means do not cache.",
-      "minimum": 0,
-      "maximum": 86400
+      "description": "Per-package single-shot fcap window, in seconds. After serving the user one impression on each eligible package within this window, the publisher MUST re-query Identity Match before serving from those packages again. This is NOT a router response cache TTL — it is a buyer-asserted serve throttle. Multi-impression frequency caps are handled separately by the buyer's impression tracker, which writes cap-fire events to the IdentityMatch cap-state store at the boundary regardless of this window. Maximum 300 — longer windows reduce IdentityMatch load but coarsen fcap granularity below what most campaigns require.",
+      "minimum": 1,
+      "maximum": 300
     },
     "tmpx": {
       "type": "string",
@@ -42,7 +42,7 @@
     "type",
     "request_id",
     "eligible_package_ids",
-    "ttl_sec"
+    "serve_window_sec"
   ],
   "additionalProperties": true
 }

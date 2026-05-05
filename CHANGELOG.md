@@ -1,5 +1,11 @@
 # Changelog
 
+## Upcoming
+
+### Notices — experimental surfaces
+
+- **TMP `identity-match-response.ttl_sec` is removed; replaced by `serve_window_sec`.** The `ttl_sec` field was documented as a router response cache TTL but operationally functioned as a per-package single-shot fcap, conflating two distinct concerns and silently breaking either when tuned. Replacement field `serve_window_sec` (integer, 1–300, default 60) carries the corrected semantic — *after serving the user one impression on each eligible package within this window, the publisher MUST re-query Identity Match before serving from those packages again.* This is **not** a router response cache. Multi-impression frequency capping is a separate concern handled by the buyer's impression tracker, which writes cap-fire events to the IdentityMatch cap-state store at the boundary regardless of this window. TMP is pre-launch (experimental, pre-3.0.0 GA) and not subject to deprecation cycles, so `ttl_sec` is removed outright rather than going through a deprecation window. Tracked in `specs/identitymatch-fcap-architecture.md` and [Frequency-Cap Data Flow](docs/trusted-match/identity-match-implementation.mdx).
+
 ## 3.0.6
 
 ### Patch Changes
