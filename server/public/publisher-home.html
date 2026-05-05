@@ -526,14 +526,79 @@
         } else if (!haveAnything) {
           heroActions.push(`<a class="primary" href="/login?return_to=${encodeURIComponent(window.location.pathname)}">Sign in to claim</a>`);
         }
+        // Refresh button. Re-running a crawl is the only way to pick up a
+        // change to the publisher's adagents.json or brand.json — the page
+        // only auto-crawls on the first view, so without this button a
+        // publisher who updates their file has no way to invalidate the
+        // cached row. Logged-in users hit the auth-gated crawl endpoint
+        // directly; logged-out users get a sign-in CTA so we don't expose
+        // a public refresh trigger.
+        if (user) {
+          heroActions.push(`<button type="button" class="secondary" id="hero-refresh" data-domain="${escapeHtml(data.domain)}">Refresh now</button>`);
+        } else {
+          heroActions.push(`<a class="secondary" href="/login?return_to=${encodeURIComponent(window.location.pathname)}">Sign in to refresh</a>`);
+        }
         heroActions.push(`<a class="secondary" href="/adagents-landing">What is adagents.json?</a>`);
         actions.innerHTML = heroActions.join('');
+
+        const refreshBtn = document.getElementById('hero-refresh');
+        if (refreshBtn) refreshBtn.addEventListener('click', () => triggerRefresh(data.domain));
 
         // Auto-refresh when the server told us a crawl is in flight.
         // 4 seconds is enough for a single-domain crawl in most cases;
         // larger budgets risk the user navigating away.
         if (data.auto_crawl_triggered) {
           setTimeout(() => load(), 4000);
+        }
+      }
+
+      // Manual refresh — re-runs the crawl for this domain. Called by the
+      // "Refresh now" button in the hero. Auth-gated server-side, so we
+      // expect this only fires for logged-in users (the renderHero gate
+      // hides the button otherwise). On success we swap the hero into
+      // its checking-state and reload the publisher data after a short
+      // delay, the same shape as auto-crawl-on-view.
+      async function triggerRefresh(domain) {
+        const btn = document.getElementById('hero-refresh');
+        const subtitle = document.getElementById('hero-subtitle');
+        if (btn) {
+          btn.disabled = true;
+          btn.textContent = 'Refreshing…';
+        }
+        try {
+          const res = await fetch('/api/registry/crawl-request', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ domain }),
+          });
+          if (res.status === 202) {
+            if (subtitle) subtitle.textContent = 'Refreshing — fetching your files now.';
+            // Same cadence as auto_crawl_triggered. Crawl is async on the
+            // server, so 4s is the empirical sweet spot for a single domain.
+            setTimeout(() => load(), 4000);
+            return;
+          }
+          if (res.status === 429) {
+            const body = await res.json().catch(() => ({}));
+            const wait = Number.isFinite(body.retry_after) ? Math.max(1, Math.ceil(body.retry_after)) : 60;
+            if (subtitle) subtitle.textContent = `Just refreshed — try again in ${wait}s.`;
+            if (btn) {
+              btn.textContent = `Wait ${wait}s`;
+              setTimeout(() => { btn.disabled = false; btn.textContent = 'Refresh now'; }, wait * 1000);
+            }
+            return;
+          }
+          if (res.status === 401 || res.status === 403) {
+            window.location.href = `/login?return_to=${encodeURIComponent(window.location.pathname)}`;
+            return;
+          }
+          const body = await res.json().catch(() => ({}));
+          if (subtitle) subtitle.textContent = body.error ? `Refresh failed: ${body.error}` : 'Refresh failed — please try again.';
+          if (btn) { btn.disabled = false; btn.textContent = 'Refresh now'; }
+        } catch (err) {
+          if (subtitle) subtitle.textContent = 'Refresh failed — check your connection.';
+          if (btn) { btn.disabled = false; btn.textContent = 'Refresh now'; }
         }
       }
 
