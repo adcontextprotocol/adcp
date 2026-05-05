@@ -174,6 +174,73 @@
         border: var(--border-1) solid var(--color-border);
       }
 
+      /* Hero "what we found" card grid. */
+      .hero-files {
+        background: linear-gradient(135deg, var(--color-primary-50, #eef2ff) 0%, var(--color-bg-card) 60%);
+      }
+      .hero-cards {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: var(--space-4);
+        padding: var(--space-4) var(--space-6) var(--space-2);
+      }
+      .file-card {
+        background: var(--color-bg-card);
+        border: var(--border-1) solid var(--color-border);
+        border-radius: var(--radius-md);
+        padding: var(--space-4);
+        display: flex;
+        gap: var(--space-3);
+        align-items: flex-start;
+      }
+      .file-card .file-icon {
+        font-size: var(--text-2xl);
+        line-height: 1;
+        width: 32px; height: 32px;
+        display: flex; align-items: center; justify-content: center;
+        flex-shrink: 0;
+      }
+      .file-card.is-good .file-icon { color: #16a34a; }
+      .file-card.is-bad .file-icon  { color: #dc2626; }
+      .file-card.is-checking .file-icon { color: var(--color-text-muted); }
+      .file-card.is-empty .file-icon { color: var(--color-text-muted); }
+      .file-card .file-body { min-width: 0; flex: 1; }
+      .file-card h3 {
+        margin: 0 0 4px;
+        font-size: var(--text-base);
+        font-weight: var(--font-semibold);
+      }
+      .file-card p {
+        margin: 0 0 var(--space-2);
+        color: var(--color-text-secondary);
+        font-size: var(--text-sm);
+      }
+      .file-card .file-stats {
+        display: flex; gap: var(--space-3);
+        font-size: var(--text-xs); color: var(--color-text-muted);
+        text-transform: uppercase; letter-spacing: 0.04em;
+        margin-top: var(--space-2);
+      }
+      .file-card .file-stats strong {
+        font-size: var(--text-sm);
+        color: var(--color-text);
+        display: block;
+        text-transform: none;
+        letter-spacing: 0;
+        font-weight: var(--font-bold);
+      }
+      .file-card code {
+        background: var(--color-bg-subtle);
+        padding: 1px 6px;
+        border-radius: var(--radius-sm);
+        font-size: var(--text-xs);
+        word-break: break-all;
+      }
+
+      .hosting-details summary { list-style: none; }
+      .hosting-details summary::-webkit-details-marker { display: none; }
+      .hosting-details[open] summary { border-bottom: var(--border-1) solid var(--color-border); }
+
       .hosting-detail {
         padding: var(--space-4) var(--space-6);
         font-size: var(--text-sm);
@@ -246,34 +313,38 @@
             </div>
             <div class="header-status" id="status-badges"></div>
           </div>
-          <div class="stats">
-            <div class="stat">
-              <div class="stat-value" id="stat-properties">0</div>
-              <div class="stat-label">Properties</div>
-            </div>
-            <div class="stat">
-              <div class="stat-value" id="stat-agents">0</div>
-              <div class="stat-label">Authorized agents</div>
-            </div>
-            <div class="stat">
-              <div class="stat-value" id="stat-source">&mdash;</div>
-              <div class="stat-label">Property source</div>
-            </div>
-          </div>
         </div>
 
-        <!-- Hosting panel -->
-        <div class="panel">
+        <!-- Hero "what we have" — the page is ABOUT the publisher's
+             actual files, not setup advice. Renders one card per file
+             we've checked, with check / cross / spinner depending on
+             state. When auto-crawl is in flight the cards show a
+             "Checking..." state and the page polls for a refresh. -->
+        <div class="panel hero-files" id="hero-files">
           <div class="panel-header">
+            <div>
+              <div class="panel-title" id="hero-title">What we found at this domain</div>
+              <div class="panel-subtitle" id="hero-subtitle"></div>
+            </div>
+          </div>
+          <div class="hero-cards" id="hero-cards"></div>
+          <div class="actions" id="hero-actions"></div>
+        </div>
+
+        <!-- Hosting setup details — collapsed by default once a working
+             record exists. Surfaces the authoritative_location stub copy
+             and the AAO-hosted URL when relevant. -->
+        <details class="panel hosting-details" id="hosting-details">
+          <summary class="panel-header" id="hosting-summary" style="cursor: pointer;">
             <div>
               <div class="panel-title">adagents.json hosting</div>
               <div class="panel-subtitle" id="hosting-subtitle"></div>
             </div>
             <div id="hosting-mode-badge"></div>
-          </div>
+          </summary>
           <div class="hosting-detail" id="hosting-detail"></div>
           <div class="actions" id="hosting-actions"></div>
-        </div>
+        </details>
 
         <div class="panel">
           <div class="panel-header">
@@ -334,6 +405,138 @@
         document.getElementById('error-message').textContent = message;
       }
 
+      // Render the hero "what we found" cards. State-driven: each card
+      // gets is-good / is-bad / is-checking / is-empty class, and the
+      // copy celebrates what's there rather than lecturing about
+      // hosting models.
+      function renderHero(data) {
+        const files = data.files || {};
+        const subtitle = document.getElementById('hero-subtitle');
+        const cards = document.getElementById('hero-cards');
+        const actions = document.getElementById('hero-actions');
+        const propsCount = (data.properties || []).length;
+        const agentsCount = (data.authorized_agents || []).length;
+
+        // Subtitle reflects the overall posture.
+        const adagents = files.adagents_json || { status: 'unknown' };
+        const brand = files.brand_json || { status: 'unknown' };
+        const allChecking = adagents.status === 'checking' && brand.status === 'checking';
+        const anyChecking = adagents.status === 'checking' || brand.status === 'checking';
+        const haveAnything = adagents.status === 'valid' || brand.status === 'present';
+
+        if (allChecking) {
+          subtitle.textContent = 'Checking your domain — this takes a few seconds.';
+        } else if (haveAnything) {
+          subtitle.textContent = 'Here’s what AAO has on file for this domain.';
+        } else if (anyChecking) {
+          subtitle.textContent = 'Checking now…';
+        } else {
+          subtitle.textContent = 'We didn’t find an adagents.json or brand.json on this domain.';
+        }
+
+        const cardsHtml = [];
+
+        // adagents.json card
+        if (adagents.status === 'valid') {
+          cardsHtml.push(`
+            <div class="file-card is-good">
+              <div class="file-icon">✓</div>
+              <div class="file-body">
+                <h3>You have an <code>adagents.json</code></h3>
+                <p>AAO fetched a valid file at <code>${escapeHtml(adagents.expected_url || '')}</code>. Buyers will find it there.</p>
+                <div class="file-stats">
+                  <div><strong>${agentsCount}</strong>${agentsCount === 1 ? ' authorized agent' : ' authorized agents'}</div>
+                  <div><strong>${propsCount}</strong>${propsCount === 1 ? ' property' : ' properties'}</div>
+                </div>
+              </div>
+            </div>`);
+        } else if (adagents.status === 'invalid') {
+          cardsHtml.push(`
+            <div class="file-card is-bad">
+              <div class="file-icon">!</div>
+              <div class="file-body">
+                <h3><code>adagents.json</code> failed validation</h3>
+                <p>A file exists at <code>${escapeHtml(adagents.expected_url || '')}</code> but it didn’t parse cleanly. Click “why?” below to see the structured errors.</p>
+                <button id="hero-show-validation" type="button" style="font-size: var(--text-xs); background: none; border: none; color: var(--color-brand); cursor: pointer; text-decoration: underline; padding: 0;">Show validation errors</button>
+              </div>
+            </div>`);
+        } else if (adagents.status === 'checking') {
+          cardsHtml.push(`
+            <div class="file-card is-checking">
+              <div class="file-icon"><div class="spinner" style="width:16px;height:16px;border-width:2px;"></div></div>
+              <div class="file-body">
+                <h3>Looking for <code>adagents.json</code>…</h3>
+                <p>Fetching <code>${escapeHtml(adagents.expected_url || '')}</code> now. This page will refresh in a few seconds.</p>
+              </div>
+            </div>`);
+        } else {
+          cardsHtml.push(`
+            <div class="file-card is-empty">
+              <div class="file-icon">—</div>
+              <div class="file-body">
+                <h3>No <code>adagents.json</code> yet</h3>
+                <p>Buyers fetch <code>${escapeHtml(adagents.expected_url || '')}</code> to learn which AI sales agents you’ve authorized to sell your inventory.</p>
+                <a href="/adagents/builder?domain=${encodeURIComponent(data.domain)}" style="font-size: var(--text-sm); color: var(--color-brand); font-weight: var(--font-semibold); text-decoration: none;">Generate adagents.json →</a>
+              </div>
+            </div>`);
+        }
+
+        // brand.json card
+        if (brand.status === 'present') {
+          cardsHtml.push(`
+            <div class="file-card is-good">
+              <div class="file-icon">✓</div>
+              <div class="file-body">
+                <h3>You have a <code>brand.json</code></h3>
+                <p>${brand.name ? `Identified as <strong>${escapeHtml(brand.name)}</strong>. ` : ''}Buyers fetch <code>https://${escapeHtml(data.domain)}/.well-known/brand.json</code> to learn what your brand looks like and what inventory you publish.</p>
+              </div>
+            </div>`);
+        } else if (brand.status === 'checking') {
+          cardsHtml.push(`
+            <div class="file-card is-checking">
+              <div class="file-icon"><div class="spinner" style="width:16px;height:16px;border-width:2px;"></div></div>
+              <div class="file-body">
+                <h3>Looking for <code>brand.json</code>…</h3>
+                <p>Checking <code>https://${escapeHtml(data.domain)}/.well-known/brand.json</code> now.</p>
+              </div>
+            </div>`);
+        } else {
+          cardsHtml.push(`
+            <div class="file-card is-empty">
+              <div class="file-icon">—</div>
+              <div class="file-body">
+                <h3>No <code>brand.json</code> yet</h3>
+                <p>A <code>brand.json</code> tells AI agents what your brand is, what it looks like, and what inventory you publish. It complements <code>adagents.json</code>.</p>
+                <a href="/brand/builder?domain=${encodeURIComponent(data.domain)}" style="font-size: var(--text-sm); color: var(--color-brand); font-weight: var(--font-semibold); text-decoration: none;">Build brand.json →</a>
+              </div>
+            </div>`);
+        }
+
+        cards.innerHTML = cardsHtml.join('');
+
+        // Wire up the validation-detail button if present.
+        const vbtn = document.getElementById('hero-show-validation');
+        if (vbtn) vbtn.addEventListener('click', () => showValidationDetail(data.domain));
+
+        // Hero footer actions: claim CTA or "edit my record" depending on auth.
+        const user = appUser();
+        const heroActions = [];
+        if (user) {
+          heroActions.push(`<a class="primary" href="/property/view/${encodeURIComponent(data.domain)}">Manage this record</a>`);
+        } else if (!haveAnything) {
+          heroActions.push(`<a class="primary" href="/login?return_to=${encodeURIComponent(window.location.pathname)}">Sign in to claim</a>`);
+        }
+        heroActions.push(`<a class="secondary" href="/adagents-landing">What is adagents.json?</a>`);
+        actions.innerHTML = heroActions.join('');
+
+        // Auto-refresh when the server told us a crawl is in flight.
+        // 4 seconds is enough for a single-domain crawl in most cases;
+        // larger budgets risk the user navigating away.
+        if (data.auto_crawl_triggered) {
+          setTimeout(() => load(), 4000);
+        }
+      }
+
       function renderStatusBadges(data) {
         const el = document.getElementById('status-badges');
         const parts = [];
@@ -391,29 +594,29 @@
       }
 
       function renderExplainer(data) {
-        // Only show the cold-visitor explainer when the page has nothing
-        // useful — no properties, no agents, no member, no valid adagents.
-        const isEmpty =
-          (!data.properties || data.properties.length === 0) &&
-          (!data.authorized_agents || data.authorized_agents.length === 0) &&
-          !data.member &&
-          data.hosting && data.hosting.mode === 'none';
-        const explainer = document.getElementById('explainer');
-        if (!isEmpty) { explainer.classList.add('hidden'); return; }
-        const user = appUser();
-        const ctas = [];
-        if (user) {
-          ctas.push(`<a class="primary" href="/property/view/${encodeURIComponent(data.domain)}">Claim this domain</a>`);
-        } else {
-          ctas.push(`<a class="primary" href="/login?return_to=${encodeURIComponent(window.location.pathname)}">Sign in to claim</a>`);
-        }
-        ctas.push(`<a class="secondary" href="/adagents-landing">What is adagents.json?</a>`);
-        document.getElementById('explainer-ctas').innerHTML = ctas.join('');
-        explainer.classList.remove('hidden');
+        // The hero "what we found" panel now covers the cold-state
+        // explainer's job — celebrating what's there, or leading with
+        // a clear next step when nothing's there. Keep this function
+        // around as a no-op so existing call sites don't break, but
+        // don't render the old banner.
+        document.getElementById('explainer')?.classList.add('hidden');
+        void data;
       }
 
       function renderHosting(data) {
         const hosting = data.hosting || { mode: 'none', expected_url: '' };
+        // Auto-expand the hosting details panel when the page is in
+        // "set this up" mode — i.e., nothing's hosted yet. When the
+        // publisher already has a working file, leave the panel
+        // collapsed so the page leads with what's there.
+        const details = document.getElementById('hosting-details');
+        if (details) {
+          if (hosting.mode === 'none' || hosting.mode === 'self_invalid') {
+            details.setAttribute('open', '');
+          } else {
+            details.removeAttribute('open');
+          }
+        }
         const subtitle = document.getElementById('hosting-subtitle');
         const detail = document.getElementById('hosting-detail');
         const badge = document.getElementById('hosting-mode-badge');
@@ -671,15 +874,24 @@
 
           renderStatusBadges(data);
           renderExplainer(data);
+          renderHero(data);
           renderHosting(data);
 
           const props = Array.isArray(data.properties) ? data.properties : [];
           const agents = Array.isArray(data.authorized_agents) ? data.authorized_agents : [];
 
-          document.getElementById('stat-properties').textContent = props.length;
-          document.getElementById('stat-agents').textContent = agents.length;
+          // Stats moved into the per-file hero cards (renderHero); the
+          // old standalone stats block has been removed. Update any
+          // remaining stat-* nodes only if they exist (defensive — old
+          // markup may persist in cached pages).
+          const setStat = (id, value) => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = value;
+          };
+          setStat('stat-properties', String(props.length));
+          setStat('stat-agents', String(agents.length));
           const sources = Array.from(new Set(props.map((p) => p.source).filter(Boolean)));
-          document.getElementById('stat-source').textContent = sources.length ? sources.join(', ') : '—';
+          setStat('stat-source', sources.length ? sources.join(', ') : '—');
 
           renderProperties(props);
           renderAgents(data.domain, agents, props);

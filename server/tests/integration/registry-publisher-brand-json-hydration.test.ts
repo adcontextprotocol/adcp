@@ -224,6 +224,41 @@ describe('Registry publisher endpoint — brand.json hydration', () => {
     expect(res.body.hosting.hosted_url).toBeUndefined();
   });
 
+  it('returns files.adagents_json.status=checking and auto_crawl_triggered=true on first lookup of an unknown domain', async () => {
+    // No brand row, no hosted property, never crawled — first GET should
+    // kick off an auto-crawl and surface the checking states.
+    const fresh = `auto-crawl-${Date.now()}.registry-baseline.example`;
+    const res = await request(app).get(`/api/registry/publisher?domain=${encodeURIComponent(fresh)}`);
+    expect(res.status).toBe(200);
+    expect(res.body.auto_crawl_triggered).toBe(true);
+    expect(res.body.files).toBeDefined();
+    expect(['checking', 'unknown']).toContain(res.body.files.adagents_json.status);
+    expect(['checking', 'unknown']).toContain(res.body.files.brand_json.status);
+
+    // Second hit within the debounce window does NOT re-trigger.
+    const res2 = await request(app).get(`/api/registry/publisher?domain=${encodeURIComponent(fresh)}`);
+    expect(res2.status).toBe(200);
+    expect(res2.body.auto_crawl_triggered).toBeUndefined();
+  });
+
+  it('returns files.brand_json.status=present when a brand record exists', async () => {
+    await brandDb.upsertDiscoveredBrand({
+      domain: PUB_BRAND_ONLY,
+      brand_name: 'Sasha Media',
+      source_type: 'brand_json',
+      has_brand_manifest: true,
+      brand_manifest: { name: 'Sasha Media' },
+    });
+    const res = await request(app).get(
+      `/api/registry/publisher?domain=${encodeURIComponent(PUB_BRAND_ONLY)}`
+    );
+    expect(res.status).toBe(200);
+    expect(res.body.files.brand_json).toMatchObject({
+      status: 'present',
+      name: 'Sasha Media',
+    });
+  });
+
   it('reports hosting.mode=aao_hosted with hosted_url when a public hosted property exists', async () => {
     await propertyDb.createHostedProperty({
       publisher_domain: PUB_AAO_HOSTED,

@@ -604,12 +604,33 @@ const PublisherHostingSchema = z.object({
   }),
 });
 
+const PublisherFilesSchema = z.object({
+  adagents_json: z.object({
+    status: z.enum(["valid", "invalid", "unknown", "checking"]).openapi({
+      description:
+        "What we know about the publisher's adagents.json right now. `valid` = crawler fetched a parsing-and-shape-valid file. `invalid` = crawler fetched a file that failed validation. `unknown` = never crawled or last result is stale. `checking` = an auto-crawl was kicked off by this request; the page should poll for fresh data shortly.",
+    }),
+    expected_url: z.string().openapi({ description: "Where adagents.json should live on the publisher's own origin." }),
+  }),
+  brand_json: z.object({
+    status: z.enum(["present", "unknown", "checking"]).openapi({
+      description:
+        "What we know about the publisher's brand.json. `present` = a brand record with manifest data exists. `unknown` = no record yet. `checking` = an auto-crawl was kicked off.",
+    }),
+    name: z.string().optional(),
+  }),
+});
+
 export const PublisherLookupResultSchema = z
   .object({
     domain: z.string().openapi({ example: "voxmedia.com" }),
     member: MemberRefSchema.nullable(),
     adagents_valid: z.boolean().nullable(),
     hosting: PublisherHostingSchema,
+    files: PublisherFilesSchema.optional().openapi({
+      description:
+        "Plain-English summary of what AAO has found at the publisher's origin. The publisher page leads with this — `you have a valid adagents.json` is the primary signal, not `mode === self`. Optional in the schema for backwards compatibility; the handler always populates it.",
+    }),
     properties: z.array(PublisherPropertySchema),
     authorized_agents: z.array(PublisherAuthorizedAgentSchema),
     rollup_truncated: z.object({
@@ -618,6 +639,10 @@ export const PublisherLookupResultSchema = z
     }).optional().openapi({
       description:
         "Set when the publisher has more authorized agents than the per-agent rollup cap. Above the cap, agents beyond `cap` are returned without `properties_authorized` / `properties_total` / `publisher_wide`; call `/api/registry/publisher/authorization?domain=X&agent=Y` for the per-agent count. Lets a caller decide whether to fan out individual calls or stop reading.",
+    }),
+    auto_crawl_triggered: z.boolean().optional().openapi({
+      description:
+        "Set to `true` when this request triggered a background crawl of the publisher's origin (we hadn't crawled before). The client should refetch in ~3-5s to pick up fresh data. Debounced per-domain so a tight refresh loop won't keep firing crawls.",
     }),
   })
   .openapi("PublisherLookupResult");
