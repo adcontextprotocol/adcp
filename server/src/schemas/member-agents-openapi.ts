@@ -93,6 +93,10 @@ const MemberAgentResponseSchema = z
   .object({
     agent: MemberAgentSchema,
     warnings: z.array(MemberAgentVisibilityWarningSchema).optional(),
+    profile_auto_created: z.boolean().optional().openapi({
+      description:
+        'Set to `true` when this `POST` was the first agent registration on the caller\'s organization and the server auto-created a private member profile (display name = organization name, `is_public: false`). Absent on subsequent calls and on update-in-place. Surfaced so storefront-style integrations can show the user a "we set up your profile" hint without needing to detect the prior 404 → bootstrap → retry shape.',
+    }),
   })
   .openapi('MemberAgentResponse');
 
@@ -132,7 +136,7 @@ registry.registerPath({
     },
     404: {
       description:
-        'No member profile exists yet — create one via `POST /api/me/member-profile`.',
+        'No member profile exists yet. Either call `POST /api/me/agents` to register your first agent (the profile is auto-created on first call) or `POST /api/me/member-profile` to create the profile explicitly.',
       content: { 'application/json': { schema: ErrorSchema } },
     },
   },
@@ -146,6 +150,7 @@ registry.registerPath({
   description: [
     "Register an agent on the caller's organization member profile.",
     'Idempotent on `url`: re-posting the same `url` updates the entry in place rather than creating a duplicate. New entries return `201`; updates return `200`.',
+    'If the caller\'s organization does not yet have a member profile, this endpoint **auto-creates a private profile** (display name = organization name, `is_public: false`) before registering the agent — the response includes `profile_auto_created: true` so callers can show a "profile set up" hint. To customize `display_name`, `slug`, `tagline`, etc. before adding any agents, call `POST /api/me/member-profile` first; otherwise this auto-bootstrap is the recommended path for storefront-style integrations.',
     "The `type` field is resolved server-side from the agent's capability snapshot — a client cannot pin a misclassification (e.g. registering a sales agent as `buying`).",
     '`visibility: "public"` requires Professional tier or higher and a `primary_brand_domain` set on the profile. Non-API-tier callers who request `public` will have the entry stored as `members_only` instead, and the response will include a `visibility_downgraded` warning describing the coercion.',
   ].join('\n\n'),
@@ -161,12 +166,13 @@ registry.registerPath({
       content: { 'application/json': { schema: MemberAgentResponseSchema } },
     },
     201: {
-      description: 'Agent registered.',
+      description:
+        'Agent registered. When this is the first agent on a freshly created organization, the response includes `profile_auto_created: true`.',
       content: { 'application/json': { schema: MemberAgentResponseSchema } },
     },
     400: {
       description:
-        'Missing or invalid `url`, or no organization associated with this account.',
+        'Missing or invalid `url`, or no organization associated with this account. (When the caller has no organization at all, create one first with `POST /api/organizations`.)',
       content: { 'application/json': { schema: ErrorSchema } },
     },
     401: {
@@ -180,7 +186,7 @@ registry.registerPath({
     },
     404: {
       description:
-        'No member profile exists yet — create one via `POST /api/me/member-profile`.',
+        'Auto-bootstrap failed (e.g. the organization has no name yet). Call `POST /api/me/member-profile` to create a profile explicitly, then retry.',
       content: { 'application/json': { schema: ErrorSchema } },
     },
     429: {
