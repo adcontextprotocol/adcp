@@ -55,6 +55,7 @@ import {
 } from './announcement-trigger.js';
 import { runSpecInsightPostJob } from './spec-insight-post.js';
 import { runChannelPrivacyAudit, type ChannelPrivacyAuditResult } from './channel-privacy-audit.js';
+import { runOrphanOrgAudit, type OrphanOrgAuditResult } from './orphan-org-audit.js';
 import { NotificationDatabase } from '../../db/notification-db.js';
 import { notifyUser } from '../../notifications/notification-service.js';
 import { createLogger } from '../../logger.js';
@@ -181,6 +182,19 @@ export function registerAllJobs(): void {
     runner: runChannelPrivacyAudit,
     shouldLogResult: (r: ChannelPrivacyAuditResult) =>
       r.drifted.length > 0 || r.unknown.length > 0,
+  });
+
+  // Orphan org audit — daily backstop for the at-INSERT hardening
+  // (admin/domains.ts + createOrganization). Surfaces non-personal orgs
+  // missing email_domain so a future regression in those write paths is
+  // caught in a day instead of months.
+  jobScheduler.register({
+    name: 'orphan-org-audit',
+    description: 'Orphan org audit',
+    interval: { value: 24, unit: 'hours' },
+    initialDelay: { value: 15, unit: 'minutes' },
+    runner: runOrphanOrgAudit,
+    shouldLogResult: (r: OrphanOrgAuditResult) => r.total > 0,
   });
 
   // Relationship orchestrator - continues member relationships across channels
