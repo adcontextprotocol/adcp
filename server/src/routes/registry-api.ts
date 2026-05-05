@@ -506,6 +506,49 @@ registry.registerPath({
 
 registry.registerPath({
   method: "post",
+  path: "/api/properties/hosted/{domain}/verify-origin",
+  operationId: "verifyHostedPropertyOrigin",
+  summary: "Verify AAO-hosted publisher origin",
+  description:
+    "Trigger origin verification for an AAO-hosted publisher: fetches the publisher's own `/.well-known/adagents.json` and checks for an `authoritative_location` field pointing at the AAO-hosted URL. On success, promotes `agent_publisher_authorizations` rows from `source='aao_hosted'` to `source='adagents_json'` for the manifest's authorized agents — buyers reading the registry then see them as origin-attested.\n\nRequires authentication and either AAO admin OR org-membership matching the hosted property's owner. Fail-closed on NULL ownership.\n\nFailure classification:\n- `not_found`: publisher origin returned 404 (permanent — demotes if previously verified).\n- `invalid_json` / `no_authoritative_location` / `authoritative_location_mismatch`: publisher origin returned a parseable response that doesn't satisfy the spec stub pattern (permanent — demotes).\n- `unresolvable`: DNS NXDOMAIN, private IP, or non-http scheme (permanent — demotes).\n- `transient`: 5xx / 429 / 3xx / network timeout (leaves persisted state alone, stamps `origin_last_checked_at`).",
+  tags: ["Property Resolution"],
+  security: [{ bearerAuth: [] }, { oauth2: [] }],
+  request: {
+    params: z.object({
+      domain: z.string().openapi({ example: "examplepub.com" }),
+    }),
+  },
+  responses: {
+    200: {
+      description: "Verification outcome",
+      content: {
+        "application/json": {
+          schema: z.object({
+            verified: z.boolean(),
+            reason: z.enum([
+              "authoritative_location_pointer",
+              "not_found",
+              "invalid_json",
+              "no_authoritative_location",
+              "authoritative_location_mismatch",
+              "unresolvable",
+              "transient",
+            ]),
+            checked_at: z.string(),
+            detail: z.string().optional(),
+          }),
+        },
+      },
+    },
+    400: { description: "Invalid domain", content: { "application/json": { schema: ErrorSchema } } },
+    401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
+    403: { description: "Caller does not own this hosted property (and is not an AAO admin)", content: { "application/json": { schema: ErrorSchema } } },
+    404: { description: "No hosted property for this domain", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: "post",
   path: "/api/properties/check",
   operationId: "checkPropertyList",
   summary: "Check property list",
