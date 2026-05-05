@@ -288,13 +288,21 @@ export function setupDomainRoutes(
 
         // Mirror the domain into organization_domains so findPayingOrgForDomain
         // and the upcoming claim-existing-org flow can locate this prospect by
-        // domain even before the webhook fires.
-        await pool.query(
+        // domain even before the webhook fires. If the domain is already
+        // claimed by another org we don't steal it (DO NOTHING) — log a
+        // warning so admins can resolve the conflict. The new org's
+        // email_domain column is still populated either way, so
+        // findClaimableProspectOrgForDomain can still locate it via the
+        // email_domain branch of its OR predicate.
+        const domainMirror = await pool.query(
           `INSERT INTO organization_domains (workos_organization_id, domain, is_primary, verified, source)
            VALUES ($1, $2, true, true, 'admin_discovery')
            ON CONFLICT (domain) DO NOTHING`,
           [workosOrg.id, normalizedDomain]
         );
+        if ((domainMirror.rowCount ?? 0) === 0) {
+          logger.warn({ orgId: workosOrg.id, domain: normalizedDomain }, "organization_domains row already claimed by a different org — new prospect's domain hookup will rely on organizations.email_domain");
+        }
 
         // Auto-enrich the new organization in the background
         trackBackground(
@@ -479,12 +487,17 @@ export function setupDomainRoutes(
             );
 
             // Mirror into organization_domains for auto-link / claim flows.
-            await pool.query(
+            // ON CONFLICT does not steal the domain from another org —
+            // log a warning when the upsert no-ops.
+            const domainMirror = await pool.query(
               `INSERT INTO organization_domains (workos_organization_id, domain, is_primary, verified, source)
                VALUES ($1, $2, true, true, 'admin_discovery')
                ON CONFLICT (domain) DO NOTHING`,
               [workosOrg.id, normalizedDomain]
             );
+            if ((domainMirror.rowCount ?? 0) === 0) {
+              logger.warn({ orgId: workosOrg.id, domain: normalizedDomain }, "organization_domains row already claimed by a different org — new prospect's domain hookup will rely on organizations.email_domain");
+            }
 
             // Auto-enrich in background
             trackBackground(
@@ -779,12 +792,17 @@ export function setupDomainRoutes(
         );
 
         // Mirror into organization_domains for auto-link / claim flows.
-        await pool.query(
+        // ON CONFLICT does not steal the domain from another org —
+        // log a warning when the upsert no-ops.
+        const domainMirror = await pool.query(
           `INSERT INTO organization_domains (workos_organization_id, domain, is_primary, verified, source)
            VALUES ($1, $2, true, true, 'admin_discovery')
            ON CONFLICT (domain) DO NOTHING`,
           [workosOrg.id, normalizedDomain]
         );
+        if ((domainMirror.rowCount ?? 0) === 0) {
+          logger.warn({ orgId: workosOrg.id, domain: normalizedDomain }, "organization_domains row already claimed by a different org — new prospect's domain hookup will rely on organizations.email_domain");
+        }
 
         // Auto-enrich the new organization in the background
         trackBackground(
