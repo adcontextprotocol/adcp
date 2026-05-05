@@ -5622,7 +5622,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     }
   });
 
-  router.get("/registry/publisher", async (req, res) => {
+  router.get("/registry/publisher", agentReadRateLimiter, async (req, res) => {
     const rawDomain = req.query.domain as string;
     if (!rawDomain) {
       return res.status(400).json({ error: "Missing required query param: domain" });
@@ -5636,13 +5636,68 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       const memberDb = new MemberDatabase();
       const federatedIndex = crawler.getFederatedIndex();
 
-      const [profile, properties, authorizations, adagentsValid, hostedProperty] = await Promise.all([
+      const [profile, properties, authorizations, adagentsValid, hostedProperty, brandRow] = await Promise.all([
         memberDb.getProfileByDomain(domain),
         federatedIndex.getPropertiesForDomain(domain),
         federatedIndex.getAuthorizationsForDomain(domain),
         federatedIndex.hasValidAdagents(domain),
         propertyDb.getHostedPropertyByDomain(domain),
+        brandDb.getDiscoveredBrandByDomain(domain),
       ]);
+
+      // Auto-crawl on view: if we've never crawled this domain (adagents
+      // never seen, brand never seen), kick off background fetches so a
+      // human visiting this page acts as the trigger to populate the
+      // record. Debounced per-domain so a tight refresh loop or a
+      // popular domain doesn't hammer the crawler. Fire-and-forget; the
+      // page polls / refreshes to pick up fresh data.
+      //
+      // SSRF gate: feed the domain through `validateCrawlDomain` (DNS
+      // resolution + private-IP check) before invoking the crawler.
+      // Without this gate, `?domain=internal.svc.cluster.local` would
+      // turn an unauthenticated GET into an internal-network probe via
+      // AAO's egress. The manual crawl-request endpoint already does
+      // this; auto-crawl was missing the same gate.
+      //
+      // `crawlSingleDomain` already invokes `scanBrandForDomain`
+      // internally (crawler.ts), so we only call the brand scan
+      // standalone when adagents was already crawled but brand wasn't —
+      // otherwise we'd double-fetch /.well-known/brand.json.
+      //
+      // NOTE: the per-domain debouncer is process-local. Behind a load
+      // balancer the first request to each instance can fire its own
+      // crawl. The IP-keyed `agentReadRateLimiter` mounted above bounds
+      // the breadth of distinct-domain enumeration too.
+      const adagentsNeverCrawled = adagentsValid === null;
+      const brandNeverCrawled = !brandRow;
+      let autoCrawlTriggered = false;
+      if ((adagentsNeverCrawled || brandNeverCrawled) && shouldAutoCrawl(domain)) {
+        // Re-validate: returns null on private/loopback/link-local IPs
+        // and rejects unresolvable hostnames. We accept the result of
+        // validateCrawlDomain only when it returns the same domain we
+        // already validated — any rewrite would mean a discrepancy.
+        let crawlSafe = false;
+        try {
+          const validated = await validateCrawlDomain(domain);
+          crawlSafe = validated === domain;
+        } catch (err) {
+          logger.debug({ err, domain }, 'Auto-crawl skipped — validateCrawlDomain rejected');
+        }
+        if (crawlSafe) {
+          autoCrawlTriggered = true;
+          if (adagentsNeverCrawled) {
+            // crawlSingleDomain handles brand internally too.
+            crawler.crawlSingleDomain(domain).catch((err: Error) => {
+              logger.warn({ err, domain, ip: req.ip }, 'Auto-crawl (adagents) failed');
+            });
+          } else if (brandNeverCrawled) {
+            // adagents already crawled, only the brand is missing.
+            crawler.scanBrandForDomain(domain).catch((err: Error) => {
+              logger.warn({ err, domain, ip: req.ip }, 'Auto-crawl (brand) failed');
+            });
+          }
+        }
+      }
 
       const member = profile
         ? { slug: profile.slug, display_name: profile.display_name }
@@ -5744,11 +5799,36 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         }),
       );
 
+      // What-we-have summary. The page leads with "you have an
+      // adagents.json" / "you have a brand.json" — this block exposes
+      // that signal so the client doesn't have to derive it from a
+      // cocktail of nullable flags.
+      const files = {
+        adagents_json: {
+          status: adagentsNeverCrawled
+            ? (autoCrawlTriggered ? 'checking' : 'unknown')
+            : adagentsValid === true
+              ? 'valid'
+              : adagentsValid === false
+                ? 'invalid'
+                : 'unknown',
+          // url where the publisher's own /.well-known sits
+          expected_url: hosting.expected_url,
+        } as { status: 'valid' | 'invalid' | 'unknown' | 'checking'; expected_url: string },
+        brand_json: {
+          status: brandRow
+            ? (brandRow.has_brand_manifest ? 'present' : 'unknown')
+            : (autoCrawlTriggered ? 'checking' : 'unknown'),
+          name: brandRow?.brand_name,
+        } as { status: 'present' | 'unknown' | 'checking'; name?: string },
+      };
+
       res.json({
         domain,
         member,
         adagents_valid: adagentsValid,
         hosting,
+        files,
         properties: projectedProperties,
         authorized_agents: authorizations.map(a => {
           if (skipRollup) {
@@ -5782,6 +5862,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         rollup_truncated: rollupTruncatedLen
           ? { cap: PER_AGENT_ROLLUP_CAP, total_agents: authorizations.length }
           : undefined,
+        auto_crawl_triggered: autoCrawlTriggered || undefined,
       });
     } catch (error) {
       logger.error({ err: error, path: req.path }, "Publisher lookup failed");
@@ -6836,14 +6917,35 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
   const CRAWL_RATE_LIMIT_MS = 5 * 60 * 1000;  // 5 minutes per domain
   const MEMBER_CRAWL_LIMIT = 30;               // 30 requests per member per hour
   const MEMBER_CRAWL_WINDOW_MS = 60 * 60 * 1000;
-  // Periodic cleanup of stale rate limit entries to prevent memory growth
+
+  // Auto-crawl-on-view debouncer. Distinct from the manual /crawl-request
+  // path so a publisher visiting their own page can re-trigger the crawl
+  // a few minutes later without bumping the user-initiated rate limit.
+  // Fires anonymously (no member context); per-domain only.
+  const autoCrawlLastFired = new Map<string, number>();
+  const AUTO_CRAWL_DEBOUNCE_MS = 5 * 60 * 1000;
+  function shouldAutoCrawl(domain: string): boolean {
+    const last = autoCrawlLastFired.get(domain);
+    if (last && Date.now() - last < AUTO_CRAWL_DEBOUNCE_MS) return false;
+    autoCrawlLastFired.set(domain, Date.now());
+    return true;
+  }
+
+  // Periodic cleanup of stale rate limit entries to prevent memory
+  // growth. Eviction threshold is INTENTIONALLY larger than the debounce
+  // window — if cleanup deleted an entry at exactly `windowMs`, the next
+  // request could re-fire immediately, eliminating the debounce. 2× the
+  // window keeps real-world callers safely inside the debounce.
   const rateLimitCleanupInterval = setInterval(() => {
     const now = Date.now();
     for (const [domain, timestamp] of crawlRequestRateLimits) {
-      if (now - timestamp > CRAWL_RATE_LIMIT_MS) crawlRequestRateLimits.delete(domain);
+      if (now - timestamp > 2 * CRAWL_RATE_LIMIT_MS) crawlRequestRateLimits.delete(domain);
     }
     for (const [member, state] of memberCrawlCounts) {
       if (now - state.windowStart > MEMBER_CRAWL_WINDOW_MS) memberCrawlCounts.delete(member);
+    }
+    for (const [domain, timestamp] of autoCrawlLastFired) {
+      if (now - timestamp > 2 * AUTO_CRAWL_DEBOUNCE_MS) autoCrawlLastFired.delete(domain);
     }
   }, CRAWL_RATE_LIMIT_MS);
   rateLimitCleanupInterval.unref(); // Don't prevent process exit
