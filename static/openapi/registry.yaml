@@ -1865,24 +1865,23 @@ components:
     MemberCompanyType:
       type: string
       enum:
-        - publisher
-        - advertiser
+        - adtech
         - agency
-        - dsp
-        - ssp
-        - measurement
-        - identity
-        - infrastructure
+        - brand
+        - publisher
+        - data
+        - ai
         - other
       description: Coarse classification of the member organization's role in the open ad ecosystem. Drives default verification badges and the member profile's display category.
     MemberRevenueTier:
       type: string
       enum:
         - under_1m
-        - 1m_to_10m
-        - 10m_to_100m
-        - 100m_to_1b
-        - over_1b
+        - 1m_5m
+        - 5m_50m
+        - 50m_250m
+        - 250m_1b
+        - 1b_plus
       description: Annual revenue band, USD. Used for tier-based pricing and aggregated industry stats; not exposed on the public profile.
     CreateMemberProfileInput:
       type: object
@@ -1912,10 +1911,12 @@ components:
         membership_tier:
           type: string
           enum:
-            - free
-            - builder
-            - professional
-          description: Initial membership tier. Defaults to `free` if omitted. Tiers above `free` may require billing details to be configured on the AAO dashboard before activation.
+            - individual_professional
+            - individual_academic
+            - company_standard
+            - company_icl
+            - company_leader
+          description: Initial membership tier. Defaults to no tier (free Explorer) if omitted. Paid tiers (`company_*`, `individual_professional`) require billing details to be configured on the AAO dashboard via Stripe checkout before activation.
       required:
         - organization_name
         - company_type
@@ -1943,9 +1944,12 @@ components:
         membership_tier:
           type: string
           enum:
-            - free
-            - builder
-            - professional
+            - individual_professional
+            - individual_academic
+            - company_standard
+            - company_icl
+            - company_leader
+          description: Active membership tier. Omitted entirely when the org has no tier set (free Explorer).
         created_at:
           type: string
           format: date-time
@@ -1959,7 +1963,6 @@ components:
         - organization_name
         - company_type
         - corporate_domain
-        - membership_tier
         - created_at
         - agents
       description: The member profile shape returned from `POST /api/me/member-profile` and `GET /api/me/member-profile`.
