@@ -83,6 +83,7 @@ import { aaoHostedBrandJsonUrl, aaoHostedAdagentsJsonUrl, expectedAdagentsJsonUr
 import { fetchBrandData, isBrandfetchConfigured, ENRICHMENT_CACHE_MAX_AGE_MS } from "../services/brandfetch.js";
 import { extractPublisherPropertiesFromBrandJson } from "../services/brand-json-properties.js";
 import { syncHostedPropertyToFederatedIndex } from "../services/hosted-property-sync.js";
+import { verifyHostedPropertyOrigin } from "../services/hosted-property-origin-verifier.js";
 import { PropertyCheckService } from "../services/property-check.js";
 import { PropertyCheckDatabase } from "../db/property-check-db.js";
 import { BulkPropertyCheckService } from "../services/bulk-property-check.js";
@@ -3454,6 +3455,34 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     }
   });
 
+  // ── Origin verification (AAO-hosted publishers) ────────────────
+
+  router.post("/properties/hosted/:domain/verify-origin", ...saveMiddleware, async (req, res) => {
+    try {
+      const domain = (req.params.domain || '').toLowerCase();
+      if (!isValidDomain(domain)) {
+        return res.status(400).json({ error: 'Invalid domain' });
+      }
+      const hosted = await propertyDb.getHostedPropertyByDomain(domain);
+      if (!hosted) {
+        return res.status(404).json({ error: 'No hosted property for this domain' });
+      }
+      // Org-ownership check: only the org that owns the hosted property
+      // (or an admin) may trigger verification. Mirrors the auth model
+      // used by the existing edit path.
+      const callerOrgId = await resolveCallerOrgId(req);
+      const isAdmin = (req.user as { isAdmin?: boolean })?.isAdmin === true;
+      if (!isAdmin && hosted.workos_organization_id && hosted.workos_organization_id !== callerOrgId) {
+        return res.status(403).json({ error: 'Not authorized to verify this domain' });
+      }
+      const outcome = await verifyHostedPropertyOrigin({ hosted });
+      return res.json(outcome);
+    } catch (error) {
+      logger.error({ error }, 'Origin verification failed');
+      return res.status(500).json({ error: 'Origin verification failed' });
+    }
+  });
+
   // ── Property List Check ────────────────────────────────────────
 
   router.post("/properties/check", bulkResolveRateLimiter, async (req, res) => {
@@ -5665,6 +5694,15 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         ) as "self" | "self_invalid" | "aao_hosted" | "none",
         hosted_url: aaoHosted ? aaoHostedAdagentsJsonUrl(domain) : undefined,
         expected_url: expectedAdagentsJsonUrl(domain),
+        // Only meaningful for AAO-hosted publishers — surface the
+        // verifier's last result so callers can tell origin-attested
+        // hosting from intent-only hosting.
+        origin_verified_at: aaoHosted && hostedProperty?.origin_verified_at
+          ? hostedProperty.origin_verified_at.toISOString()
+          : null,
+        origin_last_checked_at: aaoHosted && hostedProperty?.origin_last_checked_at
+          ? hostedProperty.origin_last_checked_at.toISOString()
+          : null,
       };
 
       type ProjectedProperty = {

@@ -829,9 +829,34 @@ export class PropertyDatabase {
     return {
       ...row,
       adagents_json: typeof row.adagents_json === 'string' ? JSON.parse(row.adagents_json) : row.adagents_json,
+      origin_verified_at: row.origin_verified_at ? new Date(row.origin_verified_at) : null,
+      origin_last_checked_at: row.origin_last_checked_at ? new Date(row.origin_last_checked_at) : null,
       created_at: new Date(row.created_at),
       updated_at: new Date(row.updated_at),
     };
+  }
+
+  /**
+   * Mark a hosted property's origin verification result. Called by the
+   * verifier (services/hosted-property-origin-verifier.ts) after fetching
+   * the publisher's /.well-known/adagents.json. `verified=true` sets
+   * origin_verified_at; `verified=false` clears it (so a stub that's
+   * removed from the publisher's origin demotes back). Both branches
+   * stamp origin_last_checked_at.
+   */
+  async recordOriginVerification(
+    publisherDomain: string,
+    verified: boolean,
+  ): Promise<HostedProperty | null> {
+    const result = await query<HostedProperty>(
+      `UPDATE hosted_properties
+          SET origin_verified_at = CASE WHEN $2::boolean THEN NOW() ELSE NULL END,
+              origin_last_checked_at = NOW()
+        WHERE publisher_domain = $1
+        RETURNING *`,
+      [publisherDomain.toLowerCase(), verified],
+    );
+    return result.rows[0] ? this.deserializeHostedProperty(result.rows[0]) : null;
   }
 }
 
