@@ -602,6 +602,12 @@ const PublisherHostingSchema = z.object({
   expected_url: z.string().openapi({
     description: "Where adagents.json *should* live for this domain — the publisher's own /.well-known path. Always populated, regardless of `mode`.",
   }),
+  origin_verified_at: z.string().nullable().optional().openapi({
+    description: "ISO timestamp of the last successful origin verification — AAO fetched the publisher's own /.well-known/adagents.json and confirmed `authoritative_location` points at our hosted URL. When set, the publisher's authorization rows have been promoted to `source='adagents_json'` (origin-attested). NULL when never verified or last attempt failed. Only populated when `mode === 'aao_hosted'`.",
+  }),
+  origin_last_checked_at: z.string().nullable().optional().openapi({
+    description: "ISO timestamp of the last verification attempt regardless of result. Lets a caller render \"checked X minutes ago, not yet verified\" vs \"never checked.\" Only populated when `mode === 'aao_hosted'`.",
+  }),
 });
 
 const PublisherFilesSchema = z.object({

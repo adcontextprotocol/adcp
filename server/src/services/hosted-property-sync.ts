@@ -123,6 +123,26 @@ export async function syncHostedPropertyToFederatedIndex(
   }
 
   // Agents: upsert each, then reconcile authorizations.
+  //
+  // Pre-check: an earlier verification may have promoted some of these
+  // (agent_url, publisher_domain) pairs to source='adagents_json'. The
+  // `agent_publisher_authorizations` conflict key is
+  // `(agent_url, publisher_domain, source)` — writing `aao_hosted`
+  // alongside an existing `adagents_json` row for the same agent leaves
+  // BOTH rows in place, and the readers don't dedupe across sources.
+  // Result: the publisher would surface the same agent twice on
+  // /api/registry/publisher. To avoid that, query the existing
+  // `adagents_json` rows once up-front and skip writing `aao_hosted`
+  // for any agent already promoted; the verifier owns the source label
+  // for those rows.
+  const existingPromoted = await query<{ agent_url: string }>(
+    `SELECT agent_url
+       FROM agent_publisher_authorizations
+      WHERE publisher_domain = $1 AND source = 'adagents_json'`,
+    [domain],
+  );
+  const promotedSet = new Set(existingPromoted.rows.map(r => r.agent_url));
+
   const validAgentUrls: string[] = [];
   for (const a of agents) {
     if (typeof a.url !== 'string' || !a.url) continue;
@@ -135,13 +155,18 @@ export async function syncHostedPropertyToFederatedIndex(
         source_domain: domain,
       });
       result.agents_synced++;
+      // Skip the `aao_hosted` write when an `adagents_json` row already
+      // exists for this (agent_url, publisher_domain) — verifier owns
+      // that label, sync would otherwise leave a duplicate row.
+      if (promotedSet.has(agentUrl)) continue;
       await fedDb.upsertAuthorization({
         agent_url: agentUrl,
         publisher_domain: domain,
         authorized_for: typeof a.authorized_for === 'string' ? a.authorized_for : undefined,
         // `aao_hosted` rather than `adagents_json` — the publisher's
         // origin has not been verified yet. Promotion to the stronger
-        // label is an explicit verification step (future work).
+        // label happens via the origin verifier
+        // (services/hosted-property-origin-verifier.ts).
         source: 'aao_hosted',
       });
       result.authorizations_reconciled++;
@@ -197,4 +222,65 @@ export async function syncHostedPropertyToFederatedIndex(
   }
 
   return result;
+}
+
+/**
+ * Promote `aao_hosted` rows for a publisher's manifest agents up to the
+ * stronger `adagents_json` label. Called by the origin verifier after a
+ * successful round-trip fetch confirms the publisher's
+ * /.well-known/adagents.json points at AAO via `authoritative_location`.
+ *
+ * Scoped to `(publisher_domain, source='aao_hosted', agent_url IN $2)`
+ * so we only touch rows we wrote in `syncHostedPropertyToFederatedIndex`
+ * — crawler-written rows and unrelated agents are not promoted.
+ *
+ * Reversal: re-running `syncHostedPropertyToFederatedIndex` rewrites
+ * the rows as `aao_hosted` (its UPSERT conflict key is
+ * `(agent_url, publisher_domain, source)` so the `adagents_json` row
+ * persists alongside the new `aao_hosted` row, but readers UNION-
+ * dedupe by `(agent_url, publisher_domain, source)`). For a clean
+ * demote on verification failure, the verifier passes verified=false
+ * to `propertyDb.recordOriginVerification` and a future re-sync handles
+ * the actual row state — the source label is then implicitly the
+ * `aao_hosted` re-write. If a hard demote is needed, run the inverse
+ * UPDATE: `source='aao_hosted' WHERE source='adagents_json' AND ...`.
+ */
+export async function promoteVerifiedAuthorizations(
+  publisherDomain: string,
+  manifestAgentUrls: string[],
+): Promise<{ promoted: number }> {
+  if (manifestAgentUrls.length === 0) return { promoted: 0 };
+  const result = await query(
+    `UPDATE agent_publisher_authorizations
+        SET source = 'adagents_json',
+            last_validated = NOW()
+      WHERE publisher_domain = $1
+        AND source = 'aao_hosted'
+        AND agent_url = ANY($2::text[])`,
+    [publisherDomain.toLowerCase(), manifestAgentUrls],
+  );
+  return { promoted: result.rowCount ?? 0 };
+}
+
+/**
+ * Inverse of `promoteVerifiedAuthorizations`. Demote any `adagents_json`
+ * rows for this publisher_domain whose agent_url is in the manifest
+ * back down to `aao_hosted`. Used when origin verification fails after
+ * having previously succeeded.
+ */
+export async function demotePreviouslyVerifiedAuthorizations(
+  publisherDomain: string,
+  manifestAgentUrls: string[],
+): Promise<{ demoted: number }> {
+  if (manifestAgentUrls.length === 0) return { demoted: 0 };
+  const result = await query(
+    `UPDATE agent_publisher_authorizations
+        SET source = 'aao_hosted',
+            last_validated = NOW()
+      WHERE publisher_domain = $1
+        AND source = 'adagents_json'
+        AND agent_url = ANY($2::text[])`,
+    [publisherDomain.toLowerCase(), manifestAgentUrls],
+  );
+  return { demoted: result.rowCount ?? 0 };
 }

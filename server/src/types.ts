@@ -619,6 +619,20 @@ export interface HostedProperty {
   is_public: boolean;
   source_type: 'community' | 'enriched';
   review_status?: 'pending' | 'approved';
+  /**
+   * Last successful origin verification — the publisher's own
+   * /.well-known/adagents.json pointed at AAO via the spec's
+   * `authoritative_location` field. NULL when never verified or last
+   * attempt failed. When set, the corresponding
+   * agent_publisher_authorizations rows are promoted to
+   * source='adagents_json' (origin-attested) by the verifier.
+   */
+  origin_verified_at?: Date | null;
+  /**
+   * Last verification attempt timestamp regardless of result. Lets the
+   * UI render "checked recently, not yet verified" vs "never checked."
+   */
+  origin_last_checked_at?: Date | null;
   created_at: Date;
   updated_at: Date;
 }

@@ -83,6 +83,7 @@ import { aaoHostedBrandJsonUrl, aaoHostedAdagentsJsonUrl, expectedAdagentsJsonUr
 import { fetchBrandData, isBrandfetchConfigured, ENRICHMENT_CACHE_MAX_AGE_MS } from "../services/brandfetch.js";
 import { extractPublisherPropertiesFromBrandJson } from "../services/brand-json-properties.js";
 import { syncHostedPropertyToFederatedIndex } from "../services/hosted-property-sync.js";
+import { verifyHostedPropertyOrigin } from "../services/hosted-property-origin-verifier.js";
 import { PropertyCheckService } from "../services/property-check.js";
 import { PropertyCheckDatabase } from "../db/property-check-db.js";
 import { BulkPropertyCheckService } from "../services/bulk-property-check.js";
@@ -500,6 +501,49 @@ registry.registerPath({
     401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
     409: { description: "Cannot edit authoritative property", content: { "application/json": { schema: ErrorSchema } } },
     429: { description: "Rate limit exceeded", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/api/properties/hosted/{domain}/verify-origin",
+  operationId: "verifyHostedPropertyOrigin",
+  summary: "Verify AAO-hosted publisher origin",
+  description:
+    "Trigger origin verification for an AAO-hosted publisher: fetches the publisher's own `/.well-known/adagents.json` and checks for an `authoritative_location` field pointing at the AAO-hosted URL. On success, promotes `agent_publisher_authorizations` rows from `source='aao_hosted'` to `source='adagents_json'` for the manifest's authorized agents — buyers reading the registry then see them as origin-attested.\n\nRequires authentication and either AAO admin OR org-membership matching the hosted property's owner. Fail-closed on NULL ownership.\n\nFailure classification:\n- `not_found`: publisher origin returned 404 (permanent — demotes if previously verified).\n- `invalid_json` / `no_authoritative_location` / `authoritative_location_mismatch`: publisher origin returned a parseable response that doesn't satisfy the spec stub pattern (permanent — demotes).\n- `unresolvable`: DNS NXDOMAIN, private IP, or non-http scheme (permanent — demotes).\n- `transient`: 5xx / 429 / 3xx / network timeout (leaves persisted state alone, stamps `origin_last_checked_at`).",
+  tags: ["Property Resolution"],
+  security: [{ bearerAuth: [] }, { oauth2: [] }],
+  request: {
+    params: z.object({
+      domain: z.string().openapi({ example: "examplepub.com" }),
+    }),
+  },
+  responses: {
+    200: {
+      description: "Verification outcome",
+      content: {
+        "application/json": {
+          schema: z.object({
+            verified: z.boolean(),
+            reason: z.enum([
+              "authoritative_location_pointer",
+              "not_found",
+              "invalid_json",
+              "no_authoritative_location",
+              "authoritative_location_mismatch",
+              "unresolvable",
+              "transient",
+            ]),
+            checked_at: z.string(),
+            detail: z.string().optional(),
+          }),
+        },
+      },
+    },
+    400: { description: "Invalid domain", content: { "application/json": { schema: ErrorSchema } } },
+    401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
+    403: { description: "Caller does not own this hosted property (and is not an AAO admin)", content: { "application/json": { schema: ErrorSchema } } },
+    404: { description: "No hosted property for this domain", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
 
@@ -3454,6 +3498,48 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     }
   });
 
+  // ── Origin verification (AAO-hosted publishers) ────────────────
+
+  router.post("/properties/hosted/:domain/verify-origin", ...saveMiddleware, async (req, res) => {
+    try {
+      const domain = (req.params.domain || '').toLowerCase();
+      if (!isValidDomain(domain)) {
+        return res.status(400).json({ error: 'Invalid domain' });
+      }
+      const hosted = await propertyDb.getHostedPropertyByDomain(domain);
+      if (!hosted) {
+        return res.status(404).json({ error: 'No hosted property for this domain' });
+      }
+      // Org-ownership check fails CLOSED on NULL ownership. The
+      // upstream `/api/properties/save` create path can leave the row
+      // with no `workos_organization_id` (community-edit pattern), and
+      // a "fail open if NULL" check would let any authenticated caller
+      // trigger verification on a squatted/unclaimed row — promoting
+      // source labels for a domain they don't actually own. Require
+      // either an explicit org match OR admin. The broader squatting
+      // risk in the create path is a separate fix (needs DNS / well-
+      // known domain-ownership challenge before write).
+      const callerOrgId = await resolveCallerOrgId(req);
+      const isAdmin = (req.user as { isAdmin?: boolean })?.isAdmin === true;
+      if (!isAdmin) {
+        if (!hosted.workos_organization_id) {
+          return res.status(403).json({
+            error: 'Hosted property has no claimed owner — origin verification requires a claimed owner or an admin trigger',
+            domain,
+          });
+        }
+        if (hosted.workos_organization_id !== callerOrgId) {
+          return res.status(403).json({ error: 'Not authorized to verify this domain' });
+        }
+      }
+      const outcome = await verifyHostedPropertyOrigin({ hosted });
+      return res.json(outcome);
+    } catch (error) {
+      logger.error({ error }, 'Origin verification failed');
+      return res.status(500).json({ error: 'Origin verification failed' });
+    }
+  });
+
   // ── Property List Check ────────────────────────────────────────
 
   router.post("/properties/check", bulkResolveRateLimiter, async (req, res) => {
@@ -5720,6 +5806,15 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         ) as "self" | "self_invalid" | "aao_hosted" | "none",
         hosted_url: aaoHosted ? aaoHostedAdagentsJsonUrl(domain) : undefined,
         expected_url: expectedAdagentsJsonUrl(domain),
+        // Only meaningful for AAO-hosted publishers — surface the
+        // verifier's last result so callers can tell origin-attested
+        // hosting from intent-only hosting.
+        origin_verified_at: aaoHosted && hostedProperty?.origin_verified_at
+          ? hostedProperty.origin_verified_at.toISOString()
+          : null,
+        origin_last_checked_at: aaoHosted && hostedProperty?.origin_last_checked_at
+          ? hostedProperty.origin_last_checked_at.toISOString()
+          : null,
       };
 
       type ProjectedProperty = {
