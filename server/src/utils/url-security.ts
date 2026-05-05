@@ -278,7 +278,13 @@ export function buildSsrfSafeDispatcher(): Dispatcher {
  */
 export async function safeFetch(
   url: string,
-  options?: { headers?: Record<string, string>; maxRedirects?: number; method?: 'GET' | 'HEAD'; signal?: AbortSignal },
+  options?: {
+    headers?: Record<string, string>;
+    maxRedirects?: number;
+    method?: 'GET' | 'HEAD' | 'POST';
+    body?: string | Uint8Array;
+    signal?: AbortSignal;
+  },
 ): Promise<Response> {
   const parsedUrl = new URL(url);
   await validateFetchUrl(parsedUrl);
@@ -286,8 +292,19 @@ export async function safeFetch(
   const headers = options?.headers ?? {};
   const maxRedirects = options?.maxRedirects ?? 5;
   const method = options?.method ?? 'GET';
+  const body = options?.body;
   const signal = options?.signal;
   const dispatcher = buildSsrfSafeDispatcher();
+
+  // POST without a body would surprise downstream agent endpoints; reject
+  // up-front rather than emit an empty-body request.
+  if (method === 'POST' && body === undefined) {
+    throw new Error('safeFetch POST requires a body');
+  }
+  // GET/HEAD with a body is malformed per HTTP semantics; same.
+  if ((method === 'GET' || method === 'HEAD') && body !== undefined) {
+    throw new Error(`safeFetch ${method} cannot carry a body`);
+  }
 
   // The dispatcher's `lookup` re-checks the resolved IP at TCP connect time —
   // a hostile DNS server cannot rebind to a private IP between validation and dial.
@@ -298,6 +315,7 @@ export async function safeFetch(
   let response = await fetch(sanitizeUrl(parsedUrl), {
     method,
     headers,
+    body,
     redirect: 'manual',
     signal,
     // Node fetch accepts undici dispatcher; types aren't on the standard RequestInit.
@@ -309,9 +327,17 @@ export async function safeFetch(
     if (!location) throw new Error('Redirect with no Location header');
     // Pre-flight check on the redirect hop, then dial through the same SSRF-safe dispatcher.
     const redirectUrl = await validateRedirectTarget(location, parsedUrl);
+    // Per RFC 7231 §6.4.4 a 303 ALWAYS rewrites to GET; for 301/302 most
+    // clients also rewrite for non-idempotent verbs even though the spec
+    // only mandates user confirmation. We rewrite POST→GET on 301/302/303
+    // and drop the body, matching axios's `redirect: 'follow'` behaviour
+    // and node-fetch's defaults. 307/308 preserve the method.
+    const redirectMethod = (response.status === 307 || response.status === 308) ? method : (method === 'POST' ? 'GET' : method);
+    const redirectBody = redirectMethod === method ? body : undefined;
     response = await fetch(sanitizeUrl(redirectUrl), {
-      method,
+      method: redirectMethod,
       headers,
+      body: redirectBody,
       redirect: 'manual',
       signal,
       dispatcher,
@@ -319,4 +345,83 @@ export async function safeFetch(
   }
 
   return response;
+}
+
+/**
+ * Convenience wrapper around `safeFetch` that returns an axios-shaped
+ * `{status, data, headers}` triple. Used by call sites being migrated
+ * off `axios.get` — preserves their parsing semantics (response data
+ * as `Buffer` so callers can decode UTF-8 themselves regardless of the
+ * server-declared charset, matching the previous `responseType:
+ * 'arraybuffer'` behaviour) without forcing each one to also rewrite
+ * its post-fetch logic.
+ *
+ * `validateStatus` is the axios escape hatch for "don't throw on
+ * non-2xx" — `safeFetch` already doesn't throw on non-2xx, so this
+ * helper just hands the status back. Callers that previously branched
+ * on `response.status` continue to work unchanged.
+ *
+ * Body is bounded by `maxResponseBytes` (default 10 MB to comfortably
+ * cover well-known files; callers that download larger content should
+ * stream from `safeFetch` directly).
+ */
+export interface SafeFetchAxiosLike<T = Buffer> {
+  status: number;
+  data: T;
+  headers: Record<string, string>;
+}
+
+const DEFAULT_MAX_RESPONSE_BYTES = 10 * 1024 * 1024;
+
+export async function safeFetchAxiosLike(
+  url: string,
+  options?: {
+    method?: 'GET' | 'HEAD' | 'POST';
+    headers?: Record<string, string>;
+    body?: string | Uint8Array;
+    timeoutMs?: number;
+    maxResponseBytes?: number;
+    maxRedirects?: number;
+  },
+): Promise<SafeFetchAxiosLike<Buffer>> {
+  const controller = new AbortController();
+  const timeoutMs = options?.timeoutMs ?? 10_000;
+  const cap = options?.maxResponseBytes ?? DEFAULT_MAX_RESPONSE_BYTES;
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await safeFetch(url, {
+      method: options?.method,
+      headers: options?.headers,
+      body: options?.body,
+      maxRedirects: options?.maxRedirects,
+      signal: controller.signal,
+    });
+
+    // Stream-read up to `cap` bytes so a large response can't OOM the
+    // process. Throws when the body exceeds cap so the caller sees an
+    // error rather than a silently truncated body.
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    const reader = res.body?.getReader();
+    if (reader) {
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        total += value.byteLength;
+        if (total > cap) {
+          await reader.cancel();
+          throw new Error(`Response exceeded ${cap} bytes`);
+        }
+        chunks.push(value);
+      }
+    }
+    const data = Buffer.concat(chunks);
+
+    const headers: Record<string, string> = {};
+    res.headers.forEach((v, k) => { headers[k.toLowerCase()] = v; });
+
+    return { status: res.status, data, headers };
+  } finally {
+    clearTimeout(timer);
+  }
 }

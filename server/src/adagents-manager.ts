@@ -1,6 +1,6 @@
-import axios from 'axios';
 import { PropertyDefinition, PlacementDefinition } from './types.js';
 import { AAO_UA_VALIDATOR } from './config/user-agents.js';
+import { safeFetchAxiosLike } from './utils/url-security.js';
 
 export interface ValidationError {
   field: string;
@@ -170,16 +170,18 @@ export class AdAgentsManager {
     };
 
     try {
-      // Fetch the adagents.json file
-      // CodeQL: URL is constructed from domain input, validated to https protocol above
-      const response = await axios.get(url, { // lgtm[js/request-forgery]
-        timeout: 10000,
+      // Fetch the adagents.json file via safeFetch — connect-time DNS-
+      // rebind defense + private-IP / loopback / link-local block via
+      // the SSRF-safe dispatcher in utils/url-security.ts. The previous
+      // axios call was suppressed with `lgtm[js/request-forgery]` but
+      // had none of those guarantees once the publisher endpoint became
+      // unauthenticated and reachable on view (see PR #4128 / issue #4129).
+      const response = await safeFetchAxiosLike(url, {
+        timeoutMs: 10000,
         headers: {
           'Accept': 'application/json',
-          'User-Agent': AAO_UA_VALIDATOR
+          'User-Agent': AAO_UA_VALIDATOR,
         },
-        validateStatus: () => true, // Don't throw on non-2xx status codes
-        responseType: 'arraybuffer',
       });
 
       result.status_code = response.status;
@@ -238,32 +240,21 @@ export class AdAgentsManager {
       result.valid = result.errors.length === 0;
 
     } catch (error) {
-      if (axios.isAxiosError(error)) {
-        if (error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED') {
-          result.errors.push({
-            field: 'connection',
-            message: `Cannot connect to ${normalizedDomain}`,
-            severity: 'error'
-          });
-        } else if (error.code === 'ECONNABORTED') {
-          result.errors.push({
-            field: 'timeout',
-            message: 'Request timed out after 10 seconds',
-            severity: 'error'
-          });
-        } else {
-          result.errors.push({
-            field: 'network',
-            message: error.message,
-            severity: 'error'
-          });
-        }
+      // safeFetch surfaces AbortError on timeout, TypeError on
+      // network failure, and a thrown `Error` for SSRF gate rejection
+      // (private IP / loopback / link-local). Classify into the same
+      // user-visible buckets the previous axios-shaped code emitted.
+      const err = error as Error & { name?: string; cause?: { code?: string } };
+      const code = err.cause?.code;
+      const msg = err.message ?? '';
+      if (err.name === 'AbortError' || /aborted|timeout/i.test(msg)) {
+        result.errors.push({ field: 'timeout', message: 'Request timed out after 10 seconds', severity: 'error' });
+      } else if (code === 'ENOTFOUND' || code === 'ECONNREFUSED' || /ENOTFOUND|ECONNREFUSED|EAI_/i.test(msg)) {
+        result.errors.push({ field: 'connection', message: `Cannot connect to ${normalizedDomain}`, severity: 'error' });
+      } else if (msg) {
+        result.errors.push({ field: 'network', message: msg, severity: 'error' });
       } else {
-        result.errors.push({
-          field: 'unknown',
-          message: 'Unknown error occurred',
-          severity: 'error'
-        });
+        result.errors.push({ field: 'unknown', message: 'Unknown error occurred', severity: 'error' });
       }
     }
 
@@ -310,15 +301,16 @@ export class AdAgentsManager {
         return null;
       }
 
-      // Fetch the authoritative file
-      const response = await axios.get(url, {
-        timeout: 10000,
+      // Fetch the authoritative file. safeFetch follows redirects with
+      // per-hop SSRF validation, which matters more here than on the
+      // /.well-known fetch — the authoritative_location URL was named
+      // by the publisher and could redirect anywhere.
+      const response = await safeFetchAxiosLike(url, {
+        timeoutMs: 10000,
         headers: {
           'Accept': 'application/json',
-          'User-Agent': AAO_UA_VALIDATOR
+          'User-Agent': AAO_UA_VALIDATOR,
         },
-        validateStatus: () => true,
-        responseType: 'arraybuffer',
       });
 
       if (response.status !== 200) {
@@ -359,19 +351,12 @@ export class AdAgentsManager {
 
       return authData as AdAgentsJsonInline;
     } catch (error) {
-      if (axios.isAxiosError(error)) {
-        result.errors.push({
-          field: 'authoritative_location',
-          message: `Failed to fetch authoritative file: ${error.message}`,
-          severity: 'error'
-        });
-      } else {
-        result.errors.push({
-          field: 'authoritative_location',
-          message: 'Unknown error fetching authoritative file',
-          severity: 'error'
-        });
-      }
+      const msg = (error as Error)?.message;
+      result.errors.push({
+        field: 'authoritative_location',
+        message: msg ? `Failed to fetch authoritative file: ${msg}` : 'Unknown error fetching authoritative file',
+        severity: 'error',
+      });
       return null;
     }
   }
@@ -1225,29 +1210,38 @@ export class AdAgentsManager {
 
     for (const endpoint of cardEndpoints) {
       try {
-        // CodeQL: agentUrl is from DB registry, used for protocol validation
-        const response = await axios.get(endpoint, { // lgtm[js/request-forgery]
-          timeout: 3000, // Keep short for responsive UX
+        // Agent URL comes from the DB registry but agent operators
+        // control DNS for their hostname; safeFetch's connect-time
+        // dispatcher closes the rebind window.
+        const response = await safeFetchAxiosLike(endpoint, {
+          timeoutMs: 3000, // Keep short for responsive UX
           headers: {
             'Accept': 'application/json',
-            'User-Agent': AAO_UA_VALIDATOR
+            'User-Agent': AAO_UA_VALIDATOR,
           },
-          validateStatus: () => true
         });
 
         result.response_time_ms = Date.now() - startTime;
         result.status_code = response.status;
 
         if (response.status === 200) {
-          result.card_data = response.data;
+          // Decode the buffer as UTF-8 and parse as JSON. axios used
+          // to do this for us via content-type sniffing; safeFetch
+          // returns raw bytes so the parse + content-type check are
+          // explicit.
+          const contentType = response.headers['content-type'] ?? '';
+          const isJsonContentType = contentType.includes('application/json');
+          let parsed: unknown = null;
+          try {
+            parsed = JSON.parse(Buffer.from(response.data).toString('utf-8'));
+          } catch {
+            // parsed stays null; falls through to the "not JSON" branch
+          }
+          result.card_data = parsed;
           result.card_endpoint = endpoint;
 
-          // Check content-type header
-          const contentType = String(response.headers['content-type'] ?? '');
-          const isJsonContentType = contentType.includes('application/json');
-
           // Basic validation of card structure
-          if (typeof response.data === 'object' && response.data !== null) {
+          if (typeof parsed === 'object' && parsed !== null) {
             if (!isJsonContentType) {
               result.errors.push(`Endpoint returned JSON data but with content-type: ${contentType}. Should be application/json`);
               result.valid = false;
@@ -1288,15 +1282,15 @@ export class AdAgentsManager {
     // First, do a preflight HTTP check to detect 401 errors
     // The @adcp/sdk library wraps 401s in generic errors, so we need to detect them directly
     try {
-      // CodeQL: agentUrl is from DB registry, used for protocol validation
-      const preflightResponse = await axios.post(agentUrl, // lgtm[js/request-forgery]
-        { jsonrpc: '2.0', method: 'initialize', params: {}, id: 1 },
-        {
-          timeout: 3000,
-          headers: { 'Content-Type': 'application/json' },
-          validateStatus: () => true // Accept all status codes
-        }
-      );
+      // safeFetch with method=POST + body — same SSRF defenses as the
+      // GET path, plus method/body rewriting on redirect (POST→GET on
+      // 301/302/303 with body dropped, preserved on 307/308).
+      const preflightResponse = await safeFetchAxiosLike(agentUrl, {
+        method: 'POST',
+        timeoutMs: 3000,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', method: 'initialize', params: {}, id: 1 }),
+      });
 
       if (preflightResponse.status === 401) {
         result.response_time_ms = Date.now() - startTime;
