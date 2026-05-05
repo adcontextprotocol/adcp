@@ -18,7 +18,7 @@ import { query } from "../db/client.js";
 import { resolvePrimaryOrganization } from "../db/users-db.js";
 import * as manifestRefsDb from "../db/manifest-refs-db.js";
 import { isUuid } from "../utils/uuid.js";
-import { bulkResolveRateLimiter, brandCreationRateLimiter, storyboardEvalRateLimiter, storyboardStepRateLimiter, agentReadRateLimiter } from "../middleware/rate-limit.js";
+import { bulkResolveRateLimiter, brandCreationRateLimiter, storyboardEvalRateLimiter, storyboardStepRateLimiter, agentReadRateLimiter, registryPublisherRateLimiter, registryReadRateLimiter } from "../middleware/rate-limit.js";
 import { listStoryboards, getStoryboard, getTestKitForStoryboard } from "../services/storyboards.js";
 import {
   comply,
@@ -5623,7 +5623,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
 
   // ── Publishers ──────────────────────────────────────────────────
 
-  router.get("/registry/publishers", async (_req, res) => {
+  router.get("/registry/publishers", registryReadRateLimiter, async (_req, res) => {
     try {
       const federatedIndex = crawler.getFederatedIndex();
       const publishers = await federatedIndex.listAllPublishers();
@@ -5647,7 +5647,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
 
   // ── Lookups & Authorization ───────────────────────────────────
 
-  router.get("/registry/operator", optAuth, async (req, res) => {
+  router.get("/registry/operator", registryReadRateLimiter, optAuth, async (req, res) => {
     const rawDomain = req.query.domain as string;
     if (!rawDomain) {
       return res.status(400).json({ error: "Missing required query param: domain" });
@@ -5711,7 +5711,10 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     }
   });
 
-  router.get("/registry/publisher", agentReadRateLimiter, async (req, res) => {
+  // 20 req/min/IP — tighter than the generic agentReadRateLimiter (240/min)
+  // because each request fans out to up to 50 DB queries (per-agent rollup
+  // cap from #4106). Matches bulkResolveRateLimiter's worst-case ceiling.
+  router.get("/registry/publisher", registryPublisherRateLimiter, async (req, res) => {
     const rawDomain = req.query.domain as string;
     if (!rawDomain) {
       return res.status(400).json({ error: "Missing required query param: domain" });
@@ -5968,7 +5971,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     }
   });
 
-  router.get("/registry/publisher/authorization", async (req, res) => {
+  router.get("/registry/publisher/authorization", registryReadRateLimiter, async (req, res) => {
     const rawDomain = req.query.domain as string;
     const rawAgent = req.query.agent as string;
     if (!rawDomain || !rawAgent) {
@@ -6035,7 +6038,10 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     }
   });
 
-  router.get("/registry/lookup/domain/:domain", async (req, res) => {
+  router.get("/registry/lookup/domain/:domain", registryReadRateLimiter, async (req, res) => {
+    // Deprecation headers (RFC 8594) — this endpoint is superseded by
+    // /api/registry/publisher per #4115. Kept here through the rate
+    // limit so deprecated callers still get a 429 if they hammer it.
     res.setHeader("Deprecation", "true");
     res.setHeader("Link", `</api/registry/publisher?domain=${encodeURIComponent(req.params.domain)}>; rel="successor-version"`);
     try {
@@ -6049,7 +6055,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     }
   });
 
-  router.get("/registry/lookup/property", async (req, res) => {
+  router.get("/registry/lookup/property", registryReadRateLimiter, async (req, res) => {
     const { type, value } = req.query;
 
     if (!type || !value) {
@@ -6066,7 +6072,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     }
   });
 
-  router.get("/registry/lookup/agent/:agentUrl/domains", async (req, res) => {
+  router.get("/registry/lookup/agent/:agentUrl/domains", registryReadRateLimiter, async (req, res) => {
     try {
       const federatedIndex = crawler.getFederatedIndex();
       const agentUrl = decodeURIComponent(req.params.agentUrl);

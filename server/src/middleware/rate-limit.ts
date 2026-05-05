@@ -494,6 +494,67 @@ export const contentFetchUrlRateLimiter = rateLimit({
 });
 
 /**
+ * Rate limiter for the unauthenticated /api/registry/publisher endpoint.
+ * Tighter than the generic registry read limit because each request fans out
+ * to up to 50 DB queries (per-agent rollup cap from PR #4106). At 20 req/min
+ * the worst-case load per IP is ~1,000 DB queries/min — comparable to
+ * bulkResolveRateLimiter (20 × 100 domains).
+ */
+export const registryPublisherRateLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: new CachedPostgresStore('reg-pub:'),
+  keyGenerator: generateKey,
+  validate: { keyGeneratorIpFallback: false },
+  handler: (req: Request, res: Response) => {
+    logger.warn({
+      ip: req.ip,
+      path: req.path,
+    }, 'Rate limit exceeded for registry publisher lookup');
+
+    // Static retryAfter is intentional here — callers are external scripts,
+    // not a UI countdown, so the full window ceiling is a sufficient hint.
+    res.status(429).json({
+      error: 'Too many requests',
+      message: 'Registry publisher rate limit exceeded. Please try again later.',
+      retryAfter: 60,
+    });
+  },
+});
+
+/**
+ * Rate limiter for unauthenticated registry read endpoints other than
+ * /api/registry/publisher: /api/registry/publishers, /api/registry/operator,
+ * /api/registry/publisher/authorization, and /api/registry/lookup/*. These
+ * issue a small fixed number of DB queries per call, so a more generous
+ * ceiling is appropriate: 60 req/min while still bounding anonymous
+ * enumeration.
+ */
+export const registryReadRateLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: new CachedPostgresStore('reg-read:'),
+  keyGenerator: generateKey,
+  validate: { keyGeneratorIpFallback: false },
+  handler: (req: Request, res: Response) => {
+    logger.warn({
+      ip: req.ip,
+      path: req.path,
+    }, 'Rate limit exceeded for registry read');
+
+    res.status(429).json({
+      error: 'Too many requests',
+      message: 'Registry lookup rate limit exceeded. Please try again later.',
+      retryAfter: 60,
+    });
+  },
+});
+
+/**
  * Rate limiter for logo uploads
  * Limits: 10 uploads per hour per user
  */
