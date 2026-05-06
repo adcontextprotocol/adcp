@@ -37,14 +37,14 @@ export const All: Story = () => (
           <RadioGroupItem value="free" id="plan-free" />
           <div className="grid gap-0.5">
             <Label htmlFor="plan-free">Free</Label>
-            <p className="text-xs text-muted-foreground">Up to 3 projects, community support.</p>
+            <p className="text-xs text-body-foreground">Up to 3 projects, community support.</p>
           </div>
         </div>
         <div className="flex items-start gap-3">
           <RadioGroupItem value="pro" id="plan-pro" />
           <div className="grid gap-0.5">
             <Label htmlFor="plan-pro">Pro</Label>
-            <p className="text-xs text-muted-foreground">Unlimited projects, email support.</p>
+            <p className="text-xs text-body-foreground">Unlimited projects, email support.</p>
           </div>
         </div>
       </RadioGroup>

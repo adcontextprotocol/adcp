@@ -29,7 +29,7 @@ export const All: Story = () => (
           <CardDescription>Short supporting text describing this card.</CardDescription>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-body-foreground">
             The card body holds the main content. Use for forms, lists, summaries, or whatever the
             card represents.
           </p>
@@ -54,9 +54,9 @@ export const All: Story = () => (
         </CardHeader>
         <CardContent>
           <dl className="grid grid-cols-2 gap-2 text-sm">
-            <dt className="text-muted-foreground">Plan</dt>
+            <dt className="text-body-foreground">Plan</dt>
             <dd>Pro</dd>
-            <dt className="text-muted-foreground">Renewal</dt>
+            <dt className="text-body-foreground">Renewal</dt>
             <dd>Mar 12, 2026</dd>
           </dl>
         </CardContent>

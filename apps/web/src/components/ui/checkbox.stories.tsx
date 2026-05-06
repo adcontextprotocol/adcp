@@ -40,7 +40,7 @@ export const All: Story = () => (
         <Checkbox id="terms" />
         <div className="grid gap-1.5 leading-none">
           <Label htmlFor="terms">Accept terms and conditions</Label>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-body-foreground">
             You agree to our Terms of Service and Privacy Policy.
           </p>
         </div>
