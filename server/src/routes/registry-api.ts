@@ -5797,6 +5797,11 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       // share the same fire-stamp — otherwise `||` short-circuits past
       // shouldAutoCrawl's side-effect and the next request would re-fire
       // immediately, pinning a popular publisher's crawl rate to QPS.
+      // The fire-stamp is intentionally consumed BEFORE the SSRF gate
+      // below: a domain that fails validateCrawlDomain (private IP,
+      // unresolvable host) still occupies the debounce slot for ~5min,
+      // which is the desired DoS-resistance — an attacker probing
+      // hosts cannot bypass the debounce by sending stale-row signals.
       const debouncePassed = shouldAutoCrawl(domain);
       const staleBypass = !debouncePassed && brandRowStale;
       if (staleBypass) markAutoCrawlFired(domain);
@@ -5893,24 +5898,30 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         delegation_type?: "direct" | "delegated" | "ad_network";
       };
 
-      // Provenance: when the publisher's adagents.json validates, every
-      // federated-index row for this domain came either from that file
-      // or from a crawl that subsequently confirmed it — surface
-      // `adagents_json` so the page reads "from your adagents.json"
-      // instead of the misleading "found by crawler" label that the old
-      // hardcoded `discovered` produced. Without a valid adagents.json
-      // the rows can only come from sales-agent claims or external
-      // discovery, which is honestly `discovered`.
-      const indexedSource: "adagents_json" | "discovered" =
-        adagentsValid === true ? "adagents_json" : "discovered";
-      let projectedProperties: ProjectedProperty[] = properties.map(p => ({
-        id: p.property_id,
-        type: p.property_type,
-        name: p.name,
-        identifiers: p.identifiers,
-        tags: p.tags,
-        source: indexedSource,
-      }));
+      // Provenance: surface the underlying `source_type` per row rather
+      // than synthesizing a single label from the publisher's overall
+      // adagents-validity. `discovered_properties` is written by two
+      // paths today: the crawler tags rows `source_type='adagents_json'`,
+      // and `hosted-property-sync` tags AAO-hosted publisher manifests
+      // `source_type='aao_hosted'`. Both are publisher-attested and map
+      // to the schema's `adagents_json` value (the page reads "from your
+      // adagents.json"). Anything without a recognized source_type
+      // falls back to `discovered` — crawler-derived data without a
+      // first-party provenance claim.
+      let projectedProperties: ProjectedProperty[] = properties.map(p => {
+        const source: "adagents_json" | "discovered" =
+          p.source_type === "adagents_json" || p.source_type === "aao_hosted"
+            ? "adagents_json"
+            : "discovered";
+        return {
+          id: p.property_id,
+          type: p.property_type,
+          name: p.name,
+          identifiers: p.identifiers,
+          tags: p.tags,
+          source,
+        };
+      });
 
       // Fallback: if the federated index has nothing for this domain, hydrate
       // from the publisher's brand.json so that publishers who already

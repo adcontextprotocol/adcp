@@ -449,4 +449,26 @@ describe('Registry publisher endpoint — brand.json hydration', () => {
     expect(res.body.properties).toHaveLength(1);
     expect(res.body.properties[0].source).toBe('adagents_json');
   });
+
+  it('tags aao_hosted federated-index properties as adagents_json (publisher-attested via AAO hosting)', async () => {
+    // hosted-property-sync writes discovered_properties rows with
+    // source_type='aao_hosted' for publishers using AAO hosting. Both
+    // 'adagents_json' and 'aao_hosted' are publisher-attested and
+    // collapse to the schema's `adagents_json` value at the API
+    // surface — neither should bleed through as the schema-level
+    // `discovered` (which means "crawler-derived without first-party
+    // attestation").
+    const pub = `props-aao-hosted-${Date.now()}.registry-baseline.example`;
+    await pool.query(
+      `INSERT INTO discovered_properties
+         (publisher_domain, property_type, name, identifiers, tags, source_type)
+       VALUES ($1, 'website', 'Main site', $2::jsonb, ARRAY[]::text[], 'aao_hosted')`,
+      [pub, JSON.stringify([{ type: 'domain', value: pub }])],
+    );
+
+    const res = await request(app).get(`/api/registry/publisher?domain=${encodeURIComponent(pub)}`);
+    expect(res.status).toBe(200);
+    expect(res.body.properties).toHaveLength(1);
+    expect(res.body.properties[0].source).toBe('adagents_json');
+  });
 });

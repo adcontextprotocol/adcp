@@ -685,6 +685,7 @@ export class FederatedIndexDatabase {
       `WITH unioned AS (
          SELECT id, property_id, publisher_domain, property_type, name,
                 identifiers, tags, discovered_at, last_validated, expires_at,
+                source_type,
                 0 AS src_priority
            FROM discovered_properties
           WHERE publisher_domain = $1
@@ -709,6 +710,10 @@ export class FederatedIndexDatabase {
            cp.created_at AS discovered_at,
            p.last_validated AS last_validated,
            p.expires_at AS expires_at,
+           -- Catalog rows here come from publishers.adagents_json JSONB
+           -- (see WHERE p.source_type = 'adagents_json' below). They are
+           -- by construction adagents_json-sourced.
+           'adagents_json'::text AS source_type,
            1 AS src_priority
            FROM publishers p
           CROSS JOIN LATERAL jsonb_array_elements(
@@ -726,7 +731,8 @@ export class FederatedIndexDatabase {
        ), deduped AS (
          SELECT DISTINCT ON (publisher_domain, name, property_type)
                 id, property_id, publisher_domain, property_type, name,
-                identifiers, tags, discovered_at, last_validated, expires_at
+                identifiers, tags, discovered_at, last_validated, expires_at,
+                source_type
            FROM unioned
           ORDER BY publisher_domain, name, property_type, src_priority
        )
