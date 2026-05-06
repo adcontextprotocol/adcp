@@ -1,0 +1,287 @@
+id: media_buy_seller/vendor_metric_accountability
+version: "1.0.0"
+title: "End-to-end vendor-metric accountability: declaration → filter → emission"
+category: media_buy_seller
+summary: "Buyer discovers products that declare a vendor metric, creates a media buy, and verifies vendor-metric values appear in the delivery report."
+track: reporting
+required_tools:
+  - get_products
+  - create_media_buy
+  - get_media_buy_delivery
+  - comply_test_controller
+
+narrative: |
+  Vendor-defined metrics (attention scores, emissions, panel demographics) must
+  flow through the full media buy lifecycle — declared at discovery, carried
+  through the buy, and emitted in delivery reporting. AdCP supports this in
+  three pieces:
+
+    1. `reporting_capabilities.vendor_metrics` on the product — each entry is a
+       pointer `{ vendor, metric_id }` into the vendor's metric catalog (category,
+       methodology, and documentation live at the vendor's `brand.json`).
+
+    2. `filters.required_vendor_metrics` on `get_products` — buyer declares which
+       vendor metric it needs. Sellers MUST silently exclude products that don't
+       match (filter-not-fail; do not return an error). At least one of `vendor`
+       or `metric_id` must be pinned per entry.
+
+    3. `by_package[].vendor_metric_values` on `get_media_buy_delivery` — reported
+       values for each declared vendor metric. One row per `(vendor.domain,
+       vendor.brand_id, metric_id)` per reporting period. Sellers MUST
+       de-duplicate before emission.
+
+  This storyboard exercises that contract end to end. It uses
+  comply_test_controller to seed a product with vendor metrics declared and to
+  inject delivery data with vendor_metric_values, then asserts the schema-level
+  contract on the delivery response.
+
+  Item 3 of the originating issue (#3501) — whether vendor-metric emission
+  failures need a dedicated hint kind — is deferred to a follow-up adcp-client PR.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+  examples:
+    - "Any media buy seller that declares vendor_metrics on its products"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The seller supports comply_test_controller and can seed products with
+    `reporting_capabilities.vendor_metrics`. The seeded product must appear in
+    `get_products` responses when filtered by the declared vendor.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "display_premium_vendor_metrics"
+      delivery_type: "guaranteed"
+      channels: ["display"]
+      format_ids:
+        - id: "display_300x250"
+      reporting_capabilities:
+        available_metrics:
+          - impressions
+          - clicks
+          - spend
+        vendor_metrics:
+          - vendor:
+              domain: "attentionvendor.example"
+            metric_id: "attention_units"
+  pricing_options:
+    - product_id: "display_premium_vendor_metrics"
+      pricing_option_id: "cpm_standard_vendor"
+      pricing_model: "cpm"
+      currency: "USD"
+      fixed_price: 12.0
+
+phases:
+  - id: discover_with_required_vendor_metrics
+    title: "Discover products that declare an attention vendor metric"
+    narrative: |
+      The buyer needs display inventory that declares attention measurement from
+      a specific vendor. They pass `required_vendor_metrics: [{ vendor: { domain:
+      "attentionvendor.example" } }]` in filters. The seller MUST silently exclude
+      products whose `reporting_capabilities.vendor_metrics` doesn't satisfy the
+      filter — same filter-not-fail convention as `required_metrics`.
+    steps:
+      - id: sync_accounts
+        title: "Establish account"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        expected: |
+          Return the account with account_id and status active.
+        sample_request:
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+              billing: "operator"
+              payment_terms: "net_30"
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_vendor_metric_accountability_setup_sync_accounts"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-accounts-response.json schema"
+          - check: field_present
+            path: "accounts[0].account_id"
+            description: "Account has a platform-assigned ID"
+
+      - id: get_products_required_vendor_metrics
+        title: "Discover with required_vendor_metrics filter"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: full_sales_flow
+        stateful: false
+        expected: |
+          Return only products whose reporting_capabilities.vendor_metrics
+          includes an entry for vendor domain "attentionvendor.example". Products
+          that don't declare this vendor are silently excluded — the seller does
+          NOT return an error for unmet vendor metric requirements.
+        sample_request:
+          buying_mode: "brief"
+          brief: "Display inventory with attention measurement from attentionvendor."
+          filters:
+            channels: ["display"]
+            required_vendor_metrics:
+              - vendor:
+                  domain: "attentionvendor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+        context_outputs:
+          - path: "products[0].product_id"
+            key: "product_id"
+          - path: "products[0].pricing_options[0].pricing_option_id"
+            key: "pricing_option_id"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_present
+            path: "products[0].product_id"
+            description: "At least one product matched the required_vendor_metrics filter"
+          - check: field_present
+            path: "products[0].reporting_capabilities.vendor_metrics"
+            description: "Matched product declares vendor_metrics in reporting_capabilities"
+          - check: field_present
+            path: "products[0].reporting_capabilities.vendor_metrics[0].vendor.domain"
+            description: "Each declared vendor metric entry carries a vendor domain"
+          - check: field_present
+            path: "products[0].reporting_capabilities.vendor_metrics[0].metric_id"
+            description: "Each declared vendor metric entry carries a metric_id"
+
+  - id: create_media_buy
+    title: "Commit the media buy on the matched product"
+    narrative: |
+      The buyer commits a media buy on the vendor-metric-capable product. The
+      product's `vendor_metrics` declaration carries forward as the vendor
+      reporting contract for the resulting buy — no additional field is required
+      on `create_media_buy` itself.
+    steps:
+      - id: create_media_buy
+        title: "Create media buy"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: create_media_buy
+        stateful: true
+        expected: |
+          The buy succeeds. The product's vendor_metrics declaration carries
+          forward as the vendor reporting contract — no additional field is
+          required on the buy itself.
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          start_time: "2026-05-01T00:00:00Z"
+          end_time: "2026-05-31T23:59:59Z"
+          packages:
+            - product_id: "$context.product_id"
+              pricing_option_id: "$context.pricing_option_id"
+              budget: 12000
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_vendor_metric_accountability_create"
+        context_outputs:
+          - path: "media_buy_id"
+            key: "media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Seller returns a media_buy_id"
+
+  - id: simulate_and_validate_vendor_metrics
+    title: "Simulate delivery with vendor-metric values and validate emission"
+    narrative: |
+      Inject simulated delivery via the test controller, including
+      vendor_metric_values, then call get_media_buy_delivery and check that
+      `by_package[].vendor_metric_values` carries the injected entries.
+
+      The semantic uniqueness key for each vendor metric row is
+      `(vendor.domain, vendor.brand_id, metric_id)`. Since brand_id is optional
+      in BrandRef, the operative key for single-brand vendors is
+      `(vendor.domain, metric_id)`. Sellers MUST NOT emit the same
+      `(vendor, metric_id)` pair twice in a single delivery report.
+    steps:
+      - id: simulate_delivery_with_vendor_metrics
+        title: "Inject simulated delivery with vendor_metric_values"
+        task: comply_test_controller
+        requires_tool: comply_test_controller
+        stateful: true
+        expected: |
+          The test controller acknowledges the simulated delivery data including
+          the vendor_metric_values.
+        sample_request:
+          scenario: "simulate_delivery"
+          params:
+            media_buy_id: "$context.media_buy_id"
+            impressions: 80000
+            reported_spend:
+              amount: 960.00
+              currency: "USD"
+            vendor_metric_values:
+              - vendor:
+                  domain: "attentionvendor.example"
+                metric_id: "attention_units"
+                value: 4.2
+                unit: "score"
+                measurable_impressions: 72000
+        validations:
+          - check: field_value
+            path: "success"
+            allowed_values: [true]
+            description: "Delivery simulation succeeds"
+
+      - id: get_delivery_with_vendor_metrics
+        title: "Get delivery report and assert vendor_metric_values are present"
+        task: get_media_buy_delivery
+        schema_ref: "media-buy/get-media-buy-delivery-request.json"
+        response_schema_ref: "media-buy/get-media-buy-delivery-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buy_delivery"
+        comply_scenario: reporting_flow
+        stateful: true
+        expected: |
+          Return delivery metrics with vendor_metric_values populated in
+          by_package[0]. The entry must carry vendor.domain, metric_id, and
+          value matching the injected data. measurable_impressions is the
+          coverage denominator — buyers compute coverage rate as
+          measurable_impressions / impressions.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_ids:
+            - "$context.media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buy-delivery-response.json schema"
+          - check: field_present
+            path: "media_buy_deliveries[0].by_package[0].vendor_metric_values"
+            description: "by_package[0] includes vendor_metric_values — vendor metric emission contract honored"
+          - check: field_present
+            path: "media_buy_deliveries[0].by_package[0].vendor_metric_values[0].vendor.domain"
+            description: "Each vendor_metric_value entry carries a vendor domain"
+          - check: field_present
+            path: "media_buy_deliveries[0].by_package[0].vendor_metric_values[0].metric_id"
+            description: "Each vendor_metric_value entry carries a metric_id"
+          - check: field_present
+            path: "media_buy_deliveries[0].by_package[0].vendor_metric_values[0].value"
+            description: "Each vendor_metric_value entry carries a value"
+          - check: field_present
+            path: "media_buy_deliveries[0].by_package[0].vendor_metric_values[0].measurable_impressions"
+            description: "Coverage denominator is present — buyers can compute vendor measurement coverage rate"

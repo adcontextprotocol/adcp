@@ -1,0 +1,98 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.0/core/error.json",
+  "title": "Error",
+  "description": "Standard error structure for task-specific errors and warnings",
+  "type": "object",
+  "properties": {
+    "code": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "description": "Error code for programmatic handling. Standard codes are defined in error-code.json and enable autonomous agent recovery. Sellers MAY use codes not in the standard vocabulary for platform-specific errors; agents MUST handle unknown codes gracefully by falling back to the recovery classification."
+    },
+    "message": {
+      "type": "string",
+      "description": "Human-readable error message"
+    },
+    "field": {
+      "type": "string",
+      "description": "Field path associated with the error in JSONPath-lite format (e.g., 'packages[0].targeting'). When `issues[]` is also present, sellers MUST set this to `issues[0].pointer` translated from RFC 6901 to JSONPath-lite (e.g., '/packages/0/targeting' → 'packages[0].targeting') so pre-3.1 consumers reading `field` only get deterministic behavior. Will be deprecated in a future major version in favor of `issues[].pointer`."
+    },
+    "suggestion": {
+      "type": "string",
+      "description": "Suggested fix for the error"
+    },
+    "retry_after": {
+      "type": "number",
+      "description": "Seconds to wait before retrying the operation. Sellers MUST return values between 1 and 3600. Clients MUST clamp values outside this range.",
+      "minimum": 1,
+      "maximum": 3600
+    },
+    "issues": {
+      "type": "array",
+      "description": "Structured list of validation failures. Primary use is `VALIDATION_ERROR`, where multi-field rejections are common and `field` (singular) cannot carry the full pointer map. MAY appear on other error codes that reject multiple fields at once. When `issues` is present, sellers MUST also populate `field` from `issues[0]` for backward compatibility with pre-3.1 consumers that read `field` only — translating the RFC 6901 `pointer` format to the JSONPath-lite format `field` uses (e.g., `/packages/0/targeting` → `packages[0].targeting`). MUST (not SHOULD) so consumers reading `field` get deterministic behavior across sellers — the cost is one line of dual-write per seller; the cost of SHOULD is a long tail of seller-A-vs-seller-B inconsistency. Future major versions will deprecate `field` in favor of `issues[].pointer`.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "pointer": {
+            "type": "string",
+            "description": "RFC 6901 JSON Pointer to the offending field in the request payload (e.g., '/packages/0/targeting/geo_countries/2'). Format chosen to match Ajv's native validation output (`instancePath`); standardized and unambiguous on keys containing `/` or `~`. NOTE: this differs from the legacy top-level `field` which uses JSONPath-lite (`packages[0].targeting.geo_countries[2]`). When sellers populate `field` from `issues[0].pointer` for backward compatibility (see `field` description), they MUST translate the format — `/packages/0/x` → `packages[0].x`. Future major versions will deprecate `field` in favor of `issues[].pointer`."
+          },
+          "message": {
+            "type": "string",
+            "description": "Human-readable description of why this specific field was rejected."
+          },
+          "keyword": {
+            "type": "string",
+            "description": "Schema keyword that rejected the payload, drawn from the JSON Schema vocabulary (e.g., 'required', 'type', 'format', 'enum', 'pattern', 'minimum', 'maxLength'). Matches the keyword names emitted by JSON Schema validators (Ajv, jsonschema, etc.) so agents can pattern-match on rejection class without parsing message text. Implementers SHOULD use the validator's native keyword name; do not invent custom values here."
+          },
+          "schemaPath": {
+            "type": "string",
+            "description": "Optional. JSON Schema tree path of the rejecting keyword (e.g. '#/properties/packages/items/oneOf/1'). 3.1+ consumers SHOULD prefer `schema_id`; `schemaPath` is retained for 3.0.x compatibility (renamed to `schema_path` in a future major). See error-handling.mdx for the validator-internals production-emit rules."
+          },
+          "schema_id": {
+            "type": "string",
+            "description": "Optional. `$id` of the rejecting (sub-)schema (e.g. `/schemas/3.1.0/core/activation-key.json`). MUST resolve to a `$id` published in the spec at the version the seller advertises via `get_adcp_capabilities` — either a deep sub-schema (the typical case) or the response-root `$id` (the bundled-tree fallback for tools served from bundles built before #3868). Sellers MUST NOT emit when the rejection occurred against a private extension, server-only sub-schema, or pre-release element — the public-spec replay rationale only holds when the rejecting element is reachable from the public bundle. Sellers populating `schemaPath` SHOULD also populate `schema_id` when they have it so 3.1+ readers don't get strictly less than 3.0.x readers. See error-handling.mdx for resolution guidance and the bundled-tree caveat."
+          },
+          "discriminator": {
+            "type": "array",
+            "description": "Optional. Const-discriminator property/value pair(s) identifying the variant the validator selected from values present in the payload. Sellers MUST populate only when (a) the rejecting schema is a const-discriminated `oneOf` / `anyOf` and (b) the discriminator property is present in the payload — emission on partial-match inference would fingerprint the seller's validator implementation. MUST omit when zero variants survive. Compound discriminators (e.g. `(type, value_type)`) produce multiple entries ordered by declaration in the rejecting schema's `properties` block. Same private-extensions / version-skew carve-out as `schema_id`. See error-handling.mdx.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "property_name": {
+                  "type": "string",
+                  "description": "Discriminator property name (e.g., `type`, `value_type`). Aligns with OpenAPI 3.x `discriminator.propertyName`."
+                },
+                "value": {
+                  "type": ["string", "number", "boolean", "null"],
+                  "description": "Value the caller sent at `property_name`. Typically a string for const-discriminated unions; numeric/boolean/null permitted. Object and array values are forbidden — const discriminators are scalars, and emitting a structured value would conflate 'caller sent a complex shape' with 'validator inferred from a structural match'."
+                }
+              },
+              "required": ["property_name", "value"],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": ["pointer", "message", "keyword"],
+        "additionalProperties": true
+      }
+    },
+    "details": {
+      "type": "object",
+      "description": "Additional task-specific error details. Sellers MAY mirror `issues[]` here as `details.issues` for backward compatibility with pre-3.1 consumers reading from `details`; new consumers SHOULD prefer the top-level `issues` field.",
+      "additionalProperties": true
+    },
+    "recovery": {
+      "type": "string",
+      "enum": ["transient", "correctable", "terminal"],
+      "description": "Agent recovery classification. transient: retry after delay (rate limit, service unavailable, timeout). correctable: fix the request and resend (invalid field, budget too low, creative rejected). terminal: requires human action (account suspended, payment required, account not found)."
+    }
+  },
+  "required": [
+    "code",
+    "message"
+  ],
+  "additionalProperties": true
+}

@@ -1,5 +1,1624 @@
 # Changelog
 
+## 3.1.0-beta.0
+
+### Minor Changes
+
+- 63e58c3: spec(conformance): AAO Verified — one brand mark, two qualifiers (Spec) and (Live)
+
+  Adds **AAO Verified** as the public trust mark for AdCP agents, with two composable qualifiers in parens — **(Spec)** and **(Live)** — that an agent can hold either or both:
+
+  - **AAO Verified (Spec)** — your AdCP wire format matches the spec. Storyboards run against your test-mode endpoint on AAO's compliance heartbeat. Issued automatically when storyboards pass for the agent's declared specialisms + active AAO membership.
+  - **AAO Verified (Live)** — AAO has observed real production traffic flowing through your agent. The compliance engine continuously watches delivery against your live ad-server integration over a 7–14 day rolling window. Lights up in 3.1 once the canonical-campaign runner is operational; the eight-check observability machinery already ships.
+
+  **(Spec) and (Live) are independent.** Each axis demonstrates conformance through different evidence — (Spec) via simulated interactions against a test endpoint, (Live) via observed real traffic that exercises wire format, filters, lifecycle, and scope through the eight checks. Sellers without a test-mode endpoint (SDK-built agents, production-only platforms) can earn (Live) directly. The two qualifiers share one brand mark — buyers learn one name, the qualifier in parens names which axis was earned.
+
+  Earlier drafts used "AdCP Conformant" + "AAO Verified" as two distinct mark names (and earlier still, "Tier 1 / Tier 2"). The single-brand-with-qualifiers framing is cleaner: a test agent earning **Verified (Spec)** is a complete claim, not a "junior" tier.
+
+  Seller obligation for (Live): designate a compliance account with real live campaigns (PSA / remnant / house / genuine revenue all qualify) and grant the `attestation_verifier` scope (#2964) to the AAO compliance engine. Eight observable checks run over the rolling window. Path B (brownfield) has two first-class forms — B1 polling-only, B2 webhook-attached. Mark lifecycle: continuous observation, auto-expiring on signal degradation, no one-shot pass.
+
+  Closes #2965. Depends on #2964 (`attestation_verifier` scope + RBAC error codes) and the merged #2963 account-ownership tightening. Multi-subscriber webhooks (which relax the dedicated-tenant requirement on Path B2) tracked for 4.0 in #3009.
+
+- 63e58c3: spec(accounts): caller-scope introspection via per-account `authorization` on sync/list + RBAC error codes
+
+  Caller-scope authorization model for AdCP. Vendor agents (media-buy, signals, governance, creative, brand) attach an optional `authorization` object to each per-account entry in `sync_accounts` and `list_accounts` responses — describing `allowed_tasks`, per-task `field_scopes`, an optional standard `scope_name`, and an optional `read_only` flag. Absence means the vendor agent does not advertise introspectable scope; callers MUST NOT infer access from absence. Conceptually analogous to RFC 7662 OAuth 2.0 Token Introspection, specialized for AdCP's task-and-field authorization model and folded into existing account discovery rather than split into a new task.
+
+  Standard named scope `attestation_verifier` is spec-mandated (binds to the AAO Verified (Live) qualifier; Media Buy Protocol). Other scope names are vendor-specific and MUST use the `custom:` prefix so a typo of the standard value fails schema validation. Three new error codes surface RBAC decisions that previously had no standard code: `SCOPE_INSUFFICIENT`, `READ_ONLY_SCOPE`, `FIELD_NOT_PERMITTED`. `FIELD_NOT_PERMITTED` MUST populate `error.field`; `SCOPE_INSUFFICIENT` SHOULD carry an `introspection_hint` pointing at where to re-read scope. All four authz codes classify as `correctable` but are NOT agent-autonomous (scope broadening requires operator intervention) — agents SHOULD surface rather than auto-retry.
+
+  Identity binding, refresh cadence, and consistency are normative: the authorization object is scoped to `(caller identity, account_id)` at read time; vendor agents MUST resolve identity from the authenticated request (not client-supplied fields) and reflect operator-initiated scope changes within 300 seconds. Sequential reads within the refresh window MUST return identical authorization objects (modulo operator-initiated changes) — flicker from load-balanced or eventually-consistent backends is non-conformant.
+
+  Closes #2964.
+
+- 1e76c74: spec(brand): `account` on AcquireRights/UpdateRights + governance-bound CPM projection rule
+
+  Coupled spec gaps surfaced while validating a multi-tenant + multi-specialism hello adapter (per #3918):
+
+  1. **`acquire_rights` and `update_rights` accept `account: AccountReference`.** Governance-aware brand agents need brand+operator (or `account_id`) to look up any governance agent previously bound via `sync_governance`. The brand-rights compliance storyboard already sends `account: { brand, operator }` on the wire for `acquire_rights`, but the schema didn't define the field — adapters were falling back to `req.buyer.domain` (the brand, not the operator) for account resolution. `update_rights` had the same shape gap and is also a modification-phase governance trigger per the campaign-governance spec. Both fields are optional, follow the same shape `create_media_buy` uses.
+
+  2. **CPM-projection MUST broadened to cover the bound path on `acquire_rights`.** `acquire-rights-request.json` previously required `campaign.estimated_impressions` only when the request carried an intent-phase `governance_context` token AND the pricing option was CPM. Brand agents that resolve their governance binding via `sync_governance` (no inline token) still project CPM commitment — and "implementer-chosen defaults are non-conformant" applies equally there. The MUST now covers both paths: the request is governance-aware whenever an inline `governance_context` is present OR `account` resolves to an account with a bound governance agent. Non-CPM pricing options remain unaffected. The equivalent commit-delta projection rule for `update_rights` is left for a follow-up — it requires designing the delta semantics (impression_cap delta vs. pricing_option-switch delta) and is not yet normative.
+
+  3. **Inline-token-wins precedence.** When both an inline `governance_context` token and a bound governance agent are present on the same request, the inline token wins. The token is per-request, JWS-bound to a specific plan, and is the primary correlation key; the bound agent is the resolver fallback. Stated in the `account` field descriptions and in the `acquire_rights` task reference.
+
+  4. **`sync_governance` doc-comment clarifies account-scoped binding.** Adopters were reading the existing description as ambiguous on whether the binding could vary per plan inside the same account. The wire offers no field for per-plan governance agents (and `maxItems: 1` plus the singular `governance_context` envelope foreclose it). Description now states explicitly: binding is account-scoped, not plan-scoped; a single bound agent owns the lifecycle for every plan on the account; `plan_id` is threaded through `check_governance` for per-plan routing inside the bound agent, not at the registration layer.
+
+  Also fixes a stale anchor in the `acquire_rights` validation prose (`#buyer-side-governance-invocation` → `#spend-commit-invocation`).
+
+  Closes the wire-schema items on #3918 (`account` on acquire_rights/update_rights, broadened MUST, `plan_id` ambiguity). The two items deliberately not included: `plan_id` as a sync_governance field (conflicts with the documented account-wide binding), and loosened HTTPS pattern (better solved in the storyboard runner than by relaxing the wire spec).
+
+- 556edf3: Extend `check:platform-agnostic` lint to cover enum and const values; fix `brand.json` platform-agnosticism violation.
+
+  **Lint extension (`tests/check-platform-agnostic.cjs`):** adds enum/const-value scanning alongside the existing property-name check. Uses a path-qualified `ENUM_VALUE_ALLOWLIST` so the same vendor token can be legitimate in one enum (e.g., `roku` in `enums/genre-taxonomy.json`) but a violation in another. Pre-compiles vendor-token regexes. Skips `examples` arrays (user-data samples, not normative definitions). Title/description text intentionally excluded — vendor names in prose are permitted per spec-guidelines.
+
+  **Schema fix (`static/schemas/source/brand.json`):** removes the single-value enum `["openai_agentic_checkout_v1"]` from `product_catalog.agentic_checkout.spec` and replaces it with a free-form `string`. The enum encoded a specific vendor's checkout API version as a normative discriminator, violating the platform-agnosticism rule in `docs/spec-guidelines.md`. Non-breaking: existing data using `"openai_agentic_checkout_v1"` remains valid.
+
+  **Note:** `openai_product_feed` in `brand.json`'s `feed_format` enum is contested (see #2439): one expert treats it as a violation; another treats it as a canonical feed-schema identifier parallel to `google_merchant_center`. It is allowlisted pending @bokelley's decision.
+
+  Closes #2439.
+
+- 2a2e5c4: spec(errors): register `AGENT_SUSPENDED` / `AGENT_BLOCKED` codes + consolidate the 3.0.5 `details.status` placeholder.
+
+  Two new error codes for the per-buyer-agent commercial-status axis (sibling to `ACCOUNT_SUSPENDED` / `CAMPAIGN_SUSPENDED`, scoped to the agent-relationship), both `recovery: terminal`. The code itself is the discriminator — no `error.details.scope` field, no `error.details` payload — mirroring `BILLING_NOT_PERMITTED_FOR_AGENT`'s discriminator-by-code precedent.
+
+  3.0.5 shipped `error-details/agent-permission-denied.json` with a `details.status: ["suspended", "blocked"]` axis as a placeholder while the dedicated codes were being designed. 3.1 consolidates the placeholder: the `status` field is removed from the schema; sellers MUST emit `AGENT_SUSPENDED` / `AGENT_BLOCKED` directly. The schema's `agent-permission-denied.json` now carries only `scope: "agent"` + `reason: "sandbox_only"` for non-status per-agent provisioning gates. `oneOf` exclusivity drops out (single payload axis), `reason` becomes required.
+
+  Migration: sellers that integrated against the 3.0.5 placeholder shape MUST switch to the dedicated codes. The known adopter (JS SDK BuyerAgentRegistry, [adcp-client#1269](https://github.com/adcontextprotocol/adcp-client/issues/1269)) is in Phase 1 placeholder mode, not production — the consolidation is intentional and is the reason 3.1 is the right release for it. The DX-expert "wire-level recovery field ambiguity" gap from #3887 review closes for the suspended/blocked paths — those paths now carry `recovery: terminal` directly at the wire level.
+
+  Same cross-tenant onboarding oracle clamp + channel-coverage rules established in #3887 apply uniformly to the new codes.
+
+  Closes #3871. Builds on #3887.
+
+  Files:
+
+  - `static/schemas/source/enums/error-code.json` — `AGENT_SUSPENDED` / `AGENT_BLOCKED` enum + descriptions + `enumMetadata.recovery: "terminal"`. `PERMISSION_DENIED` description points at the new codes for suspended/blocked.
+  - `static/schemas/source/error-details/agent-permission-denied.json` — `status` field removed, `oneOf` removed, `reason` required.
+  - `docs/building/implementation/error-handling.mdx` — Authorization (RBAC) table adds `AGENT_SUSPENDED` / `AGENT_BLOCKED` rows. Per-Agent Authorization Gate subsection rewritten to cover all three paths (`AGENT_SUSPENDED`, `AGENT_BLOCKED`, `PERMISSION_DENIED + scope:"agent" + reason:"sandbox_only"`) under a single uniform clamp + composition-pattern guidance + 3.0.5 → 3.1 migration note.
+
+- d597efe: spec(compliance): pin endpoint_pattern wildcard grammar + downgrade non-JSON match modes to not_applicable (closes #3845)
+
+  Two implementation-surfaced ambiguities from runner-side adoption of #3816 (the anti-façade + cascade-attribution contract). Both are minor-but-load-bearing pins that affect cross-runner determinism on the same storyboard.
+
+  **1. `endpoint_pattern` wildcard grammar.** `comply-test-controller-request.json` previously described `endpoint_pattern` as a "glob-style pattern" with no normative grammar. The `@adcp/sdk` runner picks the most permissive interpretation (`*` matches `/`-crossing, all other regex metacharacters escaped literally). A different runner could legitimately read "glob-style" and ship POSIX glob semantics where `*` doesn't cross `/` and `?` is single-char-any — same storyboard, different verdict. Pinned: `*` matches zero or more characters of any kind including `/`. No other characters have wildcard semantics — `?` is a literal question mark, `[`/`]` are literal brackets. Implementations MUST anchor the pattern (full-string match). Renamed "glob-style" → "wildcard" in the description so the grammar's intentional narrowness is obvious from the noun.
+
+  **2. Non-JSON `payload_must_contain` match modes downgrade to `not_applicable`.** The earlier comment in `storyboard-schema.yaml` said the runner "falls back to substring matching for `match: present`" against non-JSON payloads (form-urlencoded, multipart, plain text). The `@adcp/sdk` runner implemented this as a terminal-key heuristic (extract `hashed_email` from `users[*].hashed_email`, substring-search the raw payload string). That creates false positives: a payload mentioning `hashed_email` anywhere — URL fragment, comment, unrelated metadata field — would pass the assertion. For an anti-façade contract specifically, false positives are exactly what lets façades pass.
+
+  Per the option-(b) decision in #3845: ALL `payload_must_contain` match modes (`present` / `equals` / `contains_any`) now grade `not_applicable` against non-JSON `content_type`. Storyboards that need a "the upstream call carried this value" signal against non-JSON payloads use `identifier_paths` instead — that surface substring-searches storyboard-supplied VALUES (not path-derived strings), which is encoding-agnostic and doesn't suffer the false-positive surface.
+
+  **Why both belong in spec, not runner docs.** #3816 explicitly framed itself as the load-bearing anti-façade contract that distinguishes a real adapter from a façade. Two compliant runners grading the same storyboard differently against the same agent (because of unspecified wildcard / substring semantics) means adopters can game whichever runner is more permissive. Pinning these is small but the divergence cost is high.
+
+  **Cross-link:** SDK PR `adcontextprotocol/adcp-client#1289` is the runner-side adoption that surfaced both ambiguities; runner needs a follow-up alignment to drop the terminal-key fallback now that the spec downgrades non-JSON matches to `not_applicable`.
+
+- 21fd8f3: spec(accounts): billing-gate conformance storyboard + BrandAuthorizationResolver naming guidance
+
+  Tier-3 follow-up to #3828 / #3831 (BuyerAgentRegistry spec backing). **Validated end-to-end against the training-agent reference implementation in #3851** — running the storyboard against a real agent surfaced three bugs that lint couldn't catch, all corrected before this PR went ready:
+
+  1. `check: error_code` doesn't accept a `path` parameter for per-account error extraction → switched to `check: field_value` with explicit path on both gate phases.
+  2. `expect_error: true` requires transport-level error markers (MCP `isError` / A2A `failed`) — sync_accounts produces transport-level success with per-account errors in the success envelope, not transport-layer failures → removed the flag from both gate phases with explanatory comment.
+  3. Idempotency-key reuse across reject/recover phases produced `IDEMPOTENCY_CONFLICT` (same key + different payload per error-handling.mdx) → recover phase now uses a fresh idempotency_key with a distinct stability tag, and both the narrative and recover-phase docs corrected to reflect that the recover phase is a new request rather than a replay.
+
+  Plus one runner-side gap documented in the test kit: today's storyboard runner does not auto-extract `auth.api_key` from the test kit; callers pass it explicitly via `--auth`. The kit's `auth.api_key` declares the bearer the seller's harness expects to be authenticated under; the CLI carries it onto the wire.
+
+  Storyboard now passes 3/3 strict assertions against the training-agent's per-agent-gate flow (capability_discovery + per_agent_gate_reject + per_agent_gate_recover); capability_gate phase grades `not_applicable` when the seller advertises all three billing values, which is the correct outcome against the training-agent.
+
+  **Conformance.** New universal storyboard `billing-gate-dispatch` under `static/compliance/source/universal/` exercises the two-gate dispatch contract on `sync_accounts.billing` rejection:
+
+  - Capability gate (`BILLING_NOT_SUPPORTED` with `error.details.scope: "capability"` and `error.details.supported_billing` echo). Skipped when the seller supports all three `billing` values.
+  - Per-buyer-agent gate (`BILLING_NOT_PERMITTED_FOR_AGENT` with the clamped `error.details.rejected_billing` + optional `error.details.suggested_billing`). Skipped when the test kit does not declare `commercial_relationship: "passthrough_only"`. Recovery phase chains off the rejection and validates that retrying with the seller's `suggested_billing` produces a successful provisioning.
+
+  The storyboard also asserts the negative-shape security clamp on the per-agent gate: `error.details` MUST NOT carry `permitted_billing` (full subset), `rate_card`, `payment_terms`, `credit_limit`, or `billing_entity` — these are the per-agent commercial-state oracles that `error-details/billing-not-permitted-for-agent.json` (`additionalProperties: false`) closes off.
+
+  Conformance catalogs (`docs/building/conformance.mdx` and `docs/building/compliance-catalog.mdx`) updated; doc-parity lint clean.
+
+  The storyboard documents two follow-ups it does not yet land:
+
+  1. `comply_test_controller` `seed_buyer_agent` extension to toggle the test caller's `commercial_relationship` programmatically — would let any seller exercise both per-agent branches without a manually-curated test kit.
+  2. Test-kit field schema for `commercial_relationship` (currently referenced in `skip_if` expressions; needs a normative test-kit schema entry).
+
+  **SDK naming.** Adds normative guidance to `accounts-and-agents.mdx` Buyer-agent identity section: SDKs surfacing a typed Protocol for the brand-operator authorization check MUST name it after the file consulted — `BrandAuthorizationResolver` (or idiomatic equivalent), NOT `AdagentsResolver`. `adagents.json` is publisher-side and models a different relationship; naming the buyer-side resolver after it confuses surfaces and locks adopters into the wrong mental model. Cross-coordination filed as adcp-client-python#346 ahead of either SDK shipping the Protocol.
+
+- d024eb8: spec(accounts): buyer-agent identity model + billing error-code coverage for sync_accounts
+
+  Adds the spec/doc backing that adcp-client #1269 (BuyerAgentRegistry) needs to land without inventing wire behavior.
+
+  **Error codes (additive, non-breaking).** Registers four codes referenced by `sync_accounts` but missing from the canonical enum, plus one new code for the per-buyer-agent commercial gate:
+
+  - `BILLING_NOT_SUPPORTED` — seller-wide capability gate (`supported_billing` does not include the value), or per-account-relationship gate. Carries `error.details.scope` ∈ `{"capability", "account"}` so callers can dispatch without parsing prose. Default reject for billing-value mismatches.
+  - `BILLING_NOT_PERMITTED_FOR_AGENT` — _new_. Seller-wide capability accepts the value, but the calling buyer agent's commercial relationship does not (e.g., onboarded as passthrough-only — no payments relationship — so `agent` and `advertiser` reject). Distinct from `BILLING_NOT_SUPPORTED` so agents can dispatch on autonomous-retry vs surface-to-human. `error.details` MUST conform to the new `error-details/billing-not-permitted-for-agent.json` schema: `rejected_billing` plus an optional single `suggested_billing`. The shape is deliberately clamped — it MUST NOT carry the agent's full permitted-billing subset, rate cards, payment terms, credit limit, billing entity, or any other per-agent commercial state (those are commercial-state oracles; full-subset disclosure in a single probe is exactly what the clamp prevents).
+  - `PAYMENT_TERMS_NOT_SUPPORTED` — seller declines the requested `payment_terms` value.
+  - `BRAND_REQUIRED` — billable operation attempted without a brand reference.
+
+  All four registered in `enum`, `enumDescriptions`, and `enumMetadata` per the dual-surface requirement (#3738).
+
+  **Uniform-response rule for unauthenticated callers.** Sellers MUST NOT emit `BILLING_NOT_PERMITTED_FOR_AGENT` to unauthenticated, unverified, or weakly-authenticated callers — emitting the per-agent code without an established agent identity is a cross-tenant onboarding oracle (same shape as `*_NOT_FOUND`). Unauthenticated callers receive `BILLING_NOT_SUPPORTED` (the broader code) regardless of which gate would have fired with identity established. Documented in `error-handling.mdx` Billing and Account Setup section.
+
+  **`sync_accounts` task doc** adds the normative line that sellers MAY reject `billing` at the per-buyer-agent commercial gate distinct from the seller-wide capability gate; error rows cross-link to the new error-handling and accounts-and-agents sections. Also fixes a pre-existing doc bug: the error table referenced `PAYMENT_REQUIRED` (never registered in the enum) where the registered code is `ACCOUNT_PAYMENT_REQUIRED` — corrected to use the registered identifier.
+
+  **Buyer-agent identity narrative.** New "Buyer-agent identity" section in `accounts-and-agents.mdx` framing the two-layer model the spec already implies but doesn't name: agent identity (signed-request `agent_url` derivation OR seller's credential-to-agent mapping) and brand-operator authorization (`brand.json/authorized_operators`). Both layers MUST pass; the checks compose. The brand-operator check runs against cached `brand.json` per existing revocation/cache semantics (eventual revocation, 24h TTL), and high-value or first-time-on-brand provisioning SHOULD bypass the cache to close the TOCTOU window. Per-buyer-agent commercial state — onboarding records, payment-relationship status, default account terms — is offline (out of scope) but surfaces on the wire through (a) the new `BILLING_NOT_PERMITTED_FOR_AGENT` runtime gate and (b) defaults sellers MAY apply during `sync_accounts` upsert (per-account values on the request always take precedence). Defines "passthrough-only" inline on first use.
+
+  **`agent_url` derivation.** `security.mdx` "Agent identity" section now names the derivation explicitly: `agent_url` is the `url` field of the `agents[]` entry whose `jwks_uri` resolved the `keyid` at step 7 of the verifier checklist — not a JWK claim, JWS claim, or signed envelope field. The publication coordinate the verifier already used to fetch the JWKS _is_ the canonical identity. Closes a loophole where an SDK could surface a buyer-asserted `agent_url` from the envelope and treat it as cryptographically established. The bearer / API-key / OAuth transport is also clarified: agent identity MUST come from the seller's credential-to-agent mapping; sellers MUST NOT introduce an envelope-side `buyer_agent_url` as an alternate input. Existing buyer-asserted _verifier_ references (`creative.verify_agent.agent_url`, `governance.accepted_verifiers[].agent_url`) are explicitly outside this prohibition — they name agents the seller invokes under a published allowlist, not the signer.
+
+  **Two new `error-details/` schemas** lock the recovery shapes so SDKs and conformance fixtures don't diverge: `billing-not-permitted-for-agent.json` (`additionalProperties: false`, `rejected_billing` + optional `suggested_billing`) and `billing-not-supported.json` (`scope` + optional `supported_billing` echo). The per-agent schema's clamp prevents full-subset commercial-state disclosure; the per-supported schema's `scope` field MUST be omitted on the unauthenticated path so it cannot itself become a per-account-relationship oracle.
+
+  **Tier 3 (conformance fixtures + cross-language naming alignment with Python `BrandAuthorizationResolver`)** tracked as #3828.
+
+- 42f3557: Add `committed_metrics_supported` capability flag to
+  `media-buy-features.json`. Closes the buyer-side detection gap from
+  #3510 where absence of `committed_metrics` was indistinguishable
+  between 'seller didn't snapshot' and 'seller doesn't have snapshot
+  infrastructure.' Closes #3517.
+
+  **Why one flag (not two).** Per the unified metric-accountability
+  design (#3576), `committed_metrics` is a single array carrying both
+  standard and vendor-defined entries. The flag inherits that unification —
+  one flag declares the seller's snapshot capability across the whole
+  contract surface.
+
+  **MUST timing — atomic.** Sellers declaring this flag `true` MUST
+  populate `committed_metrics` on every `create_media_buy` response AND
+  MUST honor append-only mid-flight metric additions via `update_media_buy`.
+  The MUST ships with the flag, not as a future tightening — advisory-only
+  flags leave the audit gap exploitable, defeating the purpose.
+
+  **Placement choice — Option A (extend `media-buy-features.json`).**
+  Matches the existing `property_list_filtering` / `catalog_management`
+  precedent. Buyers can pass it as a `required_features` filter on
+  `get_products` to narrow the catalog to snapshot-supporting sellers —
+  that side effect is the design intent, not a bug.
+
+  **Backwards compatibility.** Optional and additive. Sellers without
+  the flag are unchanged; buyers ignore the flag if they don't filter on
+  snapshot support.
+
+  Closes #3517.
+
+- 59f1c37: Add `package.committed_metrics` and `package.committed_vendor_metrics` —
+  frozen snapshots of the product's `reporting_capabilities.available_metrics`
+  and `vendor_metrics` stamped at `create_media_buy` response time. Closes
+  #3481.
+
+  **The audit gap.** PR #3472 established that the product's
+  `available_metrics` becomes the binding reporting contract carried into
+  the resulting media buy. That holds **only if** the product is immutable
+  AND the seller stores a snapshot at buy creation. Neither is guaranteed:
+
+  - Products mutate (sellers add/remove metrics from `available_metrics`
+    as their reporting infrastructure evolves)
+  - Without a per-package snapshot, `missing_metrics` on
+    `get_media_buy_delivery` is computed against "what the product
+    _currently_ advertises" — a 90-day-old buy is incorrectly judged as
+    "clean" because the seller quietly dropped a metric they originally
+    committed to
+  - An ops team auditing a 90-day-old buy will not trust an implicit
+    contract reference
+
+  This was flagged on PR #3472 by the product expert as the primary
+  sell-side audit gap.
+
+  **Changes.**
+
+  - `core/package.json`: new `committed_metrics: AvailableMetric[]` field
+    and new `committed_vendor_metrics: { vendor, metric_id }[]` field. Both
+    optional in v1; sellers without per-package snapshot infrastructure
+    fall back to the product's live state (absence is conformant). Both
+    MUST NOT change post-creation — `update_media_buy` cannot modify them.
+    Renegotiating the metric contract requires a new buy.
+  - `media-buy/get-media-buy-delivery-response.json`: `missing_metrics`
+    description updated to declare the reconciliation source — when
+    `committed_metrics` is present, that is the contract; when absent,
+    fall back to the product's current `available_metrics`.
+  - `docs/media-buy/task-reference/create_media_buy.mdx`: new "Reporting
+    contract on confirmed packages" subsection documenting the snapshot
+    semantics, immutability, and v1-optional posture.
+  - `docs/media-buy/task-reference/get_media_buy_delivery.mdx`: bullet
+    updated to point at the reconciliation source.
+
+  **Design choices spelled out (resolves the three open questions on #3481).**
+
+  1. **Optional or required?** Optional. Forcing the snapshot at v1 would
+     break existing implementations on first deployment. Optional with a
+     doc note that "buyers SHOULD reconcile against `committed_metrics`
+     when present and fall back to the product's live state when absent"
+     lets sellers adopt incrementally. Expected to become required at the
+     next major.
+
+  2. **What snapshots into `committed_metrics`?** The product's full
+     `reporting_capabilities.available_metrics` at the moment of
+     `create_media_buy`, NOT the intersection with the buyer's
+     `required_metrics` filter. The product committed to reporting all
+     those metrics; reducing to the intersection would silently drop
+     reporting on metrics the buyer didn't explicitly list but the seller
+     still has. `requested_metrics` (on `reporting_webhook`) remains the
+     buyer's payload-optimization filter — a separate concept.
+
+  3. **Mutation policy?** Frozen at creation, MUST NOT change post-creation.
+     `update_media_buy` cannot modify `committed_metrics` or
+     `committed_vendor_metrics`. If the buyer/seller need to renegotiate,
+     that's a new buy. This is the cleanest contract; mutability with
+     audit trail can be added later if real demand emerges.
+
+  **Backwards compatibility.** Optional and additive. Sellers without
+  snapshot infrastructure fall back to the implicit contract (product's
+  current state) — this matches the v1 behavior of #3472. Buyers can
+  incrementally upgrade to consume `committed_metrics` when present.
+
+  Closes #3481.
+
+- 15cbd99: Add `completion_source` qualifier key to disambiguate seller-attested vs vendor-attested `completion_rate`. Closes #3861 with Option C from the issue.
+
+  **The hybrid problem.** `completion_rate` is dual-natured: the seller witnesses completion via player events (the seller's player fired the completion beacon), and third-party measurement vendors can independently attest to completion via SDK callbacks, panel methodology, or server-side beacon validation. The two paths can yield materially different rates — particularly in SSAI environments where the player's view of completion may differ from a vendor's. Same `metric_id`, two semantics — exactly the case the [taxonomy doc](https://docs.adcontextprotocol.org/docs/measurement/taxonomy)'s working rule of thumb addresses ("if two layers seem to claim the same field, the field is probably two fields wearing one name — split it").
+
+  **The qualifier slot is the right home.** Instead of splitting the metric_id (`seller_completion_rate` vs `verified_completion_rate`), surface the dual nature at the qualifier layer that #3576 already established for viewability. Viewability is now joined by completion_rate as a Tier 1 graduated metric using the qualifier slot — proves the pattern is generalizable, not viewability-specific.
+
+  **Schemas added.**
+
+  - `enums/completion-source.json`: closed enum `["seller_attested", "vendor_attested"]` with descriptions.
+
+  **Schemas updated.**
+
+  - `core/package.json` `committed_metrics.qualifier`: adds `completion_source` alongside `viewability_standard`. MUST be set when `metric_id` is `completion_rate` and the seller commits to a specific source.
+  - `media-buy/package-request.json` `committed_metrics.qualifier`: same shape on the buyer-side request surface.
+  - `media-buy/get-media-buy-delivery-response.json` `aggregated_totals.metric_aggregates.qualifier`: adds `completion_source` for partitioned delivery rollups by source.
+  - `media-buy/get-media-buy-delivery-response.json` `by_package[].missing_metrics.qualifier`: adds `completion_source` for accountability — a buyer expecting vendor-attested completion flags a seller-attested-only delivery report as missing the vendor commitment.
+
+  **Vendor identity** is anchored on the matching `performance_standard.vendor` BrandRef in the buy contract, not duplicated on the metric row. Same pattern as MRC viewability anchored on `performance_standard.vendor` for the DV/IAS/etc. case.
+
+  **Reconciliation.** The atomic-unit join `(scope, metric_id, qualifier)` from #3576 + #3848 (just-merged `metric_aggregates`) extends naturally — completion_rate rows now carry a `completion_source` qualifier, joined like viewability_standard rows. No reconciliation logic changes; new keys plug into the existing slot.
+
+  **Doc updates.**
+
+  - `docs/media-buy/task-reference/create_media_buy.mdx` — `committed_metrics` reporting contract section now lists both qualifier keys (viewability_standard and completion_source) with their conditional-required semantics.
+  - `docs/media-buy/task-reference/get_media_buy_delivery.mdx` — qualifier vocabulary section names both keys; missing_metrics description shows the completion_source flagging example.
+
+  **Backwards compatibility.** Additive. Existing `committed_metrics` / `missing_metrics` / `metric_aggregates` consumers without qualifier-aware reconciliation continue to work; the closed-vocabulary nature of qualifier means new keys appear only in subsequent minors with explicit migration paths.
+
+  Closes #3861.
+
+- c6fb0dd: spec(errors): add `CONFIGURATION_ERROR` to canonical error catalog
+
+  Adds a standard error code for **adopter-side server misconfiguration** — a deployment that the seller has stood up incorrectly, that the buyer cannot fix, that is not transient, and that is not an opaque crash. The canonical catalog previously had no code that fit this slot: `INVALID_REQUEST` is buyer-fixable, `SERVICE_UNAVAILABLE` is transient, `UNSUPPORTED_FEATURE` is a capability mismatch, `ACCOUNT_SETUP_REQUIRED` is buyer-side onboarding, and `GOVERNANCE_UNAVAILABLE` is scoped to a registered governance agent. Concrete failure modes the new code fits: an account is declared with `mode: 'mock'` but no `mock_upstream_url` is populated; a platform is declared with `mode: 'live'` or `mode: 'sandbox'` but no `upstream_url` is declared; a required environment variable is unset on the seller process. Recovery is `terminal` — the buyer MUST surface to the seller's operator and MUST NOT auto-retry, since retries cannot resolve a misconfigured deployment until the operator intervenes.
+
+  Wire shape is unchanged — the code itself is the discriminator, no `error-details/configuration-error.json` is registered (mirroring the minimal-disclosure precedent of `AGENT_SUSPENDED` / `AGENT_BLOCKED`); `error.message` carries the operator-readable diagnostic. Sellers SHOULD calibrate that message to a level useful to a seller-side operator without leaking deployment internals to the buyer. The new code is additive — existing catalog entries are unchanged, and SDKs that fall back to the `recovery` classification on unknown codes will already treat unknown sightings as terminal per the forward-compatibility rule in `error-handling.mdx`.
+
+  Closes #3995.
+
+- de60c64: spec(auth): require buyer-principal credentials on transport channel; add `CREDENTIAL_IN_ARGS` error code
+
+  The AdCP spec was previously silent on credential placement. Buyer-principal credentials arrive over the transport's authentication channel — Bearer per RFC 6750 §2, RFC 9421 signature headers, MCP/A2A authentication framing per RFC 9728 §3, or mTLS — but nothing in the spec said credentials MUST arrive there and MUST NOT arrive embedded in the task payload. In practice the gap produced a recurring bug class: storefront-shaped adopters independently rediscovered top-level `<platform>_access_token`, then nested `request.context.<platform>_access_token`, then `request.ext.<platform>_access_token` — three rounds of expert review on a single PR each surfacing a different smuggling vector. Without spec-level clarity, every adopter reaches the same conclusion independently and ships its own ad-hoc allowlist.
+
+  This release adds a normative **Credential placement** section to `authentication.mdx` after the existing tenant-resolution paragraph: buyer-principal credentials MUST arrive on the transport's authentication channel and MUST NOT be placed in the task payload — top-level, in `context`, in `ext`, or any other nested location. The rule is transport-agnostic; it applies under every supported authentication mechanism. Two carve-outs are explicit: `push_notification_config.authentication.credentials` (the legacy seller-to-buyer webhook authentication, orthogonal to the buyer principal) and onboarding-time secrets exchanged out-of-band. Relay topologies (#2324) authenticate under the relay's own principal — pass-through preserves the brand agent's RFC 9421 signature, re-signing carries brand-agent identity in the request body as identity context — neither model permits forwarding the brand's transport credential as a relay-side payload field.
+
+  A new error code, `CREDENTIAL_IN_ARGS`, joins `error-code.json`. Sellers SHOULD reject credential-in-args under AdCP 3.1; the requirement upgrades to MUST 90 days after the 3.1 publication date. The code's recovery classification is `terminal` — auto-retry against this code re-logs the credential on each attempt, exactly the prompt-injection exfiltration surface the rule closes (`security-model.mdx#threats-specific-to-agentic-advertising`). `error.field` identifies the path at which the credential was detected (e.g., `request.context.access_token`) and MUST NOT echo the credential value or any prefix of it; sellers MUST drop the smuggled credential from logs, audit rows, and observability spans before persisting the rejection. `CREDENTIAL_IN_ARGS` is distinct from `AUTH_REQUIRED` (no credentials presented or transport-channel credentials rejected) and `PERMISSION_DENIED` (authenticated caller not authorized).
+
+  The new code is additive — existing catalog entries are unchanged, and SDKs that fall back to the `recovery` classification on unknown codes already treat unknown sightings as terminal per the forward-compatibility rule in `error-handling.mdx`. The 90-day SHOULD-to-MUST window gives implementations time to land detection without leaving credentials sitting in LLM-visible payloads during the migration.
+
+  Closes #4046.
+
+- 68b86a5: Restructure `product.delivery_measurement.provider` as a `vendors: BrandRef[]` array, deprecating the legacy free-form string. Closes the BrandRef-migration half of #3860; the merger-with-`performance_standards` question is deferred to a follow-up RFC since it requires more design (`delivery_measurement` describes the _overall_ measurement story while `performance_standards` carries _committed_ metrics with thresholds — they're different concerns).
+
+  **The BrandRef migration.** Before this minor, `delivery_measurement.provider` was a string like `"Google Ad Manager with IAS viewability"` — buyer agents had to string-parse to find the verification vendor. The string also conflated two jobs: vendor identity AND methodology description. With this minor:
+
+  - New `vendors: BrandRef[]` field — structured measurement-vendor identity, anchored on `brand.json` `agents[type='measurement']`. Array because a single product often has multiple vendors playing different roles (ad server + viewability vendor; retail-media seller + third-party retail measurement). Each entry's measurement-agent capabilities catalog is queryable via `get_adcp_capabilities.measurement.metrics[]`.
+  - Legacy `provider: string` — marked deprecated. Dropped from the schema's `required` array (was previously the lone required field on `delivery_measurement`); retained for one-minor backwards compatibility. When both fields present, consumers MUST use `vendors` for identity and treat `provider` as informational text.
+  - `notes: string` — clarified as free-form methodology prose only, not vendor identification.
+
+  **Distinct from `performance_standards.vendor`.** `delivery_measurement.vendors` carries vendor identity for the overall measurement story (including non-committed-but-reported metrics); `performance_standards[].vendor` carries vendor identity for _committed_ metrics with thresholds. The two fields cover different scopes — the merger question raised in #3860 is deferred.
+
+  **Migration.**
+
+  ```json
+  // before
+  "delivery_measurement": {
+    "provider": "Google Ad Manager with IAS viewability",
+    "notes": "MRC-accredited viewability. 50% in-view for 1s display / 2s video."
+  }
+
+  // after
+  "delivery_measurement": {
+    "vendors": [
+      { "domain": "googleadmanager.com" },
+      { "domain": "integralads.com" }
+    ],
+    "notes": "MRC-accredited viewability. 50% in-view for 1s display / 2s video."
+  }
+  ```
+
+  **Backwards compatibility.** Additive (new field, deprecated field retained, required dropped). Existing implementations populating `provider` continue to work for one minor; removed at the next major.
+
+  **Doc updates.** `media-products.mdx` field description reflects the structured shape.
+
+  Closes #3860 (BrandRef migration). The merger-with-`performance_standards` question stays open as a follow-up.
+
+- 3a33e82: spec(specialisms): deprecate sales-proposal-mode (refs #3823 item 4, #3844)
+
+  Proposal mode is how guaranteed deals get sold in practice — RFP → proposal → review → finalize → IO signing → live. Auction-based sales don't have proposals; they're bid-by-bid. Today `sales-proposal-mode` (proposals + briefs) and `sales-guaranteed` (IO + guaranteed) are halves of the same flow that force sellers to declare both or pick the wrong one.
+
+  Following the established `signed-requests` precedent (deprecated in 3.1, retained until 4.0):
+
+  - Adds `sales-proposal-mode` to `x-deprecated-enum-values` in `static/schemas/source/enums/specialism.json`
+  - Updates `enumDescriptions[sales-proposal-mode]` with the deprecation note + migration path
+  - Adds a deprecation banner to the storyboard at `static/compliance/source/specialisms/sales-proposal-mode/index.yaml`
+  - Updates `sales-guaranteed`'s narrative to explain how proposal flows relate to guaranteed selling and why proposal_finalize is not yet folded into its `requires_scenarios`
+
+  The clean folding of `proposal_finalize` into `sales-guaranteed.requires_scenarios` (so both flavors of guaranteed selling grade against the proposal lifecycle) needs a wire-level capability flag the storyboard runner can use to skip the scenario as `not_applicable` for direct-buy guaranteed sellers (auction PG, retail SKU; no RFP). The runner gates only on `requires_capability` predicates against `get_adcp_capabilities`, not on scenario-level metadata. Tracked as a follow-up in #3844 (`add supports_proposals capability flag`).
+
+  **Migration through 3.x**: sellers that do proposals continue to declare BOTH `sales-guaranteed` AND `sales-proposal-mode` so the proposal flow grades under the proposal-mode specialism's existing storyboard bundle. Pure-direct-buy guaranteed sellers (auction PG, retail SKU) declare only `sales-guaranteed`. The wire shape is unchanged — both enum values remain valid through 3.x.
+
+  **At 4.0**: with the `supports_proposals` capability flag in place (#3844), `proposal_finalize` joins `sales-guaranteed.requires_scenarios` with capability-gated skip semantics, the `sales-proposal-mode` enum value is removed, and the storyboard bundle is retired.
+
+- 013ff96: spec(envelope): add `adcp_error` to `protocol-envelope.json` + envelope-aware lint resolution
+
+  The `protocol-envelope.json` schema already declared `replayed`, `status`, `task_id`, `context_id`, `governance_context`, etc. — and explicitly states (line 5): "Task response schemas should NOT include these fields - they are protocol-level concerns." Storyboards correctly assert on envelope-level fields (`path: "replayed"`, `path: "adcp_error"`), but the validations-path lint walked only the per-task `response_schema_ref` and never the envelope, so those assertions were stuck behind allowlist entries.
+
+  Two changes here:
+
+  1. **Schema:** add `adcp_error: $ref core/error.json` to `protocol-envelope.json`, mirroring the field's normative description in `error-handling.mdx#envelope-vs-payload-errors-the-two-layer-model`. The envelope already had `replayed` for the parallel transport-level idempotency-replay indicator; `adcp_error` is the corresponding transport-level error signal that fatal task failures populate alongside the payload's `errors[]`. The envelope schema previously omitted it — a documentation/schema drift this closes.
+
+  2. **Lint:** `lint-storyboard-validations-paths.cjs` now falls back to `protocol-envelope.json` when a path's first segment isn't found in the response schema. Replaces the storyboard-by-storyboard allowlist for envelope-level paths with structural resolution. Both `replayed` (3 entries) and `adcp_error` (1 entry) now resolve cleanly; allowlist drops to zero.
+
+  ### What this PR is NOT doing
+
+  The protocol-expert review pushed back on the original direction (adding `replayed` to `create-media-buy-response.json` for "consistency" with 8 mutating-task payload schemas that already define it). Those 8 schemas are themselves violating the envelope contract — they redundantly declare envelope fields at the payload level, contradicting `protocol-envelope.json:5`. Removing `replayed` from those 8 schemas is a separate spec cleanup PR (deprecation-window question for any SDK currently reading off the payload).
+
+  ### Test plan
+
+  - [x] `npm run test:schemas` (clean — `adcp_error` field validates as a valid `$ref`)
+  - [x] `npm run test:storyboard-validations-paths` (13 tests pass; 3 new cases lock in envelope-aware resolution and the "first segment must match an envelope property for fallback to fire" rule)
+  - [x] `npm run test:examples`
+  - [x] Lint runs clean across all 82 storyboard files with an empty allowlist
+
+- bd3a18c: spec(error): standardize VALIDATION_ERROR `issues[]` as a normative field on `core/error.json`
+
+  Closes #3059. Adds an optional top-level `issues` array to the standard error envelope, normalizing what `@adcp/client` (and prospectively `adcp-go` / `adcp-client-python` / hand-rolled sellers) already need for multi-field validation rejections.
+
+  **Why minor**: new optional field on a published schema (`core/error.json`). Existing senders/receivers stay conformant — the field is additive. Receivers that ignore unknown fields keep working; receivers that look for it gain a richer pointer map without parsing `message` text.
+
+  **Shape**: each entry is `{ pointer (RFC 6901), message, keyword, schemaPath? }`. `schemaPath` MAY be omitted in production to avoid fingerprinting `oneOf` branch selection on adversarial payloads.
+
+  **Backward compatibility with `field` (singular)**: when both are present, sellers SHOULD set `field` to `issues[0].pointer`. Pre-3.1 consumers reading only `field` get the first failure; 3.1+ consumers prefer the top-level `issues`.
+
+  **`details.issues` mirror**: sellers MAY mirror `issues[]` into `details.issues` for backward compat with consumers reading from `details`. New consumers should prefer top-level.
+
+  Updates:
+
+  - `static/schemas/source/core/error.json` — adds `issues` property with item shape
+  - `docs/building/implementation/error-handling.mdx` — adds `issues` to the error-envelope field table; clarifies `field`/`issues` interaction
+
+- 6da3000: spec(error): canonicalize `schema_id` + `discriminator` on `core/error.json#issues[]`; unify the validator-internals production-emit stance with carve-outs
+
+  Closes #3867. Adds two optional fields to every `issues[]` item on the standard error envelope and harmonizes production-emit guidance across the three validator-internals fields (`schemaPath`, `schema_id`, `discriminator`) — including normative carve-outs for cases where the public-spec replay rationale doesn't apply.
+
+  **Why minor**: pure additive optional fields on a published schema. Existing senders/receivers stay conformant — both fields ride the wire today through `additionalProperties: true` via `@adcp/sdk`'s TypeScript client (adcp-client#1307), which is what motivated canonicalization. Cross-SDK consumers (Python, Go) couldn't rely on the field names without a spec entry.
+
+  **`schema_id`** — the `$id` of the rejecting (sub-)schema. For tools served from the flat tree (modular, with `$ref`s preserved), this lands on the deepest published sub-schema (e.g. `/schemas/3.1.0/core/activation-key.json`) so the adopter can navigate directly to the failing variant. For tools served from the bundled tree, `$id` preservation during bundling (companion change in `scripts/build-schemas.cjs`, also closing #3868) lets `schema_id` reach the same deep sub-schema; consumers reading bundles produced before that fix see the response-root `$id` instead, which still names a valid published schema. Snake_case to match the rest of the error envelope (`retry_after`, etc.); the older `schemaPath` (camelCase) is retained for 3.0.x backward compatibility and renamed to `schema_path` in a future major.
+
+  **`discriminator`** — array of `{property_name, value}` pairs identifying the const-discriminated variant the validator selected from values present in the payload. The inner field is named `property_name` (not `field`) to avoid collision with the top-level `error.field` (JSONPath-lite pointer to the offending payload location), and to align directly with OpenAPI 3.x `discriminator.propertyName`. Compound discriminators (e.g. `audience-selector`'s `(type, value_type)`) produce multiple entries; entry order MUST follow declaration order in the rejecting schema's `properties` block.
+
+  The discriminator semantics are tightened to avoid leaking validator implementation details:
+
+  - Sellers MUST populate only when the rejecting schema is a const-discriminated `oneOf` / `anyOf` AND the discriminator property is present in the payload — emission on partial-match inference would fingerprint the seller's validator (Ajv vs Python `jsonschema` vs `gojsonschema` diverge on tie-breaking).
+  - Sellers MUST omit `discriminator` when zero variants survive validation; omission is the agent's signal that the validator could not localize a target variant.
+  - The wire field reports the value the caller sent — not a validator inference — so it is deterministic across implementations.
+
+  **Validator-internals production-emit stance.** The earlier prose on `schemaPath` (`SHOULD NOT emit on production-facing endpoints — leaks which oneOf branch the validator selected, a probe oracle for adversarial callers`) is incompatible with shipping `discriminator` and `schema_id`, both of which expose the same "validator's chosen variant" surface. The resolution: the public-spec rationale wins **with explicit carve-outs**, replacing the blanket SHOULD-NOT.
+
+  The base rationale: schemas are published at adcontextprotocol.org and bundled with every SDK, so when the rejecting element is in the public spec, an adversary can replay the same validator locally against the same payload and derive branch selection from the payload alone — the wire field carries no information the adversary can't compute.
+
+  The carve-outs (normatively documented in `error-handling.mdx`):
+
+  - **Private extensions.** Sellers running schemas with custom `oneOf` branches, server-only sub-schemas, or enum subsets layered via `additionalProperties: true` MUST NOT emit `schema_id`, `schemaPath`, or `discriminator` when the rejecting element is not in the published spec. Replay-locally is structurally inapplicable.
+  - **Version skew.** Sellers validating against a pre-release or post-release schema MUST NOT emit a `schema_id` whose `$id` is not in the published bundle for the version named in `get_adcp_capabilities`.
+  - **Custom keywords.** `keyword` MUST be drawn from the JSON Schema Draft 7 / 2020-12 vocabulary; validator-specific custom keywords MUST NOT be emitted on the wire.
+  - **Probe terseness.** Sellers MAY scope all three fields to dev/sandbox responses on rate-limited production endpoints to keep envelopes terse, even when the carve-outs above don't apply. Field omission is always conformant.
+
+  Updates:
+
+  - `static/schemas/source/core/error.json` — adds `schema_id` (string) and `discriminator` (array of `{property_name, value}`) properties under `issues.items.properties`; rewrites the `schemaPath` description to drop the SHOULD-NOT framing and point at the unified production-emit stance.
+  - `docs/building/implementation/error-handling.mdx` — adds a `Validator-internals fields on issues` subsection covering field semantics, `schema_id` resolution path (HTTPS canonical / SDK-bundled / bundled-tree caveat / validator strict-mode requirement), discriminator semantics, and the four carve-outs.
+
+  **Open question carried in the PR description, not blocked on this changeset**: should `discriminator` be an object map (`{type: "audience", value_type: "ids"}`) instead of an array of pairs? The array shape matches what `@adcp/sdk` already emits and what #3867 proposes; the object map is more ergonomic for compound-discriminator consumers (`if (d.type === "audience")` vs `.find(d => d.property_name === "type")`). Resolved as array for v3.1; revisit before v4.
+
+- 0276746: Add optional `filter_diagnostics` block to `get_products` response —
+  non-fatal observability for the filter-not-fail empty-result UX gap.
+  Closes #3482.
+
+  **The gap.** Every `required_*` filter in `product-filters.json` is
+  silent-exclude semantics (the established AdCP convention; matches
+  OpenRTB / SSP capability discovery patterns). When the result list is
+  empty or unexpectedly small, the buyer can't distinguish:
+
+  - "No inventory matches the brief"
+  - "`required_metrics` excluded everything"
+  - "`required_geo_targeting` excluded everything"
+  - "`budget_range` had no overlap with available products"
+
+  Today the buyer must blindly relax filters one at a time to discover
+  which one was unsatisfiable. Both pre-build expert reviewers (protocol
+  and product) independently flagged this as the buyer-side observability
+  gap on PR #3472 (`required_metrics`).
+
+  **Shape.** Optional, additive, observability — not error reporting:
+
+  ```json
+  {
+    "products": [],
+    "filter_diagnostics": {
+      "total_candidates": 47,
+      "excluded_by": {
+        "required_metrics": { "count": 31, "values": ["completed_views"] },
+        "required_geo_targeting": { "count": 9 },
+        "budget_range": { "count": 7 }
+      }
+    }
+  }
+  ```
+
+  - `total_candidates`: integer baseline before filters applied. May be
+    sampled or capped at large catalogs.
+  - `excluded_by`: keyed by filter property name as it appears in the
+    request's `filters` object. Each value carries `count` (required),
+    optional `values` (the specific filter values that contributed to
+    exclusions), and optional `notes` (human-readable narrative).
+
+  **Counts only — never product names.** Listing excluded products would
+  leak competitive intelligence about adjacent campaigns or seller
+  inventory. Counts plus `values` (the filter inputs that did the
+  excluding, not the products that got excluded) is enough for triage
+  without that leakage.
+
+  **Counting semantics intentionally loose.** Sellers vary on whether to
+  count products excluded by ANY filter or ONLY by this filter. The spec
+  documents the field as approximate — buyers SHOULD treat counts as
+  triage signal, not exact accounting. Tightening this would force every
+  seller to implement the same ordering of filter evaluations, which is
+  an internal-architecture imposition AdCP shouldn't make.
+
+  **Wired in.**
+
+  - `media-buy/get-products-response.json`: new optional
+    `filter_diagnostics` object with the shape above. `additionalProperties:
+true` on each per-filter detail object so filter-specific extensions
+    (e.g., per-metric breakdown) can land later without spec churn.
+  - `docs/media-buy/task-reference/get_products.mdx`: new Response Metadata
+    row + dedicated `filter_diagnostics` section with field table and
+    example response.
+
+  **Backwards compatibility.** Optional and additive. Sellers that don't
+  populate the field, and buyers that don't consume it, see no change.
+
+  **Sell-side adoption.** Zero cost for sellers who don't populate it.
+  Sellers that already track per-filter exclusion counts internally
+  surface them with a single new field on their response builder. Sellers
+  without that instrumentation can adopt incrementally — the field's
+  absence is conformant.
+
+  Closes #3482.
+
+- 1154e9d: feat(schema): add `Submitted` arm to per-tool response `oneOf` for `update_media_buy`, `build_creative`, and `sync_catalogs` (#3392)
+
+  AdCP 3.0 shipped `*-async-response-submitted.json` schemas for 6 HITL tools but only 2 of 6 per-tool `xxx-response.json` schemas included the `Submitted` arm in their top-level `oneOf`. This left SDK codegen unable to generate typed `*Task` HITL methods for the 4 missing tools.
+
+  This changeset fixes 3 of the 4 gaps (the `get_products` case is flagged for human review — see #3392):
+
+  - `update-media-buy-response.json` — adds `UpdateMediaBuySubmitted` arm (`status: "submitted"` + `task_id`); updates `UpdateMediaBuyError.not` to exclude the submitted state
+  - `build-creative-response.json` — adds `BuildCreativeSubmitted` arm; updates `BuildCreativeError.not` to exclude the submitted state
+  - `sync-catalogs-response.json` — adds `SyncCatalogsSubmitted` arm; updates `SyncCatalogsError.not` to exclude the submitted state
+
+  Non-breaking: existing `Success | Error` consumers are unaffected. Buyers gain a new permitted response shape and SDK codegen can produce typed HITL methods for these three tools.
+
+  Note: the fix uses the same inline arm pattern as `create-media-buy-response.json` and `sync-creatives-response.json` — not `$ref` to the `*-async-response-submitted.json` schemas (those are task-completion artifact payloads for the webhook path, not the initial-response discriminated arm).
+
+  Closes partial scope of #3392.
+
+- 7b2de61: Single governance agent per account — reconcile 3.x governance schemas with a coherent semantic model (closes #3010).
+
+  **The inconsistency.** 3.x registration (`sync_governance`) allowed up to 10 governance agents per account with per-agent `categories`, and the campaign-governance spec documented fan-out-and-unanimous-approval. But the protocol envelope and `check_governance` carried a single `governance_context` string, and the four-value `scope` enum on brand.json (`spend_authority | delivery_monitor | brand_safety | regulatory_compliance`) didn't carve the governance responsibility at its joints — those aren't independent specialisms held by different authorities, they're phases and facets of one evaluation over one plan.
+
+  **Decision.** Commit to single-agent: an account binds to one governance agent that owns the full lifecycle. Multi-agent registration was aspirational and produced schema inconsistencies without a coherent semantic story. A plan is unitary (budget, policies, restricted attributes all live on the plan); `check_governance` already separates authorization / fidelity / drift on the `phase` axis (`purchase` / `modification` / `delivery`); internal specialist review (legal, brand safety, category) belongs inside the configured agent, not at the registration layer.
+
+  **Changes.**
+
+  - `account/sync-governance-request`: `governance_agents` constrained to `maxItems: 1`. `categories` field removed. Description makes the one-agent-per-account invariant explicit and explains why (phases, not specialisms; plan is unitary; specialist review composes inside the agent).
+  - `core/protocol-envelope`: `governance_context` stays a singular string. Description updated to state the single-agent invariant and why phased lifecycle (not split authority) means one token covers the full governed action.
+  - `brand.json`: remove the governance-agent `scope` enum (`spend_authority | delivery_monitor | brand_safety | regulatory_compliance`) — no longer meaningful under single-agent registration. P&G example updated to drop the stray `scope` array.
+  - `docs/governance/campaign/specification.mdx`: replace "Multi-agent composition" with "One governance agent per account" explaining the rationale (authorization/fidelity/drift are phases, regulatory rules are encoded in the plan, specialist review composes inside the agent, one lifecycle/one token/one audit trail). Fix the remaining `governance_agent(s)` plural residue.
+  - `governance/check-governance-request` / `response` / `report-plan-outcome-request`: revert any language implying per-agent fan-out; all three are single-agent calls as originally designed.
+  - `docs/governance/campaign/tasks/check_governance.mdx`, `report_plan_outcome.mdx`: revert to the single-agent prose.
+
+  **Backwards compatibility.** Buyers with one agent registered (practically every 3.0 deployment per maintainer's reading of the ecosystem) are unaffected. Buyers that registered more than one agent per account against the previous `maxItems: 10` — if any exist — MUST collapse to a single agent; the protocol does not support routing or aggregating across multiple. Sellers that validated the `categories` field MUST treat registrations without it as valid (the field is removed, not deprecated).
+
+  **What this is not.** This PR does not address specialist governance surfaces adjacent to campaign governance — brand-safety pre-screen of creatives, property-list policy, content-standards evaluation — those are separate governance domains with their own agents and their own lifecycle. Campaign governance speaks only for the plan.
+
+- f44fba3: Three small cleanups from the measurement schema audit (closes audit findings §3.8 and §3.10; finishes the prose-side work for #3863).
+
+  **§3.8 — `attribution-window` dedup.** `optimization-goal.json` previously inlined a partial `attribution_window` shape with `post_click` and `post_view` but no `model`, with `post_click` required. The canonical `core/attribution-window.json` has `post_click`, `post_view`, and `model` with `model` required. Two surfaces describing the same concept with conflicting constraints. Fix:
+
+  - `optimization-goal.json` `attribution_window` collapses to `$ref attribution-window.json` so there's one canonical shape.
+  - `attribution-window.json` `model` becomes optional (was required). Absence means the seller's default attribution model applies (typically `last_touch` per industry convention). Sellers SHOULD populate `model` when committing to a specific methodology. Buyers reading delivery reports get the seller's choice when set; fall back to default when not.
+
+  **§3.10 — `dooh_metrics.calculation_notes` description tightening.** Previously a one-liner ("Explanation of how DOOH impressions were calculated") that read like a primary methodology surface. Tightened to clarify it's for **row-specific supplementary context** (a particular daypart's calculation, a venue-mix exception) — the canonical methodology declaration belongs on the measurement vendor's `get_adcp_capabilities.measurement.metrics[]` block where it's discoverable once and inherited across delivery rows. Doesn't deprecate the field — DOOH methodology genuinely has row-level exceptions worth carrying inline.
+
+  **#3863 — `forecastable-metric.json` description drift fix.** The description previously claimed `audience_size`, `measured_impressions`, `grps`, `reach`, `frequency` were forecast-only deltas. **Wrong:** `grps`, `reach`, `frequency` are also in `available-metric.json` (have been since their introduction). The actual forecast-only deltas are `audience_size` and `measured_impressions`. Description corrected. Closes the prose-cross-reference half of #3863; the schema-level enforcement of overlap (build-script work, not schema work) is deferred.
+
+  **Backwards compatibility.** All three changes are additive or relax existing constraints (the `attribution-window.model` requirement relaxation makes previously-failing payloads valid; previously-valid payloads remain valid). No breaking changes.
+
+  Closes audit findings §3.8 and §3.10. Substantially closes #3863 (prose cross-references); build-script overlap enforcement deferred to a follow-up.
+
+- 12bfb06: Add `measurement` capability block to `get_adcp_capabilities`. Closes
+  #3612 (the protocol surface piece of the per-metric catalog discovery
+  design from #3586). Unblocks #3613 (AAO crawler + index
+  implementation).
+
+  **Adds `measurement` to `supported_protocols` and `enums/adcp-protocol.json`.**
+  Measurement is a protocol-in-development. The capability block ships
+  now so measurement vendors can publish their catalogs and AAO can
+  crawl them; additional measurement tasks (reporting, attribution,
+  panel queries) and a baseline compliance storyboard land in
+  subsequent minors. Same as every other protocol — `creative` is in
+  `supported_protocols` AND has a capability block; same for
+  `governance`. Measurement follows the same model.
+
+  **Self-describing, parallels other agents.** Every AdCP agent type
+  publishes capabilities at the agent itself (sales / creative /
+  governance / brand / buying / signals / rights). Measurement now
+  follows the same pattern with a new `measurement` block whose
+  `metrics[]` array carries the per-metric catalog. The shape mirrors
+  `governance.property_features[]` (typed feature objects in an array)
+  including the `methodology_url` and `methodology_version` fields.
+
+  **Scope.** An agent claiming `measurement` computes one or more
+  quantitative metrics about ad delivery, exposure, or effect
+  (impression verification, viewability, IVT, attention, brand lift,
+  incrementality, outcomes, emissions — vendors define the surface in
+  `metrics[]`). Returns metric definitions (this block), not pricing
+  or coverage (negotiated per buy via `measurement_terms`) and not
+  live values (returned per buy via `vendor_metric_values`). Same
+  mechanical model as `compliance_testing` and `webhook_signing`.
+
+  **No closed category enum.** An earlier draft included a closed 12-value
+  `measurement-category.json` enum and a required `category` field on
+  each metric. WG review pushed back on two grounds: (1) categories
+  overlap (e.g., `brand_safety` measurement vs. governance's
+  `content_standards`), making the boundary fuzzy; (2) without a
+  buyer-side discovery primitive consuming the field, the enum was
+  adding schema surface and drift risk without earning its keep.
+  Dropped: `category` field, `measurement-category.json` enum file,
+  `metric_categories[]` on brand.json (already removed in this PR's
+  prior commit). AAO and buyer agents normalize across catalogs from
+  `metric_id`, `description`, `standard_reference`, and
+  `accreditations[]` — all already structured. If a category facet
+  proves useful once #3613's discovery primitive lands, it can be
+  added back as an open vendor-asserted string with real query
+  patterns shaping the taxonomy.
+
+  **Schema additions.**
+
+  - `protocol/get-adcp-capabilities-response.json`: new `measurement`
+    block with `metrics[]`. Each metric carries `metric_id` (required),
+    plus optional `standard_reference`, `accreditations[]` (third-party
+    certification list, distinct from `standard_reference` — accrediting
+    body, optional cert ID, validity date, evidence URL), `unit`,
+    `description`, `methodology_url`, and `methodology_version`.
+    `additionalProperties: false` with explicit `ext` slot, matching
+    the governance pattern. `uniqueItems: true` on `metrics[]` — duplicate
+    `metric_id` within one agent's catalog is a conformance bug.
+
+  **Why `accreditations[]` is separate from `standard_reference`.**
+  A metric can implement a published standard (URL points at the spec)
+  without holding independent third-party accreditation. Buyers asking
+  "is this MRC-accredited?" need a structured answer that survives URL
+  parsing — every vendor pasting the same MRC URL whether accredited
+  or not gives a false signal of comparability. The split surfaces
+  the distinction at the schema layer.
+
+  **Doc updates.**
+
+  - `docs/protocol/get_adcp_capabilities.mdx`: new `measurement` section
+    with field table, response example showing `accreditations[]` and
+    `methodology_version`, the discovery-vs-settlement framing, an
+    explicit Scope subsection ("what does claiming `measurement` mean?"),
+    and an explicit "this is a discovery surface, not a rate card" callout
+    (pricing/SLAs/coverage are negotiated per buy via
+    `measurement_terms`).
+  - `docs/registry/index.mdx`: refines the measurement-vendor discovery
+    section to reference the now-defined `measurement` capability block
+    and forward-references the AAO index endpoint (#3613) and the
+    buyer-agent direct-call docs (#3614).
+  - `core/reporting-capabilities.json`: updated `vendor_metrics[]` prose
+    to point at `get_adcp_capabilities.measurement.metrics[]` as the
+    canonical metric-definition source (was previously brand.json).
+
+  **Backwards compatibility.** All additions are optional and additive.
+  Sellers without measurement capability are unchanged; sellers with
+  measurement capability gain a structured catalog surface.
+
+  **WG review.** This is the protocol surface for measurement-vendor
+  capability declaration. Three independent expert reviews plus WG
+  pushback shaped this version: kept `measurement` in
+  `supported_protocols` per the protocol-in-development framing, added
+  `methodology_version`, added structured `accreditations[]` to separate
+  "implements a standard" from "third-party certified," dropped the
+  brand.json coarse-filter field, and dropped the closed category enum
+  in favor of letting real catalogs shape the taxonomy.
+
+  Closes #3612.
+
+- f6f90d8: Add optional `vendor: BrandRef` to two vendor-attested rows that lacked structured vendor identity, bringing them into the same identity discipline as `vendor_metric_values`, `performance-standard.vendor`, and `committed_metrics` (vendor-scope entries).
+
+  **`core/delivery-metrics.json` `viewability`** (closes #3862). Optional but RECOMMENDED — makes the viewability row self-describing so buyer agents reading delivery in isolation can attribute the numbers to a measurement vendor without joining back to `package.committed_metrics` or `package.performance_standards`. Same shape as `vendor_metric_value.vendor` for symmetry.
+
+  **`core/performance-feedback.json`** (closes #3859). SHOULD be populated when `feedback_source` is `third_party_measurement` or `verification_partner` AND a single attesting vendor exists. OMITTED for blended outputs (MMM mixes from Nielsen MMM / Analytic Partners / in-house models, multi-touch attribution that joins across vendors, clean-room outputs from LiveRamp / Habu / AWS Clean Rooms where the clean room is not itself the measurement source) — exactly the high-value third-party signals that don't have a single attesting vendor. Optional for `buyer_attribution` and `platform_analytics` (those sources are implicit from context). Described in the field; not enforced via JSON Schema `if/then`, matching the precedent set by `performance-standard.standard`. Without the BrandRef on single-vendor feedback, the row is unattributed — consumers can't verify authorization, resolve metric definitions via the vendor's `get_adcp_capabilities.measurement.metrics[]`, or route disputes.
+
+  Both fields are additive and backwards-compatible. Origin: schema audit run during PR #3843, findings §3.4 and §3.9. Aligns with the [measurement taxonomy](https://docs.adcontextprotocol.org/docs/measurement/taxonomy) doctrinal framing that vendor-attested measurement is anchored on `BrandRef → brand.json agents[type='measurement']` discoverable identities.
+
+  Doc updates: `docs/media-buy/task-reference/provide_performance_feedback.mdx` (vendor field row, example payload), `docs/media-buy/media-buys/optimization-reporting.mdx` (viewability field list).
+
+- c2e3edf: Add a per-agent REST surface at `/api/me/agents` so members can register, list, update, and remove individual agents from CI or scripts via WorkOS API key (Bearer `sk_…`) — no full-profile round-trip and no Addie/UI dependency. Reuses the same visibility gate and server-side type resolution as `PUT /api/me/member-profile`; type-resolution flips (the smuggle-protection events) are audit-logged. Writes serialize through `SELECT … FOR UPDATE` on `member_profiles` so concurrent register/update/delete calls cannot race the JSONB read-modify-write. Multi-org callers may pass `?org=…` to target a non-primary org; verification goes through `resolveUserOrgMembership`. `DELETE /api/me/agents/{url}` returns `409 unpublish_first` when the agent is currently `public` so the registry catalog and the published `brand.json` cannot silently disagree. `PATCH /api/me/agents/{url}` with a body `url` that disagrees with the path returns `400 url_immutable` rather than dropping the rename silently.
+- 0b2cf2b: Add `metric_aggregates` partition to `aggregated_totals` on `get_media_buy_delivery` — qualifier-aware delivery rollups symmetric to `committed_metrics`. Closes #3848. Supersedes #3631 and #3833 (both already closed).
+
+  **The atomic unit is now identical across contract, diff, and delivery.** Each surface carries `(scope, metric_id, qualifier, …)` rows; reconciliation collapses to a row-level join on the tuple. `committed_metrics` adds `committed_at`; `missing_metrics` strips it; `metric_aggregates` swaps it for `value` plus per-metric component fields.
+
+  **Provides the structural primitive for solving apples-to-oranges sums.** MRC and GroupM viewability define materially different thresholds and must never be combined into a single cross-buy rate. The partition shape (one row per `(metric_id, full-qualifier-set)`) makes the partition expressible; future qualifier-aware metrics (`completion_rate` × completion threshold; attention scoring × methodology if it standardizes) plug into the same shape with no schema break. Note: this PR ships the _structure_ — sellers actually emitting partitioned rows requires a forcing function from the contract surface (buyers committing to specific qualifiers via `committed_metrics`) plus seller adoption. Expect adoption to lag the structure until a real contract demand exists.
+
+  **Schema additions.**
+
+  - `media-buy/get-media-buy-delivery-response.json` `aggregated_totals.metric_aggregates`: array of discriminated rows. Two oneOf branches (`scope: standard` / `scope: vendor`), `additionalProperties: false` on both (matching `committed_metrics` symmetry), reusing the qualifier shape from `core/package.json` `committed_metrics` and the BrandRef pattern from `core/vendor-metric-value.json`. Per-metric component fields (`measurable_impressions`, `viewable_impressions`, `impressions`, `completed_views`, `spend`, `conversions`, `conversion_value`, `clicks`) inlined as siblings of `value` rather than nested in a `components` sub-object — flatter, matches the per-buy `viewability` block's existing flat shape. Per-metric required components enforced via `if/then` for the four highest-traffic metrics (`viewable_rate`, `completion_rate`, `cost_per_acquisition`, `roas`); other metrics rely on prose-described components today (full `oneOf` discriminated on `metric_id` would be 31+ branches; deferred to a future minor if conformance testing demands).
+  - `core/package.json` `committed_metrics` description updated to cross-link `aggregated_totals.metric_aggregates` and articulate the row-symmetric model across contract / diff / delivery.
+
+  **Granularity rule.** One row per `(metric_id, full-qualifier-set)`, reported at the finest available granularity. Buyers re-aggregate up if they want a coarser view. Eliminates rollup ambiguity and prevents accidental double-counting.
+
+  **Closed today, expected to diverge.** `committed_metrics.qualifier` and `metric_aggregates.qualifier` are both `additionalProperties: false` today with identical content (`viewability_standard` only). The delivery vocabulary is **expected to diverge from contract** in future minors as transparency disclosures buyers don't commit to ship delivery-only (e.g., `tracker_firing` pending #3832). New keys ship explicitly in subsequent minors on either surface.
+
+  **Unqualified metrics stay top-level; mutual exclusion MUST.** `impressions`, `spend`, `media_buy_count`, etc. remain at the top of `aggregated_totals`. `metric_aggregates` is only used for metrics with non-empty qualifier sets. **For any `metric_id` appearing in `metric_aggregates`, the corresponding top-level scalar in `aggregated_totals` MUST be omitted (not zeroed)** — sellers MUST NOT emit both. Avoids duplicate sources of truth.
+
+  **Qualifier-set drift across reports.** When a campaign gains a new qualifier mid-flight (e.g., adds `tracker_firing` partitioning in week 2 after only client-side firing in week 1), prior periods' rows remain valid at their original granularity. Buyers SHOULD NOT retroactively repartition.
+
+  **Per-buy shape stays flat.** Each individual buy is single-qualifier by definition; only the cross-buy aggregate spans qualifiers. Per-buy `totals.viewability` continues to be a flat object with its own `standard` field.
+
+  **Value typing.** Heterogeneous by `metric_id` (rate vs count vs ratio). Buyer agents MUST inspect `metric_id` before doing arithmetic — same dispatch convention as `committed_metrics`. Documented in the description and in `docs/media-buy/task-reference/get_media_buy_delivery.mdx`.
+
+  **Backwards compatibility.** Additive. The field is optional in v1 (`additionalProperties: true` on `aggregated_totals` already permitted ad-hoc partition fields like the original Vox `viewability` insertion); existing clients are unchanged.
+
+  Doc updates: `docs/media-buy/task-reference/get_media_buy_delivery.mdx` adds an "Aggregated metric partitions" section documenting the reconciliation join, granularity rule, qualifier-vocabulary asymmetry, per-buy / aggregate divergence, and value-typing dispatch.
+
+  Closes #3848.
+
+- 53e7920: Reconcile the metric vocabulary across the protocol. Closes #3858 (deprecate `metric-type` enum on `performance-feedback`); substantially addresses #3863 (four-parallel-enums cleanup) — full sub-enum restructuring deferred to a follow-up minor.
+
+  **Problem.** Four parallel metric enums grew independently with overlapping but inconsistent vocabularies:
+
+  - `available-metric.json` (30 values) — closed delivery enum used by `committed_metrics`, `required_metrics`, `reporting_capabilities.available_metrics`
+  - `forecastable-metric.json` (15 values) — forecast-time enum, mostly mirrors `available-metric` plus deltas (`audience_size`, `measured_impressions`, `grps`, `reach`, `frequency`)
+  - `performance-standard-metric.json` (5 values) — verification subset (`viewability`, `ivt`, `completion_rate`, `brand_safety`, `attention_score`)
+  - `metric-type.json` (8 values) — legacy `performance-feedback` enum mixing metrics, verification, and attribution into one list (`overall_performance`, `conversion_rate`, `brand_lift`, `click_through_rate`, `completion_rate`, `viewability`, `brand_safety`, `cost_efficiency`)
+
+  **Changes.**
+
+  ### `performance-feedback.json` (#3858)
+
+  - Adds `metric: { scope, metric_id, qualifier? }` field — the discriminated row shape symmetric with `committed_metrics` and `metric_aggregates`. Preferred over the legacy `metric_type` field for new implementations.
+  - Marks `metric_type` as **deprecated** in description and **drops it from `required`** at the schema level — the previous "still required while deprecated" pattern was internally inconsistent. Existing implementations populating `metric_type` continue to work; new implementations populate `metric` instead. Removed at the next major when `metric` becomes the canonical dispatch path.
+  - When both `metric` and `metric_type` are present, consumers MUST use `metric` for dispatch.
+  - **`metric` is also optional** — for holistic feedback (a trader flagging a campaign as underperforming without a specific metric), senders can omit `metric` entirely; `performance_index` plus the response narrative carry the signal. This preserves the workflow that legacy `metric_type: "overall_performance"` and `cost_efficiency` served.
+  - Standard-scope `metric` entries support `qualifier.viewability_standard` (MRC vs GroupM) and `qualifier.completion_source` (seller vs vendor attested). Vendor-scope entries carry the BrandRef pattern.
+  - For `brand_safety` migration: buyers who don't know the vendor's specific `metric_id` MAY populate the top-level `vendor` field and OMIT `metric` — the row stays attributable via `feedback_source` + `vendor` without forcing buyers to learn vendor-specific metric vocabularies.
+
+  ### `metric-type.json` (#3858)
+
+  - Marked deprecated in title and description.
+  - Description carries a migration table mapping each legacy value to its replacement on the new `metric` field. Meta-bucket values (`overall_performance`, `cost_efficiency`) migrate to **omitting `metric` entirely** — the previously-meaningless meta-buckets are now expressible as "no specific metric" rather than "a meta-string with no defined dispatch semantics." `conversion_rate` has no clean direct target (the protocol distinguishes ratio from count); migration suggests either feeding back `conversions` or a vendor-scope MMM/MTA conversion-rate variant. `brand_safety` migration accommodates buyers who don't know vendor-specific metric IDs (top-level `vendor` field carries source identity even when `metric` is omitted).
+
+  ### `forecastable-metric.json` (#3863, partial)
+
+  - Description clarifies which values mirror `available-metric.json` (the canonical delivery vocabulary) and which are forecast-only deltas. Forecast-only values graduate into `available-metric.json` if and when the industry converges on adding them to delivery reporting.
+  - No schema shape change in this minor; the cross-reference is documented in prose.
+
+  ### `performance-standard-metric.json` (#3863, partial)
+
+  - Description clarifies the verification-subset role and the relationship to `available-metric.json` (shared values mirror; verification-only values like `ivt`, `brand_safety`, `attention_score` flow through `vendor_metric_values` or vendor-scope `committed_metrics` entries).
+  - No schema shape change.
+
+  ### `provide_performance_feedback.mdx`
+
+  - Request parameters table updated with the new `metric` field row and the `metric_type` deprecation marker.
+  - Disambiguates the top-level `vendor` field (source of the feedback) from the nested `metric.vendor` field (vendor that defines the metric). Often the same; can differ.
+
+  **Migration.**
+
+  Implementations using `performance-feedback.metric_type` continue to work unchanged for one minor. New implementations SHOULD populate both fields during the transition window: `metric_type` for backwards-compat with consumers reading the legacy field, `metric` as the preferred dispatch surface. At the next major (4.0), `metric_type` is removed and `metric` becomes required.
+
+  **Backwards compatibility.** Additive (new field on performance-feedback). Existing consumers that ignore the new field continue to work. Deprecated `metric_type` is still required at the schema level for one minor.
+
+  **What's deferred** (#3863 follow-up). Forecast-only sub-enum extraction (split `forecastable-metric` into `delivery-metrics-shared` + `forecast-only`) and `performance-standard-metric` cross-reference enforcement at the schema level. Both are mechanical follow-ups; the prose description updates ship the conceptual reconciliation now and unblock the deprecation path on `metric-type`.
+
+  Closes #3858. Substantially addresses #3863.
+
+- 4f08ba1: Add five missing scalar metrics that production reporting carries today
+  but had no enum entry: `cost_per_completed_view`, `cpm`, `downloads`,
+  `units_sold`, `new_to_brand_units`. Closes the missing-scalars sub-item
+  of #3460.
+
+  **The scalars and where they fit.**
+
+  - `cost_per_completed_view` — CTV CPCV pricing scalar. Parallels existing
+    `cost_per_click` and `cost_per_acquisition`; the package's
+    `pricing_model` is `cpcv` when this field is the billing basis.
+  - `cpm` — Cost per thousand impressions. Universal pricing scalar across
+    CTV, display, mobile/web video, native, audio, and DOOH inventory.
+    Conspicuous absence next to `cost_per_click` before this PR; the
+    package's `pricing_model` is `cpm` when this field is the billing
+    basis. Field name aligns with the canonical `cpm` token in
+    `pricing-model.json` and `pricing-options/cpm-option.json` so buyers
+    cross-walk pricing model → reported scalar without a translation.
+  - `downloads` — IAB-standard scalar for audio/podcast inventory (IAB
+    Podcast Measurement Technical Guidelines 2.x methodology). Distinct
+    from `views`.
+  - `units_sold` — Retail-media commerce scalar. Distinct from
+    `conversions` (a single transaction may carry multiple units).
+    Attribution windows are platform-specific; sellers SHOULD declare the
+    window via `reporting_capabilities.measurement_windows` or
+    `measurement_terms` rather than encoding it in this scalar.
+  - `new_to_brand_units` — Retail-media count of units sold to first-time
+    brand buyers. Unit-volume parallel to existing `new_to_brand_rate`
+    (which carries the fraction-of-conversions metric); this is the
+    absolute unit count.
+
+  **Wired in.**
+
+  - `enums/available-metric.json`: five new enum values appended.
+  - `core/delivery-metrics.json`: five new properties (`type: number,
+minimum: 0`) added next to `cost_per_click`. Existing `new_to_brand_rate`
+    description tightened to clarify it is the fraction of `conversions`
+    (transactions), distinguishing it from the new units count.
+  - `docs/media-buy/media-buys/optimization-reporting.mdx`: metric list
+    updated.
+
+  **Sub-items already resolved on #3460.**
+
+  - **Closed-vs-open enum** — resolved by #3492 (vendor-metric extensions).
+    Closed enum stays closed; vendor-defined metrics live in the parallel
+    structured `vendor_metrics` surface anchored on the vendor's brand.json.
+  - **`completion_rate` derived ratio** — resolved by the drop-carve-out
+    call in #3472's refactor. `missing_metrics` is the symmetric mirror of
+    `available_metrics` with no carve-outs.
+
+  **Sub-item that remains as a follow-up.**
+
+  - **DBCFM cross-check with David Porzelt** on whether
+    `engagements`/`follows`/`saves`/`profile_visits` (added in #3453)
+    collide with DBCFM `Reporting`/`Performance` KPI codes. Human contact;
+    not a code change.
+
+  **Backwards compatibility.** All additions are optional. Existing reports
+  without these scalars stay conformant; sellers that adopt them populate
+  the new fields when applicable.
+
+  Closes #3460.
+
+- 6776ce4: Unify outcome measurement into the same primitives as the rest of the measurement surface — outcome metrics live in `available-metric.json`, attribution methodology and window live in the qualifier slot, and `outcome_measurement` as a dedicated field is deprecated. Closes #3857.
+
+  **The conceptual collapse.** Before this minor, the protocol had two surfaces describing overlapping subject matter:
+
+  - `delivery-metrics.json` carried outcome scalars (`conversions`, `conversion_value`, `roas`, `cost_per_acquisition`, `units_sold`, etc.) as part of seller-reported delivery — already the audit-flagged "attribution-derived but seller-reported" hybrid.
+  - `core/outcome-measurement.json` (a separate field on `product`) carried business outcome capabilities (`incremental_sales_lift`, `brand_lift`, `foot_traffic`) as free-form strings with implicit vendor identity.
+
+  These were always the same conceptual category — seller-as-measurement-vendor outcome metrics — split across two surfaces because the protocol predated the unified row-shape vocabulary established by #3576 / #3848. With the qualifier slot proven generalizable (#3877's `completion_source` joining `viewability_standard`), the two surfaces collapse cleanly.
+
+  **Schemas added.**
+
+  - `enums/attribution-methodology.json`: closed enum `["deterministic_purchase", "probabilistic", "panel_based", "modeled"]` covering the methodology axis. `deterministic_purchase` is the retail-media closed-loop default (Walmart Connect / Kroger Precision / Amazon DSP); `modeled` covers MMM and clean-room outputs; `panel_based` covers Nielsen / comScore / Edison; `probabilistic` covers statistical match without a 1:1 identifier.
+  - `enums/lift-dimension.json`: closed enum `["awareness", "consideration", "favorability", "purchase_intent", "ad_recall"]` for brand-lift dimension disambiguation. Brand lift is multidimensional in production — Kantar, Upwave, Cint, DV all report each dimension separately with its own sample size and confidence interval; the qualifier ensures rows aren't combined into a single number.
+
+  **Schemas updated.**
+
+  - `enums/available-metric.json`: adds `incremental_sales_lift`, `brand_lift`, `foot_traffic`, `conversion_lift`, `brand_search_lift` to the closed delivery vocabulary. Existing outcome scalars (`conversions`, `conversion_value`, `roas`, etc.) cover the rest. **Note: no separate `attributed_sales` entry** — that's `conversion_value` with `qualifier.attribution_methodology: "deterministic_purchase"`. The unified pattern handles the deterministic/probabilistic/modeled split via qualifier rather than parallel metric IDs.
+  - `core/delivery-metrics.json`: adds scalar properties for the five new outcome metrics, with descriptions clarifying which methodologies typically apply.
+  - **Qualifier slot expanded with three new keys** at all five sites (`core/package.json` `committed_metrics`, `media-buy/package-request.json` buyer-side `committed_metrics`, `media-buy/get-media-buy-delivery-response.json` `metric_aggregates` and `missing_metrics`, `core/performance-feedback.json` `metric`):
+    - `attribution_methodology` — closed string enum (`$ref attribution-methodology.json`)
+    - `attribution_window` — structured duration (`$ref duration.json`). **First object-valued qualifier key** — the slot was previously string-enum-only; this PR establishes that qualifier values can be structured. Schema description explicitly calls out object-valued shape and forbids shorthand strings (`"14d"`); consumers MUST dispatch on key name to know value shape, and structured-value qualifiers join on canonical (key-sorted) deep equality. Window isn't disambiguating "which version of the metric" the way `viewability_standard` does — it's parameterizing — but the join-on-`(metric_id, qualifier)` pattern handles the same-metric-different-window case correctly so the placement works.
+    - `lift_dimension` — closed string enum (`$ref lift-dimension.json`). Disambiguates `brand_lift` rows by surveyed dimension. Production reality (Kantar, Upwave, Cint, DV) reports awareness/consideration/favorability/purchase_intent/ad_recall as separate measurements; a single scalar would force vendors to either pick one or composite. Same qualifier-pattern solution as the other multi-flavored metrics.
+  - `core/outcome-measurement.json`: title and description marked **deprecated**. Description carries a migration table mapping legacy field semantics to the unified pattern. Schema retained as-is for one-minor backwards compatibility.
+  - `core/product.json` `outcome_measurement` field description marked deprecated, points at the new pattern.
+
+  **Doc updates.**
+
+  - `docs/media-buy/commerce-media.mdx`: "How products declare it" section rewritten to show the new pattern (`reporting_capabilities.available_metrics` + qualifier on commit) alongside the legacy `outcome_measurement` field for the transition window. Existing example payloads continue to use the legacy field — they validate during the deprecation window.
+  - `docs/media-buy/product-discovery/media-products.mdx`: `outcome_measurement` field description updated with deprecation note.
+  - `docs/media-buy/task-reference/create_media_buy.mdx`: qualifier section adds `attribution_methodology` and `attribution_window` with their conditional-required semantics.
+  - `docs/media-buy/task-reference/get_media_buy_delivery.mdx`: qualifier vocabulary section names all four keys.
+
+  **Migration.**
+
+  Retail-media sellers using `outcome_measurement` continue to work for one minor. New implementations declare outcome capabilities via `reporting_capabilities.available_metrics` (the same surface used for impressions, conversions, ROAS today) and pin attribution methodology + window via `qualifier` on `committed_metrics` / `metric_aggregates`. Seller-as-measurement-vendor remains the dominant retail-media topology — vendor identity is implicit (the seller) when no separate `performance_standards.vendor` BrandRef is set.
+
+  **What's deferred.**
+
+  `reporting_frequency` and `reporting_format` (the `outcome_measurement.reporting` field's dimensions) move to a follow-up extension on `reporting_capabilities` — they're a property of the seller's reporting infrastructure (daily API, weekly dashboard) rather than a per-metric concern, so they don't belong entangled with the metric definition. Existing `outcome_measurement.reporting` payloads continue to work for one minor.
+
+  **Backwards compatibility.** Additive (new metrics, new qualifier keys, new enum). Deprecated `outcome_measurement` field continues to validate. Removed at the next major when the unified pattern is canonical.
+
+  Closes #3857.
+
+- add4715: Add schema-level `not` constraints to `package-update.json` that explicitly
+  forbid the fully-immutable fields (`product_id`, `format_ids`,
+  `pricing_option_id`) from appearing in update payloads. Mirrors existing
+  MUST NOT prose with machine-checkable validation so permissive sellers
+  can no longer silently override frozen values.
+
+  `committed_metrics` is intentionally NOT in the not-list. Per the unified
+  metric-accountability design (#3576), `committed_metrics` is **append-only**
+  on update — sellers accept new entries (mid-flight metric additions) but
+  MUST reject modify/remove of existing entries via runtime validation
+  (`validation_error` with code `IMMUTABLE_FIELD`). The "you can append but
+  not modify" semantics are not expressible in JSON Schema's `not` clause,
+  so this is enforced at the seller's runtime layer rather than the schema
+  layer. The append-only contract is documented on `committed_metrics`
+  itself.
+
+  Closes #3520.
+
+- 3f7c461: Add `plays` scalar to `delivery-metrics.json` and `available-metric.json` —
+  closes a forecast↔delivery asymmetry where `plays` was declared as a
+  forecastable metric (`forecastable-metric.json:23`, `forecast-point.json:38`)
+  but absent from delivery reporting. Closes #3516.
+
+  **The shape.** Top-level `type: number, minimum: 0`. Description
+  cross-references the forecast-side definition and explicitly distinguishes
+  from `dooh_metrics.loop_plays` (per-screen rotation count) and
+  `impressions` (multiplied audience figure). Used for DOOH and broadcast
+  inventory where buyers reconcile against forecast `plays`.
+
+  Why top-level (Option A) over nesting in `dooh_metrics` (Option B):
+
+  - Forecast side declares `plays` at the same level as `impressions` /
+    `views` (top-level on `forecast-point`); reconciliation pairs cleanly
+    when the delivery-side field mirrors that placement
+  - Used for broadcast inventory too (not DOOH-only), so confining to
+    `dooh_metrics` would force a separate field for non-DOOH plays
+  - Matches the type convention of other top-level count scalars
+    (`type: number`, not the `integer` used inside `dooh_metrics`)
+
+  **Test plan** — `build:schemas`, `test:schemas`, `test:examples`,
+  `typecheck` all green.
+
+  Closes #3516.
+
+- 75793d5: feat(provenance): embedded_provenance, watermarks, accepted_verifiers, and structured rejection codes
+
+  Two new optional arrays on `provenance.json` distinguish between provenance metadata carried within the content stream (`embedded_provenance`) and content watermarks that encode an identifier or fingerprint (`watermarks`). The separation aligns with C2PA's normative taxonomy: embedded provenance maps to binding assertions and manifest embedding (Section A.7), while watermarks map to the `c2pa.watermarked.*` action family.
+
+  The verifier contract follows seller-publishes / buyer-represents / seller-confirms:
+
+  - **Seller publishes** `creative_policy.accepted_verifiers[]` — the governance agents it operates or has allowlisted, each with `agent_url`, optional `feature_id`, and optional `providers[]`. Returned on `get_products`.
+  - **Buyer represents** on each `embedded_provenance[]` and `watermarks[]` entry by attaching `verify_agent: { agent_url, feature_id? }` whose `agent_url` matches a published `accepted_verifiers[]` entry (canonicalized).
+  - **Seller confirms** by cross-checking the URL against its allowlist before any outbound call, then invoking `get_creative_features` against the matching on-list agent. Sellers MUST NOT call buyer-asserted endpoints outside their allowlist.
+
+  This closes the SSRF / exfil / phishing surface a buyer-controlled URL would otherwise create, and matches how publishers actually pick verifiers (they run their own pipeline; buyer-attached evidence is supplementary, not authoritative).
+
+  A new `provenance_requirements` object on `creative-policy.json` gives sellers structured, field-level provenance requirements: `require_digital_source_type`, `require_disclosure_metadata`, `require_embedded_provenance`. Sellers that publish a requirement MUST enforce it on `sync_creatives` with the matching error code from the new `PROVENANCE_*` family on `error-code.json`:
+
+  - `PROVENANCE_REQUIRED` — no provenance object on the creative
+  - `PROVENANCE_DIGITAL_SOURCE_TYPE_MISSING` — required `digital_source_type` absent
+  - `PROVENANCE_DISCLOSURE_MISSING` — required `disclosure` block absent
+  - `PROVENANCE_EMBEDDED_MISSING` — required `embedded_provenance` entry absent
+  - `PROVENANCE_VERIFIER_NOT_ACCEPTED` — `verify_agent.agent_url` is off the seller's `accepted_verifiers` list (cross-checked before any outbound call)
+  - `PROVENANCE_CLAIM_CONTRADICTED` — on-list verifier (called via `get_creative_features`) refutes the buyer's claim
+
+  These codes are correctable: a buyer's orchestrator reads them, fixes the creative, and resubmits without negotiating with the seller. `PROVENANCE_CLAIM_CONTRADICTED.error.details` is constrained to the audit-safe allowlist `{ agent_url, feature_id, claimed_value, observed_value, confidence, substituted_for }` so verifier responses cannot leak cross-tenant or PII data.
+
+  The `c2pa` field description on `provenance.json` is updated to note that sidecar manifest bindings break during ad-server transcoding, with a reference to `embedded_provenance` as the alternative for intermediary pipelines.
+
+  New enum files: `embedded-provenance-method.json`, `watermark-media-type.json`, `c2pa-watermark-action.json`. New compliance scenario: `protocols/media-buy/scenarios/provenance_enforcement.yaml` walks the structural-rejection contract end to end (discover requirement → reject off-list verifier → reject missing disclosure → accept corrected resubmission).
+
+  All wire additions are optional and additive; existing agents that do not read the new fields are unaffected.
+
+  Closes #2854 (Option A: must-carry baseline expansion + Track 1: embedded provenance field shape).
+
+- 6ff3f9d: Reconcile `available-metric` enum with `delivery-metrics.json` so every
+  declarable metric has a corresponding property in the delivery payload.
+
+  **Why.** A buyer that says "I can only use products that report
+  `completed_views`" only has accountability if the enum used at the discovery
+  layer is a 1:1 mirror of what reporting can actually return. The enum had
+  drifted from the property set:
+
+  - `video_completions` was listed in the enum but had no corresponding property
+    in `delivery-metrics.json` — the property was renamed to `completed_views`
+    in a prior release (per `docs/reference/release-notes.mdx` §7) and the enum
+    alias was never cleaned up. A seller declaring it in `available_metrics`
+    was advertising a metric they could not report.
+  - Four scalar properties on `delivery-metrics.json` (`engagements`, `follows`,
+    `saves`, `profile_visits`) had no enum entries, so a product that reports
+    social/social-platform engagements had no way to declare so at discovery.
+
+  **Changes.**
+
+  - `enums/available-metric.json`: remove `video_completions`; add `engagements`,
+    `follows`, `saves`, `profile_visits`. Object/namespace entries (`viewability`,
+    `quartile_data`, `dooh_metrics`) remain — they map to namespace properties
+    in `delivery-metrics.json`.
+  - `core/reporting-capabilities.json`: example updated to use `completed_views`.
+  - `docs/media-buy/media-buys/optimization-reporting.mdx`: metric list rewritten
+    to match the reconciled enum (drops the stale `video_completions` entry,
+    adds `engagements` / `follows` / `saves` / `profile_visits` /
+    `new_to_brand_rate`). Notes platform variance for `saves`
+    (Pinterest "repins", TikTok "video_saves").
+  - `docs/media-buy/task-reference/create_media_buy.mdx`: `requested_metrics`
+    examples updated to `completed_views`.
+  - `server/src/training-agent/publishers.ts`: training-agent fixture
+    `reportingMetrics` arrays use `completed_views`.
+
+  **Vocabulary provenance.** `completed_views` and `engagements` follow IAB/MRC
+  and VAST 4 conventions. `follows`, `saves`, and `profile_visits` are
+  platform-native names (Meta/TikTok/Pinterest); AdCP is setting these as the
+  canonical aliases for cross-platform reporting since IAB does not define
+  social-platform engagement scalars.
+
+  **Backwards compatibility.** Removing `video_completions` from the enum is a
+  validation-constraint change — minor-bumped per the schema-publication-at-merge
+  policy. Any seller that had populated `available_metrics: ["video_completions"]`
+  was already non-functional (no `video_completions` field in delivery responses
+  to populate, only `completed_views`). Buyers that filtered against
+  `video_completions` on the discovery side should switch to `completed_views`.
+
+  This unblocks a follow-up that adds `required_metrics` to `get_products` and
+  `missing_metrics` to `get_media_buy_delivery` for end-to-end metric
+  accountability through the media buy lifecycle.
+
+  **DBCFM KPI cross-reference.** The DBCFM `Reporting`/`Performance` KPI
+  vocabulary has not been mapped into AdCP (PRs #1594, #1605, #1664 covered
+  price/business-entities/proposal-lifecycle; measurement block is out of
+  scope). No string-level or semantic collision exists at merge time. When the
+  DBCFM measurement mapping is eventually added, note that `engagements`
+  corresponds to DBCFM `Interaktionen`, `follows` to `Follower-Gewinn`, `saves`
+  to `Gespeichert`, and `profile_visits` to `Profilbesuche`. No aliasing is
+  required — the AdCP names are unambiguous — but a cross-reference note will be
+  needed in the DBCFM mapping doc (tracked in #3460).
+
+  **`completion_rate` is a derived ratio.** `completion_rate =
+completed_views / impressions` — it is derivable, not independently
+  reportable. The planned `missing_metrics` check in `get_media_buy_delivery`
+  must treat ratio metrics as derivable to avoid false
+  `metric_accountability_breach` hints. This is a design signal for the
+  `required_metrics`/`missing_metrics` follow-up; it does not affect this PR.
+
+- 16147ac: Add `redirect_reason` and `redirect_effective_at` to both redirect variants in `brand.json` (Authoritative Location Redirect and House Redirect).
+
+  Today, when a brand.json transitions from a portfolio document to a redirect (e.g., during M&A — Dentsu becomes a House Redirect to WPP), DSPs / crawlers / prebid configs sit on stale cached state for whatever their TTL is. Free-text `note` is human-readable but not machine-parseable.
+
+  `redirect_reason` is an enum (`acquisition`, `divestiture`, `rebrand`, `regional`, `legacy`, `consolidation`, `other`) that consumers SHOULD use to inform cache TTL: in-transition reasons (`acquisition`, `divestiture`, `rebrand`, `consolidation`) suggest the resolved target is moving and consumers SHOULD shorten cache TTL until stable; stable reasons (`regional`, `legacy`) keep standard caching.
+
+  `redirect_effective_at` is an ISO 8601 timestamp. Caches **MUST** treat any entry cached before this timestamp as stale and re-fetch through the redirect — this is the hard invariant that closes the cache-poisoning gap during transitions, regardless of TTL.
+
+  Both fields are optional and additive. Existing redirect publishers continue to work unchanged.
+
+  Motivated by review of the distributed brand.json RFC ([#3533](https://github.com/adcontextprotocol/adcp/pull/3533)) — the M&A migration story uses existing redirect variants, and this PR makes that ergonomic.
+
+- dececcd: Add end-to-end metric accountability through the media buy lifecycle: buyers
+  can now require specific reporting metrics at discovery time, and delivery
+  reports surface any gaps in the contract.
+
+  **Why.** Without this, a buyer asking for `completed_views` on a CTV CPCV buy
+  discovers metric availability through `reporting_capabilities.available_metrics`
+  on each product, then has to manually filter — and at delivery time there is
+  no field that flags when an advertised metric was not produced. The closest
+  existing primitive (`required_performance_standards`) is for guarantee
+  thresholds (e.g., "70% MRC viewability") with vendor selection, not for
+  capability-level metric discovery.
+
+  **Changes.**
+
+  - `core/product-filters.json`: new `required_metrics` field on `get_products`
+    filters. Sellers MUST silently exclude products whose
+    `reporting_capabilities.available_metrics` is not a superset
+    (filter-not-fail; do not return an error). The product's declared
+    `available_metrics` becomes the binding reporting contract carried into
+    the resulting media buy — the same vocabulary computes `missing_metrics`
+    on `get_media_buy_delivery`.
+  - `media-buy/get-media-buy-delivery-response.json`: new `missing_metrics`
+    field on each `by_package[]` entry. Lists metrics from the product's
+    `available_metrics` that are NOT populated in this report. Empty array (or
+    absent) indicates clean delivery; non-empty signals an accountability
+    breach. Sellers MUST exclude metrics not yet measurable for the current
+    `measurement_window` (e.g., post-IVT counts during the live window) —
+    those will appear (or not) when a wider window supersedes this report
+    via `supersedes_window`.
+  - `docs/media-buy/task-reference/get_products.mdx`: documents the new filter,
+    filter-not-fail semantics, and the derived-ratio carve-out.
+  - `docs/media-buy/task-reference/get_media_buy_delivery.mdx`: documents the
+    `missing_metrics` field as the accountability signal.
+  - `static/compliance/source/protocols/media-buy/scenarios/measurement_accountability.yaml`:
+    new conformance storyboard exercising the full lifecycle — discovery with
+    `required_metrics`, create, simulated delivery, and delivery-report shape
+    validation. Storyboard validates schema-level contract; semantic
+    enforcement (verifying the seller honestly populates `missing_metrics`)
+    is left to a follow-up that extends the test controller with
+    metric-omission scenarios.
+
+  **No additional field on `create_media_buy`.** The product's declared
+  `available_metrics` carries forward as the reporting contract — adding a
+  new field on the buy would duplicate that, and `measurement_terms` /
+  `performance_standards` already cover guarantee-level commitments at the
+  package level.
+
+  **Backwards compatibility.** Both fields are optional and additive. Existing
+  sellers that do not populate `missing_metrics` are interpreted as "no breach"
+  (field absent = clean delivery), so existing reports remain conformant.
+  Buyers that omit `required_metrics` see the same behavior as today.
+
+  **Hint kind follow-up.** A dedicated `metric_accountability_breach` storyboard
+  hint kind (with Diagnose/Locate/Fix/Verify formatter) is deferred to a
+  follow-up @adcp/client PR — for now, breach is detectable via standard
+  schema validation on the delivery response and the storyboard runner's
+  `field_present` check on populated metrics.
+
+  Refs #3460.
+
+- f23c966: Add `search_brands` task to the brand protocol.
+
+  Provides a natural-language brand discovery verb for IP desks that need to find brands on an agent's roster before they have a known `brand_id`. Returns lightweight brand stubs (public identity tier) that feed directly into `get_brand_identity` or `get_rights` without an extra identity-resolution round-trip.
+
+  New schemas (experimental): `search-brands-request.json`, `search-brands-response.json`. New task type `search_brands` added to stable `task-type.json` enum.
+
+  Closes #3480.
+
+- 7525019: Add `identity.brand_json_url` to `get_adcp_capabilities` response — capabilities-level pointer to the operator's brand.json so verifiers can bootstrap from an agent URL to that agent's signing keys without out-of-band knowledge of the operator domain. Closes the discovery gap in the request-signing chain (capabilities → `identity.brand_json_url` → brand.json → `agents[]` → `jwks_uri` → JWKS).
+
+  **What's new in `static/schemas/source/protocol/get-adcp-capabilities-response.json`:**
+
+  - New `brand_json_url` field inside the existing `identity` block (HTTPS URI). Co-located with `identity.key_origins`, `per_principal_key_isolation`, `compromise_notification` — all the trust-posture fields that depend on it. Naming intentionally distinguishes from `sponsored_intelligence.brand_url`: `brand_url` is reserved for "the brand being advertised" contexts; `brand_json_url` names the file artifact (the operator's brand.json), independent of whether the operator is a single brand, a house, an agency, or a pure operator record.
+  - Schema-optional in 3.x; storyboard-enforced when the agent declares any signing posture (`request_signing.supported_for`/`required_for` non-empty, `webhook_signing.supported === true`, or any `identity.key_origins` subfield). Becomes schema-required in 4.0 for responses declaring `supported_versions` containing any 4.x release.
+  - Structured constraints (required-when rules, verifier constraints, distinct-from relationships) lifted into a new `x-adcp-validation` extension keyword on the field. Codegen consumers get a tight 2-sentence JSDoc; the storyboard runner and SDK validators consume the structured rules programmatically. See `docs/reference/schema-extensions.mdx` for the convention.
+
+  **What's new in `docs/building/implementation/security.mdx`:**
+
+  - §"Discovering an agent's signing keys via `brand_json_url`" — 8-step verifier algorithm with eTLD+1 origin binding (pinned PSL snapshot required), `authorized_operators[]` opt-in for SaaS-platform-as-operator deployments, mandatory `identity.key_origins` consistency check (purpose-AND-role, with sell-side webhook publisher-pin carve-out), no-redirect rule on brand.json fetch, body cap and timeout budgets, negative-cache 60s floor.
+  - Eight new `request_signature_*` rejection codes with detail fields and remediation column: `brand_json_url_missing`, `capabilities_unreachable`, `brand_json_unreachable`, `brand_origin_mismatch`, `agent_not_in_brand_json`, `brand_json_ambiguous`, `key_origin_mismatch`, `key_origin_missing`.
+  - Trust-root distinction: brand.json operator-attested; adagents.json publisher-attested; agent never self-attests.
+  - Quickstart subsection mirroring §796 — 6 numbered steps + 15-line pseudocode for implementing a `brand_json_url`-based verifier.
+  - Reference-implementation paragraph naming `@adcp/client` (TypeScript), `adcp` (Python), `adcp-go` (Go) with their `resolveAgent` / `getAgentJwks` / `verify_request_signature` signatures and the `npx @adcp/client resolve <url>` CLI.
+
+  **Backwards compatibility:** Strictly additive. Verifiers that ignore `identity.brand_json_url` continue to work. The full design (with reviewer history, multi-tenant operator handling, SDK + CLI integration, naming-convention discussion, and rejected hosted-AAO-resolver alternative) is in `specs/capabilities-brand-url.md`.
+
+  **Adopting from 3.0 (no version bump required).** The wire shape is forward-compatible — 3.0-conformant agents can populate and read the field today without waiting for the 3.x bump. A 3.0 seller MAY emit `identity.brand_json_url` on its capabilities response and a 3.x verifier picks it up automatically; a 3.0 verifier MAY read it opportunistically and run the 8-step chain when present, falling back to existing out-of-band agent → operator mapping when absent. The chain itself is plain HTTPS fetches and JSON parsing — no 3.x SDK required. AdCP doesn't backport new schema fields to patch releases (3.0.x), but 3.0-pinned implementers building signature verification today (e.g., Scope3) can ship the field now and let the 3.x rollout happen passively. See [security.mdx §Discovering an agent's signing keys](https://adcontextprotocol.org/docs/building/implementation/security#discovering-an-agents-signing-keys-via-brand_json_url) for the verifier algorithm.
+
+- 1323f39: spec(specialisms): add `sponsored-intelligence` to `AdCPSpecialism` (preview)
+
+  Adds `sponsored-intelligence` to the `AdCPSpecialism` enum so SI agents have a wire-level specialism ID to claim, with the same dispatch parity as `signal-marketplace`, `creative-template`, `governance-spend-authority`, and the other agent shapes. SDKs (e.g. `@adcp/sdk` v6) can now key SI dispatch off the specialism ID instead of routing through escape-hatch handler bags.
+
+  Shipped as `status: preview` while the four SI lifecycle tools (`si_get_offering`, `si_initiate_session`, `si_send_message`, `si_terminate_session`) remain `x-status: experimental`. Per the preview-status contract, claims of this specialism are graded as `{ status: "preview", passed: null, reason: "storyboard not yet defined" }`; conformance for SI agents continues to be exercised by the `sponsored-intelligence` protocol baseline at `/compliance/{version}/protocols/sponsored-intelligence/`. Promotes to `stable` (with `required_tools` and a graded storyboard) when the SI tools graduate.
+
+  Closes #3961.
+
+- cf889f2: feat(media-buy): `supports_proposals` capability flag — closes #3844
+
+  Adds a wire-level capability flag at `media_buy.supports_proposals` (boolean) so the storyboard runner can gate `proposal_finalize` cleanly, and folds the scenario into `sales-guaranteed.requires_scenarios`.
+
+  `get-adcp-capabilities-response.json`:
+
+  - New `media_buy.supports_proposals` boolean. A declaration of `true` is a commitment the seller will be graded against (return at least one entry in `proposals[]` for `buying_mode: 'brief'`; honor `action: 'finalize'` to transition draft → committed), not just a feature flag. Full-service guaranteed sellers (premium pubs, broadcast, CTV) declare `true`; auction-based PG, retail SKU, and quoted-rate direct-buy flows declare `false`.
+
+  `media-buy/scenarios/proposal_finalize.yaml`:
+
+  - Adds `requires_capability: { path: media_buy.supports_proposals, equals: true }`. Sellers that explicitly declare `false` skip the scenario as `capability_unsupported`; sellers that declare `true` (or omit the field per the runner's absence semantics) are graded against it.
+
+  `specialisms/sales-guaranteed/index.yaml`:
+
+  - Adds `media_buy_seller/proposal_finalize` to `requires_scenarios`. Now safe — capability-gated. Narrative updated to remove the "tracked at #3844" caveat.
+
+  `specialisms/sales-proposal-mode/index.yaml` and `enums/specialism.json`:
+
+  - Deprecation note for `sales-proposal-mode` updated to point sellers at the migration path: drop the specialism, declare `sales-guaranteed` plus `media_buy.supports_proposals: true`. Storyboard retained through 3.x for backward compat; removed at 4.0.
+
+  Refs: #3823 (taxonomy consolidation), #3840 (sales-proposal-mode deprecation), #3844 (this).
+
+- 868a051: feat(schema): add `result` and `include_result` to `tasks/get` request/response (closes #3123)
+
+  `tasks/get` had no typed field for the completion payload — buyers polling an async `create_media_buy` (or any submitted-arm task) could see `status: completed` but had no schema-backed path to retrieve `media_buy_id` and `packages`. The push-notification webhook schema already defined this pattern correctly (`result: $ref async-response-data.json`); the polling API simply never got the same field.
+
+  **Schema changes (both additive, non-breaking):**
+
+  - `static/schemas/source/core/tasks-get-response.json` — adds optional `result: $ref /schemas/core/async-response-data.json`. Present when `status` is `completed` and `include_result: true` was requested; absent otherwise. For `failed`/`canceled` tasks, sellers continue to use the existing `error` field — `result` is for the success terminal only. Mirrors the `result` field in `mcp-webhook-payload.json` so push and pull paths return the same payload shape.
+  - `static/schemas/source/core/tasks-get-request.json` — adds optional `include_result: boolean` (default `false`). Signals that the caller wants the completion payload on the response.
+
+  **Docs:**
+
+  - `docs/protocol/calling-an-agent.mdx` — adds a completed `tasks/get` example showing the `result` field, closing the documentation gap identified in the issue.
+  - `docs/building/implementation/task-lifecycle.mdx`, `async-operations.mdx`, `error-handling.mdx`, `orchestrator-design.mdx` — re-introduces `include_result: true` in the polling examples that patch #3127 stripped (now spec-backed by this PR's schema additions).
+
+  Non-breaking: `result` is optional on both request and response. Sellers omitting it on non-completed tasks or on requests without `include_result: true` remain spec-conformant. Existing `adcp-client` consumers relying on informal `additionalProperties` passthrough continue to work; the typed field gives SDKs a stable, named field to key on.
+
+  Unblocks adcp-client#967 (polling-cycle hardening).
+
+- 1e44c04: TMP Identity Match: add required `seller_agent_url` to the request and make
+  `package_ids` optional.
+
+  **Why.** The buyer's identity-match service already keeps the authoritative
+  set of active packages it has registered per seller. Carrying that set on
+  every request was redundant and forced publishers to enumerate ALL active
+  packages on every call to avoid the set-correlation attack on Context
+  Match. Identifying the seller by URL lets the buyer resolve the package
+  set itself.
+
+  **Changes to `static/schemas/source/tmp/identity-match-request.json`.**
+
+  - New required field `seller_agent_url` (`string`, `format: uri`). The
+    seller agent's API endpoint URL. Compared using the AdCP URL
+    canonicalization rules, consistent with `seller_agent.agent_url` on
+    `AvailablePackage` and `agent_url` in `adagents.json`.
+  - `package_ids` is now optional. When omitted, the buyer evaluates against
+    the full active set registered for `seller_agent_url`. When provided,
+    the ALL-active-packages rule still applies — partial sets remain a
+    correlation risk.
+  - Top-level description updated to reflect both modes.
+
+  **Spec changes alongside the schema.**
+
+  - Reversed prior stance forbidding seller identity on `identity_match_request`. The "What This Is Not" / SellerAgentRef guidance has been narrowed to apply only to `context_match_request`.
+  - Added a fail-closed rule: when `seller_agent_url` matches no seller for which the buyer has registered active packages, the buyer MUST return an empty `eligible_package_ids`, not fall back to another seller's set.
+  - Defined precedence when both `seller_agent_url` and `package_ids` are present: buyer evaluates against the intersection of its registered active set and `package_ids`; unknown IDs are silently dropped (not error-surfaced) so the response cannot leak registry membership.
+  - Reframed the package-set-decorrelation invariant as **statistical independence of `package_ids` from the current placement**, with two acceptable modes: all-active and fuzzed (random sample padded with synthetic non-existent IDs that the buyer silently drops). The page-specific subset remains forbidden.
+  - Strengthened temporal decorrelation: random delay alone leaks the pairing through ordering. Publishers SHOULD also randomize whether Context Match or Identity Match is sent first — each opportunity SHOULD have a roughly equal probability either way.
+
+  **Privacy boundary.** `seller_agent_url` identifies the seller agent, not
+  the user; no leakage across the identity boundary. Routers do NOT strip
+  it (unlike `country`) — buyers need it to resolve the package set.
+
+  **Backwards compatibility.** Breaking for the experimental TMP schema
+  (`x-status: experimental`): callers MUST now send `seller_agent_url`. The
+  relaxation of `package_ids` is non-breaking on its own — previously valid
+  requests remain valid as long as they also include `seller_agent_url`.
+
+- b44996f: spec(manifest): publish `manifest.json` + structured `enumMetadata` to stop SDK drift (adcp#3725)
+
+  Adds two additive artifacts to every released schema bundle:
+
+  1. **`enums/error-code.json` gains an `enumMetadata` block.** Every error code now carries structured `recovery` (correctable | transient | terminal) and `suggestion` fields. SDKs MUST consume this block instead of parsing `Recovery: X` prose out of `enumDescriptions`. A build-time lint rejects any drift between the structured value and the prose. Root cause for adcp-client#1135 (17 missing codes, 3 wrong recovery classifications shipped in TS SDK for over a year).
+  2. **`manifest.json` at `/schemas/{version}/manifest.json` (and `/schemas/latest/manifest.json` for nightly codegen).** Single canonical artifact listing every tool (with `protocol`, `mutating`, `request_schema`, `response_schema`, `async_response_schemas`, `specialisms`), every error code (with `recovery`, `description`, `suggestion`), an `error_code_policy` block (defining `default_unknown_recovery` so SDKs handle non-spec codes from non-conforming sellers correctly), and every storyboard specialism (with `protocol`, `entry_point_tools`, `exercised_tools`). Validates against `/schemas/{version}/manifest.schema.json`. Generated deterministically from existing source — no new authored content. Lets SDKs derive their internal tool/error tables from one place at codegen time instead of hand-transcribing the spec.
+
+  `mutating` is derived using the same classifier the idempotency-key lint enforces (single source of truth — manifest and lint can never disagree). The read-only verb pattern was tightened in the process: it now anchors at the start so tools like `create-collection-list` and `delete-property-list` are no longer mis-classified as read-only because they happen to contain `-list-` mid-name. `search-` was added as a read-only verb.
+
+  Specialisms expose two distinct tool sets per #3725 review feedback: `entry_point_tools` (the curated minimal contract from `index.yaml.required_tools` — what the spec asserts implementers MUST ship) and `exercised_tools` (the full surface — union of own phases and every linked scenario, derived by walking `phases[].steps[].task` and resolving `requires_scenarios`). SDK authors should size their tool registration against `exercised_tools` to ensure they handle every call the conformance kit will make.
+
+  Migration: SDKs targeting 3.0.x continue to work unchanged — `enumDescriptions` and the existing `index.json` are retained verbatim. SDKs targeting 3.1+ should switch to `enumMetadata` for error recovery and `manifest.json` for tool/specialism enumeration. The prose "Recovery: X" sentence embedded in each `enumDescriptions` value is stripped from the manifest's per-code `description` to avoid double-encoding; it remains in `enumDescriptions` for the human-readable narrative until a future minor formally deprecates it. Until then, the lint guarantees both surfaces stay synchronized.
+
+- 1652b93: Unify metric accountability into a single timestamped contract array
+  covering both standard and vendor-defined metrics. Reshapes
+  `package.committed_metrics` and `by_package.missing_metrics` from
+  string arrays to discriminated object arrays. Closes the audit gap
+  for vendor metrics (#3519), adds mid-flight contract amendments
+  (#3518), and supersedes the parallel-array design that shipped
+  hours ago in #3510.
+
+  **Why a unified shape.** AdCP had grown five different metric adjectives
+  (`available`, `required`, `committed`, `requested`, `missing`) across
+  two parallel surfaces (standard via the closed `available-metric.json`
+  enum; vendor via the structured `vendor_metric_extensions`). The contract
+  layer (committed/missing) is the right place to unify because:
+
+  1. Buyer's reconciliation code is simpler — one array walk, one shape
+  2. The contract is the "agreement reached" — it doesn't matter where
+     the metric came from (closed enum vs vendor extension)
+  3. Audit is symmetric — `missing_metrics` covers everything that was
+     committed but not delivered, regardless of metric scope
+  4. Mid-flight amendments fit naturally — every entry is timestamped, so
+     day-1 commitments and mid-flight additions share one shape
+
+  The capability layer (`reporting_capabilities.available_metrics` and
+  `vendor_metrics`) stays separate — capabilities use the closed vocabulary
+  upstream, contracts use the unified shape because they need timestamps
+  and vendor scoping.
+
+  **Schemas added.**
+
+  - `enums/metric-scope.json`: discriminator enum `["standard", "vendor"]`.
+    Tags entries in unified metric arrays so consumers can branch on a
+    literal string instead of inferring from field presence. Matches the
+    existing AdCP discriminator pattern (`refinement_applied`,
+    `incomplete[].scope`).
+
+  **Schemas reshaped.**
+
+  - `core/package.json` `committed_metrics`: was `string[]` from
+    `available-metric.json` enum + parallel `committed_vendor_metrics`
+    array. Now a single `[{scope, metric_id, vendor?, committed_at}]`
+    array covering both. Each entry carries an explicit `committed_at`
+    timestamp, so the array also serves as the contract amendment ledger.
+    Day-1 entries share `committed_at = create_media_buy.confirmed_at`;
+    mid-flight additions appended via `update_media_buy` carry their own
+    timestamps. Append-only — sellers MUST reject attempts to modify or
+    remove existing entries with `validation_error` (suggested code:
+    `IMMUTABLE_FIELD`). The standalone `committed_vendor_metrics` field
+    is **deleted**; vendor entries now live in the unified array with
+    `scope: "vendor"`.
+  - `media-buy/get-media-buy-delivery-response.json`
+    `by_package[].missing_metrics`: was `string[]`. Now
+    `[{scope, metric_id, vendor?}]`, symmetric with `committed_metrics`
+    minus the timestamp (the audit channel doesn't need to carry the
+    commitment time; it filters by it).
+  - `missing_metrics` reconciliation rule: filters `committed_metrics`
+    to entries where `committed_at < reporting_period.end`, then flags
+    any not populated in the report. A metric committed mid-flight is
+    audited only from its commitment timestamp forward — matches the
+    IAB Open Measurement §4.3 precedent for accountability boundaries
+    when measurement starts mid-flight.
+
+  **Measurement-standard qualifier on standard entries.** Standard-scope
+  entries on `committed_metrics` and `missing_metrics` MAY carry an
+  optional `qualifier` object disambiguating metrics whose definition
+  varies by measurement standard. v1 defines a single qualifier key —
+  `viewability_standard` (`mrc` | `groupm`) — required when the seller
+  commits to a specific viewability standard for any of
+  `viewable_impressions`, `viewable_rate`, `measurable_impressions`.
+  Without it the contract is ambiguous (MRC and GroupM are materially
+  different thresholds and not comparable, see
+  `viewability-standard.json`) and reconciliation falls back to whatever
+  `viewability.standard` the delivery report happens to carry. Symmetric
+  on `missing_metrics`: a buyer expecting MRC viewability flags a
+  GroupM-only delivery report as missing the MRC commitment. The
+  qualifier object is closed (`additionalProperties: false`) so future
+  qualifiers — completion threshold, reach unit — get added explicitly
+  in subsequent minors rather than via free-form keys. Emerged from a
+  field discussion where a partner proposed an `ext`-level viewability
+  rollup at root `aggregated_totals`; the right place to handle
+  standard-disambiguation is the contract entry, not the aggregate.
+
+  **Vendor metric accountability scope.** PR #3492 deliberately scoped
+  vendor metrics as advisory in v1 ("buyers verify out-of-band via
+  `measurable_impressions` coverage"). With this PR, the
+  advisory-vs-accountable distinction moves to the contract layer
+  rather than the metric scope: any metric (standard or vendor) that
+  appears in `committed_metrics` is accountable. Sellers who can't
+  credibly attest to a vendor metric SHOULD NOT stamp it; absence keeps
+  that metric advisory and reconciliation falls back to coverage plus
+  out-of-band verification.
+
+  **Closes/supersedes.**
+
+  - Closes #3518 (mid-flight amendments — every entry has its own
+    `committed_at`, so amendments are just new entries; no separate
+    `additional_committed_metrics` array needed)
+  - Closes #3519 (vendor-metric audit symmetry — vendor entries live in
+    the unified `missing_metrics` array; no separate
+    `missing_vendor_metrics` field needed)
+  - Supersedes the parallel-array design from #3510. The `string[]`
+    shape introduced there merged hours before this PR and had zero GA
+    adopters; the breaking change is taking advantage of the open window
+    to land the cleaner final shape before adoption hardens.
+
+  **Wired in.**
+
+  - `core/package.json`: reshape `committed_metrics`, delete
+    `committed_vendor_metrics`.
+  - `media-buy/get-media-buy-delivery-response.json`: reshape
+    `missing_metrics` and update the description to declare the
+    reconciliation rule (`committed_at < reporting_period.end`).
+  - `enums/metric-scope.json`: new shared discriminator.
+  - `docs/media-buy/task-reference/create_media_buy.mdx`: rewrite the
+    "Reporting contract on confirmed packages" section with a worked
+    example showing day-1 + mid-flight entries and the
+    `qualifier.viewability_standard` on viewability metrics.
+  - `docs/media-buy/task-reference/get_media_buy_delivery.mdx`: update
+    `missing_metrics` bullet with the discriminated-shape example
+    and the qualifier-symmetric reconciliation note.
+  - `docs/media-buy/media-buys/optimization-reporting.mdx`: update the
+    Vendor-Defined Metrics section to reflect that the
+    advisory-vs-accountable distinction now lives at the contract layer
+    (any committed metric is accountable, regardless of scope).
+
+  **Backwards compatibility.** Both `committed_metrics` and
+  `missing_metrics` are optional. The fields landed in #3472 and #3510
+  hours before this PR with `string[]` shape; that shape is now
+  replaced with a discriminated object array. Adopters who jumped on
+  the `string[]` shape immediately need to update; this is judged
+  acceptable given the field's optional status, the absence of any GA
+  implementations, and the meaningful improvement in the final
+  conceptual model.
+
+  **WG review.** This PR involves a v1.x scope shift on vendor-metric
+  accountability and a breaking reshape of two newly-merged optional
+  fields. Worth WG visibility before merge.
+
+  Refs #3518, #3519. Builds on #3472, #3492, #3510.
+
+- f6af651: spec(url-asset): add SHOULD on `url_type`, role-based fallback, and mechanism-vs-purpose clarification (#2986 step 2)
+
+  `url_type` was optional with no fallback rule, so a conformant URL asset that omitted it left receivers guessing — buyers would either pick a default mechanism (with bad blast-radius if a clickthrough fired as a pixel) or refuse to render. Two parallel vocabularies (`url-asset-type` mechanism: 3 values; `url-asset-requirements.role` purpose: 6 values) compounded the confusion because the docs treated them as the same thing.
+
+  This change:
+
+  - Adds a top-level description on `url-asset` stating senders SHOULD include `url_type` on every URL asset, and defining the receiver fallback: when `url_type` is absent, receivers SHOULD fall back to the format's `url-asset-requirements.role` (clickthrough/landing_page → `clickthrough` mechanism; \*\_tracker roles → `tracker_pixel`); when neither is present, receivers MAY reject rather than guess.
+  - Updates the `url_type` property description to frame it explicitly as the receiver's invocation mechanism, and points at the role fallback for senders that omit it.
+  - Updates `url-asset-requirements.role` description to call out the mechanism-vs-purpose distinction (a `click_tracker` slot validly accepts a `tracker_pixel` URL).
+  - Rewrites `docs/creative/asset-types.mdx` URL Asset section, replacing the old "you only need to supply the `url` value" guidance and the incorrect enum list (`impression_tracker`/`video_tracker`/`landing_page` — those were the requirement-side `role` values, not `url_type` values) with the actual `clickthrough`/`tracker_pixel`/`tracker_script` enum, the SHOULD note, and the role fallback table.
+
+  Wire format unchanged. Existing senders that already include `url_type` are unaffected. Senders that omit `url_type` continue to validate but now have explicit receiver semantics; in 4.0 we plan to make `url_type` required (separate change). Closes step 2 of the rollout proposed on adcp#2986.
+
+- b4471ce: Add `vast_tracker` and `daast_tracker` asset types for decomposed VAST/DAAST `<TrackingEvents>` URLs. Creative agents can now emit per-event tracker URLs (start, quartiles, complete, etc.) as a discriminated-union alternative to a complete VAST tag; the sales agent assembles them into the VAST `<TrackingEvents>` block at serve time. Adds normative creative/sales boundary: wrapper ownership belongs to the sales agent, and the `<Impression>` URL stays on `url` asset with `url_type: "tracker_pixel"` (not `vast_tracker` with `vast_event: "impression"`).
+
+  **Tracker asset constraints (from authoritative spec):**
+
+  - `offset` pattern aligns with the VAST 4.2 XSD `Tracking@offset` constraint (`vast_4.2.xsd` line 146): `HH:MM:SS[.mmm]` with two-digit hours and minutes/seconds 00–59, or an integer percentage 0–100 suffixed with `%`. Negative offsets are not permitted — the VAST XSD pattern has no leading-minus branch.
+  - A JSON Schema `if/then` requires `offset` whenever `vast_event` / `daast_event` is `progress` (mirrors the XSD documentation: "Must be present for progress event").
+  - `vast_event` / `daast_event` exclude both VAST/DAAST element-children that don't live under `<TrackingEvents>` (`impression`, `clickTracking`, `customClick`, `error`) and `<ViewableImpression>`-element children (`viewable`, `notViewable`, `viewUndetermined`, `measurableImpression`, `viewableImpression`).
+  - Each tracker carries a `target` field (`linear` | `non_linear` | `companion` for VAST; `linear` | `companion` for DAAST, since DAAST has no `<NonLinearAds>` element) so the sales agent places the tracker under the correct `<TrackingEvents>` parent during XML assembly.
+
+  **Tracking-event enum corrections (corrective alignment to spec):**
+
+  - VAST: add the five VAST 4.2 events that were missing from `vast-tracking-event.json` (`acceptInvitation`, `adExpand`, `adCollapse`, `minimize`, `overlayViewDuration` — all in the XSD enumeration). Drop `notUsed`, which was incorrectly inherited from earlier draft work and is not in the VAST 4.2 XSD `Tracking@event` enumeration. `fullscreen` / `exitFullscreen` are kept and labeled as VAST 2.x / 3.x compat.
+  - DAAST: add `rewind` (DAAST 1.1 §3.2.1.7 lists it explicitly). Drop `loaded`, which is not in DAAST 1.1 §3.2.1.7. `progress` is retained per DAAST 1.1 §3.2.4.3.
+
+  These enum corrections are nominally breaking for the existing `tracking_events` field on the `vast` / `daast` asset types, but the dropped values were never spec-correct (`notUsed` is not in the VAST 4.2 XSD; `loaded` is not in DAAST 1.1 §3.2.1.7) — fixing them up before the new tracker assets reference these enums avoids carrying the inconsistency forward.
+
+- 1431b6e: Add vendor-defined metric extensions — a structured pointer surface for
+  proprietary measurement metrics (attention scores, emissions per impression,
+  panel-based demographics, brand-lift surveys, in-flight attention panels)
+  that don't belong in the closed `available-metric.json` enum. Resolves the
+  closed/open enum question raised in #3460 with a structured surface instead
+  of opening the standard vocabulary to free-form strings.
+
+  **Why a parallel surface, not opening the enum.** Opening the closed enum
+  to free-form strings (e.g., `x_*` prefixed) would solve the asymmetry with
+  `delivery-metrics.json`'s `additionalProperties: true` posture but defeats
+  discovery: a buyer asking "I need attention measurement" can't query a
+  flat string namespace where every vendor uses a different name. A
+  structured extension gives the buyer a queryable axis — `vendor` (BrandRef)
+  — with `metric_id` as a second pin once vendors converge.
+
+  **Why the surface is intentionally thin.** Per-product extensions carry
+  only what the seller can credibly attest to: "I support this vendor's
+  metric." Everything else — category, methodology, standard alignment,
+  human-readable documentation, agent capabilities — is a property of the
+  vendor's metric definition, published once at the vendor's `brand.json`
+  `agents[type='measurement']` and queried out-of-band. Re-asserting that
+  metadata on every seller's extension is duplication that drifts.
+
+  **Schemas added.**
+
+  - `core/vendor-metric-id.json`: shared identifier schema (analogous to
+    `core/brand-id.json`) — lowercase pattern, length bounds, namespaced
+    semantics. Reused by the declaration site, the value site, and the
+    filter site.
+  - `core/vendor-metric-value.json`: the reported value
+    `{ vendor, metric_id, value, unit?, measurable_impressions?, breakdown? }`.
+    `measurable_impressions` is the coverage denominator (vendor measurement
+    is rarely 100% — vendors only score impressions where their SDK fires
+    or their panel matches). Absence means coverage is unspecified; do NOT
+    compute a coverage rate or assume full coverage when absent. The
+    `breakdown` slot is the only escape hatch for structured payloads
+    beyond a single scalar (panel demographic breakouts, co-view ratios,
+    incremental decompositions); the rest of the envelope is closed
+    (`additionalProperties: false` on the value object). This pattern
+    parallels the existing `viewability.measurable_impressions` field.
+
+  **Wired in.**
+
+  - `core/reporting-capabilities.json`: new `vendor_metrics` array (parallel
+    to `available_metrics`). Semantic uniqueness key is
+    `(vendor.domain, vendor.brand_id, metric_id)`; sellers MUST NOT declare
+    the same vendor metric twice. JSON Schema `uniqueItems` is not used
+    because BrandRef carries optional fields whose absence/presence would
+    defeat deep-equal — uniqueness is enforced at build/validation time on
+    the semantic key.
+  - `core/product-filters.json`: new `required_vendor_metrics` filter — each
+    entry pins `vendor` and/or `metric_id`. Cross-vendor discovery (e.g.,
+    "any attention measurement") is the buyer agent's responsibility: the
+    agent resolves which vendors offer a category via the vendors'
+    `brand.json` records, then enumerates them as filter entries. Same
+    filter-not-fail convention as the other `required_*` filters.
+  - `core/delivery-metrics.json`: new `vendor_metric_values` array — emitted
+    alongside standard scalars on every level that uses delivery-metrics
+    (totals, by_package, by_creative, by_audience, etc.). One row per
+    `(vendor.domain, vendor.brand_id, metric_id)` per reporting period.
+    The parent `additionalProperties: true` is preserved so existing
+    free-form vendor emissions remain conformant during migration.
+  - `docs/media-buy/task-reference/get_products.mdx`: new filter row.
+  - `docs/media-buy/task-reference/get_media_buy_delivery.mdx`: new
+    `vendor_metric_values` bullet under per-package fields.
+  - `docs/media-buy/media-buys/optimization-reporting.mdx`: new
+    Vendor-Defined Metrics section covering declaration, the brand.json
+    discovery anchor for vendor-side metadata, the filter shape and
+    cross-vendor discovery responsibility, the value emission shape with
+    the coverage denominator, the standards-driven promotion path, and the
+    v1 accountability scope.
+
+  **v1 accountability scope.** Standard `available_metrics` are subject to
+  the `missing_metrics` contract from #3472. Vendor metrics are advisory in
+  v1 — buyers verify out-of-band via `measurable_impressions` coverage and
+  direct calls to the vendor's measurement agent. The asymmetry reflects
+  what the seller can credibly attest to: SSPs typically don't have
+  proprietary measurement numbers in their delivery pipeline; those flow
+  from the vendor's own infrastructure.
+
+  **Promotion path.** When the industry converges on a metric via a
+  published standard, the spec adds it to the closed `available-metric.json`
+  enum and the vendor extensions become historical aliases. Anchored on
+  standards-body publication, not vendor-count thresholds.
+
+  **Backwards compatibility.** All additions are optional. Sellers without
+  vendor metrics see no change. The closed `available-metric.json` enum is
+  unchanged. `additionalProperties: true` is preserved on
+  `delivery-metrics.json` so existing free-form vendor emissions remain
+  conformant; the structured `vendor_metric_values` array is the
+  recommended path going forward.
+
+  Refs #3460. Closes the closed/open enum question.
+
+- 6eadf06: spec(versioning): release-precision protocol version negotiation via `adcp_version` envelope field
+
+  Adds `adcp_version` (release-precision semver string, e.g. `"3.0"`, `"3.1"`, `"3.1-beta"`) as a top-level field on every request and response. Buyers send their release pin; sellers echo the release they actually served — never the seller's own latest release. Augments the existing `adcp_major_version` (integer) with finer precision and adds response-side echo, which the spec lacked.
+
+  Composed once via `allOf $ref` to the new `core/version-envelope.json` schema (single source of truth across all 127 task schemas — no inline duplication).
+
+  Capabilities response gains `adcp.supported_versions` (release strings, authoritative for negotiation) and `adcp.build_version` (full semver build identifier with optional pre-release and build-metadata per semver §9–§10, advisory only). `VERSION_UNSUPPORTED` error gets a standardized `error.data` shape via the new `error-details/version-unsupported.json` schema; `supported_versions` is required.
+
+  Migration: spec stays SHOULD on both sides through all of 3.x (consistent with the 3.x stability guarantee that fields don't graduate optional → required within a major). The compliance grader carries the adoption pressure: advisory at 3.1, blocking failure at 3.2 for sellers that don't echo `adcp_version` or don't emit `supported_versions` on capabilities. 4.0 promotes the spec to MUST and removes `adcp_major_version`, `adcp.major_versions`, and `extensions.adcp.adcp_version`. Through 3.x, buyers SHOULD dual-emit both `adcp_version` and `adcp_major_version` so legacy 3.x sellers keep negotiating; when the two disagree at the major level the server MUST return `VERSION_UNSUPPORTED`.
+
+  Fully additive on the wire (existing servers ignore `adcp_version` via `additionalProperties: true`). RFC: `specs/version-negotiation.md`.
+
+  **One scoped behavior change in 17 request schemas:** the `allOf $ref` envelope-composition pattern requires permissive `additionalProperties` at root (draft-07 doesn't bypass parent strict-mode through `allOf`). 17 request schemas under `collection/`, `governance/`, `property/`, and `tmp/` previously declared `additionalProperties: false`; this PR flips them to `true` so the envelope's fields are accepted. Strict request validation returns at draft 2019-09 via `unevaluatedProperties: false` (tracked in #3534). The new lint at `tests/lint-version-envelope.test.cjs` enforces the invariant going forward.
+
+- e9a79a0: Migrate prose required-when / cross-field rules to the `x-adcp-validation` extension across `get_adcp_capabilities` (closes #3827). Five fields gain machine-readable normative constraints that the storyboard runner and SDK validators can now enforce programmatically; previously these rules lived only in description prose.
+
+  **Fields migrated:**
+
+  - `request_signing.required_for` — `subset_of: "request_signing.supported_for"` (an operation can't be required without being supported)
+  - `request_signing.warn_for` — `disjoint_with: "request_signing.required_for"` plus `subset_of: "request_signing.supported_for"` (mutually exclusive with required_for; both must be subsets of supported)
+  - `webhook_signing.supported` — `verifier_constraints.must_equal_when: { value: true, any_of: [...] }` keyed on `media_buy.reporting_delivery_methods` including `webhook` or `media_buy.content_standards.supports_webhook_delivery: true` (closes a downgrade vector — emitting state-changing webhooks unsigned)
+  - `identity.key_origins` — `verifier_constraints.purpose_anchoring` mapping each purpose to the signing posture that must be declared elsewhere on the response (e.g., `request_signing` purpose requires non-empty `request_signing.supported_for`/`required_for`)
+
+  **Sub-key vocabulary extended** in `docs/reference/schema-extensions.mdx`:
+
+  - `forbidden_when` (inverse of `required_when`)
+  - `disjoint_with` (item-level mutual exclusion across array fields)
+  - `subset_of` (item-level subset constraint across array fields)
+
+  Codegen consumers and JSON Schema validators ignore `x-` keys, so the wire format is unchanged. Storyboard runners that don't yet recognize a sub-key MUST skip it and emit an "unrecognized validation rule" warning per the existing convention.
+
+  **Excluded from migration (already enforced natively):**
+
+  - `adcp.idempotency` — the discriminated `oneOf` already requires `replay_ttl_seconds` in the supported branch and forbids it in the unsupported branch.
+  - `webhook_signing.algorithms` — the `enum` on each item already enforces the allowlist.
+
+  Backwards compatibility: strictly additive on the wire. Verifiers that ignore `x-adcp-validation` continue to work; the existing prose descriptions still document the rules. Storyboard runners gain enforceable assertions for invariants that were previously prose-only.
+
+### Patch Changes
+
+- 5740802: docs(aao-verified): make the two axes truly orthogonal — Live is no longer a downstream of Spec. The prerequisite framing was wrong: a seller without a sandbox/test endpoint (common for SDK-built agents whose wire format is guaranteed by the SDK, or for production-only platforms that have no test-mode surface) can earn (Live) directly by enrolling a compliance account. The eight observability checks already exercise wire format, filters, lifecycle, and scope introspection through real traffic, which makes a separate simulation pass redundant for that seller. Conversely, a test agent earns (Spec) as a complete claim.
+
+  Updated copy in `docs/building/aao-verified.mdx`:
+
+  - Top-level framing now states the axes are orthogonal, not hierarchical.
+  - (Live) eligibility table no longer says "Currently holds (Spec)".
+  - "(Live) only" badge reading is now a normal, valid claim — not a "rare and transient" state.
+  - Mark semantics list (Live) only as a holding alongside (Spec) only and (Spec + Live).
+  - Lifecycle: revoking (Spec) no longer revokes (Live); revoking (Live) no longer touches (Spec).
+
+  Updated `docs/building/conformance.mdx` to match: both marks attest conformance via different evidence (Spec via simulation, Live via real-traffic observability).
+
+  No code changes — the badge model already supported `verification_modes: ['live']` standalone; the only thing that needed fixing was the documentation that incorrectly claimed otherwise.
+
+- 063e317: spec(errors): tighten `AUTH_REQUIRED` prose to warn on retry storms
+
+  `AUTH_REQUIRED` conflates two operationally distinct cases — credentials missing (genuinely correctable) and credentials presented but rejected (terminal — needs human rotation). A buyer agent treating both as `correctable` will retry-loop on revoked tokens, hammering seller SSO endpoints in a pattern indistinguishable from a brute-force probe.
+
+  The 3.1 line will eventually split this into `AUTH_MISSING` and `AUTH_INVALID` via #3739. Until that split ships, the prose tightening is the only operational guidance against the retry-storm pattern. The wire code stays `AUTH_REQUIRED` with `recovery: correctable`; the description and `enumMetadata.suggestion` now spell out the two sub-cases and the SHOULD-NOT-auto-retry rule for the rejected-credential case. Agents apply the operational distinction at the application layer by branching on whether credentials were attached to the failing request.
+
+  Updates:
+
+  - `static/schemas/source/enums/error-code.json` — `enumDescriptions.AUTH_REQUIRED` and `enumMetadata.AUTH_REQUIRED.suggestion` rewritten to spell out both sub-cases and the retry-storm risk. The description follows the same summary-then-`Sub-cases (full guidance).` shape already used by `GOVERNANCE_DENIED` / `GOVERNANCE_UNAVAILABLE`, with a cross-reference to `error-handling.mdx#auth_required-sub-cases`.
+  - `docs/building/implementation/error-handling.mdx` — adds an `AUTH_REQUIRED sub-cases` Mintlify `<Warning>` callout under the Authentication and Access table; the recovery example switch now derives `requestHadCredentials` locally from `error.request_had_credentials` so a reader pasting the snippet doesn't hit `ReferenceError`.
+
+  Wire format unchanged. No new enum values. No recovery classification change at the structured level. Senders that already emit `AUTH_REQUIRED` keep working; receivers gain the documented sub-case discipline.
+
+  Also drops two stale forward-merge changeset leftovers (`envelope-field-present-check-type`, `fix-asset-union-dedup`) whose work has already shipped to 3.0.x and is also already in-tree on `main` — without this cleanup the next 3.1.0 cut would emit duplicate CHANGELOG entries.
+
+- 6da3000: spec(bundling): preserve sub-schema `$id`s when inlining `$ref`s into the bundled tree
+
+  Closes #3868. The pre-resolved `bundled/` tree shipped with every release inlined `$ref`'d sub-schemas without preserving their `$id`s, so validators reading the bundle saw only the response-root `$id`. Pairs with the `schemaId` addition in #3867 — without this fix, `schemaId` on bundled tools would just restate the tool name the adopter already knows.
+
+  **What changes in the published artifact.** Every inlined sub-schema in `dist/schemas/{version}/bundled/**/*.json` now carries the `$id` of the source schema it was inlined from, rewritten to the versioned flat-tree URI. Concretely, inside `bundled/signals/activate-signal-response.json`:
+
+  ```diff
+   "activation_key": {
+     "title": "Activation Key",
+     "type": "object",
+  +  "$id": "/schemas/3.1.0/core/activation-key.json",
+     "oneOf": [...]
+   }
+  ```
+
+  Ajv 8 (and any draft-07-conformant validator in non-strict mode) reads these inline `$id`s and emits them in `error.schemaPath` / `error.parentSchema.$id`. SDKs that already implement longest-prefix-match resolution (like `@adcp/sdk`'s TypeScript client) surface the deep sub-schema `$id` on `error.issues[].schema_id` without code changes.
+
+  **Pipeline change** (`scripts/build-schemas.cjs`), four passes added or extended:
+
+  - `resolveRefs` no longer destructures `$id` away when merging an inlined ref into its parent. `$schema` is still dropped (only meaningful at document root). When a parent declares its own `$id` alongside `$ref` (the deprecated-alias pattern, e.g. `signal-pricing-option.json` aliasing `vendor-pricing-option.json`), the parent's `$id` wins so the alias's identity is preserved.
+  - `versionInlineSchemaIds` post-pass rewrites every inner `$id` from source form (`/schemas/core/foo.json`) to the versioned flat-tree URI (`/schemas/{version}/core/foo.json`). Idempotent on already-versioned `$id`s; leaves external/relative `$id`s alone.
+  - `stripIdsFromSubtreesWithLocalRefs` post-pass deletes `$id` from any subtree whose descendants carry a local `$ref` (`#/...`). The hoist passes (`hoistNestedDefsToRoot`, `hoistDuplicateInlineEnums`) move shared definitions to root `$defs` and rewrite call-sites to `{$ref: "#/$defs/Foo"}` — those fragment refs resolve against the _nearest enclosing `$id`_, so preserving `$id` on a subtree containing them changes the resolution scope and Ajv reports `"can't resolve reference #/$defs/Foo from id <inlined-$id>"`. Stripping the conflicting `$id` yields the document-root scope the local refs need; subtrees free of local refs (e.g. `version-envelope`, `activation-key`) keep their `$id`.
+  - `dedupBundledSchemaIds` post-pass is first-wins on identical `$id` values within one document. Same source schema referenced from multiple co-locations (e.g. `version-envelope` in an `allOf`) produces multiple inlined subtrees; Ajv refuses to compile a schema with duplicate `$id`s even in non-strict mode. First-wins anchors the schema's identity at the first occurrence; subsequent occurrences fall back to the nearest enclosing `$id`-bearing ancestor when SDK error reporting walks up.
+
+  **What survives.** 1532 sub-`$id`s across the 81 bundled schemas (avg ~19 per file) — every bundled tool gains deep-`$id` surface area. Notable preserved cases: `version-envelope`, `activation-key`, `account-ref`, `brand-ref`, `context`, `ext`, plus most asset / asset-requirement sub-schemas. Stripped cases: any sub-schema whose subtree gets dedup'd-enum hoists rewritten into it (e.g. `delivery-metrics`, `targeting`, `format`, `catalog`, `pricing-options/price-breakdown`).
+
+  **Tests** in `tests/build-schemas-preserve-subschema-ids.test.cjs` (12 cases): alias-wins, sibling-key precedence, version-stamping post-pass + idempotency + external-`$id` passthrough + array-recursion `isRoot`, strip-on-local-ref + leave-on-absolute-ref, dedup first-wins, root-shadow protection.
+
+  **Compatibility.** No wire-format change. No new validation behavior on any code path. Bundled artifact compiles cleanly under Ajv 8 (`strict: false` recommended for the same reasons it always was — `additionalProperties: true` etc. — but no longer required for duplicate-`$id` reasons specifically). The bytes that change in the published `bundled/` artifact are metadata-only `$id` keywords on subtrees.
+
+- b62c407: spec(errors): wire-placement guidance for `GOVERNANCE_DENIED` and `GOVERNANCE_UNAVAILABLE`
+
+  `error-code.json` defined the codes' semantics but didn't say WHERE in the response they appear. Different storyboards interpreted differently — issue #3914 surfaced one mismatch where the brand-rights compliance storyboard expected `expect_error: code: GOVERNANCE_DENIED` even though `acquire_rights` already has a first-class `AcquireRightsRejected` discriminated arm with `reason`. Adopters returning the spec-correct Rejected shape were failing the storyboard.
+
+  The `enumDescriptions` for both codes now state placement explicitly:
+
+  - **`GOVERNANCE_DENIED`** — structured business outcome, not a system error. When the task response defines a structured rejection arm (e.g., `AcquireRightsRejected`), that arm is the canonical denial shape — populate `status: "rejected"` + `reason`, do NOT additionally emit the code in `errors[]` or `adcp_error`, and do NOT flip transport-level failure markers. When the task has no rejection arm (e.g., `create_media_buy` returns the `Error` arm), populate `errors[].code` AND `adcp_error.code` per the two-layer model and DO flip transport markers.
+  - **`GOVERNANCE_UNAVAILABLE`** — system error, governance call failed at all. Always populate both layers with the code and flip transport markers. Sellers MUST NOT use a structured rejection arm for unavailability even when the task offers one — the buyer's recovery semantics differ (retry-with-backoff vs. restructure-or-escalate).
+
+  The contrast resolves the question the storyboard mismatch surfaced: thrown adcp_error is reserved for governance-call failure modes (parallel to `GOVERNANCE_UNAVAILABLE`), not for adopter-controlled denials.
+
+  The MUST NOT against dual-emission isn't a behavior change — `AcquireRightsRejected` and `CreativeRejected` already declare `not: { required: [errors] }` at the schema layer, so emitting `errors[]` alongside a rejection arm was already a schema violation. The doc-comment makes the rule discoverable from the error code without changing what conformant senders produce.
+
+  Also adds a parallel storyboard-authoring note in `error-handling.mdx`: when the task response has a discriminated rejection arm, assertions should use `check: field_value, path: "status", value: "rejected"` rather than `check: error_code`. The existing `error_code` guidance is correct for tasks without a rejection arm; the new note covers the rejection-arm path that surfaced via #3914.
+
+  Closes the doc-comment item on #3918; companion to #3914 (storyboard fix is separate work).
+
+- 469b6d3: Add `discriminator: { propertyName }` to 16 `oneOf` unions in `static/schemas/source/` whose variants already declare the same required property as a `const` with distinct string values, and tighten `scripts/audit-oneof.mjs` to assert that any `discriminator.propertyName=X` is backed by every non-ref variant declaring `properties.X` as required const with distinct values.
+
+  Affected schemas: `adagents.json`, `compliance/comply-test-controller-response.json`, `content-standards/artifact.json`, `core/activation-key.json`, `core/creative-item.json`, `core/deployment.json`, `core/destination.json`, `core/optimization-goal.json` (3 unions), `core/requirements/catalog-field-binding.json` (2 unions), `core/signal-pricing.json`, `creative/preview-creative-response.json`, `creative/preview-render.json`.
+
+  Non-breaking: the OpenAPI `discriminator` keyword is ignored by JSON Schema 2020-12 validators that don't recognize it; the existing `const`-property pattern remains the source of truth. Codegen targets that respect the keyword (msgspec, openapi-typescript, datamodel-code-generator) now emit a properly-narrowed union without per-variant casts. Tracking: adcp#3917.
+
+- c09f2e0: Add `discriminator: { propertyName }` to two more `oneOf` unions previously deferred from #3928:
+
+  - `core/pricing-option.json` `#/oneOf` (`pricing_model`) — Ajv resolves the cross-file `$ref` to each `pricing-options/*-option.json` correctly when all schemas are pre-loaded; the deferral was based on a faulty isolated-compile test.
+  - `core/format.json` `#/properties/assets/items/oneOf/14/properties/assets/items/oneOf` (`asset_type`) — required `asset_type` on each of the 12 inner variants directly so Ajv's discriminator support can find it without traversing `allOf`.
+
+  The 15-variant outer oneOf at `#/properties/assets/items` is still deferred — it mixes `item_type: "individual"` (14 variants with `asset_type`) and `item_type: "repeatable_group"` (no `asset_type`), so a single discriminator key doesn't cover it without a structural restructure. Tracked separately. Same for the boolean-discriminator unions (`get-adcp-capabilities-response.json` `supported`, `update-content-standards-response.json` `success`) which need an enum migration. Tracking: adcp#3917.
+
+- 9a50d4e: verification: cleanup follow-ups after #3524 ships.
+
+  **Docs.** `docs/building/aao-verified.mdx` was last updated for the orthogonal-axes framing (#3536) but didn't mention the per-version model that #3524 just shipped. Updated:
+
+  - New "Per-version badges" section explaining that each badge is identified by `(agent, role, AdCP version)`, agents can hold parallel-version badges, and version-pinned vs. legacy URL behavior.
+  - "Display" section now documents both URL shapes (`/badge/{role}.svg` auto-upgrade and `/badge/{role}/{version}.svg` version-pinned), with examples for each.
+  - JWT claim block adds `adcp_version` and explicit verifier guidance ("verifiers MUST check `adcp_version` against the AdCP version they care about" — closes the cross-version replay concern raised in the Stage 2 security review).
+  - "Registry filter" section gains a "brand.json enrichment" subsection documenting the `aao_verification.badges[]` array, the `roles[]` / `modes_by_role` deprecation notice, and the AdCP 4.0 removal target.
+
+  **Refactor (testability).** `enrichAgentEntries`'s shaping logic was a closure inside the brand.json route handler — unreachable from unit tests. Extracted to `services/aao-verification-enrichment.ts` as `buildAaoVerificationBlock(badges)`. The route handler keeps the JSON traversal and assignment; the builder is a pure function with 14 new unit tests covering empty input, single-badge, multi-version dedupe (caller-ordering preserved), modes_by_role flattening (the "buyer pinned to 3.0 sees the wrong contract" footgun), adcp_version shape filtering (defense in depth), and the deprecation notice content. Code-review nit on PR #3604.
+
+  **Trivia.** `PROTOCOL_LABELS` in `dashboard-agents.html` gained a comment pinning the invariant that label values must not end in "Agent" (otherwise `${protocol} Agent${versionSegment}` would produce "Media Buy Agent Agent 3.1"). DX expert nit from #3603.
+
+  What this PR does NOT change:
+
+  - Wire format on any surface — the brand.json enrichment output is byte-for-byte identical to what shipped in #3604.
+  - Panel UX — role grouping and "show all versions" disclosure (#3603) explicitly defer until parallel-version badges land in production and we have real buyer feedback to design against.
+
+- f74aa81: spec(conformance): rejection-arm vs `errors[]` mutual-exclusion test + storyboard alignment
+
+  Closes #3998. The wire-placement guidance on `GOVERNANCE_DENIED` (shipped to `main` via #3929 and to 3.0.x via #3996) is normative MUST-language: when a task response defines a structured rejection arm (`AcquireRightsRejected`, `CreativeRejected`), the arm IS the canonical denial shape — sellers MUST NOT additionally emit the error code in `errors[]` or `adcp_error`. The schema enforces this with `not: { required: ["errors"] }` on each rejection arm.
+
+  Until now the rule was asserted only in prose. This change adds executable conformance:
+
+  - **`tests/rejection-arm-mutual-exclusion.test.cjs`** — schema-validation conformance check that fails before the storyboards do if the `not: { required: ["errors"] }` constraint regresses on either rejection arm. Asserts both directions: canonical rejection-arm shape (status + reason, no errors[]) accepts; rejection-arm with errors[] populated rejects. Wired into the aggregate `npm test` run.
+  - **`brand_rights/governance_denied` storyboard** — assertions corrected to the rejection-arm path. Was asserting `check: error_code, value: "GOVERNANCE_DENIED"` on a task whose canonical denial shape is `status: "rejected"` + `reason`. Now asserts `field_value path: "status" value: "rejected"` plus `field_present path: "reason"`. Closes the storyboard portion of #3914 (storyboard was rejecting spec-correct adopter responses).
+  - **`media_buy_seller/governance_denied` storyboard** — narrative tightened to make Case-2 of the rule explicit (no rejection arm → `errors[]` + `adcp_error` populated; transport markers flipped). Cross-references the brand-rights scenario as the Case-1 counterpart.
+
+  Wire format unchanged. Schema constraints unchanged. Pure conformance + documentation: the schema rule was already in place; this change makes it discoverable from a failing test and aligns the existing storyboards with the rule.
+
+- 114f244: spec(conventions): reserve `ctx_metadata` as adapter-internal round-trip key
+
+  Reserves the top-level key `ctx_metadata` on AdCP resource objects (Product, MediaBuy, Package, Creative, AudienceSegment, Signal, RightsGrant) as a publisher-to-SDK round-trip cache for adapter-internal state. SDKs MUST strip the key before wire egress and MUST emit a warning-level log entry when stripping, so operators can detect accidental collisions with existing adapter code. Buyers never see this field.
+
+  The convention is non-binding at the wire level — these resources already declare `additionalProperties: true` so existing payloads remain valid. The reservation locks the keyword name before two SDKs converge on it accidentally and ship divergent semantics. PropertyList and CollectionList are out of scope (`additionalProperties: false`) until a follow-up PR widens those schemas.
+
+  Closes #3640.
+
+- 4a98e74: docs(skill): document the four implementation-dependent `issues[]` fields callers may see
+
+  `skills/call-adcp-agent/SKILL.md` already documents the three required `issues[]` fields (`pointer`, `keyword`, `variants`) that every conformant validator surfaces. Adds the four optional fields a calling agent will encounter when the seller's validator opts into them — `discriminator`, `schemaId`, `allowedValues`, `hint` — with a one-line preface clarifying these are implementation-dependent (not every validator emits them) and an updated recovery order: read `hint` first when present, then `discriminator`, then walk `variants`.
+
+  Two new rows added to the symptom-fix lookup table for the same fields.
+
+  No wire-format change. Pure documentation: shipping these fields is already a valid validator extension; this just gives callers a curated path through them.
+
+  Surfaced from the @adcp/sdk side after PR #1283 / #1309 added the fields and PR #1268 / #1361 hit recurring drift between the local SDK skill copy (which already documented them) and the upstream bundle (which didn't). With this merged, the SDK's `npm run sync-schemas` no longer rewrites the file out from under contributors.
+
 ## 3.0.6
 
 ### Patch Changes

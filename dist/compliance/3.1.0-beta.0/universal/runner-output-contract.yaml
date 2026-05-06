@@ -1,0 +1,752 @@
+# Runner Output Contract
+#
+# Defines the failure-result shape that any AdCP compliance runner MUST emit
+# when it reports storyboard results to a user or coding agent. Applies to
+# evaluate_agent_quality, `@adcp/client storyboard run`, and any other harness
+# that executes the storyboards published under /compliance/{version}/.
+#
+# Rationale
+# ---------
+# A failing validation is only actionable if the implementor can see:
+#   1. The exact request the runner sent.
+#   2. The exact response the agent returned.
+#   3. Which field failed (as an RFC 6901 JSON Pointer).
+#   4. What the runner expected vs. what it observed.
+#   5. The identity of the schema applied (so the implementor can re-validate
+#      locally against the same artifact).
+#
+# Without these, a buyer building an agent cannot diagnose failures even when
+# their own local validation passes — a mismatch between the schema they tested
+# against and the schema the runner used is indistinguishable from a genuine
+# agent bug.
+#
+# Storyboard AUTHORING is covered in storyboard-schema.yaml. This contract
+# covers runner OUTPUT.
+#
+# --- Schema definition ---
+
+id: runner_output_contract
+version: "2.0.0"
+title: "Runner output contract"
+summary: "Required failure-detail shape that AdCP storyboard runners MUST emit so implementors can self-diagnose validation failures."
+
+# Single source of truth for the storyboard-authored check enum.
+# Storyboards MUST only declare step.validations[].check values from this
+# list. Synthesized codes (capture_path_not_resolvable,
+# unresolved_substitution) are emitted by the runner — not authored — and
+# MUST NOT appear here. The build-time lint
+# `scripts/lint-storyboard-check-enum.cjs` reads this field and rejects any
+# storyboard that declares an unknown check kind, complementing the runtime
+# forward-compat default (which exists for cross-version skew between
+# storyboard and runner, not for catching typos at publish time).
+authored_check_kinds:
+  - response_schema
+  - field_present
+  - field_absent
+  - envelope_field_present
+  - field_value
+  - field_value_or_absent
+  - status_code
+  - http_status
+  - http_status_in
+  - error_code
+  - on_401_require_header
+  - resource_equals_agent_url
+  - any_of
+  - refs_resolve
+  - a2a_submitted_artifact
+  - a2a_context_continuity
+  - upstream_traffic
+
+# Conforming implementation: adcp-client PR #611
+# (src/lib/testing/storyboard/types.ts — RunnerRequestRecord,
+# RunnerResponseRecord, ValidationResult, RunnerSkipResult, etc.).
+# The concrete shapes, redaction pattern, and header allowlist below are
+# taken from that implementation.
+
+# A storyboard step result is produced per step the runner executes. Each
+# step result carries zero or more validation results — one per `check` in
+# the storyboard's step.validations array, plus any transport-level check
+# the runner performs (e.g., extraction path).
+
+step_result:
+  description: |
+    Runners MUST emit one step result per executed step. Skipped steps MUST
+    include a skip result block. Failed steps MUST include at least one
+    validation result with passed: false.
+  required_fields:
+    - storyboard_id           # e.g. "capability_discovery"
+    - phase_id                # e.g. "protocol_discovery"
+    - step_id                 # e.g. "get_capabilities"
+    - task                    # AdCP task name invoked, e.g. "get_adcp_capabilities"
+    - passed                  # boolean — all required validations passed
+    - duration_ms             # wall-clock time for this step
+    - validations             # array of validation_result objects (see below)
+    - extraction              # transport extraction record (see below)
+  optional_fields:
+    - skip                    # skip_result block when the step was not run
+    - error                   # transport-level error (no validations attempted)
+    - request                 # exact request the runner sent (see request block)
+    - response                # exact response observed (see response block)
+
+validation_result:
+  description: |
+    Every validation result — whether passed or failed — MUST carry the fields
+    below. Failed validations MUST include request, response, json_pointer,
+    expected, and actual unless the failure is transport-level (in which case
+    json_pointer, expected, and actual MAY be null and the step-level error
+    field carries the transport failure).
+
+    Forward compatibility: when a runner encounters an authored `check` value
+    it does not recognize (e.g., a storyboard declares a check type added in a
+    later spec minor version than the runner implements), the runner MUST emit
+    a validation_result with passed: true, check: <the unrecognized value>,
+    description: copied from the storyboard, and a `note` field describing the
+    coverage gap (e.g., "runner does not implement check type
+    'upstream_traffic' — graded as not_applicable to preserve forward
+    compatibility"). The result MUST contribute to a per-step `not_applicable`
+    counter the runner exposes alongside steps_passed/failed/skipped, so
+    consumers can distinguish "runner is older than the storyboard" from
+    "storyboard validations passed cleanly." Runners MUST NOT fail steps
+    on unrecognized check values — additive check-type extensions are
+    explicitly part of the spec evolution model.
+  required_fields:
+    - check                   # Validation kind. For storyboard-authored checks,
+                              # mirrors the storyboard's step.validations[].check:
+                              # response_schema | field_present |
+                              # envelope_field_present | field_value |
+                              # field_value_or_absent | status_code | http_status |
+                              # http_status_in | error_code | on_401_require_header |
+                              # resource_equals_agent_url | any_of | refs_resolve |
+                              # a2a_submitted_artifact | upstream_traffic
+                              #
+                              # For runner-synthesized grading (not authored in the
+                              # storyboard validations array, generated by the runner
+                              # after the authored checks complete):
+                              # capture_path_not_resolvable | unresolved_substitution
+                              #
+                              # See storyboard-schema.yaml > "Runner grading codes"
+                              # for the semantics of each synthesized code, and
+                              # storyboard-schema.yaml > "upstream_traffic" for the
+                              # authored upstream-side-effect check.
+    - passed                  # boolean
+    - description             # human-readable description copied from the
+                              # storyboard validation entry (so the implementor
+                              # sees the same text the author wrote).
+                              # For synthesized checks, the runner MUST generate
+                              # a descriptive string naming the affected path or
+                              # substitution token.
+  required_on_failure:
+    - request                 # exact request the runner sent (see request block).
+                              # NULL for unresolved_substitution — the request was
+                              # never sent (pre-wire failure).
+                              # For upstream_traffic: the comply_test_controller
+                              # query_upstream_traffic request the runner issued,
+                              # not the storyboard step's AdCP request.
+    - response                # exact response observed (see response block).
+                              # NULL for unresolved_substitution — no response
+                              # exists (pre-wire failure).
+                              # For upstream_traffic: the query_upstream_traffic
+                              # response carrying the recorded_calls array.
+    - json_pointer            # RFC 6901 pointer to the failing field in the
+                              # response, or the request for input-level
+                              # failures. Null when the failure is transport-level
+                              # and no payload was returned. Also null for
+                              # unresolved_substitution (pre-wire; no response
+                              # path implicated) — see notes.synthesized_checks.
+                              # For upstream_traffic, points into the recorded_calls
+                              # array (e.g., "/recorded_calls/0/payload") when a
+                              # specific call's payload failed payload_must_contain;
+                              # null when the failure is a count mismatch
+                              # (no specific call implicated).
+    - expected                # machine-readable expected value:
+                              #   response_schema      → schema $id that was applied
+                              #   field_value          → expected value (any JSON type)
+                              #   field_value_or_absent → value or allowed_values array
+                              #                          from the storyboard validation
+                              #   field_present        → the path that should resolve
+                              #   envelope_field_present → the path that should resolve
+                              #                          in the protocol envelope
+                              #   status_code          → expected status
+                              #   error_code           → expected error code
+                              #   any_of               → array of acceptable forms
+                              #   capture_path_not_resolvable → the context_outputs path
+                              #                          string that failed to resolve
+                              #                          (e.g. "signals[0].signal_agent_segment_id")
+                              #   unresolved_substitution → the unresolved token string
+                              #                          (e.g. "$context.first_signal_agent_segment_id"
+                              #                          or "{{prior_step.search.id}}")
+                              #   upstream_traffic     → object with the declared
+                              #                          assertion: { min_count,
+                              #                          endpoint_pattern, payload_must_contain,
+                              #                          identifier_paths, purpose_filter,
+                              #                          since, attestation_mode_required } —
+                              #                          whichever fields the storyboard set.
+    - actual                  # machine-readable actual value observed:
+                              #   response_schema      → array of schema errors
+                              #                          (each { instance_path,
+                              #                          schema_path, keyword,
+                              #                          message })
+                              #   field_value          → actual value (any JSON type)
+                              #   field_value_or_absent → actual value (any JSON type);
+                              #                          null when the field was absent
+                              #   field_present        → null (the field was missing)
+                              #                          or the observed non-object
+                              #                          value
+                              #   envelope_field_present → null (the field was missing)
+                              #                          or the observed non-object
+                              #                          value (scoped to envelope)
+                              #   capture_path_not_resolvable → the value that was
+                              #                          resolved at the path, or null
+                              #                          when the path did not exist.
+                              #                          Runners MUST treat null, "",
+                              #                          and structurally-absent paths
+                              #                          as equally non-resolvable for
+                              #                          this check — capture of a null
+                              #                          or empty-string value produces
+                              #                          fabricated state and is as
+                              #                          incorrect as a missing path.
+                              #   unresolved_substitution → null (no response payload
+                              #                          available at substitution time)
+                              #   upstream_traffic     → object summarizing what was
+                              #                          observed: { matched_count,
+                              #                          total_calls, missing_payload_paths,
+                              #                          missing_identifier_values }.
+                              #                          The full recorded_calls array
+                              #                          lives in `response.payload`;
+                              #                          `actual` is the diagnostic summary.
+    - schema_id               # $id of the response schema applied. Required
+                              # when check == response_schema, null otherwise.
+                              # MUST be null for capture_path_not_resolvable,
+                              # unresolved_substitution, and upstream_traffic.
+    - schema_url              # Resolvable URL the implementor can fetch to
+                              # validate locally. Required when
+                              # check == response_schema, null otherwise.
+                              # MUST be null for capture_path_not_resolvable,
+                              # unresolved_substitution, and upstream_traffic.
+  notes:
+    synthesized_checks: |
+      capture_path_not_resolvable and unresolved_substitution are emitted by
+      the runner after storyboard-authored checks complete. They MUST appear in
+      the step's validations array so the "failed steps MUST include at least
+      one validation result with passed: false" invariant is satisfied.
+      For capture_path_not_resolvable, json_pointer MUST be the RFC 6901 form
+      of the context_outputs path that failed to resolve (e.g. "/signals/0/
+      signal_agent_segment_id"). For unresolved_substitution, json_pointer MUST
+      be null (the substitution is pre-wire and no response path is implicated).
+    upstream_traffic_check: |
+      upstream_traffic is an authored check (declared in the storyboard's
+      step.validations array) that asserts side-effects against a sandbox the
+      adopter exposes through the comply_test_controller tool's
+      query_upstream_traffic scenario. The runner queries the controller after
+      the step completes, scoped to traffic recorded since the step's request
+      timestamp, and applies the assertion. Adopters who do not advertise
+      query_upstream_traffic in list_scenarios grade the check
+      not_applicable (skip_result.reason: missing_test_controller with detail
+      naming the scenario) — the contract is opt-in by adopter capability.
+      See storyboard-schema.yaml > "upstream_traffic" for the authored shape
+      and comply-test-controller-request.json > query_upstream_traffic for
+      the controller-side query contract.
+    upstream_traffic_timestamp_boundary: |
+      The runner's lower-bound timestamp for query_upstream_traffic MUST be
+      the runner's own wall-clock at the moment it issued the storyboard
+      step's AdCP request (or the prior step's request timestamp when the
+      storyboard declares `since: <prior_step_id>`). The bound is INCLUSIVE.
+      Runners SHOULD subtract a clock-skew tolerance (50ms minimum, 250ms
+      recommended) before sending the bound to the controller, so a recorded
+      call timestamped microseconds before the runner's clock measurement is
+      not silently excluded. Controllers MUST emit recorded_calls timestamps
+      matching the wall clock at outbound-request-send time (not log-flush
+      time) and MUST order them monotonically non-decreasing. Runners MUST
+      attribute calls to a step using their own clock-bracket of when they
+      issued and received the AdCP request, not the controller's
+      since_timestamp echo (which is informational only — see
+      comply-test-controller-response.json > UpstreamTrafficSuccess >
+      since_timestamp).
+    upstream_traffic_threat_model: |
+      upstream_traffic raises the bar against UNINTENTIONAL façades —
+      adapters that satisfy AdCP schema requirements with synthetic
+      placeholders without forwarding payloads upstream. It is NOT an
+      adversarial integrity check. Adopters self-report their own traffic
+      through query_upstream_traffic; a determined façade can fabricate
+      recorded_calls entries. Spec consumers — compliance dashboards,
+      adapter directories, conformance-tier UIs — MUST NOT present
+      upstream_traffic passing as cryptographic proof of adapter behavior.
+      The conformance value is "unintentional façades fail this check"; an
+      adversarial-integrity attestation path (signed traffic-summary
+      endpoint, agent-side telemetry digest, etc.) is its own future RFC,
+      not this contract.
+    upstream_traffic_digest_mode: |
+      Recorded calls returned in `attestation_mode: digest` (see
+      comply-test-controller-response.json > UpstreamTrafficSuccess >
+      recorded_calls > DigestAttestation) swap raw payload introspection
+      for digest-based echo verification:
+        - The runner verifies `identifier_paths` by computing SHA-256 of each
+          resolved identifier value, sending the digests in the controller
+          query's `params.identifier_value_digests`, and reading the
+          per-digest `found: true | false` proof from
+          `recorded_calls[].identifier_match_proofs[]`. Plaintext
+          identifiers never reach the controller in this path.
+        - `payload_must_contain` arbitrary path assertions are NOT
+          supported in digest mode — the runner emits a per-affected-entry
+          validation_result with `passed: true`, `check: payload_must_contain`,
+          and a `note` field explaining the mode constraint, contributing
+          to `validations_not_applicable` on run_summary (NOT
+          steps_failed). The same validation continues to grade against
+          recorded_calls returned in raw mode, so a mixed-mode response
+          (some calls raw, some digest) produces partial coverage rather
+          than blanket not_applicable.
+        - `min_count` and `endpoint_pattern` are unchanged — count and URL
+          matching work identically in both modes.
+      Storyboards that strictly require raw introspection set
+      `attestation_mode_required: "raw"` on the storyboard upstream_traffic
+      check; runners then grade calls returned in digest mode as
+      not_applicable for the entire check (not just per-assertion). Use
+      sparingly — see storyboard-schema.yaml > "upstream_traffic" >
+      `attestation_mode_required` for the rationale.
+  optional_fields:
+    - remediation             # runner-suggested fix when the failure maps to
+                              # a well-known cause (e.g., "agent did not echo
+                              # context.correlation_id — see
+                              # docs/building/implementation/task-lifecycle")
+    - severity                # "required" | "advisory" — copied from the
+                              # storyboard validation entry's severity field
+                              # (default: "required"). When "advisory", a
+                              # passed: false validation_result MUST NOT
+                              # cause its step to grade as failed; the step
+                              # grades on its remaining required validations.
+                              # Advisory failures contribute to
+                              # validations_advisory_failed on run_summary
+                              # and MUST NOT contribute to steps_failed,
+                              # validations_failed, or any other
+                              # required-failure counter — the two counter
+                              # surfaces are deliberately separate so a
+                              # consumer aggregating "passed: false" across
+                              # validations_failed never double-counts
+                              # advisory results.
+                              #
+                              # Rendered-output rule: when a runner emits
+                              # advisory results to a human-facing surface
+                              # (chat transcripts, markdown reports,
+                              # compliance dashboards, LLM summaries),
+                              # advisory entries MUST be visually
+                              # distinguished from required failures —
+                              # prefix with the literal `[ADVISORY]`,
+                              # render in a muted style, or section them
+                              # under a separate "advisory findings"
+                              # header. The machine-readable step_result
+                              # carries severity verbatim for programmatic
+                              # consumers; this rule applies only to
+                              # rendered surfaces. Without this, a façade
+                              # that declares its anti-façade validations
+                              # as advisory produces a stream of
+                              # `passed: false` entries indistinguishable
+                              # from required failures, eroding the
+                              # conformance signal.
+                              #
+                              # See storyboard-schema.yaml > "Validation"
+                              # for the author-side semantics and use case
+                              # (rollout gating during runner adoption
+                              # windows).
+    - severity_promoted_from_advisory
+                              # boolean | absent. Tri-state contract:
+                              #   true  — storyboard declared
+                              #           expires_after_version AND
+                              #           runner_capability_version >=
+                              #           that value, so the runner
+                              #           promoted severity to "required"
+                              #           at execution time. `severity`
+                              #           MUST also be "required" (the
+                              #           promoted value).
+                              #   false — storyboard declared
+                              #           expires_after_version but
+                              #           runner_capability_version is
+                              #           older, so promotion did not fire.
+                              #           `severity` is the storyboard's
+                              #           declared advisory.
+                              #   absent — storyboard did not declare
+                              #           expires_after_version (severity
+                              #           applied verbatim) OR the check
+                              #           grades not_applicable due to
+                              #           forward-compat (no grading
+                              #           occurred, so no promotion was
+                              #           evaluated; per
+                              #           storyboard-schema.yaml >
+                              #           expires_after_version
+                              #           forward-compat ordering rule).
+                              # The tri-state is required so consumers can
+                              # distinguish "promoted" from "not promoted
+                              # because runner is too old" from "not
+                              # applicable" without re-reading the
+                              # storyboard. Reports SHOULD render the
+                              # promotion provenance on the true case —
+                              # e.g., "[REQUIRED — was advisory through
+                              # capability v{expires_after_version};
+                              # promoted at v{runner_capability_version}]".
+
+request:
+  description: |
+    Exact request the runner sent, per transport. Runners MUST redact secrets
+    before emission — see the `security` block below.
+  required_fields:
+    - transport               # "mcp" | "a2a" | "http"
+    - operation               # task/tool/skill name actually invoked (matches
+                              # step.task after any test-kit interpolation)
+    - payload                 # fully-resolved JSON payload after test-kit
+                              # substitution and context injection, with
+                              # secret-bearing fields replaced per the
+                              # redaction policy in the security block.
+  optional_fields:
+    - headers                 # Runners SHOULD NOT populate this field by
+                              # default — see security.request_headers. The
+                              # field exists for future auth-override captures
+                              # that carry a fully-redacted form.
+    - url                     # full URL for http/a2a; omit for stdio MCP
+
+response:
+  description: |
+    Exact response observed from the agent, per transport.
+  required_fields:
+    - transport               # "mcp" | "a2a" | "http"
+    - payload                 # MCP: { isError, structuredContent, content }
+                              # A2A: the Task object — record task.status.state
+                              #   alongside payload. Extract from
+                              #   task.artifacts[0].parts[] DataPart for final
+                              #   states and task.status.message.parts[] for
+                              #   interim states (per
+                              #   docs/building/implementation/a2a-response-extraction.mdx).
+                              # http: parsed body
+  optional_fields:
+    - status                  # HTTP status where applicable
+    - headers                 # observed response headers, filtered through
+                              # the allowlist in security.response_headers
+    - duration_ms             # wall-clock time for this request
+
+extraction:
+  description: |
+    Runners MUST follow the MCP response-extraction algorithm at
+    docs/building/implementation/mcp-response-extraction.mdx and the A2A
+    equivalent. When both structuredContent and content[].text are present,
+    structuredContent wins. Recording the path that was actually used lets
+    the implementor distinguish a runner extraction bug from an agent bug.
+  required_fields:
+    - path                    # "structured_content" | "text_fallback" |
+                              # "error" | "none"
+  optional_fields:
+    - note                    # e.g. "structuredContent contained only
+                              # adcp_error — treated as error"
+
+security:
+  description: |
+    Runner output is consumed in compliance reports, chat transcripts, and
+    shared dashboards where credentials or breadcrumbs a hostile agent plants
+    in a response must not surface. A runner claiming contract conformance
+    without the rules below could leak tokens through a compliant-looking
+    report — defeating the contract's purpose. These rules are normative.
+
+  payload_redaction:
+    description: |
+      Runners MUST recursively redact key-value pairs from request.payload
+      and response.payload before emitting the step result. Values at keys
+      matching the pattern below are replaced with the literal string
+      "[redacted]". Matching is case-insensitive and applies at any depth.
+    pattern: |
+      ^(authorization|credentials?|token|api[_-]?key|password|secret|
+      client[_-]secret|refresh[_-]token|access[_-]token|bearer|
+      session[_-]token|offering[_-]token|cookie|set[_-]cookie)$
+    notes: |
+      The pattern above is the MINIMUM floor taken from the adcp-client#611
+      conforming implementation. Runners MAY extend it for operator-
+      specific key names (e.g., internal vendor headers) but MUST NOT
+      narrow it. Redaction happens after the payload is serialized for
+      the report, not at transport time — the wire request carries real
+      credentials; the emitted record does not.
+
+  response_headers:
+    description: |
+      Response headers MUST pass through an allowlist before emission. Any
+      header not in the allowlist MUST be dropped (not redacted — absent).
+      Dropping rather than redacting avoids publishing the set of header
+      names a hostile agent added, which itself can be a breadcrumb.
+    allowlist:
+      - content-type
+      - content-length
+      - content-encoding
+      - www-authenticate
+      - location
+      - retry-after
+      - x-request-id
+      - x-correlation-id
+    notes: |
+      www-authenticate is retained because it's load-bearing for auth-probe
+      validations (on_401_require_header). Matching is case-insensitive.
+
+  request_headers:
+    description: |
+      Runners SHOULD NOT populate request.headers. A runner that builds
+      `Authorization: Bearer <token>` headers in-flight would leak the token
+      by echoing the observed request into a shared report. When a runner
+      does populate request.headers (e.g., for auth-override probes that
+      intentionally send bogus credentials), values at keys matching the
+      payload_redaction pattern MUST be replaced with "[redacted]" and all
+      other headers MUST pass through the response_headers allowlist.
+
+  rendered_output_fencing:
+    description: |
+      Several validation_result and skip_result fields carry strings whose
+      origin is not the runner: the agent under test, the storyboard author,
+      or an adopter-supplied test controller. When a runner renders these
+      into a shared surface (chat transcript, markdown report, summary fed
+      to another LLM), the strings MUST be fenced with a nonce or otherwise
+      isolated so a hostile message cannot inject instructions into a
+      downstream summarizer. This applies to rendered output, not to the
+      machine-readable step_result — raw strings stay in the JSON for
+      programmatic consumers.
+
+      Load-bearing fields that MUST be fenced when rendered:
+        - validation_result.error              (transport-level errors,
+                                                agent-controlled when the
+                                                error message is echoed)
+        - validation_result.actual             (agent-controlled response
+                                                values, including string
+                                                forms)
+        - validation_result.description        (storyboard-author-controlled
+                                                — copied verbatim from the
+                                                storyboard validation entry)
+        - validation_result.note               (runner-generated but
+                                                interpolates the
+                                                storyboard's unrecognized
+                                                check value verbatim — see
+                                                forward-compat clause above)
+        - skip_result.detail                   (runner-generated but
+                                                interpolates storyboard
+                                                IDs and adopter-supplied
+                                                strings)
+        - response.payload (for upstream_traffic checks)
+                                               (carries recorded_calls[]
+                                                where url, payload, and
+                                                endpoint are all
+                                                agent-controlled — a
+                                                hostile adapter that hits
+                                                an attacker-controlled URL
+                                                plants the URL string in
+                                                the payload, and a
+                                                hostile adopter controller
+                                                returns whatever it wants)
+
+      Inversion rule: any field whose value is copied from storyboard input,
+      agent-under-test output, or an adopter-supplied test controller MUST be
+      fenced when rendered. Runner-generated identifiers (step_id, schema_id,
+      check enum values from the spec's known list) are exempt.
+
+      Advisory-severity differentiation: validation_result entries with
+      severity: advisory MUST render visually distinct from required-severity
+      results (literal `[ADVISORY]` prefix, muted style, or grouped under a
+      separate "advisory findings" section). This is orthogonal to fencing —
+      both rules apply to advisory results that carry agent- or
+      storyboard-controlled strings. See validation_result.severity above for
+      the rationale (façade-resistance: a façade declaring its anti-façade
+      validations as advisory must not blend visually into required failures).
+
+      Promotion-provenance rendering: when a renderer constructs human
+      copy describing severity_promoted_from_advisory: true (e.g., "was
+      advisory through capability v{expires_after_version}; promoted at
+      v{runner_capability_version}"), the storyboard-supplied
+      expires_after_version value MUST be fenced. The semver lint rejects
+      malformed values at publish time, but defense-in-depth treats the
+      string as untrusted-author input when interpolated into LLM-rendered
+      surfaces. permanent_advisory.reason is also storyboard-author-controlled
+      and MUST be fenced when rendered.
+
+skip_result:
+  description: |
+    When a track, storyboard, phase, or step is skipped, runners MUST
+    distinguish between the reasons below so an implementor knows whether
+    the skip is informative (the agent did not claim the protocol) or
+    masking (the runner could not apply the storyboard even though the
+    agent claimed the protocol).
+  required_fields:
+    - reason                  # not_applicable | no_phases |
+                              # prerequisite_failed | missing_tool |
+                              # missing_test_controller |
+                              # unsatisfied_contract | peer_branch_taken |
+                              # peer_substituted
+    - detail                  # human-readable explanation citing the
+                              # declared supported_protocols / specialisms
+                              # and, if relevant, the missing tool,
+                              # prerequisite step id, or contract key.
+  reasons:
+    not_applicable: |
+      The agent did not declare the protocol or specialism this storyboard
+      targets. detail MUST cite the agent's declared supported_protocols
+      and specialisms.
+
+      Branch-set grading uses `peer_branch_taken` (see below), not this
+      reason — keeping the two distinct lets dashboards filter coverage
+      gaps (not_applicable) separately from runtime branch routing
+      (peer_branch_taken).
+    no_phases: |
+      The storyboard is a placeholder with no phases to run (e.g., a
+      protocol baseline that has not been populated yet). detail MUST cite
+      the storyboard id and version.
+    prerequisite_failed: |
+      A prior step this one depends on did not pass. detail MUST cite the
+      prerequisite step id.
+    missing_tool: |
+      The agent declared the protocol or specialism but does not expose a
+      required tool. detail MUST cite the tool name declared in the
+      storyboard's required_tools and the agent's advertised tool list.
+    missing_test_controller: |
+      The storyboard requires comply_test_controller and the agent did not
+      advertise it. Applies only to deterministic_testing phases.
+    unsatisfied_contract: |
+      A test-kit harness contract (e.g., signed-requests-runner) is not in
+      scope for this grading run. detail MUST cite the contract key. Per
+      the signed-requests-runner contract, unsatisfied contracts grade as
+      FAIL, not SKIP, for the storyboards that declare them — this reason
+      applies only where the contract explicitly permits SKIP.
+    peer_branch_taken: |
+      The step is part of an `any_of` branch set (see storyboard-schema.yaml
+      > "Branch sets") whose `branch_set.id` was already contributed by a
+      peer optional phase, making this non-chosen branch moot. detail MUST
+      follow the shape
+      "<branch_set.id> contributed by <peer_phase_id>.<peer_step_id> —
+      <this_phase_id> is moot" so downstream tooling can parse which peer
+      carried the contribution. Kept distinct from not_applicable: coverage
+      gaps (agent doesn't support a protocol) and runtime branch routing
+      (agent took the other path) are different signals and must not be
+      conflated in dashboards or summaries.
+    peer_substituted: |
+      The step would otherwise grade `missing_tool` or
+      `missing_test_controller`, but a same-phase peer step declared
+      `provides_state_for: <this_step_id>` (see storyboard-schema.yaml >
+      `provides_state_for`) and passed — the substitute established
+      equivalent state for downstream stateful steps, so the cascade is
+      waived. detail MUST follow the shape
+      "<this_step_id> state provided by <peer_phase_id>.<peer_step_id>"
+      so downstream tooling can parse which substitute carried the state.
+      Kept distinct from peer_branch_taken (branch-set routing for
+      mutually exclusive behaviors) and not_applicable (coverage gap):
+      this signal indicates the agent did declare the specialism but
+      offers an interchangeable tool that the storyboard accepts as an
+      equivalent state contract.
+    description: |
+      Runners MAY internally track narrower skip reasons (e.g., a grader
+      distinguishing `rate_abuse_opt_out` from `live_side_effect_opt_in_required`).
+      Such runners MUST still populate `reason` with one of the canonical
+      values above and encode the narrower cause in `detail`. Machine-
+      readable consumers can then switch on a stable enum; human-readable
+      consumers still see the specific cause. See
+      DETAILED_SKIP_TO_CANONICAL in the conforming implementation for a
+      concrete mapping.
+
+run_summary:
+  description: |
+    Runners MUST expose a top-level summary for every run. UI surfaces
+    (Addie, CLI, web) may present a condensed form, but the full summary
+    MUST be available in the machine-readable (--json / structuredContent)
+    output.
+  notes:
+    capture_failures_count_as_failed: |
+      Steps that fail due to capture_path_not_resolvable or
+      unresolved_substitution MUST contribute to steps_failed, not
+      steps_skipped. The capturing step failing is a conformance failure
+      on that step; the downstream consumer step that cannot run due to
+      the missing context value uses the skip_result.reason:
+      prerequisite_failed path and contributes to steps_skipped. This
+      attribution is load-bearing — silently swallowing a capture failure
+      and reporting only the downstream skip points the diagnostic at the
+      wrong place.
+    upstream_traffic_not_applicable: |
+      Steps whose only failing validation is upstream_traffic against an
+      adopter that did not advertise query_upstream_traffic via
+      list_scenarios MUST NOT contribute to steps_failed. The runner
+      grades the upstream_traffic validation as not_applicable (with
+      skip_result.reason: missing_test_controller, detail:
+      "query_upstream_traffic scenario not advertised") and the step
+      grades on its remaining authored checks. An adopter that exposes
+      the scenario but returns an empty recorded_calls array DOES grade
+      as failed for upstream_traffic — the difference is "controller
+      not present" (opt-out) vs "controller present and observed nothing"
+      (façade signal).
+  required_fields:
+    - total_steps
+    - steps_passed
+    - steps_failed
+    - steps_skipped
+    - tracks                  # per-track status with the skip distinctions above
+    - schemas_used            # array of { schema_id, schema_url } so an
+                              # implementor can re-validate locally against
+                              # the exact artifacts the runner applied
+    - runner_capability_version
+                              # semver self-declared by the runner so
+                              # consumers can correlate a run's grading
+                              # behavior with the spec capability the
+                              # runner offers. Authors target capability
+                              # versions when they write
+                              # expires_after_version on advisory
+                              # validations (see storyboard-schema.yaml >
+                              # expires_after_version) and the runner's
+                              # promotion logic compares its declared
+                              # value against the storyboard's expiry. The
+                              # runner chooses what its capability version
+                              # corresponds to — @adcp/sdk semver, the
+                              # AdCP spec version it implements, or a
+                              # runner-binary version — and is responsible
+                              # for advancing it as new check kinds and
+                              # grading semantics ship. Adopters who run
+                              # multiple runners against the same agent
+                              # SHOULD select the highest-capability runner
+                              # for conformance grading.
+  optional_fields:
+    - validations_not_applicable  # count of validation_result entries graded
+                                  # not_applicable due to forward-compat
+                                  # (runner does not implement the storyboard's
+                                  # declared check type). Surfaces "runner is
+                                  # older than the storyboard" as a distinct
+                                  # signal from clean passes.
+    - validations_advisory_failed # count of validation_result entries with
+                                  # passed: false and severity: advisory.
+                                  # These do NOT contribute to steps_failed
+                                  # (the step grades on its required
+                                  # validations); this counter surfaces them
+                                  # for visibility without polluting the
+                                  # conformance verdict.
+                                  #
+                                  # Rendered-summary rule: when the runner
+                                  # renders a human-facing summary line
+                                  # (CLI, dashboard, chat surface),
+                                  # validations_advisory_failed MUST be
+                                  # displayed adjacent to steps_failed in
+                                  # the same line or section, NOT buried
+                                  # at the bottom of the summary. Otherwise
+                                  # a façade declaring its anti-façade
+                                  # validations as advisory produces a
+                                  # passing summary line that hides the
+                                  # advisory failures from human
+                                  # reviewers. The two counters together
+                                  # are the conformance signal.
+                                  #
+                                  # Use case: author-managed rollout
+                                  # gating during runner adoption windows
+                                  # — see storyboard-schema.yaml >
+                                  # "Validation" severity field.
+
+# --- Non-goals ---
+#
+# This contract does NOT specify:
+#   - Output formatting (markdown, JSON shape in the outer envelope, colors).
+#   - Storage or retention of run artifacts.
+#   - Scoring weights or pass/fail thresholds for a "compliant" verdict.
+#   - How to render results in conversational interfaces.
+# Runners remain free to add fields, nest them under implementation-specific
+# keys, and render them however best fits the surface. The contract is about
+# minimum actionability.
+
+references:
+  storyboard_schema: static/compliance/source/universal/storyboard-schema.yaml
+  mcp_extraction: docs/building/implementation/mcp-response-extraction.mdx
+  a2a_extraction: docs/building/implementation/a2a-response-extraction.mdx
+  transport_errors: docs/building/implementation/transport-errors.mdx
+  signed_requests_runner: static/compliance/source/test-kits/signed-requests-runner.yaml
+  conforming_implementation: https://github.com/adcontextprotocol/adcp-client/pull/611

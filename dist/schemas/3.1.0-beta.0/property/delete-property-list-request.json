@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.0/property/delete-property-list-request.json",
+  "title": "Delete Property List Request",
+  "description": "Request parameters for deleting a property list",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/3.1.0-beta.0/core/version-envelope.json"
+    }
+  ],
+  "x-mutates-state": true,
+  "properties": {
+    "list_id": {
+      "type": "string",
+      "description": "ID of the property list to delete",
+      "x-entity": "property_list"
+    },
+    "account": {
+      "$ref": "/schemas/3.1.0-beta.0/core/account-ref.json",
+      "description": "Account that owns the list. Required when the authenticated agent has access to multiple accounts; optional otherwise."
+    },
+    "context": {
+      "$ref": "/schemas/3.1.0-beta.0/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.1.0-beta.0/core/ext.json"
+    },
+    "idempotency_key": {
+      "type": "string",
+      "description": "Client-generated unique key for at-most-once execution. If a request with the same key has already been processed, the server returns the original response without re-processing. MUST be unique per (seller, request) pair to prevent cross-seller correlation. Use a fresh UUID v4 for each request.",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "list_id"
+  ],
+  "additionalProperties": true
+}

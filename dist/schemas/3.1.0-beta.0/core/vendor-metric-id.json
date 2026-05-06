@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.0/core/vendor-metric-id.json",
+  "title": "Vendor Metric ID",
+  "description": "Identifier for a vendor-defined metric within the vendor's vocabulary. Stable lookup key; the vendor publishes the canonical list (with category, methodology, and standard alignment) in `brand.json` `agents[type='measurement']`. Lowercase with underscores so a future enum promotion into `available-metric.json` is a literal string lift. Identifier is namespaced by the vendor — the same `metric_id` may mean different things in different vendors' vocabularies.",
+  "type": "string",
+  "x-entity": "vendor_metric",
+  "minLength": 1,
+  "maxLength": 64,
+  "pattern": "^[a-z][a-z0-9_]*$",
+  "examples": [
+    "attention_units",
+    "gco2e_per_impression",
+    "demographic_reach",
+    "co_view_index",
+    "incremental_lift_percent"
+  ]
+}

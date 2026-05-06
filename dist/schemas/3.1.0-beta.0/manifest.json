@@ -1,0 +1,1288 @@
+{
+  "$schema": "/schemas/3.1.0-beta.0/manifest.schema.json",
+  "adcp_version": "3.1.0-beta.0",
+  "generated_at": "2026-05-06T00:51:58.800Z",
+  "tools": {
+    "acquire_rights": {
+      "protocol": "brand",
+      "mutating": true,
+      "request_schema": "brand/acquire-rights-request.json",
+      "response_schema": "brand/acquire-rights-response.json",
+      "async_response_schemas": [],
+      "specialisms": [
+        "brand_rights"
+      ]
+    },
+    "activate_signal": {
+      "protocol": "signals",
+      "mutating": true,
+      "request_schema": "signals/activate-signal-request.json",
+      "response_schema": "signals/activate-signal-response.json",
+      "async_response_schemas": [],
+      "specialisms": [
+        "signal_marketplace",
+        "signal_owned"
+      ]
+    },
+    "build_creative": {
+      "protocol": "media-buy",
+      "mutating": true,
+      "request_schema": "media-buy/build-creative-request.json",
+      "response_schema": "media-buy/build-creative-response.json",
+      "async_response_schemas": [
+        "media-buy/build-creative-async-response-input-required.json",
+        "media-buy/build-creative-async-response-submitted.json",
+        "media-buy/build-creative-async-response-working.json"
+      ],
+      "specialisms": [
+        "creative_ad_server",
+        "creative_generative",
+        "creative_template",
+        "sales_catalog_driven"
+      ]
+    },
+    "calibrate_content": {
+      "protocol": "content-standards",
+      "mutating": true,
+      "request_schema": "content-standards/calibrate-content-request.json",
+      "response_schema": "content-standards/calibrate-content-response.json",
+      "async_response_schemas": [],
+      "specialisms": [
+        "content_standards"
+      ]
+    },
+    "check_governance": {
+      "protocol": "governance",
+      "mutating": false,
+      "request_schema": "governance/check-governance-request.json",
+      "response_schema": "governance/check-governance-response.json",
+      "async_response_schemas": [],
+      "specialisms": [
+        "governance_delivery_monitor",
+        "governance_spend_authority"
+      ]
+    },
+    "comply_test_controller": {
+      "protocol": "compliance",
+      "mutating": true,
+      "request_schema": "compliance/comply-test-controller-request.json",
+      "response_schema": "compliance/comply-test-controller-response.json",
+      "async_response_schemas": []
+    },
+    "create_collection_list": {
+      "protocol": "collection",
+      "mutating": true,
+      "request_schema": "collection/create-collection-list-request.json",
+      "response_schema": "collection/create-collection-list-response.json",
+      "async_response_schemas": [],
+      "specialisms": [
+        "collection_lists"
+      ]
+    },
+    "create_content_standards": {
+      "protocol": "content-standards",
+      "mutating": true,
+      "request_schema": "content-standards/create-content-standards-request.json",
+      "response_schema": "content-standards/create-content-standards-response.json",
+      "async_response_schemas": [],
+      "specialisms": [
+        "content_standards"
+      ]
+    },
+    "create_media_buy": {
+      "protocol": "media-buy",
+      "mutating": true,
+      "request_schema": "media-buy/create-media-buy-request.json",
+      "response_schema": "media-buy/create-media-buy-response.json",
+      "async_response_schemas": [
+        "media-buy/create-media-buy-async-response-input-required.json",
+        "media-buy/create-media-buy-async-response-submitted.json",
+        "media-buy/create-media-buy-async-response-working.json"
+      ],
+      "specialisms": [
+        "governance_aware_seller",
+        "governance_delivery_monitor",
+        "governance_spend_authority",
+        "sales_broadcast_tv",
+        "sales_catalog_driven",
+        "sales_guaranteed",
+        "sales_non_guaranteed",
+        "sales_proposal_mode"
+      ]
+    },
+    "create_property_list": {
+      "protocol": "property",
+      "mutating": true,
+      "request_schema": "property/create-property-list-request.json",
+      "response_schema": "property/create-property-list-response.json",
+      "async_response_schemas": [],
+      "specialisms": [
+        "property_lists"
+      ]
+    },
+    "creative_approval": {
+      "protocol": "brand",
+      "mutating": true,
+      "request_schema": "brand/creative-approval-request.json",
+      "response_schema": "brand/creative-approval-response.json",
+      "async_response_schemas": []
+    },
+    "delete_collection_list": {
+      "protocol": "collection",
+      "mutating": true,
+      "request_schema": "collection/delete-collection-list-request.json",
+      "response_schema": "collection/delete-collection-list-response.json",
+      "async_response_schemas": [],
+      "specialisms": [
+        "collection_lists"
+      ]
+    },
+    "delete_property_list": {
+      "protocol": "property",
+      "mutating": true,
+      "request_schema": "property/delete-property-list-request.json",
+      "response_schema": "property/delete-property-list-response.json",
+      "async_response_schemas": [],
+      "specialisms": [
+        "property_lists"
+      ]
+    },
+    "get_account_financials": {
+      "protocol": "account",
+      "mutating": false,
+      "request_schema": "account/get-account-financials-request.json",
+      "response_schema": "account/get-account-financials-response.json",
+      "async_response_schemas": [],
+      "specialisms": [
+        "sales_social"
+      ]
+    },
+    "get_adcp_capabilities": {
+      "protocol": "protocol",
+      "mutating": false,
+      "request_schema": "protocol/get-adcp-capabilities-request.json",
+      "response_schema": "protocol/get-adcp-capabilities-response.json",
+      "async_response_schemas": [],
+      "specialisms": [
+        "audience_sync",
+        "brand_rights",
+        "collection_lists",
+        "content_standards",
+        "creative_ad_server",
+        "creative_generative",
+        "creative_template",
+        "governance_aware_seller",
+        "governance_delivery_monitor",
+        "governance_spend_authority",
+        "property_lists",
+        "sales_broadcast_tv",
+        "sales_catalog_driven",
+        "sales_guaranteed",
+        "sales_non_guaranteed",
+        "sales_proposal_mode",
+        "sales_social",
+        "signal_marketplace",
+        "signal_owned"
+      ]
+    },
+    "get_brand_identity": {
+      "protocol": "brand",
+      "mutating": false,
+      "request_schema": "brand/get-brand-identity-request.json",
+      "response_schema": "brand/get-brand-identity-response.json",
+      "async_response_schemas": [],
+      "specialisms": [
+        "brand_rights"
+      ]
+    },
+    "get_collection_list": {
+      "protocol": "collection",
+      "mutating": false,
+      "request_schema": "collection/get-collection-list-request.json",
+      "response_schema": "collection/get-collection-list-response.json",
+      "async_response_schemas": [],
+      "specialisms": [
+        "collection_lists"
+      ]
+    },
+    "get_content_standards": {
+      "protocol": "content-standards",
+      "mutating": false,
+      "request_schema": "content-standards/get-content-standards-request.json",
+      "response_schema": "content-standards/get-content-standards-response.json",
+      "async_response_schemas": [],
+      "specialisms": [
+        "content_standards"
+      ]
+    },
+    "get_creative_delivery": {
+      "protocol": "creative",
+      "mutating": false,
+      "request_schema": "creative/get-creative-delivery-request.json",
+      "response_schema": "creative/get-creative-delivery-response.json",
+      "async_response_schemas": [],
+      "specialisms": [
+        "creative_ad_server"
+      ]
+    },
+    "get_creative_features": {
+      "protocol": "creative",
+      "mutating": false,
+      "request_schema": "creative/get-creative-features-request.json",
+      "response_schema": "creative/get-creative-features-response.json",
+      "async_response_schemas": []
+    },
+    "get_media_buy_artifacts": {
+      "protocol": "content-standards",
+      "mutating": false,
+      "request_schema": "content-standards/get-media-buy-artifacts-request.json",
+      "response_schema": "content-standards/get-media-buy-artifacts-response.json",
+      "async_response_schemas": []
+    },
+    "get_media_buy_delivery": {
+      "protocol": "media-buy",
+      "mutating": false,
+      "request_schema": "media-buy/get-media-buy-delivery-request.json",
+      "response_schema": "media-buy/get-media-buy-delivery-response.json",
+      "async_response_schemas": [],
+      "specialisms": [
+        "governance_delivery_monitor",
+        "sales_broadcast_tv",
+        "sales_catalog_driven",
+        "sales_guaranteed",
+        "sales_non_guaranteed",
+        "sales_proposal_mode"
+      ]
+    },
+    "get_media_buys": {
+      "protocol": "media-buy",
+      "mutating": false,
+      "request_schema": "media-buy/get-media-buys-request.json",
+      "response_schema": "media-buy/get-media-buys-response.json",
+      "async_response_schemas": [],
+      "specialisms": [
+        "sales_broadcast_tv",
+        "sales_catalog_driven",
+        "sales_guaranteed",
+        "sales_non_guaranteed",
+        "sales_proposal_mode"
+      ]
+    },
+    "get_plan_audit_logs": {
+      "protocol": "governance",
+      "mutating": false,
+      "request_schema": "governance/get-plan-audit-logs-request.json",
+      "response_schema": "governance/get-plan-audit-logs-response.json",
+      "async_response_schemas": []
+    },
+    "get_products": {
+      "protocol": "media-buy",
+      "mutating": false,
+      "request_schema": "media-buy/get-products-request.json",
+      "response_schema": "media-buy/get-products-response.json",
+      "async_response_schemas": [
+        "media-buy/get-products-async-response-input-required.json",
+        "media-buy/get-products-async-response-submitted.json",
+        "media-buy/get-products-async-response-working.json"
+      ],
+      "specialisms": [
+        "governance_aware_seller",
+        "sales_broadcast_tv",
+        "sales_catalog_driven",
+        "sales_guaranteed",
+        "sales_non_guaranteed",
+        "sales_proposal_mode"
+      ]
+    },
+    "get_property_list": {
+      "protocol": "property",
+      "mutating": false,
+      "request_schema": "property/get-property-list-request.json",
+      "response_schema": "property/get-property-list-response.json",
+      "async_response_schemas": [],
+      "specialisms": [
+        "property_lists"
+      ]
+    },
+    "get_rights": {
+      "protocol": "brand",
+      "mutating": false,
+      "request_schema": "brand/get-rights-request.json",
+      "response_schema": "brand/get-rights-response.json",
+      "async_response_schemas": [],
+      "specialisms": [
+        "brand_rights"
+      ]
+    },
+    "get_signals": {
+      "protocol": "signals",
+      "mutating": false,
+      "request_schema": "signals/get-signals-request.json",
+      "response_schema": "signals/get-signals-response.json",
+      "async_response_schemas": [],
+      "specialisms": [
+        "signal_marketplace",
+        "signal_owned"
+      ]
+    },
+    "list_accounts": {
+      "protocol": "account",
+      "mutating": false,
+      "request_schema": "account/list-accounts-request.json",
+      "response_schema": "account/list-accounts-response.json",
+      "async_response_schemas": [],
+      "specialisms": [
+        "audience_sync",
+        "sales_social"
+      ]
+    },
+    "list_collection_lists": {
+      "protocol": "collection",
+      "mutating": false,
+      "request_schema": "collection/list-collection-lists-request.json",
+      "response_schema": "collection/list-collection-lists-response.json",
+      "async_response_schemas": [],
+      "specialisms": [
+        "collection_lists"
+      ]
+    },
+    "list_content_standards": {
+      "protocol": "content-standards",
+      "mutating": false,
+      "request_schema": "content-standards/list-content-standards-request.json",
+      "response_schema": "content-standards/list-content-standards-response.json",
+      "async_response_schemas": [],
+      "specialisms": [
+        "content_standards"
+      ]
+    },
+    "list_creative_formats": {
+      "protocol": "media-buy",
+      "mutating": false,
+      "request_schema": "media-buy/list-creative-formats-request.json",
+      "response_schema": "media-buy/list-creative-formats-response.json",
+      "async_response_schemas": [],
+      "specialisms": [
+        "creative_ad_server",
+        "creative_generative",
+        "creative_template",
+        "sales_broadcast_tv",
+        "sales_catalog_driven",
+        "sales_proposal_mode"
+      ]
+    },
+    "list_creatives": {
+      "protocol": "creative",
+      "mutating": false,
+      "request_schema": "creative/list-creatives-request.json",
+      "response_schema": "creative/list-creatives-response.json",
+      "async_response_schemas": [],
+      "specialisms": [
+        "creative_ad_server"
+      ]
+    },
+    "list_property_lists": {
+      "protocol": "property",
+      "mutating": false,
+      "request_schema": "property/list-property-lists-request.json",
+      "response_schema": "property/list-property-lists-response.json",
+      "async_response_schemas": [],
+      "specialisms": [
+        "property_lists"
+      ]
+    },
+    "log_event": {
+      "protocol": "media-buy",
+      "mutating": true,
+      "request_schema": "media-buy/log-event-request.json",
+      "response_schema": "media-buy/log-event-response.json",
+      "async_response_schemas": [],
+      "specialisms": [
+        "sales_catalog_driven",
+        "sales_social"
+      ]
+    },
+    "preview_creative": {
+      "protocol": "creative",
+      "mutating": false,
+      "request_schema": "creative/preview-creative-request.json",
+      "response_schema": "creative/preview-creative-response.json",
+      "async_response_schemas": [],
+      "specialisms": [
+        "creative_template"
+      ]
+    },
+    "provide_performance_feedback": {
+      "protocol": "media-buy",
+      "mutating": true,
+      "request_schema": "media-buy/provide-performance-feedback-request.json",
+      "response_schema": "media-buy/provide-performance-feedback-response.json",
+      "async_response_schemas": [],
+      "specialisms": [
+        "sales_catalog_driven"
+      ]
+    },
+    "report_plan_outcome": {
+      "protocol": "governance",
+      "mutating": true,
+      "request_schema": "governance/report-plan-outcome-request.json",
+      "response_schema": "governance/report-plan-outcome-response.json",
+      "async_response_schemas": []
+    },
+    "report_usage": {
+      "protocol": "account",
+      "mutating": true,
+      "request_schema": "account/report-usage-request.json",
+      "response_schema": "account/report-usage-response.json",
+      "async_response_schemas": [],
+      "specialisms": [
+        "creative_ad_server"
+      ]
+    },
+    "search_brands": {
+      "protocol": "brand",
+      "mutating": false,
+      "request_schema": "brand/search-brands-request.json",
+      "response_schema": "brand/search-brands-response.json",
+      "async_response_schemas": []
+    },
+    "si_get_offering": {
+      "protocol": "sponsored-intelligence",
+      "mutating": false,
+      "request_schema": "sponsored-intelligence/si-get-offering-request.json",
+      "response_schema": "sponsored-intelligence/si-get-offering-response.json",
+      "async_response_schemas": []
+    },
+    "si_initiate_session": {
+      "protocol": "sponsored-intelligence",
+      "mutating": true,
+      "request_schema": "sponsored-intelligence/si-initiate-session-request.json",
+      "response_schema": "sponsored-intelligence/si-initiate-session-response.json",
+      "async_response_schemas": []
+    },
+    "si_send_message": {
+      "protocol": "sponsored-intelligence",
+      "mutating": true,
+      "request_schema": "sponsored-intelligence/si-send-message-request.json",
+      "response_schema": "sponsored-intelligence/si-send-message-response.json",
+      "async_response_schemas": []
+    },
+    "si_terminate_session": {
+      "protocol": "sponsored-intelligence",
+      "mutating": true,
+      "request_schema": "sponsored-intelligence/si-terminate-session-request.json",
+      "response_schema": "sponsored-intelligence/si-terminate-session-response.json",
+      "async_response_schemas": []
+    },
+    "sync_accounts": {
+      "protocol": "account",
+      "mutating": true,
+      "request_schema": "account/sync-accounts-request.json",
+      "response_schema": "account/sync-accounts-response.json",
+      "async_response_schemas": [],
+      "specialisms": [
+        "brand_rights",
+        "governance_aware_seller",
+        "sales_broadcast_tv",
+        "sales_catalog_driven",
+        "sales_guaranteed",
+        "sales_non_guaranteed",
+        "sales_proposal_mode",
+        "sales_social",
+        "signal_marketplace"
+      ]
+    },
+    "sync_audiences": {
+      "protocol": "media-buy",
+      "mutating": true,
+      "request_schema": "media-buy/sync-audiences-request.json",
+      "response_schema": "media-buy/sync-audiences-response.json",
+      "async_response_schemas": [],
+      "specialisms": [
+        "audience_sync",
+        "sales_social"
+      ]
+    },
+    "sync_catalogs": {
+      "protocol": "media-buy",
+      "mutating": true,
+      "request_schema": "media-buy/sync-catalogs-request.json",
+      "response_schema": "media-buy/sync-catalogs-response.json",
+      "async_response_schemas": [
+        "media-buy/sync-catalogs-async-response-input-required.json",
+        "media-buy/sync-catalogs-async-response-submitted.json",
+        "media-buy/sync-catalogs-async-response-working.json"
+      ],
+      "specialisms": [
+        "creative_generative",
+        "sales_catalog_driven",
+        "sales_social"
+      ]
+    },
+    "sync_creatives": {
+      "protocol": "creative",
+      "mutating": true,
+      "request_schema": "creative/sync-creatives-request.json",
+      "response_schema": "creative/sync-creatives-response.json",
+      "async_response_schemas": [
+        "creative/sync-creatives-async-response-input-required.json",
+        "creative/sync-creatives-async-response-submitted.json",
+        "creative/sync-creatives-async-response-working.json"
+      ],
+      "specialisms": [
+        "sales_broadcast_tv",
+        "sales_catalog_driven",
+        "sales_guaranteed",
+        "sales_non_guaranteed",
+        "sales_proposal_mode",
+        "sales_social"
+      ]
+    },
+    "sync_event_sources": {
+      "protocol": "media-buy",
+      "mutating": true,
+      "request_schema": "media-buy/sync-event-sources-request.json",
+      "response_schema": "media-buy/sync-event-sources-response.json",
+      "async_response_schemas": [],
+      "specialisms": [
+        "sales_catalog_driven",
+        "sales_social"
+      ]
+    },
+    "sync_governance": {
+      "protocol": "account",
+      "mutating": true,
+      "request_schema": "account/sync-governance-request.json",
+      "response_schema": "account/sync-governance-response.json",
+      "async_response_schemas": [],
+      "specialisms": [
+        "brand_rights",
+        "governance_aware_seller",
+        "signal_marketplace"
+      ]
+    },
+    "sync_plans": {
+      "protocol": "governance",
+      "mutating": true,
+      "request_schema": "governance/sync-plans-request.json",
+      "response_schema": "governance/sync-plans-response.json",
+      "async_response_schemas": [],
+      "specialisms": [
+        "brand_rights",
+        "governance_aware_seller",
+        "governance_delivery_monitor",
+        "governance_spend_authority",
+        "signal_marketplace"
+      ]
+    },
+    "update_collection_list": {
+      "protocol": "collection",
+      "mutating": true,
+      "request_schema": "collection/update-collection-list-request.json",
+      "response_schema": "collection/update-collection-list-response.json",
+      "async_response_schemas": [],
+      "specialisms": [
+        "collection_lists"
+      ]
+    },
+    "update_content_standards": {
+      "protocol": "content-standards",
+      "mutating": true,
+      "request_schema": "content-standards/update-content-standards-request.json",
+      "response_schema": "content-standards/update-content-standards-response.json",
+      "async_response_schemas": [],
+      "specialisms": [
+        "content_standards"
+      ]
+    },
+    "update_media_buy": {
+      "protocol": "media-buy",
+      "mutating": true,
+      "request_schema": "media-buy/update-media-buy-request.json",
+      "response_schema": "media-buy/update-media-buy-response.json",
+      "async_response_schemas": [
+        "media-buy/update-media-buy-async-response-input-required.json",
+        "media-buy/update-media-buy-async-response-submitted.json",
+        "media-buy/update-media-buy-async-response-working.json"
+      ],
+      "specialisms": [
+        "sales_broadcast_tv",
+        "sales_catalog_driven",
+        "sales_guaranteed",
+        "sales_non_guaranteed",
+        "sales_proposal_mode"
+      ]
+    },
+    "update_property_list": {
+      "protocol": "property",
+      "mutating": true,
+      "request_schema": "property/update-property-list-request.json",
+      "response_schema": "property/update-property-list-response.json",
+      "async_response_schemas": [],
+      "specialisms": [
+        "property_lists"
+      ]
+    },
+    "update_rights": {
+      "protocol": "brand",
+      "mutating": true,
+      "request_schema": "brand/update-rights-request.json",
+      "response_schema": "brand/update-rights-response.json",
+      "async_response_schemas": []
+    },
+    "validate_content_delivery": {
+      "protocol": "content-standards",
+      "mutating": false,
+      "request_schema": "content-standards/validate-content-delivery-request.json",
+      "response_schema": "content-standards/validate-content-delivery-response.json",
+      "async_response_schemas": [],
+      "specialisms": [
+        "content_standards"
+      ]
+    },
+    "validate_property_delivery": {
+      "protocol": "property",
+      "mutating": false,
+      "request_schema": "property/validate-property-delivery-request.json",
+      "response_schema": "property/validate-property-delivery-response.json",
+      "async_response_schemas": [],
+      "specialisms": [
+        "property_lists"
+      ]
+    }
+  },
+  "error_code_policy": {
+    "default_unknown_recovery": "transient",
+    "note": "Sellers MAY return platform-specific codes that are not listed in error_codes. Agents MUST classify unknown codes as default_unknown_recovery and SHOULD retry with backoff before surfacing to the operator. Throwing on an unknown code is non-conformant client behavior."
+  },
+  "error_codes": {
+    "INVALID_REQUEST": {
+      "recovery": "correctable",
+      "description": "Request is malformed, missing required fields, or violates schema constraints.",
+      "suggestion": "check request parameters and fix"
+    },
+    "AUTH_REQUIRED": {
+      "recovery": "correctable",
+      "description": "Authentication is required, or presented credentials were rejected.",
+      "suggestion": "provide credentials when missing; do NOT auto-retry rejected credentials — escalate for rotation"
+    },
+    "RATE_LIMITED": {
+      "recovery": "transient",
+      "description": "Request rate exceeded. Retry after the retry_after interval.",
+      "suggestion": "retry after the retry_after interval"
+    },
+    "SERVICE_UNAVAILABLE": {
+      "recovery": "transient",
+      "description": "Seller service is temporarily unavailable. Retry with exponential backoff.",
+      "suggestion": "retry with exponential backoff"
+    },
+    "CONFIGURATION_ERROR": {
+      "recovery": "terminal",
+      "description": "The seller's deployment is misconfigured in a way that prevents handling the request — the buyer cannot fix it, retrying will not help, and reporting to the seller's operator is the only remediation. Examples: account declared with `mode: 'mock'` but no `mock_upstream_url` populated; platform declared with `mode: 'live'` or `mode: 'sandbox'` but no `upstream_url` declared; required environment variable unset on the seller process. Distinct from `INVALID_REQUEST` (buyer-fixable; the request itself is malformed), `SERVICE_UNAVAILABLE` (transient; retry-with-backoff may succeed), `UNSUPPORTED_FEATURE` (capability mismatch — the seller does not implement the requested specialism), `ACCOUNT_SETUP_REQUIRED` (buyer-side onboarding incomplete; this code is seller-side deployment incomplete), and `GOVERNANCE_UNAVAILABLE` (governance-agent-scoped; transient). Wire placement. The deployment cannot produce a success artifact, so sellers MUST flip transport-level failure markers (HTTP 5xx, MCP `isError: true`, A2A `failed`) and populate both layers per the two-layer model in `error-handling.mdx#envelope-vs-payload-errors-the-two-layer-model`. The code itself is the discriminator; no `error.details` shape is defined for this code (mirroring the minimal-disclosure precedent of `AGENT_SUSPENDED` / `AGENT_BLOCKED`). Sellers SHOULD populate `error.message` with operator-actionable detail (which metadata key is missing, which env var is unset) and MUST NOT include credentials, connection strings, or stack traces — the message is wire-visible to the buyer.",
+      "suggestion": "surface to a human at the seller — the buyer cannot resolve a seller-side deployment misconfiguration and MUST NOT auto-retry"
+    },
+    "POLICY_VIOLATION": {
+      "recovery": "correctable",
+      "description": "Request violates the seller's content or advertising policies.",
+      "suggestion": "review policy requirements in the error details"
+    },
+    "PRODUCT_NOT_FOUND": {
+      "recovery": "correctable",
+      "description": "One or more referenced product IDs are unknown or expired.",
+      "suggestion": "remove invalid IDs and retry, or re-discover with get_products"
+    },
+    "PRODUCT_UNAVAILABLE": {
+      "recovery": "correctable",
+      "description": "The requested product is sold out or no longer available.",
+      "suggestion": "choose a different product"
+    },
+    "PROPOSAL_EXPIRED": {
+      "recovery": "correctable",
+      "description": "A referenced proposal ID has passed its expires_at timestamp.",
+      "suggestion": "re-discover with get_products to get a fresh proposal"
+    },
+    "BUDGET_TOO_LOW": {
+      "recovery": "correctable",
+      "description": "Budget is below the seller's minimum.",
+      "suggestion": "increase budget or check capabilities.media_buy.limits"
+    },
+    "CREATIVE_REJECTED": {
+      "recovery": "correctable",
+      "description": "Creative failed content policy review. For deadline violations, see CREATIVE_DEADLINE_EXCEEDED.",
+      "suggestion": "revise the creative per the seller's advertising_policies"
+    },
+    "UNSUPPORTED_FEATURE": {
+      "recovery": "correctable",
+      "description": "A requested feature or field is not supported by this seller.",
+      "suggestion": "check get_adcp_capabilities and remove unsupported fields"
+    },
+    "AUDIENCE_TOO_SMALL": {
+      "recovery": "correctable",
+      "description": "Audience segment is below the minimum required size for targeting.",
+      "suggestion": "broaden targeting or upload more audience members"
+    },
+    "ACCOUNT_NOT_FOUND": {
+      "recovery": "terminal",
+      "description": "The account reference could not be resolved.",
+      "suggestion": "verify account via list_accounts or contact seller"
+    },
+    "ACCOUNT_SETUP_REQUIRED": {
+      "recovery": "correctable",
+      "description": "Natural key resolved but the account needs setup before use.",
+      "suggestion": "check details.setup for URL or instructions"
+    },
+    "ACCOUNT_AMBIGUOUS": {
+      "recovery": "correctable",
+      "description": "Natural key resolves to multiple accounts.",
+      "suggestion": "pass explicit account_id or a more specific natural key"
+    },
+    "ACCOUNT_PAYMENT_REQUIRED": {
+      "recovery": "terminal",
+      "description": "Account has an outstanding balance requiring payment before new buys.",
+      "suggestion": "buyer must resolve billing"
+    },
+    "ACCOUNT_SUSPENDED": {
+      "recovery": "terminal",
+      "description": "Account has been suspended.",
+      "suggestion": "contact seller to resolve suspension"
+    },
+    "COMPLIANCE_UNSATISFIED": {
+      "recovery": "correctable",
+      "description": "A required disclosure from the brief's compliance section cannot be satisfied by the target format — either the required position or the required persistence mode is not in the format's disclosure_capabilities.",
+      "suggestion": "choose a format that supports the required disclosure positions and persistence modes, or remove the disclosure requirement"
+    },
+    "GOVERNANCE_DENIED": {
+      "recovery": "correctable",
+      "description": "A registered governance agent denied the transaction. Sellers MUST place the denial in the task's structured rejection arm when one exists (e.g., `acquire_rights` → `AcquireRightsRejected`, `creative_approval` → `CreativeRejected`); otherwise in `errors[]` + `adcp_error`. Buyers MUST dispatch on the response's discriminated `status` first and fall back to `errors[].code` / `adcp_error.code` only when no rejection arm exists for that task. The buyer may restructure the buy (e.g., reduce budget, split into smaller transactions), escalate to human spending authority, or contact the governance agent for details. Wire placement (full guidance). Governance denial is a structured business outcome, not a system error — the governance call SUCCEEDED and the agent returned a denial verdict. Two cases: 1. Task response defines a structured rejection arm. The arm IS the canonical denial shape. The seller populates `reason` (human-readable, propagating governance findings) and `suggestions` (optional) and does NOT additionally emit `GOVERNANCE_DENIED` in `errors[]` or `adcp_error`. The rejection arms enforce this at the schema layer: e.g., `AcquireRightsRejected` and `CreativeRejected` both declare `not: { required: [errors] }`, so dual-emission is already a schema violation. The code does not appear on the wire when the rejection arm is used. Transport-level success markers MUST NOT be flipped (HTTP 200, MCP `isError: false`, A2A `succeeded`) — the task ran successfully and produced a structured response. 2. Task response has no rejection arm (e.g., `create_media_buy` returns Success / Error / Submitted arms only). The seller populates `errors[].code: GOVERNANCE_DENIED` in the payload AND `adcp_error.code: GOVERNANCE_DENIED` on the envelope per the two-layer model in `error-handling.mdx#envelope-vs-payload-errors-the-two-layer-model`. Transport-level failure markers DO flip in this case (HTTP 4xx, MCP `isError: true`, A2A `failed`) — the task could not produce a success artifact. The rule generalizes to any current or future task whose response defines a discriminated rejection arm. In either placement, sellers SHOULD propagate governance findings verbatim — buyers' recovery decisions depend on what specifically was rejected. `GOVERNANCE_DENIED` is reserved for verdicts received from a reachable governance agent; if the governance call itself failed (timeout, network, config error), use `GOVERNANCE_UNAVAILABLE` instead.",
+      "suggestion": "restructure the buy, escalate to human spending authority, or contact the governance agent for details"
+    },
+    "BUDGET_EXHAUSTED": {
+      "recovery": "terminal",
+      "description": "Account or campaign budget has been fully spent. Distinct from BUDGET_TOO_LOW (rejected at submission).",
+      "suggestion": "buyer must add funds or increase budget cap"
+    },
+    "BUDGET_EXCEEDED": {
+      "recovery": "correctable",
+      "description": "Operation would exceed the allocated budget for the media buy or package. Distinct from BUDGET_EXHAUSTED (already spent) and BUDGET_TOO_LOW (below minimum).",
+      "suggestion": "reduce requested amount or increase budget allocation"
+    },
+    "CONFLICT": {
+      "recovery": "transient",
+      "description": "Concurrent modification detected. The resource was modified by another request between read and write.",
+      "suggestion": "re-read the resource and retry with current state"
+    },
+    "IDEMPOTENCY_CONFLICT": {
+      "recovery": "correctable",
+      "description": "An earlier request with the same idempotency_key was processed with a different canonical payload within the seller's replay window. Distinct from CONFLICT (concurrent write) — this indicates the client reused a key across semantically different requests.",
+      "suggestion": "use a fresh UUID v4 for the new request, or resend the exact original payload to get the cached response"
+    },
+    "IDEMPOTENCY_EXPIRED": {
+      "recovery": "correctable",
+      "description": "The idempotency_key was seen previously but its cached response has been evicted because it is past the seller's declared replay_ttl_seconds. Distinct from IDEMPOTENCY_CONFLICT (different payload within window) — this indicates the retry arrived too late for at-most-once guarantees. If the buyer has any evidence the prior call succeeded (partial response received before crash, entry in the buyer's own DB, a webhook fired), the buyer MUST do the natural-key check BEFORE minting a new key — minting a new key in that situation is exactly how double-creation happens.",
+      "suggestion": "perform a natural-key check to determine whether the original request succeeded; if no evidence of success, generate a fresh idempotency_key for a new attempt"
+    },
+    "CREATIVE_DEADLINE_EXCEEDED": {
+      "recovery": "correctable",
+      "description": "Creative change submitted after the package's creative_deadline. Distinct from CREATIVE_REJECTED (content policy failure).",
+      "suggestion": "check creative_deadline via get_media_buys before submitting changes, or negotiate a deadline extension with the seller"
+    },
+    "INVALID_STATE": {
+      "recovery": "correctable",
+      "description": "Operation is not permitted for the resource's current status (e.g., updating a completed or canceled media buy, or modifying a canceled package).",
+      "suggestion": "check current status via get_media_buys and adjust request"
+    },
+    "MEDIA_BUY_NOT_FOUND": {
+      "recovery": "correctable",
+      "description": "Referenced media buy does not exist or is not accessible to the requesting agent.",
+      "suggestion": "verify media_buy_id or buyer_ref"
+    },
+    "NOT_CANCELLABLE": {
+      "recovery": "correctable",
+      "description": "The media buy or package cannot be canceled in its current state. The seller may have contractual or operational constraints that prevent cancellation.",
+      "suggestion": "check the seller's cancellation policy or contact the seller"
+    },
+    "PACKAGE_NOT_FOUND": {
+      "recovery": "correctable",
+      "description": "Referenced package does not exist within the specified media buy.",
+      "suggestion": "verify package_id or buyer_ref via get_media_buys"
+    },
+    "CREATIVE_NOT_FOUND": {
+      "recovery": "correctable",
+      "description": "Referenced creative does not exist in the agent's creative library. Sellers MUST return this code uniformly for any creative_id not owned by the calling account — never distinguish 'exists in another tenant' from 'does not exist', which would enable cross-tenant enumeration.",
+      "suggestion": "verify creative_id via list_creatives, or sync_creatives to register it"
+    },
+    "SIGNAL_NOT_FOUND": {
+      "recovery": "correctable",
+      "description": "Referenced signal does not exist in the agent's catalog. Sellers MUST return this code uniformly for any signal_id not accessible to the calling account — never distinguish 'exists but unauthorized' from 'does not exist', which would enable cross-tenant enumeration.",
+      "suggestion": "verify signal_id via get_signals, or confirm the signal is available from this agent"
+    },
+    "SESSION_NOT_FOUND": {
+      "recovery": "correctable",
+      "description": "SI session ID is invalid, expired, or does not exist.",
+      "suggestion": "initiate a new session via si_initiate_session"
+    },
+    "PLAN_NOT_FOUND": {
+      "recovery": "correctable",
+      "description": "Referenced governance plan does not exist or is not accessible to the requesting agent. Sellers MUST return this code uniformly for any plan_id not accessible to the calling account — never distinguish 'exists but unauthorized' from 'does not exist', which would enable cross-tenant enumeration of governance plans.",
+      "suggestion": "verify plan_id via sync_plans, or register the plan first"
+    },
+    "REFERENCE_NOT_FOUND": {
+      "recovery": "correctable",
+      "description": "Generic fallback for a referenced identifier, grant, session, or other resource that does not exist or is not accessible by the caller. Use when no resource-specific not-found code applies (e.g., property lists, content standards, rights grants, SI offerings, proposals, catalogs, event sources, collection lists, brands, individual properties). Typed parameters that lack a dedicated standard code MUST also use REFERENCE_NOT_FOUND rather than minting a custom *_NOT_FOUND code. See 'Uniform response for inaccessible references' in error-handling.mdx for the full MUST list. Summary of the uniform-response MUST: sellers MUST return the same response for 'exists but the caller lacks access' as for 'does not exist' across every observable channel — error.code/message/field/details (message MUST be generic; error.field MUST be identical across both cases on typed parameters); HTTP status, A2A task.status.state, and MCP isError; response headers (ETag, Cache-Control, per-type rate-limit buckets, CDN tags); side effects (webhook/audit writes, background-job enqueues, per-type quota counters, DB-shard routing); and observability (logs, APM spans, third-party error telemetry like Sentry/Datadog). Sellers MUST perform the same resolution-and-authorization work on both paths (resolve-then-authorize; on true-miss still run an authorization decision of equivalent shape against an empty principal set so authorizer latency is not a side channel). Cache population MUST NOT be gated on authorization. Polymorphism is evaluated against the tool-schema's declared parameter shape before any lookup, and a tool's declared shape MUST be identical across all callers.",
+      "suggestion": "verify the referenced identifier exists and is accessible to the caller"
+    },
+    "SESSION_TERMINATED": {
+      "recovery": "correctable",
+      "description": "SI session has already been terminated and cannot accept further messages.",
+      "suggestion": "initiate a new session via si_initiate_session"
+    },
+    "VALIDATION_ERROR": {
+      "recovery": "correctable",
+      "description": "Request contains invalid field values or violates business rules beyond schema validation.",
+      "suggestion": "review error details and fix field values"
+    },
+    "PRODUCT_EXPIRED": {
+      "recovery": "correctable",
+      "description": "One or more referenced products have passed their expires_at timestamp and are no longer available for purchase.",
+      "suggestion": "re-discover with get_products to find current inventory"
+    },
+    "PROPOSAL_NOT_COMMITTED": {
+      "recovery": "correctable",
+      "description": "The referenced proposal has proposal_status 'draft' and cannot be used to create a media buy.",
+      "suggestion": "finalize the proposal first using get_products with buying_mode 'refine' and action 'finalize'"
+    },
+    "IO_REQUIRED": {
+      "recovery": "correctable",
+      "description": "The committed proposal requires a signed insertion order but no io_acceptance was provided.",
+      "suggestion": "review the proposal's insertion_order, accept terms, and include io_acceptance on create_media_buy"
+    },
+    "TERMS_REJECTED": {
+      "recovery": "correctable",
+      "description": "Buyer-proposed measurement_terms were rejected by the seller. The error details SHOULD identify which specific term was rejected and the seller's acceptable range or supported vendors.",
+      "suggestion": "adjust the proposed terms and retry, or omit measurement_terms to accept the product's defaults"
+    },
+    "REQUOTE_REQUIRED": {
+      "recovery": "correctable",
+      "description": "An update_media_buy request changes the parameter envelope (budget, flight dates, volume, targeting) the original quote was priced against. The pricing_option remains locked; the seller is declining the requested shape at that price. Distinct from TERMS_REJECTED (measurement) and POLICY_VIOLATION (content). Sellers SHOULD populate error.details.envelope_field with the field path(s) that breached the envelope (e.g., 'packages[0].budget', 'end_time') so the buyer's agent can autonomously re-discover.",
+      "suggestion": "re-negotiate via get_products in 'refine' mode against the existing proposal_id to obtain a fresh quote, then resubmit against the new proposal_id"
+    },
+    "VERSION_UNSUPPORTED": {
+      "recovery": "correctable",
+      "description": "The declared adcp_version (release-precision) or adcp_major_version (deprecated) is not supported by this seller. The error details SHOULD follow `error-details/version-unsupported.json` — `supported_versions` (release-precision strings) is authoritative for retry; `supported_majors` is deprecated.",
+      "suggestion": "re-pin to a release in supported_versions and retry, or call get_adcp_capabilities without a version pin to discover supported_versions"
+    },
+    "CAMPAIGN_SUSPENDED": {
+      "recovery": "transient",
+      "description": "Campaign governance has been suspended pending human review; the governance agent MUST reject `check_governance` and `report_plan_outcome` calls on the affected plan until the escalation is resolved. Distinct from `ACCOUNT_SUSPENDED` (account-wide) — this is scoped to a single plan/campaign.",
+      "suggestion": "wait for the escalation to resolve; contact the plan operator if the suspension persists"
+    },
+    "GOVERNANCE_UNAVAILABLE": {
+      "recovery": "transient",
+      "description": "A registered governance agent is unreachable. Sellers MUST place this code in `errors[]` + `adcp_error` (never a structured rejection arm) and flip transport-level failure markers (HTTP 5xx, MCP `isError: true`, A2A `failed`). Distinct from `GOVERNANCE_DENIED` (agent reachable and explicitly denied — see that code's wire-placement guidance). Wire placement (full guidance). Governance unavailability is a system error — the governance call FAILED (timeout, network, config error) and the seller could not get a verdict at all. Always populate both layers per the two-layer model in `error-handling.mdx#envelope-vs-payload-errors-the-two-layer-model`. Do NOT use a structured rejection arm for unavailability even when the task offers one — the buyer's recovery semantics differ (retry-with-backoff for unavailability vs. restructure-or-escalate for denial), and conflating them masks the system-error signal.",
+      "suggestion": "retry with backoff; if the agent remains unreachable, the buyer MUST contact the plan's governance operator"
+    },
+    "PERMISSION_DENIED": {
+      "recovery": "correctable",
+      "description": "The authenticated caller is not authorized for the requested action under the seller's own policies, or a required signed credential (e.g., a `governance_context` token on a spend-commit) is missing, fails verification, or was issued for a different plan, seller, or phase. Distinct from `AUTH_REQUIRED` (no credentials presented), `GOVERNANCE_DENIED` (governance agent denied), `AGENT_SUSPENDED` (agent's relationship temporarily paused), and `AGENT_BLOCKED` (agent's relationship permanently denied). When the gate that fired is specifically a non-status per-agent provisioning constraint — e.g., the agent is provisioned for sandbox traffic only and the request was against a non-sandbox account — `error.details` SHOULD conform to `error-details/agent-permission-denied.json` (`scope: \"agent\"` plus `reason: \"sandbox_only\"`) so callers can dispatch without parsing prose. Sellers MUST emit `scope: \"agent\"` only when buyer-agent identity has been established via signed-request derivation or a credential-to-agent mapping in the seller's onboarding record; in all other cases (including bearer credentials not mapped to a specific agent record) sellers MUST return `PERMISSION_DENIED` and MUST omit `error.details.scope` — emitting the per-agent scope without established identity is a cross-tenant onboarding oracle, and the omit MUST be enforced across every observable channel (response shape, HTTP/A2A/MCP status, headers, side effects, observability, latency parity) per the channel-coverage rules in error-handling.mdx Per-Agent Authorization Gate, mirroring the `*_NOT_FOUND` uniform-response rule and `BILLING_NOT_PERMITTED_FOR_AGENT`. The `suspended` and `blocked` per-agent states are NOT carried on this code — sellers MUST emit `AGENT_SUSPENDED` / `AGENT_BLOCKED` instead, each of which is its own discriminator.",
+      "suggestion": "call check_governance to mint a valid token, or contact the seller to resolve the underlying permission; when error.details.scope is 'agent' with reason 'sandbox_only' the rejection is terminal-pending-onboarding — surface to a human rather than auto-retrying. For suspended/blocked agent relationships, sellers emit AGENT_SUSPENDED / AGENT_BLOCKED instead (those codes carry recovery: terminal directly)."
+    },
+    "SCOPE_INSUFFICIENT": {
+      "recovery": "correctable",
+      "description": "The authenticated caller is not authorized for the invoked task — the task is not in the caller's `allowed_tasks` for this account (discoverable via the `authorization` object on sync_accounts / list_accounts responses). Distinct from `PERMISSION_DENIED` (generic authz failure, often credential-shaped) by being narrowly about task-level scope. Sellers SHOULD populate `error.details.introspection_hint` pointing at where the caller can re-read its scope (strawman: `{ task: 'list_accounts', account: {...} }`).",
+      "suggestion": "the agent cannot broaden its own scope - surface to the operator rather than auto-retry"
+    },
+    "READ_ONLY_SCOPE": {
+      "recovery": "correctable",
+      "description": "The caller's scope is read-only; the invoked task would mutate state and was rejected. Distinct from `SCOPE_INSUFFICIENT` (task not in scope at all) — the task is in some scopes this seller supports, just not this caller's.",
+      "suggestion": "use a non-mutating alternative, or surface to the operator to request a scope that permits mutation"
+    },
+    "FIELD_NOT_PERMITTED": {
+      "recovery": "correctable",
+      "description": "A request field is not in the caller's `field_scopes` allowlist for this task. Sellers declaring `field_scopes` on the account's `authorization` object MUST reject any request that sets a non-allowlisted field with this code. Distinct from `VALIDATION_ERROR` (schema/business-rule violation) - the field is valid, just not writable by this caller. `error.field` MUST identify the exact offending field path (e.g., `packages[0].budget`); when multiple fields are disallowed, sellers SHOULD return one error per field, or MAY enumerate them in `error.details.fields`.",
+      "suggestion": "drop the disallowed field(s) and retry"
+    },
+    "PROVENANCE_REQUIRED": {
+      "recovery": "correctable",
+      "description": "Seller's `creative_policy.provenance_required` is true and the submitted creative has no `provenance` object on the manifest, on the creative-asset, or on any individual asset. Distinct from `CREATIVE_REJECTED` (generic content-policy failure) by being narrowly about provenance presence. `error.field` MUST point at the path where provenance was expected (e.g., `creatives[0].creative_manifest`).",
+      "suggestion": "attach a provenance object - at minimum digital_source_type - and resubmit"
+    },
+    "PROVENANCE_DIGITAL_SOURCE_TYPE_MISSING": {
+      "recovery": "correctable",
+      "description": "Seller's `creative_policy.provenance_requirements.require_digital_source_type` is true and the submitted creative's resolved provenance (after inheritance) has no `digital_source_type` value, or has it set to null. Distinct from `PROVENANCE_REQUIRED` (no provenance object at all) - provenance is present, just missing this specific field. `error.field` MUST point at the resolved provenance path that was inspected (e.g., `creatives[0].creative_manifest.provenance.digital_source_type`).",
+      "suggestion": "set provenance.digital_source_type to a value from the digital-source-type enum and resubmit"
+    },
+    "PROVENANCE_DISCLOSURE_MISSING": {
+      "recovery": "correctable",
+      "description": "Seller's `creative_policy.provenance_requirements.require_disclosure_metadata` is true and the submitted creative's resolved provenance has no `disclosure.required` boolean, or `disclosure.required` is true with no `disclosure.jurisdictions` entries. `error.field` MUST point at `provenance.disclosure` (e.g., `creatives[0].creative_manifest.provenance.disclosure`).",
+      "suggestion": "set provenance.disclosure.required and, when true, populate disclosure.jurisdictions"
+    },
+    "PROVENANCE_EMBEDDED_MISSING": {
+      "recovery": "correctable",
+      "description": "Seller's `creative_policy.provenance_requirements.require_embedded_provenance` is true and the submitted creative's resolved provenance has no `embedded_provenance` array, or has it as an empty array. Used in pipelines where sidecar `c2pa.manifest_url` is stripped by intermediaries and the seller requires content-stream-resilient provenance. `error.field` MUST point at `provenance.embedded_provenance` on the resolved manifest.",
+      "suggestion": "attach at least one embedded_provenance entry from a supported provider and resubmit"
+    },
+    "PROVENANCE_VERIFIER_NOT_ACCEPTED": {
+      "recovery": "correctable",
+      "description": "Buyer attached a `verify_agent.agent_url` on `embedded_provenance[]` or `watermarks[]` that does not match (canonicalized per /docs/reference/url-canonicalization: lowercase scheme and host, strip default port, normalize path dot-segments) any entry in the seller's `creative_policy.accepted_verifiers[].agent_url`. The seller does not call buyer-asserted endpoints outside its allowlist; this is the cross-check that closes the buyer-controlled-URL trust gap. `error.field` MUST point at the offending `verify_agent.agent_url` path; `error.details` SHOULD include a reference to the product whose `creative_policy.accepted_verifiers` the buyer should consult (the buyer already has this from `get_products`).",
+      "suggestion": "replace verify_agent.agent_url with one from the seller's published accepted_verifiers, drop verify_agent if the embedding is self-verifiable, or re-embed with a verifier the seller accepts"
+    },
+    "PROVENANCE_CLAIM_CONTRADICTED": {
+      "recovery": "correctable",
+      "description": "Seller invoked a governance agent from `creative_policy.accepted_verifiers` via `get_creative_features` and the verifier's result contradicts the buyer's provenance claim - e.g., buyer claims `digital_source_type: digital_capture` but the AI-detection feature returns `ai_generated: true` above the seller's confidence threshold. Distinct from the `PROVENANCE_*_MISSING` family (structural absence) by being an active refutation. `error.details` SHOULD be limited to the audit-safe allowlist `{ agent_url, feature_id, claimed_value, observed_value, confidence }`; sellers MUST NOT forward arbitrary verifier extension fields, `detail_url`, or any verifier response shape that may carry cross-tenant or PII data. When the seller calls a different on-list agent than the buyer nominated (the seller is the verifier-of-record), `error.details.agent_url` is the agent the seller actually called and `error.details.substituted_for` SHOULD carry the buyer's nominated `agent_url` so the buyer can reconcile.",
+      "suggestion": "revise the provenance claim to match the verifier's observation or replace the creative; auto-retry without correction will not pass"
+    },
+    "BILLING_NOT_SUPPORTED": {
+      "recovery": "correctable",
+      "description": "The seller declines the requested `billing` value either at the seller-wide capability level (`supported_billing` does not include the value) or at the per-account-relationship level (e.g., the seller accepts `operator` billing in general but has no direct billing relationship with the operator on this specific account). The default reject code for billing-value mismatches; `error.details` SHOULD conform to `error-details/billing-not-supported.json` (`scope` ∈ `{\"capability\", \"account\"}` plus optional `supported_billing` echo for the `\"capability\"` scope) so callers can dispatch without parsing prose. Distinct from `BILLING_NOT_PERMITTED_FOR_AGENT`, which is narrowly scoped to the calling buyer agent's commercial relationship with the seller (passthrough-only vs agent-billable) rather than to the seller's capability or per-account state. Sellers MUST emit `BILLING_NOT_PERMITTED_FOR_AGENT` only when agent identity has been established via signed-request derivation or a credential-to-agent mapping in the seller's onboarding record; in all other cases (unauthenticated callers and bearer credentials not mapped to a specific agent record) sellers MUST return `BILLING_NOT_SUPPORTED` and MUST omit `error.details.scope` — emitting the per-agent code or the `\"account\"`-scope hint without established identity is a cross-tenant onboarding oracle (same uniform-response shape required by the `*_NOT_FOUND` family).",
+      "suggestion": "check get_adcp_capabilities for supported_billing and resubmit with a supported value, or omit billing to accept the seller's default"
+    },
+    "BILLING_NOT_PERMITTED_FOR_AGENT": {
+      "recovery": "correctable",
+      "description": "The seller's `supported_billing` capability accepts the requested model, but the calling buyer agent's commercial relationship with the seller does not — e.g., the agent is onboarded as passthrough-only (no payments relationship — only the operator can be invoiced) and `billing: 'agent'` or `billing: 'advertiser'` is rejected even though the seller supports both at the capability level. Distinct from `BILLING_NOT_SUPPORTED` (seller-wide capability) by being narrowly per-buyer-agent: the gate is the seller's onboarding record for this caller, not the seller's global wire capability. Sellers MUST emit this code only after agent identity has been established via signed-request derivation or a credential-to-agent mapping in the seller's onboarding record; callers without established identity MUST receive `BILLING_NOT_SUPPORTED` instead, to prevent the distinct code from acting as an onboarding oracle. The recovery shape is deliberately minimal — `error.details` MUST conform to `error-details/billing-not-permitted-for-agent.json` (`rejected_billing` plus an optional single `suggested_billing` retry value, typically `operator`) and MUST NOT carry the agent's full permitted-billing subset, rate cards, payment terms, credit limit, billing entity, or any other per-agent commercial state.",
+      "suggestion": "retry with error.details.suggested_billing (typically 'operator') when present; when absent, surface to a human at the buyer — the agent cannot unilaterally extend its commercial relationship and MUST NOT auto-retry"
+    },
+    "PAYMENT_TERMS_NOT_SUPPORTED": {
+      "recovery": "correctable",
+      "description": "The seller does not accept the requested `payment_terms` value for this account. Payment terms are never silently remapped — sellers either accept or reject. Distinct from `BILLING_NOT_SUPPORTED` (the `billing` enum) by being narrowly about the `payment_terms` enum on the same account.",
+      "suggestion": "omit payment_terms to accept the seller's default, retry with a different supported value, or negotiate offline"
+    },
+    "BRAND_REQUIRED": {
+      "recovery": "correctable",
+      "description": "A billable operation was attempted without a brand reference. Every billable operation requires either a seller-assigned `account_id` or a natural key including `brand`.",
+      "suggestion": "include brand (domain plus optional brand_id) on the request"
+    },
+    "AGENT_SUSPENDED": {
+      "recovery": "terminal",
+      "description": "The calling buyer agent's commercial relationship with the seller is temporarily paused — the agent is onboarded but currently suspended. Sibling to `ACCOUNT_SUSPENDED` (account-wide) and `CAMPAIGN_SUSPENDED` (per-plan) but scoped to the agent-relationship axis (orthogonal to any specific account on that agent). The code itself is the discriminator — it does NOT carry an `error.details` payload (mirroring `BILLING_NOT_PERMITTED_FOR_AGENT`'s discriminator-by-code pattern), and MUST NOT carry per-agent commercial state (rate cards, payment terms, credit limit, billing entity, contact channels) since full disclosure of per-agent state in a single probe is a per-agent oracle. Cross-tenant onboarding oracle clamp + channel-coverage requirements (response shape, HTTP/A2A/MCP status, headers, side effects, observability, latency parity, retry-counter side channel) are normative in error-handling.mdx Per-Agent Authorization Gate; this description does not restate them to avoid drift.",
+      "suggestion": "surface to a human at the buyer — the agent cannot unilaterally lift a suspension; re-onboarding with the seller offline may resolve"
+    },
+    "AGENT_BLOCKED": {
+      "recovery": "terminal",
+      "description": "The calling buyer agent's commercial relationship with the seller is permanently denied — the agent is blocked. Sibling to `AGENT_SUSPENDED` on the agent-relationship axis but with no recovery path (a suspension may lift via re-onboarding; a block does not). The code itself is the discriminator — same posture as `AGENT_SUSPENDED`: no `error.details` payload, no per-agent commercial state, cross-tenant onboarding oracle clamp + channel-coverage requirements normative in error-handling.mdx Per-Agent Authorization Gate.",
+      "suggestion": "surface to a human at the buyer — the relationship is permanently denied and is reinstated only through offline operator action with the seller, not via any seller-callable AdCP task"
+    },
+    "CREDENTIAL_IN_ARGS": {
+      "recovery": "terminal",
+      "description": "The seller detected a buyer-principal credential placed in request args (top-level, in `context`, in `ext`, or any other nested location in the task payload) instead of arriving on the transport's authentication channel. Buyer-principal credentials MUST arrive on the transport's authentication channel (`Authorization: Bearer` per RFC 6750 §2 for HTTP, RFC 9421 signature headers for signed requests, MCP/A2A authentication framing per RFC 9728 §3) and MUST NOT travel inside the task payload. Distinct from `AUTH_REQUIRED` (no credentials presented or presented credentials rejected on the transport channel) and `PERMISSION_DENIED` (authenticated caller not authorized for the action). Distinct from the receiver-side credentials carried in `push_notification_config.authentication.credentials`, which configure the seller's webhook callback authentication and are not buyer-principal credentials — those are an explicit carve-out and MUST NOT trigger this code. Sellers SHOULD reject credential-in-args under AdCP 3.1; the requirement upgrades to MUST 90 days after the 3.1 publication date.",
+      "suggestion": "do NOT auto-retry — auto-retry re-logs the credential on each attempt. Move the credential out of request args (top-level, `context`, `ext`, any nested location) onto the transport authentication channel (Authorization: Bearer, RFC 9421 signature, MCP/A2A authentication framing); rotate the leaked credential, then resubmit on the transport channel only"
+    }
+  },
+  "specialisms": {
+    "audience_sync": {
+      "protocol": "media-buy",
+      "title": "Audience sync",
+      "entry_point_tools": [
+        "list_accounts",
+        "sync_audiences"
+      ],
+      "exercised_tools": [
+        "get_adcp_capabilities",
+        "list_accounts",
+        "sync_audiences"
+      ]
+    },
+    "brand_rights": {
+      "protocol": "brand",
+      "title": "Brand identity and rights licensing",
+      "entry_point_tools": [
+        "get_brand_identity"
+      ],
+      "exercised_tools": [
+        "acquire_rights",
+        "get_adcp_capabilities",
+        "get_brand_identity",
+        "get_rights",
+        "sync_accounts",
+        "sync_governance",
+        "sync_plans"
+      ]
+    },
+    "collection_lists": {
+      "protocol": "governance",
+      "title": "Collection lists",
+      "entry_point_tools": [
+        "create_collection_list"
+      ],
+      "exercised_tools": [
+        "create_collection_list",
+        "delete_collection_list",
+        "get_adcp_capabilities",
+        "get_collection_list",
+        "list_collection_lists",
+        "update_collection_list"
+      ]
+    },
+    "content_standards": {
+      "protocol": "governance",
+      "title": "Content standards",
+      "entry_point_tools": [
+        "list_content_standards"
+      ],
+      "exercised_tools": [
+        "calibrate_content",
+        "create_content_standards",
+        "get_adcp_capabilities",
+        "get_content_standards",
+        "list_content_standards",
+        "update_content_standards",
+        "validate_content_delivery"
+      ]
+    },
+    "creative_ad_server": {
+      "protocol": "creative",
+      "title": "Creative ad server",
+      "entry_point_tools": [
+        "build_creative"
+      ],
+      "exercised_tools": [
+        "build_creative",
+        "get_adcp_capabilities",
+        "get_creative_delivery",
+        "list_creative_formats",
+        "list_creatives",
+        "report_usage"
+      ]
+    },
+    "creative_generative": {
+      "protocol": "creative",
+      "title": "Generative creative agent",
+      "entry_point_tools": [
+        "build_creative"
+      ],
+      "exercised_tools": [
+        "build_creative",
+        "expect_substitution_safe",
+        "get_adcp_capabilities",
+        "list_creative_formats",
+        "sync_catalogs"
+      ]
+    },
+    "creative_template": {
+      "protocol": "creative",
+      "title": "Creative template and transformation agent",
+      "entry_point_tools": [
+        "build_creative"
+      ],
+      "exercised_tools": [
+        "build_creative",
+        "get_adcp_capabilities",
+        "list_creative_formats",
+        "preview_creative"
+      ]
+    },
+    "governance_aware_seller": {
+      "protocol": "media-buy",
+      "title": "Governance-aware seller",
+      "entry_point_tools": [
+        "create_media_buy",
+        "sync_governance"
+      ],
+      "exercised_tools": [
+        "create_media_buy",
+        "get_adcp_capabilities",
+        "get_products",
+        "sync_accounts",
+        "sync_governance",
+        "sync_plans"
+      ]
+    },
+    "governance_delivery_monitor": {
+      "protocol": "governance",
+      "title": "Campaign governance — delivery monitoring with drift detection",
+      "entry_point_tools": [
+        "check_governance"
+      ],
+      "exercised_tools": [
+        "check_governance",
+        "create_media_buy",
+        "get_adcp_capabilities",
+        "get_media_buy_delivery",
+        "sync_plans"
+      ]
+    },
+    "governance_spend_authority": {
+      "protocol": "governance",
+      "title": "Campaign governance — conditional approval",
+      "entry_point_tools": [
+        "check_governance",
+        "sync_plans"
+      ],
+      "exercised_tools": [
+        "check_governance",
+        "create_media_buy",
+        "get_adcp_capabilities",
+        "sync_plans"
+      ]
+    },
+    "property_lists": {
+      "protocol": "governance",
+      "title": "Property lists",
+      "entry_point_tools": [
+        "create_property_list"
+      ],
+      "exercised_tools": [
+        "create_property_list",
+        "delete_property_list",
+        "get_adcp_capabilities",
+        "get_property_list",
+        "list_property_lists",
+        "update_property_list",
+        "validate_property_delivery"
+      ]
+    },
+    "sales_broadcast_tv": {
+      "protocol": "media-buy",
+      "title": "Broadcast linear TV seller agent",
+      "entry_point_tools": [
+        "create_media_buy",
+        "get_products"
+      ],
+      "exercised_tools": [
+        "create_media_buy",
+        "expect_webhook",
+        "get_adcp_capabilities",
+        "get_media_buy_delivery",
+        "get_media_buys",
+        "get_products",
+        "list_creative_formats",
+        "sync_accounts",
+        "sync_creatives",
+        "update_media_buy"
+      ]
+    },
+    "sales_catalog_driven": {
+      "protocol": "media-buy",
+      "title": "Catalog-driven creative and conversion tracking",
+      "entry_point_tools": [
+        "create_media_buy",
+        "get_products"
+      ],
+      "exercised_tools": [
+        "build_creative",
+        "create_media_buy",
+        "expect_substitution_safe",
+        "get_adcp_capabilities",
+        "get_media_buy_delivery",
+        "get_media_buys",
+        "get_products",
+        "list_creative_formats",
+        "log_event",
+        "provide_performance_feedback",
+        "sync_accounts",
+        "sync_catalogs",
+        "sync_creatives",
+        "sync_event_sources",
+        "update_media_buy"
+      ]
+    },
+    "sales_guaranteed": {
+      "protocol": "media-buy",
+      "title": "Guaranteed media buy with human IO approval",
+      "entry_point_tools": [
+        "create_media_buy",
+        "get_products"
+      ],
+      "exercised_tools": [
+        "create_media_buy",
+        "get_adcp_capabilities",
+        "get_media_buy_delivery",
+        "get_media_buys",
+        "get_products",
+        "sync_accounts",
+        "sync_creatives",
+        "update_media_buy"
+      ]
+    },
+    "sales_non_guaranteed": {
+      "protocol": "media-buy",
+      "title": "Non-guaranteed auction-based media buy",
+      "entry_point_tools": [
+        "create_media_buy",
+        "get_products"
+      ],
+      "exercised_tools": [
+        "create_media_buy",
+        "get_adcp_capabilities",
+        "get_media_buy_delivery",
+        "get_media_buys",
+        "get_products",
+        "sync_accounts",
+        "sync_creatives",
+        "update_media_buy"
+      ]
+    },
+    "sales_proposal_mode": {
+      "protocol": "media-buy",
+      "title": "Media buy via proposal acceptance",
+      "entry_point_tools": [
+        "create_media_buy",
+        "get_products"
+      ],
+      "exercised_tools": [
+        "create_media_buy",
+        "get_adcp_capabilities",
+        "get_media_buy_delivery",
+        "get_media_buys",
+        "get_products",
+        "list_creative_formats",
+        "sync_accounts",
+        "sync_creatives",
+        "update_media_buy"
+      ]
+    },
+    "sales_social": {
+      "protocol": "media-buy",
+      "title": "Social platform",
+      "entry_point_tools": [
+        "sync_audiences",
+        "sync_catalogs",
+        "sync_creatives",
+        "sync_event_sources"
+      ],
+      "exercised_tools": [
+        "get_account_financials",
+        "get_adcp_capabilities",
+        "list_accounts",
+        "log_event",
+        "sync_accounts",
+        "sync_audiences",
+        "sync_catalogs",
+        "sync_creatives",
+        "sync_event_sources"
+      ]
+    },
+    "signal_marketplace": {
+      "protocol": "signals",
+      "title": "Marketplace signal agent",
+      "entry_point_tools": [
+        "get_signals"
+      ],
+      "exercised_tools": [
+        "activate_signal",
+        "get_adcp_capabilities",
+        "get_signals",
+        "sync_accounts",
+        "sync_governance",
+        "sync_plans"
+      ]
+    },
+    "signal_owned": {
+      "protocol": "signals",
+      "title": "Owned signal agent",
+      "entry_point_tools": [
+        "get_signals"
+      ],
+      "exercised_tools": [
+        "activate_signal",
+        "get_adcp_capabilities",
+        "get_signals"
+      ]
+    },
+    "sponsored_intelligence": {
+      "protocol": "sponsored-intelligence",
+      "title": "Sponsored intelligence",
+      "entry_point_tools": [],
+      "exercised_tools": []
+    }
+  }
+}

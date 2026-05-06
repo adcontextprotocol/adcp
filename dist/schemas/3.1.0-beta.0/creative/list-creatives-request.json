@@ -1,0 +1,181 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.0/creative/list-creatives-request.json",
+  "title": "List Creatives Request",
+  "description": "Request parameters for querying creative assets from a creative library with filtering, sorting, and pagination. Implemented by any agent that hosts a creative library — creative agents (ad servers, creative platforms) and sales agents that manage creatives.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/3.1.0-beta.0/core/version-envelope.json"
+    },
+    {
+      "if": {
+        "properties": {
+          "include_pricing": {
+            "const": true
+          }
+        },
+        "required": [
+          "include_pricing"
+        ]
+      },
+      "then": {
+        "required": [
+          "account"
+        ]
+      }
+    }
+  ],
+  "properties": {
+    "filters": {
+      "$ref": "/schemas/3.1.0-beta.0/core/creative-filters.json"
+    },
+    "sort": {
+      "type": "object",
+      "description": "Sorting parameters",
+      "properties": {
+        "field": {
+          "$ref": "/schemas/3.1.0-beta.0/enums/creative-sort-field.json",
+          "default": "created_date",
+          "description": "Field to sort by"
+        },
+        "direction": {
+          "$ref": "/schemas/3.1.0-beta.0/enums/sort-direction.json",
+          "default": "desc",
+          "description": "Sort direction"
+        }
+      },
+      "additionalProperties": true
+    },
+    "pagination": {
+      "$ref": "/schemas/3.1.0-beta.0/core/pagination-request.json"
+    },
+    "include_assignments": {
+      "type": "boolean",
+      "default": true,
+      "description": "Include package assignment information in response"
+    },
+    "include_snapshot": {
+      "type": "boolean",
+      "default": false,
+      "description": "Include a lightweight delivery snapshot per creative (lifetime impressions and last-served date). For detailed performance analytics, use get_creative_delivery."
+    },
+    "include_items": {
+      "type": "boolean",
+      "default": false,
+      "description": "Include items for multi-asset formats like carousels and native ads"
+    },
+    "include_variables": {
+      "type": "boolean",
+      "default": false,
+      "description": "Include dynamic content variable definitions (DCO slots) for each creative"
+    },
+    "include_pricing": {
+      "type": "boolean",
+      "default": false,
+      "description": "Include pricing_options on each creative. Requires account to be provided. When false or omitted, pricing is not computed."
+    },
+    "account": {
+      "$ref": "/schemas/3.1.0-beta.0/core/account-ref.json",
+      "description": "Account reference for pricing and access. When provided with include_pricing, the agent returns pricing_options from this account's rate card on each creative."
+    },
+    "fields": {
+      "type": "array",
+      "description": "Specific fields to include in response (omit for all fields). The 'concept' value returns both concept_id and concept_name.",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "enum": [
+          "creative_id",
+          "name",
+          "format_id",
+          "status",
+          "created_date",
+          "updated_date",
+          "tags",
+          "assignments",
+          "snapshot",
+          "items",
+          "variables",
+          "concept",
+          "pricing_options"
+        ]
+      }
+    },
+    "context": {
+      "$ref": "/schemas/3.1.0-beta.0/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.1.0-beta.0/core/ext.json"
+    }
+  },
+  "additionalProperties": true,
+  "examples": [
+    {
+      "description": "List all approved creatives",
+      "data": {
+        "filters": {
+          "statuses": [
+            "approved"
+          ]
+        }
+      }
+    },
+    {
+      "description": "List creatives in a specific concept matching a format",
+      "data": {
+        "filters": {
+          "concept_ids": [
+            "concept_holiday_2026"
+          ],
+          "format_ids": [
+            {
+              "agent_url": "https://creative.example.com",
+              "id": "display_static",
+              "width": 300,
+              "height": 250
+            }
+          ]
+        },
+        "include_variables": true
+      }
+    },
+    {
+      "description": "Find DCO creatives for dynamic campaigns",
+      "data": {
+        "filters": {
+          "has_variables": true,
+          "statuses": [
+            "approved"
+          ]
+        },
+        "include_variables": true
+      }
+    },
+    {
+      "description": "Lightweight list with minimal fields",
+      "data": {
+        "fields": [
+          "creative_id",
+          "name",
+          "status"
+        ],
+        "include_assignments": false
+      }
+    },
+    {
+      "description": "List creatives with account-specific pricing",
+      "data": {
+        "account": {
+          "account_id": "acct_acme_creative"
+        },
+        "include_pricing": true,
+        "filters": {
+          "statuses": [
+            "approved"
+          ]
+        }
+      }
+    }
+  ]
+}
