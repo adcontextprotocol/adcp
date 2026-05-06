@@ -113,6 +113,31 @@ describe('AdAgentsManager', () => {
       expect(result.raw_data).toBeUndefined(); // Don't include HTML error pages
     });
 
+    it('falls back to managerdomain adagents.json when origin adagents.json is missing and ads.txt declares managerdomain', async () => {
+      mockedSafeFetch.mockImplementation(async (url) => {
+        if (url === 'https://publisher.example/.well-known/adagents.json') {
+          return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://publisher.example/ads.txt') {
+          return { status: 200, data: Buffer.from('# managerdomain=manager.example\n'), headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://manager.example/.well-known/adagents.json') {
+          return {
+            status: 200,
+            data: buf({ authorized_agents: [{ url: 'https://agent.example', authorized_for: 'All inventory' }] }),
+            headers: { 'content-type': 'application/json' },
+          };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+
+      const result = await manager.validateDomain('publisher.example');
+      expect(result.valid).toBe(true);
+      expect(result.warnings.some(w => w.field === 'managerdomain')).toBe(true);
+      expect(result.domain).toBe('publisher.example');
+      expect(result.url).toBe('https://publisher.example/.well-known/adagents.json');
+    });
+
     it('handles network connection errors', async () => {
       mockedSafeFetch.mockRejectedValue(
         Object.assign(new Error('getaddrinfo ENOTFOUND nonexistent.example.com'), {

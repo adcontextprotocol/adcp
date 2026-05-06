@@ -188,6 +188,29 @@ export class AdAgentsManager {
 
       // Check HTTP status
       if (response.status !== 200) {
+        // Fallback for publisher-manager patterns: if the publisher does not
+        // serve /.well-known/adagents.json but does serve ads.txt with a
+        // managerdomain declaration, attempt discovery on the manager domain.
+        if (response.status === 404) {
+          const managerDomain = await this.tryResolveManagerDomain(normalizedDomain);
+          if (managerDomain) {
+            const managerResult = await this.validateDomain(managerDomain);
+            if (managerResult.valid) {
+              return {
+                ...managerResult,
+                domain: normalizedDomain,
+                url,
+                warnings: [
+                  ...managerResult.warnings,
+                  {
+                    field: 'managerdomain',
+                    message: `No adagents.json at ${url}; used ads.txt managerdomain ${managerDomain}`,
+                  },
+                ],
+              };
+            }
+          }
+        }
         const statusMessage = response.status === 404
           ? `File not found at ${url}`
           : `HTTP ${response.status} error fetching ${url}`;
@@ -245,6 +268,37 @@ export class AdAgentsManager {
     }
 
     return result;
+  }
+
+  private async tryResolveManagerDomain(domain: string): Promise<string | null> {
+    const adsTxtUrl = `https://${domain}/ads.txt`;
+    try {
+      const response = await safeFetchAxiosLike(adsTxtUrl, {
+        timeoutMs: 10000,
+        headers: {
+          'Accept': 'text/plain',
+          'User-Agent': AAO_UA_VALIDATOR,
+        },
+      });
+      if (response.status !== 200) return null;
+      const managerDomain = this.parseManagerDomain(response.data.toString('utf-8'));
+      return managerDomain || null;
+    } catch {
+      return null;
+    }
+  }
+
+  private parseManagerDomain(adsTxtContent: string): string | null {
+    const lines = adsTxtContent.split(/\r?\n/);
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith('#')) continue;
+      const match = trimmed.match(/^#\s*managerdomain\s*=\s*([A-Za-z0-9.-]+)\s*$/i);
+      if (match?.[1]) {
+        return match[1].toLowerCase();
+      }
+    }
+    return null;
   }
 
   /**
