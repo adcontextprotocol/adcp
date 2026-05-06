@@ -379,12 +379,21 @@ describe('POST /api/me/member-profile (REST bootstrap)', () => {
       });
 
     expect(res.status).toBe(201);
-    expect(res.body.warnings).toEqual([
-      expect.objectContaining({
-        code: 'metadata_unchanged',
-        fields: expect.arrayContaining(['name', 'company_type', 'revenue_tier']),
-      }),
-    ]);
+    expect(res.body.warnings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'metadata_unchanged',
+          // Field names are translated from DB columns to public API field
+          // names — `organizations.name` surfaces as `organization_name`,
+          // matching the CreateMemberProfileInput shape.
+          fields: expect.arrayContaining([
+            'organization_name',
+            'company_type',
+            'revenue_tier',
+          ]),
+        }),
+      ]),
+    );
 
     const orgRow = await pool.query<{ name: string; company_type: string; revenue_tier: string }>(
       `SELECT name, company_type, revenue_tier FROM organizations WHERE workos_organization_id = $1`,
@@ -486,14 +495,25 @@ describe('POST /api/me/member-profile (REST bootstrap)', () => {
   it('records ToS and Privacy-Policy acceptance against the bootstrapping user + org', async () => {
     const orgId = `${TEST_PREFIX}_tos`;
     await seedOrg(orgId);
+    // Clear any prior acceptance rows for this user — the
+    // user_agreement_acceptances ON CONFLICT (user, type, version) DO NOTHING
+    // would otherwise silently skip the test write if a previous run wrote
+    // the same tuple.
+    await pool.query(`DELETE FROM user_agreement_acceptances WHERE workos_user_id = $1`, [currentUserId]);
 
     // Ensure the agreements table has a row for each type so the bootstrap
     // path has a version to attach. ON CONFLICT noop keeps the test
     // hermetic — CI environments may already have rows for these types.
+    //
+    // Versions MUST be dot-separated numerics: getCurrentAgreementByType
+    // sorts via `string_to_array(version, '.')::int[]`, which throws on
+    // any non-numeric segment. Use a 9999.x version so this test row wins
+    // the "current" lookup against any production seeds without depending
+    // on insertion order.
     await pool.query(
       `INSERT INTO agreements (agreement_type, version, text, effective_date)
-       VALUES ('terms_of_service', 'test-tos-1', 'tos test body', NOW()),
-              ('privacy_policy', 'test-pp-1', 'pp test body', NOW())
+       VALUES ('terms_of_service', '9999.1', 'tos test body', NOW()),
+              ('privacy_policy', '9999.2', 'pp test body', NOW())
        ON CONFLICT (agreement_type, version) DO NOTHING`,
     );
 
