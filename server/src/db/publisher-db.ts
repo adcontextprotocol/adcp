@@ -210,6 +210,41 @@ export class PublisherDatabase {
         }
       }
 
+      // Reconcile: soft-delete catalog rows for agents that USED to be
+      // authorized by this manifest but no longer appear. Without this
+      // the writer is upsert-only and an agent removed from the
+      // publisher's adagents.json would linger in the index forever
+      // (the original wonderstruck-shaped follow-up bug). Scoped to
+      // writer-sourced rows (`evidence='adagents_json'`,
+      // `created_by='system'`) so promotions, agent_claim rows, and
+      // third-party-attested rows are untouched.
+      const currentCanonical = authEntries
+        .map(e => (e?.url && typeof e.url === 'string' ? canonicalizeAgentUrl(e.url) : null))
+        .filter((c): c is string => !!c);
+      // Catalog rows for this publisher live under either
+      //   publisher_domain = $1   (publisher-wide rows)
+      //   property_rid IN (catalog_properties.created_by='adagents_json:$1')
+      //   property_id_slug IS NOT NULL with created_by='adagents_json:$1' (slug-keyed)
+      // The OR-chain covers all three writer shapes.
+      await client.query(
+        `UPDATE catalog_agent_authorizations caa
+            SET deleted_at = NOW()
+          WHERE caa.evidence = 'adagents_json'
+            AND caa.created_by = 'system'
+            AND caa.deleted_at IS NULL
+            AND NOT (caa.agent_url_canonical = ANY($2::text[]))
+            AND (
+              caa.publisher_domain = $1
+              OR caa.property_rid IN (
+                SELECT property_rid FROM catalog_properties WHERE created_by = $3
+              )
+              OR (caa.property_id_slug IS NOT NULL AND caa.property_rid IN (
+                SELECT property_rid FROM catalog_properties WHERE created_by = $3
+              ))
+            )`,
+        [domain, currentCanonical, adagentsCreatedBy(domain)],
+      );
+
       await client.query('COMMIT');
     } catch (err) {
       await client.query('ROLLBACK');

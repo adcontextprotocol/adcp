@@ -691,4 +691,79 @@ describe('catalog_agent_authorizations writer projection', () => {
       expect(rows[0].authorized_for).toBe('video');
     });
   });
+
+  // ──────────────────────────────────────────────────────────────────
+  // Reconcile: agents removed from a manifest must drop out of the
+  // catalog. Without the reconcile step inside upsertAdagentsCache the
+  // writer is upsert-only and a stale row would linger forever — this
+  // is the second wonderstruck-shaped follow-up bug.
+  // ──────────────────────────────────────────────────────────────────
+
+  describe('reconcile on re-crawl', () => {
+    it('soft-deletes catalog rows for agents the new manifest no longer authorizes', async () => {
+      // First crawl: two agents.
+      await publisherDb.upsertAdagentsCache({
+        domain: TEST_PUB,
+        manifest: manifest([
+          { url: TEST_AGENT_RAW, authorized_for: 'display' },
+          { url: OTHER_AGENT, authorized_for: 'video' },
+        ]),
+      });
+      const beforeRows = await pool.query<{ agent_url_canonical: string; deleted_at: Date | null }>(
+        `SELECT agent_url_canonical, deleted_at FROM catalog_agent_authorizations
+          WHERE publisher_domain = $1`,
+        [TEST_PUB],
+      );
+      expect(beforeRows.rows.filter(r => !r.deleted_at)).toHaveLength(2);
+
+      // Second crawl: publisher removed OTHER_AGENT.
+      await publisherDb.upsertAdagentsCache({
+        domain: TEST_PUB,
+        manifest: manifest([{ url: TEST_AGENT_RAW, authorized_for: 'display' }]),
+      });
+
+      const live = await pool.query<{ agent_url_canonical: string }>(
+        `SELECT agent_url_canonical FROM catalog_agent_authorizations
+          WHERE publisher_domain = $1 AND deleted_at IS NULL`,
+        [TEST_PUB],
+      );
+      expect(live.rows).toHaveLength(1);
+      expect(live.rows[0].agent_url_canonical).toBe(TEST_AGENT_CANON);
+
+      const tombstoned = await pool.query<{ agent_url_canonical: string }>(
+        `SELECT agent_url_canonical FROM catalog_agent_authorizations
+          WHERE publisher_domain = $1 AND deleted_at IS NOT NULL`,
+        [TEST_PUB],
+      );
+      expect(tombstoned.rows).toHaveLength(1);
+      expect(tombstoned.rows[0].agent_url_canonical).toBe(OTHER_AGENT);
+    });
+
+    it('does not touch agent_claim or community-evidence rows belonging to other writers', async () => {
+      // Plant an agent_claim-style row for OTHER_AGENT against TEST_PUB
+      // (different evidence + created_by than the writer-sourced rows).
+      // The reconcile must NOT remove this — it represents a different
+      // publisher's discovery flow attesting to OTHER_AGENT's authorization.
+      await pool.query(
+        `INSERT INTO catalog_agent_authorizations
+           (agent_url, agent_url_canonical, publisher_domain, evidence, created_by)
+         VALUES ($1, $2, $3, 'agent_claim', 'community')`,
+        [OTHER_AGENT, OTHER_AGENT, TEST_PUB],
+      );
+
+      // Writer cache: only TEST_AGENT_RAW.
+      await publisherDb.upsertAdagentsCache({
+        domain: TEST_PUB,
+        manifest: manifest([{ url: TEST_AGENT_RAW, authorized_for: 'display' }]),
+      });
+
+      const claimRow = await pool.query<{ deleted_at: Date | null }>(
+        `SELECT deleted_at FROM catalog_agent_authorizations
+          WHERE agent_url_canonical = $1 AND publisher_domain = $2 AND evidence = 'agent_claim'`,
+        [OTHER_AGENT, TEST_PUB],
+      );
+      expect(claimRow.rows).toHaveLength(1);
+      expect(claimRow.rows[0].deleted_at).toBeNull();
+    });
+  });
 });
