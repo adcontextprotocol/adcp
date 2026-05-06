@@ -9,12 +9,12 @@
 # Agent infrastructure: prompts, context snapshots, setup scripts.
 # A prompt-injection attack would try to rewrite these to expand the
 # agent's capabilities; CODEOWNERS forces a human in the loop.
-/.agents/                   @bokelley
-/.github/                   @bokelley
-/.github/workflows/         @bokelley
+/.agents/                   @adcontextprotocol/maintainers
+/.github/                   @adcontextprotocol/maintainers
+/.github/workflows/         @adcontextprotocol/maintainers
 
 # Protocol schemas — the source of truth the spec is built from.
-/static/schemas/source/     @bokelley
+/static/schemas/source/     @adcontextprotocol/maintainers
 
 # Release tooling.
-/.changeset/                @bokelley
+/.changeset/                @adcontextprotocol/maintainers
