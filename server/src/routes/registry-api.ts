@@ -5812,14 +5812,21 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       )
         ? (cachedAdagentsManifest as { authorized_agents: unknown[] }).authorized_agents
         : [];
-      const canonicalizeAgentUrl = (u: string) => u.trim().toLowerCase().replace(/\/+$/, '');
+      // Reuse the writer's canonicalizer (publisher-db.ts:96) instead of
+      // a local lambda — it also rejects '*'-embedded URLs and
+      // whitespace/control chars that the lambda would have admitted as
+      // false-positive divergence signals (the writer drops those rows
+      // entirely, so a row whose stored canonical doesn't exist must
+      // not appear in the diff).
       const cachedAgentUrls = new Set<string>(
         cachedAuthorizedAgents
           .map(a => (a && typeof (a as { url?: unknown }).url === 'string' ? canonicalizeAgentUrl((a as { url: string }).url) : null))
           .filter((u): u is string => !!u),
       );
       const indexAgentUrls = new Set<string>(
-        authorizations.map(a => canonicalizeAgentUrl(a.agent_url)),
+        authorizations
+          .map(a => canonicalizeAgentUrl(a.agent_url))
+          .filter((u): u is string => !!u),
       );
       const indexMissingAgents = [...cachedAgentUrls].filter(u => !indexAgentUrls.has(u));
       const indexDivergedAndStale = !!(
@@ -5827,6 +5834,14 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         && indexMissingAgents.length > 0
         && cachedAdagentsLastValidated
         && Date.now() - cachedAdagentsLastValidated.getTime() > STALE_BYPASS_MS
+        // Even when the divergence + staleness gates clear, refuse to
+        // re-fire the crawl more than once per hour per domain. The
+        // divergence condition can persist across many requests until the
+        // crawl finishes; without this ceiling, an attacker could keep
+        // re-triggering crawls against any victim domain in a stuck
+        // diverged state. The ceiling stamps on first fire so a single
+        // visit per hour suffices to drive recovery.
+        && shouldFireDivergenceCrawl(domain)
       );
       let autoCrawlTriggered = false;
       // Capture the debounce result first so the stale-row bypass can
@@ -5866,6 +5881,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
                 domain,
                 missing_agents: indexMissingAgents.length,
                 cached_total: cachedAgentUrls.size,
+                index_total: indexAgentUrls.size,
               }, 'Auto-crawl: federated index missing agents declared in cached manifest — re-running');
             }
             crawler.crawlSingleDomain(domain).catch((err: Error) => {
@@ -7180,6 +7196,24 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     autoCrawlLastFired.set(domain, Date.now());
   }
 
+  // Divergence-bypass ceiling. The index-divergence trigger persists
+  // across requests until the crawl finishes — without a longer-window
+  // ceiling, an attacker hitting `/api/registry/publisher?domain=victim`
+  // once per 5min could sustain ~12 outbound /.well-known fetches/hour
+  // against any victim whose AAO row is in the diverged-and-stale state.
+  // The 5-minute auto-crawl debounce blunts but doesn't eliminate this
+  // (one request per debounce window is enough to keep firing). Cap the
+  // divergence path at one fire/hour/domain so the bypass cannot exceed
+  // normal crawl cadence even when the trigger condition is permanent.
+  const divergenceLastFired = new Map<string, number>();
+  const DIVERGENCE_CEILING_MS = 60 * 60 * 1000;
+  function shouldFireDivergenceCrawl(domain: string): boolean {
+    const last = divergenceLastFired.get(domain);
+    if (last && Date.now() - last < DIVERGENCE_CEILING_MS) return false;
+    divergenceLastFired.set(domain, Date.now());
+    return true;
+  }
+
   // Periodic cleanup of stale rate limit entries to prevent memory
   // growth. Eviction threshold is INTENTIONALLY larger than the debounce
   // window — if cleanup deleted an entry at exactly `windowMs`, the next
@@ -7195,6 +7229,9 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     }
     for (const [domain, timestamp] of autoCrawlLastFired) {
       if (now - timestamp > 2 * AUTO_CRAWL_DEBOUNCE_MS) autoCrawlLastFired.delete(domain);
+    }
+    for (const [domain, timestamp] of divergenceLastFired) {
+      if (now - timestamp > 2 * DIVERGENCE_CEILING_MS) divergenceLastFired.delete(domain);
     }
   }, CRAWL_RATE_LIMIT_MS);
   rateLimitCleanupInterval.unref(); // Don't prevent process exit
