@@ -274,6 +274,35 @@ describe('resolveOrgForStripeCustomer', () => {
     expect(orgDb.setStripeCustomerId).toHaveBeenCalledWith(orgWithTrackedSub.workos_organization_id, DRIFT_CUSTOMER);
   });
 
+  it('customer-drift: links drift customer to org when no conflict exists', async () => {
+    const DRIFT_CUSTOMER = 'cus_drift_no_conflict';
+    const SUB_ID = 'sub_tracked_no_conflict';
+
+    const orgWithTrackedSub = {
+      ...TEST_ORG,
+      stripe_subscription_id: SUB_ID,
+    };
+
+    const orgDb = createMockOrgDb({
+      getOrganizationByStripeCustomerId: vi.fn().mockResolvedValue(null),
+      getOrganizationByStripeSubscriptionId: vi.fn().mockResolvedValue(orgWithTrackedSub),
+      setStripeCustomerId: vi.fn().mockResolvedValue(undefined), // no conflict
+    });
+    const stripe = createMockStripe();
+
+    const subscription = { id: SUB_ID, metadata: {} } as any;
+
+    const result = await resolveOrgForStripeCustomer({
+      customerId: DRIFT_CUSTOMER,
+      stripe,
+      orgDb,
+      subscription,
+    });
+
+    expect(result).toEqual(orgWithTrackedSub);
+    expect(orgDb.setStripeCustomerId).toHaveBeenCalledWith(orgWithTrackedSub.workos_organization_id, DRIFT_CUSTOMER);
+  });
+
   it('prefers subscription metadata over invoice subscription lookup', async () => {
     const orgDb = createMockOrgDb({
       getOrganization: vi.fn().mockResolvedValue(TEST_ORG),

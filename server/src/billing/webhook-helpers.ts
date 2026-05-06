@@ -20,6 +20,8 @@ export interface ResolveOrgOptions {
  * 1. stripe_customer_id in our DB (fast path, no Stripe API call)
  * 2. workos_organization_id in Stripe customer metadata
  * 3. workos_organization_id in subscription metadata (if subscription provided)
+ * 3.5. stripe_subscription_id direct DB lookup (if subscription provided — defence-in-depth
+ *      for drift-customer cases where metadata was never stamped on the sub)
  * 4. For invoices with a subscription, retrieve the sub and check its metadata
  *
  * On any successful fallback, links the customer to the org for future fast-path lookups.
