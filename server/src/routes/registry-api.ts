@@ -5729,7 +5729,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       const memberDb = new MemberDatabase();
       const federatedIndex = crawler.getFederatedIndex();
 
-      const [profile, properties, authorizations, adagentsValid, hostedProperty, brandRow, cachedAdagentsManifest] = await Promise.all([
+      const [profile, properties, authorizations, adagentsValid, hostedProperty, brandRow, cachedAdagentsRow] = await Promise.all([
         memberDb.getProfileByDomain(domain),
         federatedIndex.getPropertiesForDomain(domain),
         federatedIndex.getAuthorizationsForDomain(domain),
@@ -5742,11 +5742,18 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         // crawler caches the original response on `publishers.adagents_json`
         // BEFORE following authoritative_location for validation, so this
         // row preserves the stub vs. inline distinction we need.
-        query<{ adagents_json: Record<string, unknown> | null }>(
-          `SELECT adagents_json FROM publishers WHERE domain = $1 AND source_type = 'adagents_json' LIMIT 1`,
+        // `last_validated` lets us detect cache/index drift: if the
+        // cached manifest declares agents that aren't in the federated
+        // index AND we haven't re-crawled in over an hour, trigger a
+        // re-crawl on visit so an anonymous publisher visit picks up
+        // their newly-added agents without needing to sign in.
+        query<{ adagents_json: Record<string, unknown> | null; last_validated: Date | null }>(
+          `SELECT adagents_json, last_validated FROM publishers WHERE domain = $1 AND source_type = 'adagents_json' LIMIT 1`,
           [domain],
-        ).then(r => r.rows[0]?.adagents_json ?? null),
+        ).then(r => r.rows[0] ?? null),
       ]);
+      const cachedAdagentsManifest = cachedAdagentsRow?.adagents_json ?? null;
+      const cachedAdagentsLastValidated = cachedAdagentsRow?.last_validated ?? null;
 
       // Auto-crawl on view: if we've never crawled this domain (adagents
       // never seen, brand never seen), kick off background fetches so a
@@ -5785,15 +5792,44 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       // publisher whose brand.json went live AFTER our first crawl gets
       // stuck on `unknown` indefinitely — every visit lands inside the
       // 5-minute debounce window started by some prior visitor.
-      const STALE_BRAND_BYPASS_MS = 60 * 60 * 1000;
+      const STALE_BYPASS_MS = 60 * 60 * 1000;
       const brandRowStale = !!(
         brandRow
         && !brandRow.has_brand_manifest
         && brandRow.last_validated
-        && Date.now() - brandRow.last_validated.getTime() > STALE_BRAND_BYPASS_MS
+        && Date.now() - brandRow.last_validated.getTime() > STALE_BYPASS_MS
+      );
+      // Index-divergence bypass: when the cached origin manifest
+      // declares an authorized_agents URL that the federated index
+      // doesn't carry, the last crawl either partially failed (the
+      // cache write succeeded but a per-agent upsert threw and was
+      // swallowed by the per-domain catch in crawler.ts) or the
+      // publisher added an agent after we cached the file. Either way,
+      // a re-crawl resolves it. Gated on >1h so transient writes don't
+      // trip on a crawl in flight.
+      const cachedAuthorizedAgents = Array.isArray(
+        (cachedAdagentsManifest as { authorized_agents?: unknown[] } | null)?.authorized_agents,
+      )
+        ? (cachedAdagentsManifest as { authorized_agents: unknown[] }).authorized_agents
+        : [];
+      const canonicalizeAgentUrl = (u: string) => u.trim().toLowerCase().replace(/\/+$/, '');
+      const cachedAgentUrls = new Set<string>(
+        cachedAuthorizedAgents
+          .map(a => (a && typeof (a as { url?: unknown }).url === 'string' ? canonicalizeAgentUrl((a as { url: string }).url) : null))
+          .filter((u): u is string => !!u),
+      );
+      const indexAgentUrls = new Set<string>(
+        authorizations.map(a => canonicalizeAgentUrl(a.agent_url)),
+      );
+      const indexMissingAgents = [...cachedAgentUrls].filter(u => !indexAgentUrls.has(u));
+      const indexDivergedAndStale = !!(
+        adagentsValid === true
+        && indexMissingAgents.length > 0
+        && cachedAdagentsLastValidated
+        && Date.now() - cachedAdagentsLastValidated.getTime() > STALE_BYPASS_MS
       );
       let autoCrawlTriggered = false;
-      // Capture the debounce result first so the brand-stale bypass can
+      // Capture the debounce result first so the stale-row bypass can
       // share the same fire-stamp — otherwise `||` short-circuits past
       // shouldAutoCrawl's side-effect and the next request would re-fire
       // immediately, pinning a popular publisher's crawl rate to QPS.
@@ -5803,9 +5839,10 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       // which is the desired DoS-resistance — an attacker probing
       // hosts cannot bypass the debounce by sending stale-row signals.
       const debouncePassed = shouldAutoCrawl(domain);
-      const staleBypass = !debouncePassed && brandRowStale;
+      const staleBypass = !debouncePassed && (brandRowStale || indexDivergedAndStale);
       if (staleBypass) markAutoCrawlFired(domain);
-      if ((adagentsNeverCrawled || brandNeverCrawled) && (debouncePassed || staleBypass)) {
+      const shouldFireCrawl = adagentsNeverCrawled || brandNeverCrawled || indexDivergedAndStale;
+      if (shouldFireCrawl && (debouncePassed || staleBypass)) {
         // Re-validate: returns null on private/loopback/link-local IPs
         // and rejects unresolvable hostnames. We accept the result of
         // validateCrawlDomain only when it returns the same domain we
@@ -5819,8 +5856,18 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         }
         if (crawlSafe) {
           autoCrawlTriggered = true;
-          if (adagentsNeverCrawled) {
-            // crawlSingleDomain handles brand internally too.
+          if (adagentsNeverCrawled || indexDivergedAndStale) {
+            // crawlSingleDomain re-runs the adagents.json fetch and
+            // re-projects authorized_agents into the index, recovering
+            // any per-agent upsert that silently failed last time.
+            // Handles brand internally too.
+            if (indexDivergedAndStale) {
+              logger.info({
+                domain,
+                missing_agents: indexMissingAgents.length,
+                cached_total: cachedAgentUrls.size,
+              }, 'Auto-crawl: federated index missing agents declared in cached manifest — re-running');
+            }
             crawler.crawlSingleDomain(domain).catch((err: Error) => {
               logger.warn({ err, domain, ip: req.ip }, 'Auto-crawl (adagents) failed');
             });
