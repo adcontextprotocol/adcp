@@ -136,6 +136,19 @@ soft on `jackson-datatype-jsr310` for `Instant`. Document the floor
 prominently — Spring Boot 2.7 shops on Jackson 2.13 will hit
 `NoSuchMethodError` at runtime, the classic first-hour bounce.
 
+**Configure `StreamReadConstraints` and `StreamWriteConstraints` explicitly
+on the SDK's `ObjectMapper`.** Jackson 2.15+ caps single string values at
+20MB and throws `StreamConstraintsException` on over-limit input. Inline
+base64 creatives, large catalog responses, and webhook artifacts routinely
+exceed that. TS (`JSON.parse`) and Python (`json`) have no equivalent
+limits, so cross-language conformance bugs surface here first — a payload
+that round-trips through TS and Python will throw on Java unless the
+constraints are widened. Ship AdCP-shaped defaults (sized against the
+largest spec-permitted creative payload, with headroom), expose adopter
+overrides on the client / server builders and via Spring Boot properties
+(`adcp.jackson.max-string-length`, etc.), and document the symptom + fix
+in the troubleshooting docs so adopters don't burn an afternoon on it.
+
 ### Schema validation
 
 **`com.networknt:json-schema-validator`** — the actively maintained 2020-12
@@ -475,9 +488,17 @@ Four audiences:
 5. **Spring Security integration depth.** Recipes-only vs. a separate
    `adcp-spring-boot-starter-security` artifact. Decide based on v0.3
    adopter feedback.
-6. **Compatibility with Spring Boot 2.7.** End of OSS support is Nov
-   2025; do we cover it for the long tail or set 3.x as the floor?
-   Floor 3.x is cleaner; long tail at large enterprises is real.
+6. **Compatibility with Spring Boot 2.7 / `javax` namespace.** End of OSS
+   support is Nov 2025, but the painful bit is the **`javax` → `jakarta`
+   namespace split**: Spring Boot 2.7 is on `javax.servlet` /
+   `javax.persistence`, 3.x on `jakarta.*`. The starter can't span both
+   from one artifact without classpath gymnastics. Three shapes: (a)
+   **floor at 3.x**, accept the long-tail loss — cleanest, recommended;
+   (b) **ship two starters** (`adcp-spring-boot-starter-2x` on `javax`,
+   `adcp-spring-boot-starter` on `jakarta`) — doubles the matrix,
+   mirrors what `springdoc-openapi` does; (c) **defer 2.x to a community
+   port**. Decide before v0.3 alpha because the starter package layout
+   depends on it.
 7. **TransitionGuard narrowing protection.** Guards declaring the edges
    they touch — is that the right enforcement shape, or do we need a
    stronger contract?
