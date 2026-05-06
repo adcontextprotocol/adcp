@@ -672,7 +672,6 @@
         if (refreshInFlight) return;
         refreshInFlight = true;
         const btn = document.getElementById('hero-refresh');
-        const detail = document.getElementById('hero-detail');
         const restoreButton = (text = 'Refresh now') => {
           const cur = document.getElementById('hero-refresh');
           if (cur) { cur.disabled = false; cur.textContent = text; }
