@@ -275,6 +275,17 @@
     <script src="/nav.js"></script>
 
     <div class="container">
+      <!-- "Return to" affordance. The publisher page is sometimes opened
+           from a partner storefront / dev environment via ?return=<url>;
+           without a back link the visitor has nothing to click after
+           seeing what AAO has on file. The link is rendered only for
+           same-origin URLs (or http://localhost in dev) so a malicious
+           URL in the query string can't repurpose this as an open
+           redirect. -->
+      <div id="return-link" class="hidden" style="margin-bottom: var(--space-3); font-size: var(--text-sm);">
+        <a id="return-link-anchor" href="#" style="color: var(--color-text-muted); text-decoration: none;">&larr; <span id="return-link-label">Back</span></a>
+      </div>
+
       <div id="loading-state" class="loading-state">
         <div class="spinner"></div>
         <p>Loading publisher data&hellip;</p>
@@ -391,6 +402,37 @@
         if (m) return decodeURIComponent(m[1]);
         const params = new URLSearchParams(window.location.search);
         return params.get('domain') || '';
+      }
+
+      // Render the "← Back" link from ?return=<url>. Allowlist:
+      // same-origin (production) OR http(s)://localhost / 127.0.0.1
+      // (dev). Anything else is dropped silently — the param can be
+      // tampered with by an attacker, so an unknown target must NOT be
+      // linked. javascript:/data:/file: schemes fail both checks: their
+      // URL.origin is "null" (not same-origin) and their protocol is
+      // not http(s) (not localhost).
+      function renderReturnLink() {
+        const params = new URLSearchParams(window.location.search);
+        const raw = params.get('return');
+        if (!raw) return;
+        let target;
+        try {
+          target = new URL(raw, window.location.origin);
+        } catch {
+          return;
+        }
+        const sameOrigin = target.origin === window.location.origin;
+        const isLocalhostDev =
+          (target.protocol === 'http:' || target.protocol === 'https:')
+          && (target.hostname === 'localhost' || target.hostname === '127.0.0.1');
+        if (!sameOrigin && !isLocalhostDev) return;
+        const anchor = document.getElementById('return-link-anchor');
+        const label = document.getElementById('return-link-label');
+        const wrap = document.getElementById('return-link');
+        if (!anchor || !label || !wrap) return;
+        anchor.href = target.href;
+        label.textContent = sameOrigin ? 'Back' : `Back to ${target.host}`;
+        wrap.classList.remove('hidden');
       }
 
       function appUser() {
@@ -1007,6 +1049,7 @@
         }
       }
 
+      renderReturnLink();
       load();
     </script>
   </body>
