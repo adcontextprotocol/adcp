@@ -453,6 +453,14 @@ export class FederatedIndexDatabase {
     // the publisher. The stored side mirrors the writer's canonical
     // form (lowercase, no trailing slash, '*' literal preserved); the
     // input side runs the same shape.
+    //
+    // Cross-publisher safety: the DELETE is scoped by `publisher_domain`
+    // and `source='adagents_json'`. A NULL agent_url in any row would
+    // make the CASE expression NULL, the IN comparison NULL, and
+    // `NOT NULL` NULL — Postgres treats NULL as not-true so the row
+    // is preserved (fail-safe). The agent_url column is NOT NULL by
+    // schema (migration 025) so this is theoretical, but the canonical
+    // SQL pattern doesn't rely on the schema invariant.
     await query(
       `DELETE FROM agent_publisher_authorizations
         WHERE publisher_domain = $1
