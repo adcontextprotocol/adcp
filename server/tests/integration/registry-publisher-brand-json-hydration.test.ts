@@ -71,6 +71,8 @@ import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { BrandDatabase } from '../../src/db/brand-db.js';
 import { PropertyDatabase } from '../../src/db/property-db.js';
+import { PublisherDatabase } from '../../src/db/publisher-db.js';
+import { aaoHostedAdagentsJsonUrl } from '../../src/config/aao.js';
 
 const DOMAIN_SUFFIX = '.registry-baseline.example';
 const DOMAIN_PREFIX = 'brand-hydrate-';
@@ -83,6 +85,7 @@ describe('Registry publisher endpoint — brand.json hydration', () => {
   let pool: Pool;
   let brandDb: BrandDatabase;
   let propertyDb: PropertyDatabase;
+  let publisherDb: PublisherDatabase;
 
   const DOMAIN_LIKE = `${DOMAIN_PREFIX}%${DOMAIN_SUFFIX}`;
 
@@ -93,6 +96,7 @@ describe('Registry publisher endpoint — brand.json hydration', () => {
       'DELETE FROM discovered_properties WHERE publisher_domain LIKE $1',
       [DOMAIN_LIKE]
     );
+    await pool.query('DELETE FROM publishers WHERE domain LIKE $1', [DOMAIN_LIKE]);
   }
 
   beforeAll(async () => {
@@ -103,6 +107,7 @@ describe('Registry publisher endpoint — brand.json hydration', () => {
     await runMigrations();
     brandDb = new BrandDatabase();
     propertyDb = new PropertyDatabase();
+    publisherDb = new PublisherDatabase();
     server = new HTTPServer();
     await server.start(0);
     app = (server as unknown as { app: unknown }).app;
@@ -323,7 +328,10 @@ describe('Registry publisher endpoint — brand.json hydration', () => {
     });
   });
 
-  it('reports hosting.mode=aao_hosted with hosted_url when a public hosted property exists', async () => {
+  it('reports hosting.mode=aao_hosted when a public hosted property exists and origin is not yet serving', async () => {
+    // Pure intent-only opt-in: publisher created a hosted_properties row
+    // but their /.well-known has not yet been crawled successfully.
+    // AAO's hosted document acts as the canonical source.
     await propertyDb.createHostedProperty({
       publisher_domain: PUB_AAO_HOSTED,
       adagents_json: { authorized_agents: [], properties: [] },
@@ -340,5 +348,105 @@ describe('Registry publisher endpoint — brand.json hydration', () => {
       hosted_url: `https://agenticadvertising.org/publisher/${PUB_AAO_HOSTED}/.well-known/adagents.json`,
       expected_url: `https://${PUB_AAO_HOSTED}/.well-known/adagents.json`,
     });
+  });
+
+  it('reports hosting.mode=self when origin self-hosts a valid full doc despite a stale AAO opt-in row', async () => {
+    // Wonderstruck-shaped regression: a publisher who once opted into
+    // AAO hosting and later migrated to self-hosting must surface as
+    // `self`, not `aao_hosted`. The hosted_properties row never
+    // auto-revokes — the live origin file is the authoritative signal.
+    const pub = `migrated-self-${Date.now()}.registry-baseline.example`;
+    await propertyDb.createHostedProperty({
+      publisher_domain: pub,
+      adagents_json: { authorized_agents: [], properties: [] },
+      is_public: true,
+      source_type: 'community',
+    });
+    // Live origin serves a valid full document (no authoritative_location).
+    await publisherDb.upsertAdagentsCache({
+      domain: pub,
+      manifest: {
+        authorized_agents: [
+          { url: 'https://agent.example.com', authorized_for: 'display' },
+        ],
+        properties: [
+          {
+            property_type: 'website',
+            name: 'Main site',
+            identifiers: [{ type: 'domain', value: pub }],
+          },
+        ],
+      },
+    });
+
+    const res = await request(app).get(`/api/registry/publisher?domain=${encodeURIComponent(pub)}`);
+    expect(res.status).toBe(200);
+    expect(res.body.hosting.mode).toBe('self');
+    expect(res.body.hosting.hosted_url).toBeUndefined();
+    expect(res.body.adagents_valid).toBe(true);
+  });
+
+  it('reports hosting.mode=aao_hosted when origin serves a stub with authoritative_location pointing at AAO', async () => {
+    // Spec-conformant AAO hosting flow: publisher's /.well-known
+    // returns a stub whose authoritative_location resolves to AAO's
+    // hosted URL. Crawler caches the original (stub) response, the
+    // route detects the pointer and reports aao_hosted.
+    const pub = `stub-points-aao-${Date.now()}.registry-baseline.example`;
+    await propertyDb.createHostedProperty({
+      publisher_domain: pub,
+      adagents_json: { authorized_agents: [], properties: [] },
+      is_public: true,
+      source_type: 'community',
+    });
+    await publisherDb.upsertAdagentsCache({
+      domain: pub,
+      manifest: {
+        authoritative_location: aaoHostedAdagentsJsonUrl(pub),
+        authorized_agents: [],
+        properties: [],
+      },
+    });
+
+    const res = await request(app).get(`/api/registry/publisher?domain=${encodeURIComponent(pub)}`);
+    expect(res.status).toBe(200);
+    expect(res.body.hosting.mode).toBe('aao_hosted');
+    expect(res.body.hosting.hosted_url).toBe(aaoHostedAdagentsJsonUrl(pub));
+  });
+
+  it('tags federated-index properties with source=adagents_json when the publisher serves a valid adagents.json', async () => {
+    // Wonderstruck-shaped regression: properties listed in the live
+    // adagents.json were being labelled `discovered` (i.e. "found by
+    // crawler"), erasing the fact that the publisher explicitly
+    // declared them. With a valid adagents.json present, the federated
+    // index entries are by definition adagents_json-sourced.
+    const pub = `props-from-adagents-${Date.now()}.registry-baseline.example`;
+    await publisherDb.upsertAdagentsCache({
+      domain: pub,
+      manifest: {
+        authorized_agents: [
+          { url: 'https://agent.example.com', authorized_for: 'display' },
+        ],
+        properties: [
+          {
+            property_type: 'website',
+            name: 'Main site',
+            identifiers: [{ type: 'domain', value: pub }],
+          },
+        ],
+      },
+    });
+    // Plant a federated-index row so the route's primary
+    // getPropertiesForDomain path returns something to project.
+    await pool.query(
+      `INSERT INTO discovered_properties
+         (publisher_domain, property_type, name, identifiers, tags, source_type)
+       VALUES ($1, 'website', 'Main site', $2::jsonb, ARRAY[]::text[], 'adagents_json')`,
+      [pub, JSON.stringify([{ type: 'domain', value: pub }])],
+    );
+
+    const res = await request(app).get(`/api/registry/publisher?domain=${encodeURIComponent(pub)}`);
+    expect(res.status).toBe(200);
+    expect(res.body.properties).toHaveLength(1);
+    expect(res.body.properties[0].source).toBe('adagents_json');
   });
 });

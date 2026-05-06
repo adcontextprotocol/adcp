@@ -80,6 +80,7 @@ import type { HealthChecker } from "../health.js";
 import type { CrawlerService } from "../crawler.js";
 import type { CapabilityDiscovery } from "../capabilities.js";
 import { aaoHostedBrandJsonUrl, aaoHostedAdagentsJsonUrl, expectedAdagentsJsonUrl } from "../config/aao.js";
+import { canonicalTargetUri } from "@adcp/sdk/signing";
 import { fetchBrandData, isBrandfetchConfigured, ENRICHMENT_CACHE_MAX_AGE_MS } from "../services/brandfetch.js";
 import { extractPublisherPropertiesFromBrandJson } from "../services/brand-json-properties.js";
 import { syncHostedPropertyToFederatedIndex } from "../services/hosted-property-sync.js";
@@ -5728,13 +5729,23 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       const memberDb = new MemberDatabase();
       const federatedIndex = crawler.getFederatedIndex();
 
-      const [profile, properties, authorizations, adagentsValid, hostedProperty, brandRow] = await Promise.all([
+      const [profile, properties, authorizations, adagentsValid, hostedProperty, brandRow, cachedAdagentsManifest] = await Promise.all([
         memberDb.getProfileByDomain(domain),
         federatedIndex.getPropertiesForDomain(domain),
         federatedIndex.getAuthorizationsForDomain(domain),
         federatedIndex.hasValidAdagents(domain),
         propertyDb.getHostedPropertyByDomain(domain),
         brandDb.getDiscoveredBrandByDomain(domain),
+        // Read the publisher's own /.well-known response back from the
+        // overlay so we can tell a full self-hosted document (no
+        // authoritative_location) from a stub that points at AAO. The
+        // crawler caches the original response on `publishers.adagents_json`
+        // BEFORE following authoritative_location for validation, so this
+        // row preserves the stub vs. inline distinction we need.
+        query<{ adagents_json: Record<string, unknown> | null }>(
+          `SELECT adagents_json FROM publishers WHERE domain = $1 AND source_type = 'adagents_json' LIMIT 1`,
+          [domain],
+        ).then(r => r.rows[0]?.adagents_json ?? null),
       ]);
 
       // Auto-crawl on view: if we've never crawled this domain (adagents
@@ -5769,8 +5780,27 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       // as "already crawled" and refusing to retry — leaving publishers
       // who actually serve a brand.json forever marked as missing one.
       const brandNeverCrawled = !brandRow || !brandRow.has_brand_manifest;
+      // Bypass the per-domain auto-crawl debounce when the brand row is
+      // stale-without-manifest for >1h. Without this, a heavily-trafficked
+      // publisher whose brand.json went live AFTER our first crawl gets
+      // stuck on `unknown` indefinitely — every visit lands inside the
+      // 5-minute debounce window started by some prior visitor.
+      const STALE_BRAND_BYPASS_MS = 60 * 60 * 1000;
+      const brandRowStale = !!(
+        brandRow
+        && !brandRow.has_brand_manifest
+        && brandRow.last_validated
+        && Date.now() - brandRow.last_validated.getTime() > STALE_BRAND_BYPASS_MS
+      );
       let autoCrawlTriggered = false;
-      if ((adagentsNeverCrawled || brandNeverCrawled) && shouldAutoCrawl(domain)) {
+      // Capture the debounce result first so the brand-stale bypass can
+      // share the same fire-stamp — otherwise `||` short-circuits past
+      // shouldAutoCrawl's side-effect and the next request would re-fire
+      // immediately, pinning a popular publisher's crawl rate to QPS.
+      const debouncePassed = shouldAutoCrawl(domain);
+      const staleBypass = !debouncePassed && brandRowStale;
+      if (staleBypass) markAutoCrawlFired(domain);
+      if ((adagentsNeverCrawled || brandNeverCrawled) && (debouncePassed || staleBypass)) {
         // Re-validate: returns null on private/loopback/link-local IPs
         // and rejects unresolvable hostnames. We accept the result of
         // validateCrawlDomain only when it returns the same domain we
@@ -5802,30 +5832,53 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         ? { slug: profile.slug, display_name: profile.display_name }
         : null;
 
-      // Hosting state. `aao_hosted` when a public hosted-property row
-      // exists for this domain (publisher hosts a stub at their own
-      // /.well-known whose `authoritative_location` points at AAO's
-      // canonical document). `self` when the publisher's own /.well-known
-      // returned a valid adagents.json. `self_invalid` when the publisher
-      // has /.well-known but it failed validation — distinct from `none`
-      // because it's a fixable misconfiguration rather than absence.
-      const aaoHosted = !!(hostedProperty && hostedProperty.is_public);
+      // Hosting state. Live origin wins: if the publisher's own
+      // /.well-known/adagents.json validates AND its body isn't a stub
+      // pointing back at AAO's hosted URL, mode = `self` regardless of
+      // whether a hosted_properties opt-in row still exists. Publishers
+      // who opt into AAO hosting and later migrate to self-hosting were
+      // previously stuck on `aao_hosted` because the hosted-properties
+      // row never auto-revokes (#wonderstruck.org).
+      //
+      // `aao_hosted` requires either (a) the live origin's adagents.json
+      // is a stub whose `authoritative_location` canonicalizes to our
+      // hosted URL, or (b) the origin file is missing/invalid AND the
+      // publisher previously opted into hosting — in which case AAO's
+      // hosted document acts as a backup the publisher can choose to
+      // surface via DNS/redirect. `self_invalid` keeps the
+      // fixable-misconfiguration distinction from absence (`none`).
+      const aaoOptedIn = !!(hostedProperty && hostedProperty.is_public);
+      const stubAuthLocRaw =
+        cachedAdagentsManifest && typeof (cachedAdagentsManifest as Record<string, unknown>).authoritative_location === 'string'
+          ? ((cachedAdagentsManifest as Record<string, unknown>).authoritative_location as string)
+          : null;
+      const stubPointsAtAao = (() => {
+        if (!stubAuthLocRaw) return false;
+        try {
+          return canonicalTargetUri(stubAuthLocRaw) === canonicalTargetUri(aaoHostedAdagentsJsonUrl(domain));
+        } catch {
+          return false;
+        }
+      })();
+      const hostingMode: "self" | "self_invalid" | "aao_hosted" | "none" = (
+        adagentsValid === true && stubPointsAtAao ? "aao_hosted"
+        : adagentsValid === true ? "self"
+        : aaoOptedIn ? "aao_hosted"
+        : adagentsValid === false ? "self_invalid"
+        : "none"
+      );
+      const isAaoHosted = hostingMode === "aao_hosted";
       const hosting = {
-        mode: (
-          aaoHosted ? "aao_hosted"
-          : adagentsValid === true ? "self"
-          : adagentsValid === false ? "self_invalid"
-          : "none"
-        ) as "self" | "self_invalid" | "aao_hosted" | "none",
-        hosted_url: aaoHosted ? aaoHostedAdagentsJsonUrl(domain) : undefined,
+        mode: hostingMode,
+        hosted_url: isAaoHosted ? aaoHostedAdagentsJsonUrl(domain) : undefined,
         expected_url: expectedAdagentsJsonUrl(domain),
         // Only meaningful for AAO-hosted publishers — surface the
         // verifier's last result so callers can tell origin-attested
         // hosting from intent-only hosting.
-        origin_verified_at: aaoHosted && hostedProperty?.origin_verified_at
+        origin_verified_at: isAaoHosted && hostedProperty?.origin_verified_at
           ? hostedProperty.origin_verified_at.toISOString()
           : null,
-        origin_last_checked_at: aaoHosted && hostedProperty?.origin_last_checked_at
+        origin_last_checked_at: isAaoHosted && hostedProperty?.origin_last_checked_at
           ? hostedProperty.origin_last_checked_at.toISOString()
           : null,
       };
@@ -5840,13 +5893,23 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         delegation_type?: "direct" | "delegated" | "ad_network";
       };
 
+      // Provenance: when the publisher's adagents.json validates, every
+      // federated-index row for this domain came either from that file
+      // or from a crawl that subsequently confirmed it — surface
+      // `adagents_json` so the page reads "from your adagents.json"
+      // instead of the misleading "found by crawler" label that the old
+      // hardcoded `discovered` produced. Without a valid adagents.json
+      // the rows can only come from sales-agent claims or external
+      // discovery, which is honestly `discovered`.
+      const indexedSource: "adagents_json" | "discovered" =
+        adagentsValid === true ? "adagents_json" : "discovered";
       let projectedProperties: ProjectedProperty[] = properties.map(p => ({
         id: p.property_id,
         type: p.property_type,
         name: p.name,
         identifiers: p.identifiers,
         tags: p.tags,
-        source: "discovered",
+        source: indexedSource,
       }));
 
       // Fallback: if the federated index has nothing for this domain, hydrate
@@ -7050,6 +7113,13 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     if (last && Date.now() - last < AUTO_CRAWL_DEBOUNCE_MS) return false;
     autoCrawlLastFired.set(domain, Date.now());
     return true;
+  }
+  // Stamp the debouncer for a manually-orchestrated bypass (e.g. stale
+  // brand row that we want to re-trigger out of band). Lets the caller
+  // share the per-domain fire-stamp so they don't flood the crawler on
+  // each subsequent request while the bypass condition remains true.
+  function markAutoCrawlFired(domain: string): void {
+    autoCrawlLastFired.set(domain, Date.now());
   }
 
   // Periodic cleanup of stale rate limit entries to prevent memory
