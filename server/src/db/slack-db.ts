@@ -5,6 +5,7 @@ import type {
   SlackMappingSource,
   SlackMappingStats,
 } from '../slack/types.js';
+import { FREE_EMAIL_PROVIDER_DOMAINS } from '../services/identifier-normalization.js';
 
 /**
  * Escape LIKE pattern wildcards to prevent SQL injection
@@ -371,13 +372,7 @@ export class SlackDatabase {
     const excludeFree = options.excludeFreeEmailProviders !== false;
     const minUsers = options.minUsers ?? 1;
 
-    // Common free email providers to exclude
-    const freeEmailDomains = [
-      'gmail.com', 'googlemail.com', 'yahoo.com', 'yahoo.co.uk', 'hotmail.com',
-      'outlook.com', 'live.com', 'msn.com', 'aol.com', 'icloud.com', 'me.com',
-      'mac.com', 'protonmail.com', 'proton.me', 'mail.com', 'zoho.com',
-      'yandex.com', 'gmx.com', 'gmx.net', 'fastmail.com', 'tutanota.com',
-    ];
+    const freeEmailDomains = FREE_EMAIL_PROVIDER_DOMAINS;
 
     let domainExcludeClause = '';
     if (excludeFree) {
