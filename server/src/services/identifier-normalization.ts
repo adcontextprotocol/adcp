@@ -56,7 +56,7 @@ export const FREE_EMAIL_PROVIDER_DOMAINS: readonly string[] = [
   // Other providers
   'zoho.com', 'fastmail.com', 'gmx.com', 'gmx.net', 'mail.com',
   'yandex.com', 'yandex.ru', 'qq.com', '163.com', '126.com',
-  // duck.com is DuckDuckGo's email-forwarding alias service, not a hosted mailbox provider
+  // Forwarding alias / privacy-email services (multi-tenant; same blast radius as hosted mailbox providers)
   'duck.com', 'hey.com', 'tutanota.com', 'tutanota.de',
 ];
 

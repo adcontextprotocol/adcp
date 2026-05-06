@@ -103,10 +103,13 @@ describe('assertClaimableBrandDomain', () => {
 
   it('rejects other high-volume free-email providers', () => {
     expect(() => assertClaimableBrandDomain('yahoo.com')).toThrow();
+    expect(() => assertClaimableBrandDomain('msn.com')).toThrow();
     expect(() => assertClaimableBrandDomain('aol.com')).toThrow();
+    expect(() => assertClaimableBrandDomain('mail.com')).toThrow();
     expect(() => assertClaimableBrandDomain('tutanota.com')).toThrow();
     expect(() => assertClaimableBrandDomain('qq.com')).toThrow();
     expect(() => assertClaimableBrandDomain('163.com')).toThrow();
+    expect(() => assertClaimableBrandDomain('126.com')).toThrow();
     expect(() => assertClaimableBrandDomain('tutanota.de')).toThrow();
   });
 
