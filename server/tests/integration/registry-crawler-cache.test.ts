@@ -735,4 +735,89 @@ describe('Registry crawler cache (PR 2 of #3177)', () => {
       );
     });
   });
+
+  // ──────────────────────────────────────────────────────────────────
+  // Legacy-table reconcile: when a publisher removes an agent from
+  // their adagents.json, the federated index must drop the stale row.
+  // The crawler is upsert-only by default; reconcileAdagentsAuthorizations
+  // closes the loop. agent_claim rows are untouched — they belong to a
+  // different publisher's discovery flow and must survive the reconcile.
+  // ──────────────────────────────────────────────────────────────────
+
+  describe('legacy reconcile (agent_publisher_authorizations)', () => {
+    const REMOVED_AGENT = 'https://removed-agent.crawler-cache.example';
+    const KEPT_AGENT = TEST_AGENT;
+    const CLAIMING_AGENT = 'https://claim.crawler-cache.example';
+
+    beforeEach(async () => {
+      // Plant prior-crawl state: two adagents_json rows for TEST_DOMAIN
+      // plus an agent_claim row from a different agent. The reconcile
+      // should drop only REMOVED_AGENT.
+      await pool.query(
+        `INSERT INTO agent_publisher_authorizations (agent_url, publisher_domain, source)
+           VALUES ($1, $2, 'adagents_json'),
+                  ($3, $2, 'adagents_json'),
+                  ($4, $2, 'agent_claim')
+         ON CONFLICT DO NOTHING`,
+        [KEPT_AGENT, TEST_DOMAIN, REMOVED_AGENT, CLAIMING_AGENT],
+      );
+    });
+
+    afterAll(async () => {
+      await pool.query(
+        `DELETE FROM agent_publisher_authorizations WHERE publisher_domain = $1`,
+        [TEST_DOMAIN],
+      );
+    });
+
+    it('hard-deletes adagents_json rows for agents that disappeared from the manifest', async () => {
+      // Reconcile to current manifest with only KEPT_AGENT.
+      await federatedIndex.reconcileAdagentsAuthorizations(TEST_DOMAIN, [
+        // Canonical form: lowercase, no trailing slash.
+        KEPT_AGENT.toLowerCase().replace(/\/+$/, ''),
+      ]);
+
+      const remaining = await pool.query<{ agent_url: string; source: string }>(
+        `SELECT agent_url, source FROM agent_publisher_authorizations
+          WHERE publisher_domain = $1 ORDER BY source, agent_url`,
+        [TEST_DOMAIN],
+      );
+      // KEPT_AGENT (adagents_json) and CLAIMING_AGENT (agent_claim).
+      expect(remaining.rows).toHaveLength(2);
+      const adagents = remaining.rows.find(r => r.source === 'adagents_json');
+      const claim = remaining.rows.find(r => r.source === 'agent_claim');
+      expect(adagents?.agent_url).toBe(KEPT_AGENT);
+      expect(claim?.agent_url).toBe(CLAIMING_AGENT);
+    });
+
+    it('canonicalizes both stored and input urls so an un-canonical input still matches', async () => {
+      // Pass a non-canonical form (uppercase, trailing slash). The SQL
+      // canonicalizes both sides, so KEPT_AGENT must still survive.
+      // This is the safety net against a caller forgetting to
+      // canonicalize — without it, the DELETE would nuke every row.
+      await federatedIndex.reconcileAdagentsAuthorizations(TEST_DOMAIN, [
+        `${KEPT_AGENT.toUpperCase()}/`,
+      ]);
+
+      const adagents = await pool.query<{ agent_url: string }>(
+        `SELECT agent_url FROM agent_publisher_authorizations
+          WHERE publisher_domain = $1 AND source = 'adagents_json'`,
+        [TEST_DOMAIN],
+      );
+      expect(adagents.rows).toHaveLength(1);
+      expect(adagents.rows[0].agent_url).toBe(KEPT_AGENT);
+    });
+
+    it('removes all adagents_json rows when the manifest authorizes no agents', async () => {
+      await federatedIndex.reconcileAdagentsAuthorizations(TEST_DOMAIN, []);
+
+      const remaining = await pool.query<{ agent_url: string; source: string }>(
+        `SELECT agent_url, source FROM agent_publisher_authorizations
+          WHERE publisher_domain = $1`,
+        [TEST_DOMAIN],
+      );
+      expect(remaining.rows).toHaveLength(1);
+      expect(remaining.rows[0].source).toBe('agent_claim');
+    });
+  });
 });

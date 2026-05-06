@@ -5,7 +5,7 @@ import { FederatedIndexService } from "./federated-index.js";
 import { AdAgentsManager } from "./adagents-manager.js";
 import { BrandManager } from "./brand-manager.js";
 import { BrandDatabase } from "./db/brand-db.js";
-import { PublisherDatabase, type AdagentsManifest } from "./db/publisher-db.js";
+import { PublisherDatabase, canonicalizeAgentUrl, type AdagentsManifest } from "./db/publisher-db.js";
 import { MemberDatabase } from "./db/member-db.js";
 import { CapabilityDiscovery } from "./capabilities.js";
 import { HealthChecker } from "./health.js";
@@ -405,6 +405,7 @@ export class CrawlerService {
                 authorizedAgent.property_ids
               );
             }
+            await this.reconcileLegacyAdagentsAgents(pubConfig.domain, validation.raw_data as AdagentsManifest);
           } else {
             log.debug({ domain: pubConfig.domain }, 'No valid adagents.json');
           }
@@ -458,6 +459,7 @@ export class CrawlerService {
                 authorizedAgent.property_ids
               );
             }
+            await this.reconcileLegacyAdagentsAgents(domain, validation.raw_data as AdagentsManifest);
           }
         } catch (err) {
           log.error({ domain, err }, 'Failed to process domain');
@@ -656,6 +658,26 @@ export class CrawlerService {
       await this.publisherDb.upsertAdagentsCache({ domain, manifest });
     } catch (err) {
       log.warn({ domain, err: err instanceof Error ? err.message : err }, 'Publisher cache write failed');
+    }
+  }
+
+  /**
+   * Reconcile legacy adagents_json authorization rows for a publisher
+   * after a successful crawl: agents that were in a prior manifest but
+   * are no longer in the freshly-fetched one get hard-deleted from the
+   * legacy table. The catalog-side reconcile happens inside
+   * upsertAdagentsCache. agent_claim rows are untouched. Best-effort —
+   * a reconcile failure must not abort the rest of the crawl.
+   */
+  private async reconcileLegacyAdagentsAgents(domain: string, manifest: AdagentsManifest): Promise<void> {
+    const entries = Array.isArray(manifest.authorized_agents) ? manifest.authorized_agents : [];
+    const canonical = entries
+      .map(e => (e?.url && typeof e.url === 'string' ? canonicalizeAgentUrl(e.url) : null))
+      .filter((c): c is string => !!c);
+    try {
+      await this.federatedIndex.reconcileAdagentsAuthorizations(domain, canonical);
+    } catch (err) {
+      log.warn({ domain, err: err instanceof Error ? err.message : err }, 'Adagents legacy reconcile failed');
     }
   }
 
@@ -907,6 +929,7 @@ export class CrawlerService {
           authorizedAgent.property_ids
         );
       }
+      await this.reconcileLegacyAdagentsAgents(domain, validation.raw_data as AdagentsManifest);
 
       // Produce per-domain events
       if (this.eventsDb) {
@@ -1075,6 +1098,7 @@ export class CrawlerService {
         authorizedAgent.property_ids
       );
     }
+    await this.reconcileLegacyAdagentsAgents(domain, validation.raw_data as AdagentsManifest);
 
     if (this.eventsDb) {
       await this.eventsDb.writeEvent({

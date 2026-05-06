@@ -221,6 +221,29 @@ export class FederatedIndexService {
   }
 
   /**
+   * Reconcile the adagents_json authorization rows for a publisher
+   * after a successful crawl. Hard-deletes legacy rows where
+   * source='adagents_json' and the canonical agent_url is no longer in
+   * the manifest's authorized_agents list — this is how an agent that
+   * the publisher REMOVED from their /.well-known stops appearing in
+   * the federated index. agent_claim rows are untouched: a removal
+   * from one publisher's adagents.json must not erase the agent's
+   * own first-party claims of authorization elsewhere.
+   *
+   * The crawler must call this once per domain after the per-agent
+   * upsert loop. `currentAgentUrls` is the canonical-form (lowercased,
+   * trailing slashes stripped) list of agents in the freshly-crawled
+   * manifest; an empty list is valid and will delete every prior
+   * adagents_json row for the publisher.
+   */
+  async reconcileAdagentsAuthorizations(
+    publisherDomain: string,
+    currentAgentUrls: string[],
+  ): Promise<void> {
+    await this.db.reconcileAdagentsAuthorizations(publisherDomain, currentAgentUrls);
+  }
+
+  /**
    * Record a publisher discovered from a sales agent's list_authorized_properties.
    */
   async recordPublisherFromAgent(

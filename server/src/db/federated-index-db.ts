@@ -433,6 +433,44 @@ export class FederatedIndexDatabase {
   // ============================================
 
   /**
+   * Hard-delete legacy adagents_json authorization rows for a
+   * publisher whose canonical agent_url is no longer in the latest
+   * crawled manifest. Called once per domain after the per-agent
+   * upsert loop. agent_claim rows are untouched (they belong to a
+   * different publisher's discovery flow).
+   *
+   * `currentAgentUrls` is the canonical-form list — already trimmed,
+   * lowercased, and stripped of trailing slashes. The DELETE
+   * canonicalizes the stored agent_url with the same shape so a
+   * historical non-canonical row still matches.
+   */
+  async reconcileAdagentsAuthorizations(
+    publisherDomain: string,
+    currentAgentUrls: string[],
+  ): Promise<void> {
+    // Canonicalize both sides in SQL so a caller that forgets to
+    // canonicalize doesn't silently nuke every adagents_json row for
+    // the publisher. The stored side mirrors the writer's canonical
+    // form (lowercase, no trailing slash, '*' literal preserved); the
+    // input side runs the same shape.
+    await query(
+      `DELETE FROM agent_publisher_authorizations
+        WHERE publisher_domain = $1
+          AND source = 'adagents_json'
+          AND NOT (
+            CASE WHEN agent_url = '*' THEN '*'
+                 ELSE LOWER(RTRIM(BTRIM(agent_url), '/')) END
+            IN (
+              SELECT CASE WHEN u = '*' THEN '*'
+                          ELSE LOWER(RTRIM(BTRIM(u), '/')) END
+                FROM unnest($2::text[]) AS u
+            )
+          )`,
+      [publisherDomain, currentAgentUrls],
+    );
+  }
+
+  /**
    * Upsert a discovered agent
    */
   async upsertAgent(agent: DiscoveredAgent): Promise<DiscoveredAgent> {
