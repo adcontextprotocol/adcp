@@ -1,0 +1,115 @@
+# Billing-Gate Runner — Harness Contract Test Kit
+#
+# Applies to: universal/billing-gate-dispatch.yaml.
+#
+# The billing-gate-dispatch storyboard validates the two-gate dispatch on
+# `sync_accounts.billing` rejection — seller-wide capability gate
+# (BILLING_NOT_SUPPORTED) vs per-buyer-agent commercial-relationship gate
+# (BILLING_NOT_PERMITTED_FOR_AGENT). Two of the four phases depend on
+# preconditions the runner cannot establish via the protocol:
+#
+#   capability_gate         — runner needs a `billing` value the seller does
+#                             NOT support, so it can probe a rejection. Skipped
+#                             if the seller supports all three values
+#                             ("operator", "agent", "advertiser") at the
+#                             capability level.
+#   per_agent_gate_reject   — runner needs the calling buyer agent to be
+#                             registered with the seller as passthrough-only
+#                             (no payments relationship). The seller's
+#                             onboarding system records the commercial state
+#                             offline; the protocol has no surface for
+#                             toggling it from outside.
+#
+# This kit is the coordination contract between the runner and a seller-under-
+# test that wants the per-agent-gate phases graded. Sellers that do not ship
+# a passthrough-only test caller leave `commercial_relationship` unset and
+# the per-agent phases grade `not_applicable`.
+
+id: billing_gate_runner
+applies_to:
+  universal_storyboard: billing-gate-dispatch
+
+description: |
+  Coordination contract between the billing-gate-dispatch runner and a seller
+  agent under test.
+
+  The runner reads two precondition fields from this kit:
+
+    account.unsupported_billing_probe — (optional) the value the runner will
+      submit on the capability-gate phase. MUST be a value the seller's
+      `account.supported_billing` does NOT include, so the seller rejects
+      with BILLING_NOT_SUPPORTED. Sellers whose `supported_billing` is the
+      full set of three values omit this field; the capability-gate phase
+      grades `not_applicable` in that case.
+
+    commercial_relationship — (optional) declares the calling buyer agent's
+      onboarded commercial state with the seller. When set to
+      "passthrough_only", the runner submits `billing: "agent"` on the
+      per-agent-gate-reject phase and asserts BILLING_NOT_PERMITTED_FOR_AGENT
+      with the clamped error.details shape. When unset, both per-agent
+      phases grade `not_applicable`.
+
+  Establishing the commercial relationship is offline (the same posture as
+  operator account creation): the seller-under-test records the test
+  caller's commercial state in its onboarding system before the storyboard
+  runs. A future extension (`comply_test_controller` `seed_buyer_agent`)
+  MAY let runners establish the precondition programmatically; until then
+  the test kit declares it.
+
+endpoint_scope: sandbox
+# The per_agent_gate_recover phase provisions a real account on the seller's
+# books once `BILLING_NOT_PERMITTED_FOR_AGENT` recovers via the seller's
+# `error.details.suggested_billing` value. Run against a sandbox endpoint or
+# a designated test caller whose account creations the seller cleans up
+# post-grading.
+
+harness_mode: black_box
+
+# Authentication fixture. Validated end-to-end against the training-agent
+# reference implementation (#3851), which recognizes the
+# `demo-billing-passthrough-*` family as the spoofable test principal
+# mapping to `commercial_relationship: passthrough_only` — see
+# server/src/training-agent/commercial-relationships.ts. Sellers running
+# their own conformance harness substitute their own bearer convention
+# for the same precondition.
+#
+# IMPORTANT — runner invocation: today's storyboard runner does not
+# auto-extract `auth.api_key` from the test kit. Pass it explicitly:
+#
+#   npx adcp storyboard run <agent-url> \
+#     --auth demo-billing-passthrough-v1 \
+#     --file static/compliance/source/universal/billing-gate-dispatch.yaml
+#
+# The kit declares the bearer the seller's harness expects to be
+# authenticated under; the CLI carries the bearer onto the wire.
+auth:
+  api_key: "demo-billing-passthrough-v1"
+  probe_task: list_accounts
+
+# Brand identity for the storyboard's sample_request payloads. Reuses the Acme
+# Outdoor sandbox brand so the brand-resolution path is the same as for
+# adjacent universal storyboards (acmeoutdoor.example resolves via AAO sandbox
+# brand resolution).
+brand:
+  house:
+    domain: "acmeoutdoor.example"
+    name: "Acme Outdoor"
+  brand_id: "acme_outdoor"
+
+# Account-shape preconditions for the capability-gate phase. Sellers whose
+# `account.supported_billing` is a strict subset of ["operator", "agent",
+# "advertiser"] declare the unsupported value here. Sellers whose capability
+# is the full set leave this commented out and the capability-gate phase
+# grades not_applicable.
+account:
+  # unsupported_billing_probe: "advertiser"  # uncomment + set for capability-gate
+
+# Per-buyer-agent commercial-relationship precondition for the per-agent
+# gate phases. When set to "passthrough_only", the runner exercises the
+# per-agent gate. Other values reserved for future commercial-state shapes
+# (e.g., "agent_billable", "advertiser_billable_only").
+#
+# Sellers that ship a passthrough-only test caller declare it here.
+# Sellers that don't, comment this out and the per-agent phases grade
+# not_applicable.
+commercial_relationship: "passthrough_only"

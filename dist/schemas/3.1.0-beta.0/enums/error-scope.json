@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.0/enums/error-scope.json",
+  "title": "Error Scope",
+  "description": "Shared discriminator vocabulary for `error.details.scope` across `error-details/` shapes that distinguish *which axis* of the seller's relationship triggered the rejection. Each error-details shape constrains its own `scope` field to the registered subset relevant to that code (e.g., `error-details/billing-not-supported.json` accepts `\"capability\" | \"account\"`; `error-details/agent-permission-denied.json` accepts only `\"agent\"`). This enum is the single source of truth for the union vocabulary so cross-language SDKs can dispatch on `details.scope` without re-deriving the value space per code. New scopes added here SHOULD be reflected in the per-shape constrained subsets that emit them, and MUST be coordinated across the `error-details/` schemas that participate in the discriminator.",
+  "type": "string",
+  "enum": ["capability", "account", "agent"],
+  "enumDescriptions": {
+    "capability": "Seller-wide capability rejection — the seller's declared capability does not include the requested value at the wire level. Used by `error-details/billing-not-supported.json`. Recovery: choose from the seller's declared capability and retry.",
+    "account": "Per-account-relationship rejection — the seller's capability accepts the value generally but not for the specific operator on this account. Used by `error-details/billing-not-supported.json`. Recovery: try the next-most-permissive value the capability allows. Sellers MUST omit `scope` on the unauthenticated/unestablished-identity path so the discriminator does not act as a per-account oracle.",
+    "agent": "Per-buyer-agent rejection — the gate fired against the calling buyer agent's commercial relationship with the seller, independent of capability and per-account state. Used by `error-details/agent-permission-denied.json` (and `error-details/billing-not-permitted-for-agent.json` implicitly — the per-agent code does not carry an explicit `scope` field). Sellers MUST emit per-agent scope only when buyer-agent identity has been established via signed-request derivation or a credential-to-agent mapping in the seller's onboarding record; emitting it without established identity is a cross-tenant onboarding oracle. The full channel-coverage rules (response shape, HTTP/A2A/MCP status, headers, side effects, observability, latency parity, retry-counter side channel) are normative in error-handling.mdx Per-Agent Authorization Gate — sellers MUST consult that section, not infer scope from this enum description."
+  }
+}

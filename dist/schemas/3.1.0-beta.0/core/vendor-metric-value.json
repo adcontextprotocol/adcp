@@ -1,0 +1,66 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.0/core/vendor-metric-value.json",
+  "title": "Vendor Metric Value",
+  "description": "A reported value for a vendor-defined metric, emitted in `delivery-metrics.json` `vendor_metric_values` parallel to standard scalars. Identifies the vendor (BrandRef), the metric name within that vendor's vocabulary, the value, and the coverage denominator (`measurable_impressions`) — vendor measurement is rarely 100% coverage. The `breakdown` slot accommodates vendors that emit structured payloads beyond a single scalar (panel demographic breakouts, co-view ratios, incremental decompositions). To add fields beyond what this schema defines, vendors place them inside `breakdown` rather than alongside the standard envelope.",
+  "type": "object",
+  "properties": {
+    "vendor": {
+      "$ref": "/schemas/3.1.0-beta.0/core/brand-ref.json",
+      "description": "Vendor that produced this value. Matches a `vendor_metrics[].vendor` declaration on the product."
+    },
+    "metric_id": {
+      "$ref": "/schemas/3.1.0-beta.0/core/vendor-metric-id.json",
+      "description": "Identifier for the metric within the vendor's vocabulary. Matches a `vendor_metrics[].metric_id` declaration on the product."
+    },
+    "value": {
+      "type": "number",
+      "description": "The reported value. Unit semantics are vendor-defined — see `unit` field below and the vendor's `brand.json` measurement-agent documentation."
+    },
+    "unit": {
+      "type": "string",
+      "description": "Unit of the value. Free-form to accommodate the heterogeneity of vendor metrics (e.g., `score`, `seconds`, `persons`, `gCO2e`, `USD`, `lift_percent`). When the value is monetary, use the ISO 4217 code (e.g., `USD`, `EUR`); for non-monetary, use whatever the vendor publishes. Optional on every row — the canonical unit lives at the vendor's measurement-agent metric definition (`brand.json` `agents[type='measurement']`). When sellers populate it inline they SHOULD match the vendor's published unit; buyers MAY resolve from the vendor's measurement agent when this field is absent.",
+      "examples": ["score", "seconds", "persons", "gCO2e", "USD", "lift_percent", "index"]
+    },
+    "measurable_impressions": {
+      "type": "number",
+      "description": "Number of impressions in this reporting period that the vendor was able to measure. Coverage denominator — buyers compute coverage rate as `measurable_impressions / impressions`. When absent, coverage is unspecified — buyers MUST NOT compute a coverage rate or assume full coverage. When the vendor measured zero impressions but is integrated, set to 0 explicitly. When the entry is omitted from `vendor_metric_values` entirely, the buyer infers no measurement happened (no integration). This pattern parallels `viewability.measurable_impressions` (`delivery-metrics.json#/properties/viewability`), which has handled vendor coverage in the IAS/DV/MRC ecosystem for over a decade — same convention: absence is unknown, not full.",
+      "minimum": 0
+    },
+    "breakdown": {
+      "type": "object",
+      "description": "Optional structured payload for vendor metrics that don't fit a single scalar — panel demographic breakouts, co-view audience composition, incremental reach + frequency + lift decompositions. Free-form; the keys and value semantics are defined by the vendor (see the vendor's `brand.json` measurement-agent docs). Buyers MUST treat this object as opaque without consulting the vendor's documentation. Vendors place any fields beyond the standard envelope (e.g., confidence intervals, panel sizes) inside this object rather than at the top level.",
+      "additionalProperties": true
+    }
+  },
+  "required": ["vendor", "metric_id", "value"],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "vendor": { "domain": "attentionvendor.example" },
+      "metric_id": "attention_units",
+      "value": 4.2,
+      "unit": "score",
+      "measurable_impressions": 8000
+    },
+    {
+      "vendor": { "domain": "emissionsvendor.example" },
+      "metric_id": "gco2e_per_impression",
+      "value": 0.85,
+      "unit": "gCO2e"
+    },
+    {
+      "vendor": { "domain": "panelmeasurement.example" },
+      "metric_id": "demographic_reach",
+      "value": 1500000,
+      "unit": "persons",
+      "measurable_impressions": 9200000,
+      "breakdown": {
+        "age_18_34_male": 320000,
+        "age_18_34_female": 295000,
+        "age_35_54_male": 405000,
+        "age_35_54_female": 480000
+      }
+    }
+  ]
+}

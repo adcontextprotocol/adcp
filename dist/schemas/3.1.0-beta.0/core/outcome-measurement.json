@@ -1,0 +1,44 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.0/core/outcome-measurement.json",
+  "title": "Outcome Measurement (Deprecated)",
+  "description": "**Deprecated as of this minor.** Predates the unified measurement-vocabulary pattern. Outcome metrics (incremental_sales_lift, brand_lift, foot_traffic, conversion_lift, brand_search_lift, attributed sales) are now expressible through the same primitives as the rest of the measurement surface:\n\n- **Outcome metric capability** → declared via `reporting_capabilities.available_metrics` on the product. Closed enum entries: `incremental_sales_lift`, `brand_lift`, `foot_traffic`, `conversion_lift`, `brand_search_lift`. Existing entries `conversions`, `conversion_value`, `roas`, `cost_per_acquisition`, `units_sold`, `new_to_brand_rate`, `new_to_brand_units`, `leads` already covered most outcome-metric needs.\n- **Attributed sales** (the retail-media value prop) → `conversion_value` with `qualifier.attribution_methodology: 'deterministic_purchase'`. **Walmart Connect's `attributedSalesIn14Days`** maps to `conversion_value` + `qualifier.attribution_methodology: 'deterministic_purchase'` + `qualifier.attribution_window: {interval: 14, unit: 'days'}`. Same pattern for Amazon DSP attributed sales, Kroger Precision attributed sales, Criteo Retail Media attributed sales — the protocol does not invent a separate `attributed_sales` metric ID because the qualifier handles the methodology split.\n- **Brand lift** → `brand_lift` metric_id PLUS `qualifier.lift_dimension` (closed enum: awareness, consideration, favorability, purchase_intent, ad_recall). Brand-lift vendors (Kantar, Upwave, Cint, DV) report each dimension separately; the qualifier ensures rows aren't combined.\n- **Attribution methodology** → `qualifier.attribution_methodology` (`deterministic_purchase`, `probabilistic`, `panel_based`, `modeled`).\n- **Attribution window** → `qualifier.attribution_window` (structured duration `{interval, unit}`, never a shorthand string).\n- **Vendor identity** (typically the seller for retail-media closed loop) → vendor-scope `committed_metrics` entries with the BrandRef anchored on the seller's measurement-agent capability (or absent when the seller is the implicit vendor). For third-party retail measurement (Circana, NielsenIQ, IRI for retail MMM; Kantar/Upwave for brand lift on retail-media inventory), use `performance_standards.vendor` to pin the third-party identity.\n- **Reporting frequency / format** → planned for a follow-up `reporting_capabilities` extension; existing `outcome_measurement.reporting` field continues to work for one minor.\n\nThis schema is retained for one-minor backwards compatibility on `product.outcome_measurement`. Removed at the next major. New implementations SHOULD declare outcome capabilities via `reporting_capabilities.available_metrics` and consumers reconcile via `committed_metrics`/`metric_aggregates` with the appropriate qualifier.",
+  "type": "object",
+  "properties": {
+    "type": {
+      "type": "string",
+      "description": "Type of measurement",
+      "examples": [
+        "incremental_sales_lift",
+        "brand_lift",
+        "foot_traffic"
+      ]
+    },
+    "attribution": {
+      "type": "string",
+      "description": "Attribution methodology",
+      "examples": [
+        "deterministic_purchase",
+        "probabilistic"
+      ]
+    },
+    "window": {
+      "allOf": [{ "$ref": "/schemas/3.1.0-beta.0/core/duration.json" }],
+      "description": "Attribution window as a structured duration (e.g., {\"interval\": 30, \"unit\": \"days\"})."
+    },
+    "reporting": {
+      "type": "string",
+      "description": "Reporting frequency and format",
+      "examples": [
+        "weekly_dashboard",
+        "real_time_api"
+      ]
+    }
+  },
+  "required": [
+    "type",
+    "attribution",
+    "reporting"
+  ],
+  "additionalProperties": true
+}

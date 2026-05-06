@@ -1,0 +1,258 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.0/media-buy/get-products-response.json",
+  "title": "Get Products Response",
+  "description": "Response payload for get_products task",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/3.1.0-beta.0/core/version-envelope.json"
+    }
+  ],
+  "properties": {
+    "products": {
+      "type": "array",
+      "description": "Array of matching products",
+      "items": {
+        "$ref": "/schemas/3.1.0-beta.0/core/product.json"
+      }
+    },
+    "proposals": {
+      "type": "array",
+      "description": "Optional array of proposed media plans with budget allocations across products. Publishers include proposals when they can provide strategic guidance based on the brief. Proposals are actionable - buyers can refine them via follow-up get_products calls within the same session, or execute them directly via create_media_buy.",
+      "items": {
+        "$ref": "/schemas/3.1.0-beta.0/core/proposal.json"
+      }
+    },
+    "errors": {
+      "type": "array",
+      "description": "Task-specific errors and warnings (e.g., product filtering issues)",
+      "items": {
+        "$ref": "/schemas/3.1.0-beta.0/core/error.json"
+      }
+    },
+    "property_list_applied": {
+      "type": "boolean",
+      "description": "[AdCP 3.0] Indicates whether property_list filtering was applied. True if the agent filtered products based on the provided property_list. Absent or false if property_list was not provided or not supported by this agent."
+    },
+    "catalog_applied": {
+      "type": "boolean",
+      "description": "Whether the seller filtered results based on the provided catalog. True if the seller matched catalog items against its inventory. Absent or false if no catalog was provided or the seller does not support catalog matching."
+    },
+    "refinement_applied": {
+      "type": "array",
+      "description": "Seller's response to each change request in the refine array, matched by position. Each entry acknowledges whether the corresponding ask was applied, partially applied, or unable to be fulfilled. MUST contain the same number of entries in the same order as the request's refine array. Only present when the request used buying_mode: 'refine'. Each entry MUST echo the request entry's scope and — for product and proposal scopes — the matching id field (product_id or proposal_id), so orchestrators can cross-validate alignment.",
+      "items": {
+        "type": "object",
+        "discriminator": {
+          "propertyName": "scope"
+        },
+        "oneOf": [
+          {
+            "properties": {
+              "scope": {
+                "type": "string",
+                "const": "request",
+                "description": "Echoes scope 'request' from the corresponding refine entry."
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "applied",
+                  "partial",
+                  "unable"
+                ],
+                "description": "'applied': the ask was fulfilled. 'partial': the ask was partially fulfilled — see notes for details. 'unable': the seller could not fulfill the ask — see notes for why."
+              },
+              "notes": {
+                "type": "string",
+                "description": "Seller explanation of what was done, what couldn't be done, or why. Recommended when status is 'partial' or 'unable'."
+              }
+            },
+            "required": [
+              "scope",
+              "status"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "properties": {
+              "scope": {
+                "type": "string",
+                "const": "product",
+                "description": "Echoes scope 'product' from the corresponding refine entry."
+              },
+              "product_id": {
+                "type": "string",
+                "description": "Echoes product_id from the corresponding refine entry."
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "applied",
+                  "partial",
+                  "unable"
+                ],
+                "description": "'applied': the ask was fulfilled. 'partial': the ask was partially fulfilled — see notes for details. 'unable': the seller could not fulfill the ask — see notes for why."
+              },
+              "notes": {
+                "type": "string",
+                "description": "Seller explanation of what was done, what couldn't be done, or why. Recommended when status is 'partial' or 'unable'."
+              }
+            },
+            "required": [
+              "scope",
+              "product_id",
+              "status"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "properties": {
+              "scope": {
+                "type": "string",
+                "const": "proposal",
+                "description": "Echoes scope 'proposal' from the corresponding refine entry."
+              },
+              "proposal_id": {
+                "type": "string",
+                "description": "Echoes proposal_id from the corresponding refine entry."
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "applied",
+                  "partial",
+                  "unable"
+                ],
+                "description": "'applied': the ask was fulfilled. 'partial': the ask was partially fulfilled — see notes for details. 'unable': the seller could not fulfill the ask — see notes for why."
+              },
+              "notes": {
+                "type": "string",
+                "description": "Seller explanation of what was done, what couldn't be done, or why. Recommended when status is 'partial' or 'unable'."
+              }
+            },
+            "required": [
+              "scope",
+              "proposal_id",
+              "status"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      }
+    },
+    "incomplete": {
+      "type": "array",
+      "description": "Declares what the seller could not finish within the buyer's time_budget or due to internal limits. Each entry identifies a scope that is missing or partial. Absent when the response is fully complete.",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {
+          "scope": {
+            "type": "string",
+            "enum": [
+              "products",
+              "pricing",
+              "forecast",
+              "proposals"
+            ],
+            "description": "'products': not all inventory sources were searched. 'pricing': products returned but pricing is absent or unconfirmed. 'forecast': products returned but forecast data is absent. 'proposals': proposals were not generated or are incomplete."
+          },
+          "description": {
+            "type": "string",
+            "description": "Human-readable explanation of what is missing and why."
+          },
+          "estimated_wait": {
+            "allOf": [
+              {
+                "$ref": "/schemas/3.1.0-beta.0/core/duration.json"
+              }
+            ],
+            "description": "How much additional time would resolve this scope. Allows the buyer to decide whether to retry with a larger time_budget."
+          }
+        },
+        "required": [
+          "scope",
+          "description"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "filter_diagnostics": {
+      "type": "object",
+      "description": "Optional non-fatal diagnostic block describing how the request's `filters` narrowed the candidate set. Use this to disambiguate empty/small result lists between 'no inventory matches the brief' and 'a specific filter excluded everything', without breaking the filter-not-fail convention (sellers still silently exclude unmatched products; this block is observability, not error reporting). Sellers MAY populate this when meaningful narrowing occurred; buyers MAY use it for triage UX without depending on its presence. Counts only — products are not enumerated by name to avoid leaking competitive intelligence about adjacent campaigns or seller inventory. `total_candidates` and `excluded_by` are independently optional — sellers whose baseline catalog size is sensitive MAY emit `excluded_by` without `total_candidates`, or vice versa.",
+      "properties": {
+        "semantics": {
+          "type": "string",
+          "enum": ["only", "any", "approximate"],
+          "description": "How `excluded_by[*].count` values are computed across multiple filters. `only`: counts products that would have been included if not for THIS filter alone (deterministic; the right value for 'which filter killed my result set' triage — recommended when feasible). `any`: counts products excluded by ANY filter (so multiple filters' counts may overlap and sum to more than `total_candidates`). `approximate`: sellers SHOULD use this when their pipeline can't cleanly attribute exclusions to a single filter. Buyers SHOULD inspect `semantics` before doing arithmetic on counts."
+        },
+        "total_candidates": {
+          "type": "integer",
+          "description": "Number of products the seller considered before applying `filters`. Baseline for interpreting per-filter exclusion counts. Approximate — sellers MAY return a sampled or capped count when their candidate pool is large. Optional; sellers whose baseline catalog size is sensitive (revealing market posture or competitive density) MAY omit this while still emitting `excluded_by`.",
+          "minimum": 0
+        },
+        "excluded_by": {
+          "type": "object",
+          "description": "Per-filter exclusion counts, keyed by the filter property name as it appears in the request's `filters` object (e.g., `required_metrics`, `required_vendor_metrics`, `required_geo_targeting`, `budget_range`). Values are objects carrying `count` and optional filter-specific detail. Only filters that actually narrowed the set need appear here; absence of a key means that filter did not exclude anything (or was not in the request).",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "count": {
+                "type": "integer",
+                "description": "Number of products excluded by this filter, interpreted per the parent `semantics` field.",
+                "minimum": 0
+              },
+              "values": {
+                "type": "array",
+                "description": "Optional list of the specific filter values that contributed to exclusions, when meaningful. For `required_metrics`: the metric names that excluded products (strings). For `required_vendor_metrics`: the vendor/metric pin entries (objects). Item shape is filter-specific; the schema admits string OR object items. Buyers without filter-specific knowledge SHOULD treat as opaque.",
+                "items": {
+                  "oneOf": [
+                    { "type": "string" },
+                    { "type": "object" }
+                  ]
+                }
+              },
+              "notes": {
+                "type": "string",
+                "description": "Optional human-readable note about why this filter narrowed the set (e.g., 'no products in this brief support DV viewability at the requested threshold')."
+              }
+            },
+            "required": ["count"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": true,
+      "examples": [
+        {
+          "semantics": "only",
+          "total_candidates": 47,
+          "excluded_by": {
+            "required_metrics": { "count": 31, "values": ["completed_views"] },
+            "required_geo_targeting": { "count": 9 },
+            "budget_range": { "count": 7 }
+          }
+        }
+      ]
+    },
+    "pagination": {
+      "$ref": "/schemas/3.1.0-beta.0/core/pagination-response.json"
+    },
+    "sandbox": {
+      "type": "boolean",
+      "description": "When true, this response contains simulated data from sandbox mode."
+    },
+    "context": {
+      "$ref": "/schemas/3.1.0-beta.0/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.1.0-beta.0/core/ext.json"
+    }
+  },
+  "required": [
+    "products"
+  ],
+  "additionalProperties": true
+}

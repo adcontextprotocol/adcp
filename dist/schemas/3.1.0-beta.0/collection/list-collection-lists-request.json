@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.0/collection/list-collection-lists-request.json",
+  "title": "List Collection Lists Request",
+  "description": "Request parameters for listing collection lists",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/3.1.0-beta.0/core/version-envelope.json"
+    }
+  ],
+  "properties": {
+    "account": {
+      "$ref": "/schemas/3.1.0-beta.0/core/account-ref.json",
+      "description": "Filter to lists owned by this account. When omitted, returns lists across all accounts accessible to the authenticated agent."
+    },
+    "name_contains": {
+      "type": "string",
+      "description": "Filter to lists whose name contains this string"
+    },
+    "pagination": {
+      "$ref": "/schemas/3.1.0-beta.0/core/pagination-request.json"
+    },
+    "context": {
+      "$ref": "/schemas/3.1.0-beta.0/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.1.0-beta.0/core/ext.json"
+    }
+  },
+  "additionalProperties": true
+}

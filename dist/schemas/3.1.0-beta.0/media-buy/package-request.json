@@ -1,0 +1,201 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.0/media-buy/package-request.json",
+  "title": "Package Request",
+  "description": "Package configuration for media buy creation",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/3.1.0-beta.0/core/version-envelope.json"
+    }
+  ],
+  "properties": {
+    "product_id": {
+      "type": "string",
+      "description": "Product ID for this package",
+      "x-entity": "product"
+    },
+    "format_ids": {
+      "type": "array",
+      "description": "Array of format IDs that will be used for this package - must be supported by the product. If omitted, defaults to all formats supported by the product.",
+      "items": {
+        "$ref": "/schemas/3.1.0-beta.0/core/format-id.json"
+      },
+      "minItems": 1
+    },
+    "budget": {
+      "type": "number",
+      "description": "Budget allocation for this package in the media buy's currency",
+      "minimum": 0
+    },
+    "pacing": {
+      "$ref": "/schemas/3.1.0-beta.0/enums/pacing.json"
+    },
+    "pricing_option_id": {
+      "type": "string",
+      "description": "ID of the selected pricing option from the product's pricing_options array",
+      "x-entity": "product_pricing_option"
+    },
+    "bid_price": {
+      "type": "number",
+      "description": "Bid price for auction-based pricing options. This is the exact bid/price to honor unless selected pricing_option has max_bid=true, in which case bid_price is the buyer's maximum willingness to pay (ceiling).",
+      "minimum": 0
+    },
+    "impressions": {
+      "type": "number",
+      "description": "Impression goal for this package",
+      "minimum": 0
+    },
+    "start_time": {
+      "type": "string",
+      "format": "date-time",
+      "not": {
+        "const": "asap"
+      },
+      "description": "Flight start date/time for this package in ISO 8601 format. When omitted, the package inherits the media buy's start_time. Must fall within the media buy's date range."
+    },
+    "end_time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Flight end date/time for this package in ISO 8601 format. When omitted, the package inherits the media buy's end_time. Must fall within the media buy's date range."
+    },
+    "paused": {
+      "type": "boolean",
+      "description": "Whether this package should be created in a paused state. Paused packages do not deliver impressions. Defaults to false.",
+      "default": false
+    },
+    "catalogs": {
+      "type": "array",
+      "description": "Catalogs this package promotes. Each catalog MUST have a distinct type (e.g., one product catalog, one store catalog). This constraint is enforced at the application level — sellers MUST reject requests containing multiple catalogs of the same type with a validation_error. Makes the package catalog-driven: one budget envelope, platform optimizes across items.",
+      "items": {
+        "$ref": "/schemas/3.1.0-beta.0/core/catalog.json"
+      }
+    },
+    "optimization_goals": {
+      "type": "array",
+      "description": "Optimization targets for this package. The seller optimizes delivery toward these goals in priority order. Common pattern: event goals (purchase, install) as primary targets at priority 1; metric goals (clicks, views) as secondary proxy signals at priority 2+.",
+      "items": {
+        "$ref": "/schemas/3.1.0-beta.0/core/optimization-goal.json"
+      },
+      "minItems": 1
+    },
+    "targeting_overlay": {
+      "$ref": "/schemas/3.1.0-beta.0/core/targeting.json"
+    },
+    "measurement_terms": {
+      "$ref": "/schemas/3.1.0-beta.0/core/measurement-terms.json",
+      "description": "Buyer's proposed billing measurement and makegood terms. Overrides product defaults. Seller accepts (echoed on confirmed package), rejects with TERMS_REJECTED, or adjusts. When absent, product's measurement_terms apply."
+    },
+    "performance_standards": {
+      "type": "array",
+      "description": "Buyer's proposed performance standards for this package. Overrides product defaults. Seller accepts, rejects with TERMS_REJECTED, or adjusts. When absent, product's performance_standards apply.",
+      "items": {
+        "$ref": "/schemas/3.1.0-beta.0/core/performance-standard.json"
+      },
+      "minItems": 1
+    },
+    "committed_metrics": {
+      "type": "array",
+      "description": "Buyer's proposed reporting contract for this package — the metrics the buyer wants the seller to commit to populating in delivery reports. Same negotiation pattern as `measurement_terms` and `performance_standards`: seller accepts (echoes on confirmed package with `committed_at` stamped), rejects with `TERMS_REJECTED` (with explanation of which entries were unworkable), or normalizes (echoes a different but compatible list — buyer can accept by retrying with the normalized terms). When absent, the seller decides what to commit based on the product's `available_metrics` and the buyer's `required_metrics` filter on `get_products`. Each entry uses an explicit `scope` discriminator (`standard` or `vendor`) and identifies the metric — request-side entries do NOT carry `committed_at`; that timestamp is stamped by the seller on accept. Constraints on what the buyer MAY propose: each `scope: standard` entry's `metric_id` MUST be in the product's `available_metrics`, and each `scope: vendor` entry's `(vendor, metric_id)` MUST appear in the product's `vendor_metrics` — sellers SHOULD reject with `TERMS_REJECTED` and reference the offending entry when the proposal exceeds product capability.",
+      "items": {
+        "type": "object",
+        "discriminator": {
+          "propertyName": "scope"
+        },
+        "oneOf": [
+          {
+            "properties": {
+              "scope": {
+                "type": "string",
+                "const": "standard",
+                "description": "Standard metric from the closed `available-metric.json` enum."
+              },
+              "metric_id": {
+                "$ref": "/schemas/3.1.0-beta.0/enums/available-metric.json",
+                "description": "Identifier for the standard metric. MUST be present in the product's `reporting_capabilities.available_metrics`."
+              },
+              "qualifier": {
+                "type": "object",
+                "description": "Disambiguator — same shape as on the response-side `committed_metrics`. Required when the buyer wants to pin a specific measurement path: `viewability_standard` for MRC vs GroupM viewability; `completion_source` for seller- vs vendor-attested `completion_rate`; `attribution_methodology` for how attribution was computed (deterministic_purchase, probabilistic, panel_based, modeled); `attribution_window` for the time window over which outcomes are attributed. See response-side description for full semantics.",
+                "properties": {
+                  "viewability_standard": {
+                    "$ref": "/schemas/3.1.0-beta.0/enums/viewability-standard.json"
+                  },
+                  "completion_source": {
+                    "$ref": "/schemas/3.1.0-beta.0/enums/completion-source.json"
+                  },
+                  "attribution_methodology": {
+                    "$ref": "/schemas/3.1.0-beta.0/enums/attribution-methodology.json"
+                  },
+                  "attribution_window": {
+                    "$ref": "/schemas/3.1.0-beta.0/core/duration.json"
+                  },
+                  "lift_dimension": {
+                    "$ref": "/schemas/3.1.0-beta.0/enums/lift-dimension.json"
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "required": ["scope", "metric_id"],
+            "additionalProperties": false
+          },
+          {
+            "properties": {
+              "scope": {
+                "type": "string",
+                "const": "vendor",
+                "description": "Vendor-defined metric, identified by the tuple `(vendor, metric_id)`."
+              },
+              "vendor": {
+                "$ref": "/schemas/3.1.0-beta.0/core/brand-ref.json",
+                "description": "Vendor that defines and computes this metric. The vendor's `brand.json` `agents[type='measurement']` is the canonical anchor."
+              },
+              "metric_id": {
+                "$ref": "/schemas/3.1.0-beta.0/core/vendor-metric-id.json",
+                "description": "Identifier for the metric within the vendor's vocabulary. MUST be present in the product's `reporting_capabilities.vendor_metrics` for the same vendor."
+              }
+            },
+            "required": ["scope", "vendor", "metric_id"],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "minItems": 1
+    },
+    "creative_assignments": {
+      "type": "array",
+      "description": "Assign existing library creatives to this package with optional weights and placement targeting",
+      "items": {
+        "$ref": "/schemas/3.1.0-beta.0/core/creative-assignment.json"
+      },
+      "minItems": 1
+    },
+    "creatives": {
+      "type": "array",
+      "description": "Upload new creative assets and assign to this package (creatives will be added to library). Use creative_assignments instead for existing library creatives.",
+      "items": {
+        "$ref": "/schemas/3.1.0-beta.0/core/creative-asset.json"
+      },
+      "minItems": 1,
+      "maxItems": 100
+    },
+    "agency_estimate_number": {
+      "type": "string",
+      "maxLength": 100,
+      "description": "Agency estimate or authorization number for this package. Overrides the media buy-level estimate number when different packages correspond to different agency estimates (e.g., different stations or flights within the same buy)."
+    },
+    "context": {
+      "$ref": "/schemas/3.1.0-beta.0/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.1.0-beta.0/core/ext.json"
+    }
+  },
+  "required": [
+    "product_id",
+    "budget",
+    "pricing_option_id"
+  ],
+  "additionalProperties": true
+}

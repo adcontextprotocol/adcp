@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.0/enums/embedded-provenance-method.json",
+  "title": "Embedded Provenance Method",
+  "description": "How provenance data is carried within the content stream. Distinguishes between format-level manifest embedding (where the manifest travels inside the file container) and provenance markers (where invisible markers in the content itself encode or reference a provenance record). Both survive operations that strip sidecar metadata, but provenance markers additionally survive content-level transformations such as copy-paste, reformatting, and CMS re-encoding.",
+  "type": "string",
+  "enum": [
+    "manifest_wrapper",
+    "provenance_markers"
+  ],
+  "enumDescriptions": {
+    "manifest_wrapper": "A provenance manifest embedded in the file container per format-specific rules (e.g., JUMBF box in JPEG, C2PATextManifestWrapper in plaintext per C2PA Section A.7). The manifest travels with the file but is tied to the file's byte structure.",
+    "provenance_markers": "Invisible markers embedded within the content stream that encode or reference a provenance record. Designed to survive reformatting, copy-paste, CMS ingestion, and ad-server transcoding that breaks file-level bindings."
+  }
+}

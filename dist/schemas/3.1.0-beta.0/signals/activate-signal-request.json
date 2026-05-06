@@ -1,0 +1,65 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.0/signals/activate-signal-request.json",
+  "title": "Activate Signal Request",
+  "description": "Request parameters for activating or deactivating a signal on deployment targets",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/3.1.0-beta.0/core/version-envelope.json"
+    }
+  ],
+  "x-mutates-state": true,
+  "properties": {
+    "action": {
+      "type": "string",
+      "enum": [
+        "activate",
+        "deactivate"
+      ],
+      "default": "activate",
+      "description": "Whether to activate or deactivate the signal. Deactivating removes the segment from downstream platforms, required when campaigns end to comply with data governance policies (GDPR, CCPA). Defaults to 'activate' when omitted."
+    },
+    "signal_agent_segment_id": {
+      "type": "string",
+      "description": "The universal identifier for the signal to activate",
+      "x-entity": "signal_activation_id"
+    },
+    "destinations": {
+      "type": "array",
+      "description": "Target destination(s) for activation. If the authenticated caller matches one of these destinations, activation keys will be included in the response.",
+      "items": {
+        "$ref": "/schemas/3.1.0-beta.0/core/destination.json"
+      },
+      "minItems": 1
+    },
+    "pricing_option_id": {
+      "type": "string",
+      "description": "The pricing option selected from the signal's pricing_options in the get_signals response. Required when the signal has pricing options. Records the buyer's pricing commitment at activation time; pass this same value in report_usage for billing verification.",
+      "x-entity": "vendor_pricing_option"
+    },
+    "account": {
+      "$ref": "/schemas/3.1.0-beta.0/core/account-ref.json",
+      "description": "Account for this activation. Associates with a commercial relationship established via sync_accounts."
+    },
+    "idempotency_key": {
+      "type": "string",
+      "description": "Client-generated unique key for this request. Prevents duplicate activations on retries. MUST be unique per (seller, request) pair to prevent cross-seller correlation. Use a fresh UUID v4 for each request.",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
+    "context": {
+      "$ref": "/schemas/3.1.0-beta.0/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.1.0-beta.0/core/ext.json"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "signal_agent_segment_id",
+    "destinations"
+  ],
+  "additionalProperties": true
+}

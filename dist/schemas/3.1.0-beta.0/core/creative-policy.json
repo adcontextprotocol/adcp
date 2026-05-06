@@ -1,0 +1,81 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.0/core/creative-policy.json",
+  "title": "Creative Policy",
+  "description": "Creative requirements and restrictions for a product",
+  "type": "object",
+  "properties": {
+    "co_branding": {
+      "$ref": "/schemas/3.1.0-beta.0/enums/co-branding-requirement.json",
+      "description": "Co-branding requirement"
+    },
+    "landing_page": {
+      "$ref": "/schemas/3.1.0-beta.0/enums/landing-page-requirement.json",
+      "description": "Landing page requirements"
+    },
+    "templates_available": {
+      "type": "boolean",
+      "description": "Whether creative templates are provided"
+    },
+    "provenance_required": {
+      "type": "boolean",
+      "description": "Whether creatives must include provenance metadata. When true, the seller requires buyers to attach provenance declarations to creative submissions. The seller may independently verify claims via get_creative_features."
+    },
+    "provenance_requirements": {
+      "type": "object",
+      "description": "Structured provenance requirements for creatives. Refines `provenance_required`: when `provenance_required` is true, the fields in this object specify which provenance features the seller requires. When `provenance_required` is false or absent, this object SHOULD be absent; if present, receivers MUST ignore it. Existing seller agents that do not read this object are unaffected; the wire shape does not change for them. Sellers that publish a requirement here MUST enforce it on creative submission: a `sync_creatives` request that omits a required field is rejected with the corresponding `PROVENANCE_*` error code (see error-code.json), and a creative whose provenance claim is contradicted by an independent verification (`get_creative_features` against a governance agent the seller operates or has allowlisted via `accepted_verifiers`) is rejected with `PROVENANCE_CLAIM_CONTRADICTED`. This is the structural-rejection surface; the truth-of-claim surface lives in `get_creative_features`. Field-level requirements are seller-enforced — JSON Schema validation does not check them.",
+      "properties": {
+        "require_digital_source_type": {
+          "type": "boolean",
+          "description": "When true, the seller requires creatives to include a `digital_source_type` field in their provenance, set to a valid value from the `digital-source-type` enum (not null or absent). Submissions that omit this field are rejected with `PROVENANCE_DIGITAL_SOURCE_TYPE_MISSING`. Supports EU AI Act Art. 50 and CA SB 942 compliance workflows where AI disclosure metadata must be present at the protocol level."
+        },
+        "require_disclosure_metadata": {
+          "type": "boolean",
+          "description": "When true, the seller requires creatives to include a `disclosure` object in their provenance with `disclosure.required` set to a boolean value (true or false). When `disclosure.required` is true, at least one entry in `disclosure.jurisdictions` is expected. Submissions that omit `disclosure.required` are rejected with `PROVENANCE_DISCLOSURE_MISSING`."
+        },
+        "require_embedded_provenance": {
+          "type": "boolean",
+          "description": "When true, the seller requires creatives to include at least one `embedded_provenance` entry. For pipelines where sidecar metadata is stripped by intermediaries, this ensures provenance data persists through delivery. Submissions that omit `embedded_provenance` are rejected with `PROVENANCE_EMBEDDED_MISSING`."
+        }
+      },
+      "additionalProperties": true
+    },
+    "accepted_verifiers": {
+      "type": "array",
+      "description": "Governance agents the seller operates, has allowlisted, or otherwise trusts to verify provenance claims via `get_creative_features`. Buyers attaching a `verify_agent` pointer on `embedded_provenance[]` or `watermarks[]` MUST select an `agent_url` that appears in this list (canonicalized per /docs/reference/url-canonicalization: lowercase scheme and host, strip default port, normalize path dot-segments) - the buyer is *representing* that they used a verifier the seller will recognize, not asserting unilateral routing. Sellers MUST reject `sync_creatives` submissions whose `verify_agent.agent_url` does not match any entry here with `PROVENANCE_VERIFIER_NOT_ACCEPTED`. The seller is the verifier-of-record: it is the seller, not the buyer, that decides which agent it will call. Publishing the list lets buyers pre-flight their creative shape against `get_products` and lets multiple buyers converge on the same verifier without coordinating with each other.",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {
+          "agent_url": {
+            "type": "string",
+            "format": "uri",
+            "pattern": "^https://",
+            "description": "URL of the governance agent. MUST use the `https://` scheme. The seller calls this URL via `get_creative_features` to verify a buyer's claim; the seller has already vetted the endpoint and accepts responsibility for outbound calls to it."
+          },
+          "feature_id": {
+            "type": "string",
+            "description": "Optional canonical `feature_id` the seller will request against this agent (e.g., `encypher.markers_present_v2`). When present, the buyer's `verify_agent.feature_id` SHOULD either match this value or be omitted. When absent, the seller selects a feature from the agent's `governance.creative_features` catalog at evaluation time. Resolves the selector ambiguity that would otherwise let two compliant receivers reach different verdicts."
+          },
+          "providers": {
+            "type": "array",
+            "description": "Optional `provider` labels this agent verifies (e.g., `['Encypher', 'Digimarc']`). When present, sellers SHOULD only invoke this agent for `embedded_provenance[]` / `watermarks[]` entries whose `provider` field matches one of these labels — letting buyers pre-flight whether their attached evidence is verifiable against the seller's allowlist. When absent, the agent is treated as provider-agnostic.",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          }
+        },
+        "required": ["agent_url"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "co_branding",
+    "landing_page",
+    "templates_available"
+  ],
+  "additionalProperties": true
+}
