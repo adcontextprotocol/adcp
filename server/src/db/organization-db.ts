@@ -1603,6 +1603,18 @@ export class OrganizationDatabase {
   }
 
   /**
+   * Get organization by stripe_subscription_id
+   */
+  async getOrganizationByStripeSubscriptionId(stripeSubscriptionId: string): Promise<Organization | null> {
+    const pool = getPool();
+    const result = await pool.query(
+      'SELECT * FROM organizations WHERE stripe_subscription_id = $1',
+      [stripeSubscriptionId]
+    );
+    return result.rows[0] || null;
+  }
+
+  /**
    * Check if user has accepted specific agreement
    */
   async hasUserAcceptedAgreement(

@@ -49,6 +49,41 @@ export async function resolveOrgForStripeCustomer(
     workosOrgId = subscription.metadata?.workos_organization_id;
   }
 
+  // 3.5 — Direct stripe_subscription_id DB lookup. Defence-in-depth when metadata
+  // paths miss (e.g. subscriptions created before metadata-stamping was added, or
+  // when the event's customer is a drift customer not linked to the org row). If the
+  // org's tracked stripe_subscription_id matches the incoming event's sub ID, we can
+  // resolve the org without metadata at all.
+  if (!workosOrgId && subscription) {
+    const orgBySubId = await orgDb.getOrganizationByStripeSubscriptionId(subscription.id);
+    if (orgBySubId) {
+      logger.info(
+        { workosOrgId: orgBySubId.workos_organization_id, customerId, subscriptionId: subscription.id },
+        'Resolved org via stripe_subscription_id DB lookup',
+      );
+      try {
+        await orgDb.setStripeCustomerId(orgBySubId.workos_organization_id, customerId);
+        logger.info(
+          { workosOrgId: orgBySubId.workos_organization_id, customerId },
+          'Linked Stripe customer to organization via subscription-ID webhook fallback',
+        );
+      } catch (err) {
+        if (err instanceof StripeCustomerConflictError) {
+          logger.warn(
+            { err: err.message, workosOrgId: orgBySubId.workos_organization_id, customerId },
+            'Stripe customer conflict during subscription-ID webhook org resolution',
+          );
+        } else {
+          logger.error(
+            { err, workosOrgId: orgBySubId.workos_organization_id, customerId },
+            'Failed to link Stripe customer to organization via subscription-ID fallback',
+          );
+        }
+      }
+      return orgBySubId;
+    }
+  }
+
   // 4. For invoices with a subscription, retrieve the sub and check its metadata
   if (!workosOrgId && invoice) {
     const subRef = invoice.subscription;
