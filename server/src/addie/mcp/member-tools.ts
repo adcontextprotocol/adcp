@@ -50,8 +50,11 @@ import {
   type StoryboardContext,
   type StoryboardStepResult,
 } from '@adcp/sdk/testing';
+import { AuthenticationRequiredError } from '@adcp/sdk';
 import { renderAllHintFixPlans } from '../services/storyboard-fix-plan.js';
 import { AgentContextDatabase, type OAuthClientCredentials } from '../../db/agent-context-db.js';
+import { buildAgentOAuthAuthorizeUrl, isOAuthRequiredError } from '../../routes/helpers/agent-oauth-prompt.js';
+import { isOAuthRequiredErrorMessage } from '../../routes/helpers/oauth-error-detection.js';
 import {
   findExistingProposalOrFeed,
   createFeedProposal,
@@ -353,12 +356,6 @@ function buildAuthOption(resolved: ResolvedAgentAuth): { type: 'bearer'; token: 
   }
 
   return { type: 'bearer', token: resolved.authToken };
-}
-
-function isAuthError(error: unknown): boolean {
-  if (!(error instanceof Error)) return false;
-  const msg = error.message;
-  return msg.includes('401') || msg.includes('Unauthorized') || msg.includes('authentication');
 }
 
 /**
@@ -3523,6 +3520,43 @@ export function createMemberToolHandlers(
     try {
       const result = await comply(resolved.resolvedUrl, complyOptions);
 
+      // Surface OAuth-required short-circuit. comply() doesn't throw on auth
+      // failures — it pushes a `category: 'auth'` observation and runs a
+      // degraded profile (no discovered tools, every track skipped or
+      // failed). Without a click-to-authorize affordance, Addie tells the
+      // user "all tracks failed" instead of "click here to authorize".
+      // Anchor the regex on the SDK's exact phrasing
+      // (`@adcp/sdk/dist/lib/testing/compliance/comply.js:966`) so a hostile
+      // observation can't trigger a misdirected authorize prompt.
+      const oauthObs = result.observations.find(o =>
+        o.category === 'auth' && /^Agent requires OAuth/i.test(o.message),
+      );
+      if (oauthObs) {
+        logger.warn(
+          { agentUrl: resolved.resolvedUrl },
+          'evaluate_agent_quality: agent requires authentication',
+        );
+        const authorizeUrl = await buildAgentOAuthAuthorizeUrl(
+          resolved.resolvedUrl,
+          organizationId,
+          agentContextDb,
+        );
+        if (authorizeUrl) {
+          return (
+            `**OAuth authorization required**\n\n` +
+            `The agent at \`${resolved.resolvedUrl}\` requires OAuth authentication ` +
+            `before quality evaluation can run.\n\n` +
+            `**[Click here to authorize this agent](${authorizeUrl})**\n\n` +
+            `After you authorize, ask me to evaluate it again.`
+          );
+        }
+        return (
+          `**OAuth authorization required**\n\n` +
+          `The agent at \`${resolved.resolvedUrl}\` requires OAuth authentication. ` +
+          `An organization is needed to start the OAuth flow — sign in or create one, then retry.`
+        );
+      }
+
       // Record result if the user has an org with this agent saved
       if (organizationId) {
         try {
@@ -3660,10 +3694,33 @@ export function createMemberToolHandlers(
         );
       }
 
-      logger.error({ error, agentUrl: resolved.resolvedUrl }, 'Addie: evaluate_agent_quality failed');
-      if (msg.includes('401') || msg.includes('Unauthorized') || msg.includes('authentication')) {
+      // Auth-required is an expected agent state, not a system error — don't
+      // page #aao-errors via the pino → posthog hook. Surface a click-to-
+      // authorize prompt when the agent advertises OAuth.
+      if (isOAuthRequiredError(error)) {
+        logger.warn(
+          { agentUrl: resolved.resolvedUrl, hasOAuth: error instanceof AuthenticationRequiredError && error.hasOAuth },
+          'evaluate_agent_quality: agent requires authentication',
+        );
+        if (error instanceof AuthenticationRequiredError && error.hasOAuth) {
+          const authorizeUrl = await buildAgentOAuthAuthorizeUrl(
+            resolved.resolvedUrl,
+            organizationId,
+            agentContextDb,
+          );
+          if (authorizeUrl) {
+            return (
+              `**OAuth authorization required**\n\n` +
+              `The agent at \`${resolved.resolvedUrl}\` requires OAuth authentication.\n\n` +
+              `**[Click here to authorize this agent](${authorizeUrl})**\n\n` +
+              `After you authorize, ask me to evaluate it again.`
+            );
+          }
+        }
         return `Agent at ${resolved.resolvedUrl} requires authentication. Use \`save_agent\` to store credentials first, then try again.`;
       }
+
+      logger.error({ error, agentUrl: resolved.resolvedUrl }, 'Addie: evaluate_agent_quality failed');
       throw new ToolError(`Failed to evaluate agent quality for ${resolved.resolvedUrl}: ${msg}`);
     }
   });
@@ -3689,10 +3746,36 @@ export function createMemberToolHandlers(
         ...(authOption && { auth: authOption }),
       });
       profile = caps.profile;
-    } catch (error) {
-      if (isAuthError(error)) {
+
+      // testCapabilityDiscovery catches its own throws and surfaces them as
+      // step errors / capabilities_probe_error strings — the catch below
+      // only sees programmer errors. Detect OAuth here.
+      const probeOAuth =
+        isOAuthRequiredErrorMessage(profile?.capabilities_probe_error)
+          ? profile?.capabilities_probe_error
+          : caps.steps?.find(s => isOAuthRequiredErrorMessage(s.error))?.error;
+      if (probeOAuth) {
+        logger.warn(
+          { agentUrl: resolved.resolvedUrl },
+          'recommend_storyboards: agent requires authentication',
+        );
+        const authorizeUrl = await buildAgentOAuthAuthorizeUrl(
+          resolved.resolvedUrl,
+          organizationId,
+          agentContextDb,
+        );
+        if (authorizeUrl) {
+          return (
+            `**OAuth authorization required**\n\n` +
+            `The agent at \`${resolved.resolvedUrl}\` requires OAuth authentication ` +
+            `before I can recommend storyboards.\n\n` +
+            `**[Click here to authorize this agent](${authorizeUrl})**\n\n` +
+            `After you authorize, ask me again.`
+          );
+        }
         return `Agent at ${resolved.resolvedUrl} requires authentication. Use \`save_agent\` to store credentials first, then try again.`;
       }
+    } catch (error) {
       logger.warn({ err: error, agentUrl: resolved.resolvedUrl }, 'recommend_storyboards: capability probe failed');
       const reason = classifyProbeError(error);
       throw new ToolError(`Could not reach agent at ${resolved.resolvedUrl} (${probeReasonLabel(reason)}).`);
@@ -3941,6 +4024,34 @@ export function createMemberToolHandlers(
         ...(authOption && { auth: authOption }),
       });
 
+      // runStoryboard catches its own throws and surfaces them as step
+      // errors. Detect OAuth on the first failing step before rendering a
+      // long failure report the user can't act on.
+      const oauthStepError = result.phases
+        .flatMap(p => p.steps)
+        .find(s => isOAuthRequiredErrorMessage(s.error))?.error;
+      if (oauthStepError) {
+        logger.warn(
+          { agentUrl: resolved.resolvedUrl, storyboardId },
+          'run_storyboard: agent requires authentication',
+        );
+        const authorizeUrl = await buildAgentOAuthAuthorizeUrl(
+          resolved.resolvedUrl,
+          organizationId,
+          agentContextDb,
+        );
+        if (authorizeUrl) {
+          return (
+            `**OAuth authorization required**\n\n` +
+            `The agent at \`${resolved.resolvedUrl}\` requires OAuth authentication ` +
+            `before I can run storyboard \`${storyboardId}\`.\n\n` +
+            `**[Click here to authorize this agent](${authorizeUrl})**\n\n` +
+            `After you authorize, ask me to run it again.`
+          );
+        }
+        return `Agent at ${resolved.resolvedUrl} requires authentication. Use \`save_agent\` to store credentials first, then try again.`;
+      }
+
       // Record the run in agent_test_history when we have a saved
       // agent_context for this org+url. Mirrors evaluate_agent_quality's
       // pattern; powers the "agent not tested in 14d" prompt rule.
@@ -4042,9 +4153,6 @@ export function createMemberToolHandlers(
       return output;
     } catch (error) {
       logger.error({ error, agentUrl: resolved.resolvedUrl, storyboardId }, 'Addie: run_storyboard failed');
-      if (isAuthError(error)) {
-        return `Agent at ${resolved.resolvedUrl} requires authentication. Use \`save_agent\` to store credentials first, then try again.`;
-      }
       const msg = error instanceof Error ? error.message : 'Unknown error';
       throw new ToolError(`Failed to run storyboard ${storyboardId}: ${msg}`);
     }
@@ -4100,6 +4208,29 @@ export function createMemberToolHandlers(
         context,
         ...(authOption && { auth: authOption }),
       });
+
+      // runStoryboardStep catches its own throws and surfaces them as
+      // result.error strings. Detect OAuth before rendering.
+      if (isOAuthRequiredErrorMessage(result.error)) {
+        logger.warn(
+          { agentUrl: resolved.resolvedUrl, storyboardId, stepId },
+          'run_storyboard_step: agent requires authentication',
+        );
+        const authorizeUrl = await buildAgentOAuthAuthorizeUrl(
+          resolved.resolvedUrl,
+          organizationId,
+          agentContextDb,
+        );
+        if (authorizeUrl) {
+          return (
+            `**OAuth authorization required**\n\n` +
+            `The agent at \`${resolved.resolvedUrl}\` requires OAuth authentication.\n\n` +
+            `**[Click here to authorize this agent](${authorizeUrl})**\n\n` +
+            `After you authorize, ask me to run the step again.`
+          );
+        }
+        return `Agent at ${resolved.resolvedUrl} requires authentication. Use \`save_agent\` to store credentials first, then try again.`;
+      }
 
       let output = '';
       if (resolved.source === 'saved') output += '_Using saved credentials._\n\n';
@@ -4165,9 +4296,6 @@ export function createMemberToolHandlers(
       return output;
     } catch (error) {
       logger.error({ error, agentUrl: resolved.resolvedUrl, storyboardId, stepId }, 'Addie: run_storyboard_step failed');
-      if (isAuthError(error)) {
-        return `Agent at ${resolved.resolvedUrl} requires authentication. Use \`save_agent\` to store credentials first, then try again.`;
-      }
       const msg = error instanceof Error ? error.message : 'Unknown error';
       // Return step-not-found as a message so the AI can self-correct with valid step IDs
       if (msg.includes('not found in storyboard')) {

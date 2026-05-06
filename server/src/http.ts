@@ -24,7 +24,7 @@ import { PropertiesService } from "./properties.js";
 import { AdAgentsManager } from "./adagents-manager.js";
 import { mountSchemasRoutes, mountComplianceRoutes, mountProtocolRoutes } from "./schemas-middleware.js";
 import { closeDatabase, getPool, healthCheck } from "./db/client.js";
-import { CreativeAgentClient, SingleAgentClient } from "@adcp/sdk";
+import { AuthenticationRequiredError, CreativeAgentClient, SingleAgentClient } from "@adcp/sdk";
 import type { Agent, AgentType, AgentWithStats, Company } from "./types.js";
 import { isValidAgentType, VALID_MEMBER_OFFERINGS, VALID_LEGAL_DOCUMENT_TYPES } from "./types.js";
 import type { Server } from "http";
@@ -140,6 +140,9 @@ import { BansDatabase } from "./db/bans-db.js";
 import { registryRequestsDb } from "./db/registry-requests-db.js";
 import { notifyRegistryEdit, notifyRegistryCreate, notifyRegistryRollback, notifyRegistryBan } from "./notifications/registry.js";
 import { reviewNewRecord, reviewRegistryEdit } from "./addie/mcp/registry-review.js";
+import { AgentContextDatabase } from "./db/agent-context-db.js";
+import { getWebMemberContext } from "./addie/member-context.js";
+import { buildAgentOAuthAuthorizeUrl } from "./routes/helpers/agent-oauth-prompt.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -8721,6 +8724,43 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           stats,
         });
       } catch (error) {
+        // Auth-required is an expected agent state, not a system error. Log
+        // at warn so it doesn't page #aao-errors via the pino → posthog hook.
+        if (error instanceof AuthenticationRequiredError) {
+          logger.warn({ url, hasOAuth: error.hasOAuth }, 'Agent requires authentication');
+
+          let oauth_authorize_url: string | undefined;
+          if (error.hasOAuth) {
+            const userId = req.user?.id;
+            if (userId) {
+              try {
+                const memberContext = await getWebMemberContext(userId);
+                const orgId = memberContext?.organization?.workos_organization_id;
+                if (orgId) {
+                  const authorizeUrl = await buildAgentOAuthAuthorizeUrl(
+                    url,
+                    orgId,
+                    new AgentContextDatabase(),
+                    { returnTo: '/profile/edit' },
+                  );
+                  if (authorizeUrl) oauth_authorize_url = authorizeUrl;
+                }
+              } catch (memberCtxErr) {
+                logger.debug({ err: memberCtxErr, url }, 'Failed to build OAuth authorize URL');
+              }
+            }
+          }
+
+          return res.status(401).json({
+            error: 'authentication_required',
+            message: error.hasOAuth
+              ? 'This agent requires OAuth authorization.'
+              : 'This agent requires authentication. Save an auth token to continue.',
+            needs_oauth: error.hasOAuth,
+            ...(oauth_authorize_url && { oauth_authorize_url }),
+          });
+        }
+
         logger.error({ err: error, url }, 'Agent discovery error');
 
         if (error instanceof Error && error.name === 'TimeoutError') {

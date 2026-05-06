@@ -20,6 +20,7 @@ import type { AddieTool } from '../types.js';
 import type { MemberContext } from '../member-context.js';
 import { AgentContextDatabase } from '../../db/agent-context-db.js';
 import { AuthenticationRequiredError } from '@adcp/sdk';
+import { buildAgentOAuthAuthorizeUrl } from '../../routes/helpers/agent-oauth-prompt.js';
 import { TRAINING_AGENT_HOSTNAMES } from '../../training-agent/config.js';
 
 // Tool handler type (matches claude-client.ts internal type)
@@ -756,40 +757,14 @@ export function createAdcpToolHandlers(
       // Handle AuthenticationRequiredError from @adcp/sdk (includes OAuth metadata)
       if (error instanceof AuthenticationRequiredError) {
         const organizationId = memberContext?.organization?.workos_organization_id;
-        if (organizationId && error.hasOAuth) {
-          try {
-            // Get or create agent context for OAuth flow
-            const baseUrl = new URL(agentUrl);
-            let agentContext = await agentContextDb.getByOrgAndUrl(organizationId, agentUrl);
-            if (!agentContext) {
-              agentContext = await agentContextDb.create({
-                organization_id: organizationId,
-                agent_url: agentUrl,
-                agent_name: baseUrl.hostname,
-                agent_type: 'unknown',
-                protocol: 'mcp',
-              });
-              logger.info({ agentUrl, agentContextId: agentContext.id }, 'Created agent context for OAuth');
-            }
-
-            // Build auth URL with pending request context for auto-retry
-            // Note: URLSearchParams handles encoding, so don't double-encode
-            // Strip bank details from params before URL serialization — bank data
-            // in URLs leaks to browser history, access logs, and referrer headers.
-            const safeParams = structuredClone(params);
-            for (const key of ['billing_entity', 'invoice_recipient'] as const) {
-              const obj = (safeParams as Record<string, unknown>)[key];
-              if (obj && typeof obj === 'object' && 'bank' in (obj as Record<string, unknown>)) {
-                delete (obj as Record<string, unknown>).bank;
-              }
-            }
-            const authParams = new URLSearchParams({
-              agent_context_id: agentContext.id,
-              pending_task: task,
-              pending_params: JSON.stringify(safeParams),
-            });
-            const authUrl = `${getBaseUrl()}/api/oauth/agent/start?${authParams.toString()}`;
-
+        if (error.hasOAuth) {
+          const authUrl = await buildAgentOAuthAuthorizeUrl(
+            agentUrl,
+            organizationId,
+            agentContextDb,
+            { pendingTask: task, pendingParams: params },
+          );
+          if (authUrl) {
             return (
               `**Task failed:** \`${task}\`\n\n` +
               `**Error:** OAuth authorization required\n\n` +
@@ -797,8 +772,6 @@ export function createAdcpToolHandlers(
               `**[Click here to authorize this agent](${authUrl})**\n\n` +
               `After you authorize, I'll automatically retry your request.`
             );
-          } catch (oauthSetupError) {
-            logger.debug({ error: oauthSetupError, agentUrl }, 'Failed to set up OAuth flow');
           }
         }
 
