@@ -820,7 +820,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
     actor: { user_id: string; email: string; name?: string }
   ): Promise<
     | { status: 404; body: { error: string } }
-    | { status: 400; body: { error: string } }
+    | { status: 400; body: { error: string; message?: string } }
     | { status: 403; body: { error: string; message: string } }
     | { status: 200; body: Record<string, unknown> }
   > {
@@ -912,7 +912,13 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       if (target === 'public') {
         if (!row.primary_brand_domain) {
           await client.query('ROLLBACK');
-          return { status: 400, body: { error: 'Set your primary brand domain first' } };
+          return {
+            status: 400,
+            body: {
+              error: 'brand_domain_required',
+              message: 'To list an agent publicly, your profile needs a primary brand domain. If you have a verified email domain in your organization (e.g. via SSO), it should auto-populate — otherwise, claim your brand domain in the Brand section of your profile.',
+            },
+          };
         }
         try {
           const parsed = new URL(agent.url);

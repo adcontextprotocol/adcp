@@ -75,7 +75,7 @@ interface OrganizationDomainData {
  * WorkOS organization_domain event data
  * This is the full domain object from organization_domain.* events
  */
-interface OrganizationDomainEventData {
+export interface OrganizationDomainEventData {
   id: string;
   domain?: string;
   organization_id: string;
@@ -659,7 +659,7 @@ async function deleteOrganizationDomains(orgId: string): Promise<void> {
  * Upsert a single organization domain from organization_domain.* events
  * Uses transaction to prevent race conditions when setting primary domain
  */
-async function upsertOrganizationDomain(domainData: OrganizationDomainEventData & { domain: string }): Promise<void> {
+export async function upsertOrganizationDomain(domainData: OrganizationDomainEventData & { domain: string }): Promise<void> {
   const pool = getPool();
   const client = await pool.connect();
 
@@ -785,6 +785,32 @@ async function upsertOrganizationDomain(domainData: OrganizationDomainEventData 
           // Don't block the webhook on brand-registry sync errors — webhook
           // idempotency is the whole point. Subsequent events will retry.
           logger.error({ err, orgId: domainData.organization_id, domain: normalizedDomain }, 'Failed to sync verified domain to brand registry');
+        }
+
+        // Auto-populate `member_profiles.primary_brand_domain` when a member
+        // verifies a claimable domain via WorkOS and they haven't already
+        // staked a brand identity. Without this, members who verified a
+        // domain via SSO still hit the publish-agent gate that requires a
+        // primary brand domain — surprising for the common case where their
+        // email domain *is* their brand. Only writes when NULL so an
+        // intentional brand-claim (request_brand_domain_challenge / verify)
+        // pointing at a different domain is never clobbered.
+        try {
+          const updated = await pool.query(
+            `UPDATE member_profiles
+               SET primary_brand_domain = $1, updated_at = NOW()
+             WHERE workos_organization_id = $2
+               AND primary_brand_domain IS NULL`,
+            [normalizedDomain, domainData.organization_id]
+          );
+          if (updated.rowCount && updated.rowCount > 0) {
+            logger.info({
+              orgId: domainData.organization_id,
+              domain: normalizedDomain,
+            }, 'Auto-set primary_brand_domain on member_profile from verified WorkOS domain');
+          }
+        } catch (err) {
+          logger.error({ err, orgId: domainData.organization_id, domain: normalizedDomain }, 'Failed to auto-set primary_brand_domain on member_profile');
         }
       }
     }
