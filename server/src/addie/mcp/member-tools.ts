@@ -4445,6 +4445,32 @@ export function createMemberToolHandlers(
         }
       }));
 
+      // OAuth on the agent makes every brief fail identically. Short-circuit
+      // before rendering an N-brief failure report the user can't act on.
+      // Inner per-brief catch swallows the throw and stashes err.message —
+      // string detection is how we recognize it post-Promise.all.
+      if (briefResults.length > 0 && briefResults.every(r => isOAuthRequiredErrorMessage(r.error))) {
+        logger.warn(
+          { agentUrl: resolved.resolvedUrl },
+          'compare_media_kit: agent requires authentication',
+        );
+        const authorizeUrl = await buildAgentOAuthAuthorizeUrl(
+          resolved.resolvedUrl,
+          organizationId,
+          agentContextDb,
+        );
+        if (authorizeUrl) {
+          return (
+            `**OAuth authorization required**\n\n` +
+            `The agent at \`${resolved.resolvedUrl}\` requires OAuth authentication ` +
+            `before I can compare its products against the media kit.\n\n` +
+            `**[Click here to authorize this agent](${authorizeUrl})**\n\n` +
+            `After you authorize, ask me to try again.`
+          );
+        }
+        return `Agent at ${resolved.resolvedUrl} requires authentication. Use \`save_agent\` to store credentials first, then try again.`;
+      }
+
       // Aggregate across all briefs
       const allChannelsFound = new Set<string>();
       const allFormatsFound = new Set<string>();
@@ -4519,11 +4545,31 @@ export function createMemberToolHandlers(
 
       return output;
     } catch (error) {
-      logger.error({ error, agentUrl: resolved.resolvedUrl }, 'Addie: compare_media_kit failed');
-      const msg = error instanceof Error ? error.message : 'Unknown error';
-      if (msg.includes('401') || msg.includes('Unauthorized') || msg.includes('authentication')) {
+      if (isOAuthRequiredError(error)) {
+        logger.warn(
+          { agentUrl: resolved.resolvedUrl, hasOAuth: error instanceof AuthenticationRequiredError && error.hasOAuth },
+          'compare_media_kit: agent requires authentication',
+        );
+        if (error instanceof AuthenticationRequiredError && error.hasOAuth) {
+          const authorizeUrl = await buildAgentOAuthAuthorizeUrl(
+            resolved.resolvedUrl,
+            organizationId,
+            agentContextDb,
+          );
+          if (authorizeUrl) {
+            return (
+              `**OAuth authorization required**\n\n` +
+              `The agent at \`${resolved.resolvedUrl}\` requires OAuth authentication ` +
+              `before I can compare its products against the media kit.\n\n` +
+              `**[Click here to authorize this agent](${authorizeUrl})**\n\n` +
+              `After you authorize, ask me to try again.`
+            );
+          }
+        }
         return `Agent at ${resolved.resolvedUrl} requires authentication. Use \`save_agent\` to store credentials first, then try again.`;
       }
+      logger.error({ error, agentUrl: resolved.resolvedUrl }, 'Addie: compare_media_kit failed');
+      const msg = error instanceof Error ? error.message : 'Unknown error';
       throw new ToolError(`Failed to compare media kit for ${resolved.resolvedUrl}: ${msg}`);
     }
   });
@@ -4747,11 +4793,31 @@ export function createMemberToolHandlers(
 
       return output;
     } catch (error) {
-      logger.error({ error, agentUrl }, 'Addie: test_rfp_response failed');
-      const msg = (error instanceof Error ? error.message : 'Unknown error').slice(0, 500);
-      if (msg.includes('401') || msg.includes('Unauthorized') || msg.includes('authentication')) {
+      if (isOAuthRequiredError(error)) {
+        logger.warn(
+          { agentUrl, hasOAuth: error instanceof AuthenticationRequiredError && error.hasOAuth },
+          'test_rfp_response: agent requires authentication',
+        );
+        if (error instanceof AuthenticationRequiredError && error.hasOAuth) {
+          const authorizeUrl = await buildAgentOAuthAuthorizeUrl(
+            resolved.resolvedUrl,
+            organizationId,
+            agentContextDb,
+          );
+          if (authorizeUrl) {
+            return (
+              `**OAuth authorization required**\n\n` +
+              `The agent at \`${resolved.resolvedUrl}\` requires OAuth authentication ` +
+              `before I can test the RFP response.\n\n` +
+              `**[Click here to authorize this agent](${authorizeUrl})**\n\n` +
+              `After you authorize, ask me to try again.`
+            );
+          }
+        }
         return `Agent at ${agentUrl} requires authentication. Use \`save_agent\` to store credentials first, then try again.`;
       }
+      logger.error({ error, agentUrl }, 'Addie: test_rfp_response failed');
+      const msg = (error instanceof Error ? error.message : 'Unknown error').slice(0, 500);
       throw new ToolError(`Failed to test RFP response for ${agentUrl}: <external_error>${msg}</external_error>`);
     }
   });
@@ -5126,11 +5192,31 @@ export function createMemberToolHandlers(
 
       return output;
     } catch (error) {
-      logger.error({ error, agentUrl }, 'Addie: test_io_execution failed');
-      const msg = (error instanceof Error ? error.message : 'Unknown error').slice(0, 500);
-      if (msg.includes('401') || msg.includes('Unauthorized') || msg.includes('authentication')) {
+      if (isOAuthRequiredError(error)) {
+        logger.warn(
+          { agentUrl, hasOAuth: error instanceof AuthenticationRequiredError && error.hasOAuth },
+          'test_io_execution: agent requires authentication',
+        );
+        if (error instanceof AuthenticationRequiredError && error.hasOAuth) {
+          const authorizeUrl = await buildAgentOAuthAuthorizeUrl(
+            resolved.resolvedUrl,
+            organizationId,
+            agentContextDb,
+          );
+          if (authorizeUrl) {
+            return (
+              `**OAuth authorization required**\n\n` +
+              `The agent at \`${resolved.resolvedUrl}\` requires OAuth authentication ` +
+              `before I can test the IO execution.\n\n` +
+              `**[Click here to authorize this agent](${authorizeUrl})**\n\n` +
+              `After you authorize, ask me to try again.`
+            );
+          }
+        }
         return `Agent at ${agentUrl} requires authentication. Use \`save_agent\` to store credentials first, then try again.`;
       }
+      logger.error({ error, agentUrl }, 'Addie: test_io_execution failed');
+      const msg = (error instanceof Error ? error.message : 'Unknown error').slice(0, 500);
       throw new ToolError(`Failed to test IO execution for ${agentUrl}: <external_error>${msg}</external_error>`);
     }
   });
