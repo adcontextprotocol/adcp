@@ -19,7 +19,8 @@
  * Prerequisites: DATABASE_URL set.
  */
 
-import { getPool } from '../db/client.js';
+import { initializeDatabase, getPool, closeDatabase } from '../db/client.js';
+import { getDatabaseConfig } from '../config.js';
 import {
   assertClaimableBrandDomain,
   canonicalizeBrandDomain,
@@ -36,6 +37,12 @@ interface Candidate {
 }
 
 async function main(): Promise<void> {
+  const dbConfig = getDatabaseConfig();
+  if (!dbConfig) {
+    console.error('DATABASE_URL is required');
+    process.exit(1);
+  }
+  initializeDatabase(dbConfig);
   const pool = getPool();
 
   const result = await pool.query<{ workos_organization_id: string; domain: string }>(
@@ -110,8 +117,10 @@ async function main(): Promise<void> {
 }
 
 main()
+  .then(() => closeDatabase())
   .then(() => process.exit(0))
-  .catch((err) => {
+  .catch(async (err) => {
     console.error(err);
+    await closeDatabase().catch(() => {});
     process.exit(1);
   });
