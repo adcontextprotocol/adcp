@@ -1,5 +1,5 @@
 import type { Story } from "@ladle/react";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 
@@ -54,7 +54,7 @@ const PRIMITIVE_REF: Record<LadleMode, Partial<Record<SemanticToken, string>>> =
     "card-foreground": "neutral-950",
     popover: "white",
     "popover-foreground": "neutral-950",
-    primary: "brand-blue-700",
+    primary: "blue-600",
     "primary-foreground": "white",
     secondary: "slate-900 @ 6%",
     "secondary-foreground": "neutral-900",
@@ -88,7 +88,7 @@ const PRIMITIVE_REF: Record<LadleMode, Partial<Record<SemanticToken, string>>> =
     "card-foreground": "slate-50",
     popover: "slate-900",
     "popover-foreground": "slate-50",
-    primary: "brand-blue-500",
+    primary: "blue-600",
     "primary-foreground": "white",
     secondary: "raw — oklch(1 0 0 / 12%)",
     "secondary-foreground": "slate-50",
@@ -532,20 +532,6 @@ function PrimitiveScale({ swatches }: { swatches: PrimitiveSwatch[] }) {
   );
 }
 
-const BRAND_BLUE: PrimitiveSwatch[] = [
-  { className: "bg-brand-blue-50", label: "brand-blue-50", cssVar: "--color-brand-blue-50" },
-  { className: "bg-brand-blue-100", label: "brand-blue-100", cssVar: "--color-brand-blue-100" },
-  { className: "bg-brand-blue-200", label: "brand-blue-200", cssVar: "--color-brand-blue-200" },
-  { className: "bg-brand-blue-300", label: "brand-blue-300", cssVar: "--color-brand-blue-300" },
-  { className: "bg-brand-blue-400", label: "brand-blue-400", cssVar: "--color-brand-blue-400" },
-  { className: "bg-brand-blue-500", label: "brand-blue-500", cssVar: "--color-brand-blue-500" },
-  { className: "bg-brand-blue-600", label: "brand-blue-600", cssVar: "--color-brand-blue-600" },
-  { className: "bg-brand-blue-700", label: "brand-blue-700", cssVar: "--color-brand-blue-700" },
-  { className: "bg-brand-blue-800", label: "brand-blue-800", cssVar: "--color-brand-blue-800" },
-  { className: "bg-brand-blue-900", label: "brand-blue-900", cssVar: "--color-brand-blue-900" },
-  { className: "bg-brand-blue-950", label: "brand-blue-950", cssVar: "--color-brand-blue-950" },
-];
-
 const BLUE: PrimitiveSwatch[] = [
   { className: "bg-blue-50", label: "blue-50", cssVar: "--color-blue-50" },
   { className: "bg-blue-100", label: "blue-100", cssVar: "--color-blue-100" },
@@ -558,6 +544,7 @@ const BLUE: PrimitiveSwatch[] = [
   { className: "bg-blue-800", label: "blue-800", cssVar: "--color-blue-800" },
   { className: "bg-blue-900", label: "blue-900", cssVar: "--color-blue-900" },
   { className: "bg-blue-950", label: "blue-950", cssVar: "--color-blue-950" },
+  { className: "bg-blue-1000", label: "blue-1000", cssVar: "--color-blue-1000" },
 ];
 
 const NEUTRAL: PrimitiveSwatch[] = [
@@ -572,6 +559,7 @@ const NEUTRAL: PrimitiveSwatch[] = [
   { className: "bg-neutral-800", label: "neutral-800", cssVar: "--color-neutral-800" },
   { className: "bg-neutral-900", label: "neutral-900", cssVar: "--color-neutral-900" },
   { className: "bg-neutral-950", label: "neutral-950", cssVar: "--color-neutral-950" },
+  { className: "bg-neutral-1000", label: "neutral-1000", cssVar: "--color-neutral-1000" },
 ];
 
 const GRAY: PrimitiveSwatch[] = [
@@ -586,6 +574,7 @@ const GRAY: PrimitiveSwatch[] = [
   { className: "bg-gray-800", label: "gray-800", cssVar: "--color-gray-800" },
   { className: "bg-gray-900", label: "gray-900", cssVar: "--color-gray-900" },
   { className: "bg-gray-950", label: "gray-950", cssVar: "--color-gray-950" },
+  { className: "bg-gray-1000", label: "gray-1000", cssVar: "--color-gray-1000" },
 ];
 
 const GREEN: PrimitiveSwatch[] = [
@@ -600,6 +589,7 @@ const GREEN: PrimitiveSwatch[] = [
   { className: "bg-green-800", label: "green-800", cssVar: "--color-green-800" },
   { className: "bg-green-900", label: "green-900", cssVar: "--color-green-900" },
   { className: "bg-green-950", label: "green-950", cssVar: "--color-green-950" },
+  { className: "bg-green-1000", label: "green-1000", cssVar: "--color-green-1000" },
 ];
 
 const EMERALD: PrimitiveSwatch[] = [
@@ -614,6 +604,7 @@ const EMERALD: PrimitiveSwatch[] = [
   { className: "bg-emerald-800", label: "emerald-800", cssVar: "--color-emerald-800" },
   { className: "bg-emerald-900", label: "emerald-900", cssVar: "--color-emerald-900" },
   { className: "bg-emerald-950", label: "emerald-950", cssVar: "--color-emerald-950" },
+  { className: "bg-emerald-1000", label: "emerald-1000", cssVar: "--color-emerald-1000" },
 ];
 
 const YELLOW: PrimitiveSwatch[] = [
@@ -628,6 +619,7 @@ const YELLOW: PrimitiveSwatch[] = [
   { className: "bg-yellow-800", label: "yellow-800", cssVar: "--color-yellow-800" },
   { className: "bg-yellow-900", label: "yellow-900", cssVar: "--color-yellow-900" },
   { className: "bg-yellow-950", label: "yellow-950", cssVar: "--color-yellow-950" },
+  { className: "bg-yellow-1000", label: "yellow-1000", cssVar: "--color-yellow-1000" },
 ];
 
 const AMBER: PrimitiveSwatch[] = [
@@ -642,6 +634,7 @@ const AMBER: PrimitiveSwatch[] = [
   { className: "bg-amber-800", label: "amber-800", cssVar: "--color-amber-800" },
   { className: "bg-amber-900", label: "amber-900", cssVar: "--color-amber-900" },
   { className: "bg-amber-950", label: "amber-950", cssVar: "--color-amber-950" },
+  { className: "bg-amber-1000", label: "amber-1000", cssVar: "--color-amber-1000" },
 ];
 
 const RED: PrimitiveSwatch[] = [
@@ -656,7 +649,60 @@ const RED: PrimitiveSwatch[] = [
   { className: "bg-red-800", label: "red-800", cssVar: "--color-red-800" },
   { className: "bg-red-900", label: "red-900", cssVar: "--color-red-900" },
   { className: "bg-red-950", label: "red-950", cssVar: "--color-red-950" },
+  { className: "bg-red-1000", label: "red-1000", cssVar: "--color-red-1000" },
 ];
+
+const STOP_LABELS = [
+  "50",
+  "100",
+  "200",
+  "300",
+  "400",
+  "500",
+  "600",
+  "700",
+  "800",
+  "900",
+  "950",
+  "1000",
+] as const;
+
+const ALL_RAMPS: { name: string; swatches: PrimitiveSwatch[] }[] = [
+  { name: "Blue", swatches: BLUE },
+  { name: "Neutral", swatches: NEUTRAL },
+  { name: "Gray", swatches: GRAY },
+  { name: "Green", swatches: GREEN },
+  { name: "Emerald", swatches: EMERALD },
+  { name: "Yellow", swatches: YELLOW },
+  { name: "Amber", swatches: AMBER },
+  { name: "Red", swatches: RED },
+];
+
+function PrimitiveGrid() {
+  return (
+    <div
+      className="grid gap-0"
+      style={{
+        gridTemplateColumns: `minmax(96px, max-content) repeat(${STOP_LABELS.length}, minmax(0, 1fr))`,
+      }}
+    >
+      <div />
+      {STOP_LABELS.map((stop) => (
+        <div key={stop} className="pb-2 text-center font-mono text-[11px] text-body-foreground">
+          {stop}
+        </div>
+      ))}
+      {ALL_RAMPS.map((ramp) => (
+        <Fragment key={ramp.name}>
+          <div className="self-center pr-4 text-sm text-foreground">{ramp.name}</div>
+          {ramp.swatches.map((s) => (
+            <div key={s.label} className={`aspect-square ${s.className}`} title={s.label} />
+          ))}
+        </Fragment>
+      ))}
+    </div>
+  );
+}
 
 export default {
   title: "Design tokens / Color",
@@ -754,11 +800,11 @@ export const All: Story = () => (
       <SemanticGrid filter={(name) => name.startsWith("chart-")} />
     </Section>
 
-    <Section title="Primitive — Brand blue (custom)">
-      <PrimitiveScale swatches={BRAND_BLUE} />
+    <Section title="Primitives — Grid">
+      <PrimitiveGrid />
     </Section>
 
-    <Section title="Primitive — Blue (Tailwind)">
+    <Section title="Primitive — Blue (Scope3 brand override)">
       <PrimitiveScale swatches={BLUE} />
     </Section>
 

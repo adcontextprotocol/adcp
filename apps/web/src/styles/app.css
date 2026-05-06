@@ -43,7 +43,7 @@
   --card-foreground: var(--color-neutral-950);
   --popover: var(--color-white);
   --popover-foreground: var(--color-neutral-950);
-  --primary: var(--color-brand-blue-700);
+  --primary: var(--color-blue-600);
   --primary-foreground: var(--color-white);
   --secondary: oklch(from var(--color-slate-900) l c h / 6%);
   --secondary-foreground: var(--color-neutral-900);
@@ -79,7 +79,7 @@
     --card-foreground: var(--color-slate-50);
     --popover: var(--color-slate-900);
     --popover-foreground: var(--color-slate-50);
-    --primary: var(--color-brand-blue-500);
+    --primary: var(--color-blue-600);
     --primary-foreground: var(--color-white);
     --secondary: oklch(1 0 0 / 12%);
     --secondary-foreground: var(--color-slate-50);
@@ -111,7 +111,7 @@
   --card-foreground: var(--color-neutral-950);
   --popover: var(--color-white);
   --popover-foreground: var(--color-neutral-950);
-  --primary: var(--color-brand-blue-700);
+  --primary: var(--color-blue-600);
   --primary-foreground: var(--color-white);
   --secondary: oklch(from var(--color-slate-900) l c h / 6%);
   --secondary-foreground: var(--color-neutral-900);
@@ -141,7 +141,7 @@
   --card-foreground: var(--color-slate-50);
   --popover: var(--color-slate-900);
   --popover-foreground: var(--color-slate-50);
-  --primary: var(--color-brand-blue-500);
+  --primary: var(--color-blue-600);
   --primary-foreground: var(--color-white);
   --secondary: oklch(1 0 0 / 12%);
   --secondary-foreground: var(--color-slate-50);
@@ -165,12 +165,10 @@
 }
 
 /*
- * Custom primitive ramp — brand-blue. 11 stops matching Tailwind's progression.
- * Anchored at 700 / 600 / 300 from the legacy AdCP palette; remaining stops
- * fill out the legacy primary scale, with 950 extrapolated darker than 900.
- * Available as bg-brand-blue-700, text-brand-blue-300, etc.
- *
- * NOT a replacement for Tailwind's built-in `blue` — both ramps coexist.
+ * Override Tailwind's blue ramp with Scope3 brand-blue values.
+ * Anchored at 600 = #3055F8 (Scope3 brand blue); chroma peaks at the anchor and
+ * lightness follows a smooth bell from 50 to 1000, with hue holding around 267°.
+ * Drives `bg-blue-*` / `text-blue-*` and the `--primary` semantic token.
  */
 /* biome-ignore lint/suspicious/noUnknownAtRules: Tailwind CSS v4 directive */
 @theme {
@@ -179,17 +177,33 @@
   --font-mono: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas,
     monospace;
 
-  --color-brand-blue-50: oklch(0.9649 0.0125 255.51);
-  --color-brand-blue-100: oklch(0.9273 0.0306 258.94);
-  --color-brand-blue-200: oklch(0.88 0.0468 258.37);
-  --color-brand-blue-300: oklch(0.8096 0.0783 260.52);
-  --color-brand-blue-400: oklch(0.661 0.1519 268.18);
-  --color-brand-blue-500: oklch(0.5598 0.1882 266.4);
-  --color-brand-blue-600: oklch(0.4933 0.21 266.99);
-  --color-brand-blue-700: oklch(0.4101 0.1996 266.43);
-  --color-brand-blue-800: oklch(0.3293 0.1533 267.24);
-  --color-brand-blue-900: oklch(0.2876 0.1327 267.29);
-  --color-brand-blue-950: oklch(0.2328 0.0988 268.25);
+  --color-blue-50: oklch(0.970 0.012 258);
+  --color-blue-100: oklch(0.928 0.028 260);
+  --color-blue-200: oklch(0.878 0.055 262);
+  --color-blue-300: oklch(0.802 0.100 264);
+  --color-blue-400: oklch(0.700 0.175 266);
+  --color-blue-500: oklch(0.620 0.215 267);
+  --color-blue-600: oklch(0.5358 0.2447 266.97); /* #3055F8 */
+  --color-blue-700: oklch(0.465 0.225 268);
+  --color-blue-800: oklch(0.395 0.190 268);
+  --color-blue-900: oklch(0.330 0.145 268);
+  --color-blue-950: oklch(0.270 0.120 268);
+  --color-blue-1000: oklch(0.2102 0.0975 268.06); /* #071044 */
+
+  /*
+   * 1000 stops for the rest of Tailwind's ramps — one step darker than 950.
+   * Useful for flooding backgrounds and deep dark-mode surfaces.
+   */
+  --color-slate-1000: oklch(0.069 0.038 265);
+  --color-gray-1000: oklch(0.070 0.026 261);
+  --color-neutral-1000: oklch(0.080 0 0);
+  --color-cyan-1000: oklch(0.242 0.045 230);
+  --color-green-1000: oklch(0.206 0.052 153);
+  --color-emerald-1000: oklch(0.205 0.030 173);
+  --color-red-1000: oklch(0.198 0.074 26);
+  --color-orange-1000: oklch(0.206 0.063 36);
+  --color-amber-1000: oklch(0.219 0.048 46);
+  --color-yellow-1000: oklch(0.226 0.053 54);
 }
 
 /* biome-ignore lint/suspicious/noUnknownAtRules: Tailwind CSS v4 directive */
