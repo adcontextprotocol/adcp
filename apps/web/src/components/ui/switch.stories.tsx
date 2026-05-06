@@ -39,7 +39,7 @@ export const All: Story = () => (
       <div className="flex items-start justify-between gap-6 max-w-md rounded-md border border-border p-4">
         <div className="space-y-0.5">
           <Label htmlFor="notifications">Email notifications</Label>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-body-foreground">
             Receive an email when something happens that needs your attention.
           </p>
         </div>

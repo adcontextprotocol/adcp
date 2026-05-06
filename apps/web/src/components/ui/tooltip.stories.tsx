@@ -31,7 +31,7 @@ export const All: Story = () => (
         <span className="text-sm">Active brands</span>
         <Tooltip>
           <TooltipTrigger asChild>
-            <button type="button" className="text-muted-foreground hover:text-foreground">
+            <button type="button" className="text-body-foreground hover:text-foreground">
               <Info className="size-4" />
             </button>
           </TooltipTrigger>

@@ -25,7 +25,7 @@ export const All: Story = () => (
           <div className="grid gap-4">
             <div>
               <h4 className="font-medium">Dimensions</h4>
-              <p className="text-xs text-muted-foreground">Set the dimensions for the layer.</p>
+              <p className="text-xs text-body-foreground">Set the dimensions for the layer.</p>
             </div>
             <div className="grid gap-2">
               <div className="grid grid-cols-3 items-center gap-4">
