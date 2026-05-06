@@ -1,0 +1,59 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/formats/canonical/sponsored_placement.json",
+  "title": "Canonical Format: Sponsored Placement (retail-media catalog-driven)",
+  "description": "Catalog-driven retail-media format. Slot: `source_catalog` (catalog asset — product/SKU/ASIN/GTIN catalog reference), optional `landing_page_url`. Buyer supplies the catalog reference; surface composes per-item or multi-item rendering using its native placement template. **Composition is deterministic** — buyer can predict per-slot rendering from the catalog item structure. Tracking model: per-item impression + click + conversion (catalog-keyed via offering_id/sku/gtin macros). Covers Amazon Sponsored Products, Criteo Sponsored Products, CitrusAd Sponsored Products. Distinct from `responsive_creative` (algorithmic combinator from buyer pool) and `agent_placement` (text/audio AI-surface composition).",
+  "allOf": [{ "$ref": "/schemas/formats/canonical/_base.json" }],
+  "properties": {
+    "slots": {
+      "default": [
+        { "asset_group_id": "source_catalog", "required": true, "asset_type": "catalog" },
+        { "asset_group_id": "hero_asset", "required": false, "asset_type": "image" },
+        { "asset_group_id": "landing_page_url", "required": false, "asset_type": "url" }
+      ]
+    },
+    "supported_catalog_types": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["product", "store", "offering", "hotel", "flight", "vehicle", "real_estate", "education", "destination", "app", "job", "inventory"]
+      },
+      "description": "Catalog types this product accepts."
+    },
+    "min_items": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Minimum catalog item count buyer must supply."
+    },
+    "max_items": {
+      "type": "integer",
+      "description": "Maximum items considered for placement."
+    },
+    "fanout_mode": {
+      "type": "string",
+      "enum": ["per_item", "multi_item_in_creative", "single_item"],
+      "description": "How items map to delivery: per_item = one ad per catalog item; multi_item_in_creative = composed multi-item ad (Pinterest Collection, Snap Collection); single_item = one ad showing one item."
+    },
+    "required_catalog_fields": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Catalog item fields the seller requires (e.g., ['title', 'image_url', 'price'])."
+    },
+    "supported_id_types": {
+      "type": "array",
+      "items": { "type": "string", "enum": ["asin", "sku", "gtin", "offering_id", "store_id", "hotel_id", "flight_id", "vehicle_id", "listing_id", "program_id", "destination_id", "app_id", "job_id"] },
+      "description": "Catalog identifier types the placement renders against."
+    },
+    "hero_asset_supported": {
+      "type": "boolean",
+      "description": "Whether the buyer can supply a hero/banner asset alongside the catalog (Pinterest Collection pattern)."
+    },
+    "item_production_model": {
+      "type": "string",
+      "enum": ["buyer_uploaded", "seller_pre_rendered_from_brief", "seller_human_designed", "agent_synthesized"],
+      "default": "buyer_uploaded",
+      "description": "How each per-item creative is produced. Aligned with the buyer-side default name (`buyer_uploaded`) used by `image_source` / `video_source` / `audio_source` so SDK codegen emits a single shared 4-value enum across all production-source fields. `buyer_uploaded` (default, current Amazon/Criteo/CitrusAd pattern): the buyer's catalog already contains rendered assets per item; the seller composes the placement using those assets. (\"Uploaded\" reads slightly off for catalog-keyed items where the buyer didn't actively upload bytes — the catalog ingestion already supplied them — but the semantic is the same: rendered bytes are buyer-supplied, not seller-produced.) `seller_pre_rendered_from_brief`: the buyer ships a brief plus the catalog reference; the seller renders one creative per catalog item from the brief at sync_creatives time. `seller_human_designed`: seller's design team produces per-item renders manually. `agent_synthesized`: AI synthesis pipeline produces per-item renders; pair with `synthesis_nondeterministic: true` for Veo/Sora-class generative video applied per item. Captures the multi-output generative pattern (1 brief × N catalog items → N rendered creatives) under the existing canonical without requiring a separate canonical. Distinct from `fanout_mode`, which describes how items map to delivery slots after rendering."
+    }
+  },
+  "additionalProperties": true
+}

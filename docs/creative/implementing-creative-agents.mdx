@@ -4,6 +4,7 @@ description: "How to build an AdCP creative agent that defines formats, validate
 "og:title": "AdCP — Implementing Creative Agents"
 ---
 
+> **v2 preview**: in v2, creative agents declare what they can produce via `creative.supported_formats` on `get_adcp_capabilities` (replacing the v1 `list_creative_formats` overload for creative agents). Each entry uses the same `ProductFormatDeclaration` shape as a product's inline `format_options[i]`. See [v2-overview](/docs/creative/v2-overview).
 
 This guide explains how to implement a creative agent that defines and manages creative formats.
 

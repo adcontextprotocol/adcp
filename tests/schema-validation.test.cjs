@@ -279,10 +279,12 @@ async function runTests() {
   await test('Core schemas have appropriate required fields', () => {
     const coreSchemas = schemas.filter(([path]) => path.includes('/core/'));
     const requiredFieldChecks = {
-      'product.json': ['product_id', 'name', 'description', 'format_ids', 'delivery_type'],
+      // product.json: format_ids OR format_options is required (v1 OR v2 path) — checked separately below
+      // creative-asset.json: format_id OR format_kind is required (v1 OR v2 path) — checked separately below
+      'product.json': ['product_id', 'name', 'description', 'delivery_type'],
       'media-buy.json': ['media_buy_id', 'status', 'total_budget', 'packages'],
       'package.json': ['package_id'],
-      'creative-asset.json': ['creative_id', 'name', 'format_id', 'assets'],
+      'creative-asset.json': ['creative_id', 'name', 'assets'],
       'error.json': ['code', 'message']
     };
 
@@ -299,6 +301,39 @@ async function runTests() {
         }
       }
     }
+
+    // product.json: assert v1 (format_ids) OR v2 (format_options) is required via anyOf — at-least-one,
+    // BOTH allowed during the migration window (per RFC #3305 amendment #3765). The previous oneOf-with-not
+    // shape required exactly one and forbade dual emission, which broke the seller migration story.
+    const productEntry = coreSchemas.find(([p]) => path.basename(p) === 'product.json');
+    if (productEntry) {
+      const [, productSchema] = productEntry;
+      const anyOf = productSchema.anyOf || [];
+      const hasV1Branch = anyOf.some((branch) => (branch.required || []).includes('format_ids'));
+      const hasV2Branch = anyOf.some((branch) => (branch.required || []).includes('format_options'));
+      if (!hasV1Branch || !hasV2Branch) {
+        return `product.json: must have an anyOf with v1 branch (required: ["format_ids"]) and v2 branch (required: ["format_options"]); found v1=${hasV1Branch}, v2=${hasV2Branch}`;
+      }
+      // No-not invariant: branches MUST NOT carry `not` clauses excluding the other branch — that would
+      // be the old oneOf behavior. anyOf with no negative constraints lets dual-emission products validate.
+      const hasForbiddenNotClause = anyOf.some((branch) => branch.not && branch.not.required);
+      if (hasForbiddenNotClause) {
+        return `product.json: anyOf branches must not carry 'not: required' clauses — dual emission of format_ids + format_options is legal during migration. See #3765.`;
+      }
+    }
+
+    // creative-asset.json: assert v1 (format_id) OR v2 (format_kind) is required via oneOf
+    const creativeAssetEntry = coreSchemas.find(([p]) => path.basename(p) === 'creative-asset.json');
+    if (creativeAssetEntry) {
+      const [, creativeAssetSchema] = creativeAssetEntry;
+      const oneOf = creativeAssetSchema.oneOf || [];
+      const hasV1Branch = oneOf.some((branch) => (branch.required || []).includes('format_id'));
+      const hasV2Branch = oneOf.some((branch) => (branch.required || []).includes('format_kind'));
+      if (!hasV1Branch || !hasV2Branch) {
+        return `creative-asset.json: must have a oneOf with v1 branch (required: ["format_id"]) and v2 branch (required: ["format_kind"]); found v1=${hasV1Branch}, v2=${hasV2Branch}`;
+      }
+    }
+
     return true;
   });
 

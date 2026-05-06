@@ -36,9 +36,17 @@
     },
     "format_ids": {
       "type": "array",
-      "description": "Array of supported creative format IDs - structured format_id objects with agent_url and id",
+      "description": "v1 path: array of supported creative format IDs (structured format_id objects with agent_url and id). Products MUST carry `format_ids`, `format_options`, or BOTH; at least one is required. v1 named formats remain supported through the v1-deprecation calendar (2027-Q4 floor / 2029-Q1 ceiling).\n\n**Dual emission**: A product MAY carry both `format_ids` and `format_options` simultaneously during the migration window. This is the recommended seller pattern — author once, SDK projects to both wire shapes via the [v1↔v2 canonical mapping registry](/schemas/registries/v1-canonical-mapping.json), every buyer reads what it knows. When both are present, the two MUST refer to the SAME underlying format declaration (the `format_options[i]` narrows the canonical that the named format in `format_ids[i]` resolves to via the registry / explicit `canonical` field). SDKs that derive both shapes from one source guarantee this invariant; SDKs that don't MUST treat divergence as a build error and refuse to emit. **Buyer rule**: when both are present, prefer `format_options`; treat `format_ids` as fallback for v1-only buyers. **Non-projectable formats**: when a v1 named format has no clean v2 projection (no registry entry, no explicit `canonical` declaration on the v1 format, no structural match), SDKs MUST NOT emit `format_options` for that product — only `format_ids` ships, and the product remains v1-only until the seller adds an explicit `canonical` field or files a registry entry.",
       "items": {
         "$ref": "/schemas/core/format-id.json"
+      }
+    },
+    "format_options": {
+      "type": "array",
+      "minItems": 1,
+      "description": "v2 path: one or more inline format declarations the product accepts. Each element narrows a canonical format with parameters, slots, and platform_extensions. The 90% case is a single-element array (one canonical narrowed for the product). Multi-element use cases: a product that accepts EITHER a third-party-hosted creative (e.g., Flashtalking-served `html5`) OR an internal `display_tag`; a video product that accepts a hosted `video_hosted` upload OR a `video_vast` tag. Buyers pick which option they're shipping at `sync_creatives` time by aligning their manifest to the matching declaration's `format_kind` and slots.\n\nProducts MUST carry `format_ids`, `format_options`, or BOTH; at least one is required. See `format_ids` description for the dual-emission contract (same underlying declaration when both are present; SDK derives one from the other; buyers prefer `format_options` when both are present).",
+      "items": {
+        "$ref": "/schemas/core/product-format-declaration.json"
       }
     },
     "placements": {
@@ -271,42 +279,78 @@
     },
     "product_card": {
       "type": "object",
-      "description": "Optional standard visual card (300x400px) for displaying this product in user interfaces. Can be rendered via preview_creative or pre-generated.",
+      "description": "Optional standard visual card for displaying this product in user interfaces (catalog browsers, dashboards, agent UIs). Distinct from `format` — product_card describes the UI rendering of the product itself, not the ad creative the product accepts. Typed inline; no format_id indirection. Receivers render the card directly from these fields.",
       "properties": {
-        "format_id": {
-          "$ref": "/schemas/core/format-id.json",
-          "description": "Creative format defining the card layout (typically product_card_standard)"
+        "image": {
+          "$ref": "/schemas/core/assets/image-asset.json",
+          "description": "Hero image for the card. Recommended ~300x400 (4:3 portrait) for the standard card layout; receivers may scale."
         },
-        "manifest": {
-          "type": "object",
-          "description": "Asset manifest for rendering the card, structure defined by the format",
-          "additionalProperties": true
+        "title": {
+          "type": "string",
+          "description": "Card title (typically the product name).",
+          "maxLength": 60
+        },
+        "description": {
+          "type": "string",
+          "description": "Short descriptive blurb shown below the title.",
+          "maxLength": 200
+        },
+        "price_label": {
+          "type": "string",
+          "description": "Formatted price or pricing summary (e.g., 'From $5 CPM', 'Auction floor $0.50 CPC'). Free-text — receivers render verbatim.",
+          "maxLength": 30
+        },
+        "cta_label": {
+          "type": "string",
+          "description": "Call-to-action button label (e.g., 'View details', 'Get proposal').",
+          "maxLength": 25
         }
       },
-      "required": [
-        "format_id",
-        "manifest"
-      ],
       "additionalProperties": true
     },
     "product_card_detailed": {
       "type": "object",
-      "description": "Optional detailed card with carousel and full specifications. Provides rich product presentation similar to media kit pages.",
+      "description": "Optional detailed card with hero + carousel + structured specifications, for rich product presentation (media-kit-style pages, full product detail views). Distinct from `format` — describes the UI rendering of the product itself, not the ad creative the product accepts. Typed inline; no format_id indirection.",
       "properties": {
-        "format_id": {
-          "$ref": "/schemas/core/format-id.json",
-          "description": "Creative format defining the detailed card layout (typically product_card_detailed)"
+        "hero_image": {
+          "$ref": "/schemas/core/assets/image-asset.json",
+          "description": "Primary hero image at the top of the detailed view."
         },
-        "manifest": {
-          "type": "object",
-          "description": "Asset manifest for rendering the detailed card, structure defined by the format",
-          "additionalProperties": true
+        "carousel_images": {
+          "type": "array",
+          "description": "Additional images for a swipeable carousel below the hero.",
+          "items": { "$ref": "/schemas/core/assets/image-asset.json" }
+        },
+        "title": {
+          "type": "string",
+          "description": "Page title (typically the product name)."
+        },
+        "description": {
+          "type": "string",
+          "description": "Full descriptive copy. Markdown allowed in client renderers that support it; otherwise treat as plain text."
+        },
+        "specifications": {
+          "type": "array",
+          "description": "Structured key/value specifications (e.g., 'Aspect ratio: 9:16', 'Duration: 30s'). Each item is a labeled fact about the product.",
+          "items": {
+            "type": "object",
+            "required": ["label", "value"],
+            "properties": {
+              "label": { "type": "string", "maxLength": 60 },
+              "value": { "type": "string", "maxLength": 200 }
+            },
+            "additionalProperties": true
+          }
+        },
+        "price_label": {
+          "type": "string",
+          "description": "Formatted price or pricing summary."
+        },
+        "cta_label": {
+          "type": "string",
+          "description": "Call-to-action button label."
         }
       },
-      "required": [
-        "format_id",
-        "manifest"
-      ],
       "additionalProperties": true
     },
     "collections": {
@@ -455,10 +499,21 @@
     "name",
     "description",
     "publisher_properties",
-    "format_ids",
     "delivery_type",
     "pricing_options",
     "reporting_capabilities"
+  ],
+  "anyOf": [
+    {
+      "title": "v1 Product (named-format reference)",
+      "description": "Product references one or more named formats by structured format_id ({ agent_url, id }). The v1 path; remains supported through 4.x.",
+      "required": ["format_ids"]
+    },
+    {
+      "title": "v2 Product (inline format declarations)",
+      "description": "Product carries one or more inline ProductFormatDeclarations, each narrowing a canonical format. The v2 path introduced by RFC #3305. A single-element `format_options` array is the 90% case; multi-element arrays declare that the product accepts any of the listed format options.",
+      "required": ["format_options"]
+    }
   ],
   "additionalProperties": true
 }

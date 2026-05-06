@@ -1,0 +1,81 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/formats/canonical/audio_hosted.json",
+  "title": "Canonical Format: Hosted Audio",
+  "description": "Direct audio creative — buyer ships an `audio` asset (mp3/aac/wav) for asset-driven products, or ships a `script` / `creative_brief` text asset for products where the seller produces audio internally (podcast host-reads, TTS synthesis). Optional companion slots: `companion_image`, `brand_name`, `landing_page_url`. Tracking model: standard impression + completion + companion-image-click pixels via universal_macros. Distinct from `audio_daast` (DAAST tag, inherent DAAST event tracking). For host-reads and synthesized audio, the format declares `audio_source: 'publisher_host_recorded'` or `'agent_synthesized'` plus `buyer_audio_acceptance: 'rejected'`; the format's `slots` declaration enumerates which assets the buyer ships (e.g., `script` text asset for host-reads). The seller decides how to consume each asset (render verbatim vs produce audio from text) — there is no separate manifest 'inputs' map; everything the buyer ships goes in `assets`.",
+  "allOf": [{ "$ref": "/schemas/formats/canonical/_base.json" }],
+  "properties": {
+    "slots": {
+      "default": [
+        { "asset_group_id": "audio_main", "asset_type": "audio", "required": true },
+        { "asset_group_id": "companion_image", "asset_type": "image", "required": false },
+        { "asset_group_id": "brand_name", "asset_type": "text", "required": false },
+        { "asset_group_id": "landing_page_url", "asset_type": "url", "required": false }
+      ],
+      "description": "Default slots for buyer-uploaded audio. Host-read products override with a `script` (asset_type: text) or `creative_brief` (asset_type: brief) slot in place of `audio_main`, plus `audio_source: 'publisher_host_recorded'` and `buyer_audio_acceptance: 'rejected'`. TTS-from-script products override similarly with `audio_source: 'seller_pre_rendered_from_brief'`."
+    },
+    "duration_ms_range": {
+      "type": "array",
+      "items": { "type": "integer", "minimum": 0 },
+      "minItems": 2,
+      "maxItems": 2,
+      "description": "[min, max] duration in milliseconds. **Precedence**: `duration_ms_exact` takes precedence when both ship on the same product. SDKs SHOULD lint a warning when both fields ship."
+    },
+    "duration_ms_exact": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "When set, duration must equal exactly this value. Takes precedence over `duration_ms_range` when both ship."
+    },
+    "audio_codecs": {
+      "type": "array",
+      "items": { "type": "string", "enum": ["mp3", "aac", "wav", "opus", "flac"] }
+    },
+    "audio_sample_rates": {
+      "type": "array",
+      "items": { "type": "integer", "minimum": 1 }
+    },
+    "audio_channels": {
+      "type": "array",
+      "items": { "type": "string", "enum": ["mono", "stereo"] }
+    },
+    "min_bitrate_kbps": { "type": "integer", "minimum": 1 },
+    "max_bitrate_kbps": { "type": "integer", "minimum": 1 },
+    "loudness_lufs": {
+      "type": "number",
+      "description": "Required integrated loudness in LUFS (typical: -16 for streaming/podcast, -23 for broadcast). Negative values."
+    },
+    "loudness_tolerance_db": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Permitted deviation from loudness_lufs in dB."
+    },
+    "true_peak_dbfs": {
+      "type": "number",
+      "description": "Maximum true-peak level in dBFS (typical: -2)."
+    },
+    "audio_source": {
+      "type": "string",
+      "enum": ["buyer_uploaded", "publisher_host_recorded", "seller_pre_rendered_from_brief", "seller_human_designed", "agent_synthesized"],
+      "default": "buyer_uploaded",
+      "description": "Where the rendered audio comes from. Parallels `image_source` on `image` and `video_source` on `video_hosted`. `buyer_uploaded` (default): buyer ships a pre-rendered audio asset. `publisher_host_recorded`: the publisher's host records the audio (podcast host-read pattern); buyer must use the publisher's build_creative capability. `seller_pre_rendered_from_brief`: buyer ships a brief plus structured copy; seller renders ONE audio file from those inputs at sync_creatives or build_creative time (TTS-from-brief, AI-narration-from-script). `seller_human_designed`: seller's studio team produces the audio manually. `agent_synthesized`: AI synthesis pipeline (TTS or generative audio); pair with `synthesis_nondeterministic: true` when the platform cannot guarantee in-spec output. The `slots` declaration is the binding contract for what the buyer ships; `audio_source` is informational."
+    },
+    "buyer_audio_acceptance": {
+      "type": "string",
+      "enum": ["accepted", "rejected"],
+      "default": "accepted",
+      "description": "Whether the product accepts buyer-uploaded audio. When `rejected`, the buyer cannot ship an audio asset directly — they must use build_creative (or sync_creatives with brief inputs) so the seller produces the audio. Combined with `audio_source`, lets a product declare 'I produce audio from briefs and refuse buyer uploads' (audio_source=`seller_pre_rendered_from_brief`, buyer_audio_acceptance=`rejected`)."
+    },
+    "companion_image_required": {
+      "type": "boolean"
+    },
+    "companion_image_aspect_ratio": {
+      "type": "string"
+    },
+    "companion_image_max_file_size_kb": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "brand_name_max_chars": { "type": "integer", "minimum": 1 }
+  },
+  "additionalProperties": true
+}

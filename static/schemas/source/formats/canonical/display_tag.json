@@ -1,0 +1,61 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/formats/canonical/display_tag.json",
+  "title": "Canonical Format: Display Tag",
+  "description": "Third-party-served display tag (JS, iframe, or 1×1 redirect). The buyer's adserver hosts the creative; the seller calls the tag URL at impression time. Slot: `tag_url` (url asset with appropriate `url_type`). Tracking model: opaque to seller — third party serves and measures. Click tracking via redirect URL substitution using universal_macros. Distinct from `image` (static asset hosted by seller) and `html5` (zip bundle hosted by seller).",
+  "allOf": [{ "$ref": "/schemas/formats/canonical/_base.json" }],
+  "properties": {
+    "slots": {
+      "default": [
+        { "asset_group_id": "tag_url", "asset_type": "url", "required": true },
+        { "asset_group_id": "backup_image", "asset_type": "image", "required": false }
+      ],
+      "description": "Default slots for display_tag canonical. Buyer ships a URL pointing at the third-party-served creative (JS, iframe, or 1×1 redirect) plus an optional backup image. Click and impression macros are substituted into the tag URL by the seller using `universal_macros`."
+    },
+    "width": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Required tag rendering width in pixels."
+    },
+    "height": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Required tag rendering height in pixels."
+    },
+    "supported_tag_types": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["iframe", "javascript", "1x1_redirect"]
+      },
+      "description": "Tag delivery mechanisms accepted."
+    },
+    "ssl_required": {
+      "type": "boolean",
+      "description": "Whether the tag URL must be HTTPS."
+    },
+    "max_redirect_depth": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Maximum redirect chain depth permitted."
+    },
+    "max_response_time_ms": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum tag-server response time in milliseconds."
+    },
+    "backup_image_required": {
+      "type": "boolean",
+      "description": "Whether a backup image must accompany the tag for environments that cannot render the third-party tag."
+    },
+    "backup_image_max_size_kb": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "om_sdk_required": {
+      "type": "boolean",
+      "description": "Whether the buyer's tag must integrate IAB Open Measurement SDK for viewability."
+    }
+  },
+  "additionalProperties": true
+}

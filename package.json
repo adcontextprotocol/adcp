@@ -26,6 +26,8 @@
     "test:extension-schemas": "node tests/extension-schemas.test.cjs",
     "test:snippets": "node tests/snippet-validation.test.cjs",
     "test:json-schema": "node tests/json-schema-validation.test.cjs",
+    "test:v2-fixtures": "node tests/v2-fixture-validation.test.cjs",
+    "test:v2-negative": "node tests/v2-negative-fixtures.test.cjs",
     "test:error-handling": "node tests/check-error-handling.cjs",
     "test:composed": "node tests/composed-schema-validation.test.cjs",
     "test:rejection-arm-mutex": "node tests/rejection-arm-mutual-exclusion.test.cjs",

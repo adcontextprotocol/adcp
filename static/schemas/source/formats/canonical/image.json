@@ -1,0 +1,73 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/formats/canonical/image.json",
+  "title": "Canonical Format: Image",
+  "description": "Static image creative format. Slots: `image_main` (image asset, file or hosted URL), optional `headline` (text), `body_text` (text), `cta` (text/enum), `landing_page_url` (url). Tracking model: impression pixel + click URL via universal_macros, with optional viewability pixel. Distinct from `html5` (interactive bundles) and `display_tag` (third-party served). AR/dimensions narrow to specific sizes via product parameters — covers IAB display sizes (300x250, 728x90, 970x250, etc.) without a separate iab_size enum.",
+  "allOf": [{ "$ref": "/schemas/formats/canonical/_base.json" }],
+  "properties": {
+    "slots": {
+      "default": [
+        { "asset_group_id": "image_main", "asset_type": "image", "required": true },
+        { "asset_group_id": "headline", "asset_type": "text", "required": false },
+        { "asset_group_id": "body_text", "asset_type": "text", "required": false },
+        { "asset_group_id": "landing_page_url", "asset_type": "url", "required": false }
+      ],
+      "description": "Default slots for image canonical. Buyer ships an image asset (file or hosted URL) plus optional headline, body text, and clickthrough URL. Products MAY override the default with narrowing (e.g., make `headline` required, or add a `cta` slot)."
+    },
+    "width": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Required image width in pixels."
+    },
+    "height": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Required image height in pixels."
+    },
+    "aspect_ratio": {
+      "type": "string",
+      "pattern": "^[0-9]+(\\.[0-9]+)?:[0-9]+(\\.[0-9]+)?$",
+      "description": "Optional aspect ratio constraint (e.g., '1.91:1', '1:1'). When provided alongside width/height, must agree."
+    },
+    "max_file_size_kb": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum file size in kilobytes."
+    },
+    "image_formats": {
+      "type": "array",
+      "items": { "type": "string", "enum": ["jpg", "jpeg", "png", "gif", "webp", "svg"] },
+      "description": "Permitted image file formats."
+    },
+    "ssl_required": {
+      "type": "boolean",
+      "description": "Whether the image and its trackers must be served over HTTPS."
+    },
+    "headline_max_chars": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "body_text_max_chars": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "cta_values": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Permitted CTA values for this product (e.g., ['LEARN_MORE', 'SHOP_NOW'])."
+    },
+    "image_source": {
+      "type": "string",
+      "enum": ["buyer_uploaded", "seller_pre_rendered_from_brief", "seller_human_designed", "agent_synthesized"],
+      "default": "buyer_uploaded",
+      "description": "Where the rendered image comes from. Parallels `audio_source` on `audio_hosted`. `buyer_uploaded` (default): buyer ships a pre-rendered image asset; product narrows file format / dimensions / size. `seller_pre_rendered_from_brief`: buyer ships a brief plus structured copy (headline, landing_page_url); seller renders ONE image at sync_creatives or build_creative time and serves it like any deterministic creative (generative-DSP pattern: universalads, Pencil, AdCreative.ai). `seller_human_designed`: seller's design team renders manually from a brief (human-in-the-loop services). `agent_synthesized`: AI synthesis pipeline; pair with `synthesis_nondeterministic: true` when the platform cannot guarantee in-spec output (Veo/Sora/Imagen-class). The `slots` declaration is the binding contract for what the buyer ships; `image_source` is informational and lets buyers understand the production model when picking products."
+    },
+    "buyer_image_acceptance": {
+      "type": "string",
+      "enum": ["accepted", "rejected"],
+      "default": "accepted",
+      "description": "Whether the product accepts buyer-uploaded images. When `rejected`, the buyer cannot ship an image asset directly — they must use build_creative (or sync_creatives with brief inputs) so the seller produces the image. Combined with `image_source`, lets a product declare 'I produce images from briefs and refuse buyer uploads' (image_source=`seller_pre_rendered_from_brief`, buyer_image_acceptance=`rejected`)."
+    }
+  },
+  "additionalProperties": true
+}

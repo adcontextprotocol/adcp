@@ -1,0 +1,103 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/formats/canonical/_base.json",
+  "title": "Canonical Format Base",
+  "description": "Shared parameter fields that apply across canonical formats. Each canonical format extends this base with format-specific parameters (dimensions, durations, codecs, slot constraints).",
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["stable", "preview", "deprecated"],
+      "default": "preview",
+      "description": "Stability tier for this canonical format.\n\n**While v2 itself is in preview** (PR #3307 / 3.1 beta cycle, current state): every canonical defaults to `preview`. The status field has no per-canonical differentiation during the preview window — nothing in v2 is locked yet, so claiming any canonical is `stable` would be premature. The field exists for future use after 3.1 GA, when the working group promotes individual canonicals to `stable` based on adopter evidence.\n\n**At 3.1 GA and after**: `stable` means the schema and tracking model are committed; breaking changes go through normal major-version deprecation. `preview` means the parameter shape and tracking model MAY break in a subsequent minor release once 2-3 adopters have built against it; buyers should treat preview canonicals as experimental and plan for migration. `deprecated` means a replacement is available; existing adopters supported through the deprecation cycle but new adoption is discouraged.\n\n**Per-canonical promotion at GA** uses an evidence-based rubric: a canonical promotes from preview to stable when (a) at least 2 production adopters have built against it AND (b) 90 consecutive days have passed without a breaking change to its parameter shape. Pair with `migration_target_version` to indicate when the working group expects to either stabilize or surface a breaking revision."
+    },
+    "since_version": {
+      "type": "string",
+      "description": "AdCP release-precision version that introduced this canonical (e.g., '3.1', '3.2.0'). Lets adopters reason about minimum protocol version requirements when consuming a format declaration."
+    },
+    "migration_target_version": {
+      "type": "string",
+      "description": "For `preview` canonicals: the AdCP release-precision version by which the working group expects to either promote the canonical to `stable` or surface a breaking revision. Lets adopters time their migration. Unset for `stable` canonicals (they migrate via the normal major-version deprecation cycle). For `deprecated` canonicals, indicates the release in which the canonical will be removed."
+    },
+    "composition_model": {
+      "type": "string",
+      "enum": ["deterministic", "algorithmic"],
+      "description": "Whether the surface composes deterministically (buyer can predict per-slot rendering — sponsored_placement, image, video) or algorithmically (surface chooses combinations or phrasing — responsive_creative, agent_placement)."
+    },
+    "provenance_required": {
+      "type": "boolean",
+      "description": "When true, the product rejects unsigned synthesized assets. Builders calling build_creative MUST attach a C2PA-compatible provenance manifest attributing synthesis to the creative agent."
+    },
+    "platform_extensions": {
+      "type": "array",
+      "description": "Platform-specific extensions narrowing the canonical (pixel ID shapes, conversion event taxonomies, platform-specific CTAs/destinations). Each extension is a URI+digest reference resolved against the bundled `extensions` map in get_products responses or fetched directly.",
+      "items": { "$ref": "/schemas/core/platform-extension-ref.json" }
+    },
+    "tracking_extensions": {
+      "type": "array",
+      "description": "Subset of platform_extensions specifically scoped to tracking concerns (pixel IDs, conversion event taxonomies, viewability vendors, OM-SDK partners). Functionally equivalent to listing tracking-related extensions under platform_extensions; the separate field surfaces \"what's tracking-related\" without forcing buyers to fetch each extension definition to find out. When present, every entry MUST also be present in (or implied by) platform_extensions. Producers MAY omit tracking_extensions and put everything under platform_extensions; the split is for buyer convenience, not schema enforcement.",
+      "items": { "$ref": "/schemas/core/platform-extension-ref.json" }
+    },
+    "synthesis_nondeterministic": {
+      "type": "boolean",
+      "description": "When true, the format's production pipeline is genuinely nondeterministic — the platform cannot guarantee that synthesis from a given input set produces in-spec output. Veo / Sora / Runway-class generative video, and other AI-synthesis flows where output dimensions, duration, or quality vary per run. Implies a different validation contract: predictive `validate_input` is impossible; the platform's own post-synthesis QA loop applies; if the QA loop exhausts without producing a valid artifact, `build_creative` returns task_failed with a synthesis_failed reason. Distinct from `composition_model` (which describes how the surface composes per-slot rendering, not whether synthesis is deterministic). When false or absent, the format's production is predictable enough that `validate_input` can predict output properties from input properties.\n\n**Compatibility with production-source enums** (`audio_source` / `image_source` / `video_source` / `item_production_model`): `synthesis_nondeterministic: true` MAY pair with any of `seller_pre_rendered_from_brief`, `seller_human_designed`, or `agent_synthesized` (the QA loop is concept-level, not source-specific — \"seller renders from brief but each retry differs\" is just as nondeterministic as Veo). It MUST NOT pair with `buyer_uploaded` (the buyer ships pre-rendered bytes; there's no synthesis step to be nondeterministic about). It MUST NOT pair with `publisher_host_recorded` (the publisher's host produces a deterministic-from-script output even if the human voice varies). When `synthesis_nondeterministic: true` is set with an incompatible source, validators SHOULD reject with a structured error.",
+      "default": false
+    },
+    "slots": {
+      "type": "array",
+      "description": "Programmatic declaration of which canonical asset_group_id slots a manifest targeting this format must (or may) populate. Lets SDK codegen and validators enumerate expected slots without parsing the format's prose description. Each entry references an asset_group_id from the canonical vocabulary registry, paired with an `asset_type` so the validator knows which asset schema to apply. Format-level narrowing parameters that apply across all slots (e.g., flat `headline_max_chars` on responsive_creative) may also live on the format declaration; per-slot constraints (a specific slot's `max_chars` or `max_size_kb`) live on the slot entry.",
+      "items": {
+        "type": "object",
+        "required": ["asset_group_id", "asset_type"],
+        "properties": {
+          "asset_group_id": {
+            "type": "string",
+            "description": "Canonical asset_group_id from /schemas/core/asset-group-vocabulary.json. Non-canonical IDs are valid but trigger soft warnings."
+          },
+          "asset_type": {
+            "type": "string",
+            "enum": ["image", "video", "audio", "text", "markdown", "url", "html", "css", "javascript", "vast", "daast", "webhook", "brief", "catalog", "zip", "card", "object"],
+            "description": "Discriminator selecting the asset schema this slot accepts. SDK codegen uses this to type the slot value. `card` is the multi-card carousel element type (see card-asset.json). `object` is a last-resort fallback for structured non-asset inputs that don't fit any primitive asset_type — prefer specific types whenever possible."
+          },
+          "required": {
+            "type": "boolean",
+            "description": "Whether this slot is required for a valid manifest.",
+            "default": false
+          },
+          "min": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Minimum count for repeatable / pool slots."
+          },
+          "max": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Maximum count for repeatable / pool slots."
+          },
+          "max_chars": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Per-slot character limit for text / markdown / brief assets."
+          },
+          "max_size_kb": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Per-slot file size limit in kilobytes for image / video / audio / zip assets."
+          },
+          "description": {
+            "type": "string",
+            "description": "Human-readable description of what the slot expects from the buyer."
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "production_window_business_days": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Typical production turnaround in business days when the format requires seller-side production (e.g., host-recording from a buyer-supplied script). 0 for synchronous (e.g., generative AI); >0 for human-produced (e.g., podcast host-read). Absent when no production is required (buyer uploads complete creative)."
+    }
+  },
+  "additionalProperties": true,
+  "x-canonical-policy-required-params-not-enforced": "Canonical format schemas intentionally do NOT mark any of their parameter fields as `required` and use `additionalProperties: true`. The canonical is the loose contract — describing what parameters MAY narrow it. Products narrow the canonical with concrete values (and may also leave most parameters absent — buyers infer behavior from the canonical's prose description for any unspecified parameter). This is intentional, not an oversight: enforcing required params on the canonical would force every product to declare every parameter, which is the wrong direction (we want products to declare only the values that differ from sensible canonical defaults). Adopters writing strict validators should validate against the canonical's structural shape (what fields ARE valid) and apply business rules separately for product-level narrowing minima."
+}

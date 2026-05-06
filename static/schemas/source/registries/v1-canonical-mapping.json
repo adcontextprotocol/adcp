@@ -1,0 +1,180 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/registries/v1-canonical-mapping.json",
+  "title": "v1 → v2 Canonical Format Mapping Registry",
+  "description": "Authoritative AAO-published mapping from v1 named formats to v2 canonical declarations. Used by SDKs to project between wire shapes during the migration window: v1 format on the wire → v2 canonical in memory (or vice versa).\n\n**Resolution order** (per RFC #3305 amendment #3767, normative):\n1. If the v1 format declaration carries an explicit `canonical` field, use it (seller-declared, highest priority).\n2. Else, look up `format_id` in this registry's `format_id_glob` entries.\n3. Else, attempt structural match against this registry's `structural` entries.\n4. Else, fail closed: SDK MUST NOT emit `format_options` for products carrying this format. Surface a validation warning suggesting the seller add an explicit `canonical` field or file a registry entry against this file.\n\n**Match modes:**\n- `format_id_glob` — exact / glob match against the v1 `format_id.id` (the named-format identifier). Covers IAB-conventional sizes, named platform formats, common publisher conventions. Glob syntax: `*` matches any segment.\n- `structural` — match against the format's slot shape, asset types, and version constraints. Catches custom v1 formats that are structurally a standard format under a different name (e.g., `acme_homepage_300x250` is structurally an IAB MREC).\n\n**Governance**: same vocabulary-governance rules as `asset-group-vocabulary.json` and `format-shape-vocabulary.json` — additions land via PR with rationale + ≥1 reference adopter; AAO maintainer review; versioned + content-digested. Entries are additive; once published they are not removed (they may be marked `deprecated: true` if superseded).\n\n**Initial scope (3.1)**: ~15 unambiguous entries covering IAB display sizes, VAST 4.x, DAAST 1.x. Subsequent PRs expand coverage as adopter feedback surfaces patterns. The full v1-format audit dataset (~76% of formats from the 12-platform / 86-format audit in #3305) seeds the long-term roadmap.\n\nDigest the file content (sha256) when emitting in capabilities responses or referencing from SDK output. Buyers cache by `version` + `digest`.",
+  "version": "1.0.0",
+  "last_updated": "2026-05-01",
+  "type": "object",
+  "required": ["version", "mappings"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "description": "Semver of this registry. Bumped on every published change."
+    },
+    "last_updated": {
+      "type": "string",
+      "format": "date",
+      "description": "ISO date of the last published change."
+    },
+    "mappings": {
+      "type": "array",
+      "description": "Ordered list of v1 → v2 mappings. SDKs apply mappings in order and use the first match.",
+      "items": {
+        "type": "object",
+        "required": ["v1_pattern", "v2"],
+        "properties": {
+          "v1_pattern": {
+            "type": "object",
+            "description": "Match pattern. Carries either format_id_glob OR structural, not both.",
+            "oneOf": [
+              {
+                "required": ["format_id_glob"],
+                "properties": {
+                  "format_id_glob": {
+                    "type": "string",
+                    "description": "Glob pattern matched against v1 format_id.id. Examples: 'iab/mrec_300x250', 'iab/leaderboard_*', 'meta/*_reels'."
+                  }
+                }
+              },
+              {
+                "required": ["structural"],
+                "properties": {
+                  "structural": {
+                    "type": "object",
+                    "description": "Structural match against the format's slot shape, asset types, and version constraints.",
+                    "properties": {
+                      "asset_types": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "Set of asset_type values that must appear in the format's slots (in any order, any count)."
+                      },
+                      "vast_versions": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "VAST version constraints. Strings like '>=4.0', '4.x', '4.2'."
+                      },
+                      "daast_versions": {
+                        "type": "array",
+                        "items": { "type": "string" }
+                      },
+                      "dimensions": {
+                        "type": "object",
+                        "properties": {
+                          "width": { "type": "integer" },
+                          "height": { "type": "integer" }
+                        }
+                      }
+                    },
+                    "additionalProperties": true
+                  }
+                }
+              }
+            ]
+          },
+          "v2": {
+            "type": "object",
+            "required": ["canonical"],
+            "properties": {
+              "canonical": {
+                "$ref": "/schemas/core/canonical-format-kind.json",
+                "description": "v2 canonical format the v1 pattern projects to."
+              },
+              "parameters": {
+                "type": "object",
+                "description": "Optional parameters that narrow the canonical (e.g., width/height, vast_version). When present, become the params on the projected v2 ProductFormatDeclaration. The shape MUST be valid params for the named canonical.",
+                "additionalProperties": true
+              }
+            }
+          },
+          "deprecated": {
+            "type": "boolean",
+            "default": false,
+            "description": "When true, this mapping is retained for backward-compatibility but should not be used for new mappings. SDKs SHOULD emit lint warnings when matching a deprecated entry."
+          },
+          "notes": {
+            "type": "string",
+            "description": "Optional human-readable explanation, examples, or rationale."
+          }
+        }
+      }
+    }
+  },
+  "mappings": [
+    {
+      "v1_pattern": { "format_id_glob": "iab/mrec_300x250" },
+      "v2": { "canonical": "image", "parameters": { "width": 300, "height": 250 } },
+      "notes": "IAB Universal Ad Package — Medium Rectangle. Industry standard since 2005."
+    },
+    {
+      "v1_pattern": { "format_id_glob": "iab/leaderboard_728x90" },
+      "v2": { "canonical": "image", "parameters": { "width": 728, "height": 90 } },
+      "notes": "IAB Universal Ad Package — Leaderboard."
+    },
+    {
+      "v1_pattern": { "format_id_glob": "iab/wide_skyscraper_160x600" },
+      "v2": { "canonical": "image", "parameters": { "width": 160, "height": 600 } },
+      "notes": "IAB Universal Ad Package — Wide Skyscraper."
+    },
+    {
+      "v1_pattern": { "format_id_glob": "iab/billboard_970x250" },
+      "v2": { "canonical": "image", "parameters": { "width": 970, "height": 250 } },
+      "notes": "IAB Rising Star — Billboard. Often used for premium homepage units."
+    },
+    {
+      "v1_pattern": { "format_id_glob": "iab/half_page_300x600" },
+      "v2": { "canonical": "image", "parameters": { "width": 300, "height": 600 } },
+      "notes": "IAB Universal Ad Package — Half Page."
+    },
+    {
+      "v1_pattern": { "format_id_glob": "iab/mobile_banner_320x50" },
+      "v2": { "canonical": "image", "parameters": { "width": 320, "height": 50 } },
+      "notes": "IAB mobile portrait banner."
+    },
+    {
+      "v1_pattern": { "format_id_glob": "iab/mobile_interstitial_320x480" },
+      "v2": { "canonical": "image", "parameters": { "width": 320, "height": 480 } },
+      "notes": "IAB mobile portrait interstitial."
+    },
+    {
+      "v1_pattern": { "format_id_glob": "iab/large_rectangle_336x280" },
+      "v2": { "canonical": "image", "parameters": { "width": 336, "height": 280 } },
+      "notes": "IAB Universal Ad Package — Large Rectangle."
+    },
+    {
+      "v1_pattern": { "structural": { "asset_types": ["vast"], "vast_versions": [">=4.0"] } },
+      "v2": { "canonical": "video_vast", "parameters": { "vast_version": "4.2" } },
+      "notes": "Any v1 format whose primary asset is a VAST 4.x tag. SDKs should narrow the parameters.vast_version to the lowest common denominator they support."
+    },
+    {
+      "v1_pattern": { "structural": { "asset_types": ["vast"], "vast_versions": ["3.x", "2.x"] } },
+      "v2": { "canonical": "video_vast", "parameters": { "vast_version": "3.0" } },
+      "notes": "Legacy VAST 2.x/3.x — projected as video_vast with the lowest-supported version."
+    },
+    {
+      "v1_pattern": { "structural": { "asset_types": ["daast"], "daast_versions": ["1.0", "1.1"] } },
+      "v2": { "canonical": "audio_daast", "parameters": { "daast_version": "1.1" } },
+      "notes": "DAAST 1.x audio tag → audio_daast canonical."
+    },
+    {
+      "v1_pattern": { "structural": { "asset_types": ["zip"] } },
+      "v2": { "canonical": "html5" },
+      "notes": "Any v1 format whose primary asset is a zip bundle (HTML5 banner). Caller must add platform_extensions for OM-SDK / clickTag specifics from the v1 declaration."
+    },
+    {
+      "v1_pattern": { "structural": { "asset_types": ["video"] } },
+      "v2": { "canonical": "video_hosted" },
+      "notes": "v1 format with a hosted video file as its primary asset → video_hosted. Caller infers orientation/dimensions from the v1 slot constraints."
+    },
+    {
+      "v1_pattern": { "structural": { "asset_types": ["audio"] } },
+      "v2": { "canonical": "audio_hosted" },
+      "notes": "v1 format with a hosted audio file as its primary asset → audio_hosted. Distinct from audio_daast (which uses tag delivery)."
+    },
+    {
+      "v1_pattern": { "structural": { "asset_types": ["url"] } },
+      "v2": { "canonical": "display_tag" },
+      "notes": "Last-resort structural match: v1 format whose primary asset is a URL pointing at a third-party-served creative → display_tag canonical. Lower confidence than other entries — sellers SHOULD declare an explicit `canonical` for url-shaped formats whenever possible."
+    }
+  ]
+}

@@ -1,0 +1,86 @@
+{
+  "$schema": "/schemas/core/product.json",
+  "product_id": "meta_reels_us",
+  "name": "Meta Reels — United States",
+  "description": "9:16 vertical short-form video on Meta Reels (Facebook + Instagram). Buyers upload H.264 mp4 (3-90s) plus headline and primary text; Meta serves to Reels feeds with placement-native UI overlays and Meta-specific tracking via the meta_pixel extension.",
+  "publisher_properties": [
+    {
+      "publisher_domain": "meta.com",
+      "selection_type": "all"
+    }
+  ],
+  "channels": [
+    "social"
+  ],
+  "delivery_type": "non_guaranteed",
+  "pricing_options": [
+    {
+      "pricing_option_id": "cpm_floor",
+      "pricing_model": "cpm",
+      "currency": "USD",
+      "floor_price": 5.5
+    }
+  ],
+  "reporting_capabilities": {
+    "available_reporting_frequencies": [
+      "hourly",
+      "daily"
+    ],
+    "expected_delay_minutes": 60,
+    "timezone": "America/Los_Angeles",
+    "supports_webhooks": true,
+    "available_metrics": [
+      "impressions",
+      "clicks",
+      "spend",
+      "completion_rate",
+      "viewability"
+    ],
+    "date_range_support": "date_range"
+  },
+  "format_options": [
+    {
+      "format_kind": "video_hosted",
+      "params": {
+        "orientation": "vertical",
+        "aspect_ratio": "9:16",
+        "duration_ms_range": [
+          3000,
+          90000
+        ],
+        "min_width": 1080,
+        "min_height": 1920,
+        "max_file_size_mb": 200,
+        "video_codecs": [
+          "h264"
+        ],
+        "audio_codecs": [
+          "aac"
+        ],
+        "containers": [
+          "mp4"
+        ],
+        "headline_max_chars": 25,
+        "primary_text_max_chars": 72,
+        "captions": "recommended",
+        "cta_values": [
+          "LEARN_MORE",
+          "SHOP_NOW",
+          "DOWNLOAD",
+          "SIGN_UP"
+        ],
+        "composition_model": "deterministic",
+        "platform_extensions": [
+          {
+            "uri": "https://meta.adcp/extensions/meta_pixel",
+            "digest": "sha256:a3f5b7c9d8e2f1a4b6c8d0e2f4a6b8c0d2e4f6a8b0c2d4e6f8a0b2c4d6e8f0a2"
+          },
+          {
+            "uri": "https://meta.adcp/extensions/meta_placements_reels",
+            "digest": "sha256:b8e1d4f6a9c2b5e8d1f4a7c0b3e6d9f2a5c8b1e4d7f0a3c6b9e2d5f8a1c4b7e0"
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,83 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/formats/canonical/html5.json",
+  "title": "Canonical Format: HTML5 Banner",
+  "description": "Interactive HTML5 banner delivered as a zip archive. Slot: `html5_bundle` (zip asset). Tracking model: MRAID + IAB Open Measurement (OM-SDK) + click-tag macro substitution + backup image fallback. Receivers unpack the zip, validate internal structure, and serve from CDN. Distinct from `image` (static, non-interactive) and `display_tag` (third-party served). The zip's entry point is typically `index.html`; click handling uses `clickTag` (or `clickTAG`) macro substitution.",
+  "allOf": [{ "$ref": "/schemas/formats/canonical/_base.json" }],
+  "properties": {
+    "slots": {
+      "default": [
+        { "asset_group_id": "html5_bundle", "asset_type": "zip", "required": true },
+        { "asset_group_id": "backup_image", "asset_type": "image", "required": false },
+        { "asset_group_id": "landing_page_url", "asset_type": "url", "required": false }
+      ],
+      "description": "Default slots for html5 canonical. Buyer ships a zip bundle plus optional backup image (required when `backup_image_required: true`) and clickthrough URL. The zip's entry point is typically `index.html`; click handling uses the `clickTag` (or `clickTAG`) macro substituted by the seller at serve time."
+    },
+    "width": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Required banner width in pixels."
+    },
+    "height": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Required banner height in pixels."
+    },
+    "max_initial_load_kb": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum initial-load file size (zip + above-the-fold assets) in kilobytes. IAB display standards: 200 KB for fixed sizes, 100 KB for mobile."
+    },
+    "max_polite_load_kb": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum polite-load file size after host-initiated subload, in kilobytes. IAB display standards: 500 KB for fixed sizes."
+    },
+    "host_initiated_subload": {
+      "type": "boolean",
+      "description": "Whether the host page must initiate the polite-load phase. IAB-compliant banners require true."
+    },
+    "max_animation_duration_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Maximum total animation duration in milliseconds. IAB standard: 30000 (30 seconds)."
+    },
+    "max_cpu_load_percent": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100,
+      "description": "Maximum CPU load percentage during render."
+    },
+    "mraid_required": {
+      "type": "boolean",
+      "description": "Whether MRAID compatibility is required (mobile in-app)."
+    },
+    "mraid_version": {
+      "type": "string",
+      "enum": ["2.0", "3.0"],
+      "description": "Required MRAID version when mraid_required is true."
+    },
+    "om_sdk_required": {
+      "type": "boolean",
+      "description": "Whether IAB Open Measurement SDK integration is required."
+    },
+    "clicktag_macro": {
+      "type": "string",
+      "enum": ["clickTag", "clickTAG"],
+      "description": "Name of the click-tag macro the bundle must use."
+    },
+    "backup_image_required": {
+      "type": "boolean",
+      "description": "Whether a backup image must accompany the zip for non-HTML5 environments."
+    },
+    "backup_image_max_size_kb": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum backup image file size in kilobytes."
+    },
+    "ssl_required": {
+      "type": "boolean"
+    }
+  },
+  "additionalProperties": true
+}

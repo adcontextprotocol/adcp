@@ -2,12 +2,12 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/creative-asset.json",
   "title": "Creative Asset",
-  "description": "Creative asset for upload to library - supports static assets, generative formats, and third-party snippets",
+  "description": "Creative asset for upload to library — supports static assets, generative formats, and third-party snippets. Identifies which format this creative conforms to via EITHER a v1 `format_id` (structured `{agent_url, id}`) OR v2 `format_kind` (canonical format name). Mutually exclusive — see the `oneOf` at the schema root.",
   "type": "object",
   "properties": {
     "creative_id": {
       "type": "string",
-      "description": "Unique identifier for the creative",
+      "description": "Unique identifier for the creative. Stable across v1 and v2 paths — a creative registered against v1 `format_id` retains the same `creative_id` when later viewed via v2 flatten.",
       "x-entity": "creative"
     },
     "name": {
@@ -16,14 +16,29 @@
     },
     "format_id": {
       "$ref": "/schemas/core/format-id.json",
-      "description": "Always a structured object {agent_url, id} — never a plain string. Format identifier specifying which format this creative conforms to. Can be: (1) concrete format_id referencing a format with fixed dimensions, (2) template format_id referencing a template format, or (3) parameterized format_id with dimensions/duration parameters for template formats."
+      "description": "v1 path. Always a structured object {agent_url, id} — never a plain string. Format identifier specifying which format this creative conforms to. Can be: (1) concrete format_id referencing a format with fixed dimensions, (2) template format_id referencing a template format, or (3) parameterized format_id with dimensions/duration parameters for template formats. Mutually exclusive with `format_kind`."
+    },
+    "format_kind": {
+      "$ref": "/schemas/core/canonical-format-kind.json",
+      "description": "v2 path. The canonical format name this creative targets (e.g., `image`, `video_hosted`). Mutually exclusive with `format_id`."
+    },
+    "capability_id": {
+      "type": "string",
+      "description": "v2 path, optional. Stable identifier matching one of the seller's product `format_options[i].capability_id` values. REQUIRED only when the target product has multiple `format_options` entries sharing the same `format_kind`."
     },
     "assets": {
       "type": "object",
-      "description": "Assets required by the format, keyed by asset_id. Each asset value carries an `asset_type` discriminator that selects the matching asset schema.",
+      "description": "Assets required by the format, keyed by asset_id. Each slot value is either a single asset object or an array of asset objects (for slots with `min`/`max > 1` like carousel `cards` or responsive_creative `headlines`). Each asset value carries an `asset_type` discriminator that selects the matching asset schema.",
       "patternProperties": {
         "^[a-z0-9_]+$": {
-          "$ref": "/schemas/core/assets/asset-union.json"
+          "oneOf": [
+            { "$ref": "/schemas/core/assets/asset-union.json" },
+            {
+              "type": "array",
+              "items": { "$ref": "/schemas/core/assets/asset-union.json" },
+              "minItems": 1
+            }
+          ]
         }
       },
       "additionalProperties": true
@@ -97,8 +112,21 @@
   "required": [
     "creative_id",
     "name",
-    "format_id",
     "assets"
+  ],
+  "oneOf": [
+    {
+      "title": "v1 creative (named-format reference)",
+      "description": "Creative references a named format via the structured `format_id` object. The v1 path; remains supported through 4.x.",
+      "required": ["format_id"],
+      "not": { "required": ["format_kind"] }
+    },
+    {
+      "title": "v2 creative (canonical format kind)",
+      "description": "Creative declares which canonical format it targets via `format_kind` (e.g., `image`). The v2 path introduced by RFC #3305.",
+      "required": ["format_kind"],
+      "not": { "required": ["format_id"] }
+    }
   ],
   "additionalProperties": true
 }

@@ -1,0 +1,49 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/formats/canonical/agent_placement.json",
+  "title": "Canonical Format: Agent Placement (AI-surface sponsored placement)",
+  "description": "Sponsored placement integrated into an AI-surface's response to a user. Buyer supplies a `BrandRef` (resolving brand.json for context), an optional `offering_ref` to focus the mention on a specific offering, and an optional `landing_page_url` the surface MAY attach as a citation. The surface (LLM, voice assistant, sponsored-search ranker) composes a natural-language mention, sponsored card, or audio snippet within its response to a user query. **Composition is algorithmic** — the agent chooses phrasing and presentation. Output asset_type varies by surface: `text` for chat UIs and sponsored search snippets; `audio` (synthesized) for voice assistants; `card` for structured AI-surface result cards. Tracking model: mention-level impression + attribution events; per-mention id keys back to brand and offering. Distinct from `si_chat` (which is the user-converses-with-brand's-agent pattern — brand owns the conversational surface) and from `sponsored_placement` (retail-media catalog-driven). Parallels `sponsored_placement` structurally: both are surface-composed placements; agent_placement is for AI/agentic surfaces, sponsored_placement is for retail media.",
+  "allOf": [{ "$ref": "/schemas/formats/canonical/_base.json" }],
+  "properties": {
+    "slots": {
+      "default": [
+        { "asset_group_id": "offering_ref", "asset_type": "text", "required": false },
+        { "asset_group_id": "landing_page_url", "asset_type": "url", "required": false }
+      ],
+      "description": "agent_placement has minimal buyer-shipped slots — the surface composes the rendered output from brand context (resolved via the manifest's top-level `brand` BrandRef) plus optional offering_ref and landing_page_url assets. None of these assets are rendered verbatim by the buyer; the agent chooses how to use them."
+    },
+    "output_modality": {
+      "type": "string",
+      "enum": ["text", "audio", "card"],
+      "description": "How the surface presents the mention. `text` = inline text (chat, search snippet). `audio` = TTS-synthesized voice. `card` = structured card with optional image + text."
+    },
+    "max_mention_length_chars": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "For text output: maximum length of the surface-composed mention text."
+    },
+    "max_mention_duration_ms": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "For audio output: maximum duration of the spoken mention in milliseconds."
+    },
+    "supports_offering_reference": {
+      "type": "boolean",
+      "description": "Whether the product accepts an offering reference (specific product/service to promote within the mention) in addition to brand context."
+    },
+    "supports_landing_page_url": {
+      "type": "boolean",
+      "description": "Whether the surface attaches a landing page URL to the mention (citation, learn-more link)."
+    },
+    "tone_constraints": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "**Advisory only.** Buyer-declared brand-voice preferences the surface SHOULD honor (e.g., ['formal', 'no_superlatives']). LLM/agentic surfaces have no protocol-level mechanism to verify enforcement — adopters that need hard guarantees should rely on brand.json voice declarations and post-mention review rather than this field. Future revisions may tie this to a structured tone vocabulary; for now treat as free-text guidance."
+    },
+    "disclosure_required": {
+      "type": "boolean",
+      "description": "Whether the surface must include an explicit sponsorship disclosure label."
+    }
+  },
+  "additionalProperties": true
+}

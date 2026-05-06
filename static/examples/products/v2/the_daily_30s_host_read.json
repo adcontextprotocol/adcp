@@ -1,0 +1,78 @@
+{
+  "$schema": "/schemas/core/product.json",
+  "product_id": "the_daily_30s_host_read_us",
+  "name": "The Daily — 30s Host-Read Pre-roll (US)",
+  "description": "30-second podcast host-read pre-roll on The Daily. Buyer-uploaded audio is rejected (audio_source: publisher_host_recorded); buyer submits a verbatim script (≤800 chars) as a text asset under the `script` slot, plus brand context via the manifest's BrandRef. The publisher's host records the audio, which is dynamically inserted at podcast playback time. 7-business-day production turnaround. A brief-driven host-read product would have the same shape with `creative_brief` (brief asset_type) in the slots instead of `script` (text asset_type).",
+  "publisher_properties": [
+    {
+      "publisher_domain": "thedailypod.example",
+      "selection_type": "all"
+    }
+  ],
+  "channels": [
+    "podcast"
+  ],
+  "delivery_type": "guaranteed",
+  "pricing_options": [
+    {
+      "pricing_option_id": "cpm_host_read",
+      "pricing_model": "cpm",
+      "currency": "USD",
+      "fixed_price": 35
+    }
+  ],
+  "reporting_capabilities": {
+    "available_reporting_frequencies": [
+      "daily"
+    ],
+    "expected_delay_minutes": 1440,
+    "timezone": "America/New_York",
+    "supports_webhooks": false,
+    "available_metrics": [
+      "impressions",
+      "spend",
+      "completion_rate",
+      "completed_views"
+    ],
+    "date_range_support": "date_range"
+  },
+  "format_options": [
+    {
+      "format_kind": "audio_hosted",
+      "params": {
+        "duration_ms_exact": 30000,
+        "audio_codecs": [
+          "mp3",
+          "aac"
+        ],
+        "audio_sample_rates": [
+          44100,
+          48000
+        ],
+        "audio_channels": [
+          "stereo"
+        ],
+        "loudness_lufs": -16,
+        "audio_source": "publisher_host_recorded",
+        "buyer_audio_acceptance": "rejected",
+        "composition_model": "deterministic",
+        "slots": [
+          {
+            "asset_group_id": "script",
+            "required": true,
+            "asset_type": "text",
+            "max_chars": 800,
+            "description": "Verbatim script the host reads — exact wording; no improvisation; legal pre-cleared."
+          },
+          {
+            "asset_group_id": "offering_ref",
+            "required": false,
+            "asset_type": "text",
+            "description": "Optional offering identifier from the buyer's catalog to focus the host-read."
+          }
+        ],
+        "production_window_business_days": 7
+      }
+    }
+  ]
+}

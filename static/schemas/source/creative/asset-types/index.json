@@ -76,6 +76,11 @@
       "schema": "/schemas/core/assets/javascript-asset.json",
       "typical_use": "Third-party tags, custom interaction logic, analytics"
     },
+    "zip": {
+      "description": "Bundled creative archive (zip) containing index.html and supporting assets",
+      "schema": "/schemas/core/assets/zip-asset.json",
+      "typical_use": "HTML5 banner bundles with index.html + CSS + JS + images, MRAID-compatible interactive ads"
+    },
     "brief": {
       "description": "Campaign-level creative context (creative brief)",
       "schema": "/schemas/core/assets/brief-asset.json",
@@ -85,6 +90,11 @@
       "description": "Typed data feed (products, stores, jobs, etc.)",
       "schema": "/schemas/core/assets/catalog-asset.json",
       "typical_use": "Product catalogs, store locators, job feeds for dynamic creatives"
+    },
+    "card": {
+      "description": "Single card in a multi-card creative — image_carousel `cards` slot element",
+      "schema": "/schemas/core/assets/card-asset.json",
+      "typical_use": "Carousel cards (Meta-style mixed-media, Pinterest collections), Snap collection cards. Each card carries its own media (image OR video), optional headline, optional landing_page_url. The carousel format's `cards` slot is an array of card-asset values."
     }
   },
   "architecture": {

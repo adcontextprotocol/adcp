@@ -1,0 +1,71 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/creative/scenes.json",
+  "title": "Scenes",
+  "description": "Typed scene-by-scene structure used as input to build_creative for generative video platforms. Renamed from 'storyboard' to avoid collision with the testing-harness storyboard concept used elsewhere in AdCP. Distinct from `reference-asset.json` `purpose: 'storyboard'`, which describes a reference asset (image, video, document) serving as visual direction — Scenes is the structured plan; a storyboard reference asset is the visual inspiration that may inform such a plan.",
+  "type": "object",
+  "required": ["scenes"],
+  "properties": {
+    "scenes": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Ordered list of scenes that compose the generated video. Sum of `duration_ms` across scenes should match the target video duration.",
+      "items": {
+        "type": "object",
+        "required": ["order", "duration_ms", "description"],
+        "properties": {
+          "order": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "1-indexed sequence position of this scene in the final video."
+          },
+          "duration_ms": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Duration of this scene in milliseconds."
+          },
+          "description": {
+            "type": "string",
+            "description": "Visual description of the scene for synthesis (what should appear, action, mood, framing)."
+          },
+          "vo": {
+            "type": "string",
+            "description": "Voiceover script for this scene (optional)."
+          },
+          "caption": {
+            "type": "string",
+            "description": "On-screen caption text for this scene (optional)."
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true,
+  "examples": [
+    {
+      "scenes": [
+        {
+          "order": 1,
+          "duration_ms": 3000,
+          "description": "Open on a sunset beach with the brand logo overlay",
+          "vo": "Welcome to summer with Acme",
+          "caption": "Summer Sale Now"
+        },
+        {
+          "order": 2,
+          "duration_ms": 4000,
+          "description": "Product close-up — limited-edition sneakers, slow zoom",
+          "vo": "Limited edition. Hand-crafted.",
+          "caption": "Up to 50% Off"
+        },
+        {
+          "order": 3,
+          "duration_ms": 3000,
+          "description": "Logo end-card with CTA button overlay",
+          "caption": "Shop Now"
+        }
+      ]
+    }
+  ]
+}

@@ -17,6 +17,35 @@
         "$ref": "/schemas/core/product.json"
       }
     },
+    "extensions": {
+      "type": "object",
+      "description": "Bundled platform-extension definitions referenced by any product in `products`. Keyed by `<extension_uri>@<digest>` (e.g., `https://meta.adcp/extensions/meta_pixel@sha256:abc...`). When present, lets buyers resolve `platform_extensions` references on product format declarations without a separate fetch. Buyer SDKs cache by URI@digest; subsequent get_products responses MAY omit definitions the buyer already has cached and rely on the digest match. Each value is an extension definition with `extends` (the canonical concept it extends, e.g., `tracking`), `fields` (the schema for additional fields the extension contributes), `version`, and optional `description`.",
+      "patternProperties": {
+        "^https?://[^@]+@sha256:[a-f0-9]{64}$": {
+          "type": "object",
+          "required": ["extends", "fields"],
+          "properties": {
+            "extends": {
+              "type": "string",
+              "description": "Canonical concept this extension extends (e.g., `tracking`, `cta_vocabulary`, `destinations`, `placement`)."
+            },
+            "fields": {
+              "type": "object",
+              "description": "JSON Schema fragment declaring the additional fields this extension contributes."
+            },
+            "version": {
+              "type": "string",
+              "description": "Semantic version of the extension definition. Distinct from the digest — version is human-readable; digest is the integrity check."
+            },
+            "description": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    },
     "proposals": {
       "type": "array",
       "description": "Optional array of proposed media plans with budget allocations across products. Publishers include proposals when they can provide strategic guidance based on the brief. Proposals are actionable - buyers can refine them via follow-up get_products calls within the same session, or execute them directly via create_media_buy.",

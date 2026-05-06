@@ -1,0 +1,88 @@
+{
+  "$schema": "/schemas/core/product.json",
+  "product_id": "meta_carousel_us",
+  "name": "Meta Carousel — United States",
+  "description": "Multi-card swipeable carousel on Meta feed (Facebook + Instagram). 2-10 cards, square aspect, polymorphic per-card asset (image OR video). Each card carries its own headline + click URL. Surface composes the swipeable presentation; buyer ships the cards array.",
+  "publisher_properties": [
+    {
+      "publisher_domain": "meta.com",
+      "selection_type": "all"
+    }
+  ],
+  "channels": [
+    "social"
+  ],
+  "delivery_type": "non_guaranteed",
+  "pricing_options": [
+    {
+      "pricing_option_id": "cpm_floor",
+      "pricing_model": "cpm",
+      "currency": "USD",
+      "floor_price": 4.5
+    }
+  ],
+  "reporting_capabilities": {
+    "available_reporting_frequencies": [
+      "hourly",
+      "daily"
+    ],
+    "expected_delay_minutes": 60,
+    "timezone": "America/Los_Angeles",
+    "supports_webhooks": true,
+    "available_metrics": [
+      "impressions",
+      "clicks",
+      "spend",
+      "ctr",
+      "engagement_rate",
+      "viewability"
+    ],
+    "date_range_support": "date_range"
+  },
+  "format_options": [
+    {
+      "format_kind": "image_carousel",
+      "params": {
+        "card_aspect_ratio": "1:1",
+        "min_cards": 2,
+        "max_cards": 10,
+        "allowed_card_asset_types": [
+          "image",
+          "video"
+        ],
+        "card_image_max_file_size_kb": 30000,
+        "card_video_max_duration_ms": 240000,
+        "primary_text_max_chars": 125,
+        "card_headline_max_chars": 40,
+        "ssl_required": true,
+        "composition_model": "deterministic",
+        "slots": [
+          {
+            "asset_group_id": "cards",
+            "asset_type": "object",
+            "required": true,
+            "min": 2,
+            "max": 10
+          },
+          {
+            "asset_group_id": "primary_text",
+            "asset_type": "text",
+            "required": false,
+            "max_chars": 125
+          },
+          {
+            "asset_group_id": "landing_page_url",
+            "asset_type": "url",
+            "required": true
+          }
+        ],
+        "platform_extensions": [
+          {
+            "uri": "https://meta.adcp/extensions/meta_pixel",
+            "digest": "sha256:a3f5b7c9d8e2f1a4b6c8d0e2f4a6b8c0d2e4f6a8b0c2d4e6f8a0b2c4d6e8f0a2"
+          }
+        ]
+      }
+    }
+  ]
+}
