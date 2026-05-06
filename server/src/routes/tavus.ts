@@ -458,6 +458,7 @@ export function createTavusRouter() {
         maxDurationSec?: number;
         greenscreen?: boolean;
         language?: string;
+        disableFillers?: boolean;
       };
       const greeting = typeof settings.greeting === "string" && settings.greeting.trim()
         ? settings.greeting.trim().slice(0, 500)
@@ -474,16 +475,19 @@ export function createTavusRouter() {
       const language = typeof settings.language === "string" && /^[a-z]{3,20}$/.test(settings.language)
         ? settings.language
         : undefined;
+      const disableFillers = settings.disableFillers === true;
 
       // Create a thread to track this video conversation
       const threadService = getThreadService();
+      const threadContext: Record<string, unknown> = { persona_id: personaId };
+      if (disableFillers) threadContext.disable_fillers = true;
       const thread = await threadService.getOrCreateThread({
         channel: "video",
         external_id: conversationName,
         user_type: "workos",
         user_id: req.user.id,
         user_display_name: displayName,
-        context: { persona_id: personaId },
+        context: threadContext,
       });
 
       // Tavus appends conversational_context to the system message sent to
@@ -600,6 +604,7 @@ export function createTavusRouter() {
     let memberRequestContext = "";
     let userDisplayName: string | null = null;
     let voiceUserId: string | null = null;
+    let voiceFillersDisabled = false;
     if (threadId) {
       const threadService = getThreadService();
       try {
@@ -607,6 +612,7 @@ export function createTavusRouter() {
         if (thread?.user_id && thread.channel === 'video') {
           userDisplayName = thread.user_display_name;
           voiceUserId = thread.user_id;
+          voiceFillersDisabled = thread.context?.disable_fillers === true;
           const result = await buildVoiceRequestTools(thread.user_id, threadId);
           voiceRequestTools = result.requestTools;
           memberRequestContext = result.requestContext;
@@ -691,16 +697,25 @@ export function createTavusRouter() {
 
     // For substantive questions, send a filler phrase immediately so Addie starts
     // speaking while the model processes. Tavus TTS picks this up with near-zero latency.
+    // Neutral conversational fillers — no ritual praise ("great question") which
+    // reads as canned across a session. video-lab.html exposes a toggle that sets
+    // thread.context.disable_fillers to skip this entirely for users who'd rather
+    // hear a half-second of silence than any preamble.
     const questionPattern = /\b(what|how|why|explain|tell me|describe|walk me through|can you|could you)\b/i;
     const rawMessage = currentMessage.slice(voicePrefix.length);
     const isSubstantive = rawMessage.length > 30 && questionPattern.test(rawMessage);
     let fullResponse = "";
-    if (isSubstantive) {
+    if (isSubstantive && !voiceFillersDisabled) {
       const fillers = [
-        "Good question... ",
-        "Great question... ",
         "So... ",
-        "That's a great question... ",
+        "Well... ",
+        "Hmm... ",
+        "Okay, so... ",
+        "Sure... ",
+        "Let me think... ",
+        "Funny enough... ",
+        "Yeah, so... ",
+        "Alright... ",
       ];
       const filler = fillers[Math.floor(Math.random() * fillers.length)];
       sendChunk({ content: filler });
