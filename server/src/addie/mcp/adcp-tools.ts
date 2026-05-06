@@ -770,7 +770,7 @@ export function createAdcpToolHandlers(
               `**Error:** OAuth authorization required\n\n` +
               `The agent at \`${agentUrl}\` requires OAuth authentication.\n\n` +
               `**[Click here to authorize this agent](${authUrl})**\n\n` +
-              `After you authorize, I'll automatically retry your request.`
+              `After you authorize, ask me to run \`${task}\` again.`
             );
           }
         }
