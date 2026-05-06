@@ -413,6 +413,67 @@ describe('Registry publisher endpoint — brand.json hydration', () => {
     expect(res.body.hosting.hosted_url).toBe(aaoHostedAdagentsJsonUrl(pub));
   });
 
+  it('reports hosting.mode=self_redirected when the stub authoritative_location points at a third-party HTTPS origin', async () => {
+    // Publisher's /.well-known stub redirects the canonical document
+    // to a CDN or partner CMS — neither AAO nor their own origin. The
+    // distinction matters for verifiers: the TLS chain that signs the
+    // canonical body terminates at the third-party host, not at the
+    // publisher's own domain. Without a separate mode the route would
+    // mislabel this as `self`, and a buyer-side scraper would assume
+    // wrong about origin trust.
+    const pub = `cdn-redirect-${Date.now()}.registry-baseline.example`;
+    const cdnUrl = `https://cdn-host-${Date.now()}.example.test/adagents.json`;
+    await publisherDb.upsertAdagentsCache({
+      domain: pub,
+      manifest: {
+        authoritative_location: cdnUrl,
+        authorized_agents: [],
+        properties: [],
+      },
+    });
+
+    const res = await request(app).get(`/api/registry/publisher?domain=${encodeURIComponent(pub)}`);
+    expect(res.status).toBe(200);
+    expect(res.body.hosting.mode).toBe('self_redirected');
+    expect(res.body.hosting.resolved_url).toBe(cdnUrl);
+    expect(res.body.hosting.hosted_url).toBeUndefined();
+  });
+
+  it('does not flag self_redirected when the stub points back at the publisher\'s own origin', async () => {
+    // Edge: a no-op stub whose authoritative_location resolves to the
+    // publisher's own /.well-known. Should be treated as `self`, not
+    // self_redirected — there's no third-party trust shift.
+    const pub = `noop-stub-${Date.now()}.registry-baseline.example`;
+    await publisherDb.upsertAdagentsCache({
+      domain: pub,
+      manifest: {
+        authoritative_location: `https://${pub}/.well-known/adagents.json`,
+        authorized_agents: [],
+        properties: [],
+      },
+    });
+
+    const res = await request(app).get(`/api/registry/publisher?domain=${encodeURIComponent(pub)}`);
+    expect(res.status).toBe(200);
+    expect(res.body.hosting.mode).toBe('self');
+    expect(res.body.hosting.resolved_url).toBeNull();
+  });
+
+  it('surfaces last_validated when the publisher row has been crawled', async () => {
+    // Hero chrome relies on `last_validated`. Sanity check that the
+    // route plumbs it through from the publishers row. upsertAdagentsCache
+    // sets it to NOW().
+    const pub = `last-validated-${Date.now()}.registry-baseline.example`;
+    await publisherDb.upsertAdagentsCache({
+      domain: pub,
+      manifest: { authorized_agents: [], properties: [] },
+    });
+
+    const res = await request(app).get(`/api/registry/publisher?domain=${encodeURIComponent(pub)}`);
+    expect(res.status).toBe(200);
+    expect(res.body.hosting.last_validated).toMatch(/\d{4}-\d{2}-\d{2}T/);
+  });
+
   it('tags federated-index properties with source=adagents_json when the publisher serves a valid adagents.json', async () => {
     // Wonderstruck-shaped regression: properties listed in the live
     // adagents.json were being labelled `discovered` (i.e. "found by
