@@ -485,6 +485,10 @@
             <input type="checkbox" id="opt-greenscreen">
             <label for="opt-greenscreen">Greenscreen background <span class="hint-inline">(transparent — useful for keynote compositing)</span></label>
           </div>
+          <div class="setting-row checkbox">
+            <input type="checkbox" id="opt-disable-fillers">
+            <label for="opt-disable-fillers">Disable filler phrases <span class="hint-inline">(skip the "So..." / "Hmm..." opener Tavus speaks while the model is thinking — adds a brief pause before responses)</span></label>
+          </div>
           <div class="setting-row">
             <label for="opt-language">Language</label>
             <select id="opt-language">
@@ -575,6 +579,7 @@
       durationMin: 25,
       greenscreen: false,
       language: '',
+      disableFillers: false,
     };
 
     function loadSettings() {
@@ -596,6 +601,7 @@
         durationMin: Number(document.getElementById('opt-duration').value) || 25,
         greenscreen: document.getElementById('opt-greenscreen').checked,
         language: document.getElementById('opt-language').value,
+        disableFillers: document.getElementById('opt-disable-fillers').checked,
       };
     }
     function applySettingsToForm(s) {
@@ -605,6 +611,7 @@
       document.getElementById('opt-duration-display').textContent = String(s.durationMin || 25);
       document.getElementById('opt-greenscreen').checked = !!s.greenscreen;
       document.getElementById('opt-language').value = s.language || '';
+      document.getElementById('opt-disable-fillers').checked = !!s.disableFillers;
     }
     function persistSettingsFromForm() {
       const s = readSettingsFromForm();
@@ -712,6 +719,7 @@
         maxDurationSec: formSettings.durationMin ? formSettings.durationMin * 60 : undefined,
         greenscreen: formSettings.greenscreen || undefined,
         language: formSettings.language || undefined,
+        disableFillers: formSettings.disableFillers || undefined,
       };
       const sentKeys = Object.keys(body).filter((k) => body[k] !== undefined);
       log('info', `POST /api/addie/video/session${sentKeys.length ? ` (settings: ${sentKeys.join(', ')})` : ''}`);
@@ -1007,7 +1015,7 @@
     document.addEventListener('DOMContentLoaded', async () => {
       // Restore advanced settings from localStorage and wire change persistence.
       applySettingsToForm(loadSettings());
-      ['opt-greeting', 'opt-context', 'opt-duration', 'opt-greenscreen', 'opt-language'].forEach((id) => {
+      ['opt-greeting', 'opt-context', 'opt-duration', 'opt-greenscreen', 'opt-language', 'opt-disable-fillers'].forEach((id) => {
         const el = document.getElementById(id);
         if (el) el.addEventListener('input', persistSettingsFromForm);
         if (el && (el.tagName === 'SELECT' || el.type === 'checkbox')) {
