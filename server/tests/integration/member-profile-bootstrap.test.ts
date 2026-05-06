@@ -434,6 +434,94 @@ describe('POST /api/me/member-profile (REST bootstrap)', () => {
     expect(typeof details.slug).toBe('string');
   });
 
+  it('surfaces domain_already_claimed warning when corporate_domain belongs to a different org', async () => {
+    const orgId = `${TEST_PREFIX}_dom_conflict`;
+    const otherOrgId = `${TEST_PREFIX}_dom_owner`;
+    await seedOrg(orgId);
+    // Seed the other org first and bind the domain to it.
+    await pool.query(
+      `INSERT INTO organizations (workos_organization_id, name, is_personal, created_at, updated_at)
+       VALUES ($1, $2, false, NOW(), NOW())
+       ON CONFLICT (workos_organization_id) DO UPDATE SET name = EXCLUDED.name`,
+      [otherOrgId, 'Domain Owner Co'],
+    );
+    await pool.query(
+      `INSERT INTO organization_domains (workos_organization_id, domain, is_primary, verified, source)
+       VALUES ($1, 'acme.example', true, true, 'email_verification')
+       ON CONFLICT (domain) DO UPDATE SET workos_organization_id = EXCLUDED.workos_organization_id`,
+      [otherOrgId],
+    );
+
+    const res = await request(app)
+      .post('/api/me/member-profile')
+      .send({
+        organization_name: 'Acme Conflict',
+        company_type: 'publisher',
+        corporate_domain: 'acme.example',
+      });
+
+    // Profile is created so the caller isn't blocked by an admin-resolvable
+    // issue, but the domain is NOT relinked and the conflict is surfaced.
+    expect(res.status).toBe(201);
+    expect(res.body.warnings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'domain_already_claimed',
+          domain: 'acme.example',
+        }),
+      ]),
+    );
+
+    // Verify the existing domain row was not reassigned.
+    const domainRow = await pool.query<{ workos_organization_id: string }>(
+      `SELECT workos_organization_id FROM organization_domains WHERE domain = 'acme.example'`,
+    );
+    expect(domainRow.rows[0].workos_organization_id).toBe(otherOrgId);
+
+    // Cleanup
+    await pool.query(`DELETE FROM organization_domains WHERE workos_organization_id = $1`, [otherOrgId]);
+    await pool.query(`DELETE FROM organizations WHERE workos_organization_id = $1`, [otherOrgId]);
+  });
+
+  it('records ToS and Privacy-Policy acceptance against the bootstrapping user + org', async () => {
+    const orgId = `${TEST_PREFIX}_tos`;
+    await seedOrg(orgId);
+
+    // Ensure the agreements table has a row for each type so the bootstrap
+    // path has a version to attach. ON CONFLICT noop keeps the test
+    // hermetic — CI environments may already have rows for these types.
+    await pool.query(
+      `INSERT INTO agreements (agreement_type, version, text, effective_date)
+       VALUES ('terms_of_service', 'test-tos-1', 'tos test body', NOW()),
+              ('privacy_policy', 'test-pp-1', 'pp test body', NOW())
+       ON CONFLICT (agreement_type, version) DO NOTHING`,
+    );
+
+    const res = await request(app)
+      .post('/api/me/member-profile')
+      .set('User-Agent', 'BootstrapTest/1.0')
+      .set('X-Forwarded-For', '203.0.113.42')
+      .send({
+        organization_name: 'Acme ToS',
+        company_type: 'publisher',
+        corporate_domain: 'acme.example',
+      });
+    expect(res.status).toBe(201);
+
+    const acceptanceRows = await pool.query<{ agreement_type: string; user_agent: string }>(
+      `SELECT agreement_type, user_agent FROM user_agreement_acceptances
+       WHERE workos_user_id = $1 AND workos_organization_id = $2`,
+      [currentUserId, orgId],
+    );
+    const types = acceptanceRows.rows.map((r) => r.agreement_type).sort();
+    expect(types).toContain('terms_of_service');
+    expect(types).toContain('privacy_policy');
+    expect(acceptanceRows.rows.every((r) => r.user_agent === 'BootstrapTest/1.0')).toBe(true);
+
+    // Cleanup
+    await pool.query(`DELETE FROM user_agreement_acceptances WHERE workos_user_id = $1`, [currentUserId]);
+  });
+
   it('still routes legacy display_name + slug bodies to the original handler', async () => {
     const orgId = `${TEST_PREFIX}_legacy`;
     await seedOrg(orgId);

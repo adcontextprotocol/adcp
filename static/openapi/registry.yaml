@@ -1921,7 +1921,11 @@ components:
       description: |-
         Request body for `POST /api/me/member-profile`. Creates the organization member profile that backs the per-agent registry endpoints. Fails with `403` if the caller's email domain does not match `corporate_domain`.
 
-        Org metadata fields (`organization_name`, `company_type`, `revenue_tier`, `membership_tier`) are written to the organization row **only when the field is currently null**. If a value is already set (e.g. an admin curated it via the dashboard), the body value is silently ignored and the response surfaces a `metadata_unchanged` warning naming the affected fields. This prevents a programmatic bootstrap from clobbering admin-curated metadata on subsequent calls.
+        Org metadata fields (`organization_name`, `company_type`, `revenue_tier`, `membership_tier`) are written to the organization row **only when the field is currently null**. If a value is already set (e.g. an admin curated it via the dashboard), the body value is silently ignored and the response surfaces a `metadata_unchanged` warning naming the affected API fields. This prevents a programmatic bootstrap from clobbering admin-curated metadata on subsequent calls.
+
+        If `corporate_domain` is already linked to a different organization (e.g. an earlier bootstrap on a sibling org), the profile is still created on the requested organization but the domain is **not** attached, and the response surfaces a `domain_already_claimed` warning naming the affected domain. Registry surfaces that depend on the verified domain (brand.json publish, brand resolution) will not reflect the profile until support resolves the conflict.
+
+        The caller's Terms-of-Service and Privacy-Policy acceptance is recorded server-side from the request context (`X-Forwarded-For` IP + User-Agent), against the current published agreement version, against the target organization. There is no opt-out — calling this endpoint is the consent.
 
         The endpoint is rate-limited at 15 failed attempts per hour per user — successful calls do not count. The legacy `display_name`+`slug` body shape (used by the AAO dashboard profile-edit form) bypasses the rate limit and the bootstrap flow entirely; that shape continues to return `409` on conflict and writes the full profile body as before.
     MemberProfile:

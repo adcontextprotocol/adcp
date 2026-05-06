@@ -27,7 +27,10 @@ import { COMPANY_TYPE_VALUES } from "../config/company-types.js";
 import { getCompanyDomain } from "../utils/email-domain.js";
 import { emailPrefsDb } from "../db/email-preferences-db.js";
 import { slugify } from "../services/collection-feed-sync.js";
-import { memberProfileBootstrapRateLimiter } from "../middleware/rate-limit.js";
+import {
+  isMemberProfileBootstrapBody,
+  memberProfileBootstrapRateLimiter,
+} from "../middleware/rate-limit.js";
 
 // Membership tiers a caller may set via the REST bootstrap body. Paid tiers
 // (`individual_professional`, `company_*`) require a successful Stripe
@@ -422,12 +425,29 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
 
       // Idempotency: existing profile → 200 with current state and a warning,
       // not 409. Documented in the spec as the retry-safe behavior.
+      // Source `corporate_domain` for the response from the org's primary
+      // verified domain row, not from whatever the caller sent. A multi-domain
+      // org may legitimately have multiple email-domain memberships; echoing
+      // the caller's value would leak that detail and could mislead the
+      // caller about which domain actually owns their profile.
+      const resolvePrimaryDomain = async (orgId: string, fallback: string): Promise<string> => {
+        const r = await getPool().query<{ domain: string }>(
+          `SELECT domain FROM organization_domains
+           WHERE workos_organization_id = $1 AND is_primary = true AND verified = true
+           ORDER BY domain ASC
+           LIMIT 1`,
+          [orgId],
+        );
+        return r.rows[0]?.domain ?? fallback;
+      };
+
       const existingProfile = await memberDb.getProfileByOrgId(targetOrgId);
       if (existingProfile) {
         const existingOrg = await orgDb.getOrganization(targetOrgId);
+        const primaryDomain = await resolvePrimaryDomain(targetOrgId, corporateDomain);
         logger.info({ userId: user.id, orgId: targetOrgId, durationMs: Date.now() - startTime }, 'POST /api/me/member-profile (bootstrap) idempotent hit');
         return res.status(200).json({
-          profile: toSpecMemberProfile(existingProfile, existingOrg, corporateDomain),
+          profile: toSpecMemberProfile(existingProfile, existingOrg, primaryDomain),
           warnings: [{
             code: 'profile_already_exists',
             message: 'Member profile already exists for this organization; no fields were mutated.',
@@ -448,7 +468,16 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       // admin had already curated.
       const existingOrg = await orgDb.getOrganization(targetOrgId);
       const orgUpdates: Record<string, unknown> = {};
-      const metadataIgnored: string[] = [];
+      const metadataIgnoredApiFields: string[] = [];
+      // Map DB column → public API field name. Callers know about
+      // `organization_name`, not the underlying `organizations.name` column;
+      // the response-side warning must speak the API's vocabulary.
+      const COLUMN_TO_API_FIELD: Record<string, string> = {
+        name: 'organization_name',
+        company_type: 'company_type',
+        revenue_tier: 'revenue_tier',
+        membership_tier: 'membership_tier',
+      };
       const considerField = (
         bodyValue: unknown,
         column: 'name' | 'company_type' | 'revenue_tier' | 'membership_tier',
@@ -458,7 +487,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         if (currentValue === null || currentValue === undefined || currentValue === '') {
           (orgUpdates as any)[column] = bodyValue;
         } else if (currentValue !== bodyValue) {
-          metadataIgnored.push(column);
+          metadataIgnoredApiFields.push(COLUMN_TO_API_FIELD[column]);
         }
       };
       considerField(trimmedName, 'name');
@@ -473,18 +502,35 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         }
       }
 
-      // Mirror the email-verified domain insert from the org creation path.
-      // ON CONFLICT DO NOTHING is safe — if another org already owns the
-      // domain we leave the existing record alone (admin-resolvable) and
-      // continue creating the profile so the caller isn't blocked.
+      // Mirror the email-verified domain insert from the org creation path,
+      // but check for a pre-existing claim explicitly so we can surface a
+      // `domain_already_claimed` warning rather than silently no-op'ing
+      // the link-up. Without this, a caller from acme.com whose domain
+      // is already bound to a different org would walk away with a profile
+      // on this org and no domain link — half-broken state, no signal.
+      // We still create the profile so programmatic callers aren't blocked
+      // on an admin-resolvable issue.
       const pool = getPool();
+      let domainConflictOrgId: string | null = null;
       try {
-        await pool.query(
-          `INSERT INTO organization_domains (workos_organization_id, domain, is_primary, verified, source)
-           VALUES ($1, $2, true, true, 'email_verification')
-           ON CONFLICT (domain) DO NOTHING`,
-          [targetOrgId, corporateDomain],
+        const existingDomain = await pool.query<{ workos_organization_id: string }>(
+          `SELECT workos_organization_id FROM organization_domains WHERE LOWER(domain) = LOWER($1)`,
+          [corporateDomain],
         );
+        if (existingDomain.rows.length === 0) {
+          await pool.query(
+            `INSERT INTO organization_domains (workos_organization_id, domain, is_primary, verified, source)
+             VALUES ($1, $2, true, true, 'email_verification')
+             ON CONFLICT (domain) DO NOTHING`,
+            [targetOrgId, corporateDomain],
+          );
+        } else if (existingDomain.rows[0].workos_organization_id !== targetOrgId) {
+          domainConflictOrgId = existingDomain.rows[0].workos_organization_id;
+          logger.warn(
+            { orgId: targetOrgId, conflictOrgId: domainConflictOrgId, domain: corporateDomain },
+            'Bootstrap: corporate_domain already linked to a different org; profile created without domain link',
+          );
+        }
       } catch (err) {
         logger.warn({ err, orgId: targetOrgId, domain: corporateDomain }, 'Failed to write organization_domains during bootstrap');
       }
@@ -517,6 +563,45 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         }
       }
 
+      // Record Terms-of-Service and Privacy-Policy acceptance from the
+      // request context, mirroring the org-creation flow. The OpenAPI body
+      // documents `marketing_opt_in` as "Independent of Terms of Service
+      // consent (which is required and recorded server-side from the
+      // request context)" — without this block that claim is fiction.
+      // Best-effort; an audit-row failure must not roll back a successful
+      // profile create.
+      try {
+        const tosAgreement = await orgDb.getCurrentAgreementByType('terms_of_service');
+        const privacyAgreement = await orgDb.getCurrentAgreementByType('privacy_policy');
+        const ipAddress = req.ip
+          || (typeof req.headers['x-forwarded-for'] === 'string' ? (req.headers['x-forwarded-for'] as string) : 'unknown');
+        const userAgent = (req.headers['user-agent'] as string) || 'unknown';
+        if (tosAgreement) {
+          await orgDb.recordUserAgreementAcceptance({
+            workos_user_id: user.id,
+            email: user.email,
+            agreement_type: 'terms_of_service',
+            agreement_version: tosAgreement.version,
+            ip_address: ipAddress,
+            user_agent: userAgent,
+            workos_organization_id: targetOrgId,
+          });
+        }
+        if (privacyAgreement) {
+          await orgDb.recordUserAgreementAcceptance({
+            workos_user_id: user.id,
+            email: user.email,
+            agreement_type: 'privacy_policy',
+            agreement_version: privacyAgreement.version,
+            ip_address: ipAddress,
+            user_agent: userAgent,
+            workos_organization_id: targetOrgId,
+          });
+        }
+      } catch (err) {
+        logger.warn({ err, userId: user.id, orgId: targetOrgId }, 'Failed to record ToS / privacy-policy acceptance during bootstrap');
+      }
+
       // Audit-log the bootstrap so org-level mutations (verified domain
       // insert, metadata writes) are attributable. Failures here must not
       // roll back the profile create — the row is already on disk and the
@@ -532,7 +617,8 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
             slug,
             corporate_domain: corporateDomain,
             updated_fields: Object.keys(orgUpdates),
-            ignored_fields: metadataIgnored,
+            ignored_fields: metadataIgnoredApiFields,
+            domain_conflict_org_id: domainConflictOrgId,
             ...(typeof company_type === 'string' ? { company_type } : {}),
             ...(typeof revenue_tier === 'string' ? { revenue_tier } : {}),
             ...(typeof membership_tier === 'string' ? { membership_tier } : {}),
@@ -546,26 +632,36 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       invalidateMemberContextCache();
 
       const refreshedOrg = await orgDb.getOrganization(targetOrgId);
+      const primaryDomain = await resolvePrimaryDomain(targetOrgId, corporateDomain);
       logger.info({
         profileId: profile.id,
         orgId: targetOrgId,
         slug,
         durationMs: Date.now() - startTime,
-        metadataIgnored,
+        metadataIgnoredApiFields,
+        domainConflictOrgId,
       }, 'POST /api/me/member-profile (bootstrap) completed');
 
       const warnings: Array<Record<string, unknown>> = [];
-      if (metadataIgnored.length > 0) {
+      if (metadataIgnoredApiFields.length > 0) {
         warnings.push({
           code: 'metadata_unchanged',
-          fields: metadataIgnored,
+          fields: metadataIgnoredApiFields,
           message:
             'Some org metadata fields were already set on the organization and were not overwritten. Update them via the dashboard or PUT /api/organizations/:orgId if you need to change them.',
         });
       }
+      if (domainConflictOrgId) {
+        warnings.push({
+          code: 'domain_already_claimed',
+          domain: corporateDomain,
+          message:
+            `corporate_domain '${corporateDomain}' is already linked to a different organization, so it was not attached to this profile's organization. The profile was created, but registry surfaces that resolve via the verified domain (e.g. brand.json publish) won't reflect it. Email support@agenticadvertising.org to resolve the domain ownership.`,
+        });
+      }
 
       return res.status(201).json({
-        profile: toSpecMemberProfile(profile, refreshedOrg, corporateDomain),
+        profile: toSpecMemberProfile(profile, refreshedOrg, primaryDomain),
         ...(warnings.length ? { warnings } : {}),
       });
     } catch (error) {
@@ -684,14 +780,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
     // dashboard profile-edit flow (display_name + slug) keeps its original
     // handler below so /community/profile-edit and /member-profile.html stay
     // wired to the existing semantics (409 on conflict, full profile body).
-    if (
-      req.body
-      && typeof req.body === 'object'
-      && typeof (req.body as any).organization_name === 'string'
-      && typeof (req.body as any).corporate_domain === 'string'
-      && typeof (req.body as any).display_name !== 'string'
-      && typeof (req.body as any).slug !== 'string'
-    ) {
+    if (isMemberProfileBootstrapBody(req.body)) {
       return handleBootstrapMemberProfile(req, res, startTime);
     }
     try {

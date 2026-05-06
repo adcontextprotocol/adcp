@@ -134,6 +134,29 @@ export const orgCreationRateLimiter = rateLimit({
 });
 
 /**
+ * True when the request body matches the public REST bootstrap shape on
+ * `POST /api/me/member-profile`: `organization_name` + `corporate_domain`
+ * present, `display_name` + `slug` absent. The bootstrap rate limiter keys
+ * off this so the legacy dashboard profile-edit body (which carries
+ * `display_name` + `slug` and full profile fields) bypasses the limiter
+ * and keeps its prior unmetered behavior.
+ *
+ * Exported so the rule can be unit-tested directly — bypassing the test
+ * suite's standard `vi.mock` of the limiter — and so any new caller that
+ * needs the same dispatch decision uses the same predicate.
+ */
+export function isMemberProfileBootstrapBody(body: unknown): boolean {
+  if (!body || typeof body !== 'object') return false;
+  const b = body as Record<string, unknown>;
+  return (
+    typeof b.organization_name === 'string'
+    && typeof b.corporate_domain === 'string'
+    && typeof b.display_name !== 'string'
+    && typeof b.slug !== 'string'
+  );
+}
+
+/**
  * Rate limiter for the public REST bootstrap path on `POST /api/me/member-profile`.
  * Same envelope as `orgCreationRateLimiter` — 15 failed attempts per hour per
  * user, successful calls don't count — but `skip`s requests whose body does
@@ -149,16 +172,7 @@ export const memberProfileBootstrapRateLimiter = rateLimit({
   store: new CachedPostgresStore('mp-bootstrap:'),
   keyGenerator: generateKey,
   validate: { keyGeneratorIpFallback: false },
-  skip: (req) => {
-    const body = (req as any).body;
-    if (!body || typeof body !== 'object') return true;
-    const isBootstrapShape =
-      typeof body.organization_name === 'string'
-      && typeof body.corporate_domain === 'string'
-      && typeof body.display_name !== 'string'
-      && typeof body.slug !== 'string';
-    return !isBootstrapShape;
-  },
+  skip: (req) => !isMemberProfileBootstrapBody((req as any).body),
   handler: (req: Request, res: Response) => {
     logger.warn({
       userId: (req as any).user?.id,
