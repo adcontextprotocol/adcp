@@ -130,6 +130,35 @@ describe('WorkOS verified-domain → member_profiles.primary_brand_domain', () =
     expect(row.rows[0].primary_brand_domain).toBeNull();
   });
 
+  it('still auto-populates for a personal org (brand identity ≠ org-membership inference)', async () => {
+    // Pin the explicit decision: a personal-tier user verifying a domain
+    // SHOULD get primary_brand_domain set on their profile. The
+    // squeeze-prevention concern (which gates is_primary on
+    // organization_domains for personal orgs) is about org-membership
+    // inference, not brand identity. An Individual Professional CAN own
+    // and verify a brand — that's the entire purpose of the tier. If
+    // someone later adds `if (isPersonal) return` to the auto-populate
+    // path, this test fails and they have to revisit the rationale.
+    await pool.query(
+      `UPDATE organizations SET is_personal = true WHERE workos_organization_id = $1`,
+      [TEST_ORG],
+    );
+    await seedProfile(pool, null);
+
+    await upsertOrganizationDomain({
+      id: 'od_test_personal',
+      organization_id: TEST_ORG,
+      domain: 'wkos-brand-primary-personal.test',
+      state: 'verified',
+    });
+
+    const row = await pool.query(
+      `SELECT primary_brand_domain FROM member_profiles WHERE workos_organization_id = $1`,
+      [TEST_ORG],
+    );
+    expect(row.rows[0].primary_brand_domain).toBe('wkos-brand-primary-personal.test');
+  });
+
   it('does not auto-populate when the domain is pending (not yet verified)', async () => {
     await seedProfile(pool, null);
 

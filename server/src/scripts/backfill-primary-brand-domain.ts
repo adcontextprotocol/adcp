@@ -8,20 +8,27 @@
  * going forward; this script catches profiles created before that change
  * landed.
  *
- * Usage:
- *   npx tsx server/scripts/backfill-primary-brand-domain.ts --dry-run
- *   npx tsx server/scripts/backfill-primary-brand-domain.ts
+ * Usage (dev):
+ *   npx tsx server/src/scripts/backfill-primary-brand-domain.ts            # dry-run
+ *   npx tsx server/src/scripts/backfill-primary-brand-domain.ts --apply    # write
+ *
+ * Usage (prod, via fly ssh):
+ *   fly ssh console -a adcp-docs -C 'node /app/dist/scripts/backfill-primary-brand-domain.js'           # dry-run
+ *   fly ssh console -a adcp-docs -C 'node /app/dist/scripts/backfill-primary-brand-domain.js --apply'   # write
  *
  * Prerequisites: DATABASE_URL set.
  */
 
-import { getPool } from '../src/db/client.js';
+import { getPool } from '../db/client.js';
 import {
   assertClaimableBrandDomain,
   canonicalizeBrandDomain,
-} from '../src/services/identifier-normalization.js';
+} from '../services/identifier-normalization.js';
 
-const dryRun = process.argv.includes('--dry-run');
+// Default to dry-run; require explicit `--apply` to write. Cheap insurance
+// against an operator running the script while wired to the wrong DATABASE_URL.
+const apply = process.argv.includes('--apply');
+const dryRun = !apply;
 
 interface Candidate {
   org_id: string;
@@ -91,8 +98,9 @@ async function main(): Promise<void> {
     setCount += 1;
   }
 
+  console.log(`Mode:    ${dryRun ? 'DRY-RUN (use --apply to write)' : 'APPLY (writing changes)'}`);
   console.log(`Scanned: ${scanned} profiles with NULL primary_brand_domain and ≥1 verified WorkOS domain`);
-  console.log(`Set:     ${setCount}${dryRun ? ' (dry-run)' : ''}`);
+  console.log(`Set:     ${setCount}${dryRun ? ' (would set)' : ''}`);
   console.log(`Skipped (non-claimable): ${skippedNonClaimable}`);
   console.log(`Skipped (ambiguous, ≥2 claimable): ${skippedAmbiguous}`);
   if (ambiguous.length > 0) {
