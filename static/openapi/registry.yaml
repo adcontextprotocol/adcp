@@ -1902,7 +1902,7 @@ components:
           example: acme.com
         primary_brand_domain:
           type: string
-          description: The brand domain whose `brand.json` will reflect this profile's `public` agents. Optional at creation; required before any agent can be set to `visibility: \"public\"`.
+          description: "The brand domain whose `brand.json` will reflect this profile's `public` agents. Optional at creation; required before any agent can be set to `visibility: public`."
           example: acme.com
         marketing_opt_in:
           type: boolean
