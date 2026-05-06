@@ -36,6 +36,31 @@ export function assertValidBrandDomain(canonical: string): void {
 }
 
 /**
+ * High-volume free-email provider domains. Exported so downstream consumers
+ * (admin health checks, etc.) can stay in sync without maintaining a
+ * parallel list.
+ */
+export const FREE_EMAIL_PROVIDER_DOMAINS: readonly string[] = [
+  // Google
+  'gmail.com', 'googlemail.com',
+  // Microsoft
+  'outlook.com', 'hotmail.com', 'live.com', 'msn.com',
+  // Yahoo
+  'yahoo.com', 'yahoo.co.uk', 'ymail.com', 'rocketmail.com',
+  // AOL
+  'aol.com', 'aim.com',
+  // Apple
+  'icloud.com', 'me.com', 'mac.com',
+  // Proton
+  'proton.me', 'protonmail.com', 'pm.me',
+  // Other providers
+  'zoho.com', 'fastmail.com', 'gmx.com', 'gmx.net', 'mail.com',
+  'yandex.com', 'yandex.ru', 'qq.com', '163.com', '126.com',
+  // duck.com is DuckDuckGo's email-forwarding alias service, not a hosted mailbox provider
+  'duck.com', 'hey.com', 'tutanota.com', 'tutanota.de',
+];
+
+/**
  * Shared-platform and public-suffix domains where any one tenant claiming
  * the apex would steal the brand identity for thousands of others. WorkOS
  * may or may not reject these at create — defense in depth so the
@@ -57,6 +82,10 @@ const SHARED_PLATFORM_DOMAINS = new Set<string>([
   // Common eTLDs that pass the apex regex
   'co.uk', 'co.jp', 'com.au', 'com.br', 'co.in', 'co.nz', 'co.za',
   'org.uk', 'ac.uk', 'gov.uk', 'me.uk', 'ne.jp', 'or.jp',
+  // Free email providers — claiming one would auto-assign brand identity for
+  // every user on that service. WorkOS DNS verification blocks this in practice
+  // but this is defense-in-depth for admin overrides and future trust paths.
+  ...FREE_EMAIL_PROVIDER_DOMAINS,
 ]);
 
 /**

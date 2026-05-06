@@ -18,6 +18,7 @@ import { ToolError } from '../tool-error.js';
 import type { AddieTool } from '../types.js';
 import { COMMITTEE_TYPE_LABELS, VALID_MEMBER_OFFERINGS } from '../../types.js';
 import type { MemberContext } from '../member-context.js';
+import { FREE_EMAIL_PROVIDER_DOMAINS } from '../../services/identifier-normalization.js';
 // invalidateMemberContextCache is imported lazily in the two handlers that
 // call it (see below). Top-level import would pull member-context.ts, which
 // imports middleware/auth.ts, which constructs a WorkOS client at module load
@@ -5802,12 +5803,7 @@ Use add_committee_leader to assign a leader.`;
     const limit = Math.min(Math.max((input.limit as number) || 20, 1), 100);
     const pool = getPool();
 
-    // Common free email providers to exclude
-    const freeEmailDomains = [
-      'gmail.com', 'googlemail.com', 'yahoo.com', 'yahoo.co.uk', 'hotmail.com',
-      'outlook.com', 'live.com', 'msn.com', 'aol.com', 'icloud.com', 'me.com',
-      'mac.com', 'protonmail.com', 'proton.me', 'mail.com', 'zoho.com',
-    ];
+    const freeEmailDomains = FREE_EMAIL_PROVIDER_DOMAINS;
 
     let response = `## Domain Health Check\n\n`;
     let issueCount = 0;
@@ -6124,6 +6120,7 @@ Use add_committee_leader to assign a leader.`;
 
     // 1. Find unmapped corporate domains (already engaged, high value)
     try {
+      const freePlaceholders = FREE_EMAIL_PROVIDER_DOMAINS.map((_, i) => `$${i + 1}`).join(', ');
       const unmappedResult = await pool.query(`
         WITH corporate_domains AS (
           -- Extract domains from Slack users not in personal orgs
@@ -6133,13 +6130,7 @@ Use add_committee_leader to assign a leader.`;
           FROM slack_user_mappings sm
           WHERE sm.slack_email IS NOT NULL
             AND sm.slack_is_bot IS NOT TRUE
-            -- Exclude common personal email domains
-            AND LOWER(sm.slack_email) NOT LIKE '%@gmail.com'
-            AND LOWER(sm.slack_email) NOT LIKE '%@yahoo.com'
-            AND LOWER(sm.slack_email) NOT LIKE '%@hotmail.com'
-            AND LOWER(sm.slack_email) NOT LIKE '%@outlook.com'
-            AND LOWER(sm.slack_email) NOT LIKE '%@icloud.com'
-            AND LOWER(sm.slack_email) NOT LIKE '%@aol.com'
+            AND LOWER(SUBSTRING(sm.slack_email FROM POSITION('@' IN sm.slack_email) + 1)) NOT IN (${freePlaceholders})
           GROUP BY domain
         )
         SELECT
@@ -6157,8 +6148,8 @@ Use add_committee_leader to assign a leader.`;
           WHERE o.email_domain = cd.domain
         )
         ORDER BY cd.user_count DESC
-        LIMIT $1
-      `, [limit]);
+        LIMIT $${FREE_EMAIL_PROVIDER_DOMAINS.length + 1}
+      `, [...FREE_EMAIL_PROVIDER_DOMAINS, limit]);
 
       if (unmappedResult.rows.length > 0) {
         response += `### 🎯 Unmapped Domains (Already in Slack!)\n\n`;

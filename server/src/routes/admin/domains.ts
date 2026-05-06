@@ -21,6 +21,7 @@ import { resolveOrgsByDomains } from "../../db/domain-resolution-db.js";
 import { complete, isLLMConfigured } from "../../utils/llm.js";
 import { BrandDatabase } from "../../db/brand-db.js";
 import { verifyDomainChallenge } from "../../services/brand-claim.js";
+import { FREE_EMAIL_PROVIDER_DOMAINS } from "../../services/identifier-normalization.js";
 
 const slackDb = new SlackDatabase();
 const logger = createLogger("admin-domains");
@@ -577,13 +578,7 @@ export function setupDomainRoutes(
         const minUsers = min_users ? parseInt(min_users as string, 10) : 1;
         const resultLimit = limit ? parseInt(limit as string, 10) : 100;
 
-        // Common free email providers to exclude
-        const freeEmailDomains = [
-          'gmail.com', 'googlemail.com', 'yahoo.com', 'yahoo.co.uk', 'hotmail.com',
-          'outlook.com', 'live.com', 'msn.com', 'aol.com', 'icloud.com', 'me.com',
-          'mac.com', 'protonmail.com', 'proton.me', 'mail.com', 'zoho.com',
-          'yandex.com', 'gmx.com', 'gmx.net', 'fastmail.com', 'tutanota.com',
-        ];
+        const freeEmailDomains = FREE_EMAIL_PROVIDER_DOMAINS;
 
         const pool = getPool();
 
@@ -1811,12 +1806,7 @@ Respond with ONLY a JSON array, one entry per cluster:
     return results;
   }
 
-  // Common free email providers to exclude from corporate domain checks
-  const freeEmailDomains = [
-    'gmail.com', 'googlemail.com', 'yahoo.com', 'yahoo.co.uk', 'hotmail.com',
-    'outlook.com', 'live.com', 'msn.com', 'aol.com', 'icloud.com', 'me.com',
-    'mac.com', 'protonmail.com', 'proton.me', 'mail.com', 'zoho.com',
-  ];
+  const freeEmailDomains = FREE_EMAIL_PROVIDER_DOMAINS;
 
   // GET /api/admin/domain-health - Get domain health summary and issues
   apiRouter.get(
