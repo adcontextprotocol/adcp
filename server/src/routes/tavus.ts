@@ -711,7 +711,7 @@ export function createTavusRouter() {
         "Well... ",
         "Hmm... ",
         "Okay, so... ",
-        "Right... ",
+        "Sure... ",
         "Let me think... ",
         "Funny enough... ",
         "Yeah, so... ",
