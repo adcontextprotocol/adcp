@@ -134,6 +134,60 @@ export const orgCreationRateLimiter = rateLimit({
 });
 
 /**
+ * True when the request body matches the public REST bootstrap shape on
+ * `POST /api/me/member-profile`: `organization_name` + `corporate_domain`
+ * present, `display_name` + `slug` absent. The bootstrap rate limiter keys
+ * off this so the legacy dashboard profile-edit body (which carries
+ * `display_name` + `slug` and full profile fields) bypasses the limiter
+ * and keeps its prior unmetered behavior.
+ *
+ * Exported so the rule can be unit-tested directly — bypassing the test
+ * suite's standard `vi.mock` of the limiter — and so any new caller that
+ * needs the same dispatch decision uses the same predicate.
+ */
+export function isMemberProfileBootstrapBody(body: unknown): boolean {
+  if (!body || typeof body !== 'object') return false;
+  const b = body as Record<string, unknown>;
+  return (
+    typeof b.organization_name === 'string'
+    && typeof b.corporate_domain === 'string'
+    && typeof b.display_name !== 'string'
+    && typeof b.slug !== 'string'
+  );
+}
+
+/**
+ * Rate limiter for the public REST bootstrap path on `POST /api/me/member-profile`.
+ * Same envelope as `orgCreationRateLimiter` — 15 failed attempts per hour per
+ * user, successful calls don't count — but `skip`s requests whose body does
+ * not match the bootstrap shape so the legacy dashboard profile-create path
+ * (`display_name` + `slug`) keeps its prior unmetered behavior.
+ */
+export const memberProfileBootstrapRateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 15,
+  skipSuccessfulRequests: true,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: new CachedPostgresStore('mp-bootstrap:'),
+  keyGenerator: generateKey,
+  validate: { keyGeneratorIpFallback: false },
+  skip: (req) => !isMemberProfileBootstrapBody((req as any).body),
+  handler: (req: Request, res: Response) => {
+    logger.warn({
+      userId: (req as any).user?.id,
+      ip: req.ip,
+      path: req.path,
+    }, 'Rate limit exceeded for member-profile bootstrap');
+    res.status(429).json({
+      error: 'Too many requests',
+      message: 'Too many member-profile bootstrap attempts. Please wait an hour and try again.',
+      retryAfter: Math.ceil(60 * 60),
+    });
+  },
+});
+
+/**
  * Rate limiter for brand creation (community submissions)
  * Limits: 60 submissions per hour per user/IP
  */
