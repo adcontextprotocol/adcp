@@ -471,4 +471,114 @@ describe('Registry publisher endpoint — brand.json hydration', () => {
     expect(res.body.properties).toHaveLength(1);
     expect(res.body.properties[0].source).toBe('adagents_json');
   });
+
+  it('triggers a re-crawl when the cached manifest carries an agent the federated index is missing and the row is >1h old', async () => {
+    // Drift case: a previous crawl wrote the cache (publishers.adagents_json
+    // with 2 agents) but the per-agent upsert for one of them silently
+    // failed (or the publisher added the second agent after we cached the
+    // file). The federated index has only the first agent. An anonymous
+    // visit to /publisher/<domain> must re-trigger the crawl so the index
+    // catches up — without this, the publisher has no path to recovery
+    // that doesn't require signing in to hit "Refresh now."
+    const pub = `index-diverged-${Date.now()}.registry-baseline.example`;
+    const agentInIndex = 'https://agent-known.example';
+    const agentMissing = 'https://agent-missing.example';
+
+    // Write the publishers cache row directly. We deliberately bypass
+    // upsertAdagentsCache because that helper ALSO projects the manifest
+    // into catalog_agent_authorizations, which would seed the federated
+    // index with both agents and erase the divergence we're trying to
+    // simulate. The wonderstruck-shaped failure is exactly: cache has
+    // both agents, but only the legacy half (or only the catalog half)
+    // landed for one of them.
+    await pool.query(
+      `INSERT INTO publishers (domain, adagents_json, source_type, last_validated)
+       VALUES ($1, $2::jsonb, 'adagents_json', NOW() - INTERVAL '2 hours')`,
+      [
+        pub,
+        JSON.stringify({
+          authorized_agents: [
+            { url: agentInIndex, authorized_for: 'display' },
+            { url: agentMissing, authorized_for: 'display' },
+          ],
+          properties: [],
+        }),
+      ],
+    );
+
+    // Plant exactly one of the two agents in the legacy authorization
+    // table. The federated-index UNION reads legacy + catalog; with no
+    // catalog projection, the reader returns only this single agent —
+    // matching the production drift case.
+    await pool.query(
+      `INSERT INTO agent_publisher_authorizations (agent_url, publisher_domain, source)
+       VALUES ($1, $2, 'adagents_json')`,
+      [agentInIndex, pub],
+    );
+
+    // brand row exists with manifest so brand-staleness can't be the
+    // re-crawl reason — only divergence remains.
+    await brandDb.upsertDiscoveredBrand({
+      domain: pub,
+      brand_name: 'Index Diverged Co',
+      source_type: 'brand_json',
+      has_brand_manifest: true,
+      brand_manifest: { name: 'Index Diverged Co' },
+    });
+
+    const res = await request(app).get(`/api/registry/publisher?domain=${encodeURIComponent(pub)}`);
+    expect(res.status).toBe(200);
+    expect(res.body.adagents_valid).toBe(true);
+    expect(res.body.auto_crawl_triggered).toBe(true);
+    // Cleanup: the planted authorization will leak across tests
+    // otherwise (the LIKE delete in clearFixtures only catches by
+    // publisher_domain prefix, which works here).
+    await pool.query(
+      `DELETE FROM agent_publisher_authorizations WHERE publisher_domain = $1`,
+      [pub],
+    );
+  });
+
+  it('does NOT re-crawl on divergence when the cached manifest is fresh', async () => {
+    // Counterpart to the previous test: same shape (cache has 2 agents,
+    // index has 1) but last_validated is recent, so the in-flight crawl
+    // hasn't finished writing yet. We must not re-trigger and stomp on
+    // its writes.
+    const pub = `index-diverged-fresh-${Date.now()}.registry-baseline.example`;
+    await pool.query(
+      `INSERT INTO publishers (domain, adagents_json, source_type, last_validated)
+       VALUES ($1, $2::jsonb, 'adagents_json', NOW())`,
+      [
+        pub,
+        JSON.stringify({
+          authorized_agents: [
+            { url: 'https://agent-1.example', authorized_for: 'display' },
+            { url: 'https://agent-2.example', authorized_for: 'display' },
+          ],
+          properties: [],
+        }),
+      ],
+    );
+    await pool.query(
+      `INSERT INTO agent_publisher_authorizations (agent_url, publisher_domain, source)
+       VALUES ($1, $2, 'adagents_json')`,
+      ['https://agent-1.example', pub],
+    );
+    await brandDb.upsertDiscoveredBrand({
+      domain: pub,
+      brand_name: 'Fresh Diverged Co',
+      source_type: 'brand_json',
+      has_brand_manifest: true,
+      brand_manifest: { name: 'Fresh Diverged Co' },
+    });
+
+    const res = await request(app).get(`/api/registry/publisher?domain=${encodeURIComponent(pub)}`);
+    expect(res.status).toBe(200);
+    expect(res.body.adagents_valid).toBe(true);
+    expect(res.body.auto_crawl_triggered).toBeUndefined();
+    await pool.query(
+      `DELETE FROM agent_publisher_authorizations WHERE publisher_domain = $1`,
+      [pub],
+    );
+  });
 });
