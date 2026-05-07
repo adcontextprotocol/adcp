@@ -59,6 +59,24 @@ export interface UpsertAdagentsCacheInput {
   domain: string;
   manifest: AdagentsManifest;
   expiresAt?: Date;
+  /**
+   * HTTP status code from the fetch that produced this manifest. When
+   * supplied, written to publishers.last_http_status. Phase B of the
+   * publisher-page redesign — surfaces verifier-grade chrome.
+   */
+  statusCode?: number;
+  /**
+   * Response body byte length (post-decompression). When
+   * authoritative_location was followed, measures the canonical
+   * document body, not the stub.
+   */
+  responseBytes?: number;
+  /**
+   * Final URL after following redirects + authoritative_location.
+   * Differs from the publisher's expected /.well-known URL when
+   * `self_redirected` or `aao_hosted`.
+   */
+  resolvedUrl?: string;
 }
 
 const ADAGENTS_CREATED_BY_PREFIX = 'adagents_json:';
@@ -93,6 +111,27 @@ function isPublisherDomainAnchor(publisherDomain: string, type: string, value: s
  * agent_url query parameter through the same function the writer uses
  * for stored rows. Drift between the two would silently miss matches.
  */
+// Phase B fetch-metadata hardening. The HTTP status writer column is a
+// SMALLINT (-32768..32767), broader than the RFC 100..599 range. Clamp
+// at write time so a malicious origin returning, e.g., status 999 can't
+// surface that to verifiers — text-only display is harmless, but the
+// schema docstring promises 100..599 and we should match it.
+function clampHttpStatus(status: number | undefined): number | null {
+  if (typeof status !== 'number' || !Number.isFinite(status)) return null;
+  return Math.max(100, Math.min(599, Math.trunc(status)));
+}
+
+// Phase B: cap resolved_url length at write. `Response.url` is built
+// from chained Location headers — undici defaults bound each hop but
+// not the resulting string. A pathological redirect chain could
+// otherwise stuff a multi-KB URL into the column. 2048 covers every
+// real publisher CDN URL with comfortable headroom.
+const RESOLVED_URL_MAX = 2048;
+function truncateResolvedUrl(url: string | undefined): string | null {
+  if (typeof url !== 'string' || url.length === 0) return null;
+  return url.length > RESOLVED_URL_MAX ? url.slice(0, RESOLVED_URL_MAX) : url;
+}
+
 export function canonicalizeAgentUrl(raw: string): string | null {
   const trimmed = raw.trim();
   if (trimmed.length === 0) return null;
@@ -130,6 +169,44 @@ export class PublisherDatabase {
    * crawl-tracking columns; org/ownership and review state are preserved so a
    * later org claim isn't wiped by a routine re-crawl.
    */
+  /**
+   * Record a failed adagents.json fetch attempt. The crawl returned a
+   * non-200 response (404, 5xx, etc.) so there is no manifest to cache,
+   * but the fetch metadata still belongs on the publishers row so the
+   * verifier-facing UI can show "Last attempted: <ts> · HTTP <code>".
+   * Does not touch adagents_json (preserves the last successful body
+   * if one exists) and does not bump source_type.
+   */
+  async recordFailedAdagentsFetch(input: {
+    domain: string;
+    statusCode?: number;
+    responseBytes?: number;
+    resolvedUrl?: string;
+  }): Promise<void> {
+    const domain = input.domain.toLowerCase();
+    const client = await getClient();
+    try {
+      await client.query(
+        `INSERT INTO publishers
+           (domain, source_type, last_http_status, last_response_bytes, resolved_url)
+         VALUES ($1, 'community', $2, $3, $4)
+         ON CONFLICT (domain) DO UPDATE SET
+           last_http_status = EXCLUDED.last_http_status,
+           last_response_bytes = EXCLUDED.last_response_bytes,
+           resolved_url = EXCLUDED.resolved_url,
+           updated_at = NOW()`,
+        [
+          domain,
+          clampHttpStatus(input.statusCode),
+          input.responseBytes ?? null,
+          truncateResolvedUrl(input.resolvedUrl),
+        ],
+      );
+    } finally {
+      client.release();
+    }
+  }
+
   async upsertAdagentsCache(input: UpsertAdagentsCacheInput): Promise<void> {
     const domain = input.domain.toLowerCase();
     const client = await getClient();
@@ -150,15 +227,27 @@ export class PublisherDatabase {
       };
 
       await client.query(
-        `INSERT INTO publishers (domain, adagents_json, source_type, last_validated, expires_at)
-         VALUES ($1, $2::jsonb, 'adagents_json', NOW(), $3)
+        `INSERT INTO publishers
+           (domain, adagents_json, source_type, last_validated, expires_at,
+            last_http_status, last_response_bytes, resolved_url)
+         VALUES ($1, $2::jsonb, 'adagents_json', NOW(), $3, $4, $5, $6)
          ON CONFLICT (domain) DO UPDATE SET
            adagents_json = EXCLUDED.adagents_json,
            source_type = 'adagents_json',
            last_validated = NOW(),
            expires_at = EXCLUDED.expires_at,
+           last_http_status = EXCLUDED.last_http_status,
+           last_response_bytes = EXCLUDED.last_response_bytes,
+           resolved_url = EXCLUDED.resolved_url,
            updated_at = NOW()`,
-        [domain, JSON.stringify(safeManifest), input.expiresAt ?? null]
+        [
+          domain,
+          JSON.stringify(safeManifest),
+          input.expiresAt ?? null,
+          clampHttpStatus(input.statusCode),
+          input.responseBytes ?? null,
+          truncateResolvedUrl(input.resolvedUrl),
+        ]
       );
 
       const properties = Array.isArray(safeManifest.properties) ? safeManifest.properties : [];

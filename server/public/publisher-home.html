@@ -540,14 +540,23 @@
         hero.setAttribute('data-state', state);
 
         // Verification chrome. Always shows expected_url; adds
-        // resolved_url when self_redirected; adds last_validated when
-        // populated (some legacy rows may be NULL).
+        // resolved_url when self_redirected; adds last_validated /
+        // HTTP status / bytes when populated (NULL until next crawl
+        // for rows that pre-date Phase B).
         const verification = document.getElementById('verification-chrome');
         const hosting = data.hosting || {};
         const ts = fmtTimestamp(hosting.last_validated);
         const verRows = [];
         if (ts) {
           verRows.push(`<div><dt>Last verified</dt><dd><time datetime="${escapeHtml(ts.iso)}"><code>${escapeHtml(ts.display)}</code></time></dd></div>`);
+        }
+        if (typeof hosting.last_http_status === 'number') {
+          verRows.push(`<div><dt>HTTP</dt><dd><code>${escapeHtml(String(hosting.last_http_status))}</code></dd></div>`);
+        }
+        if (typeof hosting.last_bytes === 'number') {
+          // Use locale-formatted thousands separators for human read,
+          // wrapped in <code> with user-select:all for copy-paste.
+          verRows.push(`<div><dt>Bytes</dt><dd><code>${escapeHtml(hosting.last_bytes.toLocaleString('en-US'))}</code></dd></div>`);
         }
         verRows.push(`<div><dt>Expected URL</dt><dd><code>${escapeHtml(hosting.expected_url || '')}</code></dd></div>`);
         if (state === 'self_redirected' && hosting.resolved_url) {

@@ -455,6 +455,14 @@ export interface SafeFetchAxiosLike {
   status: number;
   data: Buffer;
   headers: Record<string, string>;
+  /**
+   * Final URL after following redirects (per Fetch Response.url). Lets
+   * callers audit the post-redirect TLS chain — important for
+   * publisher-page verification chrome where a /.well-known fetch may
+   * 30x to a CDN or partner host. May equal the input URL when no
+   * redirects were followed.
+   */
+  url: string;
 }
 
 const DEFAULT_MAX_RESPONSE_BYTES = 10 * 1024 * 1024;
@@ -506,7 +514,7 @@ export async function safeFetchAxiosLike(
     const headers: Record<string, string> = {};
     res.headers.forEach((v, k) => { headers[k.toLowerCase()] = v; });
 
-    return { status: res.status, data, headers };
+    return { status: res.status, data, headers, url: res.url };
   } finally {
     clearTimeout(timer);
   }
