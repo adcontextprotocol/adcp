@@ -2,7 +2,11 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 import { globSync } from 'glob';
 
-const LINK_HOSTS = new Set(['agenticadvertising.org', 'docs.adcontextprotocol.org']);
+const LINK_HOSTS = new Set([
+  'agenticadvertising.org',
+  'www.agenticadvertising.org',
+  'docs.adcontextprotocol.org',
+]);
 const SKIPPED_PATH_PREFIXES = ['/api/'];
 const ROOT = process.cwd();
 const FETCH_TIMEOUT_MS = 10_000;
