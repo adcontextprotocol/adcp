@@ -275,7 +275,7 @@ async function clearStalePrimaryOrganization(workosUserId: string, staleOrgId: s
  *   1. Read users.primary_organization_id, but only trust it when both the
  *      organization row and a current membership row still exist. A bare
  *      column read masquerades a deleted/never-synced org as a valid cache
- *      hit and 404s every tier-gated read site (#…).
+ *      hit and 404s every tier-gated read site.
  *   2. On miss/dangle, derive from organization_memberships (preferring
  *      paying orgs) and repoint the cache.
  *   3. If no derived org exists either, clear the stale pointer so a later

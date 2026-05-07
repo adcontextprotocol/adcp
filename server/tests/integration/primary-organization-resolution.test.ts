@@ -140,7 +140,7 @@ describe('primary_organization_id resolution', () => {
       expect(result).toBeNull();
     });
 
-    // Self-heal cases — Warren's situation (#…). The cached column was set
+    // Self-heal cases. The cached column was set
     // but the join targets had drifted; the bare-column read returned a
     // phantom orgId that 404'd every tier-gated route until repaired by hand.
     it('falls through and repoints when cached pointer has no organizations row', async () => {
