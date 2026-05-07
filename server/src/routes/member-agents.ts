@@ -35,6 +35,7 @@ import { resolveUserOrgMembership } from '../utils/resolve-user-org-membership.j
 import { getPool } from '../db/client.js';
 import type { AgentConfig } from '../types.js';
 import { resolveAgentTypes, logResolvedTypeChanges } from './member-profiles.js';
+import { ensureMemberProfileExists } from '../services/member-profile-autopublish.js';
 import {
   gateAgentVisibilityForCaller,
   type VisibilityWarning,
@@ -265,6 +266,32 @@ export function createMemberAgentsRouter(config: MemberAgentsRouterConfig): Rout
       }
       const targetUrl = body.url;
 
+      // Auto-bootstrap a private member profile if the caller's org doesn't
+      // have one yet. Closes the storefront 404 cliff: a third-party app
+      // holding only a user's OAuth token previously had to chain
+      // `POST /api/me/member-profile` before this call.
+      // Reuses `ensureMemberProfileExists` (the same helper Addie's
+      // `save_agent` tool uses), so slug-collision handling and the
+      // private-by-default invariant stay consistent across surfaces.
+      let profileAutoCreated = false;
+      try {
+        const org = await config.orgDb.getOrganization(orgId);
+        const orgName = org?.name?.trim();
+        if (orgName) {
+          const ensured = await ensureMemberProfileExists({
+            orgId,
+            orgName,
+            source: 'rest_agent_register',
+          });
+          profileAutoCreated = ensured.created;
+        }
+      } catch (err) {
+        // Fall through to the mutation helper's existing 404 if bootstrap
+        // fails — preserves the prior "create profile first" message
+        // rather than masking the failure.
+        logger.warn({ err, orgId }, 'POST /api/me/agents auto-bootstrap failed; falling through');
+      }
+
       const result = await applyMemberAgentMutation(orgId, (existing) => {
         const idx = existing.findIndex((a) => a.url === targetUrl);
         const isUpdate = idx !== -1;
@@ -277,7 +304,11 @@ export function createMemberAgentsRouter(config: MemberAgentsRouterConfig): Rout
           status: isUpdate ? 200 : 201,
         };
       });
-      return res.status(result.status).json(shapeWriteBody(result.body, targetUrl));
+      const shaped = shapeWriteBody(result.body, targetUrl);
+      if (profileAutoCreated && result.status >= 200 && result.status < 300) {
+        shaped.profile_auto_created = true;
+      }
+      return res.status(result.status).json(shaped);
     } catch (err) {
       logger.error({ err }, 'POST /api/me/agents failed');
       return res.status(500).json({ error: 'Failed to register agent' });

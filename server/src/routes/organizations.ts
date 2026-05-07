@@ -18,7 +18,7 @@ import {
 import { invitationRateLimiter, orgCreationRateLimiter } from "../middleware/rate-limit.js";
 import { invalidateMembershipCache } from "../db/org-filters.js";
 import { validateOrganizationName, validateEmail } from "../middleware/validation.js";
-import { OrganizationDatabase, CompanyType, RevenueTier, VALID_REVENUE_TIERS, VALID_MEMBERSHIP_TIERS, getSeatUsage, getSeatLimits, canAddSeat, getUserSeatType, resolveMembershipTier, checkAndUpdateSeatWarning, resetSeatWarningIfNeeded, createSeatUpgradeRequest, getSeatUpgradeRequest, listSeatUpgradeRequests, resolveSeatUpgradeRequest, hasPendingSeatRequest } from "../db/organization-db.js";
+import { OrganizationDatabase, CompanyType, RevenueTier, VALID_REVENUE_TIERS, getSeatUsage, getSeatLimits, canAddSeat, getUserSeatType, resolveMembershipTier, checkAndUpdateSeatWarning, resetSeatWarningIfNeeded, createSeatUpgradeRequest, getSeatUpgradeRequest, listSeatUpgradeRequests, resolveSeatUpgradeRequest, hasPendingSeatRequest } from "../db/organization-db.js";
 import { COMPANY_TYPE_VALUES } from "../config/company-types.js";
 import { VALID_ORGANIZATION_ROLES, VALID_ASSIGNABLE_ROLES } from "../types.js";
 import { JoinRequestDatabase } from "../db/join-request-db.js";
@@ -1177,7 +1177,26 @@ export function createOrganizationsRouter(): Router {
   router.post('/', requireAuth, orgCreationRateLimiter, async (req, res) => {
     try {
       const user = req.user!;
-      const { organization_name, is_personal, company_type, revenue_tier, membership_tier, corporate_domain, marketing_opt_in } = req.body;
+      const { organization_name, is_personal, company_type, revenue_tier, marketing_opt_in } = req.body;
+
+      // `membership_tier` and `corporate_domain` are NOT accepted from caller
+      // input. Tier is owned exclusively by the Stripe webhook (any value
+      // stamped here would only be overwritten on the first subscription
+      // sync, but in the gap it would leak tier-gated UI state to a caller
+      // who never paid). The corporate domain is always derived from the
+      // authenticated user's email — accepting it as a field invited
+      // confusing 400s when a caller's value disagreed with their email,
+      // and gave nothing back when it agreed.
+      if (req.body && (req.body.membership_tier !== undefined || req.body.corporate_domain !== undefined)) {
+        logger.warn(
+          {
+            userId: user.id,
+            sentMembershipTier: req.body.membership_tier !== undefined,
+            sentCorporateDomain: req.body.corporate_domain !== undefined,
+          },
+          'POST /api/organizations: caller supplied no-longer-accepted fields; ignoring',
+        );
+      }
 
       // Limit how many organizations a single user can own
       const pool = getPool();
@@ -1243,61 +1262,19 @@ export function createOrganizationsRouter(): Router {
         });
       }
 
-      // Validate membership_tier if provided
-      if (membership_tier && !(VALID_MEMBERSHIP_TIERS as readonly string[]).includes(membership_tier)) {
-        return res.status(400).json({
-          error: 'Invalid membership tier',
-          message: `membership_tier must be one of: ${VALID_MEMBERSHIP_TIERS.join(', ')}`,
-        });
-      }
-
-      // Validate membership_tier matches organization type
-      if (membership_tier) {
-        const individualTiers = ['individual_professional', 'individual_academic'];
-        const companyTiers = ['company_standard', 'company_icl'];
-
-        if (is_personal && companyTiers.includes(membership_tier)) {
-          return res.status(400).json({
-            error: 'Invalid membership tier for organization type',
-            message: 'Individual memberships cannot use company membership tiers',
-          });
-        }
-
-        if (!is_personal && individualTiers.includes(membership_tier)) {
-          return res.status(400).json({
-            error: 'Invalid membership tier for organization type',
-            message: 'Company memberships cannot use individual membership tiers',
-          });
-        }
-      }
-
-      // For non-personal organizations, validate the corporate domain
+      // For non-personal organizations, derive the corporate domain
+      // from the authenticated user's email.
       const userEmailDomain = getCompanyDomain(user.email);
       let verifiedDomain: string | null = null;
 
       if (!is_personal) {
-        // User must have a corporate email to create a company
         if (!userEmailDomain) {
           return res.status(400).json({
             error: 'Corporate email required',
             message: 'To register a company, you must be signed in with a corporate email address. Personal email domains (Gmail, Yahoo, etc.) cannot be used for company registration.',
           });
         }
-
-        // If corporate_domain is provided, verify it matches the user's email domain
-        if (corporate_domain) {
-          const normalizedDomain = corporate_domain.toLowerCase().trim();
-          if (normalizedDomain !== userEmailDomain) {
-            return res.status(400).json({
-              error: 'Domain mismatch',
-              message: `The corporate domain must match your email domain (${userEmailDomain}).`,
-            });
-          }
-          verifiedDomain = normalizedDomain;
-        } else {
-          // Auto-use the user's email domain
-          verifiedDomain = userEmailDomain;
-        }
+        verifiedDomain = userEmailDomain;
       }
 
       // Use trimmed name for consistency
@@ -1484,14 +1461,17 @@ export function createOrganizationsRouter(): Router {
         `, [user.id, workosOrgId, ownerMembership.id, user.email]);
       }
 
-      // Create organization record in our database
+      // Create organization record in our database. Note: `membership_tier`
+      // is intentionally not set here — tier transitions are owned by the
+      // Stripe webhook (`http.ts:3904`) so an unpaid user can't stamp tier
+      // intent that would leak gated UI in the gap before any subscription
+      // exists.
       const orgRecord = await orgDb.createOrganization({
         workos_organization_id: workosOrgId,
         name: trimmedName,
         is_personal: is_personal || false,
         company_type: company_type || undefined,
         revenue_tier: revenue_tier || undefined,
-        membership_tier: membership_tier || undefined,
       });
 
       logger.info({
