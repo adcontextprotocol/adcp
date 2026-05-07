@@ -135,19 +135,48 @@ export function createMeOrganizationDomainsRouter(
         });
       }
 
-      const normalizedDomain = req.params.domain.toLowerCase().trim();
+      // Canonicalize the input domain — strips protocol/path/`www.`/etc. and
+      // rejects shapes that aren't valid brand-domain inputs. Reuses the same
+      // function the GET path uses to compute `claimable`.
+      let normalizedDomain: string;
+      try {
+        normalizedDomain = canonicalizeBrandDomain(req.params.domain);
+      } catch (err) {
+        return res.status(400).json({
+          error: 'invalid_domain',
+          message: err instanceof Error ? err.message : 'Invalid domain',
+        });
+      }
+      if (normalizedDomain.length > 253) {
+        return res.status(400).json({ error: 'invalid_domain', message: 'Domain too long' });
+      }
+
       const pool = getPool();
       const client = await pool.connect();
 
       try {
         await client.query('BEGIN');
 
+        // Lock the org row to serialize against the WorkOS webhook
+        // (`upsertOrganizationDomain`), which takes the same row lock when it
+        // promotes a newly-verified domain to is_primary. Without this, our
+        // three writes can interleave with the webhook's two writes and end
+        // up with `organizations.email_domain` reflecting whichever
+        // transaction committed last.
+        await client.query(
+          'SELECT 1 FROM organizations WHERE workos_organization_id = $1 FOR UPDATE',
+          [orgId],
+        );
+
         // Verify the domain belongs to this org and is verified. We refuse to
         // promote a pending/unverified row — letting an attacker set
         // `pending` rows as primary would let them claim a domain via SSO
-        // before WorkOS confirms control.
-        const domainRow = await client.query<{ verified: boolean }>(
-          `SELECT verified FROM organization_domains
+        // before WorkOS confirms control. Also restrict to `source = 'workos'`
+        // for the brand-identity dual-write below; admin-imported / manual
+        // "verified" rows aren't actually DNS-proof-of-control claims (same
+        // trust boundary the backfill script enforces).
+        const domainRow = await client.query<{ verified: boolean; source: string }>(
+          `SELECT verified, source FROM organization_domains
             WHERE workos_organization_id = $1 AND domain = $2`,
           [orgId, normalizedDomain],
         );
@@ -162,6 +191,7 @@ export function createMeOrganizationDomainsRouter(
             message: 'The domain must be verified before it can be set as primary',
           });
         }
+        const sourceIsWorkos = domainRow.rows[0].source === 'workos';
 
         // Clear existing primary, set new primary, and update the
         // denormalized organizations.email_domain in one transaction.
@@ -182,18 +212,24 @@ export function createMeOrganizationDomainsRouter(
         );
 
         // Coherent dual-write: also update member_profiles.primary_brand_domain
-        // when the domain is claimable. This is the bit the admin set-primary
-        // path doesn't do — and the cause of the Media.net escalation #321.
-        // Members shouldn't have to think about the two-primary distinction.
+        // when the domain is claimable AND came from a WorkOS proof-of-control.
+        // This is the bit the admin set-primary path doesn't do — and the cause
+        // of the Media.net escalation #321. Members shouldn't have to think
+        // about the two-primary distinction.
+        //
+        // Source restriction: `source='manual'` / `'import'` rows can be
+        // flagged verified by admin tooling without actual DNS proof, so we
+        // refuse to let them seed brand identity. Same trust boundary the
+        // backfill-primary-brand-domain script applies.
         let brandPrimaryUpdated = false;
         let claimable = false;
         try {
-          assertClaimableBrandDomain(canonicalizeBrandDomain(normalizedDomain));
+          assertClaimableBrandDomain(normalizedDomain);
           claimable = true;
         } catch {
           claimable = false;
         }
-        if (claimable) {
+        if (claimable && sourceIsWorkos) {
           const updated = await client.query(
             `UPDATE member_profiles
                 SET primary_brand_domain = $1, updated_at = NOW()
@@ -224,7 +260,9 @@ export function createMeOrganizationDomainsRouter(
           brand_primary_updated: brandPrimaryUpdated,
         });
       } catch (err) {
-        await client.query('ROLLBACK').catch(() => {});
+        await client.query('ROLLBACK').catch((rbErr) => {
+          logger.error({ rbErr, orgId }, 'ROLLBACK failed in PUT primary');
+        });
         throw err;
       } finally {
         client.release();

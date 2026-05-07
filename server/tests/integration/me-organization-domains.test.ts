@@ -21,8 +21,9 @@ vi.hoisted(() => {
 });
 
 // Replace `requireAuth` with a test stub that reads the user id from
-// x-test-user. We don't want to forge a signed WorkOS session cookie just to
-// exercise our route logic; the auth surface is tested elsewhere.
+// x-test-user. The real requireAuth reads a signed WorkOS session cookie
+// (or static admin key); forging either just to exercise route logic is
+// noise. The auth surface itself is covered elsewhere.
 vi.mock('../../src/middleware/auth.js', async (importOriginal) => {
   const orig = (await importOriginal()) as Record<string, unknown>;
   return {
@@ -54,7 +55,7 @@ async function cleanup(pool: Pool) {
   await pool.query('DELETE FROM organizations WHERE workos_organization_id = $1', [TEST_ORG]);
 }
 
-async function seedOrgWithDomains(pool: Pool, domains: Array<{ domain: string; verified: boolean; is_primary: boolean }>) {
+async function seedOrgWithDomains(pool: Pool, domains: Array<{ domain: string; verified: boolean; is_primary: boolean; source?: string }>) {
   await pool.query(
     `INSERT INTO organizations (workos_organization_id, name, is_personal, created_at, updated_at)
      VALUES ($1, $2, false, NOW(), NOW())
@@ -64,9 +65,9 @@ async function seedOrgWithDomains(pool: Pool, domains: Array<{ domain: string; v
   for (const d of domains) {
     await pool.query(
       `INSERT INTO organization_domains (workos_organization_id, domain, verified, is_primary, source, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, 'workos', NOW(), NOW())
-       ON CONFLICT (domain) DO UPDATE SET verified = EXCLUDED.verified, is_primary = EXCLUDED.is_primary`,
-      [TEST_ORG, d.domain, d.verified, d.is_primary],
+       VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
+       ON CONFLICT (domain) DO UPDATE SET verified = EXCLUDED.verified, is_primary = EXCLUDED.is_primary, source = EXCLUDED.source`,
+      [TEST_ORG, d.domain, d.verified, d.is_primary, d.source ?? 'workos'],
     );
   }
 }
@@ -96,12 +97,8 @@ async function seedMembership(pool: Pool, userId: string, role: 'owner' | 'admin
 function buildApp(invalidateMemberContextCache: () => void) {
   const app = express();
   app.use(express.json());
-  // Mock requireAuth: read user id from x-test-user header.
-  app.use((req: any, _res, next) => {
-    const userId = req.headers['x-test-user'];
-    if (typeof userId === 'string') req.user = { id: userId };
-    next();
-  });
+  // requireAuth is replaced via vi.mock above; it reads x-test-user from
+  // the request headers and populates req.user.
   const router = createMeOrganizationDomainsRouter({
     workos: null,
     invalidateMemberContextCache,
@@ -232,6 +229,41 @@ describe('GET /api/me/organization/domains + PUT /:domain/primary', () => {
 
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('domain_not_verified');
+  });
+
+  it('refuses brand-primary dual-write for source != workos (admin-imported / manual rows)', async () => {
+    // An admin-imported "verified" row shouldn't be promotable to brand
+    // identity — only WorkOS DNS-proven domains can seed primary_brand_domain.
+    // The org-membership-inference primary still flips (that's a different
+    // concern, controlled by admin tools), but member_profiles stays put.
+    await seedOrgWithDomains(pool, [
+      { domain: 'me-domains-1.test', verified: true, is_primary: true, source: 'workos' },
+      { domain: 'me-domains-imported.test', verified: true, is_primary: false, source: 'import' },
+    ]);
+    await seedProfile(pool, 'me-domains-1.test');
+    await seedMembership(pool, OWNER_USER, 'owner');
+
+    const res = await request(app)
+      .put('/api/me/organization/domains/me-domains-imported.test/primary?org=' + TEST_ORG)
+      .set('x-test-user', OWNER_USER);
+
+    expect(res.status).toBe(200);
+    expect(res.body.brand_primary_updated).toBe(false);
+
+    const profile = await pool.query<{ primary_brand_domain: string | null }>(
+      `SELECT primary_brand_domain FROM member_profiles WHERE workos_organization_id = $1`,
+      [TEST_ORG],
+    );
+    // Brand identity preserved on the original WorkOS-verified domain.
+    expect(profile.rows[0].primary_brand_domain).toBe('me-domains-1.test');
+
+    // org-membership primary still moved (admin-imported domains may legitimately
+    // be the membership-inference primary, e.g. for a prospect we're tracking).
+    const od = await pool.query<{ domain: string; is_primary: boolean }>(
+      `SELECT domain, is_primary FROM organization_domains WHERE workos_organization_id = $1 AND is_primary = true`,
+      [TEST_ORG],
+    );
+    expect(od.rows[0].domain).toBe('me-domains-imported.test');
   });
 
   it('returns 404 for a domain not on this org', async () => {

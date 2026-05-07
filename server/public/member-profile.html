@@ -906,9 +906,6 @@
               Domains your organization has verified via SSO. The primary domain drives auto-membership inference (employees signing up with this domain auto-link to your org) and seeds your brand identity.
             </p>
             <div id="linked-domains-list" style="margin-bottom: var(--space-4);"></div>
-            <p id="linked-domains-empty" style="display: none; color: var(--color-text-muted); font-size: var(--text-sm); padding: var(--space-3); background: var(--color-bg-subtle); border-radius: var(--radius-md);">
-              No verified domains yet. Domains are added through your SSO provider; once your IT verifies them via WorkOS, they'll appear here.
-            </p>
           </div>
 
           <!-- Brand identity (companies only) -->
@@ -1719,19 +1716,18 @@
       try {
         const resp = await fetch('/api/me/organization/domains', { credentials: 'include' });
         if (!resp.ok) {
-          // Don't block the page on this — just leave the section hidden.
           if (section) section.style.display = 'none';
           return;
         }
         const data = await resp.json();
         if (!data.domains || data.domains.length === 0) {
-          if (section) section.style.display = 'block';
-          document.getElementById('linked-domains-empty').style.display = 'block';
-          document.getElementById('linked-domains-list').innerHTML = '';
+          // Personal orgs typically have 0 verified domains. Keep the section
+          // hidden rather than showing an empty-state — there's nothing
+          // actionable for them here.
+          if (section) section.style.display = 'none';
           return;
         }
         if (section) section.style.display = 'block';
-        document.getElementById('linked-domains-empty').style.display = 'none';
         renderLinkedDomains(data.domains);
       } catch (err) {
         if (section) section.style.display = 'none';
