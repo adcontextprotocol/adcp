@@ -5920,26 +5920,57 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         cachedAdagentsManifest && typeof (cachedAdagentsManifest as Record<string, unknown>).authoritative_location === 'string'
           ? ((cachedAdagentsManifest as Record<string, unknown>).authoritative_location as string)
           : null;
-      const stubPointsAtAao = (() => {
-        if (!stubAuthLocRaw) return false;
+      // Compare the stub's authoritative_location against AAO's hosted
+      // URL and the publisher's own expected URL. Three resulting cases:
+      //   - points to AAO  → mode = "aao_hosted" (canonical AAO hosting flow)
+      //   - points to publisher's own origin → mode = "self" (no-op stub)
+      //   - points to a third HTTPS origin (CDN, partner CMS, sibling
+      //     host) → mode = "self_redirected" so verifiers can audit the
+      //     TLS chain at the resolved origin instead of assuming it
+      //     terminates at the publisher's own domain.
+      const stubResolution: "aao" | "self" | "third_party_https" | "third_party_insecure" | "none" = (() => {
+        if (!stubAuthLocRaw) return "none";
         try {
-          return canonicalTargetUri(stubAuthLocRaw) === canonicalTargetUri(aaoHostedAdagentsJsonUrl(domain));
+          const stubCanon = canonicalTargetUri(stubAuthLocRaw);
+          if (stubCanon === canonicalTargetUri(aaoHostedAdagentsJsonUrl(domain))) return "aao";
+          if (stubCanon === canonicalTargetUri(expectedAdagentsJsonUrl(domain))) return "self";
+          // Third-party canonical — but the schema description for
+          // `self_redirected` promises an HTTPS origin. A publisher
+          // pointing at `http://...` is mis-configured (cleartext is
+          // not a usable trust anchor for buy-side verifiers); treat
+          // that the same as a file that fails validation rather than
+          // promote it as a third-party-trusted location.
+          if (new URL(stubAuthLocRaw).protocol !== 'https:') return "third_party_insecure";
+          return "third_party_https";
         } catch {
-          return false;
+          return "none";
         }
       })();
-      const hostingMode: "self" | "self_invalid" | "aao_hosted" | "none" = (
-        adagentsValid === true && stubPointsAtAao ? "aao_hosted"
-        : adagentsValid === true ? "self"
-        : aaoOptedIn ? "aao_hosted"
-        : adagentsValid === false ? "self_invalid"
-        : "none"
+      const hostingMode: "self" | "self_invalid" | "aao_hosted" | "self_redirected" | "none" = (
+        adagentsValid === true && stubResolution === "aao"                  ? "aao_hosted"
+        : adagentsValid === true && stubResolution === "third_party_https"   ? "self_redirected"
+        : adagentsValid === true && stubResolution === "third_party_insecure" ? "self_invalid"
+        : adagentsValid === true                                              ? "self"
+        : aaoOptedIn                                                          ? "aao_hosted"
+        : adagentsValid === false                                             ? "self_invalid"
+                                                                              : "none"
       );
       const isAaoHosted = hostingMode === "aao_hosted";
       const hosting = {
         mode: hostingMode,
         hosted_url: isAaoHosted ? aaoHostedAdagentsJsonUrl(domain) : undefined,
         expected_url: expectedAdagentsJsonUrl(domain),
+        // Resolved URL — where the canonical adagents.json document
+        // actually lives after following authoritative_location. For
+        // self_redirected this is the third-party HTTPS origin the
+        // publisher's stub points at; verifiers audit the TLS chain
+        // there. NULL when no stub is in play.
+        resolved_url: hostingMode === "self_redirected" ? stubAuthLocRaw : null,
+        // Last successful validation timestamp. Already plumbed
+        // internally; surface for verifiers to sanity-check freshness.
+        last_validated: cachedAdagentsLastValidated
+          ? cachedAdagentsLastValidated.toISOString()
+          : null,
         // Only meaningful for AAO-hosted publishers — surface the
         // verifier's last result so callers can tell origin-attested
         // hosting from intent-only hosting.

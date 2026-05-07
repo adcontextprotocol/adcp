@@ -599,15 +599,21 @@ const PublisherAuthorizedAgentSchema = z.object({
 });
 
 const PublisherHostingSchema = z.object({
-  mode: z.enum(["self", "self_invalid", "aao_hosted", "none"]).openapi({
+  mode: z.enum(["self", "self_invalid", "aao_hosted", "self_redirected", "none"]).openapi({
     description:
-      "Where this publisher's adagents.json lives. `self` = publisher hosts a valid file at their own /.well-known. `self_invalid` = publisher's /.well-known returns a file that fails validation (fixable misconfiguration, not absence). `aao_hosted` = the publisher hosts a stub at their own /.well-known whose `authoritative_location` points at AAO's canonical document. `none` = no adagents.json configured yet.",
+      "Where this publisher's adagents.json lives. `self` = publisher hosts a valid file at their own /.well-known. `self_invalid` = publisher's /.well-known returns a file that fails validation (fixable misconfiguration, not absence). `aao_hosted` = the publisher hosts a stub at their own /.well-known whose `authoritative_location` points at AAO's canonical document. `self_redirected` = the publisher's stub `authoritative_location` resolves to a third-party HTTPS origin (a CDN, partner CMS, or sibling host) — verifiers should audit the TLS chain at `resolved_url`, not at the publisher's own origin. `none` = no adagents.json configured yet.",
   }),
   hosted_url: z.string().optional().openapi({
     description: "Canonical AAO-hosted adagents.json URL. Present iff `mode === 'aao_hosted'`. Publishers reference this URL from their own /.well-known stub via the `authoritative_location` field (see https://docs.adcontextprotocol.org/docs/governance/property/adagents).",
   }),
   expected_url: z.string().openapi({
     description: "Where adagents.json *should* live for this domain — the publisher's own /.well-known path. Always populated, regardless of `mode`.",
+  }),
+  resolved_url: z.string().nullable().optional().openapi({
+    description: "Where the canonical adagents.json document actually lives after following the publisher's `authoritative_location` stub. Populated iff `mode === 'self_redirected'` — verifiers should pin trust to this URL's TLS chain, not to `expected_url`'s. NULL otherwise.",
+  }),
+  last_validated: z.string().nullable().optional().openapi({
+    description: "ISO timestamp of the last successful validation crawl. Lets verifiers sanity-check freshness. NULL when never crawled.",
   }),
   origin_verified_at: z.string().nullable().optional().openapi({
     description: "ISO timestamp of the last successful origin verification — AAO fetched the publisher's own /.well-known/adagents.json and confirmed `authoritative_location` points at our hosted URL. When set, the publisher's authorization rows have been promoted to `source='adagents_json'` (origin-attested). NULL when never verified or last attempt failed. Only populated when `mode === 'aao_hosted'`.",
