@@ -99,7 +99,8 @@ registry.registerPath({
   operationId: 'createOrganization',
   summary: 'Create or adopt my organization',
   description: [
-    "Bootstrap the caller's organization. This is the **entry point for a brand-new third-party integration** — a storefront-style app holding only a user's OAuth token can call this once to materialize the org, then immediately call `POST /api/me/agents` (which auto-creates the member profile on first call) to land a registered agent. No browser redirects, no separate profile-create step required.",
+    "Bootstrap the caller's organization explicitly. Use this when the caller wants to control the organization name, `company_type`, `revenue_tier`, or `is_personal` flag before any agents are registered.",
+    "**Most storefront-style integrations don't need this call** — `POST /api/me/agents` will auto-create an org for a fresh OAuth user (corporate or personal workspace based on the email domain) and surface `org_auto_created: true` in the response. Reach for `POST /api/organizations` only when the auto-derived defaults aren't acceptable.",
     'Three outcomes depending on the caller\'s state:',
     "- **Fresh create** (most common): a new WorkOS organization is created, the caller is added as `owner`, the corporate domain is recorded as email-verified, and ToS / privacy-policy acceptance is logged from the request context. Returns `{ success: true, organization: { id, name } }`.",
     "- **Prospect adoption**: an organization with the caller's email domain already exists as a `prospect` (the registry pre-recorded it from a brand crawl but no human had claimed it yet). The caller is promoted to `owner` of the existing record instead of forking a duplicate. Returns `{ id, name, adopted: true }`.",

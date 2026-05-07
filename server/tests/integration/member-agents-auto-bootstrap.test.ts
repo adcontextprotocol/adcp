@@ -1,15 +1,26 @@
 /**
- * Integration tests for the auto-bootstrap path on `POST /api/me/agents`.
+ * Integration tests for the auto-bootstrap chain on `POST /api/me/agents`.
  *
- * The pre-bootstrap behavior was: any POST against an org without a member
- * profile returned `404 "Create a member profile via POST /api/me/member-profile first"`,
- * forcing third-party integrations (e.g. a storefront-style app) to chain a
- * manual profile-create round trip. This suite exercises the auto-bootstrap
- * path: the endpoint creates a private profile on first call and surfaces
- * `profile_auto_created: true` so the caller can render a "we set up your
- * profile" hint.
+ * The route now self-heals two prior 4xx cliffs that forced storefront-style
+ * integrations to chain extra round trips:
+ *
+ * - **No org**: a fresh OAuth user with zero memberships used to get a
+ *   `400 No organization associated with this account`. The route now
+ *   auto-creates an org (corporate or personal workspace based on the
+ *   user's email domain) and surfaces `org_auto_created: true`.
+ *
+ * - **No profile**: any POST against an org without a member profile used
+ *   to get a `404 Create a member profile via POST /api/me/member-profile first`.
+ *   The route now creates a private profile on first call and surfaces
+ *   `profile_auto_created: true`.
+ *
+ * Auto-bootstrap is gated on the caller having zero memberships; users with
+ * existing memberships but no `users.primary_organization_id` set fall
+ * through to a clear 400 telling them to pass `?org=<id>`.
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
+
+const userOverride: { email?: string; firstName?: string; lastName?: string } = {};
 
 vi.mock('../../src/middleware/auth.js', async () => {
   const actual = await vi.importActual<typeof import('../../src/middleware/auth.js')>(
@@ -68,9 +79,9 @@ describe('POST /api/me/agents (auto-bootstrap)', () => {
     app.use((req, _res, next) => {
       (req as any).user = {
         id: USER_ID,
-        email: `${USER_ID}@example.com`,
-        firstName: 'Test',
-        lastName: 'User',
+        email: userOverride.email ?? `${USER_ID}@example.com`,
+        firstName: userOverride.firstName ?? 'Test',
+        lastName: userOverride.lastName ?? 'User',
       };
       next();
     });
@@ -103,6 +114,20 @@ describe('POST /api/me/agents (auto-bootstrap)', () => {
             })),
           };
         },
+        createOrganizationMembership: vi.fn().mockImplementation(async ({ userId, organizationId, roleSlug }: any) => ({
+          id: `om_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+          userId,
+          organizationId,
+          role: { slug: roleSlug },
+          status: 'active',
+        })),
+        updateOrganizationMembership: vi.fn(),
+      },
+      organizations: {
+        createOrganization: vi.fn().mockImplementation(async ({ name }: { name: string }) => ({
+          id: `${TEST_PREFIX}_workos_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          name,
+        })),
       },
     } as any;
 
@@ -155,15 +180,18 @@ describe('POST /api/me/agents (auto-bootstrap)', () => {
   }
 
   beforeEach(async () => {
+    userOverride.email = undefined;
+    userOverride.firstName = undefined;
+    userOverride.lastName = undefined;
     await pool.query(`DELETE FROM member_profiles WHERE workos_organization_id LIKE $1`, [
       `${TEST_PREFIX}%`,
     ]);
+    await pool.query(`DELETE FROM organization_memberships WHERE workos_user_id = $1`, [USER_ID]);
     await pool.query(`DELETE FROM organization_memberships WHERE workos_organization_id LIKE $1`, [
       `${TEST_PREFIX}%`,
     ]);
-    await pool.query(`DELETE FROM users WHERE primary_organization_id LIKE $1`, [
-      `${TEST_PREFIX}%`,
-    ]);
+    await pool.query(`DELETE FROM users WHERE workos_user_id = $1`, [USER_ID]);
+    await pool.query(`DELETE FROM organization_domains WHERE domain LIKE $1`, ['%boot-corp.test']);
     await pool.query(`DELETE FROM organizations WHERE workos_organization_id LIKE $1`, [
       `${TEST_PREFIX}%`,
     ]);
@@ -240,5 +268,100 @@ describe('POST /api/me/agents (auto-bootstrap)', () => {
     // POST. Updating a nonexistent agent on a nonexistent profile is a
     // genuine error, not a "first time" case.
     expect(res.status).toBe(404);
+  });
+
+  describe('org auto-bootstrap (caller has zero memberships)', () => {
+    it('auto-creates a corporate org for a fresh user with a corporate email', async () => {
+      userOverride.email = `fresh@boot-corp.test`;
+      userOverride.firstName = 'Fresh';
+      userOverride.lastName = 'User';
+
+      const res = await request(app)
+        .post('/api/me/agents')
+        .send({ url: 'https://agent.boot-corp.test/mcp', visibility: 'private' });
+
+      expect(res.status).toBe(201);
+      expect(res.body.org_auto_created).toBe(true);
+      expect(res.body.profile_auto_created).toBe(true);
+      expect(res.body.agent.url).toBe('https://agent.boot-corp.test/mcp');
+
+      // Org row should be corporate (is_personal = false), name derived from
+      // domain root with leading-cap.
+      const orgRow = await pool.query<{
+        workos_organization_id: string;
+        name: string;
+        is_personal: boolean;
+        membership_tier: string | null;
+      }>(
+        `SELECT o.workos_organization_id, o.name, o.is_personal, o.membership_tier
+         FROM organizations o
+         JOIN organization_memberships om ON om.workos_organization_id = o.workos_organization_id
+         WHERE om.workos_user_id = $1`,
+        [USER_ID],
+      );
+      expect(orgRow.rowCount).toBe(1);
+      expect(orgRow.rows[0].is_personal).toBe(false);
+      expect(orgRow.rows[0].name).toBe('Boot-corp');
+      // Tier MUST be NULL — Stripe webhook is the only writer.
+      expect(orgRow.rows[0].membership_tier).toBeNull();
+
+      // Domain should be email-verified.
+      const domainRow = await pool.query<{ domain: string; verified: boolean }>(
+        `SELECT domain, verified FROM organization_domains WHERE workos_organization_id = $1`,
+        [orgRow.rows[0].workos_organization_id],
+      );
+      expect(domainRow.rows.find((r) => r.domain === 'boot-corp.test')).toBeDefined();
+      expect(domainRow.rows.find((r) => r.domain === 'boot-corp.test')!.verified).toBe(true);
+    });
+
+    it('auto-creates a personal workspace for a fresh user with a free-email provider', async () => {
+      userOverride.email = `solo+${Date.now()}@gmail.com`;
+      userOverride.firstName = 'Solo';
+      userOverride.lastName = 'Founder';
+
+      const res = await request(app)
+        .post('/api/me/agents')
+        .send({ url: 'https://agent.solo.test/mcp', visibility: 'private' });
+
+      expect(res.status).toBe(201);
+      expect(res.body.org_auto_created).toBe(true);
+
+      const orgRow = await pool.query<{ name: string; is_personal: boolean }>(
+        `SELECT o.name, o.is_personal
+         FROM organizations o
+         JOIN organization_memberships om ON om.workos_organization_id = o.workos_organization_id
+         WHERE om.workos_user_id = $1`,
+        [USER_ID],
+      );
+      expect(orgRow.rowCount).toBe(1);
+      expect(orgRow.rows[0].is_personal).toBe(true);
+      expect(orgRow.rows[0].name).toBe("Solo Founder's Workspace");
+    });
+
+    it('does NOT auto-bootstrap when caller has memberships but no primary org — returns 400 telling them to pass ?org=', async () => {
+      // Seed a membership for the user but DO NOT set primary_organization_id.
+      // The route should refuse to silently fork another org and instead
+      // return a clear "pass ?org=" error.
+      const existingOrgId = `${TEST_PREFIX}_existing`;
+      await pool.query(
+        `INSERT INTO organizations (workos_organization_id, name, is_personal, created_at, updated_at)
+         VALUES ($1, $2, false, NOW(), NOW())
+         ON CONFLICT (workos_organization_id) DO NOTHING`,
+        [existingOrgId, 'Already Owned'],
+      );
+      await pool.query(
+        `INSERT INTO organization_memberships (workos_user_id, workos_organization_id, role, email, created_at, updated_at)
+         VALUES ($1, $2, 'owner', $3, NOW(), NOW())
+         ON CONFLICT (workos_user_id, workos_organization_id) DO NOTHING`,
+        [USER_ID, existingOrgId, `${USER_ID}@example.com`],
+      );
+
+      const res = await request(app)
+        .post('/api/me/agents')
+        .send({ url: 'https://agent.example.com/mcp', visibility: 'private' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('No primary organization');
+    });
   });
 });

@@ -1912,6 +1912,9 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/MemberAgentVisibilityWarning"
+        org_auto_created:
+          type: boolean
+          description: "Set to `true` when this `POST` was the caller's first interaction with the registry and the server auto-created the organization (display name derived from the user's email domain for corporate emails, or `<First Last>'s Workspace` for free-email providers). Combined with `profile_auto_created`, this is the one-call storefront experience: a third-party app holding only an OAuth token gets the org, profile, and registered agent in a single request."
         profile_auto_created:
           type: boolean
           description: "Set to `true` when this `POST` was the first agent registration on the caller's organization and the server auto-created a private member profile (display name = organization name, `is_public: false`). Absent on subsequent calls and on update-in-place. Surfaced so storefront-style integrations can show a \"we set up your profile\" hint without needing to detect the prior 404 → bootstrap → retry shape."
@@ -7247,7 +7250,13 @@ paths:
 
         Idempotent on `url`: re-posting the same `url` updates the entry in place rather than creating a duplicate. New entries return `201`; updates return `200`.
 
-        If the caller's organization does not yet have a member profile, this endpoint **auto-creates a private profile** (display name = organization name, `is_public: false`) before registering the agent — the response includes `profile_auto_created: true`. To customize `display_name`, `slug`, `tagline`, etc. before adding any agents, call `POST /api/me/member-profile` first; otherwise this auto-bootstrap is the recommended path for storefront-style integrations.
+        **True one-call storefront experience.** A third-party app holding only a user's OAuth token can `POST /api/me/agents` once and have the entire bootstrap chain materialize:
+
+        - If the caller has zero org memberships, the server auto-creates an organization (corporate or personal workspace based on the user's email domain) and the response includes `org_auto_created: true`.
+
+        - If the caller's org has no member profile, the server auto-creates a private profile (display name = organization name, `is_public: false`) and the response includes `profile_auto_created: true`.
+
+        Both auto-bootstraps are best-effort fallbacks. To customize org name / company_type / revenue_tier, or to control profile slug / brand identity / tagline, call `POST /api/organizations` and `POST /api/me/member-profile` explicitly before registering the agent. Tier transitions never happen via this path — go through the billing flow.
 
         The `type` field is resolved server-side from the agent's capability snapshot — a client cannot pin a misclassification (e.g. registering a sales agent as `buying`).
 
@@ -7285,7 +7294,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/MemberAgentResponse"
         "400":
-          description: Missing or invalid `url`, or no organization associated with this account. (When the caller has no organization at all, create one first with `POST /api/organizations`.)
+          description: Missing or invalid `url`, or the caller has memberships in other orgs but no primary org set — pass `?org=<id>` to target one explicitly. (Fresh users with no memberships at all hit the org auto-bootstrap path and do not see this error.)
           content:
             application/json:
               schema:
@@ -7442,7 +7451,9 @@ paths:
       operationId: createOrganization
       summary: Create or adopt my organization
       description: |-
-        Bootstrap the caller's organization. This is the **entry point for a brand-new third-party integration** — a storefront-style app holding only a user's OAuth token can call this once to materialize the org, then immediately call `POST /api/me/agents` (which auto-creates the member profile on first call) to land a registered agent. No browser redirects, no separate profile-create step required.
+        Bootstrap the caller's organization explicitly. Use this when the caller wants to control the organization name, `company_type`, `revenue_tier`, or `is_personal` flag before any agents are registered.
+
+        **Most storefront-style integrations don't need this call** — `POST /api/me/agents` will auto-create an org for a fresh OAuth user (corporate or personal workspace based on the email domain) and surface `org_auto_created: true` in the response. Reach for `POST /api/organizations` only when the auto-derived defaults aren't acceptable.
 
         Three outcomes depending on the caller's state:
 
@@ -7509,7 +7520,7 @@ paths:
                 $ref: "#/components/schemas/Error"
 tags:
   - name: Onboarding
-    description: Bootstrap a third-party integration into the AAO registry. Create or adopt the caller's organization (`POST /api/organizations`), then immediately register agents — `POST /api/me/agents` auto-creates the member profile on first call, so no separate profile-create round trip is required. Tier transitions happen via the billing flow only; the Stripe webhook is the sole writer of `organizations.membership_tier`.
+    description: Explicitly bootstrap a third-party integration into the AAO registry. Most callers don't need this tag — `POST /api/me/agents` auto-creates the org (for fresh users) and the member profile (for first-time agent registration) without a separate round trip. Use `POST /api/organizations` only when you need to override the auto-derived org name / company_type / revenue_tier. Tier transitions happen via the billing flow only; the Stripe webhook is the sole writer of `organizations.membership_tier`.
   - name: Member Agents
     description: Register, list, update, and remove agents on the caller's organization member profile. Authenticated programmatic surface for CI / scripts that don't want to round-trip the full member profile.
   - name: Brand Resolution

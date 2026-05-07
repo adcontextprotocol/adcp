@@ -36,6 +36,9 @@ import { getPool } from '../db/client.js';
 import type { AgentConfig } from '../types.js';
 import { resolveAgentTypes, logResolvedTypeChanges } from './member-profiles.js';
 import { ensureMemberProfileExists } from '../services/member-profile-autopublish.js';
+import { performCreateOrganization } from '../services/organization-bootstrap.js';
+import { isDevModeEnabled, getDevUser } from '../middleware/auth.js';
+import { isFreeEmail, getCompanyDomain } from '../utils/email-domain.js';
 import {
   gateAgentVisibilityForCaller,
   type VisibilityWarning,
@@ -123,6 +126,126 @@ export function createMemberAgentsRouter(config: MemberAgentsRouterConfig): Rout
       return null;
     }
     return orgId;
+  }
+
+  /**
+   * Resolve the caller's primary org, auto-bootstrapping a fresh org if the
+   * caller has zero memberships. The auto-bootstrap path is the
+   * "true one-call storefront" experience: a third-party app holding only
+   * a user's OAuth token can `POST /api/me/agents` once and have the org,
+   * member profile, and agent registration all materialize.
+   *
+   * Auto-bootstrap is gated on `?org=` not being supplied AND the user
+   * having no memberships at all. Users with existing memberships but no
+   * `users.primary_organization_id` set fall through to the existing 400
+   * — for those callers the right answer is to pass `?org=` explicitly,
+   * not silently fork another org.
+   *
+   * Returns null and writes the error response on failure.
+   */
+  async function resolveOrAutoBootstrapOrg(
+    req: import('express').Request,
+    res: import('express').Response,
+  ): Promise<{ orgId: string; orgAutoCreated: boolean } | null> {
+    const requestedOrgId =
+      typeof req.query.org === 'string' && req.query.org.length > 0
+        ? req.query.org
+        : null;
+
+    if (requestedOrgId) {
+      const orgId = await resolveOrgOrSendError(req, res);
+      return orgId ? { orgId, orgAutoCreated: false } : null;
+    }
+
+    const primaryOrgId = await resolvePrimaryOrganization(req.user!.id);
+    if (primaryOrgId) return { orgId: primaryOrgId, orgAutoCreated: false };
+
+    // No primary org — check whether the caller has any memberships at all.
+    // Only auto-bootstrap when the user is fresh; otherwise return the
+    // existing 400 so a caller with stale state doesn't accidentally fork.
+    const pool = getPool();
+    const hasAny = await pool.query(
+      `SELECT 1 FROM organization_memberships WHERE workos_user_id = $1 LIMIT 1`,
+      [req.user!.id],
+    );
+    if (hasAny.rows.length > 0) {
+      res.status(400).json({
+        error: 'No primary organization',
+        message:
+          'Your account has organization memberships but no primary organization is set. Pass `?org=<id>` to target one explicitly.',
+      });
+      return null;
+    }
+
+    // Fresh-user path: auto-bootstrap.
+    const user = req.user!;
+    const isPersonal = isFreeEmail(user.email);
+    const orgName = deriveDefaultOrgName(user, isPersonal);
+
+    const outcome = await performCreateOrganization(
+      {
+        user: { id: user.id, email: user.email },
+        organization_name: orgName,
+        is_personal: isPersonal,
+        // company_type / revenue_tier / marketing_opt_in: auto-bootstrap has
+        // no UI to capture these. Caller can patch the org later.
+        isDevUser: !!(isDevModeEnabled() && getDevUser(req)),
+        requestContext: {
+          ip: req.ip || (req.headers['x-forwarded-for'] as string) || 'unknown',
+          userAgent: (req.headers['user-agent'] as string) || 'unknown',
+        },
+      },
+      { workos: workos!, orgDb: config.orgDb },
+    );
+
+    if (outcome.kind === 'created' || outcome.kind === 'adopted') {
+      return { orgId: outcome.orgId, orgAutoCreated: true };
+    }
+
+    // Surface the auto-bootstrap failure honestly. None of these should
+    // hit a fresh user in normal flow, but mapping them keeps the contract
+    // legible.
+    if (outcome.kind === 'domain_taken') {
+      res.status(409).json({
+        error: 'Organization exists',
+        message: `An organization for ${outcome.domain} already exists: "${outcome.existingOrgName}". Use the join-request flow instead of registering an agent here.`,
+        existing_org_id: outcome.existingOrgId,
+        existing_org_name: outcome.existingOrgName,
+      });
+      return null;
+    }
+    if (outcome.kind === 'corporate_email_required') {
+      // Shouldn't happen — `is_personal` is derived from `isFreeEmail`.
+      res.status(400).json({ error: 'Corporate email required' });
+      return null;
+    }
+    res.status(400).json({
+      error: 'Auto-bootstrap failed',
+      message: `Could not auto-create an organization for this user (${outcome.kind}). Call POST /api/organizations explicitly.`,
+    });
+    return null;
+  }
+
+  function deriveDefaultOrgName(
+    user: { email: string; firstName?: string; lastName?: string },
+    isPersonal: boolean,
+  ): string {
+    if (isPersonal) {
+      const suffix = "'s Workspace";
+      const fullName = [user.firstName, user.lastName]
+        .filter(Boolean)
+        .join(' ')
+        .normalize('NFC')
+        .replace(/[^\p{L}\p{N} \-_'.‘’]/gu, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .replace(/^[^\p{L}\p{N}]+/u, '')
+        .substring(0, 100 - suffix.length);
+      return fullName ? `${fullName}${suffix}` : 'Personal Workspace';
+    }
+    const domain = getCompanyDomain(user.email) || '';
+    const root = domain.split('.')[0] || 'Organization';
+    return root.charAt(0).toUpperCase() + root.slice(1);
   }
 
   function isParseableUrl(value: string): boolean {
@@ -254,8 +377,9 @@ export function createMemberAgentsRouter(config: MemberAgentsRouterConfig): Rout
   // POST /api/me/agents — register or update a single agent (idempotent on url)
   router.post('/', requireAuth, brandCreationRateLimiter, async (req, res) => {
     try {
-      const orgId = await resolveOrgOrSendError(req, res);
-      if (!orgId) return;
+      const resolved = await resolveOrAutoBootstrapOrg(req, res);
+      if (!resolved) return;
+      const { orgId, orgAutoCreated } = resolved;
 
       const body = (req.body ?? {}) as Partial<AgentConfig>;
       if (typeof body.url !== 'string' || body.url.length === 0) {
@@ -267,11 +391,8 @@ export function createMemberAgentsRouter(config: MemberAgentsRouterConfig): Rout
       const targetUrl = body.url;
 
       // Auto-bootstrap a private member profile if the caller's org doesn't
-      // have one yet. Closes the storefront 404 cliff: a third-party app
-      // holding only a user's OAuth token previously had to chain
-      // `POST /api/me/member-profile` before this call.
-      // Reuses `ensureMemberProfileExists` (the same helper Addie's
-      // `save_agent` tool uses), so slug-collision handling and the
+      // have one yet. Reuses `ensureMemberProfileExists` (the same helper
+      // Addie's `save_agent` tool uses) so slug-collision handling and the
       // private-by-default invariant stay consistent across surfaces.
       let profileAutoCreated = false;
       try {
@@ -289,7 +410,7 @@ export function createMemberAgentsRouter(config: MemberAgentsRouterConfig): Rout
         // Fall through to the mutation helper's existing 404 if bootstrap
         // fails — preserves the prior "create profile first" message
         // rather than masking the failure.
-        logger.warn({ err, orgId }, 'POST /api/me/agents auto-bootstrap failed; falling through');
+        logger.warn({ err, orgId }, 'POST /api/me/agents profile auto-bootstrap failed; falling through');
       }
 
       const result = await applyMemberAgentMutation(orgId, (existing) => {
@@ -305,8 +426,9 @@ export function createMemberAgentsRouter(config: MemberAgentsRouterConfig): Rout
         };
       });
       const shaped = shapeWriteBody(result.body, targetUrl);
-      if (profileAutoCreated && result.status >= 200 && result.status < 300) {
-        shaped.profile_auto_created = true;
+      if (result.status >= 200 && result.status < 300) {
+        if (orgAutoCreated) shaped.org_auto_created = true;
+        if (profileAutoCreated) shaped.profile_auto_created = true;
       }
       return res.status(result.status).json(shaped);
     } catch (err) {

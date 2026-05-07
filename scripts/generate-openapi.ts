@@ -90,7 +90,7 @@ const doc = generator.generateDocument({
 // is intentionally first — it sits directly under the prose
 // `Registering an agent` page in the side nav.
 const TAG_DESCRIPTIONS: Record<string, string> = {
-  "Onboarding": "Bootstrap a third-party integration into the AAO registry. Create or adopt the caller's organization (`POST /api/organizations`), then immediately register agents — `POST /api/me/agents` auto-creates the member profile on first call, so no separate profile-create round trip is required. Tier transitions happen via the billing flow only; the Stripe webhook is the sole writer of `organizations.membership_tier`.",
+  "Onboarding": "Explicitly bootstrap a third-party integration into the AAO registry. Most callers don't need this tag — `POST /api/me/agents` auto-creates the org (for fresh users) and the member profile (for first-time agent registration) without a separate round trip. Use `POST /api/organizations` only when you need to override the auto-derived org name / company_type / revenue_tier. Tier transitions happen via the billing flow only; the Stripe webhook is the sole writer of `organizations.membership_tier`.",
   "Member Agents": "Register, list, update, and remove agents on the caller's organization member profile. Authenticated programmatic surface for CI / scripts that don't want to round-trip the full member profile.",
   "Brand Resolution": "Resolve advertiser domains to canonical brand identities.",
   "Property Resolution": "Resolve publisher domains to their property configurations and authorized agents.",
