@@ -25,6 +25,7 @@ const {
   TARGET_MEMBERSHIP_ID,
   TARGET_OWNER_MEMBERSHIP_ID,
   mockState,
+  sendInvitationMock,
 } = vi.hoisted(() => {
   // Set placeholder WorkOS env vars before any module that calls `new WorkOS()`
   // at import time (e.g. middleware/auth.ts) loads. Real network calls go
@@ -43,7 +44,17 @@ const {
       callerRole: 'admin' as 'owner' | 'admin' | 'member',
       targetMemberCurrentRole: 'member' as 'owner' | 'admin' | 'member',
       isCallerAAOAdmin: false,
+      isStaticAdminApiKey: false,
     },
+    // Shared mock so multiple `new WorkOS()` instances expose the same fn
+    // and tests can inspect call args.
+    sendInvitationMock: vi.fn().mockResolvedValue({
+      id: 'inv_test',
+      email: 'new-invitee@example.com',
+      state: 'pending',
+      expiresAt: new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString(),
+      acceptInvitationUrl: 'https://test.workos.com/accept/abc',
+    }),
   };
 });
 
@@ -116,13 +127,7 @@ vi.mock('@workos-inc/node', () => {
           Promise.resolve({ id, role: { slug: opts.roleSlug } }),
         ),
         createOrganizationMembership: vi.fn().mockResolvedValue({ id: 'om_new_test' }),
-        sendInvitation: vi.fn().mockResolvedValue({
-          id: 'inv_test',
-          email: 'new-invitee@example.com',
-          state: 'pending',
-          expiresAt: new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString(),
-          acceptInvitationUrl: 'https://test.workos.com/accept/abc',
-        }),
+        sendInvitation: sendInvitationMock,
         getUser: vi.fn().mockResolvedValue({ id: 'user_x', email: 'x@example.com' }),
         authenticateWithSessionCookie: vi.fn().mockResolvedValue({ authenticated: false }),
       };
@@ -157,13 +162,24 @@ vi.mock('../../src/middleware/auth.js', async (importOriginal) => {
   return {
     ...actual,
     requireAuth: (req: any, _res: any, next: any) => {
-      req.user = {
-        id: CALLER_USER_ID,
-        email: 'caller@example.com',
-        firstName: 'Caller',
-        lastName: 'Test',
-        is_admin: false,
-      };
+      if (mockState.isStaticAdminApiKey) {
+        req.user = {
+          id: 'admin_api_key',
+          email: 'admin-api-key@internal',
+          firstName: 'Admin',
+          lastName: 'API Key',
+          is_admin: true,
+        };
+        req.isStaticAdminApiKey = true;
+      } else {
+        req.user = {
+          id: CALLER_USER_ID,
+          email: 'caller@example.com',
+          firstName: 'Caller',
+          lastName: 'Test',
+          is_admin: false,
+        };
+      }
       next();
     },
     requireAdmin: (_req: any, res: any) => res.status(403).json({ error: 'Admin required' }),
@@ -227,6 +243,8 @@ describe('Member role-cap policy (POST /members/by-email + PATCH /members/:membe
     mockState.callerRole = 'admin';
     mockState.targetMemberCurrentRole = 'member';
     mockState.isCallerAAOAdmin = false;
+    mockState.isStaticAdminApiKey = false;
+    sendInvitationMock.mockClear();
 
     await pool.query(
       `INSERT INTO organizations (workos_organization_id, name, is_personal, subscription_status, membership_tier, created_at, updated_at)
@@ -411,6 +429,42 @@ describe('Member role-cap policy (POST /members/by-email + PATCH /members/:membe
         .expect(200);
 
       expect(response.body.success).toBe(true);
+    });
+  });
+
+  describe('POST /members/by-email — Path 1 inviter attribution', () => {
+    it('passes the caller as inviterUserId for a normal authenticated admin', async () => {
+      mockState.callerRole = 'admin';
+
+      await request(app)
+        .post(`/api/organizations/${TEST_ORG_ID}/members/by-email`)
+        .send({ email: 'new-invitee@example.com', role: 'member', seat_type: 'community_only' })
+        .expect(201);
+
+      expect(sendInvitationMock).toHaveBeenCalledTimes(1);
+      const args = sendInvitationMock.mock.calls[0][0];
+      expect(args.inviterUserId).toBe(CALLER_USER_ID);
+      expect(args.email).toBe('new-invitee@example.com');
+      expect(args.organizationId).toBe(TEST_ORG_ID);
+      expect(args.roleSlug).toBe('member');
+    });
+
+    it('omits inviterUserId when the caller is the static ADMIN_API_KEY (synthetic id)', async () => {
+      // 'admin_api_key' is not a real WorkOS user; passing it as inviterUserId
+      // makes WorkOS reject the call with "User not found: 'admin_api_key'".
+      mockState.isStaticAdminApiKey = true;
+
+      await request(app)
+        .post(`/api/organizations/${TEST_ORG_ID}/members/by-email`)
+        .send({ email: 'new-invitee@example.com', role: 'member', seat_type: 'community_only' })
+        .expect(201);
+
+      expect(sendInvitationMock).toHaveBeenCalledTimes(1);
+      const args = sendInvitationMock.mock.calls[0][0];
+      expect(args.inviterUserId).toBeUndefined();
+      expect(args.email).toBe('new-invitee@example.com');
+      expect(args.organizationId).toBe(TEST_ORG_ID);
+      expect(args.roleSlug).toBe('member');
     });
   });
 

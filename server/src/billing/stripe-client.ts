@@ -1894,9 +1894,46 @@ export interface OpenInvoiceWithCustomer {
 }
 
 /**
- * Convert a Stripe invoice to OpenInvoiceWithCustomer format
+ * Resolve the first-line product name for an invoice, fetching the product
+ * separately when it isn't expanded. Stripe caps `expand` at 4 levels, so
+ * `data.lines.data.price.product` (5 levels) can't be inlined on `invoices.list`.
  */
-function parseStripeInvoice(invoice: Stripe.Invoice): OpenInvoiceWithCustomer | null {
+async function resolveInvoiceProductName(
+  invoice: Stripe.Invoice,
+  productCache: Map<string, string | null>,
+): Promise<string | null> {
+  const firstLine = invoice.lines?.data[0];
+  const product = firstLine?.price?.product;
+  if (!product) return null;
+  if (typeof product === 'object' && 'name' in product) {
+    return product.name ?? null;
+  }
+  if (typeof product !== 'string') return null;
+  if (productCache.has(product)) return productCache.get(product) ?? null;
+  if (!stripe) return null;
+  try {
+    const productObj = await stripe.products.retrieve(product);
+    const name = productObj.name ?? null;
+    productCache.set(product, name);
+    return name;
+  } catch (err) {
+    logger.warn(
+      { productId: product, invoiceId: invoice.id, err },
+      'Failed to fetch product for invoice',
+    );
+    return null;
+  }
+}
+
+/**
+ * Convert a Stripe invoice to OpenInvoiceWithCustomer format. The caller must
+ * resolve `productName` (via resolveInvoiceProductName) because Stripe's
+ * 4-level expand limit prevents inlining the product on `invoices.list`.
+ */
+function parseStripeInvoice(
+  invoice: Stripe.Invoice,
+  productName: string | null,
+): OpenInvoiceWithCustomer | null {
   const customer = invoice.customer;
   let customerId: string;
   let customerName: string | null = null;
@@ -1918,16 +1955,6 @@ function parseStripeInvoice(invoice: Stripe.Invoice): OpenInvoiceWithCustomer | 
     customerId = customer.id;
   } else {
     return null; // Skip invoices without customer
-  }
-
-  // Get product name from first line item
-  let productName: string | null = null;
-  const firstLine = invoice.lines?.data[0];
-  if (firstLine?.price?.product) {
-    const product = firstLine.price.product;
-    if (typeof product === 'object' && 'name' in product) {
-      productName = product.name;
-    }
   }
 
   const dueDate = invoice.due_date ? new Date(invoice.due_date * 1000) : null;
@@ -1963,14 +1990,18 @@ export async function getAllOpenInvoices(limit: number = 50): Promise<OpenInvoic
   try {
     // Use a Map to deduplicate invoices by ID
     const invoiceMap = new Map<string, OpenInvoiceWithCustomer>();
+    // Cache product lookups across both list passes; products are referenced
+    // by id on the line item but cannot be expanded inline (5 levels deep).
+    const productCache = new Map<string, string | null>();
 
     // Query Stripe directly for all open invoices (sent, waiting for payment)
     for await (const invoice of stripe.invoices.list({
       status: 'open',
       limit: 100,
-      expand: ['data.customer', 'data.lines.data.price.product'],
+      expand: ['data.customer'],
     })) {
-      const parsed = parseStripeInvoice(invoice);
+      const productName = await resolveInvoiceProductName(invoice, productCache);
+      const parsed = parseStripeInvoice(invoice, productName);
       if (parsed && !invoiceMap.has(parsed.id)) {
         invoiceMap.set(parsed.id, parsed);
         if (invoiceMap.size >= limit) break;
@@ -1982,9 +2013,10 @@ export async function getAllOpenInvoices(limit: number = 50): Promise<OpenInvoic
       for await (const invoice of stripe.invoices.list({
         status: 'draft',
         limit: 100,
-        expand: ['data.customer', 'data.lines.data.price.product'],
+        expand: ['data.customer'],
       })) {
-        const parsed = parseStripeInvoice(invoice);
+        const productName = await resolveInvoiceProductName(invoice, productCache);
+        const parsed = parseStripeInvoice(invoice, productName);
         if (parsed && !invoiceMap.has(parsed.id)) {
           invoiceMap.set(parsed.id, parsed);
           if (invoiceMap.size >= limit) break;

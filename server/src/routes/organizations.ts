@@ -3113,10 +3113,14 @@ export function createOrganizationsRouter(): Router {
           return res.status(403).json({ error: 'Seat limit reached', message: seatCheck.reason });
         }
 
+        // The static ADMIN_API_KEY auth path uses a synthetic user id
+        // ('admin_api_key') that WorkOS does not recognize; passing it as
+        // inviterUserId fails with "User not found". Audit attribution is
+        // captured separately below via inviter_email.
         const invitation = await workos!.userManagement.sendInvitation({
           email: normalizedEmail,
           organizationId: orgId,
-          inviterUserId: user.id,
+          ...(isStaticAdminApiKey ? {} : { inviterUserId: user.id }),
           roleSlug: 'member',
         });
 
