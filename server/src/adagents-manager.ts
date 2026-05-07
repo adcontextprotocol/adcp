@@ -14,6 +14,8 @@ export interface ValidationWarning {
   suggestion?: string;
 }
 
+export type DiscoveryMethod = 'direct' | 'authoritative_location' | 'ads_txt_managerdomain';
+
 export interface AdAgentsValidationResult {
   valid: boolean;
   errors: ValidationError[];
@@ -207,15 +209,15 @@ export class AdAgentsManager {
           const isHopAllowed = managerFallbackDepth < 1;
           if (managerDomains.length > 0 && isHopAllowed) {
             const managerDomain = managerDomains[managerDomains.length - 1];
-            const isCycle = visitedDomains.has(managerDomain);
+            const nextVisited = new Set(visitedDomains);
+            nextVisited.add(normalizedDomain);
+            const isCycle = nextVisited.has(managerDomain);
             if (isCycle) {
               result.warnings.push({
                 field: 'managerdomain',
                 message: `Ignoring ads.txt managerdomain ${managerDomain} due to cycle detection`,
               });
             } else {
-              const nextVisited = new Set(visitedDomains);
-              nextVisited.add(normalizedDomain);
               const managerResult = await this.validateDomainInternal(
                 managerDomain,
                 managerFallbackDepth + 1,
@@ -226,6 +228,8 @@ export class AdAgentsManager {
                   ...managerResult,
                   domain: normalizedDomain,
                   url,
+                  discovery_method: 'ads_txt_managerdomain',
+                  manager_domain: managerDomain,
                   warnings: [
                     ...managerResult.warnings,
                     {
@@ -234,6 +238,11 @@ export class AdAgentsManager {
                     },
                   ],
                 };
+              }
+              // Surface manager-side warnings (e.g. nested depth/cycle) on the
+              // outer result so callers can see why the fallback didn't validate.
+              for (const w of managerResult.warnings) {
+                result.warnings.push(w);
               }
             }
           } else if (managerDomains.length > 0 && !isHopAllowed) {
@@ -273,7 +282,9 @@ export class AdAgentsManager {
       result.raw_data = adagentsData;
 
       // Check if this is a URL reference
+      let wasUrlReference = false;
       if (this.isUrlReference(adagentsData)) {
+        wasUrlReference = true;
         // Follow the reference to get the authoritative file
         const authoritativeData = await this.fetchAuthoritativeFile(
           adagentsData.authoritative_location,

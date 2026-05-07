@@ -137,6 +137,8 @@ describe('AdAgentsManager', () => {
       expect(result.warnings.some(w => w.field === 'managerdomain')).toBe(true);
       expect(result.domain).toBe('publisher.example');
       expect(result.url).toBe('https://publisher.example/.well-known/adagents.json');
+      expect(result.discovery_method).toBe('ads_txt_managerdomain');
+      expect(result.manager_domain).toBe('manager.example');
     });
 
     it('does not recurse indefinitely when managerdomain points back to original domain', async () => {
@@ -250,11 +252,23 @@ describe('AdAgentsManager', () => {
             headers: { 'content-type': 'text/plain' },
           };
         }
+        if (url === 'https://good-manager.example/.well-known/adagents.json') {
+          return {
+            status: 200,
+            data: buf({ authorized_agents: [{ url: 'https://agent.example', authorized_for: 'Good' }] }),
+            headers: { 'content-type': 'application/json' },
+          };
+        }
+        if (url === 'https://bad-manager.example/.well-known/adagents.json') {
+          throw new Error('bad-manager.example should not be tried; last entry wins');
+        }
         throw new Error(`Unexpected URL: ${url}`);
       });
 
       const result = await manager.validateDomain('publisher.example');
       expect(result.valid).toBe(true);
+      expect(result.discovery_method).toBe('ads_txt_managerdomain');
+      expect(result.manager_domain).toBe('good-manager.example');
       expect(result.warnings.some(w => w.message.includes('good-manager.example'))).toBe(true);
     });
 
