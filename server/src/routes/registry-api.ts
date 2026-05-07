@@ -5747,13 +5747,29 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         // index AND we haven't re-crawled in over an hour, trigger a
         // re-crawl on visit so an anonymous publisher visit picks up
         // their newly-added agents without needing to sign in.
-        query<{ adagents_json: Record<string, unknown> | null; last_validated: Date | null }>(
-          `SELECT adagents_json, last_validated FROM publishers WHERE domain = $1 AND source_type = 'adagents_json' LIMIT 1`,
+        query<{
+          adagents_json: Record<string, unknown> | null;
+          last_validated: Date | null;
+          last_http_status: number | null;
+          last_response_bytes: number | null;
+          resolved_url: string | null;
+        }>(
+          // Drop the source_type='adagents_json' filter. Phase B writes
+          // failed-fetch metadata onto rows with source_type='community',
+          // and we want the verifier UI to surface
+          // "Last attempted: <ts> · HTTP <code>" even for never-validated
+          // domains. Read whatever row exists; downstream code handles
+          // null adagents_json gracefully.
+          `SELECT adagents_json, last_validated, last_http_status, last_response_bytes, resolved_url
+             FROM publishers WHERE domain = $1 LIMIT 1`,
           [domain],
         ).then(r => r.rows[0] ?? null),
       ]);
       const cachedAdagentsManifest = cachedAdagentsRow?.adagents_json ?? null;
       const cachedAdagentsLastValidated = cachedAdagentsRow?.last_validated ?? null;
+      const cachedHttpStatus = cachedAdagentsRow?.last_http_status ?? null;
+      const cachedResponseBytes = cachedAdagentsRow?.last_response_bytes ?? null;
+      const cachedResolvedUrl = cachedAdagentsRow?.resolved_url ?? null;
 
       // Auto-crawl on view: if we've never crawled this domain (adagents
       // never seen, brand never seen), kick off background fetches so a
@@ -5928,19 +5944,29 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       //     host) → mode = "self_redirected" so verifiers can audit the
       //     TLS chain at the resolved origin instead of assuming it
       //     terminates at the publisher's own domain.
+      // Resolution source for the canonical adagents.json document.
+      // Case A: JSONB `authoritative_location` (publisher's stub
+      // explicitly names a target). Case B: HTTP-layer 301/302 redirect
+      // captured by the validator (Phase B `resolved_url` column).
+      // Both unify under one resolution string — the validator already
+      // overwrites the column with `authoritative_location`'s URL when
+      // followed, so for a fresh crawl the two should agree.
+      // `stubAuthLocRaw` (JSONB) wins for legacy rows where the column
+      // is still NULL pending re-crawl.
+      const resolutionSource = stubAuthLocRaw ?? cachedResolvedUrl ?? null;
       const stubResolution: "aao" | "self" | "third_party_https" | "third_party_insecure" | "none" = (() => {
-        if (!stubAuthLocRaw) return "none";
+        if (!resolutionSource) return "none";
         try {
-          const stubCanon = canonicalTargetUri(stubAuthLocRaw);
-          if (stubCanon === canonicalTargetUri(aaoHostedAdagentsJsonUrl(domain))) return "aao";
-          if (stubCanon === canonicalTargetUri(expectedAdagentsJsonUrl(domain))) return "self";
+          const resolvedCanon = canonicalTargetUri(resolutionSource);
+          if (resolvedCanon === canonicalTargetUri(aaoHostedAdagentsJsonUrl(domain))) return "aao";
+          if (resolvedCanon === canonicalTargetUri(expectedAdagentsJsonUrl(domain))) return "self";
           // Third-party canonical — but the schema description for
           // `self_redirected` promises an HTTPS origin. A publisher
           // pointing at `http://...` is mis-configured (cleartext is
           // not a usable trust anchor for buy-side verifiers); treat
           // that the same as a file that fails validation rather than
           // promote it as a third-party-trusted location.
-          if (new URL(stubAuthLocRaw).protocol !== 'https:') return "third_party_insecure";
+          if (new URL(resolutionSource).protocol !== 'https:') return "third_party_insecure";
           return "third_party_https";
         } catch {
           return "none";
@@ -5961,11 +5987,18 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         hosted_url: isAaoHosted ? aaoHostedAdagentsJsonUrl(domain) : undefined,
         expected_url: expectedAdagentsJsonUrl(domain),
         // Resolved URL — where the canonical adagents.json document
-        // actually lives after following authoritative_location. For
-        // self_redirected this is the third-party HTTPS origin the
-        // publisher's stub points at; verifiers audit the TLS chain
-        // there. NULL when no stub is in play.
-        resolved_url: hostingMode === "self_redirected" ? stubAuthLocRaw : null,
+        // actually lives after following authoritative_location AND
+        // HTTP-layer redirects. For self_redirected this is the
+        // third-party HTTPS origin verifiers should audit; for
+        // aao_hosted it's AAO's hosted URL; otherwise NULL.
+        resolved_url: hostingMode === "self_redirected" ? resolutionSource : null,
+        // Phase B: HTTP status + byte count from the most recent fetch.
+        // Verifier-grade chrome — lets a buy-side scraper sanity-check
+        // they're seeing the same response AAO is. NULL until the
+        // first crawl completes after Phase B deploys (existing rows
+        // backfill via the 60-min crawl cadence).
+        last_http_status: cachedHttpStatus,
+        last_bytes: cachedResponseBytes,
         // Last successful validation timestamp. Already plumbed
         // internally; surface for verifiers to sanity-check freshness.
         last_validated: cachedAdagentsLastValidated

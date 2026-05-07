@@ -21,6 +21,20 @@ export interface AdAgentsValidationResult {
   domain: string;
   url: string;
   status_code?: number;
+  /**
+   * Response body byte length from the most recent fetch
+   * (post-decompression). When `authoritative_location` is followed,
+   * measures the canonical document body, not the stub. Set even on
+   * non-200 responses for `self_invalid` triage.
+   */
+  response_bytes?: number;
+  /**
+   * Final URL after following both HTTP-layer redirects and
+   * `authoritative_location`. Differs from the input URL when the
+   * publisher's stub redirects elsewhere; lets verifiers audit the
+   * TLS chain at the actual canonical origin.
+   */
+  resolved_url?: string;
   raw_data?: any;
 }
 
@@ -185,6 +199,12 @@ export class AdAgentsManager {
       });
 
       result.status_code = response.status;
+      result.response_bytes = response.data.byteLength;
+      // Final URL after HTTP-layer redirects (Response.url). May
+      // equal `url` when no redirects fired, or a third-party origin
+      // when the publisher returned a 301/302. Captured even on
+      // non-200 responses for downstream `self_invalid` triage.
+      result.resolved_url = response.url;
 
       // Check HTTP status
       if (response.status !== 200) {
@@ -298,6 +318,14 @@ export class AdAgentsManager {
           'User-Agent': AAO_UA_VALIDATOR,
         },
       });
+
+      // Overwrite the resolved URL — when authoritative_location is
+      // followed, the canonical document body came from THIS fetch,
+      // not the original /.well-known. Verifiers should pin trust to
+      // the authoritative location's TLS chain, not the publisher's.
+      // Bytes likewise reflect the canonical body, not the stub.
+      result.response_bytes = response.data.byteLength;
+      result.resolved_url = response.url;
 
       if (response.status !== 200) {
         const statusMessage = response.status === 404

@@ -513,6 +513,108 @@ describe('Registry publisher endpoint — brand.json hydration', () => {
     expect(res.body.hosting.last_validated).toMatch(/\d{4}-\d{2}-\d{2}T/);
   });
 
+  it('surfaces Phase B fetch metadata: last_http_status, last_bytes, resolved_url', async () => {
+    const pub = `phase-b-${Date.now()}.registry-baseline.example`;
+    await publisherDb.upsertAdagentsCache({
+      domain: pub,
+      manifest: { authorized_agents: [], properties: [] },
+      statusCode: 200,
+      responseBytes: 1438,
+      resolvedUrl: `https://${pub}/.well-known/adagents.json`,
+    });
+
+    const res = await request(app).get(`/api/registry/publisher?domain=${encodeURIComponent(pub)}`);
+    expect(res.status).toBe(200);
+    expect(res.body.hosting.last_http_status).toBe(200);
+    expect(res.body.hosting.last_bytes).toBe(1438);
+    // For mode === 'self', resolved_url is null in the response shape
+    // even though the column is populated — it's only surfaced when
+    // self_redirected. The column-vs-response distinction is intentional
+    // (verifier audit hook only kicks in when the chain has actually
+    // shifted).
+    expect(res.body.hosting.resolved_url).toBeNull();
+  });
+
+  it('detects Case-B self_redirected via HTTP-layer redirect (no authoritative_location in JSONB)', async () => {
+    // Phase B closes the gap where the publisher's /.well-known
+    // serves a 301/302 to a third-party host with NO
+    // `authoritative_location` field in the manifest body. Phase A
+    // could only see Case A (JSONB-based redirection); Case B requires
+    // the resolved_url column to be populated.
+    const pub = `case-b-redirect-${Date.now()}.registry-baseline.example`;
+    const cdnUrl = `https://cdn-${Date.now()}.example.test/adagents.json`;
+    await publisherDb.upsertAdagentsCache({
+      domain: pub,
+      // Note: no authoritative_location in the manifest. The redirect
+      // happened at the HTTP layer, not as an in-document pointer.
+      manifest: { authorized_agents: [], properties: [] },
+      statusCode: 200,
+      resolvedUrl: cdnUrl,
+    });
+
+    const res = await request(app).get(`/api/registry/publisher?domain=${encodeURIComponent(pub)}`);
+    expect(res.status).toBe(200);
+    expect(res.body.hosting.mode).toBe('self_redirected');
+    expect(res.body.hosting.resolved_url).toBe(cdnUrl);
+  });
+
+  it('detects aao_hosted via Case-B HTTP redirect to AAO (no authoritative_location)', async () => {
+    // Edge: publisher's /.well-known returns a 301 to AAO's hosted
+    // URL. There's no authoritative_location field but the network
+    // layer pointed at AAO. Should resolve to aao_hosted.
+    const pub = `case-b-aao-${Date.now()}.registry-baseline.example`;
+    await publisherDb.upsertAdagentsCache({
+      domain: pub,
+      manifest: { authorized_agents: [], properties: [] },
+      statusCode: 200,
+      resolvedUrl: aaoHostedAdagentsJsonUrl(pub),
+    });
+
+    const res = await request(app).get(`/api/registry/publisher?domain=${encodeURIComponent(pub)}`);
+    expect(res.status).toBe(200);
+    expect(res.body.hosting.mode).toBe('aao_hosted');
+    expect(res.body.hosting.hosted_url).toBe(aaoHostedAdagentsJsonUrl(pub));
+  });
+
+  it('gracefully handles NULL Phase B metadata (legacy rows pre-deploy)', async () => {
+    // Existing publishers rows from before Phase B have NULL for
+    // last_http_status / last_response_bytes / resolved_url. The API
+    // surfaces them as null; the UI degrades gracefully (verification
+    // chrome omits the row when typeof !== 'number').
+    const pub = `legacy-row-${Date.now()}.registry-baseline.example`;
+    await publisherDb.upsertAdagentsCache({
+      domain: pub,
+      manifest: { authorized_agents: [], properties: [] },
+      // No statusCode / responseBytes / resolvedUrl supplied.
+    });
+
+    const res = await request(app).get(`/api/registry/publisher?domain=${encodeURIComponent(pub)}`);
+    expect(res.status).toBe(200);
+    expect(res.body.hosting.last_http_status).toBeNull();
+    expect(res.body.hosting.last_bytes).toBeNull();
+    expect(res.body.hosting.resolved_url).toBeNull();
+  });
+
+  it('records failed-fetch metadata via recordFailedAdagentsFetch even when no manifest is cached', async () => {
+    // After Phase B the crawler calls recordFailedAdagentsFetch on
+    // 4xx/5xx responses so the verifier UI can show
+    // "Last attempted: <ts> · HTTP 404" even when no manifest was
+    // stored. The row is created with source_type='community' so
+    // adagents_valid still reports null/false.
+    const pub = `failed-fetch-${Date.now()}.registry-baseline.example`;
+    await publisherDb.recordFailedAdagentsFetch({
+      domain: pub,
+      statusCode: 404,
+      responseBytes: 162,
+      resolvedUrl: `https://${pub}/.well-known/adagents.json`,
+    });
+
+    const res = await request(app).get(`/api/registry/publisher?domain=${encodeURIComponent(pub)}`);
+    expect(res.status).toBe(200);
+    expect(res.body.hosting.last_http_status).toBe(404);
+    expect(res.body.hosting.last_bytes).toBe(162);
+  });
+
   it('tags federated-index properties with source=adagents_json when the publisher serves a valid adagents.json', async () => {
     // Wonderstruck-shaped regression: properties listed in the live
     // adagents.json were being labelled `discovered` (i.e. "found by

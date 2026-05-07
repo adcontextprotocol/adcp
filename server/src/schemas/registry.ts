@@ -610,10 +610,16 @@ const PublisherHostingSchema = z.object({
     description: "Where adagents.json *should* live for this domain — the publisher's own /.well-known path. Always populated, regardless of `mode`.",
   }),
   resolved_url: z.string().nullable().optional().openapi({
-    description: "Where the canonical adagents.json document actually lives after following the publisher's `authoritative_location` stub. Populated iff `mode === 'self_redirected'` — verifiers should pin trust to this URL's TLS chain, not to `expected_url`'s. NULL otherwise.",
+    description: "Where the canonical adagents.json document actually lives after following the publisher's `authoritative_location` stub or any HTTP-layer redirects. Populated iff `mode === 'self_redirected'` — verifiers should pin trust to this URL's TLS chain, not to `expected_url`'s. NULL otherwise.",
   }),
   last_validated: z.string().nullable().optional().openapi({
     description: "ISO timestamp of the last successful validation crawl. Lets verifiers sanity-check freshness. NULL when never crawled.",
+  }),
+  last_http_status: z.number().int().min(100).max(599).nullable().optional().openapi({
+    description: "HTTP status code returned by AAO's most recent fetch attempt of the publisher's `/.well-known/adagents.json`. Verifier-grade chrome — lets a buy-side scraper confirm they see the same response AAO does. NULL until the first crawl records or for transient errors that never produced an HTTP response.",
+  }),
+  last_bytes: z.number().int().nonnegative().nullable().optional().openapi({
+    description: "Response body byte length from the most recent fetch (post-decompression). When `authoritative_location` was followed, measures the canonical document body, not the stub. NULL until the first crawl records.",
   }),
   origin_verified_at: z.string().nullable().optional().openapi({
     description: "ISO timestamp of the last successful origin verification — AAO fetched the publisher's own /.well-known/adagents.json and confirmed `authoritative_location` points at our hosted URL. When set, the publisher's authorization rows have been promoted to `source='adagents_json'` (origin-attested). NULL when never verified or last attempt failed. Only populated when `mode === 'aao_hosted'`.",

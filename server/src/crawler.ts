@@ -383,7 +383,15 @@ export class CrawlerService {
             const propCount = validation.raw_data.properties?.length || 0;
             log.debug({ domain: pubConfig.domain, agentCount, propCount }, 'Domain crawled');
 
-            await this.cacheAdagentsManifest(pubConfig.domain, validation.raw_data as AdagentsManifest);
+            await this.cacheAdagentsManifest(
+              pubConfig.domain,
+              validation.raw_data as AdagentsManifest,
+              {
+                statusCode: validation.status_code,
+                responseBytes: validation.response_bytes,
+                resolvedUrl: validation.resolved_url,
+              },
+            );
 
             // Record agents
             for (const authorizedAgent of validation.raw_data.authorized_agents) {
@@ -408,6 +416,17 @@ export class CrawlerService {
             await this.reconcileLegacyAdagentsAgents(pubConfig.domain, validation.raw_data as AdagentsManifest);
           } else {
             log.debug({ domain: pubConfig.domain }, 'No valid adagents.json');
+            // Record failed-fetch metadata so the verifier UI can show
+            // "Last attempted at <ts> · HTTP <code>" even when no
+            // manifest was cached. validation.status_code is set even
+            // for non-200 responses; missing only when a network error
+            // prevented any HTTP response (recordFailedAdagentsFetch
+            // accepts undefined and writes NULL).
+            await this.recordFailedAdagentsFetch(pubConfig.domain, {
+              statusCode: validation.status_code,
+              responseBytes: validation.response_bytes,
+              resolvedUrl: validation.resolved_url,
+            });
           }
         } catch (err) {
           log.warn({ domain: pubConfig.domain, err: err instanceof Error ? err.message : err }, 'Publisher crawl failed');
@@ -438,7 +457,15 @@ export class CrawlerService {
             await this.federatedIndex.markPublisherHasValidAdagents(domain);
             processedDomains.add(domain);
 
-            await this.cacheAdagentsManifest(domain, validation.raw_data as AdagentsManifest);
+            await this.cacheAdagentsManifest(
+              domain,
+              validation.raw_data as AdagentsManifest,
+              {
+                statusCode: validation.status_code,
+                responseBytes: validation.response_bytes,
+                resolvedUrl: validation.resolved_url,
+              },
+            );
 
             for (const authorizedAgent of validation.raw_data.authorized_agents) {
               if (!authorizedAgent.url) continue;
@@ -653,11 +680,38 @@ export class CrawlerService {
    * happen separately via recordPropertiesForAgent and remain authoritative
    * until catalog readers take over.
    */
-  private async cacheAdagentsManifest(domain: string, manifest: AdagentsManifest): Promise<void> {
+  private async cacheAdagentsManifest(
+    domain: string,
+    manifest: AdagentsManifest,
+    meta?: { statusCode?: number; responseBytes?: number; resolvedUrl?: string },
+  ): Promise<void> {
     try {
-      await this.publisherDb.upsertAdagentsCache({ domain, manifest });
+      await this.publisherDb.upsertAdagentsCache({
+        domain,
+        manifest,
+        statusCode: meta?.statusCode,
+        responseBytes: meta?.responseBytes,
+        resolvedUrl: meta?.resolvedUrl,
+      });
     } catch (err) {
       log.warn({ domain, err: err instanceof Error ? err.message : err }, 'Publisher cache write failed');
+    }
+  }
+
+  /**
+   * Record a failed fetch on the publishers row so the verifier UI can
+   * show "Last attempted: <ts> · HTTP <code>" even when no manifest
+   * was cached. Best-effort — a failure to record metadata must not
+   * abort the rest of the crawl.
+   */
+  private async recordFailedAdagentsFetch(
+    domain: string,
+    meta: { statusCode?: number; responseBytes?: number; resolvedUrl?: string },
+  ): Promise<void> {
+    try {
+      await this.publisherDb.recordFailedAdagentsFetch({ domain, ...meta });
+    } catch (err) {
+      log.warn({ domain, err: err instanceof Error ? err.message : err }, 'Publisher failed-fetch record failed');
     }
   }
 
@@ -905,10 +959,23 @@ export class CrawlerService {
 
       if (!validation.valid || !validation.raw_data?.authorized_agents) {
         log.warn({ domain }, 'No valid adagents.json for domain');
+        await this.recordFailedAdagentsFetch(domain, {
+          statusCode: validation.status_code,
+          responseBytes: validation.response_bytes,
+          resolvedUrl: validation.resolved_url,
+        });
         return;
       }
 
-      await this.cacheAdagentsManifest(domain, validation.raw_data as AdagentsManifest);
+      await this.cacheAdagentsManifest(
+        domain,
+        validation.raw_data as AdagentsManifest,
+        {
+          statusCode: validation.status_code,
+          responseBytes: validation.response_bytes,
+          resolvedUrl: validation.resolved_url,
+        },
+      );
 
       // Record agents and properties
       for (const authorizedAgent of validation.raw_data.authorized_agents) {
@@ -1076,9 +1143,24 @@ export class CrawlerService {
 
   private async crawlSingleDomainForCatalog(domain: string): Promise<void> {
     const validation = await this.adAgentsManager.validateDomain(domain);
-    if (!validation.valid || !validation.raw_data?.authorized_agents) return;
+    if (!validation.valid || !validation.raw_data?.authorized_agents) {
+      await this.recordFailedAdagentsFetch(domain, {
+        statusCode: validation.status_code,
+        responseBytes: validation.response_bytes,
+        resolvedUrl: validation.resolved_url,
+      });
+      return;
+    }
 
-    await this.cacheAdagentsManifest(domain, validation.raw_data as AdagentsManifest);
+    await this.cacheAdagentsManifest(
+      domain,
+      validation.raw_data as AdagentsManifest,
+      {
+        statusCode: validation.status_code,
+        responseBytes: validation.response_bytes,
+        resolvedUrl: validation.resolved_url,
+      },
+    );
 
     for (const authorizedAgent of validation.raw_data.authorized_agents) {
       if (!authorizedAgent.url) continue;
