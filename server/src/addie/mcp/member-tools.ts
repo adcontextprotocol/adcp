@@ -5474,9 +5474,9 @@ export function createMemberToolHandlers(
         if (diffResponse.ok) {
           const diffText = await diffResponse.text();
           const truncatedDiff = truncate(diffText, GITHUB_DIFF_MAX_CHARS);
-          out += `\n---\n\n${wrapUntrusted(`${issue.html_url}/files`, `### Diff\n\n\`\`\`diff\n${truncatedDiff}\n\`\`\``)}\n`;
+          out += `\n---\n\n${wrapUntrusted(`${issue.html_url}/files`, `### Diff\n\n${truncatedDiff}`)}\n`;
         } else {
-          logger.warn({ status: diffResponse.status, repo, issueNumber }, 'get_github_issue: Failed to fetch diff');
+          logger.warn({ status: diffResponse.status, org, repo, issueNumber }, 'get_github_issue: Failed to fetch diff');
           out += `\n---\n\n_Diff unavailable (${diffResponse.status})._\n`;
         }
       }
