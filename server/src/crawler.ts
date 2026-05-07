@@ -672,6 +672,10 @@ export class CrawlerService {
       throw new Error('Monitoring paused for this agent');
     }
 
+    // `includeMembersOnly: true` — owners can refresh their own private /
+    // members-only agents (the route-level ownership check already gated
+    // who got here). `refreshAgentSnapshots` uses public-only because the
+    // periodic crawl probes everything in the federated index regardless.
     const allAgents = await this.federatedIndex.listAllAgents(undefined, { includeMembersOnly: true });
     const known = allAgents.find(a => a.url === agentUrl);
     const knownType = known?.type && known.type !== 'unknown' ? known.type : undefined;

@@ -98,7 +98,7 @@ import { getRequestLog, getRequestCount } from "../db/outbound-log-db.js";
 import { enrichUserWithMembership } from "../utils/html-config.js";
 import { classifyProbeError } from "../utils/probe-error.js";
 import { isWebUserAAOAdmin } from "../addie/admin-status-lookup.js";
-import { getDevUser } from "../middleware/auth.js";
+import { getDevUser, isDevModeEnabled } from "../middleware/auth.js";
 import { OrganizationDatabase, hasApiAccess, resolveMembershipTier } from "../db/organization-db.js";
 import { resolveCallerOrgId } from "./helpers/resolve-caller-org.js";
 import { canonicalizeAgentUrl } from "../db/publisher-db.js";
@@ -2042,7 +2042,7 @@ registry.registerPath({
   operationId: "refreshAgent",
   summary: "Refresh agent snapshot",
   description:
-    "Re-probe the agent and update its registry health (online, tools_count, response_time_ms) and capability snapshot (inferred type, discovered tools). Use after fixing your agent so the registry shows fresh data without waiting for the periodic crawl.\n\n**Auth:** owner of the agent or AAO admin.\n\n**Rate limits:** 5 minutes per agent URL, 30 requests per user per hour.",
+    "Re-probe the agent and update its registry health (online, tools_count, response_time_ms) and capability snapshot (inferred type, discovered tools). Use after fixing your agent so the registry shows fresh data without waiting for the periodic crawl.\n\n**Auth:** owner of the agent or AAO admin.\n\n**Rate limits:** 60 seconds per agent URL, 30 requests per user per hour.",
   tags: ["Agent Compliance"],
   security: [{ bearerAuth: [] }, { oauth2: [] }],
   request: {
@@ -4920,13 +4920,15 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     }
   });
 
-  // Per-agent refresh rate limits. In-memory; resets on deploy. 5 minutes
-  // per agent URL mirrors the /crawl-request domain limit. The per-user
-  // hourly limit is local to this endpoint (separate counter from the one
-  // /crawl-request uses) — keeps the two surfaces decoupled.
+  // Per-agent refresh rate limits. In-memory; resets on deploy. 60 seconds
+  // per agent URL — owners iterating on their own agent (fix DNS, retry,
+  // fix something else, retry) need a tight loop. The /crawl-request 5-min
+  // limit is for full domain re-crawls; this is per-agent owner-initiated.
+  // The per-user hourly limit is local to this endpoint (separate counter
+  // from the one /crawl-request uses) — keeps the two surfaces decoupled.
   const refreshAgentRateLimits = new Map<string, number>();
   const refreshUserCounts = new Map<string, { count: number; windowStart: number }>();
-  const REFRESH_AGENT_RATE_LIMIT_MS = 5 * 60 * 1000;
+  const REFRESH_AGENT_RATE_LIMIT_MS = 60 * 1000;
   const REFRESH_USER_LIMIT = 30;
   const REFRESH_USER_WINDOW_MS = 60 * 60 * 1000;
 
@@ -4953,14 +4955,14 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
 
       // Owner OR AAO admin. Admin escape hatch lets staff fix things for
       // any registered agent (mirrors how admin tools work elsewhere).
-      // Dev users carry an `isAdmin` flag on the dev session but aren't in
-      // the production `aao-admin` working group, so we honor both — same
-      // pattern as `requireAdmin` in middleware/auth.ts.
+      // Dev-admin fallback is gated behind `isDevModeEnabled()` to match
+      // `requireAdmin`'s pattern in middleware/auth.ts — in production
+      // (no DEV_USER_EMAIL/DEV_USER_ID) this branch never fires.
       const [isOwner, isAaoAdmin] = await Promise.all([
         verifyAgentOwnership(req.user.id, agentUrl),
         isWebUserAAOAdmin(req.user.id),
       ]);
-      const isDevAdmin = getDevUser(req)?.isAdmin === true;
+      const isDevAdmin = isDevModeEnabled() && getDevUser(req)?.isAdmin === true;
       if (!isOwner && !isAaoAdmin && !isDevAdmin) {
         return res.status(403).json({ error: "You do not have permission to refresh this agent" });
       }
@@ -4985,6 +4987,9 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       } else {
         refreshUserCounts.set(req.user.id, { count: 1, windowStart: now });
       }
+      // Lock the agent BEFORE probing — a flapping agent (timeout, OAuth
+      // wall, DNS fail) shouldn't be hammered by retries within the window.
+      // Owner sees 502/409 error → has 60s to fix and try again.
       refreshAgentRateLimits.set(agentUrl, now);
 
       try {
