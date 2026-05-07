@@ -1465,6 +1465,7 @@
             <div class="agent-meta-row">
               <span></span>
               <div class="agent-meta-row-actions">
+                <button class="agent-refresh-btn agent-action-link" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}" title="Re-probe this agent so the public registry shows fresh online / tools / type">Recheck status</button>
                 <button class="agent-storyboard-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">Test your agent</button>
                 <button class="agent-action-link agent-action-link--danger" onclick="deleteAgent(${index})">Delete</button>
               </div>
@@ -1549,7 +1550,8 @@
                 <button class="agent-connect-toggle agent-action-link" data-card-id="${cardId}" data-agent-url="${escapeHtml(agent.url)}">${hasAuth ? 'Update auth' : 'Connect agent'}</button>
                 <button class="agent-history-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">History</button>
                 <button class="agent-requests-btn agent-action-link" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}">Requests</button>
-                <button class="agent-storyboard-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}" data-agent-tracks="${escapeHtml(JSON.stringify(tracks))}">Test</button>
+                <button class="agent-refresh-btn agent-action-link" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}" title="Re-probe this agent so the public registry shows fresh online / tools / type. Distinct from Test (which runs storyboard compliance).">Recheck status</button>
+                <button class="agent-storyboard-btn" data-agent-url="${escapeHtml(agent.url)}" data-card-id="${cardId}" data-agent-tracks="${escapeHtml(JSON.stringify(tracks))}" title="Run the full storyboard compliance suite against this agent.">Test</button>
                 <button class="agent-action-link agent-action-link--danger" onclick="deleteAgent(${index})">Delete</button>
               </div>
             </div>
@@ -2561,6 +2563,93 @@
         } catch {
           select.value = previousValue;
         }
+      }
+    });
+
+    // Recheck registry snapshot for one agent. Re-probes capabilities + health
+    // and updates the public registry's online / tools / type display without
+    // waiting for the periodic crawl. Successes flash and auto-dismiss; errors
+    // and rate-limit messages persist on the card so an operator who alt-tabs
+    // doesn't lose the diagnostic.
+    document.addEventListener('click', async function(e) {
+      const btn = e.target.closest('.agent-refresh-btn');
+      if (!btn) return;
+
+      const agentUrl = btn.dataset.agentUrl;
+      const originalLabel = btn.textContent;
+      const actionsRow = btn.closest('.agent-meta-row-actions');
+
+      // Kill any prior result message on this card so a re-click doesn't
+      // stack flashes — only the latest matters.
+      if (actionsRow) {
+        const prior = actionsRow.parentElement?.querySelector('.agent-refresh-result');
+        if (prior) prior.remove();
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Checking…';
+
+      const renderFlash = ({ severity, text }) => {
+        if (!actionsRow || !actionsRow.parentElement) return null;
+        const flash = document.createElement('div');
+        flash.className = 'agent-refresh-result';
+        flash.style.cssText = 'font-size: var(--text-xs); margin-top: var(--space-2); padding: var(--space-2) var(--space-3); border-radius: 6px;';
+        const palette = {
+          success: { bg: 'var(--color-success-50, #ecfdf5)', fg: 'var(--color-success-700, #047857)' },
+          warning: { bg: 'var(--color-warning-50, #fffbeb)', fg: 'var(--color-warning-700, #b45309)' },
+          error:   { bg: 'var(--color-error-50, #fef2f2)',   fg: 'var(--color-error-700, #b91c1c)' },
+        }[severity] || { bg: 'var(--color-bg-subtle)', fg: 'var(--color-text-secondary)' };
+        flash.style.background = palette.bg;
+        flash.style.color = palette.fg;
+        flash.textContent = text;
+        actionsRow.parentElement.appendChild(flash);
+        return flash;
+      };
+
+      try {
+        const res = await fetch(`/api/registry/agents/${encodeURIComponent(agentUrl)}/refresh`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+        });
+        const data = await res.json().catch(() => ({}));
+
+        if (res.status === 200) {
+          const parts = [
+            data.online ? '✓ Online' : '✗ Offline',
+            (data.tools_count ?? 0) + ' tools',
+            data.inferred_type && data.inferred_type !== 'unknown' ? data.inferred_type : 'type unknown',
+          ];
+          if (data.type_promoted) parts.push('type promoted');
+          if (data.oauth_required) parts.push('OAuth required');
+          // Online flashes auto-dismiss; offline-but-reachable persists so
+          // the operator can read the diagnostic at their pace.
+          const flash = renderFlash({
+            severity: data.online ? 'success' : 'warning',
+            text: parts.join(' · '),
+          });
+          if (data.online && flash) setTimeout(() => flash.remove(), 8000);
+        } else if (res.status === 429) {
+          renderFlash({
+            severity: 'warning',
+            text: `Rate limited — try again in ${data.retry_after || 60}s`,
+          });
+        } else if (res.status === 502) {
+          renderFlash({ severity: 'error', text: data.error || 'Probe failed' });
+        } else {
+          renderFlash({
+            severity: 'error',
+            text: data.error || `Recheck failed (HTTP ${res.status})`,
+          });
+        }
+      } catch (err) {
+        renderFlash({
+          severity: 'error',
+          text: `Recheck failed: ${err?.message || err}`,
+        });
+      } finally {
+        btn.disabled = false;
+        btn.textContent = originalLabel;
       }
     });
 

@@ -643,6 +643,133 @@ export class CrawlerService {
   }
 
   /**
+   * Probe one agent and refresh both snapshot tables (health + capabilities)
+   * for it. Used by `POST /api/registry/agents/{encodedUrl}/refresh` so an
+   * owner can pull a fresh online/tools/type readout without waiting for the
+   * 60-min periodic crawl.
+   *
+   * Mirrors the per-agent block of `refreshAgentSnapshots`: same 10s probe
+   * timeout, same type-promotion policy (only promote when stored is unknown
+   * — disagreement is logged, not auto-flipped, see #3538).
+   *
+   * Returns the resulting snapshot fields the caller needs to render the
+   * registry row. Throws on probe failure with a descriptive message — the
+   * route handler maps that to a 502 so the user sees why the refresh
+   * couldn't happen (timeout, DNS, OAuth wall, etc).
+   */
+  async refreshSingleAgent(agentUrl: string): Promise<{
+    online: boolean;
+    tools_count: number | null;
+    response_time_ms: number | null;
+    inferred_type: string;
+    type_promoted: boolean;
+    oauth_required: boolean;
+    checked_at: string;
+    error?: string;
+  }> {
+    const PROBE_TIMEOUT_MS = 10000;
+
+    const pausedUrls = await this.getPausedAgentUrls();
+    if (pausedUrls.has(agentUrl)) {
+      throw new Error('Monitoring paused for this agent');
+    }
+
+    // `includeMembersOnly: true` — owners can refresh their own private /
+    // members-only agents (the route-level ownership check already gated
+    // who got here). `refreshAgentSnapshots` uses public-only because the
+    // periodic crawl probes everything in the federated index regardless.
+    const allAgents = await this.federatedIndex.listAllAgents(undefined, { includeMembersOnly: true });
+    const known = allAgents.find(a => a.url === agentUrl);
+    const knownType = known?.type && known.type !== 'unknown' ? known.type : undefined;
+
+    const agent: Agent = {
+      name: known?.name || agentUrl,
+      url: agentUrl,
+      type: (known?.type as Agent['type']) || 'unknown',
+      protocol: (known?.protocol as 'mcp' | 'a2a') || 'mcp',
+      description: '',
+      mcp_endpoint: agentUrl,
+      contact: { name: '', email: '', website: '' },
+      added_date: new Date().toISOString().split('T')[0],
+    };
+
+    const profile = await Promise.race([
+      this.capabilityDiscovery.discoverCapabilities(agent),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Probe timeout')), PROBE_TIMEOUT_MS)
+      ),
+    ]);
+
+    const inferredType = this.capabilityDiscovery.inferTypeFromProfile(profile);
+    const effectiveType = knownType || inferredType;
+    const agentForHealth: Agent = { ...agent, type: effectiveType as Agent['type'], protocol: profile.protocol };
+
+    const [health, stats] = await Promise.all([
+      Promise.race([
+        this.healthChecker.checkHealth(agentForHealth),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Health timeout')), PROBE_TIMEOUT_MS)
+        ),
+      ]).catch((err): import('./types.js').AgentHealth => ({
+        online: false,
+        checked_at: new Date().toISOString(),
+        error: err instanceof Error ? err.message : 'health check failed',
+      })),
+      Promise.race([
+        this.healthChecker.getStats(agentForHealth),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Stats timeout')), PROBE_TIMEOUT_MS)
+        ),
+      ]).catch((): import('./types.js').AgentStats => ({})),
+    ]);
+
+    await Promise.all([
+      this.snapshotDb.upsertCapabilities(profile, inferredType === 'unknown' ? null : inferredType),
+      this.snapshotDb.upsertHealth(agentUrl, health, stats),
+    ]);
+
+    // Same type-promotion policy as refreshAgentSnapshots: promote when
+    // stored is unknown; log disagreement without auto-flipping (see #3538).
+    const canPromote = inferredType !== 'unknown' && !knownType;
+    const isDisagreement =
+      !!knownType && inferredType !== 'unknown' && knownType !== inferredType;
+
+    if (isDisagreement) {
+      log.warn(
+        { url: agentUrl, knownType, inferredType },
+        'Agent type disagreement: stored vs probed. Run backfill to reconcile.'
+      );
+      await insertTypeReclassification({
+        agentUrl,
+        oldType: knownType ?? null,
+        newType: inferredType,
+        source: 'crawler_promote',
+        notes: { decision: 'logged_only_no_promote', triggered_by: 'manual_refresh' },
+      });
+    }
+
+    let typePromoted = false;
+    if (canPromote) {
+      await this.federatedIndex.updateAgentMetadata(agentUrl, {
+        agent_type: inferredType,
+        protocol: profile.protocol,
+      });
+      typePromoted = true;
+    }
+
+    return {
+      online: health.online,
+      tools_count: health.tools_count ?? null,
+      response_time_ms: health.response_time_ms ?? null,
+      inferred_type: inferredType,
+      type_promoted: typePromoted,
+      oauth_required: profile.oauth_required ?? false,
+      checked_at: health.checked_at,
+      error: health.error,
+    };
+  }
+
+  /**
    * Cache a validated adagents.json manifest into the publishers overlay and
    * project its properties into the property catalog. The writer runs as one
    * transaction with per-property savepoints, so a malformed property is
