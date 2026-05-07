@@ -1144,7 +1144,7 @@ export class CrawlerService {
             agent_count: validation.raw_data.authorized_agents.length,
             property_count: validation.raw_data.properties?.length ?? 0,
             discovery_method: validation.discovery_method,
-            manager_domain: validation.manager_domain ?? undefined,
+            manager_domain: validation.manager_domain,
           },
           actor: 'api:crawl-request',
         });
@@ -1332,7 +1332,7 @@ export class CrawlerService {
           property_count: validation.raw_data.properties?.length ?? 0,
           source: 'catalog_crawl',
           discovery_method: validation.discovery_method,
-          manager_domain: validation.manager_domain ?? undefined,
+          manager_domain: validation.manager_domain,
         },
         actor: 'pipeline:catalog_crawl',
       });
