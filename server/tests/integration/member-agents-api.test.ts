@@ -157,6 +157,11 @@ describe('Per-agent REST API (/api/me/agents)', () => {
        ON CONFLICT (workos_user_id) DO UPDATE SET primary_organization_id = EXCLUDED.primary_organization_id`,
       [userId, `${userId}@example.com`, orgId],
     );
+    // resolvePrimaryOrganization requires both the organizations row AND a
+    // current organization_memberships row to trust the cached pointer; seed
+    // the membership too so tests don't accidentally exercise the dangling-
+    // pointer self-heal path.
+    await provisionMembership(userId, orgId);
   }
 
   async function provisionMembership(userId: string, orgId: string, role = 'member') {
