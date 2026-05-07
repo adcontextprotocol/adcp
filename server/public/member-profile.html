@@ -897,6 +897,20 @@
           </div>
           </div><!-- end photo-section -->
 
+          <!-- Linked Domains: WorkOS-verified domains owned by this org.
+               Self-service mirror of the admin "Linked Domains" card; lets
+               members switch the primary without filing a support ticket. -->
+          <div id="linked-domains-section" style="display: none;">
+            <h2>Linked Domains</h2>
+            <p style="color: var(--color-text-secondary); font-size: var(--text-sm); margin-bottom: var(--space-3);">
+              Domains your organization has verified via SSO. The primary domain drives auto-membership inference (employees signing up with this domain auto-link to your org) and seeds your brand identity.
+            </p>
+            <div id="linked-domains-list" style="margin-bottom: var(--space-4);"></div>
+            <p id="linked-domains-empty" style="display: none; color: var(--color-text-muted); font-size: var(--text-sm); padding: var(--space-3); background: var(--color-bg-subtle); border-radius: var(--radius-md);">
+              No verified domains yet. Domains are added through your SSO provider; once your IT verifies them via WorkOS, they'll appear here.
+            </p>
+          </div>
+
           <!-- Brand identity (companies only) -->
           <div id="logos-section">
           <h2>Brand identity</h2>
@@ -1696,6 +1710,83 @@
       });
     }
 
+    // ============================================================
+    // Linked Domains (self-service primary-domain switching)
+    // ============================================================
+
+    async function loadLinkedDomains() {
+      const section = document.getElementById('linked-domains-section');
+      try {
+        const resp = await fetch('/api/me/organization/domains', { credentials: 'include' });
+        if (!resp.ok) {
+          // Don't block the page on this — just leave the section hidden.
+          if (section) section.style.display = 'none';
+          return;
+        }
+        const data = await resp.json();
+        if (!data.domains || data.domains.length === 0) {
+          if (section) section.style.display = 'block';
+          document.getElementById('linked-domains-empty').style.display = 'block';
+          document.getElementById('linked-domains-list').innerHTML = '';
+          return;
+        }
+        if (section) section.style.display = 'block';
+        document.getElementById('linked-domains-empty').style.display = 'none';
+        renderLinkedDomains(data.domains);
+      } catch (err) {
+        if (section) section.style.display = 'none';
+      }
+    }
+
+    function renderLinkedDomains(domains) {
+      const list = document.getElementById('linked-domains-list');
+      list.innerHTML = domains.map(function(d) {
+        const verifiedBadge = d.verified
+          ? '<span style="display: inline-block; padding: 2px 8px; background: var(--color-success-100, #dcfce7); color: var(--color-success-700, #15803d); border-radius: var(--radius-sm); font-size: 11px; font-weight: var(--font-medium);">Verified</span>'
+          : '<span style="display: inline-block; padding: 2px 8px; background: var(--color-warning-100, #fef3c7); color: var(--color-warning-700, #b45309); border-radius: var(--radius-sm); font-size: 11px; font-weight: var(--font-medium);">Pending</span>';
+        const primaryBadge = d.is_primary
+          ? '<span style="display: inline-block; padding: 2px 8px; background: var(--color-brand-bg); color: var(--color-primary-700); border-radius: var(--radius-sm); font-size: 11px; font-weight: var(--font-semibold);">Primary</span>'
+          : '';
+        const sourceLabel = d.source ? '<span style="color: var(--color-text-muted); font-size: var(--text-xs);">' + escapeHtml(d.source) + '</span>' : '';
+        const action = (!d.is_primary && d.verified)
+          ? '<button type="button" onclick="setLinkedDomainPrimary(\'' + escapeHtml(d.domain) + '\', this)" style="padding: var(--space-2) var(--space-4); background: var(--color-bg-subtle); color: var(--color-text-secondary); border: 1px solid var(--color-border); border-radius: var(--radius-md); font-size: var(--text-sm); cursor: pointer;">Set Primary</button>'
+          : '';
+        return (
+          '<div style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-4); background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: var(--radius-md); margin-bottom: var(--space-2);">' +
+            '<div style="font-weight: var(--font-medium); color: var(--color-text-heading); flex-grow: 1;">' + escapeHtml(d.domain) + '</div>' +
+            '<div style="display: flex; gap: var(--space-2); align-items: center;">' +
+              verifiedBadge + primaryBadge + sourceLabel +
+            '</div>' +
+            '<div style="margin-left: auto;">' + action + '</div>' +
+          '</div>'
+        );
+      }).join('');
+    }
+
+    async function setLinkedDomainPrimary(domain, btn) {
+      const originalText = btn ? btn.textContent : '';
+      if (btn) { btn.disabled = true; btn.textContent = 'Setting...'; }
+      try {
+        const resp = await fetch('/api/me/organization/domains/' + encodeURIComponent(domain) + '/primary', {
+          method: 'PUT',
+          credentials: 'include',
+        });
+        const data = await resp.json().catch(function() { return {}; });
+        if (!resp.ok) {
+          alert(data.message || data.error || 'Failed to set primary domain');
+          if (btn) { btn.disabled = false; btn.textContent = originalText; }
+          return;
+        }
+        // Reload both the domain list and the brand section since
+        // primary_brand_domain may have changed too.
+        await loadLinkedDomains();
+        if (typeof loadProfile === 'function') loadProfile();
+      } catch (err) {
+        alert('Failed to set primary domain: ' + err.message);
+        if (btn) { btn.disabled = false; btn.textContent = originalText; }
+      }
+    }
+
     async function verifyBrandNow(domain) {
       const btn = document.getElementById('brand-verify-btn');
       if (btn) { btn.textContent = 'Checking...'; btn.disabled = true; }
@@ -2242,6 +2333,12 @@
       }
       // Populate brand identity section
       populateBrandSection(profile);
+
+      // Populate Linked Domains section (companies only — for personal orgs
+      // there's nothing to switch between).
+      if (profile.is_personal === false || (profile.is_personal == null && profile.organization_type !== 'personal')) {
+        loadLinkedDomains();
+      }
       document.getElementById('contact_email').value = profile.contact_email || '';
       // Set phone and trigger formatting
       const phoneInput = document.getElementById('contact_phone');

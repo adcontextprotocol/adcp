@@ -100,6 +100,7 @@ import { createContentRouter, createMyContentRouter } from "./routes/content.js"
 import { createMeetingRouters } from "./routes/meetings.js";
 import { createMemberProfileRouter, createAdminMemberProfileRouter } from "./routes/member-profiles.js";
 import { createMemberAgentsRouter } from "./routes/member-agents.js";
+import { createMeOrganizationDomainsRouter } from "./routes/me-organization-domains.js";
 import { createPublicPortraitRouter, createPortraitRouter, createAdminPortraitRouter } from "./routes/portraits.js";
 import { createCommunityRouters } from "./routes/community.js";
 import { createCertificationRouters } from "./routes/certification.js";
@@ -1227,6 +1228,13 @@ export class HTTPServer {
       invalidateMemberContextCache,
     });
     this.app.use('/api/me/agents', memberAgentsRouter);
+
+    // Member-facing self-service for org-linked domains.
+    const meOrganizationDomainsRouter = createMeOrganizationDomainsRouter({
+      workos,
+      invalidateMemberContextCache,
+    });
+    this.app.use('/api/me/organization/domains', meOrganizationDomainsRouter);
 
     // Mount portrait routes
     this.app.use('/api/portraits', createPublicPortraitRouter());
