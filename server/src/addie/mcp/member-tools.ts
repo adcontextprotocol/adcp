@@ -24,6 +24,7 @@ import { ToolError } from '../tool-error.js';
 import { checkToolRateLimit } from './tool-rate-limiter.js';
 import { isUuid } from '../../utils/uuid.js';
 import { neutralizeAndTruncate } from './untrusted-input.js';
+import { coerceStringArray } from './input-coercion.js';
 import { createEscalation } from '../../db/escalation-db.js';
 import { SlackDatabase } from '../../db/slack-db.js';
 import {
@@ -5227,7 +5228,7 @@ export function createMemberToolHandlers(
   handlers.set('draft_github_issue', async (input) => {
     const title = input.title as string;
     let body = input.body as string;
-    const labels = (input.labels as string[]) || [];
+    const labels = coerceStringArray(input.labels);
 
     // GitHub organization
     const org = 'adcontextprotocol';
@@ -5481,7 +5482,7 @@ export function createMemberToolHandlers(
     if (!parsed.ok) return parsed.error;
     const { org, repo } = parsed;
     const state = (input.state as string) || 'open';
-    const labels = (input.labels as string[]) || [];
+    const labels = coerceStringArray(input.labels);
     const query = input.query as string | undefined;
     const limit = Math.min((input.limit as number) || 20, 50);
 
