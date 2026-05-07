@@ -200,40 +200,44 @@ export class AdAgentsManager {
         // serve /.well-known/adagents.json but does serve ads.txt with a
         // managerdomain declaration, attempt discovery on the manager domain.
         if (response.status === 404) {
-          const managerDomain = await this.tryResolveManagerDomain(normalizedDomain);
-          const isCycle = managerDomain ? visitedDomains.has(managerDomain) : false;
+          const managerDomains = await this.tryResolveManagerDomains(normalizedDomain);
           const isHopAllowed = managerFallbackDepth < 1;
-          if (managerDomain && !isCycle && isHopAllowed) {
-            const nextVisited = new Set(visitedDomains);
-            nextVisited.add(normalizedDomain);
-            const managerResult = await this.validateDomainInternal(
-              managerDomain,
-              managerFallbackDepth + 1,
-              nextVisited
-            );
-            if (managerResult.valid) {
-              return {
-                ...managerResult,
-                domain: normalizedDomain,
-                url,
-                warnings: [
-                  ...managerResult.warnings,
-                  {
-                    field: 'managerdomain',
-                    message: `No adagents.json at ${url}; used ads.txt managerdomain ${managerDomain}`,
-                  },
-                ],
-              };
+          if (managerDomains.length > 0 && isHopAllowed) {
+            for (const managerDomain of managerDomains) {
+              const isCycle = visitedDomains.has(managerDomain);
+              if (isCycle) {
+                result.warnings.push({
+                  field: 'managerdomain',
+                  message: `Ignoring ads.txt managerdomain ${managerDomain} due to cycle detection`,
+                });
+                continue;
+              }
+              const nextVisited = new Set(visitedDomains);
+              nextVisited.add(normalizedDomain);
+              const managerResult = await this.validateDomainInternal(
+                managerDomain,
+                managerFallbackDepth + 1,
+                nextVisited
+              );
+              if (managerResult.valid) {
+                return {
+                  ...managerResult,
+                  domain: normalizedDomain,
+                  url,
+                  warnings: [
+                    ...managerResult.warnings,
+                    {
+                      field: 'managerdomain',
+                      message: `No adagents.json at ${url}; used ads.txt managerdomain ${managerDomain}`,
+                    },
+                  ],
+                };
+              }
             }
-          } else if (managerDomain && isCycle) {
+          } else if (managerDomains.length > 0 && !isHopAllowed) {
             result.warnings.push({
               field: 'managerdomain',
-              message: `Ignoring ads.txt managerdomain ${managerDomain} due to cycle detection`,
-            });
-          } else if (managerDomain && !isHopAllowed) {
-            result.warnings.push({
-              field: 'managerdomain',
-              message: `Ignoring ads.txt managerdomain ${managerDomain}: max fallback depth reached`,
+              message: `Ignoring ads.txt managerdomain entries: max fallback depth reached`,
             });
           }
         }
@@ -296,7 +300,7 @@ export class AdAgentsManager {
     return result;
   }
 
-  private async tryResolveManagerDomain(domain: string): Promise<string | null> {
+  private async tryResolveManagerDomains(domain: string): Promise<string[]> {
     const adsTxtUrl = `https://${domain}/ads.txt`;
     try {
       const response = await safeFetchAxiosLike(adsTxtUrl, {
@@ -306,29 +310,28 @@ export class AdAgentsManager {
           'User-Agent': AAO_UA_VALIDATOR,
         },
       });
-      if (response.status !== 200) return null;
-      const managerDomain = this.parseManagerDomain(response.data.toString('utf-8'));
-      return managerDomain || null;
+      if (response.status !== 200) return [];
+      return this.parseManagerDomains(response.data.toString('utf-8'));
     } catch {
-      return null;
+      return [];
     }
   }
 
-  private parseManagerDomain(adsTxtContent: string): string | null {
+  private parseManagerDomains(adsTxtContent: string): string[] {
+    const managers: string[] = [];
     const lines = adsTxtContent.split(/\r?\n/);
     for (const line of lines) {
       const trimmed = line.trim();
-      if (!trimmed.startsWith('#')) continue;
-      const match = trimmed.match(/^#\s*managerdomain\s*=\s*([A-Za-z0-9.-]+)(?:\s+#\s*(.*))?$/i);
+      const match = trimmed.match(/^(?:#\s*)?managerdomain\s*=\s*([A-Za-z0-9.-]+)(?:\s+#\s*(.*))?$/i);
       if (match?.[1]) {
         const trailingComment = (match[2] || '').toLowerCase();
         if (/\bnoagents\b/.test(trailingComment)) {
           continue;
         }
-        return match[1].toLowerCase();
+        managers.push(match[1].toLowerCase());
       }
     }
-    return null;
+    return managers;
   }
 
   /**

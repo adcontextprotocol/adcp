@@ -218,15 +218,17 @@ For a complete guide to deploying this pattern across hundreds or thousands of d
 
 When `https://{publisher}/.well-known/adagents.json` returns `404`, validators MAY attempt a compatibility fallback via `https://{publisher}/ads.txt`:
 
-1. Read `ads.txt` and look for a comment line in the form `# managerdomain=example.com`.
-2. If present, attempt `https://{managerdomain}/.well-known/adagents.json`.
-3. If that manager file validates, treat it as the discovered authorization source for this lookup.
+1. Read `ads.txt` and parse `managerdomain` entries.
+   - Accepted forms: `MANAGERDOMAIN=example.com` (IAB directive form) and `# managerdomain=example.com` (comment compatibility form).
+   - Key matching is case-insensitive (`MANAGERDOMAIN`, `managerdomain`, etc.).
+2. For multiple entries, evaluate in file order and try each managerdomain until one validates.
+3. If a manager file validates, treat it as the discovered authorization source for this lookup.
 
 ### Safety rules for this fallback
 
 - **One hop only**: maximum depth is exactly one (`publisher -> managerdomain`). Do not chain managerdomain lookups.
 - **Cycle detection required**: if `managerdomain` points to a visited domain, ignore it.
-- **`#noagents` opt-out**: if the managerdomain line includes a trailing `#noagents` marker (for example `# managerdomain=example.com #noagents`), clients MUST ignore that managerdomain for adagents discovery.
+- **`#noagents` opt-out**: if a managerdomain line has a trailing comment containing the token `noagents` (case-insensitive), clients MUST ignore that managerdomain for adagents discovery. Example: `MANAGERDOMAIN=example.com #NOAGENTS`.
 - **No success by silence**: if the manager lookup fails, treat the publisher as missing `adagents.json` (same as no fallback).
 
 This fallback is a compatibility affordance for publisher-manager topologies and does not replace the canonical `/.well-known/adagents.json` location.
