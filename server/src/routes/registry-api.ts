@@ -1045,7 +1045,7 @@ registry.registerPath({
             valid: z.boolean(),
             domain: z.string(),
             url: z.string().optional(),
-            discovery_method: z.enum(["direct", "authoritative_location", "ads_txt_managerdomain"]).optional().openapi({
+            discovery_method: z.enum(["direct", "authoritative_location", "ads_txt_managerdomain"]).openapi({
               description: "How the publisher's adagents.json was discovered. `ads_txt_managerdomain` indicates one-hop delegation via ads.txt MANAGERDOMAIN.",
             }),
             manager_domain: z.string().optional().openapi({
