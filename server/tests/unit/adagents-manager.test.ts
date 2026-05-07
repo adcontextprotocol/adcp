@@ -221,7 +221,7 @@ describe('AdAgentsManager', () => {
       expect(result.warnings.some(w => w.field === 'managerdomain')).toBe(true);
     });
 
-    it('tries multiple managerdomain entries in order until one validates', async () => {
+    it('aborts fallback when multiple managerdomain entries are present', async () => {
       mockedSafeFetch.mockImplementation(async (url) => {
         if (url === 'https://publisher.example/.well-known/adagents.json') {
           return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
@@ -233,25 +233,16 @@ describe('AdAgentsManager', () => {
             headers: { 'content-type': 'text/plain' },
           };
         }
-        if (url === 'https://bad-manager.example/.well-known/adagents.json') {
-          return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
-        }
-        if (url === 'https://good-manager.example/.well-known/adagents.json') {
-          return {
-            status: 200,
-            data: buf({ authorized_agents: [{ url: 'https://agent.example', authorized_for: 'All inventory' }] }),
-            headers: { 'content-type': 'application/json' },
-          };
-        }
         throw new Error(`Unexpected URL: ${url}`);
       });
 
       const result = await manager.validateDomain('publisher.example');
-      expect(result.valid).toBe(true);
-      expect(result.warnings.some(w => w.message.includes('good-manager.example'))).toBe(true);
+      expect(result.valid).toBe(false);
+      expect(result.warnings.some(w => w.message.includes('multiple managerdomain entries'))).toBe(true);
+      expect(result.errors.some(e => e.field === 'http_status')).toBe(true);
     });
 
-    it('skips #noagents managerdomain entry and uses next eligible entry', async () => {
+    it('uses next eligible managerdomain when #noagents removes the first candidate', async () => {
       mockedSafeFetch.mockImplementation(async (url) => {
         if (url === 'https://publisher.example/.well-known/adagents.json') {
           return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
@@ -308,7 +299,7 @@ describe('AdAgentsManager', () => {
       expect(result.warnings.some(w => w.message.includes('good.example'))).toBe(true);
     });
 
-    it('emits cycle warnings per entry and still tries later non-cyclic managerdomain entries', async () => {
+    it('aborts fallback when multiple entries include cyclic and non-cyclic managerdomain values', async () => {
       mockedSafeFetch.mockImplementation(async (url) => {
         if (url === 'https://publisher.example/.well-known/adagents.json') {
           return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
@@ -320,19 +311,13 @@ describe('AdAgentsManager', () => {
             headers: { 'content-type': 'text/plain' },
           };
         }
-        if (url === 'https://good.example/.well-known/adagents.json') {
-          return {
-            status: 200,
-            data: buf({ authorized_agents: [{ url: 'https://agent.example', authorized_for: 'Good' }] }),
-            headers: { 'content-type': 'application/json' },
-          };
-        }
         throw new Error(`Unexpected URL: ${url}`);
       });
 
       const result = await manager.validateDomain('publisher.example');
-      expect(result.valid).toBe(true);
-      expect(result.warnings.some(w => w.message.includes('good.example'))).toBe(true);
+      expect(result.valid).toBe(false);
+      expect(result.warnings.some(w => w.message.includes('multiple managerdomain entries'))).toBe(true);
+      expect(result.errors.some(e => e.field === 'http_status')).toBe(true);
     });
 
     it('does not trigger manager fallback on non-404 adagents responses', async () => {

@@ -202,16 +202,20 @@ export class AdAgentsManager {
         if (response.status === 404) {
           const managerDomains = await this.tryResolveManagerDomains(normalizedDomain);
           const isHopAllowed = managerFallbackDepth < 1;
-          if (managerDomains.length > 0 && isHopAllowed) {
-            for (const managerDomain of managerDomains) {
-              const isCycle = visitedDomains.has(managerDomain);
-              if (isCycle) {
-                result.warnings.push({
-                  field: 'managerdomain',
-                  message: `Ignoring ads.txt managerdomain ${managerDomain} due to cycle detection`,
-                });
-                continue;
-              }
+          if (managerDomains.length > 1) {
+            result.warnings.push({
+              field: 'managerdomain',
+              message: 'Ignoring ads.txt managerdomain fallback: multiple managerdomain entries found',
+            });
+          } else if (managerDomains.length === 1 && isHopAllowed) {
+            const managerDomain = managerDomains[0];
+            const isCycle = visitedDomains.has(managerDomain);
+            if (isCycle) {
+              result.warnings.push({
+                field: 'managerdomain',
+                message: `Ignoring ads.txt managerdomain ${managerDomain} due to cycle detection`,
+              });
+            } else {
               const nextVisited = new Set(visitedDomains);
               nextVisited.add(normalizedDomain);
               const managerResult = await this.validateDomainInternal(
