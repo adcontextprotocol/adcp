@@ -216,6 +216,13 @@ For a complete guide to deploying this pattern across hundreds or thousands of d
 
 ## Discovery fallback: ads.txt `managerdomain`
 
+<Warning>
+This is a **legacy compatibility fallback** for existing ads.txt-era publisher-manager setups.
+For managed-network deployments in AdCP, the normative delegation pattern remains
+[`authoritative_location`](/docs/governance/property/managed-networks) in the publisher's own
+`/.well-known/adagents.json` pointer file. New deployments SHOULD use that pattern.
+</Warning>
+
 When `https://{publisher}/.well-known/adagents.json` returns `404`, validators MAY attempt a compatibility fallback via `https://{publisher}/ads.txt`:
 
 1. Read `ads.txt` and parse `managerdomain` entries.
