@@ -357,8 +357,11 @@ export class CrawlerService {
     // Track domains we've already processed to avoid duplicates
     const processedDomains = new Set<string>();
 
-    // 1. Crawl registered publishers' adagents.json files
-    const profiles = await this.memberDb.listProfiles({ is_public: true });
+    // 1. Crawl registered publishers' adagents.json files. Walk every
+    // profile — the publisher-level `pubConfig.is_public` flag below is
+    // the gate; `member_profiles.is_public` is the member-directory
+    // listing flag and shouldn't gate publisher discovery.
+    const profiles = await this.memberDb.listProfiles({});
     const registeredPublisherDomains: string[] = [];
     for (const profile of profiles) {
       for (const pubConfig of profile.publishers || []) {

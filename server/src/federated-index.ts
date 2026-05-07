@@ -37,7 +37,13 @@ export class FederatedIndexService {
     options: { includeMembersOnly?: boolean } = {},
   ): Promise<FederatedAgent[]> {
     const { includeMembersOnly = false } = options;
-    const profiles = await this.memberDb.listProfiles({ is_public: true });
+    // Walk every member profile. `member_profiles.is_public` is the
+    // member-directory gate (per migration 011: "Show in member
+    // directory") and predates per-agent `visibility`; gating registry
+    // listings on it as well silently hides agents that the owner
+    // explicitly marked public. Agent-level `visibility` is the only
+    // gate for whether an agent is listed.
+    const profiles = await this.memberDb.listProfiles({});
     const registeredAgents = new Map<string, FederatedAgent>();
 
     for (const profile of profiles) {
@@ -69,7 +75,10 @@ export class FederatedIndexService {
    * List all registered publishers.
    */
   async listAllPublishers(): Promise<FederatedPublisher[]> {
-    const profiles = await this.memberDb.listProfiles({ is_public: true });
+    // Walk every member profile — see `listAllAgents` above for why
+    // `member_profiles.is_public` is the wrong gate. Each publisher's
+    // own `is_public` flag is what decides whether it's listed.
+    const profiles = await this.memberDb.listProfiles({});
     const registeredPublishers = new Map<string, FederatedPublisher>();
 
     for (const profile of profiles) {
@@ -99,8 +108,10 @@ export class FederatedIndexService {
    * Lookup a domain to find all authorized agents and sales agents claiming it.
    */
   async lookupDomain(domain: string): Promise<DomainLookupResult> {
-    // Build a map of registered agents for enrichment
-    const profiles = await this.memberDb.listProfiles({ is_public: true });
+    // Build a map of registered agents for enrichment. Agent-level
+    // `visibility = 'public'` is the gate; the parent profile's
+    // `is_public` only controls the member directory listing.
+    const profiles = await this.memberDb.listProfiles({});
     const registeredAgentUrls = new Map<string, { slug: string; display_name: string }>();
 
     for (const profile of profiles) {
@@ -457,8 +468,10 @@ export class FederatedIndexService {
     authorizations_by_source: { adagents_json: number; agent_claim: number };
     properties_by_type: Record<string, number>;
   }> {
-    // Count registered (the public registry surface).
-    const profiles = await this.memberDb.listProfiles({ is_public: true });
+    // Count registered (the public registry surface). Match
+    // `listAllAgents` / `listAllPublishers` and let agent-/publisher-
+    // level visibility decide what counts.
+    const profiles = await this.memberDb.listProfiles({});
     let registeredAgents = 0;
     let registeredPublishers = 0;
 

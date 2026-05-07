@@ -8827,7 +8827,11 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
     this.app.get('/api/public/publishers', async (req, res) => {
       try {
         const memberDb = new MemberDatabase();
-        const members = await memberDb.getPublicProfiles({});
+        // Walk every member profile. `member_profiles.is_public` is the
+        // member-directory gate; per-publisher `is_public` is what gates
+        // the public publisher surface. Matches `FederatedIndexService.
+        // listAllPublishers`.
+        const members = await memberDb.listProfiles({});
 
         // Collect all public publishers from members
         const publishers = members.flatMap((m) =>

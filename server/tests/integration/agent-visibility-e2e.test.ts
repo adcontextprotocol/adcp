@@ -435,6 +435,30 @@ describe('Agent visibility E2E', () => {
     expect(withApi.map((a) => a.url)).toContain('https://members.privp.example');
   });
 
+  it('public agent on private-profile member appears in listAgents (regression guard for #4194)', async () => {
+    // Pins the fix in #4194: before this PR, the early-continue
+    //   `if (visibility==='public' && !profile.is_public && !viewerHasApiAccess) continue`
+    // silently hid public agents on profiles that opted out of the member
+    // directory. Per-agent visibility is the only gate; is_public gates only
+    // the /Members directory listing.
+    const orgId = `${TEST_PREFIX}_pub_private`;
+    await seedOrg(pool, orgId, 'individual_professional');
+    await memberDb.createProfile({
+      workos_organization_id: orgId,
+      display_name: 'Pub On Private Org',
+      slug: 'pub-on-private',
+      primary_brand_domain: 'pubprivate.example',
+      is_public: false,
+      agents: [
+        { url: 'https://agent.pubprivate.example', visibility: 'public' },
+      ],
+    });
+
+    const service = new AgentService();
+    const agents = await service.listAgents();
+    expect(agents.map((a) => a.url)).toContain('https://agent.pubprivate.example');
+  });
+
   it('legacy is_public agents are normalized on read', async () => {
     const orgId = `${TEST_PREFIX}_legacy`;
     await seedOrg(pool, orgId, null);
