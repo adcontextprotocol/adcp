@@ -312,8 +312,27 @@ the storyboards exercise.
 ### Async-task store and webhooks (L3)
 
 `TaskStore` and `WebhookEmitter` SPIs. Same shape as `IdempotencyStore` —
-in-memory + JDBC + Redis reference impls. Webhook delivery on a
-configurable `ScheduledExecutorService` (virtual threads on 21+).
+in-memory + JDBC + Redis reference impls.
+
+**Webhook delivery uses a two-executor pattern, not a single
+`ScheduledExecutorService`.** The two are not interchangeable: a scheduler
+schedules tasks; it doesn't run blocking work. Splitting them avoids the
+trap where an adopter single-threads the scheduler assuming virtual
+threads scale it, then wedges their retry pipeline behind one slow
+receiver.
+
+- `WebhookEmitter.scheduler` — a small platform-thread
+  `ScheduledExecutorService` (default size 1–2). Pure scheduling: pulls
+  due deliveries off the retry queue and dispatches them.
+- `WebhookEmitter.dispatcher` — a separate executor that *runs* the
+  HTTP delivery. Default on Java 21+:
+  `Executors.newVirtualThreadPerTaskExecutor()`. Default on 17–20: a
+  bounded platform-thread pool with explicit size. Configurable
+  independently of the scheduler.
+
+Both executors are injectable on `WebhookEmitter.builder()` so adopters
+can wire their own (e.g., a Spring `TaskExecutor`, a Mutiny scheduler, a
+shared application thread pool).
 
 The async-task contract has a non-obvious requirement worth surfacing in
 the API: **the task's terminal artifact must carry the original tool's
