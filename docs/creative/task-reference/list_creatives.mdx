@@ -55,8 +55,8 @@ The `filters` object supports these optional, composable filters:
 | Filter | Type | Description |
 |--------|------|-------------|
 | `accounts` | [AccountRef](/docs/building/integration/accounts-and-agents#account-references)[] | Filter by owning accounts |
-| `format_ids` | format_id[] | Filter by structured format IDs |
-| `statuses` | string[] | Filter by approval status |
+| `format_ids` | FormatID[] | Filter by structured format IDs |
+| `statuses` | [CreativeStatus](/docs/creative/specification#creative-status-lifecycle)[] | Filter by approval status |
 | `tags` | string[] | Filter by tags (all must match) |
 | `tags_any` | string[] | Filter by tags (any must match) |
 | `name_contains` | string | Case-insensitive name search |
