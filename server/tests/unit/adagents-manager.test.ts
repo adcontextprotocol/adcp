@@ -71,6 +71,7 @@ describe('AdAgentsManager', () => {
       expect(result.domain).toBe('example.com');
       expect(result.url).toBe('https://example.com/.well-known/adagents.json');
       expect(result.status_code).toBe(200);
+      expect(result.discovery_method).toBe('direct');
     });
 
     it('normalizes domain by removing protocol', async () => {
@@ -853,6 +854,7 @@ describe('AdAgentsManager', () => {
       expect(callCount).toBe(2); // Two requests: initial + authoritative
       expect(result.valid).toBe(true);
       expect(result.errors).toHaveLength(0);
+      expect(result.discovery_method).toBe('authoritative_location');
     });
 
     it('rejects non-HTTPS authoritative locations', async () => {
