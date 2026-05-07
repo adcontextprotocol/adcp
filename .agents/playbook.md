@@ -207,6 +207,21 @@ Task responses contain ONLY domain data. Protocol concerns (message, context_id,
 ## Versioning
 
 ### Changesets
+#### Mandatory: changeset on every PR
+Every PR **must** include a changeset file. Before pushing, run:
+
+```bash
+npx changeset --empty
+```
+
+Then **immediately rename** the generated file from its random name (for example, `petite-beds-film.md`) to a descriptive name matching the change (for example, `fix-pg-idle-timeout-retry.md`):
+
+```bash
+mv .changeset/<random-name>.md .changeset/<descriptive-name>.md
+```
+
+Add a clear description in the changeset body. Use `--empty` (no package entry) for non-protocol changes (server, UI, docs, infra, tools). Use `patch`/`minor`/`major` only for changes to the published AdCP protocol spec (schemas, task definitions, API reference).
+
 **NEVER manually edit versions.** Use changesets:
 ```bash
 # Create .changeset/your-feature.md
