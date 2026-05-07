@@ -2334,11 +2334,11 @@
       // Populate brand identity section
       populateBrandSection(profile);
 
-      // Populate Linked Domains section (companies only — for personal orgs
-      // there's nothing to switch between).
-      if (profile.is_personal === false || (profile.is_personal == null && profile.organization_type !== 'personal')) {
-        loadLinkedDomains();
-      }
+      // Populate Linked Domains section. The section starts hidden and
+      // loadLinkedDomains() reveals it only when the API returns ≥1 row,
+      // so personal orgs (which usually have 0 verified domains) silently
+      // stay hidden — no extra gating needed here.
+      loadLinkedDomains();
       document.getElementById('contact_email').value = profile.contact_email || '';
       // Set phone and trigger formatting
       const phoneInput = document.getElementById('contact_phone');
