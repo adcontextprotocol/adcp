@@ -422,11 +422,11 @@ function normalizeChannel(ch: string): string {
   return CHANNEL_ALIASES[key] ?? key;
 }
 
-const GITHUB_READ_ALLOWED_ORGS = new Set(['adcontextprotocol', 'prebid']);
 const GITHUB_SEARCH_BANNED_QUALIFIERS = /(^|\s)(repo|org|user|is)\s*:/i;
 const GITHUB_BODY_MAX_CHARS = 4000;
 const GITHUB_COMMENT_MAX_CHARS = 1000;
 const GITHUB_MAX_COMMENTS = 10;
+const GITHUB_DIFF_MAX_CHARS = 12000;
 
 type ParsedRepo =
   | { ok: true; org: string; repo: string }
@@ -440,12 +440,6 @@ function parseAllowedRepo(input: string | undefined): ParsedRepo {
     return { ok: false, error: `Invalid repo "${raw}". Use "owner/name" format (e.g. "adcontextprotocol/adcp").` };
   }
   const [, org, repo] = match;
-  if (!GITHUB_READ_ALLOWED_ORGS.has(org)) {
-    return {
-      ok: false,
-      error: `Repo owner "${org}" is not allowed. Allowed orgs: ${[...GITHUB_READ_ALLOWED_ORGS].join(', ')}.`,
-    };
-  }
   return { ok: true, org, repo };
 }
 
@@ -1301,14 +1295,15 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'get_github_issue',
     description:
-      'Read a GitHub issue or PR by number. Use when the user pastes a GitHub link, references "issue #1234", or asks about the status of a specific RFC, epic, or PR. Returns title, body, state, labels, author, and optionally recent comments. Works on any `adcontextprotocol/*` or `prebid/*` repo. PR review-thread comments (on specific diff lines) are NOT included — only issue-style comments. Do NOT use for keyword search — use list_github_issues. Do NOT use fetch_url on github.com/.../issues URLs; this tool returns structured fields and labels.',
-    usage_hints: 'use when user references a specific GitHub issue or PR by number or URL',
+      'Read a GitHub issue or PR by number. Use when the user pastes a GitHub link, references "issue #1234", or asks about the status / contents of a specific RFC, epic, or PR. Returns title, body, state, labels, author, and optionally recent comments and the PR diff. Works on any public GitHub repo (forks included). PR review-thread comments (on specific diff lines) are NOT returned — only issue-style top-level comments. When the user pastes a PR link or asks for a code review, set `include_diff: true`. Do NOT use for keyword search — use list_github_issues. Do NOT use fetch_url on github.com/.../issues|pull URLs; this tool returns structured fields.',
+    usage_hints: 'use when user references a specific GitHub issue or PR by number or URL; set include_diff=true when reviewing PR code',
     input_schema: {
       type: 'object',
       properties: {
         issue_number: { type: 'integer', description: 'Issue or PR number' },
-        repo: { type: 'string', description: 'Repo in "owner/name" format (e.g. "adcontextprotocol/adcp", "prebid/Prebid.js"). Default: "adcontextprotocol/adcp". Owner must be "adcontextprotocol" or "prebid".' },
-        include_comments: { type: 'boolean', description: 'Include recent comments (default: false)' },
+        repo: { type: 'string', description: 'Repo in "owner/name" format (e.g. "adcontextprotocol/adcp", "patmmccann/adcp"). Default: "adcontextprotocol/adcp". Any public repo accepted.' },
+        include_comments: { type: 'boolean', description: 'Include recent top-level comments (default: false)' },
+        include_diff: { type: 'boolean', description: 'For PRs, include the unified diff (default: false). Ignored for non-PR issues.' },
       },
       required: ['issue_number'],
     },
@@ -1316,7 +1311,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'list_github_issues',
     description:
-      'Search or list GitHub issues and PRs to find open items on a topic, check RFC/epic status, or answer "what is being worked on for X" questions. Pass `query` for keyword search (GitHub search syntax, but `repo:`/`org:`/`user:`/`is:` qualifiers are rejected — use the `repo` param instead). Returns title, number, state, labels, author, last-updated. Do NOT use when the user has a specific issue number — use get_github_issue. Allowed repos: any `adcontextprotocol/*` or `prebid/*`.',
+      'Search or list GitHub issues and PRs to find open items on a topic, check RFC/epic status, or answer "what is being worked on for X" questions. Pass `query` for keyword search (GitHub search syntax, but `repo:`/`org:`/`user:`/`is:` qualifiers are rejected — use the `repo` param instead). Returns title, number, state, labels, author, last-updated. Works on any public GitHub repo. Do NOT use when the user has a specific issue number — use get_github_issue.',
     usage_hints: 'use to find issues on a topic when the user has no direct link or issue number',
     input_schema: {
       type: 'object',
@@ -1324,7 +1319,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
         query: { type: 'string', description: 'Keyword search (optional; GitHub issue search syntax). Do not include repo:/org:/user:/is: qualifiers.' },
         state: { type: 'string', enum: ['open', 'closed', 'all'], description: 'Issue state (default: "open")' },
         labels: { type: 'array', items: { type: 'string' }, description: 'Filter by label names (no quotes or newlines)' },
-        repo: { type: 'string', description: 'Repo in "owner/name" format (e.g. "adcontextprotocol/adcp", "prebid/Prebid.js"). Default: "adcontextprotocol/adcp". Owner must be "adcontextprotocol" or "prebid".' },
+        repo: { type: 'string', description: 'Repo in "owner/name" format (e.g. "adcontextprotocol/adcp", "patmmccann/adcp"). Default: "adcontextprotocol/adcp". Any public repo accepted.' },
         limit: { type: 'integer', description: 'Max results (default: 20, max: 50)' },
       },
       required: [],
@@ -5398,6 +5393,7 @@ export function createMemberToolHandlers(
     if (!parsed.ok) return parsed.error;
     const { org, repo } = parsed;
     const includeComments = Boolean(input.include_comments);
+    const includeDiff = Boolean(input.include_diff);
     const headers = githubHeaders();
 
     try {
@@ -5469,6 +5465,22 @@ export function createMemberToolHandlers(
           logger.warn({ status: commentsResponse.status, repo, issueNumber }, 'get_github_issue: Failed to fetch comments');
         }
       }
+
+      if (includeDiff && issue.pull_request) {
+        const diffResponse = await fetch(
+          `https://api.github.com/repos/${org}/${repo}/pulls/${issueNumber}`,
+          { headers: { ...headers, Accept: 'application/vnd.github.v3.diff' } },
+        );
+        if (diffResponse.ok) {
+          const diffText = await diffResponse.text();
+          const truncatedDiff = truncate(diffText, GITHUB_DIFF_MAX_CHARS);
+          out += `\n---\n\n${wrapUntrusted(`${issue.html_url}/files`, `### Diff\n\n\`\`\`diff\n${truncatedDiff}\n\`\`\``)}\n`;
+        } else {
+          logger.warn({ status: diffResponse.status, repo, issueNumber }, 'get_github_issue: Failed to fetch diff');
+          out += `\n---\n\n_Diff unavailable (${diffResponse.status})._\n`;
+        }
+      }
+
       return out;
     } catch (error) {
       logger.error({ error, repo, issueNumber }, 'get_github_issue: Failed to read issue');
