@@ -119,7 +119,7 @@ describe('AdAgentsManager', () => {
           return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
         }
         if (url === 'https://publisher.example/ads.txt') {
-          return { status: 200, data: Buffer.from('# managerdomain=manager.example\n'), headers: { 'content-type': 'text/plain' } };
+          return { status: 200, data: Buffer.from('MANAGERDOMAIN=manager.example\n'), headers: { 'content-type': 'text/plain' } };
         }
         if (url === 'https://manager.example/.well-known/adagents.json') {
           return {
@@ -144,7 +144,7 @@ describe('AdAgentsManager', () => {
           return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
         }
         if (url === 'https://publisher.example/ads.txt') {
-          return { status: 200, data: Buffer.from('# managerdomain=publisher.example\n'), headers: { 'content-type': 'text/plain' } };
+          return { status: 200, data: Buffer.from('MANAGERDOMAIN=publisher.example\n'), headers: { 'content-type': 'text/plain' } };
         }
         throw new Error(`Unexpected URL: ${url}`);
       });
@@ -161,13 +161,13 @@ describe('AdAgentsManager', () => {
           return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
         }
         if (url === 'https://publisher.example/ads.txt') {
-          return { status: 200, data: Buffer.from('# managerdomain=manager1.example\n'), headers: { 'content-type': 'text/plain' } };
+          return { status: 200, data: Buffer.from('MANAGERDOMAIN=manager1.example\n'), headers: { 'content-type': 'text/plain' } };
         }
         if (url === 'https://manager1.example/.well-known/adagents.json') {
           return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
         }
         if (url === 'https://manager1.example/ads.txt') {
-          return { status: 200, data: Buffer.from('# managerdomain=manager2.example\n'), headers: { 'content-type': 'text/plain' } };
+          return { status: 200, data: Buffer.from('MANAGERDOMAIN=manager2.example\n'), headers: { 'content-type': 'text/plain' } };
         }
         throw new Error(`Unexpected URL: ${url}`);
       });
@@ -186,7 +186,7 @@ describe('AdAgentsManager', () => {
         if (url === 'https://publisher.example/ads.txt') {
           return {
             status: 200,
-            data: Buffer.from('# managerdomain=manager.example #noagents\n'),
+            data: Buffer.from('MANAGERDOMAIN=manager.example #noagents\n'),
             headers: { 'content-type': 'text/plain' },
           };
         }
@@ -221,7 +221,23 @@ describe('AdAgentsManager', () => {
       expect(result.warnings.some(w => w.field === 'managerdomain')).toBe(true);
     });
 
-    it('aborts fallback when multiple managerdomain entries are present', async () => {
+    it('ignores comment-only managerdomain lines', async () => {
+      mockedSafeFetch.mockImplementation(async (url) => {
+        if (url === 'https://publisher.example/.well-known/adagents.json') {
+          return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://publisher.example/ads.txt') {
+          return { status: 200, data: Buffer.from('# managerdomain=comment-only.example\n'), headers: { 'content-type': 'text/plain' } };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+
+      const result = await manager.validateDomain('publisher.example');
+      expect(result.valid).toBe(false);
+      expect(result.errors.some(e => e.field === 'http_status')).toBe(true);
+    });
+
+    it('uses the last managerdomain entry when multiple managerdomain entries are present', async () => {
       mockedSafeFetch.mockImplementation(async (url) => {
         if (url === 'https://publisher.example/.well-known/adagents.json') {
           return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
@@ -237,9 +253,8 @@ describe('AdAgentsManager', () => {
       });
 
       const result = await manager.validateDomain('publisher.example');
-      expect(result.valid).toBe(false);
-      expect(result.warnings.some(w => w.message.includes('multiple managerdomain entries'))).toBe(true);
-      expect(result.errors.some(e => e.field === 'http_status')).toBe(true);
+      expect(result.valid).toBe(true);
+      expect(result.warnings.some(w => w.message.includes('good-manager.example'))).toBe(true);
     });
 
     it('uses next eligible managerdomain when #noagents removes the first candidate', async () => {
@@ -299,7 +314,7 @@ describe('AdAgentsManager', () => {
       expect(result.warnings.some(w => w.message.includes('good.example'))).toBe(true);
     });
 
-    it('aborts fallback when multiple entries include cyclic and non-cyclic managerdomain values', async () => {
+    it('uses the last managerdomain entry when multiple entries include cyclic and non-cyclic managerdomain values', async () => {
       mockedSafeFetch.mockImplementation(async (url) => {
         if (url === 'https://publisher.example/.well-known/adagents.json') {
           return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
@@ -311,13 +326,19 @@ describe('AdAgentsManager', () => {
             headers: { 'content-type': 'text/plain' },
           };
         }
+        if (url === 'https://good.example/.well-known/adagents.json') {
+          return {
+            status: 200,
+            data: buf({ authorized_agents: [{ url: 'https://agent.example', authorized_for: 'Good' }] }),
+            headers: { 'content-type': 'application/json' },
+          };
+        }
         throw new Error(`Unexpected URL: ${url}`);
       });
 
       const result = await manager.validateDomain('publisher.example');
-      expect(result.valid).toBe(false);
-      expect(result.warnings.some(w => w.message.includes('multiple managerdomain entries'))).toBe(true);
-      expect(result.errors.some(e => e.field === 'http_status')).toBe(true);
+      expect(result.valid).toBe(true);
+      expect(result.warnings.some(w => w.message.includes('good.example'))).toBe(true);
     });
 
     it('does not trigger manager fallback on non-404 adagents responses', async () => {

@@ -202,13 +202,8 @@ export class AdAgentsManager {
         if (response.status === 404) {
           const managerDomains = await this.tryResolveManagerDomains(normalizedDomain);
           const isHopAllowed = managerFallbackDepth < 1;
-          if (managerDomains.length > 1) {
-            result.warnings.push({
-              field: 'managerdomain',
-              message: 'Ignoring ads.txt managerdomain fallback: multiple managerdomain entries found',
-            });
-          } else if (managerDomains.length === 1 && isHopAllowed) {
-            const managerDomain = managerDomains[0];
+          if (managerDomains.length > 0 && isHopAllowed) {
+            const managerDomain = managerDomains[managerDomains.length - 1];
             const isCycle = visitedDomains.has(managerDomain);
             if (isCycle) {
               result.warnings.push({
@@ -326,7 +321,7 @@ export class AdAgentsManager {
     const lines = adsTxtContent.split(/\r?\n/);
     for (const line of lines) {
       const trimmed = line.trim();
-      const match = trimmed.match(/^(?:#\s*)?managerdomain\s*=\s*([A-Za-z0-9.-]+)(?:\s+#\s*(.*))?$/i);
+      const match = trimmed.match(/^managerdomain\s*=\s*([A-Za-z0-9.-]+)(?:\s+#\s*(.*))?$/i);
       if (match?.[1]) {
         const trailingComment = (match[2] || '').toLowerCase();
         if (/\bnoagents\b/.test(trailingComment)) {
