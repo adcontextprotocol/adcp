@@ -104,6 +104,7 @@ describe('POST /api/brands/:domain/properties/parse', () => {
   async function clearFixtures() {
     await pool.query('DELETE FROM brands WHERE domain = $1', [TEST_DOMAIN]);
     await pool.query('DELETE FROM organization_domains WHERE workos_organization_id IN ($1, $2)', [OWNER_ORG, OUTSIDER_ORG]);
+    await pool.query('DELETE FROM organization_memberships WHERE workos_organization_id IN ($1, $2)', [OWNER_ORG, OUTSIDER_ORG]);
     await pool.query('DELETE FROM users WHERE workos_user_id IN ($1, $2)', [OWNER_USER, OUTSIDER_USER]);
     await pool.query('DELETE FROM organizations WHERE workos_organization_id IN ($1, $2)', [OWNER_ORG, OUTSIDER_ORG]);
   }
@@ -126,6 +127,15 @@ describe('POST /api/brands/:domain/properties/parse', () => {
       `INSERT INTO users (workos_user_id, email, primary_organization_id)
        VALUES ($1, $2, $3), ($4, $5, $6)`,
       [OWNER_USER, 'owner@test.example', OWNER_ORG, OUTSIDER_USER, 'outsider@test.example', OUTSIDER_ORG]
+    );
+    // resolvePrimaryOrganization requires both an organizations row and a
+    // current organization_memberships row to trust the cached pointer.
+    await pool.query(
+      `INSERT INTO organization_memberships
+         (workos_user_id, workos_organization_id, role, email, created_at, updated_at)
+       VALUES ($1, $2, 'admin', $3, NOW(), NOW()),
+              ($4, $5, 'admin', $6, NOW(), NOW())`,
+      [OWNER_USER, OWNER_ORG, 'owner@test.example', OUTSIDER_USER, OUTSIDER_ORG, 'outsider@test.example']
     );
     await pool.query(
       `INSERT INTO organization_domains (workos_organization_id, domain, verified)
