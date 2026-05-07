@@ -224,6 +224,14 @@ export class AdAgentsManager {
                 nextVisited
               );
               if (managerResult.valid) {
+                if (!this.hasExplicitPublisherScope(managerResult.raw_data, normalizedDomain)) {
+                  result.errors.push({
+                    field: 'managerdomain_scope',
+                    message: `Manager domain ${managerDomain} must explicitly scope authorization to publisher ${normalizedDomain}`,
+                    severity: 'error',
+                  });
+                  return result;
+                }
                 return {
                   ...managerResult,
                   domain: normalizedDomain,
@@ -319,6 +327,7 @@ export class AdAgentsManager {
     try {
       const response = await safeFetchAxiosLike(adsTxtUrl, {
         timeoutMs: 10000,
+        maxRedirects: 1,
         headers: {
           'Accept': 'text/plain',
           'User-Agent': AAO_UA_VALIDATOR,
@@ -346,6 +355,21 @@ export class AdAgentsManager {
       }
     }
     return managers;
+  }
+
+  private hasExplicitPublisherScope(rawData: unknown, publisherDomain: string): boolean {
+    if (!rawData || typeof rawData !== 'object') return false;
+    const data = rawData as AdAgentsJsonInline;
+    const agents = Array.isArray(data.authorized_agents) ? data.authorized_agents : [];
+    const normalizedPublisher = publisherDomain.toLowerCase();
+
+    return agents.some((agent) => {
+      const hasPublisherProperties = Array.isArray(agent.publisher_properties)
+        && agent.publisher_properties.some((p) => p.publisher_domain.toLowerCase() === normalizedPublisher);
+      const hasCollections = Array.isArray(agent.collections)
+        && agent.collections.some((c) => c.publisher_domain.toLowerCase() === normalizedPublisher);
+      return hasPublisherProperties || hasCollections;
+    });
   }
 
   /**
