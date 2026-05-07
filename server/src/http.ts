@@ -3087,6 +3087,24 @@ export class HTTPServer {
       }
     });
 
+    // GET /publisher/:domain/embed - Partner-storefront embed widget.
+    // Same data as /publisher/<domain> but stripped of nav, breadcrumb,
+    // contextual line, and cross-link footer so partner sites can iframe
+    // it into their own UI without sending users away to AAO. CSP
+    // `frame-ancestors *` opts INTO being framed (the route opts out of
+    // any default deny that might come from helmet defaults later); a
+    // simple "Powered by AAO" footer link lives in the embed itself.
+    // Must register before the wildcard /publisher/*domain catch-all
+    // below so Express matches /embed first.
+    this.app.get('/publisher/:domain/embed', async (req, res) => {
+      res.setHeader('Content-Security-Policy', "frame-ancestors *");
+      // Allow brief CDN / browser caching — partner pages rendering the
+      // widget on every page-load benefit from a small cache; data is
+      // ultimately fetched async via /api/registry/publisher anyway.
+      res.setHeader('Cache-Control', 'public, max-age=300');
+      await this.serveHtmlWithConfig(req, res, 'publisher-embed.html');
+    });
+
     // GET /publisher/:domain - Unified publisher self-service page. Wildcard
     // captures dots; the page reads the domain from the path and calls
     // /api/registry/publisher to render properties + per-agent authorization
