@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Publisher | AAO embed</title>
+    <link id="api-alternate" rel="alternate" type="application/json" href="" />
+    <link rel="stylesheet" href="/design-system.css" />
+    <style>
+      /* Partner-storefront embed widget. Designed to be iframed into a
+         partner site, so:
+         - No site nav, no breadcrumb, no global header / footer chrome
+         - Transparent background so it inherits the host's surface
+         - Compact spacing so the widget fits in a sidebar / card slot
+         - Self-contained styles, no dependencies on layout.css
+         The data shape is identical to /publisher/<domain> — the embed
+         calls the same /api/registry/publisher endpoint and renders
+         the verifier-grade hero + on-file panel only. */
+
+      :root { color-scheme: light dark; }
+      body {
+        margin: 0;
+        font-family: var(--font-sans, system-ui, sans-serif);
+        background: transparent;
+        color: var(--color-text);
+        line-height: 1.5;
+      }
+
+      .embed-root {
+        max-width: 720px;
+        padding: var(--space-4);
+        box-sizing: border-box;
+      }
+
+      /* Hero — same five state variants as the canonical page. Slightly
+         smaller margins to fit a partner widget context. */
+      .publisher-hero {
+        border-radius: var(--radius-lg);
+        padding: var(--space-5);
+        margin-bottom: var(--space-4);
+        border: var(--border-1) solid var(--color-border);
+        background: var(--color-bg-card);
+      }
+      .publisher-hero[data-state="healthy"]         { border-color: var(--color-success-200);
+        background: linear-gradient(180deg, var(--color-success-50) 0, var(--color-bg-card) 80%); }
+      .publisher-hero[data-state="aao_hosted"],
+      .publisher-hero[data-state="self_redirected"] { border-color: var(--color-primary-200);
+        background: linear-gradient(180deg, var(--color-primary-50) 0, var(--color-bg-card) 80%); }
+      .publisher-hero[data-state="setup_needed"]    { border-color: var(--color-warning-200);
+        background: linear-gradient(180deg, var(--color-warning-50) 0, var(--color-bg-card) 80%); }
+      .publisher-hero[data-state="invalid"]         { border-color: var(--color-error-200);
+        background: linear-gradient(180deg, var(--color-error-50) 0, var(--color-bg-card) 80%); }
+      .publisher-hero[data-state="checking"]        {
+        background: repeating-linear-gradient(135deg,
+          var(--color-bg-card) 0 12px, var(--color-bg-subtle) 12px 24px);
+        animation: publisher-hero-checking 1.4s linear infinite;
+      }
+      @keyframes publisher-hero-checking { to { background-position: 24px 0; } }
+      @media (prefers-reduced-motion: reduce) {
+        .publisher-hero[data-state="checking"] { animation: none; }
+      }
+
+      .publisher-hero__domain {
+        font-family: var(--font-mono);
+        font-size: clamp(1.25rem, 2vw + 0.75rem, 1.75rem);
+        font-weight: var(--font-bold);
+        letter-spacing: -0.02em;
+        margin: 0 0 var(--space-3);
+        word-break: break-all;
+        line-height: 1.2;
+      }
+
+      .publisher-hero__verification {
+        display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: var(--space-2) var(--space-4);
+        margin: 0 0 var(--space-3);
+        padding: var(--space-2) var(--space-3);
+        background: var(--color-bg-subtle);
+        border: var(--border-1) solid var(--color-border-light);
+        border-radius: var(--radius-md);
+        font-size: var(--text-xs);
+      }
+      .publisher-hero__verification > div { min-width: 0; }
+      .publisher-hero__verification dt {
+        text-transform: uppercase; letter-spacing: 0.06em;
+        font-size: 10px; color: var(--color-text-muted);
+        margin: 0;
+      }
+      .publisher-hero__verification dd {
+        margin: 1px 0 0; font-family: var(--font-mono);
+        word-break: break-all;
+      }
+      .publisher-hero__verification dd code {
+        background: none; padding: 0; user-select: all;
+      }
+
+      .freshness {
+        display: inline-block;
+        margin-left: var(--space-1);
+        font-family: var(--font-sans);
+        font-size: 10px;
+        font-weight: var(--font-medium);
+        padding: 0 6px;
+        border-radius: var(--radius-pill);
+        border: var(--border-1) solid transparent;
+        white-space: nowrap;
+        user-select: none;
+      }
+      .freshness--fresh  { background: var(--color-success-50);
+        color: var(--color-success-800); border-color: var(--color-success-200); }
+      .freshness--aging  { background: var(--color-warning-50);
+        color: var(--color-warning-800); border-color: var(--color-warning-200); }
+      .freshness--stale  { background: var(--color-error-50);
+        color: var(--color-error-800); border-color: var(--color-error-200); }
+
+      .publisher-hero__status {
+        display: flex; align-items: center; gap: var(--space-2);
+        font-size: var(--text-sm); font-weight: var(--font-semibold);
+        margin: 0;
+      }
+
+      /* On-file: condensed counts only, with provenance summaries.
+         Partners scanning a card don't need full property/agent lists;
+         the canonical /publisher page link below is one click away. */
+      .embed-onfile {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        gap: var(--space-3);
+        margin-bottom: var(--space-3);
+      }
+      .embed-stat {
+        padding: var(--space-3);
+        border: var(--border-1) solid var(--color-border-light);
+        border-radius: var(--radius-md);
+        background: var(--color-bg-subtle);
+      }
+      .embed-stat__label {
+        font-size: 10px; text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--color-text-muted);
+        margin: 0 0 2px;
+      }
+      .embed-stat__value {
+        font-size: var(--text-2xl);
+        font-weight: var(--font-bold);
+        font-variant-numeric: tabular-nums;
+        line-height: 1;
+        margin: 0;
+      }
+
+      .embed-footer {
+        display: flex; justify-content: space-between; align-items: center;
+        gap: var(--space-3); flex-wrap: wrap;
+        font-size: var(--text-xs);
+        color: var(--color-text-muted);
+        padding: var(--space-2) 0;
+        border-top: var(--border-1) solid var(--color-border-light);
+        margin-top: var(--space-3);
+      }
+      .embed-footer a { color: inherit; }
+      .embed-footer a:hover { color: var(--color-brand); }
+
+      .embed-footer__view {
+        font-weight: var(--font-semibold);
+        text-decoration: none;
+        color: var(--color-brand);
+      }
+
+      /* Loading + error states */
+      .embed-state { padding: var(--space-6); text-align: center; color: var(--color-text-muted); }
+      .hidden { display: none !important; }
+      .spinner {
+        width: 18px; height: 18px; margin: 0 auto var(--space-2);
+        border: 2px solid var(--color-border);
+        border-top-color: var(--color-brand);
+        border-radius: 50%; animation: spin 0.7s linear infinite;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      @media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
+    </style>
+  </head>
+  <body>
+    <div class="embed-root">
+      <div id="loading" class="embed-state">
+        <div class="spinner"></div>
+        <p>Loading…</p>
+      </div>
+      <div id="error" class="embed-state hidden">
+        <p id="error-msg">Could not load publisher data.</p>
+      </div>
+
+      <div id="content" class="hidden">
+        <header class="publisher-hero" id="hero" data-state="healthy">
+          <h1 class="publisher-hero__domain" id="domain-title"></h1>
+          <dl class="publisher-hero__verification" id="verification" aria-label="AAO verification"></dl>
+          <p class="publisher-hero__status" id="status"></p>
+        </header>
+
+        <div class="embed-onfile" id="onfile">
+          <div class="embed-stat">
+            <p class="embed-stat__label">Properties</p>
+            <p class="embed-stat__value" id="properties-count">—</p>
+          </div>
+          <div class="embed-stat">
+            <p class="embed-stat__label">Authorized agents</p>
+            <p class="embed-stat__value" id="agents-count">—</p>
+          </div>
+          <div class="embed-stat">
+            <p class="embed-stat__label">brand.json</p>
+            <p class="embed-stat__value" id="brand-status" style="font-size: var(--text-base);">—</p>
+          </div>
+        </div>
+
+        <footer class="embed-footer">
+          <a id="view-canonical" class="embed-footer__view" href="#" target="_top" rel="noopener">View on AgenticAdvertising.org →</a>
+          <span>Powered by <a href="https://agenticadvertising.org" target="_top" rel="noopener">AAO</a></span>
+        </footer>
+      </div>
+    </div>
+
+    <script>
+      const escapeHtml = (s) =>
+        String(s ?? '')
+          .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+      function getDomain() {
+        const m = window.location.pathname.match(/^\/publisher\/(.+?)\/embed\/?$/);
+        return m ? decodeURIComponent(m[1]) : '';
+      }
+
+      function showError(msg) {
+        document.getElementById('loading').classList.add('hidden');
+        document.getElementById('content').classList.add('hidden');
+        const el = document.getElementById('error');
+        el.classList.remove('hidden');
+        document.getElementById('error-msg').textContent = msg;
+      }
+
+      function fmtTimestamp(iso) {
+        if (!iso) return null;
+        const d = new Date(iso);
+        if (isNaN(d.getTime())) return null;
+        return { iso, display: d.toISOString().replace('T', ' ').replace('Z', ' UTC') };
+      }
+
+      function freshnessPill(iso) {
+        if (!iso) return null;
+        const d = new Date(iso);
+        if (isNaN(d.getTime())) return null;
+        const ageMs = Date.now() - d.getTime();
+        const ageH = ageMs / 3600_000;
+        const ageD = ageH / 24;
+        if (ageH < 1) return { tier: 'fresh', label: `${Math.max(1, Math.floor(ageMs / 60_000))} min ago` };
+        if (ageH < 24) return { tier: 'fresh', label: `${Math.floor(ageH)}h ago` };
+        if (ageD < 7) return { tier: 'aging', label: `${Math.floor(ageD)}d ago` };
+        return { tier: 'stale', label: `${Math.floor(ageD)}d ago` };
+      }
+
+      function deriveHeroState(data) {
+        if (data.auto_crawl_triggered === true) return 'checking';
+        const mode = data.hosting && data.hosting.mode;
+        if (mode === 'self')             return 'healthy';
+        if (mode === 'aao_hosted')       return 'aao_hosted';
+        if (mode === 'self_redirected')  return 'self_redirected';
+        if (mode === 'self_invalid')     return 'invalid';
+        return 'setup_needed';
+      }
+
+      const STATE_LINES = {
+        healthy:         { dot: 'success', line: 'Self-hosted and validated' },
+        aao_hosted:      { dot: 'info',    line: 'AAO-hosted via authoritative_location' },
+        self_redirected: { dot: 'info',    line: 'Self-hosted via redirect' },
+        setup_needed:    { dot: 'warning', line: 'Setup needed' },
+        invalid:         { dot: 'error',   line: 'adagents.json failed validation' },
+        checking:        { dot: 'info',    line: 'Checking now…' },
+      };
+
+      function renderHero(data) {
+        const state = deriveHeroState(data);
+        const hero = document.getElementById('hero');
+        hero.setAttribute('data-state', state);
+
+        const verification = document.getElementById('verification');
+        const hosting = data.hosting || {};
+        const ts = fmtTimestamp(hosting.last_validated);
+        const fresh = freshnessPill(hosting.last_validated);
+        const verRows = [];
+        if (ts) {
+          const pill = fresh
+            ? ` <span class="freshness freshness--${fresh.tier}">${escapeHtml(fresh.label)}</span>`
+            : '';
+          verRows.push(`<div><dt>Last verified</dt><dd><time datetime="${escapeHtml(ts.iso)}"><code>${escapeHtml(ts.display)}</code></time>${pill}</dd></div>`);
+        }
+        if (typeof hosting.last_http_status === 'number') {
+          verRows.push(`<div><dt>HTTP</dt><dd><code>${escapeHtml(String(hosting.last_http_status))}</code></dd></div>`);
+        }
+        verRows.push(`<div><dt>Origin</dt><dd><code>${escapeHtml(hosting.expected_url || '')}</code></dd></div>`);
+        verification.innerHTML = verRows.join('');
+
+        const copy = STATE_LINES[state] || STATE_LINES.setup_needed;
+        document.getElementById('status').innerHTML =
+          `<span class="ds-status-dot ds-status-dot-${copy.dot}"></span><span>${escapeHtml(copy.line)}</span>`;
+      }
+
+      function renderCounts(data) {
+        const props = Array.isArray(data.properties) ? data.properties.length : 0;
+        const agents = Array.isArray(data.authorized_agents) ? data.authorized_agents.length : 0;
+        document.getElementById('properties-count').textContent = String(props);
+        document.getElementById('agents-count').textContent = String(agents);
+
+        const brand = (data.files && data.files.brand_json) || { status: 'unknown' };
+        const brandLabel = brand.status === 'present' ? 'Present'
+          : brand.status === 'checking' ? 'Checking…'
+          : 'Not on file';
+        document.getElementById('brand-status').textContent = brandLabel;
+      }
+
+      async function load() {
+        const domain = getDomain();
+        if (!domain) { showError('No publisher domain in the URL.'); return; }
+        document.getElementById('domain-title').textContent = domain;
+        const alt = document.getElementById('api-alternate');
+        if (alt) alt.setAttribute('href', `/api/registry/publisher?domain=${encodeURIComponent(domain)}`);
+        const canonicalLink = document.getElementById('view-canonical');
+        if (canonicalLink) canonicalLink.href = `https://agenticadvertising.org/publisher/${encodeURIComponent(domain)}`;
+
+        try {
+          const res = await fetch(`/api/registry/publisher?domain=${encodeURIComponent(domain)}`);
+          if (!res.ok) { showError(`Server returned ${res.status}.`); return; }
+          const data = await res.json();
+          document.getElementById('loading').classList.add('hidden');
+          document.getElementById('content').classList.remove('hidden');
+          renderHero(data);
+          renderCounts(data);
+
+          // If the server kicked off a crawl, refresh once to pick up
+          // the result. Same cadence as the canonical page.
+          if (data.auto_crawl_triggered) setTimeout(() => load(), 4000);
+        } catch (err) {
+          console.error(err);
+          showError('Network error.');
+        }
+      }
+
+      load();
+    </script>
+  </body>
+</html>
