@@ -6115,8 +6115,9 @@ Use add_committee_leader to assign a leader.`;
     const pool = getPool();
     const limit = Math.min((input.limit as number) || 10, 20);
     const includeLusha = input.include_lusha !== false;
-    const coercedKeywords = coerceStringArray(input.lusha_keywords);
-    const lushaKeywords = coercedKeywords.length > 0 ? coercedKeywords : ['programmatic', 'DSP', 'ad tech'];
+    const lushaKeywords = input.lusha_keywords === undefined
+      ? ['programmatic', 'DSP', 'ad tech']
+      : coerceStringArray(input.lusha_keywords);
 
     let response = `## Suggested Prospects\n\n`;
 
