@@ -242,39 +242,99 @@ export async function backfillPrimaryOrganization(workosUserId: string, orgId: s
 }
 
 /**
+ * Unconditionally point users.primary_organization_id at orgId. Used by the
+ * resolver self-heal path when the cached column is set but dangles (org row
+ * missing, or membership row missing). The webhook backfill keeps its
+ * IS-NULL guard so a stray membership webhook can't repoint a user away
+ * from the org they actually use.
+ */
+async function repointPrimaryOrganization(workosUserId: string, orgId: string): Promise<void> {
+  await query(
+    `UPDATE users SET primary_organization_id = $1, updated_at = NOW()
+     WHERE workos_user_id = $2 AND primary_organization_id IS DISTINCT FROM $1`,
+    [orgId, workosUserId]
+  );
+}
+
+/**
+ * Clear a stale primary_organization_id when no replacement membership
+ * exists. Lets a future organization_membership.created webhook re-trigger
+ * the IS-NULL backfill rather than leaving a phantom pointer in place.
+ */
+async function clearStalePrimaryOrganization(workosUserId: string, staleOrgId: string): Promise<void> {
+  await query(
+    `UPDATE users SET primary_organization_id = NULL, updated_at = NOW()
+     WHERE workos_user_id = $1 AND primary_organization_id = $2`,
+    [workosUserId, staleOrgId]
+  );
+}
+
+/**
  * Resolve the user's primary organization id.
  *
- *   1. Read users.primary_organization_id (the cached pointer).
- *   2. If NULL, derive from organization_memberships (preferring paying orgs).
- *   3. Best-effort backfill so the next read hits the fast path.
+ *   1. Read users.primary_organization_id, but only trust it when both the
+ *      organization row and a current membership row still exist. A bare
+ *      column read masquerades a deleted/never-synced org as a valid cache
+ *      hit and 404s every tier-gated read site.
+ *   2. On miss/dangle, derive from organization_memberships (preferring
+ *      paying orgs) and repoint the cache.
+ *   3. If no derived org exists either, clear the stale pointer so a later
+ *      membership webhook can re-trigger the IS-NULL backfill.
  *
- * Returns null when the user has no organization at all.
+ * Returns null when the user has no valid organization affiliation.
  *
- * Use this instead of selecting primary_organization_id directly. Direct reads
- * silently return null for users whose backfill never completed (race between
- * organization_membership.created and user.created webhooks, fire-and-forget
- * backfill failures), which silently breaks every surface that gates on the
- * column. The integrity invariant `users-have-primary-organization` catches
- * any rows that stay NULL despite the fallback.
+ * Use this instead of selecting primary_organization_id directly. Direct
+ * reads silently return null (or worse, a phantom orgId) for users whose
+ * cache state drifted from organizations / organization_memberships, which
+ * silently breaks every surface that gates on the column. The integrity
+ * invariant `users-have-primary-organization` catches both drift modes.
  */
 export async function resolvePrimaryOrganization(workosUserId: string): Promise<string | null> {
-  const cached = await query<{ primary_organization_id: string | null }>(
-    `SELECT primary_organization_id FROM users
-       WHERE workos_user_id = $1 AND primary_organization_id IS NOT NULL`,
+  // Single read returns both the cached pointer AND whether the joins to
+  // organizations + organization_memberships still hold. Lets us trust the
+  // cache only when both are present, while still knowing what value was
+  // stored so the no-recourse branch can clear a dangling id without an
+  // extra round trip.
+  const cached = await query<{ primary_organization_id: string | null; joins_valid: boolean }>(
+    `SELECT u.primary_organization_id,
+            (
+              EXISTS (
+                SELECT 1 FROM organizations o
+                 WHERE o.workos_organization_id = u.primary_organization_id
+              )
+              AND EXISTS (
+                SELECT 1 FROM organization_memberships om
+                 WHERE om.workos_user_id = u.workos_user_id
+                   AND om.workos_organization_id = u.primary_organization_id
+              )
+            ) AS joins_valid
+       FROM users u
+      WHERE u.workos_user_id = $1`,
     [workosUserId]
   );
-  if (cached.rows[0]?.primary_organization_id) {
-    return cached.rows[0].primary_organization_id;
+  const row = cached.rows[0];
+  if (row?.primary_organization_id && row.joins_valid) {
+    return row.primary_organization_id;
   }
 
   const derived = await resolvePreferredOrganization(workosUserId);
-  if (!derived) return null;
+  if (!derived) {
+    // Cache was set to a dangling id and no replacement exists — null it
+    // out so a later membership webhook can re-trigger the IS-NULL backfill.
+    if (row?.primary_organization_id) {
+      const staleOrgId = row.primary_organization_id;
+      clearStalePrimaryOrganization(workosUserId, staleOrgId).catch((err) => {
+        logger.warn({ err, userId: workosUserId, staleOrgId }, 'failed to clear stale primary_organization_id');
+      });
+    }
+    return null;
+  }
 
-  // Opportunistic backfill — failures don't block the lookup. The integrity
-  // invariant catches any row that stays NULL (e.g. because the users row
-  // doesn't exist yet, or a transient DB error swallows the UPDATE).
-  backfillPrimaryOrganization(workosUserId, derived).catch((err) => {
-    logger.warn({ err, userId: workosUserId, orgId: derived }, 'opportunistic primary_organization_id backfill failed');
+  // Cache didn't pass the JOIN check but a derived org exists — repoint
+  // unconditionally. The IS-NULL-guarded backfill helper would let a
+  // dangling pointer persist forever.
+  repointPrimaryOrganization(workosUserId, derived).catch((err) => {
+    logger.warn({ err, userId: workosUserId, orgId: derived }, 'opportunistic primary_organization_id repoint failed');
   });
 
   return derived;

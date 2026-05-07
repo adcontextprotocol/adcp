@@ -132,6 +132,10 @@ describe('Agent visibility E2E', () => {
       [`${TEST_PREFIX}%`],
     );
     await pool.query(
+      `DELETE FROM organization_memberships WHERE workos_organization_id LIKE $1`,
+      [`${TEST_PREFIX}%`],
+    );
+    await pool.query(
       `DELETE FROM users WHERE primary_organization_id LIKE $1`,
       [`${TEST_PREFIX}%`],
     );
@@ -148,6 +152,15 @@ describe('Agent visibility E2E', () => {
        VALUES ($1, $2, $3, NOW(), NOW())
        ON CONFLICT (workos_user_id) DO UPDATE SET primary_organization_id = EXCLUDED.primary_organization_id`,
       [userId, `${userId}@example.com`, orgId],
+    );
+    // resolvePrimaryOrganization requires both an organizations row and a
+    // current organization_memberships row to trust the cached pointer.
+    await pool.query(
+      `INSERT INTO organization_memberships
+         (workos_user_id, workos_organization_id, role, email, created_at, updated_at)
+       VALUES ($1, $2, 'admin', $3, NOW(), NOW())
+       ON CONFLICT (workos_user_id, workos_organization_id) DO NOTHING`,
+      [userId, orgId, `${userId}@example.com`],
     );
   }
 
@@ -168,6 +181,10 @@ describe('Agent visibility E2E', () => {
   beforeEach(async () => {
     await pool.query(
       `DELETE FROM member_profiles WHERE workos_organization_id LIKE $1`,
+      [`${TEST_PREFIX}%`],
+    );
+    await pool.query(
+      `DELETE FROM organization_memberships WHERE workos_organization_id LIKE $1`,
       [`${TEST_PREFIX}%`],
     );
     await pool.query(

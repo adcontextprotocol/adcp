@@ -89,6 +89,10 @@ describe('Addie brand-property tools — integration', () => {
       [OWNER_ORG, OUTSIDER_ORG],
     );
     await pool.query(
+      'DELETE FROM organization_memberships WHERE workos_organization_id IN ($1, $2)',
+      [OWNER_ORG, OUTSIDER_ORG],
+    );
+    await pool.query(
       'DELETE FROM users WHERE workos_user_id IN ($1, $2)',
       [OWNER_USER, OUTSIDER_USER],
     );
@@ -115,6 +119,15 @@ describe('Addie brand-property tools — integration', () => {
       `INSERT INTO users (workos_user_id, email, primary_organization_id)
        VALUES ($1, $2, $3), ($4, $5, $6)`,
       [OWNER_USER, 'owner@addie.test', OWNER_ORG, OUTSIDER_USER, 'outsider@addie.test', OUTSIDER_ORG],
+    );
+    // resolvePrimaryOrganization requires both an organizations row and a
+    // current organization_memberships row to trust the cached pointer.
+    await pool.query(
+      `INSERT INTO organization_memberships
+         (workos_user_id, workos_organization_id, role, email, created_at, updated_at)
+       VALUES ($1, $2, 'admin', $3, NOW(), NOW()),
+              ($4, $5, 'admin', $6, NOW(), NOW())`,
+      [OWNER_USER, OWNER_ORG, 'owner@addie.test', OUTSIDER_USER, OUTSIDER_ORG, 'outsider@addie.test'],
     );
     await pool.query(
       `INSERT INTO organization_domains (workos_organization_id, domain, verified)

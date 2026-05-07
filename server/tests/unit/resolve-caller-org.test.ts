@@ -145,14 +145,16 @@ describe('resolveCallerOrgId', () => {
 
   it('falls back to users.primary_organization_id when only req.user is set', async () => {
     validateWorkOSApiKeyMock.mockResolvedValueOnce(null);
-    // resolvePrimaryOrganization: fast-path read returns the cached column.
-    dbQueryMock.mockResolvedValueOnce({ rows: [{ primary_organization_id: 'org_from_session' }] });
+    // resolvePrimaryOrganization: fast-path read returns the cached column
+    // alongside joins_valid, so a dangling pointer can fall through.
+    dbQueryMock.mockResolvedValueOnce({ rows: [{ primary_organization_id: 'org_from_session', joins_valid: true }] });
 
     const orgId = await resolveCallerOrgId(reqWith(undefined, { id: 'user_session' }));
 
     expect(orgId).toBe('org_from_session');
-    // Assert the fast-path SQL — the WHERE filter is what makes it the fast path.
-    expect(dbQueryMock.mock.calls[0][0]).toMatch(/SELECT primary_organization_id FROM users[\s\S]*workos_user_id\s*=\s*\$1[\s\S]*primary_organization_id IS NOT NULL/);
+    // Assert the fast-path SQL — joins_valid checks both organizations and
+    // organization_memberships so a dangling pointer falls through.
+    expect(dbQueryMock.mock.calls[0][0]).toMatch(/SELECT[\s\S]*primary_organization_id[\s\S]*EXISTS[\s\S]*organizations[\s\S]*EXISTS[\s\S]*organization_memberships[\s\S]*joins_valid[\s\S]*FROM users[\s\S]*workos_user_id\s*=\s*\$1/);
     expect(dbQueryMock.mock.calls[0][1]).toEqual(['user_session']);
   });
 
