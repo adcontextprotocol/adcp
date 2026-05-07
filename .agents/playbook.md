@@ -194,10 +194,12 @@ When linking to schemas in docs, use the correct version alias:
 3. If only in `static/schemas/source/`, use `latest`
 
 **Version aliases:**
-- `/schemas/v3/` → latest 3.x release (currently 3.0.0-rc.3)
-- `/schemas/v2/` → latest 2.x release (currently 2.5.3)
+- `/schemas/v3/` → latest published 3.x release (do not hardcode a patch/RC number here; check `dist/schemas/` for the current target)
+- `/schemas/v2/` → latest published 2.x release (check `dist/schemas/` for the current target)
 - `/schemas/v1/` → points to `latest` (for backward compatibility)
 - `/schemas/latest/` → development version (`static/schemas/source/`)
+
+This avoids drift with the release-line section below, where `3.0.x` continues to advance after release candidates.
 
 **CI validation:** The `check-schema-links.yml` workflow validates schema URLs in PRs and will warn about unreleased schemas or suggest the correct version.
 
