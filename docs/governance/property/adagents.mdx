@@ -214,6 +214,33 @@ For publishers with complex infrastructure or CDN distribution, `adagents.json` 
 
 For a complete guide to deploying this pattern across hundreds or thousands of domains, see [Managed Network Deployment](/docs/governance/property/managed-networks).
 
+## Discovery fallback: ads.txt `managerdomain`
+
+<Warning>
+This is a **legacy compatibility fallback** for existing ads.txt-era publisher-manager setups.
+For managed-network deployments in AdCP, the normative delegation pattern remains
+[`authoritative_location`](/docs/governance/property/managed-networks) in the publisher's own
+`/.well-known/adagents.json` pointer file. New deployments SHOULD use that pattern.
+</Warning>
+
+When `https://{publisher}/.well-known/adagents.json` returns `404`, validators MAY attempt a compatibility fallback via `https://{publisher}/ads.txt`:
+
+1. Read `ads.txt` and parse `managerdomain` entries.
+   - Accepted form: `MANAGERDOMAIN=example.com` (IAB directive form only).
+   - Key matching is case-insensitive (`MANAGERDOMAIN`, `managerdomain`, etc.).
+2. If one or more eligible managerdomain entries remain, use the **last** eligible entry in file order and attempt `https://{managerdomain}/.well-known/adagents.json`.
+3. If that manager file validates **and explicitly scopes authorization to the source publisher domain**, treat it as the discovered authorization source for this lookup.
+
+### Safety rules for this fallback
+
+- **One hop only**: maximum depth is exactly one (`publisher -> managerdomain`). Do not chain managerdomain lookups.
+- **Cycle detection required**: if `managerdomain` points to a visited domain, ignore it.
+- **`#noagents` opt-out**: if a managerdomain line has a trailing comment containing the token `noagents` (case-insensitive), clients MUST ignore that managerdomain for adagents discovery. Example: `MANAGERDOMAIN=example.com #NOAGENTS`.
+- **Explicit publisher scoping required**: a manager-hosted `adagents.json` MUST explicitly mention the source publisher domain (for example under `authorized_agents[].publisher_properties[].publisher_domain` or `authorized_agents[].collections[].publisher_domain`). If the source publisher is not explicitly scoped, fallback MUST fail closed.
+- **No success by silence**: if the manager lookup fails, treat the publisher as missing `adagents.json` (same as no fallback).
+
+This fallback is a compatibility affordance for publisher-manager topologies and does not replace the canonical `/.well-known/adagents.json` location.
+
 ### Example Use Case: Multi-Domain Publisher
 
 A publisher with multiple domains can maintain one authoritative file:

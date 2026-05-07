@@ -72,6 +72,7 @@ describe('AdAgentsManager', () => {
       expect(result.domain).toBe('example.com');
       expect(result.url).toBe('https://example.com/.well-known/adagents.json');
       expect(result.status_code).toBe(200);
+      expect(result.discovery_method).toBe('direct');
     });
 
     // Phase B regression: validator must capture response body byte
@@ -191,6 +192,351 @@ describe('AdAgentsManager', () => {
       expect(result.errors).toHaveLength(1);
       expect(result.errors[0].message).toContain('File not found');
       expect(result.raw_data).toBeUndefined(); // Don't include HTML error pages
+    });
+
+    it('falls back to managerdomain adagents.json when origin adagents.json is missing and ads.txt declares managerdomain', async () => {
+      mockedSafeFetch.mockImplementation(async (url) => {
+        if (url === 'https://publisher.example/.well-known/adagents.json') {
+          return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://publisher.example/ads.txt') {
+          return { status: 200, data: Buffer.from('MANAGERDOMAIN=manager.example\n'), headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://manager.example/.well-known/adagents.json') {
+          return {
+            status: 200,
+            data: buf({ authorized_agents: [{ url: 'https://agent.example', authorized_for: 'All inventory', publisher_properties: [{ publisher_domain: 'publisher.example', selection_type: 'all' }] }] }),
+            headers: { 'content-type': 'application/json' },
+          };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+
+      const result = await manager.validateDomain('publisher.example');
+      expect(result.valid).toBe(true);
+      expect(result.warnings.some(w => w.field === 'managerdomain')).toBe(true);
+      expect(result.domain).toBe('publisher.example');
+      expect(result.url).toBe('https://publisher.example/.well-known/adagents.json');
+      expect(result.discovery_method).toBe('ads_txt_managerdomain');
+      expect(result.manager_domain).toBe('manager.example');
+    });
+
+    it('does not recurse indefinitely when managerdomain points back to original domain', async () => {
+      mockedSafeFetch.mockImplementation(async (url) => {
+        if (url === 'https://publisher.example/.well-known/adagents.json') {
+          return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://publisher.example/ads.txt') {
+          return { status: 200, data: Buffer.from('MANAGERDOMAIN=publisher.example\n'), headers: { 'content-type': 'text/plain' } };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+
+      const result = await manager.validateDomain('publisher.example');
+      expect(result.valid).toBe(false);
+      expect(result.warnings.some(w => w.message.includes('cycle detection'))).toBe(true);
+      expect(result.errors.some(e => e.field === 'http_status')).toBe(true);
+    });
+
+    it('enforces one-hop managerdomain fallback depth', async () => {
+      mockedSafeFetch.mockImplementation(async (url) => {
+        if (url === 'https://publisher.example/.well-known/adagents.json') {
+          return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://publisher.example/ads.txt') {
+          return { status: 200, data: Buffer.from('MANAGERDOMAIN=manager1.example\n'), headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://manager1.example/.well-known/adagents.json') {
+          return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://manager1.example/ads.txt') {
+          return { status: 200, data: Buffer.from('MANAGERDOMAIN=manager2.example\n'), headers: { 'content-type': 'text/plain' } };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+
+      const result = await manager.validateDomain('publisher.example');
+      expect(result.valid).toBe(false);
+      expect(result.warnings.some(w => w.message.includes('max fallback depth'))).toBe(true);
+      expect(result.errors.some(e => e.field === 'http_status')).toBe(true);
+    });
+
+    it('ignores managerdomain when the managerdomain line has #noagents', async () => {
+      mockedSafeFetch.mockImplementation(async (url) => {
+        if (url === 'https://publisher.example/.well-known/adagents.json') {
+          return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://publisher.example/ads.txt') {
+          return {
+            status: 200,
+            data: Buffer.from('MANAGERDOMAIN=manager.example #noagents\n'),
+            headers: { 'content-type': 'text/plain' },
+          };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+
+      const result = await manager.validateDomain('publisher.example');
+      expect(result.valid).toBe(false);
+      expect(result.errors.some(e => e.field === 'http_status')).toBe(true);
+    });
+
+    it('accepts MANAGERDOMAIN directive form (non-comment) case-insensitively', async () => {
+      mockedSafeFetch.mockImplementation(async (url) => {
+        if (url === 'https://publisher.example/.well-known/adagents.json') {
+          return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://publisher.example/ads.txt') {
+          return { status: 200, data: Buffer.from('MANAGERDOMAIN=Manager.Example\n'), headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://manager.example/.well-known/adagents.json') {
+          return {
+            status: 200,
+            data: buf({ authorized_agents: [{ url: 'https://agent.example', authorized_for: 'All inventory', publisher_properties: [{ publisher_domain: 'publisher.example', selection_type: 'all' }] }] }),
+            headers: { 'content-type': 'application/json' },
+          };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+
+      const result = await manager.validateDomain('publisher.example');
+      expect(result.valid).toBe(true);
+      expect(result.warnings.some(w => w.field === 'managerdomain')).toBe(true);
+    });
+
+    it('ignores comment-only managerdomain lines', async () => {
+      mockedSafeFetch.mockImplementation(async (url) => {
+        if (url === 'https://publisher.example/.well-known/adagents.json') {
+          return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://publisher.example/ads.txt') {
+          return { status: 200, data: Buffer.from('# managerdomain=comment-only.example\n'), headers: { 'content-type': 'text/plain' } };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+
+      const result = await manager.validateDomain('publisher.example');
+      expect(result.valid).toBe(false);
+      expect(result.errors.some(e => e.field === 'http_status')).toBe(true);
+    });
+
+    it('uses the last managerdomain entry when multiple managerdomain entries are present', async () => {
+      mockedSafeFetch.mockImplementation(async (url) => {
+        if (url === 'https://publisher.example/.well-known/adagents.json') {
+          return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://publisher.example/ads.txt') {
+          return {
+            status: 200,
+            data: Buffer.from('MANAGERDOMAIN=bad-manager.example\nMANAGERDOMAIN=good-manager.example\n'),
+            headers: { 'content-type': 'text/plain' },
+          };
+        }
+        if (url === 'https://good-manager.example/.well-known/adagents.json') {
+          return {
+            status: 200,
+            data: buf({ authorized_agents: [{ url: 'https://agent.example', authorized_for: 'Good', publisher_properties: [{ publisher_domain: 'publisher.example' }] }] }),
+            headers: { 'content-type': 'application/json' },
+          };
+        }
+        if (url === 'https://bad-manager.example/.well-known/adagents.json') {
+          throw new Error('bad-manager.example should not be tried; last entry wins');
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+
+      const result = await manager.validateDomain('publisher.example');
+      expect(result.valid).toBe(true);
+      expect(result.discovery_method).toBe('ads_txt_managerdomain');
+      expect(result.manager_domain).toBe('good-manager.example');
+      expect(result.warnings.some(w => w.message.includes('good-manager.example'))).toBe(true);
+    });
+
+    it('uses next eligible managerdomain when #noagents removes the first candidate', async () => {
+      mockedSafeFetch.mockImplementation(async (url) => {
+        if (url === 'https://publisher.example/.well-known/adagents.json') {
+          return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://publisher.example/ads.txt') {
+          return {
+            status: 200,
+            data: Buffer.from('MANAGERDOMAIN=blocked.example #NOAGENTS\nMANAGERDOMAIN=allowed.example\n'),
+            headers: { 'content-type': 'text/plain' },
+          };
+        }
+        if (url === 'https://allowed.example/.well-known/adagents.json') {
+          return {
+            status: 200,
+            data: buf({ authorized_agents: [{ url: 'https://agent.example', authorized_for: 'Allowed', publisher_properties: [{ publisher_domain: 'publisher.example' }] }] }),
+            headers: { 'content-type': 'application/json' },
+          };
+        }
+        if (url === 'https://blocked.example/.well-known/adagents.json') {
+          throw new Error('blocked.example should be skipped due to #NOAGENTS');
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+
+      const result = await manager.validateDomain('publisher.example');
+      expect(result.valid).toBe(true);
+      expect(result.warnings.some(w => w.message.includes('allowed.example'))).toBe(true);
+    });
+
+    it('rejects managerdomain fallback when manager adagents.json does not explicitly scope to source publisher', async () => {
+      mockedSafeFetch.mockImplementation(async (url) => {
+        if (url === 'https://publisher.example/.well-known/adagents.json') {
+          return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://publisher.example/ads.txt') {
+          return { status: 200, data: Buffer.from('MANAGERDOMAIN=manager.example\n'), headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://manager.example/.well-known/adagents.json') {
+          return {
+            status: 200,
+            data: buf({ authorized_agents: [{ url: 'https://agent.example', authorized_for: 'All inventory' }] }),
+            headers: { 'content-type': 'application/json' },
+          };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+
+      const result = await manager.validateDomain('publisher.example');
+      expect(result.valid).toBe(false);
+      expect(result.errors.some(e => e.field === 'managerdomain_scope')).toBe(true);
+    });
+
+    it('ignores managerdomain lines with invalid host token and continues scanning', async () => {
+      mockedSafeFetch.mockImplementation(async (url) => {
+        if (url === 'https://publisher.example/.well-known/adagents.json') {
+          return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://publisher.example/ads.txt') {
+          return {
+            status: 200,
+            data: Buffer.from('MANAGERDOMAIN=https://bad.example\nMANAGERDOMAIN=good.example\n'),
+            headers: { 'content-type': 'text/plain' },
+          };
+        }
+        if (url === 'https://good.example/.well-known/adagents.json') {
+          return {
+            status: 200,
+            data: buf({ authorized_agents: [{ url: 'https://agent.example', authorized_for: 'Good', publisher_properties: [{ publisher_domain: 'publisher.example' }] }] }),
+            headers: { 'content-type': 'application/json' },
+          };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+
+      const result = await manager.validateDomain('publisher.example');
+      expect(result.valid).toBe(true);
+      expect(result.warnings.some(w => w.message.includes('good.example'))).toBe(true);
+    });
+
+    it('uses the last managerdomain entry when multiple entries include cyclic and non-cyclic managerdomain values', async () => {
+      mockedSafeFetch.mockImplementation(async (url) => {
+        if (url === 'https://publisher.example/.well-known/adagents.json') {
+          return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://publisher.example/ads.txt') {
+          return {
+            status: 200,
+            data: Buffer.from('MANAGERDOMAIN=publisher.example\nMANAGERDOMAIN=good.example\n'),
+            headers: { 'content-type': 'text/plain' },
+          };
+        }
+        if (url === 'https://good.example/.well-known/adagents.json') {
+          return {
+            status: 200,
+            data: buf({ authorized_agents: [{ url: 'https://agent.example', authorized_for: 'Good', publisher_properties: [{ publisher_domain: 'publisher.example' }] }] }),
+            headers: { 'content-type': 'application/json' },
+          };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+
+      const result = await manager.validateDomain('publisher.example');
+      expect(result.valid).toBe(true);
+      expect(result.warnings.some(w => w.message.includes('good.example'))).toBe(true);
+    });
+
+
+
+    it('accepts managerdomain fallback when manager adagents.json scopes via collections', async () => {
+      mockedSafeFetch.mockImplementation(async (url) => {
+        if (url === 'https://publisher.example/.well-known/adagents.json') {
+          return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://publisher.example/ads.txt') {
+          return { status: 200, data: Buffer.from('MANAGERDOMAIN=manager.example\n'), headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://manager.example/.well-known/adagents.json') {
+          return {
+            status: 200,
+            data: buf({
+              authorized_agents: [{
+                url: 'https://agent.example',
+                authorized_for: 'Scoped via collection',
+                collections: [{ publisher_domain: 'publisher.example' }],
+              }],
+            }),
+            headers: { 'content-type': 'application/json' },
+          };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+
+      const result = await manager.validateDomain('publisher.example');
+      expect(result.valid).toBe(true);
+      expect(result.discovery_method).toBe('ads_txt_managerdomain');
+      expect(result.manager_domain).toBe('manager.example');
+    });
+
+    it('rejects managerdomain fallback when manager adagents.json scopes a different publisher', async () => {
+      mockedSafeFetch.mockImplementation(async (url) => {
+        if (url === 'https://publisher.example/.well-known/adagents.json') {
+          return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://publisher.example/ads.txt') {
+          return { status: 200, data: Buffer.from('MANAGERDOMAIN=manager.example\n'), headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://manager.example/.well-known/adagents.json') {
+          return {
+            status: 200,
+            data: buf({
+              authorized_agents: [{
+                url: 'https://agent.example',
+                authorized_for: 'Wrong publisher',
+                publisher_properties: [{ publisher_domain: 'other-publisher.example' }],
+              }],
+            }),
+            headers: { 'content-type': 'application/json' },
+          };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+
+      const result = await manager.validateDomain('publisher.example');
+      expect(result.valid).toBe(false);
+      expect(result.errors.some(e => e.field === 'managerdomain_scope')).toBe(true);
+    });
+
+    it('does not trigger manager fallback on non-404 adagents responses', async () => {
+      let calledAdsTxt = false;
+      mockedSafeFetch.mockImplementation(async (url) => {
+        if (url === 'https://publisher.example/.well-known/adagents.json') {
+          return { status: 500, data: 'Server error', headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://publisher.example/ads.txt') {
+          calledAdsTxt = true;
+          return { status: 200, data: Buffer.from('MANAGERDOMAIN=good.example\n'), headers: { 'content-type': 'text/plain' } };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+
+      const result = await manager.validateDomain('publisher.example');
+      expect(result.valid).toBe(false);
+      expect(calledAdsTxt).toBe(false);
+      expect(result.errors.some(e => e.message.includes('HTTP 500'))).toBe(true);
     });
 
     it('handles network connection errors', async () => {
@@ -689,6 +1035,7 @@ describe('AdAgentsManager', () => {
       expect(callCount).toBe(2); // Two requests: initial + authoritative
       expect(result.valid).toBe(true);
       expect(result.errors).toHaveLength(0);
+      expect(result.discovery_method).toBe('authoritative_location');
     });
 
     it('rejects non-HTTPS authoritative locations', async () => {
