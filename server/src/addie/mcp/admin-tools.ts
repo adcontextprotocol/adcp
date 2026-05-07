@@ -33,6 +33,7 @@ import { MemberSearchAnalyticsDatabase } from '../../db/member-search-analytics-
 import { MemberDatabase } from '../../db/member-db.js';
 import { normalizeFoundingMemberGrant, foundingMemberFieldsTouched } from '../../services/founding-member-grant.js';
 import { BrandDatabase } from '../../db/brand-db.js';
+import { coerceStringArray } from './input-coercion.js';
 import {
   getPendingInvoices,
   getAllOpenInvoices,
@@ -6114,7 +6115,8 @@ Use add_committee_leader to assign a leader.`;
     const pool = getPool();
     const limit = Math.min((input.limit as number) || 10, 20);
     const includeLusha = input.include_lusha !== false;
-    const lushaKeywords = (input.lusha_keywords as string[]) || ['programmatic', 'DSP', 'ad tech'];
+    const coercedKeywords = coerceStringArray(input.lusha_keywords);
+    const lushaKeywords = coercedKeywords.length > 0 ? coercedKeywords : ['programmatic', 'DSP', 'ad tech'];
 
     let response = `## Suggested Prospects\n\n`;
 
