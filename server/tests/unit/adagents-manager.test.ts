@@ -125,7 +125,7 @@ describe('AdAgentsManager', () => {
         if (url === 'https://manager.example/.well-known/adagents.json') {
           return {
             status: 200,
-            data: buf({ authorized_agents: [{ url: 'https://agent.example', authorized_for: 'All inventory' }] }),
+            data: buf({ authorized_agents: [{ url: 'https://agent.example', authorized_for: 'All inventory', publisher_properties: [{ publisher_domain: 'publisher.example', selection_type: 'all' }] }] }),
             headers: { 'content-type': 'application/json' },
           };
         }
@@ -228,7 +228,7 @@ describe('AdAgentsManager', () => {
         if (url === 'https://manager.example/.well-known/adagents.json') {
           return {
             status: 200,
-            data: buf({ authorized_agents: [{ url: 'https://agent.example', authorized_for: 'All inventory' }] }),
+            data: buf({ authorized_agents: [{ url: 'https://agent.example', authorized_for: 'All inventory', publisher_properties: [{ publisher_domain: 'publisher.example', selection_type: 'all' }] }] }),
             headers: { 'content-type': 'application/json' },
           };
         }
@@ -276,7 +276,7 @@ describe('AdAgentsManager', () => {
         if (url === 'https://allowed.example/.well-known/adagents.json') {
           return {
             status: 200,
-            data: buf({ authorized_agents: [{ url: 'https://agent.example', authorized_for: 'Allowed' }] }),
+            data: buf({ authorized_agents: [{ url: 'https://agent.example', authorized_for: 'Allowed', publisher_properties: [{ publisher_domain: 'publisher.example', selection_type: 'all' }] }] }),
             headers: { 'content-type': 'application/json' },
           };
         }
@@ -306,7 +306,7 @@ describe('AdAgentsManager', () => {
         if (url === 'https://good.example/.well-known/adagents.json') {
           return {
             status: 200,
-            data: buf({ authorized_agents: [{ url: 'https://agent.example', authorized_for: 'Good' }] }),
+            data: buf({ authorized_agents: [{ url: 'https://agent.example', authorized_for: 'Good', publisher_properties: [{ publisher_domain: 'publisher.example', selection_type: 'all' }] }] }),
             headers: { 'content-type': 'application/json' },
           };
         }

@@ -218,7 +218,7 @@ export class AdAgentsManager {
             });
           } else if (managerDomains.length === 1 && isHopAllowed) {
             const managerDomain = managerDomains[0];
-            const isCycle = visitedDomains.has(managerDomain);
+            const isCycle = visitedDomains.has(managerDomain) || normalizedDomain === managerDomain;
             if (isCycle) {
               result.warnings.push({
                 field: 'managerdomain',
@@ -232,7 +232,8 @@ export class AdAgentsManager {
                 managerFallbackDepth + 1,
                 nextVisited
               );
-              if (managerResult.valid) {
+              result.warnings.push(...managerResult.warnings);
+              if (managerResult.valid && this.hasExplicitPublisherScope(normalizedDomain, managerResult.raw_data)) {
                 return {
                   ...managerResult,
                   domain: normalizedDomain,
@@ -362,6 +363,29 @@ export class AdAgentsManager {
       }
     }
     return managers;
+  }
+
+  private hasExplicitPublisherScope(publisherDomain: string, adagentsData: unknown): boolean {
+    if (!adagentsData || typeof adagentsData !== 'object') return false;
+    const data = adagentsData as Record<string, unknown>;
+    const agents = data.authorized_agents;
+    if (!Array.isArray(agents)) return false;
+    const publisher = publisherDomain.toLowerCase();
+    return agents.some((agent: unknown) => {
+      if (!agent || typeof agent !== 'object') return false;
+      const a = agent as Record<string, unknown>;
+      if (Array.isArray(a.publisher_properties)) {
+        if ((a.publisher_properties as Array<Record<string, unknown>>).some(
+          pp => typeof pp.publisher_domain === 'string' && pp.publisher_domain.toLowerCase() === publisher
+        )) return true;
+      }
+      if (Array.isArray(a.collections)) {
+        if ((a.collections as Array<Record<string, unknown>>).some(
+          c => typeof c.publisher_domain === 'string' && c.publisher_domain.toLowerCase() === publisher
+        )) return true;
+      }
+      return false;
+    });
   }
 
   /**
