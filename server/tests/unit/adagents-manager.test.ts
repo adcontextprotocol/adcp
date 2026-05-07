@@ -119,7 +119,7 @@ describe('AdAgentsManager', () => {
           return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
         }
         if (url === 'https://publisher.example/ads.txt') {
-          return { status: 200, data: Buffer.from('# managerdomain=manager.example\n'), headers: { 'content-type': 'text/plain' } };
+          return { status: 200, data: Buffer.from('MANAGERDOMAIN=manager.example\n'), headers: { 'content-type': 'text/plain' } };
         }
         if (url === 'https://manager.example/.well-known/adagents.json') {
           return {
@@ -136,6 +136,24 @@ describe('AdAgentsManager', () => {
       expect(result.warnings.some(w => w.field === 'managerdomain')).toBe(true);
       expect(result.domain).toBe('publisher.example');
       expect(result.url).toBe('https://publisher.example/.well-known/adagents.json');
+      expect(result.discovery_method).toBe('ads_txt_managerdomain');
+      expect(result.manager_domain).toBe('manager.example');
+    });
+
+    it('does not parse comment-form managerdomain (# managerdomain=) — IAB directive form only', async () => {
+      mockedSafeFetch.mockImplementation(async (url) => {
+        if (url === 'https://publisher.example/.well-known/adagents.json') {
+          return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://publisher.example/ads.txt') {
+          return { status: 200, data: Buffer.from('# managerdomain=manager.example\n'), headers: { 'content-type': 'text/plain' } };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+
+      const result = await manager.validateDomain('publisher.example');
+      expect(result.valid).toBe(false);
+      expect(result.errors.some(e => e.field === 'http_status')).toBe(true);
     });
 
     it('does not recurse indefinitely when managerdomain points back to original domain', async () => {
@@ -144,7 +162,7 @@ describe('AdAgentsManager', () => {
           return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
         }
         if (url === 'https://publisher.example/ads.txt') {
-          return { status: 200, data: Buffer.from('# managerdomain=publisher.example\n'), headers: { 'content-type': 'text/plain' } };
+          return { status: 200, data: Buffer.from('MANAGERDOMAIN=publisher.example\n'), headers: { 'content-type': 'text/plain' } };
         }
         throw new Error(`Unexpected URL: ${url}`);
       });
@@ -161,13 +179,13 @@ describe('AdAgentsManager', () => {
           return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
         }
         if (url === 'https://publisher.example/ads.txt') {
-          return { status: 200, data: Buffer.from('# managerdomain=manager1.example\n'), headers: { 'content-type': 'text/plain' } };
+          return { status: 200, data: Buffer.from('MANAGERDOMAIN=manager1.example\n'), headers: { 'content-type': 'text/plain' } };
         }
         if (url === 'https://manager1.example/.well-known/adagents.json') {
           return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
         }
         if (url === 'https://manager1.example/ads.txt') {
-          return { status: 200, data: Buffer.from('# managerdomain=manager2.example\n'), headers: { 'content-type': 'text/plain' } };
+          return { status: 200, data: Buffer.from('MANAGERDOMAIN=manager2.example\n'), headers: { 'content-type': 'text/plain' } };
         }
         throw new Error(`Unexpected URL: ${url}`);
       });
@@ -186,7 +204,7 @@ describe('AdAgentsManager', () => {
         if (url === 'https://publisher.example/ads.txt') {
           return {
             status: 200,
-            data: Buffer.from('# managerdomain=manager.example #noagents\n'),
+            data: Buffer.from('MANAGERDOMAIN=manager.example #noagents\n'),
             headers: { 'content-type': 'text/plain' },
           };
         }

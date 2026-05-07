@@ -226,8 +226,8 @@ For managed-network deployments in AdCP, the normative delegation pattern remain
 When `https://{publisher}/.well-known/adagents.json` returns `404`, validators MAY attempt a compatibility fallback via `https://{publisher}/ads.txt`:
 
 1. Read `ads.txt` and parse `managerdomain` entries.
-   - Accepted forms: `MANAGERDOMAIN=example.com` (IAB directive form) and `# managerdomain=example.com` (comment compatibility form).
-   - Key matching is case-insensitive (`MANAGERDOMAIN`, `managerdomain`, etc.).
+   - **IAB directive form only**: `MANAGERDOMAIN=example.com`. Comment-prefixed lines (`# managerdomain=…`) are not recognized — they are publisher notes, not live directives.
+   - Key matching is case-insensitive (`MANAGERDOMAIN`, `Managerdomain`, etc.).
 2. If exactly one eligible managerdomain entry remains, attempt `https://{managerdomain}/.well-known/adagents.json`.
 3. If more than one eligible managerdomain entry is present, abort fallback as ambiguous.
 4. If a manager file validates, treat it as the discovered authorization source for this lookup.
@@ -237,8 +237,9 @@ When `https://{publisher}/.well-known/adagents.json` returns `404`, validators M
 - **One hop only**: maximum depth is exactly one (`publisher -> managerdomain`). Do not chain managerdomain lookups.
 - **Cycle detection required**: if `managerdomain` points to a visited domain, ignore it.
 - **`#noagents` opt-out**: if a managerdomain line has a trailing comment containing the token `noagents` (case-insensitive), clients MUST ignore that managerdomain for adagents discovery. Example: `MANAGERDOMAIN=example.com #NOAGENTS`.
-- **Ambiguity fails closed**: when multiple eligible managerdomain entries remain, clients MUST abort fallback rather than guessing which manager to trust.
+- **Ambiguity fails closed**: when multiple eligible managerdomain entries remain after `#noagents` filtering, clients MUST abort fallback rather than guessing which manager to trust. This is intentionally stricter than IAB ads.txt 1.1, which uses last-wins semantics for duplicate `MANAGERDOMAIN` lines. AdCP fails closed because a wrong manager selection silently authorizes an incorrect agent across the publisher's entire inventory.
 - **No success by silence**: if the manager lookup fails, treat the publisher as missing `adagents.json` (same as no fallback).
+- **Cache ads.txt fetches**: validators SHOULD cache `ads.txt` responses (4 hours for success, 1 hour for 404/error) and apply per-host backoff to avoid amplification on repeated publisher 404s.
 
 This fallback is a compatibility affordance for publisher-manager topologies and does not replace the canonical `/.well-known/adagents.json` location.
 

@@ -14,6 +14,8 @@ export interface ValidationWarning {
   suggestion?: string;
 }
 
+export type DiscoveryMethod = 'direct' | 'authoritative_location' | 'ads_txt_managerdomain';
+
 export interface AdAgentsValidationResult {
   valid: boolean;
   errors: ValidationError[];
@@ -22,6 +24,8 @@ export interface AdAgentsValidationResult {
   url: string;
   status_code?: number;
   raw_data?: any;
+  discovery_method?: DiscoveryMethod;
+  manager_domain?: string;
 }
 
 export interface AuthorizedAgent {
@@ -153,6 +157,10 @@ export interface CreateAdAgentsJsonOptions {
 
 export class AdAgentsManager {
 
+  private readonly adsTxtCache = new Map<string, { domains: string[]; expiresAt: number }>();
+  private static readonly ADS_TXT_HIT_TTL_MS = 4 * 60 * 60 * 1000;   // 4 h for present file
+  private static readonly ADS_TXT_MISS_TTL_MS = 60 * 60 * 1000;       // 1 h for 404/error
+
   /**
    * Validates a domain's adagents.json file
    */
@@ -228,6 +236,8 @@ export class AdAgentsManager {
                   ...managerResult,
                   domain: normalizedDomain,
                   url,
+                  discovery_method: 'ads_txt_managerdomain' as DiscoveryMethod,
+                  manager_domain: managerDomain,
                   warnings: [
                     ...managerResult.warnings,
                     {
@@ -275,7 +285,9 @@ export class AdAgentsManager {
       result.raw_data = adagentsData;
 
       // Check if this is a URL reference
+      let wasUrlReference = false;
       if (this.isUrlReference(adagentsData)) {
+        wasUrlReference = true;
         // Follow the reference to get the authoritative file
         const authoritativeData = await this.fetchAuthoritativeFile(
           adagentsData.authoritative_location,
@@ -293,6 +305,7 @@ export class AdAgentsManager {
       this.validateStructure(adagentsData, result);
       this.validateContent(adagentsData, result);
 
+      result.discovery_method = wasUrlReference ? 'authoritative_location' : 'direct';
       // If no errors, mark as valid
       result.valid = result.errors.length === 0;
 
@@ -305,6 +318,12 @@ export class AdAgentsManager {
   }
 
   private async tryResolveManagerDomains(domain: string): Promise<string[]> {
+    const now = Date.now();
+    const cached = this.adsTxtCache.get(domain);
+    if (cached && now < cached.expiresAt) {
+      return cached.domains;
+    }
+
     const adsTxtUrl = `https://${domain}/ads.txt`;
     try {
       const response = await safeFetchAxiosLike(adsTxtUrl, {
@@ -314,9 +333,15 @@ export class AdAgentsManager {
           'User-Agent': AAO_UA_VALIDATOR,
         },
       });
-      if (response.status !== 200) return [];
-      return this.parseManagerDomains(response.data.toString('utf-8'));
+      if (response.status !== 200) {
+        this.adsTxtCache.set(domain, { domains: [], expiresAt: now + AdAgentsManager.ADS_TXT_MISS_TTL_MS });
+        return [];
+      }
+      const domains = this.parseManagerDomains(response.data.toString('utf-8'));
+      this.adsTxtCache.set(domain, { domains, expiresAt: now + AdAgentsManager.ADS_TXT_HIT_TTL_MS });
+      return domains;
     } catch {
+      this.adsTxtCache.set(domain, { domains: [], expiresAt: now + AdAgentsManager.ADS_TXT_MISS_TTL_MS });
       return [];
     }
   }
@@ -326,7 +351,7 @@ export class AdAgentsManager {
     const lines = adsTxtContent.split(/\r?\n/);
     for (const line of lines) {
       const trimmed = line.trim();
-      const match = trimmed.match(/^(?:#\s*)?managerdomain\s*=\s*([A-Za-z0-9.-]+)(?:\s+#\s*(.*))?$/i);
+      const match = trimmed.match(/^managerdomain\s*=\s*([A-Za-z0-9.-]+)(?:\s*#\s*(.*))?$/i);
       if (match?.[1]) {
         const trailingComment = (match[2] || '').toLowerCase();
         if (/\bnoagents\b/.test(trailingComment)) {
