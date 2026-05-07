@@ -22,6 +22,8 @@ export interface AdAgentsValidationResult {
   url: string;
   status_code?: number;
   raw_data?: any;
+  discovery_method: DiscoveryMethod;
+  manager_domain?: string;
 }
 
 export interface AuthorizedAgent {
@@ -174,7 +176,8 @@ export class AdAgentsManager {
       errors: [],
       warnings: [],
       domain: normalizedDomain,
-      url
+      url,
+      discovery_method: 'direct',
     };
 
     try {
@@ -288,6 +291,7 @@ export class AdAgentsManager {
       this.validateStructure(adagentsData, result);
       this.validateContent(adagentsData, result);
 
+      if (wasUrlReference) result.discovery_method = 'authoritative_location';
       // If no errors, mark as valid
       result.valid = result.errors.length === 0;
 
@@ -1506,7 +1510,8 @@ export class AdAgentsManager {
       errors: [],
       warnings: [],
       domain: 'proposed',
-      url: 'proposed'
+      url: 'proposed',
+      discovery_method: 'direct',
     };
 
     this.validateStructure(mockData, result);
