@@ -111,6 +111,27 @@ function isPublisherDomainAnchor(publisherDomain: string, type: string, value: s
  * agent_url query parameter through the same function the writer uses
  * for stored rows. Drift between the two would silently miss matches.
  */
+// Phase B fetch-metadata hardening. The HTTP status writer column is a
+// SMALLINT (-32768..32767), broader than the RFC 100..599 range. Clamp
+// at write time so a malicious origin returning, e.g., status 999 can't
+// surface that to verifiers — text-only display is harmless, but the
+// schema docstring promises 100..599 and we should match it.
+function clampHttpStatus(status: number | undefined): number | null {
+  if (typeof status !== 'number' || !Number.isFinite(status)) return null;
+  return Math.max(100, Math.min(599, Math.trunc(status)));
+}
+
+// Phase B: cap resolved_url length at write. `Response.url` is built
+// from chained Location headers — undici defaults bound each hop but
+// not the resulting string. A pathological redirect chain could
+// otherwise stuff a multi-KB URL into the column. 2048 covers every
+// real publisher CDN URL with comfortable headroom.
+const RESOLVED_URL_MAX = 2048;
+function truncateResolvedUrl(url: string | undefined): string | null {
+  if (typeof url !== 'string' || url.length === 0) return null;
+  return url.length > RESOLVED_URL_MAX ? url.slice(0, RESOLVED_URL_MAX) : url;
+}
+
 export function canonicalizeAgentUrl(raw: string): string | null {
   const trimmed = raw.trim();
   if (trimmed.length === 0) return null;
@@ -176,9 +197,9 @@ export class PublisherDatabase {
            updated_at = NOW()`,
         [
           domain,
-          input.statusCode ?? null,
+          clampHttpStatus(input.statusCode),
           input.responseBytes ?? null,
-          input.resolvedUrl ?? null,
+          truncateResolvedUrl(input.resolvedUrl),
         ],
       );
     } finally {
@@ -223,9 +244,9 @@ export class PublisherDatabase {
           domain,
           JSON.stringify(safeManifest),
           input.expiresAt ?? null,
-          input.statusCode ?? null,
+          clampHttpStatus(input.statusCode),
           input.responseBytes ?? null,
-          input.resolvedUrl ?? null,
+          truncateResolvedUrl(input.resolvedUrl),
         ]
       );
 

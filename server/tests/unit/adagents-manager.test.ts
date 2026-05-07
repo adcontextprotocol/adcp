@@ -62,6 +62,7 @@ describe('AdAgentsManager', () => {
         status: 200,
         data: buf(validAdAgents),
         headers: { 'content-type': 'application/json' },
+        url: 'https://example.com/.well-known/adagents.json',
       });
 
       const result = await manager.validateDomain('example.com');
@@ -71,6 +72,85 @@ describe('AdAgentsManager', () => {
       expect(result.domain).toBe('example.com');
       expect(result.url).toBe('https://example.com/.well-known/adagents.json');
       expect(result.status_code).toBe(200);
+    });
+
+    // Phase B regression: validator must capture response body byte
+    // length and post-redirect resolved URL on success. The crawler
+    // threads both into publishers.last_response_bytes / resolved_url
+    // for verifier-grade hero chrome. Without these tests, a
+    // refactor that loses the captures would silently regress while
+    // the route-layer tests still pass (they upsert metadata directly).
+    it('captures response_bytes and resolved_url on a 200 fetch', async () => {
+      const valid: AdAgentsJson = {
+        authorized_agents: [{ url: 'https://agent.example.com', authorized_for: 'Test' }],
+        last_updated: new Date().toISOString(),
+      };
+      const body = buf(valid);
+      mockedSafeFetch.mockResolvedValue({
+        status: 200,
+        data: body,
+        headers: { 'content-type': 'application/json' },
+        // Simulate a 301 redirect: input was example.com, final URL
+        // is the CDN host. Validator should record the post-redirect URL.
+        url: 'https://cdn.example.net/.well-known/adagents.json',
+      });
+
+      const result = await manager.validateDomain('example.com');
+
+      expect(result.valid).toBe(true);
+      expect(result.response_bytes).toBe(body.byteLength);
+      expect(result.resolved_url).toBe('https://cdn.example.net/.well-known/adagents.json');
+    });
+
+    it('captures response_bytes and resolved_url even on a non-200', async () => {
+      // Failed fetch still surfaces the metadata via
+      // recordFailedAdagentsFetch downstream — the validator must
+      // populate both before early-returning.
+      const errBody = Buffer.from('<html>Not Found</html>');
+      mockedSafeFetch.mockResolvedValue({
+        status: 404,
+        data: errBody,
+        headers: { 'content-type': 'text/html' },
+        url: 'https://example.com/.well-known/adagents.json',
+      });
+
+      const result = await manager.validateDomain('example.com');
+
+      expect(result.valid).toBe(false);
+      expect(result.status_code).toBe(404);
+      expect(result.response_bytes).toBe(errBody.byteLength);
+      expect(result.resolved_url).toBe('https://example.com/.well-known/adagents.json');
+    });
+
+    it('overwrites resolved_url when authoritative_location is followed', async () => {
+      // Phase A behavior reaffirmed: when the publisher's stub points
+      // at a different canonical URL, the validator follows it and the
+      // resolved_url should reflect WHERE the canonical body came from
+      // (the authoritative_location target), not where the stub lived.
+      const stubBody = buf({ authoritative_location: 'https://cdn.example.net/adagents.json' });
+      const canonicalBody = buf({
+        authorized_agents: [{ url: 'https://agent.example.com', authorized_for: 'Test' }],
+        last_updated: new Date().toISOString(),
+      });
+      mockedSafeFetch
+        .mockResolvedValueOnce({
+          status: 200,
+          data: stubBody,
+          headers: { 'content-type': 'application/json' },
+          url: 'https://example.com/.well-known/adagents.json',
+        })
+        .mockResolvedValueOnce({
+          status: 200,
+          data: canonicalBody,
+          headers: { 'content-type': 'application/json' },
+          url: 'https://cdn.example.net/adagents.json',
+        });
+
+      const result = await manager.validateDomain('example.com');
+
+      expect(result.valid).toBe(true);
+      expect(result.resolved_url).toBe('https://cdn.example.net/adagents.json');
+      expect(result.response_bytes).toBe(canonicalBody.byteLength);
     });
 
     it('normalizes domain by removing protocol', async () => {

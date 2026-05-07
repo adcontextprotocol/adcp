@@ -5972,8 +5972,19 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           return "none";
         }
       })();
+      // Stale-cache safety: if the most recent fetch attempt returned
+      // 4xx/5xx, the publisher's origin is no longer serving the
+      // canonical document. The cached `adagents_json` body and the
+      // federated index's `source_type='adagents_json'` may both still
+      // exist (recordFailedAdagentsFetch preserves them so prior good
+      // data isn't wiped on a single transient error), but the live
+      // state is broken — the verifier-facing UI must reflect that.
+      // Treat as `self_invalid` so the hero state and the action row
+      // surface the recovery path instead of falsely declaring `self`.
+      const recentFetchFailed = typeof cachedHttpStatus === 'number' && cachedHttpStatus >= 400;
       const hostingMode: "self" | "self_invalid" | "aao_hosted" | "self_redirected" | "none" = (
-        adagentsValid === true && stubResolution === "aao"                  ? "aao_hosted"
+        recentFetchFailed && (adagentsValid === true || adagentsValid === false) ? "self_invalid"
+        : adagentsValid === true && stubResolution === "aao"                  ? "aao_hosted"
         : adagentsValid === true && stubResolution === "third_party_https"   ? "self_redirected"
         : adagentsValid === true && stubResolution === "third_party_insecure" ? "self_invalid"
         : adagentsValid === true                                              ? "self"
@@ -5989,9 +6000,18 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         // Resolved URL — where the canonical adagents.json document
         // actually lives after following authoritative_location AND
         // HTTP-layer redirects. For self_redirected this is the
-        // third-party HTTPS origin verifiers should audit; for
-        // aao_hosted it's AAO's hosted URL; otherwise NULL.
-        resolved_url: hostingMode === "self_redirected" ? resolutionSource : null,
+        // third-party HTTPS origin verifiers should audit. For
+        // aao_hosted, surface it ONLY when there's actual evidence the
+        // publisher set up the redirect (a JSONB authoritative_location
+        // field or a column-level resolved_url that lands at AAO) — a
+        // stale-only `aaoOptedIn` row without origin evidence has no
+        // resolution to report.
+        resolved_url:
+          hostingMode === "self_redirected"
+            ? resolutionSource
+            : hostingMode === "aao_hosted" && resolutionSource && stubResolution === "aao"
+              ? resolutionSource
+              : null,
         // Phase B: HTTP status + byte count from the most recent fetch.
         // Verifier-grade chrome — lets a buy-side scraper sanity-check
         // they're seeing the same response AAO is. NULL until the

@@ -610,7 +610,7 @@ const PublisherHostingSchema = z.object({
     description: "Where adagents.json *should* live for this domain — the publisher's own /.well-known path. Always populated, regardless of `mode`.",
   }),
   resolved_url: z.string().nullable().optional().openapi({
-    description: "Where the canonical adagents.json document actually lives after following the publisher's `authoritative_location` stub or any HTTP-layer redirects. Populated iff `mode === 'self_redirected'` — verifiers should pin trust to this URL's TLS chain, not to `expected_url`'s. NULL otherwise.",
+    description: "Where the canonical adagents.json document actually lives after following the publisher's `authoritative_location` stub or any HTTP-layer redirects. Populated when `mode === 'self_redirected'` (the third-party HTTPS origin verifiers should audit) and when `mode === 'aao_hosted'` AND the publisher has actively set up the redirect (`authoritative_location` in the manifest body or a network-layer redirect to AAO's hosted URL). NULL when there's no resolved-URL evidence to report.",
   }),
   last_validated: z.string().nullable().optional().openapi({
     description: "ISO timestamp of the last successful validation crawl. Lets verifiers sanity-check freshness. NULL when never crawled.",

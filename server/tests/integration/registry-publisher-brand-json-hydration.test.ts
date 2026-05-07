@@ -595,6 +595,35 @@ describe('Registry publisher endpoint — brand.json hydration', () => {
     expect(res.body.hosting.resolved_url).toBeNull();
   });
 
+  it('flips hosting.mode to self_invalid when the most recent fetch was 4xx, even with a stale-cached valid manifest', async () => {
+    // Stale-cache safety: a previously-valid publisher whose origin
+    // now 404s should NOT be reported as `self`. The cached manifest
+    // and source_type='adagents_json' both linger (so prior good data
+    // isn't wiped on a single transient blip), but the live state is
+    // broken — the verifier UI must reflect that.
+    const pub = `stale-cache-404-${Date.now()}.registry-baseline.example`;
+    await publisherDb.upsertAdagentsCache({
+      domain: pub,
+      manifest: {
+        authorized_agents: [{ url: 'https://agent.example', authorized_for: 'display' }],
+        properties: [],
+      },
+    });
+    // Then: the next fetch fails. recordFailedAdagentsFetch updates
+    // last_http_status without clearing the cached body.
+    await publisherDb.recordFailedAdagentsFetch({
+      domain: pub,
+      statusCode: 404,
+      responseBytes: 162,
+      resolvedUrl: `https://${pub}/.well-known/adagents.json`,
+    });
+
+    const res = await request(app).get(`/api/registry/publisher?domain=${encodeURIComponent(pub)}`);
+    expect(res.status).toBe(200);
+    expect(res.body.hosting.mode).toBe('self_invalid');
+    expect(res.body.hosting.last_http_status).toBe(404);
+  });
+
   it('records failed-fetch metadata via recordFailedAdagentsFetch even when no manifest is cached', async () => {
     // After Phase B the crawler calls recordFailedAdagentsFetch on
     // 4xx/5xx responses so the verifier UI can show
