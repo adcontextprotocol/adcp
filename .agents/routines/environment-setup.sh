@@ -23,7 +23,13 @@ apt-get install -y gh
 # scripts are a prompt-injection escalation path (attacker-crafted PR that
 # modifies package.json could otherwise run on the next cache miss).
 if [ -f package.json ]; then
-  npm ci --prefer-offline --no-audit --no-fund --ignore-scripts
+  # Some runtimes inject legacy env keys like `npm_config_http-proxy`.
+  # npm v10+ warns: "Unknown env config "http-proxy"" and will error in a
+  # future major. Run npm with those invalid keys removed while preserving
+  # standard proxy env vars (`HTTP_PROXY`, `HTTPS_PROXY`, etc.).
+  env -u npm_config_http-proxy -u npm_config_https-proxy \
+    -u NPM_CONFIG_HTTP-PROXY -u NPM_CONFIG_HTTPS-PROXY \
+    npm ci --prefer-offline --no-audit --no-fund --ignore-scripts
 fi
 
 echo "Setup complete."
