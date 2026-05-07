@@ -214,6 +214,23 @@ For publishers with complex infrastructure or CDN distribution, `adagents.json` 
 
 For a complete guide to deploying this pattern across hundreds or thousands of domains, see [Managed Network Deployment](/docs/governance/property/managed-networks).
 
+## Discovery fallback: ads.txt `managerdomain`
+
+When `https://{publisher}/.well-known/adagents.json` returns `404`, validators MAY attempt a compatibility fallback via `https://{publisher}/ads.txt`:
+
+1. Read `ads.txt` and look for a comment line in the form `# managerdomain=example.com`.
+2. If present, attempt `https://{managerdomain}/.well-known/adagents.json`.
+3. If that manager file validates, treat it as the discovered authorization source for this lookup.
+
+### Safety rules for this fallback
+
+- **One hop only**: maximum depth is exactly one (`publisher -> managerdomain`). Do not chain managerdomain lookups.
+- **Cycle detection required**: if `managerdomain` points to a visited domain, ignore it.
+- **`#noagents` opt-out**: if the managerdomain line includes a trailing `#noagents` marker (for example `# managerdomain=example.com #noagents`), clients MUST ignore that managerdomain for adagents discovery.
+- **No success by silence**: if the manager lookup fails, treat the publisher as missing `adagents.json` (same as no fallback).
+
+This fallback is a compatibility affordance for publisher-manager topologies and does not replace the canonical `/.well-known/adagents.json` location.
+
 ### Example Use Case: Multi-Domain Publisher
 
 A publisher with multiple domains can maintain one authoritative file:

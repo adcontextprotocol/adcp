@@ -319,8 +319,12 @@ export class AdAgentsManager {
     for (const line of lines) {
       const trimmed = line.trim();
       if (!trimmed.startsWith('#')) continue;
-      const match = trimmed.match(/^#\s*managerdomain\s*=\s*([A-Za-z0-9.-]+)\s*$/i);
+      const match = trimmed.match(/^#\s*managerdomain\s*=\s*([A-Za-z0-9.-]+)(?:\s+#\s*(.*))?$/i);
       if (match?.[1]) {
+        const trailingComment = (match[2] || '').toLowerCase();
+        if (/\bnoagents\b/.test(trailingComment)) {
+          continue;
+        }
         return match[1].toLowerCase();
       }
     }

@@ -178,6 +178,26 @@ describe('AdAgentsManager', () => {
       expect(result.errors.some(e => e.field === 'http_status')).toBe(true);
     });
 
+    it('ignores managerdomain when the managerdomain line has #noagents', async () => {
+      mockedSafeFetch.mockImplementation(async (url) => {
+        if (url === 'https://publisher.example/.well-known/adagents.json') {
+          return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://publisher.example/ads.txt') {
+          return {
+            status: 200,
+            data: Buffer.from('# managerdomain=manager.example #noagents\n'),
+            headers: { 'content-type': 'text/plain' },
+          };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+
+      const result = await manager.validateDomain('publisher.example');
+      expect(result.valid).toBe(false);
+      expect(result.errors.some(e => e.field === 'http_status')).toBe(true);
+    });
+
     it('handles network connection errors', async () => {
       mockedSafeFetch.mockRejectedValue(
         Object.assign(new Error('getaddrinfo ENOTFOUND nonexistent.example.com'), {
