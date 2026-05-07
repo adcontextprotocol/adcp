@@ -135,11 +135,10 @@ export function createMemberAgentsRouter(config: MemberAgentsRouterConfig): Rout
    * a user's OAuth token can `POST /api/me/agents` once and have the org,
    * member profile, and agent registration all materialize.
    *
-   * Auto-bootstrap is gated on `?org=` not being supplied AND the user
-   * having no memberships at all. Users with existing memberships but no
-   * `users.primary_organization_id` set fall through to the existing 400
-   * — for those callers the right answer is to pass `?org=` explicitly,
-   * not silently fork another org.
+   * `resolvePrimaryOrganization` already derives from `organization_memberships`
+   * when `users.primary_organization_id` is null, so a `null` return there
+   * means the user truly has zero memberships — that's the only signal we
+   * need to gate auto-bootstrap.
    *
    * Returns null and writes the error response on failure.
    */
@@ -160,24 +159,7 @@ export function createMemberAgentsRouter(config: MemberAgentsRouterConfig): Rout
     const primaryOrgId = await resolvePrimaryOrganization(req.user!.id);
     if (primaryOrgId) return { orgId: primaryOrgId, orgAutoCreated: false };
 
-    // No primary org — check whether the caller has any memberships at all.
-    // Only auto-bootstrap when the user is fresh; otherwise return the
-    // existing 400 so a caller with stale state doesn't accidentally fork.
-    const pool = getPool();
-    const hasAny = await pool.query(
-      `SELECT 1 FROM organization_memberships WHERE workos_user_id = $1 LIMIT 1`,
-      [req.user!.id],
-    );
-    if (hasAny.rows.length > 0) {
-      res.status(400).json({
-        error: 'No primary organization',
-        message:
-          'Your account has organization memberships but no primary organization is set. Pass `?org=<id>` to target one explicitly.',
-      });
-      return null;
-    }
-
-    // Fresh-user path: auto-bootstrap.
+    // Fresh-user path: zero memberships → auto-bootstrap.
     const user = req.user!;
     const isPersonal = isFreeEmail(user.email);
     const orgName = deriveDefaultOrgName(user, isPersonal);

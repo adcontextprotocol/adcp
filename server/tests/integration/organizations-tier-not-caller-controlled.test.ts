@@ -130,7 +130,7 @@ describe('POST /api/organizations: tier and domain are not caller-controlled', (
     await pool.query(`DELETE FROM organization_domains WHERE workos_organization_id LIKE $1`, [
       `${TEST_ORG_PREFIX}%`,
     ]);
-    await pool.query(`DELETE FROM organization_audit_log WHERE workos_organization_id LIKE $1`, [
+    await pool.query(`DELETE FROM registry_audit_log WHERE workos_organization_id LIKE $1`, [
       `${TEST_ORG_PREFIX}%`,
     ]);
     await pool.query(`DELETE FROM organizations WHERE workos_organization_id LIKE $1`, [

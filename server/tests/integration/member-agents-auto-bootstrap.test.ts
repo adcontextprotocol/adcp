@@ -338,10 +338,12 @@ describe('POST /api/me/agents (auto-bootstrap)', () => {
       expect(orgRow.rows[0].name).toBe("Solo Founder's Workspace");
     });
 
-    it('does NOT auto-bootstrap when caller has memberships but no primary org — returns 400 telling them to pass ?org=', async () => {
-      // Seed a membership for the user but DO NOT set primary_organization_id.
-      // The route should refuse to silently fork another org and instead
-      // return a clear "pass ?org=" error.
+    it('does NOT auto-bootstrap when caller already has a membership — registers against the derived primary org instead of forking', async () => {
+      // resolvePrimaryOrganization derives from organization_memberships when
+      // users.primary_organization_id is null, so a user with any membership
+      // already resolves to that org. Auto-bootstrap is gated on a truly
+      // empty membership set; a stale `users` row never causes a silent
+      // fork.
       const existingOrgId = `${TEST_PREFIX}_existing`;
       await pool.query(
         `INSERT INTO organizations (workos_organization_id, name, is_personal, created_at, updated_at)
@@ -358,10 +360,20 @@ describe('POST /api/me/agents (auto-bootstrap)', () => {
 
       const res = await request(app)
         .post('/api/me/agents')
-        .send({ url: 'https://agent.example.com/mcp', visibility: 'private' });
+        .send({ url: 'https://agent.no-fork.test/mcp', visibility: 'private' });
 
-      expect(res.status).toBe(400);
-      expect(res.body.error).toBe('No primary organization');
+      expect(res.status).toBe(201);
+      // Profile auto-bootstrap fires (no profile yet on the existing org)
+      // but org auto-bootstrap MUST NOT fire — the agent must land on the
+      // already-owned org, not a fresh fork.
+      expect(res.body.org_auto_created).toBeUndefined();
+      expect(res.body.profile_auto_created).toBe(true);
+
+      const orgRow = await pool.query<{ workos_organization_id: string }>(
+        `SELECT workos_organization_id FROM member_profiles WHERE workos_organization_id = $1`,
+        [existingOrgId],
+      );
+      expect(orgRow.rowCount).toBe(1);
     });
   });
 });
