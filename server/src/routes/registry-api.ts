@@ -5928,24 +5928,32 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       //     host) → mode = "self_redirected" so verifiers can audit the
       //     TLS chain at the resolved origin instead of assuming it
       //     terminates at the publisher's own domain.
-      const stubResolution: "aao" | "self" | "third_party" | "none" = (() => {
+      const stubResolution: "aao" | "self" | "third_party_https" | "third_party_insecure" | "none" = (() => {
         if (!stubAuthLocRaw) return "none";
         try {
           const stubCanon = canonicalTargetUri(stubAuthLocRaw);
           if (stubCanon === canonicalTargetUri(aaoHostedAdagentsJsonUrl(domain))) return "aao";
           if (stubCanon === canonicalTargetUri(expectedAdagentsJsonUrl(domain))) return "self";
-          return "third_party";
+          // Third-party canonical — but the schema description for
+          // `self_redirected` promises an HTTPS origin. A publisher
+          // pointing at `http://...` is mis-configured (cleartext is
+          // not a usable trust anchor for buy-side verifiers); treat
+          // that the same as a file that fails validation rather than
+          // promote it as a third-party-trusted location.
+          if (new URL(stubAuthLocRaw).protocol !== 'https:') return "third_party_insecure";
+          return "third_party_https";
         } catch {
           return "none";
         }
       })();
       const hostingMode: "self" | "self_invalid" | "aao_hosted" | "self_redirected" | "none" = (
-        adagentsValid === true && stubResolution === "aao"          ? "aao_hosted"
-        : adagentsValid === true && stubResolution === "third_party" ? "self_redirected"
-        : adagentsValid === true                                     ? "self"
-        : aaoOptedIn                                                  ? "aao_hosted"
-        : adagentsValid === false                                     ? "self_invalid"
-                                                                      : "none"
+        adagentsValid === true && stubResolution === "aao"                  ? "aao_hosted"
+        : adagentsValid === true && stubResolution === "third_party_https"   ? "self_redirected"
+        : adagentsValid === true && stubResolution === "third_party_insecure" ? "self_invalid"
+        : adagentsValid === true                                              ? "self"
+        : aaoOptedIn                                                          ? "aao_hosted"
+        : adagentsValid === false                                             ? "self_invalid"
+                                                                              : "none"
       );
       const isAaoHosted = hostingMode === "aao_hosted";
       const hosting = {

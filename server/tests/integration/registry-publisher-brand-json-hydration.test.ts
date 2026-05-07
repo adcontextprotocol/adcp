@@ -66,6 +66,23 @@ vi.mock('../../src/utils/url-security.js', async () => {
   };
 });
 
+// Disable the per-IP rate limiter for the publisher endpoint. The
+// production limiter is 20 req/min/IP; this file now has >20 tests
+// each issuing a request from the same supertest origin. The rate
+// limiter is exercised end-to-end by other test files.
+vi.mock('../../src/middleware/rate-limit.js', async () => {
+  const actual = await vi.importActual<Record<string, unknown>>(
+    '../../src/middleware/rate-limit.js'
+  );
+  const passthrough = (_req: unknown, _res: unknown, next: () => void) => next();
+  return {
+    ...actual,
+    registryPublisherRateLimiter: passthrough,
+    registryReadRateLimiter: passthrough,
+    agentReadRateLimiter: passthrough,
+  };
+});
+
 import { HTTPServer } from '../../src/http.js';
 import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
@@ -437,6 +454,28 @@ describe('Registry publisher endpoint — brand.json hydration', () => {
     expect(res.body.hosting.mode).toBe('self_redirected');
     expect(res.body.hosting.resolved_url).toBe(cdnUrl);
     expect(res.body.hosting.hosted_url).toBeUndefined();
+  });
+
+  it('treats stub authoritative_location with http:// scheme as self_invalid (not self_redirected)', async () => {
+    // The schema description for `self_redirected` promises a
+    // third-party HTTPS origin. A publisher pointing at cleartext is
+    // mis-configured — it isn't a usable trust anchor for buy-side
+    // verifiers, so we route it through `self_invalid` instead of
+    // promoting it as a valid third-party-hosted document.
+    const pub = `http-stub-${Date.now()}.registry-baseline.example`;
+    await publisherDb.upsertAdagentsCache({
+      domain: pub,
+      manifest: {
+        authoritative_location: 'http://insecure-cdn.example.test/adagents.json',
+        authorized_agents: [],
+        properties: [],
+      },
+    });
+
+    const res = await request(app).get(`/api/registry/publisher?domain=${encodeURIComponent(pub)}`);
+    expect(res.status).toBe(200);
+    expect(res.body.hosting.mode).toBe('self_invalid');
+    expect(res.body.hosting.resolved_url).toBeNull();
   });
 
   it('does not flag self_redirected when the stub points back at the publisher\'s own origin', async () => {

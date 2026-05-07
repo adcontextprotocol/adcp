@@ -454,11 +454,14 @@
 
       // Render the "← Back" link from ?return=<url>. Allowlist:
       // same-origin (production) OR http(s)://localhost / 127.0.0.1
-      // (dev). Anything else is dropped silently — the param can be
-      // tampered with by an attacker, so an unknown target must NOT be
-      // linked. javascript:/data:/file: schemes fail both checks: their
-      // URL.origin is "null" (not same-origin) and their protocol is
-      // not http(s) (not localhost).
+      // when the page itself is being served from localhost (dev only).
+      // The localhost gate is conditional on the runtime origin so a
+      // production-served page never accepts a localhost return URL —
+      // an attacker-crafted link in production would otherwise produce
+      // a hero CTA pointing at the user's local machine.
+      // Anything else is dropped silently. javascript:/data:/file:
+      // schemes fail both checks: URL.origin is "null" (not same-origin)
+      // and their protocol is not http(s) (not localhost).
       // Returns the validated href (for use as a hero CTA) or null.
       function validateReturnUrl(raw) {
         if (!raw) return null;
@@ -466,8 +469,11 @@
         try { target = new URL(raw, window.location.origin); }
         catch { return null; }
         const sameOrigin = target.origin === window.location.origin;
+        const pageIsOnLocalhost =
+          window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
         const isLocalhostDev =
-          (target.protocol === 'http:' || target.protocol === 'https:')
+          pageIsOnLocalhost
+          && (target.protocol === 'http:' || target.protocol === 'https:')
           && (target.hostname === 'localhost' || target.hostname === '127.0.0.1');
         if (!sameOrigin && !isLocalhostDev) return null;
         return { href: target.href, host: target.host, sameOrigin };
