@@ -83,9 +83,10 @@ describe('primary_organization_id resolution', () => {
   });
 
   describe('resolvePrimaryOrganization', () => {
-    it('returns the cached column when set', async () => {
+    it('returns the cached column when both org and membership exist', async () => {
       await seedOrg(pool, TEST_ORG_ACTIVE, { subscription_status: 'active' });
       await seedUser(pool, TEST_USER, TEST_ORG_ACTIVE);
+      await seedMembership(pool, TEST_USER, TEST_ORG_ACTIVE);
 
       const result = await resolvePrimaryOrganization(TEST_USER);
       expect(result).toBe(TEST_ORG_ACTIVE);
@@ -137,6 +138,83 @@ describe('primary_organization_id resolution', () => {
     it('returns null when the user does not exist at all', async () => {
       const result = await resolvePrimaryOrganization('user_does_not_exist_xyz');
       expect(result).toBeNull();
+    });
+
+    // Self-heal cases — Warren's situation (#…). The cached column was set
+    // but the join targets had drifted; the bare-column read returned a
+    // phantom orgId that 404'd every tier-gated route until repaired by hand.
+    it('falls through and repoints when cached pointer has no organizations row', async () => {
+      // Real org + membership exists; cached column points at a different
+      // org that's missing from the organizations table.
+      await seedOrg(pool, TEST_ORG_ACTIVE, { subscription_status: 'active' });
+      await seedUser(pool, TEST_USER, 'org_dangling_no_org_row');
+      await seedMembership(pool, TEST_USER, TEST_ORG_ACTIVE);
+
+      const result = await resolvePrimaryOrganization(TEST_USER);
+      expect(result).toBe(TEST_ORG_ACTIVE);
+
+      // Repoint is fire-and-forget — poll for it to land.
+      const deadline = Date.now() + 2000;
+      let cached: string | null = null;
+      while (Date.now() < deadline) {
+        const after = await pool.query<{ primary_organization_id: string | null }>(
+          'SELECT primary_organization_id FROM users WHERE workos_user_id = $1',
+          [TEST_USER],
+        );
+        cached = after.rows[0]?.primary_organization_id ?? null;
+        if (cached === TEST_ORG_ACTIVE) break;
+        await new Promise((r) => setTimeout(r, 25));
+      }
+      expect(cached).toBe(TEST_ORG_ACTIVE);
+    });
+
+    it('falls through and repoints when cached pointer has no membership row', async () => {
+      // Org row exists but the user has no membership for it (e.g. removal
+      // happened via a path that bypassed deleteOrganizationMembership).
+      // A different real membership exists and should win.
+      await seedOrg(pool, TEST_ORG_ACTIVE, { subscription_status: 'active' });
+      await seedOrg(pool, TEST_ORG_INACTIVE, { subscription_status: null });
+      await seedUser(pool, TEST_USER, TEST_ORG_INACTIVE); // cache points at INACTIVE
+      await seedMembership(pool, TEST_USER, TEST_ORG_ACTIVE); // but only member of ACTIVE
+
+      const result = await resolvePrimaryOrganization(TEST_USER);
+      expect(result).toBe(TEST_ORG_ACTIVE);
+
+      const deadline = Date.now() + 2000;
+      let cached: string | null = null;
+      while (Date.now() < deadline) {
+        const after = await pool.query<{ primary_organization_id: string | null }>(
+          'SELECT primary_organization_id FROM users WHERE workos_user_id = $1',
+          [TEST_USER],
+        );
+        cached = after.rows[0]?.primary_organization_id ?? null;
+        if (cached === TEST_ORG_ACTIVE) break;
+        await new Promise((r) => setTimeout(r, 25));
+      }
+      expect(cached).toBe(TEST_ORG_ACTIVE);
+    });
+
+    it('clears the stale pointer and returns null when cache dangles and no other membership exists', async () => {
+      // Cache is set, but no org row, no membership row, nowhere to fall
+      // back to. Resolver should return null AND null out the column so a
+      // later membership webhook re-triggers the IS-NULL backfill.
+      await seedUser(pool, TEST_USER, 'org_dangling_no_recourse');
+
+      const result = await resolvePrimaryOrganization(TEST_USER);
+      expect(result).toBeNull();
+
+      const deadline = Date.now() + 2000;
+      let cached: string | null = 'org_dangling_no_recourse';
+      while (Date.now() < deadline) {
+        const after = await pool.query<{ primary_organization_id: string | null }>(
+          'SELECT primary_organization_id FROM users WHERE workos_user_id = $1',
+          [TEST_USER],
+        );
+        cached = after.rows[0]?.primary_organization_id ?? null;
+        if (cached === null) break;
+        await new Promise((r) => setTimeout(r, 25));
+      }
+      expect(cached).toBeNull();
     });
   });
 
