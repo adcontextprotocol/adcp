@@ -142,13 +142,11 @@ export function createMeOrganizationDomainsRouter(
       try {
         normalizedDomain = canonicalizeBrandDomain(req.params.domain);
       } catch (err) {
-        return res.status(400).json({
-          error: 'invalid_domain',
-          message: err instanceof Error ? err.message : 'Invalid domain',
-        });
+        logger.warn({ err, raw: req.params.domain }, 'Rejected invalid domain in PUT primary');
+        return res.status(400).json({ error: 'invalid_domain' });
       }
       if (normalizedDomain.length > 253) {
-        return res.status(400).json({ error: 'invalid_domain', message: 'Domain too long' });
+        return res.status(400).json({ error: 'invalid_domain' });
       }
 
       const pool = getPool();
