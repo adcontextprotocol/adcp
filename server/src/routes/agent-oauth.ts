@@ -1,238 +1,100 @@
 /**
  * Agent OAuth Routes
  *
- * Handles OAuth 2.0 authorization flow for AdCP agents.
- * Users can authorize agents that require OAuth authentication.
+ * Thin glue around `@adcp/sdk`'s `startWebOAuthFlow` /
+ * `completeWebOAuthFlow`. The SDK owns RFC 9728 PRM discovery, RFC 8707
+ * `resource` indicator forwarding, SEP-835 scope priority, dynamic
+ * client registration, and PKCE — this module only adapts our auth /
+ * org-ownership / `agent_contexts` plumbing onto that surface.
  *
  * Flow:
- * 1. User clicks "Authorize" -> GET /api/oauth/agent/start
- * 2. Redirect to agent's OAuth authorization endpoint
- * 3. User authorizes in browser
- * 4. Callback -> GET /api/oauth/agent/callback
- * 5. Exchange code for tokens, store in database
- * 6. Redirect back to agent management page
+ *   1. User clicks "Authorize" → GET /api/oauth/agent/start
+ *   2. We verify ownership, hand the SDK an `AgentConfig` + storage
+ *      adapters, and redirect the browser to the SDK-built URL.
+ *   3. AS bounces user back → GET /api/oauth/agent/callback
+ *   4. SDK consumes the pending row, exchanges the code, persists
+ *      tokens via our storage adapter; we redirect to oauth-complete.
  */
 
 import { Router, Request, Response } from 'express';
-import crypto from 'crypto';
 import { validate as uuidValidate } from 'uuid';
-import { discoverOAuthMetadata } from '@adcp/sdk/auth';
+import {
+  startWebOAuthFlow,
+  completeWebOAuthFlow,
+  safeReturnTo,
+  AgentVanishedDuringFlowError,
+  ConfidentialClientNotAllowedError,
+  InvalidOrExpiredFlowError,
+  ProtectedResourceMetadataError,
+  StateMismatchError,
+  TokenExchangeError,
+  discoverOAuthMetadata,
+} from '@adcp/sdk/auth';
 import { createLogger } from '../logger.js';
 import { requireAuth } from '../middleware/auth.js';
-import { AgentContextDatabase, OAuthTokens, OAuthClient } from '../db/agent-context-db.js';
-import * as agentOAuthFlowsDb from '../db/agent-oauth-flows-db.js';
+import { AgentContextDatabase } from '../db/agent-context-db.js';
 import { getWebMemberContext } from '../addie/member-context.js';
+import { createWebOAuthAdapters, AgentOAuthPendingFlowStore } from './helpers/web-oauth-stores.js';
 
-/**
- * Validate UUID format for route parameters
- */
+const logger = createLogger('agent-oauth');
+
+const STATE_COOKIE = 'adcp_oauth_state';
+const STATE_COOKIE_TTL_MS = 10 * 60 * 1000;
+
 function isValidUUID(id: string): boolean {
   return uuidValidate(id);
 }
 
-/**
- * Sanitize error messages for safe inclusion in URLs
- */
 function sanitizeErrorMessage(error: unknown): string {
   return String(error)
     .slice(0, 200)
     .replace(/[<>]/g, '');
 }
 
-/**
- * Validate that a return_to value is a safe same-origin path,
- * preventing open redirects and javascript:/data: URIs.
- *
- * Expresses the same-origin invariant via URL parsing against a
- * placeholder origin rather than inferring it from prefix checks,
- * so the guarantee holds even if the value is later consumed in a
- * context that concatenates or redirects without re-prepending an
- * origin.
- */
-function sanitizeReturnTo(value: unknown): string | undefined {
-  if (typeof value !== 'string' || value.length === 0 || value.length > 512) return undefined;
-  if (!value.startsWith('/')) return undefined;
-  if (value.startsWith('//') || value.startsWith('/\\')) return undefined;
-  if (/[\x00-\x1f]/.test(value)) return undefined;
-  const placeholderOrigin = 'https://placeholder.invalid';
-  try {
-    const url = new URL(value, placeholderOrigin);
-    if (url.origin !== placeholderOrigin) return undefined;
-    return url.pathname + url.search + url.hash;
-  } catch {
-    return undefined;
-  }
+function getCallbackUrl(req: Request): string {
+  const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+  const host = req.headers['x-forwarded-host'] || req.get('host');
+  return `${protocol}://${host}/api/oauth/agent/callback`;
 }
 
-// Type for token response
-interface TokenResponse {
-  access_token: string;
-  refresh_token?: string;
-  expires_in?: number;
-  token_type?: string;
-}
-
-// Type for client registration response
-interface ClientRegistrationResponse {
-  client_id: string;
-  client_secret?: string;
-}
-
-const logger = createLogger('agent-oauth');
-
-// Periodic cleanup of expired flows
-const cleanupTimer = setInterval(() => agentOAuthFlowsDb.cleanupExpired(), 5 * 60 * 1000);
+// Periodic cleanup of expired pending-flow rows (the SDK deletes on
+// consume, but rows abandoned mid-flow still need a sweeper).
+const cleanupStore = new AgentOAuthPendingFlowStore();
+const cleanupTimer = setInterval(() => {
+  cleanupStore.cleanupExpired().catch(() => undefined);
+}, 5 * 60 * 1000);
 cleanupTimer.unref();
 
 /**
- * Generate PKCE code verifier and challenge
+ * Map an `@adcp/sdk` web-flow error to a stable error code we surface
+ * via the oauth-complete redirect. Keeps the user-facing copy generic
+ * — the structured code is for support / diagnostics.
  */
-function generatePKCE(): { verifier: string; challenge: string } {
-  const verifier = crypto.randomBytes(32).toString('base64url');
-  const challenge = crypto
-    .createHash('sha256')
-    .update(verifier)
-    .digest('base64url');
-  return { verifier, challenge };
+function classifyCallbackError(err: unknown): { code: string; message: string } {
+  if (err instanceof InvalidOrExpiredFlowError) {
+    return { code: 'invalid_or_expired_flow', message: 'Invalid or expired OAuth session' };
+  }
+  if (err instanceof StateMismatchError) {
+    return { code: 'state_mismatch', message: 'OAuth state does not match this browser session' };
+  }
+  if (err instanceof TokenExchangeError) {
+    return { code: err.oauthErrorCode ?? 'token_exchange_failed', message: 'Token exchange failed' };
+  }
+  if (err instanceof ProtectedResourceMetadataError) {
+    return { code: 'protected_resource_metadata_error', message: 'Agent OAuth metadata is invalid' };
+  }
+  if (err instanceof AgentVanishedDuringFlowError) {
+    return { code: 'agent_vanished', message: 'Agent was removed during the OAuth flow' };
+  }
+  if (err instanceof ConfidentialClientNotAllowedError) {
+    return { code: 'confidential_client_not_allowed', message: 'Authorization server requires a confidential client' };
+  }
+  return { code: 'oauth_error', message: err instanceof Error ? err.message : 'Unknown error' };
 }
 
-/**
- * Generate state parameter for CSRF protection
- */
-function generateState(): string {
-  return crypto.randomBytes(32).toString('base64url');
-}
-
-/**
- * Compute the RFC 8707 resource indicator for an agent URL.
- *
- * MCP servers (per the 2025-06+ authorization spec) reject access tokens
- * whose `aud` claim doesn't match the MCP resource server. The resource
- * indicator is the canonical agent URL (origin + path) with no query or
- * fragment and no trailing slash on the path — see RFC 8707 §2 and the
- * MCP authorization spec on canonicalization.
- */
-function canonicalResourceForAgent(agentUrl: string): string | undefined {
-  try {
-    const u = new URL(agentUrl);
-    u.search = '';
-    u.hash = '';
-    let path = u.pathname;
-    if (path.length > 1 && path.endsWith('/')) path = path.slice(0, -1);
-    return `${u.origin}${path}`;
-  } catch {
-    return undefined;
-  }
-}
-
-/**
- * Exchange authorization code for tokens
- */
-async function exchangeCodeForTokens(
-  tokenUrl: string,
-  code: string,
-  codeVerifier: string,
-  redirectUri: string,
-  clientId: string,
-  clientSecret?: string,
-  resource?: string,
-): Promise<OAuthTokens> {
-  const params = new URLSearchParams({
-    grant_type: 'authorization_code',
-    code,
-    redirect_uri: redirectUri,
-    code_verifier: codeVerifier,
-    client_id: clientId,
-  });
-
-  if (clientSecret) {
-    params.set('client_secret', clientSecret);
-  }
-
-  if (resource) {
-    params.set('resource', resource);
-  }
-
-  const response = await fetch(tokenUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-      Accept: 'application/json',
-    },
-    body: params.toString(),
-  });
-
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Token exchange failed: ${response.status} ${error}`);
-  }
-
-  const data = await response.json() as TokenResponse;
-
-  const tokens: OAuthTokens = {
-    access_token: data.access_token,
-  };
-
-  if (data.refresh_token) {
-    tokens.refresh_token = data.refresh_token;
-  }
-
-  if (data.expires_in) {
-    tokens.expires_at = new Date(Date.now() + data.expires_in * 1000);
-  }
-
-  return tokens;
-}
-
-/**
- * Register OAuth client dynamically
- */
-async function registerOAuthClient(
-  registrationUrl: string,
-  redirectUri: string,
-  clientName: string
-): Promise<OAuthClient> {
-  const response = await fetch(registrationUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-    },
-    body: JSON.stringify({
-      client_name: clientName,
-      redirect_uris: [redirectUri],
-      grant_types: ['authorization_code', 'refresh_token'],
-      response_types: ['code'],
-      token_endpoint_auth_method: 'none', // Public client (PKCE)
-    }),
-  });
-
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Client registration failed: ${response.status} ${error}`);
-  }
-
-  const data = await response.json() as ClientRegistrationResponse;
-  return {
-    client_id: data.client_id,
-    client_secret: data.client_secret,
-    registered_redirect_uri: redirectUri,
-  };
-}
-
-/**
- * Create agent OAuth routes
- */
 export function createAgentOAuthRouter(): Router {
   const router = Router();
   const agentContextDb = new AgentContextDatabase();
-
-  // Get the base URL for callbacks
-  const getCallbackUrl = (req: Request): string => {
-    const protocol = req.headers['x-forwarded-proto'] || req.protocol;
-    const host = req.headers['x-forwarded-host'] || req.get('host');
-    return `${protocol}://${host}/api/oauth/agent/callback`;
-  };
 
   /**
    * Start OAuth flow for an agent
@@ -240,225 +102,236 @@ export function createAgentOAuthRouter(): Router {
    */
   router.get('/start', requireAuth, async (req: Request, res: Response) => {
     try {
-      const { agent_context_id, pending_task, pending_params, return_to } = req.query;
-      const returnTo = sanitizeReturnTo(return_to);
+      const { agent_context_id, return_to } = req.query;
+      const returnTo = typeof return_to === 'string' ? safeReturnTo(return_to) : undefined;
 
-      // codeql[js/user-controlled-bypass] - agent context ID from query is validated and used as a lookup key
       if (!agent_context_id || typeof agent_context_id !== 'string') {
         return res.status(400).json({ error: 'agent_context_id is required' });
       }
 
-      // Parse pending request context (for auto-retry after OAuth)
-      let pendingRequest: { task: string; params: Record<string, unknown> } | undefined;
-      if (pending_task && typeof pending_task === 'string') {
-        try {
-          const params = pending_params && typeof pending_params === 'string'
-            ? JSON.parse(decodeURIComponent(pending_params))
-            : {};
-          pendingRequest = { task: pending_task, params };
-        } catch (error) {
-          logger.warn({ error, pending_params }, 'Failed to parse pending request params - continuing without retry context');
-        }
-      }
-
-      // Get user ID from authenticated request
       const userId = req.user?.id;
       if (!userId) {
         return res.status(401).json({ error: 'Not authenticated' });
       }
 
-      // Get member context for organization
       const memberContext = await getWebMemberContext(userId);
       if (!memberContext?.organization?.workos_organization_id) {
         return res.status(401).json({ error: 'No organization found' });
       }
-
       const organizationId = memberContext.organization.workos_organization_id;
 
-      // Get agent context
       const agentContext = await agentContextDb.getById(agent_context_id);
       if (!agentContext) {
         return res.status(404).json({ error: 'Agent context not found' });
       }
-
-      // Verify organization ownership
       if (agentContext.organization_id !== organizationId) {
         return res.status(403).json({ error: 'Access denied' });
       }
 
-      // Discover OAuth endpoints
-      const metadata = await discoverOAuthMetadata(agentContext.agent_url);
-      if (!metadata) {
-        return res.status(400).json({
-          error: 'Agent does not support OAuth',
-          message: 'No OAuth metadata found at the agent URL',
-        });
-      }
-
       const redirectUri = getCallbackUrl(req);
 
-      // Check if we have a registered client, or need to register
-      let client = await agentContextDb.getOAuthClient(agent_context_id);
-
-      // Check if redirect_uri has changed (e.g., environment change)
-      // Also clear client if we don't know what redirect_uri it was registered with
-      // (happens for clients created before we started tracking redirect_uri)
-      if (client && (!client.registered_redirect_uri || client.registered_redirect_uri !== redirectUri)) {
+      // Stale-client clearing. `loadAgent` already filters oauth_client
+      // by registered_redirect_uri, so the SDK would skip the cached row
+      // anyway — but tokens issued to that client are also dead, and we
+      // want them gone before the SDK persists fresh ones. (Today's
+      // `clearOAuthClient` clears tokens too.)
+      const existingClient = await agentContextDb.getOAuthClient(agent_context_id);
+      if (existingClient && existingClient.registered_redirect_uri !== redirectUri) {
         logger.info(
           {
             agentUrl: agentContext.agent_url,
-            oldRedirectUri: client.registered_redirect_uri || '(unknown)',
-            newRedirectUri: redirectUri
+            oldRedirectUri: existingClient.registered_redirect_uri ?? '(unknown)',
+            newRedirectUri: redirectUri,
           },
-          'Redirect URI changed or unknown, re-registering OAuth client'
+          'Redirect URI changed — clearing stale OAuth client and tokens',
         );
         await agentContextDb.clearOAuthClient(agent_context_id);
-        client = null;
       }
 
-      if (!client && metadata.registration_endpoint) {
-        // Dynamic client registration
-        logger.info({ agentUrl: agentContext.agent_url, redirectUri }, 'Registering OAuth client');
-        client = await registerOAuthClient(
-          metadata.registration_endpoint,
-          redirectUri,
-          'AgenticAdvertising.org'
-        );
-        await agentContextDb.saveOAuthClient(agent_context_id, client);
-      }
-
-      if (!client) {
-        return res.status(400).json({
-          error: 'OAuth client not configured',
-          message: 'Agent requires OAuth but does not support dynamic registration. Please contact the agent provider.',
-        });
-      }
-
-      // Generate PKCE and state
-      const { verifier, challenge } = generatePKCE();
-      const state = generateState();
-
-      // RFC 8707 resource indicator. Required by MCP authorization spec
-      // (2025-06+) so the issued access token's `aud` claim matches the
-      // MCP resource server — without it, agents accept the OAuth flow
-      // but reject every subsequent bearer-token request, which surfaces
-      // to the user as "I authorized but Test still asks me to authorize".
-      const resource = canonicalResourceForAgent(agentContext.agent_url);
-
-      // Store pending flow in PostgreSQL
-      await agentOAuthFlowsDb.setPendingFlow(state, {
-        agentContextId: agent_context_id,
-        organizationId,
-        userId,
-        codeVerifier: verifier,
+      const { pendingFlowStore, agentStorage } = createWebOAuthAdapters({
+        agentContextDb,
         redirectUri,
-        agentUrl: agentContext.agent_url,
-        ...(resource && { resource }),
-        pendingRequest,
-        returnTo,
       });
 
-      // Build authorization URL
-      const authUrl = new URL(metadata.authorization_endpoint);
-      authUrl.searchParams.set('response_type', 'code');
-      authUrl.searchParams.set('client_id', client.client_id);
-      authUrl.searchParams.set('redirect_uri', redirectUri);
-      authUrl.searchParams.set('state', state);
-      authUrl.searchParams.set('code_challenge', challenge);
-      authUrl.searchParams.set('code_challenge_method', 'S256');
-      if (resource) {
-        authUrl.searchParams.set('resource', resource);
-      }
-      if (metadata.scopes_supported && metadata.scopes_supported.length > 0) {
-        authUrl.searchParams.set('scope', metadata.scopes_supported.join(' '));
+      const agent = await agentStorage.loadAgent(agent_context_id);
+      if (!agent) {
+        // Vanishingly rare — the row existed two queries ago. Surface as
+        // 404 rather than handing the SDK undefined and triggering a
+        // generic 500 on the next field access.
+        return res.status(404).json({ error: 'Agent context not found' });
       }
 
-      logger.info({ agentUrl: agentContext.agent_url, state }, 'Starting OAuth flow');
+      const carry: Record<string, unknown> = {
+        organization_id: organizationId,
+        user_id: userId,
+        ...(returnTo && { return_to: returnTo }),
+      };
 
-      // Redirect to authorization endpoint
-      res.redirect(authUrl.toString());
+      const { authorizationUrl, state } = await startWebOAuthFlow({
+        agent,
+        redirectUri,
+        pendingFlowStore,
+        agentStorage,
+        carry,
+      });
+
+      // Browser-binding for CSRF (SEP-835 §state guidance). The cookie
+      // value must equal the AS-supplied `state` on the callback;
+      // /callback rejects mismatches and missing cookies before consuming
+      // the pending row.
+      res.cookie(STATE_COOKIE, state, {
+        httpOnly: true,
+        secure: req.secure,
+        sameSite: 'lax',
+        maxAge: STATE_COOKIE_TTL_MS,
+        path: '/api/oauth/agent/callback',
+      });
+
+      logger.info({ agentUrl: agentContext.agent_url }, 'Starting OAuth flow');
+      res.redirect(authorizationUrl);
     } catch (error) {
       logger.error({ error }, 'Failed to start OAuth flow');
-      res.status(500).json({ error: 'Failed to start OAuth flow' });
+      const message = sanitizeErrorMessage(error instanceof Error ? error.message : 'Unknown error');
+      res.redirect(`/oauth-complete.html?success=false&error=${encodeURIComponent(message)}`);
     }
   });
 
   /**
    * OAuth callback handler
    * GET /api/oauth/agent/callback?code=...&state=...
+   *
+   * Authenticated. The browser session that started the flow must be the
+   * one that finishes it — without that, a leaked `state` (logs, Referer,
+   * shoulder-surf) plus an attacker-initiated authorize step is enough to
+   * inject tokens into another user's `agent_contexts` row.
+   *
+   * Defense layers:
+   *   1. `requireAuth` — must have a live session, not just a state value.
+   *   2. `expectedState` — mandatory; the cookie set on /start must match
+   *      what the AS bounced back. Missing cookie aborts the flow.
+   *   3. Post-consume org check — `flow.carry.organization_id` must equal
+   *      the calling user's org. Stops cross-org token landing even if
+   *      the cookie binding were ever to weaken.
    */
-  router.get('/callback', async (req: Request, res: Response) => {
-    try {
-      const { code, state, error, error_description } = req.query;
+  router.get('/callback', requireAuth, async (req: Request, res: Response) => {
+    const clearStateCookie = () => res.clearCookie(STATE_COOKIE, { path: '/api/oauth/agent/callback' });
+    const { code, state, error, error_description } = req.query;
 
-      // Handle OAuth errors
-      // codeql[js/user-controlled-bypass] - OAuth error from provider is sanitized before use in redirect
-      if (error) {
-        logger.warn({ error, error_description }, 'OAuth error from provider');
-        const safeError = sanitizeErrorMessage(error_description || error);
-        return res.redirect(`/oauth-complete.html?success=false&error=${encodeURIComponent(safeError)}`);
-      }
+    if (error) {
+      logger.warn({ error, error_description }, 'OAuth error from provider');
+      const safeError = sanitizeErrorMessage(error_description || error);
+      clearStateCookie();
+      return res.redirect(`/oauth-complete.html?success=false&error=${encodeURIComponent(safeError)}`);
+    }
 
-      // codeql[js/user-controlled-bypass] - OAuth callback must read authorization code from query params
-      if (!code || typeof code !== 'string') {
-        return res.redirect(`/oauth-complete.html?success=false&error=${encodeURIComponent('No authorization code received')}`);
-      }
+    if (typeof code !== 'string' || code.length === 0) {
+      clearStateCookie();
+      return res.redirect(`/oauth-complete.html?success=false&error=${encodeURIComponent('No authorization code received')}`);
+    }
+    if (typeof state !== 'string' || state.length === 0) {
+      clearStateCookie();
+      return res.redirect(`/oauth-complete.html?success=false&error=${encodeURIComponent('No state parameter received')}`);
+    }
 
-      // codeql[js/user-controlled-bypass] - OAuth state parameter is verified against stored session state
-      if (!state || typeof state !== 'string') {
-        return res.redirect(`/oauth-complete.html?success=false&error=${encodeURIComponent('No state parameter received')}`);
-      }
-
-      // Atomic consume: DELETE ... RETURNING prevents double-use race
-      const flow = await agentOAuthFlowsDb.consumePendingFlow(state);
-      if (!flow) {
-        logger.warn({ state }, 'OAuth callback with unknown state');
-        return res.redirect(`/oauth-complete.html?success=false&error=${encodeURIComponent('Invalid or expired OAuth session')}`);
-      }
-
-      // Discover token endpoint
-      const agentHost = new URL(flow.agentUrl).hostname;
-      const metadata = await discoverOAuthMetadata(flow.agentUrl);
-      if (!metadata) {
-        return res.redirect(`/oauth-complete.html?success=false&agent=${encodeURIComponent(agentHost)}&error=${encodeURIComponent('Failed to discover OAuth endpoints')}`);
-      }
-
-      // Get client credentials
-      const client = await agentContextDb.getOAuthClient(flow.agentContextId);
-      if (!client) {
-        return res.redirect(`/oauth-complete.html?success=false&agent=${encodeURIComponent(agentHost)}&error=${encodeURIComponent('OAuth client not found')}`);
-      }
-
-      // Exchange code for tokens
-      logger.info({ agentUrl: flow.agentUrl }, 'Exchanging OAuth code for tokens');
-      const tokens = await exchangeCodeForTokens(
-        metadata.token_endpoint,
-        code,
-        flow.codeVerifier,
-        flow.redirectUri,
-        client.client_id,
-        client.client_secret,
-        flow.resource,
-      );
-
-      // Save tokens
-      await agentContextDb.saveOAuthTokens(flow.agentContextId, tokens);
-
-      logger.info({ agentUrl: flow.agentUrl, hasPendingRequest: !!flow.pendingRequest }, 'OAuth tokens saved successfully');
-
-      // Redirect to success page - user can return to their conversation (Slack or web)
-      const successParams = new URLSearchParams({
-        success: 'true',
-        agent: agentHost,
+    const expectedState = req.cookies?.[STATE_COOKIE];
+    clearStateCookie();
+    if (typeof expectedState !== 'string' || expectedState.length === 0) {
+      logger.warn({}, 'OAuth callback missing state cookie — refusing to consume pending flow');
+      const params = new URLSearchParams({
+        success: 'false',
+        error: 'OAuth state cookie missing — start the flow again from this browser',
+        code: 'state_cookie_missing',
       });
-      if (flow.returnTo) {
-        successParams.set('return_to', flow.returnTo);
+      return res.redirect(`/oauth-complete.html?${params.toString()}`);
+    }
+
+    const userId = req.user?.id;
+    if (!userId) {
+      // requireAuth should already have rejected — defensive only.
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+    const memberContext = await getWebMemberContext(userId);
+    const callerOrgId = memberContext?.organization?.workos_organization_id;
+    if (!callerOrgId) {
+      return res.status(401).json({ error: 'No organization found' });
+    }
+
+    const redirectUri = getCallbackUrl(req);
+    const { pendingFlowStore, agentStorage } = createWebOAuthAdapters({
+      agentContextDb,
+      redirectUri,
+    });
+
+    try {
+      const result = await completeWebOAuthFlow({
+        state,
+        code,
+        pendingFlowStore,
+        agentStorage,
+        expectedState,
+      });
+
+      // Post-consume cross-org guard. The flow carries the org that
+      // initiated /start; reject if the browser session finishing the
+      // flow doesn't belong to it. The pending row is already deleted at
+      // this point — the user will need to restart, which is the right
+      // outcome for a session/org mismatch.
+      const flowOrgId = result.carry?.organization_id;
+      if (typeof flowOrgId !== 'string' || flowOrgId !== callerOrgId) {
+        logger.warn(
+          { agentUrl: result.agentUrl, callerOrgId, flowOrgIdPresent: typeof flowOrgId === 'string' },
+          'OAuth callback org mismatch — refusing token persistence path',
+        );
+        // Tokens were just persisted by the SDK; immediately revoke
+        // them at the agent_context level so the cross-org user
+        // doesn't end up with usable bearer tokens.
+        await agentContextDb.removeOAuthTokens(result.agentId).catch((err) => {
+          logger.error({ err, agentId: result.agentId }, 'Failed to revoke tokens after org mismatch');
+        });
+        const params = new URLSearchParams({
+          success: 'false',
+          error: 'OAuth flow does not match this session',
+          code: 'org_mismatch',
+        });
+        return res.redirect(`/oauth-complete.html?${params.toString()}`);
       }
-      res.redirect(`/oauth-complete.html?${successParams.toString()}`);
-    } catch (error) {
-      logger.error({ error }, 'OAuth callback failed');
-      const message = sanitizeErrorMessage(error instanceof Error ? error.message : 'Unknown error');
-      res.redirect(`/oauth-complete.html?success=false&error=${encodeURIComponent(message)}`);
+
+      if (!result.persisted) {
+        logger.warn({ agentUrl: result.agentUrl }, 'OAuth tokens not persisted — agent storage no-op');
+        const params = new URLSearchParams({
+          success: 'false',
+          error: 'Tokens were not saved',
+          code: 'tokens_not_persisted',
+        });
+        return res.redirect(`/oauth-complete.html?${params.toString()}`);
+      }
+
+      const agentHost = (() => {
+        try {
+          return new URL(result.agentUrl).hostname;
+        } catch {
+          return 'agent';
+        }
+      })();
+
+      logger.info({ agentUrl: result.agentUrl }, 'OAuth tokens saved successfully');
+
+      const successParams = new URLSearchParams({ success: 'true', agent: agentHost });
+      const carryReturnTo = result.carry?.return_to;
+      if (typeof carryReturnTo === 'string') {
+        const safe = safeReturnTo(carryReturnTo);
+        if (safe) successParams.set('return_to', safe);
+      }
+      return res.redirect(`/oauth-complete.html?${successParams.toString()}`);
+    } catch (err) {
+      const { code: errCode, message } = classifyCallbackError(err);
+      logger.warn({ err, code: errCode }, 'OAuth callback failed');
+      const params = new URLSearchParams({
+        success: 'false',
+        error: sanitizeErrorMessage(message),
+        code: errCode,
+      });
+      return res.redirect(`/oauth-complete.html?${params.toString()}`);
     }
   });
 
@@ -469,41 +342,27 @@ export function createAgentOAuthRouter(): Router {
   router.delete('/:agent_context_id', requireAuth, async (req: Request, res: Response) => {
     try {
       const { agent_context_id } = req.params;
-
       if (!isValidUUID(agent_context_id)) {
         return res.status(400).json({ error: 'Invalid agent_context_id format' });
       }
 
-      // Get user ID from authenticated request
       const userId = req.user?.id;
-      if (!userId) {
-        return res.status(401).json({ error: 'Not authenticated' });
-      }
+      if (!userId) return res.status(401).json({ error: 'Not authenticated' });
 
-      // Get member context for organization
       const memberContext = await getWebMemberContext(userId);
       if (!memberContext?.organization?.workos_organization_id) {
         return res.status(401).json({ error: 'No organization found' });
       }
-
       const organizationId = memberContext.organization.workos_organization_id;
 
-      // Get agent context
       const agentContext = await agentContextDb.getById(agent_context_id);
-      if (!agentContext) {
-        return res.status(404).json({ error: 'Agent context not found' });
-      }
-
-      // Verify organization ownership
+      if (!agentContext) return res.status(404).json({ error: 'Agent context not found' });
       if (agentContext.organization_id !== organizationId) {
         return res.status(403).json({ error: 'Access denied' });
       }
 
-      // Clear OAuth tokens
       await agentContextDb.removeOAuthTokens(agent_context_id);
-
       logger.info({ agentContextId: agent_context_id }, 'OAuth tokens cleared');
-
       res.json({ success: true });
     } catch (error) {
       logger.error({ error }, 'Failed to clear OAuth tokens');
@@ -518,41 +377,27 @@ export function createAgentOAuthRouter(): Router {
   router.get('/:agent_context_id/status', requireAuth, async (req: Request, res: Response) => {
     try {
       const { agent_context_id } = req.params;
-
       if (!isValidUUID(agent_context_id)) {
         return res.status(400).json({ error: 'Invalid agent_context_id format' });
       }
 
-      // Get user ID from authenticated request
       const userId = req.user?.id;
-      if (!userId) {
-        return res.status(401).json({ error: 'Not authenticated' });
-      }
+      if (!userId) return res.status(401).json({ error: 'Not authenticated' });
 
-      // Get member context for organization
       const memberContext = await getWebMemberContext(userId);
       if (!memberContext?.organization?.workos_organization_id) {
         return res.status(401).json({ error: 'No organization found' });
       }
-
       const organizationId = memberContext.organization.workos_organization_id;
 
-      // Get agent context
       const agentContext = await agentContextDb.getById(agent_context_id);
-      if (!agentContext) {
-        return res.status(404).json({ error: 'Agent context not found' });
-      }
-
-      // Verify organization ownership
+      if (!agentContext) return res.status(404).json({ error: 'Agent context not found' });
       if (agentContext.organization_id !== organizationId) {
         return res.status(403).json({ error: 'Access denied' });
       }
 
-      // Check OAuth support
       const metadata = await discoverOAuthMetadata(agentContext.agent_url);
       const agentSupportsOAuth = !!metadata;
-
-      // Check token status
       const hasValidTokens = agentContextDb.hasValidOAuthTokens(agentContext);
 
       res.json({
