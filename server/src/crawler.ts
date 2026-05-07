@@ -393,6 +393,8 @@ export class CrawlerService {
                 statusCode: validation.status_code,
                 responseBytes: validation.response_bytes,
                 resolvedUrl: validation.resolved_url,
+                discoveryMethod: validation.discovery_method,
+                managerDomain: validation.manager_domain,
               },
             );
 
@@ -467,6 +469,8 @@ export class CrawlerService {
                 statusCode: validation.status_code,
                 responseBytes: validation.response_bytes,
                 resolvedUrl: validation.resolved_url,
+                discoveryMethod: validation.discovery_method,
+                managerDomain: validation.manager_domain,
               },
             );
 
@@ -813,7 +817,7 @@ export class CrawlerService {
   private async cacheAdagentsManifest(
     domain: string,
     manifest: AdagentsManifest,
-    meta?: { statusCode?: number; responseBytes?: number; resolvedUrl?: string },
+    meta?: { statusCode?: number; responseBytes?: number; resolvedUrl?: string; discoveryMethod?: string; managerDomain?: string },
   ): Promise<void> {
     try {
       await this.publisherDb.upsertAdagentsCache({
@@ -822,6 +826,8 @@ export class CrawlerService {
         statusCode: meta?.statusCode,
         responseBytes: meta?.responseBytes,
         resolvedUrl: meta?.resolvedUrl,
+        discoveryMethod: meta?.discoveryMethod,
+        managerDomain: meta?.managerDomain,
       });
     } catch (err) {
       log.warn({ domain, err: err instanceof Error ? err.message : err }, 'Publisher cache write failed');
@@ -1104,6 +1110,8 @@ export class CrawlerService {
           statusCode: validation.status_code,
           responseBytes: validation.response_bytes,
           resolvedUrl: validation.resolved_url,
+          discoveryMethod: validation.discovery_method,
+          managerDomain: validation.manager_domain,
         },
       );
 
@@ -1138,6 +1146,8 @@ export class CrawlerService {
             publisher_domain: domain,
             agent_count: validation.raw_data.authorized_agents.length,
             property_count: validation.raw_data.properties?.length ?? 0,
+            discovery_method: validation.discovery_method,
+            manager_domain: validation.manager_domain,
           },
           actor: 'api:crawl-request',
         });
@@ -1289,6 +1299,8 @@ export class CrawlerService {
         statusCode: validation.status_code,
         responseBytes: validation.response_bytes,
         resolvedUrl: validation.resolved_url,
+        discoveryMethod: validation.discovery_method,
+        managerDomain: validation.manager_domain,
       },
     );
 
@@ -1322,6 +1334,8 @@ export class CrawlerService {
           agent_count: validation.raw_data.authorized_agents.length,
           property_count: validation.raw_data.properties?.length ?? 0,
           source: 'catalog_crawl',
+          discovery_method: validation.discovery_method,
+          manager_domain: validation.manager_domain,
         },
         actor: 'pipeline:catalog_crawl',
       });

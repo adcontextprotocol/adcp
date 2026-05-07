@@ -8876,6 +8876,8 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           valid: result.valid,
           domain: result.domain,
           url: result.url,
+          discovery_method: result.discovery_method,
+          manager_domain: result.manager_domain ?? undefined,
           agent_count: stats.agentCount,
           property_count: stats.propertyCount,
           property_type_counts: stats.propertyTypeCounts,
