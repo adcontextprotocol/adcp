@@ -77,6 +77,17 @@ export interface UpsertAdagentsCacheInput {
    * `self_redirected` or `aao_hosted`.
    */
   resolvedUrl?: string;
+  /**
+   * How the publisher's adagents.json was discovered. Mirrors
+   * AdAgentsValidationResult.discovery_method. Written to
+   * publishers.discovery_method so the API can surface provenance.
+   */
+  discoveryMethod?: string;
+  /**
+   * When discoveryMethod is 'ads_txt_managerdomain', the manager domain
+   * whose adagents.json was used. Written to publishers.manager_domain.
+   */
+  managerDomain?: string;
 }
 
 const ADAGENTS_CREATED_BY_PREFIX = 'adagents_json:';
@@ -229,8 +240,9 @@ export class PublisherDatabase {
       await client.query(
         `INSERT INTO publishers
            (domain, adagents_json, source_type, last_validated, expires_at,
-            last_http_status, last_response_bytes, resolved_url)
-         VALUES ($1, $2::jsonb, 'adagents_json', NOW(), $3, $4, $5, $6)
+            last_http_status, last_response_bytes, resolved_url,
+            discovery_method, manager_domain)
+         VALUES ($1, $2::jsonb, 'adagents_json', NOW(), $3, $4, $5, $6, $7, $8)
          ON CONFLICT (domain) DO UPDATE SET
            adagents_json = EXCLUDED.adagents_json,
            source_type = 'adagents_json',
@@ -239,6 +251,8 @@ export class PublisherDatabase {
            last_http_status = EXCLUDED.last_http_status,
            last_response_bytes = EXCLUDED.last_response_bytes,
            resolved_url = EXCLUDED.resolved_url,
+           discovery_method = EXCLUDED.discovery_method,
+           manager_domain = EXCLUDED.manager_domain,
            updated_at = NOW()`,
         [
           domain,
@@ -247,6 +261,8 @@ export class PublisherDatabase {
           clampHttpStatus(input.statusCode),
           input.responseBytes ?? null,
           truncateResolvedUrl(input.resolvedUrl),
+          input.discoveryMethod ?? null,
+          input.managerDomain ?? null,
         ]
       );
 

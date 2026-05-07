@@ -1045,6 +1045,12 @@ registry.registerPath({
             valid: z.boolean(),
             domain: z.string(),
             url: z.string().optional(),
+            discovery_method: z.enum(["direct", "authoritative_location", "ads_txt_managerdomain"]).optional().openapi({
+              description: "How the publisher's adagents.json was discovered. `ads_txt_managerdomain` indicates one-hop delegation via ads.txt MANAGERDOMAIN.",
+            }),
+            manager_domain: z.string().optional().openapi({
+              description: "Manager domain that served the manifest. Present only when discovery_method is ads_txt_managerdomain.",
+            }),
             agent_count: z.number().int(),
             property_count: z.number().int(),
             property_type_counts: z.record(z.string(), z.number().int()),
@@ -5895,6 +5901,8 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           last_http_status: number | null;
           last_response_bytes: number | null;
           resolved_url: string | null;
+          discovery_method: string | null;
+          manager_domain: string | null;
         }>(
           // Drop the source_type='adagents_json' filter. Phase B writes
           // failed-fetch metadata onto rows with source_type='community',
@@ -5902,7 +5910,8 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           // "Last attempted: <ts> · HTTP <code>" even for never-validated
           // domains. Read whatever row exists; downstream code handles
           // null adagents_json gracefully.
-          `SELECT adagents_json, last_validated, last_http_status, last_response_bytes, resolved_url
+          `SELECT adagents_json, last_validated, last_http_status, last_response_bytes, resolved_url,
+                  discovery_method, manager_domain
              FROM publishers WHERE domain = $1 LIMIT 1`,
           [domain],
         ).then(r => r.rows[0] ?? null),
@@ -5912,6 +5921,8 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       const cachedHttpStatus = cachedAdagentsRow?.last_http_status ?? null;
       const cachedResponseBytes = cachedAdagentsRow?.last_response_bytes ?? null;
       const cachedResolvedUrl = cachedAdagentsRow?.resolved_url ?? null;
+      const cachedDiscoveryMethod = cachedAdagentsRow?.discovery_method ?? null;
+      const cachedManagerDomain = cachedAdagentsRow?.manager_domain ?? null;
 
       // Auto-crawl on view: if we've never crawled this domain (adagents
       // never seen, brand never seen), kick off background fetches so a
@@ -6306,6 +6317,8 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         domain,
         member,
         adagents_valid: adagentsValid,
+        discovery_method: cachedDiscoveryMethod,
+        manager_domain: cachedManagerDomain,
         hosting,
         files,
         properties: projectedProperties,
@@ -6733,6 +6746,8 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         valid: result.valid,
         domain: result.domain,
         url: result.url,
+        discovery_method: result.discovery_method,
+        manager_domain: result.manager_domain ?? undefined,
         agent_count: stats.agentCount,
         property_count: stats.propertyCount,
         property_type_counts: stats.propertyTypeCounts,

@@ -651,6 +651,14 @@ export const PublisherLookupResultSchema = z
     domain: z.string().openapi({ example: "voxmedia.com" }),
     member: MemberRefSchema.nullable(),
     adagents_valid: z.boolean().nullable(),
+    discovery_method: z.enum(["direct", "authoritative_location", "ads_txt_managerdomain"]).nullable().optional().openapi({
+      description:
+        "How the publisher's adagents.json was discovered on the most recent successful crawl. `direct`: publisher's own /.well-known/ served the document. `authoritative_location`: publisher's stub redirected to a canonical URL. `ads_txt_managerdomain`: manifest was discovered via ads.txt MANAGERDOMAIN delegation — see `manager_domain` for which manager served it. Null until first crawl after migration 470.",
+    }),
+    manager_domain: z.string().nullable().optional().openapi({
+      description:
+        "The manager domain whose adagents.json was used to authorize this publisher's agents. Non-null only when `discovery_method` is `ads_txt_managerdomain`. Matches the MANAGERDOMAIN value from the publisher's ads.txt.",
+    }),
     hosting: PublisherHostingSchema,
     files: PublisherFilesSchema.optional().openapi({
       description:
