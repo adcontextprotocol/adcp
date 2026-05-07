@@ -3690,6 +3690,23 @@ export class HTTPServer {
               subscription,
             });
 
+            // For `.updated`/`.deleted`, a null org means a billing state
+            // transition will NOT be reflected in the DB. Surface immediately
+            // so ops can investigate and manually reconcile if needed.
+            // `.created` is exempt — missing org is normal pre-checkout flow.
+            if (!org && event.type !== 'customer.subscription.created') {
+              logger.warn({
+                eventType: event.type,
+                eventId: event.id,
+                customerId,
+                subscriptionId: subscription.id,
+              }, 'Stripe subscription lifecycle event could not be linked to any org — DB may be stale');
+              notifySystemError({
+                source: 'stripe-webhook-org-resolution',
+                errorMessage: `Stripe ${event.type} (${event.id}) for cus ${customerId} / sub ${subscription.id} could not be resolved to any org. Subscription status in DB may be stale.`,
+              });
+            }
+
             // Captured inside the fresh-activation block for use in the
             // post-UPDATE autopublish + notification dispatch below. Kept
             // out of that later block so the listing isn't flipped public
