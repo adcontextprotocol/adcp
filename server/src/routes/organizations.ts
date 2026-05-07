@@ -18,7 +18,7 @@ import {
 import { invitationRateLimiter, orgCreationRateLimiter } from "../middleware/rate-limit.js";
 import { invalidateMembershipCache } from "../db/org-filters.js";
 import { validateOrganizationName, validateEmail } from "../middleware/validation.js";
-import { OrganizationDatabase, CompanyType, RevenueTier, VALID_REVENUE_TIERS, VALID_MEMBERSHIP_TIERS, getSeatUsage, getSeatLimits, canAddSeat, getUserSeatType, resolveMembershipTier, checkAndUpdateSeatWarning, resetSeatWarningIfNeeded, createSeatUpgradeRequest, getSeatUpgradeRequest, listSeatUpgradeRequests, resolveSeatUpgradeRequest, hasPendingSeatRequest } from "../db/organization-db.js";
+import { OrganizationDatabase, CompanyType, RevenueTier, VALID_REVENUE_TIERS, getSeatUsage, getSeatLimits, canAddSeat, getUserSeatType, resolveMembershipTier, checkAndUpdateSeatWarning, resetSeatWarningIfNeeded, createSeatUpgradeRequest, getSeatUpgradeRequest, listSeatUpgradeRequests, resolveSeatUpgradeRequest, hasPendingSeatRequest } from "../db/organization-db.js";
 import { COMPANY_TYPE_VALUES } from "../config/company-types.js";
 import { VALID_ORGANIZATION_ROLES, VALID_ASSIGNABLE_ROLES } from "../types.js";
 import { JoinRequestDatabase } from "../db/join-request-db.js";
@@ -43,6 +43,7 @@ import {
 } from "../slack/org-group-dm.js";
 import { getOrgAdminEmails } from "../utils/org-admins.js";
 import { emailPrefsDb } from "../db/email-preferences-db.js";
+import { performCreateOrganization } from "../services/organization-bootstrap.js";
 
 const logger = createLogger("organization-routes");
 
@@ -1177,431 +1178,99 @@ export function createOrganizationsRouter(): Router {
   router.post('/', requireAuth, orgCreationRateLimiter, async (req, res) => {
     try {
       const user = req.user!;
-      const { organization_name, is_personal, company_type, revenue_tier, membership_tier, corporate_domain, marketing_opt_in } = req.body;
+      const { organization_name, is_personal, company_type, revenue_tier, marketing_opt_in } = req.body;
 
-      // Limit how many organizations a single user can own
-      const pool = getPool();
-      const orgCountResult = await pool.query(
-        `SELECT COUNT(*) AS count FROM organization_memberships WHERE workos_user_id = $1`,
-        [user.id],
-      );
-      const orgCount = parseInt(orgCountResult.rows[0].count, 10);
-      if (orgCount >= 10) {
-        return res.status(400).json({
-          error: 'Organization limit reached',
-          message: 'You have reached the maximum number of organizations. Please contact support if you need more.',
-        });
+      // `membership_tier` and `corporate_domain` are NOT accepted from caller
+      // input. Tier is owned exclusively by the Stripe webhook (any value
+      // stamped here would only be overwritten on the first subscription
+      // sync, but in the gap it would leak tier-gated UI state to a caller
+      // who never paid). The corporate domain is always derived from the
+      // authenticated user's email — accepting it as a field invited
+      // confusing 400s when a caller's value disagreed with their email,
+      // and gave nothing back when it agreed.
+      if (req.body && (req.body.membership_tier !== undefined || req.body.corporate_domain !== undefined)) {
+        logger.warn(
+          {
+            userId: user.id,
+            sentMembershipTier: req.body.membership_tier !== undefined,
+            sentCorporateDomain: req.body.corporate_domain !== undefined,
+          },
+          'POST /api/organizations: caller supplied no-longer-accepted fields; ignoring',
+        );
       }
 
-      // Enforce one personal workspace per user
-      if (is_personal) {
-        const existingPersonal = await pool.query(
-          `SELECT 1 FROM organization_memberships om
-           JOIN organizations o ON o.workos_organization_id = om.workos_organization_id
-           WHERE om.workos_user_id = $1 AND o.is_personal = true
-           LIMIT 1`,
-          [user.id],
-        );
-        if (existingPersonal.rows.length > 0) {
+      const outcome = await performCreateOrganization(
+        {
+          user: { id: user.id, email: user.email },
+          organization_name,
+          is_personal: !!is_personal,
+          company_type,
+          revenue_tier,
+          marketing_opt_in,
+          isDevUser: !!(isDevModeEnabled() && getDevUser(req)),
+          requestContext: {
+            ip: req.ip || (req.headers['x-forwarded-for'] as string) || 'unknown',
+            userAgent: (req.headers['user-agent'] as string) || 'unknown',
+          },
+        },
+        { workos, orgDb },
+      );
+
+      switch (outcome.kind) {
+        case 'created':
+          return res.json({
+            success: true,
+            organization: { id: outcome.orgId, name: outcome.name },
+          });
+        case 'adopted':
+          return res.status(200).json({
+            id: outcome.orgId,
+            name: outcome.name,
+            adopted: true,
+          });
+        case 'org_limit_reached':
+          return res.status(400).json({
+            error: 'Organization limit reached',
+            message: 'You have reached the maximum number of organizations. Please contact support if you need more.',
+          });
+        case 'personal_workspace_exists':
           return res.status(409).json({
             error: 'Personal workspace exists',
             message: 'You already have a personal workspace.',
           });
-        }
-      }
-
-      // Validate required fields
-      if (!organization_name) {
-        return res.status(400).json({
-          error: 'Missing required fields',
-          message: 'organization_name is required',
-        });
-      }
-
-      // Validate organization name format
-      const nameValidation = validateOrganizationName(organization_name);
-      if (!nameValidation.valid) {
-        return res.status(400).json({
-          error: 'Invalid organization name',
-          message: nameValidation.error,
-        });
-      }
-
-      // Validate company_type if provided
-      if (company_type && !COMPANY_TYPE_VALUES.includes(company_type)) {
-        return res.status(400).json({
-          error: 'Invalid company type',
-          message: `company_type must be one of: ${COMPANY_TYPE_VALUES.join(', ')}`,
-        });
-      }
-
-      // Validate revenue_tier if provided
-      if (revenue_tier && !(VALID_REVENUE_TIERS as readonly string[]).includes(revenue_tier)) {
-        return res.status(400).json({
-          error: 'Invalid revenue tier',
-          message: `revenue_tier must be one of: ${VALID_REVENUE_TIERS.join(', ')}`,
-        });
-      }
-
-      // Validate membership_tier if provided
-      if (membership_tier && !(VALID_MEMBERSHIP_TIERS as readonly string[]).includes(membership_tier)) {
-        return res.status(400).json({
-          error: 'Invalid membership tier',
-          message: `membership_tier must be one of: ${VALID_MEMBERSHIP_TIERS.join(', ')}`,
-        });
-      }
-
-      // Validate membership_tier matches organization type
-      if (membership_tier) {
-        const individualTiers = ['individual_professional', 'individual_academic'];
-        const companyTiers = ['company_standard', 'company_icl'];
-
-        if (is_personal && companyTiers.includes(membership_tier)) {
+        case 'missing_organization_name':
           return res.status(400).json({
-            error: 'Invalid membership tier for organization type',
-            message: 'Individual memberships cannot use company membership tiers',
+            error: 'Missing required fields',
+            message: 'organization_name is required',
           });
-        }
-
-        if (!is_personal && individualTiers.includes(membership_tier)) {
+        case 'invalid_organization_name':
           return res.status(400).json({
-            error: 'Invalid membership tier for organization type',
-            message: 'Company memberships cannot use individual membership tiers',
+            error: 'Invalid organization name',
+            message: outcome.message,
           });
-        }
-      }
-
-      // For non-personal organizations, validate the corporate domain
-      const userEmailDomain = getCompanyDomain(user.email);
-      let verifiedDomain: string | null = null;
-
-      if (!is_personal) {
-        // User must have a corporate email to create a company
-        if (!userEmailDomain) {
+        case 'invalid_company_type':
+          return res.status(400).json({
+            error: 'Invalid company type',
+            message: `company_type must be one of: ${COMPANY_TYPE_VALUES.join(', ')}`,
+          });
+        case 'invalid_revenue_tier':
+          return res.status(400).json({
+            error: 'Invalid revenue tier',
+            message: `revenue_tier must be one of: ${VALID_REVENUE_TIERS.join(', ')}`,
+          });
+        case 'corporate_email_required':
           return res.status(400).json({
             error: 'Corporate email required',
             message: 'To register a company, you must be signed in with a corporate email address. Personal email domains (Gmail, Yahoo, etc.) cannot be used for company registration.',
           });
-        }
-
-        // If corporate_domain is provided, verify it matches the user's email domain
-        if (corporate_domain) {
-          const normalizedDomain = corporate_domain.toLowerCase().trim();
-          if (normalizedDomain !== userEmailDomain) {
-            return res.status(400).json({
-              error: 'Domain mismatch',
-              message: `The corporate domain must match your email domain (${userEmailDomain}).`,
-            });
-          }
-          verifiedDomain = normalizedDomain;
-        } else {
-          // Auto-use the user's email domain
-          verifiedDomain = userEmailDomain;
-        }
-      }
-
-      // Use trimmed name for consistency
-      const trimmedName = organization_name.trim();
-
-      // Check if an org with this domain already exists BEFORE creating.
-      // Uses FOR UPDATE to prevent concurrent adoption races.
-      if (verifiedDomain) {
-        const client = await pool.connect();
-        try {
-          await client.query('BEGIN');
-
-          const existingOrgResult = await client.query(
-            `SELECT o.workos_organization_id, o.name, o.prospect_status, o.subscription_status
-             FROM organization_domains od
-             JOIN organizations o ON o.workos_organization_id = od.workos_organization_id
-             WHERE LOWER(od.domain) = LOWER($1)
-             FOR UPDATE OF o`,
-            [verifiedDomain]
-          );
-
-          if (existingOrgResult.rows.length > 0) {
-            const existing = existingOrgResult.rows[0];
-            const existingOrgId = existing.workos_organization_id;
-            const existingOrgName = existing.name;
-
-            // Only auto-adopt prospect orgs. Active orgs (with subscriptions or
-            // that have already been joined/converted) should use the join-request flow.
-            const isAdoptable = !existing.subscription_status
-              && (!existing.prospect_status || !['joined', 'declined'].includes(existing.prospect_status));
-
-            if (!isAdoptable) {
-              await client.query('ROLLBACK');
-              return res.status(409).json({
-                error: 'Organization exists',
-                message: `An organization for ${verifiedDomain} already exists: "${existingOrgName}". Please search for it and request to join instead of creating a new one.`,
-                existing_org_id: existingOrgId,
-                existing_org_name: existingOrgName,
-              });
-            }
-
-            // Commit the read-lock transaction before making external API calls.
-            // This avoids holding a DB connection idle during network round-trips.
-            await client.query('COMMIT');
-
-            // --- WorkOS API calls (outside any DB transaction) ---
-            const isDevUser = isDevModeEnabled() && getDevUser(req);
-            let existingMembership: { id: string; role?: { slug: string } } | null = null;
-            if (!isDevUser) {
-              const userMemberships = await workos!.userManagement.listOrganizationMemberships({
-                userId: user.id,
-                organizationId: existingOrgId,
-                statuses: ['active', 'inactive', 'pending'],
-              });
-              existingMembership = userMemberships.data[0] ?? null;
-            }
-            const alreadyMember = !!existingMembership;
-
-            // Adopting a prospect org always makes the user the owner.
-            // They may already have a membership (e.g. from Slack domain sync)
-            // with a lower role — upgrade it.
-            const roleSlug = 'owner';
-
-            if (existingMembership && existingMembership.role?.slug !== 'owner') {
-              await workos!.userManagement.updateOrganizationMembership(existingMembership.id, {
-                roleSlug: 'owner',
-              });
-            }
-
-            logger.info({
-              userId: user.id,
-              orgId: existingOrgId,
-              orgName: existingOrgName,
-              domain: verifiedDomain,
-              role: roleSlug,
-              wasAlreadyMember: alreadyMember,
-            }, 'User adopting prospect organization via registration');
-
-            if (!alreadyMember && !isDevUser) {
-              await workos!.userManagement.createOrganizationMembership({
-                userId: user.id,
-                organizationId: existingOrgId,
-                roleSlug,
-              });
-            }
-
-            // --- New transaction to write local DB state ---
-            await client.query('BEGIN');
-
-            // Mirror membership and update prospect status locally
-            await client.query(`
-              INSERT INTO organization_memberships (workos_user_id, workos_organization_id, email, role, created_at, updated_at, synced_at)
-              VALUES ($1, $2, $3, $4, NOW(), NOW(), NOW())
-              ON CONFLICT (workos_user_id, workos_organization_id) DO UPDATE SET role = $4, updated_at = NOW()
-            `, [user.id, existingOrgId, user.email, roleSlug]);
-
-            await client.query(`
-              UPDATE organizations SET prospect_status = 'joined', updated_at = NOW()
-              WHERE workos_organization_id = $1
-                AND prospect_status IS NOT NULL
-                AND prospect_status NOT IN ('joined', 'declined')
-            `, [existingOrgId]);
-
-            await orgDb.recordAuditLog({
-              workos_organization_id: existingOrgId,
-              workos_user_id: user.id,
-              action: 'organization_adopted',
-              resource_type: 'organization',
-              resource_id: existingOrgId,
-              details: {
-                user_email: user.email,
-                domain: verifiedDomain,
-                role: roleSlug,
-              },
-            });
-
-            await client.query('COMMIT');
-
-            // Record marketing communications opt-in choice (best-effort, don't block signup)
-            if (typeof marketing_opt_in === 'boolean') {
-              try {
-                await emailPrefsDb.setMarketingOptInIfNotSet({
-                  workos_user_id: user.id,
-                  email: user.email,
-                  optIn: marketing_opt_in,
-                });
-              } catch (err) {
-                logger.error({ err, userId: user.id }, 'Failed to record marketing opt-in');
-              }
-            }
-
-            return res.status(200).json({
-              id: existingOrgId,
-              name: existingOrgName,
-              adopted: true,
-            });
-          }
-
-          await client.query('ROLLBACK');
-        } catch (adoptError) {
-          await client.query('ROLLBACK').catch(() => {});
-          throw adoptError;
-        } finally {
-          client.release();
-        }
-      }
-
-      logger.info({ organization_name: trimmedName, is_personal, company_type, revenue_tier, verifiedDomain }, 'Creating WorkOS organization');
-
-      let workosOrgId: string;
-      let workosOrgName: string;
-
-      // Dev mode: skip WorkOS calls and generate a mock org ID
-      const isDevUser = isDevModeEnabled() && getDevUser(req);
-      if (isDevUser) {
-        workosOrgId = `org_dev_${Date.now()}_${Math.random().toString(36).substring(7)}`;
-        workosOrgName = trimmedName;
-        logger.info({ orgId: workosOrgId, name: trimmedName, devUser: user.email }, 'DEV MODE: Mock organization created (no WorkOS)');
-      } else {
-        // Create WorkOS Organization
-        const workosOrg = await workos!.organizations.createOrganization({
-          name: trimmedName,
-        });
-        workosOrgId = workosOrg.id;
-        workosOrgName = workosOrg.name;
-
-        logger.info({ orgId: workosOrgId, name: trimmedName }, 'WorkOS organization created');
-
-        // Add user as organization owner (since they created it)
-        const ownerMembership = await workos!.userManagement.createOrganizationMembership({
-          userId: user.id,
-          organizationId: workosOrgId,
-          roleSlug: 'owner',
-        });
-
-        logger.info({ userId: user.id, orgId: workosOrgId }, 'User added as organization owner');
-
-        // Mirror membership locally so the owner is visible immediately
-        // (rather than waiting for the webhook)
-        await pool.query(`
-          INSERT INTO organization_memberships (workos_user_id, workos_organization_id, workos_membership_id, email, role, seat_type, created_at, updated_at, synced_at)
-          VALUES ($1, $2, $3, $4, 'owner', 'contributor', NOW(), NOW(), NOW())
-          ON CONFLICT (workos_user_id, workos_organization_id) DO UPDATE SET role = 'owner', workos_membership_id = $3, updated_at = NOW()
-        `, [user.id, workosOrgId, ownerMembership.id, user.email]);
-      }
-
-      // Create organization record in our database
-      const orgRecord = await orgDb.createOrganization({
-        workos_organization_id: workosOrgId,
-        name: trimmedName,
-        is_personal: is_personal || false,
-        company_type: company_type || undefined,
-        revenue_tier: revenue_tier || undefined,
-        membership_tier: membership_tier || undefined,
-      });
-
-      logger.info({
-        orgId: workosOrgId,
-        company_type: orgRecord.company_type,
-        revenue_tier: orgRecord.revenue_tier,
-      }, 'Organization record created in database');
-
-      // Create verified domain record for non-personal organizations
-      if (verifiedDomain) {
-        // Check if domain is already claimed by another organization
-        const existingDomainResult = await pool.query(
-          `SELECT workos_organization_id FROM organization_domains WHERE domain = $1`,
-          [verifiedDomain]
-        );
-
-        if (existingDomainResult.rows.length > 0 && existingDomainResult.rows[0].workos_organization_id !== workosOrgId) {
-          // Domain already claimed - log warning but continue (don't fail org creation)
-          // The org is created but without the domain - admin can resolve later
-          logger.warn({
-            orgId: workosOrgId,
-            domain: verifiedDomain,
-            existingOrgId: existingDomainResult.rows[0].workos_organization_id,
-          }, 'Domain already claimed by another organization, skipping domain assignment');
-        } else {
-          // Insert the domain as verified (since we verified it via email)
-          await pool.query(
-            `INSERT INTO organization_domains (workos_organization_id, domain, is_primary, verified, source)
-             VALUES ($1, $2, true, true, 'email_verification')
-             ON CONFLICT (domain) DO NOTHING`,
-            [workosOrgId, verifiedDomain]
-          );
-
-          // Also set the email_domain on the organization
-          await pool.query(
-            `UPDATE organizations SET email_domain = $1, updated_at = NOW()
-             WHERE workos_organization_id = $2`,
-            [verifiedDomain, workosOrgId]
-          );
-
-          logger.info({
-            orgId: workosOrgId,
-            domain: verifiedDomain,
-          }, 'Corporate domain auto-verified via email');
-        }
-      }
-
-      // Record audit log for organization creation
-      await orgDb.recordAuditLog({
-        workos_organization_id: workosOrgId,
-        workos_user_id: user.id,
-        action: 'organization_created',
-        resource_type: 'organization',
-        resource_id: workosOrgId,
-        details: {
-          name: trimmedName,
-          is_personal: is_personal || false,
-          company_type: company_type || null,
-          revenue_tier: revenue_tier || null,
-        },
-      });
-
-      // Record ToS and Privacy Policy acceptance
-      const tosAgreement = await orgDb.getCurrentAgreementByType('terms_of_service');
-      const privacyAgreement = await orgDb.getCurrentAgreementByType('privacy_policy');
-
-      if (tosAgreement) {
-        await orgDb.recordUserAgreementAcceptance({
-          workos_user_id: user.id,
-          email: user.email,
-          agreement_type: 'terms_of_service',
-          agreement_version: tosAgreement.version,
-          ip_address: req.ip || (req.headers['x-forwarded-for'] as string) || 'unknown',
-          user_agent: req.headers['user-agent'] || 'unknown',
-          workos_organization_id: workosOrgId,
-        });
-      }
-
-      if (privacyAgreement) {
-        await orgDb.recordUserAgreementAcceptance({
-          workos_user_id: user.id,
-          email: user.email,
-          agreement_type: 'privacy_policy',
-          agreement_version: privacyAgreement.version,
-          ip_address: req.ip || (req.headers['x-forwarded-for'] as string) || 'unknown',
-          user_agent: req.headers['user-agent'] || 'unknown',
-          workos_organization_id: workosOrgId,
-        });
-      }
-
-      // Record marketing communications opt-in choice (best-effort, don't block signup)
-      if (typeof marketing_opt_in === 'boolean') {
-        try {
-          await emailPrefsDb.setMarketingOptInIfNotSet({
-            workos_user_id: user.id,
-            email: user.email,
-            optIn: marketing_opt_in,
+        case 'domain_taken':
+          return res.status(409).json({
+            error: 'Organization exists',
+            message: `An organization for ${outcome.domain} already exists: "${outcome.existingOrgName}". Please search for it and request to join instead of creating a new one.`,
+            existing_org_id: outcome.existingOrgId,
+            existing_org_name: outcome.existingOrgName,
           });
-        } catch (err) {
-          logger.error({ err, userId: user.id }, 'Failed to record marketing opt-in');
-        }
       }
-
-      res.json({
-        success: true,
-        organization: {
-          id: workosOrgId,
-          name: workosOrgName,
-        },
-      });
     } catch (error) {
       logger.error({ err: error }, 'Create organization error');
 
