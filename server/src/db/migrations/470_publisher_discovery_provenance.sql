@@ -22,8 +22,8 @@ ALTER TABLE publishers
 UPDATE publishers
    SET discovery_method = 'direct'
  WHERE discovery_method IS NULL
-   AND last_validated IS NOT NULL
-   AND adagents_valid IS TRUE;
+   AND source_type = 'adagents_json'
+   AND adagents_json IS NOT NULL;
 
 -- Partial index supports the manager → publishers reverse lookup planned
 -- in #4200 item 2 (queue-backed fan-out when a manager rotates their
