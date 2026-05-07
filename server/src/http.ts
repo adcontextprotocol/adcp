@@ -2062,8 +2062,10 @@ export class HTTPServer {
       });
     });
 
-    // Crawler endpoints
-    this.app.post("/api/crawler/run", async (req, res) => {
+    // Crawler endpoints. Admin-gated because /run amplifies one POST into
+    // outbound traffic to every registered agent. Per-agent refresh is
+    // available to owners at POST /api/registry/agents/:encodedUrl/refresh.
+    this.app.post("/api/crawler/run", requireAuth, requireAdmin, async (req, res) => {
       // Crawler iterates sales agents — they're the ones with publisher
       // authorizations and list_authorized_properties responses to walk.
       // Pre-#3540 this filter was inverted (matched 'buying' against the
@@ -2114,7 +2116,9 @@ export class HTTPServer {
       }
     });
 
-    this.app.post("/api/capabilities/discover-all", async (req, res) => {
+    // Admin-gated for the same reason as /api/crawler/run — fan-out
+    // outbound traffic to every registered agent.
+    this.app.post("/api/capabilities/discover-all", requireAuth, requireAdmin, async (req, res) => {
       const agents = await this.agentService.listAgents();
       try {
         const profiles = await this.capabilityDiscovery.discoverAll(agents);

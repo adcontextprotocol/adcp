@@ -97,6 +97,8 @@ import { AgentContextDatabase } from "../db/agent-context-db.js";
 import { getRequestLog, getRequestCount } from "../db/outbound-log-db.js";
 import { enrichUserWithMembership } from "../utils/html-config.js";
 import { classifyProbeError } from "../utils/probe-error.js";
+import { isWebUserAAOAdmin } from "../addie/admin-status-lookup.js";
+import { getDevUser } from "../middleware/auth.js";
 import { OrganizationDatabase, hasApiAccess, resolveMembershipTier } from "../db/organization-db.js";
 import { resolveCallerOrgId } from "./helpers/resolve-caller-org.js";
 import { canonicalizeAgentUrl } from "../db/publisher-db.js";
@@ -2031,6 +2033,57 @@ registry.registerPath({
     401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
     403: { description: "Not authorized", content: { "application/json": { schema: ErrorSchema } } },
     500: { description: "Server error", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/api/registry/agents/{encodedUrl}/refresh",
+  operationId: "refreshAgent",
+  summary: "Refresh agent snapshot",
+  description:
+    "Re-probe the agent and update its registry health (online, tools_count, response_time_ms) and capability snapshot (inferred type, discovered tools). Use after fixing your agent so the registry shows fresh data without waiting for the periodic crawl.\n\n**Auth:** owner of the agent or AAO admin.\n\n**Rate limits:** 5 minutes per agent URL, 30 requests per user per hour.",
+  tags: ["Agent Compliance"],
+  security: [{ bearerAuth: [] }, { oauth2: [] }],
+  request: {
+    params: z.object({
+      encodedUrl: z.string().openapi({ description: "URL-encoded agent URL", example: "https%3A%2F%2Fvastlint.org%2Fmcp" }),
+    }),
+  },
+  responses: {
+    200: {
+      description: "Snapshot refreshed",
+      content: {
+        "application/json": {
+          schema: z.object({
+            online: z.boolean(),
+            tools_count: z.number().int().nullable(),
+            response_time_ms: z.number().int().nullable(),
+            inferred_type: z.string().openapi({ description: "Type inferred from discovered tools (sales, creative, signals, governance, etc.) or 'unknown'" }),
+            type_promoted: z.boolean().openapi({ description: "True when registry type was upgraded from unknown to inferred_type" }),
+            oauth_required: z.boolean(),
+            checked_at: z.string(),
+            error: z.string().optional(),
+          }),
+        },
+      },
+    },
+    400: { description: "Invalid agent URL", content: { "application/json": { schema: ErrorSchema } } },
+    401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
+    403: { description: "Not authorized — must be owner or AAO admin", content: { "application/json": { schema: ErrorSchema } } },
+    409: { description: "Monitoring paused for this agent", content: { "application/json": { schema: ErrorSchema } } },
+    429: {
+      description: "Rate limit exceeded",
+      content: {
+        "application/json": {
+          schema: z.object({
+            error: z.string(),
+            retry_after: z.number().int().openapi({ description: "Seconds to wait before retrying" }),
+          }),
+        },
+      },
+    },
+    502: { description: "Probe failed (timeout, DNS, OAuth wall, etc.)", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
 
@@ -4864,6 +4917,90 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     } catch (error) {
       logger.error({ err: error, path: req.path }, "Failed to update check interval");
       res.status(500).json({ error: "Failed to update check interval" });
+    }
+  });
+
+  // Per-agent refresh rate limits. In-memory; resets on deploy. 5 minutes
+  // per agent URL mirrors the /crawl-request domain limit. The per-user
+  // hourly limit is local to this endpoint (separate counter from the one
+  // /crawl-request uses) — keeps the two surfaces decoupled.
+  const refreshAgentRateLimits = new Map<string, number>();
+  const refreshUserCounts = new Map<string, { count: number; windowStart: number }>();
+  const REFRESH_AGENT_RATE_LIMIT_MS = 5 * 60 * 1000;
+  const REFRESH_USER_LIMIT = 30;
+  const REFRESH_USER_WINDOW_MS = 60 * 60 * 1000;
+
+  const refreshRateLimitCleanupInterval = setInterval(() => {
+    const now = Date.now();
+    for (const [url, ts] of refreshAgentRateLimits) {
+      if (now - ts > 2 * REFRESH_AGENT_RATE_LIMIT_MS) refreshAgentRateLimits.delete(url);
+    }
+    for (const [user, state] of refreshUserCounts) {
+      if (now - state.windowStart > REFRESH_USER_WINDOW_MS) refreshUserCounts.delete(user);
+    }
+  }, REFRESH_AGENT_RATE_LIMIT_MS);
+  refreshRateLimitCleanupInterval.unref();
+
+  router.post("/registry/agents/:encodedUrl/refresh", ...complianceWriteMiddleware, async (req, res) => {
+    try {
+      const agentUrl = decodeURIComponent(req.params.encodedUrl);
+      if (!validateAgentUrlParam(agentUrl)) {
+        return res.status(400).json({ error: "Invalid agent URL" });
+      }
+      if (!req.user) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      // Owner OR AAO admin. Admin escape hatch lets staff fix things for
+      // any registered agent (mirrors how admin tools work elsewhere).
+      // Dev users carry an `isAdmin` flag on the dev session but aren't in
+      // the production `aao-admin` working group, so we honor both — same
+      // pattern as `requireAdmin` in middleware/auth.ts.
+      const [isOwner, isAaoAdmin] = await Promise.all([
+        verifyAgentOwnership(req.user.id, agentUrl),
+        isWebUserAAOAdmin(req.user.id),
+      ]);
+      const isDevAdmin = getDevUser(req)?.isAdmin === true;
+      if (!isOwner && !isAaoAdmin && !isDevAdmin) {
+        return res.status(403).json({ error: "You do not have permission to refresh this agent" });
+      }
+
+      const now = Date.now();
+
+      const lastRefresh = refreshAgentRateLimits.get(agentUrl);
+      if (lastRefresh && now - lastRefresh < REFRESH_AGENT_RATE_LIMIT_MS) {
+        const retryAfter = Math.ceil((REFRESH_AGENT_RATE_LIMIT_MS - (now - lastRefresh)) / 1000);
+        return res.status(429).json({ error: "Rate limit exceeded for this agent", retry_after: retryAfter });
+      }
+
+      const userState = refreshUserCounts.get(req.user.id);
+      if (userState && now - userState.windowStart < REFRESH_USER_WINDOW_MS) {
+        if (userState.count >= REFRESH_USER_LIMIT) {
+          return res.status(429).json({
+            error: "Hourly refresh limit exceeded",
+            retry_after: Math.ceil((REFRESH_USER_WINDOW_MS - (now - userState.windowStart)) / 1000),
+          });
+        }
+        userState.count++;
+      } else {
+        refreshUserCounts.set(req.user.id, { count: 1, windowStart: now });
+      }
+      refreshAgentRateLimits.set(agentUrl, now);
+
+      try {
+        const result = await crawler.refreshSingleAgent(agentUrl);
+        return res.json(result);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Probe failed';
+        if (/Monitoring paused/i.test(message)) {
+          return res.status(409).json({ error: message });
+        }
+        logger.warn({ agentUrl, err }, 'Manual agent refresh probe failed');
+        return res.status(502).json({ error: `Probe failed: ${message}` });
+      }
+    } catch (error) {
+      logger.error({ err: error, path: req.path }, "Failed to refresh agent");
+      res.status(500).json({ error: "Failed to refresh agent" });
     }
   });
 
