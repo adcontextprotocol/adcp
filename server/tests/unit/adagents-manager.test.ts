@@ -138,6 +138,46 @@ describe('AdAgentsManager', () => {
       expect(result.url).toBe('https://publisher.example/.well-known/adagents.json');
     });
 
+    it('does not recurse indefinitely when managerdomain points back to original domain', async () => {
+      mockedSafeFetch.mockImplementation(async (url) => {
+        if (url === 'https://publisher.example/.well-known/adagents.json') {
+          return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://publisher.example/ads.txt') {
+          return { status: 200, data: Buffer.from('# managerdomain=publisher.example\n'), headers: { 'content-type': 'text/plain' } };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+
+      const result = await manager.validateDomain('publisher.example');
+      expect(result.valid).toBe(false);
+      expect(result.warnings.some(w => w.message.includes('cycle detection'))).toBe(true);
+      expect(result.errors.some(e => e.field === 'http_status')).toBe(true);
+    });
+
+    it('enforces one-hop managerdomain fallback depth', async () => {
+      mockedSafeFetch.mockImplementation(async (url) => {
+        if (url === 'https://publisher.example/.well-known/adagents.json') {
+          return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://publisher.example/ads.txt') {
+          return { status: 200, data: Buffer.from('# managerdomain=manager1.example\n'), headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://manager1.example/.well-known/adagents.json') {
+          return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://manager1.example/ads.txt') {
+          return { status: 200, data: Buffer.from('# managerdomain=manager2.example\n'), headers: { 'content-type': 'text/plain' } };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+
+      const result = await manager.validateDomain('publisher.example');
+      expect(result.valid).toBe(false);
+      expect(result.warnings.some(w => w.message.includes('max fallback depth'))).toBe(true);
+      expect(result.errors.some(e => e.field === 'http_status')).toBe(true);
+    });
+
     it('handles network connection errors', async () => {
       mockedSafeFetch.mockRejectedValue(
         Object.assign(new Error('getaddrinfo ENOTFOUND nonexistent.example.com'), {

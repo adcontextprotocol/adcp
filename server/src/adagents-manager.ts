@@ -157,6 +157,14 @@ export class AdAgentsManager {
    * Validates a domain's adagents.json file
    */
   async validateDomain(domain: string): Promise<AdAgentsValidationResult> {
+    return this.validateDomainInternal(domain, 0, new Set<string>());
+  }
+
+  private async validateDomainInternal(
+    domain: string,
+    managerFallbackDepth: number,
+    visitedDomains: Set<string>
+  ): Promise<AdAgentsValidationResult> {
     // Normalize domain - remove protocol and trailing slash
     const normalizedDomain = domain.replace(/^https?:\/\//, '').replace(/\/$/, '');
     const url = `https://${normalizedDomain}/.well-known/adagents.json`;
@@ -193,8 +201,16 @@ export class AdAgentsManager {
         // managerdomain declaration, attempt discovery on the manager domain.
         if (response.status === 404) {
           const managerDomain = await this.tryResolveManagerDomain(normalizedDomain);
-          if (managerDomain) {
-            const managerResult = await this.validateDomain(managerDomain);
+          const isCycle = managerDomain ? visitedDomains.has(managerDomain) : false;
+          const isHopAllowed = managerFallbackDepth < 1;
+          if (managerDomain && !isCycle && isHopAllowed) {
+            const nextVisited = new Set(visitedDomains);
+            nextVisited.add(normalizedDomain);
+            const managerResult = await this.validateDomainInternal(
+              managerDomain,
+              managerFallbackDepth + 1,
+              nextVisited
+            );
             if (managerResult.valid) {
               return {
                 ...managerResult,
@@ -209,6 +225,16 @@ export class AdAgentsManager {
                 ],
               };
             }
+          } else if (managerDomain && isCycle) {
+            result.warnings.push({
+              field: 'managerdomain',
+              message: `Ignoring ads.txt managerdomain ${managerDomain} due to cycle detection`,
+            });
+          } else if (managerDomain && !isHopAllowed) {
+            result.warnings.push({
+              field: 'managerdomain',
+              message: `Ignoring ads.txt managerdomain ${managerDomain}: max fallback depth reached`,
+            });
           }
         }
         const statusMessage = response.status === 404
