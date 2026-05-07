@@ -251,6 +251,109 @@ describe('AdAgentsManager', () => {
       expect(result.warnings.some(w => w.message.includes('good-manager.example'))).toBe(true);
     });
 
+    it('skips #noagents managerdomain entry and uses next eligible entry', async () => {
+      mockedSafeFetch.mockImplementation(async (url) => {
+        if (url === 'https://publisher.example/.well-known/adagents.json') {
+          return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://publisher.example/ads.txt') {
+          return {
+            status: 200,
+            data: Buffer.from('MANAGERDOMAIN=blocked.example #NOAGENTS\nMANAGERDOMAIN=allowed.example\n'),
+            headers: { 'content-type': 'text/plain' },
+          };
+        }
+        if (url === 'https://allowed.example/.well-known/adagents.json') {
+          return {
+            status: 200,
+            data: buf({ authorized_agents: [{ url: 'https://agent.example', authorized_for: 'Allowed' }] }),
+            headers: { 'content-type': 'application/json' },
+          };
+        }
+        if (url === 'https://blocked.example/.well-known/adagents.json') {
+          throw new Error('blocked.example should be skipped due to #NOAGENTS');
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+
+      const result = await manager.validateDomain('publisher.example');
+      expect(result.valid).toBe(true);
+      expect(result.warnings.some(w => w.message.includes('allowed.example'))).toBe(true);
+    });
+
+    it('ignores managerdomain lines with invalid host token and continues scanning', async () => {
+      mockedSafeFetch.mockImplementation(async (url) => {
+        if (url === 'https://publisher.example/.well-known/adagents.json') {
+          return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://publisher.example/ads.txt') {
+          return {
+            status: 200,
+            data: Buffer.from('MANAGERDOMAIN=https://bad.example\nMANAGERDOMAIN=good.example\n'),
+            headers: { 'content-type': 'text/plain' },
+          };
+        }
+        if (url === 'https://good.example/.well-known/adagents.json') {
+          return {
+            status: 200,
+            data: buf({ authorized_agents: [{ url: 'https://agent.example', authorized_for: 'Good' }] }),
+            headers: { 'content-type': 'application/json' },
+          };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+
+      const result = await manager.validateDomain('publisher.example');
+      expect(result.valid).toBe(true);
+      expect(result.warnings.some(w => w.message.includes('good.example'))).toBe(true);
+    });
+
+    it('emits cycle warnings per entry and still tries later non-cyclic managerdomain entries', async () => {
+      mockedSafeFetch.mockImplementation(async (url) => {
+        if (url === 'https://publisher.example/.well-known/adagents.json') {
+          return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://publisher.example/ads.txt') {
+          return {
+            status: 200,
+            data: Buffer.from('MANAGERDOMAIN=publisher.example\nMANAGERDOMAIN=good.example\n'),
+            headers: { 'content-type': 'text/plain' },
+          };
+        }
+        if (url === 'https://good.example/.well-known/adagents.json') {
+          return {
+            status: 200,
+            data: buf({ authorized_agents: [{ url: 'https://agent.example', authorized_for: 'Good' }] }),
+            headers: { 'content-type': 'application/json' },
+          };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+
+      const result = await manager.validateDomain('publisher.example');
+      expect(result.valid).toBe(true);
+      expect(result.warnings.some(w => w.message.includes('good.example'))).toBe(true);
+    });
+
+    it('does not trigger manager fallback on non-404 adagents responses', async () => {
+      let calledAdsTxt = false;
+      mockedSafeFetch.mockImplementation(async (url) => {
+        if (url === 'https://publisher.example/.well-known/adagents.json') {
+          return { status: 500, data: 'Server error', headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://publisher.example/ads.txt') {
+          calledAdsTxt = true;
+          return { status: 200, data: Buffer.from('MANAGERDOMAIN=good.example\n'), headers: { 'content-type': 'text/plain' } };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+
+      const result = await manager.validateDomain('publisher.example');
+      expect(result.valid).toBe(false);
+      expect(calledAdsTxt).toBe(false);
+      expect(result.errors.some(e => e.message.includes('HTTP 500'))).toBe(true);
+    });
+
     it('handles network connection errors', async () => {
       mockedSafeFetch.mockRejectedValue(
         Object.assign(new Error('getaddrinfo ENOTFOUND nonexistent.example.com'), {
