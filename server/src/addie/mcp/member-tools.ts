@@ -84,7 +84,8 @@ import {
   deleteCommitteeDocument as deleteCommitteeDocumentService,
   WorkingGroupContentError,
 } from '../../services/working-group-content-service.js';
-import type { CommitteeDocumentType } from '../../types.js';
+import type { AgentType, CommitteeDocumentType } from '../../types.js';
+import { isValidAgentType } from '../../types.js';
 import { getPool, query } from '../../db/client.js';
 import { MemberSearchAnalyticsDatabase } from '../../db/member-search-analytics-db.js';
 import { OrganizationDatabase } from '../../db/organization-db.js';
@@ -1195,13 +1196,18 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'save_agent',
     description:
-      'Register an agent in the AAO registry on behalf of the current organization. Adds the agent to the org\'s member profile; surfaces in `/dashboard/agents`. New agents land with `members_only` visibility (discoverable to other Professional-tier-or-higher AAO members; not publicly listed in the directory or brand.json). To list publicly, the caller promotes the agent via the dashboard; public visibility requires Professional tier or higher and a primary brand domain. Auth modes: (1) none — public agent, no credentials; (2) static `auth_token` + `auth_type` (`bearer` or `basic`, stored encrypted); (3) `oauth_client_credentials` for machine-to-machine (RFC 6749 §4.4). For interactive OAuth user authorization, save with no auth fields and have the user complete the dashboard\'s **Authorize** flow afterward — `save_agent` does not collect end-user OAuth state. The agent\'s `type` is resolved server-side from the capability snapshot; the schema does not accept a `type` field. If the user mentions their MCP endpoint requires auth, lives at a non-root path (e.g. /adcp/mcp), or shows up as offline after saving, suggest setting `health_check_url` for a liveness fallback while they fix the underlying URL. See the "Registering an Agent in the AAO Registry" section of the rules for the intake script.',
-    usage_hints: 'use for "register my agent", "add an agent", "save my agent", "store my auth token", "configure client credentials". When the user opens the conversation with a registration intent and no details, follow the intake script in the rules — do not call save_agent until you have `agent_url` and an explicit auth-mode choice.',
+      'Register an agent in the AAO registry on behalf of the current organization. Adds the agent to the org\'s member profile; surfaces in `/dashboard/agents`. New agents land with `members_only` visibility (discoverable to other Professional-tier-or-higher AAO members; not publicly listed in the directory or brand.json). To list publicly, the caller promotes the agent via the dashboard; public visibility requires Professional tier or higher and a primary brand domain. Auth modes: (1) none — public agent, no credentials; (2) static `auth_token` + `auth_type` (`bearer` or `basic`, stored encrypted); (3) `oauth_client_credentials` for machine-to-machine (RFC 6749 §4.4). For interactive OAuth user authorization, save with no auth fields and have the user complete the dashboard\'s **Authorize** flow afterward — `save_agent` does not collect end-user OAuth state. The caller MUST declare the agent\'s `type` (`brand`, `rights`, `measurement`, `governance`, `creative`, `sales`, `buying`, `signals`); ask the owner — do not guess. Server-side smuggle protection still validates the declared type against the capability snapshot when one is available. If the user mentions their MCP endpoint requires auth, lives at a non-root path (e.g. /adcp/mcp), or shows up as offline after saving, suggest setting `health_check_url` for a liveness fallback while they fix the underlying URL. See the "Registering an Agent in the AAO Registry" section of the rules for the intake script.',
+    usage_hints: 'use for "register my agent", "add an agent", "save my agent", "store my auth token", "configure client credentials". When the user opens the conversation with a registration intent and no details, follow the intake script in the rules — do not call save_agent until you have `agent_url`, `type`, and an explicit auth-mode choice.',
     input_schema: {
       type: 'object',
       properties: {
         agent_url: { type: 'string', description: 'Agent URL' },
         agent_name: { type: 'string', description: 'Agent name' },
+        type: {
+          type: 'string',
+          enum: ['brand', 'rights', 'measurement', 'governance', 'creative', 'sales', 'buying', 'signals'],
+          description: 'What kind of agent this is. Required — ask the owner; do not guess. `brand` (brand-side intent), `rights` (rights/clearance), `measurement` (verification/attribution), `governance` (policy/compliance), `creative` (creative production/format), `sales` (publisher/sell-side inventory), `buying` (DSP/buy-side execution), `signals` (audience/signal provider).',
+        },
         auth_token: { type: 'string', description: 'Static auth token (stored encrypted). Mutually exclusive with oauth_client_credentials on any given save call.' },
         auth_type: { type: 'string', enum: ['bearer', 'basic'], description: 'How the auth_token is sent. "bearer" (default): sends Authorization: Bearer <token>. "basic": auth_token must be the base64-encoded "user:password" string, sent as Authorization: Basic <token>' },
         oauth_client_credentials: {
@@ -1221,7 +1227,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
         protocol: { type: 'string', enum: ['mcp', 'a2a'], description: 'Protocol (default: mcp)' },
         health_check_url: { type: 'string', description: 'Optional fallback liveness URL. The dashboard probe tries the protocol handshake first; if it fails and this URL is set, the probe GETs it and treats any 2xx as "online." Used by sellers whose protocol endpoint requires auth or is path-prefixed (e.g. /adcp/mcp). Liveness only — does not populate type or tools. Pass an empty string to clear a previously-set value.' },
       },
-      required: ['agent_url'],
+      required: ['agent_url', 'type'],
     },
   },
   {
@@ -5587,6 +5593,18 @@ export function createMemberToolHandlers(
     const authType: 'bearer' | 'basic' = rawAuthType === 'basic' ? 'basic' : 'bearer';
     const protocol = (input.protocol as 'mcp' | 'a2a') || 'mcp';
 
+    // Caller-declared agent type. Required at the schema level — the JSON-RPC
+    // layer has already enforced presence via input_schema.required, so this
+    // check is the runtime belt to the schema's suspenders. We only accept the
+    // 8 real values; 'unknown' is reserved for server-side smuggle protection
+    // when a snapshot exists but couldn't classify (resolveAgentTypes), never
+    // for client input.
+    const declaredType = input.type;
+    if (typeof declaredType !== 'string' || !isValidAgentType(declaredType) || declaredType === 'unknown') {
+      return 'Agent type is required. Please specify one of: brand, rights, measurement, governance, creative, sales, buying, signals.';
+    }
+    const agentType = declaredType as Exclude<AgentType, 'unknown'>;
+
     // null sentinel and explicit empty string both clear a previously-set
     // value; a present non-empty string is validated through the same SSRF
     // guard the OAuth token-endpoint path uses (cloud-metadata blocked
@@ -5652,16 +5670,25 @@ export function createMemberToolHandlers(
           agents.push({
             url: agentUrl,
             name: displayName,
+            type: agentType,
             visibility: 'members_only',
             ...(healthCheckUrl ? { health_check_url: healthCheckUrl } : {}),
           });
           await memberDb.updateProfile(profile.id, { agents });
-        } else if (clearHealthCheckUrl && (existing as any).health_check_url) {
-          delete (existing as any).health_check_url;
-          await memberDb.updateProfile(profile.id, { agents });
-        } else if (healthCheckUrl && (existing as any).health_check_url !== healthCheckUrl) {
-          (existing as any).health_check_url = healthCheckUrl;
-          await memberDb.updateProfile(profile.id, { agents });
+        } else {
+          let dirty = false;
+          if ((existing as any).type !== agentType) {
+            (existing as any).type = agentType;
+            dirty = true;
+          }
+          if (clearHealthCheckUrl && (existing as any).health_check_url) {
+            delete (existing as any).health_check_url;
+            dirty = true;
+          } else if (healthCheckUrl && (existing as any).health_check_url !== healthCheckUrl) {
+            (existing as any).health_check_url = healthCheckUrl;
+            dirty = true;
+          }
+          if (dirty) await memberDb.updateProfile(profile.id, { agents });
         }
         return { ok: true, createdProfile };
       } catch (err) {
