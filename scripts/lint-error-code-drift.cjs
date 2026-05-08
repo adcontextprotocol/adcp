@@ -4,10 +4,21 @@
  * maintenance branch (`3.0.x`).
  *
  * Policy: 3.0.x is wire-stable. Adding a new enum value is a wire change
- * (receivers may encounter unrecognized codes), so new codes default to
- * `held-for-next-minor` and ship in 3.1. The `backport-pending` disposition is
- * reserved for the narrow case of a prose-only or doc-comment-only change to
- * an existing code that needs to ship in 3.0.x.
+ * (a 3.0.x receiver decoding a 3.1 sender's `error.code` cannot match against
+ * an enum it doesn't carry, and JSON Schema `enum` is closed by default), so
+ * new codes default to `held-for-next-minor` and ship in 3.1+. The
+ * `backport-pending` disposition is reserved for the narrow case of a
+ * prose-only or doc-comment-only change to a code that ALREADY EXISTS on
+ * 3.0.x — the wire vocabulary is unchanged, only the description tightens.
+ *
+ * The strictness of "no enum additions in patch" is a function of the missing
+ * normative forward-compat rule on `error.code` decoding. Tracked in #4227 —
+ * once forward-compat decoding is normative, future maintenance lines can
+ * relax this default to additive-in-patch.
+ *
+ * Held codes carry a `target_version` ("3.1", "4.0", …) so the registry
+ * distinguishes "next planned minor" from "deferred to next major" without
+ * widening the disposition vocabulary.
  *
  * Why this exists: without a lint, the gap between source-on-main and 3.0.x
  * dist artifacts is invisible. Downstream consumers reading 3.0.x bundles
@@ -20,14 +31,23 @@
  * Failure modes:
  *  - Code in source on this branch but absent from 3.0.x AND missing a
  *    dispositions.json entry → ERROR (forces a decision).
- *  - Code in 3.0.x but absent from this branch → ERROR (3.0.x landed something
- *    that wasn't forward-merged back; real bug).
+ *  - Disposition value not in the allowed set → ERROR.
+ *  - `held-for-next-*` entry without a `target_version` → ERROR.
+ *  - `backport-pending` entry whose code is NOT already on 3.0.x → ERROR
+ *    (would make `backport-pending` a wire-additive masquerading as prose).
+ *  - `backport-pending` entry without a non-empty `note` → ERROR (the prose
+ *    contract is honor-system without a recorded justification).
+ *  - Code in 3.0.x but absent from this branch → ERROR (3.0.x landed
+ *    something that wasn't forward-merged back, or someone force-pushed
+ *    3.0.x backwards; either way, investigate).
  *  - dispositions.json entry for a code that's no longer ahead → WARN
  *    (cleanup needed; either the code was backported or removed).
  *  - dispositions.json entry with disposition: "unclassified" → WARN
  *    (decision still required; doesn't fail CI).
  *
  * No-op when running on the 3.0.x branch itself (nothing to compare to).
+ * On GitHub Actions, the workflow gates the step on github.ref/base_ref
+ * because the in-script branch check sees a detached HEAD on PR-merge refs.
  */
 
 'use strict';
@@ -46,6 +66,8 @@ const VALID_DISPOSITIONS = new Set([
   'held-for-next-major',
   'unclassified',
 ]);
+const REQUIRES_TARGET_VERSION = new Set(['held-for-next-minor', 'held-for-next-major']);
+const TARGET_VERSION_PATTERN = /^\d+\.\d+$/;
 
 function loadEnum(jsonText, label) {
   let parsed;
@@ -96,7 +118,12 @@ function loadDispositions() {
   if (!fs.existsSync(DISPOSITIONS_PATH)) {
     throw new Error(`Dispositions file missing: ${DISPOSITIONS_PATH}`);
   }
-  const raw = JSON.parse(fs.readFileSync(DISPOSITIONS_PATH, 'utf8'));
+  let raw;
+  try {
+    raw = JSON.parse(fs.readFileSync(DISPOSITIONS_PATH, 'utf8'));
+  } catch (err) {
+    throw new Error(`Could not parse ${DISPOSITIONS_PATH} as JSON: ${err.message}`);
+  }
   if (!raw.dispositions || typeof raw.dispositions !== 'object') {
     throw new Error(`${DISPOSITIONS_PATH}: missing or malformed "dispositions" object`);
   }
@@ -140,20 +167,59 @@ function main() {
         `  ${code}: unclassified — decide between backport-pending / held-for-next-minor / held-for-next-major.` +
         (entry.note ? ` (note: ${entry.note})` : '')
       );
+      continue;
+    }
+    if (REQUIRES_TARGET_VERSION.has(entry.disposition)) {
+      if (typeof entry.target_version !== 'string' || !TARGET_VERSION_PATTERN.test(entry.target_version)) {
+        errors.push(
+          `  ${code}: disposition="${entry.disposition}" requires a target_version field matching /^\\d+\\.\\d+$/ (e.g. "3.1", "4.0").`
+        );
+      }
+    }
+    if (entry.disposition === 'backport-pending') {
+      // backport-pending = prose-only fix to a code that already exists on
+      // 3.0.x. If the code is in `ahead`, by definition it's NOT on 3.0.x
+      // yet — so the disposition is a category error.
+      errors.push(
+        `  ${code}: disposition="backport-pending" but code is not present on ${branchRef}. ` +
+        `backport-pending is reserved for prose-only changes to existing codes; new wire codes must use held-for-next-minor or held-for-next-major.`
+      );
+    }
+  }
+
+  // Verify backport-pending entries record a justification note. Membership
+  // on 3.0.x is enforced in the per-ahead loop above for codes that ARE
+  // ahead; for entries whose code is neither ahead nor on 3.0.x we treat the
+  // entry as stale (handled by the stale-entry warning loop below) so we
+  // don't double-emit.
+  const aheadSetEarly = new Set(ahead);
+  for (const [code, entry] of Object.entries(dispositions)) {
+    if (entry && entry.disposition === 'backport-pending' && !aheadSetEarly.has(code)) {
+      if (!branchEnum.has(code)) {
+        // Falls through to stale-entry warning.
+        continue;
+      }
+      if (typeof entry.note !== 'string' || entry.note.trim().length === 0) {
+        errors.push(
+          `  ${code}: disposition="backport-pending" requires a non-empty note describing the prose-only change ` +
+          `(the prose contract is honor-system without a recorded justification).`
+        );
+      }
     }
   }
 
   for (const code of behind) {
     errors.push(
       `  ${code}: present on ${branchRef} but absent from this branch's source. ` +
-      `${MAINTENANCE_BRANCH} got an enum entry that was never forward-merged. Investigate.`
+      `Possible causes: a 3.0.x cherry-pick was not forward-merged back to main; or ${branchRef} was force-pushed backwards. Investigate before re-running.`
     );
   }
 
-  // Stale dispositions: entries for codes no longer ahead.
-  const aheadSet = new Set(ahead);
-  for (const code of Object.keys(dispositions)) {
-    if (!aheadSet.has(code)) {
+  // Stale dispositions: entries for codes that are neither ahead of 3.0.x nor
+  // (for backport-pending) on 3.0.x's enum.
+  for (const [code, entry] of Object.entries(dispositions)) {
+    const isBackportPendingOn30x = entry && entry.disposition === 'backport-pending' && branchEnum.has(code);
+    if (!aheadSetEarly.has(code) && !isBackportPendingOn30x) {
       warnings.push(
         `  ${code}: stale dispositions entry — code is no longer ahead of ${branchRef}. ` +
         `Remove from scripts/error-code-drift-dispositions.json.`
@@ -162,7 +228,7 @@ function main() {
   }
 
   // Counts by disposition for the summary.
-  const counts = { 'backport-pending': 0, 'held-for-next-minor': 0, 'held-for-next-major': 0, 'unclassified': 0 };
+  const counts = Object.fromEntries([...VALID_DISPOSITIONS].map(d => [d, 0]));
   for (const code of ahead) {
     const d = dispositions[code] && dispositions[code].disposition;
     if (counts[d] !== undefined) counts[d]++;
