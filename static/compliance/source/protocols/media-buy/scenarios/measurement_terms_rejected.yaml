@@ -106,7 +106,7 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
-          idempotency_key: "measurement-terms-probe-aggressive-v1"
+          idempotency_key: "$generate:uuid_v4#measurement_terms_rejected_aggressive_terms"
           start_time: "2026-05-01T00:00:00Z"
           end_time: "2026-05-31T23:59:59Z"
           packages:
@@ -163,7 +163,7 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
-          idempotency_key: "measurement-terms-probe-relaxed-v1"
+          idempotency_key: "$generate:uuid_v4#measurement_terms_rejected_relaxed_terms"
           start_time: "2026-05-01T00:00:00Z"
           end_time: "2026-05-31T23:59:59Z"
           packages:

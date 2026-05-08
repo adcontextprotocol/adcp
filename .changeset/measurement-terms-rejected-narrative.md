@@ -1,8 +1,10 @@
 ---
 ---
 
-spec(compliance): correct `measurement_terms_rejected` idempotency narrative
+fix(compliance): `measurement_terms_rejected` — UUID-aliased idempotency_keys + spec-aligned narrative
 
-The narrative on the `media_buy_seller/measurement_terms_rejected` storyboard told implementers the buyer "retries the same `create_media_buy` `idempotency_key` with an adjusted payload." That contradicts the spec — reusing a key against a different body MUST yield `IDEMPOTENCY_CONFLICT`. The sample payloads in the fixture already use distinct keys (`measurement-terms-probe-aggressive-v1` / `measurement-terms-probe-relaxed-v1`); only the prose was wrong. Rewrite the narrative to match the spec and the actual sample payloads.
+The `media_buy_seller/measurement_terms_rejected` storyboard shipped hardcoded `idempotency_key` literals on both `create_media_buy` steps. Combined with runner-side dynamic `start_time` substitution (the runner shifts stale dates forward to keep the buy future-dated), this produced **same key + different body** on every run against a long-running seller deployment, arming the spec-mandated `IDEMPOTENCY_CONFLICT` on the seller side. Switch to `$generate:uuid_v4#…` aliases so each run mints fresh keys (matches the established pattern across the storyboard suite).
 
-Refs adcontextprotocol/adcp-client#1586.
+Also rewrites the narrative, which previously told implementers the buyer "retries the same `create_media_buy` `idempotency_key` with an adjusted payload" — a direct spec violation — to describe minting a fresh key for the retry.
+
+Closes #4219. Refs adcontextprotocol/adcp-client#1586.
