@@ -2078,12 +2078,15 @@ export class HTTPServer {
     // outbound traffic to every registered agent. Per-agent refresh is
     // available to owners at POST /api/registry/agents/:encodedUrl/refresh.
     this.app.post("/api/crawler/run", requireAuth, requireAdmin, async (req, res) => {
-      // Crawler iterates sales agents — they're the ones with publisher
-      // authorizations and list_authorized_properties responses to walk.
-      // Pre-#3540 this filter was inverted (matched 'buying' against the
-      // accidentally-aligned classification); see #3774 for the sweep
-      // that closed the remaining gaps.
-      const agents = await this.agentService.listAgents("sales");
+      // Full-registry crawl: all registered agents. Sales agents drive the
+      // publisher adagents.json walk; all agent types get health + capability
+      // snapshots via refreshAgentSnapshots. Mirrors the periodic-crawl scope
+      // added in #4213 so a manual admin run and the scheduled run behave
+      // identically. `viewerHasApiAccess` defaults to false — members_only
+      // agents are excluded from both paths intentionally (periodic crawl
+      // probes the public-facing registry surface; refreshSingleAgent covers
+      // owner-triggered probes for members_only agents).
+      const agents = await this.agentService.listAgents();
       const result = await this.crawler.crawlAllAgents(agents);
       res.json(result);
     });
@@ -9031,16 +9034,17 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
     logger.info({ isWorker }, 'Process role resolved');
 
     if (isWorker) {
-      // Start periodic property crawler for sales agents — they're the
-      // ones with publisher authorizations and list_authorized_properties
-      // responses to walk. Pre-#3540 this filtered on 'buying' (inverted-
-      // but-aligned with the classification bug); see #3774 for the
-      // sweep that closed remaining gaps.
-      const salesAgents = await this.agentService.listAgents("sales");
-      if (salesAgents.length > 0) {
-        logger.debug({ salesAgentCount: salesAgents.length }, 'Starting property crawler');
-        this.crawler.startPeriodicCrawl(salesAgents, 360); // Crawl every 6 hours
-      }
+      // Start periodic registry crawler for all registered agents. Re-fetches
+      // the agent list on every tick so newly registered agents are picked up
+      // without a restart. Sales agents drive publisher adagents.json
+      // discovery; signals/buying/creative agents still need health +
+      // capability snapshots on the same cycle. `viewerHasApiAccess` defaults
+      // to false — members_only agents are intentionally excluded from the
+      // periodic crawl (the public-facing registry surface is the target);
+      // owner-triggered probes for members_only agents go through
+      // POST /api/registry/agents/:encodedUrl/refresh. Fixes #4213.
+      logger.debug('Starting registry crawler');
+      this.crawler.startPeriodicCrawl(() => this.agentService.listAgents(), 360); // Crawl every 6 hours
 
       // Crawl catalog domains for adagents.json (demand-driven queue)
       this.crawler.startPeriodicCatalogCrawl(30); // Process queue every 30 minutes
