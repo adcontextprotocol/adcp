@@ -55,7 +55,7 @@ A house publishes [`brand.json`](/dist/docs/3.0.7/brand-protocol/brand-json) at 
 
 A bilateral verification chain ties the two together: brand.json's `properties[].relationship` MUST match adagents.json's `delegation_type` for the inventory path to be valid. The brand-protocol's mutual-assertion model (RFC [#3533](https://github.com/adcontextprotocol/adcp/issues/3533)) — child brands declare a `parent_house`, parent houses reciprocate via `brand_refs[]` — produces a five-state trust signal (`inline` / `mutual_assertion` / `one_sided_brand` / `one_sided_house` / `standalone`) that downstream consumers can act on directly.
 
-The [AAO Verified](/dist/docs/3.0.7/building/aao-verified) mark, with `(Spec)` and `(Live)` qualifiers, continuously attests behavioral conformance through canonical test campaigns running against a seller's real ad-server integration.
+The [AAO Verified](/dist/docs/3.0.7/building/verification/aao-verified) mark, with `(Spec)` and `(Live)` qualifiers, continuously attests behavioral conformance through canonical test campaigns running against a seller's real ad-server integration.
 
 **What AdCP does not provide — three gaps to know.**
 
@@ -65,7 +65,7 @@ Second: **no buyer-side authorization primitive symmetric to `adagents.json`.** 
 
 Third: **no operator/human KYC primitive in the protocol.** The protocol does not carry an attestation that a human or organizational operator has been identity-verified by a KYC provider (Persona, Stripe Identity, Onfido) or rooted in an authoritative IdP. KYC is punted to the membership and account layer; protocol-side, only the cryptographic facts (which key signed which message) are normative. See [Known Limitations — Authentication and Identity](/dist/docs/3.0.7/reference/known-limitations#authentication-and-identity).
 
-→ [brand.json](/dist/docs/3.0.7/brand-protocol/brand-json) · [adagents.json and agent identity](/dist/docs/3.0.7/governance/property/adagents) · [AAO Verified](/dist/docs/3.0.7/building/aao-verified)
+→ [brand.json](/dist/docs/3.0.7/brand-protocol/brand-json) · [adagents.json and agent identity](/dist/docs/3.0.7/governance/property/adagents) · [AAO Verified](/dist/docs/3.0.7/building/verification/aao-verified)
 
 ---
 

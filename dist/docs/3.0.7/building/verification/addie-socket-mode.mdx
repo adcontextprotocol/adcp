@@ -16,7 +16,7 @@ When you're building an AdCP agent, the most useful loop is: run a storyboard ag
 
 | Use Socket Mode when… | Use the public-endpoint path when… |
 |---|---|
-| You're building or refactoring an agent and want fast feedback | You're ready for AAO's [(Spec) heartbeat](/dist/docs/3.0.7/building/aao-verified) on a stable test endpoint |
+| You're building or refactoring an agent and want fast feedback | You're ready for AAO's [(Spec) heartbeat](/dist/docs/3.0.7/building/verification/aao-verified) on a stable test endpoint |
 | Your dev agent runs on `localhost`, a Codespace, or behind a firewall | Your platform exposes a public test endpoint anyway |
 | You want Addie to run multiple storyboards interactively in chat | You want unattended, scheduled compliance runs |
 | You're a small team without infra to expose a sandbox endpoint | You operate at scale and prefer batch CI |
@@ -191,6 +191,6 @@ For tool-level visibility, log inside your `setRequestHandler` callbacks — Add
 - [`get_adcp_capabilities`](/dist/docs/3.0.7/protocol/get_adcp_capabilities) — the discovery tool every storyboard starts with
 - [Compliance Catalog](/dist/docs/3.0.7/building/compliance-catalog) — full list of available storyboards
 - [Get Test-Ready](/dist/docs/3.0.7/building/get-test-ready) — what your agent needs in place before any storyboard can pass
-- [AAO Verified](/dist/docs/3.0.7/building/aao-verified) — the public trust mark you graduate to once your agent is stable
+- [AAO Verified](/dist/docs/3.0.7/building/verification/aao-verified) — the public trust mark you graduate to once your agent is stable
 - Channel design: [adcp#3991](https://github.com/adcontextprotocol/adcp/issues/3991)
 - Deployment-scoped controller rule: [adcp#3986](https://github.com/adcontextprotocol/adcp/issues/3986)

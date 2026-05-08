@@ -27,7 +27,7 @@ There is one path: **an AAO member adds the agent to their member profile** via 
 
 **What this path attests:** the member has signed AAO terms; the URL, name, and contact are explicitly declared; the type is probe-verified. Visibility can be `public`, `members_only`, or `private` — see [Visibility](#visibility) below.
 
-There is no auto-population from crawled `adagents.json` files. Agents listed in third-party `adagents.json` files populate the publisher-authorization graph used by [Operator lookup](/dist/docs/3.0.7/registry/api-reference/authorization-lookups/operator-lookup), `/api/registry/lookup/domain`, and `hasValidAdagents`, but they do not create catalog entries.
+There is no auto-population from crawled `adagents.json` files. Agents listed in third-party `adagents.json` files populate the publisher-authorization graph used by [Operator lookup](/docs/registry/api-reference/authorization-lookups/operator-lookup), `/api/registry/lookup/domain`, and `hasValidAdagents`, but they do not create catalog entries.
 
 ## Programmatic registration (for CI, scripts, agents)
 
@@ -37,10 +37,10 @@ Authenticate with a WorkOS API key (`Authorization: Bearer sk_…`) or an OAuth 
 
 | Endpoint | Reference |
 |---|---|
-| `GET /api/me/agents` | [List my registered agents](/dist/docs/3.0.7/registry/api-reference/member-agents/list-my-registered-agents) |
-| `POST /api/me/agents` | [Register an agent](/dist/docs/3.0.7/registry/api-reference/member-agents/register-an-agent) |
-| `PATCH /api/me/agents/{url}` | [Update an agent](/dist/docs/3.0.7/registry/api-reference/member-agents/update-an-agent) |
-| `DELETE /api/me/agents/{url}` | [Remove an agent](/dist/docs/3.0.7/registry/api-reference/member-agents/remove-an-agent) |
+| `GET /api/me/agents` | [List my registered agents](/docs/registry/api-reference/member-agents/list-my-registered-agents) |
+| `POST /api/me/agents` | [Register an agent](/docs/registry/api-reference/member-agents/register-an-agent) |
+| `PATCH /api/me/agents/{url}` | [Update an agent](/docs/registry/api-reference/member-agents/update-an-agent) |
+| `DELETE /api/me/agents/{url}` | [Remove an agent](/docs/registry/api-reference/member-agents/remove-an-agent) |
 
 The path parameter on PATCH and DELETE is the agent's `url`, URL-encoded (e.g. `https%3A%2F%2Fagent.example.com%2Fmcp`). `POST` is idempotent on `url`: new entries return `201`; re-posting the same `url` updates the existing entry and returns `200`. Each successful write returns `{ agent, warnings? }` — `warnings` lists any tier-driven visibility downgrades (e.g. an Explorer-tier caller asking for `public` is stored as `members_only` with a `visibility_downgraded` warning).
 
@@ -106,10 +106,10 @@ console.log(yours);
 
 If your agent's URL is in the response, it is enrolled and `member` identifies the AAO organization that owns the listing. If it is not in the response, no AAO member has enrolled it — ask your operator to enroll it via their member profile, or [become a member](https://agenticadvertising.org/membership) and self-enroll.
 
-To check whether your agent is referenced in a publisher's `adagents.json` (for authorization purposes, separate from catalog enrollment), use [`/api/registry/lookup/domain/{domain}`](/dist/docs/3.0.7/registry/api-reference/authorization-lookups/domain-lookup) against the publisher's domain.
+To check whether your agent is referenced in a publisher's `adagents.json` (for authorization purposes, separate from catalog enrollment), call `/api/registry/lookup/domain/{domain}` against the publisher's domain.
 
 ## Related
 
-- [Operator lookup](/dist/docs/3.0.7/registry/api-reference/authorization-lookups/operator-lookup) — auth-aware per-entity view of agents and authorizations.
-- [List agents](/dist/docs/3.0.7/registry/api-reference/agent-discovery/list-agents) — full registry catalog.
-- [Request domain re-crawl](/dist/docs/3.0.7/registry/api-reference/agent-discovery/request-domain-re-crawl) — refresh a publisher's `adagents.json` mapping in the authorization graph.
+- [Operator lookup](/docs/registry/api-reference/authorization-lookups/operator-lookup) — auth-aware per-entity view of agents and authorizations.
+- [List agents](/docs/registry/api-reference/agent-discovery/list-agents) — full registry catalog.
+- [Request domain re-crawl](/docs/registry/api-reference/agent-discovery/request-domain-re-crawl) — refresh a publisher's `adagents.json` mapping in the authorization graph.

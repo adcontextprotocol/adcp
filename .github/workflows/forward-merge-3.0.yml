@@ -210,25 +210,26 @@ jobs:
                 #   identity.additionalProperties:true relaxation that 3.0.x
                 #   adopted in 3.0.5 (#3896). Both shapes converged on the
                 #   identity flip; main's superset wins.
+                # - static/compliance/source/universal/storyboard-schema.yaml:
+                #   doc-comment authoring schema. 3.0.x's clean-merged
+                #   additions (default_agent in #3897, provides_state_for in
+                #   #3734) are above the conflict region and merge
+                #   automatically; the only conflict is main's CANONICAL
+                #   CHECK ENUM block at the bottom of the file, which 3.0.x
+                #   doesn't have. `--ours` keeps main's enum block AND
+                #   preserves 3.0.x's upper additions (those weren't part
+                #   of the conflict). Verified manually on PRs #3902 (3.0.5),
+                #   the unmerged 3.0.6 forward-merge attempts, and #4225
+                #   (3.0.7). Promoted to allowlist after the third repeat.
                 #
                 # Remove these entries when 3.1.0 ships and main absorbs the
                 # 3.0.x line — these are temporary bridges, not permanent
                 # allowlist entries. First observed on the 3.0.5 forward-
                 # merge (manual resolution: PR #3902).
-                .github/workflows/training-agent-storyboards.yml|static/compliance/source/universal/runner-output-contract.yaml|static/schemas/source/core/error.json|static/schemas/source/protocol/get-adcp-capabilities-response.json)
+                .github/workflows/training-agent-storyboards.yml|static/compliance/source/universal/runner-output-contract.yaml|static/compliance/source/universal/storyboard-schema.yaml|static/schemas/source/core/error.json|static/schemas/source/protocol/get-adcp-capabilities-response.json)
                   git checkout --ours -- "$f"
                   git add -- "$f"
                   ;;
-                # static/compliance/source/universal/storyboard-schema.yaml
-                # is intentionally NOT auto-resolved. The file is the doc-
-                # comment authoring schema; both lines legitimately add new
-                # field documentation (3.0.x added `default_agent` in 3.0.5
-                # via #3897; main has its own additions like the CANONICAL
-                # CHECK ENUM block). `git checkout --ours -- <file>` would
-                # silently drop 3.0.x's clean-merged additions, so any
-                # conflict here needs human attention to merge both sides'
-                # new doc blocks. Falls through to the UNEXPECTED handler
-                # below by design.
                 *)
                   UNEXPECTED="$UNEXPECTED $f"
                   ;;
