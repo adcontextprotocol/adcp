@@ -1,0 +1,383 @@
+id: creative_ad_server
+version: "1.1.0"
+title: "Creative ad server"
+protocol: creative
+category: creative_ad_server
+summary: "Stateful ad server with pre-loaded creatives. Generates serving tags per media buy. Optionally bills through AdCP."
+track: creative
+required_tools:
+  - build_creative
+
+# Cross-step assertion (adcp#2664). status.monotonic rejects resource
+# status transitions observed across steps that aren't on the spec
+# lifecycle graph — e.g. approved → processing on a creative asset.
+invariants:
+  - status.monotonic
+
+narrative: |
+  You run a creative ad server — think Innovid, Flashtalking, or CM360. Your clients
+  have already uploaded their creatives through your UI. Buyers connect to browse your
+  creative library and request serving tags for their media buys.
+
+  Your agent is stateful: creatives already exist in your system. The buyer never pushes
+  assets to you. Instead, they browse your library, pick creatives, and ask you to generate
+  tags for specific placements. For a campaign with 25 media buys, you'll generate 25 tags.
+
+  Billing is optional. If you bill through AdCP, the buyer's account drives the
+  rate card: list_creatives surfaces pricing_options, build_creative returns the
+  applied pricing_option_id and vendor_cost, and report_usage closes the loop
+  after delivery. If you bill out of band (flat license, SaaS contract, bundled
+  enterprise agreement — CM360 is the canonical example), omit the pricing fields
+  and surface report_usage records as not accepted rather than fake-accepting.
+  response_schema validates shape in both cases; the specialism doesn't force a
+  billing business model on you.
+
+  This storyboard walks through that flow from the buyer's perspective.
+
+agent:
+  interaction_model: stateful_preloaded
+  capabilities:
+    - has_creative_library
+  examples:
+    - "Innovid"
+    - "Flashtalking"
+    - "CM360"
+
+caller:
+  role: buyer_agent
+  example: "Scope3 (DSP)"
+
+prerequisites:
+  description: |
+    Creatives must already exist in the ad server's library, loaded through the
+    platform's own UI or API. The buyer does not push assets — they browse and
+    request tags for what's already there.
+
+    Pricing is optional. Ad servers that bill through AdCP (rate-carded creative
+    serving) expose pricing_options on creatives and pricing_option_id on build
+    responses. Ad servers that bill out of band (flat license, SaaS contract, or
+    bundled enterprise agreement — e.g. CM360) return creatives and tags without
+    those fields. Both shapes are conformant; response_schema validates shape when
+    the fields are present.
+  controller_seeding: true
+
+fixtures:
+  creatives:
+    - creative_id: "campaign_hero_video"
+      status: "approved"
+      format_id:
+        id: "vast_30s"
+      pricing_options:
+        - pricing_option_id: "po_vast_30s_cpm"
+          pricing_model: "cpm"
+          rate: 0.50
+          currency: "USD"
+
+phases:
+  - id: capability_discovery
+    title: "Capability discovery"
+    narrative: |
+      The buyer calls get_adcp_capabilities to confirm the agent supports creative operations before browsing or building creatives.
+
+    steps:
+      - id: get_capabilities
+        title: "Check agent capabilities"
+        narrative: |
+          Verify that the agent declares the expected protocol support before
+          proceeding with domain-specific operations.
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: capability_discovery
+        stateful: false
+        expected: |
+          Return capabilities declaring creative in supported_protocols, confirming the agent handles creative operations.
+        sample_request:
+          context:
+            correlation_id: "creative_ad_server--get_capabilities"
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json schema"
+          - check: field_present
+            path: "supported_protocols"
+            description: "Agent declares supported protocols"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "creative_ad_server--get_capabilities"
+            description: "Context correlation_id returned unchanged"
+  - id: browse_library
+    title: "Browse the creative library"
+    narrative: |
+      The buyer connects to your ad server and wants to see what creatives are
+      available for a campaign. They call list_creatives to browse concepts and
+      individual creatives in your library.
+
+      If your agent bills through AdCP and the buyer provides an account, each
+      creative includes the applicable rate from the account's rate card. If you
+      bill out of band, pricing_options is omitted.
+
+    steps:
+      - id: list_creatives
+        title: "Browse available creatives"
+        narrative: |
+          The buyer asks: "What creatives do you have for this advertiser?" This is
+          the primary entry point for ad server interactions.
+
+          The buyer sends include_pricing=true and an account reference. If your
+          agent bills through AdCP, each creative returns pricing_options from the
+          account's rate card; vendors may offer multiple options (volume tiers,
+          context-specific rates, or different models per product line). If your
+          agent bills out of band (flat license, SaaS contract, or bundled
+          enterprise agreement), omit pricing_options — response_schema validates
+          shape either way.
+        task: list_creatives
+        schema_ref: "creative/list-creatives-request.json"
+        response_schema_ref: "creative/list-creatives-response.json"
+        doc_ref: "/creative/task-reference/list_creatives"
+        comply_scenario: creative_flow
+        stateful: true
+        expected: |
+          Return creatives from your library. Each creative should include:
+          - creative_id (your platform's identifier)
+          - format_id referencing the creative's format
+          - name and status (approved, pending_review, rejected)
+          - concept_id grouping related creatives across sizes
+          - pricing_options array with pricing_option_id, model, rate, currency —
+            only when your agent bills through AdCP and include_pricing=true with
+            an account provided. Agents that bill out of band omit this field.
+
+        sample_request:
+          account:
+            account_id: "acct_acme_creative"
+          include_pricing: true
+          filters:
+            statuses:
+              - "approved"
+
+          context:
+            correlation_id: "creative_ad_server--list_creatives"
+        validations:
+          - check: response_schema
+            description: "Response matches list-creatives-response.json schema. Validates pricing_options shape when present; absence is conformant for agents that bill out of band."
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "creative_ad_server--list_creatives"
+            description: "Context correlation_id returned unchanged"
+      - id: list_output_formats
+        title: "Check available output formats"
+        narrative: |
+          The buyer checks what output formats your ad server supports. For an ad
+          server, this is typically the tag formats you can generate — HTML, JavaScript,
+          VAST, native. The input formats are less relevant because creatives are already
+          in your system.
+        task: list_creative_formats
+        schema_ref: "creative/list-creative-formats-request.json"
+        response_schema_ref: "creative/list-creative-formats-response.json"
+        doc_ref: "/creative/task-reference/list_creative_formats"
+        comply_scenario: creative_sync
+        stateful: false
+        expected: |
+          Return the output formats you support. For an ad server, these are typically
+          tag formats (HTML, JavaScript, VAST) rather than visual ad formats.
+
+  - id: generate_tags
+    title: "Generate serving tags"
+    narrative: |
+      The buyer has selected creatives from your library and now needs serving tags
+      for their media buys. They call build_creative for each media buy/package
+      combination, passing the creative_id, account, and the context needed to
+      generate the right tag.
+
+      If your agent bills through AdCP, the response carries pricing_option_id and
+      vendor_cost (zero at build time for CPM — cost accrues on impressions). If
+      your agent bills out of band, omit these fields; the manifest is the
+      required output.
+
+    steps:
+      - id: build_tag
+        title: "Generate a tag for a media buy"
+        narrative: |
+          The buyer requests a serving tag for a specific creative, format, and media
+          buy. Your ad server generates a tag scoped to that placement.
+
+          For Innovid, this produces a VAST tag for a CTV placement. For Flashtalking,
+          this might produce an HTML tag for a display placement. The media_buy_id and
+          package_id provide the trafficking context.
+
+          Agents that bill through AdCP return pricing_option_id and vendor_cost so
+          the buyer knows which rate applies. Agents that bill out of band omit
+          those fields.
+        task: build_creative
+        schema_ref: "media-buy/build-creative-request.json"
+        response_schema_ref: "media-buy/build-creative-response.json"
+        doc_ref: "/creative/task-reference/build_creative"
+        comply_scenario: creative_flow
+        stateful: true
+        expected: |
+          Return a creative manifest with the serving tag. The output should include:
+          - An HTML, JavaScript, or VAST asset containing the tag
+          - The format_id matching the target format
+          - Macro placeholders (CLICK_URL, CACHEBUSTER) if applicable
+          - pricing_option_id, vendor_cost, and currency — only when your agent
+            bills through AdCP. Agents billing out of band omit these fields.
+
+        sample_request:
+          creative_id: "campaign_hero_video"
+          account:
+            account_id: "acct_acme_creative"
+          target_format_id:
+            agent_url: "https://your-ad-server.example.com"
+            id: "vast_30s"
+          media_buy_id: "mb_summer_campaign_001"
+          package_id: "pkg_ctv_premium"
+
+          idempotency_key: "$generate:uuid_v4#creative_ad_server_generate_tags_build_tag"
+          context:
+            correlation_id: "creative_ad_server--build_tag"
+        validations:
+          - check: response_schema
+            description: "Response matches build-creative-response.json schema"
+          - check: field_present
+            path: "creative_manifest.assets"
+            description: "Output includes a serving tag asset"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "creative_ad_server--build_tag"
+            description: "Context correlation_id returned unchanged"
+  - id: track_delivery
+    title: "Track creative delivery"
+    narrative: |
+      After the campaign runs, the buyer checks how each creative performed. They call
+      get_creative_delivery to get variant-level delivery data — impressions, spend, and
+      breakdowns by creative variant.
+
+    steps:
+      - id: get_delivery
+        title: "Get creative delivery metrics"
+        narrative: |
+          The buyer asks: "How did my creatives perform across the media buys?" Your ad
+          server returns delivery data per creative, including impressions, spend, and
+          variant-level breakdowns.
+        task: get_creative_delivery
+        schema_ref: "creative/get-creative-delivery-request.json"
+        response_schema_ref: "creative/get-creative-delivery-response.json"
+        doc_ref: "/creative/task-reference/get_creative_delivery"
+        comply_scenario: creative_flow
+        stateful: true
+        expected: |
+          Return per-creative delivery metrics including:
+          - Impressions and spend per creative
+          - Variant-level breakdowns (which version of each creative was served)
+          - Media buy context (which buys each creative was active on)
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_ids:
+            - "mb_summer_campaign_001"
+
+          context:
+            correlation_id: "creative_ad_server--get_delivery"
+          ext:
+            test_platform:
+              test_run: true
+        validations:
+          - check: response_schema
+            description: "Response matches get-creative-delivery-response.json schema"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "creative_ad_server--get_delivery"
+            description: "Context correlation_id returned unchanged"
+  - id: report_billing
+    title: "Report usage for billing"
+    narrative: |
+      After delivery, the buyer reports creative usage to the ad server. The billing
+      path is optional at the specialism level — agents that bill through AdCP
+      accept the record and reconcile against their rate card; agents that bill
+      out of band return accepted: 0 with an entry in the errors array pointing at
+      the offending usage record and a message explaining that billing is handled
+      out of band for this account. response_schema validates the response shape
+      either way.
+
+    steps:
+      - id: report_usage
+        title: "Report impressions and cost"
+        narrative: |
+          The buyer sends a usage report covering a billing period. Each record
+          includes the creative_id, pricing_option_id (from the build_creative
+          response — omitted by agents that bill out of band), impressions served,
+          and the computed vendor_cost. The sample_request below is written for
+          the AdCP-billed case; out-of-band agents receive the same request shape
+          and decide the response.
+
+          Agents that bill through AdCP verify the rate and return accepted: 1
+          with empty errors. Agents that bill out of band return accepted: 0 and
+          populate errors with a field pointing at the offending record (e.g.
+          `usage[0].pricing_option_id`) and a human-readable message. Don't
+          fake-accept records you won't bill on — silent acceptance breaks
+          reconciliation for buyers who trust the response. A standard error
+          code for "billing is handled out of band" is not yet defined in the
+          spec; vendor codes are fine today.
+        task: report_usage
+        schema_ref: "account/report-usage-request.json"
+        response_schema_ref: "account/report-usage-response.json"
+        doc_ref: "/accounts/tasks/report_usage"
+        comply_scenario: creative_flow
+        stateful: true
+        expected: |
+          Return a response matching the report-usage-response.json schema.
+          Agents that bill through AdCP return accepted: 1 and empty errors.
+          Agents that bill out of band return accepted: 0 with an errors entry
+          pointing at the offending record and explaining that billing is
+          handled out of band.
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          idempotency_key: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+          reporting_period:
+            start: "2026-03-01T00:00:00Z"
+            end: "2026-03-31T23:59:59Z"
+          usage:
+            - account:
+                account_id: "acct_acme_creative"
+              creative_id: "campaign_hero_video"
+              pricing_option_id: "po_vast_30s_cpm"
+              impressions: 2400000
+              vendor_cost: 1200.00
+              currency: "USD"
+
+          context:
+            correlation_id: "creative_ad_server--report_usage"
+        validations:
+          - check: response_schema
+            description: "Response matches report-usage-response.json schema"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "creative_ad_server--report_usage"
+            description: "Context correlation_id returned unchanged"
