@@ -116,7 +116,7 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
-          idempotency_key: "inventory-list-no-match-v1"
+          idempotency_key: "$generate:uuid_v4#inventory_list_no_match_create_buy"
           start_time: "2026-07-01T00:00:00Z"
           end_time: "2026-09-30T23:59:59Z"
           packages:
