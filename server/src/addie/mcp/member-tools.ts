@@ -3618,38 +3618,12 @@ export function createMemberToolHandlers(
           }
         }
 
-        // Legacy write to agent_contexts + agent_test_history. Retained ONLY
-        // for non-owner runs so a third-party who runs evaluate_agent_quality
-        // against someone else's agent still has a session-scoped audit trail
-        // (their own org's agent_test_history). Owner runs already wrote
-        // canonical state above (PR #4250); writing twice would split the
-        // audit and re-introduce the dual-write bug PR #4247 is closing.
-        //
-        // PR 4 of #4247 collapses agent_contexts.last_test_* into a derived
-        // view, after which this legacy block (and recordTest itself) drop
-        // entirely.
-        if (!isAgentOwner) {
-          try {
-            const context = await agentContextDb.getByOrgAndUrl(organizationId, resolved.resolvedUrl);
-            if (context) {
-              await agentContextDb.recordTest({
-                agent_context_id: context.id,
-                scenario: 'quality_evaluation',
-                overall_passed: result.overall_status === 'passing',
-                steps_passed: result.summary.tracks_passed,
-                steps_failed: result.summary.tracks_failed,
-                total_duration_ms: result.total_duration_ms,
-                summary: result.summary.headline,
-                dry_run: true,
-                triggered_by: 'user',
-                user_id: memberContext?.workos_user?.workos_user_id,
-                agent_profile_json: result.agent_profile,
-              });
-            }
-          } catch (error) {
-            logger.debug({ error }, 'Could not record quality evaluation result');
-          }
-        }
+        // Non-owner runs are now session-scoped — they return results to
+        // the caller in the response and do not persist anywhere. The legacy
+        // recordTest path that wrote to agent_test_history was dropped in
+        // migration 474 (#4247 final cleanup). Strangers testing someone
+        // else's agent no longer leave persistent state in the registry,
+        // matching the "owner-only canonical writes" policy from #4247.
       }
 
       // Build structured output for Addie to interpret
@@ -4123,33 +4097,18 @@ export function createMemberToolHandlers(
         return `Agent at ${resolved.resolvedUrl} requires authentication. Use \`save_agent\` to store credentials first, then try again.`;
       }
 
-      // Record the run in agent_test_history when we have a saved
-      // agent_context for this org+url. Mirrors evaluate_agent_quality's
-      // pattern; powers the "agent not tested in 14d" prompt rule.
-      // Storyboard runs don't carry a structured agent_profile (only
-      // evaluate_agent_quality probes get_adcp_capabilities), so we
-      // omit agent_profile_json — readers tolerate null.
-      if (organizationId) {
-        try {
-          const context = await agentContextDb.getByOrgAndUrl(organizationId, resolved.resolvedUrl);
-          if (context) {
-            await agentContextDb.recordTest({
-              agent_context_id: context.id,
-              scenario: `storyboard:${sb.id}`,
-              overall_passed: result.overall_passed,
-              steps_passed: result.passed_count,
-              steps_failed: result.failed_count,
-              total_duration_ms: result.total_duration_ms,
-              summary: result.storyboard_title,
-              dry_run: dryRun,
-              triggered_by: 'user',
-              user_id: memberContext?.workos_user?.workos_user_id,
-            });
-          }
-        } catch (error) {
-          logger.debug({ error }, 'Could not record storyboard run');
-        }
-      }
+      // run_storyboard runs a single storyboard (vs evaluate_agent_quality's
+      // full comply suite). Single-storyboard runs do not currently write
+      // canonical state — that would require synthesizing a comply-shaped
+      // result with one track, which over-states the test coverage. The
+      // legacy recordTest call that wrote to agent_test_history was dropped
+      // in migration 474 (#4247 final cleanup); single-storyboard runs are
+      // exploratory and remain session-scoped.
+      //
+      // If a future track wants to surface storyboard runs in
+      // agent_compliance_runs as a distinct triggered_by value (e.g.
+      // 'storyboard_test'), open a follow-up — that's a schema change with
+      // its own design discussion.
 
       let output = '';
       if (resolved.source === 'saved') output += '_Using saved credentials._\n\n';

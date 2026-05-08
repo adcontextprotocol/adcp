@@ -35,7 +35,11 @@ export interface AgentContext {
   // Discovery cache
   tools_discovered: string[] | null;
   last_discovered_at: Date | null;
-  // Test history
+  // Test history — derived from agent_compliance_runs via the
+  // `agent_context_with_latest_test` view (migration 473). The underlying
+  // columns on agent_contexts were dropped in migration 474; readers
+  // continue to see the same field names because the view aliases the
+  // canonical_* columns back to the original names.
   last_test_scenario: string | null;
   last_test_passed: boolean | null;
   last_test_summary: string | null;
@@ -81,24 +85,10 @@ export interface OAuthClientCredentials {
   auth_method?: 'basic' | 'body';
 }
 
-export interface AgentTestHistory {
-  id: string;
-  agent_context_id: string;
-  scenario: string;
-  overall_passed: boolean;
-  steps_passed: number;
-  steps_failed: number;
-  total_duration_ms: number | null;
-  summary: string | null;
-  dry_run: boolean;
-  brief: string | null;
-  triggered_by: string | null;
-  user_id: string | null;
-  steps_json: any;
-  agent_profile_json: any;
-  started_at: Date;
-  completed_at: Date | null;
-}
+// AgentTestHistory interface and RecordTestInput removed in migration 474.
+// agent_test_history table dropped; owner test results live in
+// agent_compliance_runs (canonical) via evaluate_agent_quality's
+// owner-test write path.
 
 export interface CreateAgentContextInput {
   organization_id: string;
@@ -114,25 +104,9 @@ export interface UpdateAgentContextInput {
   agent_type?: AgentType;
   protocol?: Protocol;
   tools_discovered?: string[];
-  last_test_scenario?: string;
-  last_test_passed?: boolean;
-  last_test_summary?: string;
-}
-
-export interface RecordTestInput {
-  agent_context_id: string;
-  scenario: string;
-  overall_passed: boolean;
-  steps_passed: number;
-  steps_failed: number;
-  total_duration_ms?: number;
-  summary?: string;
-  dry_run?: boolean;
-  brief?: string;
-  triggered_by?: string;
-  user_id?: string;
-  steps_json?: any;
-  agent_profile_json?: any;
+  // last_test_* fields removed — derived from agent_compliance_runs via
+  // the agent_context_with_latest_test view (migrations 473 + 474).
+  // Owner test runs write to canonical state via recordComplianceRun.
 }
 
 function getTokenHint(token: string, authType: AuthType = 'bearer'): string {
@@ -370,18 +344,10 @@ export class AgentContextDatabase {
       updates.push(`last_discovered_at = NOW()`);
       values.push(input.tools_discovered);
     }
-    if (input.last_test_scenario !== undefined) {
-      updates.push(`last_test_scenario = $${paramIndex++}`);
-      values.push(input.last_test_scenario);
-    }
-    if (input.last_test_passed !== undefined) {
-      updates.push(`last_test_passed = $${paramIndex++}`);
-      values.push(input.last_test_passed);
-    }
-    if (input.last_test_summary !== undefined) {
-      updates.push(`last_test_summary = $${paramIndex++}`);
-      values.push(input.last_test_summary);
-    }
+    // last_test_* SET branches removed — those columns no longer exist on
+    // agent_contexts (migration 474). Owner test runs persist via
+    // recordComplianceRun; the values flow back through
+    // agent_context_with_latest_test on read.
 
     if (updates.length === 0) {
       return this.getById(id);
@@ -390,40 +356,17 @@ export class AgentContextDatabase {
     updates.push('updated_at = NOW()');
     values.push(id);
 
-    const result = await query(
+    // UPDATE the table, then read back through the view so derived
+    // last_test_* fields are populated. RETURNING off the bare table no
+    // longer carries those fields, and refetching via getById is the
+    // cleanest way to keep the AgentContext shape stable for callers.
+    await query(
       `UPDATE agent_contexts
        SET ${updates.join(', ')}
-       WHERE id = $${paramIndex}
-       RETURNING
-         id,
-         organization_id,
-         agent_url,
-         agent_name,
-         agent_type,
-         protocol,
-         auth_token_encrypted IS NOT NULL as has_auth_token,
-         auth_token_hint,
-         auth_type,
-         oauth_access_token_encrypted IS NOT NULL as has_oauth_token,
-         oauth_refresh_token_encrypted IS NOT NULL as has_oauth_refresh_token,
-         oauth_token_expires_at,
-         oauth_client_id IS NOT NULL as has_oauth_client,
-         (oauth_cc_token_endpoint IS NOT NULL
-           AND oauth_cc_client_id IS NOT NULL
-           AND oauth_cc_client_secret_encrypted IS NOT NULL) as has_oauth_client_credentials,
-         tools_discovered,
-         last_discovered_at,
-         last_test_scenario,
-         last_test_passed,
-         last_test_summary,
-         last_tested_at,
-         total_tests_run,
-         created_at,
-         updated_at,
-         created_by`,
+       WHERE id = $${paramIndex}`,
       values
     );
-    return result.rows[0] || null;
+    return this.getById(id);
   }
 
   /**
@@ -906,103 +849,15 @@ export class AgentContextDatabase {
     return (result.rowCount ?? 0) > 0;
   }
 
-  /**
-   * Record a test run
-   */
-  async recordTest(input: RecordTestInput): Promise<AgentTestHistory> {
-    // Update the agent context
-    await query(
-      `UPDATE agent_contexts
-       SET
-         last_test_scenario = $1,
-         last_test_passed = $2,
-         last_test_summary = $3,
-         last_tested_at = NOW(),
-         total_tests_run = total_tests_run + 1,
-         updated_at = NOW()
-       WHERE id = $4`,
-      [input.scenario, input.overall_passed, input.summary || null, input.agent_context_id]
-    );
-
-    // Insert history record
-    const result = await query(
-      `INSERT INTO agent_test_history (
-        agent_context_id,
-        scenario,
-        overall_passed,
-        steps_passed,
-        steps_failed,
-        total_duration_ms,
-        summary,
-        dry_run,
-        brief,
-        triggered_by,
-        user_id,
-        steps_json,
-        agent_profile_json,
-        completed_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW())
-      RETURNING *`,
-      [
-        input.agent_context_id,
-        input.scenario,
-        input.overall_passed,
-        input.steps_passed,
-        input.steps_failed,
-        input.total_duration_ms || null,
-        input.summary || null,
-        input.dry_run ?? true,
-        input.brief || null,
-        input.triggered_by || null,
-        input.user_id || null,
-        input.steps_json ? JSON.stringify(input.steps_json) : null,
-        input.agent_profile_json ? JSON.stringify(input.agent_profile_json) : null,
-      ]
-    );
-
-    return result.rows[0];
-  }
-
-  /**
-   * Get test history for an agent
-   */
-  async getTestHistory(agentContextId: string, limit: number = 20): Promise<AgentTestHistory[]> {
-    const result = await query(
-      `SELECT *
-       FROM agent_test_history
-       WHERE agent_context_id = $1
-       ORDER BY started_at DESC
-       LIMIT $2`,
-      [agentContextId, limit]
-    );
-    return result.rows;
-  }
-
-  /**
-   * Most recent agent test the user has run, across all of their saved
-   * agents. Powers the "agent not tested in X days" suggested-prompts
-   * rule for builder personas.
-   *
-   * Returns null if the user has never tested any registered agent.
-   * Tests against the public test agent or unsaved URLs are not
-   * recorded in agent_test_history (they don't have an agent_context),
-   * so they don't count here either — which is the right semantic for
-   * the rule's audience (builders with their own seller agent).
-   */
-  async getLatestTestForUser(workosUserId: string): Promise<{
-    started_at: Date;
-    overall_passed: boolean;
-  } | null> {
-    const result = await query<{ started_at: Date; overall_passed: boolean }>(
-      `SELECT started_at, overall_passed
-         FROM agent_test_history
-         WHERE user_id = $1
-         ORDER BY started_at DESC
-         LIMIT 1`,
-      [workosUserId]
-    );
-    return result.rows[0] ?? null;
-  }
+  // recordTest, getTestHistory, getLatestTestForUser removed in migration 474.
+  //
+  // Owner-triggered test runs persist via complianceDb.recordComplianceRun
+  // with triggered_by='owner_test' (PR #4250). Read-side query for "latest
+  // test by this user/org" goes through the agent_context_with_latest_test
+  // view (PR #4268), which derives last_tested_at from
+  // agent_compliance_runs scoped by (triggered_org_id, agent_url).
+  // Third-party (non-owner) runs are session-scoped only — they return
+  // results in the response and do not persist anywhere.
 
   /**
    * Infer agent type from discovered tools
