@@ -57,7 +57,7 @@ phases:
         expected: |
           The governance agent acknowledges the plan.
         sample_request:
-          idempotency_key: "comply-gov-recovery-sync-plans-v1"
+          idempotency_key: "$generate:uuid_v4#governance_denied_recovery_sync_plans"
           plans:
             - plan_id: "comply-gov-recovery-plan"
               brand:
@@ -181,7 +181,7 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
-          idempotency_key: "gov-recovery-initial-denied-v1"
+          idempotency_key: "$generate:uuid_v4#governance_denied_recovery_create_media_buy_denied"
           start_time: "2026-04-01T00:00:00Z"
           end_time: "2026-06-30T23:59:59Z"
           packages:
@@ -226,7 +226,7 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
-          idempotency_key: "gov-recovery-retry-approved-v1"
+          idempotency_key: "$generate:uuid_v4#governance_denied_recovery_create_media_buy_retry"
           start_time: "2026-04-01T00:00:00Z"
           end_time: "2026-06-30T23:59:59Z"
           packages:

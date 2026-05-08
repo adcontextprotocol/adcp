@@ -103,7 +103,7 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
-          idempotency_key: "pending-creatives-transition-v1"
+          idempotency_key: "$generate:uuid_v4#pending_creatives_to_start_create_buy_no_creatives"
           start_time: "2026-08-01T00:00:00Z"
           end_time: "2026-08-31T23:59:59Z"
           packages:
