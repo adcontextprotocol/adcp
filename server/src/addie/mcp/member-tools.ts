@@ -3562,8 +3562,61 @@ export function createMemberToolHandlers(
         );
       }
 
-      // Record result if the user has an org with this agent saved
+      // Record result when the user has an org context for this agent.
       if (organizationId) {
+        // Write to canonical compliance tables when the calling org owns this agent.
+        // Mirrors resolveAgentOwnerOrg (registry-api.ts:4733) — joins organization_memberships
+        // to verify the acting user is still an active member of the owning org.
+        // Non-owner runs skip the canonical write and fall through to the legacy
+        // agent_test_history path below.
+        const workosUserId = memberContext?.workos_user?.workos_user_id;
+        let isAgentOwner = false;
+        if (workosUserId) {
+          try {
+            const ownerCheck = await query(
+              `SELECT 1 FROM member_profiles mp
+               JOIN organization_memberships om
+                 ON om.workos_organization_id = mp.workos_organization_id
+               WHERE mp.workos_organization_id = $1
+                 AND mp.agents @> $2::jsonb
+                 AND om.workos_user_id = $3
+               LIMIT 1`,
+              [organizationId, JSON.stringify([{ url: resolved.resolvedUrl }]), workosUserId],
+            );
+            isAgentOwner = ownerCheck.rows.length > 0;
+          } catch (ownerCheckError) {
+            logger.warn({ ownerCheckError }, 'evaluate_agent_quality: owner check failed, skipping canonical write');
+          }
+        }
+
+        if (isAgentOwner) {
+          try {
+            const metadata = await complianceDb.getRegistryMetadata(resolved.resolvedUrl);
+            // Skip canonical write if the owner has opted out of compliance monitoring.
+            if (!metadata?.compliance_opt_out) {
+              const dbInput = {
+                ...complianceResultToDbInput(
+                  result,
+                  resolved.resolvedUrl,
+                  metadata?.lifecycle_stage ?? 'production',
+                  'owner_test',
+                ),
+                // Owner test runs are not dry runs — they update the live public record.
+                // (complianceResultToDbInput hard-codes dry_run: true; override here.)
+                dry_run: false,
+              };
+              await complianceDb.recordComplianceRun(dbInput);
+              // notifyComplianceChange intentionally omitted: owner test runs are
+              // exploratory; compliance-change notifications fire on heartbeat
+              // transitions only to prevent iteration-loop spam.
+            }
+          } catch (error) {
+            logger.warn({ error, agentUrl: resolved.resolvedUrl }, 'Could not write owner test result to canonical compliance state');
+          }
+        }
+
+        // Legacy write to agent_contexts + agent_test_history. Retained for
+        // backward compatibility until PR 3 migrates callers and drops the table.
         try {
           const context = await agentContextDb.getByOrgAndUrl(organizationId, resolved.resolvedUrl);
           if (context) {
