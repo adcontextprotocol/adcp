@@ -998,7 +998,7 @@ registry.registerPath({
   tags: ["Agent Probing"],
   request: { query: z.object({ url: z.string() }) },
   responses: {
-    200: { description: "Discovered agent info", content: { "application/json": { schema: z.object({ name: z.string(), description: z.string().optional(), protocols: z.array(z.string()), type: z.string(), stats: z.object({ format_count: z.number().int().optional(), product_count: z.number().int().optional(), publisher_count: z.number().int().optional() }) }) } } },
+    200: { description: "Discovered agent info", content: { "application/json": { schema: z.object({ name: z.string(), description: z.string().optional(), protocols: z.array(z.string()), type: z.string(), tools_count: z.number().int(), tools: z.array(z.object({ name: z.string(), description: z.string().optional() })), stats: z.object({ format_count: z.number().int().optional(), product_count: z.number().int().optional(), publisher_count: z.number().int().optional() }) }) } } },
     504: { description: "Connection timeout", content: { "application/json": { schema: z.object({ error: z.string(), message: z.string() }) } } },
   },
 });
@@ -6787,7 +6787,8 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         }
       }
 
-      return res.json({ name: agentName, description: agentInfo.description, protocols, type: agentType, stats });
+      const publicTools = tools.map(({ name, description }: { name: string; description?: string }) => ({ name, description }));
+      return res.json({ name: agentName, description: agentInfo.description, protocols, type: agentType, tools_count: publicTools.length, tools: publicTools, stats });
     } catch (error) {
       logger.warn({ err: error, url }, "Public agent discovery error");
 
