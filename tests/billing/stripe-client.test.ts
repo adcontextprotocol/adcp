@@ -1061,16 +1061,38 @@ describe('stripe-client', () => {
 
       const { getAllOpenInvoices } = await import('../../server/src/billing/stripe-client.js');
 
-      const result = await getAllOpenInvoices(50);
-
-      // The function should not silently swallow a 4-level expand error.
-      expect(result).toEqual([]);
+      // No expand path the function actually sends should exceed 4 levels —
+      // i.e. the function must complete without the stub's >4-level rejection
+      // firing. If a regression reintroduces `data.lines.data.price.product`,
+      // listMock rejects and getAllOpenInvoices propagates the throw.
+      await expect(getAllOpenInvoices(50)).resolves.toEqual([]);
       const allExpands = listMock.mock.calls.flatMap(
         (call) => (call[0] as { expand?: string[] }).expand || [],
       );
+      expect(allExpands.length).toBeGreaterThan(0);
       for (const path of allExpands) {
         expect(path.split('.').length).toBeLessThanOrEqual(4);
       }
+    });
+
+    test('propagates Stripe errors to the caller (no silent empty-array fallback)', async () => {
+      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+
+      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
+      // Stripe SDK throws synchronously here to model how the previous swallow
+      // turned a real 400 into "No pending invoices found" for the admin UI.
+      const listMock = vi.fn<any>().mockImplementation(() => {
+        throw new Error('You cannot expand more than 4 levels of a property. Property: data.lines.data.price.product');
+      });
+      const mockStripeInstance = {
+        invoices: { list: listMock },
+        products: { retrieve: vi.fn() },
+      };
+      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+
+      const { getAllOpenInvoices } = await import('../../server/src/billing/stripe-client.js');
+
+      await expect(getAllOpenInvoices(50)).rejects.toThrow(/4 levels/);
     });
 
     test('resolves product names via separate stripe.products.retrieve, with caching', async () => {

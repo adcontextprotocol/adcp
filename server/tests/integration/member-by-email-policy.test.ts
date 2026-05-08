@@ -461,7 +461,10 @@ describe('Member role-cap policy (POST /members/by-email + PATCH /members/:membe
 
       expect(sendInvitationMock).toHaveBeenCalledTimes(1);
       const args = sendInvitationMock.mock.calls[0][0];
-      expect(args.inviterUserId).toBeUndefined();
+      // The fix uses a conditional spread to omit the key entirely; assert the
+      // key is absent rather than `=== undefined` (which would also pass if a
+      // regression reintroduced an explicit `inviterUserId: undefined`).
+      expect('inviterUserId' in args).toBe(false);
       expect(args.email).toBe('new-invitee@example.com');
       expect(args.organizationId).toBe(TEST_ORG_ID);
       expect(args.roleSlug).toBe('member');

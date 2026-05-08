@@ -1987,16 +1987,33 @@ export async function getAllOpenInvoices(limit: number = 50): Promise<OpenInvoic
     return [];
   }
 
-  try {
-    // Use a Map to deduplicate invoices by ID
-    const invoiceMap = new Map<string, OpenInvoiceWithCustomer>();
-    // Cache product lookups across both list passes; products are referenced
-    // by id on the line item but cannot be expanded inline (5 levels deep).
-    const productCache = new Map<string, string | null>();
+  // Errors propagate to the caller. Returning [] on failure previously hid a
+  // 4-level-expand regression as "No pending invoices found"; the sole caller
+  // (`list_pending_invoices` admin tool) already wraps this in its own
+  // try/catch and surfaces a structured failure to the operator.
+  const invoiceMap = new Map<string, OpenInvoiceWithCustomer>();
+  // Cache product lookups across both list passes; products are referenced
+  // by id on the line item but cannot be expanded inline (5 levels deep).
+  const productCache = new Map<string, string | null>();
 
-    // Query Stripe directly for all open invoices (sent, waiting for payment)
+  // Query Stripe directly for all open invoices (sent, waiting for payment)
+  for await (const invoice of stripe.invoices.list({
+    status: 'open',
+    limit: 100,
+    expand: ['data.customer'],
+  })) {
+    const productName = await resolveInvoiceProductName(invoice, productCache);
+    const parsed = parseStripeInvoice(invoice, productName);
+    if (parsed && !invoiceMap.has(parsed.id)) {
+      invoiceMap.set(parsed.id, parsed);
+      if (invoiceMap.size >= limit) break;
+    }
+  }
+
+  // Also get draft invoices (not yet sent)
+  if (invoiceMap.size < limit) {
     for await (const invoice of stripe.invoices.list({
-      status: 'open',
+      status: 'draft',
       limit: 100,
       expand: ['data.customer'],
     })) {
@@ -2007,30 +2024,11 @@ export async function getAllOpenInvoices(limit: number = 50): Promise<OpenInvoic
         if (invoiceMap.size >= limit) break;
       }
     }
-
-    // Also get draft invoices (not yet sent)
-    if (invoiceMap.size < limit) {
-      for await (const invoice of stripe.invoices.list({
-        status: 'draft',
-        limit: 100,
-        expand: ['data.customer'],
-      })) {
-        const productName = await resolveInvoiceProductName(invoice, productCache);
-        const parsed = parseStripeInvoice(invoice, productName);
-        if (parsed && !invoiceMap.has(parsed.id)) {
-          invoiceMap.set(parsed.id, parsed);
-          if (invoiceMap.size >= limit) break;
-        }
-      }
-    }
-
-    const allInvoices = Array.from(invoiceMap.values());
-    logger.info({ count: allInvoices.length }, 'Fetched all open invoices from Stripe');
-    return allInvoices;
-  } catch (error) {
-    logger.error({ err: error }, 'Error fetching all open invoices');
-    return [];
   }
+
+  const allInvoices = Array.from(invoiceMap.values());
+  logger.info({ count: allInvoices.length }, 'Fetched all open invoices from Stripe');
+  return allInvoices;
 }
 
 /**
