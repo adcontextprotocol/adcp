@@ -55,6 +55,7 @@
     "test:callapi-state-change": "node --test --test-force-exit --test-timeout=30000 tests/lint-callapi-state-change.test.cjs",
     "test:build-schemas-hoist-enums": "node --test --test-force-exit --test-timeout=30000 tests/build-schemas-hoist-enums.test.cjs",
     "test:error-codes": "node scripts/lint-error-codes.cjs",
+    "test:error-code-drift": "node scripts/lint-error-code-drift.cjs",
     "test:substitution-vector-names": "node scripts/lint-substitution-vector-names.cjs",
     "test:unit": "vitest run --dir tests/ --pool=threads",
     "test:redteam": "tsx server/src/addie/testing/redteam-cli.ts",

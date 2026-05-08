@@ -1,0 +1,73 @@
+{
+  "_comment": "Disposition registry for error codes that are present in the current source enum but absent from the 3.0.x maintenance branch. Read by scripts/lint-error-code-drift.cjs. Every code in the AHEAD set (main \\ 3.0.x) MUST have an entry here; codes missing from this file fail the lint. Policy: 3.0.x is wire-stable. Adding a new enum value is a wire change (receivers may encounter unrecognized codes), so the default disposition for any new code is 'held-for-next-minor'. 'backport-pending' is reserved for the narrow case of a prose-only or doc-comment-only change to an existing code that needs to ship in 3.0.x. Valid `disposition` values: 'backport-pending' (prose-only fix to an existing entry; cherry-pick to 3.0.x), 'held-for-next-minor' (additive wire change; ships in 3.1), 'held-for-next-major' (breaking-shaped or out-of-scope for 3.x), 'unclassified' (decision required — warns but does not fail). When a code lands on 3.0.x its entry SHOULD be removed; the lint flags stale entries.",
+  "dispositions": {
+    "AGENT_BLOCKED": {
+      "disposition": "held-for-next-minor",
+      "note": "Added post-3.0.5 release (commit 2a2e5c420c, #3906). Wire change — held for 3.1."
+    },
+    "AGENT_SUSPENDED": {
+      "disposition": "held-for-next-minor",
+      "note": "Added post-3.0.5 release (commit 2a2e5c420c, #3906). Pairs with AGENT_BLOCKED. Wire change — held for 3.1."
+    },
+    "BILLING_NOT_PERMITTED_FOR_AGENT": {
+      "disposition": "held-for-next-minor",
+      "note": "From sync_accounts billing coverage (#3831). Wire change — held for 3.1."
+    },
+    "BILLING_NOT_SUPPORTED": {
+      "disposition": "held-for-next-minor",
+      "note": "From sync_accounts billing coverage (#3831). Wire change — held for 3.1."
+    },
+    "BRAND_REQUIRED": {
+      "disposition": "held-for-next-minor",
+      "note": "Wire change — held for 3.1."
+    },
+    "CONFIGURATION_ERROR": {
+      "disposition": "held-for-next-minor",
+      "note": "Recently added (#3995/#4003). Wire change — held for 3.1."
+    },
+    "CREDENTIAL_IN_ARGS": {
+      "disposition": "held-for-next-minor",
+      "note": "Tied to buyer-principal credentials on transport channel (#4057). Wire change — held for 3.1."
+    },
+    "FIELD_NOT_PERMITTED": {
+      "disposition": "held-for-next-minor",
+      "note": "Part of field_scopes feature (#3887). Wire change — held for 3.1."
+    },
+    "PAYMENT_TERMS_NOT_SUPPORTED": {
+      "disposition": "held-for-next-minor",
+      "note": "From sync_accounts billing coverage (#3831). Wire change — held for 3.1."
+    },
+    "PROVENANCE_CLAIM_CONTRADICTED": {
+      "disposition": "held-for-next-minor",
+      "note": "Provenance subsystem (#3468). Wire change — held for 3.1."
+    },
+    "PROVENANCE_DIGITAL_SOURCE_TYPE_MISSING": {
+      "disposition": "held-for-next-minor",
+      "note": "Provenance subsystem (#3468). Wire change — held for 3.1."
+    },
+    "PROVENANCE_DISCLOSURE_MISSING": {
+      "disposition": "held-for-next-minor",
+      "note": "Provenance subsystem (#3468). Wire change — held for 3.1."
+    },
+    "PROVENANCE_EMBEDDED_MISSING": {
+      "disposition": "held-for-next-minor",
+      "note": "Provenance subsystem (#3468). Wire change — held for 3.1."
+    },
+    "PROVENANCE_REQUIRED": {
+      "disposition": "held-for-next-minor",
+      "note": "Provenance subsystem (#3468). Wire change — held for 3.1."
+    },
+    "PROVENANCE_VERIFIER_NOT_ACCEPTED": {
+      "disposition": "held-for-next-minor",
+      "note": "Provenance subsystem (#3468). Wire change — held for 3.1."
+    },
+    "READ_ONLY_SCOPE": {
+      "disposition": "held-for-next-minor",
+      "note": "Part of agent-permission-denied scope codes (#3887). Wire change — held for 3.1."
+    },
+    "SCOPE_INSUFFICIENT": {
+      "disposition": "held-for-next-minor",
+      "note": "Part of agent-permission-denied scope codes (#3887). Wire change — held for 3.1."
+    }
+  }
+}
