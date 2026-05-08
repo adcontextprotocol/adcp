@@ -140,7 +140,7 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
-          idempotency_key: "invalid-transitions-setup-v1"
+          idempotency_key: "$generate:uuid_v4#invalid_transitions_create_buy"
           start_time: "2026-08-01T00:00:00Z"
           end_time: "2026-08-31T23:59:59Z"
           packages:
