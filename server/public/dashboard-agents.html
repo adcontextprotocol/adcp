@@ -1501,6 +1501,19 @@
           ? timeAgo(new Date(cs.last_checked_at))
           : 'never';
 
+        // Surface the verdict source so the operator knows whether the
+        // current status came from the scheduled heartbeat or their own
+        // owner-triggered test run. PR #4250 populates cs.verdict_source
+        // ('heartbeat' | 'owner_test' | 'manual' | 'webhook' | null when
+        // never run). Displayed inline with "Last checked" so the
+        // semantic shift on the public compliance contract is visible
+        // to the operator without having to read the changelog.
+        const verdictSourceLabel = cs.verdict_source === 'owner_test' ? ' (your test)'
+          : cs.verdict_source === 'heartbeat' ? ' (heartbeat)'
+          : cs.verdict_source === 'manual' ? ' (manual)'
+          : cs.verdict_source === 'webhook' ? ' (webhook)'
+          : '';
+
         const isPublic = cs.status !== 'opted_out';
 
         return `
@@ -1527,7 +1540,7 @@
             ${visibilitySelectorHtml}
             <div class="agent-meta-row">
               <div class="agent-meta-row-left">
-                <span>Last checked: ${escapeHtml(lastChecked)}</span>
+                <span>Last checked: ${escapeHtml(lastChecked)}${escapeHtml(verdictSourceLabel)}</span>
                 <span class="agent-meta-sep" aria-hidden="true">·</span>
                 <label class="agent-toggle" title="${isPublic ? 'Pause automated compliance and health checks' : 'Re-enable monitoring (Show on registry) before pausing'}">
                   <input type="checkbox" class="monitoring-pause-toggle" data-agent-url="${escapeHtml(agent.url)}" ${cs.monitoring_paused ? 'checked' : ''} ${isPublic ? '' : 'disabled'}>
@@ -2813,6 +2826,21 @@
               : 'var(--color-warning-500)';
             const date = new Date(run.tested_at).toLocaleString();
 
+            // Distinguish owner-triggered tests from scheduled heartbeat runs
+            // so the operator sees their own on-demand evaluations interleaved
+            // with the cron-driven verdicts. `triggered_by` enum is populated
+            // by the unification PR 1 (#4250); pre-PR-1 rows have
+            // 'heartbeat'/'manual'/'webhook' only — surface those neutrally.
+            const triggeredBy = run.triggered_by || 'heartbeat';
+            const sourceLabel = triggeredBy === 'owner_test' ? 'Your test'
+              : triggeredBy === 'heartbeat' ? 'Heartbeat'
+              : triggeredBy === 'manual' ? 'Manual'
+              : triggeredBy === 'webhook' ? 'Webhook'
+              : escapeHtml(String(triggeredBy));
+            const sourceBg = triggeredBy === 'owner_test' ? 'var(--color-info-50)' : 'var(--color-neutral-100)';
+            const sourceBorder = triggeredBy === 'owner_test' ? 'var(--color-info-200)' : 'var(--color-neutral-200)';
+            const sourceFg = triggeredBy === 'owner_test' ? 'var(--color-info-700)' : 'var(--color-text-secondary)';
+
             let runTracks = '';
             if (run.tracks_json) {
               for (const t of run.tracks_json) {
@@ -2829,6 +2857,7 @@
             html += '<span>' + escapeHtml(date) + '</span>';
             html += '<span>' + escapeHtml(run.overall_status) + '</span>';
             html += '<span>' + parseInt(run.tracks_passed, 10) + '/' + (parseInt(run.tracks_passed, 10) + parseInt(run.tracks_failed, 10) + parseInt(run.tracks_partial, 10)) + ' tracks</span>';
+            html += '<span class="history-run-source" style="font-size:var(--text-xs);padding:2px 8px;border-radius:var(--radius-full);background:' + sourceBg + ';border:1px solid ' + sourceBorder + ';color:' + sourceFg + ';">' + sourceLabel + '</span>';
             html += '</div>';
             if (runTracks) {
               html += '<div style="padding:var(--space-1) 0 var(--space-2) var(--space-5);display:flex;gap:3px;flex-wrap:wrap;">' + runTracks + '</div>';
