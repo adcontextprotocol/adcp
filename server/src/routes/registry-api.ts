@@ -4332,14 +4332,19 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         membership_tier_label: ownerMembership.membership_tier_label,
         subscription_status: ownerMembership.subscription_status,
         is_api_access_tier: ownerMembership.is_api_access_tier,
-        // `triggered_by` is retained as internal audit on agent_compliance_runs
-        // but deliberately not exposed publicly: heartbeat and owner_test both
-        // call comply() against the same registered URL with the same
-        // owner-saved credentials; the verdict's truth content is identical
-        // regardless of who pulled the trigger. Exposing the source label
-        // creates a buyer-facing trust distinction that the underlying
-        // observation doesn't actually carry. Internal dashboards may still
-        // surface triggered_by as a UX cue (see #4263).
+        // `verdict_source` is owner-scoped: operators benefit from seeing
+        // whether the current verdict came from their own owner_test vs
+        // the scheduled heartbeat (UX cue while iterating on a fix). Non-
+        // owners see null — heartbeat and owner_test both call comply()
+        // against the same registered URL with the same owner-saved
+        // credentials, so exposing the source label publicly would
+        // create a trust distinction the underlying observation doesn't
+        // actually carry. Gated on `is_owner` (any owner, including free
+        // tier) — `is_api_access_tier` would be too narrow and would
+        // hide the UX cue from Explorer-tier agent owners.
+        verdict_source: ownerMembership.is_owner
+          ? (status.last_triggered_by ?? null)
+          : null,
         verified: badges.length > 0,
         verified_badges: badges.map(b => ({
           role: b.role,

@@ -92,6 +92,7 @@ describe('membership-tiers', () => {
 
   describe('resolveOwnerMembership — security boundary', () => {
     const EMPTY = {
+      is_owner: false,
       membership_tier: null,
       membership_tier_label: null,
       subscription_status: null,
@@ -126,6 +127,7 @@ describe('membership-tiers', () => {
         fetchOrgMembership: async () => ({ membership_tier: 'company_standard', subscription_status: 'active' }),
       });
       expect(result).toEqual({
+        is_owner: true,
         membership_tier: 'company_standard',
         membership_tier_label: 'Builder',
         subscription_status: 'active',
