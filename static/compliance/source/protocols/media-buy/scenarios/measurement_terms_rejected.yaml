@@ -58,7 +58,7 @@ phases:
           measurement support in the response.
         sample_request:
           buying_mode: "brief"
-          brief: "Premium video inventory with measurement guarantees. Q2 flight, $50K."
+          brief: "Premium video inventory with measurement guarantees. Q3 flight, $50K."
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -106,9 +106,9 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
-          idempotency_key: "$generate:uuid_v4#measurement_terms_rejected_aggressive_terms"
-          start_time: "2026-05-01T00:00:00Z"
-          end_time: "2026-05-31T23:59:59Z"
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_measurement_terms_rejected_probe"
+          start_time: "2026-07-01T00:00:00Z"
+          end_time: "2026-09-30T23:59:59Z"
           packages:
             - product_id: "$context.product_id"
               budget: 25000
@@ -163,9 +163,9 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
-          idempotency_key: "$generate:uuid_v4#measurement_terms_rejected_relaxed_terms"
-          start_time: "2026-05-01T00:00:00Z"
-          end_time: "2026-05-31T23:59:59Z"
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_measurement_terms_rejected_probe"
+          start_time: "2026-07-01T00:00:00Z"
+          end_time: "2026-09-30T23:59:59Z"
           packages:
             - product_id: "$context.product_id"
               budget: 25000
