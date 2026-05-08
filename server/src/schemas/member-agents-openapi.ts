@@ -61,14 +61,17 @@ const MemberAgentSchema = z
   .object({
     url: z.string().url().openapi({ example: 'https://agent.example.com/mcp' }),
     visibility: MemberAgentVisibilitySchema,
+    type: MemberAgentTypeSchema,
     name: z.string().optional(),
-    type: MemberAgentTypeSchema.optional(),
     health_check_url: z.string().url().optional().openapi({
       description:
         'Optional fallback liveness URL used by the health probe when the protocol handshake fails.',
     }),
   })
-  .openapi('MemberAgent', { description: 'Agent entry stored on a member profile.' });
+  .openapi('MemberAgent', {
+    description:
+      "Agent entry stored on a member profile. `type` is required on read because every write surface declares it and the operator endpoint always emits it; a stored value of `unknown` is the smuggle-protection outcome (snapshot contradicted the declaration without classifying it) and is the only path that surfaces an agent without a real type.",
+  });
 
 const MemberAgentInputSchema = z
   .object({

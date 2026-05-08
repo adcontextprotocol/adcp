@@ -203,7 +203,7 @@ describe('POST /api/me/agents (auto-bootstrap)', () => {
 
     const res = await request(app)
       .post('/api/me/agents')
-      .send({ url: 'https://agent.example.com/mcp', visibility: 'private' });
+      .send({ url: 'https://agent.example.com/mcp', type: 'sales', visibility: 'private' });
 
     expect(res.status).toBe(201);
     expect(res.body.profile_auto_created).toBe(true);
@@ -227,13 +227,13 @@ describe('POST /api/me/agents (auto-bootstrap)', () => {
 
     const first = await request(app)
       .post('/api/me/agents')
-      .send({ url: 'https://agent-1.example.com/mcp', visibility: 'private' });
+      .send({ url: 'https://agent-1.example.com/mcp', type: 'sales', visibility: 'private' });
     expect(first.status).toBe(201);
     expect(first.body.profile_auto_created).toBe(true);
 
     const second = await request(app)
       .post('/api/me/agents')
-      .send({ url: 'https://agent-2.example.com/mcp', visibility: 'private' });
+      .send({ url: 'https://agent-2.example.com/mcp', type: 'sales', visibility: 'private' });
     expect(second.status).toBe(201);
     expect(second.body.profile_auto_created).toBeUndefined();
   });
@@ -244,12 +244,12 @@ describe('POST /api/me/agents (auto-bootstrap)', () => {
 
     const first = await request(app)
       .post('/api/me/agents')
-      .send({ url: 'https://agent.example.com/mcp', visibility: 'private', name: 'v1' });
+      .send({ url: 'https://agent.example.com/mcp', type: 'sales', visibility: 'private', name: 'v1' });
     expect(first.status).toBe(201);
 
     const second = await request(app)
       .post('/api/me/agents')
-      .send({ url: 'https://agent.example.com/mcp', visibility: 'private', name: 'v2' });
+      .send({ url: 'https://agent.example.com/mcp', type: 'sales', visibility: 'private', name: 'v2' });
 
     expect(second.status).toBe(200);
     expect(second.body.profile_auto_created).toBeUndefined();
@@ -278,7 +278,7 @@ describe('POST /api/me/agents (auto-bootstrap)', () => {
 
       const res = await request(app)
         .post('/api/me/agents')
-        .send({ url: 'https://agent.boot-corp.test/mcp', visibility: 'private' });
+        .send({ url: 'https://agent.boot-corp.test/mcp', type: 'sales', visibility: 'private' });
 
       expect(res.status).toBe(201);
       expect(res.body.org_auto_created).toBe(true);
@@ -321,7 +321,7 @@ describe('POST /api/me/agents (auto-bootstrap)', () => {
 
       const res = await request(app)
         .post('/api/me/agents')
-        .send({ url: 'https://agent.solo.test/mcp', visibility: 'private' });
+        .send({ url: 'https://agent.solo.test/mcp', type: 'sales', visibility: 'private' });
 
       expect(res.status).toBe(201);
       expect(res.body.org_auto_created).toBe(true);
@@ -360,7 +360,7 @@ describe('POST /api/me/agents (auto-bootstrap)', () => {
 
       const res = await request(app)
         .post('/api/me/agents')
-        .send({ url: 'https://agent.no-fork.test/mcp', visibility: 'private' });
+        .send({ url: 'https://agent.no-fork.test/mcp', type: 'sales', visibility: 'private' });
 
       expect(res.status).toBe(201);
       // Profile auto-bootstrap fires (no profile yet on the existing org)
