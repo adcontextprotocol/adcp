@@ -341,6 +341,8 @@ export const AgentComplianceDetailSchema = z
     membership_tier_label: z.string().nullable().optional().openapi({ description: "Owner-scoped: human-readable label for membership_tier (e.g. 'Builder'). Null for non-owners." }),
     subscription_status: z.string().nullable().optional().openapi({ description: "Owner-scoped: the agent owner's subscription status (active, past_due, trialing, etc.). Null for non-owners." }),
     is_api_access_tier: z.boolean().optional().openapi({ description: "Owner-scoped: true when the owner's tier and subscription status grant badge eligibility. False for non-owners. Single source of truth — UI should not re-derive." }),
+    verdict_source: z.enum(["heartbeat", "owner_test", "manual", "webhook"]).nullable().optional()
+      .openapi({ description: "triggered_by value of the most recent non-dry-run compliance check. 'heartbeat' = scheduled run; 'owner_test' = agent owner triggered via evaluate_agent_quality. Null when no run has been recorded yet." }),
     verified: z.boolean().optional(),
     verified_badges: z.array(VerificationBadgeSchema).optional(),
   })

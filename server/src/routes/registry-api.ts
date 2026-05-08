@@ -4332,6 +4332,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         membership_tier_label: ownerMembership.membership_tier_label,
         subscription_status: ownerMembership.subscription_status,
         is_api_access_tier: ownerMembership.is_api_access_tier,
+        verdict_source: status.last_triggered_by ?? null,
         verified: badges.length > 0,
         verified_badges: badges.map(b => ({
           role: b.role,
