@@ -814,6 +814,30 @@
       color: white;
     }
 
+    .copy-btn {
+      background: none;
+      border: 1px solid var(--color-border);
+      border-radius: 4px;
+      padding: 4px 8px;
+      cursor: pointer;
+      font-size: 12px;
+      color: var(--color-text-muted);
+      transition: all 0.2s;
+      margin-left: auto;
+      flex-shrink: 0;
+    }
+
+    .copy-btn:hover {
+      background: var(--color-bg-subtle);
+      color: var(--color-brand);
+      border-color: var(--color-brand);
+    }
+
+    .copy-btn.copied {
+      color: var(--color-success-600);
+      border-color: var(--color-success-500);
+    }
+
     .feedback-expand {
       background: none;
       border: none;
@@ -3759,7 +3783,7 @@
 
         // Add feedback controls for assistant messages
         if (role === 'assistant' && messageId) {
-          const feedbackDiv = createFeedbackUI(messageId);
+          const feedbackDiv = createFeedbackUI(messageId, content);
           contentDiv.appendChild(feedbackDiv);
         }
 
@@ -3773,8 +3797,30 @@
         return messageDiv;
       }
 
+      function fallbackCopy(text, btn) {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        try {
+          document.execCommand('copy');
+          btn.textContent = 'Copied!';
+          btn.classList.add('copied');
+          setTimeout(() => {
+            btn.textContent = 'Copy';
+            btn.classList.remove('copied');
+          }, 1500);
+        } catch (e) {
+          console.error('Copy to clipboard failed:', e);
+        } finally {
+          document.body.removeChild(textarea);
+        }
+      }
+
       // Create feedback UI for a message
-      function createFeedbackUI(messageId) {
+      function createFeedbackUI(messageId, rawContent) {
         const container = document.createElement('div');
         container.className = 'message-feedback';
         container.innerHTML = `
@@ -3856,6 +3902,28 @@
           await submitFeedback(messageId, selectedRating || 3, category, Array.from(selectedTags), suggestion);
           showFeedbackSuccess(container);
         });
+
+        if (rawContent) {
+          const copyBtn = document.createElement('button');
+          copyBtn.className = 'copy-btn';
+          copyBtn.textContent = 'Copy';
+          copyBtn.title = 'Copy response';
+          copyBtn.addEventListener('click', () => {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              navigator.clipboard.writeText(rawContent).then(() => {
+                copyBtn.textContent = 'Copied!';
+                copyBtn.classList.add('copied');
+                setTimeout(() => {
+                  copyBtn.textContent = 'Copy';
+                  copyBtn.classList.remove('copied');
+                }, 1500);
+              }).catch(() => fallbackCopy(rawContent, copyBtn));
+            } else {
+              fallbackCopy(rawContent, copyBtn);
+            }
+          });
+          container.appendChild(copyBtn);
+        }
 
         return container;
       }
@@ -4134,7 +4202,7 @@
 
         // Add feedback controls
         if (messageId) {
-          const feedbackDiv = createFeedbackUI(messageId);
+          const feedbackDiv = createFeedbackUI(messageId, fullContent);
           contentDiv.appendChild(feedbackDiv);
         }
 
