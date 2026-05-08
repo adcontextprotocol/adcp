@@ -360,6 +360,127 @@ export class PublisherDatabase {
   }
 
   /**
+   * Read the cached adagents.json body for a domain. Used by the crawler
+   * to decide whether a re-fetch produced an actual content change before
+   * fanning out manager re-validation. Returns null when the domain has
+   * never been successfully crawled.
+   */
+  async getCachedAdagentsJson(domain: string): Promise<AdagentsManifest | null> {
+    const client = await getClient();
+    try {
+      const r = await client.query<{ adagents_json: AdagentsManifest | null }>(
+        `SELECT adagents_json FROM publishers WHERE domain = $1 LIMIT 1`,
+        [domain.toLowerCase()],
+      );
+      return r.rows[0]?.adagents_json ?? null;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Insert one queue row per publisher delegating to this manager via
+   * ads.txt MANAGERDOMAIN. Idempotent: if a publisher is already queued
+   * (e.g. previous fan-out hasn't drained yet), the row is reset to
+   * "due now" with attempts=0 so the upstream manager change supersedes
+   * any in-flight backoff. Returns the number of rows enqueued.
+   *
+   * The SELECT scans the partial index added in migration 470
+   * (idx_publishers_manager_domain) so the lookup stays cheap even at
+   * managed-network scale.
+   */
+  async enqueueManagerRevalidation(managerDomain: string): Promise<number> {
+    const client = await getClient();
+    try {
+      const r = await client.query(
+        `INSERT INTO manager_revalidation_queue
+           (publisher_domain, manager_domain, enqueued_at, next_attempt_after, attempts, last_attempted_at, last_error)
+         SELECT domain, $1, NOW(), NOW(), 0, NULL, NULL
+           FROM publishers
+          WHERE manager_domain = $1
+         ON CONFLICT (publisher_domain) DO UPDATE SET
+           manager_domain = EXCLUDED.manager_domain,
+           enqueued_at = NOW(),
+           next_attempt_after = NOW(),
+           attempts = 0,
+           last_attempted_at = NULL,
+           last_error = NULL`,
+        [managerDomain.toLowerCase()],
+      );
+      return r.rowCount ?? 0;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Pull a bounded batch of due rows from the queue. The caller (crawler
+   * worker tick) must call markRevalidationSucceeded / Failed for each
+   * returned row to advance the queue.
+   */
+  async dequeueRevalidationBatch(
+    limit: number,
+  ): Promise<Array<{ publisher_domain: string; manager_domain: string; attempts: number }>> {
+    const client = await getClient();
+    try {
+      const r = await client.query<{
+        publisher_domain: string;
+        manager_domain: string;
+        attempts: number;
+      }>(
+        `SELECT publisher_domain, manager_domain, attempts
+           FROM manager_revalidation_queue
+          WHERE next_attempt_after <= NOW()
+          ORDER BY enqueued_at ASC
+          LIMIT $1`,
+        [limit],
+      );
+      return r.rows;
+    } finally {
+      client.release();
+    }
+  }
+
+  async markRevalidationSucceeded(publisherDomain: string): Promise<void> {
+    const client = await getClient();
+    try {
+      await client.query(
+        `DELETE FROM manager_revalidation_queue WHERE publisher_domain = $1`,
+        [publisherDomain.toLowerCase()],
+      );
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Advance the queue row with exponential backoff. Schedule mirrors the
+   * catalog_crawl_queue cadence (1h / 6h / 24h / 72h) so a manager whose
+   * file is briefly unparseable doesn't clog the queue forever.
+   */
+  async markRevalidationFailed(publisherDomain: string, err: string): Promise<void> {
+    const client = await getClient();
+    try {
+      await client.query(
+        `UPDATE manager_revalidation_queue
+            SET attempts = attempts + 1,
+                last_attempted_at = NOW(),
+                last_error = LEFT($2, 500),
+                next_attempt_after = NOW() + CASE
+                  WHEN attempts < 1 THEN INTERVAL '1 hour'
+                  WHEN attempts < 2 THEN INTERVAL '6 hours'
+                  WHEN attempts < 3 THEN INTERVAL '1 day'
+                  ELSE INTERVAL '3 days'
+                END
+          WHERE publisher_domain = $1`,
+        [publisherDomain.toLowerCase(), err],
+      );
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
    * Project a single adagents.json property into catalog_properties +
    * catalog_identifiers. Catalog rows are tagged
    * evidence='adagents_json' / confidence='authoritative' so a property

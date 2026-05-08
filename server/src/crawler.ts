@@ -20,6 +20,36 @@ import { insertTypeReclassification } from "./db/type-reclassification-log-db.js
 
 const log = createLogger('crawler');
 
+/**
+ * Compare a freshly-fetched adagents.json against the previously-cached
+ * body for the same domain. Returns true when the contributory fields
+ * differ — `authorized_agents` and `properties` — so manager fan-out
+ * is gated on actual change rather than firing on every routine
+ * 60-minute crawl. Top-level keys outside that subset (`$schema`,
+ * `last_updated`, comments) are intentionally ignored. Arrays compare
+ * positionally; nested object keys are sorted so two semantically
+ * identical manifests with different key insertion order match.
+ */
+export function manifestContentChanged(
+  previous: AdagentsManifest | null,
+  next: AdagentsManifest,
+): boolean {
+  if (!previous) return true;
+  const subset = (m: AdagentsManifest) => ({
+    authorized_agents: Array.isArray(m.authorized_agents) ? m.authorized_agents : [],
+    properties: Array.isArray(m.properties) ? m.properties : [],
+  });
+  return stableStringify(subset(previous)) !== stableStringify(subset(next));
+}
+
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null';
+  if (Array.isArray(value)) return '[' + value.map(stableStringify).join(',') + ']';
+  const obj = value as Record<string, unknown>;
+  const keys = Object.keys(obj).sort();
+  return '{' + keys.map(k => JSON.stringify(k) + ':' + stableStringify(obj[k])).join(',') + '}';
+}
+
 export class CrawlerService {
   private crawler: PropertyCrawler;
   private crawling: boolean = false;
@@ -820,6 +850,13 @@ export class CrawlerService {
     meta?: { statusCode?: number; responseBytes?: number; resolvedUrl?: string; discoveryMethod?: string; managerDomain?: string },
   ): Promise<void> {
     try {
+      // Read the existing cached body before the upsert so we can
+      // compute whether content actually changed. Used to gate
+      // manager → publishers fan-out: re-validation only fans out when
+      // the manager's authorized_agents or properties shape moved, not
+      // on every routine 60-minute crawl.
+      const previous = await this.publisherDb.getCachedAdagentsJson(domain);
+
       await this.publisherDb.upsertAdagentsCache({
         domain,
         manifest,
@@ -829,6 +866,29 @@ export class CrawlerService {
         discoveryMethod: meta?.discoveryMethod,
         managerDomain: meta?.managerDomain,
       });
+
+      // Manager fan-out: when the just-written manifest belongs to a
+      // domain that other publishers delegate to via ads.txt
+      // MANAGERDOMAIN, queue those publishers for re-validation. The
+      // worker (processManagerRevalidationQueue) drains the queue at a
+      // bounded rate so a Raptive-scale rotation doesn't saturate
+      // crawler concurrency.
+      if (manifestContentChanged(previous, manifest)) {
+        try {
+          const enqueued = await this.publisherDb.enqueueManagerRevalidation(domain);
+          if (enqueued > 0) {
+            log.info(
+              { managerDomain: domain, enqueued },
+              'Manager adagents.json changed; enqueued delegating publishers for re-validation',
+            );
+          }
+        } catch (err) {
+          log.warn(
+            { domain, err: err instanceof Error ? err.message : err },
+            'Failed to enqueue manager revalidation fan-out',
+          );
+        }
+      }
     } catch (err) {
       log.warn({ domain, err: err instanceof Error ? err.message : err }, 'Publisher cache write failed');
     }
@@ -1278,6 +1338,93 @@ export class CrawlerService {
       return { checked: domains.length, found };
     } finally {
       this.catalogCrawling = false;
+    }
+  }
+
+  // ── Manager Re-validation Queue ───────────────────────────────
+  //
+  // When a manager domain rotates its adagents.json, every publisher
+  // delegating via ads.txt MANAGERDOMAIN needs to be re-validated so
+  // their authorized_agents view stays in sync. Inline fan-out from
+  // cacheAdagentsManifest() would saturate crawler concurrency at
+  // managed-network scale (Raptive ≈ 6K publishers), so we persist
+  // the work in manager_revalidation_queue (migration 471) and drain
+  // it at a bounded rate per tick here.
+
+  private managerRevalidationIntervalId: NodeJS.Timeout | null = null;
+  private managerRevalidationProcessing = false;
+
+  startPeriodicManagerRevalidation(intervalMinutes: number = 5) {
+    this.managerRevalidationIntervalId = setInterval(() => {
+      this.processManagerRevalidationQueue().catch((err) => {
+        log.error({ err }, 'Manager revalidation tick failed');
+      });
+    }, intervalMinutes * 60 * 1000);
+
+    log.info({ intervalMinutes }, 'Periodic manager revalidation queue started');
+  }
+
+  async processManagerRevalidationQueue(): Promise<{ processed: number; succeeded: number; failed: number }> {
+    if (this.managerRevalidationProcessing) {
+      log.debug('Manager revalidation already in progress, skipping tick');
+      return { processed: 0, succeeded: 0, failed: 0 };
+    }
+
+    this.managerRevalidationProcessing = true;
+    // Bounded per-tick batch — caps concurrency budget regardless of
+    // queue depth. At a 5-minute tick and BATCH_SIZE=50, a 6K-publisher
+    // manager rotation propagates within ~10 hours, comfortably ahead
+    // of the 60-minute organic re-crawl cadence for any single row.
+    const BATCH_SIZE = 50;
+    const CONCURRENCY = 10;
+
+    try {
+      const rows = await this.publisherDb.dequeueRevalidationBatch(BATCH_SIZE);
+      if (rows.length === 0) {
+        return { processed: 0, succeeded: 0, failed: 0 };
+      }
+
+      log.info({ count: rows.length }, 'Manager revalidation batch');
+
+      const results = await this.processWithConcurrency(
+        rows,
+        CONCURRENCY,
+        async (row) => {
+          try {
+            // Full single-domain crawl re-runs adagents validation
+            // (which will hit the managerdomain fallback again) and
+            // refreshes the publisher's catalog projection.
+            await this.crawlSingleDomain(row.publisher_domain);
+            return { row, ok: true as const };
+          } catch (err) {
+            return {
+              row,
+              ok: false as const,
+              error: err instanceof Error ? err.message : String(err),
+            };
+          }
+        },
+      );
+
+      let succeeded = 0;
+      let failed = 0;
+      for (const result of results) {
+        if (result.ok) {
+          await this.publisherDb.markRevalidationSucceeded(result.row.publisher_domain);
+          succeeded++;
+        } else {
+          await this.publisherDb.markRevalidationFailed(result.row.publisher_domain, result.error);
+          failed++;
+        }
+      }
+
+      log.info(
+        { processed: rows.length, succeeded, failed },
+        'Manager revalidation batch complete',
+      );
+      return { processed: rows.length, succeeded, failed };
+    } finally {
+      this.managerRevalidationProcessing = false;
     }
   }
 
