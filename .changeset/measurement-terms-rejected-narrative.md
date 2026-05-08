@@ -1,4 +1,5 @@
 ---
+"adcontextprotocol": patch
 ---
 
 fix(compliance): `measurement_terms_rejected` — UUID-aliased idempotency_keys + spec-aligned narrative
