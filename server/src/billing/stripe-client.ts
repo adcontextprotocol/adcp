@@ -349,7 +349,12 @@ export async function getPriceByLookupKey(lookupKey: string): Promise<string | n
   }
 
   const availableLookupKeys = cachedProducts.map(p => p.lookup_key).filter(Boolean);
-  logger.error({ lookupKey, availableLookupKeys },
+  // Caller-supplied (Addie LLM, admin tool) — a missing key is a tool-shape
+  // issue, not a server failure. The caller already returns a structured
+  // error to the user; logging at `warn` keeps the pino → posthog hook
+  // from paging #aao-errors. See TODO(#2550) for the upstream fix
+  // (validate against this list before calling).
+  logger.warn({ lookupKey, availableLookupKeys },
     'getPriceByLookupKey: No price found for lookup key. Available: see structured fields');
   return null;
 }

@@ -25,6 +25,7 @@ import {
   AgentVanishedDuringFlowError,
   ConfidentialClientNotAllowedError,
   InvalidOrExpiredFlowError,
+  OAuthError,
   ProtectedResourceMetadataError,
   StateMismatchError,
   TokenExchangeError,
@@ -190,7 +191,18 @@ export function createAgentOAuthRouter(): Router {
       logger.info({ agentUrl: agentContext.agent_url }, 'Starting OAuth flow');
       res.redirect(authorizationUrl);
     } catch (error) {
-      logger.error({ error }, 'Failed to start OAuth flow');
+      // OAuthError (and subclasses) is the SDK's signal that the *agent*
+      // returned bad/missing OAuth data — no metadata at the well-known
+      // URL, malformed PRM, AS rejected the request, etc. That's an
+      // expected third-party state, not a server failure, so log at
+      // `warn` to keep the pino → posthog hook from paging #aao-errors.
+      // Same convention as the `AuthenticationRequiredError` branch in
+      // server/src/http.ts and the slack-client expected-error sites.
+      if (error instanceof OAuthError) {
+        logger.warn({ error, code: error.code }, 'OAuth flow start failed (agent-side)');
+      } else {
+        logger.error({ error }, 'Failed to start OAuth flow');
+      }
       const message = sanitizeErrorMessage(error instanceof Error ? error.message : 'Unknown error');
       res.redirect(`/oauth-complete.html?success=false&error=${encodeURIComponent(message)}`);
     }
