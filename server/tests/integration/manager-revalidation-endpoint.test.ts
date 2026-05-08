@@ -71,7 +71,6 @@ describe('POST /api/registry/manager-revalidation-request', () => {
       connectionString: process.env.DATABASE_URL || 'postgresql://adcp:localdev@localhost:5432/adcp_test',
     });
     await runMigrations();
-    app = buildTestApp();
   });
 
   async function clearFixtures() {
@@ -95,6 +94,9 @@ describe('POST /api/registry/manager-revalidation-request', () => {
 
   beforeEach(async () => {
     await clearFixtures();
+    // Fresh app per test so the in-memory rate-limit Map (closure-scoped
+    // inside createRegistryApiRouter) doesn't bleed between cases.
+    app = buildTestApp();
   });
 
   afterAll(async () => {
