@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/enums/auth-scheme.json",
   "title": "Authentication Scheme",
-  "description": "Authentication schemes for push notification endpoints",
+  "description": "Authentication schemes for the legacy push-notification `authentication` block. Both values are deprecated and will be removed in AdCP 4.0; new integrations SHOULD omit the `authentication` block and use the RFC 9421 webhook profile (see push-notification-config.json).",
   "type": "string",
   "enum": [
     "Bearer",

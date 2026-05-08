@@ -21,7 +21,7 @@
       "properties": {
         "schemes": {
           "type": "array",
-          "description": "Array of authentication schemes. Supported: ['Bearer'] for simple token auth, ['HMAC-SHA256'] for signature verification (recommended for production)",
+          "description": "Array of authentication schemes. Supported: ['Bearer'] for simple token auth, ['HMAC-SHA256'] for legacy shared-secret signing. Both are deprecated and will be removed in AdCP 4.0; new integrations SHOULD use the RFC 9421 webhook profile (see push-notification-config.json's `authentication` description for the precedence model).",
           "items": {
             "$ref": "/schemas/enums/auth-scheme.json"
           },
