@@ -41,7 +41,10 @@ Examples below use **1.0 wire format** (no `kind` field, ProtoJSON enums). For a
 ```javascript
 const a2a = new A2AClient({
   endpoint: 'https://adcp.example.com/a2a',
-  apiKey: process.env.ADCP_API_KEY,
+  auth: {
+    type: 'bearer',
+    token: process.env.ADCP_API_KEY
+  },
   agent: {
     name: "AdCP Media Buyer",
     version: "1.0.0"
@@ -805,6 +808,13 @@ In 1.0, the top-level `url` and `protocolVersion` fields from v0.3 are replaced 
   "name": "AdCP Media Buy Agent",
   "description": "AI-powered media buying agent",
   "version": "1.0.0",
+  "securitySchemes": {
+    "bearerAuth": {
+      "type": "http",
+      "scheme": "bearer"
+    }
+  },
+  "security": [{"bearerAuth": []}],
   "supportedInterfaces": [
     {
       "url": "https://sales.example.com/a2a/jsonrpc",
