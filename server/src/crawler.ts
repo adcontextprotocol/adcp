@@ -872,7 +872,10 @@ export class CrawlerService {
       // MANAGERDOMAIN, queue those publishers for re-validation. The
       // worker (processManagerRevalidationQueue) drains the queue at a
       // bounded rate so a Raptive-scale rotation doesn't saturate
-      // crawler concurrency.
+      // crawler concurrency. Intentionally outside upsertAdagentsCache's
+      // transaction: if the enqueue fails the cache write has already
+      // committed, but the next routine 60-min crawl re-detects drift
+      // and re-enqueues, so silent fan-out loss self-heals.
       if (manifestContentChanged(previous, manifest)) {
         try {
           const enqueued = await this.publisherDb.enqueueManagerRevalidation(domain);

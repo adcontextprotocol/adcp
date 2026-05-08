@@ -383,7 +383,9 @@ export class PublisherDatabase {
    * ads.txt MANAGERDOMAIN. Idempotent: if a publisher is already queued
    * (e.g. previous fan-out hasn't drained yet), the row is reset to
    * "due now" with attempts=0 so the upstream manager change supersedes
-   * any in-flight backoff. Returns the number of rows enqueued.
+   * any in-flight backoff. Returns the number of rows touched (inserts
+   * + ON CONFLICT updates) — a delegating publisher with a stale row
+   * still counts since the supersede is the load-bearing semantic.
    *
    * The SELECT scans the partial index added in migration 470
    * (idx_publishers_manager_domain) so the lookup stays cheap even at
