@@ -51,12 +51,16 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
 
   logger.debug({ count: agentsDue.length }, 'Agents due for compliance check');
 
-  // Mark agents as in-progress to prevent concurrent pickup by overlapping runs
+  // Mark agents as in-progress to prevent concurrent pickup by overlapping runs.
+  // Use a 30-minute TTL instead of NOW() so a mid-loop process crash (OOM,
+  // Fly restart) re-queues the agent within 30 min rather than waiting the full
+  // check_interval (default 12 h). recordComplianceRun() stamps the real
+  // last_checked_at on success or failure — this is only a concurrency lock.
   const urls = agentsDue.map(a => a.agent_url);
   await query(
     `INSERT INTO agent_compliance_status (agent_url, status, last_checked_at)
-     SELECT unnest($1::text[]), 'unknown', NOW()
-     ON CONFLICT (agent_url) DO UPDATE SET last_checked_at = NOW()`,
+     SELECT unnest($1::text[]), 'unknown', NOW() + INTERVAL '30 minutes'
+     ON CONFLICT (agent_url) DO UPDATE SET last_checked_at = NOW() + INTERVAL '30 minutes'`,
     [urls],
   );
 
@@ -89,6 +93,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
         agent.lifecycle_stage as LifecycleStage,
         'heartbeat',
       );
+      dbInput.dry_run = false;
       const { statusTransition, storyboardStatuses } = await complianceDb.recordComplianceRun(dbInput);
 
       result.checked++;
@@ -271,7 +276,7 @@ export async function runComplianceHeartbeatJob(options: HeartbeatOptions = {}):
           tracks_partial: 0,
           observations_json: [{ category: observationCategory, severity: observationSeverity, message: observationMessage }],
           triggered_by: 'heartbeat',
-          dry_run: true,
+          dry_run: false,
         });
       } catch (recordError) {
         logger.error({ recordError, agentUrl: agent.agent_url }, 'Failed to record compliance failure');

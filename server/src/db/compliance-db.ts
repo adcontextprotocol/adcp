@@ -582,6 +582,15 @@ export class ComplianceDatabase {
     );
   }
 
+  async requeueForHeartbeat(agentUrl: string): Promise<void> {
+    await query(
+      `UPDATE agent_compliance_status
+       SET last_checked_at = NULL
+       WHERE agent_url = $1`,
+      [agentUrl],
+    );
+  }
+
   // ----- Storyboard Status Queries -----
 
   async getStoryboardStatuses(agentUrl: string): Promise<Array<{
