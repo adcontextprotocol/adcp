@@ -65,6 +65,8 @@ Tokens may be:
 
 Implementations MUST enforce TLS 1.2+ on all Bearer-authenticated endpoints. See the [implementation security reference](/docs/building/by-layer/L1/security) for transport requirements.
 
+The credential MUST be carried in the `Authorization` request header per [RFC 6750 §2](https://www.rfc-editor.org/rfc/rfc6750#section-2). Sellers MUST NOT require non-canonical aliases (e.g. `x-adcp-auth`, which appeared in some early MCP-only deployments) and MUST NOT advertise them as the supported header in agent cards, capability responses, or documentation. A seller MAY accept such an alias as a transitional input while it phases out an existing adopter's integration, but `Authorization: Bearer` MUST also be accepted on the same endpoint. Buyer agents and SDKs MUST emit `Authorization: Bearer`; SDK examples and docstrings MUST NOT show alias headers as the canonical form.
+
 ### RFC 9421 request signing (recommended; required for mutating ops in 3.1+)
 
 Signed requests bind `@method`, `@target-uri`, `@authority`, `content-type`, and `content-digest` under an `Ed25519`, `ecdsa-p256-sha256`, or `rsa-pss-sha512` signature with a ±60 s timestamp window and ≥128-bit nonce. The full verifier checklist, key-discovery rules (`brand.json` → `agents[]` → `jwks_uri`), and rotation semantics are defined in the [implementation security reference](/docs/building/by-layer/L1/security#request-signing). Capability discovery via `get_adcp_capabilities.request_signing.supported` lets clients detect whether a seller enforces signing before sending a mutating call.
