@@ -1,0 +1,8 @@
+---
+---
+
+Fix three error classes that were incorrectly paging `#aao-errors` via the pino → posthog hook, plus a pg-pool retry gap that turned them into 500s for `/api/notifications/count`.
+
+- **`server/src/db/client.ts`** — `isTransientConnectionError` now matches the `Connection terminated unexpectedly` and `Connection terminated due to connection timeout` messages that pg-pool throws (no error `code`) when the other side closes a pooled connection between checkout and use. The existing one-shot retry now covers the case. Surfaced first by the 30s polling on `/api/notifications/count`. Helper is exported so the classifier has direct unit-test coverage (`server/tests/unit/db-transient-error.test.ts`).
+- **`server/src/routes/agent-oauth.ts`** — the `/start` catch block now logs `OAuthError` (and subclasses) at `warn` instead of `error`. These are agent-side conditions — no metadata at the well-known URL, malformed PRM, AS rejection — not server failures. The user-facing redirect to `/oauth-complete.html` is unchanged. Same convention as the `AuthenticationRequiredError` branch in `server/src/http.ts` and the slack-client expected-error sites.
+- **`server/src/billing/stripe-client.ts`** — `getPriceByLookupKey` now logs the "no price found" miss at `warn` instead of `error`. The lookup key comes from the Addie LLM (`create_payment_link`, `send_invoice`, `confirm_send_invoice`) — a missing key is a tool-shape issue, and the calling handler already returns a structured error to the user. The deeper fix (validate against the cached list before calling Stripe and return `did_you_mean`) is tracked in `TODO(#2550)`.
