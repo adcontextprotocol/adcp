@@ -184,6 +184,14 @@ export interface RecordComplianceRunInput {
   agent_profile_json?: any;
   observations_json?: any;
   triggered_by?: TriggeredBy;
+  /**
+   * WorkOS organization id of the org that triggered the run. Populated only
+   * for triggered_by='owner_test'; heartbeat / manual / webhook leave it NULL.
+   * Required for the per-org scoping of `agent_context_with_latest_test` so
+   * two orgs that own the same agent (e.g. staging vs prod orgs of one
+   * publisher) don't conflate their test history. See migration 473.
+   */
+  triggered_org_id?: string | null;
   dry_run?: boolean;
   storyboard_statuses?: StoryboardStatusEntry[];
 }
@@ -265,8 +273,8 @@ export class ComplianceDatabase {
           agent_url, lifecycle_stage, overall_status, headline,
           total_duration_ms, tracks_json, tracks_passed, tracks_failed,
           tracks_skipped, tracks_partial, agent_profile_json,
-          observations_json, triggered_by, dry_run
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+          observations_json, triggered_by, triggered_org_id, dry_run
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
         RETURNING *`,
         [
           input.agent_url,
@@ -282,6 +290,7 @@ export class ComplianceDatabase {
           input.agent_profile_json ? JSON.stringify(input.agent_profile_json) : null,
           input.observations_json ? JSON.stringify(input.observations_json) : null,
           input.triggered_by ?? 'heartbeat',
+          input.triggered_org_id ?? null,
           input.dry_run ?? true,
         ],
       );

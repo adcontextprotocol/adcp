@@ -182,15 +182,20 @@ export class AgentContextDatabase {
           AND oauth_cc_client_secret_encrypted IS NOT NULL) as has_oauth_client_credentials,
         tools_discovered,
         last_discovered_at,
-        last_test_scenario,
-        last_test_passed,
-        last_test_summary,
-        last_tested_at,
-        total_tests_run,
+        -- Derived from agent_compliance_runs via the view (canonical source).
+        -- The legacy agent_contexts.last_test_* columns stay for backward
+        -- compat with non-owner third-party writes through recordTest, but
+        -- reads come from the view so the unification is consistent. See
+        -- migration 473.
+        canonical_last_test_scenario AS last_test_scenario,
+        canonical_last_test_passed AS last_test_passed,
+        canonical_last_test_summary AS last_test_summary,
+        canonical_last_tested_at AS last_tested_at,
+        canonical_total_tests_run AS total_tests_run,
         created_at,
         updated_at,
         created_by
-      FROM agent_contexts
+      FROM agent_context_with_latest_test
       WHERE organization_id = $1
       ORDER BY updated_at DESC`,
       [organizationId]
@@ -222,15 +227,20 @@ export class AgentContextDatabase {
           AND oauth_cc_client_secret_encrypted IS NOT NULL) as has_oauth_client_credentials,
         tools_discovered,
         last_discovered_at,
-        last_test_scenario,
-        last_test_passed,
-        last_test_summary,
-        last_tested_at,
-        total_tests_run,
+        -- Derived from agent_compliance_runs via the view (canonical source).
+        -- The legacy agent_contexts.last_test_* columns stay for backward
+        -- compat with non-owner third-party writes through recordTest, but
+        -- reads come from the view so the unification is consistent. See
+        -- migration 473.
+        canonical_last_test_scenario AS last_test_scenario,
+        canonical_last_test_passed AS last_test_passed,
+        canonical_last_test_summary AS last_test_summary,
+        canonical_last_tested_at AS last_tested_at,
+        canonical_total_tests_run AS total_tests_run,
         created_at,
         updated_at,
         created_by
-      FROM agent_contexts
+      FROM agent_context_with_latest_test
       WHERE id = $1`,
       [id]
     );
@@ -261,15 +271,20 @@ export class AgentContextDatabase {
           AND oauth_cc_client_secret_encrypted IS NOT NULL) as has_oauth_client_credentials,
         tools_discovered,
         last_discovered_at,
-        last_test_scenario,
-        last_test_passed,
-        last_test_summary,
-        last_tested_at,
-        total_tests_run,
+        -- Derived from agent_compliance_runs via the view (canonical source).
+        -- The legacy agent_contexts.last_test_* columns stay for backward
+        -- compat with non-owner third-party writes through recordTest, but
+        -- reads come from the view so the unification is consistent. See
+        -- migration 473.
+        canonical_last_test_scenario AS last_test_scenario,
+        canonical_last_test_passed AS last_test_passed,
+        canonical_last_test_summary AS last_test_summary,
+        canonical_last_tested_at AS last_tested_at,
+        canonical_total_tests_run AS total_tests_run,
         created_at,
         updated_at,
         created_by
-      FROM agent_contexts
+      FROM agent_context_with_latest_test
       WHERE organization_id = $1 AND agent_url = $2`,
       [organizationId, agentUrl]
     );
@@ -305,11 +320,16 @@ export class AgentContextDatabase {
         FALSE as has_oauth_client,
         tools_discovered,
         last_discovered_at,
-        last_test_scenario,
-        last_test_passed,
-        last_test_summary,
-        last_tested_at,
-        total_tests_run,
+        -- Derived from agent_compliance_runs via the view (canonical source).
+        -- The legacy agent_contexts.last_test_* columns stay for backward
+        -- compat with non-owner third-party writes through recordTest, but
+        -- reads come from the view so the unification is consistent. See
+        -- migration 473.
+        canonical_last_test_scenario AS last_test_scenario,
+        canonical_last_test_passed AS last_test_passed,
+        canonical_last_test_summary AS last_test_summary,
+        canonical_last_tested_at AS last_tested_at,
+        canonical_total_tests_run AS total_tests_run,
         created_at,
         updated_at,
         created_by`,

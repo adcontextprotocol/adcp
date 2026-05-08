@@ -3602,6 +3602,11 @@ export function createMemberToolHandlers(
                 // Owner test runs are not dry runs — they update the live public record.
                 // (complianceResultToDbInput hard-codes dry_run: true; override here.)
                 dry_run: false,
+                // Org scope for the per-org `agent_context_with_latest_test` view.
+                // Without this, two orgs that own the same agent URL (staging vs
+                // prod orgs of one publisher) would conflate their test history.
+                // See migration 473.
+                triggered_org_id: organizationId,
               };
               await complianceDb.recordComplianceRun(dbInput);
               // notifyComplianceChange intentionally omitted: owner test runs are
