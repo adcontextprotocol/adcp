@@ -248,14 +248,14 @@ describe('Per-agent REST API (/api/me/agents)', () => {
     (app as any).setCurrentUser(userId);
     const created = await request(app)
       .post('/api/me/agents')
-      .send({ url: 'https://new.example/mcp', name: 'New', visibility: 'private' });
+      .send({ url: 'https://new.example/mcp', name: 'New', type: 'sales', visibility: 'private' });
     expect(created.status).toBe(201);
     expect(created.body.agent.url).toBe('https://new.example/mcp');
     expect(created.body.agent.name).toBe('New');
 
     const updated = await request(app)
       .post('/api/me/agents')
-      .send({ url: 'https://new.example/mcp', name: 'Renamed', visibility: 'private' });
+      .send({ url: 'https://new.example/mcp', name: 'Renamed', type: 'sales', visibility: 'private' });
     expect(updated.status).toBe(200);
     expect(updated.body.agent.name).toBe('Renamed');
 
@@ -272,10 +272,17 @@ describe('Per-agent REST API (/api/me/agents)', () => {
     await createProfile(orgId, 'postinv');
 
     (app as any).setCurrentUser(userId);
-    const noUrl = await request(app).post('/api/me/agents').send({ name: 'No URL' });
+    // Both cases include `type: 'sales'` so the 400 is unambiguously from
+    // the URL validator and not the new type-required gate (covered
+    // separately below).
+    const noUrl = await request(app)
+      .post('/api/me/agents')
+      .send({ name: 'No URL', type: 'sales' });
     expect(noUrl.status).toBe(400);
 
-    const badUrl = await request(app).post('/api/me/agents').send({ url: 'not a url' });
+    const badUrl = await request(app)
+      .post('/api/me/agents')
+      .send({ url: 'not a url', type: 'sales' });
     expect(badUrl.status).toBe(400);
   });
 
@@ -289,7 +296,7 @@ describe('Per-agent REST API (/api/me/agents)', () => {
     (app as any).setCurrentUser(userId);
     const res = await request(app)
       .post('/api/me/agents')
-      .send({ url: 'https://upgrade.example/mcp', visibility: 'public' });
+      .send({ url: 'https://upgrade.example/mcp', type: 'sales', visibility: 'public' });
     expect(res.status).toBe(201);
     expect(res.body.agent.visibility).toBe('members_only');
     expect(res.body.warnings).toBeDefined();
@@ -384,7 +391,7 @@ describe('Per-agent REST API (/api/me/agents)', () => {
     (app as any).setCurrentUser(userId);
     const res = await request(app)
       .post(`/api/me/agents?org=${secondaryOrg}`)
-      .send({ url: 'https://multi.example/mcp', visibility: 'private' });
+      .send({ url: 'https://multi.example/mcp', type: 'sales', visibility: 'private' });
     expect(res.status).toBe(201);
     expect(res.body.agent.url).toBe('https://multi.example/mcp');
 
@@ -441,6 +448,192 @@ describe('Per-agent REST API (/api/me/agents)', () => {
     const profile = await memberDb.getProfileByOrgId(orgId);
     const stored = profile!.agents.find((a) => a.url === targetUrl);
     expect(stored?.type).toBe('sales');
+  });
+
+  // ── Type-required contract (PR #4235) ──────────────────────────
+  // The owner declares `type` at registration; the server never infers.
+  // 'unknown' is reserved for the server-side smuggle-protection outcome
+  // (covered by the snapshot-override test above) and is not accepted on
+  // input.
+
+  it('POST returns 400 when type is missing', async () => {
+    const orgId = `${TEST_PREFIX}_type_missing`;
+    const userId = `${TEST_PREFIX}_type_missing_user`;
+    await seedOrg(pool, orgId, 'individual_professional');
+    await provisionUser(userId, orgId);
+    await createProfile(orgId, 'typemissing');
+
+    (app as any).setCurrentUser(userId);
+    const res = await request(app)
+      .post('/api/me/agents')
+      .send({ url: 'https://no-type.example/mcp', visibility: 'private' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('type is required');
+  });
+
+  it('POST returns 400 when type is "unknown" (reserved for server-side outcome)', async () => {
+    const orgId = `${TEST_PREFIX}_type_unknown`;
+    const userId = `${TEST_PREFIX}_type_unknown_user`;
+    await seedOrg(pool, orgId, 'individual_professional');
+    await provisionUser(userId, orgId);
+    await createProfile(orgId, 'typeunknown');
+
+    (app as any).setCurrentUser(userId);
+    const res = await request(app)
+      .post('/api/me/agents')
+      .send({ url: 'https://unknown.example/mcp', type: 'unknown', visibility: 'private' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('type is required');
+  });
+
+  it('POST returns 400 when type is not in the AgentType enum', async () => {
+    const orgId = `${TEST_PREFIX}_type_garbage`;
+    const userId = `${TEST_PREFIX}_type_garbage_user`;
+    await seedOrg(pool, orgId, 'individual_professional');
+    await provisionUser(userId, orgId);
+    await createProfile(orgId, 'typegarbage');
+
+    (app as any).setCurrentUser(userId);
+    const res = await request(app)
+      .post('/api/me/agents')
+      .send({ url: 'https://garbage.example/mcp', type: 'seller', visibility: 'private' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('type is required');
+  });
+
+  it('PATCH returns 400 invalid_type when patch.type is invalid; preserves existing type when omitted', async () => {
+    const orgId = `${TEST_PREFIX}_patch_type`;
+    const userId = `${TEST_PREFIX}_patch_type_user`;
+    await seedOrg(pool, orgId, 'individual_professional');
+    await provisionUser(userId, orgId);
+    // Seed a profile with one agent that already has a declared type so
+    // we can verify omission preserves it.
+    await memberDb.createProfile({
+      workos_organization_id: orgId,
+      display_name: 'Test patchtype',
+      slug: 'patchtype',
+      primary_brand_domain: 'patchtype.example',
+      is_public: false,
+      agents: [
+        { url: 'https://existing.example/mcp', type: 'sales', visibility: 'private' },
+      ],
+    });
+
+    (app as any).setCurrentUser(userId);
+    const target = encodeURIComponent('https://existing.example/mcp');
+
+    // Invalid type → 400 invalid_type (caller-supplied 'unknown' rejected,
+    // out-of-enum strings rejected).
+    const badEnum = await request(app)
+      .patch(`/api/me/agents/${target}`)
+      .send({ type: 'seller' });
+    expect(badEnum.status).toBe(400);
+    expect(badEnum.body.error).toBe('invalid_type');
+
+    const unknown = await request(app)
+      .patch(`/api/me/agents/${target}`)
+      .send({ type: 'unknown' });
+    expect(unknown.status).toBe(400);
+    expect(unknown.body.error).toBe('invalid_type');
+
+    // Omitting type → existing 'sales' preserved on the row.
+    const renamed = await request(app)
+      .patch(`/api/me/agents/${target}`)
+      .send({ name: 'Renamed' });
+    expect(renamed.status).toBe(200);
+    expect(renamed.body.agent.type).toBe('sales');
+
+    // Valid type → updated.
+    const swapped = await request(app)
+      .patch(`/api/me/agents/${target}`)
+      .send({ type: 'buying' });
+    expect(swapped.status).toBe(200);
+    expect(swapped.body.agent.type).toBe('buying');
+  });
+
+  // ── primary_brand_domain auto-backfill (PR #4235) ──────────────
+  // When a profile has no brand domain and agents agree on a hostname,
+  // backfill atomically with the JSONB write so /api/registry/operator
+  // discovery works without a separate setup step.
+
+  it('POST backfills primary_brand_domain from the agent hostname when null and unanimous', async () => {
+    const orgId = `${TEST_PREFIX}_bd_backfill`;
+    const userId = `${TEST_PREFIX}_bd_backfill_user`;
+    await seedOrg(pool, orgId, 'individual_professional');
+    await provisionUser(userId, orgId);
+    // Seed a profile with NULL primary_brand_domain (mirrors the
+    // pre-PR auto-bootstrap path that produced the harvingupta bug).
+    await memberDb.createProfile({
+      workos_organization_id: orgId,
+      display_name: 'Test bdbackfill',
+      slug: 'bdbackfill',
+      // primary_brand_domain intentionally omitted — defaults to null.
+      is_public: false,
+      agents: [],
+    });
+
+    (app as any).setCurrentUser(userId);
+    const res = await request(app)
+      .post('/api/me/agents')
+      .send({ url: 'https://www.bdbackfill.example/api/mcp', type: 'sales', visibility: 'private' });
+    expect(res.status).toBe(201);
+
+    const profile = await memberDb.getProfileByOrgId(orgId);
+    // `www.` stripped to match `extractDomain` in registry-api so a
+    // /api/registry/operator?domain=bdbackfill.example query lands.
+    expect(profile!.primary_brand_domain).toBe('bdbackfill.example');
+  });
+
+  it('POST does NOT backfill primary_brand_domain when agents disagree on hostname', async () => {
+    const orgId = `${TEST_PREFIX}_bd_conflict`;
+    const userId = `${TEST_PREFIX}_bd_conflict_user`;
+    await seedOrg(pool, orgId, 'individual_professional');
+    await provisionUser(userId, orgId);
+    await memberDb.createProfile({
+      workos_organization_id: orgId,
+      display_name: 'Test bdconflict',
+      slug: 'bdconflict',
+      is_public: false,
+      agents: [
+        { url: 'https://first.example/mcp', type: 'sales', visibility: 'private' },
+      ],
+    });
+
+    (app as any).setCurrentUser(userId);
+    const res = await request(app)
+      .post('/api/me/agents')
+      .send({ url: 'https://second.example/mcp', type: 'sales', visibility: 'private' });
+    expect(res.status).toBe(201);
+
+    const profile = await memberDb.getProfileByOrgId(orgId);
+    // Two distinct hostnames in the agents array — refuse to guess.
+    expect(profile!.primary_brand_domain).toBeNull();
+  });
+
+  it('POST does NOT overwrite primary_brand_domain when one is already set', async () => {
+    const orgId = `${TEST_PREFIX}_bd_preset`;
+    const userId = `${TEST_PREFIX}_bd_preset_user`;
+    await seedOrg(pool, orgId, 'individual_professional');
+    await provisionUser(userId, orgId);
+    await memberDb.createProfile({
+      workos_organization_id: orgId,
+      display_name: 'Test bdpreset',
+      slug: 'bdpreset',
+      primary_brand_domain: 'preset.example',
+      is_public: false,
+      agents: [],
+    });
+
+    (app as any).setCurrentUser(userId);
+    const res = await request(app)
+      .post('/api/me/agents')
+      .send({ url: 'https://different.example/mcp', type: 'sales', visibility: 'private' });
+    expect(res.status).toBe(201);
+
+    const profile = await memberDb.getProfileByOrgId(orgId);
+    // The existing brand-domain wins; auto-backfill never fires when the
+    // column is already populated, even if the agent URL hostname differs.
+    expect(profile!.primary_brand_domain).toBe('preset.example');
   });
 
   it('DELETE returns 409 unpublish_first when the agent is currently public', async () => {

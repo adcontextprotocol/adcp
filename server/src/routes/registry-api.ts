@@ -5840,10 +5840,29 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       const agents = await Promise.all(
         agentConfigs.map(async (ac) => {
           const auths = await federatedIndex.getAuthorizationsForAgent(ac.url);
+          // `type` is required at every write surface (POST/PATCH
+          // /api/me/agents and the `save_agent` MCP tool), so a missing or
+          // out-of-enum value here means corrupt data slipped past those
+          // gates (direct SQL, pre-validation row, etc.) — log it loud so
+          // it's caught instead of silently served as "unknown".
+          // `resolveAgentTypes` is the only path that may legitimately stamp
+          // `"unknown"` on a write (when smuggle-protection invalidates a
+          // declared type without a snapshot to override from); that case
+          // passes `isValidAgentType` and serves through cleanly.
+          let agentType: AgentType;
+          if (isValidAgentType(ac.type)) {
+            agentType = ac.type;
+          } else {
+            logger.warn(
+              { domain, url: ac.url, storedType: ac.type, profileSlug: profile?.slug },
+              "operator lookup: agent has missing/invalid `type` — owner must re-declare via save_agent or PATCH /api/me/agents"
+            );
+            agentType = "unknown";
+          }
           return {
             url: ac.url,
             name: ac.name || displayName,
-            type: ac.type || "unknown",
+            type: agentType,
             authorized_by: auths.map(a => ({
               publisher_domain: a.publisher_domain,
               authorized_for: a.authorized_for,

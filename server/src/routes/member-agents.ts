@@ -34,6 +34,7 @@ import { resolvePrimaryOrganization } from '../db/users-db.js';
 import { resolveUserOrgMembership } from '../utils/resolve-user-org-membership.js';
 import { getPool } from '../db/client.js';
 import type { AgentConfig } from '../types.js';
+import { isValidAgentType } from '../types.js';
 import { resolveAgentTypes, logResolvedTypeChanges } from './member-profiles.js';
 import { ensureMemberProfileExists } from '../services/member-profile-autopublish.js';
 import { performCreateOrganization } from '../services/organization-bootstrap.js';
@@ -61,6 +62,44 @@ export interface MemberAgentsRouterConfig {
    */
   workos: WorkOS | null;
   invalidateMemberContextCache: () => void;
+}
+
+/**
+ * Extract the brand domain from an agent URL. Strips protocol, path, query,
+ * and a leading `www.` so the value matches how `extractDomain` in
+ * registry-api normalizes lookup queries. Returns null if the URL is
+ * unparseable. Used to backfill `member_profiles.primary_brand_domain` when
+ * an agent is registered against a profile that has no brand domain set —
+ * without this, `/api/registry/operator?domain=…` exact-match lookup misses
+ * the profile entirely (it keys off `primary_brand_domain`, not the agents
+ * JSONB), leaving the agent invisible to the public registry.
+ */
+function brandDomainFromAgentUrl(url: string): string | null {
+  try {
+    const h = new URL(url).hostname.toLowerCase();
+    if (!h) return null;
+    return h.startsWith('www.') ? h.slice(4) : h;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Returns the unanimous brand-domain across all agent URLs in the array, or
+ * null if agents disagree (multi-domain rollup) or none have a parseable URL.
+ * "Unanimous" is the bar for auto-populating `primary_brand_domain` because
+ * a profile carries one canonical brand — silently picking one of N
+ * conflicting hostnames could mis-key registry lookups.
+ */
+function unanimousBrandDomain(agents: AgentConfig[]): string | null {
+  const hosts = new Set<string>();
+  for (const a of agents) {
+    if (!a || typeof a.url !== 'string') continue;
+    const h = brandDomainFromAgentUrl(a.url);
+    if (h) hosts.add(h);
+  }
+  if (hosts.size !== 1) return null;
+  return hosts.values().next().value ?? null;
 }
 
 /**
@@ -259,7 +298,7 @@ export function createMemberAgentsRouter(config: MemberAgentsRouterConfig): Rout
     try {
       await client.query('BEGIN');
       const row = await client.query(
-        `SELECT id, agents
+        `SELECT id, agents, primary_brand_domain
          FROM member_profiles
          WHERE workos_organization_id = $1
          FOR UPDATE`,
@@ -277,6 +316,7 @@ export function createMemberAgentsRouter(config: MemberAgentsRouterConfig): Rout
       }
 
       const profileId = row.rows[0].id as string;
+      const currentBrandDomain = row.rows[0].primary_brand_domain as string | null;
       const existing = parseAgents(row.rows[0].agents);
       const result = await mutate(existing);
       if (result.kind === 'reject') {
@@ -290,12 +330,33 @@ export function createMemberAgentsRouter(config: MemberAgentsRouterConfig): Rout
       const typed = (await resolveAgentTypes(gated)) as AgentConfig[];
       await logResolvedTypeChanges(gated, typed, orgId);
 
-      await client.query(
-        `UPDATE member_profiles
-         SET agents = $1::jsonb, updated_at = NOW()
-         WHERE id = $2`,
-        [JSON.stringify(typed), profileId],
-      );
+      // Backfill `primary_brand_domain` from the agents' URL hostnames when
+      // it's currently null AND every agent agrees on the same hostname.
+      // This keeps the public registry lookup
+      // (`/api/registry/operator?domain=…`, which keys off
+      // `primary_brand_domain`) discoverable for profiles that registered an
+      // agent before setting a brand domain. Conflicts (multiple distinct
+      // hostnames) are deliberately skipped — picking one would mis-key
+      // discovery.
+      let newBrandDomain: string | null = null;
+      if (!currentBrandDomain) {
+        newBrandDomain = unanimousBrandDomain(typed);
+      }
+      if (newBrandDomain) {
+        await client.query(
+          `UPDATE member_profiles
+           SET agents = $1::jsonb, primary_brand_domain = $2, updated_at = NOW()
+           WHERE id = $3`,
+          [JSON.stringify(typed), newBrandDomain, profileId],
+        );
+      } else {
+        await client.query(
+          `UPDATE member_profiles
+           SET agents = $1::jsonb, updated_at = NOW()
+           WHERE id = $2`,
+          [JSON.stringify(typed), profileId],
+        );
+      }
       await client.query('COMMIT');
       invalidateMemberContextCache();
 
@@ -370,6 +431,15 @@ export function createMemberAgentsRouter(config: MemberAgentsRouterConfig): Rout
       if (!isParseableUrl(body.url)) {
         return res.status(400).json({ error: 'url must be a valid URL' });
       }
+      // `type` is required from the caller — never inferred. 'unknown' is
+      // reserved for server-side smuggle protection (resolveAgentTypes), not
+      // for client input. The caller MUST declare what kind of agent this is.
+      if (typeof body.type !== 'string' || !isValidAgentType(body.type) || body.type === 'unknown') {
+        return res.status(400).json({
+          error: 'type is required',
+          message: 'Specify one of: brand, rights, measurement, governance, creative, sales, buying, signals.',
+        });
+      }
       const targetUrl = body.url;
 
       // Auto-bootstrap a private member profile if the caller's org doesn't
@@ -436,6 +506,17 @@ export function createMemberAgentsRouter(config: MemberAgentsRouterConfig): Rout
           message:
             'url cannot be changed via PATCH. DELETE the old entry and POST the new url.',
         });
+      }
+      // If `type` is being patched, it must be a valid declared type. 'unknown'
+      // is server-side-only. Omitting `type` from the patch is fine — the
+      // caller is updating other fields and leaving the existing type alone.
+      if (patch.type !== undefined) {
+        if (typeof patch.type !== 'string' || !isValidAgentType(patch.type) || patch.type === 'unknown') {
+          return res.status(400).json({
+            error: 'invalid_type',
+            message: 'type must be one of: brand, rights, measurement, governance, creative, sales, buying, signals.',
+          });
+        }
       }
 
       const result = await applyMemberAgentMutation(orgId, (existing) => {
