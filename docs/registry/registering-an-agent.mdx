@@ -106,7 +106,7 @@ console.log(yours);
 
 If your agent's URL is in the response, it is enrolled and `member` identifies the AAO organization that owns the listing. If it is not in the response, no AAO member has enrolled it — ask your operator to enroll it via their member profile, or [become a member](https://agenticadvertising.org/membership) and self-enroll.
 
-To check whether your agent is referenced in a publisher's `adagents.json` (for authorization purposes, separate from catalog enrollment), use [`/api/registry/lookup/domain/{domain}`](/docs/registry/api-reference/authorization-lookups/domain-lookup) against the publisher's domain.
+To check whether your agent is referenced in a publisher's `adagents.json` (for authorization purposes, separate from catalog enrollment), call `/api/registry/lookup/domain/{domain}` against the publisher's domain.
 
 ## Related
 
