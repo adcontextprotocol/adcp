@@ -1,10 +1,17 @@
 # Changelog
 
-## Upcoming
+## 3.0.7
 
-### Notices — experimental surfaces
+### Patch Changes
 
-- **TMP `identity-match-response.ttl_sec` is removed; replaced by `serve_window_sec`.** The `ttl_sec` field was documented as a router response cache TTL but operationally functioned as a per-package single-shot fcap, conflating two distinct concerns and silently breaking either when tuned. Replacement field `serve_window_sec` (integer, 1–300, default 60) carries the corrected semantic — *after serving the user one impression on each eligible package within this window, the publisher MUST re-query Identity Match before serving from those packages again.* This is **not** a router response cache. Multi-impression frequency capping is a separate concern handled by the buyer's impression tracker, which writes cap-fire events to the IdentityMatch cap-state store at the boundary regardless of this window. TMP is pre-launch (experimental, pre-3.0.0 GA) and not subject to deprecation cycles, so `ttl_sec` is removed outright rather than going through a deprecation window. Tracked in `specs/identitymatch-fcap-architecture.md` and [Frequency-Cap Data Flow](docs/trusted-match/identity-match-implementation.mdx).
+- 866abe2: docs(creative): tighten type column in the `list_creatives` filtering options table to match `core/creative-filters.json`. `accounts` now shows `AccountRef[]` (was `array`), `format_ids` shows `FormatID[]` (was `format_id[]`, matching the casing used in `list_creative_formats`, `get_products`, and `create_media_buy`), and `statuses` links to `CreativeStatus` rather than the under-specified `string[]`. Docs only — no schema or wire-format change. Patch-eligible per the non-normative-docs rule in `.agents/playbook.md`.
+- b2f7a3d: fix(compliance): `measurement_terms_rejected` — UUID-aliased idempotency_keys + spec-aligned narrative
+
+  The `media_buy_seller/measurement_terms_rejected` storyboard shipped hardcoded `idempotency_key` literals on both `create_media_buy` steps. Combined with runner-side dynamic `start_time` substitution (the runner shifts stale dates forward to keep the buy future-dated), this produced **same key + different body** on every run against a long-running seller deployment, arming the spec-mandated `IDEMPOTENCY_CONFLICT` on the seller side. Switch to `$generate:uuid_v4#…` aliases so each run mints fresh keys (matches the established pattern across the storyboard suite).
+
+  Also rewrites the narrative, which previously told implementers the buyer "retries the same `create_media_buy` `idempotency_key` with an adjusted payload" — a direct spec violation — to describe minting a fresh key for the retry.
+
+  Closes #4219. Refs adcontextprotocol/adcp-client#1586.
 
 ## 3.0.6
 
