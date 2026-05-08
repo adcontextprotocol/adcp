@@ -12,8 +12,9 @@ narrative: |
   measurement_terms negotiation is a round-trip. The buyer proposes a measurement vendor,
   window, and variance tolerance on each package; the seller either accepts (returning
   measurement_terms echoed in the response) or rejects with TERMS_REJECTED and a message
-  explaining what is unacceptable. The buyer corrects the terms and retries the same
-  create_media_buy idempotency_key with an adjusted payload.
+  explaining what is unacceptable. The buyer mints a fresh idempotency_key and retries
+  create_media_buy with the adjusted payload — reusing the prior key against a different
+  body MUST be rejected with IDEMPOTENCY_CONFLICT per spec.
 
   This scenario sends an intentionally aggressive first proposal (max_variance_percent: 0
   with a window the seller does not guarantee), verifies the seller rejects with
@@ -105,7 +106,7 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
-          idempotency_key: "measurement-terms-probe-aggressive-v1"
+          idempotency_key: "$generate:uuid_v4#measurement_terms_rejected_aggressive_terms"
           start_time: "2026-05-01T00:00:00Z"
           end_time: "2026-05-31T23:59:59Z"
           packages:
@@ -162,7 +163,7 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
-          idempotency_key: "measurement-terms-probe-relaxed-v1"
+          idempotency_key: "$generate:uuid_v4#measurement_terms_rejected_relaxed_terms"
           start_time: "2026-05-01T00:00:00Z"
           end_time: "2026-05-31T23:59:59Z"
           packages:
