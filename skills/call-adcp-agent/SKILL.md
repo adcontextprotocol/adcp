@@ -79,6 +79,18 @@ A mutating tool can return one of three shapes:
 
 When you see `status: 'submitted'`, the work is NOT complete. Poll via `tasks/get` (A2A) or the MCP async task extension, using the `task_id`. Over A2A the AdCP `task_id` also rides on `artifact.metadata.adcp_task_id` — both work.
 
+### Webhook signing — default to RFC 9421, don't reach for `authentication`
+
+For async flows the seller signs outbound webhook deliveries. The default is the AdCP RFC 9421 webhook-signing profile: the seller publishes a webhook-signing key at the `jwks_uri` on its `brand.json` `agents[]` entry, and the buyer verifies using that JWKS. No shared secret crosses the wire.
+
+**Don't populate `push_notification_config.authentication`** unless you specifically need the legacy Bearer / HMAC-SHA256 fallback. It's deprecated (removed in AdCP 4.0), and per [#2506](https://github.com/adcontextprotocol/adcp/pull/2506) **presence of the block selects the legacy scheme; absence selects 9421** — it's a switch, not a fallback. A buyer MUST NOT attempt "try 9421 first, fall back to HMAC" verification; signature mode is determined solely by whether the block was present at registration time. New integrations: omit the block.
+
+Verifier path on inbound webhooks: load the seller's JWKS from its `brand.json` `agents[].jwks_uri`, then verify per the [verifier checklist for webhooks](https://adcontextprotocol.org/docs/building/implementation/security#verifier-checklist-for-webhooks). Required covered components are `@method`, `@authority`, `@target-uri`, `content-type`, and `content-digest` (no policy branch on webhooks — `content-digest` MUST be covered); `tag="adcp/webhook-signing/v1"`; the verifying JWK MUST carry `adcp_use="webhook-signing"`. Reject with the matching `webhook_signature_*` code from the [error taxonomy](https://adcontextprotocol.org/docs/building/implementation/security#webhook-error-taxonomy).
+
+Conformance vectors at `https://adcontextprotocol.org/compliance/{version}/test-vectors/webhook-signing/` cover every `webhook_signature_*` error code deterministically. Run them in CI before trusting your verifier — RFC 9421 canonicalization disagreements are the [#1 silent interop bug](https://adcontextprotocol.org/compliance/latest/test-vectors/request-signing/) and the only reliable way to surface them is the static negative-vector suite.
+
+SDKs that ship a 9421 webhook verifier (e.g. `@adcp/sdk` 5.25.0+ on TypeScript) wire all of the above for you. Use it; don't roll your own.
+
 ### `packages[*]` on media buys
 
 ```json
