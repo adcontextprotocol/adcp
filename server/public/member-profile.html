@@ -2642,8 +2642,9 @@
       }
 
       if (photoUrl) {
+        let parsed;
         try {
-          const parsed = new URL(photoUrl);
+          parsed = new URL(photoUrl);
           if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
             setPreviewMessage('Only http/https URLs allowed', 'var(--color-error-500)', '11px');
             return;
