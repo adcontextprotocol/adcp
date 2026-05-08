@@ -11,7 +11,7 @@ const logger = baseLogger.child({ module: 'compliance-db' });
 export type LifecycleStage = 'development' | 'testing' | 'production' | 'deprecated';
 export type ComplianceStatus = 'passing' | 'degraded' | 'failing' | 'unknown';
 export type OverallRunStatus = 'passing' | 'failing' | 'partial';
-export type TriggeredBy = 'heartbeat' | 'manual' | 'webhook';
+export type TriggeredBy = 'heartbeat' | 'manual' | 'webhook' | 'owner_test';
 export type TrackStatus = 'pass' | 'fail' | 'partial' | 'skip' | 'silent';
 
 /**
