@@ -2965,35 +2965,35 @@
             return;
           }
 
-          const reasonText = errBody.reason ? ' (' + errBody.reason + ')' : '';
-          const msg = errBody.error || ('HTTP ' + res.status);
-          let html = '<div style="padding:var(--space-3);background:var(--color-error-50);border:1px solid var(--color-error-200);border-radius:var(--radius-md);color:var(--color-error-700);font-size:var(--text-sm);margin-bottom:var(--space-3);">';
-          html += '<strong>Could not probe agent capabilities.</strong> ' + escapeHtml(String(msg) + reasonText);
-          html += '</div>';
-
-          try {
-            const fallback = await fetch('/api/storyboards', { credentials: 'include' });
-            if (fallback.ok) {
-              const fdata = await fallback.json();
-              if (fdata.storyboards && fdata.storyboards.length > 0) {
-                html += '<div style="font-size:var(--text-xs);color:var(--color-text-secondary);margin-bottom:var(--space-2);">Showing all available storyboards:</div>';
-                html += '<div class="storyboard-picker">';
-                for (const sb of fdata.storyboards) {
-                  html += '<div class="storyboard-picker-item" data-storyboard-id="' + escapeHtml(sb.id) + '" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '">';
-                  html += '<div>';
-                  html += '<div class="storyboard-picker-title">' + escapeHtml(sb.title) + '</div>';
-                  html += '<div class="storyboard-picker-summary">' + escapeHtml(sb.summary) + '</div>';
-                  html += '</div>';
-                  html += '<span style="font-size:var(--text-xs);color:var(--color-text-tertiary);">' + sb.step_count + ' steps</span>';
-                  html += '</div>';
-                }
-                html += '</div>';
-              }
+          if (errBody.specialism_parent_protocol_missing) {
+            let html = '<div style="padding:var(--space-3);background:var(--color-error-50);border:1px solid var(--color-error-200);border-radius:var(--radius-md);color:var(--color-error-700);font-size:var(--text-sm);">';
+            html += '<strong>Capabilities misconfigured.</strong>';
+            if (errBody.specialism && errBody.parent_protocol) {
+              html += ' Specialism <code>' + escapeHtml(String(errBody.specialism)) + '</code> requires <code>' + escapeHtml(String(errBody.parent_protocol)) + '</code> in <code>supported_protocols</code>.';
+              html += '<div style="margin-top:var(--space-2);">Add <code>' + escapeHtml(String(errBody.parent_protocol)) + '</code> to <code>supported_protocols</code> in your <code>get_adcp_capabilities</code> response.</div>';
+            } else {
+              html += ' ' + escapeHtml(String(errBody.error || 'A declared specialism is missing its required parent protocol.'));
             }
-          } catch (fallbackErr) {
-            console.error('Storyboard fallback failed:', fallbackErr);
+            html += '</div>';
+            panel.innerHTML = html;
+            return;
           }
 
+          const reasonHints = {
+            network: 'Check the agent URL — the host is unreachable or DNS lookup failed.',
+            tls: "The agent's TLS certificate is invalid or expired.",
+            timeout: 'The agent did not respond in time. It may be down or slow to start.',
+            protocol: 'The agent responded but did not speak MCP correctly.',
+          };
+          const msg = errBody.error || ('HTTP ' + res.status);
+          const hint = res.status === 504
+            ? reasonHints.timeout
+            : (reasonHints[errBody.reason] || 'Verify the agent URL is correct and the agent is running.');
+          let html = '<div style="padding:var(--space-3);background:var(--color-error-50);border:1px solid var(--color-error-200);border-radius:var(--radius-md);color:var(--color-error-700);font-size:var(--text-sm);">';
+          html += '<strong>Could not probe agent capabilities.</strong>';
+          html += '<div style="margin-top:var(--space-1);">' + escapeHtml(String(msg)) + '</div>';
+          html += '<div style="margin-top:var(--space-2);color:var(--color-error-600);">' + escapeHtml(hint) + '</div>';
+          html += '</div>';
           panel.innerHTML = html;
         } catch (err) {
           console.error('Failed to load storyboards:', err);
