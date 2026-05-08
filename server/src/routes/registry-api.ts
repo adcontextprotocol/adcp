@@ -102,7 +102,7 @@ import { isWebUserAAOAdmin } from "../addie/admin-status-lookup.js";
 import { getDevUser, isDevModeEnabled } from "../middleware/auth.js";
 import { OrganizationDatabase, hasApiAccess, resolveMembershipTier } from "../db/organization-db.js";
 import { resolveCallerOrgId } from "./helpers/resolve-caller-org.js";
-import { canonicalizeAgentUrl } from "../db/publisher-db.js";
+import { canonicalizeAgentUrl, PublisherDatabase } from "../db/publisher-db.js";
 import {
   AuthorizationSnapshotDatabase,
   EvidenceValidationError,
@@ -1519,6 +1519,60 @@ registry.registerPath({
 
 registry.registerPath({
   method: "post",
+  path: "/api/registry/manager-revalidation-request",
+  operationId: "requestManagerRevalidation",
+  summary: "Request manager fan-out re-validation",
+  description:
+    "Trigger re-validation of every publisher delegating to a manager domain via ads.txt `MANAGERDOMAIN`. Use after rotating the manager's `adagents.json` so the change propagates to delegating publishers without waiting for the next routine crawl cycle. Work is queued and drained at a bounded rate (≈50 publishers per 5-minute tick). Returns 202 immediately with the number of publishers enqueued.\n\n**Rate limits:** 5 minutes per manager domain, 30 requests per user per hour (shared with other crawl-request endpoints).",
+  tags: ["Agent Discovery"],
+  security: [{ bearerAuth: [] }, { oauth2: [] }],
+  request: {
+    body: {
+      content: {
+        "application/json": {
+          schema: z.object({
+            manager_domain: z.string().openapi({
+              example: "raptive.com",
+              description: "Manager domain whose delegating publishers should be queued for re-validation. Must already be present as `manager_domain` on at least one publisher row.",
+            }),
+          }),
+        },
+      },
+    },
+  },
+  responses: {
+    202: {
+      description: "Re-validation queue request accepted",
+      content: {
+        "application/json": {
+          schema: z.object({
+            message: z.literal("Manager re-validation enqueued"),
+            manager_domain: z.string(),
+            publishers_enqueued: z.number().int().openapi({
+              description: "Number of delegating publisher rows added to or refreshed in the manager_revalidation_queue. Zero if no publisher delegates to this manager.",
+            }),
+          }),
+        },
+      },
+    },
+    400: { description: "Invalid domain format, private IP, or unresolvable domain", content: { "application/json": { schema: ErrorSchema } } },
+    401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
+    429: {
+      description: "Rate limit exceeded",
+      content: {
+        "application/json": {
+          schema: z.object({
+            error: z.string(),
+            retry_after: z.number().int().openapi({ description: "Seconds to wait before retrying" }),
+          }),
+        },
+      },
+    },
+  },
+});
+
+registry.registerPath({
+  method: "post",
   path: "/api/registry/brand-crawl-request",
   operationId: "requestBrandCrawl",
   summary: "Request brand.json re-crawl",
@@ -2741,6 +2795,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
   const noopMiddleware: RequestHandler = (_req, _res, next) => next();
   const optAuth: RequestHandler = optionalAuthMiddleware ?? noopMiddleware;
   const orgDb = new OrganizationDatabase();
+  const publisherDb = new PublisherDatabase();
 
   const catalogDb = new CatalogDatabase();
 
@@ -7580,6 +7635,48 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     } catch (error) {
       logger.error({ error }, "Failed to process brand crawl request");
       return res.status(500).json({ error: "Failed to process brand crawl request" });
+    }
+  });
+
+  // Manager fan-out re-validation: when a manager rotates its
+  // adagents.json, this endpoint short-circuits the 60-minute organic
+  // crawl cycle by enqueueing every delegating publisher directly into
+  // manager_revalidation_queue. The crawler worker drains the queue at
+  // a bounded rate; each per-publisher validation re-fetches the
+  // manager's file via the ads.txt MANAGERDOMAIN fallback, so the
+  // publishers see the rotated content without us needing to re-crawl
+  // the manager itself first.
+  //
+  // Rate-limit key is namespaced ("manager:") so a manager-recrawl
+  // request doesn't bypass an in-window publisher recrawl on the same
+  // domain (or vice-versa). Hourly per-member limit is shared.
+  router.post("/registry/manager-revalidation-request", authMiddleware, async (req, res) => {
+    try {
+      // Translate manager_domain → domain for the shared validator,
+      // which reads req.body.domain.
+      const managerInput = req.body?.manager_domain?.toLowerCase?.()?.trim?.() || '';
+      if (!managerInput || typeof managerInput !== 'string') {
+        return res.status(400).json({ error: "manager_domain is required" });
+      }
+      const reqWithDomain: typeof req = Object.assign({}, req, {
+        body: { ...req.body, domain: managerInput },
+      });
+      const normalizedDomain = await validateAndRateLimitCrawl(
+        reqWithDomain,
+        res,
+        `manager:${managerInput}`,
+      );
+      if (!normalizedDomain) return;
+
+      const enqueued = await publisherDb.enqueueManagerRevalidation(normalizedDomain);
+      return res.status(202).json({
+        message: "Manager re-validation enqueued",
+        manager_domain: normalizedDomain,
+        publishers_enqueued: enqueued,
+      });
+    } catch (error) {
+      logger.error({ error }, "Failed to enqueue manager revalidation");
+      return res.status(500).json({ error: "Failed to enqueue manager revalidation" });
     }
   });
 
