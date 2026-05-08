@@ -994,7 +994,9 @@ export async function createAndSendInvoice(
   const priceId = await getPriceByLookupKey(data.lookupKey);
 
   if (!priceId) {
-    logger.error({
+    // Caller-supplied (Addie LLM tool) — getPriceByLookupKey already
+    // logged the available keys at warn. Don't double-page #aao-errors.
+    logger.warn({
       lookupKey: data.lookupKey,
     }, 'No price found for lookup key');
     return null;
@@ -1317,7 +1319,9 @@ export async function validateInvoiceDetails(data: {
 
   const priceId = await getPriceByLookupKey(data.lookupKey);
   if (!priceId) {
-    logger.error({ lookupKey: data.lookupKey }, 'validateInvoiceDetails: No price found');
+    // Caller-supplied (Addie LLM tool) — getPriceByLookupKey already
+    // logged the available keys at warn. Don't double-page #aao-errors.
+    logger.warn({ lookupKey: data.lookupKey }, 'validateInvoiceDetails: No price found');
     return null;
   }
 
