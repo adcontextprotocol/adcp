@@ -1,6 +1,6 @@
 # Domain Column Rationalization
 
-**Status:** Draft / decision wanted
+**Status:** **Decided 2026-05-08 — Option B, in-flight**
 **Issue:** [#4159](https://github.com/adcontextprotocol/adcp/issues/4159)
 **Driver:** Media.net escalation [#321](https://github.com/adcontextprotocol/adcp/issues/4159) (May 2026). Stage 1 (auto-populate, [#4157](https://github.com/adcontextprotocol/adcp/pull/4157)) and Stage 2 (member self-service, [#4179](https://github.com/adcontextprotocol/adcp/pull/4179)) shipped. This is Stage 3.
 
@@ -124,6 +124,46 @@ Plus 2 frontend files (`member-profile.html`, `dashboard-agents.html`) — these
 - **The `brands` registry consolidation**. It's a separate concern (public catalog, mirrored from internal state). Same drift class but different solution; address after the internal state is rationalized.
 - **Multi-tenant sub-brand support**. The hierarchy model already exists; expanding it (e.g., letting one org have multiple non-corporate brand identities) is its own product question.
 
+## Auto-link safety check (2026-05-08)
+
+Before committing to Option B, verified that auto-membership-inference doesn't depend on `is_primary`:
+
+`autoLinkByVerifiedDomain` (`server/src/db/membership-db.ts`) → `findPayingOrgForDomain` (`server/src/db/org-filters.ts:442-454`) joins on:
+
+```sql
+JOIN organization_domains od ON LOWER(od.domain) = LOWER(dc.domain)
+WHERE od.verified = true              -- ANY verified row
+  AND o.subscription_status = 'active'
+```
+
+It walks every verified row, not just the primary. So switching DanAds primary from `.se` to `.com` doesn't break `@danads.se` auto-link as long as `.se` stays verified (which it does — we just demote `is_primary`). Same for the prospect path (`findClaimableProspectOrg`, line 561-570).
+
+**Implication:** migration is safe to flip primaries provided we **never delete the previously-primary row**, only demote `is_primary` to false.
+
+## Per-case dispositions
+
+Of the 38 divergent cases, 6 are non-trivial. None require the parent/child hierarchy model:
+
+| Org | Old primary | New primary | Action | Notes |
+|---|---|---|---|---|
+| **DanAds** | danads.se | danads.com | Demote `.se` to non-primary verified | Real DBA case (Sweden corp / .com brand). Brand domain wins as primary |
+| **iPROM** | iprom.si | iprom.eu | Demote `.si` | Same shape (Slovenia corp / .eu brand) |
+| **Transfon** | transfon.com | transfon.com (no change) | Reset `primary_brand_domain` from `biddingstack.com` to `transfon.com`. BiddingStack stays as a separate `brands` row pointing at this org_id | Single org, two product brands. Already supported by the `brands` table |
+| **Mission Media / Winstar** | wims.com | winstarinteractive.com (insert) | Insert `winstarinteractive.com` as `source='manual', verified=true, is_primary=true`; demote `wims.com` to non-primary | DBA. Brand wins. Needs a new org_domains row |
+| **Triton Digital** | agilecompanion.com | tritondigital.com | Verify `tritondigital.com` (admin), set as primary, demote `agilecompanion.com`, remove the `www.tritondigital.com` row (canonicalization dup) | Pre-existing data corruption (see `scripts/incidents/2026-04-triton-unwind.ts`) |
+| **Mangrove Digital** | mangrovedigital.com.au | mangrovedigital.com.au (no change) | Reset `primary_brand_domain` from `linkedin.com` to `mangrovedigital.com.au` | Bug — someone set LinkedIn as their brand. LinkedIn is owned by Microsoft's org_id |
+
+## Out of scope
+
+- **The `brands` registry consolidation**. It's a separate concern (public catalog, mirrored from internal state). Same drift class but different solution; address after the internal state is rationalized.
+- **Multi-tenant sub-brand support**. The hierarchy model already exists; expanding it (e.g., letting one org have multiple non-corporate brand identities) is its own product question.
+
 ## Decision
 
-Option B, executed in stages. Stage 0 audit work is gated on Brian's review of the 5 real-divergence cases. Open the issue for stages-1-through-3 work as separate tracking items once Stage 0 lands.
+**Option B, committed 2026-05-08.** Tracking issue [#4159](https://github.com/adcontextprotocol/adcp/issues/4159).
+
+Sequencing:
+- **Stage 0** — preconditions. Per-case data fixes for the 6 above; canonicalization for the ~10 `www.` cases; insert missing org_domains rows for personal-tier members. Open as a series of small data-fix PRs gated on this spec merging.
+- **Stage 1** — `getBrandPrimaryDomain(orgId)` resolver + migrate ~14 read sites. Writers continue dual-writing.
+- **Stage 2** — drop `member_profiles.primary_brand_domain` column. Update API types.
+- **Stage 3** — `setPrimaryDomain(orgId, domain)` canonical writer + lint rule against direct writes.
