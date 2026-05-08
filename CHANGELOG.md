@@ -1,5 +1,18 @@
 # Changelog
 
+## 3.0.7
+
+### Patch Changes
+
+- 866abe2: docs(creative): tighten type column in the `list_creatives` filtering options table to match `core/creative-filters.json`. `accounts` now shows `AccountRef[]` (was `array`), `format_ids` shows `FormatID[]` (was `format_id[]`, matching the casing used in `list_creative_formats`, `get_products`, and `create_media_buy`), and `statuses` links to `CreativeStatus` rather than the under-specified `string[]`. Docs only — no schema or wire-format change. Patch-eligible per the non-normative-docs rule in `.agents/playbook.md`.
+- b2f7a3d: fix(compliance): `measurement_terms_rejected` — UUID-aliased idempotency_keys + spec-aligned narrative
+
+  The `media_buy_seller/measurement_terms_rejected` storyboard shipped hardcoded `idempotency_key` literals on both `create_media_buy` steps. Combined with runner-side dynamic `start_time` substitution (the runner shifts stale dates forward to keep the buy future-dated), this produced **same key + different body** on every run against a long-running seller deployment, arming the spec-mandated `IDEMPOTENCY_CONFLICT` on the seller side. Switch to `$generate:uuid_v4#…` aliases so each run mints fresh keys (matches the established pattern across the storyboard suite).
+
+  Also rewrites the narrative, which previously told implementers the buyer "retries the same `create_media_buy` `idempotency_key` with an adjusted payload" — a direct spec violation — to describe minting a fresh key for the retry.
+
+  Closes #4219. Refs adcontextprotocol/adcp-client#1586.
+
 ## 3.0.6
 
 ### Patch Changes
