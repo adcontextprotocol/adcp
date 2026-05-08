@@ -8,7 +8,19 @@
  * Body of the request is just `{ manager_domain }`; the handler calls
  * `enqueueManagerRevalidation` and returns the count.
  */
-import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, afterAll, vi } from 'vitest';
+
+// Bypass DNS-based domain validation: test fixtures use `.example.com`
+// subdomains that don't resolve in CI. The real validation surface is
+// exercised by the publisher crawl-request endpoint tests.
+vi.mock('../../src/utils/url-security.js', async () => {
+  const actual = await vi.importActual<Record<string, unknown>>('../../src/utils/url-security.js');
+  return {
+    ...actual,
+    validateCrawlDomain: async (domain: string) => domain.toLowerCase().trim(),
+  };
+});
+
 import request from 'supertest';
 import express from 'express';
 import type { Pool } from 'pg';
