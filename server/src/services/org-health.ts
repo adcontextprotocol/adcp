@@ -309,8 +309,17 @@ export async function assembleOrgHealth(orgId: string): Promise<OrgHealth> {
       return [];
     }),
 
-    // Agent count — no org-scoped agents table yet; always 0 until one exists
-    Promise.resolve(0),
+    // Count all registered agents across org member profiles, regardless of visibility.
+    // "Any agent registered" is the threshold — visibility tier is not the gate here.
+    query<{ total: string }>(
+      `SELECT COALESCE(SUM(COALESCE(jsonb_array_length(agents), 0)), 0) AS total
+       FROM member_profiles
+       WHERE workos_organization_id = $1`,
+      [orgId]
+    ).then(r => parseInt(r.rows[0]?.total || '0', 10)).catch(err => {
+      logger.error({ err, orgId }, 'Failed to fetch agent count');
+      return 0;
+    }),
 
     // Leadership roles across all org members
     query<{ count: string }>(
