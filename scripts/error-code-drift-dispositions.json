@@ -1,0 +1,90 @@
+{
+  "$comment": "Disposition registry for error codes that are present in the current source enum but absent from the 3.0.x maintenance branch. Read by scripts/lint-error-code-drift.cjs. Every code in the AHEAD set (main \\ 3.0.x) MUST have an entry here; codes missing from this file fail the lint. Policy: 3.0.x is wire-stable. Adding a new enum value is a wire change (a 3.0.x receiver decoding a 3.1 sender's error.code cannot match against an enum it doesn't carry, and JSON Schema enum is closed by default), so the default disposition for any new code is 'held-for-next-minor' with target_version='3.1'. 'held-for-next-major' (target_version='4.0') is for codes that should defer past 3.x \u2014 typically because the surrounding subsystem is being reworked. 'backport-pending' is reserved for prose-only or doc-comment-only changes to a code that already exists on 3.0.x; the lint rejects backport-pending entries whose code is not on 3.0.x. Valid `disposition` values: 'backport-pending', 'held-for-next-minor', 'held-for-next-major', 'unclassified'. `target_version` (required for held-*) is a 'MAJOR.MINOR' string. When a code lands on 3.0.x its entry SHOULD be removed; the lint flags stale entries.",
+  "dispositions": {
+    "AGENT_BLOCKED": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.1",
+      "note": "Operator-block surface added post-3.0.5 (commit 2a2e5c420c, #3906). Wire change \u2014 held for 3.1."
+    },
+    "AGENT_SUSPENDED": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.1",
+      "note": "Operator-suspend surface added post-3.0.5 (commit 2a2e5c420c, #3906). Pairs with AGENT_BLOCKED."
+    },
+    "BILLING_NOT_PERMITTED_FOR_AGENT": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.1",
+      "note": "From sync_accounts billing coverage (#3831). Wire change \u2014 held for 3.1."
+    },
+    "BILLING_NOT_SUPPORTED": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.1",
+      "note": "From sync_accounts billing coverage (#3831). Adjacent to but distinct from 3.0.x's ACCOUNT_PAYMENT_REQUIRED (which signals payment due on an existing account); BILLING_NOT_SUPPORTED signals the seller doesn't support the requested billing arrangement. Not a rename. Held for 3.1."
+    },
+    "BRAND_REQUIRED": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.1",
+      "note": "Wire change \u2014 held for 3.1."
+    },
+    "CONFIGURATION_ERROR": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.1",
+      "note": "Added in #3995/#4003. Verified not a rename of 3.0.x's ACCOUNT_SETUP_REQUIRED \u2014 that signals account-level setup; CONFIGURATION_ERROR is operational misconfiguration. Held for 3.1."
+    },
+    "CREDENTIAL_IN_ARGS": {
+      "disposition": "held-for-next-major",
+      "target_version": "4.0",
+      "note": "Tied to buyer-principal credentials on the transport channel (#4057). The 4.0 transport rework (TMP, A2A 1.0 alignment) may obsolete or reshape this surface, so don't commit 3.1 to a code that may not survive. Re-evaluate when transport story stabilizes."
+    },
+    "FIELD_NOT_PERMITTED": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.1",
+      "note": "Part of field_scopes feature (#3887). Backport requires the whole feature surface, which is 3.1-shaped."
+    },
+    "PAYMENT_TERMS_NOT_SUPPORTED": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.1",
+      "note": "From sync_accounts billing coverage (#3831). Wire change \u2014 held for 3.1."
+    },
+    "PROVENANCE_CLAIM_CONTRADICTED": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.1",
+      "note": "Provenance subsystem (#3468). Family of 6 codes; backport decision is coherent across all six. Held for 3.1."
+    },
+    "PROVENANCE_DIGITAL_SOURCE_TYPE_MISSING": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.1",
+      "note": "Provenance subsystem (#3468). Held for 3.1."
+    },
+    "PROVENANCE_DISCLOSURE_MISSING": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.1",
+      "note": "Provenance subsystem (#3468). Held for 3.1."
+    },
+    "PROVENANCE_EMBEDDED_MISSING": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.1",
+      "note": "Provenance subsystem (#3468). Held for 3.1."
+    },
+    "PROVENANCE_REQUIRED": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.1",
+      "note": "Provenance subsystem (#3468). Held for 3.1."
+    },
+    "PROVENANCE_VERIFIER_NOT_ACCEPTED": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.1",
+      "note": "Provenance subsystem (#3468). Held for 3.1."
+    },
+    "READ_ONLY_SCOPE": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.1",
+      "note": "Part of agent-permission-denied scope codes (#3887). Held for 3.1."
+    },
+    "SCOPE_INSUFFICIENT": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.1",
+      "note": "Part of agent-permission-denied scope codes (#3887). Held for 3.1."
+    }
+  }
+}
