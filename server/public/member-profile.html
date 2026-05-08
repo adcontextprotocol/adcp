@@ -2642,18 +2642,20 @@
       }
 
       if (photoUrl) {
-        try {
-          const parsed = new URL(photoUrl);
-          if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
-            setPreviewMessage('Only http/https URLs allowed', 'var(--color-error-500)', '11px');
+        if (!photoUrl.startsWith('data:')) {
+          try {
+            const parsed = new URL(photoUrl);
+            if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+              setPreviewMessage('Only http/https URLs allowed', 'var(--color-error-500)', '11px');
+              return;
+            }
+          } catch {
+            setPreviewMessage('Invalid URL', 'var(--color-error-500)', '11px');
             return;
           }
-        } catch {
-          setPreviewMessage('Invalid URL', 'var(--color-error-500)', '11px');
-          return;
         }
         const img = document.createElement('img');
-        img.src = parsed.href;
+        img.src = photoUrl;
         img.alt = 'Profile photo';
         img.style.cssText = 'width: 100%; height: 100%; object-fit: cover;';
         img.onerror = function() {
@@ -2846,6 +2848,37 @@
         currentProfile = data.profile;
         const wasNewProfile = isNewProfile;
         isNewProfile = false;
+
+        // Persist photo change: for individual profiles the photo maps to brand logo_url.
+        // Direct fetch avoids the _brandSaving guard used by the interactive brand section.
+        // Data URLs from handleLogoUpload are rejected by the server (protocol must be https,
+        // and base64 blobs exceed the 2000-char URL limit). Surface a clear message rather
+        // than a silent 400.
+        const photoField = document.getElementById('photo_url');
+        const photoValue = photoField?.value || null;
+        const currentLogoUrl = currentResolvedBrand?.logo_url || null;
+        if (photoValue && photoValue !== currentLogoUrl) {
+          if (photoValue.startsWith('data:')) {
+            throw new Error('Photo could not be saved — please host your image online and paste the URL into the photo field instead of uploading a file directly.');
+          }
+          const photoResp = await fetch(buildApiUrl('/api/me/member-profile/brand-identity'), {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ logo_url: photoValue }),
+            credentials: 'include',
+          });
+          if (!photoResp.ok) {
+            let photoErr = 'Failed to save photo';
+            try {
+              const photoErrData = await photoResp.json();
+              photoErr = photoErrData.message || photoErr;
+            } catch { /* Response wasn't JSON */ }
+            throw new Error(photoErr);
+          }
+          const photoData = await photoResp.json();
+          currentResolvedBrand = photoData.brand || null;
+          if (currentProfile) currentProfile.resolved_brand = photoData.brand;
+        }
 
         // Server may have coerced visibility settings the caller isn't
         // eligible for (e.g. public → members_only on a non-API-access
