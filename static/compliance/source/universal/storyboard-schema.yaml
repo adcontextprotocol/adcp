@@ -852,6 +852,35 @@
 #       UNKNOWN_SCENARIO). The storyboard grades not_applicable (coverage gap),
 #       not failed.
 #
+#   force_scenario_unsupported
+#       Emitted when a `comply_test_controller` step in an explicit storyboard
+#       phase (not the auto-injected fixture phase) receives
+#       {success: false, error: UNKNOWN_SCENARIO} for a scenario whose name
+#       begins with `force_`. This is the explicit-phase analogue of
+#       `fixture_seed_unsupported`: the seller advertises comply_test_controller
+#       but has not implemented the specific force_* scenario arm the storyboard
+#       requires. The storyboard grades not_applicable (coverage gap), not
+#       failed.
+#
+#       Runners MUST detect this tuple — comply_test_controller IS advertised
+#       (missing_test_controller check already passed), the resolved wire
+#       payload's `scenario` field begins with `force_`, and the response
+#       carries {success: false, error: UNKNOWN_SCENARIO} — and apply
+#       not_applicable grading before evaluating the step's declared
+#       validations. The narrower reason MUST be encoded in skip_result.detail
+#       per the convention in runner-output-contract.yaml; the canonical reason
+#       remains not_applicable.
+#
+#       Detection order: `missing_test_controller` (tool absent) fires first;
+#       `force_scenario_unsupported` fires only when the tool IS present. A
+#       runner that checks `force_scenario_unsupported` before confirming tool
+#       presence would misgrade absent-tool cases whose scenario name starts
+#       with `force_`.
+#
+#       Distinct from `fixture_seed_unsupported` (auto-injected fixture phase,
+#       seed_* scenarios) and from `missing_test_controller` (the agent did not
+#       advertise comply_test_controller at all). Closes #4226.
+#
 #   unresolved_scenario_reference
 #       A detailed sub-reason under the canonical skip `reason:
 #       not_applicable`. Emitted when a parent storyboard's
