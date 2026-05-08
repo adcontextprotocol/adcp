@@ -23,6 +23,7 @@ import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { MemberDatabase } from '../../src/db/member-db.js';
 import { OrganizationDatabase, type MembershipTier } from '../../src/db/organization-db.js';
+import { ComplianceDatabase } from '../../src/db/compliance-db.js';
 import { createMemberAgentsRouter } from '../../src/routes/member-agents.js';
 
 const TEST_PREFIX = 'org_member_agents_api';
@@ -634,6 +635,117 @@ describe('Per-agent REST API (/api/me/agents)', () => {
     // The existing brand-domain wins; auto-backfill never fires when the
     // column is already populated, even if the agent URL hostname differs.
     expect(profile!.primary_brand_domain).toBe('preset.example');
+  });
+
+  // ── agent_registry_metadata seed on register (PR follow-up) ────
+  // Without this seed, an agent registered via /api/me/agents lives only
+  // in member_profiles.agents JSONB and never enters the heartbeat's
+  // known_agents CTE — compliance status stays `unknown` forever. The
+  // seed is best-effort; the read-side CTE was widened in the same change
+  // as defense-in-depth.
+
+  it('POST seeds an agent_registry_metadata row so the heartbeat can pick it up', async () => {
+    const orgId = `${TEST_PREFIX}_meta_seed`;
+    const userId = `${TEST_PREFIX}_meta_seed_user`;
+    await seedOrg(pool, orgId, 'individual_professional');
+    await provisionUser(userId, orgId);
+    await createProfile(orgId, 'metaseed');
+
+    const targetUrl = 'https://meta-seed.example/mcp';
+    // Sanity: no metadata row before the POST.
+    const before = await pool.query(
+      'SELECT agent_url FROM agent_registry_metadata WHERE agent_url = $1',
+      [targetUrl],
+    );
+    expect(before.rowCount).toBe(0);
+
+    (app as any).setCurrentUser(userId);
+    const res = await request(app)
+      .post('/api/me/agents')
+      .send({ url: targetUrl, type: 'sales', visibility: 'private' });
+    expect(res.status).toBe(201);
+
+    // Metadata row exists post-write, with default lifecycle_stage so the
+    // heartbeat will include it.
+    const after = await pool.query<{ agent_url: string; lifecycle_stage: string; compliance_opt_out: boolean }>(
+      `SELECT agent_url, lifecycle_stage, compliance_opt_out
+       FROM agent_registry_metadata WHERE agent_url = $1`,
+      [targetUrl],
+    );
+    expect(after.rowCount).toBe(1);
+    expect(after.rows[0].lifecycle_stage).toBe('production');
+    expect(after.rows[0].compliance_opt_out).toBe(false);
+
+    // Cleanup the metadata row to avoid leaking state across tests.
+    await pool.query('DELETE FROM agent_registry_metadata WHERE agent_url = $1', [targetUrl]);
+  });
+
+  it('heartbeat picks up an agent that lives only in member_profiles.agents (read-side CTE widening)', async () => {
+    // Defense-in-depth case: a row whose write-side seed never landed
+    // (best-effort fallback fired) must still be visible to the
+    // compliance heartbeat. We bypass the route deliberately to simulate
+    // pre-fix data and to isolate the read-side CTE behavior from the
+    // write-side seed.
+    const orgId = `${TEST_PREFIX}_cte_only`;
+    const userId = `${TEST_PREFIX}_cte_only_user`;
+    const targetUrl = 'https://cte-only.example/mcp';
+    await seedOrg(pool, orgId, 'individual_professional');
+    await provisionUser(userId, orgId);
+    await memberDb.createProfile({
+      workos_organization_id: orgId,
+      display_name: 'Test cteonly',
+      slug: 'cteonly',
+      primary_brand_domain: 'cte-only.example',
+      is_public: false,
+      agents: [{ url: targetUrl, type: 'sales', visibility: 'private' }],
+    });
+    // Sanity: no metadata row, no discovered_agents row.
+    await pool.query('DELETE FROM agent_registry_metadata WHERE agent_url = $1', [targetUrl]);
+    await pool.query('DELETE FROM discovered_agents WHERE agent_url = $1', [targetUrl]);
+
+    const complianceDb = new ComplianceDatabase();
+    const due = await complianceDb.getAgentsDueForCheck(100);
+    const matched = due.find((d) => d.agent_url === targetUrl);
+    // The read-side CTE's third leg (member_profiles.agents) is what
+    // makes this match. With the pre-fix two-leg CTE this assertion
+    // would fail.
+    expect(matched).toBeDefined();
+    expect(matched!.lifecycle_stage).toBe('production');
+    expect(matched!.last_checked_at).toBeNull();
+  });
+
+  it('POST does NOT overwrite an existing agent_registry_metadata row on re-register', async () => {
+    const orgId = `${TEST_PREFIX}_meta_existing`;
+    const userId = `${TEST_PREFIX}_meta_existing_user`;
+    await seedOrg(pool, orgId, 'individual_professional');
+    await provisionUser(userId, orgId);
+    await createProfile(orgId, 'metaexisting');
+
+    const targetUrl = 'https://meta-existing.example/mcp';
+    // Seed metadata with non-default lifecycle and a custom interval — the
+    // re-register MUST preserve these so an owner who tuned cadence /
+    // lifecycle from the dashboard doesn't see it reset by the next save.
+    await pool.query(
+      `INSERT INTO agent_registry_metadata (agent_url, lifecycle_stage, check_interval_hours)
+       VALUES ($1, 'testing', 24)`,
+      [targetUrl],
+    );
+
+    (app as any).setCurrentUser(userId);
+    const res = await request(app)
+      .post('/api/me/agents')
+      .send({ url: targetUrl, type: 'sales', visibility: 'private' });
+    expect(res.status).toBe(201);
+
+    const after = await pool.query<{ lifecycle_stage: string; check_interval_hours: number }>(
+      `SELECT lifecycle_stage, check_interval_hours
+       FROM agent_registry_metadata WHERE agent_url = $1`,
+      [targetUrl],
+    );
+    expect(after.rows[0].lifecycle_stage).toBe('testing');
+    expect(after.rows[0].check_interval_hours).toBe(24);
+
+    await pool.query('DELETE FROM agent_registry_metadata WHERE agent_url = $1', [targetUrl]);
   });
 
   it('DELETE returns 409 unpublish_first when the agent is currently public', async () => {

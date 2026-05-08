@@ -357,6 +357,35 @@ export function createMemberAgentsRouter(config: MemberAgentsRouterConfig): Rout
           [JSON.stringify(typed), profileId],
         );
       }
+
+      // Ensure every registered agent has an `agent_registry_metadata` row
+      // so the compliance heartbeat picks it up. Pre-fix, the heartbeat's
+      // `known_agents` CTE unioned only `discovered_agents` and
+      // `agent_registry_metadata` — agents living solely in
+      // `member_profiles.agents` JSONB stayed `unknown` forever, regardless
+      // of the 12h cycle. The read-side CTE was widened in the same change
+      // so existing rows recover, but writing the row here keeps every
+      // downstream consumer of `agent_registry_metadata` (lifecycle,
+      // monitoring, rate-limit policy) consistent without needing each one
+      // to learn about the JSONB shape.
+      //
+      // Atomic with the JSONB write — same transaction, same FOR UPDATE
+      // lock. ON CONFLICT DO NOTHING preserves any owner-customized
+      // lifecycle_stage / check_interval_hours / opt-out the heartbeat or
+      // dashboard wrote earlier; we only seed the row when it doesn't
+      // exist. Defaults inherit from the column DDL.
+      const urls = typed
+        .map(a => (a && typeof a.url === 'string' ? a.url : null))
+        .filter((u): u is string => u !== null);
+      if (urls.length > 0) {
+        await client.query(
+          `INSERT INTO agent_registry_metadata (agent_url)
+           SELECT unnest($1::text[])
+           ON CONFLICT (agent_url) DO NOTHING`,
+          [urls],
+        );
+      }
+
       await client.query('COMMIT');
       invalidateMemberContextCache();
 

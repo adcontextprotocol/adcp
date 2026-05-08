@@ -511,11 +511,31 @@ export class ComplianceDatabase {
     lifecycle_stage: LifecycleStage;
     last_checked_at: Date | null;
   }>> {
+    // `known_agents` unions every source the heartbeat is allowed to test:
+    //
+    // - `discovered_agents` — crawler-discovered via adagents.json on a
+    //   publisher domain.
+    // - `agent_registry_metadata` — explicit registration / lifecycle-stage
+    //   write. Most member-registered agents land a row here via the
+    //   write-side seed in member-agents.ts and the save_agent MCP handler.
+    // - `member_profiles.agents` (JSONB) — defense-in-depth: any agent the
+    //   owner registered through Addie or the REST surface, even if the
+    //   metadata-row seed failed (the seed is best-effort with a warn-log
+    //   on failure). Without this third leg of the union, an agent that
+    //   slipped past the seed would stay `unknown` forever — the same
+    //   class of bug as the operator-endpoint visibility miss.
+    //
+    // ORDER BY adds `agent_url` as a deterministic tiebreaker so two
+    // never-checked agents land in a stable order across heartbeat runs.
     const result = await query(
       `WITH known_agents AS (
         SELECT agent_url FROM discovered_agents
         UNION
         SELECT agent_url FROM agent_registry_metadata
+        UNION
+        SELECT (a->>'url') AS agent_url
+        FROM member_profiles, jsonb_array_elements(agents) a
+        WHERE a->>'url' IS NOT NULL
       )
       SELECT
         ka.agent_url,
@@ -534,7 +554,7 @@ export class ComplianceDatabase {
             CASE WHEN COALESCE(m.lifecycle_stage, 'production') = 'testing' THEN 24 ELSE 12 END
           ))
         )
-      ORDER BY s.last_checked_at ASC NULLS FIRST
+      ORDER BY s.last_checked_at ASC NULLS FIRST, ka.agent_url ASC
       LIMIT $1`,
       [limit],
     );
