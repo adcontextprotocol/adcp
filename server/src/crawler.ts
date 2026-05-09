@@ -17,6 +17,7 @@ import type { CatalogEventsDatabase, WriteEventInput } from "./db/catalog-events
 import type { AgentInventoryProfilesDatabase, ProfileUpsertInput } from "./db/agent-inventory-profiles-db.js";
 import { query } from "./db/client.js";
 import { insertTypeReclassification } from "./db/type-reclassification-log-db.js";
+import type { SdkAuth } from "./services/sdk-auth-adapter.js";
 
 const log = createLogger('crawler');
 
@@ -721,7 +722,7 @@ export class CrawlerService {
    * route handler maps that to a 502 so the user sees why the refresh
    * couldn't happen (timeout, DNS, OAuth wall, etc).
    */
-  async refreshSingleAgent(agentUrl: string): Promise<{
+  async refreshSingleAgent(agentUrl: string, options: { auth?: SdkAuth } = {}): Promise<{
     online: boolean;
     tools_count: number | null;
     response_time_ms: number | null;
@@ -732,6 +733,7 @@ export class CrawlerService {
     error?: string;
   }> {
     const PROBE_TIMEOUT_MS = 10000;
+    const { auth } = options;
 
     const pausedUrls = await this.getPausedAgentUrls();
     if (pausedUrls.has(agentUrl)) {
@@ -758,7 +760,7 @@ export class CrawlerService {
     };
 
     const profile = await Promise.race([
-      this.capabilityDiscovery.discoverCapabilities(agent),
+      this.capabilityDiscovery.discoverCapabilities(agent, auth),
       new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error('Probe timeout')), PROBE_TIMEOUT_MS)
       ),
@@ -770,7 +772,7 @@ export class CrawlerService {
 
     const [health, stats] = await Promise.all([
       Promise.race([
-        this.healthChecker.checkHealth(agentForHealth),
+        this.healthChecker.checkHealth(agentForHealth, auth),
         new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error('Health timeout')), PROBE_TIMEOUT_MS)
         ),
@@ -780,7 +782,7 @@ export class CrawlerService {
         error: err instanceof Error ? err.message : 'health check failed',
       })),
       Promise.race([
-        this.healthChecker.getStats(agentForHealth),
+        this.healthChecker.getStats(agentForHealth, auth),
         new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error('Stats timeout')), PROBE_TIMEOUT_MS)
         ),

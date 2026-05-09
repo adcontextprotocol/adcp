@@ -91,7 +91,7 @@ import { BulkPropertyCheckService } from "../services/bulk-property-check.js";
 import { ComplianceDatabase, type LifecycleStage } from "../db/compliance-db.js";
 import { AgentSnapshotDatabase } from "../db/agent-snapshot-db.js";
 import { resolveUserAgentAuth } from "./helpers/resolve-user-agent-auth.js";
-import { adaptAuthForSdk } from "../services/sdk-auth-adapter.js";
+import { adaptAuthForSdk, type SdkAuth } from "../services/sdk-auth-adapter.js";
 import { parseOAuthClientCredentialsInput } from "./helpers/oauth-client-credentials-input.js";
 import { isOAuthRequiredErrorMessage } from "./helpers/oauth-error-detection.js";
 import { AgentContextDatabase } from "../db/agent-context-db.js";
@@ -5122,8 +5122,21 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       // Owner sees 502/409 error → has 60s to fix and try again.
       refreshAgentRateLimits.set(agentUrl, now);
 
+      // Resolve saved owner auth (static bearer / basic / OAuth) so the
+      // probe sees the same credentials evaluate_agent_quality uses. The
+      // periodic crawl path stays unauthenticated by design. Auth is
+      // only resolved when the caller belongs to the owning org —
+      // resolveAgentOwnerOrg returns null for an AAO admin probing an
+      // agent they don't own, so the admin path probes unauthed.
+      const ownerOrgId = await resolveAgentOwnerOrg(req.user.id, agentUrl);
+      let resolvedAuth: SdkAuth | undefined;
+      if (ownerOrgId) {
+        const auth = await resolveUserAgentAuth(agentContextDb, ownerOrgId, agentUrl, logger);
+        resolvedAuth = await adaptAuthForSdk(auth, { tokenEndpointLabel: `refresh:${agentUrl}` });
+      }
+
       try {
-        const result = await crawler.refreshSingleAgent(agentUrl);
+        const result = await crawler.refreshSingleAgent(agentUrl, { auth: resolvedAuth });
         return res.json(result);
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Probe failed';

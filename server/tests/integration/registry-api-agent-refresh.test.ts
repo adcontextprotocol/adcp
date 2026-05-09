@@ -35,6 +35,7 @@ const ALL_OWNED_URLS = [
   ownedAgentUrl('probe-fail'),
   ownedAgentUrl('paused'),
   ownedAgentUrl('rate-limit'),
+  ownedAgentUrl('saved-bearer'),
 ];
 
 // Toggle which user the auth middleware stamps onto the request. Tests
@@ -95,8 +96,8 @@ vi.mock('../../src/addie/admin-status-lookup.js', () => ({
 const refreshSingleAgentMock = vi.fn();
 vi.mock('../../src/crawler.js', async () => {
   const actual = await vi.importActual<typeof import('../../src/crawler.js')>('../../src/crawler.js');
-  actual.CrawlerService.prototype.refreshSingleAgent = function (agentUrl: string) {
-    return refreshSingleAgentMock(agentUrl);
+  actual.CrawlerService.prototype.refreshSingleAgent = function (agentUrl: string, options?: unknown) {
+    return refreshSingleAgentMock(agentUrl, options);
   };
   return actual;
 });
@@ -178,7 +179,7 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
       inferred_type: 'governance',
       type_promoted: true,
     });
-    expect(refreshSingleAgentMock).toHaveBeenCalledWith(agentUrl);
+    expect(refreshSingleAgentMock).toHaveBeenCalledWith(agentUrl, expect.any(Object));
   });
 
   it('admin can refresh an agent they do not own', async () => {
@@ -186,7 +187,7 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
     const agentUrl = ownedAgentUrl('admin');
     const res = await request(app).post(url(agentUrl)).send();
     expect(res.status).toBe(200);
-    expect(refreshSingleAgentMock).toHaveBeenCalledWith(agentUrl);
+    expect(refreshSingleAgentMock).toHaveBeenCalledWith(agentUrl, expect.any(Object));
   });
 
   it('non-owner non-admin gets 403', async () => {
@@ -237,5 +238,34 @@ describe('POST /api/registry/agents/:encodedUrl/refresh (integration)', () => {
     const second = await request(app).post(url(agentUrl)).send();
     expect(second.status).toBe(429);
     expect(second.body.retry_after).toBeGreaterThan(0);
+  });
+
+  // Regression: dashboard probe was constructing AdCPClient with no auth,
+  // so any agent gated behind a static bearer reported "OAuth required"
+  // even though evaluate_agent_quality (which resolves saved auth) worked
+  // fine. The route now resolves owner-org auth and threads it to the
+  // crawler so the probe sees the same credentials.
+  it('threads the org-saved bearer token to the crawler', async () => {
+    const agentUrl = ownedAgentUrl('saved-bearer');
+    const { AgentContextDatabase } = await import('../../src/db/agent-context-db.js');
+    const db = new AgentContextDatabase();
+    const context = await db.create({
+      organization_id: TEST_ORG_ID,
+      agent_url: agentUrl,
+      created_by: OWNER_USER_ID,
+    });
+    const FAKE_BEARER = 'fake-test-bearer-do-not-use-in-prod';
+    await db.saveAuthToken(context.id, FAKE_BEARER, 'bearer');
+
+    const res = await request(app).post(url(agentUrl)).send();
+    expect(res.status).toBe(200);
+    expect(refreshSingleAgentMock).toHaveBeenCalledWith(
+      agentUrl,
+      expect.objectContaining({
+        auth: { type: 'bearer', token: FAKE_BEARER },
+      }),
+    );
+
+    await pool.query('DELETE FROM agent_contexts WHERE id = $1', [context.id]);
   });
 });
