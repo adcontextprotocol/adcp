@@ -39,7 +39,7 @@ interface NudgeCandidate {
   membership_tier: string | null;
   agreement_signed_at: Date;
   is_public: boolean | null;
-  primary_brand_domain: string | null;
+  brand_primary_domain: string | null;
   has_brand_manifest: boolean;
   subscription_created_by: string | null;
 }
@@ -59,15 +59,18 @@ export async function findCandidatesForDay(day: NudgeDay): Promise<NudgeCandidat
         o.membership_tier,
         o.agreement_signed_at,
         mp.is_public,
-        mp.primary_brand_domain,
+        primary_od.domain AS brand_primary_domain,
         (b.brand_manifest IS NOT NULL) AS has_brand_manifest,
         sub_act.logged_by_user_id AS subscription_created_by
       FROM organizations o
       LEFT JOIN member_profiles mp
         ON mp.workos_organization_id = o.workos_organization_id
+      LEFT JOIN organization_domains primary_od
+        ON primary_od.workos_organization_id = o.workos_organization_id
+       AND primary_od.is_primary = true
       LEFT JOIN brands b
-        ON mp.primary_brand_domain IS NOT NULL
-       AND b.domain = LOWER(mp.primary_brand_domain)
+        ON primary_od.domain IS NOT NULL
+       AND b.domain = LOWER(primary_od.domain)
        AND b.brand_manifest IS NOT NULL
       LEFT JOIN LATERAL (
         SELECT logged_by_user_id
@@ -225,7 +228,7 @@ export async function runProfileCompletionNudgeJob(): Promise<NudgeResult> {
         day,
         hasPublicProfile: candidate.is_public === true,
         hasBrandManifest: candidate.has_brand_manifest === true,
-        primaryBrandDomain: candidate.primary_brand_domain,
+        primaryBrandDomain: candidate.brand_primary_domain,
         orgName: candidate.org_name,
       });
 

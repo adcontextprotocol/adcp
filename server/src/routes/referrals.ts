@@ -5,6 +5,7 @@ import { MemberDatabase } from '../db/member-db.js';
 import { BrandDatabase, resolveBrandFromJson } from '../db/brand-db.js';
 import { requireAuth } from '../middleware/auth.js';
 import { resolvePrimaryOrganization } from '../db/users-db.js';
+import { getBrandPrimaryDomain } from '../services/brand-domain-resolver.js';
 import { emailPrefsDb } from '../db/email-preferences-db.js';
 
 const logger = createLogger('referral-routes');
@@ -43,11 +44,12 @@ export function createReferralsRouter(): Router {
 
       // Fetch member profile for richer landing page experience
       const profile = await memberDb.getProfileByOrgId(referralCode.referrer_org_id);
+      const brandPrimary = await getBrandPrimaryDomain(referralCode.referrer_org_id);
 
       let logo_url: string | null = null;
       let brand_color: string | null = null;
-      if (profile?.primary_brand_domain) {
-        const domain = profile.primary_brand_domain;
+      if (profile && brandPrimary) {
+        const domain = brandPrimary;
         // Skip orphaned brands — manifest is preserved server-side for adoption
         // but must not surface on public read paths until claim is applied.
         const hosted = await brandDb.getHostedBrandByDomain(domain);

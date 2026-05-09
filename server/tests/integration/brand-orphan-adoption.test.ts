@@ -57,6 +57,19 @@ describe('Brand orphan-adoption integration', () => {
   // this as a real parallelism risk in the #3186 review.
   async function clearTestFixtures() {
     await pool.query('DELETE FROM brands WHERE domain = $1', [TEST_DOMAIN]);
+    // Defensive: also delete any organization_domains row pinned to TEST_DOMAIN
+    // by domain, not just by org_id. The ON CONFLICT (domain) DO UPDATE in the
+    // seed below would otherwise trample a third-party org's row if one slipped
+    // in via a parallel test. See nodejs-testing-expert flag on #3186.
+    await pool.query('DELETE FROM organization_domains WHERE domain = $1', [TEST_DOMAIN]);
+    await pool.query(
+      'DELETE FROM organization_domains WHERE workos_organization_id IN ($1, $2)',
+      [PRIOR_ORG, NEW_ORG]
+    );
+    await pool.query(
+      'DELETE FROM member_profiles WHERE workos_organization_id IN ($1, $2)',
+      [PRIOR_ORG, NEW_ORG]
+    );
     await pool.query(
       'DELETE FROM organizations WHERE workos_organization_id IN ($1, $2)',
       [PRIOR_ORG, NEW_ORG]
@@ -78,6 +91,17 @@ describe('Brand orphan-adoption integration', () => {
        VALUES ($1, 'Prior Owner Inc', false), ($2, 'New Owner Inc', false)
        ON CONFLICT (workos_organization_id) DO NOTHING`,
       [PRIOR_ORG, NEW_ORG]
+    );
+
+    // Seed the brand-primary on organization_domains for NEW_ORG so the Stage 1
+    // resolver returns TEST_DOMAIN. Pre-Stage-1 the test relied on
+    // profile.primary_brand_domain passed to updateBrandIdentity; the function
+    // now reads via getBrandPrimaryDomain(workosOrganizationId).
+    await pool.query(
+      `INSERT INTO organization_domains (workos_organization_id, domain, verified, is_primary, source)
+       VALUES ($1, $2, true, true, 'manual')
+       ON CONFLICT (domain) DO UPDATE SET workos_organization_id = $1, is_primary = true, verified = true`,
+      [NEW_ORG, TEST_DOMAIN]
     );
 
     // Seed a hosted brand owned by the prior org with a recognizable manifest.
