@@ -16,6 +16,12 @@
  * The resolver returns `null` when an org has neither a primary on
  * organization_domains nor a profile-level brand_primary — caller must
  * decide whether that's a hard error or a soft "not yet set" path.
+ *
+ * AUTHORIZATION: This is a low-level service with no authz inside. Callers
+ * must have already verified the requesting principal has read access to
+ * the supplied `orgId` (typically via `requireAuth` + membership check).
+ * Same trust posture as the existing `member_profiles.primary_brand_domain`
+ * reads it replaces.
  */
 
 import { getPool } from '../db/client.js';
@@ -37,12 +43,22 @@ const logger = createLogger('brand-domain-resolver');
 export async function getBrandPrimaryDomain(orgId: string): Promise<string | null> {
   const pool = getPool();
 
+  // Read all is_primary=true rows (no LIMIT) so we can detect the rare case
+  // of multiple primaries — Stage 0 enforced the "exactly 1" invariant on
+  // every write path, but a future bug could regress it. logger.error so
+  // it's loud; return the first row regardless (caller still gets a valid
+  // primary, we don't want to bring the page down on a data anomaly).
   const od = await pool.query<{ domain: string }>(
     `SELECT domain FROM organization_domains
-      WHERE workos_organization_id = $1 AND is_primary = true
-      LIMIT 1`,
+      WHERE workos_organization_id = $1 AND is_primary = true`,
     [orgId],
   );
+  if (od.rows.length > 1) {
+    logger.error(
+      { orgId, count: od.rows.length, domains: od.rows.map((r) => r.domain) },
+      'Multiple is_primary=true rows on organization_domains for one org — Stage 0 invariant broken',
+    );
+  }
   if (od.rows[0]) return od.rows[0].domain;
 
   // Fallback during transition. Post-Stage-0 should be near-empty; any hit
@@ -64,7 +80,8 @@ export async function getBrandPrimaryDomain(orgId: string): Promise<string | nul
 
 /**
  * Batch variant. Returns a Map keyed by org_id with values of brand-primary
- * domain (or undefined when an org has neither). Use this from call sites
+ * domain. Orgs with neither a primary nor a fallback are absent from the
+ * map (not present with a null/undefined value). Use this from call sites
  * that walk a list of orgs (e.g., dashboard list views, announcement-trigger
  * batches) to avoid N+1 queries.
  *
@@ -80,14 +97,35 @@ export async function getBrandPrimaryDomainsForOrgs(
   const pool = getPool();
 
   // Step 1: org_domains.is_primary=true rows for the requested orgs.
+  // Detect multi-primary anomalies in the aggregate (one logger.error per
+  // affected org rather than per row).
   const od = await pool.query<{ workos_organization_id: string; domain: string }>(
     `SELECT workos_organization_id, domain FROM organization_domains
       WHERE workos_organization_id = ANY($1::varchar[]) AND is_primary = true`,
     [orgIds],
   );
-  for (const row of od.rows) result.set(row.workos_organization_id, row.domain);
+  const primaryCounts = new Map<string, string[]>();
+  for (const row of od.rows) {
+    const list = primaryCounts.get(row.workos_organization_id) ?? [];
+    list.push(row.domain);
+    primaryCounts.set(row.workos_organization_id, list);
+    if (!result.has(row.workos_organization_id)) {
+      result.set(row.workos_organization_id, row.domain);
+    }
+  }
+  for (const [orgId, domains] of primaryCounts) {
+    if (domains.length > 1) {
+      logger.error(
+        { orgId, count: domains.length, domains },
+        'Multiple is_primary=true rows on organization_domains for one org — Stage 0 invariant broken',
+      );
+    }
+  }
 
   // Step 2: fall back to member_profiles for orgs not yet in the result.
+  // Aggregate the fallback warn into a single log line per batch instead of
+  // one-per-row — keeps the signal usable even if a large batch hits many
+  // fallbacks.
   const missing = orgIds.filter((id) => !result.has(id));
   if (missing.length > 0) {
     const mp = await pool.query<{ workos_organization_id: string; primary_brand_domain: string }>(
@@ -97,11 +135,16 @@ export async function getBrandPrimaryDomainsForOrgs(
           AND primary_brand_domain IS NOT NULL`,
       [missing],
     );
-    for (const row of mp.rows) {
+    if (mp.rows.length > 0) {
       logger.warn(
-        { orgId: row.workos_organization_id, fallback_value: row.primary_brand_domain },
-        'getBrandPrimaryDomainsForOrgs fell back to member_profiles.primary_brand_domain',
+        {
+          count: mp.rows.length,
+          orgIds: mp.rows.map((r) => r.workos_organization_id),
+        },
+        'getBrandPrimaryDomainsForOrgs fell back to member_profiles.primary_brand_domain for some orgs',
       );
+    }
+    for (const row of mp.rows) {
       result.set(row.workos_organization_id, row.primary_brand_domain);
     }
   }

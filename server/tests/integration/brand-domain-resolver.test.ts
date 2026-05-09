@@ -54,21 +54,23 @@ async function seedProfile(pool: Pool, orgId: string, slug: string, brandPrimary
   );
 }
 
-describe('getBrandPrimaryDomain', () => {
-  let pool: Pool;
-
-  beforeAll(async () => {
-    pool = initializeDatabase({
-      connectionString: process.env.DATABASE_URL || 'postgresql://adcp:localdev@localhost:5432/adcp_test',
-    });
-    await runMigrations();
-  }, 60000);
-
-  afterAll(async () => {
-    await cleanup(pool);
-    await closeDatabase();
+// Single beforeAll/afterAll pair shared across both describe blocks via
+// vitest's file-scoped lifecycle. Avoids running migrations twice and
+// initializing the pool twice (which races in the same process).
+let pool: Pool;
+beforeAll(async () => {
+  pool = initializeDatabase({
+    connectionString: process.env.DATABASE_URL || 'postgresql://adcp:localdev@localhost:5432/adcp_test',
   });
+  await runMigrations();
+}, 60000);
 
+afterAll(async () => {
+  await cleanup(pool);
+  await closeDatabase();
+});
+
+describe('getBrandPrimaryDomain', () => {
   beforeEach(async () => {
     await cleanup(pool);
   });
@@ -118,23 +120,39 @@ describe('getBrandPrimaryDomain', () => {
 
     expect(await getBrandPrimaryDomain(ORG_A)).toBeNull();
   });
+
+  it('returns an unverified is_primary=true row (verified is enforced at write time, not read)', async () => {
+    // The resolver does not filter on verified — Stage 0's writers ensure
+    // is_primary=true rows are also verified, and the publish-agent gate
+    // re-checks verified independently. Document the contract here so a
+    // future refactor that adds a verified filter is an intentional change.
+    await seedOrg(pool, ORG_A, 'A Co');
+    await pool.query(
+      `INSERT INTO organization_domains (workos_organization_id, domain, verified, is_primary, source, created_at, updated_at)
+       VALUES ($1, $2, false, true, 'workos', NOW(), NOW())
+       ON CONFLICT (domain) DO UPDATE SET verified = false, is_primary = true`,
+      [ORG_A, 'a-unverified.example'],
+    );
+    await seedProfile(pool, ORG_A, 'a-co', null);
+    expect(await getBrandPrimaryDomain(ORG_A)).toBe('a-unverified.example');
+  });
+
+  it('returns the first row but does not throw when multiple is_primary=true rows exist (data anomaly)', async () => {
+    // The Stage 0 invariant says exactly one is_primary=true row per org.
+    // If a future bug regresses it, the resolver should still produce a
+    // valid primary (some primary is better than none) and surface the
+    // anomaly via logger.error. This test documents the don't-crash
+    // contract; the log assertion isn't checked here.
+    await seedOrg(pool, ORG_A, 'A Co');
+    await seedDomain(pool, ORG_A, 'a-1.example', true);
+    await seedDomain(pool, ORG_A, 'a-2.example', true);
+
+    const result = await getBrandPrimaryDomain(ORG_A);
+    expect(result === 'a-1.example' || result === 'a-2.example').toBe(true);
+  });
 });
 
 describe('getBrandPrimaryDomainsForOrgs', () => {
-  let pool: Pool;
-
-  beforeAll(async () => {
-    pool = initializeDatabase({
-      connectionString: process.env.DATABASE_URL || 'postgresql://adcp:localdev@localhost:5432/adcp_test',
-    });
-    await runMigrations();
-  }, 60000);
-
-  afterAll(async () => {
-    await cleanup(pool);
-    await closeDatabase();
-  });
-
   beforeEach(async () => {
     await cleanup(pool);
   });
