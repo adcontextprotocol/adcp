@@ -136,6 +136,10 @@ describe('assertClaimableBrandDomain', () => {
     expect(() => assertClaimableBrandDomain('myco.atlassian.net')).toThrow();
     expect(() => assertClaimableBrandDomain('mystore.myshopify.com')).toThrow();
     expect(() => assertClaimableBrandDomain('mycompany.lightning.force.com')).toThrow();
+    // Single-label subdomain coverage — guards against a future refactor
+    // accidentally tightening to two-or-more-label-only matching.
+    expect(() => assertClaimableBrandDomain('myorg.force.com')).toThrow();
+    expect(() => assertClaimableBrandDomain('share.googleusercontent.com')).toThrow();
   });
 
   it('does NOT match domains that merely look like a suffix substring', () => {
