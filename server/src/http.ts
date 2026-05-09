@@ -37,6 +37,7 @@ import Stripe from "stripe";
 import { OrganizationDatabase, getUserSeatType, buildSubscriptionUpdate, TIER_PRESERVING_STATUSES, type SeatType, type MembershipTier } from "./db/organization-db.js";
 import { MemberDatabase } from "./db/member-db.js";
 import { ensureMemberProfilePublished } from "./services/member-profile-autopublish.js";
+import { getBrandPrimaryDomain, getBrandPrimaryDomainsForOrgs } from "./services/brand-domain-resolver.js";
 import { getGitHubConnectedAccount, getGitHubAuthorizeUrl, disconnectGitHub, buildPipesReturnTo } from "./services/pipes.js";
 import { BrandDatabase, resolveBrandFromJson } from "./db/brand-db.js";
 import { CatalogEventsDatabase } from "./db/catalog-events-db.js";
@@ -8309,11 +8310,12 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           offset: offset ? parseInt(offset as string, 10) : 0,
         });
 
-        // Batch-fetch all brand data and credentials in two queries instead of N+1
-        const brandDomains = profiles
-          .map(p => p.primary_brand_domain)
-          .filter((d): d is string => !!d);
+        // Batch-fetch all brand data and credentials in three queries instead of N+1.
+        // Brand-primary domains come from the Stage 1 resolver (org_domains.is_primary
+        // first, member_profiles fallback), keyed by org_id rather than a per-row column.
         const orgIds = profiles.map(p => p.workos_organization_id);
+        const brandPrimaryByOrg = await getBrandPrimaryDomainsForOrgs(orgIds);
+        const brandDomains = Array.from(brandPrimaryByOrg.values());
 
         const [brandsMap, credentialsMap] = await Promise.all([
           this.brandDb.getDiscoveredBrandsByDomains(brandDomains),
@@ -8323,11 +8325,12 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
         ]);
 
         for (const profile of profiles) {
-          if (profile.primary_brand_domain) {
-            const brand = brandsMap.get(profile.primary_brand_domain.toLowerCase());
+          const brandPrimaryDomain = brandPrimaryByOrg.get(profile.workos_organization_id);
+          if (brandPrimaryDomain) {
+            const brand = brandsMap.get(brandPrimaryDomain.toLowerCase());
             if (brand?.brand_manifest) {
               profile.resolved_brand = resolveBrandFromJson(
-                profile.primary_brand_domain,
+                brandPrimaryDomain,
                 brand.brand_manifest as Record<string, unknown>,
                 brand.domain_verified ?? false
               );
@@ -8353,19 +8356,22 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
       try {
         const profiles = await memberDb.getCarouselProfiles();
 
-        // Batch-fetch all brand data in a single query to avoid pool exhaustion
+        // Batch-fetch all brand data in two queries to avoid pool exhaustion.
+        // Brand-primary domains come from the Stage 1 resolver (org_domains.is_primary
+        // first, member_profiles fallback), keyed by org_id.
         // codeql[js/user-controlled-bypass] - brand domains come from server-side DB, not user input
-        const brandDomains = profiles
-          .map(p => p.primary_brand_domain)
-          .filter((d): d is string => !!d);
+        const orgIds = profiles.map(p => p.workos_organization_id);
+        const brandPrimaryByOrg = await getBrandPrimaryDomainsForOrgs(orgIds);
+        const brandDomains = Array.from(brandPrimaryByOrg.values());
         const brandsMap = await this.brandDb.getDiscoveredBrandsByDomains(brandDomains);
 
         for (const profile of profiles) {
-          if (profile.primary_brand_domain) {
-            const brand = brandsMap.get(profile.primary_brand_domain.toLowerCase());
+          const brandPrimaryDomain = brandPrimaryByOrg.get(profile.workos_organization_id);
+          if (brandPrimaryDomain) {
+            const brand = brandsMap.get(brandPrimaryDomain.toLowerCase());
             if (brand?.brand_manifest) {
               profile.resolved_brand = resolveBrandFromJson(
-                profile.primary_brand_domain,
+                brandPrimaryDomain,
                 brand.brand_manifest as Record<string, unknown>,
                 brand.domain_verified ?? false
               );
@@ -8471,11 +8477,12 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
         // Resolve brand data from registry if linked. Skip orphaned brands —
         // the manifest is preserved server-side for adoption-at-claim-time
         // but must not surface on the public member-profile endpoint.
-        if (profile.primary_brand_domain) {
-          const brand = await this.brandDb.getDiscoveredBrandByDomain(profile.primary_brand_domain);
+        const brandPrimaryDomain = await getBrandPrimaryDomain(profile.workos_organization_id);
+        if (brandPrimaryDomain) {
+          const brand = await this.brandDb.getDiscoveredBrandByDomain(brandPrimaryDomain);
           if (brand?.brand_manifest && !brand.manifest_orphaned) {
             profile.resolved_brand = resolveBrandFromJson(
-              profile.primary_brand_domain,
+              brandPrimaryDomain,
               brand.brand_manifest as Record<string, unknown>,
               brand.domain_verified ?? false
             );

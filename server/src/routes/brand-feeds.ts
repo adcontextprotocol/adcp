@@ -20,6 +20,7 @@ import {
   VALID_PROPERTY_TYPES,
   type Relationship,
 } from '../services/brand-property-parse.js';
+import { getBrandPrimaryDomain } from '../services/brand-domain-resolver.js';
 
 const MAX_COLLECTIONS = 200;
 const VALID_COLLECTION_KINDS = ['series', 'publication', 'event_series', 'rotation'];
@@ -51,13 +52,15 @@ export function createBrandFeedsRouter(config: { brandDb: BrandDatabase }) {
       'SELECT domain FROM organization_domains WHERE workos_organization_id = $1',
       [orgId]
     );
-    const memberProfile = await query<{ primary_brand_domain: string | null }>(
-      'SELECT primary_brand_domain FROM member_profiles WHERE workos_organization_id = $1',
-      [orgId]
-    );
+    // Brand-primary via Stage 1 resolver (org_domains.is_primary first,
+    // member_profiles fallback for orgs Stage 0 missed). Post-Stage-0 the
+    // brand-primary is already in organization_domains, so this entry is
+    // usually redundant with one of the orgDomains rows above — kept
+    // explicit so the fallback still adds coverage during the transition.
+    const brandPrimary = await getBrandPrimaryDomain(orgId);
     const ownedDomains = new Set([
       ...orgDomains.rows.map(r => r.domain.toLowerCase()),
-      ...(memberProfile.rows[0]?.primary_brand_domain ? [memberProfile.rows[0].primary_brand_domain.toLowerCase()] : []),
+      ...(brandPrimary ? [brandPrimary.toLowerCase()] : []),
     ]);
     if (!ownedDomains.has(domain.toLowerCase())) {
       return { error: 'You do not own this brand domain', status: 403 };
