@@ -163,3 +163,128 @@ describe('Stage 0 domain-cleanup: canonicalize-www phase (SQL behavior)', () => 
     expect(candidates.rowCount).toBe(0);
   });
 });
+
+describe('Stage 0 domain-cleanup: insert-missing-rows phase (SQL behavior)', () => {
+  let pool: Pool;
+  const OTHER_ORG = 'org_stage0_other_test';
+
+  beforeAll(async () => {
+    pool = initializeDatabase({
+      connectionString: process.env.DATABASE_URL || 'postgresql://adcp:localdev@localhost:5432/adcp_test',
+    });
+    await runMigrations();
+  }, 60000);
+
+  afterAll(async () => {
+    await cleanup(pool);
+    await pool.query('DELETE FROM organization_domains WHERE workos_organization_id = $1', [OTHER_ORG]);
+    await pool.query('DELETE FROM organizations WHERE workos_organization_id = $1', [OTHER_ORG]);
+    await closeDatabase();
+  });
+
+  beforeEach(async () => {
+    await cleanup(pool);
+    await pool.query('DELETE FROM organization_domains WHERE workos_organization_id = $1', [OTHER_ORG]);
+    await pool.query('DELETE FROM organizations WHERE workos_organization_id = $1', [OTHER_ORG]);
+    await seedOrg(pool);
+  });
+
+  // The candidate-discovery query is what determines what gets inserted vs
+  // surfaced as a collision. Assert both paths.
+  const CANDIDATE_QUERY = `
+    SELECT
+      mp.workos_organization_id AS org_id,
+      mp.primary_brand_domain,
+      other_od.workos_organization_id AS other_org_owns
+    FROM member_profiles mp
+    LEFT JOIN organization_domains same_od
+      ON same_od.workos_organization_id = mp.workos_organization_id
+     AND LOWER(same_od.domain) = LOWER(mp.primary_brand_domain)
+    LEFT JOIN organization_domains other_od
+      ON LOWER(other_od.domain) = LOWER(mp.primary_brand_domain)
+     AND other_od.workos_organization_id != mp.workos_organization_id
+    WHERE mp.primary_brand_domain IS NOT NULL
+      AND same_od.domain IS NULL
+      AND mp.workos_organization_id = $1
+  `;
+
+  it('lists a profile as a candidate when primary_brand_domain has no matching org_domains row', async () => {
+    await seedProfile(pool, 'qux-stage0test.example');
+    // No organization_domains rows for this org.
+
+    const candidates = await pool.query(CANDIDATE_QUERY, [TEST_ORG]);
+    expect(candidates.rowCount).toBe(1);
+    expect(candidates.rows[0].primary_brand_domain).toBe('qux-stage0test.example');
+    expect(candidates.rows[0].other_org_owns).toBeNull();
+  });
+
+  it('flags a candidate as a collision when another org already owns the domain', async () => {
+    // Seed the OTHER org with the domain claimed.
+    await pool.query(
+      `INSERT INTO organizations (workos_organization_id, name, is_personal, created_at, updated_at)
+       VALUES ($1, $2, false, NOW(), NOW()) ON CONFLICT DO NOTHING`,
+      [OTHER_ORG, 'Other Org'],
+    );
+    await pool.query(
+      `INSERT INTO organization_domains (workos_organization_id, domain, verified, is_primary, source, created_at, updated_at)
+       VALUES ($1, $2, true, true, 'workos', NOW(), NOW())
+       ON CONFLICT (domain) DO UPDATE SET workos_organization_id = $1`,
+      [OTHER_ORG, 'collision-stage0test.example'],
+    );
+
+    // TEST_ORG's profile claims the same domain.
+    await seedProfile(pool, 'collision-stage0test.example');
+
+    const candidates = await pool.query(CANDIDATE_QUERY, [TEST_ORG]);
+    expect(candidates.rowCount).toBe(1);
+    expect(candidates.rows[0].other_org_owns).toBe(OTHER_ORG);
+  });
+
+  it('does NOT list as candidate when this org already owns the domain (idempotent re-run)', async () => {
+    await seedProfile(pool, 'already-stage0test.example');
+    await seedDomains(pool, [
+      { domain: 'already-stage0test.example', verified: true, is_primary: true, source: 'manual' },
+    ]);
+
+    const candidates = await pool.query(CANDIDATE_QUERY, [TEST_ORG]);
+    expect(candidates.rowCount).toBe(0);
+  });
+
+  it('does NOT list as candidate when primary_brand_domain is NULL', async () => {
+    await seedProfile(pool, null);
+    const candidates = await pool.query(CANDIDATE_QUERY, [TEST_ORG]);
+    expect(candidates.rowCount).toBe(0);
+  });
+
+  it('insert with ON CONFLICT (domain) DO NOTHING is a no-op when another org owns the row', async () => {
+    // Seed the conflict.
+    await pool.query(
+      `INSERT INTO organizations (workos_organization_id, name, is_personal, created_at, updated_at)
+       VALUES ($1, $2, false, NOW(), NOW()) ON CONFLICT DO NOTHING`,
+      [OTHER_ORG, 'Other Org'],
+    );
+    await pool.query(
+      `INSERT INTO organization_domains (workos_organization_id, domain, verified, is_primary, source, created_at, updated_at)
+       VALUES ($1, $2, true, true, 'workos', NOW(), NOW())
+       ON CONFLICT (domain) DO UPDATE SET workos_organization_id = $1`,
+      [OTHER_ORG, 'racewinner-stage0test.example'],
+    );
+
+    // Try the insert that would fire from phase code.
+    const result = await pool.query(
+      `INSERT INTO organization_domains (workos_organization_id, domain, verified, is_primary, source, created_at, updated_at)
+       VALUES ($1, $2, true, true, 'manual', NOW(), NOW())
+       ON CONFLICT (domain) DO NOTHING
+       RETURNING domain`,
+      [TEST_ORG, 'racewinner-stage0test.example'],
+    );
+    expect(result.rowCount).toBe(0);
+
+    // OTHER org still owns it.
+    const owner = await pool.query<{ workos_organization_id: string }>(
+      `SELECT workos_organization_id FROM organization_domains WHERE LOWER(domain) = $1`,
+      ['racewinner-stage0test.example'],
+    );
+    expect(owner.rows[0].workos_organization_id).toBe(OTHER_ORG);
+  });
+});
