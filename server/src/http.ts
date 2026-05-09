@@ -8310,9 +8310,10 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           offset: offset ? parseInt(offset as string, 10) : 0,
         });
 
-        // Batch-fetch all brand data and credentials in three queries instead of N+1.
-        // Brand-primary domains come from the Stage 1 resolver (org_domains.is_primary
-        // first, member_profiles fallback), keyed by org_id rather than a per-row column.
+        // Batch-fetch brand data and credentials in a constant number of queries
+        // (resolver + brandsMap + credentialsMap) instead of N+1. Brand-primary
+        // domains come from the Stage 1 resolver (org_domains.is_primary first,
+        // member_profiles fallback), keyed by org_id rather than a per-row column.
         const orgIds = profiles.map(p => p.workos_organization_id);
         const brandPrimaryByOrg = await getBrandPrimaryDomainsForOrgs(orgIds);
         const brandDomains = Array.from(brandPrimaryByOrg.values());
