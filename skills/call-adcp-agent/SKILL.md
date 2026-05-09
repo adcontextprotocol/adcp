@@ -89,6 +89,25 @@ When you see `status: 'submitted'`, the work is NOT complete. Poll via `tasks/ge
 
 `budget` is a **number** (not `{amount, currency}` — currency is implied by the pricing option). Required per package: `product_id`, `budget`, `pricing_option_id`. `buyer_ref` is optional but strongly recommended as a buyer-side correlation id across retries and reporting.
 
+### Webhook signing — omit `authentication` for new integrations
+
+When you include `push_notification_config` in a request, do **not** set `authentication`
+unless you are integrating with a legacy receiver. Omitting `authentication` selects the
+default: the seller signs each inbound webhook POST with its RFC 9421
+`adcp_use: "webhook-signing"` key, published at the `jwks_uri` in its own `brand.json`
+`agents[]` entry. You verify against the seller's JWKS. No shared secret crosses the wire.
+
+Presence of `authentication` is a **switch, not a fallback** — it opts the seller into
+Bearer or HMAC-SHA256 and disables 9421 for that registration. A buyer MUST NOT attempt
+"try 9421 first, fall back to HMAC" verification — mode is fixed at registration time.
+
+The `authentication` block (Bearer / HMAC-SHA256) is deprecated and sellers MAY decline
+to support it. It is removed in AdCP 4.0. The `token` field (a correlation token echoed
+back in the webhook payload) is separate from `authentication` and is not deprecated.
+
+See [Webhook callbacks](https://adcontextprotocol.org/docs/building/implementation/security#webhook-callbacks) for the
+full verifier checklist and downgrade-resistance rules.
+
 ## Error envelope — read `issues[]` to recover
 
 Every validation failure produces:
