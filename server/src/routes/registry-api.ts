@@ -2059,6 +2059,30 @@ registry.registerPath({
 });
 
 registry.registerPath({
+  method: "post",
+  path: "/api/registry/agents/{encodedUrl}/monitoring/requeue",
+  operationId: "requeueAgentForHeartbeat",
+  summary: "Requeue agent for compliance heartbeat",
+  description:
+    "Clears the agent's last_checked_at timestamp so it is picked up on the next heartbeat cycle (within ~1 hour). Requires authentication and ownership.",
+  tags: ["Agent Compliance"],
+  security: [{ bearerAuth: [] }, { oauth2: [] }],
+  request: {
+    params: z.object({
+      encodedUrl: z.string().openapi({ description: "URL-encoded agent URL" }),
+    }),
+  },
+  responses: {
+    200: { description: "Agent requeued", content: { "application/json": { schema: z.object({ requeued: z.boolean() }) } } },
+    400: { description: "Invalid agent URL", content: { "application/json": { schema: ErrorSchema } } },
+    401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
+    403: { description: "Not authorized", content: { "application/json": { schema: ErrorSchema } } },
+    429: { description: "Rate limited", content: { "application/json": { schema: ErrorSchema } } },
+    500: { description: "Server error", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+registry.registerPath({
   method: "get",
   path: "/api/registry/agents/{encodedUrl}/monitoring/requests",
   operationId: "getAgentMonitoringRequests",
@@ -4979,6 +5003,50 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     } catch (error) {
       logger.error({ err: error, path: req.path }, "Failed to update check interval");
       res.status(500).json({ error: "Failed to update check interval" });
+    }
+  });
+
+  // Requeue rate limit — separate from /refresh so iterating owners aren't
+  // counted against the capability-probe quota. 60 s per agent URL is plenty
+  // since the heartbeat only ticks hourly; a user hammering the button gains
+  // nothing after the first call clears last_checked_at.
+  const requeueAgentRateLimits = new Map<string, number>();
+  const REQUEUE_AGENT_RATE_LIMIT_MS = 60 * 1000;
+  const requeueRateLimitCleanup = setInterval(() => {
+    const now = Date.now();
+    for (const [url, ts] of requeueAgentRateLimits) {
+      if (now - ts > 2 * REQUEUE_AGENT_RATE_LIMIT_MS) requeueAgentRateLimits.delete(url);
+    }
+  }, REQUEUE_AGENT_RATE_LIMIT_MS);
+  requeueRateLimitCleanup.unref();
+
+  router.post("/registry/agents/:encodedUrl/monitoring/requeue", ...complianceWriteMiddleware, async (req, res) => {
+    try {
+      const agentUrl = decodeURIComponent(req.params.encodedUrl);
+      if (!validateAgentUrlParam(agentUrl)) {
+        return res.status(400).json({ error: "Invalid agent URL" });
+      }
+      if (!req.user) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+      const isOwner = await verifyAgentOwnership(req.user.id, agentUrl);
+      if (!isOwner) {
+        return res.status(403).json({ error: "You do not have permission to modify this agent" });
+      }
+
+      const now = Date.now();
+      const lastRequeue = requeueAgentRateLimits.get(agentUrl);
+      if (lastRequeue && now - lastRequeue < REQUEUE_AGENT_RATE_LIMIT_MS) {
+        const retryAfter = Math.ceil((REQUEUE_AGENT_RATE_LIMIT_MS - (now - lastRequeue)) / 1000);
+        return res.status(429).json({ error: "Rate limited", retry_after: retryAfter });
+      }
+      requeueAgentRateLimits.set(agentUrl, now);
+
+      await complianceDb.requeueForHeartbeat(agentUrl);
+      res.json({ requeued: true });
+    } catch (error) {
+      logger.error({ err: error, path: req.path }, "Failed to requeue agent for heartbeat");
+      res.status(500).json({ error: "Failed to requeue agent" });
     }
   });
 

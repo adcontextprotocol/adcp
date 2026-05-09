@@ -34,6 +34,7 @@ import {
   SAMPLE_BRIEFS,
   classifyCapabilityResolutionError,
   presentCapabilityResolutionError,
+  complianceResultToDbInput,
   type ComplyOptions,
   type ComplianceTrack,
 } from '../services/compliance-testing.js';
@@ -3577,6 +3578,23 @@ export function createMemberToolHandlers(
               user_id: memberContext?.workos_user?.workos_user_id,
               agent_profile_json: result.agent_profile,
             });
+
+            // Also update the dashboard comply status so manual runs are
+            // reflected immediately — without this the badge progress panel
+            // stays stale until the next heartbeat fires.
+            try {
+              const meta = await complianceDb.getRegistryMetadata(resolved.resolvedUrl);
+              const dbInput = complianceResultToDbInput(
+                result,
+                resolved.resolvedUrl,
+                meta?.lifecycle_stage ?? 'production',
+                'manual',
+              );
+              dbInput.dry_run = false;
+              await complianceDb.recordComplianceRun(dbInput);
+            } catch (complianceError) {
+              logger.debug({ complianceError }, 'Could not update comply status from manual evaluation');
+            }
           }
         } catch (error) {
           logger.debug({ error }, 'Could not record quality evaluation result');

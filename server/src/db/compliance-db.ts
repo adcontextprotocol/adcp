@@ -602,6 +602,15 @@ export class ComplianceDatabase {
     );
   }
 
+  async requeueForHeartbeat(agentUrl: string): Promise<void> {
+    await query(
+      `INSERT INTO agent_compliance_status (agent_url, status, last_checked_at)
+       VALUES ($1, 'unknown', NULL)
+       ON CONFLICT (agent_url) DO UPDATE SET last_checked_at = NULL`,
+      [agentUrl],
+    );
+  }
+
   // ----- Storyboard Status Queries -----
 
   async getStoryboardStatuses(agentUrl: string): Promise<Array<{
