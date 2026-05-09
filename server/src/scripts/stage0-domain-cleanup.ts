@@ -174,8 +174,8 @@ const PER_CASE_FIXES: PerCaseFix[] = [
   {
     org_id: 'org_01KJED4HHAKZS5AMQA8N64X3S0',
     org_name: 'No Fluff Advisory',
-    description: 'Bug: linkedin.com was set as brand. Reset to apex of their actual domain (signal-stack.io). Also canonicalize the org_domains row (www.signal-stack.io → signal-stack.io). Order: delete www row first, then insert apex, so we never hold two is_primary=true rows simultaneously.',
-    expected_brand_primary_before: 'linkedin.com',
+    description: 'Bug: www.linkedin.com was set as brand. Reset to apex of their actual domain (signal-stack.io). Also canonicalize the org_domains row (www.signal-stack.io → signal-stack.io). Order: delete www row first, then insert apex, so we never hold two is_primary=true rows simultaneously.',
+    expected_brand_primary_before: 'www.linkedin.com',
     expected_organization_domains_before: [
       { domain: 'www.signal-stack.io', is_primary: true, verified: true },
     ],
