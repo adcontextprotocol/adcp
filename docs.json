@@ -158,6 +158,7 @@
                         "pages": [
                           "docs/building/by-layer/L1/index",
                           "docs/building/by-layer/L1/security",
+                          "docs/building/by-layer/L1/request-signing",
                           "docs/building/by-layer/L1/webhook-verifier-tuning"
                         ]
                       },
@@ -728,6 +729,7 @@
                     "pages": [
                       "docs/building/by-layer/L1/index",
                       "docs/building/by-layer/L1/security",
+                      "docs/building/by-layer/L1/request-signing",
                       "docs/building/by-layer/L1/webhook-verifier-tuning"
                     ]
                   },
@@ -1571,6 +1573,10 @@
     {
       "source": "/docs/building/implementation/webhook-verifier-tuning",
       "destination": "/docs/building/by-layer/L1/webhook-verifier-tuning"
+    },
+    {
+      "source": "/docs/building/implementation/request-signing",
+      "destination": "/docs/building/by-layer/L1/request-signing"
     },
     {
       "source": "/docs/building/implementation/mcp-response-extraction",
