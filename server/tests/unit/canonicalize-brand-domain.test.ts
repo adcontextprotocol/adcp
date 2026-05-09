@@ -117,4 +117,40 @@ describe('assertClaimableBrandDomain', () => {
     expect(() => assertClaimableBrandDomain('co.uk')).toThrow();
     expect(() => assertClaimableBrandDomain('com.au')).toThrow();
   });
+
+  it('rejects social / profile platforms (Mangrove had linkedin.com)', () => {
+    expect(() => assertClaimableBrandDomain('linkedin.com')).toThrow();
+    expect(() => assertClaimableBrandDomain('twitter.com')).toThrow();
+    expect(() => assertClaimableBrandDomain('x.com')).toThrow();
+    expect(() => assertClaimableBrandDomain('facebook.com')).toThrow();
+    expect(() => assertClaimableBrandDomain('instagram.com')).toThrow();
+    expect(() => assertClaimableBrandDomain('youtube.com')).toThrow();
+    expect(() => assertClaimableBrandDomain('tiktok.com')).toThrow();
+    expect(() => assertClaimableBrandDomain('reddit.com')).toThrow();
+  });
+
+  it('rejects subdomains of shared SaaS hosts (Mogl had hubspot CDN URL)', () => {
+    expect(() => assertClaimableBrandDomain('243380875.fs1.hubspotusercontent-na2.net')).toThrow();
+    expect(() => assertClaimableBrandDomain('foo.hubspotusercontent.com')).toThrow();
+    expect(() => assertClaimableBrandDomain('mybucket.s3.amazonaws.com')).toThrow();
+    expect(() => assertClaimableBrandDomain('myco.atlassian.net')).toThrow();
+    expect(() => assertClaimableBrandDomain('mystore.myshopify.com')).toThrow();
+    expect(() => assertClaimableBrandDomain('mycompany.lightning.force.com')).toThrow();
+  });
+
+  it('does NOT match domains that merely look like a suffix substring', () => {
+    // The suffix matcher requires a leading `.`; otherwise `xhubspotusercontent.com`
+    // would falsely match `hubspotusercontent.com`.
+    expect(() => assertClaimableBrandDomain('foo.example.com')).not.toThrow();
+    expect(() => assertClaimableBrandDomain('myhubspotusercontent.com')).not.toThrow();
+  });
+
+  it('does not reject the apex of legitimate vendor companies (only their shared hosts)', () => {
+    // The vendor's *own* corporate domains are still claimable — the suffix
+    // matcher requires a leading `.`, so `hubspot.com` (apex) doesn't match
+    // `.hubspotusercontent.com`. Hubspot Inc could in principle claim their
+    // own corporate domain.
+    expect(() => assertClaimableBrandDomain('hubspot.com')).not.toThrow();
+    expect(() => assertClaimableBrandDomain('atlassian.com')).not.toThrow();
+  });
 });

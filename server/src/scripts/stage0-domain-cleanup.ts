@@ -160,6 +160,31 @@ const PER_CASE_FIXES: PerCaseFix[] = [
     brand_primary_after: 'mangrovedigital.com.au',
     organization_domains_writes: [], // mangrovedigital.com.au is already primary; no org_domains change
   },
+  {
+    org_id: 'org_01KQ0J250HS95TX5SCG8835AW1',
+    org_name: 'Mogl',
+    description: 'Bug: HubSpot CDN URL stored as brand. Reset to their corporate domain (mogl.com is already the membership-primary)',
+    expected_brand_primary_before: '243380875.fs1.hubspotusercontent-na2.net',
+    expected_organization_domains_before: [
+      { domain: 'mogl.com', is_primary: true, verified: true },
+    ],
+    brand_primary_after: 'mogl.com',
+    organization_domains_writes: [], // mogl.com is already primary; no org_domains change
+  },
+  {
+    org_id: 'org_01KJED4HHAKZS5AMQA8N64X3S0',
+    org_name: 'No Fluff Advisory',
+    description: 'Bug: linkedin.com was set as brand. Reset to apex of their actual domain (signal-stack.io). Also canonicalize the org_domains row (www.signal-stack.io → signal-stack.io). Order: delete www row first, then insert apex, so we never hold two is_primary=true rows simultaneously.',
+    expected_brand_primary_before: 'linkedin.com',
+    expected_organization_domains_before: [
+      { domain: 'www.signal-stack.io', is_primary: true, verified: true },
+    ],
+    brand_primary_after: 'signal-stack.io',
+    organization_domains_writes: [
+      { op: 'delete', domain: 'www.signal-stack.io' },
+      { op: 'insert', domain: 'signal-stack.io', verified: true, is_primary: true, source: 'manual' },
+    ],
+  },
 ];
 
 async function phaseCanonicalizeWww(pool: Pool): Promise<void> {
