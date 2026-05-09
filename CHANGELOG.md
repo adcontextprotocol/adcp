@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.0.9
+
+### Patch Changes
+
+- 753dbe3: Propagate account discovery MUST from `required-tasks.mdx` into `accounts/overview.mdx`. Every seller agent must expose at least one of `list_accounts` or `sync_accounts` — this restates the existing `required-tasks.mdx` MUST in the surface-level overview where implementors look first. No wire shape change.
+- 5d2e7be: Fix stale HMAC-as-recommended framing in reporting-webhook.json, auth-scheme.json, and create-media-buy-request.json's artifact_webhook; add RFC 9421 default guidance to call-adcp-agent SKILL.md. Description-only fixes aligning these surfaces with the existing push-notification-config.json framing (HMAC is the deprecated fallback, RFC 9421 is the default). No wire format changes.
+
 ## 3.0.8
 
 ### Patch Changes
