@@ -12,6 +12,8 @@ describe('withGeminiRetry', () => {
   });
 
   it.each([
+    '[500 Internal Server Error] Internal error encountered.',
+    'INTERNAL: something went wrong',
     '503 Bad Gateway',
     'Service Unavailable',
     '429 Too Many Requests',
