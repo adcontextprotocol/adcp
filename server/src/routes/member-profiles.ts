@@ -52,6 +52,7 @@ import { createEscalation } from "../db/escalation-db.js";
 import { insertTypeReclassification } from "../db/type-reclassification-log-db.js";
 import { recordProfilePublishedIfNeeded } from "../services/profile-publish-event.js";
 import { gateAgentVisibilityForCaller, type VisibilityWarning } from "../services/agent-visibility-gate.js";
+import { getBrandPrimaryDomain } from "../services/brand-domain-resolver.js";
 import { normalizeFoundingMemberGrant } from "../services/founding-member-grant.js";
 
 const orgKnowledgeDb = new OrgKnowledgeDatabase();
@@ -1326,7 +1327,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       await client.query('BEGIN');
 
       const profileRow = await client.query(
-        `SELECT id, agents, primary_brand_domain
+        `SELECT id, agents
          FROM member_profiles
          WHERE workos_organization_id = $1
          FOR UPDATE`,
@@ -1360,7 +1361,17 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
           };
         }
       }
-      const row = profileRow.rows[0] as { id: string; agents: unknown; primary_brand_domain: string | null };
+      const row = profileRow.rows[0] as { id: string; agents: unknown };
+
+      // Brand-primary domain is now resolved through the Stage 1 service
+      // (organization_domains.is_primary first, member_profiles fallback)
+      // rather than read from the profile row directly. Read happens after
+      // the FOR UPDATE so a concurrent writer could in theory change the
+      // primary mid-flight — that's benign here: the publish either lands
+      // on the old or new primary, both are valid states. The ordering
+      // concern that motivated FOR UPDATE was tier downgrade, which still
+      // serializes correctly via the same lock.
+      const brandPrimaryDomain = await getBrandPrimaryDomain(orgId);
       const parsedAgents = typeof row.agents === 'string'
         ? JSON.parse(row.agents)
         : Array.isArray(row.agents) ? row.agents : [];
@@ -1388,7 +1399,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       // Only the public path needs to reach out to brand.json, so the
       // brand-domain requirement is scoped to `target === 'public'`.
       if (target === 'public') {
-        if (!row.primary_brand_domain) {
+        if (!brandPrimaryDomain) {
           await client.query('ROLLBACK');
           return {
             status: 400,
@@ -1410,7 +1421,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         }
       }
 
-      const domain = row.primary_brand_domain;
+      const domain = brandPrimaryDomain;
       const discovered = domain ? await brandDb.getDiscoveredBrandByDomain(domain) : null;
       const isSelfHosted = discovered?.source_type === 'brand_json';
 
