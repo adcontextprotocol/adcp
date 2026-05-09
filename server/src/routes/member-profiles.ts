@@ -1740,12 +1740,19 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         return res.status(400).json({ error: 'No organization associated with this account' });
       }
 
+      // Existence check stays separate from the brand-primary lookup so the
+      // two failure modes can keep their distinct status codes — 404 for no
+      // profile, 400 for "profile but no brand domain."
       const profile = await memberDb.getProfileByOrgId(orgId);
-      if (!profile?.primary_brand_domain) {
+      if (!profile) {
+        return res.status(404).json({ error: 'Profile not found' });
+      }
+
+      const domain = await getBrandPrimaryDomain(orgId);
+      if (!domain) {
         return res.status(400).json({ error: 'No brand domain configured' });
       }
 
-      const domain = profile.primary_brand_domain;
       const brandManager = new BrandManager();
       const result = await brandManager.validateDomain(domain, { skipCache: true });
 
