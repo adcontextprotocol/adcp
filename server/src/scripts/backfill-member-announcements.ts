@@ -117,7 +117,7 @@ system setting. Configure it at /admin/settings.
 
 function formatPreviewRow(r: BackfillPreviewRow): string {
   const tier = r.membership_tier ?? 'no-tier';
-  const domain = r.primary_brand_domain ?? 'no-domain';
+  const domain = r.brand_primary_domain ?? 'no-domain';
   const when = r.last_published_at
     ? new Date(r.last_published_at).toISOString().slice(0, 10)
     : 'no-event';

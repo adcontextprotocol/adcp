@@ -14,6 +14,7 @@
 import { getPool } from '../db/client.js';
 import { canonicalizeBrandDomain, assertValidBrandDomain } from './identifier-normalization.js';
 import { checkLogoUrlIsImage } from './brand-logo-service.js';
+import { getBrandPrimaryDomain } from './brand-domain-resolver.js';
 import { createLogger } from '../logger.js';
 
 const logger = createLogger('brand-identity');
@@ -23,17 +24,22 @@ export interface UpdateBrandIdentityInput {
   workosOrganizationId: string;
   /** Display name used when minting a new brand record. */
   displayName: string;
-  /** Member profile, if one exists. Required for primary_brand_domain link-back. */
+  /**
+   * Member profile, if one exists. The function dual-writes
+   * `member_profiles.primary_brand_domain` during the Stage 1 transition
+   * (Stage 2 drops the column); the profile id is needed to target the
+   * write. `contact_website` is a fallback brand-domain hint when the
+   * resolver returns null.
+   */
   profile?: {
     id: string;
-    primary_brand_domain?: string;
     contact_website?: string;
   } | null;
   /** New logo URL. HTTPS, must HEAD-resolve to image/*. Pass undefined to leave unchanged. */
   logoUrl?: string | null;
   /** New primary brand color. #RRGGBB. Pass undefined to leave unchanged. */
   brandColor?: string | null;
-  /** Domain hint used when the profile has no primary_brand_domain yet (e.g., logo URL hostname). */
+  /** Domain hint used when the resolver has nothing yet (e.g., logo URL hostname). */
   fallbackDomainHint?: string;
   /**
    * When the brand row is orphaned (prior owner relinquished, manifest
@@ -120,9 +126,11 @@ export async function updateBrandIdentity(
     throw new BrandIdentityError(400, 'Brand color must be a hex color (e.g., #FF5733).');
   }
 
-  // Pick a brand domain. Prefer the profile's, fall back to website hostname,
-  // then to a hint from the caller (typically the logo URL hostname).
-  let brandDomain = profile?.primary_brand_domain ?? undefined;
+  // Pick a brand domain. Prefer the resolver's value (org_domains.is_primary
+  // first, member_profiles fallback), then the profile's website hostname,
+  // then a hint from the caller (typically the logo URL hostname).
+  const existingPrimary = (await getBrandPrimaryDomain(workosOrganizationId)) ?? undefined;
+  let brandDomain: string | undefined = existingPrimary;
   if (!brandDomain && profile?.contact_website) {
     try { brandDomain = new URL(profile.contact_website).hostname; } catch { /* ignore */ }
   }
@@ -227,7 +235,11 @@ export async function updateBrandIdentity(
       );
     }
 
-    if (profile && profile.primary_brand_domain !== brandDomain) {
+    // Dual-write the legacy member_profiles.primary_brand_domain column
+    // during the Stage 1 transition. Stage 2 drops the column; this write
+    // goes away with it. The compare-against-existingPrimary check skips
+    // a no-op write when the brand-primary hasn't actually changed.
+    if (profile && existingPrimary !== brandDomain) {
       await client.query(
         'UPDATE member_profiles SET primary_brand_domain = $1, updated_at = NOW() WHERE id = $2',
         [brandDomain, profile.id]

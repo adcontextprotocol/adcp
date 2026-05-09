@@ -91,7 +91,7 @@ const ORG_A = {
   tagline: null,
   description: null,
   offerings: null,
-  primary_brand_domain: 'alpha.example',
+  brand_primary_domain: 'alpha.example',
   brand_manifest: { agents: [] },
   last_published_at: null,
 };
@@ -101,7 +101,7 @@ const ORG_B = {
   workos_organization_id: 'org_BBB',
   org_name: 'Beta Co',
   slug: 'beta',
-  primary_brand_domain: 'beta.example',
+  brand_primary_domain: 'beta.example',
 };
 
 beforeEach(() => {
@@ -304,7 +304,7 @@ describe('runBackfillAnnouncements', () => {
         workos_organization_id: 'org_AAA',
         org_name: 'Alpha Co',
         membership_tier: 'builder',
-        primary_brand_domain: 'alpha.example',
+        brand_primary_domain: 'alpha.example',
         last_published_at: published,
       },
     ]);
@@ -384,7 +384,7 @@ describe('runBackfillAnnouncements', () => {
         workos_organization_id: 'org_AAA',
         org_name: 'Alpha Co',
         membership_tier: 'company_standard',
-        primary_brand_domain: 'alpha.example',
+        brand_primary_domain: 'alpha.example',
         last_published_at: null,
       },
     ]);

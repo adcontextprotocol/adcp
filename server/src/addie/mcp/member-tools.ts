@@ -66,6 +66,7 @@ import { MemberDatabase } from '../../db/member-db.js';
 import { ensureMemberProfileExists } from '../../services/member-profile-autopublish.js';
 import { updateBrandIdentity, BrandIdentityError } from '../../services/brand-identity.js';
 import { canonicalizeBrandDomain } from '../../services/identifier-normalization.js';
+import { getBrandPrimaryDomain } from '../../services/brand-domain-resolver.js';
 import { ComplianceDatabase } from '../../db/compliance-db.js';
 import { AgentSnapshotDatabase } from '../../db/agent-snapshot-db.js';
 import { AgentValidator } from '../../validator.js';
@@ -2191,7 +2192,8 @@ export function createMemberToolHandlers(
     }
 
     let fallbackDomainHint: string | undefined;
-    if (!profile.primary_brand_domain && !profile.contact_website && logoUrl) {
+    const existingBrandPrimary = await getBrandPrimaryDomain(orgId);
+    if (!existingBrandPrimary && !profile.contact_website && logoUrl) {
       try {
         fallbackDomainHint = canonicalizeBrandDomain(new URL(logoUrl).hostname);
       } catch { /* validated below */ }

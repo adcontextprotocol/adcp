@@ -693,8 +693,11 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
           });
         }
         const profile = await memberDb.getProfileByOrgId(devOrgId);
-        if (profile?.primary_brand_domain) {
-          profile.resolved_brand = await resolveBrand(brandDb, profile.primary_brand_domain);
+        if (profile) {
+          const brandPrimary = await getBrandPrimaryDomain(devOrgId);
+          if (brandPrimary) {
+            profile.resolved_brand = await resolveBrand(brandDb, brandPrimary);
+          }
         }
         logger.info({ userId: user.id, orgId: devOrgId, hasProfile: !!profile, durationMs: Date.now() - startTime }, 'GET /api/me/member-profile completed (dev mode)');
         return res.json({
@@ -746,8 +749,11 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       }
 
       const profile = await memberDb.getProfileByOrgId(targetOrgId);
-      if (profile?.primary_brand_domain) {
-        profile.resolved_brand = await resolveBrand(brandDb, profile.primary_brand_domain);
+      if (profile) {
+        const brandPrimary = await getBrandPrimaryDomain(targetOrgId);
+        if (brandPrimary) {
+          profile.resolved_brand = await resolveBrand(brandDb, brandPrimary);
+        }
       }
 
       // Get org name from WorkOS
@@ -2012,7 +2018,8 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       // If no brand domain on file, fall back to the logo URL hostname (only if
       // the candidate domain isn't already owned by another org)
       let fallbackDomainHint: string | undefined;
-      if (!profile?.primary_brand_domain && !profile?.contact_website && logo_url) {
+      const existingBrandPrimary = await getBrandPrimaryDomain(targetOrgId);
+      if (!existingBrandPrimary && !profile?.contact_website && logo_url) {
         try {
           const candidate = canonicalizeBrandDomain(new URL(logo_url).hostname);
           const existingBrand = await brandDb.getHostedBrandByDomain(candidate);
