@@ -14,6 +14,7 @@ import {
 } from '../db/organization-db.js';
 import type { AgentConfig } from '../types.js';
 import { createLogger } from '../logger.js';
+import { getBrandPrimaryDomain } from './brand-domain-resolver.js';
 
 const logger = createLogger('agent-visibility-enforcement');
 
@@ -50,7 +51,7 @@ export async function demotePublicAgentsOnTierDowngrade(
 
   const pool = getPool();
   const client = await pool.connect();
-  let profile: { id: string; agents: AgentConfig[]; primary_brand_domain: string | null } | null = null;
+  let profile: { id: string; agents: AgentConfig[] } | null = null;
   let demotedUrls = new Set<string>();
   try {
     await client.query('BEGIN');
@@ -58,9 +59,8 @@ export async function demotePublicAgentsOnTierDowngrade(
     const row = await client.query<{
       id: string;
       agents: unknown;
-      primary_brand_domain: string | null;
     }>(
-      `SELECT id, agents, primary_brand_domain
+      `SELECT id, agents
        FROM member_profiles
        WHERE workos_organization_id = $1
        FOR UPDATE`,
@@ -101,7 +101,7 @@ export async function demotePublicAgentsOnTierDowngrade(
     const updatedAgents: AgentConfig[] = agents.map((a) =>
       demotedUrls.has(a.url) ? { ...a, visibility: 'members_only' as const } : a
     );
-    profile = { id: r.id, agents: updatedAgents, primary_brand_domain: r.primary_brand_domain };
+    profile = { id: r.id, agents: updatedAgents };
 
     await client.query(
       `UPDATE member_profiles
@@ -119,9 +119,17 @@ export async function demotePublicAgentsOnTierDowngrade(
 
   if (!profile) return null;
 
+  // Brand-primary lookup runs on the pool (outside the demote tx). The
+  // FOR UPDATE was load-bearing for the agents JSONB read; brand-primary
+  // ownership is enforced at write time elsewhere. A concurrent
+  // setPrimaryDomain landing between commit and this read just changes
+  // which manifest we strip — both old and new domains belong to this
+  // org, so the cleanup still targets the org's brand identity.
+  const brandPrimaryDomain = await getBrandPrimaryDomain(orgId);
+
   let brandJsonCleared = false;
-  if (profile.primary_brand_domain) {
-    const discovered = await brandDb.getDiscoveredBrandByDomain(profile.primary_brand_domain);
+  if (brandPrimaryDomain) {
+    const discovered = await brandDb.getDiscoveredBrandByDomain(brandPrimaryDomain);
     if (discovered && discovered.source_type !== 'brand_json') {
       const manifest = (discovered.brand_manifest as Record<string, unknown>) || {};
       const currentAgents = Array.isArray(manifest.agents)
@@ -129,7 +137,7 @@ export async function demotePublicAgentsOnTierDowngrade(
         : [];
       const remaining = currentAgents.filter((a) => !demotedUrls.has(a.url));
       if (remaining.length !== currentAgents.length) {
-        await brandDb.updateManifestAgents(profile.primary_brand_domain, remaining, {
+        await brandDb.updateManifestAgents(brandPrimaryDomain, remaining, {
           user_id: 'system:tier-downgrade',
           email: 'system@agenticadvertising.org',
           name: 'AAO System',

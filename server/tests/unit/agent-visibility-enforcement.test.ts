@@ -23,7 +23,16 @@ vi.mock('../../src/db/client.js', () => {
   };
 });
 
+// Stub the brand-domain resolver. After Stage 1.1 the demote path reads
+// brand-primary via getBrandPrimaryDomain (on the pool, not the locked
+// client). Each test sets the mock return value to whatever brand-primary
+// the test scenario expects.
+vi.mock('../../src/services/brand-domain-resolver.js', () => ({
+  getBrandPrimaryDomain: vi.fn(),
+}));
+
 import { demotePublicAgentsOnTierDowngrade } from '../../src/services/agent-visibility-enforcement.js';
+import { getBrandPrimaryDomain } from '../../src/services/brand-domain-resolver.js';
 import * as dbClient from '../../src/db/client.js';
 
 /**
@@ -61,7 +70,6 @@ const mockedConnect: ReturnType<typeof vi.fn> = (() => {
 type SelectRow = {
   id: string;
   agents: unknown;
-  primary_brand_domain: string | null;
 };
 
 type RecordedQuery = { sql: string; params: unknown[] };
@@ -81,7 +89,7 @@ function mockProfileTx(rows: SelectRow[]): { recorded: RecordedQuery[]; updateAr
     if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') {
       return { rowCount: 0, rows: [] };
     }
-    if (sql.includes('SELECT id, agents, primary_brand_domain')) {
+    if (sql.includes('SELECT id, agents')) {
       return { rowCount: rows.length, rows };
     }
     if (sql.trim().startsWith('UPDATE member_profiles')) {
@@ -102,6 +110,10 @@ describe('demotePublicAgentsOnTierDowngrade', () => {
       updateManifestAgents: vi.fn().mockResolvedValue(undefined),
     };
     mockedConnect.mockClear();
+    // Default: no brand-primary on file. Tests that need a specific value
+    // override per-case below.
+    vi.mocked(getBrandPrimaryDomain).mockReset();
+    vi.mocked(getBrandPrimaryDomain).mockResolvedValue(null);
   });
 
   function agent(url: string, visibility: AgentConfig['visibility']): AgentConfig {
@@ -129,10 +141,10 @@ describe('demotePublicAgentsOnTierDowngrade', () => {
     // wrong org param are the exact thing this PR's transactional
     // rewrite is meant to prevent.
     const { recorded } = mockProfileTx([
-      { id: 'p1', agents: [agent('https://a', 'public')], primary_brand_domain: null },
+      { id: 'p1', agents: [agent('https://a', 'public')] },
     ]);
     await demotePublicAgentsOnTierDowngrade('org-target', 'individual_professional', null, brandDb);
-    const selectProfile = recorded.find(r => r.sql.includes('SELECT id, agents, primary_brand_domain'));
+    const selectProfile = recorded.find(r => r.sql.includes('SELECT id, agents'));
     expect(selectProfile, 'should issue a SELECT for the profile row').toBeTruthy();
     expect(selectProfile!.sql).toMatch(/FOR UPDATE/);
     expect(selectProfile!.params[0]).toBe('org-target');
@@ -152,7 +164,7 @@ describe('demotePublicAgentsOnTierDowngrade', () => {
 
   it('no-op when profile has no public agents', async () => {
     const agents = [agent('https://a.example', 'private'), agent('https://b.example', 'members_only')];
-    const { recorded } = mockProfileTx([{ id: 'p1', agents, primary_brand_domain: null }]);
+    const { recorded } = mockProfileTx([{ id: 'p1', agents }]);
     const result = await demotePublicAgentsOnTierDowngrade(
       'org1', 'individual_professional', 'individual_academic', brandDb,
     );
@@ -169,7 +181,7 @@ describe('demotePublicAgentsOnTierDowngrade', () => {
       agent('https://priv.example', 'private'),
     ];
     const { updateArgs } = mockProfileTx([
-      { id: 'p1', agents, primary_brand_domain: null },
+      { id: 'p1', agents },
     ]);
     const result = await demotePublicAgentsOnTierDowngrade(
       'org1', 'individual_professional', 'individual_academic', brandDb,
@@ -186,7 +198,7 @@ describe('demotePublicAgentsOnTierDowngrade', () => {
 
   it('demotes on full cancellation (newTier = null)', async () => {
     mockProfileTx([
-      { id: 'p1', agents: [agent('https://p.example', 'public')], primary_brand_domain: null },
+      { id: 'p1', agents: [agent('https://p.example', 'public')] },
     ]);
     const result = await demotePublicAgentsOnTierDowngrade(
       'org1', 'company_leader', null, brandDb,
@@ -196,8 +208,9 @@ describe('demotePublicAgentsOnTierDowngrade', () => {
 
   it('clears demoted agents from a community brand.json', async () => {
     mockProfileTx([
-      { id: 'p1', agents: [agent('https://p.example', 'public')], primary_brand_domain: 'acme.example' },
+      { id: 'p1', agents: [agent('https://p.example', 'public')] },
     ]);
+    vi.mocked(getBrandPrimaryDomain).mockResolvedValue('acme.example');
     brandDb.getDiscoveredBrandByDomain.mockResolvedValue({
       source_type: 'community',
       brand_manifest: {
@@ -220,8 +233,9 @@ describe('demotePublicAgentsOnTierDowngrade', () => {
 
   it('does not touch brand.json for self-hosted brands', async () => {
     mockProfileTx([
-      { id: 'p1', agents: [agent('https://p.example', 'public')], primary_brand_domain: 'acme.example' },
+      { id: 'p1', agents: [agent('https://p.example', 'public')] },
     ]);
+    vi.mocked(getBrandPrimaryDomain).mockResolvedValue('acme.example');
     brandDb.getDiscoveredBrandByDomain.mockResolvedValue({
       source_type: 'brand_json',
       brand_manifest: {
@@ -237,8 +251,9 @@ describe('demotePublicAgentsOnTierDowngrade', () => {
 
   it('commits the profile tx before touching brand.json (so a failed manifest write does not orphan the JSONB update)', async () => {
     const { recorded } = mockProfileTx([
-      { id: 'p1', agents: [agent('https://p.example', 'public')], primary_brand_domain: 'acme.example' },
+      { id: 'p1', agents: [agent('https://p.example', 'public')] },
     ]);
+    vi.mocked(getBrandPrimaryDomain).mockResolvedValue('acme.example');
     brandDb.getDiscoveredBrandByDomain.mockResolvedValue({
       source_type: 'community',
       brand_manifest: { agents: [{ url: 'https://p.example', type: 'brand', id: 'p' }] },

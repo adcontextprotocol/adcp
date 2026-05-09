@@ -1741,11 +1741,15 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       }
 
       const profile = await memberDb.getProfileByOrgId(orgId);
-      if (!profile?.primary_brand_domain) {
+      if (!profile) {
+        return res.status(404).json({ error: 'Profile not found' });
+      }
+
+      const domain = await getBrandPrimaryDomain(orgId);
+      if (!domain) {
         return res.status(400).json({ error: 'No brand domain configured' });
       }
 
-      const domain = profile.primary_brand_domain;
       const brandManager = new BrandManager();
       const result = await brandManager.validateDomain(domain, { skipCache: true });
 
