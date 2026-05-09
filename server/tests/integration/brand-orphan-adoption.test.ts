@@ -57,6 +57,11 @@ describe('Brand orphan-adoption integration', () => {
   // this as a real parallelism risk in the #3186 review.
   async function clearTestFixtures() {
     await pool.query('DELETE FROM brands WHERE domain = $1', [TEST_DOMAIN]);
+    // Defensive: also delete any organization_domains row pinned to TEST_DOMAIN
+    // by domain, not just by org_id. The ON CONFLICT (domain) DO UPDATE in the
+    // seed below would otherwise trample a third-party org's row if one slipped
+    // in via a parallel test. See nodejs-testing-expert flag on #3186.
+    await pool.query('DELETE FROM organization_domains WHERE domain = $1', [TEST_DOMAIN]);
     await pool.query(
       'DELETE FROM organization_domains WHERE workos_organization_id IN ($1, $2)',
       [PRIOR_ORG, NEW_ORG]
