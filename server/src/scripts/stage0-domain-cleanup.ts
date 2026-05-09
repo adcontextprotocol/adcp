@@ -6,19 +6,19 @@
  * member_profiles.primary_brand_domain into organization_domains.is_primary).
  *
  * Phases:
- *  - canonicalize-www  Strip `www.` from member_profiles.primary_brand_domain
- *                      values where the apex equivalent already exists in
- *                      organization_domains for the same org. ~10 cases per
- *                      the 2026-05-08 survey.
- *  - per-case-fixes    Hand-tuned fixes for the 6 non-trivial divergence
- *                      cases (DanAds, iPROM, Transfon, Mission Media, Triton,
- *                      Mangrove). Each case has explicit before-state guards
- *                      so re-runs after a manual change abort instead of
- *                      stomping. Each writes both organization_domains AND
- *                      member_profiles.primary_brand_domain so the row state
- *                      is coherent post-Stage-0.
+ *  - canonicalize-www       Strip `www.` from member_profiles.primary_brand_domain
+ *                           values where the apex equivalent already exists in
+ *                           organization_domains for the same org.
+ *  - per-case-fixes         Hand-tuned fixes for the 6 non-trivial divergence
+ *                           cases. Each guards on expected before-state.
+ *  - insert-missing-rows    For profiles where primary_brand_domain is set but
+ *                           no matching organization_domains row exists,
+ *                           insert as `source='manual', verified=true,
+ *                           is_primary=true`. Trust model: brand-claim DNS
+ *                           verification, not WorkOS DNS. Cross-org collisions
+ *                           are surfaced (exit code 2), not stomped.
  *
- * Both phases are independently runnable. Both default to dry-run; pass
+ * All phases are independently runnable. All default to dry-run; pass
  * `--apply` to write.
  *
  * Usage:
@@ -26,14 +26,19 @@
  *   node /app/dist/scripts/stage0-domain-cleanup.js --phase=canonicalize-www --apply
  *   node /app/dist/scripts/stage0-domain-cleanup.js --phase=per-case-fixes
  *   node /app/dist/scripts/stage0-domain-cleanup.js --phase=per-case-fixes --apply
+ *   node /app/dist/scripts/stage0-domain-cleanup.js --phase=insert-missing-rows
+ *   node /app/dist/scripts/stage0-domain-cleanup.js --phase=insert-missing-rows --apply
  *
- * Exit codes: 0 success; 1 unrecoverable error; 2 a per-case guard rejected
- * because the row state diverges from the expected before-state.
+ * Exit codes: 0 success; 1 unrecoverable error; 2 a guard rejected (per-case
+ * before-state drift, or insert-missing-rows cross-org collision).
  */
 
 import { initializeDatabase, getPool, closeDatabase } from '../db/client.js';
 import { getDatabaseConfig } from '../config.js';
-import { canonicalizeBrandDomain } from '../services/identifier-normalization.js';
+import {
+  assertClaimableBrandDomain,
+  canonicalizeBrandDomain,
+} from '../services/identifier-normalization.js';
 import type { Pool } from 'pg';
 
 const apply = process.argv.includes('--apply');
@@ -383,6 +388,174 @@ async function phasePerCaseFixes(pool: Pool): Promise<void> {
   if (aborted > 0) process.exitCode = 2;
 }
 
+/**
+ * Stage 0.3: insert organization_domains rows for member_profiles where
+ * `primary_brand_domain` is set but no matching organization_domains row
+ * exists for that domain on the same org.
+ *
+ * Trust model: these domains were claimed via the brand-claim verify flow
+ * (web-root publication of brand.json), not WorkOS DNS. Insert as
+ * `source='manual', verified=true, is_primary=true` — auto-link will route
+ * future @<domain> signups to this org. Refuses non-claimable domains
+ * (free-email providers, shared platforms, public-suffix etlds) — the
+ * candidate set is filtered through `assertClaimableBrandDomain` before
+ * any write, since stale `primary_brand_domain` values can include junk
+ * (Mangrove had `linkedin.com`). Cross-org collisions also skipped and
+ * surfaced for manual resolution.
+ */
+async function phaseInsertMissingRows(pool: Pool): Promise<void> {
+  console.log('=== PHASE: insert-missing-rows ===');
+
+  // Candidates: profiles with a brand-primary that's not on any organization_domains
+  // row anywhere (regardless of org). Splitting "any-org collision" out from
+  // "this-org missing" gives a cleaner picture of the data.
+  const candidates = await pool.query<{
+    org_id: string;
+    org_name: string;
+    primary_brand_domain: string;
+    other_org_owns: string | null;
+    other_org_name: string | null;
+  }>(`
+    SELECT
+      mp.workos_organization_id AS org_id,
+      o.name AS org_name,
+      mp.primary_brand_domain,
+      other_od.workos_organization_id AS other_org_owns,
+      other_o.name AS other_org_name
+    FROM member_profiles mp
+    JOIN organizations o ON o.workos_organization_id = mp.workos_organization_id
+    LEFT JOIN organization_domains same_od
+      ON same_od.workos_organization_id = mp.workos_organization_id
+     AND LOWER(same_od.domain) = LOWER(mp.primary_brand_domain)
+    LEFT JOIN organization_domains other_od
+      ON LOWER(other_od.domain) = LOWER(mp.primary_brand_domain)
+     AND other_od.workos_organization_id != mp.workos_organization_id
+    LEFT JOIN organizations other_o
+      ON other_o.workos_organization_id = other_od.workos_organization_id
+    WHERE mp.primary_brand_domain IS NOT NULL
+      AND same_od.domain IS NULL
+    ORDER BY o.name
+  `);
+
+  console.log(`Candidates (profile has primary_brand_domain but no matching org_domains row): ${candidates.rowCount}`);
+  let inserted = 0;
+  let skippedCollision = 0;
+  let skippedNonClaimable = 0;
+  let raceLost = 0;
+  const collisions: Array<{ name: string; domain: string; owner: string }> = [];
+  const nonClaimable: Array<{ name: string; domain: string; reason: string }> = [];
+
+  for (const r of candidates.rows) {
+    // Filter out junk values that managed to land in primary_brand_domain
+    // (linkedin.com, hubspot CDN URLs, free-email providers, etc.). Same
+    // gate every live writer applies. Skipping here is safer than asserting
+    // them as verified — auto-link reads `od.verified=true` regardless of
+    // source, so an elevated junk row would route signups onto the wrong
+    // tenant.
+    let normalized: string;
+    try {
+      normalized = canonicalizeBrandDomain(r.primary_brand_domain);
+      assertClaimableBrandDomain(normalized);
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      console.log(`  NON-CLAIMABLE  ${r.org_name} (${r.org_id})  ${r.primary_brand_domain}  ${reason}`);
+      nonClaimable.push({ name: r.org_name, domain: r.primary_brand_domain, reason });
+      skippedNonClaimable += 1;
+      continue;
+    }
+
+    if (r.other_org_owns) {
+      console.log(`  COLLISION  ${r.org_name} (${r.org_id}) wants ${normalized} but org ${r.other_org_owns} (${r.other_org_name}) already owns it`);
+      collisions.push({ name: r.org_name, domain: normalized, owner: r.other_org_name ?? r.other_org_owns });
+      skippedCollision += 1;
+      continue;
+    }
+    console.log(`  ${apply ? 'INSERT' : 'WOULD INSERT'}  ${r.org_name} (${r.org_id})  ${normalized}  source=manual is_primary=true`);
+    if (apply) {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        await client.query(
+          'SELECT 1 FROM organizations WHERE workos_organization_id = $1 FOR UPDATE',
+          [r.org_id],
+        );
+
+        // Demote any existing is_primary=true row on this org first — there
+        // should be at most one. The personal-tier candidates almost never
+        // have one, but the assertion keeps the post-write invariant ("exactly
+        // one is_primary=true") clean.
+        await client.query(
+          `UPDATE organization_domains SET is_primary = false, updated_at = NOW()
+            WHERE workos_organization_id = $1 AND is_primary = true`,
+          [r.org_id],
+        );
+
+        // Insert. Lowercase the domain on insert for symmetry with the
+        // LOWER-based candidate lookup. ON CONFLICT (domain) DO NOTHING —
+        // handles the rare race where another org claimed this domain between
+        // the SELECT above and this INSERT.
+        const ins = await client.query(
+          `INSERT INTO organization_domains
+             (workos_organization_id, domain, verified, is_primary, source, created_at, updated_at)
+           VALUES ($1, LOWER($2), true, true, 'manual', NOW(), NOW())
+           ON CONFLICT (domain) DO NOTHING
+           RETURNING domain`,
+          [r.org_id, normalized],
+        );
+        if (ins.rowCount === 0) {
+          // Race-loser. Roll back the demotion so we don't leave the org with
+          // zero is_primary=true rows.
+          await client.query('ROLLBACK');
+          console.log(`    RACE: another writer inserted this domain first; demote rolled back`);
+          raceLost += 1;
+          continue;
+        }
+
+        // Mirror the new primary onto organizations.email_domain. Match the
+        // lowercase form the row was inserted with.
+        await client.query(
+          `UPDATE organizations
+              SET email_domain = LOWER($1), updated_at = NOW()
+            WHERE workos_organization_id = $2`,
+          [normalized, r.org_id],
+        );
+
+        // Same invariant assertion as per-case-fixes.
+        const primaryCount = await client.query<{ n: string }>(
+          `SELECT COUNT(*)::text AS n FROM organization_domains
+            WHERE workos_organization_id = $1 AND is_primary = true`,
+          [r.org_id],
+        );
+        const n = parseInt(primaryCount.rows[0].n, 10);
+        if (n !== 1) {
+          throw new Error(`Invariant violation for ${r.org_name} (${r.org_id}): expected 1 is_primary=true row, got ${n}`);
+        }
+
+        await client.query('COMMIT');
+      } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        throw err;
+      } finally {
+        client.release();
+      }
+    }
+    inserted += 1;
+  }
+
+  console.log(`\nResult: ${inserted} inserted${dryRun ? ' (would insert)' : ''}, ${skippedCollision} skipped (collision with another org), ${skippedNonClaimable} skipped (non-claimable domain), ${raceLost} race-lost (rolled back)`);
+  if (collisions.length > 0) {
+    console.log('\nCollisions need manual resolution:');
+    for (const c of collisions) console.log(`  ${c.name}: ${c.domain} owned by ${c.owner}`);
+  }
+  if (nonClaimable.length > 0) {
+    console.log('\nNon-claimable primary_brand_domain values (likely stale; need manual reset):');
+    for (const c of nonClaimable) console.log(`  ${c.name}: ${c.domain} — ${c.reason}`);
+  }
+  if (collisions.length > 0 || nonClaimable.length > 0 || raceLost > 0) {
+    process.exitCode = 2;
+  }
+}
+
 async function main(): Promise<void> {
   const dbConfig = getDatabaseConfig();
   if (!dbConfig) {
@@ -401,8 +574,10 @@ async function main(): Promise<void> {
     await phaseCanonicalizeWww(pool);
   } else if (phaseArg === 'per-case-fixes') {
     await phasePerCaseFixes(pool);
+  } else if (phaseArg === 'insert-missing-rows') {
+    await phaseInsertMissingRows(pool);
   } else {
-    console.error('Pass --phase=canonicalize-www or --phase=per-case-fixes');
+    console.error('Pass --phase=canonicalize-www, --phase=per-case-fixes, or --phase=insert-missing-rows');
     process.exit(1);
   }
 }
