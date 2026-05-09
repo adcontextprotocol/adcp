@@ -52,6 +52,7 @@ import { createEscalation } from "../db/escalation-db.js";
 import { insertTypeReclassification } from "../db/type-reclassification-log-db.js";
 import { recordProfilePublishedIfNeeded } from "../services/profile-publish-event.js";
 import { gateAgentVisibilityForCaller, type VisibilityWarning } from "../services/agent-visibility-gate.js";
+import { getBrandPrimaryDomain } from "../services/brand-domain-resolver.js";
 import { normalizeFoundingMemberGrant } from "../services/founding-member-grant.js";
 
 const orgKnowledgeDb = new OrgKnowledgeDatabase();
@@ -1326,7 +1327,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       await client.query('BEGIN');
 
       const profileRow = await client.query(
-        `SELECT id, agents, primary_brand_domain
+        `SELECT id, agents
          FROM member_profiles
          WHERE workos_organization_id = $1
          FOR UPDATE`,
@@ -1360,7 +1361,17 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
           };
         }
       }
-      const row = profileRow.rows[0] as { id: string; agents: unknown; primary_brand_domain: string | null };
+      const row = profileRow.rows[0] as { id: string; agents: unknown };
+
+      // Brand-primary read runs on a separate pool connection — outside the
+      // FOR UPDATE on member_profiles. The lock here is load-bearing for
+      // tier downgrade and the agents JSONB read; brand-primary ownership
+      // is enforced at write time (member self-service PUT verifies
+      // membership; brand-claim verify proves DNS control). A concurrent
+      // setPrimaryDomain (Stage 3) racing this read lands old-or-new — both
+      // states the org legitimately controls, so worst case is wrong-brand
+      // listing recoverable by re-publish.
+      const brandPrimaryDomain = await getBrandPrimaryDomain(orgId);
       const parsedAgents = typeof row.agents === 'string'
         ? JSON.parse(row.agents)
         : Array.isArray(row.agents) ? row.agents : [];
@@ -1388,7 +1399,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       // Only the public path needs to reach out to brand.json, so the
       // brand-domain requirement is scoped to `target === 'public'`.
       if (target === 'public') {
-        if (!row.primary_brand_domain) {
+        if (!brandPrimaryDomain) {
           await client.query('ROLLBACK');
           return {
             status: 400,
@@ -1410,7 +1421,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         }
       }
 
-      const domain = row.primary_brand_domain;
+      const domain = brandPrimaryDomain;
       const discovered = domain ? await brandDb.getDiscoveredBrandByDomain(domain) : null;
       const isSelfHosted = discovered?.source_type === 'brand_json';
 
@@ -1662,13 +1673,13 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
 
       const profile = await memberDb.getProfileByOrgId(orgId);
       if (!profile) return res.status(404).json({ error: 'Profile not found' });
-      if (!profile.primary_brand_domain) return res.status(400).json({ error: 'No primary brand domain' });
+
+      const domain = await getBrandPrimaryDomain(orgId);
+      if (!domain) return res.status(400).json({ error: 'No primary brand domain' });
 
       const agents = profile.agents || [];
       if (index >= agents.length) return res.status(404).json({ error: 'Agent not found at index' });
       const agent = agents[index];
-
-      const domain = profile.primary_brand_domain;
 
       // Validate domain is safe to fetch (SSRF protection)
       try {
