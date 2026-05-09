@@ -162,9 +162,15 @@ resources jar; cache validators per schema URI. Same wiring shape as the TS
   (Spring AI's, the official `io.modelcontextprotocol`); pick one before
   v0.1 ships, name it, don't drift between releases.
 - **A2A:** the TS SDK wraps `@a2a-js/sdk ^0.3.4` — there's a stable JS
-  upstream. Java A2A tooling is younger; if no maintained Java client
-  exists at v0.1 cut, ship a minimal SSE consumer + JSON-RPC framer in
-  `adcp-server` and migrate to an upstream wrapper when one stabilizes.
+  upstream. Java A2A tooling is younger; the anchor is
+  [`a2aproject/a2a-java`](https://github.com/a2aproject/a2a-java) (the
+  reference Java implementation under the A2A project). It is pre-1.0 at
+  the time of writing. **Pre-1.0:** ship a minimal SSE consumer + JSON-RPC
+  framer in `adcp-server`, depending on `a2a-java` only for type shapes
+  where stable. **At first `a2a-java` stable tag (≥ 1.0.0 on the
+  [releases page](https://github.com/a2aproject/a2a-java/releases)):**
+  switch the transport to the upstream client and deprecate the in-tree
+  fallback in the next minor.
 
 This matches how `@adcp/sdk` wraps both `@modelcontextprotocol/sdk` and
 `@a2a-js/sdk`.
@@ -498,8 +504,14 @@ Four audiences:
 2. **MCP Java SDK choice.** Spring AI's vs. official
    `io.modelcontextprotocol`. Decide by v0.1 cut; drifting between
    releases is worse than picking the less-mature one and migrating.
-3. **A2A Java fallback shape.** Wrap upstream when stable, or ship
-   minimal in-tree client now? Track upstream maturity at v0.1 cut.
+3. **A2A Java fallback shape.** Anchor is
+   [`a2aproject/a2a-java`](https://github.com/a2aproject/a2a-java).
+   Trigger to switch off the in-tree fallback: first `a2a-java` stable
+   release (≥ 1.0.0 on the
+   [releases page](https://github.com/a2aproject/a2a-java/releases)).
+   Open: do we hard-depend on `a2a-java` for type shapes pre-1.0 (locking
+   us to their package layout churn), or keep types in-tree until the
+   stable cut and migrate in one shot? Default: in-tree until stable.
 4. **Shared lifecycle YAMLs.** Path 2 above (lead the cross-SDK
    lifecycle source) requires TS / Python maintainer buy-in. If they
    say no, fall back to path 1 and ship transition validators as a
