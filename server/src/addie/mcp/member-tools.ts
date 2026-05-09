@@ -5690,6 +5690,29 @@ export function createMemberToolHandlers(
           }
           if (dirty) await memberDb.updateProfile(profile.id, { agents });
         }
+
+        // Seed an `agent_registry_metadata` row so the compliance heartbeat
+        // picks this agent up. Without this, an agent registered via
+        // save_agent lives only in `member_profiles.agents` JSONB and never
+        // enters the heartbeat's `known_agents` CTE — the dashboard's
+        // compliance tile stays `unknown` indefinitely. ON CONFLICT DO
+        // NOTHING preserves any owner-customized lifecycle / opt-out /
+        // check-interval the heartbeat or dashboard wrote earlier.
+        try {
+          await query(
+            `INSERT INTO agent_registry_metadata (agent_url)
+             VALUES ($1)
+             ON CONFLICT (agent_url) DO NOTHING`,
+            [agentUrl],
+          );
+        } catch (err) {
+          // Non-fatal: the read-side CTE widening (member_profiles.agents
+          // unioned into known_agents) catches this case as a fallback.
+          // We log so a real metadata-table outage is visible without
+          // failing the user's registration.
+          logger.warn({ err, agentUrl }, 'Addie: failed to seed agent_registry_metadata row');
+        }
+
         return { ok: true, createdProfile };
       } catch (err) {
         logger.warn({ err, agentUrl, orgId: saveOrgId }, 'Addie: failed to add agent to member profile');
