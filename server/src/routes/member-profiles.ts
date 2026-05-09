@@ -1363,14 +1363,14 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       }
       const row = profileRow.rows[0] as { id: string; agents: unknown };
 
-      // Brand-primary domain is now resolved through the Stage 1 service
-      // (organization_domains.is_primary first, member_profiles fallback)
-      // rather than read from the profile row directly. Read happens after
-      // the FOR UPDATE so a concurrent writer could in theory change the
-      // primary mid-flight — that's benign here: the publish either lands
-      // on the old or new primary, both are valid states. The ordering
-      // concern that motivated FOR UPDATE was tier downgrade, which still
-      // serializes correctly via the same lock.
+      // Brand-primary read runs on a separate pool connection — outside the
+      // FOR UPDATE on member_profiles. The lock here is load-bearing for
+      // tier downgrade and the agents JSONB read; brand-primary ownership
+      // is enforced at write time (member self-service PUT verifies
+      // membership; brand-claim verify proves DNS control). A concurrent
+      // setPrimaryDomain (Stage 3) racing this read lands old-or-new — both
+      // states the org legitimately controls, so worst case is wrong-brand
+      // listing recoverable by re-publish.
       const brandPrimaryDomain = await getBrandPrimaryDomain(orgId);
       const parsedAgents = typeof row.agents === 'string'
         ? JSON.parse(row.agents)
@@ -1673,13 +1673,13 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
 
       const profile = await memberDb.getProfileByOrgId(orgId);
       if (!profile) return res.status(404).json({ error: 'Profile not found' });
-      if (!profile.primary_brand_domain) return res.status(400).json({ error: 'No primary brand domain' });
+
+      const domain = await getBrandPrimaryDomain(orgId);
+      if (!domain) return res.status(400).json({ error: 'No primary brand domain' });
 
       const agents = profile.agents || [];
       if (index >= agents.length) return res.status(404).json({ error: 'Agent not found at index' });
       const agent = agents[index];
-
-      const domain = profile.primary_brand_domain;
 
       // Validate domain is safe to fetch (SSRF protection)
       try {
