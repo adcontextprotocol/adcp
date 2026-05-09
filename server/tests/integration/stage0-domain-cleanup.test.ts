@@ -256,6 +256,61 @@ describe('Stage 0 domain-cleanup: insert-missing-rows phase (SQL behavior)', () 
     expect(candidates.rowCount).toBe(0);
   });
 
+  it('demote-then-insert-then-rollback leaves the existing primary intact on a race loss', async () => {
+    // Pre-existing is_primary=true row on TEST_ORG. We're going to simulate
+    // the script wanting to insert a new primary, then losing the ON CONFLICT
+    // race. The existing primary must survive.
+    await seedDomains(pool, [
+      { domain: 'existing-primary.example', verified: true, is_primary: true },
+    ]);
+    await seedProfile(pool, 'wanted-primary.example');
+
+    // Seed the conflict on OTHER_ORG so our INSERT race-loses.
+    await pool.query(
+      `INSERT INTO organizations (workos_organization_id, name, is_personal, created_at, updated_at)
+       VALUES ($1, $2, false, NOW(), NOW()) ON CONFLICT DO NOTHING`,
+      [OTHER_ORG, 'Other Org'],
+    );
+    await pool.query(
+      `INSERT INTO organization_domains (workos_organization_id, domain, verified, is_primary, source, created_at, updated_at)
+       VALUES ($1, $2, true, true, 'workos', NOW(), NOW())
+       ON CONFLICT (domain) DO UPDATE SET workos_organization_id = $1`,
+      [OTHER_ORG, 'wanted-primary.example'],
+    );
+
+    // Replicate the phase's transaction. Demote → INSERT race-loses → ROLLBACK.
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(
+        'SELECT 1 FROM organizations WHERE workos_organization_id = $1 FOR UPDATE',
+        [TEST_ORG],
+      );
+      await client.query(
+        `UPDATE organization_domains SET is_primary = false WHERE workos_organization_id = $1 AND is_primary = true`,
+        [TEST_ORG],
+      );
+      const ins = await client.query(
+        `INSERT INTO organization_domains (workos_organization_id, domain, verified, is_primary, source, created_at, updated_at)
+         VALUES ($1, LOWER($2), true, true, 'manual', NOW(), NOW())
+         ON CONFLICT (domain) DO NOTHING
+         RETURNING domain`,
+        [TEST_ORG, 'wanted-primary.example'],
+      );
+      expect(ins.rowCount).toBe(0); // race-lost
+      await client.query('ROLLBACK');
+    } finally {
+      client.release();
+    }
+
+    // The pre-existing primary must still be marked is_primary=true.
+    const after = await pool.query<{ is_primary: boolean }>(
+      `SELECT is_primary FROM organization_domains WHERE workos_organization_id = $1 AND domain = $2`,
+      [TEST_ORG, 'existing-primary.example'],
+    );
+    expect(after.rows[0].is_primary).toBe(true);
+  });
+
   it('insert with ON CONFLICT (domain) DO NOTHING is a no-op when another org owns the row', async () => {
     // Seed the conflict.
     await pool.query(

@@ -35,7 +35,10 @@
 
 import { initializeDatabase, getPool, closeDatabase } from '../db/client.js';
 import { getDatabaseConfig } from '../config.js';
-import { canonicalizeBrandDomain } from '../services/identifier-normalization.js';
+import {
+  assertClaimableBrandDomain,
+  canonicalizeBrandDomain,
+} from '../services/identifier-normalization.js';
 import type { Pool } from 'pg';
 
 const apply = process.argv.includes('--apply');
@@ -391,12 +394,14 @@ async function phasePerCaseFixes(pool: Pool): Promise<void> {
  * exists for that domain on the same org.
  *
  * Trust model: these domains were claimed via the brand-claim verify flow
- * (DNS publication of brand.json), not WorkOS DNS. Insert as
+ * (web-root publication of brand.json), not WorkOS DNS. Insert as
  * `source='manual', verified=true, is_primary=true` — auto-link will route
- * future @<domain> signups to this org, which is the same end-state Stage 1
- * needs anyway. No-op when the domain is already on a different org
- * (ON CONFLICT DO NOTHING) — those collisions surface as a warning so an
- * operator can resolve them manually.
+ * future @<domain> signups to this org. Refuses non-claimable domains
+ * (free-email providers, shared platforms, public-suffix etlds) — the
+ * candidate set is filtered through `assertClaimableBrandDomain` before
+ * any write, since stale `primary_brand_domain` values can include junk
+ * (Mangrove had `linkedin.com`). Cross-org collisions also skipped and
+ * surfaced for manual resolution.
  */
 async function phaseInsertMissingRows(pool: Pool): Promise<void> {
   console.log('=== PHASE: insert-missing-rows ===');
@@ -407,7 +412,6 @@ async function phaseInsertMissingRows(pool: Pool): Promise<void> {
   const candidates = await pool.query<{
     org_id: string;
     org_name: string;
-    is_personal: boolean;
     primary_brand_domain: string;
     other_org_owns: string | null;
     other_org_name: string | null;
@@ -415,7 +419,6 @@ async function phaseInsertMissingRows(pool: Pool): Promise<void> {
     SELECT
       mp.workos_organization_id AS org_id,
       o.name AS org_name,
-      o.is_personal,
       mp.primary_brand_domain,
       other_od.workos_organization_id AS other_org_owns,
       other_o.name AS other_org_name
@@ -437,16 +440,37 @@ async function phaseInsertMissingRows(pool: Pool): Promise<void> {
   console.log(`Candidates (profile has primary_brand_domain but no matching org_domains row): ${candidates.rowCount}`);
   let inserted = 0;
   let skippedCollision = 0;
+  let skippedNonClaimable = 0;
+  let raceLost = 0;
   const collisions: Array<{ name: string; domain: string; owner: string }> = [];
+  const nonClaimable: Array<{ name: string; domain: string; reason: string }> = [];
 
   for (const r of candidates.rows) {
+    // Filter out junk values that managed to land in primary_brand_domain
+    // (linkedin.com, hubspot CDN URLs, free-email providers, etc.). Same
+    // gate every live writer applies. Skipping here is safer than asserting
+    // them as verified — auto-link reads `od.verified=true` regardless of
+    // source, so an elevated junk row would route signups onto the wrong
+    // tenant.
+    let normalized: string;
+    try {
+      normalized = canonicalizeBrandDomain(r.primary_brand_domain);
+      assertClaimableBrandDomain(normalized);
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      console.log(`  NON-CLAIMABLE  ${r.org_name} (${r.org_id})  ${r.primary_brand_domain}  ${reason}`);
+      nonClaimable.push({ name: r.org_name, domain: r.primary_brand_domain, reason });
+      skippedNonClaimable += 1;
+      continue;
+    }
+
     if (r.other_org_owns) {
-      console.log(`  COLLISION  ${r.org_name} (${r.org_id}) wants ${r.primary_brand_domain} but org ${r.other_org_owns} (${r.other_org_name}) already owns it`);
-      collisions.push({ name: r.org_name, domain: r.primary_brand_domain, owner: r.other_org_name ?? r.other_org_owns });
+      console.log(`  COLLISION  ${r.org_name} (${r.org_id}) wants ${normalized} but org ${r.other_org_owns} (${r.other_org_name}) already owns it`);
+      collisions.push({ name: r.org_name, domain: normalized, owner: r.other_org_name ?? r.other_org_owns });
       skippedCollision += 1;
       continue;
     }
-    console.log(`  ${apply ? 'INSERT' : 'WOULD INSERT'}  ${r.org_name} (${r.org_id})  ${r.primary_brand_domain}  source=manual is_primary=true`);
+    console.log(`  ${apply ? 'INSERT' : 'WOULD INSERT'}  ${r.org_name} (${r.org_id})  ${normalized}  source=manual is_primary=true`);
     if (apply) {
       const client = await pool.connect();
       try {
@@ -466,31 +490,34 @@ async function phaseInsertMissingRows(pool: Pool): Promise<void> {
           [r.org_id],
         );
 
-        // Insert. ON CONFLICT (domain) DO NOTHING — handles the rare race where
-        // another org claimed this domain between the SELECT above and this
-        // INSERT. Result: silent no-op for that row; surface via post-loop tally.
+        // Insert. Lowercase the domain on insert for symmetry with the
+        // LOWER-based candidate lookup. ON CONFLICT (domain) DO NOTHING —
+        // handles the rare race where another org claimed this domain between
+        // the SELECT above and this INSERT.
         const ins = await client.query(
           `INSERT INTO organization_domains
              (workos_organization_id, domain, verified, is_primary, source, created_at, updated_at)
-           VALUES ($1, $2, true, true, 'manual', NOW(), NOW())
+           VALUES ($1, LOWER($2), true, true, 'manual', NOW(), NOW())
            ON CONFLICT (domain) DO NOTHING
            RETURNING domain`,
-          [r.org_id, r.primary_brand_domain],
+          [r.org_id, normalized],
         );
         if (ins.rowCount === 0) {
           // Race-loser. Roll back the demotion so we don't leave the org with
           // zero is_primary=true rows.
           await client.query('ROLLBACK');
           console.log(`    RACE: another writer inserted this domain first; demote rolled back`);
+          raceLost += 1;
           continue;
         }
 
-        // Mirror the new primary onto organizations.email_domain.
+        // Mirror the new primary onto organizations.email_domain. Match the
+        // lowercase form the row was inserted with.
         await client.query(
           `UPDATE organizations
-              SET email_domain = $1, updated_at = NOW()
+              SET email_domain = LOWER($1), updated_at = NOW()
             WHERE workos_organization_id = $2`,
-          [r.primary_brand_domain, r.org_id],
+          [normalized, r.org_id],
         );
 
         // Same invariant assertion as per-case-fixes.
@@ -515,10 +542,16 @@ async function phaseInsertMissingRows(pool: Pool): Promise<void> {
     inserted += 1;
   }
 
-  console.log(`\nResult: ${inserted} inserted${dryRun ? ' (would insert)' : ''}, ${skippedCollision} skipped (collision with another org)`);
+  console.log(`\nResult: ${inserted} inserted${dryRun ? ' (would insert)' : ''}, ${skippedCollision} skipped (collision with another org), ${skippedNonClaimable} skipped (non-claimable domain), ${raceLost} race-lost (rolled back)`);
   if (collisions.length > 0) {
     console.log('\nCollisions need manual resolution:');
     for (const c of collisions) console.log(`  ${c.name}: ${c.domain} owned by ${c.owner}`);
+  }
+  if (nonClaimable.length > 0) {
+    console.log('\nNon-claimable primary_brand_domain values (likely stale; need manual reset):');
+    for (const c of nonClaimable) console.log(`  ${c.name}: ${c.domain} — ${c.reason}`);
+  }
+  if (collisions.length > 0 || nonClaimable.length > 0 || raceLost > 0) {
     process.exitCode = 2;
   }
 }
