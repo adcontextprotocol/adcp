@@ -377,18 +377,72 @@ export class AdAgentsManager {
     return managers;
   }
 
+  /**
+   * Verify that a manager-served adagents.json explicitly authorizes the
+   * source publisher domain. Required by the ads.txt MANAGERDOMAIN
+   * fallback (#4173) so a manager-side compromise can't auto-implicate
+   * publishers that merely point at the manager via ads.txt.
+   *
+   * Two ways the manifest can express that scope:
+   *
+   * 1. **Per-agent paths.** An authorized_agents[] entry directly names
+   *    the publisher under publisher_properties[].publisher_domain or
+   *    collections[].publisher_domain.
+   *
+   * 2. **Property-level paths.** A top-level properties[] entry carries
+   *    publisher_domain matching the source, AND at least one
+   *    authorized_agents[] entry references that property indirectly via
+   *    property_ids or property_tags. This is the shape Mediavine and
+   *    other managed networks use in production: the property declares
+   *    its publisher_domain once, and many agents reference it through
+   *    a tag without re-spelling the publisher.
+   *
+   * Both shapes establish the same invariant: the manager has
+   * positively named the publisher in its own manifest. Inline or
+   * implicit references that don't tie back to a publisher_domain
+   * field do not satisfy the gate — fail closed.
+   */
   private hasExplicitPublisherScope(rawData: unknown, publisherDomain: string): boolean {
     if (!rawData || typeof rawData !== 'object') return false;
     const data = rawData as AdAgentsJsonInline;
     const agents = Array.isArray(data.authorized_agents) ? data.authorized_agents : [];
+    const properties = Array.isArray(data.properties) ? data.properties : [];
     const normalizedPublisher = publisherDomain.toLowerCase();
+
+    // Index properties by id and by tag for the per-agent reference lookup.
+    // Both indexes filter to properties whose publisher_domain matches the
+    // source — properties belonging to other publishers can't satisfy the
+    // gate even if an agent references them.
+    const matchingPropertyIds = new Set<string>();
+    const matchingPropertyTags = new Set<string>();
+    for (const prop of properties) {
+      if (typeof prop?.publisher_domain !== 'string') continue;
+      if (prop.publisher_domain.toLowerCase() !== normalizedPublisher) continue;
+      if (typeof prop.property_id === 'string' && prop.property_id.length > 0) {
+        matchingPropertyIds.add(prop.property_id);
+      }
+      if (Array.isArray(prop.tags)) {
+        for (const tag of prop.tags) {
+          if (typeof tag === 'string' && tag.length > 0) matchingPropertyTags.add(tag);
+        }
+      }
+    }
 
     return agents.some((agent) => {
       const hasPublisherProperties = Array.isArray(agent.publisher_properties)
         && agent.publisher_properties.some((p) => p.publisher_domain.toLowerCase() === normalizedPublisher);
       const hasCollections = Array.isArray(agent.collections)
         && agent.collections.some((c) => c.publisher_domain.toLowerCase() === normalizedPublisher);
-      return hasPublisherProperties || hasCollections;
+
+      // Property-level scoping: the agent reaches a property whose
+      // publisher_domain matches the source. by_id walks property_ids;
+      // by_tag walks property_tags.
+      const hasPropertyIdLink = Array.isArray(agent.property_ids)
+        && agent.property_ids.some((id) => typeof id === 'string' && matchingPropertyIds.has(id));
+      const hasPropertyTagLink = Array.isArray(agent.property_tags)
+        && agent.property_tags.some((tag) => typeof tag === 'string' && matchingPropertyTags.has(tag));
+
+      return hasPublisherProperties || hasCollections || hasPropertyIdLink || hasPropertyTagLink;
     });
   }
 

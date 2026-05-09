@@ -520,6 +520,158 @@ describe('AdAgentsManager', () => {
       expect(result.errors.some(e => e.field === 'managerdomain_scope')).toBe(true);
     });
 
+    it('accepts managerdomain fallback when manager scopes via property_tags + property-level publisher_domain (Mediavine pattern)', async () => {
+      // Real-world shape: properties[] carries publisher_domain, agents
+      // reference properties indirectly via property_tags. The cross-
+      // publisher commitment is declared, just routed through the
+      // property layer.
+      mockedSafeFetch.mockImplementation(async (url) => {
+        if (url === 'https://publisher.example/.well-known/adagents.json') {
+          return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://publisher.example/ads.txt') {
+          return { status: 200, data: Buffer.from('MANAGERDOMAIN=manager.example\n'), headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://manager.example/.well-known/adagents.json') {
+          return {
+            status: 200,
+            data: buf({
+              properties: [{
+                property_id: 'pub_main_site',
+                property_type: 'website',
+                publisher_domain: 'publisher.example',
+                tags: ['scope3-aee', 'managed_network'],
+              }],
+              authorized_agents: [{
+                url: 'https://agent.example',
+                authorized_for: 'Display via tag',
+                authorization_type: 'property_tags',
+                property_tags: ['scope3-aee'],
+              }],
+            }),
+            headers: { 'content-type': 'application/json' },
+          };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+
+      const result = await manager.validateDomain('publisher.example');
+      expect(result.valid).toBe(true);
+      expect(result.discovery_method).toBe('ads_txt_managerdomain');
+      expect(result.manager_domain).toBe('manager.example');
+    });
+
+    it('accepts managerdomain fallback when manager scopes via property_ids + property-level publisher_domain', async () => {
+      mockedSafeFetch.mockImplementation(async (url) => {
+        if (url === 'https://publisher.example/.well-known/adagents.json') {
+          return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://publisher.example/ads.txt') {
+          return { status: 200, data: Buffer.from('MANAGERDOMAIN=manager.example\n'), headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://manager.example/.well-known/adagents.json') {
+          return {
+            status: 200,
+            data: buf({
+              properties: [{
+                property_id: 'pub_main_site',
+                property_type: 'website',
+                publisher_domain: 'publisher.example',
+              }],
+              authorized_agents: [{
+                url: 'https://agent.example',
+                authorized_for: 'Display via id',
+                authorization_type: 'property_ids',
+                property_ids: ['pub_main_site'],
+              }],
+            }),
+            headers: { 'content-type': 'application/json' },
+          };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+
+      const result = await manager.validateDomain('publisher.example');
+      expect(result.valid).toBe(true);
+      expect(result.discovery_method).toBe('ads_txt_managerdomain');
+    });
+
+    it('rejects fallback when property-level publisher_domain belongs to a different publisher', async () => {
+      // The property carries publisher_domain, the agent points at it
+      // by tag — but the property belongs to another publisher.
+      // Cross-publisher confusion attack must still fail closed.
+      mockedSafeFetch.mockImplementation(async (url) => {
+        if (url === 'https://publisher.example/.well-known/adagents.json') {
+          return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://publisher.example/ads.txt') {
+          return { status: 200, data: Buffer.from('MANAGERDOMAIN=manager.example\n'), headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://manager.example/.well-known/adagents.json') {
+          return {
+            status: 200,
+            data: buf({
+              properties: [{
+                property_id: 'someone_elses_site',
+                publisher_domain: 'other-publisher.example',
+                tags: ['scope3-aee'],
+              }],
+              authorized_agents: [{
+                url: 'https://agent.example',
+                authorized_for: 'Display via tag',
+                authorization_type: 'property_tags',
+                property_tags: ['scope3-aee'],
+              }],
+            }),
+            headers: { 'content-type': 'application/json' },
+          };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+
+      const result = await manager.validateDomain('publisher.example');
+      expect(result.valid).toBe(false);
+      expect(result.errors.some(e => e.field === 'managerdomain_scope')).toBe(true);
+    });
+
+    it('rejects fallback when agent references a tag with no publisher-scoped property carrying it', async () => {
+      // The publisher's property exists, but the agent points at a tag
+      // that none of the publisher's properties carry. Must fail closed
+      // — the agent has no scoping path back to the publisher.
+      mockedSafeFetch.mockImplementation(async (url) => {
+        if (url === 'https://publisher.example/.well-known/adagents.json') {
+          return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://publisher.example/ads.txt') {
+          return { status: 200, data: Buffer.from('MANAGERDOMAIN=manager.example\n'), headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://manager.example/.well-known/adagents.json') {
+          return {
+            status: 200,
+            data: buf({
+              properties: [{
+                property_id: 'pub_main_site',
+                publisher_domain: 'publisher.example',
+                tags: ['display'],
+              }],
+              authorized_agents: [{
+                url: 'https://agent.example',
+                authorized_for: 'Video via different tag',
+                authorization_type: 'property_tags',
+                property_tags: ['video'],
+              }],
+            }),
+            headers: { 'content-type': 'application/json' },
+          };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+
+      const result = await manager.validateDomain('publisher.example');
+      expect(result.valid).toBe(false);
+      expect(result.errors.some(e => e.field === 'managerdomain_scope')).toBe(true);
+    });
+
     it('does not trigger manager fallback on non-404 adagents responses', async () => {
       let calledAdsTxt = false;
       mockedSafeFetch.mockImplementation(async (url) => {
