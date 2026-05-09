@@ -166,70 +166,6 @@ jobs:
                   git checkout --theirs -- "$f"
                   git add -- "$f"
                   ;;
-                # Known cherry-pick divergence: 3.0.x has #3789's prose-only
-                # backport of #3739 (AUTH_REQUIRED tightening); main has the
-                # full enum split (adds AUTH_MISSING / AUTH_INVALID codes
-                # that can't ship to 3.0.x without breaking the patch
-                # contract). Main's version is the more advanced state and
-                # main's content should win on every forward-merge until
-                # 3.1.0 cuts and replaces both.
-                #
-                # Without this rule, every forward-merge from 3.0.x → main
-                # rediscovers the divergence — squash-merges of prior
-                # forward-merges don't advance the merge-base, so git keeps
-                # seeing 3.0.x's version vs main's version and conflicting.
-                # This rule short-circuits the conflict permanently.
-                #
-                # When 3.1.0 ships and main no longer has the in-flight
-                # enum split (the work has been released), remove this
-                # block. It's a temporary bridge across a known content
-                # divergence, not a permanent allowlist entry.
-                # See adcontextprotocol/adcp#3784 / #3789 for context.
-                docs/building/implementation/error-handling.mdx|static/schemas/source/enums/error-code.json)
-                  git checkout --ours -- "$f"
-                  git add -- "$f"
-                  ;;
-                # Known 3.1-track divergences: main has additions that 3.0.x
-                # cannot adopt within the patch contract. Same rationale as
-                # the AUTH_REQUIRED bridge above — main is the more advanced
-                # state, 3.0.x's content here is the older shape, and
-                # squash-merges of prior forward-merges don't advance the
-                # merge-base so the conflict resurfaces every push without
-                # this short-circuit.
-                #
-                # - .github/workflows/training-agent-storyboards.yml: main
-                #   extracted overlay logic to scripts/overlay-compliance-
-                #   cache.sh (#3793-era refactor); 3.0.x still inlines it.
-                # - static/compliance/source/universal/runner-output-contract.yaml:
-                #   main has forward-compat narrative for unrecognized
-                #   `check` kinds and additional grading-code coverage.
-                # - static/schemas/source/core/error.json: main has #3875's
-                #   schema_id + discriminator additions on issues[] entries.
-                # - static/schemas/source/protocol/get-adcp-capabilities-response.json:
-                #   main has the 3.1+ measurement capability block plus the
-                #   identity.additionalProperties:true relaxation that 3.0.x
-                #   adopted in 3.0.5 (#3896). Both shapes converged on the
-                #   identity flip; main's superset wins.
-                # - static/compliance/source/universal/storyboard-schema.yaml:
-                #   doc-comment authoring schema. 3.0.x's clean-merged
-                #   additions (default_agent in #3897, provides_state_for in
-                #   #3734) are above the conflict region and merge
-                #   automatically; the only conflict is main's CANONICAL
-                #   CHECK ENUM block at the bottom of the file, which 3.0.x
-                #   doesn't have. `--ours` keeps main's enum block AND
-                #   preserves 3.0.x's upper additions (those weren't part
-                #   of the conflict). Verified manually on PRs #3902 (3.0.5),
-                #   the unmerged 3.0.6 forward-merge attempts, and #4225
-                #   (3.0.7). Promoted to allowlist after the third repeat.
-                #
-                # Remove these entries when 3.1.0 ships and main absorbs the
-                # 3.0.x line — these are temporary bridges, not permanent
-                # allowlist entries. First observed on the 3.0.5 forward-
-                # merge (manual resolution: PR #3902).
-                .github/workflows/training-agent-storyboards.yml|static/compliance/source/universal/runner-output-contract.yaml|static/compliance/source/universal/storyboard-schema.yaml|static/schemas/source/core/error.json|static/schemas/source/protocol/get-adcp-capabilities-response.json)
-                  git checkout --ours -- "$f"
-                  git add -- "$f"
-                  ;;
                 *)
                   UNEXPECTED="$UNEXPECTED $f"
                   ;;
@@ -237,8 +173,13 @@ jobs:
             done <<< "$CONFLICTS"
 
             if [ -n "$UNEXPECTED" ]; then
-              echo "::error::Forward-merge has unexpected conflicts that need manual resolution:$UNEXPECTED"
-              echo "::error::Resolve manually: git checkout main && git merge origin/3.0.x"
+              echo "::error::Forward-merge has content conflicts that require human review:$UNEXPECTED"
+              echo "::error::Each conflict is a real decision about whether 3.0.x's change should land on main."
+              echo "::error::Resolve manually:"
+              echo "::error::  git fetch origin && git checkout -b forward-merge/3.0.x origin/main"
+              echo "::error::  git merge origin/3.0.x  # resolve conflicts in editor"
+              echo "::error::  git push origin forward-merge/3.0.x"
+              echo "::error::  gh pr create --base main --head forward-merge/3.0.x"
               git merge --abort
               exit 1
             fi
@@ -320,15 +261,12 @@ jobs:
             - `CHANGELOG.md` → take 3.0.x's (main's next Version Packages
               cut prepends its own beta entries above)
             - `dist/*` → take 3.0.x's (versioned release artifacts)
-            - `docs/building/implementation/error-handling.mdx`,
-              `static/schemas/source/enums/error-code.json` → preserve
-              main's. Temporary bridge across a known cherry-pick
-              divergence (#3789's prose-only backport of #3739); remove
-              when 3.1.0 cuts.
 
             Any conflict outside this list fails the workflow loud — needs
-            manual resolution and indicates a playbook violation (a change
-            on 3.0.x that wasn't first cherry-picked from main).
+            manual resolution. Content-file divergences between 3.0.x and
+            main (schemas, docs, workflow scripts) are real backport
+            decisions and require human review — auto-resolving them
+            silently dropped 3.0.x patches in the past (see #4306).
 
             ## Review checklist
 
