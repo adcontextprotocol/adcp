@@ -27,6 +27,9 @@ function isRetryableGeminiError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
   const msg = error.message;
   return (
+    msg.includes('[500 ') ||
+    msg.includes('Internal error encountered') ||
+    msg.includes('INTERNAL:') ||
     msg.includes('503') ||
     msg.includes('Service Unavailable') ||
     msg.includes('429') ||
