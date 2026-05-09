@@ -125,6 +125,10 @@ export async function demotePublicAgentsOnTierDowngrade(
   // setPrimaryDomain landing between commit and this read just changes
   // which manifest we strip — both old and new domains belong to this
   // org, so the cleanup still targets the org's brand identity.
+  //
+  // TODO(#4159 Stage 3): when setPrimaryDomain lands, it should own
+  // old-primary-manifest cleanup itself rather than depending on a
+  // tier-downgrade race to do it. Janitorial gap, not a security hole.
   const brandPrimaryDomain = await getBrandPrimaryDomain(orgId);
 
   let brandJsonCleared = false;
