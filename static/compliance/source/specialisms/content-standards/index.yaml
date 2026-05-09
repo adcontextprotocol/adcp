@@ -7,6 +7,8 @@ summary: "Define creative quality rules, calibrate content against them, and val
 track: governance
 required_tools:
   - list_content_standards
+  - get_creative_features
+  - get_media_buy_artifacts
 
 # Cross-step assertion (adcp#2664). status.monotonic rejects resource
 # status transitions observed across steps that aren't on the spec
@@ -48,8 +50,16 @@ caller:
 prerequisites:
   description: |
     The caller needs a brand identity and creative quality requirements. The test kit
-    provides a sample brand with visual assets for calibration.
+    provides a sample brand with visual assets for calibration. The runner seeds
+    media buy fixtures via controller_seeding: true for the artifact retrieval phase.
   test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  media_buys:
+    - media_buy_id: "content_standards_artifacts_mb_1"
+      status: "active"
+      currency: "USD"
 
 phases:
   - id: capability_discovery
@@ -569,4 +579,119 @@ phases:
           - check: field_value
             path: "context.correlation_id"
             value: "content_standards--validate_content_delivery"
+            description: "Context correlation_id returned unchanged"
+
+  - id: creative_feature_extraction
+    title: "Creative feature extraction"
+    narrative: |
+      Governance agents that support creative feature extraction analyze a submitted
+      creative manifest and return scored feature values (brand safety, content
+      categorization, quality metrics, etc.). This phase verifies the minimum contract:
+      a valid creative manifest submission returns a schema-valid response with a
+      results array.
+
+    steps:
+      - id: get_creative_features
+        title: "Extract features from a sample creative"
+        narrative: |
+          The buyer submits a sample display creative for feature extraction. The
+          response must include a results array — each entry carries at minimum a
+          feature_id and a value. The exact features returned are agent-specific
+          and not asserted here.
+        task: get_creative_features
+        schema_ref: "creative/get-creative-features-request.json"
+        response_schema_ref: "creative/get-creative-features-response.json"
+        doc_ref: "/governance/content-standards/tasks/get_creative_features"
+        comply_scenario: governance_content_standards
+        stateful: false
+        expected: |
+          Return a schema-valid response with a results array. Each entry must carry
+          feature_id and value at minimum.
+
+        sample_request:
+          creative_manifest:
+            format_id:
+              agent_url: "https://creatives.adcontextprotocol.org"
+              id: "display_300x250"
+            assets:
+              banner_image:
+                asset_type: "image"
+                url: "https://test-assets.adcontextprotocol.org/acme-outdoor/display-300x250.png"
+                width: 300
+                height: 250
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          context:
+            correlation_id: "content_standards--get_creative_features"
+
+        validations:
+          - check: response_schema
+            description: "Response matches get-creative-features-response.json schema"
+          - check: field_present
+            path: "results"
+            description: "Response includes feature results array"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "content_standards--get_creative_features"
+            description: "Context correlation_id returned unchanged"
+
+  - id: media_buy_artifacts_retrieval
+    title: "Media buy artifact retrieval"
+    narrative: |
+      Governance agents that support artifact retrieval allow buyers to fetch
+      IO/PDF artifacts associated with a media buy for post-campaign validation.
+      This phase verifies the minimum contract: a valid media_buy_id returns a
+      schema-valid response echoing the media_buy_id and including an artifacts
+      array (which may be empty if the media buy has no artifacts).
+
+      The media buy is seeded via the fixtures block so the agent can serve
+      artifact queries without requiring a preceding create_media_buy in this
+      storyboard's flow.
+
+    steps:
+      - id: get_media_buy_artifacts
+        title: "Retrieve artifacts for a seeded media buy"
+        narrative: |
+          The buyer calls `get_media_buy_artifacts` for a media buy seeded by the
+          fixtures block. The response must echo the `media_buy_id` and include an
+          `artifacts` array (empty is acceptable if no artifacts exist).
+        task: get_media_buy_artifacts
+        schema_ref: "content-standards/get-media-buy-artifacts-request.json"
+        response_schema_ref: "content-standards/get-media-buy-artifacts-response.json"
+        doc_ref: "/governance/content-standards/tasks/get_media_buy_artifacts"
+        comply_scenario: governance_content_standards
+        stateful: false
+        expected: |
+          Return a schema-valid response echoing media_buy_id and an artifacts
+          array (may be empty).
+
+        sample_request:
+          media_buy_id: "content_standards_artifacts_mb_1"
+          context:
+            correlation_id: "content_standards--get_media_buy_artifacts"
+
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buy-artifacts-response.json schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Response echoes back the media_buy_id"
+          - check: field_value
+            path: "media_buy_id"
+            value: "content_standards_artifacts_mb_1"
+            description: "Returned media_buy_id matches the seeded fixture"
+          - check: field_present
+            path: "artifacts"
+            description: "Response includes artifacts array (may be empty)"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "content_standards--get_media_buy_artifacts"
             description: "Context correlation_id returned unchanged"

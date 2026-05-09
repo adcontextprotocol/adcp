@@ -158,3 +158,54 @@ phases:
           - check: error_code
             value: "REFERENCE_NOT_FOUND"
             description: "Error code indicates brand-not-found. REFERENCE_NOT_FOUND is the canonical fallback per error-handling.mdx (brands lack a dedicated *_NOT_FOUND code)."
+
+  - id: brand_discovery
+    title: "Brand discovery"
+    narrative: |
+      Brand agents that support natural-language brand search allow buyers to discover
+      brands on the agent's roster before requesting full identity data. This phase
+      verifies the basic contract: a valid query returns a schema-valid response with
+      a brands array.
+
+      `search_brands` carries `x-status: experimental` in AdCP 3.x — this storyboard
+      validates the task's minimum contract but does not gate GA compliance verdicts for
+      agents that have not adopted the experimental surface. Cross-step assertions
+      (verifying that a specific brand_id appears in search results) require the
+      comparison primitive from issue #2642 and will be added in a follow-up.
+
+    steps:
+      - id: search_brands
+        title: "Search for brands by natural-language query"
+        narrative: |
+          The buyer calls `search_brands` with a natural-language query. The response
+          must be schema-valid and include a `brands` array. The array may be empty if
+          no brands match; individual entries must carry `brand_id`, `house`, and `names`
+          at minimum.
+        task: search_brands
+        schema_ref: "brand/search-brands-request.json"
+        response_schema_ref: "brand/search-brands-response.json"
+        doc_ref: "/brand-protocol/tasks/search_brands"
+        requires_tool: search_brands
+        stateful: false
+        expected: |
+          Return a schema-valid response with a brands array. Each entry must carry
+          brand_id, house (domain + name), and names. An empty array is valid.
+
+        sample_request:
+          query: "outdoor gear"
+          context:
+            correlation_id: "brand_baseline--search_brands"
+
+        validations:
+          - check: response_schema
+            description: "Response matches search-brands-response.json schema"
+          - check: field_present
+            path: "brands"
+            description: "Response includes brands array"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "brand_baseline--search_brands"
+            description: "Context correlation_id returned unchanged"
