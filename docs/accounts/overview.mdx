@@ -137,8 +137,10 @@ The Accounts Protocol operates with four party types. See [Accounts and agents](
 
 ## Tasks
 
+**Account discovery (normative).** Every seller agent MUST expose at least one of `list_accounts` (`require_operator_auth: true`, explicit) or `sync_accounts` (`require_operator_auth: false`, implicit). An agent MAY implement both. Implementing neither is a compliance gap regardless of declared specialisms. See [Required tasks by protocol](/docs/protocol/required-tasks#accounts-protocol).
+
 | Task | Purpose |
-|------|---------|
+|------|--------|
 | [`sync_accounts`](/docs/accounts/tasks/sync_accounts) | Declare brand/operator pairs and billing; provision accounts (implicit accounts, `require_operator_auth: false`) |
 | [`list_accounts`](/docs/accounts/tasks/list_accounts) | Discover existing accounts (explicit accounts, `require_operator_auth: true`); poll status on pending accounts |
 | [`get_account_financials`](/docs/accounts/tasks/get_account_financials) | Query spend, credit, and invoice status for operator-billed accounts |
@@ -174,7 +176,7 @@ The [AgenticAdvertising.org brand registry](https://agenticadvertising.org) prov
 The recommended pattern for buyer agents uses three building blocks (see [#1166](https://github.com/adcontextprotocol/adcp/issues/1166)):
 
 | Tool | Purpose |
-|------|---------|
+|------|--------|
 | `resolve_brand` | Check registry and fetch brand.json — returns canonical identity if available |
 | `research_brand` | Enrich via Brandfetch and auto-save to registry as `enriched` |
 | `save_brand` | Manually contribute a brand to the registry as `community` |
