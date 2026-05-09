@@ -255,6 +255,35 @@ validation_result:
       of the context_outputs path that failed to resolve (e.g. "/signals/0/
       signal_agent_segment_id"). For unresolved_substitution, json_pointer MUST
       be null (the substitution is pre-wire and no response path is implicated).
+    cross_step_comparison_checks: |
+      field_less_than and field_equals_context are authored checks that compare
+      a field on this step's response against a value from the storyboard
+      accumulator (populated by prior steps' `context_outputs`). Three
+      consumer-facing rendering rules runners MUST follow:
+
+      1. `expected` carries the RESOLVED RUNTIME comparand, not the storyboard's
+         `context_key` string. A consumer diffing `validation_result.expected`
+         across two storyboard runs will see different values when the prior
+         step's response differed — that's load-bearing for diagnosing
+         filtered-vs-baseline regressions. The `context_key` field on the
+         storyboard validation is authoring-time metadata; it is NOT echoed
+         into validation_result.
+
+      2. `context_key_absent` observation: when the storyboard sets
+         `context_key` and the named entry is missing from the accumulator
+         (the prior capturing step was legitimately skipped on a branch-set
+         path), the validation_result MUST carry `passed: true` with an
+         `observations: [<descriptive string>]` entry naming the absent key.
+         `expected` and `actual` MAY be omitted in this path. A genuinely
+         missing capture (prior step ran but its capture path didn't resolve)
+         is NOT this case — that grades `capture_path_not_resolvable` ON THE
+         PRIOR STEP per the synthesized_checks rule.
+
+      3. Step-ordering dependency: cross-step comparison checks read from the
+         accumulator built up over prior step executions. Runners that
+         parallelize step execution MUST honour the storyboard's declared
+         ordering for any step that names a `context_key` referencing an
+         earlier step's `context_outputs`.
     upstream_traffic_check: |
       upstream_traffic is an authored check (declared in the storyboard's
       step.validations array) that asserts side-effects against a sandbox the

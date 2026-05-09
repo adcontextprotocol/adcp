@@ -1095,7 +1095,20 @@
 #       context_key: "baseline_rights_count"
 #       description: "Filtered rights array is smaller than unfiltered baseline"
 #
-#     # Static threshold (no context_key).
+#     # Idempotency replay: replayed body deep-equals the originally-captured one.
+#     # Pair with `context_outputs` on the original call:
+#     #   context_outputs:
+#     #     - name: original_create_response
+#     #       path: ""              # capture the entire response body
+#     - check: field_equals_context
+#       path: ""
+#       context_key: "original_create_response"
+#       description: "Replay returned the cached response body, deep-equal to the original"
+#
+#     # Static threshold (single-step form — no context_key).
+#     # NOTE: `field_less_than` is primarily a cross-step check; the literal-
+#     # `value` form is a convenience for numeric thresholds. Authors who
+#     # need same-step equality should reach for `field_value` instead.
 #     - check: field_less_than
 #       path: "delivery.spend"
 #       value: 10000
