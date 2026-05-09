@@ -34,9 +34,20 @@ narrative: |
   This universal grades not_applicable when the runner does not host a webhook
   receiver (e.g., lint-only runs against an agent that has no webhook-emitting
   operations, or runs where the operator has not configured the receiver
-  contract). It grades not_applicable — never fail — for the signature phase
-  when the agent advertises the deprecated HMAC fallback as its preferred mode;
-  HMAC-signed webhooks still grade against the idempotency phases.
+  contract).
+
+  **9421 is the on-ramp.** Any agent advertising webhook-emitting operations
+  MUST publish a `webhook-signing` JWKS at its `brand.json` `agents[].jwks_uri`
+  and MUST emit valid 9421 signatures when triggered with no `authentication`
+  block on `push_notification_config`. Agents without published signing keys
+  fail the `signing_keys_published` precheck before the signature phase runs;
+  agents with keys but invalid signatures fail `signature_validity`. The
+  deprecated HMAC fallback remains a buyer-side registration option in 3.x
+  (`push_notification_config.authentication`), but it is not a path that
+  exempts the agent from publishing 9421 keys — the runner registers as a
+  9421-default buyer, and the agent is graded on what it does in that mode.
+  This closes the on-ramp loophole that previously let agents self-declare
+  themselves out of the signing phase via `webhook_auth_mode == 'hmac_legacy'`.
 
   **Clean seam**: the runner does NOT reimplement signature verification or
   idempotency dedup. It delegates to `@adcp/client` primitives —
@@ -74,11 +85,11 @@ prerequisites:
     operations are advertised; operations the agent does not support are
     skipped cleanly, not graded as failures.
 
-    Agents that sign webhooks with 9421 (the 3.0 baseline) MUST publish the
-    corresponding JWKS at the `jwks_uri` on their brand.json `agents[]` entry
-    so the runner's verifier can fetch it. Agents whose buyers have opted into
-    the deprecated HMAC fallback pass the idempotency phases but skip the
-    signature phase as not_applicable.
+    Agents advertising webhook-emitting operations MUST publish a JWKS at the
+    `jwks_uri` on their brand.json `agents[]` entry containing a key with
+    `adcp_use: "webhook-signing"`. The `signing_keys_published` precheck
+    asserts this directly; agents without published signing keys fail
+    `webhook_signing_keys_unpublished` before the signature phase runs.
   test_kit: "test-kits/webhook-receiver-runner.yaml"
 
 phases:
@@ -244,32 +255,87 @@ phases:
           idempotency_key_format_changed if a later delivery carries a
           different-shaped value.
 
-  - id: signature_validity
-    title: "Webhook signatures validate under the 9421 profile (when 9421 is in effect)"
-    optional: true
-    skip_if: "agent.webhook_auth_mode == 'hmac_legacy'"
+  - id: signing_keys_published
+    title: "Agent publishes a webhook-signing JWKS at brand.json"
     narrative: |
-      When the agent is emitting under the 9421 baseline (i.e., the buyer has
-      NOT opted into the deprecated HMAC fallback via
-      `push_notification_config.authentication`), every outbound webhook MUST
-      verify under the 14-step webhook verifier checklist per
-      docs/building/implementation/security.mdx#verifier-checklist-for-webhooks.
-      Verification is delegated to the `@adcp/client` 9421 webhook verifier —
-      this phase is gated on that verifier being available in the client
-      library (see test-kits/webhook-receiver-runner.yaml client_primitives
-      section). Until the client verifier lands, this phase grades as
-      not_applicable rather than skipping silently.
+      Precheck: any agent advertising webhook-emitting operations MUST publish
+      a JWKS at the `jwks_uri` on its `brand.json` `agents[]` entry containing
+      at least one key with `adcp_use: "webhook-signing"`. This is the on-ramp
+      gate — an agent that has only ever signed HMAC and never published a
+      9421 signing key fails here, before the signature phase even runs.
 
-      Agents whose buyers registered `push_notification_config.authentication`
-      (the legacy HMAC mode) skip this phase as not_applicable — they are
-      graded on the idempotency phases only. The deprecated HMAC scheme is
-      graded via the legacy webhook-hmac-sha256 test vectors.
+      The runner resolves the agent's `brand.json` from its
+      `get_adcp_capabilities` advertisement (or, for agents not yet member-
+      registered, from operator configuration), fetches the JWKS at
+      `agents[].jwks_uri`, and asserts at least one key has
+      `adcp_use: "webhook-signing"` and a non-revoked status. Absent or
+      malformed JWKS produces `webhook_signing_keys_unpublished`; JWKS present
+      but with no webhook-signing key produces
+      `webhook_signing_keys_wrong_purpose`.
+
+      This phase is observable-only and stateless — no traffic flows. It runs
+      before the signature phase so an operator debugging "why did signing
+      fail" gets a specific keys-vs-signing diagnostic instead of a generic
+      `signature_key_unknown` deep in the verifier checklist.
+
+    steps:
+      - id: fetch_brand_json
+        title: "Fetch brand.json and resolve jwks_uri"
+        narrative: |
+          Runner fetches the agent's `brand.json` (resolved from
+          `get_adcp_capabilities` or operator configuration), iterates the
+          `agents[]` array, and asserts at least one entry exposes a
+          `jwks_uri` reachable at HTTP 200.
+        task: fetch_brand_jwks
+        stateful: false
+        expected: |
+          brand.json reachable and parseable; at least one `agents[]` entry
+          has a `jwks_uri` returning a valid JWKS document. Fails with
+          `brand_json_unreachable`, `brand_json_malformed`, or
+          `agents_jwks_uri_missing`.
+
+      - id: assert_webhook_signing_key_present
+        title: "Assert JWKS contains a webhook-signing key"
+        narrative: |
+          Runner inspects the JWKS and asserts at least one key has
+          `adcp_use: "webhook-signing"`. Keys advertising other purposes
+          (`request-signing`, `webhook-receipts`, etc.) do not satisfy this
+          check — purpose-separation is enforced per the `adcp_use` rule
+          (one cryptoKeyVersion per signing purpose; receivers enforce
+          purpose at JWK `adcp_use`, not RFC 9421 tag).
+        task: assert_jwks_purpose
+        stateful: false
+        expected: |
+          At least one JWK in the agent's published JWKS carries
+          `adcp_use: "webhook-signing"` and is not marked revoked. Fails
+          with `webhook_signing_keys_unpublished` (no JWKS or empty JWKS),
+          `webhook_signing_keys_wrong_purpose` (JWKS present but no key
+          with the webhook-signing purpose), or
+          `webhook_signing_keys_all_revoked` (all webhook-signing keys
+          revoked).
+
+  - id: signature_validity
+    title: "Webhook signatures validate under the 9421 profile"
+    narrative: |
+      Every outbound webhook MUST verify under the 14-step webhook verifier
+      checklist per
+      docs/building/implementation/security.mdx#verifier-checklist-for-webhooks.
+      The runner registers the trigger as a 9421-default buyer (no
+      `authentication` block on `push_notification_config`); the agent is
+      graded on the signatures it emits in that mode.
+
+      Verification is delegated to the `@adcp/client` 9421 webhook verifier
+      (see test-kits/webhook-receiver-runner.yaml client_primitives section).
+      Until the client verifier lands in a published release, this phase
+      grades as `not_applicable` rather than skipping silently — operators
+      get an explicit "verifier not yet available" signal instead of a
+      false-pass.
 
       Negative conformance — signatures that MUST be rejected with a specific
       webhook_signature_* error code — is tested via static conformance
-      vectors at `/compliance/{version}/test-vectors/webhook-signing/` (follow-up),
-      not by this phase. This phase only grades positive-path agents emitting
-      conformant signatures on live traffic.
+      vectors at `/compliance/{version}/test-vectors/webhook-signing/`
+      (follow-up), not by this phase. This phase only grades positive-path
+      agents emitting conformant signatures on live traffic.
 
     steps:
       - id: trigger_signed_webhook
@@ -323,15 +389,23 @@ phases:
 
 grading:
   pass_criteria: |
-    Phases idempotency_key_presence and idempotency_key_stability MUST pass when
-    the agent advertises any webhook-emitting operation and the runner hosts a
-    webhook receiver. Phase signature_validity MUST pass when 9421 is in effect
-    (no HMAC fallback); legacy-HMAC agents skip that phase as not_applicable.
+    Phases idempotency_key_presence, idempotency_key_stability,
+    signing_keys_published, and signature_validity MUST pass when the agent
+    advertises any webhook-emitting operation and the runner hosts a webhook
+    receiver. Agents without a published webhook-signing JWKS fail
+    signing_keys_published — there is no exemption for "HMAC legacy mode."
     Agents that advertise no webhook-emitting operations grade the entire
     universal as not_applicable. Runners without a webhook receiver grade the
-    entire universal as not_applicable.
+    entire universal as not_applicable. signature_validity may grade
+    not_applicable if the runner's `@adcp/client` 9421 webhook verifier is
+    not yet available; this is an explicit operator signal, not a silent
+    skip.
   report_format: |
     Per-phase pass/fail/not_applicable, with per-step error codes on failure.
     Retry-stability failures include a diff of the observed keys across
     deliveries so operators can debug sender-side retry bugs without re-running
-    the full suite.
+    the full suite. signing_keys_published failures cite the specific gap —
+    `webhook_signing_keys_unpublished`, `webhook_signing_keys_wrong_purpose`,
+    or `webhook_signing_keys_all_revoked` — so operators distinguish "never
+    set up keys" from "set up keys with the wrong purpose label" without
+    reading the JWKS by hand.
