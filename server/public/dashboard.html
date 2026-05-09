@@ -2071,6 +2071,11 @@
       // Get dismissed alerts from session storage
       const dismissedAlerts = JSON.parse(sessionStorage.getItem('dismissedSetupAlerts') || '[]');
 
+      // Brand-properties nudge uses a localStorage timestamp for 7-day snooze (keyed per org)
+      const brandPropsDismissedAt = localStorage.getItem(`propertyNudgeDismissedAt_${org.id}`);
+      const brandPropsSnoozed = brandPropsDismissedAt &&
+        (Date.now() - parseInt(brandPropsDismissedAt, 10)) < (7 * 24 * 60 * 60 * 1000);
+
       // Fetch member profile to check for missing items
       try {
         const response = await fetch(`/api/member-profiles/org/${org.id}`);
@@ -2127,6 +2132,25 @@
               : 'Help others learn about your organization by adding a tagline.',
             actionLabel: 'Add Description',
             actionUrl: '/member-profile#tagline'
+          });
+        }
+
+        // Nudge publisher/adtech org admins to populate brand.json properties when empty.
+        // Empty properties = downstream discovery gap (brand→property catalog, ad-agents.json delegation).
+        if (!isPersonalAccount
+            && ['admin', 'owner'].includes(org.role)
+            && ['publisher', 'adtech'].includes(org.billing?.company_type)
+            && profile.primary_brand_domain
+            && profile.resolved_brand
+            && (profile.resolved_brand.property_count ?? 0) === 0
+            && !brandPropsSnoozed) {
+          alerts.push({
+            id: 'missing-brand-properties',
+            icon: '🏗️',
+            title: 'List your owned properties',
+            message: `List the publishers and properties ${org.name ?? 'your organization'} owns or represents — this powers brand-aware discovery and ad-agents.json delegation.`,
+            actionLabel: 'Add properties',
+            actionUrl: `/brand-builder?domain=${encodeURIComponent(profile.primary_brand_domain)}#properties`
           });
         }
 
@@ -2189,14 +2213,20 @@
     }
 
     function dismissSetupAlert(alertId) {
-      const dismissedAlerts = JSON.parse(sessionStorage.getItem('dismissedSetupAlerts') || '[]');
-      if (!dismissedAlerts.includes(alertId)) {
-        dismissedAlerts.push(alertId);
-        sessionStorage.setItem('dismissedSetupAlerts', JSON.stringify(dismissedAlerts));
+      if (alertId === 'missing-brand-properties') {
+        // currentOrg is set to org right before renderSetupAlerts is called; org switches rebuild
+        // the alerts DOM entirely, so currentOrg.id always matches the rendered card's org here.
+        localStorage.setItem(`propertyNudgeDismissedAt_${currentOrg?.id}`, Date.now().toString());
+      } else {
+        const dismissedAlerts = JSON.parse(sessionStorage.getItem('dismissedSetupAlerts') || '[]');
+        if (!dismissedAlerts.includes(alertId)) {
+          dismissedAlerts.push(alertId);
+          sessionStorage.setItem('dismissedSetupAlerts', JSON.stringify(dismissedAlerts));
+        }
       }
 
       // Remove the alert from the DOM
-      const alertEl = document.querySelector(`.setup-alert[data-alert-id="${alertId}"]`);
+      const alertEl = document.querySelector(`.setup-alert[data-alert-id="${CSS.escape(alertId)}"]`);
       if (alertEl) {
         alertEl.remove();
       }
