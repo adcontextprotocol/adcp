@@ -29,6 +29,14 @@ The columns become dead-letter once `agent_test_history` is dropped (gated
 on the soak windows in #4247) and `recordTest()` retires in the follow-up
 "final cleanup" PR.
 
+**Semantic shift (last_test_scenario).** For owner test runs,
+`last_test_scenario` now returns `tracks_json[0].track` (e.g.
+`'quality_evaluation'`) rather than the literal string the old
+`recordTest()` write path stored directly. No existing callers branch on
+this value, but downstream consumers that read `last_test_scenario` should
+expect a track name sourced from the canonical run record rather than the
+legacy scenario string.
+
 **Index.** `idx_agent_compliance_runs_triggered_org_url_at` on
 `(triggered_org_id, agent_url, tested_at DESC)` (partial, only where
 `triggered_org_id IS NOT NULL`) supports the view's per-org `DISTINCT ON`

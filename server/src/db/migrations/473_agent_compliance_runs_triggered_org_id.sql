@@ -17,6 +17,9 @@
 ALTER TABLE agent_compliance_runs
   ADD COLUMN IF NOT EXISTS triggered_org_id TEXT;
 
+COMMENT ON COLUMN agent_compliance_runs.triggered_org_id IS
+  'WorkOS organization ID of the org that triggered the run. Stored as TEXT (no FK) because WorkOS IDs are foreign-system keys — referential integrity against organizations.workos_organization_id is not enforced at the DB layer. Populated only for triggered_by=''owner_test''; heartbeat / manual / webhook rows leave it NULL.';
+
 -- Index supports the derived `agent_context_with_latest_test` view's
 -- per-(org, url) DISTINCT ON lookup. tested_at DESC keeps the latest-row
 -- pull as a single index scan.
