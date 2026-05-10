@@ -6,6 +6,11 @@
 import { Router } from "express";
 import { WorkOS, DomainDataState } from "@workos-inc/node";
 import { getPool } from "../../db/client.js";
+import {
+  linkDomain,
+  setPrimaryDomain,
+  upsertDomainFromWorkos,
+} from "../../db/organization-domains-db.js";
 import { createLogger } from "../../logger.js";
 import { requireAuth, requireAdmin } from "../../middleware/auth.js";
 import { SlackDatabase } from "../../db/slack-db.js";
@@ -289,21 +294,17 @@ export function setupDomainRoutes(
 
         // Mirror the domain into organization_domains so findPayingOrgForDomain
         // and the upcoming claim-existing-org flow can locate this prospect by
-        // domain even before the webhook fires. If the domain is already
-        // claimed by another org we don't steal it (DO NOTHING) — log a
-        // warning so admins can resolve the conflict. The new org's
-        // email_domain column is still populated either way, so
+        // domain even before the webhook fires. linkDomain logs the conflict;
+        // the new org's email_domain column is still populated either way, so
         // findClaimableProspectOrgForDomain can still locate it via the
         // email_domain branch of its OR predicate.
-        const domainMirror = await pool.query(
-          `INSERT INTO organization_domains (workos_organization_id, domain, is_primary, verified, source)
-           VALUES ($1, $2, true, true, 'admin_discovery')
-           ON CONFLICT (domain) DO NOTHING`,
-          [workosOrg.id, normalizedDomain]
-        );
-        if ((domainMirror.rowCount ?? 0) === 0) {
-          logger.warn({ orgId: workosOrg.id, domain: normalizedDomain }, "organization_domains row already claimed by a different org — new prospect's domain hookup will rely on organizations.email_domain");
-        }
+        await linkDomain({
+          orgId: workosOrg.id,
+          domain: normalizedDomain,
+          source: "admin_discovery",
+          verified: true,
+          isPrimary: true,
+        });
 
         // Auto-enrich the new organization in the background
         trackBackground(
@@ -488,17 +489,15 @@ export function setupDomainRoutes(
             );
 
             // Mirror into organization_domains for auto-link / claim flows.
-            // ON CONFLICT does not steal the domain from another org —
-            // log a warning when the upsert no-ops.
-            const domainMirror = await pool.query(
-              `INSERT INTO organization_domains (workos_organization_id, domain, is_primary, verified, source)
-               VALUES ($1, $2, true, true, 'admin_discovery')
-               ON CONFLICT (domain) DO NOTHING`,
-              [workosOrg.id, normalizedDomain]
-            );
-            if ((domainMirror.rowCount ?? 0) === 0) {
-              logger.warn({ orgId: workosOrg.id, domain: normalizedDomain }, "organization_domains row already claimed by a different org — new prospect's domain hookup will rely on organizations.email_domain");
-            }
+            // linkDomain refuses to steal the domain from another org and
+            // logs the conflict.
+            await linkDomain({
+              orgId: workosOrg.id,
+              domain: normalizedDomain,
+              source: "admin_discovery",
+              verified: true,
+              isPrimary: true,
+            });
 
             // Auto-enrich in background
             trackBackground(
@@ -787,17 +786,15 @@ export function setupDomainRoutes(
         );
 
         // Mirror into organization_domains for auto-link / claim flows.
-        // ON CONFLICT does not steal the domain from another org —
-        // log a warning when the upsert no-ops.
-        const domainMirror = await pool.query(
-          `INSERT INTO organization_domains (workos_organization_id, domain, is_primary, verified, source)
-           VALUES ($1, $2, true, true, 'admin_discovery')
-           ON CONFLICT (domain) DO NOTHING`,
-          [workosOrg.id, normalizedDomain]
-        );
-        if ((domainMirror.rowCount ?? 0) === 0) {
-          logger.warn({ orgId: workosOrg.id, domain: normalizedDomain }, "organization_domains row already claimed by a different org — new prospect's domain hookup will rely on organizations.email_domain");
-        }
+        // linkDomain refuses to steal the domain from another org and
+        // logs the conflict.
+        await linkDomain({
+          orgId: workosOrg.id,
+          domain: normalizedDomain,
+          source: "admin_discovery",
+          verified: true,
+          isPrimary: true,
+        });
 
         // Auto-enrich the new organization in the background
         trackBackground(
@@ -1423,35 +1420,20 @@ export function setupDomainRoutes(
           );
         }
 
-        // If setting as primary, clear existing primary first
-        if (is_primary) {
-          await pool.query(
-            `UPDATE organization_domains SET is_primary = false, updated_at = NOW()
-             WHERE workos_organization_id = $1 AND is_primary = true`,
-            [orgId]
-          );
-        }
+        // Insert/update local DB immediately (webhook will also do this, but
+        // for immediate consistency). Admin tool already pushed this domain
+        // to WorkOS above, so source='workos' reflects upstream truth.
+        await upsertDomainFromWorkos({
+          orgId,
+          domain: normalizedDomain,
+          verified: true,
+          isPrimary: is_primary === true,
+        });
 
-        // Insert/update local DB immediately (webhook will also do this, but for immediate consistency)
-        await pool.query(
-          `INSERT INTO organization_domains (workos_organization_id, domain, is_primary, verified, source)
-           VALUES ($1, $2, $3, true, 'workos')
-           ON CONFLICT (domain) DO UPDATE SET
-             workos_organization_id = EXCLUDED.workos_organization_id,
-             is_primary = EXCLUDED.is_primary,
-             verified = true,
-             source = 'workos',
-             updated_at = NOW()`,
-          [orgId, normalizedDomain, is_primary || false]
-        );
-
-        // If primary, also update the email_domain column
+        // If admin requested primary, atomic-flip across the org's rows and
+        // sync email_domain. No requireSource — this is an admin override.
         if (is_primary) {
-          await pool.query(
-            `UPDATE organizations SET email_domain = $1, updated_at = NOW()
-             WHERE workos_organization_id = $2`,
-            [normalizedDomain, orgId]
-          );
+          await setPrimaryDomain({ orgId, domain: normalizedDomain });
         }
 
         logger.info({ orgId, domain: normalizedDomain, isPrimary: is_primary }, "Added domain to organization via WorkOS");
@@ -1598,39 +1580,23 @@ export function setupDomainRoutes(
       try {
         const { orgId, domain } = req.params;
         const normalizedDomain = domain.toLowerCase().trim();
-        const pool = getPool();
 
-        // Verify domain belongs to this org
-        const domainResult = await pool.query(
-          `SELECT domain FROM organization_domains
-           WHERE workos_organization_id = $1 AND domain = $2`,
-          [orgId, normalizedDomain]
-        );
+        // Admin override — no requireSource gate, no requireVerified gate.
+        // This endpoint is used to resolve messes (e.g. promote a
+        // hand-imported row before WorkOS confirms). Member self-service has
+        // both gates set in routes/me-organization-domains.ts.
+        const result = await setPrimaryDomain({
+          orgId,
+          domain: normalizedDomain,
+          requireVerified: false,
+        });
 
-        if (domainResult.rows.length === 0) {
-          return res.status(404).json({ error: "Domain not found for this organization" });
+        if (!result.ok) {
+          if (result.reason === "not_found") {
+            return res.status(404).json({ error: "Domain not found for this organization" });
+          }
+          return res.status(400).json({ error: "Cannot set primary domain" });
         }
-
-        // Clear existing primary
-        await pool.query(
-          `UPDATE organization_domains SET is_primary = false, updated_at = NOW()
-           WHERE workos_organization_id = $1 AND is_primary = true`,
-          [orgId]
-        );
-
-        // Set new primary
-        await pool.query(
-          `UPDATE organization_domains SET is_primary = true, updated_at = NOW()
-           WHERE workos_organization_id = $1 AND domain = $2`,
-          [orgId, normalizedDomain]
-        );
-
-        // Update organizations.email_domain
-        await pool.query(
-          `UPDATE organizations SET email_domain = $1, updated_at = NOW()
-           WHERE workos_organization_id = $2`,
-          [normalizedDomain, orgId]
-        );
 
         logger.info({ orgId, domain: normalizedDomain }, "Set primary domain for organization");
 

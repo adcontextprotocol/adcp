@@ -201,6 +201,24 @@ describe('organization-domains-db (#4159 Stage 3a)', () => {
       expect(result).toEqual({ ok: false, reason: 'not_verified' });
     });
 
+    it('with requireVerified=false, promotes an unverified row (admin override)', async () => {
+      await linkDomain({ orgId: ORG_A, domain: D3, source: 'admin_discovery', verified: false, isPrimary: false });
+
+      const result = await setPrimaryDomain({
+        orgId: ORG_A,
+        domain: D3,
+        requireVerified: false,
+      });
+      expect(result).toEqual({ ok: true });
+
+      const rows = await getPool().query(
+        `SELECT domain FROM organization_domains
+          WHERE workos_organization_id = $1 AND is_primary = true`,
+        [ORG_A],
+      );
+      expect(rows.rows[0].domain).toBe(D3);
+    });
+
     it('returns source_not_allowed when requireSource excludes the row source', async () => {
       await linkDomain({ orgId: ORG_A, domain: D3, source: 'import', verified: true, isPrimary: false });
 
