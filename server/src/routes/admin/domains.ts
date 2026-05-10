@@ -1420,6 +1420,10 @@ export function setupDomainRoutes(
           );
         }
 
+        // Match prior `is_primary || false` coercion — undefined / missing
+        // body field is treated as a non-primary add.
+        const wantsPrimary = is_primary === true;
+
         // Insert/update local DB immediately (webhook will also do this, but
         // for immediate consistency). Admin tool already pushed this domain
         // to WorkOS above, so source='workos' reflects upstream truth.
@@ -1427,13 +1431,22 @@ export function setupDomainRoutes(
           orgId,
           domain: normalizedDomain,
           verified: true,
-          isPrimary: is_primary === true,
+          isPrimary: wantsPrimary,
         });
 
-        // If admin requested primary, atomic-flip across the org's rows and
-        // sync email_domain. No requireSource — this is an admin override.
-        if (is_primary) {
+        if (wantsPrimary) {
+          // Atomic-flip across the org's rows and sync email_domain. No
+          // requireSource — admin override.
           await setPrimaryDomain({ orgId, domain: normalizedDomain });
+        } else {
+          // Preserve prior behavior: re-add with is_primary=false demotes.
+          // upsertDomainFromWorkos doesn't change is_primary on conflict
+          // (correct for the webhook's auto-promote path), so demote here.
+          await pool.query(
+            `UPDATE organization_domains SET is_primary = false, updated_at = NOW()
+             WHERE workos_organization_id = $1 AND domain = $2 AND is_primary = true`,
+            [orgId, normalizedDomain],
+          );
         }
 
         logger.info({ orgId, domain: normalizedDomain, isPrimary: is_primary }, "Added domain to organization via WorkOS");
