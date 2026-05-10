@@ -25,11 +25,8 @@ export interface UpdateBrandIdentityInput {
   /** Display name used when minting a new brand record. */
   displayName: string;
   /**
-   * Member profile, if one exists. The function dual-writes
-   * `member_profiles.primary_brand_domain` during the Stage 1 transition
-   * (Stage 2 drops the column); the profile id is needed to target the
-   * write. `contact_website` is a fallback brand-domain hint when the
-   * resolver returns null.
+   * Member profile, if one exists. `contact_website` is a fallback
+   * brand-domain hint used when the resolver returns null.
    */
   profile?: {
     id: string;
@@ -235,16 +232,12 @@ export async function updateBrandIdentity(
       );
     }
 
-    // Dual-write the legacy member_profiles.primary_brand_domain column
-    // during the Stage 1 transition. Stage 2 drops the column; this write
-    // goes away with it. The compare-against-existingPrimary check skips
-    // a no-op write when the brand-primary hasn't actually changed.
-    if (profile && existingPrimary !== brandDomain) {
-      await client.query(
-        'UPDATE member_profiles SET primary_brand_domain = $1, updated_at = NOW() WHERE id = $2',
-        [brandDomain, profile.id]
-      );
-    }
+    // Stage 2 of #4159 dropped member_profiles.primary_brand_domain. The
+    // canonical brand-primary now lives on organization_domains.is_primary;
+    // when the brand-claim verify path needs to flip a primary, that should
+    // happen via setPrimaryDomain (Stage 3). This function still writes the
+    // brand identity itself (logos, colors) into the brands registry; it no
+    // longer mirrors the chosen domain back into member_profiles.
 
     await client.query('COMMIT');
   } catch (error) {

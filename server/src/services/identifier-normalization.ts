@@ -81,7 +81,7 @@ const SHARED_PLATFORM_DOMAINS = new Set<string>([
   'tumblr.com', 'wixsite.com', 'squarespace.com',
   // Social / profile platforms — owned by other entities, claiming one would
   // route their entire user base into the claiming tenant via auto-link
-  // (e.g., Mangrove had `linkedin.com` as their primary_brand_domain).
+  // (e.g., Mangrove had `linkedin.com` as their primary brand domain).
   'linkedin.com', 'twitter.com', 'x.com', 'facebook.com', 'fb.com',
   'instagram.com', 'youtube.com', 'tiktok.com', 'reddit.com',
   'pinterest.com', 'discord.com', 'snapchat.com', 'threads.net',

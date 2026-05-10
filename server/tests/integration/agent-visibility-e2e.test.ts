@@ -128,6 +128,10 @@ describe('Agent visibility E2E', () => {
 
   afterAll(async () => {
     await pool.query(
+      `DELETE FROM organization_domains WHERE workos_organization_id LIKE $1`,
+      [`${TEST_PREFIX}%`],
+    );
+    await pool.query(
       `DELETE FROM member_profiles WHERE workos_organization_id LIKE $1`,
       [`${TEST_PREFIX}%`],
     );
@@ -145,6 +149,18 @@ describe('Agent visibility E2E', () => {
     );
     await closeDatabase();
   });
+
+  async function seedBrandPrimary(orgId: string, domain: string) {
+    await pool.query(
+      `INSERT INTO organization_domains
+         (workos_organization_id, domain, verified, is_primary, source, created_at, updated_at)
+       VALUES ($1, $2, true, true, 'workos', NOW(), NOW())
+       ON CONFLICT (domain) DO UPDATE SET
+         workos_organization_id = EXCLUDED.workos_organization_id,
+         verified = true, is_primary = true, source = 'workos'`,
+      [orgId, domain],
+    );
+  }
 
   async function provisionUser(userId: string, orgId: string) {
     await pool.query(
@@ -169,16 +185,20 @@ describe('Agent visibility E2E', () => {
       workos_organization_id: orgId,
       display_name: `Test ${slug}`,
       slug,
-      primary_brand_domain: `${slug}.example`,
       is_public: true,
       agents: [
         { url: `https://a1.${slug}.example`, visibility: 'private' },
         { url: `https://a2.${slug}.example`, visibility: 'members_only' },
       ],
     });
+    await seedBrandPrimary(orgId, `${slug}.example`);
   }
 
   beforeEach(async () => {
+    await pool.query(
+      `DELETE FROM organization_domains WHERE workos_organization_id LIKE $1`,
+      [`${TEST_PREFIX}%`],
+    );
     await pool.query(
       `DELETE FROM member_profiles WHERE workos_organization_id LIKE $1`,
       [`${TEST_PREFIX}%`],
@@ -280,7 +300,6 @@ describe('Agent visibility E2E', () => {
       workos_organization_id: orgId,
       display_name: 'Listing Org',
       slug: 'listing',
-      primary_brand_domain: 'listing.example',
       is_public: true,
       agents: [
         { url: 'https://pub.listing.example', visibility: 'public' },
@@ -288,6 +307,7 @@ describe('Agent visibility E2E', () => {
         { url: 'https://priv.listing.example', visibility: 'private' },
       ],
     });
+    await seedBrandPrimary(orgId, 'listing.example');
 
     const service = new AgentService();
     const publicOnly = await service.listAgents();
@@ -310,7 +330,6 @@ describe('Agent visibility E2E', () => {
       workos_organization_id: orgId,
       display_name: 'Downgrade Org',
       slug: 'downgrade',
-      primary_brand_domain: 'downgrade.example',
       is_public: true,
       agents: [
         { url: 'https://p1.downgrade.example', visibility: 'public' },
@@ -318,6 +337,7 @@ describe('Agent visibility E2E', () => {
         { url: 'https://m.downgrade.example', visibility: 'members_only' },
       ],
     });
+    await seedBrandPrimary(orgId, 'downgrade.example');
 
     const result = await demotePublicAgentsOnTierDowngrade(
       orgId,
@@ -342,10 +362,10 @@ describe('Agent visibility E2E', () => {
       workos_organization_id: orgId,
       display_name: 'Cancel Org',
       slug: 'cancel',
-      primary_brand_domain: 'cancel.example',
       is_public: true,
       agents: [{ url: 'https://p.cancel.example', visibility: 'public' }],
     });
+    await seedBrandPrimary(orgId, 'cancel.example');
 
     const result = await demotePublicAgentsOnTierDowngrade(
       orgId,
@@ -420,12 +440,12 @@ describe('Agent visibility E2E', () => {
       workos_organization_id: orgId,
       display_name: 'Private Profile Org',
       slug: 'private-profile',
-      primary_brand_domain: 'privp.example',
       is_public: false, // Profile is not in public directory
       agents: [
         { url: 'https://members.privp.example', visibility: 'members_only' },
       ],
     });
+    await seedBrandPrimary(orgId, 'privp.example');
 
     const service = new AgentService();
     const publicOnly = await service.listAgents();
@@ -447,12 +467,12 @@ describe('Agent visibility E2E', () => {
       workos_organization_id: orgId,
       display_name: 'Pub On Private Org',
       slug: 'pub-on-private',
-      primary_brand_domain: 'pubprivate.example',
       is_public: false,
       agents: [
         { url: 'https://agent.pubprivate.example', visibility: 'public' },
       ],
     });
+    await seedBrandPrimary(orgId, 'pubprivate.example');
 
     const service = new AgentService();
     const agents = await service.listAgents();
@@ -515,12 +535,12 @@ describe('Agent visibility E2E', () => {
       workos_organization_id: orgId,
       display_name: 'Manifest Fail Org',
       slug: 'manifestfail',
-      primary_brand_domain: domain,
       is_public: true,
       agents: [
         { url: `https://agent.${domain}`, visibility: 'private' },
       ],
     });
+    await seedBrandPrimary(orgId, domain);
     // Seed a community-hosted brand row so the publish hits the
     // intended code path (`target==='public' && !isSelfHosted`). Without
     // this, `discovered` is null and the test passes via the missing-
@@ -578,12 +598,12 @@ describe('Agent visibility E2E', () => {
       workos_organization_id: orgId,
       display_name: 'Self Hosted Org',
       slug: 'selfhosted',
-      primary_brand_domain: domain,
       is_public: true,
       agents: [
         { url: `https://agent.${domain}`, visibility: 'private' },
       ],
     });
+    await seedBrandPrimary(orgId, domain);
     await brandDb.upsertDiscoveredBrand({
       domain,
       source_type: 'brand_json',

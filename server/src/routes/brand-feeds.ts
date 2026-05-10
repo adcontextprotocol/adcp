@@ -20,8 +20,6 @@ import {
   VALID_PROPERTY_TYPES,
   type Relationship,
 } from '../services/brand-property-parse.js';
-import { getBrandPrimaryDomain } from '../services/brand-domain-resolver.js';
-
 const MAX_COLLECTIONS = 200;
 const VALID_COLLECTION_KINDS = ['series', 'publication', 'event_series', 'rotation'];
 
@@ -42,26 +40,18 @@ export function createBrandFeedsRouter(config: { brandDb: BrandDatabase }) {
     // the orphan state) before allowing further edits.
     if (brand.manifest_orphaned) return { error: 'This brand is awaiting adoption — claim it through the brand identity flow first', status: 409 };
 
-    // Verify the user's org owns this brand (via primary_brand_domain or organization_domains)
+    // Verify the user's org owns this brand. Only verified org_domains rows
+    // grant edit authority — unverified rows are pending DNS challenges.
     const orgId = await resolvePrimaryOrganization(userId);
     if (!orgId) {
       return { error: 'No organization associated with your account', status: 403 };
     }
 
-    // TODO(#4159): the orgDomains walk doesn't filter on verified=true; same
-    // for the resolver's fallback. Pre-existing trust gap — an unverified
-    // org_domains row or stale member_profiles.primary_brand_domain grants
-    // brand-feed write authority to the org owner. Stage 2 should add the
-    // verified gate when the column drops.
     const orgDomains = await query<{ domain: string }>(
-      'SELECT domain FROM organization_domains WHERE workos_organization_id = $1',
+      'SELECT domain FROM organization_domains WHERE workos_organization_id = $1 AND verified = true',
       [orgId]
     );
-    const brandPrimary = await getBrandPrimaryDomain(orgId);
-    const ownedDomains = new Set([
-      ...orgDomains.rows.map(r => r.domain.toLowerCase()),
-      ...(brandPrimary ? [brandPrimary.toLowerCase()] : []),
-    ]);
+    const ownedDomains = new Set(orgDomains.rows.map(r => r.domain.toLowerCase()));
     if (!ownedDomains.has(domain.toLowerCase())) {
       return { error: 'You do not own this brand domain', status: 403 };
     }

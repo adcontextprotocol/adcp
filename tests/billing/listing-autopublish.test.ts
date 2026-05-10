@@ -59,7 +59,7 @@ describe('ensureMemberProfilePublished — real behavior against a mocked pg bou
             workos_organization_id: params[0],
             display_name: params[1],
             slug: params[2],
-            is_public: params[19],
+            is_public: params[18],
           }],
         };
       }
@@ -82,7 +82,7 @@ describe('ensureMemberProfilePublished — real behavior against a mocked pg bou
     const insert = calls.find(c => c.op === 'insert');
     expect(insert).toBeDefined();
     expect(insert!.params[2]).toBe('acme-corp');
-    expect(insert!.params[19]).toBe(true); // is_public
+    expect(insert!.params[18]).toBe(true); // is_public
 
     const activity = calls.find(c => c.op === 'activity');
     expect(activity!.params[0]).toBe('org_abc');

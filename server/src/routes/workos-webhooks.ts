@@ -787,31 +787,12 @@ export async function upsertOrganizationDomain(domainData: OrganizationDomainEve
           logger.error({ err, orgId: domainData.organization_id, domain: normalizedDomain }, 'Failed to sync verified domain to brand registry');
         }
 
-        // Auto-populate `member_profiles.primary_brand_domain` when a member
-        // verifies a claimable domain via WorkOS and they haven't already
-        // staked a brand identity. Without this, members who verified a
-        // domain via SSO still hit the publish-agent gate that requires a
-        // primary brand domain — surprising for the common case where their
-        // email domain *is* their brand. Only writes when NULL so an
-        // intentional brand-claim (request_brand_domain_challenge / verify)
-        // pointing at a different domain is never clobbered.
-        try {
-          const updated = await pool.query(
-            `UPDATE member_profiles
-               SET primary_brand_domain = $1, updated_at = NOW()
-             WHERE workos_organization_id = $2
-               AND primary_brand_domain IS NULL`,
-            [normalizedDomain, domainData.organization_id]
-          );
-          if (updated.rowCount && updated.rowCount > 0) {
-            logger.info({
-              orgId: domainData.organization_id,
-              domain: normalizedDomain,
-            }, 'Auto-set primary_brand_domain on member_profile from verified WorkOS domain');
-          }
-        } catch (err) {
-          logger.error({ err, orgId: domainData.organization_id, domain: normalizedDomain }, 'Failed to auto-set primary_brand_domain on member_profile');
-        }
+        // After Stage 2 of #4159, brand-identity primary lives on the same
+        // organization_domains.is_primary row as org-membership-inference.
+        // The auto-promote-to-is_primary above (when no other primary exists)
+        // covers the auto-populate case — a member verifying their first
+        // domain via WorkOS now seeds both facets in one write. Stage 1's
+        // separate primary_brand_domain auto-populate is no longer needed.
       }
     }
   } catch (error) {

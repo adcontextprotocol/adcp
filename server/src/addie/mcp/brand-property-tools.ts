@@ -15,7 +15,7 @@
  *
  * Both tools enforce the same ownership check as the HTTP route via
  * getBrandForEdit — the calling user's primary org must own the brand
- * domain (organization_domains or member_profiles.primary_brand_domain).
+ * domain (verified row on organization_domains).
  */
 
 import type { AddieTool } from '../types.js';

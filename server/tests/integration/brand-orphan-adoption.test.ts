@@ -93,10 +93,9 @@ describe('Brand orphan-adoption integration', () => {
       [PRIOR_ORG, NEW_ORG]
     );
 
-    // Seed the brand-primary on organization_domains for NEW_ORG so the Stage 1
-    // resolver returns TEST_DOMAIN. Pre-Stage-1 the test relied on
-    // profile.primary_brand_domain passed to updateBrandIdentity; the function
-    // now reads via getBrandPrimaryDomain(workosOrganizationId).
+    // Seed the brand-primary on organization_domains for NEW_ORG so the
+    // resolver returns TEST_DOMAIN — updateBrandIdentity reads via
+    // getBrandPrimaryDomain(workosOrganizationId).
     await pool.query(
       `INSERT INTO organization_domains (workos_organization_id, domain, verified, is_primary, source)
        VALUES ($1, $2, true, true, 'manual')
@@ -176,7 +175,7 @@ describe('Brand orphan-adoption integration', () => {
       updateBrandIdentity({
         workosOrganizationId: NEW_ORG,
         displayName: 'New Owner Inc',
-        profile: { id: 'profile-test', primary_brand_domain: TEST_DOMAIN },
+        profile: { id: 'profile-test' },
         logoUrl: 'https://newowner.example.com/logo.png',
         // adoptPriorManifest intentionally omitted
       })
@@ -194,7 +193,7 @@ describe('Brand orphan-adoption integration', () => {
     const result = await updateBrandIdentity({
       workosOrganizationId: NEW_ORG,
       displayName: 'New Owner Inc',
-      profile: { id: 'profile-test', primary_brand_domain: TEST_DOMAIN },
+      profile: { id: 'profile-test' },
       logoUrl: 'https://newowner.example.com/logo.png',
       adoptPriorManifest: false,
     });
@@ -232,7 +231,7 @@ describe('Brand orphan-adoption integration', () => {
     const result = await updateBrandIdentity({
       workosOrganizationId: NEW_ORG,
       displayName: 'New Owner Inc',
-      profile: { id: 'profile-test', primary_brand_domain: TEST_DOMAIN },
+      profile: { id: 'profile-test' },
       logoUrl: 'https://newowner.example.com/logo.png',
       adoptPriorManifest: true,
     });
@@ -282,7 +281,7 @@ describe('Brand orphan-adoption integration', () => {
       updateBrandIdentity({
         workosOrganizationId: NEW_ORG,
         displayName: 'New Owner Inc',
-        profile: { id: 'profile-test', primary_brand_domain: TEST_DOMAIN },
+        profile: { id: 'profile-test' },
         logoUrl: 'https://newowner.example.com/logo.png',
         adoptPriorManifest: true, // even with adopt set, cross-org wins
       })
