@@ -620,7 +620,7 @@ skip_result:
                               # prerequisite_failed | missing_tool |
                               # missing_test_controller |
                               # unsatisfied_contract | peer_branch_taken |
-                              # peer_substituted
+                              # peer_substituted | requirement_unmet
     - detail                  # human-readable explanation citing the
                               # declared supported_protocols / specialisms
                               # and, if relevant, the missing tool,
@@ -680,6 +680,26 @@ skip_result:
       this signal indicates the agent did declare the specialism but
       offers an interchangeable tool that the storyboard accepts as an
       equivalent state contract.
+    requirement_unmet: |
+      A storyboard-level runtime requirement declared in the storyboard's
+      `requires:` field (see storyboard-schema.yaml > `requires`) was not
+      satisfied at load time. detail MUST name the unmet requirement value
+      (e.g., "controller", "seeded_state") so dashboards can aggregate
+      skips by requirement type.
+
+      Distinct from missing_test_controller (which fires mid-run at a
+      specific step when comply_test_controller is absent) — this reason
+      fires at load time for the whole storyboard, before any step
+      executes. When `requires: [controller]` is set, the runner MUST
+      emit this reason at storyboard scope, not missing_test_controller
+      at step scope.
+
+      Forward compatibility: runners that encounter a `requires` value
+      they do not recognize MUST emit this reason with the unrecognized
+      value in detail, rather than fail-loading the storyboard. Using
+      requirement_unmet (not not_applicable) correctly signals "an unmet
+      gate" vs. "agent did not claim the protocol" — the two are distinct
+      signals for dashboards and summaries.
     description: |
       Runners MAY internally track narrower skip reasons (e.g., a grader
       distinguishing `rate_abuse_opt_out` from `live_side_effect_opt_in_required`).

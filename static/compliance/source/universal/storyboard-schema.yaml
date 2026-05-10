@@ -129,6 +129,95 @@
 #   rule above), not a schema concern — the same storyboard runs against
 #   different topologies.)
 #
+# requires: string[] (optional — storyboard-level runtime requirement gate.
+#   Closed enum of recognized values: controller | seeded_state | real_wire.
+#   Default when absent: [real_wire] — untagged storyboards run unchanged.
+#   minItems: 1 — runners MUST fail-load on requires: [] (empty array) because
+#   no distinct semantic exists between the empty set and omitting the field;
+#   the error message SHOULD read "use requires: [real_wire] for the default
+#   behavior, or omit the field entirely."
+#
+#   Values and availability:
+#
+#     controller   — gate on agent advertising comply_test_controller.
+#                    Available when the agent's get_adcp_capabilities response
+#                    includes comply_test_controller in its tool list. When
+#                    unmet, the runner MUST emit skip_result.reason:
+#                    requirement_unmet with detail naming "controller".
+#                    Orthogonal to prerequisites.controller_seeding: the two
+#                    fields are independent. controller_seeding is an execution-
+#                    phase instruction ("inject a fixtures phase before the main
+#                    phases run"); requires: [controller] is a load-phase gate
+#                    ("skip the whole storyboard if the capability is absent").
+#                    Storyboards may declare both: the gate fires first, and
+#                    controller_seeding takes effect only if the gate passes.
+#                    Declaring controller_seeding: true without requires:
+#                    [controller] is also valid — mid-run, individual steps
+#                    grade missing_test_controller if the agent lacks the
+#                    tool; requires: [controller] coalesces that into a single
+#                    whole-storyboard skip at load time instead.
+#                    Mid-run transient loss: if the load-phase gate passes
+#                    (the agent advertised comply_test_controller at load
+#                    time) but the tool becomes unavailable mid-run, the
+#                    runner MUST grade the affected step missing_test_controller
+#                    per the existing per-step path, NOT a retroactive
+#                    requirement_unmet at storyboard scope.
+#
+#     seeded_state — gate on operator asserting out-of-band state provisioning.
+#                    Available when the operator declares (e.g., via a CLI flag
+#                    or runner option) that prerequisite state has been seeded
+#                    externally before the run. When unmet, the runner MUST emit
+#                    skip_result.reason: requirement_unmet with detail naming
+#                    "seeded_state". Scenarios fail naturally on the first
+#                    stateful step if state is not actually present.
+#                    ANTI-GAMING: trust signals (verified-live badges, Tier-2
+#                    production scores) MUST NOT consume requires: [seeded_state]
+#                    pass results without independent verification. The field
+#                    widens the graded set; it does not attest the state.
+#                    This is an operator-governance norm; the runner cannot
+#                    enforce it on behalf of downstream certification dashboards.
+#
+#     real_wire    — reserved for a future --mock-only execution mode. Current
+#                    behavior: no runtime effect (gate is always met). Authors
+#                    SHOULD omit this value rather than listing it explicitly,
+#                    since the default when the field is absent is semantically
+#                    equivalent to [real_wire] today (this equivalence holds
+#                    only while --mock-only is not active; the --mock-only
+#                    inversion may break it — see below).
+#                    IMPORTANT: the future --mock-only semantics INVERT the
+#                    skip direction compared to other values — this value will
+#                    cause a storyboard to skip when --mock-only is active (i.e.,
+#                    skip-when-mocked, pass-when-live), opposite to the
+#                    skip-when-absent logic of controller and seeded_state.
+#                    Whether the default-when-absent (omitting `requires`)
+#                    also triggers the skip under --mock-only is to be defined
+#                    when --mock-only ships; until then, authors MUST NOT rely
+#                    on any particular behavior for omitted vs. explicit
+#                    real_wire under a mock-only runner.
+#                    Composing real_wire with other values (e.g., requires:
+#                    [controller, real_wire]) is syntactically valid but the
+#                    combined behavior under --mock-only is unspecified; authors
+#                    SHOULD NOT mix real_wire with other values until --mock-only
+#                    semantics are defined.
+#                    Harnesses that consume this value MUST account for the
+#                    skip-direction inversion when --mock-only support lands.
+#
+#   Forward compatibility: runners encountering a requires value they do not
+#   recognize MUST emit skip_result.reason: requirement_unmet (not fail-load)
+#   and MUST name the unrecognized value in skip_result.detail so dashboards
+#   can surface it. This matches runner-output-contract.yaml > requirement_unmet
+#   and is consistent with the forward-compat posture throughout the harness —
+#   an unrecognized gate is not a coverage gap (not_applicable would signal
+#   "agent did not claim the protocol"), it is an unmet requirement. Only
+#   requires: [] (empty array) is a hard fail-load — that is a schema
+#   constraint, not a semantic gate, and schema violations are always loader
+#   errors.
+#
+#   Interaction with per-step requires_tool: the two fields are independent.
+#   requires gates the whole storyboard at load time; requires_tool gates
+#   individual steps at execution time. Both may be declared on the same
+#   storyboard.)
+#
 # agent:
 #   interaction_model: enum (stateless_transform | stateful_preloaded | stateful_push | stateless_generate | media_buy_seller | marketplace_catalog | owned_signals | si_platform | brand_rights_holder | governance_agent)
 #   capabilities: string[] (AdCP capability flags: supports_transformation, has_creative_library, supports_generation, sells_media, accepts_briefs, supports_guaranteed, supports_non_guaranteed, catalog_signals)
