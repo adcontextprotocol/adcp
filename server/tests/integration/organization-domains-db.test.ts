@@ -11,6 +11,7 @@ import {
   upsertWorkosDomain,
   autoPromotePrimaryIfNone,
   removeWorkosDomainAndReselectPrimary,
+  unlinkDomainAndReselectPrimary,
 } from '../../src/db/organization-domains-db.js';
 import type { Pool } from 'pg';
 
@@ -435,6 +436,80 @@ describe('organization-domains-db (#4159 Stage 3a)', () => {
         [ORG_A],
       );
       expect(org.rows[0].email_domain).toBeNull();
+    });
+  });
+
+  describe('unlinkDomainAndReselectPrimary', () => {
+    it('returns deleted=false when no row exists', async () => {
+      const result = await unlinkDomainAndReselectPrimary({ orgId: ORG_A, domain: 'never.test' });
+      expect(result).toEqual({ deleted: false, wasPrimary: false, newPrimary: null });
+    });
+
+    it('DELETES non-workos rows (admin-flavor unlink, no source filter)', async () => {
+      await linkDomain({ orgId: ORG_A, domain: D1, source: 'admin_discovery', verified: true, isPrimary: true });
+
+      const result = await unlinkDomainAndReselectPrimary({ orgId: ORG_A, domain: D1 });
+      expect(result.deleted).toBe(true);
+
+      const row = await getPool().query(`SELECT 1 FROM organization_domains WHERE domain = $1`, [D1]);
+      expect(row.rowCount).toBe(0);
+    });
+
+    it('non-primary row delete leaves email_domain untouched', async () => {
+      await linkDomain({ orgId: ORG_A, domain: D1, source: 'workos', verified: true, isPrimary: true });
+      await linkDomain({ orgId: ORG_A, domain: D2, source: 'manual', verified: false, isPrimary: false });
+
+      const result = await unlinkDomainAndReselectPrimary({ orgId: ORG_A, domain: D2 });
+      expect(result).toEqual({ deleted: true, wasPrimary: false, newPrimary: null });
+
+      const org = await getPool().query(
+        `SELECT email_domain FROM organizations WHERE workos_organization_id = $1`,
+        [ORG_A],
+      );
+      expect(org.rows[0].email_domain).toBe(D1);
+    });
+
+    it('reselect prefers verified, falls back to unverified', async () => {
+      await linkDomain({ orgId: ORG_A, domain: D1, source: 'workos', verified: true, isPrimary: true });
+      await linkDomain({ orgId: ORG_A, domain: D2, source: 'manual', verified: false, isPrimary: false });
+      await linkDomain({ orgId: ORG_A, domain: D3, source: 'manual', verified: false, isPrimary: false });
+      await getPool().query(
+        `UPDATE organization_domains SET created_at = $1 WHERE domain = $2`,
+        [new Date('2024-01-01'), D2],
+      );
+      await getPool().query(
+        `UPDATE organization_domains SET created_at = $1 WHERE domain = $2`,
+        [new Date('2024-06-01'), D3],
+      );
+
+      // Delete the only verified row; reselect should pick D2 (oldest unverified).
+      const result = await unlinkDomainAndReselectPrimary({ orgId: ORG_A, domain: D1 });
+      expect(result).toEqual({ deleted: true, wasPrimary: true, newPrimary: D2 });
+
+      const org = await getPool().query(
+        `SELECT email_domain FROM organizations WHERE workos_organization_id = $1`,
+        [ORG_A],
+      );
+      expect(org.rows[0].email_domain).toBe(D2);
+    });
+
+    it('reselect picks verified over older unverified', async () => {
+      await linkDomain({ orgId: ORG_A, domain: D1, source: 'workos', verified: true, isPrimary: true });
+      await linkDomain({ orgId: ORG_A, domain: D2, source: 'manual', verified: false, isPrimary: false });
+      await linkDomain({ orgId: ORG_A, domain: D3, source: 'workos', verified: true, isPrimary: false });
+      await getPool().query(
+        `UPDATE organization_domains SET created_at = $1 WHERE domain = $2`,
+        [new Date('2024-01-01'), D2],
+      );
+      await getPool().query(
+        `UPDATE organization_domains SET created_at = $1 WHERE domain = $2`,
+        [new Date('2024-06-01'), D3],
+      );
+
+      // Delete D1 (primary). D2 is older but unverified; D3 is verified.
+      // verified DESC, created_at ASC → D3 wins.
+      const result = await unlinkDomainAndReselectPrimary({ orgId: ORG_A, domain: D1 });
+      expect(result).toEqual({ deleted: true, wasPrimary: true, newPrimary: D3 });
     });
   });
 });
