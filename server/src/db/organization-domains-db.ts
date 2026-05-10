@@ -3,25 +3,26 @@
  *
  * Stage 2 collapsed brand identity and org-membership inference onto a single
  * `organization_domains.is_primary=true` row. Stage 3 consolidates the write
- * paths so every caller goes through the same two primitives instead of
- * each reinventing the SQL with subtly different invariants:
+ * paths so every caller goes through the same primitives instead of each
+ * reinventing the SQL with subtly different invariants.
  *
- *   - `linkDomain` — INSERT a row, DO NOTHING on conflict, log when the
- *     existing row is owned by a different org. When `isPrimary=true` and
- *     the row was actually inserted, also denormalize
- *     `organizations.email_domain` so the two stay in sync (#4159 invariant).
- *
- *   - `setPrimaryDomain` — atomic clear-existing-primary + set-new-primary +
- *     update `organizations.email_domain`. Locks the org row to serialize
- *     against concurrent writers (member self-service, WorkOS webhook,
- *     admin Set Primary). Optionally requires the target row's `source`
- *     match an allowlist (the `'workos'`-only gate the member self-service
- *     route enforces today).
+ * **Trust model:** `linkDomain` rejects ownership transfer on conflict — the
+ * existing row stays put. The WorkOS-sourced primitives (`upsertDomainFromWorkos`
+ * and friends) **do** transfer ownership on conflict because WorkOS is the
+ * authoritative source of truth for DNS-proof-of-control. Use the
+ * member/admin-facing primitives for everything else.
  */
+import type { Pool, PoolClient } from 'pg';
 import { getPool } from './client.js';
 import { createLogger } from '../logger.js';
 
 const logger = createLogger('organization-domains-db');
+
+/**
+ * Either a full pool (each query runs on a fresh connection) or a single
+ * client checked out by the caller (queries share the caller's transaction).
+ */
+type Queryable = Pick<Pool, 'query'> | Pick<PoolClient, 'query'>;
 
 export type DomainSource =
   | 'workos'
@@ -159,4 +160,131 @@ export async function setPrimaryDomain(
   } finally {
     client.release();
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WorkOS-sourced writers (Stage 3b)
+//
+// These trust WorkOS's domain ownership as authoritative, so they DO transfer
+// ownership on conflict — opposite of `linkDomain`. They accept an optional
+// `Queryable` so the WorkOS webhook can compose them inside a single
+// transaction with the `FOR UPDATE` lock on `organizations`.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface UpsertDomainFromWorkosArgs {
+  orgId: string;
+  domain: string;
+  verified: boolean;
+  /**
+   * Set this to true when the caller is sure no other primary exists for the
+   * org (e.g. first verified domain on a fresh org). For the conditional
+   * "promote-to-primary if no other primary" flow, call
+   * `autoPromotePrimaryIfNone` after this.
+   */
+  isPrimary?: boolean;
+}
+
+export async function upsertDomainFromWorkos(
+  args: UpsertDomainFromWorkosArgs,
+  q: Queryable = getPool(),
+): Promise<void> {
+  const { orgId, domain, verified, isPrimary = false } = args;
+  await q.query(
+    `INSERT INTO organization_domains (workos_organization_id, domain, is_primary, verified, source)
+     VALUES ($1, $2, $3, $4, 'workos')
+     ON CONFLICT (domain) DO UPDATE SET
+       workos_organization_id = EXCLUDED.workos_organization_id,
+       verified = EXCLUDED.verified,
+       source = 'workos',
+       updated_at = NOW()`,
+    [orgId, domain, isPrimary, verified],
+  );
+}
+
+/**
+ * Promote `domain` to `is_primary=true` for `orgId` only if no other primary
+ * exists. Idempotent and race-safe under the caller's transaction lock.
+ *
+ * When promotion happens, also denormalizes `organizations.email_domain`
+ * to match. Returns whether the promotion fired so the caller can branch
+ * on side-effects (logging, brand-registry sync).
+ */
+export async function autoPromotePrimaryIfNone(
+  args: { orgId: string; domain: string },
+  q: Queryable = getPool(),
+): Promise<{ promoted: boolean }> {
+  const { orgId, domain } = args;
+  const result = await q.query(
+    `UPDATE organization_domains SET is_primary = true, updated_at = NOW()
+      WHERE workos_organization_id = $1 AND domain = $2
+        AND NOT EXISTS (
+          SELECT 1 FROM organization_domains
+          WHERE workos_organization_id = $1 AND is_primary = true AND domain != $2
+        )
+      RETURNING domain`,
+    [orgId, domain],
+  );
+  if ((result.rowCount ?? 0) === 0) {
+    return { promoted: false };
+  }
+  await q.query(
+    `UPDATE organizations SET email_domain = $1, updated_at = NOW()
+      WHERE workos_organization_id = $2`,
+    [domain, orgId],
+  );
+  return { promoted: true };
+}
+
+/**
+ * Delete a WorkOS-sourced domain row and reselect a new primary if the
+ * deleted row was primary. Picks the oldest verified row remaining; falls
+ * back to NULL `email_domain` if nothing's verified.
+ *
+ * Only deletes rows where `source='workos'` — admin/import rows are immune
+ * to WorkOS-driven removal.
+ */
+export async function removeWorkosDomainAndReselectPrimary(
+  args: { orgId: string; domain: string },
+  q: Queryable = getPool(),
+): Promise<{ deleted: boolean; wasPrimary: boolean; newPrimary: string | null }> {
+  const { orgId, domain } = args;
+  const result = await q.query<{ is_primary: boolean }>(
+    `DELETE FROM organization_domains
+      WHERE workos_organization_id = $1 AND domain = $2 AND source = 'workos'
+      RETURNING is_primary`,
+    [orgId, domain],
+  );
+
+  if ((result.rowCount ?? 0) === 0) {
+    return { deleted: false, wasPrimary: false, newPrimary: null };
+  }
+
+  const wasPrimary = result.rows[0].is_primary === true;
+  if (!wasPrimary) {
+    return { deleted: true, wasPrimary: false, newPrimary: null };
+  }
+
+  const remaining = await q.query<{ domain: string }>(
+    `SELECT domain FROM organization_domains
+      WHERE workos_organization_id = $1 AND verified = true
+      ORDER BY created_at ASC
+      LIMIT 1`,
+    [orgId],
+  );
+  const newPrimary = remaining.rows[0]?.domain ?? null;
+
+  if (newPrimary) {
+    await q.query(
+      `UPDATE organization_domains SET is_primary = true, updated_at = NOW()
+        WHERE workos_organization_id = $1 AND domain = $2`,
+      [orgId, newPrimary],
+    );
+  }
+  await q.query(
+    `UPDATE organizations SET email_domain = $1, updated_at = NOW()
+      WHERE workos_organization_id = $2`,
+    [newPrimary, orgId],
+  );
+
+  return { deleted: true, wasPrimary: true, newPrimary };
 }

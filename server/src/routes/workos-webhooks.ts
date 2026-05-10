@@ -21,6 +21,11 @@
 import { Router, Request, Response } from 'express';
 import { createLogger } from '../logger.js';
 import { getPool } from '../db/client.js';
+import {
+  upsertDomainFromWorkos,
+  autoPromotePrimaryIfNone,
+  removeWorkosDomainAndReselectPrimary,
+} from '../db/organization-domains-db.js';
 import { BrandDatabase } from '../db/brand-db.js';
 import { getWorkos } from '../auth/workos-client.js';
 import { invalidateUnifiedUsersCache } from '../cache/unified-users.js';
@@ -551,24 +556,17 @@ async function syncOrganizationDomains(org: OrganizationData): Promise<void> {
       workOSDomains.add(domainData.domain);
 
       // is_primary + the email_domain update below drive auto-membership
-      // inference and only apply to non-personal orgs (see upsertOrganizationDomain).
+      // inference and only apply to non-personal orgs.
       const isPrimaryEligible = !isPersonal && i === 0;
 
-      await client.query(
-        `INSERT INTO organization_domains (
-          workos_organization_id, domain, is_primary, verified, source
-        ) VALUES ($1, $2, $3, $4, 'workos')
-        ON CONFLICT (domain) DO UPDATE SET
-          workos_organization_id = EXCLUDED.workos_organization_id,
-          verified = EXCLUDED.verified,
-          source = 'workos',
-          updated_at = NOW()`,
-        [
-          org.id,
-          domainData.domain,
-          isPrimaryEligible,
-          domainData.state === 'verified',
-        ]
+      await upsertDomainFromWorkos(
+        {
+          orgId: org.id,
+          domain: domainData.domain,
+          verified: domainData.state === 'verified',
+          isPrimary: isPrimaryEligible,
+        },
+        client,
       );
     }
 
@@ -693,20 +691,13 @@ export async function upsertOrganizationDomain(domainData: OrganizationDomainEve
     // (multi-user companies sneaking onto a 1-seat individual sub) is
     // enforced at the seat-cap layer (checkSeatAvailability), not by hiding
     // the ownership claim in the data layer.
-    await client.query(
-      `INSERT INTO organization_domains (
-        workos_organization_id, domain, verified, source
-      ) VALUES ($1, $2, $3, 'workos')
-      ON CONFLICT (domain) DO UPDATE SET
-        workos_organization_id = EXCLUDED.workos_organization_id,
-        verified = EXCLUDED.verified,
-        source = 'workos',
-        updated_at = NOW()`,
-      [
-        domainData.organization_id,
-        normalizedDomain,
-        domainData.state === 'verified',
-      ]
+    await upsertDomainFromWorkos(
+      {
+        orgId: domainData.organization_id,
+        domain: normalizedDomain,
+        verified: domainData.state === 'verified',
+      },
+      client,
     );
 
     // is_primary + organizations.email_domain drive auto-membership inference
@@ -716,24 +707,10 @@ export async function upsertOrganizationDomain(domainData: OrganizationDomainEve
     // Skip the inference wiring for personal orgs; the verified row above
     // still records the ownership fact.
     if (!isPersonal && domainData.state === 'verified') {
-      const updated = await client.query(
-        `UPDATE organization_domains SET is_primary = true, updated_at = NOW()
-         WHERE workos_organization_id = $1 AND domain = $2
-         AND NOT EXISTS (
-           SELECT 1 FROM organization_domains
-           WHERE workos_organization_id = $1 AND is_primary = true AND domain != $2
-         )
-         RETURNING domain`,
-        [domainData.organization_id, normalizedDomain]
+      await autoPromotePrimaryIfNone(
+        { orgId: domainData.organization_id, domain: normalizedDomain },
+        client,
       );
-
-      if (updated.rows.length > 0) {
-        await client.query(
-          `UPDATE organizations SET email_domain = $1, updated_at = NOW()
-           WHERE workos_organization_id = $2`,
-          [normalizedDomain, domainData.organization_id]
-        );
-      }
     }
 
     await client.query('COMMIT');
@@ -817,54 +794,20 @@ async function deleteSingleOrganizationDomain(domainData: OrganizationDomainEven
     // Normalize domain to lowercase
     const normalizedDomain = domainData.domain.toLowerCase();
 
-    const result = await client.query(
-      `DELETE FROM organization_domains
-       WHERE workos_organization_id = $1 AND domain = $2 AND source = 'workos'
-       RETURNING is_primary`,
-      [domainData.organization_id, normalizedDomain]
+    const result = await removeWorkosDomainAndReselectPrimary(
+      { orgId: domainData.organization_id, domain: normalizedDomain },
+      client,
     );
 
-    if (result.rowCount && result.rowCount > 0) {
-      const wasPrimary = result.rows[0]?.is_primary;
+    await client.query('COMMIT');
 
-      // If we deleted the primary domain, pick a new one
-      let newPrimary: string | null = null;
-      if (wasPrimary) {
-        const remaining = await client.query(
-          `SELECT domain FROM organization_domains
-           WHERE workos_organization_id = $1 AND verified = true
-           ORDER BY created_at ASC
-           LIMIT 1`,
-          [domainData.organization_id]
-        );
-
-        newPrimary = remaining.rows.length > 0 ? remaining.rows[0].domain : null;
-
-        if (newPrimary) {
-          await client.query(
-            `UPDATE organization_domains SET is_primary = true, updated_at = NOW()
-             WHERE workos_organization_id = $1 AND domain = $2`,
-            [domainData.organization_id, newPrimary]
-          );
-        }
-
-        await client.query(
-          `UPDATE organizations SET email_domain = $1, updated_at = NOW()
-           WHERE workos_organization_id = $2`,
-          [newPrimary, domainData.organization_id]
-        );
-      }
-
-      await client.query('COMMIT');
-
+    if (result.deleted) {
       logger.info({
         orgId: domainData.organization_id,
         domain: normalizedDomain,
-        wasPrimary,
-        newPrimary,
+        wasPrimary: result.wasPrimary,
+        newPrimary: result.newPrimary,
       }, 'Deleted organization domain');
-    } else {
-      await client.query('COMMIT');
     }
   } catch (error) {
     await client.query('ROLLBACK');

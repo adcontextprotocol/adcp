@@ -1,11 +1,17 @@
 /**
  * Pins the invariants of the canonical writer module
- * `db/organization-domains-db.ts` (#4159 Stage 3a).
+ * `db/organization-domains-db.ts` (#4159 Stage 3a + 3b).
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { initializeDatabase, closeDatabase, getPool } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
-import { linkDomain, setPrimaryDomain } from '../../src/db/organization-domains-db.js';
+import {
+  linkDomain,
+  setPrimaryDomain,
+  upsertDomainFromWorkos,
+  autoPromotePrimaryIfNone,
+  removeWorkosDomainAndReselectPrimary,
+} from '../../src/db/organization-domains-db.js';
 import type { Pool } from 'pg';
 
 const ORG_A = 'org_orgdom_db_a';
@@ -212,6 +218,185 @@ describe('organization-domains-db (#4159 Stage 3a)', () => {
         [ORG_A],
       );
       expect(rows.rows[0].domain).toBe(D1);
+    });
+  });
+
+  // ───────────────────────────────────────────────────────────────────────
+  // Stage 3b: WorkOS-sourced writers
+  // ───────────────────────────────────────────────────────────────────────
+
+  describe('upsertDomainFromWorkos', () => {
+    it('inserts a fresh row with source=workos', async () => {
+      await upsertDomainFromWorkos({ orgId: ORG_A, domain: D1, verified: true });
+
+      const row = await getPool().query(
+        `SELECT workos_organization_id, source, verified, is_primary FROM organization_domains WHERE domain = $1`,
+        [D1],
+      );
+      expect(row.rows[0]).toMatchObject({
+        workos_organization_id: ORG_A,
+        source: 'workos',
+        verified: true,
+        is_primary: false,
+      });
+    });
+
+    it('TRANSFERS ownership on conflict — WorkOS is authoritative', async () => {
+      await upsertDomainFromWorkos({ orgId: ORG_B, domain: D_TAKEN, verified: true });
+
+      // WorkOS now reassigns the domain to ORG_A; we must follow.
+      await upsertDomainFromWorkos({ orgId: ORG_A, domain: D_TAKEN, verified: true });
+
+      const row = await getPool().query(
+        `SELECT workos_organization_id, source FROM organization_domains WHERE domain = $1`,
+        [D_TAKEN],
+      );
+      expect(row.rows[0]).toMatchObject({
+        workos_organization_id: ORG_A,
+        source: 'workos',
+      });
+    });
+
+    it('flips a non-workos row to source=workos on conflict', async () => {
+      await linkDomain({ orgId: ORG_A, domain: D1, source: 'manual', verified: false });
+
+      await upsertDomainFromWorkos({ orgId: ORG_A, domain: D1, verified: true });
+
+      const row = await getPool().query(
+        `SELECT source, verified FROM organization_domains WHERE domain = $1`,
+        [D1],
+      );
+      expect(row.rows[0]).toMatchObject({ source: 'workos', verified: true });
+    });
+  });
+
+  describe('autoPromotePrimaryIfNone', () => {
+    it('promotes when no primary exists; updates email_domain', async () => {
+      await upsertDomainFromWorkos({ orgId: ORG_A, domain: D1, verified: true });
+
+      const result = await autoPromotePrimaryIfNone({ orgId: ORG_A, domain: D1 });
+      expect(result).toEqual({ promoted: true });
+
+      const row = await getPool().query(
+        `SELECT is_primary FROM organization_domains WHERE domain = $1`,
+        [D1],
+      );
+      expect(row.rows[0].is_primary).toBe(true);
+
+      const org = await getPool().query(
+        `SELECT email_domain FROM organizations WHERE workos_organization_id = $1`,
+        [ORG_A],
+      );
+      expect(org.rows[0].email_domain).toBe(D1);
+    });
+
+    it('does NOT promote when another primary already exists', async () => {
+      await upsertDomainFromWorkos({ orgId: ORG_A, domain: D1, verified: true, isPrimary: true });
+      await upsertDomainFromWorkos({ orgId: ORG_A, domain: D2, verified: true });
+
+      // Set email_domain to a sentinel; promotion should not touch it.
+      await getPool().query(
+        `UPDATE organizations SET email_domain = 'sentinel.test' WHERE workos_organization_id = $1`,
+        [ORG_A],
+      );
+
+      const result = await autoPromotePrimaryIfNone({ orgId: ORG_A, domain: D2 });
+      expect(result).toEqual({ promoted: false });
+
+      const rows = await getPool().query(
+        `SELECT domain FROM organization_domains
+          WHERE workos_organization_id = $1 AND is_primary = true`,
+        [ORG_A],
+      );
+      expect(rows.rows[0].domain).toBe(D1);
+
+      const org = await getPool().query(
+        `SELECT email_domain FROM organizations WHERE workos_organization_id = $1`,
+        [ORG_A],
+      );
+      expect(org.rows[0].email_domain).toBe('sentinel.test');
+    });
+  });
+
+  describe('removeWorkosDomainAndReselectPrimary', () => {
+    it('returns deleted=false when no row exists', async () => {
+      const result = await removeWorkosDomainAndReselectPrimary({ orgId: ORG_A, domain: 'never.test' });
+      expect(result).toEqual({ deleted: false, wasPrimary: false, newPrimary: null });
+    });
+
+    it('does NOT delete non-workos rows (admin-imported is immune)', async () => {
+      await linkDomain({ orgId: ORG_A, domain: D1, source: 'admin_discovery', verified: true, isPrimary: true });
+
+      const result = await removeWorkosDomainAndReselectPrimary({ orgId: ORG_A, domain: D1 });
+      expect(result.deleted).toBe(false);
+
+      const row = await getPool().query(`SELECT 1 FROM organization_domains WHERE domain = $1`, [D1]);
+      expect(row.rowCount).toBe(1);
+    });
+
+    it('deletes a non-primary workos row; no reselection', async () => {
+      await upsertDomainFromWorkos({ orgId: ORG_A, domain: D1, verified: true, isPrimary: true });
+      await upsertDomainFromWorkos({ orgId: ORG_A, domain: D2, verified: true });
+
+      const result = await removeWorkosDomainAndReselectPrimary({ orgId: ORG_A, domain: D2 });
+      expect(result).toEqual({ deleted: true, wasPrimary: false, newPrimary: null });
+
+      const remaining = await getPool().query(
+        `SELECT domain FROM organization_domains WHERE workos_organization_id = $1 AND is_primary = true`,
+        [ORG_A],
+      );
+      expect(remaining.rows[0].domain).toBe(D1);
+    });
+
+    it('deletes the primary row, picks the oldest verified remaining as new primary, syncs email_domain', async () => {
+      await upsertDomainFromWorkos({ orgId: ORG_A, domain: D1, verified: true, isPrimary: true });
+      // Force a known created_at ordering: D2 older than D3.
+      await upsertDomainFromWorkos({ orgId: ORG_A, domain: D2, verified: true });
+      await upsertDomainFromWorkos({ orgId: ORG_A, domain: D3, verified: true });
+      await getPool().query(
+        `UPDATE organization_domains SET created_at = $1 WHERE domain = $2`,
+        [new Date('2024-01-01'), D2],
+      );
+      await getPool().query(
+        `UPDATE organization_domains SET created_at = $1 WHERE domain = $2`,
+        [new Date('2024-06-01'), D3],
+      );
+      await getPool().query(
+        `UPDATE organizations SET email_domain = $1 WHERE workos_organization_id = $2`,
+        [D1, ORG_A],
+      );
+
+      const result = await removeWorkosDomainAndReselectPrimary({ orgId: ORG_A, domain: D1 });
+      expect(result).toEqual({ deleted: true, wasPrimary: true, newPrimary: D2 });
+
+      const newPrimary = await getPool().query(
+        `SELECT domain FROM organization_domains WHERE workos_organization_id = $1 AND is_primary = true`,
+        [ORG_A],
+      );
+      expect(newPrimary.rows[0].domain).toBe(D2);
+
+      const org = await getPool().query(
+        `SELECT email_domain FROM organizations WHERE workos_organization_id = $1`,
+        [ORG_A],
+      );
+      expect(org.rows[0].email_domain).toBe(D2);
+    });
+
+    it('deletes the only primary row, no remaining; nulls email_domain', async () => {
+      await upsertDomainFromWorkos({ orgId: ORG_A, domain: D1, verified: true, isPrimary: true });
+      await getPool().query(
+        `UPDATE organizations SET email_domain = $1 WHERE workos_organization_id = $2`,
+        [D1, ORG_A],
+      );
+
+      const result = await removeWorkosDomainAndReselectPrimary({ orgId: ORG_A, domain: D1 });
+      expect(result).toEqual({ deleted: true, wasPrimary: true, newPrimary: null });
+
+      const org = await getPool().query(
+        `SELECT email_domain FROM organizations WHERE workos_organization_id = $1`,
+        [ORG_A],
+      );
+      expect(org.rows[0].email_domain).toBeNull();
     });
   });
 });
