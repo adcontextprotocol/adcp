@@ -110,7 +110,7 @@ phases:
           - budget.total: $10K cap that any single buy above will exceed
 
         sample_request:
-          idempotency_key: "governance-spend-authority-denied-sync-plans-v1"
+          idempotency_key: "$generate:uuid_v4#gov-spend-authority-denied-sync"
           plans:
             - plan_id: "gov_acme_strict"
               brand:

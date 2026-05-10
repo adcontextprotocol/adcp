@@ -159,7 +159,7 @@ phases:
           - custom_policies: policy conditions registered
 
         sample_request:
-          idempotency_key: "governance-spend-authority-sync-plans-v1"
+          idempotency_key: "$generate:uuid_v4#gov-spend-authority-sync"
           plans:
             - plan_id: "gov_acme_spend_authority_q2_2027"
               brand:

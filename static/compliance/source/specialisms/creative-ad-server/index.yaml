@@ -355,7 +355,7 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
-          idempotency_key: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+          idempotency_key: "$generate:uuid_v4#creative-ad-server-report-usage"
           reporting_period:
             start: "2026-03-01T00:00:00Z"
             end: "2026-03-31T23:59:59Z"
