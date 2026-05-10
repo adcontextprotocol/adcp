@@ -187,7 +187,7 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
-          idempotency_key: "signal-gov-denied-v1"
+          idempotency_key: "$generate:uuid_v4#signal-gov-denied"
 
           context:
             correlation_id: "signal_marketplace--governance_denied--activate"

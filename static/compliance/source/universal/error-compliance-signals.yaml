@@ -127,7 +127,7 @@ phases:
           destinations:
             - type: "agent"
               agent_url: "https://test-dsp.example"
-          idempotency_key: "error-test-signals-nonexistent"
+          idempotency_key: "$generate:uuid_v4#error-signals-nonexistent"
           context:
             correlation_id: "error_compliance_signals--nonexistent_signal"
         validations:
@@ -173,7 +173,7 @@ phases:
           destinations:
             - type: "agent"
               agent_url: "https://test-dsp.example"
-          idempotency_key: "error-test-signals-missing-field"
+          idempotency_key: "$generate:uuid_v4#error-signals-missing-field"
           context:
             correlation_id: "error_compliance_signals--missing_required_field"
         validations:
@@ -225,7 +225,7 @@ phases:
           destinations:
             - type: "agent"
               agent_url: "https://test-dsp.example"
-          idempotency_key: "error-structure-signals-test"
+          idempotency_key: "$generate:uuid_v4#error-signals-structure"
           context:
             correlation_id: "error_compliance_signals--validate_error_shape"
         validations:
@@ -362,7 +362,7 @@ phases:
           destinations:
             - type: "agent"
               agent_url: "https://test-dsp.example"
-          idempotency_key: "error-transport-signals-test"
+          idempotency_key: "$generate:uuid_v4#error-signals-transport"
           context:
             correlation_id: "error_compliance_signals--validate_transport_binding"
         validations:
