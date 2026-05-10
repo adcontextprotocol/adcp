@@ -1,0 +1,593 @@
+id: idempotency
+version: "1.0.0"
+title: "Idempotency enforcement"
+category: core
+summary: "Validates that mutating requests enforce idempotency_key — replays return cached responses, key reuse with a different payload returns IDEMPOTENCY_CONFLICT, and fresh keys create new resources."
+track: core
+
+# Cross-step assertions (adcontextprotocol/adcp#2639). These convert two
+# reviewer-only checks from `key_reuse_conflict` and `security` into
+# programmatic gates that fail the storyboard at runtime rather than
+# waiting on human review. `idempotency.conflict_no_payload_leak` catches
+# the stolen-key read oracle the key-reuse phase calls out; `context.no_secret_echo`
+# catches credential echo on any step's response. Both ship as default
+# assertions in `@adcp/client` 5.9+ — `import '@adcp/client/testing'`
+# auto-registers them; no additional module loading required. Consumers
+# who need stricter per-repo checks can re-register with their own spec
+# via `registerAssertion(spec, { override: true })` (adcp-client#752).
+invariants:
+  - idempotency.conflict_no_payload_leak
+  - context.no_secret_echo
+
+# Security note for the test harness: sample_request values below use
+# $generate:uuid_v4 and $generate:uuid_v4#alias placeholders. The harness
+# MUST replace these with fresh UUID v4 values PER RUN (not per file, not
+# per deploy). Hardcoding keys across runs creates a cross-tenant replay
+# oracle — a malicious reviewer could probe the cached responses of the
+# compliance principal using the same keys. Multiple references to the
+# same alias (e.g. $generate:uuid_v4#replay_a) in the same run MUST
+# resolve to the same UUID so the replay phase can use it intentionally.
+#
+# The compliance principal SHOULD be a sandbox account whose idempotency
+# cache is isolated per test run (prefix-scoped, or purged on start).
+
+narrative: |
+  Every mutating request in AdCP carries an idempotency_key so buyers can safely retry
+  after network errors without double-booking. This storyboard walks through the four
+  observable behaviors a seller MUST implement:
+
+  1. First call with a fresh key is processed normally and returns the canonical response.
+  2. Replay with the same key and an equivalent payload returns the cached response
+     without re-executing side effects (same media_buy_id, no new webhooks fired).
+  3. Replay with the same key but a materially different payload is rejected with
+     IDEMPOTENCY_CONFLICT. The buyer has clearly reused a key by mistake.
+  4. A request with a different key is treated as a new request, even if the payload
+     is identical — the key is what makes retries safe, not payload equivalence.
+  5. Error responses (returned envelopes, thrown envelopes, and uncaught exceptions)
+     do not cache. The next request carrying the same key re-executes the handler.
+     This applies to every recovery class, including terminal — terminal states in
+     AdCP are mostly state-dependent (e.g., ACCOUNT_SUSPENDED flips after buyer
+     remediation) and cached error replay would mask legitimate recovery. Handler
+     authors must mutate state last: a handler that writes state then returns or
+     throws an error envelope will double-write on retry. See
+     security.mdx#idempotency rule 3 ("Only successful responses are cached"),
+     which this storyboard validates structurally via the reviewer check on
+     key_reuse_conflict. An end-to-end phase that drives a deterministic terminal
+     error and replays the key is deferred pending a generic force-error controller
+     verb (see adcontextprotocol/adcp#2760).
+
+  Missing idempotency_key on any mutating request MUST be rejected with INVALID_REQUEST.
+  Sellers MUST declare adcp.idempotency on get_adcp_capabilities — either
+  { supported: true, replay_ttl_seconds: N } to opt into replay protection, or
+  { supported: false } to declare they do not deduplicate retries. This storyboard
+  validates the supported: true behavior; sellers declaring supported: false
+  MUST skip this storyboard (they have no replay window to test).
+
+  **Cache-growth defense (MUST, not yet runtime-graded).** Per
+  security.mdx bullet 8 on the idempotency section, sellers MUST apply per-agent
+  rate limits on idempotency-cache inserts and MUST return RATE_LIMITED when the
+  per-agent insert rate exceeds the configured ceiling. The recommended
+  first-deployment ceiling is 60 inserts/sec sustained per agent (3,600/min)
+  with burst allowance to 300/sec over rolling 10-second windows. This storyboard
+  does not yet drive the high-volume burst that would exercise the ceiling —
+  runtime grading is tracked as a follow-up once a burst-runner test-kit
+  contract is defined. Sellers SHOULD self-attest to this requirement until the
+  runtime phase lands.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+  examples:
+    - "Any AdCP seller agent"
+
+caller:
+  role: buyer_agent
+  example: "Compliance test harness"
+
+prerequisites:
+  description: |
+    No special prerequisites. The storyboard uses create_media_buy as the canonical
+    mutating request. Sellers that do not support create_media_buy SHOULD still pass
+    idempotency compliance on whichever mutating task they do implement.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: capability_discovery
+    title: "Capability discovery"
+    narrative: |
+      Confirm the agent supports media buying and check whether it declares an
+      explicit replay-window TTL.
+
+    steps:
+      - id: get_capabilities
+        title: "Check idempotency capability declaration"
+        narrative: |
+          Call get_adcp_capabilities and verify adcp.idempotency is declared with
+          supported: true and a replay_ttl_seconds value. The block is REQUIRED —
+          clients MUST NOT fall back to an assumed default, and a seller that omits
+          it is non-compliant. Sellers running this storyboard must declare
+          supported: true; supported: false sellers skip this storyboard entirely.
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: capability_discovery
+        stateful: false
+        expected: |
+          Return capabilities declaring media_buy in supported_protocols AND
+          adcp.idempotency with supported: true and replay_ttl_seconds (minimum
+          3600s; recommended 86400s or longer).
+        sample_request:
+          context:
+            correlation_id: "idempotency--get_capabilities"
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json schema"
+          - check: field_present
+            path: "supported_protocols"
+            description: "Agent declares supported protocols"
+          - check: field_value
+            path: "adcp.idempotency.supported"
+            value: true
+            description: "Agent declares supported: true for this storyboard (supported: false sellers skip)"
+          - check: field_present
+            path: "adcp.idempotency.replay_ttl_seconds"
+            description: "Agent declares replay window TTL (required when supported: true)"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "idempotency--get_capabilities"
+            description: "Context correlation_id returned unchanged"
+
+  - id: missing_key
+    title: "Reject requests without idempotency_key"
+    narrative: |
+      A create_media_buy request without idempotency_key MUST be rejected. The schema
+      marks the field as required, so this is typically caught at validation time.
+
+      The reference `@adcp/client` SDK auto-injects `idempotency_key` on mutating
+      tasks via `applyIdempotencyInvariant` + client-side shaping. Without an
+      explicit opt-out this vector would never reach the agent with a missing key
+      — the runner would inject one before dispatch, and the vector would silently
+      pass for every SDK-speaking agent regardless of enforcement. The step below
+      sets `omit_idempotency_key: true` so the runner skips both its own
+      invariant application and the SDK's auto-inject. Do not remove the flag:
+      without it, "certified" agents all carry an unverified assertion on this
+      vector.
+
+    steps:
+      - id: create_media_buy_missing_key
+        title: "Missing idempotency_key returns INVALID_REQUEST"
+        narrative: |
+          Send a create_media_buy with no idempotency_key. The agent MUST reject this
+          with INVALID_REQUEST (or VALIDATION_ERROR as an accepted alternative) and
+          MUST NOT create a media buy.
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: error_handling
+        expect_error: true
+        negative_path: schema_invalid
+        omit_idempotency_key: true
+        stateful: false
+        expected: |
+          Reject with:
+          - code: INVALID_REQUEST or VALIDATION_ERROR
+          - recovery: correctable
+          - field: idempotency_key (recommended)
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          brand:
+            domain: "acmeoutdoor.example"
+          start_time: "2026-05-01T00:00:00Z"
+          end_time: "2026-05-31T23:59:59Z"
+          packages:
+            - product_id: "test-product"
+              budget: 5000
+              pricing_option_id: "test-pricing"
+
+          context:
+            correlation_id: "idempotency--create_media_buy_missing_key"
+        validations:
+          - check: error_code
+            allowed_values: ["INVALID_REQUEST", "VALIDATION_ERROR"]
+            description: "Missing idempotency_key rejected with INVALID_REQUEST or VALIDATION_ERROR"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "idempotency--create_media_buy_missing_key"
+            description: "Context correlation_id returned unchanged"
+
+  - id: replay_same_payload
+    title: "Replay returns cached response"
+    narrative: |
+      The canonical retry-safety case: a buyer's first request times out but actually
+      succeeded on the server. The buyer retries with the same idempotency_key and
+      the same payload. The seller MUST return the same response — same media_buy_id,
+      no new side effects.
+
+    steps:
+      - id: create_media_buy_initial
+        title: "Initial create_media_buy with fresh key"
+        narrative: |
+          Create a media buy with a fresh UUID v4 idempotency_key. Capture the
+          returned media_buy_id for comparison against the replay.
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: idempotency_replay
+        stateful: true
+        context_outputs:
+          - name: initial_media_buy_id
+            path: "media_buy_id"
+          - name: idempotency_key_a
+            path: "idempotency_key"
+        expected: |
+          Create a new media buy and return a media_buy_id. This establishes the
+          canonical response that subsequent replays must match.
+
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#replay_key"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          brand:
+            domain: "acmeoutdoor.example"
+          start_time: "2026-06-01T00:00:00Z"
+          end_time: "2026-06-30T23:59:59Z"
+          packages:
+            - product_id: "test-product"
+              budget: 5000
+              pricing_option_id: "test-pricing"
+          # Both the initial call and the replay below use the SAME webhook URL
+          # so the canonical payload hash matches across the two calls. A
+          # different URL between the two requests would hash differently and
+          # trip IDEMPOTENCY_CONFLICT instead of exercising replay. The URL
+          # template resolves against the runner's ephemeral webhook receiver
+          # (webhook_receiver_runner contract); runners without a receiver
+          # grade `no_duplicate_webhooks_on_replay` as not_applicable.
+          push_notification_config:
+            url: "{{runner.webhook_url:create_media_buy_initial}}"
+
+          context:
+            correlation_id: "idempotency--create_media_buy_initial"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Agent returns a media_buy_id for the initial request"
+          # Per `protocol-envelope.json`, fresh execution MAY omit
+          # `replayed` entirely; agents that do report it MUST NOT
+          # report `true` on a fresh call. `field_value_or_absent`
+          # (adcp-client#873, shipped in 5.16) asserts that tolerance:
+          # passes when absent OR present-and-matching. The replay
+          # step below asserts the positive side (`replayed: true`
+          # on replay) with plain `field_value`.
+          - check: field_value_or_absent
+            path: "replayed"
+            allowed_values: [false]
+            description: "If reported on fresh execution, replayed must be false"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "idempotency--create_media_buy_initial"
+            description: "Context correlation_id returned unchanged"
+
+      - id: create_media_buy_replay
+        title: "Replay with same key and payload returns cached response"
+        narrative: |
+          Re-send the exact same create_media_buy request — same idempotency_key,
+          same payload, same everything. The seller MUST return the same media_buy_id
+          from the prior step. It MUST NOT create a second media buy or fire a
+          second set of webhooks. This is the whole point of idempotency_key.
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: idempotency_replay
+        stateful: true
+        expected: |
+          Return the cached response from the initial request:
+          - media_buy_id: same as $context.initial_media_buy_id
+          - No new side effects (no duplicate webhooks, no new audit log entry)
+
+          Programmatic verification of "no duplicate webhooks" runs in the next step
+          (no_duplicate_webhooks_on_replay) when the storyboard is driven by a runner
+          that implements the webhook_receiver_runner contract. Runners without a
+          webhook receiver grade that step as not_applicable — agents MAY still claim
+          idempotency compliance, but the replay-side-effect invariant is only
+          programmatically graded when the webhook_callbacks specialism is also in
+          scope.
+
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#replay_key"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          brand:
+            domain: "acmeoutdoor.example"
+          start_time: "2026-06-01T00:00:00Z"
+          end_time: "2026-06-30T23:59:59Z"
+          packages:
+            - product_id: "test-product"
+              budget: 5000
+              pricing_option_id: "test-pricing"
+          # Byte-identical to the initial call above — same URL, same step id
+          # token — so the canonical payload hash matches and the request
+          # lands on the replay branch rather than IDEMPOTENCY_CONFLICT.
+          push_notification_config:
+            url: "{{runner.webhook_url:create_media_buy_initial}}"
+
+          context:
+            correlation_id: "idempotency--create_media_buy_replay"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Replay returns a media_buy_id (same as initial)"
+          - check: field_value
+            path: "media_buy_id"
+            value: "$context.initial_media_buy_id"
+            description: "Replay returns the SAME media_buy_id as the initial call"
+          - check: field_value
+            path: "replayed"
+            value: true
+            description: "Replay sets replayed: true on the response envelope"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "idempotency--create_media_buy_replay"
+            description: "Context correlation_id returned unchanged"
+
+      - id: no_duplicate_webhooks_on_replay
+        title: "No duplicate webhooks fired across initial + replay"
+        narrative: |
+          The central invariant of idempotency: replaying with the same key MUST
+          NOT produce duplicate side effects. Webhook emission is the observable
+          side effect most likely to leak if the seller re-executes on replay
+          instead of returning cached state.
+
+          This step requires the storyboard runner to implement the
+          `webhook_receiver_runner` contract at
+          `test-kits/webhook-receiver-runner.yaml`. Runners without a webhook
+          receiver skip this step with a stable not_applicable marker; the
+          replay-side-effect invariant then relies on the next phase's cached-
+          response assertions plus manual audit of the seller's webhook
+          delivery history.
+
+          When the receiver IS in scope, the runner counts webhooks arriving at
+          {{runner.webhook_url:create_media_buy_initial}} across the initial
+          call's window AND the replay call's window. A conformant seller emits
+          webhooks only on the first execution; a non-conformant seller that
+          re-executes on replay emits a second set, catchable only by live
+          observation.
+        task: expect_webhook
+        # `triggered_by` points at the initial call (not the replay) because the
+        # default filter resolves `step_id` + `operation_id` from `stepOperationIds`
+        # for that step — which is populated when the initial sample_request's
+        # `push_notification_config.url` expanded `{{runner.webhook_url:create_media_buy_initial}}`
+        # above. The execution-order wait still spans the replay window: this
+        # step runs after `create_media_buy_replay` in YAML order and `wait_all`
+        # drains the full `timeout_seconds` so any webhook re-fired by the
+        # replay is captured and counted against the cap below. A non-conformant
+        # seller that re-executes on replay would deliver a second webhook with
+        # a fresh idempotency_key and trip `duplicate_webhook_on_replay`.
+        triggered_by: create_media_buy_initial
+        timeout_seconds: 30
+        expect_max_deliveries_per_logical_event: 1
+        requires_contract: webhook_receiver_runner
+        stateful: true
+        expected: |
+          At most one logical webhook event delivered for the create_media_buy
+          operation across both the initial and replay windows. If the runner
+          observes a second webhook delivery tagged with a distinct
+          idempotency_key but the same media_buy_id/operation_id, the seller is
+          re-executing on replay and the step fails with
+          duplicate_webhook_on_replay. Not_applicable when the runner does not
+          host a webhook receiver.
+
+  - id: key_reuse_conflict
+    title: "Key reuse with different payload returns IDEMPOTENCY_CONFLICT"
+    narrative: |
+      When a buyer reuses an idempotency_key with a different payload within the
+      replay window, the seller MUST reject the second request with
+      IDEMPOTENCY_CONFLICT. Silently applying the new payload would break the
+      at-most-once guarantee; silently returning the old response would hide a
+      real bug in the buyer's retry logic.
+
+    steps:
+      - id: create_media_buy_conflict
+        title: "Same key, different payload returns IDEMPOTENCY_CONFLICT"
+        narrative: |
+          Re-send create_media_buy with the same idempotency_key as the replay
+          phase but a materially different payload — a different end_time and
+          a different budget. The seller MUST reject this with IDEMPOTENCY_CONFLICT.
+          CONFLICT is accepted as a fallback for sellers that haven't adopted the
+          new error code yet.
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: idempotency_conflict
+        expect_error: true
+        negative_path: payload_well_formed
+        stateful: true
+        expected: |
+          Reject with:
+          - code: IDEMPOTENCY_CONFLICT (preferred) or CONFLICT (fallback)
+          - recovery: correctable (buyer should use a fresh UUID v4)
+
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#replay_key"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          brand:
+            domain: "acmeoutdoor.example"
+          start_time: "2026-06-01T00:00:00Z"
+          end_time: "2026-09-30T23:59:59Z"
+          packages:
+            - product_id: "test-product"
+              budget: 25000
+              pricing_option_id: "test-pricing"
+
+          context:
+            correlation_id: "idempotency--create_media_buy_conflict"
+        validations:
+          - check: error_code
+            allowed_values: ["IDEMPOTENCY_CONFLICT", "CONFLICT"]
+            description: "Key reuse with different payload returns IDEMPOTENCY_CONFLICT"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "idempotency--create_media_buy_conflict"
+            description: "Context correlation_id returned unchanged"
+
+        reviewer_checks:
+          - "Error body MUST NOT include the cached payload, the original request, or any fingerprint (hash, digest, field diff). Leaking cached state turns key-reuse into a read oracle for attackers who stole a key."
+          - "Error body MAY include code + message only. No `field` json-pointer — even a pointer like `/packages/0/budget` reveals schema shape."
+          - "Reviewer MUST confirm the seller's documentation states that errored requests release the idempotency claim, or manually probe the behavior (force a deterministic terminal error, then retry with the same key and a valid payload — the seller MUST return a fresh success, not IDEMPOTENCY_CONFLICT and not the cached error). See security.mdx#idempotency rule 3."
+
+  - id: fresh_key_new_resource
+    title: "Different key creates a new resource"
+    narrative: |
+      A request with a DIFFERENT idempotency_key is treated as a new request, even
+      if the payload is byte-for-byte identical to a prior request. The key — not
+      payload equivalence — is what provides the dedup boundary. This confirms the
+      seller is checking the key, not fingerprinting requests.
+
+    steps:
+      - id: create_media_buy_fresh_key
+        title: "Fresh key with identical payload creates a new media buy"
+        narrative: |
+          Send the same payload as the initial create_media_buy but with a different
+          idempotency_key. The seller MUST treat this as a new request and return a
+          NEW media_buy_id distinct from $context.initial_media_buy_id.
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: idempotency_fresh_key
+        stateful: true
+        context_outputs:
+          - name: fresh_key_media_buy_id
+            path: "media_buy_id"
+        expected: |
+          Return a NEW media_buy_id, distinct from $context.initial_media_buy_id.
+          This confirms the seller treats the fresh key as a new request.
+
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#fresh_key"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          brand:
+            domain: "acmeoutdoor.example"
+          start_time: "2026-06-01T00:00:00Z"
+          end_time: "2026-06-30T23:59:59Z"
+          packages:
+            - product_id: "test-product"
+              budget: 5000
+              pricing_option_id: "test-pricing"
+
+          context:
+            correlation_id: "idempotency--create_media_buy_fresh_key"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Fresh key returns a media_buy_id"
+          # Fresh-key execution is a non-replay call — same tolerance as
+          # create_media_buy_initial applies: `replayed` MAY be omitted,
+          # but if present MUST NOT be `true`.
+          - check: field_value_or_absent
+            path: "replayed"
+            allowed_values: [false]
+            description: "If reported on fresh-key execution, replayed must be false"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "idempotency--create_media_buy_fresh_key"
+            description: "Context correlation_id returned unchanged"
+
+  - id: verify_media_buy_count
+    title: "Verify dedup actually happened"
+    narrative: |
+      Call get_media_buys to confirm that only TWO media buys were created across
+      all prior steps — one for the initial + replay pair (same key, deduplicated)
+      and one for the fresh-key request. If the seller ignored the idempotency_key,
+      there would be three or more.
+
+    steps:
+      - id: get_media_buys_dedup_check
+        title: "Confirm dedup via get_media_buys"
+        narrative: |
+          Query the two media_buy_ids captured from prior steps. Both should exist
+          and be distinct. This is an end-to-end verification that the replay did
+          not create a duplicate row.
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        comply_scenario: idempotency_verify
+        stateful: true
+        expected: |
+          Return exactly two media buys with the two captured IDs. Not three.
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_ids:
+            - "$context.initial_media_buy_id"
+            - "$context.fresh_key_media_buy_id"
+
+          context:
+            correlation_id: "idempotency--get_media_buys_dedup_check"
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buys-response.json schema"
+          - check: field_present
+            path: "media_buys"
+            description: "Response contains the queried media buys"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "idempotency--get_media_buys_dedup_check"
+            description: "Context correlation_id returned unchanged"
