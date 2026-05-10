@@ -24,6 +24,7 @@ import { WorkOS } from '@workos-inc/node';
 import { getPool } from '../db/client.js';
 import { createLogger } from '../logger.js';
 import { OrganizationDatabase, CompanyType, RevenueTier, VALID_REVENUE_TIERS } from '../db/organization-db.js';
+import { linkDomain } from '../db/organization-domains-db.js';
 import { COMPANY_TYPE_VALUES } from '../config/company-types.js';
 import { validateOrganizationName } from '../middleware/validation.js';
 import { getCompanyDomain } from '../utils/email-domain.js';
@@ -296,29 +297,14 @@ export async function performCreateOrganization(
   }, 'Organization record created');
 
   if (verifiedDomain) {
-    const existingDomainResult = await pool.query(
-      `SELECT workos_organization_id FROM organization_domains WHERE domain = $1`,
-      [verifiedDomain],
-    );
-
-    if (existingDomainResult.rows.length > 0 && existingDomainResult.rows[0].workos_organization_id !== workosOrgId) {
-      logger.warn({
-        orgId: workosOrgId,
-        domain: verifiedDomain,
-        existingOrgId: existingDomainResult.rows[0].workos_organization_id,
-      }, 'Domain already claimed; skipping domain assignment');
-    } else {
-      await pool.query(
-        `INSERT INTO organization_domains (workos_organization_id, domain, is_primary, verified, source)
-         VALUES ($1, $2, true, true, 'email_verification')
-         ON CONFLICT (domain) DO NOTHING`,
-        [workosOrgId, verifiedDomain],
-      );
-      await pool.query(
-        `UPDATE organizations SET email_domain = $1, updated_at = NOW()
-         WHERE workos_organization_id = $2`,
-        [verifiedDomain, workosOrgId],
-      );
+    const result = await linkDomain({
+      orgId: workosOrgId,
+      domain: verifiedDomain,
+      source: 'email_verification',
+      verified: true,
+      isPrimary: true,
+    });
+    if (result.inserted) {
       logger.info({ orgId: workosOrgId, domain: verifiedDomain }, 'Corporate domain auto-verified via email');
     }
   }

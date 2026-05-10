@@ -10,6 +10,7 @@ import { createLogger } from '../logger.js';
 import { WorkOS, DomainDataState } from '@workos-inc/node';
 import { resolveOrgByDomain } from '../db/domain-resolution-db.js';
 import { researchDomain, trackBackground } from './brand-enrichment.js';
+import { linkDomain } from '../db/organization-domains-db.js';
 import { enrichOrganization } from './enrichment.js';
 import { isLushaConfigured } from './lusha.js';
 import { COMPANY_TYPE_VALUES } from '../config/company-types.js';
@@ -186,39 +187,14 @@ export async function createProspect(
 
     const org = result.rows[0];
 
-    // Also insert into organization_domains if domain provided.
-    // DO NOTHING on conflict — `organization_domains.is_primary` is the
-    // single source of truth for brand identity (#4159 Stage 2), so a stray
-    // ON CONFLICT DO UPDATE here would silently transfer brand ownership
-    // from the original org to this prospect (#4321). The pre-check at
-    // resolveOrgByDomain above rejects known conflicts, so reaching the
-    // INSERT means we expect a clean insert; a conflict at this point is a
-    // race or alias-resolution miss — log and leave the existing row alone.
     if (normalizedDomain) {
-      const insertResult = await pool.query<{ workos_organization_id: string }>(
-        `INSERT INTO organization_domains (workos_organization_id, domain, is_primary, verified, source)
-         VALUES ($1, $2, true, true, 'import')
-         ON CONFLICT (domain) DO NOTHING
-         RETURNING workos_organization_id`,
-        [workosOrg.id, normalizedDomain]
-      );
-
-      if (insertResult.rowCount === 0) {
-        const existing = await pool.query<{ workos_organization_id: string }>(
-          `SELECT workos_organization_id FROM organization_domains WHERE domain = $1`,
-          [normalizedDomain]
-        );
-        const existingOrgId = existing.rows[0]?.workos_organization_id;
-        logger.warn(
-          {
-            domain: normalizedDomain,
-            prospectOrgId: workosOrg.id,
-            existingOrgId,
-            sameOrg: existingOrgId === workosOrg.id,
-          },
-          'Prospect domain conflict — left existing organization_domains row in place',
-        );
-      }
+      await linkDomain({
+        orgId: workosOrg.id,
+        domain: normalizedDomain,
+        source: 'import',
+        verified: true,
+        isPrimary: true,
+      });
 
       const bgPromise = researchDomain(normalizedDomain, { org_id: workosOrg.id }).catch((err) => {
         logger.warn(
