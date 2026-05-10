@@ -246,7 +246,7 @@ phases:
           - human_review_required: set when the plan mandates escalation
 
         sample_request:
-          idempotency_key: "media-buy-governance-escalation-sync-plans-v1"
+          idempotency_key: "$generate:uuid_v4#media_buy_governance_escalation_register_plan_sync_plans"
           plans:
             - plan_id: "gov_acme_q2_2027"
               brand:

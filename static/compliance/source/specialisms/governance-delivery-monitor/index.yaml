@@ -164,7 +164,7 @@ phases:
           - budget.reallocation_threshold: amount above which reallocation requires re-evaluation
 
         sample_request:
-          idempotency_key: "governance-delivery-monitor-sync-plans-v1"
+          idempotency_key: "$generate:uuid_v4#governance_delivery_monitor_plan_registration_sync_plans"
           plans:
             - plan_id: "gov_acme_delivery_monitor"
               brand:
