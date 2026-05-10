@@ -68,7 +68,7 @@ export interface AnnounceCandidate {
 /**
  * Orgs eligible for a draft. Base filter (always applied):
  *  - `member_profiles.is_public = true` right now
- *  - A brand.json manifest exists for their primary_brand_domain
+ *  - A brand.json manifest exists for their primary brand domain
  *  - `member_profiles.metadata->>'no_announcement'` is not 'true'
  *  - No prior `announcement_draft_posted` or `announcement_skipped` activity
  *

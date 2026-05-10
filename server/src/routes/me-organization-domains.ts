@@ -2,11 +2,10 @@
  * Member-facing self-service for the org's linked domains.
  *
  * Mirrors the admin Set-Primary affordance from `admin-account-detail.html`
- * but scoped to the caller's own organization. The PUT path writes BOTH
- * `organization_domains.is_primary` (org-membership inference primary) AND
- * `member_profiles.primary_brand_domain` (brand-identity primary) when the
- * domain is claimable, so members don't have to think about the two-primary
- * distinction documented in the four-domain-columns audit.
+ * but scoped to the caller's own organization. The PUT path flips
+ * `organization_domains.is_primary` — after the Stage 2 column drop, that
+ * row drives both org-membership-inference and brand-identity, so a single
+ * write sets the primary unambiguously.
  *
  * MVP scope: list + set-primary. Add (POST → WorkOS verification challenge)
  * and remove (DELETE) deferred to a follow-up — the WorkOS-side wiring is
@@ -86,11 +85,11 @@ export function createMeOrganizationDomainsRouter(
         [orgId],
       );
 
-      const profileRow = await pool.query<{ primary_brand_domain: string | null }>(
-        `SELECT primary_brand_domain FROM member_profiles WHERE workos_organization_id = $1`,
-        [orgId],
-      );
-      const brandPrimary = profileRow.rows[0]?.primary_brand_domain ?? null;
+      // After the Stage 2 column drop, `is_primary` on organization_domains
+      // is the canonical brand-primary too — `is_brand_primary` mirrors it.
+      // Kept as a separate field on the response for API stability so any
+      // existing clients that read it don't break.
+      const brandPrimary = result.rows.find((r) => r.is_primary)?.domain ?? null;
 
       const domains = result.rows.map((row) => {
         let claimable = false;
@@ -105,7 +104,7 @@ export function createMeOrganizationDomainsRouter(
           is_primary: row.is_primary,
           verified: row.verified,
           source: row.source,
-          is_brand_primary: brandPrimary === row.domain,
+          is_brand_primary: row.is_primary,
           claimable,
         };
       });
@@ -118,9 +117,8 @@ export function createMeOrganizationDomainsRouter(
   });
 
   // PUT /api/me/organization/domains/:domain/primary — set primary domain.
-  // Writes BOTH organization_domains.is_primary AND member_profiles.primary_brand_domain
-  // (when the domain is claimable) in a single transaction so members can't end up
-  // with the two-primary fields out of sync.
+  // Single source of truth: organization_domains.is_primary. After the Stage 2
+  // column drop, brand-identity and org-membership-inference share this row.
   router.put('/:domain/primary', requireAuth, async (req, res) => {
     try {
       const orgId = await resolveTargetOrgId(req, res);
@@ -166,13 +164,13 @@ export function createMeOrganizationDomainsRouter(
           [orgId],
         );
 
-        // Verify the domain belongs to this org and is verified. We refuse to
-        // promote a pending/unverified row — letting an attacker set
-        // `pending` rows as primary would let them claim a domain via SSO
-        // before WorkOS confirms control. Also restrict to `source = 'workos'`
-        // for the brand-identity dual-write below; admin-imported / manual
-        // "verified" rows aren't actually DNS-proof-of-control claims (same
-        // trust boundary the backfill script enforces).
+        // Verify the domain belongs to this org and is a WorkOS-verified row.
+        // After Stage 2 of #4159, is_primary drives BOTH org-membership
+        // inference AND brand identity, so we hold the bar at WorkOS DNS
+        // proof: pending rows are pre-verification (would grant SSO claim
+        // before WorkOS confirms control) and admin-imported / manual rows
+        // aren't DNS-proof-of-control claims (would let an admin-imported
+        // verified=true row escalate to brand identity via member self-service).
         const domainRow = await client.query<{ verified: boolean; source: string }>(
           `SELECT verified, source FROM organization_domains
             WHERE workos_organization_id = $1 AND domain = $2`,
@@ -189,7 +187,13 @@ export function createMeOrganizationDomainsRouter(
             message: 'The domain must be verified before it can be set as primary',
           });
         }
-        const sourceIsWorkos = domainRow.rows[0].source === 'workos';
+        if (domainRow.rows[0].source !== 'workos') {
+          await client.query('ROLLBACK');
+          return res.status(400).json({
+            error: 'domain_not_workos_verified',
+            message: 'Only domains verified through WorkOS DNS challenge can be set as primary',
+          });
+        }
 
         // Clear existing primary, set new primary, and update the
         // denormalized organizations.email_domain in one transaction.
@@ -209,37 +213,12 @@ export function createMeOrganizationDomainsRouter(
           [normalizedDomain, orgId],
         );
 
-        // Coherent dual-write: also update member_profiles.primary_brand_domain
-        // when the domain is claimable AND came from a WorkOS proof-of-control.
-        // This is the bit the admin set-primary path doesn't do — and the cause
-        // of the Media.net escalation #321. Members shouldn't have to think
-        // about the two-primary distinction.
-        //
-        // Source restriction: `source='manual'` / `'import'` rows can be
-        // flagged verified by admin tooling without actual DNS proof, so we
-        // refuse to let them seed brand identity. Same trust boundary the
-        // backfill-primary-brand-domain script applies.
-        let brandPrimaryUpdated = false;
-        let claimable = false;
-        try {
-          assertClaimableBrandDomain(normalizedDomain);
-          claimable = true;
-        } catch {
-          claimable = false;
-        }
-        if (claimable && sourceIsWorkos) {
-          const updated = await client.query(
-            `UPDATE member_profiles
-                SET primary_brand_domain = $1, updated_at = NOW()
-              WHERE workos_organization_id = $2`,
-            [normalizedDomain, orgId],
-          );
-          brandPrimaryUpdated = (updated.rowCount ?? 0) > 0;
-        }
-
         await client.query('COMMIT');
 
-        if (brandPrimaryUpdated) invalidateMemberContextCache();
+        // Brand-identity primary now mirrors org-membership-inference primary
+        // via the same row, so any member-context cache that depended on
+        // brand-primary still needs invalidation when the row flips.
+        invalidateMemberContextCache();
 
         logger.info(
           {
@@ -247,7 +226,6 @@ export function createMeOrganizationDomainsRouter(
             domain: normalizedDomain,
             actor: req.user!.id,
             via_dev_bypass: membership.via_dev_bypass,
-            brand_primary_updated: brandPrimaryUpdated,
           },
           'Set primary domain via member self-service',
         );
@@ -255,7 +233,6 @@ export function createMeOrganizationDomainsRouter(
         return res.json({
           success: true,
           primary_domain: normalizedDomain,
-          brand_primary_updated: brandPrimaryUpdated,
         });
       } catch (err) {
         await client.query('ROLLBACK').catch((rbErr) => {

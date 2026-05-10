@@ -62,12 +62,11 @@ export class MemberDatabase {
     const result = await query<MemberProfile>(
       `INSERT INTO member_profiles (
         workos_organization_id, display_name, slug, tagline, description,
-        primary_brand_domain,
         contact_email, contact_website, contact_phone,
         linkedin_url, twitter_url,
         offerings, agents, publishers, data_providers, headquarters, markets, metadata, tags,
         is_public, show_in_carousel
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
       RETURNING *`,
       [
         input.workos_organization_id,
@@ -75,7 +74,6 @@ export class MemberDatabase {
         input.slug,
         input.tagline || null,
         input.description || null,
-        input.primary_brand_domain || null,
         input.contact_email || null,
         input.contact_website || null,
         input.contact_phone || null,
@@ -122,11 +120,20 @@ export class MemberDatabase {
   }
 
   /**
-   * Get profile by primary brand domain
+   * Get profile by primary brand domain. Brand-primary lives on
+   * `organization_domains.is_primary=true` post-Stage-2 (#4159), so this
+   * joins through the org_id rather than reading a column directly off
+   * member_profiles.
    */
   async getProfileByDomain(domain: string): Promise<MemberProfile | null> {
     const result = await query<MemberProfile>(
-      'SELECT * FROM member_profiles WHERE primary_brand_domain = $1',
+      `SELECT mp.*
+         FROM member_profiles mp
+         JOIN organization_domains od
+           ON od.workos_organization_id = mp.workos_organization_id
+          AND od.is_primary = true
+        WHERE LOWER(od.domain) = LOWER($1)
+        LIMIT 1`,
       [domain]
     );
 
@@ -157,7 +164,6 @@ export class MemberDatabase {
       display_name: 'display_name',
       tagline: 'tagline',
       description: 'description',
-      primary_brand_domain: 'primary_brand_domain',
       contact_email: 'contact_email',
       contact_website: 'contact_website',
       contact_phone: 'contact_phone',

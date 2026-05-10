@@ -65,44 +65,6 @@ export interface MemberAgentsRouterConfig {
 }
 
 /**
- * Extract the brand domain from an agent URL. Strips protocol, path, query,
- * and a leading `www.` so the value matches how `extractDomain` in
- * registry-api normalizes lookup queries. Returns null if the URL is
- * unparseable. Used to backfill `member_profiles.primary_brand_domain` when
- * an agent is registered against a profile that has no brand domain set —
- * without this, `/api/registry/operator?domain=…` exact-match lookup misses
- * the profile entirely (it keys off `primary_brand_domain`, not the agents
- * JSONB), leaving the agent invisible to the public registry.
- */
-function brandDomainFromAgentUrl(url: string): string | null {
-  try {
-    const h = new URL(url).hostname.toLowerCase();
-    if (!h) return null;
-    return h.startsWith('www.') ? h.slice(4) : h;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Returns the unanimous brand-domain across all agent URLs in the array, or
- * null if agents disagree (multi-domain rollup) or none have a parseable URL.
- * "Unanimous" is the bar for auto-populating `primary_brand_domain` because
- * a profile carries one canonical brand — silently picking one of N
- * conflicting hostnames could mis-key registry lookups.
- */
-function unanimousBrandDomain(agents: AgentConfig[]): string | null {
-  const hosts = new Set<string>();
-  for (const a of agents) {
-    if (!a || typeof a.url !== 'string') continue;
-    const h = brandDomainFromAgentUrl(a.url);
-    if (h) hosts.add(h);
-  }
-  if (hosts.size !== 1) return null;
-  return hosts.values().next().value ?? null;
-}
-
-/**
  * Decoded shape of `member_profiles.agents` JSONB. The column is JSONB but
  * pg sometimes hands it back as a string depending on driver settings.
  */
@@ -298,7 +260,7 @@ export function createMemberAgentsRouter(config: MemberAgentsRouterConfig): Rout
     try {
       await client.query('BEGIN');
       const row = await client.query(
-        `SELECT id, agents, primary_brand_domain
+        `SELECT id, agents
          FROM member_profiles
          WHERE workos_organization_id = $1
          FOR UPDATE`,
@@ -316,7 +278,6 @@ export function createMemberAgentsRouter(config: MemberAgentsRouterConfig): Rout
       }
 
       const profileId = row.rows[0].id as string;
-      const currentBrandDomain = row.rows[0].primary_brand_domain as string | null;
       const existing = parseAgents(row.rows[0].agents);
       const result = await mutate(existing);
       if (result.kind === 'reject') {
@@ -330,33 +291,17 @@ export function createMemberAgentsRouter(config: MemberAgentsRouterConfig): Rout
       const typed = (await resolveAgentTypes(gated)) as AgentConfig[];
       await logResolvedTypeChanges(gated, typed, orgId);
 
-      // Backfill `primary_brand_domain` from the agents' URL hostnames when
-      // it's currently null AND every agent agrees on the same hostname.
-      // This keeps the public registry lookup
-      // (`/api/registry/operator?domain=…`, which keys off
-      // `primary_brand_domain`) discoverable for profiles that registered an
-      // agent before setting a brand domain. Conflicts (multiple distinct
-      // hostnames) are deliberately skipped — picking one would mis-key
-      // discovery.
-      let newBrandDomain: string | null = null;
-      if (!currentBrandDomain) {
-        newBrandDomain = unanimousBrandDomain(typed);
-      }
-      if (newBrandDomain) {
-        await client.query(
-          `UPDATE member_profiles
-           SET agents = $1::jsonb, primary_brand_domain = $2, updated_at = NOW()
-           WHERE id = $3`,
-          [JSON.stringify(typed), newBrandDomain, profileId],
-        );
-      } else {
-        await client.query(
-          `UPDATE member_profiles
-           SET agents = $1::jsonb, updated_at = NOW()
-           WHERE id = $2`,
-          [JSON.stringify(typed), profileId],
-        );
-      }
+      // Stage 2 of #4159 dropped the primary_brand_domain column; this
+      // path no longer auto-backfills brand-primary from agent URL
+      // hostnames. The canonical brand-primary lives on
+      // organization_domains.is_primary, set via the Linked Domains UI
+      // (PR #4179) or the WorkOS verify-domain auto-promote.
+      await client.query(
+        `UPDATE member_profiles
+         SET agents = $1::jsonb, updated_at = NOW()
+         WHERE id = $2`,
+        [JSON.stringify(typed), profileId],
+      );
 
       // Ensure every registered agent has an `agent_registry_metadata` row
       // so the compliance heartbeat picks it up. Pre-fix, the heartbeat's

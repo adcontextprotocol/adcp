@@ -236,6 +236,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
     profile: any,
     org: any,
     corporateDomain: string,
+    brandPrimaryDomain: string | null,
   ): Record<string, unknown> {
     const created = profile?.created_at instanceof Date
       ? profile.created_at.toISOString()
@@ -246,9 +247,10 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       company_type: org?.company_type ?? null,
       ...(org?.revenue_tier ? { revenue_tier: org.revenue_tier } : {}),
       corporate_domain: corporateDomain,
-      ...(profile.primary_brand_domain
-        ? { primary_brand_domain: profile.primary_brand_domain }
-        : {}),
+      // After Stage 2 of #4159, brand-primary lives on
+      // organization_domains.is_primary and is resolved via getBrandPrimaryDomain.
+      // Caller passes the resolved value through so this function stays pure.
+      ...(brandPrimaryDomain ? { primary_brand_domain: brandPrimaryDomain } : {}),
       ...(org?.membership_tier ? { membership_tier: org.membership_tier } : {}),
       created_at: created,
       agents: Array.isArray(profile.agents) ? profile.agents : [],
@@ -284,10 +286,15 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         company_type,
         revenue_tier,
         corporate_domain,
-        primary_brand_domain,
         marketing_opt_in,
         membership_tier,
       } = req.body as Record<string, unknown>;
+      // After Stage 2 of #4159, brand-primary lives on
+      // organization_domains.is_primary, not on the member profile. Members
+      // set it via the Linked Domains UI (PR #4179) or it auto-promotes
+      // from a verified WorkOS email domain. The bootstrap endpoint no
+      // longer accepts primary_brand_domain — silently ignored if old
+      // clients still pass it.
 
       const trimmedName = typeof organization_name === 'string' ? organization_name.trim() : '';
       if (!trimmedName || trimmedName.length > 200) {
@@ -337,24 +344,6 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
           });
         }
       }
-      let normalizedBrandDomain: string | null = null;
-      if (primary_brand_domain !== undefined && primary_brand_domain !== null && primary_brand_domain !== '') {
-        if (typeof primary_brand_domain !== 'string') {
-          return res.status(400).json({
-            error: 'Invalid primary_brand_domain',
-            message: 'primary_brand_domain must be a string',
-          });
-        }
-        const candidate = primary_brand_domain.toLowerCase().trim();
-        if (!candidate || candidate.length > 253 || !DOMAIN_RE.test(candidate)) {
-          return res.status(400).json({
-            error: 'Invalid primary_brand_domain',
-            message: 'primary_brand_domain must be a valid domain like "acme.com"',
-          });
-        }
-        normalizedBrandDomain = candidate;
-      }
-
       // Email-domain match. getCompanyDomain returns null for personal-email
       // domains (gmail.com, yahoo.com, etc.) — those cannot bootstrap a
       // corporate profile. Mismatch between the verified email domain and
@@ -446,9 +435,10 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       if (existingProfile) {
         const existingOrg = await orgDb.getOrganization(targetOrgId);
         const primaryDomain = await resolvePrimaryDomain(targetOrgId, corporateDomain);
+        const brandPrimaryDomain = await getBrandPrimaryDomain(targetOrgId);
         logger.info({ userId: user.id, orgId: targetOrgId, durationMs: Date.now() - startTime }, 'POST /api/me/member-profile (bootstrap) idempotent hit');
         return res.status(200).json({
-          profile: toSpecMemberProfile(existingProfile, existingOrg, primaryDomain),
+          profile: toSpecMemberProfile(existingProfile, existingOrg, primaryDomain, brandPrimaryDomain),
           warnings: [{
             code: 'profile_already_exists',
             message: 'Member profile already exists for this organization; no fields were mutated.',
@@ -542,7 +532,6 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         workos_organization_id: targetOrgId,
         display_name: trimmedName,
         slug,
-        ...(normalizedBrandDomain ? { primary_brand_domain: normalizedBrandDomain } : {}),
         // Default privacy posture for a bootstrapped profile is private —
         // the caller can flip is_public via PUT /api/me/member-profile/visibility
         // once they have an active subscription. The legacy POST path applies
@@ -661,8 +650,9 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         });
       }
 
+      const newBrandPrimaryDomain = await getBrandPrimaryDomain(targetOrgId);
       return res.status(201).json({
-        profile: toSpecMemberProfile(profile, refreshedOrg, primaryDomain),
+        profile: toSpecMemberProfile(profile, refreshedOrg, primaryDomain, newBrandPrimaryDomain),
         ...(warnings.length ? { warnings } : {}),
       });
     } catch (error) {
@@ -798,7 +788,6 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         slug,
         tagline,
         description,
-        primary_brand_domain,
         contact_email,
         contact_website,
         contact_phone,
@@ -812,6 +801,10 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         is_public,
         show_in_carousel,
       } = req.body;
+      // After Stage 2 of #4159, primary_brand_domain is no longer a field
+      // on member_profiles. Old clients passing it in this POST body have
+      // their value silently dropped — brand-primary now lives on
+      // organization_domains.is_primary.
 
       // Validate required fields
       if (!display_name || !slug) {
@@ -969,7 +962,6 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         slug,
         tagline,
         description,
-        primary_brand_domain: primary_brand_domain || null,
         contact_email,
         contact_website,
         contact_phone,

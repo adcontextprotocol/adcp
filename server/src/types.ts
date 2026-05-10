@@ -738,7 +738,6 @@ export interface MemberProfile {
   slug: string;
   tagline?: string;
   description?: string;
-  primary_brand_domain?: string;
   resolved_brand?: MemberBrandInfo;
   contact_email?: string;
   contact_website?: string;
@@ -771,7 +770,6 @@ export interface CreateMemberProfileInput {
   slug: string;
   tagline?: string;
   description?: string;
-  primary_brand_domain?: string;
   contact_email?: string;
   contact_website?: string;
   contact_phone?: string;
@@ -794,7 +792,6 @@ export interface UpdateMemberProfileInput {
   display_name?: string;
   tagline?: string;
   description?: string;
-  primary_brand_domain?: string;
   contact_email?: string;
   contact_website?: string;
   contact_phone?: string;

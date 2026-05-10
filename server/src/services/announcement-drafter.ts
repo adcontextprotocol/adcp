@@ -10,7 +10,7 @@
  * double-newline paragraph style that pastes cleanly.
  *
  * Member-supplied fields (tagline, description, agent descriptions,
- * primary_brand_domain) come from third-party-authored brand.json and
+ * brand domain) come from third-party-authored brand.json and
  * profile content — they are treated as untrusted data, length-capped,
  * and enclosed in explicit markers the system prompt tells the model to
  * treat as data, not instructions.

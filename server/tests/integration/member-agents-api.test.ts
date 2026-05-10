@@ -184,13 +184,25 @@ describe('Per-agent REST API (/api/me/agents)', () => {
       workos_organization_id: orgId,
       display_name: `Test ${slug}`,
       slug,
-      primary_brand_domain: `${slug}.example`,
       is_public: false,
       agents: [{ url: 'https://existing.example/mcp', visibility: 'private' }],
     });
+    await pool.query(
+      `INSERT INTO organization_domains
+         (workos_organization_id, domain, verified, is_primary, source, created_at, updated_at)
+       VALUES ($1, $2, true, true, 'workos', NOW(), NOW())
+       ON CONFLICT (domain) DO UPDATE SET
+         workos_organization_id = EXCLUDED.workos_organization_id,
+         verified = true, is_primary = true, source = 'workos'`,
+      [orgId, `${slug}.example`],
+    );
   }
 
   beforeEach(async () => {
+    await pool.query(
+      `DELETE FROM organization_domains WHERE workos_organization_id LIKE $1`,
+      [`${TEST_PREFIX}%`],
+    );
     await pool.query(
       `DELETE FROM member_profiles WHERE workos_organization_id LIKE $1`,
       [`${TEST_PREFIX}%`],
@@ -513,7 +525,6 @@ describe('Per-agent REST API (/api/me/agents)', () => {
       workos_organization_id: orgId,
       display_name: 'Test patchtype',
       slug: 'patchtype',
-      primary_brand_domain: 'patchtype.example',
       is_public: false,
       agents: [
         { url: 'https://existing.example/mcp', type: 'sales', visibility: 'private' },
@@ -550,91 +561,6 @@ describe('Per-agent REST API (/api/me/agents)', () => {
       .send({ type: 'buying' });
     expect(swapped.status).toBe(200);
     expect(swapped.body.agent.type).toBe('buying');
-  });
-
-  // ── primary_brand_domain auto-backfill (PR #4235) ──────────────
-  // When a profile has no brand domain and agents agree on a hostname,
-  // backfill atomically with the JSONB write so /api/registry/operator
-  // discovery works without a separate setup step.
-
-  it('POST backfills primary_brand_domain from the agent hostname when null and unanimous', async () => {
-    const orgId = `${TEST_PREFIX}_bd_backfill`;
-    const userId = `${TEST_PREFIX}_bd_backfill_user`;
-    await seedOrg(pool, orgId, 'individual_professional');
-    await provisionUser(userId, orgId);
-    // Seed a profile with NULL primary_brand_domain (mirrors the
-    // pre-PR auto-bootstrap path that produced the harvingupta bug).
-    await memberDb.createProfile({
-      workos_organization_id: orgId,
-      display_name: 'Test bdbackfill',
-      slug: 'bdbackfill',
-      // primary_brand_domain intentionally omitted — defaults to null.
-      is_public: false,
-      agents: [],
-    });
-
-    (app as any).setCurrentUser(userId);
-    const res = await request(app)
-      .post('/api/me/agents')
-      .send({ url: 'https://www.bdbackfill.example/api/mcp', type: 'sales', visibility: 'private' });
-    expect(res.status).toBe(201);
-
-    const profile = await memberDb.getProfileByOrgId(orgId);
-    // `www.` stripped to match `extractDomain` in registry-api so a
-    // /api/registry/operator?domain=bdbackfill.example query lands.
-    expect(profile!.primary_brand_domain).toBe('bdbackfill.example');
-  });
-
-  it('POST does NOT backfill primary_brand_domain when agents disagree on hostname', async () => {
-    const orgId = `${TEST_PREFIX}_bd_conflict`;
-    const userId = `${TEST_PREFIX}_bd_conflict_user`;
-    await seedOrg(pool, orgId, 'individual_professional');
-    await provisionUser(userId, orgId);
-    await memberDb.createProfile({
-      workos_organization_id: orgId,
-      display_name: 'Test bdconflict',
-      slug: 'bdconflict',
-      is_public: false,
-      agents: [
-        { url: 'https://first.example/mcp', type: 'sales', visibility: 'private' },
-      ],
-    });
-
-    (app as any).setCurrentUser(userId);
-    const res = await request(app)
-      .post('/api/me/agents')
-      .send({ url: 'https://second.example/mcp', type: 'sales', visibility: 'private' });
-    expect(res.status).toBe(201);
-
-    const profile = await memberDb.getProfileByOrgId(orgId);
-    // Two distinct hostnames in the agents array — refuse to guess.
-    expect(profile!.primary_brand_domain).toBeNull();
-  });
-
-  it('POST does NOT overwrite primary_brand_domain when one is already set', async () => {
-    const orgId = `${TEST_PREFIX}_bd_preset`;
-    const userId = `${TEST_PREFIX}_bd_preset_user`;
-    await seedOrg(pool, orgId, 'individual_professional');
-    await provisionUser(userId, orgId);
-    await memberDb.createProfile({
-      workos_organization_id: orgId,
-      display_name: 'Test bdpreset',
-      slug: 'bdpreset',
-      primary_brand_domain: 'preset.example',
-      is_public: false,
-      agents: [],
-    });
-
-    (app as any).setCurrentUser(userId);
-    const res = await request(app)
-      .post('/api/me/agents')
-      .send({ url: 'https://different.example/mcp', type: 'sales', visibility: 'private' });
-    expect(res.status).toBe(201);
-
-    const profile = await memberDb.getProfileByOrgId(orgId);
-    // The existing brand-domain wins; auto-backfill never fires when the
-    // column is already populated, even if the agent URL hostname differs.
-    expect(profile!.primary_brand_domain).toBe('preset.example');
   });
 
   // ── agent_registry_metadata seed on register (PR follow-up) ────
@@ -695,7 +621,6 @@ describe('Per-agent REST API (/api/me/agents)', () => {
       workos_organization_id: orgId,
       display_name: 'Test cteonly',
       slug: 'cteonly',
-      primary_brand_domain: 'cte-only.example',
       is_public: false,
       agents: [{ url: targetUrl, type: 'sales', visibility: 'private' }],
     });
@@ -757,7 +682,6 @@ describe('Per-agent REST API (/api/me/agents)', () => {
       workos_organization_id: orgId,
       display_name: 'Test deletepublic',
       slug: 'deletepublic',
-      primary_brand_domain: 'deletepublic.example',
       is_public: false,
       agents: [{ url: 'https://pub.example/mcp', visibility: 'public' }],
     });
