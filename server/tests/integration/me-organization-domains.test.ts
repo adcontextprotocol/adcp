@@ -1,9 +1,9 @@
 /**
  * Integration tests for the member-facing /api/me/organization/domains
- * surface. Covers list + set-primary, with the dual-write semantic that
- * sets `member_profiles.primary_brand_domain` alongside
- * `organization_domains.is_primary` so members don't have to know about
- * the two-primary distinction (Media.net escalation #321 root cause).
+ * surface. Covers list + set-primary. After Stage 2 of #4159,
+ * `organization_domains.is_primary` is the single source of truth for
+ * both brand identity and org-membership inference, so a single PUT
+ * unambiguously sets the primary (Media.net escalation #321).
  *
  * Auth in dev mode reads from the local organization_memberships seed
  * (resolveUserOrgMembership dev bypass), so we seed memberships rather
@@ -72,13 +72,12 @@ async function seedOrgWithDomains(pool: Pool, domains: Array<{ domain: string; v
   }
 }
 
-async function seedProfile(pool: Pool, primary: string | null) {
+async function seedProfile(pool: Pool) {
   await pool.query(
-    `INSERT INTO member_profiles (workos_organization_id, slug, display_name, primary_brand_domain, created_at, updated_at)
-     VALUES ($1, $2, $3, $4, NOW(), NOW())
-     ON CONFLICT (workos_organization_id) DO UPDATE
-       SET primary_brand_domain = EXCLUDED.primary_brand_domain, updated_at = NOW()`,
-    [TEST_ORG, 'me-domains-test', 'Me Domains Test Co', primary],
+    `INSERT INTO member_profiles (workos_organization_id, slug, display_name, created_at, updated_at)
+     VALUES ($1, $2, $3, NOW(), NOW())
+     ON CONFLICT (workos_organization_id) DO NOTHING`,
+    [TEST_ORG, 'me-domains-test', 'Me Domains Test Co'],
   );
 }
 
@@ -136,7 +135,7 @@ describe('GET /api/me/organization/domains + PUT /:domain/primary', () => {
       { domain: 'me-domains-2.test', verified: true, is_primary: false },
       { domain: 'me-domains-pending.test', verified: false, is_primary: false },
     ]);
-    await seedProfile(pool, 'me-domains-1.test');
+    await seedProfile(pool);
     await seedMembership(pool, OWNER_USER, 'owner');
 
     const res = await request(app)
@@ -152,12 +151,12 @@ describe('GET /api/me/organization/domains + PUT /:domain/primary', () => {
     expect(byDomain['me-domains-pending.test']).toMatchObject({ verified: false });
   });
 
-  it('PUT primary updates BOTH organization_domains AND member_profiles.primary_brand_domain', async () => {
+  it('PUT primary moves organization_domains.is_primary and updates organizations.email_domain', async () => {
     await seedOrgWithDomains(pool, [
       { domain: 'me-domains-1.test', verified: true, is_primary: true },
       { domain: 'me-domains-2.test', verified: true, is_primary: false },
     ]);
-    await seedProfile(pool, 'me-domains-1.test');
+    await seedProfile(pool);
     await seedMembership(pool, OWNER_USER, 'owner');
 
     const res = await request(app)
@@ -165,10 +164,9 @@ describe('GET /api/me/organization/domains + PUT /:domain/primary', () => {
       .set('x-test-user', OWNER_USER);
 
     expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({ success: true, primary_domain: 'me-domains-2.test', brand_primary_updated: true });
+    expect(res.body).toMatchObject({ success: true, primary_domain: 'me-domains-2.test' });
     expect(cacheInvalidations).toBe(1);
 
-    // organization_domains.is_primary moved
     const od = await pool.query<{ domain: string; is_primary: boolean }>(
       `SELECT domain, is_primary FROM organization_domains WHERE workos_organization_id = $1`,
       [TEST_ORG],
@@ -177,19 +175,11 @@ describe('GET /api/me/organization/domains + PUT /:domain/primary', () => {
     expect(od_by['me-domains-2.test']).toBe(true);
     expect(od_by['me-domains-1.test']).toBe(false);
 
-    // organizations.email_domain follows
     const org = await pool.query<{ email_domain: string }>(
       `SELECT email_domain FROM organizations WHERE workos_organization_id = $1`,
       [TEST_ORG],
     );
     expect(org.rows[0].email_domain).toBe('me-domains-2.test');
-
-    // member_profiles.primary_brand_domain follows (the dual-write that fixes #321)
-    const profile = await pool.query<{ primary_brand_domain: string | null }>(
-      `SELECT primary_brand_domain FROM member_profiles WHERE workos_organization_id = $1`,
-      [TEST_ORG],
-    );
-    expect(profile.rows[0].primary_brand_domain).toBe('me-domains-2.test');
   });
 
   it('rejects PUT primary from a non-owner/admin member', async () => {
@@ -197,7 +187,7 @@ describe('GET /api/me/organization/domains + PUT /:domain/primary', () => {
       { domain: 'me-domains-1.test', verified: true, is_primary: true },
       { domain: 'me-domains-2.test', verified: true, is_primary: false },
     ]);
-    await seedProfile(pool, 'me-domains-1.test');
+    await seedProfile(pool);
     await seedMembership(pool, MEMBER_USER, 'member');
 
     const res = await request(app)
@@ -220,7 +210,7 @@ describe('GET /api/me/organization/domains + PUT /:domain/primary', () => {
       { domain: 'me-domains-1.test', verified: true, is_primary: true },
       { domain: 'me-domains-pending.test', verified: false, is_primary: false },
     ]);
-    await seedProfile(pool, 'me-domains-1.test');
+    await seedProfile(pool);
     await seedMembership(pool, OWNER_USER, 'owner');
 
     const res = await request(app)
@@ -231,46 +221,39 @@ describe('GET /api/me/organization/domains + PUT /:domain/primary', () => {
     expect(res.body.error).toBe('domain_not_verified');
   });
 
-  it('refuses brand-primary dual-write for source != workos (admin-imported / manual rows)', async () => {
-    // An admin-imported "verified" row shouldn't be promotable to brand
-    // identity — only WorkOS DNS-proven domains can seed primary_brand_domain.
-    // The org-membership-inference primary still flips (that's a different
-    // concern, controlled by admin tools), but member_profiles stays put.
+  it('refuses PUT primary for source != workos (admin-imported / manual rows)', async () => {
+    // After Stage 2 of #4159, is_primary drives both org-membership
+    // inference and brand identity. We hold the bar at WorkOS DNS proof:
+    // an admin-imported verified=true row shouldn't be promotable via
+    // member self-service — that would let an admin escalate brand
+    // identity by importing a row.
     await seedOrgWithDomains(pool, [
       { domain: 'me-domains-1.test', verified: true, is_primary: true, source: 'workos' },
       { domain: 'me-domains-imported.test', verified: true, is_primary: false, source: 'import' },
     ]);
-    await seedProfile(pool, 'me-domains-1.test');
+    await seedProfile(pool);
     await seedMembership(pool, OWNER_USER, 'owner');
 
     const res = await request(app)
       .put('/api/me/organization/domains/me-domains-imported.test/primary?org=' + TEST_ORG)
       .set('x-test-user', OWNER_USER);
 
-    expect(res.status).toBe(200);
-    expect(res.body.brand_primary_updated).toBe(false);
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('domain_not_workos_verified');
 
-    const profile = await pool.query<{ primary_brand_domain: string | null }>(
-      `SELECT primary_brand_domain FROM member_profiles WHERE workos_organization_id = $1`,
-      [TEST_ORG],
-    );
-    // Brand identity preserved on the original WorkOS-verified domain.
-    expect(profile.rows[0].primary_brand_domain).toBe('me-domains-1.test');
-
-    // org-membership primary still moved (admin-imported domains may legitimately
-    // be the membership-inference primary, e.g. for a prospect we're tracking).
+    // is_primary unchanged — the original WorkOS-verified domain stays primary.
     const od = await pool.query<{ domain: string; is_primary: boolean }>(
       `SELECT domain, is_primary FROM organization_domains WHERE workos_organization_id = $1 AND is_primary = true`,
       [TEST_ORG],
     );
-    expect(od.rows[0].domain).toBe('me-domains-imported.test');
+    expect(od.rows[0].domain).toBe('me-domains-1.test');
   });
 
   it('returns 404 for a domain not on this org', async () => {
     await seedOrgWithDomains(pool, [
       { domain: 'me-domains-1.test', verified: true, is_primary: true },
     ]);
-    await seedProfile(pool, 'me-domains-1.test');
+    await seedProfile(pool);
     await seedMembership(pool, OWNER_USER, 'owner');
 
     const res = await request(app)

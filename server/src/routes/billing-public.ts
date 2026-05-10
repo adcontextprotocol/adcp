@@ -22,6 +22,7 @@ import {
   type InvoiceRequestData,
   type CheckoutSessionData,
 } from "../billing/stripe-client.js";
+import { isStripeNotFound } from "../audit/integrity/stripe-helpers.js";
 import * as referralDb from "../db/referral-codes-db.js";
 import { sanitizeBillingAddress } from "../billing/billing-address.js";
 import {
@@ -800,30 +801,52 @@ export function createPublicBillingRouter(): Router {
         // Ensure Stripe customer exists before showing pricing table
         // This is critical: if we don't create the customer first, Stripe Pricing Table
         // will create one without workos_organization_id metadata, breaking the linkage
-        const stripeCustomerId = await orgDb.getOrCreateStripeCustomer(orgId, () =>
+        const makeCustomer = () =>
           createStripeCustomer({
             email: user.email,
             name: org.name,
             metadata: { workos_organization_id: orgId },
-          })
-        );
+          });
+
+        let stripeCustomerId = await orgDb.getOrCreateStripeCustomer(orgId, makeCustomer);
 
         if (!stripeCustomerId) {
           logger.error({ orgId }, "Failed to create Stripe customer for pricing table");
         }
 
-        // Create customer session for pricing table
-        let customerSessionSecret = null;
+        // Create customer session for pricing table. If the stored customer
+        // ID points at a non-existent (deleted/wrong-mode) Stripe customer,
+        // unlink and recreate so the next attempt succeeds — otherwise every
+        // page load 500s and pages the on-call channel.
+        let customerSessionSecret: string | null = null;
+        let pendingInvoices: Awaited<ReturnType<typeof getPendingInvoices>> = [];
         if (stripeCustomerId) {
-          customerSessionSecret = await createCustomerSession(stripeCustomerId);
+          try {
+            customerSessionSecret = await createCustomerSession(stripeCustomerId);
+          } catch (err) {
+            if (isStripeNotFound(err)) {
+              logger.warn(
+                { orgId, staleCustomerId: stripeCustomerId },
+                "Stored Stripe customer no longer exists — unlinking and recreating"
+              );
+              await orgDb.unlinkStripeCustomer(orgId);
+              stripeCustomerId = await orgDb.getOrCreateStripeCustomer(orgId, makeCustomer);
+              if (stripeCustomerId) {
+                customerSessionSecret = await createCustomerSession(stripeCustomerId);
+              }
+            } else {
+              throw err;
+            }
+          }
         }
 
-        // Get pending invoices if customer exists
-        let pendingInvoices: Awaited<ReturnType<typeof getPendingInvoices>> = [];
         if (stripeCustomerId) {
           try {
             pendingInvoices = await getPendingInvoices(stripeCustomerId);
           } catch (err) {
+            // resource_missing here means the customer was deleted between
+            // the auto-heal above and this call — extremely rare, treat as
+            // empty rather than failing the page render.
             logger.warn(
               { err, orgId, stripeCustomerId },
               "Error fetching pending invoices"

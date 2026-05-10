@@ -44,6 +44,7 @@ import { runAddieCorrectedCaptureJob } from './shadow-corrected-capture.js';
 import { runKnowledgeGapCloserJob } from './knowledge-gap-closer.js';
 import { runEscalationTriageJob } from './escalation-triage.js';
 import { runInviteExpirySweep } from './invite-expiry-sweep.js';
+import { runIntegrityInvariantsJob } from './integrity-invariants.js';
 import { generateNetworkConsistencyReports } from '../../services/network-consistency-reporter.js';
 import { eventsDb } from '../../db/events-db.js';
 import { runEventRecapNudgeJob } from './event-recap-nudge.js';
@@ -840,6 +841,21 @@ export function registerAllJobs(): void {
     runner: runEscalationTriageJob,
     options: { minAgeDays: 7, limit: 25, staleOpsDays: 21 },
     shouldLogResult: (r) => r.suggested > 0 || r.errors > 0,
+  });
+
+  // Integrity invariants - scheduled run of the framework that previously
+  // only existed at GET /api/admin/integrity/check. Without this, classes
+  // of drift like "org references a non-existent Stripe customer" only
+  // surface when a user happens to load the affected page. The job posts
+  // one Slack alert per run when critical violations are found; the
+  // error-notifier's 5-minute per-source throttle prevents spam.
+  jobScheduler.register({
+    name: 'integrity-invariants',
+    description: 'Integrity invariants framework run',
+    interval: { value: 6, unit: 'hours' },
+    initialDelay: { value: 30, unit: 'minutes' },
+    runner: runIntegrityInvariantsJob,
+    shouldLogResult: (r) => r.totalViolations > 0 || !r.ran,
   });
 }
 

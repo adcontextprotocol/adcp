@@ -189,11 +189,13 @@ describe('POST /api/me/member-profile (REST bootstrap)', () => {
         company_type: 'publisher',
         revenue_tier: '5m_50m',
         corporate_domain: 'acme.example',
-        primary_brand_domain: 'acme.example',
         marketing_opt_in: true,
       });
 
     expect(res.status).toBe(201);
+    // primary_brand_domain on the response is derived from
+    // organization_domains.is_primary, which the bootstrap auto-promotes
+    // for the corporate_domain.
     expect(res.body.profile).toMatchObject({
       organization_id: orgId,
       organization_name: 'Acme Media',

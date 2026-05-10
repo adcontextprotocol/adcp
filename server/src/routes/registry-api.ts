@@ -7030,13 +7030,9 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         }
       }
 
-      // Link the member profile to this brand domain using authenticated user's org
-      const memberDb = new MemberDatabase();
-      if (orgId) {
-        await memberDb.updateProfileByOrgId(orgId, {
-          primary_brand_domain: domain,
-        });
-      }
+      // Brand→org attribution lives on `brands.workos_organization_id`
+      // (set above on create/update). Stage 3 of #4159 owns the canonical
+      // setPrimaryDomain writer for `organization_domains.is_primary`.
 
       const hostedBrandJsonUrl = aaoHostedBrandJsonUrl(domain);
       const pointerSnippet = JSON.stringify(

@@ -127,8 +127,21 @@ describe('Registry reader baseline — public endpoints', () => {
       'DELETE FROM discovered_agents WHERE agent_url LIKE $1',
       [AGENT_LIKE]
     );
+    await pool.query('DELETE FROM organization_domains WHERE workos_organization_id = $1 OR domain LIKE $2', [ORG_ID, DOMAIN_LIKE]);
     await pool.query('DELETE FROM member_profiles WHERE workos_organization_id = $1', [ORG_ID]);
     await pool.query('DELETE FROM organizations WHERE workos_organization_id = $1', [ORG_ID]);
+  }
+
+  async function seedBrandPrimary(orgId: string, domain: string) {
+    await pool.query(
+      `INSERT INTO organization_domains
+         (workos_organization_id, domain, verified, is_primary, source, created_at, updated_at)
+       VALUES ($1, $2, true, true, 'workos', NOW(), NOW())
+       ON CONFLICT (domain) DO UPDATE SET
+         workos_organization_id = EXCLUDED.workos_organization_id,
+         verified = true, is_primary = true, source = 'workos'`,
+      [orgId, domain],
+    );
   }
 
   beforeAll(async () => {
@@ -464,12 +477,11 @@ describe('Registry reader baseline — public endpoints', () => {
       await pool.query(
         `INSERT INTO member_profiles (
            workos_organization_id, display_name, slug,
-           agents, primary_brand_domain, is_public,
+           agents, is_public,
            created_at, updated_at
-         ) VALUES ($1, 'Endpoint Baseline Org', $2, $3::jsonb, $4, true, NOW(), NOW())
+         ) VALUES ($1, 'Endpoint Baseline Org', $2, $3::jsonb, true, NOW(), NOW())
          ON CONFLICT (workos_organization_id) DO UPDATE SET
            agents = EXCLUDED.agents,
-           primary_brand_domain = EXCLUDED.primary_brand_domain,
            is_public = EXCLUDED.is_public,
            updated_at = NOW()`,
         [
@@ -478,9 +490,9 @@ describe('Registry reader baseline — public endpoints', () => {
           JSON.stringify([
             { url: AGENT_X, name: 'Endpoint Sales X', type: 'sales', visibility: 'public' },
           ]),
-          PUB_A,
         ]
       );
+      await seedBrandPrimary(ORG_ID, PUB_A);
 
       const res = await request(app).get(
         `/api/registry/operator?domain=${encodeURIComponent(PUB_A)}`
@@ -566,12 +578,11 @@ describe('Registry reader baseline — public endpoints', () => {
       await pool.query(
         `INSERT INTO member_profiles (
            workos_organization_id, display_name, slug,
-           agents, primary_brand_domain, is_public,
+           agents, is_public,
            created_at, updated_at
-         ) VALUES ($1, 'Endpoint Baseline Org', $2, $3::jsonb, $4, true, NOW(), NOW())
+         ) VALUES ($1, 'Endpoint Baseline Org', $2, $3::jsonb, true, NOW(), NOW())
          ON CONFLICT (workos_organization_id) DO UPDATE SET
            agents = EXCLUDED.agents,
-           primary_brand_domain = EXCLUDED.primary_brand_domain,
            is_public = EXCLUDED.is_public,
            updated_at = NOW()`,
         [
@@ -580,9 +591,9 @@ describe('Registry reader baseline — public endpoints', () => {
           JSON.stringify([
             { url: REGISTERED_URL, name: 'Endpoint Registered', type: 'sales', visibility: 'public' },
           ]),
-          PUB_A,
         ]
       );
+      await seedBrandPrimary(ORG_ID, PUB_A);
 
       const res = await request(app).get('/api/registry/agents');
       expect(res.status).toBe(200);
@@ -628,9 +639,9 @@ describe('Registry reader baseline — public endpoints', () => {
       await pool.query(
         `INSERT INTO member_profiles (
            workos_organization_id, display_name, slug,
-           agents, primary_brand_domain, is_public,
+           agents, is_public,
            created_at, updated_at
-         ) VALUES ($1, 'Pub-on-Private Org', $2, $3::jsonb, $4, false, NOW(), NOW())
+         ) VALUES ($1, 'Pub-on-Private Org', $2, $3::jsonb, false, NOW(), NOW())
          ON CONFLICT (workos_organization_id) DO UPDATE SET
            agents = EXCLUDED.agents, is_public = EXCLUDED.is_public, updated_at = NOW()`,
         [
@@ -639,9 +650,9 @@ describe('Registry reader baseline — public endpoints', () => {
           JSON.stringify([
             { url: PRIV_AGENT, name: 'Pub On Private', type: 'buying', visibility: 'public' },
           ]),
-          PUB_A,
         ],
       );
+      await seedBrandPrimary(PRIV_ORG, PUB_A);
       try {
         const res = await request(app).get('/api/registry/agents');
         expect(res.status).toBe(200);
@@ -650,6 +661,7 @@ describe('Registry reader baseline — public endpoints', () => {
         expect(found).toBeTruthy();
         expect(found.member).toMatchObject({ slug: 'endpoint-pub-on-private-baseline' });
       } finally {
+        await pool.query(`DELETE FROM organization_domains WHERE workos_organization_id = $1`, [PRIV_ORG]);
         await pool.query(`DELETE FROM member_profiles WHERE workos_organization_id = $1`, [PRIV_ORG]);
         await pool.query(`DELETE FROM organizations WHERE workos_organization_id = $1`, [PRIV_ORG]);
       }
@@ -692,12 +704,11 @@ describe('Registry reader baseline — public endpoints', () => {
       await pool.query(
         `INSERT INTO member_profiles (
            workos_organization_id, display_name, slug,
-           agents, primary_brand_domain, is_public,
+           agents, is_public,
            created_at, updated_at
-         ) VALUES ($1, 'Endpoint Baseline Org', $2, $3::jsonb, $4, true, NOW(), NOW())
+         ) VALUES ($1, 'Endpoint Baseline Org', $2, $3::jsonb, true, NOW(), NOW())
          ON CONFLICT (workos_organization_id) DO UPDATE SET
            agents = EXCLUDED.agents,
-           primary_brand_domain = EXCLUDED.primary_brand_domain,
            is_public = EXCLUDED.is_public,
            updated_at = NOW()`,
         [
@@ -707,9 +718,9 @@ describe('Registry reader baseline — public endpoints', () => {
             { url: AGENT_X, name: 'Endpoint Sales X', type: 'sales', visibility: 'public' },
             { url: AGENT_Y, name: 'Endpoint Buyer Y', type: 'buying', visibility: 'public' },
           ]),
-          PUB_A,
         ]
       );
+      await seedBrandPrimary(ORG_ID, PUB_A);
 
       const res = await request(app).get('/api/registry/agents?properties=true');
       expect(res.status).toBe(200);
