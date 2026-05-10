@@ -130,7 +130,9 @@
 #   different topologies.)
 #
 # requires: string[] (optional — storyboard-level runtime requirement gate.
-#   Closed enum of recognized values: controller | seeded_state | real_wire.
+#   Known values: controller | seeded_state | real_wire (forward-compat:
+#   unrecognized values are NOT schema violations — runners emit
+#   requirement_unmet at runtime; see Forward compatibility below).
 #   Default when absent: [real_wire] — untagged storyboards run unchanged.
 #   minItems: 1 — runners MUST fail-load on requires: [] (empty array) because
 #   no distinct semantic exists between the empty set and omitting the field;
