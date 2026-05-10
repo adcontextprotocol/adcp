@@ -18,9 +18,7 @@ jobs:
     #   .changeset/*.md files to explain them; the changes are explained by the
     #   3.0.x branch's CHANGELOG, not by a new changeset on main. Without this skip
     #   every forward-merge PR fails this check (see #4306, #4310).
-    if: |
-      ${{ !startsWith(github.head_ref, 'changeset-release/') &&
-          !startsWith(github.head_ref, 'forward-merge/') }}
+    if: ${{ !startsWith(github.head_ref, 'changeset-release/') && !startsWith(github.head_ref, 'forward-merge/') }}
     steps:
       - uses: actions/checkout@v6
         with:
