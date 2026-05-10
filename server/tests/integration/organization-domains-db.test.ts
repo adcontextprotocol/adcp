@@ -455,6 +455,20 @@ describe('organization-domains-db (#4159 Stage 3a)', () => {
       expect(row.rowCount).toBe(0);
     });
 
+    it('non-primary row delete leaves email_domain untouched', async () => {
+      await linkDomain({ orgId: ORG_A, domain: D1, source: 'workos', verified: true, isPrimary: true });
+      await linkDomain({ orgId: ORG_A, domain: D2, source: 'manual', verified: false, isPrimary: false });
+
+      const result = await unlinkDomainAndReselectPrimary({ orgId: ORG_A, domain: D2 });
+      expect(result).toEqual({ deleted: true, wasPrimary: false, newPrimary: null });
+
+      const org = await getPool().query(
+        `SELECT email_domain FROM organizations WHERE workos_organization_id = $1`,
+        [ORG_A],
+      );
+      expect(org.rows[0].email_domain).toBe(D1);
+    });
+
     it('reselect prefers verified, falls back to unverified', async () => {
       await linkDomain({ orgId: ORG_A, domain: D1, source: 'workos', verified: true, isPrimary: true });
       await linkDomain({ orgId: ORG_A, domain: D2, source: 'manual', verified: false, isPrimary: false });
