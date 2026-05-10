@@ -9,7 +9,7 @@ import { getPool } from "../../db/client.js";
 import {
   linkDomain,
   setPrimaryDomain,
-  upsertDomainFromWorkos,
+  upsertWorkosDomain,
 } from "../../db/organization-domains-db.js";
 import { createLogger } from "../../logger.js";
 import { requireAuth, requireAdmin } from "../../middleware/auth.js";
@@ -1427,7 +1427,7 @@ export function setupDomainRoutes(
         // Insert/update local DB immediately (webhook will also do this, but
         // for immediate consistency). Admin tool already pushed this domain
         // to WorkOS above, so source='workos' reflects upstream truth.
-        await upsertDomainFromWorkos({
+        await upsertWorkosDomain({
           orgId,
           domain: normalizedDomain,
           verified: true,
@@ -1440,7 +1440,7 @@ export function setupDomainRoutes(
           await setPrimaryDomain({ orgId, domain: normalizedDomain });
         } else {
           // Preserve prior behavior: re-add with is_primary=false demotes.
-          // upsertDomainFromWorkos doesn't change is_primary on conflict
+          // upsertWorkosDomain doesn't change is_primary on conflict
           // (correct for the webhook's auto-promote path), so demote here.
           await pool.query(
             `UPDATE organization_domains SET is_primary = false, updated_at = NOW()

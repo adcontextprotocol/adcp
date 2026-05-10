@@ -22,7 +22,7 @@ import { Router, Request, Response } from 'express';
 import { createLogger } from '../logger.js';
 import { getPool } from '../db/client.js';
 import {
-  upsertDomainFromWorkos,
+  upsertWorkosDomain,
   autoPromotePrimaryIfNone,
   removeWorkosDomainAndReselectPrimary,
 } from '../db/organization-domains-db.js';
@@ -559,7 +559,7 @@ async function syncOrganizationDomains(org: OrganizationData): Promise<void> {
       // inference and only apply to non-personal orgs.
       const isPrimaryEligible = !isPersonal && i === 0;
 
-      await upsertDomainFromWorkos(
+      await upsertWorkosDomain(
         {
           orgId: org.id,
           domain: domainData.domain,
@@ -691,7 +691,7 @@ export async function upsertOrganizationDomain(domainData: OrganizationDomainEve
     // (multi-user companies sneaking onto a 1-seat individual sub) is
     // enforced at the seat-cap layer (checkSeatAvailability), not by hiding
     // the ownership claim in the data layer.
-    await upsertDomainFromWorkos(
+    await upsertWorkosDomain(
       {
         orgId: domainData.organization_id,
         domain: normalizedDomain,
