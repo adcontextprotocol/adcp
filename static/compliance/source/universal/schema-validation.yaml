@@ -333,7 +333,7 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
-          idempotency_key: "schema-validation-reversed-dates-v1"
+          idempotency_key: "$generate:uuid_v4#schema-validation-reversed-dates"
           start_time: "2026-12-31T00:00:00Z"
           end_time: "2026-01-01T00:00:00Z"
           packages:
