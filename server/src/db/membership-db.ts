@@ -146,6 +146,9 @@ export async function upsertOrganizationMembership(
  *
  * @param externalClient — when provided, the caller owns the transaction;
  *   we run only the DELETE+UPDATE on that client without BEGIN/COMMIT.
+ *   The caller MUST have already issued BEGIN on this client — otherwise
+ *   the DELETE and UPDATE run as separate auto-commit statements and the
+ *   atomic guarantee this helper exists to provide silently regresses.
  *   Lets a multi-step caller (admin transfer-member) wrap this with a
  *   sibling write in one atomic unit.
  */
