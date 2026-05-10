@@ -477,10 +477,14 @@ describe('Agent visibility E2E', () => {
       ],
     );
 
-    // Re-run migration 419 explicitly to simulate the transform on legacy rows
+    // Re-run migration 419 explicitly to simulate the transform on legacy rows.
+    // Resolve relative to this file so the path works regardless of vitest cwd
+    // (root invocation vs. server/ invocation both stable).
     const fs = await import('fs/promises');
     const path = await import('path');
-    const sqlPath = path.resolve(process.cwd(), 'server/src/db/migrations/419_agent_visibility.sql');
+    const url = await import('url');
+    const here = path.dirname(url.fileURLToPath(import.meta.url));
+    const sqlPath = path.resolve(here, '../../src/db/migrations/419_agent_visibility.sql');
     const sql = await fs.readFile(sqlPath, 'utf-8');
     await pool.query(sql);
 
