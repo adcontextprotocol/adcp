@@ -186,17 +186,39 @@ export async function createProspect(
 
     const org = result.rows[0];
 
-    // Also insert into organization_domains if domain provided
+    // Also insert into organization_domains if domain provided.
+    // DO NOTHING on conflict — `organization_domains.is_primary` is the
+    // single source of truth for brand identity (#4159 Stage 2), so a stray
+    // ON CONFLICT DO UPDATE here would silently transfer brand ownership
+    // from the original org to this prospect (#4321). The pre-check at
+    // resolveOrgByDomain above rejects known conflicts, so reaching the
+    // INSERT means we expect a clean insert; a conflict at this point is a
+    // race or alias-resolution miss — log and leave the existing row alone.
     if (normalizedDomain) {
-      await pool.query(
+      const insertResult = await pool.query<{ workos_organization_id: string }>(
         `INSERT INTO organization_domains (workos_organization_id, domain, is_primary, verified, source)
          VALUES ($1, $2, true, true, 'import')
-         ON CONFLICT (domain) DO UPDATE SET
-           workos_organization_id = EXCLUDED.workos_organization_id,
-           is_primary = true,
-           updated_at = NOW()`,
+         ON CONFLICT (domain) DO NOTHING
+         RETURNING workos_organization_id`,
         [workosOrg.id, normalizedDomain]
       );
+
+      if (insertResult.rowCount === 0) {
+        const existing = await pool.query<{ workos_organization_id: string }>(
+          `SELECT workos_organization_id FROM organization_domains WHERE domain = $1`,
+          [normalizedDomain]
+        );
+        const existingOrgId = existing.rows[0]?.workos_organization_id;
+        logger.warn(
+          {
+            domain: normalizedDomain,
+            prospectOrgId: workosOrg.id,
+            existingOrgId,
+            sameOrg: existingOrgId === workosOrg.id,
+          },
+          'Prospect domain conflict — left existing organization_domains row in place',
+        );
+      }
 
       const bgPromise = researchDomain(normalizedDomain, { org_id: workosOrg.id }).catch((err) => {
         logger.warn(
