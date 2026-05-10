@@ -46,10 +46,60 @@ const logger = createLogger('training-agent-request-signing');
 
 const TEST_REVOKED_KID = 'test-revoked-2026';
 
-/** Operations that the grader-targeted strict route declares as requiring
- *  a signed request. Kept narrow so the strict route can still run
- *  discovery / list_tools / get_products without signing. */
-export const STRICT_REQUIRED_FOR: readonly string[] = ['create_media_buy'];
+/** AdCP operations that the grader-targeted strict route declares as
+ *  requiring a signed request. Kept narrow so the strict route can still run
+ *  discovery / list_tools / get_products without signing.
+ *
+ *  Closes adcp#4314: widens beyond `create_media_buy` so a buyer that signs
+ *  the initial create but forgets the follow-on `update_media_buy` /
+ *  `sync_creatives` mutations gets a 401 instead of a silent green light. */
+export const STRICT_REQUIRED_FOR: readonly string[] = [
+  'create_media_buy',
+  'update_media_buy',
+  'sync_creatives',
+];
+
+/** JSON-RPC protocol method names the strict route requires signed.
+ *  Wire-distinct from `STRICT_REQUIRED_FOR` (AdCP tool names) per the
+ *  `request_signing.protocol_methods_*` namespace introduced in adcp#4318
+ *  — `tasks/cancel` is the A2A 0.3.0 §7.x lifecycle method, not an AdCP
+ *  operation. The MCP transport's auto-registered `tasks/*` JSON-RPC
+ *  methods route through the same authenticated channel as `tools/call`,
+ *  so the same RFC 9421 covered components apply. */
+export const STRICT_PROTOCOL_METHODS_REQUIRED_FOR: readonly string[] = ['tasks/cancel'];
+
+/**
+ * Resolve the operation string for an inbound JSON-RPC request body. Returns
+ * the AdCP tool name for `tools/call` (matching the SDK's `mcpToolNameResolver`)
+ * AND the bare JSON-RPC method name for protocol-level methods like
+ * `tasks/cancel` / `tasks/get` (which the SDK's resolver returns `undefined`
+ * for, since it only knows the MCP `tools/call` envelope).
+ *
+ * Match semantics for the verifier are by-string-equality, so a JSON-RPC
+ * method with a `/` (always wire-distinct from an AdCP tool name) and an
+ * AdCP tool name (never contains `/`) cannot collide.
+ *
+ * Returns `undefined` for missing/malformed bodies — the SDK skips the
+ * pre-check and lets the downstream handler produce a precise error.
+ */
+export function mcpOperationResolver(req: { rawBody?: string }): string | undefined {
+  const raw = req.rawBody;
+  if (!raw) return undefined;
+  let body: { method?: unknown; params?: { name?: unknown } } | null = null;
+  try {
+    body = JSON.parse(raw) as { method?: unknown; params?: { name?: unknown } };
+  } catch {
+    return undefined;
+  }
+  if (!body || typeof body.method !== 'string') return undefined;
+  if (body.method === 'tools/call') {
+    const name = body.params?.name;
+    return typeof name === 'string' ? name : undefined;
+  }
+  // JSON-RPC protocol methods (e.g. `tasks/cancel`) — return the method
+  // string itself for `protocol_methods_*` enforcement.
+  return body.method;
+}
 
 let defaultCapability: VerifierCapability | null = null;
 let strictCapability: VerifierCapability | null = null;
@@ -94,20 +144,27 @@ export function getRequestSigningCapability(): VerifierCapability {
 /**
  * Capability block for the grader-targeted `/mcp-strict` route.
  *
- * `required_for: STRICT_REQUIRED_FOR` so the conformance grader's vector 001
- * (`request_signature_required`) fires. The strict route enforces presence-
- * gated signing: invalid signatures 401 without falling through to bearer,
- * unsigned calls to required ops 401 with the `request_signature_required`
- * error code. Non-required ops still accept bearer so grader setup (list
- * tools, discovery, get_products) works without signing infrastructure.
+ * The SDK's `VerifierCapability.required_for` carries one flat list of
+ * operation strings — namespace separation between AdCP tool names and
+ * JSON-RPC protocol method names lives on the wire (in the `request_signing`
+ * response shape, not in this internal object). Verifier match semantics
+ * are by-string-equality against whatever `resolveOperation` returns, so
+ * the union is correct as long as the resolver is namespace-aware (see
+ * {@link mcpOperationResolver}).
+ *
+ * `required_for` includes both buckets so the conformance grader's vector
+ * 001 (`request_signature_required`) fires for unsigned `create_media_buy`
+ * AND unsigned `tasks/cancel`. Non-required ops still accept bearer so
+ * grader setup (list tools, discovery, get_products) works without signing
+ * infrastructure.
  */
 export function getStrictRequestSigningCapability(): VerifierCapability {
   if (!strictCapability) {
     strictCapability = {
       supported: true,
       covers_content_digest: 'either',
-      required_for: [...STRICT_REQUIRED_FOR],
-      supported_for: [...MUTATING_TOOLS],
+      required_for: [...STRICT_REQUIRED_FOR, ...STRICT_PROTOCOL_METHODS_REQUIRED_FOR],
+      supported_for: [...MUTATING_TOOLS, ...STRICT_PROTOCOL_METHODS_REQUIRED_FOR],
     };
   }
   return strictCapability;
@@ -123,8 +180,8 @@ export function getStrictRequiredRequestSigningCapability(): VerifierCapability 
     strictRequiredCapability = {
       supported: true,
       covers_content_digest: 'required',
-      required_for: [...STRICT_REQUIRED_FOR],
-      supported_for: [...MUTATING_TOOLS],
+      required_for: [...STRICT_REQUIRED_FOR, ...STRICT_PROTOCOL_METHODS_REQUIRED_FOR],
+      supported_for: [...MUTATING_TOOLS, ...STRICT_PROTOCOL_METHODS_REQUIRED_FOR],
     };
   }
   return strictRequiredCapability;
@@ -140,8 +197,8 @@ export function getStrictForbiddenRequestSigningCapability(): VerifierCapability
     strictForbiddenCapability = {
       supported: true,
       covers_content_digest: 'forbidden',
-      required_for: [...STRICT_REQUIRED_FOR],
-      supported_for: [...MUTATING_TOOLS],
+      required_for: [...STRICT_REQUIRED_FOR, ...STRICT_PROTOCOL_METHODS_REQUIRED_FOR],
+      supported_for: [...MUTATING_TOOLS, ...STRICT_PROTOCOL_METHODS_REQUIRED_FOR],
     };
   }
   return strictForbiddenCapability;
@@ -271,19 +328,7 @@ function buildAuthenticatorWithCapability(capability: VerifierCapability): Authe
       const path = expressReq.originalUrl ?? expressReq.url ?? '/';
       return `${proto}://${host}${path}`;
     },
-    resolveOperation: (req) => {
-      const raw = req.rawBody;
-      if (!raw) return undefined;
-      try {
-        const body = JSON.parse(raw) as { method?: string; params?: { name?: string } };
-        if (body.method === 'tools/call' && typeof body.params?.name === 'string') {
-          return body.params.name;
-        }
-      } catch {
-        // Non-JSON or malformed — MCP transport will reject downstream.
-      }
-      return undefined;
-    },
+    resolveOperation: mcpOperationResolver,
   });
 }
 

@@ -351,6 +351,63 @@ async function runTests() {
 
   log('');
 
+  // request_signing.protocol_methods_* — JSON-RPC method namespace (adcp#4318).
+  // The `protocol_methods_supported_for` / `_warn_for` / `_required_for` arrays
+  // carry JSON-RPC method strings (e.g. `tasks/cancel`); plain AdCP tool names
+  // (no `/`) are wire-distinct and belong in `supported_for` / `required_for`.
+  // The schema enforces the namespace split via a `pattern: "/"` constraint on
+  // the items.
+  log('Get AdCP Capabilities Response (request_signing.protocol_methods_*):', 'info');
+
+  await testSchemaValidation(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp: { ...capabilitiesBase.adcp, idempotency: { supported: true, replay_ttl_seconds: 86400 } },
+      request_signing: {
+        supported: true,
+        covers_content_digest: 'either',
+        required_for: ['create_media_buy'],
+        supported_for: ['create_media_buy', 'update_media_buy'],
+        protocol_methods_supported_for: ['tasks/cancel', 'tasks/get'],
+        protocol_methods_required_for: ['tasks/cancel'],
+      },
+    },
+    'Accepts protocol_methods_* with JSON-RPC method strings (`tasks/cancel`, `tasks/get`)'
+  );
+
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp: { ...capabilitiesBase.adcp, idempotency: { supported: true, replay_ttl_seconds: 86400 } },
+      request_signing: {
+        supported: true,
+        covers_content_digest: 'either',
+        required_for: [],
+        protocol_methods_supported_for: ['create_media_buy'],
+      },
+    },
+    'Rejects AdCP tool name (no `/`) in protocol_methods_supported_for'
+  );
+
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp: { ...capabilitiesBase.adcp, idempotency: { supported: true, replay_ttl_seconds: 86400 } },
+      request_signing: {
+        supported: true,
+        covers_content_digest: 'either',
+        required_for: [],
+        protocol_methods_required_for: ['update_media_buy'],
+      },
+    },
+    'Rejects AdCP tool name (no `/`) in protocol_methods_required_for'
+  );
+
+  log('');
+
   // Test 5: Envelope `replayed` field on mutating response roots (#2839)
   // The seller's idempotency layer injects `replayed` into the response envelope at
   // replay time. Every mutating response root must accept it — either by declaring

@@ -24,7 +24,6 @@ import {
   extractBearerToken,
   respondUnauthorized,
   requireSignatureWhenPresent,
-  mcpToolNameResolver,
   signatureErrorCodeFromCause,
   AuthError,
   type Authenticator,
@@ -43,7 +42,9 @@ import {
   buildRequestSigningAuthenticator,
   buildStrictRequestSigningAuthenticator,
   enforceSigningWhenWebhookAuthPresent,
+  mcpOperationResolver,
   STRICT_REQUIRED_FOR,
+  STRICT_PROTOCOL_METHODS_REQUIRED_FOR,
 } from './request-signing.js';
 import { isWorkOSApiKeyFormat } from '../middleware/api-key-format.js';
 import { PUBLIC_TEST_AGENT } from '../config/test-agent.js';
@@ -154,10 +155,12 @@ function buildDefaultAuthenticator(): Authenticator | null {
  * Strict-route authenticator: same presence-gated composition wrapping
  * the strict signing verifier, plus two enforcement gates:
  *
- *   - `requiredFor: STRICT_REQUIRED_FOR` + `mcpToolNameResolver` so
- *     unsigned calls to `create_media_buy` (and other required-for ops)
- *     surface `request_signature_required` (vector 001) instead of
- *     admitting bearer.
+ *   - `requiredFor: [...STRICT_REQUIRED_FOR, ...STRICT_PROTOCOL_METHODS_REQUIRED_FOR]`
+ *     + `mcpOperationResolver` so unsigned calls to required AdCP operations
+ *     (`create_media_buy`, `update_media_buy`, `sync_creatives`) AND unsigned
+ *     calls to required JSON-RPC protocol methods (`tasks/cancel`) surface
+ *     `request_signature_required` instead of admitting bearer. The resolver
+ *     handles both namespaces so the union match works on a single flat list.
  *   - `enforceSigningWhenWebhookAuthPresent` wrapper so an unsigned
  *     webhook-registration carrying `push_notification_config.authentication`
  *     fires the same `request_signature_required` error (vector 027).
@@ -174,8 +177,8 @@ function buildStrictAuthenticator(): Authenticator | null {
     lazyStrictSigningAuth(),
     bearerAuth,
     {
-      requiredFor: [...STRICT_REQUIRED_FOR],
-      resolveOperation: mcpToolNameResolver,
+      requiredFor: [...STRICT_REQUIRED_FOR, ...STRICT_PROTOCOL_METHODS_REQUIRED_FOR],
+      resolveOperation: mcpOperationResolver,
     },
   );
   return enforceSigningWhenWebhookAuthPresent(presenceGated);
@@ -368,14 +371,17 @@ export function createTrainingAgentRouter(): Router {
   // conformance grader target for the `signed_requests` storyboard.
   // Same v5 monolith handler as the legacy `/mcp` mount, but stamped
   // with `ctx.strict = true` so `get_adcp_capabilities` advertises
-  // `request_signing.required_for: STRICT_REQUIRED_FOR` and the
-  // verifier rejects unsigned mutating calls with
-  // `request_signature_required` (vector 001). One handler shared
-  // across all tenants — request-signing is a transport-layer property,
-  // not specialism-specific, so the strict route doesn't need v6
-  // platform dispatch. The default `/<tenant>/mcp` continues to serve
-  // the v6 framework with sandbox signing (presence-gated, no
-  // required_for enforcement).
+  // `request_signing.required_for: STRICT_REQUIRED_FOR` and
+  // `request_signing.protocol_methods_required_for:
+  // STRICT_PROTOCOL_METHODS_REQUIRED_FOR`, and the verifier rejects
+  // unsigned mutating AdCP calls AND unsigned JSON-RPC protocol-method
+  // calls (e.g. `tasks/cancel`) with `request_signature_required`
+  // (vector 001). One handler shared across all tenants —
+  // request-signing is a transport-layer property, not
+  // specialism-specific, so the strict route doesn't need v6 platform
+  // dispatch. The default `/<tenant>/mcp` continues to serve the v6
+  // framework with sandbox signing (presence-gated, no required_for
+  // enforcement).
   async function strictMcpHandler(req: Request, res: Response): Promise<void> {
     setLegacyCORS(res);
     let server: ReturnType<typeof createTrainingAgentServer> | null = null;
