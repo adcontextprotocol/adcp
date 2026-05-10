@@ -38,7 +38,7 @@ import { OrganizationDatabase, getUserSeatType, buildSubscriptionUpdate, TIER_PR
 import { MemberDatabase } from "./db/member-db.js";
 import { ensureMemberProfilePublished } from "./services/member-profile-autopublish.js";
 import { getBrandPrimaryDomain, getBrandPrimaryDomainsForOrgs } from "./services/brand-domain-resolver.js";
-import { getGitHubConnectedAccount, getGitHubAuthorizeUrl, disconnectGitHub, buildPipesReturnTo } from "./services/pipes.js";
+import { getGitHubConnectedAccount, resolveGitHubConnectUrl, disconnectGitHub, buildPipesReturnTo } from "./services/pipes.js";
 import { BrandDatabase, resolveBrandFromJson } from "./db/brand-db.js";
 import { CatalogEventsDatabase } from "./db/catalog-events-db.js";
 import { AgentInventoryProfilesDatabase } from "./db/agent-inventory-profiles-db.js";
@@ -7447,8 +7447,8 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
     this.app.post('/api/me/connected-accounts/github/authorize', requireAuth, async (req, res) => {
       try {
         const returnTo = buildPipesReturnTo(req.get('host') || '', req.protocol, req.body?.return_to);
-        const url = await getGitHubAuthorizeUrl(req.user!.id, returnTo);
-        res.json({ url });
+        const result = await resolveGitHubConnectUrl(req.user!.id, returnTo);
+        res.json({ url: result.url, already_connected: result.status === 'already_connected' });
       } catch (error) {
         logger.error({ err: error }, 'Failed to mint GitHub authorize URL');
         res.status(502).json({ error: 'Failed to start GitHub connection' });
@@ -7478,8 +7478,8 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
       const requestedReturnTo = typeof req.query.return_to === 'string' ? req.query.return_to : null;
       try {
         const returnTo = buildPipesReturnTo(reqHost, reqProto, req.query.return_to);
-        const url = await getGitHubAuthorizeUrl(req.user!.id, returnTo);
-        return res.redirect(302, url);
+        const result = await resolveGitHubConnectUrl(req.user!.id, returnTo);
+        return res.redirect(302, result.url);
       } catch (error) {
         logger.error(
           {
