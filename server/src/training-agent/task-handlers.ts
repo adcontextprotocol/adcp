@@ -2948,6 +2948,24 @@ export async function handleGetAdcpCapabilities(_args: ToolArgs, ctx: TrainingCo
   const channels = [...new Set(PUBLISHERS.flatMap(p => p.channels))].sort();
   const publisherDomains = PUBLISHERS.map(p => p.domain);
   const signingCap = selectSigningCapability(ctx);
+  // Wire shape splits the SDK's flat `required_for` / `supported_for` lists
+  // back into the two namespaces defined in the spec (adcp#4318):
+  //   - `required_for` / `supported_for`: AdCP tool names (no `/`)
+  //   - `protocol_methods_*`: JSON-RPC method names (e.g. `tasks/cancel`)
+  // The internal verifier capability merges both for by-string matching;
+  // the wire response separates them so verifiers and storyboard runners
+  // don't conflate the two namespaces.
+  //
+  // The `/` test is the structural inverse of the schema's
+  // `pattern: "^[a-z][a-z0-9_]*/[a-z][a-z0-9_]*$"` constraint on
+  // `protocol_methods_*` items in `static/schemas/source/protocol/get-adcp-capabilities-response.json`.
+  // AdCP tool names are snake_case and have never contained `/`; this filter
+  // is correct as long as that invariant holds.
+  const isProtocolMethod = (op: string): boolean => op.includes('/');
+  const requiredFor = signingCap.required_for.filter(op => !isProtocolMethod(op));
+  const supportedFor = signingCap.supported_for?.filter(op => !isProtocolMethod(op));
+  const protocolMethodsRequiredFor = signingCap.required_for.filter(isProtocolMethod);
+  const protocolMethodsSupportedFor = signingCap.supported_for?.filter(isProtocolMethod) ?? [];
   return {
     adcp: {
       major_versions: [...SUPPORTED_MAJOR_VERSIONS],
@@ -2958,8 +2976,10 @@ export async function handleGetAdcpCapabilities(_args: ToolArgs, ctx: TrainingCo
     request_signing: {
       supported: signingCap.supported,
       covers_content_digest: signingCap.covers_content_digest,
-      required_for: signingCap.required_for,
-      ...(signingCap.supported_for && { supported_for: signingCap.supported_for }),
+      required_for: requiredFor,
+      ...(supportedFor && { supported_for: supportedFor }),
+      ...(protocolMethodsRequiredFor.length > 0 && { protocol_methods_required_for: protocolMethodsRequiredFor }),
+      ...(protocolMethodsSupportedFor.length > 0 && { protocol_methods_supported_for: protocolMethodsSupportedFor }),
     },
     protocol_version: '3.0',
     tasks,
