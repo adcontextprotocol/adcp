@@ -2642,14 +2642,15 @@
       }
 
       if (photoUrl) {
+        let parsed;
         try {
-          const parsed = new URL(photoUrl);
-          if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
-            setPreviewMessage('Only http/https URLs allowed', 'var(--color-error-500)', '11px');
-            return;
-          }
+          parsed = new URL(photoUrl);
         } catch {
           setPreviewMessage('Invalid URL', 'var(--color-error-500)', '11px');
+          return;
+        }
+        if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+          setPreviewMessage('Only http/https URLs allowed', 'var(--color-error-500)', '11px');
           return;
         }
         const img = document.createElement('img');
@@ -2688,40 +2689,76 @@
       const file = input.files[0];
       if (!file) return;
 
-      // Check file size (max 2MB)
+      const previewEl = document.getElementById('photo-preview');
+      const setPreviewMsg = (msg, color) => {
+        if (!previewEl) return;
+        previewEl.textContent = msg;
+        previewEl.style.color = color || '';
+        previewEl.style.fontSize = '11px';
+      };
+
       if (file.size > 2 * 1024 * 1024) {
-        alert('File too large. Maximum size is 2MB.');
+        setPreviewMsg('File too large (max 2MB)', 'var(--color-error-500)');
         input.value = '';
         return;
       }
 
-      // Check file type
       if (!file.type.startsWith('image/')) {
-        alert('Please select an image file.');
+        setPreviewMsg('Please select an image file', 'var(--color-error-500)');
         input.value = '';
         return;
       }
 
-      // Update filename display
-      const filenameEl = document.getElementById(filenameId);
-      filenameEl.textContent = file.name;
-      filenameEl.classList.add('has-file');
+      const brandDomain = currentProfile?.primary_brand_domain;
+      if (!brandDomain) {
+        setPreviewMsg('Set your brand domain first, then upload', 'var(--color-error-500)');
+        input.value = '';
+        return;
+      }
 
-      // Show clear button
-      const clearBtn = document.getElementById(targetFieldId.replace('_url', '_clear'));
-      if (clearBtn) clearBtn.style.display = 'block';
+      setPreviewMsg('Uploading…', 'var(--color-text-muted)');
 
-      // Convert to data URL
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        document.getElementById(targetFieldId).value = e.target.result;
+      try {
+        const fd = new FormData();
+        fd.append('file', file);
+        fd.append('tags', 'primary');
+        const resp = await fetch(`/api/brands/${encodeURIComponent(brandDomain)}/logos`, {
+          method: 'POST',
+          body: fd,
+          credentials: 'include',
+        });
+
+        if (!resp.ok) {
+          let msg = `Upload failed (${resp.status})`;
+          try {
+            const errData = await resp.json();
+            if (errData?.error) msg = errData.error;
+          } catch { /* non-JSON response */ }
+          setPreviewMsg(msg, 'var(--color-error-500)');
+          input.value = '';
+          return;
+        }
+
+        const data = await resp.json();
+        const hostedUrl = new URL(data.url, window.location.origin).href;
+
+        document.getElementById(targetFieldId).value = hostedUrl;
+
+        const filenameEl = document.getElementById(filenameId);
+        filenameEl.textContent = file.name;
+        filenameEl.classList.add('has-file');
+
+        const clearBtn = document.getElementById(targetFieldId.replace('_url', '_clear'));
+        if (clearBtn) clearBtn.style.display = 'block';
+
         updatePhotoPreview();
         updateMemberCardPreview();
-      };
-      reader.readAsDataURL(file);
-
-      // Clear file input for potential re-upload
-      input.value = '';
+      } catch (err) {
+        console.error('Photo upload failed', err);
+        setPreviewMsg('Upload failed — check connection', 'var(--color-error-500)');
+      } finally {
+        input.value = '';
+      }
     }
 
     function clearLogo(fieldId, filenameId) {
@@ -2818,6 +2855,13 @@
         formData.slug = document.getElementById('slug').value;
       }
 
+      // Photo URL is persisted via the brand-identity endpoint (logo_url on the
+      // brand row), not the profile PUT. Capture the desired and current values
+      // here so we can fire a follow-up update after the main save succeeds.
+      const desiredPhotoUrl = (document.getElementById('photo_url')?.value || '').trim();
+      const originalPhotoUrl = currentProfile?.resolved_brand?.logo_url || '';
+      const photoChanged = desiredPhotoUrl !== originalPhotoUrl;
+
       try {
         const method = isNewProfile ? 'POST' : 'PUT';
         const response = await fetch(buildApiUrl('/api/me/member-profile'), {
@@ -2847,6 +2891,39 @@
         const wasNewProfile = isNewProfile;
         isNewProfile = false;
 
+        // If the photo changed, persist it as the primary brand logo. The main
+        // profile PUT doesn't accept logo_url; brand-identity does. Surface
+        // failure as a warning rather than blocking the success path.
+        let photoSyncWarning = null;
+        if (!wasNewProfile && photoChanged) {
+          try {
+            const photoResp = await fetch(buildApiUrl('/api/me/member-profile/brand-identity'), {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ logo_url: desiredPhotoUrl || null }),
+              credentials: 'include',
+            });
+            if (photoResp.ok) {
+              const photoData = await photoResp.json();
+              currentResolvedBrand = photoData.brand || null;
+              if (currentProfile) {
+                currentProfile.resolved_brand = photoData.brand;
+                currentProfile.primary_brand_domain = photoData.brand_domain;
+              }
+            } else {
+              let errMsg = `Photo could not be saved (${photoResp.status})`;
+              try {
+                const errData = await photoResp.json();
+                if (errData?.message) errMsg = `Photo not saved: ${errData.message}`;
+              } catch { /* non-JSON */ }
+              photoSyncWarning = errMsg;
+            }
+          } catch (err) {
+            console.error('Photo sync failed', err);
+            photoSyncWarning = 'Photo not saved — connection error.';
+          }
+        }
+
         // Server may have coerced visibility settings the caller isn't
         // eligible for (e.g. public → members_only on a non-API-access
         // tier). Surface those warnings so the user knows we didn't
@@ -2870,11 +2947,14 @@
           const detail = agents.length
             ? ` Affected agents: ${agents.join(', ')}.`
             : '';
+          const photoSuffix = photoSyncWarning ? ` ${photoSyncWarning}` : '';
           showError(
             `Saved, but ${downgrades.length} agent${downgrades.length > 1 ? 's' : ''} could not be listed publicly — ` +
             `public listing requires Professional tier or higher, so they were stored as members_only instead.${detail} ` +
-            `Upgrade at /membership to publish publicly.`
+            `Upgrade at /membership to publish publicly.${photoSuffix}`
           );
+        } else if (photoSyncWarning) {
+          showError(`Profile saved, but ${photoSyncWarning}`);
         } else {
           showSuccess('Profile saved successfully!');
         }
