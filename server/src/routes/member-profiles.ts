@@ -20,6 +20,7 @@ import { BrandDatabase, resolveBrandFromJson } from "../db/brand-db.js";
 import { BrandManager } from "../brand-manager.js";
 import { OrganizationDatabase, hasApiAccess, readMembershipTierFromClient, resolveMembershipTier, VALID_REVENUE_TIERS, VALID_MEMBERSHIP_TIERS } from "../db/organization-db.js";
 import { OrgKnowledgeDatabase } from "../db/org-knowledge-db.js";
+import { linkDomain } from "../db/organization-domains-db.js";
 import { autoLinkByVerifiedDomain } from "../db/membership-db.js";
 import { resolvePrimaryOrganization } from "../db/users-db.js";
 import { AAO_HOST } from "../config/aao.js";
@@ -501,27 +502,16 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       // on this org and no domain link — half-broken state, no signal.
       // We still create the profile so programmatic callers aren't blocked
       // on an admin-resolvable issue.
-      const pool = getPool();
       let domainConflictOrgId: string | null = null;
       try {
-        const existingDomain = await pool.query<{ workos_organization_id: string }>(
-          `SELECT workos_organization_id FROM organization_domains WHERE LOWER(domain) = LOWER($1)`,
-          [corporateDomain],
-        );
-        if (existingDomain.rows.length === 0) {
-          await pool.query(
-            `INSERT INTO organization_domains (workos_organization_id, domain, is_primary, verified, source)
-             VALUES ($1, $2, true, true, 'email_verification')
-             ON CONFLICT (domain) DO NOTHING`,
-            [targetOrgId, corporateDomain],
-          );
-        } else if (existingDomain.rows[0].workos_organization_id !== targetOrgId) {
-          domainConflictOrgId = existingDomain.rows[0].workos_organization_id;
-          logger.warn(
-            { orgId: targetOrgId, conflictOrgId: domainConflictOrgId, domain: corporateDomain },
-            'Bootstrap: corporate_domain already linked to a different org; profile created without domain link',
-          );
-        }
+        const result = await linkDomain({
+          orgId: targetOrgId,
+          domain: corporateDomain,
+          source: 'email_verification',
+          verified: true,
+          isPrimary: true,
+        });
+        domainConflictOrgId = result.conflictOrgId;
       } catch (err) {
         logger.warn({ err, orgId: targetOrgId, domain: corporateDomain }, 'Failed to write organization_domains during bootstrap');
       }

@@ -38,6 +38,7 @@ import { AddieDatabase } from '../db/addie-db.js';
 import { SlackDatabase } from '../db/slack-db.js';
 import { EmailPreferencesDatabase } from '../db/email-preferences-db.js';
 import { getPool } from '../db/client.js';
+import { linkDomain } from '../db/organization-domains-db.js';
 import {
   isKnowledgeReady,
   createKnowledgeToolHandlers,
@@ -2708,13 +2709,13 @@ async function handleAliasConfirm({ ack, body, client }: any): Promise<void> {
       return;
     }
 
-    // Add domain to organization_domains
-    await pool.query(
-      `INSERT INTO organization_domains (workos_organization_id, domain)
-       VALUES ($1, $2)
-       ON CONFLICT DO NOTHING`,
-      [orgId, domain]
-    );
+    await linkDomain({
+      orgId,
+      domain,
+      source: 'manual',
+      verified: false,
+      isPrimary: false,
+    });
     const orgRow = orgResult.rows[0];
 
     if (orgRow?.email_domain) {

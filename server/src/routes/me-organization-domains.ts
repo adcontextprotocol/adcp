@@ -22,6 +22,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { resolvePrimaryOrganization } from '../db/users-db.js';
 import { resolveUserOrgMembership } from '../utils/resolve-user-org-membership.js';
 import { getPool } from '../db/client.js';
+import { setPrimaryDomain } from '../db/organization-domains-db.js';
 import {
   assertClaimableBrandDomain,
   canonicalizeBrandDomain,
@@ -147,101 +148,53 @@ export function createMeOrganizationDomainsRouter(
         return res.status(400).json({ error: 'invalid_domain' });
       }
 
-      const pool = getPool();
-      const client = await pool.connect();
+      // Member self-service: only WorkOS-verified rows are eligible. After
+      // Stage 2 of #4159, is_primary drives BOTH org-membership inference
+      // AND brand identity, so we hold the bar at WorkOS DNS proof.
+      // Admin-imported / manual rows aren't DNS-proof-of-control claims and
+      // pending rows are pre-verification — the source allowlist below is
+      // the security gate.
+      const result = await setPrimaryDomain({
+        orgId,
+        domain: normalizedDomain,
+        requireSource: ['workos'],
+      });
 
-      try {
-        await client.query('BEGIN');
-
-        // Lock the org row to serialize against the WorkOS webhook
-        // (`upsertOrganizationDomain`), which takes the same row lock when it
-        // promotes a newly-verified domain to is_primary. Without this, our
-        // three writes can interleave with the webhook's two writes and end
-        // up with `organizations.email_domain` reflecting whichever
-        // transaction committed last.
-        await client.query(
-          'SELECT 1 FROM organizations WHERE workos_organization_id = $1 FOR UPDATE',
-          [orgId],
-        );
-
-        // Verify the domain belongs to this org and is a WorkOS-verified row.
-        // After Stage 2 of #4159, is_primary drives BOTH org-membership
-        // inference AND brand identity, so we hold the bar at WorkOS DNS
-        // proof: pending rows are pre-verification (would grant SSO claim
-        // before WorkOS confirms control) and admin-imported / manual rows
-        // aren't DNS-proof-of-control claims (would let an admin-imported
-        // verified=true row escalate to brand identity via member self-service).
-        const domainRow = await client.query<{ verified: boolean; source: string }>(
-          `SELECT verified, source FROM organization_domains
-            WHERE workos_organization_id = $1 AND domain = $2`,
-          [orgId, normalizedDomain],
-        );
-        if (domainRow.rowCount === 0) {
-          await client.query('ROLLBACK');
+      if (!result.ok) {
+        if (result.reason === 'not_found') {
           return res.status(404).json({ error: 'Domain not found for this organization' });
         }
-        if (!domainRow.rows[0].verified) {
-          await client.query('ROLLBACK');
+        if (result.reason === 'not_verified') {
           return res.status(400).json({
             error: 'domain_not_verified',
             message: 'The domain must be verified before it can be set as primary',
           });
         }
-        if (domainRow.rows[0].source !== 'workos') {
-          await client.query('ROLLBACK');
-          return res.status(400).json({
-            error: 'domain_not_workos_verified',
-            message: 'Only domains verified through WorkOS DNS challenge can be set as primary',
-          });
-        }
-
-        // Clear existing primary, set new primary, and update the
-        // denormalized organizations.email_domain in one transaction.
-        await client.query(
-          `UPDATE organization_domains SET is_primary = false, updated_at = NOW()
-            WHERE workos_organization_id = $1 AND is_primary = true`,
-          [orgId],
-        );
-        await client.query(
-          `UPDATE organization_domains SET is_primary = true, updated_at = NOW()
-            WHERE workos_organization_id = $1 AND domain = $2`,
-          [orgId, normalizedDomain],
-        );
-        await client.query(
-          `UPDATE organizations SET email_domain = $1, updated_at = NOW()
-            WHERE workos_organization_id = $2`,
-          [normalizedDomain, orgId],
-        );
-
-        await client.query('COMMIT');
-
-        // Brand-identity primary now mirrors org-membership-inference primary
-        // via the same row, so any member-context cache that depended on
-        // brand-primary still needs invalidation when the row flips.
-        invalidateMemberContextCache();
-
-        logger.info(
-          {
-            orgId,
-            domain: normalizedDomain,
-            actor: req.user!.id,
-            via_dev_bypass: membership.via_dev_bypass,
-          },
-          'Set primary domain via member self-service',
-        );
-
-        return res.json({
-          success: true,
-          primary_domain: normalizedDomain,
+        return res.status(400).json({
+          error: 'domain_not_workos_verified',
+          message: 'Only domains verified through WorkOS DNS challenge can be set as primary',
         });
-      } catch (err) {
-        await client.query('ROLLBACK').catch((rbErr) => {
-          logger.error({ rbErr, orgId }, 'ROLLBACK failed in PUT primary');
-        });
-        throw err;
-      } finally {
-        client.release();
       }
+
+      // Brand-identity primary now mirrors org-membership-inference primary
+      // via the same row, so any member-context cache that depended on
+      // brand-primary still needs invalidation when the row flips.
+      invalidateMemberContextCache();
+
+      logger.info(
+        {
+          orgId,
+          domain: normalizedDomain,
+          actor: req.user!.id,
+          via_dev_bypass: membership.via_dev_bypass,
+        },
+        'Set primary domain via member self-service',
+      );
+
+      return res.json({
+        success: true,
+        primary_domain: normalizedDomain,
+      });
     } catch (err) {
       logger.error({ err }, 'PUT /api/me/organization/domains/:domain/primary failed');
       return res.status(500).json({ error: 'Failed to set primary domain' });
