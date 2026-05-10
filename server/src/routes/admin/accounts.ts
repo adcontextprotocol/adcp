@@ -17,6 +17,7 @@ import { requireAuth, requireAdmin } from "../../middleware/auth.js";
 import { serveHtmlWithConfig } from "../../utils/html-config.js";
 import { OrganizationDatabase, VALID_REVENUE_TIERS } from "../../db/organization-db.js";
 import { deleteOrganizationMembership } from "../../db/membership-db.js";
+import { invalidateMembershipCache } from "../../db/org-filters.js";
 import {
   getPendingInvoices,
   getProductsForCustomer,
@@ -2194,34 +2195,50 @@ export function setupAccountRoutes(
               );
             }
 
-            // Update local cache - remove from source and add to target.
-            // Use the membership-db helper so users.primary_organization_id
-            // gets cleared in the same transaction when it pointed at the
-            // source org — otherwise the user is left pointing at an org
-            // they're no longer a member of, which read sites trust as the
-            // caller's authorization scope. The next read self-heals to the
-            // target org via resolvePrimaryOrganization.
-            await deleteOrganizationMembership(member.workos_user_id, sourceOrgId);
-
-            // Insert into target org cache
-            await pool.query(
-              `INSERT INTO organization_memberships
-               (workos_user_id, workos_organization_id, workos_membership_id, email, first_name, last_name, role, synced_at)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
-               ON CONFLICT (workos_user_id, workos_organization_id) DO UPDATE SET
-               workos_membership_id = EXCLUDED.workos_membership_id,
-               role = EXCLUDED.role,
-               synced_at = NOW()`,
-              [
+            // Update local cache atomically — the source DELETE (with its
+            // primary_organization_id pointer-clear) and the target INSERT
+            // commit together so an HTTP request landing mid-transfer can
+            // never see "neither membership exists for this user." Without
+            // the wrap, the deleteOrganizationMembership self-commit briefly
+            // exposes a no-membership window before the target INSERT lands.
+            const txClient = await pool.connect();
+            try {
+              await txClient.query('BEGIN');
+              await deleteOrganizationMembership(
                 member.workos_user_id,
-                targetOrgId,
-                newMembership.id,
-                member.email,
-                member.first_name,
-                member.last_name,
-                member.role || 'member',
-              ]
-            );
+                sourceOrgId,
+                txClient,
+              );
+              await txClient.query(
+                `INSERT INTO organization_memberships
+                 (workos_user_id, workos_organization_id, workos_membership_id, email, first_name, last_name, role, synced_at)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+                 ON CONFLICT (workos_user_id, workos_organization_id) DO UPDATE SET
+                 workos_membership_id = EXCLUDED.workos_membership_id,
+                 role = EXCLUDED.role,
+                 synced_at = NOW()`,
+                [
+                  member.workos_user_id,
+                  targetOrgId,
+                  newMembership.id,
+                  member.email,
+                  member.first_name,
+                  member.last_name,
+                  member.role || 'member',
+                ]
+              );
+              await txClient.query('COMMIT');
+            } catch (txErr) {
+              await txClient.query('ROLLBACK').catch(() => {});
+              throw txErr;
+            } finally {
+              txClient.release();
+            }
+
+            // Drop both orgs' membership caches so the next read sees the
+            // post-transfer state instead of the pre-transfer snapshot.
+            invalidateMembershipCache(sourceOrgId);
+            invalidateMembershipCache(targetOrgId);
 
             results.push({
               user_id: member.workos_user_id,
