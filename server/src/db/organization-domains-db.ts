@@ -87,6 +87,12 @@ export interface SetPrimaryDomainArgs {
   orgId: string;
   domain: string;
   requireSource?: ReadonlyArray<DomainSource>;
+  /**
+   * Whether to require the target row's `verified=true`. Default true (the
+   * member self-service guard). Admin tools that resolve messes — e.g.
+   * promoting a hand-imported row before WorkOS confirms — can opt out.
+   */
+  requireVerified?: boolean;
 }
 
 export type SetPrimaryDomainResult =
@@ -100,7 +106,7 @@ export type SetPrimaryDomainResult =
 export async function setPrimaryDomain(
   args: SetPrimaryDomainArgs,
 ): Promise<SetPrimaryDomainResult> {
-  const { orgId, domain, requireSource } = args;
+  const { orgId, domain, requireSource, requireVerified = true } = args;
   const pool = getPool();
   const client = await pool.connect();
 
@@ -121,7 +127,7 @@ export async function setPrimaryDomain(
       await client.query('ROLLBACK');
       return { ok: false, reason: 'not_found' };
     }
-    if (!domainRow.rows[0].verified) {
+    if (requireVerified && !domainRow.rows[0].verified) {
       await client.query('ROLLBACK');
       return { ok: false, reason: 'not_verified' };
     }
