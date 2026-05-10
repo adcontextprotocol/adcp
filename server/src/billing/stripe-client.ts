@@ -2,6 +2,7 @@ import Stripe from 'stripe';
 import { createLogger } from '../logger.js';
 import { notifySystemError } from '../addie/error-notifier.js';
 import { getPool } from '../db/client.js';
+import { isStripeNotFound } from '../audit/integrity/stripe-helpers.js';
 
 const logger = createLogger('stripe-client');
 
@@ -603,7 +604,11 @@ export async function createCustomerPortalSession(
 }
 
 /**
- * Create a customer session for the Stripe Pricing Table
+ * Create a customer session for the Stripe Pricing Table.
+ *
+ * Re-throws `resource_missing` (deleted/non-existent customer) so the caller
+ * can recover by unlinking and recreating. Other errors are logged and return
+ * null — the global logger.error hook posts those to the error channel.
  */
 export async function createCustomerSession(
   stripeCustomerId: string
@@ -625,6 +630,9 @@ export async function createCustomerSession(
 
     return session.client_secret;
   } catch (error) {
+    if (isStripeNotFound(error)) {
+      throw error;
+    }
     logger.error({ err: error }, 'Error creating customer session');
     return null;
   }
@@ -1849,6 +1857,9 @@ export async function getPendingInvoices(customerId: string): Promise<PendingInv
     logger.debug({ customerId, count: pendingInvoices.length }, 'Fetched pending invoices');
     return pendingInvoices;
   } catch (error) {
+    if (isStripeNotFound(error)) {
+      throw error;
+    }
     logger.error({ err: error, customerId }, 'Error fetching pending invoices');
     return [];
   }

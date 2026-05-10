@@ -468,6 +468,45 @@ describe('stripe-client', () => {
         },
       });
     });
+
+    test('re-throws resource_missing so callers can recover from a stale ID', async () => {
+      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+
+      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
+      const notFound = Object.assign(new Error('No such customer'), {
+        code: 'resource_missing',
+        statusCode: 404,
+      });
+      const mockStripeInstance = {
+        customerSessions: {
+          create: vi.fn<any>().mockRejectedValue(notFound),
+        },
+      };
+      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+
+      const { createCustomerSession } = await import('../../server/src/billing/stripe-client.js');
+
+      await expect(createCustomerSession('cus_stale')).rejects.toMatchObject({
+        code: 'resource_missing',
+      });
+    });
+
+    test('returns null and swallows other Stripe errors', async () => {
+      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+
+      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
+      const mockStripeInstance = {
+        customerSessions: {
+          create: vi.fn<any>().mockRejectedValue(new Error('boom')),
+        },
+      };
+      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+
+      const { createCustomerSession } = await import('../../server/src/billing/stripe-client.js');
+
+      const result = await createCustomerSession('cus_123');
+      expect(result).toBeNull();
+    });
   });
 
   describe('createAndSendInvoice', () => {
