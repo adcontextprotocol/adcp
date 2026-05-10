@@ -987,7 +987,7 @@
           "description": "JSON-RPC protocol method names (e.g., 'tasks/cancel', 'tasks/get') for which this agent verifies signatures when present. Disjoint from `supported_for`, which carries AdCP tool names only. Counterparties SHOULD sign listed methods. The `tasks/*` family enumerated here matches the A2A 0.3.0 task-lifecycle methods (§7.x); future protocol additions extend this list, not `supported_for`. Items MUST be wire-format JSON-RPC method strings (containing `/`); plain AdCP tool names belong in `supported_for`.",
           "items": {
             "type": "string",
-            "pattern": "/"
+            "pattern": "^[a-z][a-z0-9_]*/[a-z][a-z0-9_]*$"
           },
           "default": [],
           "x-adcp-validation": {
@@ -999,7 +999,7 @@
           "description": "Protocol method names for which this agent verifies signatures when present and logs failures but does NOT reject. Shadow-mode bridge between `protocol_methods_supported_for` and `protocol_methods_required_for`, mirroring `warn_for` semantics in the AdCP-tool namespace. An item MUST NOT appear in both `protocol_methods_warn_for` and `protocol_methods_required_for`; see `x-adcp-validation`.",
           "items": {
             "type": "string",
-            "pattern": "/"
+            "pattern": "^[a-z][a-z0-9_]*/[a-z][a-z0-9_]*$"
           },
           "default": [],
           "x-adcp-validation": {
@@ -1013,7 +1013,7 @@
           "description": "JSON-RPC protocol method names for which this agent rejects unsigned requests with `request_signature_required`. Separate namespace from `required_for` (which carries AdCP tool names) so verifiers and storyboard runners don't conflate the two — an AdCP tool name and an A2A method name could in principle collide as bare strings, but the protocol_methods_* bucket binds the match against the JSON-RPC `method` field, not the `tools/call` `params.name`. Every method listed MUST also appear in `protocol_methods_supported_for`; see `x-adcp-validation`.",
           "items": {
             "type": "string",
-            "pattern": "/"
+            "pattern": "^[a-z][a-z0-9_]*/[a-z][a-z0-9_]*$"
           },
           "default": [],
           "x-adcp-validation": {

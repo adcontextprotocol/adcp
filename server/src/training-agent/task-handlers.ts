@@ -2955,6 +2955,12 @@ export async function handleGetAdcpCapabilities(_args: ToolArgs, ctx: TrainingCo
   // The internal verifier capability merges both for by-string matching;
   // the wire response separates them so verifiers and storyboard runners
   // don't conflate the two namespaces.
+  //
+  // The `/` test is the structural inverse of the schema's
+  // `pattern: "^[a-z][a-z0-9_]*/[a-z][a-z0-9_]*$"` constraint on
+  // `protocol_methods_*` items in `static/schemas/source/protocol/get-adcp-capabilities-response.json`.
+  // AdCP tool names are snake_case and have never contained `/`; this filter
+  // is correct as long as that invariant holds.
   const isProtocolMethod = (op: string): boolean => op.includes('/');
   const requiredFor = signingCap.required_for.filter(op => !isProtocolMethod(op));
   const supportedFor = signingCap.supported_for?.filter(op => !isProtocolMethod(op));

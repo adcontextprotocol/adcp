@@ -75,9 +75,14 @@ export const STRICT_PROTOCOL_METHODS_REQUIRED_FOR: readonly string[] = ['tasks/c
  * `tasks/cancel` / `tasks/get` (which the SDK's resolver returns `undefined`
  * for, since it only knows the MCP `tools/call` envelope).
  *
- * Match semantics for the verifier are by-string-equality, so a JSON-RPC
- * method with a `/` (always wire-distinct from an AdCP tool name) and an
- * AdCP tool name (never contains `/`) cannot collide.
+ * Implements the "MUST NOT cross-namespace match" rule from
+ * docs/building/by-layer/L1/security.mdx: AdCP tool names live in the
+ * `tools/call` `params.name` slot and never contain `/`; JSON-RPC protocol
+ * methods live in the `method` slot and always contain `/`. The resolver
+ * returns `undefined` for any body whose namespace doesn't match its slot
+ * (e.g., a `tools/call` envelope with `params.name: "tasks/cancel"`), so
+ * `required_for` matching cannot be tricked across namespaces by a body
+ * that smuggles a wrong-namespace string into the wrong slot.
  *
  * Returns `undefined` for missing/malformed bodies — the SDK skips the
  * pre-check and lets the downstream handler produce a precise error.
@@ -94,11 +99,20 @@ export function mcpOperationResolver(req: { rawBody?: string }): string | undefi
   if (!body || typeof body.method !== 'string') return undefined;
   if (body.method === 'tools/call') {
     const name = body.params?.name;
-    return typeof name === 'string' ? name : undefined;
+    if (typeof name !== 'string') return undefined;
+    // Cross-namespace match prevention: AdCP tool names never contain `/`.
+    // A `tools/call` body whose params.name contains `/` is either malformed
+    // or smuggling a JSON-RPC method string into the AdCP slot — refuse to
+    // resolve so the verifier doesn't accidentally satisfy a
+    // `protocol_methods_required_for` match through the wrong envelope.
+    if (name.includes('/')) return undefined;
+    return name;
   }
-  // JSON-RPC protocol methods (e.g. `tasks/cancel`) — return the method
-  // string itself for `protocol_methods_*` enforcement.
-  return body.method;
+  // JSON-RPC protocol methods (e.g. `tasks/cancel`). Defense-in-depth: only
+  // return when the method string is shaped like a JSON-RPC method (contains
+  // `/`); a non-`tools/call` method without `/` is not in our protocol-method
+  // namespace and must not satisfy a `required_for` match.
+  return body.method.includes('/') ? body.method : undefined;
 }
 
 let defaultCapability: VerifierCapability | null = null;

@@ -4873,6 +4873,38 @@ describe('mcpOperationResolver', () => {
     });
     expect(mcpOperationResolver({ rawBody })).toBeUndefined();
   });
+
+  it('returns undefined for tools/call with missing params', async () => {
+    const { mcpOperationResolver } = await import('../../src/training-agent/request-signing.js');
+    const rawBody = JSON.stringify({ jsonrpc: '2.0', method: 'tools/call', id: 1 });
+    expect(mcpOperationResolver({ rawBody })).toBeUndefined();
+  });
+
+  // Cross-namespace match prevention (security.mdx: "Verifiers MUST NOT
+  // cross-namespace match"). A tools/call body with params.name="tasks/cancel"
+  // smuggles a JSON-RPC method string into the AdCP slot; the resolver must
+  // refuse so a signed tools/call cannot satisfy protocol_methods_required_for.
+  it('refuses tools/call with params.name containing slash (cross-namespace smuggling)', async () => {
+    const { mcpOperationResolver } = await import('../../src/training-agent/request-signing.js');
+    const rawBody = JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'tools/call',
+      params: { name: 'tasks/cancel' },
+      id: 1,
+    });
+    expect(mcpOperationResolver({ rawBody })).toBeUndefined();
+  });
+
+  it('refuses non-tools/call method that does not contain slash (defense in depth)', async () => {
+    const { mcpOperationResolver } = await import('../../src/training-agent/request-signing.js');
+    const rawBody = JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'create_media_buy',
+      params: {},
+      id: 1,
+    });
+    expect(mcpOperationResolver({ rawBody })).toBeUndefined();
+  });
 });
 
 // ── Governance: tool inputSchema (#2845) ───────────────────────────
