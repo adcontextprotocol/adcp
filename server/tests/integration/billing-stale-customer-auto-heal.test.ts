@@ -107,7 +107,7 @@ vi.mock('../../src/billing/stripe-client.js', async (importOriginal) => {
 
 import { HTTPServer } from '../../src/http.js';
 import request from 'supertest';
-import { initializeDatabase, closeDatabase, getPool } from '../../src/db/client.js';
+import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import type { Pool } from 'pg';
 
