@@ -1,6 +1,6 @@
 # Release Process
 
-This document describes how to manage releases of the AdCP specification using Changesets. **For deeper operational guidance** — release lines, cherry-pick conventions, the forward-merge workflow, manual resolution recipes, and the 3.1.0 transition plan — see [`.agents/playbook.md` § Release lines](.agents/playbook.md#release-lines). The playbook is canonical; this file is the introductory walkthrough.
+This document describes how to manage releases of the AdCP specification using Changesets. **For deeper operational guidance** — release lines, cherry-pick conventions, the forward-merge workflow, manual resolution recipes, and the 3.1.0 transition plan — see `.agents/playbook.md` (§ Release lines). The playbook is canonical; this file is the introductory walkthrough.
 
 ## Overview
 
@@ -203,7 +203,7 @@ See `.agents/playbook.md` for the full manual forward-merge runbook.
 
 ### Forward-merge workflow fails loud on content conflicts
 
-Expected behavior when 3.0.x has changes in the cross-line-divergent files (`error-code.json`, `storyboard-schema.yaml`, `runner-output-contract.yaml`, `error.json`, `get-adcp-capabilities-response.json`, `training-agent-storyboards.yml`, `error-handling.mdx`). The workflow's error message includes the manual resolution recipe. See [playbook § Cherry-pick convention](.agents/playbook.md#cherry-pick-convention) for the full procedure and rationale.
+Expected behavior when 3.0.x has changes in the cross-line-divergent files (`error-code.json`, `storyboard-schema.yaml`, `runner-output-contract.yaml`, `error.json`, `get-adcp-capabilities-response.json`, `training-agent-storyboards.yml`, `error-handling.mdx`). The workflow's error message includes the manual resolution recipe. See `.agents/playbook.md` (§ Cherry-pick convention) for the full procedure and rationale.
 
 ### Changesets not found
 
