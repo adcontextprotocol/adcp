@@ -7,7 +7,7 @@
  * reinventing the SQL with subtly different invariants.
  *
  * **Trust model:** `linkDomain` rejects ownership transfer on conflict — the
- * existing row stays put. The WorkOS-sourced primitives (`upsertDomainFromWorkos`
+ * existing row stays put. The WorkOS-sourced primitives (`upsertWorkosDomain`
  * and friends) **do** transfer ownership on conflict because WorkOS is the
  * authoritative source of truth for DNS-proof-of-control. Use the
  * member/admin-facing primitives for everything else.
@@ -169,29 +169,38 @@ export async function setPrimaryDomain(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// WorkOS-sourced writers (Stage 3b)
+// WorkOS-provenance writers (Stage 3b)
 //
-// These trust WorkOS's domain ownership as authoritative, so they DO transfer
-// ownership on conflict — opposite of `linkDomain`. They accept an optional
-// `Queryable` so the WorkOS webhook can compose them inside a single
-// transaction with the `FOR UPDATE` lock on `organizations`.
+// **Caller contract:** these primitives stamp `source='workos'` and trust
+// WorkOS as authoritative for DNS-proof-of-control, so they DO transfer
+// ownership on conflict — opposite of `linkDomain`. Only call them when you
+// have actual WorkOS provenance: the `routes/workos-webhooks.ts` handler
+// (events from WorkOS) and the admin add-domain handler (which pushes to
+// WorkOS via the API before writing locally) both qualify. Don't call them
+// from arbitrary admin scripts to plant `source='workos'` on a row that
+// WorkOS doesn't actually own — that's data forgery.
+//
+// They accept an optional `Queryable` so callers can compose them inside a
+// single transaction with the `FOR UPDATE` lock on `organizations`.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export interface UpsertDomainFromWorkosArgs {
+export interface UpsertWorkosDomainArgs {
   orgId: string;
   domain: string;
   verified: boolean;
   /**
    * Set this to true when the caller is sure no other primary exists for the
-   * org (e.g. first verified domain on a fresh org). For the conditional
-   * "promote-to-primary if no other primary" flow, call
-   * `autoPromotePrimaryIfNone` after this.
+   * org (e.g. first verified domain on a fresh org). NOTE: on conflict, the
+   * existing row's `is_primary` is preserved — the EXCLUDED set deliberately
+   * excludes `is_primary` so the auto-promote flow in `autoPromotePrimaryIfNone`
+   * can run independently. If you need atomic "set primary on this row,
+   * regardless of conflict", call `setPrimaryDomain` after.
    */
   isPrimary?: boolean;
 }
 
-export async function upsertDomainFromWorkos(
-  args: UpsertDomainFromWorkosArgs,
+export async function upsertWorkosDomain(
+  args: UpsertWorkosDomainArgs,
   q: Queryable = getPool(),
 ): Promise<void> {
   const { orgId, domain, verified, isPrimary = false } = args;

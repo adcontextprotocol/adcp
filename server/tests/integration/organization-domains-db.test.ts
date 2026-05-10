@@ -8,7 +8,7 @@ import { runMigrations } from '../../src/db/migrate.js';
 import {
   linkDomain,
   setPrimaryDomain,
-  upsertDomainFromWorkos,
+  upsertWorkosDomain,
   autoPromotePrimaryIfNone,
   removeWorkosDomainAndReselectPrimary,
 } from '../../src/db/organization-domains-db.js';
@@ -243,9 +243,9 @@ describe('organization-domains-db (#4159 Stage 3a)', () => {
   // Stage 3b: WorkOS-sourced writers
   // ───────────────────────────────────────────────────────────────────────
 
-  describe('upsertDomainFromWorkos', () => {
+  describe('upsertWorkosDomain', () => {
     it('inserts a fresh row with source=workos', async () => {
-      await upsertDomainFromWorkos({ orgId: ORG_A, domain: D1, verified: true });
+      await upsertWorkosDomain({ orgId: ORG_A, domain: D1, verified: true });
 
       const row = await getPool().query(
         `SELECT workos_organization_id, source, verified, is_primary FROM organization_domains WHERE domain = $1`,
@@ -260,10 +260,10 @@ describe('organization-domains-db (#4159 Stage 3a)', () => {
     });
 
     it('TRANSFERS ownership on conflict — WorkOS is authoritative', async () => {
-      await upsertDomainFromWorkos({ orgId: ORG_B, domain: D_TAKEN, verified: true });
+      await upsertWorkosDomain({ orgId: ORG_B, domain: D_TAKEN, verified: true });
 
       // WorkOS now reassigns the domain to ORG_A; we must follow.
-      await upsertDomainFromWorkos({ orgId: ORG_A, domain: D_TAKEN, verified: true });
+      await upsertWorkosDomain({ orgId: ORG_A, domain: D_TAKEN, verified: true });
 
       const row = await getPool().query(
         `SELECT workos_organization_id, source FROM organization_domains WHERE domain = $1`,
@@ -278,7 +278,7 @@ describe('organization-domains-db (#4159 Stage 3a)', () => {
     it('flips a non-workos row to source=workos on conflict', async () => {
       await linkDomain({ orgId: ORG_A, domain: D1, source: 'manual', verified: false });
 
-      await upsertDomainFromWorkos({ orgId: ORG_A, domain: D1, verified: true });
+      await upsertWorkosDomain({ orgId: ORG_A, domain: D1, verified: true });
 
       const row = await getPool().query(
         `SELECT source, verified FROM organization_domains WHERE domain = $1`,
@@ -286,11 +286,31 @@ describe('organization-domains-db (#4159 Stage 3a)', () => {
       );
       expect(row.rows[0]).toMatchObject({ source: 'workos', verified: true });
     });
+
+    it('on cross-org conflict, transfers ownership but preserves the existing row\'s is_primary (caller intent dropped)', async () => {
+      // Pin the documented edge case: caller passes isPrimary=true but the
+      // existing row from a different org was is_primary=false. Ownership
+      // transfers (good), but the EXCLUDED set excludes is_primary so the
+      // existing false stays. Callers that need "set primary on this row,
+      // regardless of conflict" must call setPrimaryDomain after.
+      await upsertWorkosDomain({ orgId: ORG_B, domain: D_TAKEN, verified: true, isPrimary: false });
+
+      await upsertWorkosDomain({ orgId: ORG_A, domain: D_TAKEN, verified: true, isPrimary: true });
+
+      const row = await getPool().query(
+        `SELECT workos_organization_id, is_primary FROM organization_domains WHERE domain = $1`,
+        [D_TAKEN],
+      );
+      expect(row.rows[0]).toMatchObject({
+        workos_organization_id: ORG_A,
+        is_primary: false,
+      });
+    });
   });
 
   describe('autoPromotePrimaryIfNone', () => {
     it('promotes when no primary exists; updates email_domain', async () => {
-      await upsertDomainFromWorkos({ orgId: ORG_A, domain: D1, verified: true });
+      await upsertWorkosDomain({ orgId: ORG_A, domain: D1, verified: true });
 
       const result = await autoPromotePrimaryIfNone({ orgId: ORG_A, domain: D1 });
       expect(result).toEqual({ promoted: true });
@@ -309,8 +329,8 @@ describe('organization-domains-db (#4159 Stage 3a)', () => {
     });
 
     it('does NOT promote when another primary already exists', async () => {
-      await upsertDomainFromWorkos({ orgId: ORG_A, domain: D1, verified: true, isPrimary: true });
-      await upsertDomainFromWorkos({ orgId: ORG_A, domain: D2, verified: true });
+      await upsertWorkosDomain({ orgId: ORG_A, domain: D1, verified: true, isPrimary: true });
+      await upsertWorkosDomain({ orgId: ORG_A, domain: D2, verified: true });
 
       // Set email_domain to a sentinel; promotion should not touch it.
       await getPool().query(
@@ -353,8 +373,8 @@ describe('organization-domains-db (#4159 Stage 3a)', () => {
     });
 
     it('deletes a non-primary workos row; no reselection', async () => {
-      await upsertDomainFromWorkos({ orgId: ORG_A, domain: D1, verified: true, isPrimary: true });
-      await upsertDomainFromWorkos({ orgId: ORG_A, domain: D2, verified: true });
+      await upsertWorkosDomain({ orgId: ORG_A, domain: D1, verified: true, isPrimary: true });
+      await upsertWorkosDomain({ orgId: ORG_A, domain: D2, verified: true });
 
       const result = await removeWorkosDomainAndReselectPrimary({ orgId: ORG_A, domain: D2 });
       expect(result).toEqual({ deleted: true, wasPrimary: false, newPrimary: null });
@@ -367,10 +387,10 @@ describe('organization-domains-db (#4159 Stage 3a)', () => {
     });
 
     it('deletes the primary row, picks the oldest verified remaining as new primary, syncs email_domain', async () => {
-      await upsertDomainFromWorkos({ orgId: ORG_A, domain: D1, verified: true, isPrimary: true });
+      await upsertWorkosDomain({ orgId: ORG_A, domain: D1, verified: true, isPrimary: true });
       // Force a known created_at ordering: D2 older than D3.
-      await upsertDomainFromWorkos({ orgId: ORG_A, domain: D2, verified: true });
-      await upsertDomainFromWorkos({ orgId: ORG_A, domain: D3, verified: true });
+      await upsertWorkosDomain({ orgId: ORG_A, domain: D2, verified: true });
+      await upsertWorkosDomain({ orgId: ORG_A, domain: D3, verified: true });
       await getPool().query(
         `UPDATE organization_domains SET created_at = $1 WHERE domain = $2`,
         [new Date('2024-01-01'), D2],
@@ -401,7 +421,7 @@ describe('organization-domains-db (#4159 Stage 3a)', () => {
     });
 
     it('deletes the only primary row, no remaining; nulls email_domain', async () => {
-      await upsertDomainFromWorkos({ orgId: ORG_A, domain: D1, verified: true, isPrimary: true });
+      await upsertWorkosDomain({ orgId: ORG_A, domain: D1, verified: true, isPrimary: true });
       await getPool().query(
         `UPDATE organizations SET email_domain = $1 WHERE workos_organization_id = $2`,
         [D1, ORG_A],
