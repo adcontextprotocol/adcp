@@ -6,6 +6,7 @@
  */
 
 import type { WorkOS } from '@workos-inc/node';
+import type { PoolClient } from 'pg';
 import { getPool, getClient } from './client.js';
 import { findPayingOrgForDomain } from './org-filters.js';
 import { createLogger } from '../logger.js';
@@ -142,17 +143,24 @@ export async function upsertOrganizationMembership(
  * a stale pointer would let resolvePrimaryOrganization keep returning a
  * removed-org id, which read sites use as an authorization scope. Next
  * read backfills via resolvePreferredOrganization.
+ *
+ * @param externalClient — when provided, the caller owns the transaction;
+ *   we run only the DELETE+UPDATE on that client without BEGIN/COMMIT.
+ *   Lets a multi-step caller (admin transfer-member) wrap this with a
+ *   sibling write in one atomic unit.
  */
 export async function deleteOrganizationMembership(
   userId: string,
   organizationId: string,
+  externalClient?: PoolClient,
 ): Promise<string | null> {
   // Atomic: DELETE membership and clear the cached pointer in one transaction.
   // If the DELETE succeeded but the pointer-clear UPDATE failed, we'd recreate
   // the exact stale-pointer state the integrity invariant exists to catch.
-  const client = await getClient();
+  const client = externalClient ?? await getClient();
+  const ownsTransaction = externalClient === undefined;
   try {
-    await client.query('BEGIN');
+    if (ownsTransaction) await client.query('BEGIN');
     const result = await client.query<{ role: string }>(
       `DELETE FROM organization_memberships
        WHERE workos_user_id = $1 AND workos_organization_id = $2
@@ -164,13 +172,15 @@ export async function deleteOrganizationMembership(
        WHERE workos_user_id = $1 AND primary_organization_id = $2`,
       [userId, organizationId],
     );
-    await client.query('COMMIT');
+    if (ownsTransaction) await client.query('COMMIT');
     return result.rows[0]?.role ?? null;
   } catch (err) {
-    try { await client.query('ROLLBACK'); } catch { /* swallow */ }
+    if (ownsTransaction) {
+      try { await client.query('ROLLBACK'); } catch { /* swallow */ }
+    }
     throw err;
   } finally {
-    client.release();
+    if (ownsTransaction) client.release();
   }
 }
 

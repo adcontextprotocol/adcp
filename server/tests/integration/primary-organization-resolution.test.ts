@@ -341,5 +341,89 @@ describe('primary_organization_id resolution', () => {
       );
       expect(after.rows[0].primary_organization_id).toBe(TEST_ORG_ACTIVE);
     });
+
+    it('participates in the caller-owned transaction when an external client is provided', async () => {
+      // The admin transfer-member route wraps deleteOrganizationMembership +
+      // a sibling INSERT in one transaction so a mid-transfer reader can
+      // never see "no membership at all." This test proves the helper
+      // honors an externally-managed client by asserting that a parallel
+      // SELECT from a different connection sees the pre-transfer state
+      // until COMMIT, then the post-transfer state immediately after.
+      const { deleteOrganizationMembership } = await import('../../src/db/membership-db.js');
+      await seedOrg(pool, TEST_ORG_ACTIVE, { subscription_status: 'active' });
+      await seedOrg(pool, TEST_ORG_INACTIVE, { subscription_status: 'active' });
+      await seedUser(pool, TEST_USER, TEST_ORG_ACTIVE);
+      await seedMembership(pool, TEST_USER, TEST_ORG_ACTIVE);
+
+      const txClient = await pool.connect();
+      try {
+        await txClient.query('BEGIN');
+        await deleteOrganizationMembership(TEST_USER, TEST_ORG_ACTIVE, txClient);
+
+        // Mid-transaction: a parallel reader on a different pool connection
+        // still sees the pre-delete membership row because we haven't COMMIT'd.
+        const midRead = await pool.query<{ count: string }>(
+          `SELECT COUNT(*)::text AS count FROM organization_memberships
+            WHERE workos_user_id = $1 AND workos_organization_id = $2`,
+          [TEST_USER, TEST_ORG_ACTIVE],
+        );
+        expect(midRead.rows[0]?.count).toBe('1');
+
+        await txClient.query('COMMIT');
+      } finally {
+        txClient.release();
+      }
+
+      // Post-COMMIT: parallel readers see both the membership delete and the
+      // primary-pointer clear.
+      const postRead = await pool.query<{
+        membership_count: string;
+        primary_organization_id: string | null;
+      }>(
+        `SELECT
+           (SELECT COUNT(*)::text FROM organization_memberships
+              WHERE workos_user_id = $1 AND workos_organization_id = $2) AS membership_count,
+           (SELECT primary_organization_id FROM users
+              WHERE workos_user_id = $1) AS primary_organization_id`,
+        [TEST_USER, TEST_ORG_ACTIVE],
+      );
+      expect(postRead.rows[0]?.membership_count).toBe('0');
+      expect(postRead.rows[0]?.primary_organization_id).toBeNull();
+    });
+
+    it('rolls back the membership delete and pointer clear together when the external transaction aborts', async () => {
+      // The whole point of accepting an external client is "atomic with my
+      // sibling write." If the caller's outer transaction rolls back, the
+      // helper's DELETE + UPDATE must roll back with it.
+      const { deleteOrganizationMembership } = await import('../../src/db/membership-db.js');
+      await seedOrg(pool, TEST_ORG_ACTIVE, { subscription_status: 'active' });
+      await seedUser(pool, TEST_USER, TEST_ORG_ACTIVE);
+      await seedMembership(pool, TEST_USER, TEST_ORG_ACTIVE);
+
+      const txClient = await pool.connect();
+      try {
+        await txClient.query('BEGIN');
+        await deleteOrganizationMembership(TEST_USER, TEST_ORG_ACTIVE, txClient);
+        await txClient.query('ROLLBACK');
+      } finally {
+        txClient.release();
+      }
+
+      // Both writes must have rolled back — membership row still present,
+      // primary pointer still pointing at TEST_ORG_ACTIVE.
+      const after = await pool.query<{
+        membership_count: string;
+        primary_organization_id: string | null;
+      }>(
+        `SELECT
+           (SELECT COUNT(*)::text FROM organization_memberships
+              WHERE workos_user_id = $1 AND workos_organization_id = $2) AS membership_count,
+           (SELECT primary_organization_id FROM users
+              WHERE workos_user_id = $1) AS primary_organization_id`,
+        [TEST_USER, TEST_ORG_ACTIVE],
+      );
+      expect(after.rows[0]?.membership_count).toBe('1');
+      expect(after.rows[0]?.primary_organization_id).toBe(TEST_ORG_ACTIVE);
+    });
   });
 });

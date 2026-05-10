@@ -3384,6 +3384,9 @@ export function createOrganizationsRouter(): Router {
       // longer belong to.
       try {
         await deleteOrganizationMembership(membership.userId, orgId);
+        // Drop the membership cache for this org so the next read sees the
+        // post-removal state instead of the pre-removal snapshot.
+        invalidateMembershipCache(orgId);
         logger.debug({ userId: membership.userId, orgId }, 'Cleaned up local organization_memberships');
       } catch (cleanupError) {
         // Log but don't fail - the webhook will eventually clean this up
