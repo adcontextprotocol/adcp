@@ -140,38 +140,41 @@ describe('primary_organization_id resolution', () => {
       expect(result).toBeNull();
     });
 
-    // Self-heal cases. The cached column was set
-    // but the join targets had drifted; the bare-column read returned a
-    // phantom orgId that 404'd every tier-gated route until repaired by hand.
-    it('falls through and repoints when cached pointer has no organizations row', async () => {
-      // Real org + membership exists; cached column points at a different
-      // org that's missing from the organizations table.
+    // Self-heal cases. The cached column was set but the join targets had
+    // drifted; the bare-column read returned a phantom orgId that 404'd
+    // every tier-gated route until repaired by hand. Migration 470 closes
+    // the no_org_row class structurally via FK ON DELETE SET NULL — the
+    // FK-driven cases below replace the previous "manually seed dangling
+    // pointer" tests, which the FK now rejects at INSERT time.
+
+    it('FK ON DELETE SET NULL fires when cached org is deleted; resolver re-derives', async () => {
+      // User's cache points at INACTIVE; INACTIVE gets deleted; the FK
+      // automatically nulls the pointer (CASCADE drops INACTIVE membership
+      // too). Resolver should fall back to ACTIVE on the next read.
+      await seedOrg(pool, TEST_ORG_INACTIVE, { subscription_status: null });
       await seedOrg(pool, TEST_ORG_ACTIVE, { subscription_status: 'active' });
-      await seedUser(pool, TEST_USER, 'org_dangling_no_org_row');
+      await seedUser(pool, TEST_USER, TEST_ORG_INACTIVE);
+      await seedMembership(pool, TEST_USER, TEST_ORG_INACTIVE);
       await seedMembership(pool, TEST_USER, TEST_ORG_ACTIVE);
+
+      await pool.query('DELETE FROM organizations WHERE workos_organization_id = $1', [TEST_ORG_INACTIVE]);
+
+      // FK should have nulled the pointer atomically with the DELETE.
+      const after = await pool.query<{ primary_organization_id: string | null }>(
+        'SELECT primary_organization_id FROM users WHERE workos_user_id = $1',
+        [TEST_USER],
+      );
+      expect(after.rows[0]?.primary_organization_id).toBeNull();
 
       const result = await resolvePrimaryOrganization(TEST_USER);
       expect(result).toBe(TEST_ORG_ACTIVE);
-
-      // Repoint is fire-and-forget — poll for it to land.
-      const deadline = Date.now() + 2000;
-      let cached: string | null = null;
-      while (Date.now() < deadline) {
-        const after = await pool.query<{ primary_organization_id: string | null }>(
-          'SELECT primary_organization_id FROM users WHERE workos_user_id = $1',
-          [TEST_USER],
-        );
-        cached = after.rows[0]?.primary_organization_id ?? null;
-        if (cached === TEST_ORG_ACTIVE) break;
-        await new Promise((r) => setTimeout(r, 25));
-      }
-      expect(cached).toBe(TEST_ORG_ACTIVE);
     });
 
-    it('falls through and repoints when cached pointer has no membership row', async () => {
-      // Org row exists but the user has no membership for it (e.g. removal
-      // happened via a path that bypassed deleteOrganizationMembership).
-      // A different real membership exists and should win.
+    it('falls through and repoints when cached pointer has no membership row (FK does not catch this)', async () => {
+      // Org row still exists but the user has no membership for it — a
+      // membership-delete path that bypassed deleteOrganizationMembership
+      // (the FK protects no_org_row but not no_membership_row). The
+      // resolver self-heal handles this class.
       await seedOrg(pool, TEST_ORG_ACTIVE, { subscription_status: 'active' });
       await seedOrg(pool, TEST_ORG_INACTIVE, { subscription_status: null });
       await seedUser(pool, TEST_USER, TEST_ORG_INACTIVE); // cache points at INACTIVE
@@ -194,27 +197,48 @@ describe('primary_organization_id resolution', () => {
       expect(cached).toBe(TEST_ORG_ACTIVE);
     });
 
-    it('clears the stale pointer and returns null when cache dangles and no other membership exists', async () => {
-      // Cache is set, but no org row, no membership row, nowhere to fall
-      // back to. Resolver should return null AND null out the column so a
-      // later membership webhook re-triggers the IS-NULL backfill.
-      await seedUser(pool, TEST_USER, 'org_dangling_no_recourse');
+    it('returns null when FK ON DELETE SET NULL leaves no remaining org', async () => {
+      // Single org, single membership; org gets deleted. FK nulls the
+      // pointer (and CASCADE drops the membership). Resolver returns null.
+      await seedOrg(pool, TEST_ORG_ACTIVE, { subscription_status: 'active' });
+      await seedUser(pool, TEST_USER, TEST_ORG_ACTIVE);
+      await seedMembership(pool, TEST_USER, TEST_ORG_ACTIVE);
+
+      await pool.query('DELETE FROM organizations WHERE workos_organization_id = $1', [TEST_ORG_ACTIVE]);
+
+      const after = await pool.query<{ primary_organization_id: string | null }>(
+        'SELECT primary_organization_id FROM users WHERE workos_user_id = $1',
+        [TEST_USER],
+      );
+      expect(after.rows[0]?.primary_organization_id).toBeNull();
 
       const result = await resolvePrimaryOrganization(TEST_USER);
       expect(result).toBeNull();
+    });
+  });
 
-      const deadline = Date.now() + 2000;
-      let cached: string | null = 'org_dangling_no_recourse';
-      while (Date.now() < deadline) {
-        const after = await pool.query<{ primary_organization_id: string | null }>(
-          'SELECT primary_organization_id FROM users WHERE workos_user_id = $1',
-          [TEST_USER],
-        );
-        cached = after.rows[0]?.primary_organization_id ?? null;
-        if (cached === null) break;
-        await new Promise((r) => setTimeout(r, 25));
-      }
-      expect(cached).toBeNull();
+  describe('users.primary_organization_id FK constraint', () => {
+    it('rejects INSERT into users with a non-existent primary_organization_id', async () => {
+      await expect(
+        pool.query(
+          `INSERT INTO users (workos_user_id, email, primary_organization_id, created_at, updated_at)
+           VALUES ($1, $2, $3, NOW(), NOW())`,
+          [TEST_USER, `${TEST_USER}@test.com`, 'org_does_not_exist_fkey_test'],
+        ),
+      ).rejects.toThrow(/foreign key|fkey|primary_organization_id/i);
+    });
+
+    it('rejects UPDATE setting primary_organization_id to a non-existent org', async () => {
+      await seedOrg(pool, TEST_ORG_ACTIVE, { subscription_status: 'active' });
+      await seedUser(pool, TEST_USER, TEST_ORG_ACTIVE);
+      await seedMembership(pool, TEST_USER, TEST_ORG_ACTIVE);
+
+      await expect(
+        pool.query(
+          `UPDATE users SET primary_organization_id = $1 WHERE workos_user_id = $2`,
+          ['org_does_not_exist_fkey_test', TEST_USER],
+        ),
+      ).rejects.toThrow(/foreign key|fkey|primary_organization_id/i);
     });
   });
 

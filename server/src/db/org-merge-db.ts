@@ -25,7 +25,8 @@ export interface MergeSummary {
   tables_merged: {
     table_name: string;
     rows_moved: number;
-    rows_skipped_duplicate: number;
+    /** Only set on tables with a uniqueness conflict. Omitted for plain UPDATEs (e.g. users.primary_organization_id repoint). */
+    rows_skipped_duplicate?: number;
   }[];
   prospect_notes_merged: boolean;
   enrichment_data_preserved: boolean;
@@ -236,6 +237,25 @@ export async function mergeOrganizations(
       `DELETE FROM organization_memberships WHERE workos_organization_id = $1`,
       [secondaryOrgId]
     );
+
+    // Repoint users.primary_organization_id from secondary to primary. Must
+    // happen BEFORE the secondary org row delete (step 24) — once the FK
+    // ON DELETE SET NULL fires, the pointer is gone and we lose the merge
+    // intent. Without this, every user whose primary was the secondary org
+    // ends up resolving back to a different membership (or no org at all)
+    // after the merge, even though we just moved their membership to the
+    // primary above.
+    const repointResult = await client.query(
+      `UPDATE users
+          SET primary_organization_id = $1, updated_at = NOW()
+        WHERE primary_organization_id = $2
+        RETURNING workos_user_id`,
+      [primaryOrgId, secondaryOrgId]
+    );
+    summary.tables_merged.push({
+      table_name: 'users.primary_organization_id',
+      rows_moved: repointResult.rows.length,
+    });
 
     // =====================================================
     // 2. Merge organization_domains

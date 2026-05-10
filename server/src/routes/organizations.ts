@@ -22,6 +22,7 @@ import { OrganizationDatabase, CompanyType, RevenueTier, VALID_REVENUE_TIERS, ge
 import { COMPANY_TYPE_VALUES } from "../config/company-types.js";
 import { VALID_ORGANIZATION_ROLES, VALID_ASSIGNABLE_ROLES } from "../types.js";
 import { JoinRequestDatabase } from "../db/join-request-db.js";
+import { deleteOrganizationMembership } from "../db/membership-db.js";
 import * as referralDb from "../db/referral-codes-db.js";
 import { SlackDatabase } from "../db/slack-db.js";
 import { getCompanyDomain } from "../utils/email-domain.js";
@@ -3376,14 +3377,13 @@ export function createOrganizationsRouter(): Router {
       await workos!.userManagement.deleteOrganizationMembership(membershipId);
 
       // Clean up local organization_memberships table immediately (don't wait for webhook)
-      // This ensures the user isn't "stuck" with stale membership data
-      const pool = getPool();
+      // This ensures the user isn't "stuck" with stale membership data. Use the
+      // membership-db helper so users.primary_organization_id gets cleared in the
+      // same transaction when it pointed at this org — otherwise read sites
+      // continue resolving the just-removed user back into the org they no
+      // longer belong to.
       try {
-        await pool.query(
-          `DELETE FROM organization_memberships
-           WHERE workos_user_id = $1 AND workos_organization_id = $2`,
-          [membership.userId, orgId]
-        );
+        await deleteOrganizationMembership(membership.userId, orgId);
         logger.debug({ userId: membership.userId, orgId }, 'Cleaned up local organization_memberships');
       } catch (cleanupError) {
         // Log but don't fail - the webhook will eventually clean this up
