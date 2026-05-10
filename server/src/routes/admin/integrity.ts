@@ -22,6 +22,7 @@ import {
   type InvariantContext,
   type InvariantOptions,
 } from '../../audit/integrity/index.js';
+import { detectEnvMismatch } from '../../audit/integrity/env-mismatch.js';
 
 const logger = createLogger('admin-integrity-routes');
 
@@ -40,69 +41,6 @@ interface ParsedOptions {
   options: InvariantOptions | undefined;
   /** Set when query input was malformed; caller should 400. */
   error?: { field: string; message: string };
-}
-
-/**
- * Detect Stripe-key-mode vs DATABASE_URL environment mismatch. A staging app
- * pointed at a live Stripe key (or vice versa) would surface thousands of
- * phantom critical violations because the Stripe-side state and the AAO-side
- * state describe entirely different worlds. Cheap heuristic: if the URL host
- * looks like prod and the key is `sk_test_*`, refuse. Phase 2 can graduate
- * this to a probe-and-cache. Returns null when no mismatch is detected.
- */
-function detectEnvMismatch(): string | null {
-  const stripeKey = process.env.STRIPE_SECRET_KEY ?? '';
-  const databaseUrl = process.env.DATABASE_URL ?? '';
-  if (!stripeKey || !databaseUrl) return null;
-
-  const isLiveKey = stripeKey.startsWith('sk_live_');
-  const isTestKey = stripeKey.startsWith('sk_test_');
-
-  // Parse the URL and inspect its host explicitly. Substring checks against
-  // the raw URL string would match a hostile path/query like
-  // postgres://user@evil.example/?aao-prod=1, which is exactly what CodeQL's
-  // js/incomplete-url-substring-sanitization rule warns about.
-  let host = '';
-  try {
-    host = new URL(databaseUrl).hostname.toLowerCase();
-  } catch {
-    // DATABASE_URL is malformed; treat as "looks like development" so live
-    // keys against an unparsable URL are still refused below.
-    host = '';
-  }
-
-  // Fly.io serves private services to the prod app over `*.flycast` and
-  // `*.internal` (6PN). The original allowlist only had `*.fly.dev`, which
-  // doesn't match the prod Postgres host — that mis-classified the live app
-  // as "not prod" and refused the runner with a "live key against staging"
-  // message in production. Recognize the Fly prod patterns plus a positive
-  // `FLY_APP_NAME` signal so the runner is unblocked there without
-  // loosening the staging guard.
-  //
-  // Prod app names are configurable so a future deployment (aao-prod-2,
-  // staging mirror, etc.) doesn't silently regress this guard.
-  const PROD_FLY_APPS = (process.env.AAO_PROD_FLY_APPS ?? 'adcp-docs')
-    .split(',')
-    .map((s) => s.trim().toLowerCase())
-    .filter(Boolean);
-  const flyAppName = (process.env.FLY_APP_NAME ?? '').toLowerCase();
-  const isFlyProdApp = !!flyAppName && PROD_FLY_APPS.includes(flyAppName);
-  const looksProd =
-    host.endsWith('.agenticadvertising.org') ||
-    host === 'agenticadvertising.org' ||
-    host.startsWith('aao-prod') ||
-    host.endsWith('.fly.dev') ||
-    host.endsWith('.flycast') ||
-    host.endsWith('.internal') ||
-    isFlyProdApp;
-
-  if (looksProd && isTestKey) {
-    return 'STRIPE_SECRET_KEY is sk_test_* but DATABASE_URL points at production. Refusing to run integrity checks against this mismatched configuration.';
-  }
-  if (!looksProd && isLiveKey) {
-    return 'STRIPE_SECRET_KEY is sk_live_* but DATABASE_URL does not look like production. Refusing to run integrity checks — would attribute live Stripe state against staging Postgres.';
-  }
-  return null;
 }
 
 export function setupIntegrityRoutes(apiRouter: Router, config: IntegrityRoutesConfig): void {
