@@ -5202,13 +5202,14 @@ Use add_committee_leader to assign a leader.`;
 
         response += `### Data Moved\n`;
         const totalMoved = result.tables_merged.reduce((sum, t) => sum + t.rows_moved, 0);
-        const totalSkipped = result.tables_merged.reduce((sum, t) => sum + t.rows_skipped_duplicate, 0);
+        const totalSkipped = result.tables_merged.reduce((sum, t) => sum + (t.rows_skipped_duplicate ?? 0), 0);
 
         for (const table of result.tables_merged) {
-          if (table.rows_moved > 0 || table.rows_skipped_duplicate > 0) {
+          const skipped = table.rows_skipped_duplicate ?? 0;
+          if (table.rows_moved > 0 || skipped > 0) {
             response += `- **${table.table_name}**: ${table.rows_moved} moved`;
-            if (table.rows_skipped_duplicate > 0) {
-              response += ` (${table.rows_skipped_duplicate} skipped as duplicates)`;
+            if (skipped > 0) {
+              response += ` (${skipped} skipped as duplicates)`;
             }
             response += `\n`;
           }

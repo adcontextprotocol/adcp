@@ -16,6 +16,7 @@ import { createLogger } from "../../logger.js";
 import { requireAuth, requireAdmin } from "../../middleware/auth.js";
 import { serveHtmlWithConfig } from "../../utils/html-config.js";
 import { OrganizationDatabase, VALID_REVENUE_TIERS } from "../../db/organization-db.js";
+import { deleteOrganizationMembership } from "../../db/membership-db.js";
 import {
   getPendingInvoices,
   getProductsForCustomer,
@@ -2193,12 +2194,14 @@ export function setupAccountRoutes(
               );
             }
 
-            // Update local cache - remove from source and add to target
-            await pool.query(
-              `DELETE FROM organization_memberships
-               WHERE workos_user_id = $1 AND workos_organization_id = $2`,
-              [member.workos_user_id, sourceOrgId]
-            );
+            // Update local cache - remove from source and add to target.
+            // Use the membership-db helper so users.primary_organization_id
+            // gets cleared in the same transaction when it pointed at the
+            // source org — otherwise the user is left pointing at an org
+            // they're no longer a member of, which read sites trust as the
+            // caller's authorization scope. The next read self-heals to the
+            // target org via resolvePrimaryOrganization.
+            await deleteOrganizationMembership(member.workos_user_id, sourceOrgId);
 
             // Insert into target org cache
             await pool.query(
