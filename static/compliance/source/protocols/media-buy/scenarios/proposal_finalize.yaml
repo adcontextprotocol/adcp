@@ -199,6 +199,10 @@ phases:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
 
+        context_outputs:
+          - path: "proposals[0].insertion_order.io_id"
+            key: "io_id"
+
         validations:
           - check: response_schema
             description: "Response matches get-products-response.json schema"
@@ -244,6 +248,10 @@ phases:
             currency: "USD"
           start_time: "2026-04-01T00:00:00Z"
           end_time: "2026-06-30T23:59:59Z"
+          io_acceptance:
+            io_id: "$context.io_id"
+            accepted_at: "2026-03-15T14:30:00Z"
+            signatory: "ops@acmeoutdoor.example"
 
           idempotency_key: "$generate:uuid_v4#media_buy_seller_proposal_finalize_accept_proposal_create_media_buy"
         validations:
