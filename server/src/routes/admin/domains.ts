@@ -10,6 +10,7 @@ import {
   linkDomain,
   setPrimaryDomain,
   upsertWorkosDomain,
+  unlinkDomainAndReselectPrimary,
 } from "../../db/organization-domains-db.js";
 import { createLogger } from "../../logger.js";
 import { requireAuth, requireAdmin } from "../../middleware/auth.js";
@@ -1498,18 +1499,16 @@ export function setupDomainRoutes(
           return res.status(500).json({ error: "WorkOS not configured" });
         }
 
-        // Get domain info before deletion
+        // Pre-check: ensure the domain belongs to this org so we can return a
+        // clean 404 before touching WorkOS.
         const domainResult = await pool.query(
-          `SELECT is_primary, source FROM organization_domains
+          `SELECT 1 FROM organization_domains
            WHERE workos_organization_id = $1 AND domain = $2`,
           [orgId, normalizedDomain]
         );
-
         if (domainResult.rows.length === 0) {
           return res.status(404).json({ error: "Domain not found for this organization" });
         }
-
-        const wasPrimary = domainResult.rows[0].is_primary;
 
         // Remove from WorkOS first - this is the source of truth
         try {
@@ -1532,47 +1531,24 @@ export function setupDomainRoutes(
           });
         }
 
-        // Delete from local DB
-        await pool.query(
-          `DELETE FROM organization_domains WHERE workos_organization_id = $1 AND domain = $2`,
-          [orgId, normalizedDomain]
+        // Local-DB unlink + primary reselect (any source, prefers verified
+        // for the next primary). Webhook would do the same eventually; this
+        // is for immediate consistency.
+        const result = await unlinkDomainAndReselectPrimary({
+          orgId,
+          domain: normalizedDomain,
+        });
+
+        logger.info(
+          { orgId, domain: normalizedDomain, wasPrimary: result.wasPrimary, newPrimary: result.newPrimary },
+          "Removed domain from organization via WorkOS",
         );
-
-        // If we deleted the primary domain, pick a new one
-        let newPrimary: string | null = null;
-        if (wasPrimary) {
-          const remaining = await pool.query(
-            `SELECT domain FROM organization_domains
-             WHERE workos_organization_id = $1
-             ORDER BY verified DESC, created_at ASC
-             LIMIT 1`,
-            [orgId]
-          );
-
-          newPrimary = remaining.rows.length > 0 ? remaining.rows[0].domain : null;
-
-          if (newPrimary) {
-            await pool.query(
-              `UPDATE organization_domains SET is_primary = true, updated_at = NOW()
-               WHERE workos_organization_id = $1 AND domain = $2`,
-              [orgId, newPrimary]
-            );
-          }
-
-          await pool.query(
-            `UPDATE organizations SET email_domain = $1, updated_at = NOW()
-             WHERE workos_organization_id = $2`,
-            [newPrimary, orgId]
-          );
-        }
-
-        logger.info({ orgId, domain: normalizedDomain, wasPrimary, newPrimary }, "Removed domain from organization via WorkOS");
 
         res.json({
           success: true,
           domain: normalizedDomain,
-          was_primary: wasPrimary,
-          new_primary: newPrimary,
+          was_primary: result.wasPrimary,
+          new_primary: result.newPrimary,
         });
       } catch (error) {
         logger.error({ err: error }, "Error removing organization domain");
@@ -2403,52 +2379,49 @@ Respond with ONLY a JSON array, one entry per cluster:
           }
         }
 
-        // If org_id provided, sync just that org; otherwise sync all with issues
-        let query: string;
-        let params: string[];
+        // Find orgs whose email_domain is set but has no matching
+        // organization_domains row. Then call linkDomain per row so the
+        // canonical writer handles conflicts consistently (cross-org log
+        // included).
+        const candidatesSql = `
+          SELECT o.workos_organization_id, LOWER(o.email_domain) AS domain
+          FROM organizations o
+          LEFT JOIN organization_domains od ON od.workos_organization_id = o.workos_organization_id
+            AND LOWER(od.domain) = LOWER(o.email_domain)
+          WHERE ${org_id ? 'o.workos_organization_id = $1 AND ' : ''}
+            o.email_domain IS NOT NULL
+            AND o.is_personal = false
+            AND od.domain IS NULL
+        `;
+        const candidatesParams: string[] = org_id ? [org_id] : [];
+        const candidates = await pool.query<{ workos_organization_id: string; domain: string }>(
+          candidatesSql,
+          candidatesParams,
+        );
 
-        if (org_id) {
-          query = `
-            INSERT INTO organization_domains (workos_organization_id, domain, is_primary, verified, source)
-            SELECT o.workos_organization_id, LOWER(o.email_domain), true, false, 'import'
-            FROM organizations o
-            LEFT JOIN organization_domains od ON od.workos_organization_id = o.workos_organization_id
-              AND LOWER(od.domain) = LOWER(o.email_domain)
-            WHERE o.workos_organization_id = $1
-              AND o.email_domain IS NOT NULL
-              AND o.is_personal = false
-              AND od.domain IS NULL
-            ON CONFLICT (domain) DO NOTHING
-            RETURNING workos_organization_id, domain
-          `;
-          params = [org_id];
-        } else {
-          query = `
-            INSERT INTO organization_domains (workos_organization_id, domain, is_primary, verified, source)
-            SELECT o.workos_organization_id, LOWER(o.email_domain), true, false, 'import'
-            FROM organizations o
-            LEFT JOIN organization_domains od ON od.workos_organization_id = o.workos_organization_id
-              AND LOWER(od.domain) = LOWER(o.email_domain)
-            WHERE o.email_domain IS NOT NULL
-              AND o.is_personal = false
-              AND od.domain IS NULL
-            ON CONFLICT (domain) DO NOTHING
-            RETURNING workos_organization_id, domain
-          `;
-          params = [];
+        const synced: { workos_organization_id: string; domain: string }[] = [];
+        for (const row of candidates.rows) {
+          const result = await linkDomain({
+            orgId: row.workos_organization_id,
+            domain: row.domain,
+            source: 'import',
+            verified: false,
+            isPrimary: true,
+          });
+          if (result.inserted) {
+            synced.push(row);
+          }
         }
 
-        const result = await pool.query(query, params);
-
         logger.info(
-          { count: result.rowCount, org_id },
+          { count: synced.length, org_id },
           "Synced email_domain to organization_domains"
         );
 
         res.json({
           success: true,
-          synced_count: result.rowCount,
-          synced: result.rows,
+          synced_count: synced.length,
+          synced,
         });
       } catch (error) {
         logger.error({ err: error }, "Error syncing domain data");

@@ -256,7 +256,9 @@ export async function autoPromotePrimaryIfNone(
  * back to NULL `email_domain` if nothing's verified.
  *
  * Only deletes rows where `source='workos'` — admin/import rows are immune
- * to WorkOS-driven removal.
+ * to WorkOS-driven removal. For an admin-driven unlink (any source, prefers
+ * verified rows but falls back to unverified), use
+ * `unlinkDomainAndReselectPrimary`.
  */
 export async function removeWorkosDomainAndReselectPrimary(
   args: { orgId: string; domain: string },
@@ -283,6 +285,64 @@ export async function removeWorkosDomainAndReselectPrimary(
     `SELECT domain FROM organization_domains
       WHERE workos_organization_id = $1 AND verified = true
       ORDER BY created_at ASC
+      LIMIT 1`,
+    [orgId],
+  );
+  const newPrimary = remaining.rows[0]?.domain ?? null;
+
+  if (newPrimary) {
+    await q.query(
+      `UPDATE organization_domains SET is_primary = true, updated_at = NOW()
+        WHERE workos_organization_id = $1 AND domain = $2`,
+      [orgId, newPrimary],
+    );
+  }
+  await q.query(
+    `UPDATE organizations SET email_domain = $1, updated_at = NOW()
+      WHERE workos_organization_id = $2`,
+    [newPrimary, orgId],
+  );
+
+  return { deleted: true, wasPrimary: true, newPrimary };
+}
+
+/**
+ * Admin-flavor unlink: delete a domain row regardless of source and reselect
+ * a new primary if the deleted row was primary. Reselect order prefers
+ * verified rows but falls back to unverified — admin tools may have linked
+ * unverified rows and shouldn't lose `email_domain` denormalization just
+ * because nothing's verified yet.
+ *
+ * Compare with `removeWorkosDomainAndReselectPrimary` (workos-source filter,
+ * verified-only reselect): that function refuses to delete admin/import
+ * rows because they're not WorkOS's to remove. This function is the
+ * admin-controlled escape hatch.
+ */
+export async function unlinkDomainAndReselectPrimary(
+  args: { orgId: string; domain: string },
+  q: Queryable = getPool(),
+): Promise<{ deleted: boolean; wasPrimary: boolean; newPrimary: string | null }> {
+  const { orgId, domain } = args;
+  const result = await q.query<{ is_primary: boolean }>(
+    `DELETE FROM organization_domains
+      WHERE workos_organization_id = $1 AND domain = $2
+      RETURNING is_primary`,
+    [orgId, domain],
+  );
+
+  if ((result.rowCount ?? 0) === 0) {
+    return { deleted: false, wasPrimary: false, newPrimary: null };
+  }
+
+  const wasPrimary = result.rows[0].is_primary === true;
+  if (!wasPrimary) {
+    return { deleted: true, wasPrimary: false, newPrimary: null };
+  }
+
+  const remaining = await q.query<{ domain: string }>(
+    `SELECT domain FROM organization_domains
+      WHERE workos_organization_id = $1
+      ORDER BY verified DESC, created_at ASC
       LIMIT 1`,
     [orgId],
   );
