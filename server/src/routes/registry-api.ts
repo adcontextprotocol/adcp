@@ -30,6 +30,7 @@ import {
 } from "../addie/services/compliance-testing.js";
 import { getPublicJwks } from "../services/verification-token.js";
 import { renderBadgeSvg, VALID_BADGE_ROLES } from "../services/badge-svg.js";
+import { runBadgeFanOut } from "../services/badge-issuance.js";
 import { resolveOwnerMembership } from "../services/membership-tiers.js";
 import { inferDiagnosticAgentType } from "../lib/diagnostic-agent-type-inference.js";
 import { isValidAdcpVersionShape } from "../services/adcp-taxonomy.js";
@@ -5743,6 +5744,25 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         await complianceDb.recordComplianceRun(
           complianceResultToDbInput(complyResult, agentUrl, metadata?.lifecycle_stage || "development", "owner_test", [req.params.storyboardId]),
         );
+
+        // Fan out badge issuance on the canonical write so an owner who
+        // just fixed a single storyboard sees the badge update on their
+        // next page load. The helper loads ALL latest storyboard statuses
+        // from agent_storyboard_status so this partial run doesn't degrade
+        // badges for storyboards it didn't touch. No notification — the
+        // owner already sees the result in the HTTP response.
+        const declaredSpecialisms = complyResult.agent_profile?.specialisms ?? [];
+        if (declaredSpecialisms.length > 0) {
+          try {
+            await runBadgeFanOut({
+              complianceDb,
+              agentUrl,
+              declaredSpecialisms,
+            });
+          } catch (badgeError) {
+            logger.warn({ err: badgeError, agentUrl }, 'Badge fan-out failed after storyboard-run');
+          }
+        }
 
         // Annotate storyboard phases with comply results
         const annotatedPhases = storyboard.phases.map((phase) => ({
