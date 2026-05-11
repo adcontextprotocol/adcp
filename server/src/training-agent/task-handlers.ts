@@ -1008,6 +1008,10 @@ const ACCOUNT_REF_SCHEMA = {
 // on the errors array.
 const ERROR_IN_BODY_TOOLS = new Set<string>([
   'update_media_buy',
+  // activate_signal errors (e.g. GOVERNANCE_DENIED) are returned in body
+  // on the legacy /mcp path. The v6 per-tenant path handles this in
+  // v6-platform.ts:activateSignal directly (translateV5Result bypass).
+  'activate_signal',
 ]);
 
 // ── Tool definitions ──────────────────────────────────────────────
