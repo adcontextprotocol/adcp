@@ -37,6 +37,7 @@ Every agent runs every storyboard in `/compliance/{version}/universal/` regardle
 | `collection-lists-pagination-integrity` | `cursor` ↔ `has_more` invariant verified by walking a paginated `list_collection_lists` response — storyboard bootstraps three collection lists via `create_collection_list`, then asserts page 1 is non-terminal and page 2 is terminal with no stale cursor. |
 | `property-lists-pagination-integrity` | `cursor` ↔ `has_more` invariant verified by walking a paginated `list_property_lists` response — storyboard bootstraps three property lists via `create_property_list`, then asserts page 1 is non-terminal and page 2 is terminal with no stale cursor. |
 | `deterministic-testing` | `comply_test_controller` state-machine verification — skipped if `capabilities.compliance_testing.supported: false`. |
+| `comply-controller-mode-gate` | `comply_test_controller` live-mode denial gate — verifies sellers return `FORBIDDEN` when a live-mode account calls the controller; skipped for agents that do not expose `comply_test_controller`. |
 | `signed-requests` | RFC 9421 transport-layer request-signing verification — skipped if `request_signing.supported: false`. |
 
 Capability-gated rows (`deterministic-testing`, `signed-requests`) are skipped only when the agent advertises the capability as `false`; they cannot be claimed and partially implemented. Declaring `supported: true` and failing the storyboard is non-conformant — declare `false` rather than ship a partial implementation.
