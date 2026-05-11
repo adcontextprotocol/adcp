@@ -156,6 +156,10 @@ For custom MCP wrappers — AsyncLocalStorage for per-request auth, transport-le
 
 ## Step 4 — Run the storyboard runner
 
+<Warning>
+**Python sellers: configure Pydantic to accept unknown fields before running.** The compliance runner injects `idempotency_key` on every tool call, including read tools like `get_adcp_capabilities` and `get_products`. Strict Pydantic validation (FastMCP default, or any model without `extra='ignore'`) rejects unknown fields with a validation error before your handler runs — the first storyboard tool call fails before any business logic executes. Add `model_config = ConfigDict(extra='ignore')` to a base request model that all your read tool input models inherit from. See [Known spec ambiguities](/docs/building/cross-cutting/known-ambiguities) for the full workaround and context.
+</Warning>
+
 Once the three surfaces are in place, the runner takes over:
 
 ```bash

@@ -48,6 +48,10 @@ serve(MySeller(), name="my-seller")
 
 Response builders (`adcp.server.responses`) handle schema compliance so you don't construct raw JSON. Use them for every tool return.
 
+<Note>
+**Pydantic input models: allow unknown fields.** The compliance runner injects `idempotency_key` on all tool calls including reads. If your read tool input models use strict Pydantic validation (FastMCP default, or any model without `extra='ignore'`), add `model_config = ConfigDict(extra='ignore')` to a base model your inputs inherit from — otherwise `get_products` and similar read tools will fail validation before the handler runs. See [Known spec ambiguities](/docs/building/cross-cutting/known-ambiguities) for details.
+</Note>
+
 - [PyPI Package](https://pypi.org/project/adcp/)
 - [GitHub Repository](https://github.com/adcontextprotocol/adcp-client-python)
 </Tab>

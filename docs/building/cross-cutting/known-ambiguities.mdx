@@ -36,6 +36,29 @@ For the opposite direction — failures that are **not** in this list and do hav
 - **Resolution**: [#2607](https://github.com/adcontextprotocol/adcp/issues/2607) — the step declares `omit_idempotency_key: true`, which signals the runner to skip both its own `applyIdempotencyInvariant` and the SDK's auto-inject. The request arrives at your agent without a key, letting the vector probe the rejection path honestly.
 - **Workaround**: nothing required — honor the existing spec requirement (reject missing `idempotency_key` on mutating tasks with `INVALID_REQUEST` or `VALIDATION_ERROR`).
 
+### Compliance runner injects `idempotency_key` on read tool calls
+
+- **Storyboards**: Any storyboard that calls a read tool — `get_products`, `list_accounts`, `get_adcp_capabilities`, and similar read-verb tools.
+- **Gap**: the `@adcp/sdk` compliance runner injects `idempotency_key` on every tool call it dispatches, including read tools. The spec requires `idempotency_key` only on mutating tools — read tools are safe to call without one. Python sellers using FastMCP or a strict Pydantic input model receive a validation error (`TypeError: unexpected keyword argument` for function-based dispatch; `ValidationError` with `extra_forbidden` for Pydantic-model–based dispatch) before the handler runs. (The read tool JSON Schemas already set `"additionalProperties": true`; the strict behavior is at the MCP wrapper layer, not the schema.)
+- **Resolution**: [#4399](https://github.com/adcontextprotocol/adcp/issues/4399) — normative guidance that sellers MUST use permissive MCP parameter handling is a 3.1.x item.
+- **Workaround (Python/FastMCP)**: Add `ConfigDict(extra='ignore')` to a base request model that all read tool input models inherit from:
+
+  ```python
+  from typing import Optional
+  from pydantic import BaseModel, ConfigDict
+
+  class AdcpReadRequest(BaseModel):
+      model_config = ConfigDict(extra='ignore')
+
+  class GetProductsRequest(AdcpReadRequest):
+      brief: Optional[str] = None
+      # ... other fields
+  ```
+
+  If you use per-function handler signatures without a base model, add `idempotency_key: Optional[str] = None` as an accept-and-ignore parameter on each read tool instead.
+
+- **Workaround (JS/TS)**: No action needed — the `@adcp/sdk` runner uses open parameter dispatch. Go sellers using default `encoding/json` struct unmarshaling are also unaffected; if your struct decoder uses `DisallowUnknownFields`, apply the same accept-and-ignore pattern.
+
 ### Response schema fields asserted by storyboards
 
 - **Storyboards**: `sales_catalog_driven` (catalog counts), `creative_ad_server` (pricing_options), `media_buy_seller/inventory_list_targeting` (property_list echo), `creative_ad_server` (vendor_cost required).
