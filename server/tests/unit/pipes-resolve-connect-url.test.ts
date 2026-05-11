@@ -48,7 +48,7 @@ describe('resolveGitHubConnectUrl', () => {
   });
 
   it('calls authorize when the user is not yet connected', async () => {
-    mockGetAccessToken.mockResolvedValueOnce({ active: false, error: 'not_installed' });
+    mockGetAccessToken.mockResolvedValue({ active: false, error: 'not_installed' });
     mockPost.mockResolvedValueOnce({ data: { url: 'https://auth.example/authorize-y' } });
 
     const result = await resolveGitHubConnectUrl('user_123', 'https://example.com/member-hub?connected=github');
@@ -57,7 +57,7 @@ describe('resolveGitHubConnectUrl', () => {
   });
 
   it('treats WorkOS 400 "User has already installed this integration" as already_connected (TOCTOU)', async () => {
-    mockGetAccessToken.mockResolvedValueOnce({ active: false, error: 'not_installed' });
+    mockGetAccessToken.mockResolvedValue({ active: false, error: 'not_installed' });
     const err = Object.assign(new Error('Bad Request'), {
       status: 400,
       rawData: { message: 'User has already installed this integration', error: 'Bad Request' },
@@ -73,7 +73,7 @@ describe('resolveGitHubConnectUrl', () => {
   });
 
   it('rethrows non-recoverable WorkOS errors', async () => {
-    mockGetAccessToken.mockResolvedValueOnce({ active: false, error: 'not_installed' });
+    mockGetAccessToken.mockResolvedValue({ active: false, error: 'not_installed' });
     mockPost.mockRejectedValueOnce(Object.assign(new Error('Service Unavailable'), { status: 503 }));
 
     await expect(
@@ -82,7 +82,7 @@ describe('resolveGitHubConnectUrl', () => {
   });
 
   it('rethrows 400s with a different message rather than swallowing them', async () => {
-    mockGetAccessToken.mockResolvedValueOnce({ active: false, error: 'not_installed' });
+    mockGetAccessToken.mockResolvedValue({ active: false, error: 'not_installed' });
     const err = Object.assign(new Error('Bad Request'), {
       status: 400,
       rawData: { message: 'Invalid return_to', error: 'Bad Request' },
