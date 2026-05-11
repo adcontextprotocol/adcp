@@ -322,6 +322,34 @@ skip_result:
       DETAILED_SKIP_TO_CANONICAL in the conforming implementation for a
       concrete mapping.
 
+      Recognized narrower detail values for reason: not_applicable (MUST use
+      these exact strings when the cause matches, so dashboards can bucket them):
+
+        fixture_seed_unsupported      — a seed_* controller scenario in the
+                                        auto-injected fixtures phase returned
+                                        UNKNOWN_SCENARIO (seller declared
+                                        comply_test_controller but has not
+                                        implemented that seed scenario).
+
+        force_scenario_unsupported    — a force_* controller scenario in an
+                                        explicit storyboard phase returned
+                                        UNKNOWN_SCENARIO. Runners MUST detect
+                                        the tuple (comply_test_controller
+                                        present, resolved payload scenario
+                                        begins with `force_`, response
+                                        {success: false, error: UNKNOWN_SCENARIO})
+                                        and grade not_applicable before applying
+                                        the step's declared validations; encode
+                                        `force_scenario_unsupported` in
+                                        skip_result.detail. See
+                                        storyboard-schema.yaml >
+                                        force_scenario_unsupported.
+
+        unresolved_scenario_reference — a requires_scenarios reference did not
+                                        resolve against the source tree (authoring
+                                        bug; distinct from the two above, which
+                                        are agent-coverage gaps).
+
 run_summary:
   description: |
     Runners MUST expose a top-level summary for every run. UI surfaces
