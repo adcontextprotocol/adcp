@@ -121,6 +121,29 @@
       margin-top: var(--space-2);
     }
 
+    .agent-storyboard-summary {
+      margin-top: var(--space-2);
+      display: inline-flex;
+      align-items: baseline;
+      gap: var(--space-1);
+      padding: var(--space-1) var(--space-2);
+      background: var(--color-bg-subtle);
+      border-radius: var(--radius-sm);
+      cursor: help;
+    }
+
+    .agent-storyboard-summary-count {
+      font-size: var(--text-sm);
+      font-weight: var(--font-semibold);
+      color: var(--color-text);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .agent-storyboard-summary-label {
+      font-size: var(--text-xs);
+      color: var(--color-text-secondary);
+    }
+
     .agent-tracks {
       display: flex;
       gap: 3px;
@@ -1488,6 +1511,25 @@
           return '<button class="agent-track ' + cls + '" data-track="' + escapeHtml(track) + '" data-agent-url="' + escapeHtml(agent.url) + '">' + escapeHtml(track) + '</button>';
         }).join('');
 
+        // Storyboards passing is the canonical compliance metric: each
+        // applicable storyboard (universal + protocol + declared specialism)
+        // either passes or doesn't. The track pills above are the SDK's
+        // coarse roll-up (a track "passes" when its storyboards execute
+        // without warnings) — useful as a quick-glance summary but
+        // misleading in isolation: agents that pass 0/N storyboards
+        // can still show "silent" track status if the SDK had nothing
+        // to flag (the literal absence of negative observations is
+        // counted as a clean track). When both views exist, the
+        // storyboard count is the one to trust.
+        const sbPassing = Number.isFinite(cs.storyboards_passing) ? cs.storyboards_passing : null;
+        const sbTotal = Number.isFinite(cs.storyboards_total) ? cs.storyboards_total : null;
+        const storyboardSummary = (sbPassing !== null && sbTotal !== null && sbTotal > 0)
+          ? `<div class="agent-storyboard-summary" title="${escapeHtml(`${sbPassing} of ${sbTotal} applicable storyboards passing. Storyboards are the canonical conformance unit — every applicable specialism, protocol baseline, and universal check is one storyboard. Track pills below are the SDK's coarse summary; storyboard counts are the source of truth for AAO Verified (Spec).`)}">`
+            + `<span class="agent-storyboard-summary-count">${sbPassing} / ${sbTotal}</span>`
+            + `<span class="agent-storyboard-summary-label"> storyboards passing</span>`
+            + `</div>`
+          : '';
+
         const runs = history?.runs || [];
         const sparkline = runs.length > 0 ? '<div class="agent-sparkline">' +
           runs.slice().reverse().map(r => {
@@ -1533,7 +1575,8 @@
               </div>
             </div>
             ${cs.headline ? '<div class="agent-headline">' + escapeHtml(cs.headline) + '</div>' : ''}
-            ${clickableTrackPills ? '<div class="agent-tracks">' + clickableTrackPills + '</div>' : ''}
+            ${storyboardSummary}
+            ${clickableTrackPills ? '<div class="agent-tracks" title="SDK track summary — coarse roll-up of storyboard results into core / signals / media_buy / etc. For per-storyboard pass/fail (the canonical view), see the Verification panel below.">' + clickableTrackPills + '</div>' : ''}
             <div class="agent-track-detail" id="${cardId}-track-detail" style="display:none;"></div>
             ${sparkline}
             ${renderVerificationPanel(cs, agent.url, hasAuth)}
