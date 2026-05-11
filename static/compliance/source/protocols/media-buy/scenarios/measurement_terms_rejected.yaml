@@ -58,7 +58,7 @@ phases:
           measurement support in the response.
         sample_request:
           buying_mode: "brief"
-          brief: "Premium video inventory with measurement guarantees. Q2 flight, $50K."
+          brief: "Premium video inventory with measurement guarantees. Q3 flight, $50K."
           account:
             brand:
               domain: "acmeoutdoor.example"
@@ -106,9 +106,9 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
-          idempotency_key: "$generate:uuid_v4#measurement_terms_rejected_aggressive_terms"
-          start_time: "2026-05-01T00:00:00Z"
-          end_time: "2026-05-31T23:59:59Z"
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_measurement_terms_rejected_reject_terms_create_media_buy_aggressive_terms"
+          start_time: "2026-07-01T00:00:00Z"
+          end_time: "2026-09-30T23:59:59Z"
           packages:
             - product_id: "$context.product_id"
               budget: 25000
@@ -117,7 +117,7 @@ phases:
                 billing_measurement:
                   vendor:
                     domain: "videoamp.example"
-                  measurement_window: "c30"
+                  measurement_window: "c28"
                   max_variance_percent: 0
                 makegood_policy:
                   available_remedies: ["credit"]
@@ -163,9 +163,9 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
-          idempotency_key: "$generate:uuid_v4#measurement_terms_rejected_relaxed_terms"
-          start_time: "2026-05-01T00:00:00Z"
-          end_time: "2026-05-31T23:59:59Z"
+          idempotency_key: "$generate:uuid_v4#media_buy_seller_measurement_terms_rejected_reject_terms_create_media_buy_aggressive_terms"
+          start_time: "2026-07-01T00:00:00Z"
+          end_time: "2026-09-30T23:59:59Z"
           packages:
             - product_id: "$context.product_id"
               budget: 25000
@@ -194,3 +194,5 @@ phases:
             path: "context.correlation_id"
             value: "measurement_terms_rejected--relaxed"
             description: "Context correlation_id returned unchanged"
+        reviewer_checks:
+          - "Reviewer MUST confirm the seller releases the idempotency claim after a TERMS_REJECTED response. Probe: send the aggressive-terms request (same key, step 1), then retry with the same key and corrected terms (this step) — the seller MUST return a fresh media_buy_id, not IDEMPOTENCY_CONFLICT. A seller that caches rejected requests would make this two-step retry pattern impossible. See security.mdx#idempotency rule 3 ('Only successful responses are cached')."
