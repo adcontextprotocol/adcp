@@ -111,11 +111,24 @@ describe('tool dispatch smoke', () => {
     await new Promise<void>(resolve => server.close(() => resolve()));
   });
 
+  // SDK bug allowlist — adcontextprotocol/adcp-client#1688.
+  // The SDK auto-advertises these tools on /creative-builder via specialism
+  // membership, but CreativeBuilderPlatform (stateless build/transform) has
+  // no method slots for them — they live on CreativeAdServerPlatform.
+  // Calls correctly return UNSUPPORTED_FEATURE today. Remove this allowlist
+  // entry once the SDK narrows tool advertisement to interface method
+  // presence; the test will then catch any future regression naturally.
+  const SDK_AUTO_ADVERTISED_UNIMPLEMENTED = new Set<string>([
+    'creative-builder/list_creatives',
+    'creative-builder/get_creative_delivery',
+  ]);
+
   it.each(TEST_CASES)('%s / %s handler is wired (no NOT_IMPLEMENTED)', async (tenantId, toolName) => {
     const body = await callTool(baseUrl, tenantId, toolName);
 
     const structured = body.result?.structuredContent;
     const errorCode = (structured?.adcp_error as Record<string, unknown> | undefined)?.code;
+    const knownSdkBug = SDK_AUTO_ADVERTISED_UNIMPLEMENTED.has(`${tenantId}/${toolName}`);
 
     // Domain errors (INVALID_REQUEST, MEDIA_BUY_NOT_FOUND, …) are expected
     // and count as passing — those mean the handler ran. Only NOT_IMPLEMENTED
@@ -125,18 +138,20 @@ describe('tool dispatch smoke', () => {
       `${tenantId}/${toolName}: handler returned NOT_IMPLEMENTED — add the method to the v6 platform class`,
     ).not.toBe('NOT_IMPLEMENTED');
 
-    expect(
-      errorCode,
-      `${tenantId}/${toolName}: handler returned UNSUPPORTED_FEATURE — wire the method in the platform class`,
-    ).not.toBe('UNSUPPORTED_FEATURE');
+    if (!knownSdkBug) {
+      expect(
+        errorCode,
+        `${tenantId}/${toolName}: handler returned UNSUPPORTED_FEATURE — wire the method in the platform class`,
+      ).not.toBe('UNSUPPORTED_FEATURE');
 
-    // SDK-level UNSUPPORTED_FEATURE surfaces as a text string, not an
-    // adcp_error envelope. Check the raw content text as a belt-and-suspenders
-    // guard so the test catches both the AdcpError and SDK-wrapper forms.
-    const textContent = body.result?.content?.[0]?.text ?? '';
-    expect(
-      textContent,
-      `${tenantId}/${toolName}: SDK returned UNSUPPORTED_FEATURE — method missing from platform class`,
-    ).not.toMatch(/UNSUPPORTED_FEATURE/);
+      // SDK-level UNSUPPORTED_FEATURE surfaces as a text string, not an
+      // adcp_error envelope. Check the raw content text as a belt-and-suspenders
+      // guard so the test catches both the AdcpError and SDK-wrapper forms.
+      const textContent = body.result?.content?.[0]?.text ?? '';
+      expect(
+        textContent,
+        `${tenantId}/${toolName}: SDK returned UNSUPPORTED_FEATURE — method missing from platform class`,
+      ).not.toMatch(/UNSUPPORTED_FEATURE/);
+    }
   }, 15000);
 });
