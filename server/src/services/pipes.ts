@@ -56,6 +56,39 @@ export function buildPipesReturnTo(
   return `${safeProtocol}://${host}${safe}`;
 }
 
+export type ResolveGitHubConnectResult =
+  | { status: 'authorize'; url: string }
+  | { status: 'already_connected'; url: string };
+
+/**
+ * Picks the right URL to send a user to when they click "connect GitHub":
+ * if they already hold an active Pipes token with all required scopes, skip
+ * the WorkOS authorize POST (which 400s with `User has already installed this
+ * integration`) and send them straight to `returnTo`. Also recovers from the
+ * same 400 if it slips through — covers the TOCTOU window where another
+ * tab/click finishes the connect between our token check and the POST.
+ */
+export async function resolveGitHubConnectUrl(
+  workosUserId: string,
+  returnTo: string,
+): Promise<ResolveGitHubConnectResult> {
+  const token = await getGitHubAccessToken(workosUserId);
+  if (token.status === 'ok' && token.missingScopes.length === 0) {
+    return { status: 'already_connected', url: returnTo };
+  }
+  try {
+    const url = await getGitHubAuthorizeUrl(workosUserId, returnTo);
+    return { status: 'authorize', url };
+  } catch (error) {
+    const e = error as { status?: number; rawData?: { message?: string } };
+    const message = typeof e?.rawData?.message === 'string' ? e.rawData.message : '';
+    if (e?.status === 400 && /already installed/i.test(message)) {
+      return { status: 'already_connected', url: returnTo };
+    }
+    throw error;
+  }
+}
+
 export async function getGitHubAuthorizeUrl(workosUserId: string, returnTo: string): Promise<string> {
   const workos = getWorkos();
   let returnToHost = '';
