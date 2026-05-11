@@ -11,7 +11,7 @@ const logger = baseLogger.child({ module: 'compliance-db' });
 export type LifecycleStage = 'development' | 'testing' | 'production' | 'deprecated';
 export type ComplianceStatus = 'passing' | 'degraded' | 'failing' | 'unknown';
 export type OverallRunStatus = 'passing' | 'failing' | 'partial';
-export type TriggeredBy = 'heartbeat' | 'manual' | 'webhook';
+export type TriggeredBy = 'heartbeat' | 'manual' | 'webhook' | 'owner_test';
 export type TrackStatus = 'pass' | 'fail' | 'partial' | 'skip' | 'silent';
 
 /**
@@ -118,6 +118,8 @@ export interface AgentComplianceStatus {
   previous_status: string | null;
   status_changed_at: Date | null;
   updated_at: Date;
+  /** triggered_by of the most recent non-dry-run in agent_compliance_runs */
+  last_triggered_by: TriggeredBy | null;
 }
 
 export type StoryboardStatus = 'passing' | 'failing' | 'partial' | 'untested';
@@ -427,9 +429,15 @@ export class ComplianceDatabase {
 
   async getComplianceStatus(agentUrl: string): Promise<AgentComplianceStatus | null> {
     const result = await query(
-      `SELECT s.*, COALESCE(m.lifecycle_stage, 'production') AS lifecycle_stage
+      `SELECT s.*, COALESCE(m.lifecycle_stage, 'production') AS lifecycle_stage,
+              r.triggered_by AS last_triggered_by
        FROM agent_compliance_status s
        LEFT JOIN agent_registry_metadata m ON m.agent_url = s.agent_url
+       LEFT JOIN LATERAL (
+         SELECT triggered_by FROM agent_compliance_runs
+         WHERE agent_url = s.agent_url AND dry_run = false
+         ORDER BY tested_at DESC LIMIT 1
+       ) r ON true
        WHERE s.agent_url = $1`,
       [agentUrl],
     );
@@ -455,9 +463,15 @@ export class ComplianceDatabase {
     if (agentUrls.length === 0) return new Map();
 
     const result = await query(
-      `SELECT s.*, COALESCE(m.lifecycle_stage, 'production') AS lifecycle_stage
+      `SELECT s.*, COALESCE(m.lifecycle_stage, 'production') AS lifecycle_stage,
+              r.triggered_by AS last_triggered_by
        FROM agent_compliance_status s
        LEFT JOIN agent_registry_metadata m ON m.agent_url = s.agent_url
+       LEFT JOIN LATERAL (
+         SELECT triggered_by FROM agent_compliance_runs
+         WHERE agent_url = s.agent_url AND dry_run = false
+         ORDER BY tested_at DESC LIMIT 1
+       ) r ON true
        WHERE s.agent_url = ANY($1)`,
       [agentUrls],
     );

@@ -17,6 +17,10 @@ server/node_modules
 /dist/schemas/latest
 /dist/schemas/v*
 /dist/schemas/registry.*
+/dist/schemas/*.js
+/dist/schemas/*.js.map
+/dist/schemas/*.d.ts
+/dist/schemas/*.d.ts.map
 /dist/compliance/latest
 /dist/compliance/v*
 /dist/protocol/latest.tgz
