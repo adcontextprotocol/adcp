@@ -685,18 +685,25 @@ phases:
   - id: verify_media_buy_count
     title: "Verify dedup actually happened"
     narrative: |
-      Call get_media_buys to confirm that only TWO media buys were created across
-      all prior steps — one for the initial + replay pair (same key, deduplicated)
-      and one for the fresh-key request. If the seller ignored the idempotency_key,
-      there would be three or more.
+      Call get_media_buys to confirm the two captured media_buy_ids both exist
+      and are distinct. `initial_media_buy_id` was created on the first
+      `create_media_buy` call and reused on the replay (same key, deduplicated);
+      `fresh_key_media_buy_id` was created on the fresh-key request. The
+      `concurrent_retry` phase (when graded) also exercises first-insert-wins
+      but its resource is not queried here — that phase has its own
+      cross-response cardinality check. If the seller ignored the idempotency_key
+      on the replay branch, `initial_media_buy_id` would not match across the
+      replay step's response.
 
     steps:
       - id: get_media_buys_dedup_check
-        title: "Confirm dedup via get_media_buys"
+        title: "Confirm captured media_buy_ids exist and are distinct"
         narrative: |
-          Query the two media_buy_ids captured from prior steps. Both should exist
-          and be distinct. This is an end-to-end verification that the replay did
-          not create a duplicate row.
+          Query the two captured media_buy_ids from prior steps. Both should
+          exist (proving fresh-key and initial calls each created a real
+          resource) and be distinct (proving the fresh-key call was treated as
+          a new request, not deduplicated against the initial). This is an
+          end-to-end verification that the replay did not create a duplicate row.
         task: get_media_buys
         schema_ref: "media-buy/get-media-buys-request.json"
         response_schema_ref: "media-buy/get-media-buys-response.json"
@@ -704,7 +711,7 @@ phases:
         comply_scenario: idempotency_verify
         stateful: true
         expected: |
-          Return exactly two media buys with the two captured IDs. Not three.
+          Return both captured media buys with the two captured IDs, distinct.
 
         sample_request:
           account:
