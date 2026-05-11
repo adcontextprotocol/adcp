@@ -43,7 +43,7 @@
       },
       "minItems": 1,
       "uniqueItems": true,
-      "description": "Closed set of permitted string values for this text slot. When present, a conformant implementation MUST reject any submitted content not in this list. Matching is case-sensitive; producers MUST supply exact casing. If the submitted value contains unresolved template tokens (e.g., {{product_name}}), validation against allowed_values MUST be deferred until interpolation is complete. All declared constraints (allowed_values, character_pattern, max_length, etc.) are conjunctive — submitted content must satisfy every applicable constraint simultaneously."
+      "description": "Closed set of permitted string values for this text slot. When present, a conformant implementation MUST reject any submitted content not in this list with `CREATIVE_VALUE_NOT_ALLOWED` (echoing the offending field path in `error.field` and the allowed list in `error.details.allowed_values`). Matching is case-sensitive; producers MUST supply exact casing. If the submitted value contains unresolved template tokens (e.g., {{product_name}}), validation against allowed_values MUST be deferred until interpolation is complete. All declared constraints (allowed_values, character_pattern, max_length, etc.) are conjunctive — submitted content must satisfy every applicable constraint simultaneously."
     }
   },
   "additionalProperties": true
