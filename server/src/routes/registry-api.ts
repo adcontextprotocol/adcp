@@ -9,6 +9,7 @@ import { Router } from "express";
 import type { RequestHandler } from "express";
 import { z } from "zod";
 import escapeHtml from "escape-html";
+import { findOwnerOrgForUser } from "../services/agent-ownership.js";
 import { CreativeAgentClient, SingleAgentClient, exchangeClientCredentials, ClientCredentialsExchangeError } from "@adcp/sdk";
 import { runStoryboardStep, getComplianceStoryboardById, getFirstStepPreview, testCapabilityDiscovery, resolveStoryboardsForCapabilities, loadComplianceIndex } from "@adcp/sdk/testing";
 import type { Agent, AgentType, AgentWithStats } from "../types.js";
@@ -4813,32 +4814,10 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
 
   const complianceWriteMiddleware = authMiddleware ? [authMiddleware] : [];
 
-  /**
-   * Resolve the workos_organization_id of the org that owns this agent,
-   * for the authenticated user. Returns null if the user is not a member
-   * of any org whose member_profile lists the agent (403 case).
-   *
-   * Mirrors the query driving the `auth-status` endpoint so the org id the
-   * UI surfaces ("Auth configured via OAuth") is the one we consult for
-   * Test-your-agent credentials.
-   */
-  async function resolveAgentOwnerOrg(userId: string, agentUrl: string): Promise<string | null> {
-    try {
-      const result = await query<{ workos_organization_id: string }>(
-        `SELECT mp.workos_organization_id
-         FROM member_profiles mp
-         JOIN organization_memberships om
-           ON om.workos_organization_id = mp.workos_organization_id
-         WHERE mp.agents @> $1::jsonb
-           AND om.workos_user_id = $2
-         LIMIT 1`,
-        [JSON.stringify([{ url: agentUrl }]), userId],
-      );
-      return result.rows[0]?.workos_organization_id ?? null;
-    } catch {
-      return null;
-    }
-  }
+  // `resolveAgentOwnerOrg` is now a thin alias for the shared helper. The
+  // closure-scoped alias is kept so existing call sites inside this factory
+  // don't need to thread the import.
+  const resolveAgentOwnerOrg = findOwnerOrgForUser;
 
   async function verifyAgentOwnership(userId: string, agentUrl: string): Promise<boolean> {
     return (await resolveAgentOwnerOrg(userId, agentUrl)) !== null;
