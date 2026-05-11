@@ -223,12 +223,28 @@ phases:
             description: "Context correlation_id returned unchanged"
 
   - id: replay_same_payload
-    title: "Replay returns cached response"
+    title: "Replay returns cached response; key reuse with different payload conflicts"
     narrative: |
-      The canonical retry-safety case: a buyer's first request times out but actually
-      succeeded on the server. The buyer retries with the same idempotency_key and
-      the same payload. The seller MUST return the same response — same media_buy_id,
-      no new side effects.
+      Two halves of the same key-reuse contract, exercised against a single cached
+      entry on the seller:
+
+      1. Same key + same payload (the canonical retry-safety case): a buyer's first
+         request times out but actually succeeded on the server. The buyer retries
+         with the same idempotency_key and the same payload. The seller MUST return
+         the same response — same media_buy_id, no new side effects.
+
+      2. Same key + materially different payload (key reuse): the buyer reuses the
+         same idempotency_key with a different payload within the replay window. The
+         seller MUST reject with IDEMPOTENCY_CONFLICT. Silently applying the new
+         payload would break the at-most-once guarantee; silently returning the old
+         response would hide a real bug in the buyer's retry logic.
+
+      Both branches share a single `$generate:uuid_v4#replay_key` placeholder. They
+      live in the same phase so the alias resolves to one UUID across all four steps
+      — the seller sees one cached idempotency entry that the conflict step probes
+      with a different body. Splitting these into separate phases would reset the
+      alias cache at the phase boundary (adcp-client#1657) and mint a fresh UUID for
+      the conflict step, defeating the test.
 
     steps:
       - id: create_media_buy_initial
@@ -419,24 +435,21 @@ phases:
           duplicate_webhook_on_replay. Not_applicable when the runner does not
           host a webhook receiver.
 
-  - id: key_reuse_conflict
-    title: "Key reuse with different payload returns IDEMPOTENCY_CONFLICT"
-    narrative: |
-      When a buyer reuses an idempotency_key with a different payload within the
-      replay window, the seller MUST reject the second request with
-      IDEMPOTENCY_CONFLICT. Silently applying the new payload would break the
-      at-most-once guarantee; silently returning the old response would hide a
-      real bug in the buyer's retry logic.
-
-    steps:
       - id: create_media_buy_conflict
         title: "Same key, different payload returns IDEMPOTENCY_CONFLICT"
         narrative: |
-          Re-send create_media_buy with the same idempotency_key as the replay
-          phase but a materially different payload — a different end_time and
-          a different budget. The seller MUST reject this with IDEMPOTENCY_CONFLICT.
-          CONFLICT is accepted as a fallback for sellers that haven't adopted the
-          new error code yet.
+          Re-send create_media_buy with the same idempotency_key as the prior
+          replay steps but a materially different payload — a different end_time
+          and a different budget. The seller MUST reject this with
+          IDEMPOTENCY_CONFLICT. CONFLICT is accepted as a fallback for sellers
+          that haven't adopted the new error code yet.
+
+          This step shares the `$generate:uuid_v4#replay_key` alias with the
+          initial and replay steps above, so the runner injects the same UUID
+          on the wire. Lives in the same phase as those steps because the
+          runner's alias cache resets at phase boundaries (adcp-client#1657);
+          a separate phase would mint a fresh UUID and the seller would treat
+          the call as a new request rather than a conflicting key reuse.
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
         response_schema_ref: "media-buy/create-media-buy-response.json"
