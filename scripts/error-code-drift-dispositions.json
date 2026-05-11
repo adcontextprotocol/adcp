@@ -46,6 +46,11 @@
       "target_version": "3.1",
       "note": "Part of field_scopes feature (#3887). Backport requires the whole feature surface, which is 3.1-shaped."
     },
+    "IDEMPOTENCY_IN_FLIGHT": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.1",
+      "note": "Pairs with security.mdx#idempotency rule 9 (first-insert-wins / concurrent-retry resolution). Lets sellers reject-and-redirect on concurrent retry instead of blocking; buyers retry with the same key after error.details.retry_after. Wire change — held for 3.1."
+    },
     "PAYMENT_TERMS_NOT_SUPPORTED": {
       "disposition": "held-for-next-minor",
       "target_version": "3.1",

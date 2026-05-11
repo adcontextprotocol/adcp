@@ -59,6 +59,8 @@ authored_check_kinds:
   - field_less_than
   - field_equals_context
   - upstream_traffic
+  - cross_response_field_equal
+  - cross_response_count_distinct
 
 # Conforming implementation: adcp-client PR #611
 # (src/lib/testing/storyboard/types.ts — RunnerRequestRecord,
