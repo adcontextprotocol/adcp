@@ -1095,7 +1095,7 @@ describe('AdAgentsManager', () => {
       const json = manager.createAdAgentsJson(agents, true, true);
       const parsed = JSON.parse(json);
 
-      expect(parsed.$schema).toBe('https://adcontextprotocol.org/schemas/v2/adagents.json');
+      expect(parsed.$schema).toBe('https://adcontextprotocol.org/schemas/v3/adagents.json');
       expect(parsed.authorized_agents).toEqual(agents);
       expect(parsed.last_updated).toBeDefined();
       expect(new Date(parsed.last_updated).toISOString()).toBe(parsed.last_updated);
@@ -1965,7 +1965,7 @@ describe('AdAgentsManager', () => {
         });
         const parsed = JSON.parse(json);
 
-        expect(parsed.$schema).toBe('https://adcontextprotocol.org/schemas/v2/adagents.json');
+        expect(parsed.$schema).toBe('https://adcontextprotocol.org/schemas/v3/adagents.json');
         expect(parsed.last_updated).toBeUndefined();
         expect(parsed.signals).toHaveLength(1);
         expect(parsed.signals[0].id).toBe('likely_ev_buyers');
@@ -1983,7 +1983,7 @@ describe('AdAgentsManager', () => {
         });
         const parsed = JSON.parse(json);
 
-        expect(parsed.$schema).toBe('https://adcontextprotocol.org/schemas/v2/adagents.json');
+        expect(parsed.$schema).toBe('https://adcontextprotocol.org/schemas/v3/adagents.json');
         expect(parsed.last_updated).toBeDefined();
       });
     });
