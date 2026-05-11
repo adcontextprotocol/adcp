@@ -698,7 +698,7 @@ export class AdAgentsManager {
       result.warnings.push({
         field: '$schema',
         message: 'Consider adding $schema field for validation',
-        suggestion: 'Add "$schema": "https://adcontextprotocol.org/schemas/v2/adagents.json"'
+        suggestion: 'Add "$schema": "https://adcontextprotocol.org/schemas/v3/adagents.json"'
       });
     }
 
@@ -1602,7 +1602,7 @@ export class AdAgentsManager {
     }
 
     if (opts.includeSchema !== false) {
-      adagents.$schema = 'https://adcontextprotocol.org/schemas/v2/adagents.json';
+      adagents.$schema = 'https://adcontextprotocol.org/schemas/v3/adagents.json';
     }
 
     if (opts.includeTimestamp !== false) {
@@ -1617,7 +1617,7 @@ export class AdAgentsManager {
    */
   validateProposed(agents: AuthorizedAgent[]): AdAgentsValidationResult {
     const mockData = {
-      $schema: 'https://adcontextprotocol.org/schemas/v2/adagents.json',
+      $schema: 'https://adcontextprotocol.org/schemas/v3/adagents.json',
       authorized_agents: agents,
       last_updated: new Date().toISOString()
     };

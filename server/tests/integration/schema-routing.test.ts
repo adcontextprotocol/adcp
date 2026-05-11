@@ -90,7 +90,7 @@ describe("/schemas HTTP routing", () => {
       expect(res.status).toBe(200);
     });
 
-    it("serves /schemas/v3/adagents.json via alias rewrite (prerelease-only)", async () => {
+    it("serves /schemas/v3/adagents.json via alias rewrite", async () => {
       if (!latestMajor3) return;
       const res = await request(app).get("/schemas/v3/adagents.json");
       expect(res.status).toBe(200);

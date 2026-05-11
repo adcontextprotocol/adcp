@@ -885,7 +885,7 @@
             <input
               type="url"
               id="authoritative-location"
-              placeholder="https://cdn.example.com/adagents/v2/adagents.json"
+              placeholder="https://cdn.example.com/adagents/v3/adagents.json"
               style="width: 100%; padding: 12px; font-size: 15px; border: 2px solid #fed7aa; border-radius: 6px"
               oninput="updateJsonPreview()"
             />
@@ -894,11 +894,47 @@
             </p>
           </div>
 
+          <!-- Contact Section (optional, file-level metadata) -->
+          <div id="contact-section" style="background: var(--color-bg-subtle); border: 2px solid var(--color-border); border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; cursor: pointer;" onclick="toggleContactSection()">
+              <label style="font-weight: 600; color: var(--color-text-heading); margin: 0; cursor: pointer;">📋 Contact Info <span style="font-weight: normal; font-size: 13px; color: var(--color-text-muted);">(optional)</span></label>
+              <span id="contact-toggle-icon" style="font-size: 13px; color: var(--color-text-muted);">▼ Show</span>
+            </div>
+            <div id="contact-fields" style="display: none;">
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+                <div class="form-group" style="margin: 0;">
+                  <label>Contact name</label>
+                  <input type="text" id="contact-name" placeholder="e.g., Pinnacle Agency Ad Ops" oninput="updateJsonPreview()" style="width: 100%; box-sizing: border-box;" />
+                </div>
+                <div class="form-group" style="margin: 0;">
+                  <label>Contact email</label>
+                  <input type="email" id="contact-email" placeholder="adops@example.com" oninput="updateJsonPreview()" style="width: 100%; box-sizing: border-box;" />
+                </div>
+                <div class="form-group" style="margin: 0;">
+                  <label>Domain</label>
+                  <input type="text" id="contact-domain" placeholder="example.com" oninput="updateJsonPreview()" style="width: 100%; box-sizing: border-box;" />
+                </div>
+                <div class="form-group" style="margin: 0;">
+                  <label>Privacy policy URL</label>
+                  <input type="url" id="contact-privacy-policy-url" placeholder="https://example.com/privacy" oninput="updateJsonPreview()" style="width: 100%; box-sizing: border-box;" />
+                </div>
+                <div class="form-group" style="margin: 0;">
+                  <label>Seller ID <span style="font-weight: normal; font-size: 11px; color: var(--color-text-muted);">IAB sellers.json</span></label>
+                  <input type="text" id="contact-seller-id" placeholder="pub-12345" oninput="updateJsonPreview()" style="width: 100%; box-sizing: border-box;" />
+                </div>
+                <div class="form-group" style="margin: 0;">
+                  <label>TAG ID <span style="font-weight: normal; font-size: 11px; color: var(--color-text-muted);">TAG Certified Against Fraud</span></label>
+                  <input type="text" id="contact-tag-id" placeholder="12345" oninput="updateJsonPreview()" style="width: 100%; box-sizing: border-box;" />
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- Inline Configuration Section (visible by default) -->
           <div id="inline-configuration">
             <!-- Tabs -->
             <div style="border-bottom: 2px solid var(--color-border); margin-bottom: 24px">
-              <div style="display: flex; gap: 4px">
+              <div style="display: flex; gap: 4px; flex-wrap: wrap;">
                 <button class="tab-btn active" onclick="switchTab('properties')" id="properties-tab">
                   🏢 Properties (<span id="properties-count">0</span>)
                 </button>
@@ -913,6 +949,9 @@
                 </button>
                 <button class="tab-btn" onclick="switchTab('signalTags')" id="signalTags-tab">
                   🏷️ Signal Tags (<span id="signal-tags-count">0</span>)
+                </button>
+                <button class="tab-btn" onclick="switchTab('propertyFeatures')" id="propertyFeatures-tab">
+                  🏆 Features (<span id="property-features-count">0</span>)
                 </button>
               </div>
             </div>
@@ -1034,6 +1073,49 @@
                 style="flex: 1; max-width: 300px"
               />
               <button class="btn" onclick="createSignalTag()">➕ Create Tag</button>
+            </div>
+          </div>
+
+          <!-- Property Features Tab Content -->
+          <div id="propertyFeatures-tab-content" class="tab-content" style="display: none">
+            <p style="font-size: 13px; color: var(--color-text-muted); margin-bottom: 16px;">
+              Third-party certification agents (e.g., Scope3, TAG, OneTrust) that provide property-level data.
+              Buyers use these to discover which certification agents cover your inventory.
+            </p>
+            <div id="property-features-list">
+              <!-- Property feature cards populated by renderPropertyFeatures() -->
+            </div>
+
+            <!-- Inline add/edit form for property features -->
+            <div id="pf-form" style="display: none; background: var(--color-bg-subtle); border: 2px solid var(--color-border); border-radius: 8px; padding: 16px; margin-top: 16px;">
+              <input type="hidden" id="pf-edit-index" value="-1" />
+              <h4 style="margin: 0 0 12px 0; font-size: 15px; color: var(--color-text-heading);" id="pf-form-title">Add feature provider</h4>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+                <div class="form-group" style="margin: 0;">
+                  <label>Provider name <span style="color: var(--color-error-500);">*</span></label>
+                  <input type="text" id="pf-name" placeholder="e.g., Scope3" style="width: 100%; box-sizing: border-box;" />
+                </div>
+                <div class="form-group" style="margin: 0;">
+                  <label>Provider API URL <span style="color: var(--color-error-500);">*</span></label>
+                  <input type="url" id="pf-url" placeholder="https://api.scope3.com/..." style="width: 100%; box-sizing: border-box;" />
+                </div>
+                <div class="form-group" style="margin: 0;">
+                  <label>Feature IDs <span style="font-weight: normal; font-size: 11px; color: var(--color-text-muted);">comma-separated</span></label>
+                  <input type="text" id="pf-features" placeholder="carbon_score, tag_certified_against_fraud" style="width: 100%; box-sizing: border-box;" />
+                </div>
+                <div class="form-group" style="margin: 0;">
+                  <label>Publisher ID <span style="font-weight: normal; font-size: 11px; color: var(--color-text-muted);">optional</span></label>
+                  <input type="text" id="pf-publisher-id" placeholder="Your ID at this provider" style="width: 100%; box-sizing: border-box;" />
+                </div>
+              </div>
+              <div style="display: flex; gap: 8px;">
+                <button class="btn" onclick="savePfForm()" style="padding: 8px 16px;">Save</button>
+                <button class="btn btn-secondary" onclick="hidePfForm()" style="padding: 8px 16px;">Cancel</button>
+              </div>
+            </div>
+
+            <div style="margin-top: 20px;">
+              <button class="btn" onclick="showPfForm(-1)">➕ Add feature provider</button>
             </div>
           </div>
           </div>
@@ -1211,6 +1293,45 @@
                 <p style="margin: 4px 0 0 0; font-size: 12px; color: #666;">
                   Commercial relationship: direct (your sales path), delegated (agent manages your monetization), ad_network (sold through network/package)
                 </p>
+              </div>
+
+              <div class="form-group">
+                <label>
+                  <input type="checkbox" id="agent-exclusive" style="margin-right: 6px;" />
+                  Exclusive — sole authorized path for this inventory slice
+                </label>
+                <p style="margin: 4px 0 0 0; font-size: 12px; color: #666;">When checked, other agents in this file are NOT authorized for the same scoped inventory.</p>
+              </div>
+
+              <div class="form-group">
+                <label>Countries <span style="font-weight: normal; font-size: 12px; color: #666;">(optional — leave blank for worldwide)</span></label>
+                <input type="text" id="agent-countries" placeholder="US, CA, GB  (comma-separated ISO 3166-1 alpha-2)" style="width: 100%; box-sizing: border-box;" />
+                <p style="margin: 4px 0 0 0; font-size: 12px; color: #666;">Restrict this authorization to specific countries. Two-letter country codes, e.g. US, CA.</p>
+              </div>
+
+              <div class="form-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <div>
+                  <label>Effective from <span style="font-weight: normal; font-size: 12px; color: #666;">(optional)</span></label>
+                  <input type="datetime-local" id="agent-effective-from" style="width: 100%; box-sizing: border-box;" />
+                </div>
+                <div>
+                  <label>Effective until <span style="font-weight: normal; font-size: 12px; color: #666;">(optional)</span></label>
+                  <input type="datetime-local" id="agent-effective-until" style="width: 100%; box-sizing: border-box;" />
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label>Encryption keys <span style="font-weight: normal; font-size: 12px; color: #666;">(optional — X25519 public keys for TMPX)</span></label>
+                <p style="margin: 0 0 8px 0; font-size: 12px; color: #666;">Each key: enter the JWK <code>kid</code> (≤8 chars) and base64url-encoded X25519 public key (<code>x</code>, 43–44 chars).</p>
+                <div id="agent-encryption-keys-list"></div>
+                <button type="button" class="btn btn-secondary" onclick="addEncryptionKeyEntry()" style="margin-top: 8px; padding: 6px 12px; font-size: 13px;">➕ Add encryption key</button>
+              </div>
+
+              <div class="form-group">
+                <label>Signing keys <span style="font-weight: normal; font-size: 12px; color: #666;">(optional — publisher-attested public signing keys)</span></label>
+                <p style="margin: 0 0 8px 0; font-size: 12px; color: #666;">Paste each key as a JWK JSON object (Ed25519, P-256, or RSA public key).</p>
+                <div id="agent-signing-keys-list"></div>
+                <button type="button" class="btn btn-secondary" onclick="addSigningKeyEntry()" style="margin-top: 8px; padding: 6px 12px; font-size: 13px;">➕ Add signing key</button>
               </div>
 
               <div class="form-group">
@@ -1789,11 +1910,13 @@
       // In-memory state (represents the adagents.json file)
       const state = {
         domain: '',
+        contact: {},
         properties: [],
         agents: [],
         tags: [],
         signals: [],
         signalTags: [],
+        propertyFeatures: [],
         fileFound: false,
         bulkSelectMode: false,
         selectedPropertyIds: [],
@@ -1862,14 +1985,14 @@
           // URL Reference structure
           const authLocation = document.getElementById('authoritative-location').value.trim();
           adagents = {
-            $schema: 'https://adcontextprotocol.org/schemas/v2/adagents.json',
-            authoritative_location: authLocation || 'https://cdn.example.com/adagents/v2/adagents.json',
+            $schema: 'https://adcontextprotocol.org/schemas/v3/adagents.json',
+            authoritative_location: authLocation || 'https://cdn.example.com/adagents/v3/adagents.json',
             last_updated: new Date().toISOString(),
           };
         } else {
           // Inline structure
           adagents = {
-            $schema: 'https://adcontextprotocol.org/schemas/v2/adagents.json',
+            $schema: 'https://adcontextprotocol.org/schemas/v3/adagents.json',
             authorized_agents: state.agents.map(agent => {
               const agentObj = {
                 url: agent.url,
@@ -1895,10 +2018,22 @@
                 agentObj.property_ids = agent.property_ids;
               }
 
+              // v3 constraint fields
+              if (agent.exclusive) agentObj.exclusive = true;
+              if (agent.countries?.length > 0) agentObj.countries = agent.countries;
+              if (agent.effective_from) agentObj.effective_from = agent.effective_from;
+              if (agent.effective_until) agentObj.effective_until = agent.effective_until;
+              if (agent.signing_keys?.length > 0) agentObj.signing_keys = agent.signing_keys;
+              if (agent.encryption_keys?.length > 0) agentObj.encryption_keys = agent.encryption_keys;
+
               return agentObj;
             }),
             last_updated: new Date().toISOString(),
           };
+
+          // Contact metadata
+          const contact = getContactFromForm();
+          if (contact) adagents.contact = contact;
 
           if (state.properties.length > 0) {
             adagents.properties = state.properties;
@@ -1919,6 +2054,11 @@
               };
             });
           }
+
+          // Property features
+          if (state.propertyFeatures.length > 0) {
+            adagents.property_features = state.propertyFeatures;
+          }
         }
 
         document.getElementById('json-output').value = JSON.stringify(adagents, null, 2);
@@ -1930,6 +2070,170 @@
         document.getElementById('agents-count').textContent = state.agents.length;
         document.getElementById('signals-count').textContent = state.signals.length;
         document.getElementById('signal-tags-count').textContent = state.signalTags.length;
+        document.getElementById('property-features-count').textContent = state.propertyFeatures.length;
+      }
+
+      function toggleContactSection() {
+        const fields = document.getElementById('contact-fields');
+        const icon = document.getElementById('contact-toggle-icon');
+        if (fields.style.display === 'none') {
+          fields.style.display = 'block';
+          icon.textContent = '▲ Hide';
+        } else {
+          fields.style.display = 'none';
+          icon.textContent = '▼ Show';
+        }
+      }
+
+      function getContactFromForm() {
+        const contact = {};
+        const name = document.getElementById('contact-name').value.trim();
+        const email = document.getElementById('contact-email').value.trim();
+        const domain = document.getElementById('contact-domain').value.trim();
+        const privacyPolicyUrl = document.getElementById('contact-privacy-policy-url').value.trim();
+        const sellerId = document.getElementById('contact-seller-id').value.trim();
+        const tagId = document.getElementById('contact-tag-id').value.trim();
+        if (name) contact.name = name;
+        if (email) contact.email = email;
+        if (domain) contact.domain = domain;
+        if (privacyPolicyUrl) contact.privacy_policy_url = privacyPolicyUrl;
+        if (sellerId) contact.seller_id = sellerId;
+        if (tagId) contact.tag_id = tagId;
+        return Object.keys(contact).length > 0 ? contact : null;
+      }
+
+      function populateContactForm(contact) {
+        if (!contact) return;
+        document.getElementById('contact-name').value = contact.name || '';
+        document.getElementById('contact-email').value = contact.email || '';
+        document.getElementById('contact-domain').value = contact.domain || '';
+        document.getElementById('contact-privacy-policy-url').value = contact.privacy_policy_url || '';
+        document.getElementById('contact-seller-id').value = contact.seller_id || '';
+        document.getElementById('contact-tag-id').value = contact.tag_id || '';
+        if (Object.values(contact).some(v => v)) {
+          document.getElementById('contact-fields').style.display = 'block';
+          document.getElementById('contact-toggle-icon').textContent = '▲ Hide';
+        }
+      }
+
+      function renderPropertyFeatures() {
+        const container = document.getElementById('property-features-list');
+        if (!container) return;
+        container.innerHTML = '';
+        if (state.propertyFeatures.length === 0) {
+          const empty = document.createElement('p');
+          empty.style.cssText = 'color: var(--color-text-muted); font-size: 13px;';
+          empty.textContent = 'No feature providers added yet.';
+          container.appendChild(empty);
+          return;
+        }
+        state.propertyFeatures.forEach((pf, i) => {
+          const card = document.createElement('div');
+          card.style.cssText = 'border: 2px solid var(--color-border); border-radius: 8px; padding: 12px; margin-bottom: 10px; background: var(--color-bg-card);';
+
+          const row = document.createElement('div');
+          row.style.cssText = 'display: flex; justify-content: space-between; align-items: flex-start;';
+
+          const info = document.createElement('div');
+
+          const nameEl = document.createElement('strong');
+          nameEl.style.fontSize = '14px';
+          nameEl.textContent = pf.name || '(unnamed)';
+          info.appendChild(nameEl);
+
+          const urlEl = document.createElement('div');
+          urlEl.style.cssText = 'font-size: 12px; color: var(--color-text-muted); margin-top: 2px;';
+          urlEl.textContent = pf.url || '';
+          info.appendChild(urlEl);
+
+          const featEl = document.createElement('div');
+          featEl.style.cssText = 'font-size: 12px; margin-top: 4px;';
+          featEl.textContent = 'Features: ';
+          const featCode = document.createElement('code');
+          featCode.textContent = (pf.features || []).join(', ');
+          featEl.appendChild(featCode);
+          info.appendChild(featEl);
+
+          if (pf.publisher_id) {
+            const pidEl = document.createElement('div');
+            pidEl.style.cssText = 'font-size: 12px; color: var(--color-text-muted);';
+            pidEl.textContent = `Publisher ID: ${pf.publisher_id}`;
+            info.appendChild(pidEl);
+          }
+
+          const actions = document.createElement('div');
+          actions.style.cssText = 'display: flex; gap: 6px;';
+
+          const editBtn = document.createElement('button');
+          editBtn.className = 'btn btn-secondary';
+          editBtn.style.cssText = 'padding: 4px 10px; font-size: 12px;';
+          editBtn.textContent = '✏️ Edit';
+          editBtn.onclick = () => showPfForm(i);
+
+          const removeBtn = document.createElement('button');
+          removeBtn.className = 'btn';
+          removeBtn.style.cssText = 'padding: 4px 10px; font-size: 12px; background: var(--color-error-500);';
+          removeBtn.textContent = '🗑️ Remove';
+          removeBtn.onclick = () => removePropertyFeature(i);
+
+          actions.appendChild(editBtn);
+          actions.appendChild(removeBtn);
+          row.appendChild(info);
+          row.appendChild(actions);
+          card.appendChild(row);
+          container.appendChild(card);
+        });
+      }
+
+      function showPfForm(index) {
+        document.getElementById('pf-edit-index').value = index;
+        document.getElementById('pf-form-title').textContent = index === -1 ? 'Add feature provider' : 'Edit feature provider';
+        if (index === -1) {
+          document.getElementById('pf-name').value = '';
+          document.getElementById('pf-url').value = '';
+          document.getElementById('pf-features').value = '';
+          document.getElementById('pf-publisher-id').value = '';
+        } else {
+          const pf = state.propertyFeatures[index];
+          document.getElementById('pf-name').value = pf.name || '';
+          document.getElementById('pf-url').value = pf.url || '';
+          document.getElementById('pf-features').value = (pf.features || []).join(', ');
+          document.getElementById('pf-publisher-id').value = pf.publisher_id || '';
+        }
+        document.getElementById('pf-form').style.display = 'block';
+        document.getElementById('pf-name').focus();
+      }
+
+      function hidePfForm() {
+        document.getElementById('pf-form').style.display = 'none';
+      }
+
+      function savePfForm() {
+        const name = document.getElementById('pf-name').value.trim();
+        const url = document.getElementById('pf-url').value.trim();
+        if (!name || !url) {
+          alert('Provider name and URL are required.');
+          return;
+        }
+        const features = document.getElementById('pf-features').value.split(',').map(f => f.trim()).filter(Boolean);
+        const publisherId = document.getElementById('pf-publisher-id').value.trim() || undefined;
+        const pf = { url, name, features };
+        if (publisherId) pf.publisher_id = publisherId;
+        const index = parseInt(document.getElementById('pf-edit-index').value);
+        if (index === -1) {
+          state.propertyFeatures.push(pf);
+        } else {
+          state.propertyFeatures[index] = pf;
+        }
+        hidePfForm();
+        render();
+      }
+
+      function removePropertyFeature(index) {
+        if (confirm(`Remove feature provider "${state.propertyFeatures[index].name}"?`)) {
+          state.propertyFeatures.splice(index, 1);
+          render();
+        }
       }
 
       function renderProperties() {
@@ -2202,6 +2506,7 @@
         renderAgents();
         renderSignals();
         renderSignalTags();
+        renderPropertyFeatures();
         updateCounts();
         updateJsonPreview();
       }
@@ -3053,12 +3358,155 @@
       // Agent CRUD Operations with Modal
       // ============================================================================
 
+      function renderEncryptionKeysList(keys) {
+        const container = document.getElementById('agent-encryption-keys-list');
+        container.innerHTML = '';
+        (keys || []).forEach((key, i) => {
+          const row = document.createElement('div');
+          row.style.cssText = 'display:flex;gap:8px;margin-bottom:8px;align-items:flex-start;';
+
+          const wrap = document.createElement('div');
+          wrap.style.flex = '1';
+
+          const kidRow = document.createElement('div');
+          kidRow.style.cssText = 'display:flex;gap:8px;margin-bottom:4px;';
+
+          const kidInput = document.createElement('input');
+          kidInput.type = 'text';
+          kidInput.placeholder = 'kid (≤8 chars)';
+          kidInput.maxLength = 8;
+          kidInput.value = key.kid || '';
+          kidInput.dataset.encIndex = String(i);
+          kidInput.dataset.encField = 'kid';
+          kidInput.oninput = function () { updateEncKey(this); };
+          kidInput.style.cssText = 'width:120px;padding:6px;border:1px solid var(--color-border);border-radius:6px;font-size:13px;';
+          kidRow.appendChild(kidInput);
+
+          const kidNote = document.createElement('span');
+          kidNote.style.cssText = 'font-size:12px;color:#666;align-self:center;';
+          kidNote.textContent = 'kty=OKP crv=X25519 use=enc';
+          kidRow.appendChild(kidNote);
+          wrap.appendChild(kidRow);
+
+          const xInput = document.createElement('input');
+          xInput.type = 'text';
+          xInput.placeholder = 'x — base64url X25519 public key (43–44 chars)';
+          xInput.value = key.x || '';
+          xInput.dataset.encIndex = String(i);
+          xInput.dataset.encField = 'x';
+          xInput.oninput = function () { updateEncKey(this); };
+          xInput.style.cssText = 'width:100%;padding:6px;border:1px solid var(--color-border);border-radius:6px;font-size:13px;box-sizing:border-box;';
+          xInput.setAttribute('pattern', '^[A-Za-z0-9_-]+$');
+          wrap.appendChild(xInput);
+
+          const err = document.createElement('div');
+          err.dataset.encError = String(i);
+          err.style.cssText = 'font-size:11px;color:var(--color-error-500);display:none;margin-top:2px;';
+          err.textContent = 'Must be a base64url string of 43–44 characters (32-byte X25519 key).';
+          wrap.appendChild(err);
+
+          const removeBtn = document.createElement('button');
+          removeBtn.type = 'button';
+          removeBtn.onclick = () => removeEncKey(i);
+          removeBtn.style.cssText = 'padding:4px 8px;background:var(--color-error-500);color:#fff;border:none;border-radius:6px;cursor:pointer;';
+          removeBtn.textContent = '🗑️';
+
+          row.appendChild(wrap);
+          row.appendChild(removeBtn);
+          container.appendChild(row);
+        });
+      }
+
+      function addEncryptionKeyEntry() {
+        const keys = getEncryptionKeysFromForm();
+        keys.push({ kid: '', kty: 'OKP', crv: 'X25519', use: 'enc', x: '' });
+        renderEncryptionKeysList(keys);
+      }
+
+      function updateEncKey(input) {
+        const idx = parseInt(input.dataset.encIndex);
+        const field = input.dataset.encField;
+        if (field === 'x') {
+          const val = input.value.trim();
+          const errEl = document.querySelector(`[data-enc-error="${idx}"]`);
+          const validX = /^[A-Za-z0-9_-]+$/.test(val) && val.length >= 43 && val.length <= 44;
+          errEl.style.display = (val && !validX) ? 'block' : 'none';
+        }
+      }
+
+      function removeEncKey(index) {
+        const keys = getEncryptionKeysFromForm();
+        keys.splice(index, 1);
+        renderEncryptionKeysList(keys);
+      }
+
+      function getEncryptionKeysFromForm() {
+        const rows = document.querySelectorAll('#agent-encryption-keys-list [data-enc-field="kid"]');
+        return Array.from(rows).map((kidInput, i) => {
+          const xInput = document.querySelector(`#agent-encryption-keys-list [data-enc-index="${i}"][data-enc-field="x"]`);
+          return { kid: kidInput.value.trim(), kty: 'OKP', crv: 'X25519', use: 'enc', x: xInput ? xInput.value.trim() : '' };
+        });
+      }
+
+      function renderSigningKeysList(keys) {
+        const container = document.getElementById('agent-signing-keys-list');
+        container.innerHTML = '';
+        (keys || []).forEach((key, i) => {
+          const row = document.createElement('div');
+          row.style.cssText = 'display:flex;gap:8px;margin-bottom:8px;align-items:flex-start;';
+
+          const textarea = document.createElement('textarea');
+          textarea.dataset.sigIndex = String(i);
+          textarea.style.cssText = 'flex:1;padding:6px;border:1px solid var(--color-border);border-radius:6px;font-size:12px;font-family:monospace;resize:vertical;';
+          textarea.rows = 4;
+          textarea.placeholder = '{"kid":"key-1","kty":"OKP","crv":"Ed25519","x":"base64url..."}';
+          textarea.value = JSON.stringify(key, null, 2);
+
+          const removeBtn = document.createElement('button');
+          removeBtn.type = 'button';
+          removeBtn.onclick = () => removeSigKey(i);
+          removeBtn.style.cssText = 'padding:4px 8px;background:var(--color-error-500);color:#fff;border:none;border-radius:6px;cursor:pointer;';
+          removeBtn.textContent = '🗑️';
+
+          row.appendChild(textarea);
+          row.appendChild(removeBtn);
+          container.appendChild(row);
+        });
+      }
+
+      function addSigningKeyEntry() {
+        const keys = getSigningKeysFromForm();
+        keys.push({ kid: '', kty: 'OKP' });
+        renderSigningKeysList(keys);
+      }
+
+      function removeSigKey(index) {
+        const keys = getSigningKeysFromForm();
+        keys.splice(index, 1);
+        renderSigningKeysList(keys);
+      }
+
+      function getSigningKeysFromForm() {
+        const textareas = document.querySelectorAll('#agent-signing-keys-list [data-sig-index]');
+        const keys = [];
+        textareas.forEach(ta => {
+          try { keys.push(JSON.parse(ta.value)); } catch (_) { /* skip invalid JSON */ }
+        });
+        return keys;
+      }
+
       function addAgent() {
         document.getElementById('agent-edit-index').value = '-1';
         document.getElementById('agent-modal-title').textContent = 'Add Agent';
         document.getElementById('agent-url').value = '';
         document.getElementById('agent-authorized-for').value = '';
         document.getElementById('agent-delegation-type').value = 'direct';
+        document.getElementById('agent-exclusive').checked = false;
+        document.getElementById('agent-countries').value = '';
+        document.getElementById('agent-effective-from').value = '';
+        document.getElementById('agent-effective-until').value = '';
+        renderEncryptionKeysList([]);
+        renderSigningKeysList([]);
 
         // Default to "all" access
         document.querySelector('input[name="agent-access-type"][value="all"]').checked = true;
@@ -3077,6 +3525,16 @@
         document.getElementById('agent-url').value = agent.url;
         document.getElementById('agent-authorized-for').value = agent.authorized_for;
         document.getElementById('agent-delegation-type').value = agent.delegation_type || 'direct';
+
+        // v3 fields
+        document.getElementById('agent-exclusive').checked = agent.exclusive === true;
+        document.getElementById('agent-countries').value = (agent.countries || []).join(', ');
+        document.getElementById('agent-effective-from').value = agent.effective_from
+          ? agent.effective_from.slice(0, 16) : '';
+        document.getElementById('agent-effective-until').value = agent.effective_until
+          ? agent.effective_until.slice(0, 16) : '';
+        renderEncryptionKeysList(agent.encryption_keys || []);
+        renderSigningKeysList(agent.signing_keys || []);
 
         // Determine access type based on what's set
         let accessType = 'all';
@@ -3204,6 +3662,42 @@
           delete agent.property_ids;
         }
 
+        // v3 fields
+        if (document.getElementById('agent-exclusive').checked) {
+          agent.exclusive = true;
+        }
+
+        const countriesRaw = document.getElementById('agent-countries').value.trim();
+        if (countriesRaw) {
+          const tokens = countriesRaw.split(',').map(c => c.trim().toUpperCase());
+          const countries = tokens.filter(c => /^[A-Z]{2}$/.test(c));
+          const rejected = tokens.filter(c => !/^[A-Z]{2}$/.test(c));
+          if (rejected.length > 0) {
+            alert(`These country codes are not valid ISO 3166-1 alpha-2 and were ignored: ${rejected.join(', ')}\n\nOnly two-letter codes (e.g. US, CA, GB) are accepted.`);
+            return;
+          }
+          if (countries.length > 0) agent.countries = countries;
+        }
+
+        const effectiveFrom = document.getElementById('agent-effective-from').value;
+        if (effectiveFrom) agent.effective_from = new Date(effectiveFrom).toISOString();
+
+        const effectiveUntil = document.getElementById('agent-effective-until').value;
+        if (effectiveUntil) agent.effective_until = new Date(effectiveUntil).toISOString();
+
+        const encKeys = getEncryptionKeysFromForm().filter(k => k.kid && k.x);
+        if (encKeys.length > 0) {
+          const invalidKey = encKeys.find(k => !/^[A-Za-z0-9_-]+$/.test(k.x) || k.x.length < 43 || k.x.length > 44);
+          if (invalidKey) {
+            alert(`Encryption key "${invalidKey.kid}": x must be a base64url string of 43–44 characters.`);
+            return;
+          }
+          agent.encryption_keys = encKeys;
+        }
+
+        const sigKeys = getSigningKeysFromForm().filter(k => k.kid && k.kty);
+        if (sigKeys.length > 0) agent.signing_keys = sigKeys;
+
         if (index === -1) {
           state.agents.push(agent);
         } else {
@@ -3238,6 +3732,11 @@
               state.agents = data.authorized_agents || [];
               state.properties = data.properties || [];
               state.signals = data.signals || [];
+              state.propertyFeatures = data.property_features || [];
+
+              // Load contact info
+              state.contact = data.contact || {};
+              populateContactForm(data.contact || null);
 
               // Extract property tags from properties
               const propertyTags = new Set();
@@ -3288,17 +3787,21 @@
             return;
           }
           data = {
-            $schema: 'https://adcontextprotocol.org/schemas/v2/adagents.json',
+            $schema: 'https://adcontextprotocol.org/schemas/v3/adagents.json',
             authoritative_location: authLocation,
             last_updated: new Date().toISOString(),
           };
         } else {
           // Inline structure
           data = {
-            $schema: 'https://adcontextprotocol.org/schemas/v2/adagents.json',
+            $schema: 'https://adcontextprotocol.org/schemas/v3/adagents.json',
             authorized_agents: state.agents,
             last_updated: new Date().toISOString(),
           };
+
+          // Contact metadata
+          const contact = getContactFromForm();
+          if (contact) data.contact = contact;
 
           // Only include properties if there are any
           if (state.properties.length > 0) {
@@ -3319,6 +3822,11 @@
                 description: `Signals tagged with "${tag}"`,
               };
             });
+          }
+
+          // Property features
+          if (state.propertyFeatures.length > 0) {
+            data.property_features = state.propertyFeatures;
           }
         }
 
@@ -3446,6 +3954,15 @@
                 Object.keys(result.data.validation.raw_data.signal_tags).forEach(t => allSignalTags.add(t));
               }
               state.signalTags = Array.from(allSignalTags).sort();
+            }
+
+            // Parse contact and property_features (v3)
+            if (result.data.validation.raw_data.contact) {
+              state.contact = result.data.validation.raw_data.contact;
+              populateContactForm(result.data.validation.raw_data.contact);
+            }
+            if (result.data.validation.raw_data.property_features) {
+              state.propertyFeatures = result.data.validation.raw_data.property_features;
             }
           } else {
             // File doesn't exist or is invalid
