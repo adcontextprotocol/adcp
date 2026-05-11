@@ -106,7 +106,7 @@ The operator already has an account on the platform — an ad account, a busines
    a. Obtain operator's credential (OAuth via `authorization_endpoint`, or API key out-of-band)
    b. Open a new session with the operator's credential
    c. Call `sync_accounts` to set up each brand for this operator
-3. Wait for account status `active` (poll `list_accounts` if `pending_approval`)
+3. Wait for account status `active` (poll `list_accounts` if `pending_approval` or `pending_provision`)
 4. Call `get_products` / `create_media_buy` with the operator's session and `account` reference
 
 **sync_accounts request:**
@@ -411,6 +411,7 @@ On individual media buys, an `invoice_recipient` can override the account defaul
 2. Seller provisions or links accounts for each, responds with status:
    - `active` — ready to use
    - `pending_approval` — seller reviewing (human may need to visit `setup.url`)
+   - `pending_provision` — seller accepted; technical provisioning in progress (no human action needed — poll or await webhook)
    - `rejected` — seller declined the request
 3. For subsequent requests, pass the account reference:
    - **Implicit accounts** (`require_operator_auth: false`): pass the natural key `{ "brand": { "domain": "acme-corp.com" }, "operator": "pinnacle-media.com" }`
@@ -432,7 +433,8 @@ See [sync_accounts task reference](/docs/accounts/tasks/sync_accounts) for the f
 | Status | Meaning | Next step |
 |--------|---------|-----------|
 | `active` | Ready to use | Place buys on this account |
-| `pending_approval` | Seller reviewing | Human may need to visit `setup.url`. Poll `list_accounts` for updates. |
+| `pending_approval` | Seller reviewing — human gate | Human may need to visit `setup.url`. Poll `list_accounts` or await webhook. |
+| `pending_provision` | Technical provisioning in progress — machine gate | No human action needed. Poll `list_accounts` or await webhook. |
 | `rejected` | Seller declined the request | Review rejection reason, adjust and re-sync, or contact seller |
 | `payment_required` | Credit limit reached | Add funds or route spend to other accounts |
 | `suspended` | Was active, now paused | Contact seller |

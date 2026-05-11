@@ -15,6 +15,7 @@
       "enum": [
         "active",
         "pending_approval",
+        "pending_provision",
         "rejected",
         "payment_required",
         "suspended",

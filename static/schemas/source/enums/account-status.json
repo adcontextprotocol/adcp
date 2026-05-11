@@ -7,6 +7,7 @@
   "enum": [
     "active",
     "pending_approval",
+    "pending_provision",
     "rejected",
     "payment_required",
     "suspended",
@@ -14,7 +15,8 @@
   ],
   "enumDescriptions": {
     "active": "Account is operational and can create media buys",
-    "pending_approval": "Seller is reviewing the account (credit, contracts)",
+    "pending_approval": "Seller is reviewing the account (credit, contracts) — human gate",
+    "pending_provision": "Seller has accepted the account but downstream technical provisioning (advertiser ID assignment, ad-server adapter wiring, third-party billing setup) is in progress — machine gate. Buyer should poll list_accounts or await an account-update webhook.",
     "rejected": "Seller declined the account request — terminal state",
     "payment_required": "Credit limit reached or funds depleted",
     "suspended": "Was active, now paused — operations gated",

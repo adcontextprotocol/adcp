@@ -57,12 +57,13 @@
                 "enum": [
                   "active",
                   "pending_approval",
+                  "pending_provision",
                   "rejected",
                   "payment_required",
                   "suspended",
                   "closed"
                 ],
-                "description": "Account status. active: ready for use. pending_approval: seller reviewing (credit, legal). rejected: seller declined the account request. payment_required: credit limit reached or funds depleted. suspended: was active, now paused. closed: was active, now terminated."
+                "description": "Account status. active: ready for use. pending_approval: seller reviewing (credit, legal) — human gate. pending_provision: seller accepted but downstream technical provisioning in progress — machine gate; buyer should poll or await webhook. rejected: seller declined the account request. payment_required: credit limit reached or funds depleted. suspended: was active, now paused. closed: was active, now terminated."
               },
               "billing": {
                 "$ref": "/schemas/enums/billing-party.json",
@@ -77,12 +78,12 @@
               },
               "setup": {
                 "type": "object",
-                "description": "Setup information for pending accounts. Provides the agent (or human) with next steps to complete account activation.",
+                "description": "Present when status is 'pending_approval' or 'pending_provision'. For pending_approval: url (if present) points to a human-action page. For pending_provision: url SHOULD be omitted — no human action is needed; message describes the provisioning step in progress.",
                 "properties": {
                   "url": {
                     "type": "string",
                     "format": "uri",
-                    "description": "URL where the human can complete the required action (credit application, legal agreement, add funds)"
+                    "description": "URL where the human can complete the required action (credit application, legal agreement, add funds). Applicable to pending_approval only; SHOULD be omitted for pending_provision."
                   },
                   "message": {
                     "type": "string",

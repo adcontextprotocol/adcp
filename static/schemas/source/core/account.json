@@ -69,12 +69,12 @@
     },
     "setup": {
       "type": "object",
-      "description": "Present when status is 'pending_approval'. Contains next steps for completing account activation.",
+      "description": "Present when status is 'pending_approval' or 'pending_provision'. For pending_approval: url (if present) points to a human-action page (credit application, legal agreement). For pending_provision: url SHOULD be omitted — no human action is needed; message describes the provisioning step in progress (e.g., 'Wiring advertiser ID in ad server — typically completes within 5 minutes').",
       "properties": {
         "url": {
           "type": "string",
           "format": "uri",
-          "description": "URL where the human can complete the required action (credit application, legal agreement, add funds)."
+          "description": "URL where the human can complete the required action (credit application, legal agreement, add funds). Applicable to pending_approval only; SHOULD be omitted for pending_provision."
         },
         "message": {
           "type": "string",
