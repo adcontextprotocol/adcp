@@ -2407,7 +2407,7 @@
               </div>
               <div class="agent-meta-item">
                 <div class="agent-meta-label">Tools</div>
-                <div class="agent-meta-value">${data.tools_count || tools.length}</div>
+                <div class="agent-meta-value">${data.tools_count ?? tools.length}</div>
               </div>
               ${data.description ? `
                 <div class="agent-meta-item" style="grid-column: span 3;">
