@@ -162,14 +162,14 @@ export class CrawlerService {
     }
   }
 
-  startPeriodicCrawl(agents: Agent[], intervalMinutes: number = 60) {
-    // Initial crawl
-    this.crawlAllAgents(agents);
+  startPeriodicCrawl(getAgents: () => Promise<Agent[]>, intervalMinutes: number = 60) {
+    const run = () =>
+      getAgents()
+        .then(agents => this.crawlAllAgents(agents))
+        .catch(err => log.error({ err }, 'Periodic crawl failed'));
 
-    // Periodic crawl
-    this.intervalId = setInterval(() => {
-      this.crawlAllAgents(agents);
-    }, intervalMinutes * 60 * 1000);
+    run();
+    this.intervalId = setInterval(run, intervalMinutes * 60 * 1000);
 
     log.info({ intervalMinutes }, 'Periodic crawl started');
   }
