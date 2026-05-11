@@ -326,6 +326,18 @@ const sessionRateLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+// End-session cap — generous relative to session creation (sessionRateLimiter: 5/min)
+// but bounded so a single user cannot hammer the Tavus API key.
+const endRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  store: new CachedPostgresStore("tavus-end:"),
+  keyGenerator: (req) => (req as Request & { user?: { id: string } }).user?.id || ipKeyGenerator(req.ip || ""),
+  message: { error: "Too many requests" },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 export function createTavusRouter() {
   // Page router: serves GET /video and GET /video/lab.
   // Both routes go through serveHtmlWithConfig so the global app config and
@@ -353,7 +365,7 @@ export function createTavusRouter() {
   // End an active Tavus conversation. Releases the concurrent-conversation
   // slot immediately so a new session can be created. Auth: must be the
   // user who created the thread (or an AAO admin).
-  apiRouter.post("/session/:conversationName/end", optionalAuth, async (req, res) => {
+  apiRouter.post("/session/:conversationName/end", optionalAuth, endRateLimiter, async (req, res) => {
     if (!req.user) {
       return res.status(401).json({ error: "Authentication required" });
     }
