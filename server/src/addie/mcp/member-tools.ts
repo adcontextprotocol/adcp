@@ -66,6 +66,7 @@ import { MemberDatabase } from '../../db/member-db.js';
 import { ensureMemberProfileExists } from '../../services/member-profile-autopublish.js';
 import { updateBrandIdentity, BrandIdentityError } from '../../services/brand-identity.js';
 import { canonicalizeBrandDomain } from '../../services/identifier-normalization.js';
+import { isOrgOwnerOfAgent } from '../../services/agent-ownership.js';
 import { getBrandPrimaryDomain } from '../../services/brand-domain-resolver.js';
 import { ComplianceDatabase } from '../../db/compliance-db.js';
 import { AgentSnapshotDatabase } from '../../db/agent-snapshot-db.js';
@@ -3577,28 +3578,18 @@ export function createMemberToolHandlers(
       // Record result when the user has an org context for this agent.
       if (organizationId) {
         // Write to canonical compliance tables when the calling org owns this agent.
-        // Mirrors resolveAgentOwnerOrg (registry-api.ts:4733) — joins organization_memberships
-        // to verify the acting user is still an active member of the owning org.
-        // Non-owner runs skip the canonical write and fall through to the legacy
-        // agent_test_history path below.
+        // isOrgOwnerOfAgent verifies the resolved member-context org IS the
+        // owning org (tighter than findOwnerOrgForUser, which would accept any
+        // org the user is a member of). Non-owner runs skip the canonical
+        // write and fall through to the legacy agent_test_history path below.
         const workosUserId = memberContext?.workos_user?.workos_user_id;
         let isAgentOwner = false;
         if (workosUserId) {
-          try {
-            const ownerCheck = await query(
-              `SELECT 1 FROM member_profiles mp
-               JOIN organization_memberships om
-                 ON om.workos_organization_id = mp.workos_organization_id
-               WHERE mp.workos_organization_id = $1
-                 AND mp.agents @> $2::jsonb
-                 AND om.workos_user_id = $3
-               LIMIT 1`,
-              [organizationId, JSON.stringify([{ url: resolved.resolvedUrl }]), workosUserId],
-            );
-            isAgentOwner = ownerCheck.rows.length > 0;
-          } catch (ownerCheckError) {
-            logger.warn({ ownerCheckError }, 'evaluate_agent_quality: owner check failed, skipping canonical write');
-          }
+          isAgentOwner = await isOrgOwnerOfAgent(
+            organizationId,
+            workosUserId,
+            resolved.resolvedUrl,
+          );
         }
 
         if (isAgentOwner) {
