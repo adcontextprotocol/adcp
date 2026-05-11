@@ -410,8 +410,8 @@ validation_result:
       omission — draft-07 default is `true`), the runner MUST NOT fail a
       response that includes fields beyond those enumerated in `properties`.
       In draft-07, `oneOf` branch-selection does not grant a validator
-      licence to reject fields that are permitted by all branches'
-      `additionalProperties` declarations.
+      licence to apply stricter `additionalProperties` constraints than
+      those declared on the selected branch.
 
       Configuring the validator in a way that contradicts the schema's own
       `additionalProperties` declaration is a conformance violation of this
