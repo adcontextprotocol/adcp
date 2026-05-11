@@ -276,8 +276,9 @@ const PRESERVE_TOOL_RESULTS = new Set([
  * Replaces tool call results older than `keepRecentTurns` assistant turns
  * with a short placeholder. Checkpoints capture teaching state, so old
  * tool results (get_products responses, module content, etc.) are redundant.
- * Knowledge search results are preserved up to 20K chars since they contain
- * authoritative protocol verification.
+ * Knowledge search and schema results are preserved up to 25K chars since they
+ * contain authoritative protocol verification. (25K = 20K JSON ceiling for
+ * get_schema + ~300 char header overhead; see SCHEMA_MAX_DISPLAY_CHARS.)
  *
  * @param messages - Conversation history (newest last)
  * @param keepRecentTurns - Number of most-recent assistant turns to preserve fully
@@ -306,8 +307,11 @@ export function compactOldToolResults(
 
     const compactedCalls = msg.toolCalls.map(tc => {
       if (tc.result.length <= 200) return tc;
-      // Preserve knowledge search results under 20K chars — they're authoritative verification
-      if (PRESERVE_TOOL_RESULTS.has(tc.name) && tc.result.length <= 20000) return tc;
+      // Preserve knowledge search / schema results up to 25K chars.
+      // 25K accounts for get_schema's 20K JSON ceiling plus summary header
+      // overhead (~300 chars). Keep in sync with SCHEMA_MAX_DISPLAY_CHARS in
+      // schema-tools.ts if either value changes.
+      if (PRESERVE_TOOL_RESULTS.has(tc.name) && tc.result.length <= 25000) return tc;
       return {
         ...tc,
         result: '[Result compacted — see checkpoint for current teaching state]',

@@ -439,6 +439,40 @@ export const SCHEMA_TOOLS: AddieTool[] = [
   },
 ];
 
+// Max chars for the JSON block returned by get_schema. Matched to the
+// PRESERVE_TOOL_RESULTS ceiling in token-limiter.ts so the two layers stay
+// coherent — keep them in sync if either value changes.
+export const SCHEMA_MAX_DISPLAY_CHARS = 20_000;
+
+/**
+ * Format the JSON block for get_schema output, applying a size ceiling.
+ * Exported for unit testing without requiring HTTP mocks.
+ *
+ * @param schemaJson - Already-serialized schema JSON string
+ * @param propNames  - Top-level property names from schema.properties (used to
+ *                     craft a helpful truncation hint; pass [] for union schemas)
+ */
+export function formatSchemaJson(
+  schemaJson: string,
+  propNames: string[] = [],
+): { displayJson: string; truncationNote: string | null } {
+  if (schemaJson.length <= SCHEMA_MAX_DISPLAY_CHARS) {
+    return { displayJson: schemaJson, truncationNote: null };
+  }
+
+  const shown = SCHEMA_MAX_DISPLAY_CHARS.toLocaleString('en-US');
+  const total = schemaJson.length.toLocaleString('en-US');
+  const hint =
+    propNames.length > 0
+      ? `Use the \`property\` parameter with one of the **All properties** names above (e.g., \`property: "${propNames[0]}"\`) to retrieve a specific section.`
+      : `This schema uses union types (\`oneOf\`/\`allOf\`/\`anyOf\`) rather than top-level properties. Use \`list_schemas\` to find related sub-schemas or call \`get_schema\` with a different schema path.`;
+
+  return {
+    displayJson: schemaJson.substring(0, SCHEMA_MAX_DISPLAY_CHARS),
+    truncationNote: `Schema truncated (showing ${shown} of ${total} chars). ${hint}`,
+  };
+}
+
 /**
  * Create handlers for schema tools
  */
@@ -549,16 +583,13 @@ ${formatCandidates(schemaPath, registry)}`);
         summary += `**All properties:** ${propNames.join(', ')}\n`;
       }
 
-      // Truncate very long schemas
-      const maxLength = 6000;
-      const truncated = schemaJson.length > maxLength;
-      const displayJson = truncated ? schemaJson.substring(0, maxLength) + '\n... [truncated]' : schemaJson;
+      const { displayJson, truncationNote } = formatSchemaJson(schemaJson, propNames);
 
       return `${summary}
 \`\`\`json
 ${displayJson}
 \`\`\`
-${truncated ? '\n**Note:** Schema truncated. Use the `property` parameter to focus on specific sections.' : ''}`;
+${truncationNote ? `\n**Note:** ${truncationNote}` : ''}`;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       throw new ToolError(`Failed to fetch schema: ${message}
