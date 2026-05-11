@@ -442,7 +442,9 @@ export const SCHEMA_TOOLS: AddieTool[] = [
 // Max chars for the JSON block returned by get_schema. Matched to the
 // PRESERVE_TOOL_RESULTS ceiling in token-limiter.ts so the two layers stay
 // coherent — keep them in sync if either value changes.
-export const SCHEMA_MAX_DISPLAY_CHARS = 20_000;
+// 50K covers all schemas in the v3 registry except the largest union enumerations
+// (get-adcp-capabilities-response at ~75K, brand.json/adagents.json at ~74K/50K).
+export const SCHEMA_MAX_DISPLAY_CHARS = 50_000;
 
 /**
  * Format the JSON block for get_schema output, applying a size ceiling.
@@ -465,7 +467,7 @@ export function formatSchemaJson(
   const hint =
     propNames.length > 0
       ? `Use the \`property\` parameter with one of the **All properties** names above (e.g., \`property: "${propNames[0]}"\`) to retrieve a specific section.`
-      : `This schema uses union types (\`oneOf\`/\`allOf\`/\`anyOf\`) rather than top-level properties. Use \`list_schemas\` to find related sub-schemas or call \`get_schema\` with a different schema path.`;
+      : `This schema uses inline union branches (\`oneOf\`/\`allOf\`/\`anyOf\`) that exceed the display limit. Use \`validate_json\` with a candidate payload to check validity and identify the matching branch.`;
 
   return {
     displayJson: schemaJson.substring(0, SCHEMA_MAX_DISPLAY_CHARS),
@@ -565,7 +567,7 @@ ${formatCandidates(schemaPath, registry)}`);
       // Format schema for readability
       const schemaJson = JSON.stringify(displaySchema, null, 2);
 
-      // Extract key info for summary
+      // Extract key info for summary (always from root schema for navigation context)
       const required = schema.required as string[] | undefined;
       const properties = schema.properties as Record<string, unknown> | undefined;
       const propNames = properties ? Object.keys(properties) : [];
@@ -583,7 +585,14 @@ ${formatCandidates(schemaPath, registry)}`);
         summary += `**All properties:** ${propNames.join(', ')}\n`;
       }
 
-      const { displayJson, truncationNote } = formatSchemaJson(schemaJson, propNames);
+      // When drilling into a sub-property, use its own children for the truncation
+      // hint so the note points to paths the agent can actually drill into next.
+      const displayProperties = displaySchema.properties as Record<string, unknown> | undefined;
+      const truncationPropNames = property
+        ? (displayProperties ? Object.keys(displayProperties) : [])
+        : propNames;
+
+      const { displayJson, truncationNote } = formatSchemaJson(schemaJson, truncationPropNames);
 
       return `${summary}
 \`\`\`json

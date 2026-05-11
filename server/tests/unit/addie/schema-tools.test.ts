@@ -120,7 +120,26 @@ describe('formatSchemaJson', () => {
   it('SCHEMA_MAX_DISPLAY_CHARS is at least 20_000', () => {
     // Regression guard: the old 6K limit silently hid oneOf branches.
     // creative/preview-creative-response.json is ~11K — must not be truncated.
+    // core/format.json (~29K) and core/product.json (~25K) also require ≥25K.
     expect(SCHEMA_MAX_DISPLAY_CHARS).toBeGreaterThanOrEqual(20_000);
+  });
+
+  it('truncation note for union schemas does not suggest list_schemas (regression guard for #4397)', () => {
+    // Schemas like brand.json use inline oneOf branches — list_schemas only returns
+    // registry paths and cannot surface inline branches, so suggesting it is a dead end.
+    const largeJson = 'x'.repeat(SCHEMA_MAX_DISPLAY_CHARS + 1);
+    const { truncationNote } = formatSchemaJson(largeJson, []);
+    expect(truncationNote).not.toContain('list_schemas');
+    expect(truncationNote).toContain('validate_json');
+  });
+
+  it('truncation note for empty-properties schema (properties: {}) fires union hint', () => {
+    // comply-test-controller-response.json has "properties": {} at root.
+    // Object.keys({}) === [] so propNames is empty and the union hint fires.
+    const largeJson = 'x'.repeat(SCHEMA_MAX_DISPLAY_CHARS + 1);
+    const { truncationNote } = formatSchemaJson(largeJson, Object.keys({}));
+    expect(truncationNote).toContain('oneOf');
+    expect(truncationNote).not.toContain('All properties');
   });
 });
 
