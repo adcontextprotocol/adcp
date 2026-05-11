@@ -236,7 +236,11 @@
         },
         "start-timing": {
           "$ref": "/schemas/core/start-timing.json",
-          "description": "Campaign start timing: 'asap' or ISO 8601 date-time"
+          "description": "Campaign start timing: string shorthand or typed object form"
+        },
+        "end-timing": {
+          "$ref": "/schemas/core/end-timing.json",
+          "description": "Campaign end timing: ISO 8601 string or typed scheduled object form"
         },
         "pricing-option": {
           "$ref": "/schemas/core/pricing-option.json",

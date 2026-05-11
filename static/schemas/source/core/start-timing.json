@@ -2,17 +2,46 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/start-timing.json",
   "title": "Start Timing",
-  "description": "Campaign start timing: 'asap' or ISO 8601 date-time",
+  "description": "Campaign start timing. Accepts either string shorthand (legacy) or a typed object form. Sellers MUST resolve object-form timing to an ISO 8601 datetime before storing; get_media_buys responses return the resolved string.",
   "oneOf": [
     {
       "type": "string",
       "const": "asap",
-      "description": "Start campaign as soon as possible"
+      "description": "Start campaign as soon as possible (legacy string form)"
     },
     {
       "type": "string",
       "format": "date-time",
-      "description": "Scheduled start date/time in ISO 8601 format"
+      "description": "Scheduled start date/time in ISO 8601 format (legacy string form)"
+    },
+    {
+      "type": "object",
+      "description": "Start campaign as soon as possible (object form)",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "asap"
+        }
+      },
+      "required": ["type"],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "description": "Scheduled start time (object form)",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "scheduled"
+        },
+        "time": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Scheduled start date/time in ISO 8601 format"
+        }
+      },
+      "required": ["type", "time"],
+      "additionalProperties": false
     }
   ]
 }

@@ -115,9 +115,7 @@
       "$ref": "/schemas/core/start-timing.json"
     },
     "end_time": {
-      "type": "string",
-      "format": "date-time",
-      "description": "Campaign end date/time in ISO 8601 format"
+      "$ref": "/schemas/core/end-timing.json"
     },
     "push_notification_config": {
       "$ref": "/schemas/core/push-notification-config.json",

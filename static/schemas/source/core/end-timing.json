@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/end-timing.json",
+  "title": "End Timing",
+  "description": "Campaign end timing. Accepts either a legacy ISO 8601 string or the typed object form. Sellers MUST resolve object-form timing to an ISO 8601 datetime before storing; get_media_buys responses return the resolved string. The 'asap' variant is intentionally absent — end_time must be a determinate future point for billing and pacing to close correctly.",
+  "oneOf": [
+    {
+      "type": "string",
+      "format": "date-time",
+      "description": "Campaign end date/time in ISO 8601 format (legacy string form)"
+    },
+    {
+      "type": "object",
+      "description": "Scheduled end time (object form)",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "scheduled"
+        },
+        "time": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Campaign end date/time in ISO 8601 format"
+        }
+      },
+      "required": ["type", "time"],
+      "additionalProperties": false
+    }
+  ]
+}
