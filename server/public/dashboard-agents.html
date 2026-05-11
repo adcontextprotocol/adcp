@@ -3051,35 +3051,20 @@
             return;
           }
 
+          // Capability probe failed for an unclassified reason. We deliberately
+          // do NOT fall back to the unfiltered storyboard catalog here: without
+          // the agent's declared protocols + specialisms, every storyboard we
+          // could show is misleading (the agent may not even implement most of
+          // them). Issue #4254 — signals-only agent was seeing pagination-
+          // creative-formats etc. because of that fallback.
           const reasonText = errBody.reason ? ' (' + errBody.reason + ')' : '';
           const msg = errBody.error || ('HTTP ' + res.status);
-          let html = '<div style="padding:var(--space-3);background:var(--color-error-50);border:1px solid var(--color-error-200);border-radius:var(--radius-md);color:var(--color-error-700);font-size:var(--text-sm);margin-bottom:var(--space-3);">';
+          let html = '<div style="padding:var(--space-3);background:var(--color-error-50);border:1px solid var(--color-error-200);border-radius:var(--radius-md);color:var(--color-error-700);font-size:var(--text-sm);">';
           html += '<strong>Could not probe agent capabilities.</strong> ' + escapeHtml(String(msg) + reasonText);
+          html += '<div style="margin-top:var(--space-2);font-size:var(--text-xs);color:var(--color-error-600);">';
+          html += 'Once <code>get_adcp_capabilities</code> responds with <code>supported_protocols</code> and <code>specialisms</code>, applicable storyboards will appear here.';
           html += '</div>';
-
-          try {
-            const fallback = await fetch('/api/storyboards', { credentials: 'include' });
-            if (fallback.ok) {
-              const fdata = await fallback.json();
-              if (fdata.storyboards && fdata.storyboards.length > 0) {
-                html += '<div style="font-size:var(--text-xs);color:var(--color-text-secondary);margin-bottom:var(--space-2);">Showing all available storyboards:</div>';
-                html += '<div class="storyboard-picker">';
-                for (const sb of fdata.storyboards) {
-                  html += '<div class="storyboard-picker-item" data-storyboard-id="' + escapeHtml(sb.id) + '" data-agent-url="' + escapeHtml(agentUrl) + '" data-card-id="' + escapeHtml(cardId) + '">';
-                  html += '<div>';
-                  html += '<div class="storyboard-picker-title">' + escapeHtml(sb.title) + '</div>';
-                  html += '<div class="storyboard-picker-summary">' + escapeHtml(sb.summary) + '</div>';
-                  html += '</div>';
-                  html += '<span style="font-size:var(--text-xs);color:var(--color-text-tertiary);">' + sb.step_count + ' steps</span>';
-                  html += '</div>';
-                }
-                html += '</div>';
-              }
-            }
-          } catch (fallbackErr) {
-            console.error('Storyboard fallback failed:', fallbackErr);
-          }
-
+          html += '</div>';
           panel.innerHTML = html;
         } catch (err) {
           console.error('Failed to load storyboards:', err);
