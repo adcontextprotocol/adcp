@@ -226,6 +226,8 @@ phases:
           The test controller acknowledges the simulated delivery data including
           the vendor_metric_values.
         sample_request:
+          account:
+            sandbox: true
           scenario: "simulate_delivery"
           params:
             media_buy_id: "$context.media_buy_id"

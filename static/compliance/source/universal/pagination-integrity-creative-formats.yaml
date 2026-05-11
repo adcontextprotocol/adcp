@@ -109,6 +109,7 @@ phases:
           Return success: true.
         sample_request:
           account:
+            sandbox: true
             account_id: "acct_pagination_integrity_formats"
           scenario: "seed_creative_format"
           params:
@@ -135,6 +136,7 @@ phases:
           Return success: true.
         sample_request:
           account:
+            sandbox: true
             account_id: "acct_pagination_integrity_formats"
           scenario: "seed_creative_format"
           params:
