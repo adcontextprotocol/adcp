@@ -4332,7 +4332,14 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         membership_tier_label: ownerMembership.membership_tier_label,
         subscription_status: ownerMembership.subscription_status,
         is_api_access_tier: ownerMembership.is_api_access_tier,
-        verdict_source: status.last_triggered_by ?? null,
+        // `triggered_by` is retained as internal audit on agent_compliance_runs
+        // but deliberately not exposed publicly: heartbeat and owner_test both
+        // call comply() against the same registered URL with the same
+        // owner-saved credentials; the verdict's truth content is identical
+        // regardless of who pulled the trigger. Exposing the source label
+        // creates a buyer-facing trust distinction that the underlying
+        // observation doesn't actually carry. Internal dashboards may still
+        // surface triggered_by as a UX cue (see #4263).
         verified: badges.length > 0,
         verified_badges: badges.map(b => ({
           role: b.role,
@@ -5744,10 +5751,13 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           });
         }
 
-        // Record the run (pass storyboard ID for per-storyboard status materialization)
+        // Record the run (pass storyboard ID for per-storyboard status materialization).
+        // Owner-only path (gated above by resolveAgentOwnerOrg), so triggered_by
+        // matches evaluate_agent_quality semantics: owner_test, not the legacy
+        // 'manual' label.
         const metadata = await complianceDb.getRegistryMetadata(agentUrl);
         await complianceDb.recordComplianceRun(
-          complianceResultToDbInput(complyResult, agentUrl, metadata?.lifecycle_stage || "development", "manual", [req.params.storyboardId]),
+          complianceResultToDbInput(complyResult, agentUrl, metadata?.lifecycle_stage || "development", "owner_test", [req.params.storyboardId]),
         );
 
         // Annotate storyboard phases with comply results

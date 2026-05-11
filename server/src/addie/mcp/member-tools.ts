@@ -3513,6 +3513,18 @@ export function createMemberToolHandlers(
     const urlError = validateAgentUrl(agentUrl);
     if (urlError) return `**Error:** ${urlError}`;
 
+    // Rate limit. Owner-paced usage hits this nowhere near the default cap,
+    // but a runaway loop (or a script that races the heartbeat to keep the
+    // canonical verdict in a preferred state) is bounded here. comply() takes
+    // 10-60s per run so the natural-rate ceiling is already ~1-2/min; this
+    // adds the hard wall so even in-process retries / a hot debug loop stop.
+    const workosUserId = memberContext?.workos_user?.workos_user_id;
+    const rateCheck = await checkToolRateLimit('evaluate_agent_quality', workosUserId ?? null);
+    if (!rateCheck.ok) {
+      const retrySeconds = Math.max(1, Math.ceil((rateCheck.retryAfterMs ?? 60_000) / 1000));
+      return `Rate limit exceeded on evaluate_agent_quality. Try again in ~${retrySeconds} seconds.`;
+    }
+
     const organizationId = memberContext?.organization?.workos_organization_id;
     const resolved = await resolveAgentAuth(agentUrl, organizationId);
 
@@ -3621,8 +3633,16 @@ export function createMemberToolHandlers(
           }
         }
 
-        // Legacy write to agent_contexts + agent_test_history. Retained for
-        // backward compatibility until PR 3 migrates callers and drops the table.
+        // Legacy session-scoped audit trail. Retained until Emma's #4247 PR 3
+        // backfills + drops `agent_test_history`. NOT a public-state write —
+        // the previous dual-write to `recordComplianceRun(..., 'manual')` was
+        // dropped because (a) it was gated only on `agent_contexts` row
+        // existence (which `save_agent` lets any org create for any URL — no
+        // ownership check), so any user could publish a `manual` verdict on
+        // someone else's agent; and (b) the owner-test branch above already
+        // updates canonical state with proper ownership checking, so the
+        // legacy write has no remaining function for owners. Non-owner runs
+        // continue to land here in `agent_test_history` only.
         try {
           const context = await agentContextDb.getByOrgAndUrl(organizationId, resolved.resolvedUrl);
           if (context) {
@@ -3639,23 +3659,6 @@ export function createMemberToolHandlers(
               user_id: memberContext?.workos_user?.workos_user_id,
               agent_profile_json: result.agent_profile,
             });
-
-            // Also update the dashboard comply status so manual runs are
-            // reflected immediately — without this the badge progress panel
-            // stays stale until the next heartbeat fires.
-            try {
-              const meta = await complianceDb.getRegistryMetadata(resolved.resolvedUrl);
-              const dbInput = complianceResultToDbInput(
-                result,
-                resolved.resolvedUrl,
-                meta?.lifecycle_stage ?? 'production',
-                'manual',
-              );
-              dbInput.dry_run = false;
-              await complianceDb.recordComplianceRun(dbInput);
-            } catch (complianceError) {
-              logger.debug({ complianceError }, 'Could not update comply status from manual evaluation');
-            }
           }
         } catch (error) {
           logger.debug({ error }, 'Could not record quality evaluation result');
