@@ -12,10 +12,23 @@ export type PipesTokenResult =
 
 export async function getGitHubAccessToken(workosUserId: string): Promise<PipesTokenResult> {
   const workos = getWorkos();
-  const result = await workos.pipes.getAccessToken({
-    provider: GITHUB_PROVIDER,
-    userId: workosUserId,
-  });
+  const fetchToken = () =>
+    workos.pipes.getAccessToken({ provider: GITHUB_PROVIDER, userId: workosUserId });
+
+  let result = await fetchToken();
+
+  if (!result.active && result.error === 'not_installed') {
+    // WorkOS Pipes can take 1-2 seconds to propagate a just-completed OAuth connection.
+    // One retry after a short wait absorbs that window without masking genuine disconnects.
+    await new Promise<void>((resolve) => setTimeout(resolve, 1500));
+    const retry = await fetchToken();
+    if (retry.active) {
+      logger.info({ workosUserId }, 'getGitHubAccessToken: retry resolved post-OAuth propagation lag');
+      result = retry;
+    } else {
+      logger.debug({ workosUserId }, 'getGitHubAccessToken: retry did not resolve — user genuinely not connected');
+    }
+  }
 
   if (result.active) {
     return {

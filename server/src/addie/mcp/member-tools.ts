@@ -1291,7 +1291,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
     name: 'create_github_issue',
     description:
       'File a GitHub issue on adcontextprotocol/adcp authored by the logged-in user via their WorkOS Pipes GitHub connection. Use after showing the user a draft and getting their confirmation. If the user has not yet connected GitHub, the tool returns a message with a one-time Connect link AND reminds them they can ask for `draft_github_issue` instead — include that full message in your reply.',
-    usage_hints: 'use after draft_github_issue when the user confirms they want the issue created. If the tool result asks the user to connect GitHub, show the full Connect link — do not silently fall back.',
+    usage_hints: 'use after draft_github_issue when the user confirms they want the issue created. If the tool result asks the user to connect GitHub, show the full Connect link — do not silently fall back. Exception: if the user\'s message was a direct completion reply immediately after you sent them a Connect link (e.g. "connected", "just connected", "all set", "done connecting") and the tool still returns not-connected, tell them the connection may still be propagating and ask them to send the same filing request again — do not show the Connect link a second time.',
     input_schema: {
       type: 'object',
       properties: {
@@ -5426,6 +5426,8 @@ export function createMemberToolHandlers(
         `**[Connect GitHub](${connectUrl})** — one click and I'll file this under your GitHub account.`,
         '',
         `Or ask me to use \`draft_github_issue\` and I'll give you a pre-filled link instead.`,
+        '',
+        `_(If you just completed the GitHub connect flow, the connection may still be propagating — wait a moment and ask me to try again.)_`,
       ].join('\n');
     }
 
