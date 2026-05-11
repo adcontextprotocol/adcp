@@ -396,11 +396,6 @@ async function main() {
             '007-missing-content-digest',
             '018-digest-covered-when-forbidden',
             '025-jwk-alg-crv-mismatch',
-            // Vector 028 grades `protocol_methods_required_for` (introduced
-            // in adcp#4326). The SDK runner does not yet ship an adversarial
-            // builder for it — un-skip once `@adcp/sdk` adds the builder.
-            // Tracked under the runner-implementation umbrella adcp#2331.
-            '028-unsigned-protocol-method-required',
           ],
           skipRateAbuse: true,
         },
