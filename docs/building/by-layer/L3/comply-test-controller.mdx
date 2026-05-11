@@ -6,9 +6,17 @@ description: "Optional sandbox tool that lets the storyboard runner walk full li
 
 # Compliance test controller
 
+<Note>
+**The compliance test controller is a dev/staging-only affordance, not a production-time concept.** AAO grading does NOT require or use it. The AAO compliance heartbeat drives storyboards against the seller's registered production URL with `account.sandbox: true` on every request, and the seller's prod stack is responsible for honoring the flag — no controller endpoint needed.
+
+Sellers MAY implement the controller in their dev or staging environment to support their own integration testing — walking lifecycle state machines deterministically, seeding fixtures, forcing transitions that would otherwise require waiting for real time. That's its purpose. It MUST NOT be exposed on production deployments (see [Sandbox gating](#sandbox-gating) below).
+
+Confused about how the controller relates to AAO Verified (Sandbox)? See [#4379](https://github.com/adcontextprotocol/adcp/issues/4379) for the framing decision: (Sandbox) attests "real production endpoint correctly handles sandbox-flagged traffic across the full storyboard suite." The controller is the developer-side affordance for *your* testing, not the AAO-side grading mechanism.
+</Note>
+
 AdCP defines lifecycle state machines for accounts, creatives, media buys, SI sessions, and delivery reporting. Many transitions in these state machines are seller-initiated — creative approval, account suspension, budget depletion, delivery accrual. A storyboard runner can only exercise buyer-initiated flows, leaving seller-initiated transitions untested.
 
-The **compliance test controller** is an optional tool that sellers expose in sandbox mode. It allows a storyboard runner to trigger seller-side state transitions deterministically, enabling end-to-end lifecycle verification.
+The **compliance test controller** is an optional tool sellers expose in their dev/staging environment to support deterministic local testing. It allows a runner to trigger seller-side state transitions on demand, enabling end-to-end lifecycle verification during development.
 
 ## Motivation
 
