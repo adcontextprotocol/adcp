@@ -28,8 +28,6 @@ import type {
   TriggeredBy,
 } from '../../db/compliance-db.js';
 
-import { getStoryboard, getAllStoryboards } from '../../services/storyboards.js';
-import type { Storyboard } from '../../services/storyboards.js';
 
 // ── Re-exports ────────────────────────────────────────────────────
 
@@ -227,67 +225,104 @@ function mapOverallStatus(status: string): OverallRunStatus {
 /**
  * Derive per-storyboard pass/fail from a compliance result.
  *
- * Maps scenario results back to storyboard steps via comply_scenario.
- * For explicit runs (storyboardIds provided), only those storyboards
- * are evaluated. For heartbeat runs, all storyboards with matching
- * scenarios are evaluated.
+ * `comply()` emits one `TestResult` per *phase* of each storyboard it ran,
+ * keyed `<storyboard_id>/<phase_id>` in `result.tracks[].scenarios[].scenario`
+ * (see `@adcp/sdk` `compliance/storyboard-tracks.ts`). We group those by
+ * storyboard id and roll step-level pass counts up from each phase's
+ * `steps` array — which is what `agent_storyboard_status.steps_passed/total`
+ * record.
+ *
+ * Modes:
+ *   - heartbeat path (no `storyboardIds`): emit an entry for every storyboard
+ *     the SDK actually produced data for.
+ *   - explicit-IDs path (`storyboardIds` non-empty): emit one entry per id,
+ *     with `status='untested'` for any id the SDK didn't run.
+ *
+ * `steps_passed` / `steps_total` reflect what the SDK reported for that
+ * storyboard in this run. Two storyboards (or the same storyboard across
+ * different runs) may count steps differently: most rows are real step
+ * counts; rows where the SDK emitted phases without per-step data fall back
+ * to phase-level counts. The values are meaningful within a single row
+ * (passed/total ratio, status derivation) but should not be compared across
+ * rows without checking which mode produced them.
  */
 export function deriveStoryboardStatuses(
   result: ComplianceResult,
   storyboardIds?: string[],
 ): StoryboardStatusEntry[] {
-  // Build scenario → passed map from all track results
-  const scenarioResults = new Map<string, boolean>();
-  for (const track of result.tracks) {
+  interface Aggregate {
+    stepsPassed: number;
+    stepsTotal: number;
+    phasesPassed: number;
+    phasesTotal: number;
+  }
+  const perStoryboard = new Map<string, Aggregate>();
+  // Storyboard ids in `static/compliance/source/**/index.yaml` are flat
+  // identifiers (no `/`); splitting on the first `/` therefore always yields
+  // the storyboard id followed by the phase id. The `<= 0` guard also
+  // rejects pathological leading-slash strings.
+  const tracks = result.tracks ?? [];
+
+  for (const track of tracks) {
     for (const s of track.scenarios) {
-      scenarioResults.set(s.scenario, s.overall_passed);
+      const sepIdx = typeof s.scenario === 'string' ? s.scenario.indexOf('/') : -1;
+      if (sepIdx <= 0) continue; // skip legacy bare-name scenarios (no longer emitted by storyboard-driven comply())
+      const sbId = s.scenario.slice(0, sepIdx);
+      let agg = perStoryboard.get(sbId);
+      if (!agg) {
+        agg = { stepsPassed: 0, stepsTotal: 0, phasesPassed: 0, phasesTotal: 0 };
+        perStoryboard.set(sbId, agg);
+      }
+      agg.phasesTotal++;
+      if (s.overall_passed) agg.phasesPassed++;
+
+      // Roll per-step results up from the phase. Some SDK paths emit a phase
+      // without a `steps` array (e.g. resource-resolution failures); we then
+      // fall back to phase-level counts below so the storyboard still
+      // reports a status.
+      const steps = s.steps ?? [];
+      for (const step of steps) {
+        agg.stepsTotal++;
+        if (step.passed) agg.stepsPassed++;
+      }
     }
   }
 
-  if (scenarioResults.size === 0) return [];
-
-  const storyboardsToCheck: Storyboard[] = storyboardIds
-    ? storyboardIds.map(id => getStoryboard(id)).filter((s): s is Storyboard => !!s)
-    : getAllStoryboards();
+  // Decide which storyboard ids to emit entries for.
+  const hasExplicitIds = !!storyboardIds && storyboardIds.length > 0;
+  const toEmit = hasExplicitIds ? storyboardIds! : Array.from(perStoryboard.keys());
 
   const entries: StoryboardStatusEntry[] = [];
-
-  for (const sb of storyboardsToCheck) {
-    // Collect steps with comply_scenario
-    const testableSteps: Array<{ stepId: string; scenario: string }> = [];
-    for (const phase of sb.phases) {
-      for (const step of phase.steps) {
-        if (step.comply_scenario) {
-          testableSteps.push({ stepId: step.id, scenario: step.comply_scenario });
-        }
+  for (const sbId of toEmit) {
+    const agg = perStoryboard.get(sbId);
+    if (!agg) {
+      // Explicit id requested but the runner didn't produce data for it.
+      if (hasExplicitIds) {
+        entries.push({ storyboard_id: sbId, status: 'untested', steps_passed: 0, steps_total: 0 });
       }
+      continue;
     }
 
-    if (testableSteps.length === 0) continue;
-
-    // Only include storyboards where at least one scenario was tested
-    const testedCount = testableSteps.filter(s => scenarioResults.has(s.scenario)).length;
-    if (testedCount === 0 && !storyboardIds) continue;
-
-    const passedCount = testableSteps.filter(s => scenarioResults.get(s.scenario) === true).length;
-    const totalSteps = testableSteps.length;
+    const useSteps = agg.stepsTotal > 0;
+    const passed = useSteps ? agg.stepsPassed : agg.phasesPassed;
+    const total = useSteps ? agg.stepsTotal : agg.phasesTotal;
 
     let status: StoryboardStatusEntry['status'];
-    if (testedCount === 0) {
+    if (total === 0) {
       status = 'untested';
-    } else if (passedCount === totalSteps) {
+    } else if (passed === total) {
       status = 'passing';
-    } else if (passedCount === 0) {
+    } else if (passed === 0) {
       status = 'failing';
     } else {
       status = 'partial';
     }
 
     entries.push({
-      storyboard_id: sb.id,
+      storyboard_id: sbId,
       status,
-      steps_passed: passedCount,
-      steps_total: totalSteps,
+      steps_passed: passed,
+      steps_total: total,
     });
   }
 
