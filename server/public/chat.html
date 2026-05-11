@@ -3621,20 +3621,50 @@
         return `<div class="member-cards-container">${cards}</div>`;
       }
 
-      // Render markdown using marked library
-      function renderMessage(text) {
-        // Configure marked for security and compatibility
-        marked.setOptions({
-          breaks: true, // Convert \n to <br>
-          gfm: true, // GitHub flavored markdown
-        });
-
-        // Helper to escape HTML attribute values
+      // Shared renderer factory — opens external links in a new tab (chat is an SPA;
+      // navigating away loses context). Used by both the main chat and SI modal paths.
+      function createAdcpMarkdownRenderer() {
         const escapeAttr = (str) => str
           .replace(/&/g, '&amp;')
           .replace(/"/g, '&quot;')
           .replace(/</g, '&lt;')
           .replace(/>/g, '&gt;');
+
+        const renderer = new marked.Renderer();
+        renderer.link = function(href, title, text) {
+          // Handle marked v17+ which passes an object
+          if (href !== null && typeof href === 'object') {
+            const link = href;
+            href = link.href;
+            title = link.title;
+            text = link.text;
+          }
+          const safeHref = /^(https?:\/\/|mailto:|#|\/)/i.test(href) ? href : '#';
+          const titleAttr = title ? ` title="${escapeAttr(title)}"` : '';
+          const isAnchor = /^#/.test(href);
+          const targetAttr = !isAnchor ? ' target="_blank" rel="noopener noreferrer"' : '';
+          return `<a href="${escapeAttr(safeHref)}"${titleAttr}${targetAttr}>${text}</a>`;
+        };
+        renderer.image = function(href, title, text) {
+          // Handle marked v17+ which passes an object
+          if (href !== null && typeof href === 'object') {
+            const img = href;
+            href = img.href;
+            title = img.title;
+            text = img.text;
+          }
+          const safeHref = /^(https?:\/\/|data:image\/)/i.test(href) ? escapeAttr(href) : '';
+          if (!safeHref) return '';
+          const titleAttr = title ? ` title="${escapeAttr(title)}"` : '';
+          const altAttr = text ? ` alt="${escapeAttr(text)}"` : ' alt="Image"';
+          return `<a href="${safeHref}" target="_blank" rel="noopener noreferrer" class="chat-image-wrap"><img src="${safeHref}"${altAttr}${titleAttr} loading="lazy"></a>`;
+        };
+        return renderer;
+      }
+
+      // Render markdown using marked library
+      function renderMessage(text) {
+        marked.setOptions({ breaks: true, gfm: true });
 
         // Check for embedded ADDIE_DATA blocks and extract them
         const dataBlockRegex = /<!--ADDIE_DATA:([\s\S]*?):ADDIE_DATA-->/g;
@@ -3651,44 +3681,7 @@
           }
         });
 
-        // Use marked's built-in renderer with custom link and image handling
-        const renderer = new marked.Renderer();
-        renderer.link = function(href, title, text) {
-          // Handle marked v17+ which passes an object
-          if (typeof href === 'object') {
-            const link = href;
-            href = link.href;
-            title = link.title;
-            text = link.text;
-          }
-          // Validate URL scheme - only allow safe protocols
-          const safeHref = /^(https?:\/\/|mailto:|#|\/)/i.test(href) ? href : '#';
-          const titleAttr = title ? ` title="${escapeAttr(title)}"` : '';
-          // Open all navigable links in new tab — chat is an SPA, navigating away loses context
-          const isAnchor = /^#/.test(href);
-          const targetAttr = !isAnchor ? ' target="_blank" rel="noopener noreferrer"' : '';
-          return `<a href="${escapeAttr(safeHref)}"${titleAttr}${targetAttr}>${text}</a>`;
-        };
-
-        // Custom image renderer
-        renderer.image = function(href, title, text) {
-          // Handle marked v17+ which passes an object
-          if (typeof href === 'object') {
-            const img = href;
-            href = img.href;
-            title = img.title;
-            text = img.text;
-          }
-          // Validate URL scheme - only allow safe protocols
-          const safeHref = /^(https?:\/\/|data:image\/)/i.test(href) ? escapeAttr(href) : '';
-          if (!safeHref) return '';
-          const titleAttr = title ? ` title="${escapeAttr(title)}"` : '';
-          const altAttr = text ? ` alt="${escapeAttr(text)}"` : ' alt="Image"';
-          // Wrap in container to reserve space and prevent layout shift while loading
-          return `<a href="${safeHref}" target="_blank" rel="noopener noreferrer" class="chat-image-wrap"><img src="${safeHref}"${altAttr}${titleAttr} loading="lazy"></a>`;
-        };
-
-        let html = DOMPurify.sanitize(marked.parse(processedText, { renderer }));
+        let html = DOMPurify.sanitize(marked.parse(processedText, { renderer: createAdcpMarkdownRenderer() }));
 
         // Replace placeholders with rendered components
         dataBlocks.forEach((data, index) => {
@@ -4806,7 +4799,7 @@
 
         // Parse markdown for assistant messages
         if (role === 'assistant' && window.marked) {
-          contentDiv.innerHTML = DOMPurify.sanitize(marked.parse(content || ''));
+          contentDiv.innerHTML = DOMPurify.sanitize(marked.parse(content || '', { breaks: true, gfm: true, renderer: createAdcpMarkdownRenderer() }));
         } else {
           contentDiv.textContent = content || '';
         }
@@ -5514,6 +5507,7 @@
           const reader = response.body.getReader();
           const decoder = new TextDecoder();
           let buffer = '';
+          const siStreamRenderer = window.marked ? createAdcpMarkdownRenderer() : null;
 
           while (true) {
             const { done, value } = await reader.read();
@@ -5533,8 +5527,8 @@
                   if (event.type === 'text') {
                     streamedText += event.text;
                     // Update content with markdown parsing
-                    if (window.marked) {
-                      contentDiv.innerHTML = DOMPurify.sanitize(marked.parse(streamedText));
+                    if (siStreamRenderer) {
+                      contentDiv.innerHTML = DOMPurify.sanitize(marked.parse(streamedText, { breaks: true, gfm: true, renderer: siStreamRenderer }));
                     } else {
                       contentDiv.textContent = streamedText;
                     }
