@@ -21,7 +21,7 @@ narrative: |
   The AdCP spec defines start_time as a oneOf over two string variants: the literal "asap"
   and an ISO 8601 date-time string. Both must be accepted by conformant sellers.
 
-  Background: a Wave 23.20 seller identified that their Pydantic wrapper was rejecting
+  Background: an adopter identified that their Pydantic wrapper was rejecting
   "asap" at the input-validation layer. The current proposal_finalize scenario only tests
   the ISO date form; this variant provides coverage for the "asap" form.
 
@@ -208,6 +208,12 @@ phases:
       proposal's insertion_order carries requires_signature: true, and gating
       this scenario on IO signing would conflate two independent conformance
       checks. The io_acceptance path is covered by the proposal_finalize scenario.
+
+      Response field checks (media_buy_id, status, etc.) are intentionally limited
+      to response_schema here. Behavioral verification of the create_media_buy
+      response is the parent proposal_finalize scenario's job. This variant's sole
+      purpose is to confirm the seller's input layer does not reject start_time:
+      "asap" before the handler runs — a non-error response satisfies that.
 
     steps:
       - id: create_media_buy
