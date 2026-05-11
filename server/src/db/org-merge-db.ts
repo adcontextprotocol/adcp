@@ -831,6 +831,29 @@ export async function mergeOrganizations(
     });
 
     // =====================================================
+    // 20f. Merge brands (ownership pointer)
+    // brands.workos_organization_id is FK→organizations ON DELETE SET NULL
+    // (migration 474). Without an explicit reparent, the secondary's brand
+    // rows would survive the DELETE FROM organizations at step 24 but get
+    // their owner pointer nulled, losing the brand entirely. UNIQUE is on
+    // `domain` alone, not (org, domain) — a domain can only ever belong
+    // to one org at a time — so a straight reparent UPDATE never conflicts.
+    // =====================================================
+    const brandsResult = await client.query(
+      `UPDATE brands
+       SET workos_organization_id = $1, updated_at = NOW()
+       WHERE workos_organization_id = $2
+       RETURNING id`,
+      [primaryOrgId, secondaryOrgId]
+    );
+
+    summary.tables_merged.push({
+      table_name: 'brands',
+      rows_moved: brandsResult.rows.length,
+      rows_skipped_duplicate: 0,
+    });
+
+    // =====================================================
     // 21. Merge prospect notes
     // =====================================================
     if (secondaryOrg.prospect_notes && secondaryOrg.prospect_notes.trim()) {

@@ -251,12 +251,24 @@ export async function generateNetworkConsistencyReports(
   const limit = options?.limit ?? 50;
   const result: ReportResult = { generated: 0, skipped: 0, failed: 0, alerts_fired: 0 };
 
-  // Find orgs with hosted brands
+  // Find orgs with hosted brands. Join organizations so we don't try to
+  // generate a report for a brand whose org has been deleted (the
+  // network_consistency_reports.org_id FK would reject the insert and the
+  // worker would noisily log to #admin-errors every cycle). The structural
+  // fix is the FK added in migration 474 (ON DELETE SET NULL + orphan
+  // trigger), so once that migration is universally applied the JOIN
+  // becomes a no-op. Kept as defense-in-depth.
+  //
+  // The LIMIT applies post-join, so during the deploy window between this
+  // code shipping and migration 474 running, pre-existing dangles can crowd
+  // out valid orgs at the tail of the sort order. Acceptable: the missed
+  // orgs surface again on the next cycle once the migration nulls dangles.
   const orgsWithBrands = await query<{ workos_organization_id: string }>(
-    `SELECT DISTINCT workos_organization_id
-     FROM brands
-     WHERE workos_organization_id IS NOT NULL
-     ORDER BY workos_organization_id
+    `SELECT DISTINCT b.workos_organization_id
+     FROM brands b
+     JOIN organizations o ON o.workos_organization_id = b.workos_organization_id
+     WHERE b.workos_organization_id IS NOT NULL
+     ORDER BY b.workos_organization_id
      LIMIT $1`,
     [limit]
   );
