@@ -134,6 +134,89 @@ describe('deriveStoryboardStatuses', () => {
     expect(deriveStoryboardStatuses(makeResult([]))).toEqual([]);
   });
 
+  it('aggregates a storyboard whose phases appear in multiple tracks', () => {
+    const r = makeResult([]);
+    r.tracks = [
+      {
+        track: 'core',
+        label: 'Core',
+        status: 'passing',
+        duration_ms: 0,
+        skipped_scenarios: [],
+        observations: [],
+        scenarios: [
+          {
+            agent_url: 'https://example.test/mcp',
+            scenario: 'sales_non_guaranteed/capability_discovery' as never,
+            overall_passed: true,
+            steps: [{ step: 'a', passed: true, duration_ms: 0 }],
+            summary: '',
+            total_duration_ms: 0,
+            tested_at: '',
+          },
+        ],
+      },
+      {
+        track: 'media_buy',
+        label: 'Media Buy',
+        status: 'passing',
+        duration_ms: 0,
+        skipped_scenarios: [],
+        observations: [],
+        scenarios: [
+          {
+            agent_url: 'https://example.test/mcp',
+            scenario: 'sales_non_guaranteed/create_buy' as never,
+            overall_passed: true,
+            steps: [{ step: 'b', passed: true, duration_ms: 0 }, { step: 'c', passed: false, duration_ms: 0 }],
+            summary: '',
+            total_duration_ms: 0,
+            tested_at: '',
+          },
+        ],
+      },
+    ] as unknown as ComplianceResult['tracks'];
+    const entries = deriveStoryboardStatuses(r);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      storyboard_id: 'sales_non_guaranteed',
+      status: 'partial',
+      steps_passed: 2,
+      steps_total: 3,
+    });
+  });
+
+  it('handles result.tracks being absent', () => {
+    const r = makeResult([]);
+    (r as { tracks?: unknown }).tracks = undefined;
+    expect(deriveStoryboardStatuses(r)).toEqual([]);
+  });
+
+  it('ignores non-string scenario values without throwing', () => {
+    const r = makeResult([]);
+    r.tracks[0].scenarios = [
+      {
+        agent_url: 'https://example.test/mcp',
+        scenario: null as never,
+        overall_passed: true,
+        steps: [{ step: 'x', passed: true, duration_ms: 0 }],
+        summary: '',
+        total_duration_ms: 0,
+        tested_at: '',
+      },
+      {
+        agent_url: 'https://example.test/mcp',
+        scenario: 12345 as never,
+        overall_passed: true,
+        steps: [{ step: 'y', passed: true, duration_ms: 0 }],
+        summary: '',
+        total_duration_ms: 0,
+        tested_at: '',
+      },
+    ];
+    expect(deriveStoryboardStatuses(r)).toEqual([]);
+  });
+
   describe('with explicit storyboardIds', () => {
     it('emits untested entry when the runner did not run a requested storyboard', () => {
       const result = makeResult([

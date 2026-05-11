@@ -237,6 +237,14 @@ function mapOverallStatus(status: string): OverallRunStatus {
  *     the SDK actually produced data for.
  *   - explicit-IDs path (`storyboardIds` non-empty): emit one entry per id,
  *     with `status='untested'` for any id the SDK didn't run.
+ *
+ * `steps_passed` / `steps_total` reflect what the SDK reported for that
+ * storyboard in this run. Two storyboards (or the same storyboard across
+ * different runs) may count steps differently: most rows are real step
+ * counts; rows where the SDK emitted phases without per-step data fall back
+ * to phase-level counts. The values are meaningful within a single row
+ * (passed/total ratio, status derivation) but should not be compared across
+ * rows without checking which mode produced them.
  */
 export function deriveStoryboardStatuses(
   result: ComplianceResult,
@@ -249,8 +257,13 @@ export function deriveStoryboardStatuses(
     phasesTotal: number;
   }
   const perStoryboard = new Map<string, Aggregate>();
+  // Storyboard ids in `static/compliance/source/**/index.yaml` are flat
+  // identifiers (no `/`); splitting on the first `/` therefore always yields
+  // the storyboard id followed by the phase id. The `<= 0` guard also
+  // rejects pathological leading-slash strings.
+  const tracks = result.tracks ?? [];
 
-  for (const track of result.tracks) {
+  for (const track of tracks) {
     for (const s of track.scenarios) {
       const sepIdx = typeof s.scenario === 'string' ? s.scenario.indexOf('/') : -1;
       if (sepIdx <= 0) continue; // skip legacy bare-name scenarios (no longer emitted by storyboard-driven comply())
@@ -276,16 +289,15 @@ export function deriveStoryboardStatuses(
   }
 
   // Decide which storyboard ids to emit entries for.
-  const toEmit = storyboardIds && storyboardIds.length > 0
-    ? storyboardIds
-    : Array.from(perStoryboard.keys());
+  const hasExplicitIds = !!storyboardIds && storyboardIds.length > 0;
+  const toEmit = hasExplicitIds ? storyboardIds! : Array.from(perStoryboard.keys());
 
   const entries: StoryboardStatusEntry[] = [];
   for (const sbId of toEmit) {
     const agg = perStoryboard.get(sbId);
     if (!agg) {
       // Explicit id requested but the runner didn't produce data for it.
-      if (storyboardIds && storyboardIds.length > 0) {
+      if (hasExplicitIds) {
         entries.push({ storyboard_id: sbId, status: 'untested', steps_passed: 0, steps_total: 0 });
       }
       continue;
