@@ -31,6 +31,11 @@
       "target_version": "3.1",
       "note": "Added in #3995/#4003. Verified not a rename of 3.0.x's ACCOUNT_SETUP_REQUIRED \u2014 that signals account-level setup; CONFIGURATION_ERROR is operational misconfiguration. Held for 3.1."
     },
+    "CREATIVE_VALUE_NOT_ALLOWED": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.1",
+      "note": "Pairs with text-asset-requirements.allowed_values (#4331). Closed-set creative validation rejection. Wire change — held for 3.1."
+    },
     "CREDENTIAL_IN_ARGS": {
       "disposition": "held-for-next-major",
       "target_version": "4.0",
