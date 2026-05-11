@@ -1085,8 +1085,37 @@
             <div id="property-features-list">
               <!-- Property feature cards populated by renderPropertyFeatures() -->
             </div>
+
+            <!-- Inline add/edit form for property features -->
+            <div id="pf-form" style="display: none; background: var(--color-bg-subtle); border: 2px solid var(--color-border); border-radius: 8px; padding: 16px; margin-top: 16px;">
+              <input type="hidden" id="pf-edit-index" value="-1" />
+              <h4 style="margin: 0 0 12px 0; font-size: 15px; color: var(--color-text-heading);" id="pf-form-title">Add feature provider</h4>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+                <div class="form-group" style="margin: 0;">
+                  <label>Provider name <span style="color: var(--color-error-500);">*</span></label>
+                  <input type="text" id="pf-name" placeholder="e.g., Scope3" style="width: 100%; box-sizing: border-box;" />
+                </div>
+                <div class="form-group" style="margin: 0;">
+                  <label>Provider API URL <span style="color: var(--color-error-500);">*</span></label>
+                  <input type="url" id="pf-url" placeholder="https://api.scope3.com/..." style="width: 100%; box-sizing: border-box;" />
+                </div>
+                <div class="form-group" style="margin: 0;">
+                  <label>Feature IDs <span style="font-weight: normal; font-size: 11px; color: var(--color-text-muted);">comma-separated</span></label>
+                  <input type="text" id="pf-features" placeholder="carbon_score, tag_certified_against_fraud" style="width: 100%; box-sizing: border-box;" />
+                </div>
+                <div class="form-group" style="margin: 0;">
+                  <label>Publisher ID <span style="font-weight: normal; font-size: 11px; color: var(--color-text-muted);">optional</span></label>
+                  <input type="text" id="pf-publisher-id" placeholder="Your ID at this provider" style="width: 100%; box-sizing: border-box;" />
+                </div>
+              </div>
+              <div style="display: flex; gap: 8px;">
+                <button class="btn" onclick="savePfForm()" style="padding: 8px 16px;">Save</button>
+                <button class="btn btn-secondary" onclick="hidePfForm()" style="padding: 8px 16px;">Cancel</button>
+              </div>
+            </div>
+
             <div style="margin-top: 20px;">
-              <button class="btn" onclick="addPropertyFeature()">➕ Add feature provider</button>
+              <button class="btn" onclick="showPfForm(-1)">➕ Add feature provider</button>
             </div>
           </div>
           </div>
@@ -2090,53 +2119,113 @@
       function renderPropertyFeatures() {
         const container = document.getElementById('property-features-list');
         if (!container) return;
+        container.innerHTML = '';
         if (state.propertyFeatures.length === 0) {
-          container.innerHTML = '<p style="color: var(--color-text-muted); font-size: 13px;">No feature providers added yet.</p>';
+          const empty = document.createElement('p');
+          empty.style.cssText = 'color: var(--color-text-muted); font-size: 13px;';
+          empty.textContent = 'No feature providers added yet.';
+          container.appendChild(empty);
           return;
         }
-        container.innerHTML = state.propertyFeatures.map((pf, i) => `
-          <div style="border: 2px solid var(--color-border); border-radius: 8px; padding: 12px; margin-bottom: 10px; background: var(--color-bg-card);">
-            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-              <div>
-                <strong style="font-size: 14px;">${pf.name || '(unnamed)'}</strong>
-                <div style="font-size: 12px; color: var(--color-text-muted); margin-top: 2px;">${pf.url || ''}</div>
-                <div style="font-size: 12px; margin-top: 4px;">Features: <code>${(pf.features || []).join(', ')}</code></div>
-                ${pf.publisher_id ? `<div style="font-size: 12px; color: var(--color-text-muted);">Publisher ID: ${pf.publisher_id}</div>` : ''}
-              </div>
-              <div style="display: flex; gap: 6px;">
-                <button class="btn btn-secondary" onclick="editPropertyFeature(${i})" style="padding: 4px 10px; font-size: 12px;">✏️ Edit</button>
-                <button class="btn" onclick="removePropertyFeature(${i})" style="padding: 4px 10px; font-size: 12px; background: var(--color-error-500);">🗑️ Remove</button>
-              </div>
-            </div>
-          </div>
-        `).join('');
+        state.propertyFeatures.forEach((pf, i) => {
+          const card = document.createElement('div');
+          card.style.cssText = 'border: 2px solid var(--color-border); border-radius: 8px; padding: 12px; margin-bottom: 10px; background: var(--color-bg-card);';
+
+          const row = document.createElement('div');
+          row.style.cssText = 'display: flex; justify-content: space-between; align-items: flex-start;';
+
+          const info = document.createElement('div');
+
+          const nameEl = document.createElement('strong');
+          nameEl.style.fontSize = '14px';
+          nameEl.textContent = pf.name || '(unnamed)';
+          info.appendChild(nameEl);
+
+          const urlEl = document.createElement('div');
+          urlEl.style.cssText = 'font-size: 12px; color: var(--color-text-muted); margin-top: 2px;';
+          urlEl.textContent = pf.url || '';
+          info.appendChild(urlEl);
+
+          const featEl = document.createElement('div');
+          featEl.style.cssText = 'font-size: 12px; margin-top: 4px;';
+          featEl.textContent = 'Features: ';
+          const featCode = document.createElement('code');
+          featCode.textContent = (pf.features || []).join(', ');
+          featEl.appendChild(featCode);
+          info.appendChild(featEl);
+
+          if (pf.publisher_id) {
+            const pidEl = document.createElement('div');
+            pidEl.style.cssText = 'font-size: 12px; color: var(--color-text-muted);';
+            pidEl.textContent = `Publisher ID: ${pf.publisher_id}`;
+            info.appendChild(pidEl);
+          }
+
+          const actions = document.createElement('div');
+          actions.style.cssText = 'display: flex; gap: 6px;';
+
+          const editBtn = document.createElement('button');
+          editBtn.className = 'btn btn-secondary';
+          editBtn.style.cssText = 'padding: 4px 10px; font-size: 12px;';
+          editBtn.textContent = '✏️ Edit';
+          editBtn.onclick = () => showPfForm(i);
+
+          const removeBtn = document.createElement('button');
+          removeBtn.className = 'btn';
+          removeBtn.style.cssText = 'padding: 4px 10px; font-size: 12px; background: var(--color-error-500);';
+          removeBtn.textContent = '🗑️ Remove';
+          removeBtn.onclick = () => removePropertyFeature(i);
+
+          actions.appendChild(editBtn);
+          actions.appendChild(removeBtn);
+          row.appendChild(info);
+          row.appendChild(actions);
+          card.appendChild(row);
+          container.appendChild(card);
+        });
       }
 
-      function addPropertyFeature() {
-        const name = prompt('Provider name (e.g., Scope3, TAG, OneTrust):');
-        if (!name) return;
-        const url = prompt('Provider API URL (https://...):');
-        if (!url) return;
-        const featuresStr = prompt('Feature IDs (comma-separated, e.g., carbon_score, tag_certified_against_fraud):');
-        const features = featuresStr ? featuresStr.split(',').map(f => f.trim()).filter(Boolean) : [];
-        const publisherId = prompt('Publisher ID at this provider (optional — press Enter to skip):') || undefined;
+      function showPfForm(index) {
+        document.getElementById('pf-edit-index').value = index;
+        document.getElementById('pf-form-title').textContent = index === -1 ? 'Add feature provider' : 'Edit feature provider';
+        if (index === -1) {
+          document.getElementById('pf-name').value = '';
+          document.getElementById('pf-url').value = '';
+          document.getElementById('pf-features').value = '';
+          document.getElementById('pf-publisher-id').value = '';
+        } else {
+          const pf = state.propertyFeatures[index];
+          document.getElementById('pf-name').value = pf.name || '';
+          document.getElementById('pf-url').value = pf.url || '';
+          document.getElementById('pf-features').value = (pf.features || []).join(', ');
+          document.getElementById('pf-publisher-id').value = pf.publisher_id || '';
+        }
+        document.getElementById('pf-form').style.display = 'block';
+        document.getElementById('pf-name').focus();
+      }
+
+      function hidePfForm() {
+        document.getElementById('pf-form').style.display = 'none';
+      }
+
+      function savePfForm() {
+        const name = document.getElementById('pf-name').value.trim();
+        const url = document.getElementById('pf-url').value.trim();
+        if (!name || !url) {
+          alert('Provider name and URL are required.');
+          return;
+        }
+        const features = document.getElementById('pf-features').value.split(',').map(f => f.trim()).filter(Boolean);
+        const publisherId = document.getElementById('pf-publisher-id').value.trim() || undefined;
         const pf = { url, name, features };
         if (publisherId) pf.publisher_id = publisherId;
-        state.propertyFeatures.push(pf);
-        render();
-      }
-
-      function editPropertyFeature(index) {
-        const pf = state.propertyFeatures[index];
-        const name = prompt('Provider name:', pf.name || '');
-        if (name === null) return;
-        const url = prompt('Provider API URL:', pf.url || '');
-        if (url === null) return;
-        const featuresStr = prompt('Feature IDs (comma-separated):', (pf.features || []).join(', '));
-        const features = featuresStr ? featuresStr.split(',').map(f => f.trim()).filter(Boolean) : [];
-        const publisherId = prompt('Publisher ID (leave blank to clear):', pf.publisher_id || '') || undefined;
-        state.propertyFeatures[index] = { url, name, features };
-        if (publisherId) state.propertyFeatures[index].publisher_id = publisherId;
+        const index = parseInt(document.getElementById('pf-edit-index').value);
+        if (index === -1) {
+          state.propertyFeatures.push(pf);
+        } else {
+          state.propertyFeatures[index] = pf;
+        }
+        hidePfForm();
         render();
       }
 
@@ -3290,7 +3379,7 @@
                 data-enc-index="${i}" data-enc-field="x"
                 oninput="updateEncKey(this)"
                 style="width:100%;padding:6px;border:1px solid var(--color-border);border-radius:6px;font-size:13px;box-sizing:border-box;"
-                pattern="^[A-Za-z0-9_-]+=?$" />
+                pattern="^[A-Za-z0-9_-]+$" />
               <div data-enc-error="${i}" style="font-size:11px;color:var(--color-error-500);display:none;margin-top:2px;">Must be a base64url string of 43–44 characters (32-byte X25519 key).</div>
             </div>
             <button type="button" onclick="removeEncKey(${i})"
@@ -3309,11 +3398,10 @@
       function updateEncKey(input) {
         const idx = parseInt(input.dataset.encIndex);
         const field = input.dataset.encField;
-        const keys = getEncryptionKeysFromForm();
         if (field === 'x') {
           const val = input.value.trim();
           const errEl = document.querySelector(`[data-enc-error="${idx}"]`);
-          const validX = /^[A-Za-z0-9_-]+=?$/.test(val) && val.length >= 43 && val.length <= 44;
+          const validX = /^[A-Za-z0-9_-]+$/.test(val) && val.length >= 43 && val.length <= 44;
           errEl.style.display = (val && !validX) ? 'block' : 'none';
         }
       }
@@ -3545,7 +3633,13 @@
 
         const countriesRaw = document.getElementById('agent-countries').value.trim();
         if (countriesRaw) {
-          const countries = countriesRaw.split(',').map(c => c.trim().toUpperCase()).filter(c => /^[A-Z]{2}$/.test(c));
+          const tokens = countriesRaw.split(',').map(c => c.trim().toUpperCase());
+          const countries = tokens.filter(c => /^[A-Z]{2}$/.test(c));
+          const rejected = tokens.filter(c => !/^[A-Z]{2}$/.test(c));
+          if (rejected.length > 0) {
+            alert(`These country codes are not valid ISO 3166-1 alpha-2 and were ignored: ${rejected.join(', ')}\n\nOnly two-letter codes (e.g. US, CA, GB) are accepted.`);
+            return;
+          }
           if (countries.length > 0) agent.countries = countries;
         }
 
@@ -3557,7 +3651,7 @@
 
         const encKeys = getEncryptionKeysFromForm().filter(k => k.kid && k.x);
         if (encKeys.length > 0) {
-          const invalidKey = encKeys.find(k => !/^[A-Za-z0-9_-]+=?$/.test(k.x) || k.x.length < 43 || k.x.length > 44);
+          const invalidKey = encKeys.find(k => !/^[A-Za-z0-9_-]+$/.test(k.x) || k.x.length < 43 || k.x.length > 44);
           if (invalidKey) {
             alert(`Encryption key "${invalidKey.kid}": x must be a base64url string of 43–44 characters.`);
             return;
