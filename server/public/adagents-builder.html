@@ -2085,7 +2085,7 @@
         propertyFeatures: [],
         collections: [],
         placements: [],
-        placementTags: [],
+        placementTags: {},
         fileFound: false,
         bulkSelectMode: false,
         selectedPropertyIds: [],
@@ -2244,14 +2244,8 @@
           }
 
           // Placement tags metadata
-          if (state.placementTags.length > 0) {
-            adagents.placement_tags = {};
-            state.placementTags.forEach(tag => {
-              adagents.placement_tags[tag] = {
-                name: tag.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
-                description: `Placements tagged with "${tag}"`,
-              };
-            });
+          if (Object.keys(state.placementTags).length > 0) {
+            adagents.placement_tags = { ...state.placementTags };
           }
         }
 
@@ -2559,6 +2553,8 @@
         if (advancedRaw) {
           try {
             const advanced = JSON.parse(advancedRaw);
+            const reservedKeys = new Set(['collection_id', 'name', 'kind', 'language', 'status', 'cadence', 'description']);
+            reservedKeys.forEach(k => delete advanced[k]);
             Object.assign(col, advanced);
           } catch {
             alert('Additional fields JSON is invalid. Please fix it or leave blank.');
@@ -2566,6 +2562,10 @@
           }
         }
         const index = parseInt(document.getElementById('collection-edit-index').value);
+        if (state.collections.some((c, i) => c.collection_id === id && i !== index)) {
+          alert(`Collection ID "${id}" already exists.`);
+          return;
+        }
         if (index === -1) {
           state.collections.push(col);
         } else {
@@ -2662,23 +2662,25 @@
       function renderPlacementTags() {
         const container = document.getElementById('placement-tags-list');
         if (!container) return;
-        if (state.placementTags.length === 0) {
+        const tags = Object.keys(state.placementTags).sort();
+        if (tags.length === 0) {
           container.innerHTML = '<p style="color: var(--color-text-muted); font-size: 13px; margin: 0;">No placement tags yet.</p>';
           return;
         }
-        container.innerHTML = state.placementTags
-          .map((tag, index) => {
+        container.innerHTML = tags
+          .map(tag => {
             const placementCount = state.placements.filter(pl => pl.tags && pl.tags.includes(tag)).length;
+            const meta = state.placementTags[tag];
             return `
               <div class="dashboard-card" style="display: inline-block; min-width: 180px; margin-right: 12px; margin-bottom: 12px;">
                 <div class="dashboard-card-content">
-                  <div class="dashboard-card-title">🏷️ ${tag}</div>
+                  <div class="dashboard-card-title">🏷️ ${escapeHtml(tag)}</div>
                   <div class="dashboard-card-meta" style="font-size: 13px; color: var(--color-text-muted);">
-                    Used by ${placementCount} ${placementCount === 1 ? 'placement' : 'placements'}
+                    ${meta && meta.description ? escapeHtml(meta.description) + '<br>' : ''}Used by ${placementCount} ${placementCount === 1 ? 'placement' : 'placements'}
                   </div>
                 </div>
                 <div class="dashboard-card-actions">
-                  <button class="btn" onclick="removePlacementTag(${index})" style="background: var(--color-error-500); padding: 6px 12px; font-size: 13px;">🗑️ Delete</button>
+                  <button class="btn" onclick="removePlacementTag('${escapeHtml(tag)}')" style="background: var(--color-error-500); padding: 6px 12px; font-size: 13px;">🗑️ Delete</button>
                 </div>
               </div>
             `;
@@ -2699,8 +2701,8 @@
           propCheckboxContainer.innerHTML = state.properties
             .map(prop => `
               <label style="display: block; padding: 4px 0; cursor: pointer;">
-                <input type="checkbox" value="${prop.property_id}" ${selectedPropertyIds.includes(prop.property_id) ? 'checked' : ''} style="margin-right: 6px;">
-                ${getPropertyIcon(prop.property_type)} ${prop.property_id}${prop.name ? ' — ' + prop.name : ''}
+                <input type="checkbox" value="${escapeHtml(prop.property_id)}" ${selectedPropertyIds.includes(prop.property_id) ? 'checked' : ''} style="margin-right: 6px;">
+                ${getPropertyIcon(prop.property_type)} ${escapeHtml(prop.property_id)}${prop.name ? ' — ' + escapeHtml(prop.name) : ''}
               </label>
             `)
             .join('');
@@ -2743,9 +2745,22 @@
           propertyIds.push(cb.value);
         });
         const propertyTags = document.getElementById('pl-property-tags').value.split(',').map(t => t.trim()).filter(Boolean);
+        const invalidPropTags = propertyTags.filter(t => !/^[a-z0-9_]+$/.test(t));
+        if (invalidPropTags.length > 0) {
+          alert(`Invalid property tag(s): ${invalidPropTags.join(', ')}. Tags must be lowercase letters, digits, or underscores only.`);
+          return;
+        }
 
         if (propertyIds.length === 0 && propertyTags.length === 0) {
           alert('A placement requires at least one property ID or property tag.');
+          return;
+        }
+
+        const tags = document.getElementById('pl-tags').value.split(',').map(t => t.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_')).filter(Boolean);
+
+        const index = parseInt(document.getElementById('placement-edit-index').value);
+        if (state.placements.some((p, i) => p.placement_id === id && i !== index)) {
+          alert(`Placement ID "${id}" already exists.`);
           return;
         }
 
@@ -2756,18 +2771,18 @@
         const description = document.getElementById('pl-description').value.trim();
         if (description) pl.description = description;
 
-        const tags = document.getElementById('pl-tags').value.split(',').map(t => t.trim()).filter(Boolean);
         if (tags.length > 0) pl.tags = tags;
 
-        // Auto-register any new placement tags
+        // Auto-register any new placement tags preserving metadata
         tags.forEach(tag => {
-          if (!state.placementTags.includes(tag)) {
-            state.placementTags.push(tag);
-            state.placementTags.sort();
+          if (!(tag in state.placementTags)) {
+            state.placementTags[tag] = {
+              name: tag.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
+              description: `Placements tagged as ${tag}`,
+            };
           }
         });
 
-        const index = parseInt(document.getElementById('placement-edit-index').value);
         if (index === -1) {
           state.placements.push(pl);
         } else {
@@ -2786,22 +2801,38 @@
 
       function createPlacementTag() {
         const input = document.getElementById('new-placement-tag-input');
-        const tagName = input.value.trim();
+        const tagName = input.value.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_');
         if (!tagName) return;
-        if (state.placementTags.includes(tagName)) {
+        if (tagName in state.placementTags) {
           alert(`Placement tag "${tagName}" already exists.`);
           return;
         }
-        state.placementTags.push(tagName);
-        state.placementTags.sort();
+        state.placementTags[tagName] = {
+          name: tagName.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
+          description: `Placements tagged as ${tagName}`,
+        };
         input.value = '';
         render();
       }
 
-      function removePlacementTag(index) {
-        const tag = state.placementTags[index];
-        if (confirm(`Remove placement tag "${tag}"?`)) {
-          state.placementTags.splice(index, 1);
+      function removePlacementTag(tag) {
+        const placementsUsingTag = state.placements.filter(pl => pl.tags && pl.tags.includes(tag)).length;
+
+        let message = `Delete placement tag "${tag}"?`;
+        if (placementsUsingTag > 0) {
+          message += `\n\nThis tag is used by ${placementsUsingTag} placement(s). It will be removed from those placements.`;
+        }
+
+        if (confirm(message)) {
+          state.placements.forEach(pl => {
+            if (pl.tags) {
+              pl.tags = pl.tags.filter(t => t !== tag);
+              if (pl.tags.length === 0) {
+                delete pl.tags;
+              }
+            }
+          });
+          delete state.placementTags[tag];
           render();
         }
       }
@@ -2811,26 +2842,27 @@
         const tagContainer = document.getElementById('agent-placement-tag-checkboxes');
 
         if (state.placements.length === 0) {
-          idContainer.innerHTML = '<p style="color: #666; font-size: 13px; margin: 0;">No placements defined yet. Add placements first.</p>';
+          idContainer.innerHTML = '<p style="color: var(--color-text-muted); font-size: 13px; margin: 0;">No placements defined yet. Add placements first.</p>';
         } else {
           idContainer.innerHTML = state.placements
             .map(pl => `
               <label style="display: block; padding: 4px 0; cursor: pointer;">
-                <input type="checkbox" value="${pl.placement_id}" ${selectedIds.includes(pl.placement_id) ? 'checked' : ''} style="margin-right: 6px;">
-                📍 ${pl.placement_id}${pl.name ? ' — ' + pl.name : ''}
+                <input type="checkbox" value="${escapeHtml(pl.placement_id)}" ${selectedIds.includes(pl.placement_id) ? 'checked' : ''} style="margin-right: 6px;">
+                📍 ${escapeHtml(pl.placement_id)}${pl.name ? ' — ' + escapeHtml(pl.name) : ''}
               </label>
             `)
             .join('');
         }
 
-        if (state.placementTags.length === 0) {
-          tagContainer.innerHTML = '<p style="color: #666; font-size: 13px; margin: 0;">No placement tags defined yet. Add tags in the Placements tab.</p>';
+        const placementTagKeys = Object.keys(state.placementTags).sort();
+        if (placementTagKeys.length === 0) {
+          tagContainer.innerHTML = '<p style="color: var(--color-text-muted); font-size: 13px; margin: 0;">No placement tags defined yet. Add tags in the Placements tab.</p>';
         } else {
-          tagContainer.innerHTML = state.placementTags
+          tagContainer.innerHTML = placementTagKeys
             .map(tag => `
               <label style="display: block; padding: 4px 0; cursor: pointer;">
-                <input type="checkbox" value="${tag}" ${selectedTags.includes(tag) ? 'checked' : ''} style="margin-right: 6px;">
-                🏷️ ${tag}
+                <input type="checkbox" value="${escapeHtml(tag)}" ${selectedTags.includes(tag) ? 'checked' : ''} style="margin-right: 6px;">
+                🏷️ ${escapeHtml(tag)}
               </label>
             `)
             .join('');
@@ -4381,15 +4413,27 @@
               }
               state.signalTags = Array.from(signalTags).sort();
 
-              // Extract placement tags from placements
-              const placementTags = new Set();
-              state.placements.forEach(pl => {
-                if (pl.tags) pl.tags.forEach(t => placementTags.add(t));
-              });
+              // Build placement_tags map, preserving imported metadata
+              state.placementTags = {};
               if (data.placement_tags) {
-                Object.keys(data.placement_tags).forEach(t => placementTags.add(t));
+                Object.entries(data.placement_tags).forEach(([t, meta]) => {
+                  state.placementTags[t] = (meta && typeof meta === 'object') ? meta : {
+                    name: t.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
+                    description: `Placements tagged as ${t}`,
+                  };
+                });
               }
-              state.placementTags = Array.from(placementTags).sort();
+              // Register tags referenced by placements but missing from the map
+              state.placements.forEach(pl => {
+                if (pl.tags) pl.tags.forEach(t => {
+                  if (!(t in state.placementTags)) {
+                    state.placementTags[t] = {
+                      name: t.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
+                      description: `Placements tagged as ${t}`,
+                    };
+                  }
+                });
+              });
 
               render();
               alert('File imported successfully!');
@@ -4471,14 +4515,8 @@
           }
 
           // Placement tags metadata
-          if (state.placementTags.length > 0) {
-            data.placement_tags = {};
-            state.placementTags.forEach(tag => {
-              data.placement_tags[tag] = {
-                name: tag.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
-                description: `Placements tagged with "${tag}"`,
-              };
-            });
+          if (Object.keys(state.placementTags).length > 0) {
+            data.placement_tags = { ...state.placementTags };
           }
         }
 
@@ -4624,16 +4662,26 @@
             if (result.data.validation.raw_data.placements) {
               state.placements = result.data.validation.raw_data.placements;
 
-              const allPlacementTags = new Set();
+              const rawPlacementTags = result.data.validation.raw_data.placement_tags || {};
+              state.placementTags = {};
+              Object.entries(rawPlacementTags).forEach(([t, meta]) => {
+                state.placementTags[t] = (meta && typeof meta === 'object') ? meta : {
+                  name: t.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
+                  description: `Placements tagged as ${t}`,
+                };
+              });
               state.placements.forEach(pl => {
                 if (pl.tags && Array.isArray(pl.tags)) {
-                  pl.tags.forEach(tag => allPlacementTags.add(tag));
+                  pl.tags.forEach(tag => {
+                    if (!(tag in state.placementTags)) {
+                      state.placementTags[tag] = {
+                        name: tag.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
+                        description: `Placements tagged as ${tag}`,
+                      };
+                    }
+                  });
                 }
               });
-              if (result.data.validation.raw_data.placement_tags) {
-                Object.keys(result.data.validation.raw_data.placement_tags).forEach(t => allPlacementTags.add(t));
-              }
-              state.placementTags = Array.from(allPlacementTags).sort();
             }
           } else {
             // File doesn't exist or is invalid
