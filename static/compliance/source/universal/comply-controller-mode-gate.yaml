@@ -1,0 +1,114 @@
+id: comply_controller_mode_gate
+version: '1.0.0'
+title: 'comply_test_controller live-mode denial gate'
+category: compliance_testing
+summary: 'Verifies that a seller refuses comply_test_controller dispatch when the resolved account is in live mode, closing the fail-open gap where every existing storyboard uses sandbox-only principals.'
+track: core
+
+required_tools:
+  - comply_test_controller
+
+requires:
+  - controller
+
+platform_types:
+  - display_ad_server
+  - video_ad_server
+  - social_platform
+  - retail_media
+  - search_platform
+  - audio_platform
+  - linear_tv_platform
+  - dsp
+  - pmax_platform
+  - ai_ad_network
+  - ai_platform
+  - generative_dsp
+
+narrative: |
+  comply_test_controller is a sandbox-only tool — sellers MUST NOT expose it in
+  production. This storyboard tests that a seller's mode gate correctly refuses
+  comply_test_controller calls from live-mode authenticated accounts.
+
+  When a buyer agent's credentials resolve to a live-mode account, the seller
+  must return FORBIDDEN before executing any scenario. A gate that fails open
+  silently passes all other storyboards (because every other storyboard uses
+  sandbox principals) while allowing live-mode scenario execution.
+
+  This storyboard is automatically skipped for sellers that do not expose
+  comply_test_controller (requirement_unmet via requires: [controller]).
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - supports_test_controller
+  examples:
+    - 'Any seller with comply_test_controller implementing per-account mode gating'
+
+caller:
+  role: buyer_agent
+  example: 'Comply test harness (live-mode principal)'
+
+prerequisites:
+  description: |
+    The seller must expose comply_test_controller and implement per-account
+    mode gating. The test harness authenticates with live-mode credentials
+    (sandbox: false) and verifies the seller refuses scenario dispatch.
+  test_kit: 'test-kits/acme-outdoor-live.yaml'
+
+phases:
+  - id: live_account_denial
+    title: 'Live-mode account denial'
+    narrative: |
+      A buyer authenticated as a live-mode account calls comply_test_controller.
+      The seller must resolve the account mode from its own records — not the
+      caller's assertion — and return FORBIDDEN before executing the scenario.
+
+    steps:
+      - id: deny_live_caller
+        title: 'comply_test_controller refuses live-mode account'
+        requires_tool: comply_test_controller
+        narrative: |
+          Sends comply_test_controller with a well-formed force_creative_status
+          scenario and live-mode authentication credentials. The seller resolves
+          the account mode from auth, finds it is live mode, and must return
+          FORBIDDEN — the mode gate must fire before scenario execution.
+        task: comply_test_controller
+        comply_scenario: live_account_denial
+        stateful: false
+        expect_error: true
+        negative_path: payload_well_formed
+        expected: |
+          Return a ControllerError response with:
+          - success: false
+          - error: FORBIDDEN
+
+        sample_request:
+          scenario: force_creative_status
+          params:
+            creative_id: cr-live-probe-001
+            status: approved
+
+          context:
+            correlation_id: "comply_controller_mode_gate--deny_live_caller"
+        validations:
+          - check: field_value
+            path: success
+            allowed_values:
+              - false
+            description: 'Live-mode caller is refused'
+          - check: field_value
+            path: error
+            allowed_values:
+              - FORBIDDEN
+            description: 'Error code is FORBIDDEN (ControllerError shape)'
+
+          - check: field_present
+            path: context
+            description: 'Response echoes back the context object'
+          - check: field_value
+            path: context.correlation_id
+            allowed_values:
+              - "comply_controller_mode_gate--deny_live_caller"
+            description: 'Context correlation_id returned unchanged'
