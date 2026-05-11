@@ -1142,6 +1142,32 @@ describe('AdAgentsManager', () => {
       expect(json).toContain('  '); // Contains 2-space indentation
       expect(json.split('\n').length).toBeGreaterThan(1); // Multiple lines
     });
+
+    it('round-trips v3 agent fields (exclusive, countries, effective_from/until, signing_keys)', () => {
+      const agents: AuthorizedAgent[] = [
+        {
+          url: 'https://agent.example.com',
+          authorized_for: 'Premium inventory',
+          exclusive: true,
+          countries: ['US', 'CA', 'GB'],
+          effective_from: '2025-01-01T00:00:00.000Z',
+          effective_until: '2025-12-31T23:59:59.000Z',
+          signing_keys: [{ kid: 'key-1', kty: 'OKP', crv: 'Ed25519', x: 'base64urlvalue' }],
+        },
+      ];
+
+      const json = manager.createAdAgentsJson(agents, true, true);
+      const parsed = JSON.parse(json);
+      const agent = parsed.authorized_agents[0];
+
+      expect(agent.exclusive).toBe(true);
+      expect(agent.countries).toEqual(['US', 'CA', 'GB']);
+      expect(agent.effective_from).toBe('2025-01-01T00:00:00.000Z');
+      expect(agent.effective_until).toBe('2025-12-31T23:59:59.000Z');
+      expect(agent.signing_keys).toHaveLength(1);
+      expect(agent.signing_keys[0].kid).toBe('key-1');
+      expect(agent.signing_keys[0].kty).toBe('OKP');
+    });
   });
 
   describe('URL Reference Support', () => {
@@ -1404,6 +1430,71 @@ describe('AdAgentsManager', () => {
       // Empty string is treated as missing/required in JavaScript (falsy check)
       expect(result.valid).toBe(false);
       expect(result.errors.some(e => e.field.includes('.authorized_for') && e.message.includes('required'))).toBe(true);
+    });
+
+    it('accepts valid v3 agent fields', () => {
+      const agents: AuthorizedAgent[] = [
+        {
+          url: 'https://agent.example.com',
+          authorized_for: 'Premium inventory',
+          exclusive: true,
+          countries: ['US', 'CA'],
+          effective_from: '2025-01-01T00:00:00.000Z',
+          effective_until: '2025-12-31T23:59:59.000Z',
+          signing_keys: [{ kid: 'key-1', kty: 'OKP', crv: 'Ed25519', x: 'base64urlvalue' }],
+        },
+      ];
+
+      const result = manager.validateProposed(agents);
+
+      expect(result.valid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it('rejects invalid country codes in proposal', () => {
+      const agents: AuthorizedAgent[] = [
+        {
+          url: 'https://agent.example.com',
+          authorized_for: 'Test',
+          countries: ['us', 'USA'] as any,
+        },
+      ];
+
+      const result = manager.validateProposed(agents);
+
+      expect(result.valid).toBe(false);
+      expect(result.errors.some(e => e.field.includes('.countries') && e.message.includes('ISO 3166-1 alpha-2'))).toBe(true);
+    });
+
+    it('rejects effective_until before effective_from', () => {
+      const agents: AuthorizedAgent[] = [
+        {
+          url: 'https://agent.example.com',
+          authorized_for: 'Test',
+          effective_from: '2025-06-01T00:00:00.000Z',
+          effective_until: '2025-01-01T00:00:00.000Z',
+        },
+      ];
+
+      const result = manager.validateProposed(agents);
+
+      expect(result.valid).toBe(false);
+      expect(result.errors.some(e => e.field.includes('.effective_until'))).toBe(true);
+    });
+
+    it('rejects malformed signing_keys entries', () => {
+      const agents: AuthorizedAgent[] = [
+        {
+          url: 'https://agent.example.com',
+          authorized_for: 'Test',
+          signing_keys: [{ kty: 'OKP' } as any],
+        },
+      ];
+
+      const result = manager.validateProposed(agents);
+
+      expect(result.valid).toBe(false);
+      expect(result.errors.some(e => e.field.includes('.signing_keys') && e.message.includes('kid'))).toBe(true);
     });
   });
 
