@@ -188,5 +188,68 @@ describe('membership-tiers', () => {
       });
       expect(nonOwner).toEqual(orphanOwner);
     });
+
+    describe('is_owner field — load-bearing gate for verdict_source on the public API', () => {
+      // verdict_source on /api/registry/agents/:url/compliance is gated on
+      // ownerMembership.is_owner (not on is_api_access_tier — that would be
+      // too narrow and hide the UX cue from free-tier owners). These tests
+      // pin the is_owner semantics so a future refactor can't silently break
+      // the gate. Issue #4378.
+
+      it('is_owner is false for anonymous (no userId)', async () => {
+        const result = await resolveOwnerMembership(undefined, 'https://agent.example.com', {
+          resolveOwnerOrgId: async () => 'irrelevant',
+          fetchOrgMembership: async () => ({ membership_tier: 'company_standard', subscription_status: 'active' }),
+        });
+        expect(result.is_owner).toBe(false);
+      });
+
+      it('is_owner is false when the user is not a member of any owning org', async () => {
+        const result = await resolveOwnerMembership('user_123', 'https://agent.example.com', {
+          resolveOwnerOrgId: async () => null,
+          fetchOrgMembership: async () => ({ membership_tier: 'company_standard', subscription_status: 'active' }),
+        });
+        expect(result.is_owner).toBe(false);
+      });
+
+      it('is_owner is false when the resolved org has been deleted (orphan profile)', async () => {
+        const result = await resolveOwnerMembership('user_123', 'https://agent.example.com', {
+          resolveOwnerOrgId: async () => 'org_deleted',
+          fetchOrgMembership: async () => null,
+        });
+        expect(result.is_owner).toBe(false);
+      });
+
+      it('is_owner is true for an actual owner regardless of tier — Explorer (free)', async () => {
+        const result = await resolveOwnerMembership('user_123', 'https://agent.example.com', {
+          resolveOwnerOrgId: async () => 'org_abc',
+          fetchOrgMembership: async () => ({ membership_tier: 'explorer', subscription_status: 'active' }),
+        });
+        expect(result.is_owner).toBe(true);
+        // is_owner is broader than is_api_access_tier: free-tier owners
+        // still get verdict_source on their own dashboard view.
+        expect(result.is_api_access_tier).toBe(false);
+      });
+
+      it('is_owner is true for an actual owner — API-access tier with active sub', async () => {
+        const result = await resolveOwnerMembership('user_123', 'https://agent.example.com', {
+          resolveOwnerOrgId: async () => 'org_abc',
+          fetchOrgMembership: async () => ({ membership_tier: 'company_icl', subscription_status: 'active' }),
+        });
+        expect(result.is_owner).toBe(true);
+        expect(result.is_api_access_tier).toBe(true);
+      });
+
+      it('is_owner is true even when subscription is canceled (ownership ≠ entitlement)', async () => {
+        const result = await resolveOwnerMembership('user_123', 'https://agent.example.com', {
+          resolveOwnerOrgId: async () => 'org_abc',
+          fetchOrgMembership: async () => ({ membership_tier: 'company_standard', subscription_status: 'canceled' }),
+        });
+        expect(result.is_owner).toBe(true);
+        expect(result.is_api_access_tier).toBe(false);
+        // The canceled-sub owner still sees their own verdict_source on the
+        // dashboard — they just can't earn badges until they reactivate.
+      });
+    });
   });
 });
