@@ -9065,6 +9065,11 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
       logger.info('Worker process: scheduled jobs and crawlers started');
     } else {
       logger.info('Web process: skipping scheduled jobs and crawlers');
+      // Watchdog so silent worker death (firecracker-stage crashloop, OOM,
+      // failed deploy) reaches #admin-errors instead of being noticed days
+      // later via a user escalation. See escalation #329, May 2026.
+      const { startWorkerWatchdog } = await import('./services/worker-watchdog.js');
+      startWorkerWatchdog();
     }
 
     this.server = this.app.listen(port, () => {
