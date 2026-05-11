@@ -561,6 +561,21 @@
     },
     "ext": {
       "$ref": "/schemas/core/ext.json"
+    },
+    "account": {
+      "type": "object",
+      "description": "Sandbox account assertion. The runner SHOULD set sandbox: true on every comply_test_controller request; required in a future version. The seller MUST refuse the request (returning a structured error) if the targeted account is not a sandbox account in the seller's persisted records. This field is a caller-side declaration of intent — it does not grant sandbox status; sellers verify against their own account state. The (Sandbox) verification tier is defined by this gate: real production endpoints accept sandbox-flagged traffic and process it without real-world side effects, no separate test-mode endpoint required. See spec issue #3755 and the (Sandbox) framing in #4379. NOTE: optional in this version while existing storyboards add the field; the const: true constraint applies when present, so a request asserting sandbox: false schema-rejects regardless. A subsequent version bump will move this field into the required array; follow-up issue tracks the storyboard sweep that unblocks that.",
+      "required": [
+        "sandbox"
+      ],
+      "properties": {
+        "sandbox": {
+          "type": "boolean",
+          "const": true,
+          "description": "MUST be true. The seller MUST verify the targeted account is sandbox by looking up the persisted account record, not by trusting this field. A request asserting sandbox: false schema-rejects before reaching the seller — defense-in-depth on top of the per-request gate."
+        }
+      },
+      "additionalProperties": true
     }
   },
   "required": [
