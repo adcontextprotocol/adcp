@@ -37,7 +37,7 @@ const SYNC_GOVERNANCE_SCHEMA = {
         schemes: z.array(z.string()),
         credentials: z.string(),
       }),
-    })).min(1).max(1),
+    })).min(1),
   })),
   idempotency_key: z.string().optional(),
   context: z.any().optional(),
