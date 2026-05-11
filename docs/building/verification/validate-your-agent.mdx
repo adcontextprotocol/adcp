@@ -9,6 +9,10 @@ Once your agent is running, validate it before going live. Storyboards exercise 
 
 Storyboards are available from the command line and interactively through [Addie](https://agenticadvertising.org). They are also published alongside schemas at `/compliance/{version}/` and bundled into the per-version protocol tarball at `/protocol/{version}.tgz` — see [Schemas and SDKs](/docs/building/by-layer/L0/schemas#one-shot-protocol-bundle) for how to fetch them offline.
 
+<Note>
+The `@adcp/sdk` package also exports legacy TypeScript test runners under `testing/scenarios/*` (e.g. `media-buy.ts`, `signals.ts`). These predate `comply()` and are **not** the conformance specification. If you find yourself grepping those files to learn what AdCP requires, see [Storyboards vs. scenarios](/docs/building/verification/storyboards-vs-scenarios) for which surface is normative.
+</Note>
+
 ## Storyboard taxonomy
 
 Storyboards are organized into three layers so agents declare only what they actually support:
