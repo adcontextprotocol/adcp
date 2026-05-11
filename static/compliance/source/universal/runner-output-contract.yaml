@@ -401,6 +401,34 @@ validation_result:
       not_applicable for the entire check (not just per-assertion). Use
       sparingly — see storyboard-schema.yaml > "upstream_traffic" >
       `attestation_mode_required` for the rationale.
+    response_schema_validator_semantics: |
+      Runners MUST apply the referenced JSON schema using a JSON Schema
+      draft-07 compliant validator configured to honour the schema's own
+      `additionalProperties` declaration without global override. When a
+      schema or any sub-schema reached via `$ref`, `allOf`, `oneOf`, or
+      `anyOf` declares `"additionalProperties": true` (explicitly or by
+      omission — draft-07 default is `true`), the runner MUST NOT fail a
+      response that includes fields beyond those enumerated in `properties`.
+      In draft-07, `oneOf` branch-selection does not grant a validator
+      licence to reject fields that are permitted by all branches'
+      `additionalProperties` declarations.
+
+      Configuring the validator in a way that contradicts the schema's own
+      `additionalProperties` declaration is a conformance violation of this
+      contract (e.g., AJV `removeAdditional: 'all'` or a schema-level
+      `additionalProperties: false` override; Zod `.strict()` on a derived
+      schema object). A seller returning a spec-valid response with optional
+      or newly-added fields (such as `authorization` or `sandbox` on
+      sync-accounts items) is conformant. A runner that fails such a
+      response because its internal schema representation is stricter than
+      the canonical JSON Schema produces a false negative that blocks
+      legitimate conformance progress.
+
+      The AdCP spec-side lint (`scripts/lint-storyboard-response-schema.cjs`,
+      AJV `strict: false`, no `removeAdditional`) sets the precedent. This
+      clause makes the same requirement normative for all conforming runners.
+      Any runner correctly implementing draft-07 JSON Schema validation
+      already satisfies it.
   optional_fields:
     - remediation             # runner-suggested fix when the failure maps to
                               # a well-known cause (e.g., "agent did not echo
