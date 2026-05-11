@@ -1,7 +1,7 @@
 id: comply_controller_mode_gate
 version: '1.0.0'
 title: 'comply_test_controller live-mode denial gate'
-category: compliance_testing
+category: core
 summary: 'Verifies that a seller refuses comply_test_controller dispatch when the resolved account is in live mode, closing the fail-open gap where every existing storyboard uses sandbox-only principals.'
 track: core
 
@@ -98,6 +98,8 @@ phases:
             allowed_values:
               - false
             description: 'Live-mode caller is refused'
+          # ControllerError.error — not adcp_error.code; ControllerError is the response
+          # body shape in comply-test-controller-response.json; check: error_code does not apply.
           - check: field_value
             path: error
             allowed_values:
