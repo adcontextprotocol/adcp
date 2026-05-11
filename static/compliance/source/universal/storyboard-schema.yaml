@@ -1438,6 +1438,73 @@
 #         - "audiences[*].add[*].hashed_email"
 #         - "audiences[*].add[*].external_id"
 #
+# Cross-response assertions — `check: cross_response_field_equal` / `cross_response_count_distinct`:
+#   These check kinds operate on the RESPONSE SET of a step that dispatches
+#   multiple parallel requests under the `parallel_dispatch_runner` contract
+#   (see test-kits/parallel-dispatch-runner.yaml). They are NOT applicable to
+#   single-dispatch steps: a single response trivially has cardinality 1 on any
+#   field. Runners MUST gate these checks on the step declaring
+#   `requires_contract: parallel_dispatch_runner` and a `parallel_dispatch`
+#   block; outside that gate the check MUST grade `not_applicable`. The
+#   canonical use case is rule-9 testing (concurrent retries / first-insert-wins
+#   from L1/security.mdx#idempotency) — fire N parallel calls with the same
+#   `idempotency_key`, assert exactly one resource was created.
+#
+#   `parallel_dispatch` is a step-level block that travels alongside `requires_contract`:
+#
+#     - id: concurrent_create
+#       task: create_media_buy
+#       requires_contract: parallel_dispatch_runner
+#       parallel_dispatch:
+#         count: 2                    # required, integer 2..10. The runner fires
+#                                     # `count` logically-simultaneous requests
+#                                     # using the SDK's batch primitive.
+#         same_idempotency_key: true  # required for rule-9 tests; future
+#                                     # non-idempotency parallel tests MAY set
+#                                     # this false.
+#         barrier_timeout_ms: 5000    # optional; default 5000 — how long the
+#                                     # runner waits at the dispatch barrier
+#                                     # before firing requests anyway.
+#       validations:
+#         - check: cross_response_count_distinct
+#           path: "media_buy_id"
+#           allowed_values: [1]
+#           description: "Exactly one media_buy_id across all dispatches"
+#         - check: cross_response_field_equal
+#           path: "media_buy_id"
+#           description: "All dispatches converge on the same media_buy_id"
+#
+#   `cross_response_field_equal`:
+#     - path (string, required): JSON path checked on every resolved response.
+#       All non-null observed values at `path` MUST be deeply equal. A missing
+#       value on a response is treated as a non-equal observation and fails the
+#       check.
+#
+#   `cross_response_count_distinct`:
+#     - path (string, required): JSON path scanned on every resolved response.
+#     - allowed_values (array of integers, required): permitted cardinalities of
+#       distinct values observed at `path` across the resolved response set.
+#       For rule-9 tests, `allowed_values: [1]` — exactly one resource was
+#       created across all dispatches.
+#
+#   Resolution semantics. A seller adopting the reject-and-redirect policy under
+#   rule 9 may return `IDEMPOTENCY_IN_FLIGHT` on the second (or later) dispatch
+#   rather than block. The runner MUST resolve `IDEMPOTENCY_IN_FLIGHT` responses
+#   to their eventual cached response before applying these checks: wait
+#   `error.details.retry_after` seconds and retry with the SAME idempotency_key,
+#   exactly as the buyer-side normative behavior specifies. The cross-response
+#   check operates on the resolved response set, not the raw initial set. If
+#   resolution exceeds the runner's step-timeout budget, the step grades
+#   `step_timeout` (a runner-synthesized code), not a rule-9 violation.
+#
+#   Grading output. `expected` carries the declared assertion fields
+#   (`path`, plus `allowed_values` for `count_distinct`). `actual` summarizes
+#   what was observed across the resolved response set:
+#     cross_response_field_equal → { observed_values: [...] }
+#     cross_response_count_distinct → { observed_cardinality, observed_values: [...] }
+#   See runner-output-contract.yaml > validation_result > expected/actual for
+#   the canonical shapes.
+#
 # --- Runner output ---
 #
 # How a runner MUST report validation results — including which fields a

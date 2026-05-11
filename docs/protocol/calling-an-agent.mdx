@@ -26,7 +26,8 @@ Every mutating tool requires an `idempotency_key` (UUID).
 
 - **Same key on retry** → server replays the **same response**, byte-for-byte. Use this for transport-level retries (timeout, 5xx, dropped connection).
 - **Fresh key** → **new operation**, regardless of body. Generating a new UUID because the previous attempt failed is the most common way naïve callers create duplicate media buys.
-- **Same key, different body** → server-defined; most agents return the original cached response and ignore the body change. Don't rely on it.
+- **Same key, different canonical body** → `IDEMPOTENCY_CONFLICT`. Sellers MUST reject (rule 5 in [security.mdx#idempotency](/docs/building/by-layer/L1/security#idempotency)) — do not silently apply the second body, do not silently replay the first response.
+- **Same key while first request still running** → `IDEMPOTENCY_IN_FLIGHT` (rule 9 in [security.mdx#idempotency](/docs/building/by-layer/L1/security#idempotency)). The seller MAY return this code with `error.details.retry_after` instead of blocking. Wait and retry with the **same key** — minting a fresh key on this code turns a safe retry into a double-execution race.
 
 For async flows, the replayed response carries the **same `task_id`** so polling continues against the same task instead of forking.
 
