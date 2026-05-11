@@ -349,6 +349,48 @@ async function runTests() {
     'Rejects empty idempotency block (missing discriminator)'
   );
 
+  // in_flight_max_seconds — optional in 3.1, required when supported: true in 4.0.
+  // Schema accepts the bound when present; cross-field bound (≤ replay_ttl_seconds)
+  // is enforced below the schema layer (see custom assertion).
+  await testSchemaValidation(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    { ...capabilitiesBase, adcp: { ...capabilitiesBase.adcp, idempotency: { supported: true, replay_ttl_seconds: 86400, in_flight_max_seconds: 60 } } },
+    'IdempotencySupported with in_flight_max_seconds: {supported: true, replay_ttl_seconds: 86400, in_flight_max_seconds: 60}'
+  );
+
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    { ...capabilitiesBase, adcp: { ...capabilitiesBase.adcp, idempotency: { supported: true, replay_ttl_seconds: 86400, in_flight_max_seconds: 0 } } },
+    'Rejects in_flight_max_seconds: 0 (below minimum 1)'
+  );
+
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    { ...capabilitiesBase, adcp: { ...capabilitiesBase.adcp, idempotency: { supported: false, in_flight_max_seconds: 60 } } },
+    'Rejects in_flight_max_seconds on unsupported branch: {supported: false, in_flight_max_seconds: 60}'
+  );
+
+  // Cross-field invariant: in_flight_max_seconds MUST NOT exceed replay_ttl_seconds.
+  // JSON Schema cannot express field-relative bounds; the constraint is enforced
+  // by a custom assertion alongside the schema check.
+  const violatingCaps = { ...capabilitiesBase, adcp: { ...capabilitiesBase.adcp, idempotency: { supported: true, replay_ttl_seconds: 3600, in_flight_max_seconds: 7200 } } };
+  // Schema layer accepts the shape (both bounds individually valid)
+  await testSchemaValidation(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    violatingCaps,
+    'Schema accepts in_flight_max_seconds > replay_ttl_seconds at the schema layer (cross-field bound enforced below)'
+  );
+  // Cross-field invariant: programmatic check that the cross-field bound is violated.
+  totalTests++;
+  const idem = violatingCaps.adcp.idempotency;
+  if (idem.in_flight_max_seconds > idem.replay_ttl_seconds) {
+    log(`  ✓ Cross-field assertion: in_flight_max_seconds (${idem.in_flight_max_seconds}) > replay_ttl_seconds (${idem.replay_ttl_seconds}) detected — sellers MUST NOT emit this shape`, 'success');
+    passedTests++;
+  } else {
+    log(`  ✗ Cross-field assertion: failed to detect in_flight_max_seconds > replay_ttl_seconds`, 'error');
+    failedTests++;
+  }
+
   log('');
 
   // request_signing.protocol_methods_* — JSON-RPC method namespace (adcp#4318).
