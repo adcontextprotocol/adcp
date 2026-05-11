@@ -62,7 +62,11 @@ jobs:
             min_passing_steps: 118
           - tenant: creative-builder
             min_clean_storyboards: 60
-            min_passing_steps: 100
+            # Dropped from 100 → 96 with @adcp/sdk 7.0: list_creatives and
+            # get_creative_delivery moved off CreativeBuilderPlatform onto
+            # CreativeAdServerPlatform, so /creative-builder no longer
+            # advertises them. Step count drop is exact (2 tools × 2 steps).
+            min_passing_steps: 96
           - tenant: brand
             min_clean_storyboards: 66
             min_passing_steps: 45
