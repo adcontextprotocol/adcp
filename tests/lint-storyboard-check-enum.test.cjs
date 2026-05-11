@@ -20,7 +20,7 @@ const assert = require('node:assert/strict');
 
 const {
   lint,
-  loadAuthoredCheckKinds,
+  loadKnownCheckKinds,
   SYNTHESIZED_CHECK_KINDS,
   RULE_MESSAGES,
 } = require('../scripts/lint-storyboard-check-enum.cjs');
@@ -36,7 +36,7 @@ test('source tree passes the check-enum lint', () => {
 });
 
 test('authored_check_kinds enum loads from runner-output-contract.yaml', () => {
-  const kinds = loadAuthoredCheckKinds();
+  const kinds = loadKnownCheckKinds();
   // Spot-check a few load-bearing entries — keep this tight so the test
   // doesn't have to track every authored kind. Full enum is the contract.
   for (const expected of ['response_schema', 'field_present', 'upstream_traffic']) {

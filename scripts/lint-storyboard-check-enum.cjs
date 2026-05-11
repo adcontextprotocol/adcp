@@ -49,7 +49,7 @@ const SYNTHESIZED_CHECK_KINDS = new Set([
   'unresolved_substitution',
 ]);
 
-function loadAuthoredCheckKinds() {
+function loadKnownCheckKinds() {
   const doc = yaml.load(fs.readFileSync(CONTRACT_FILE, 'utf8'));
   const authored = doc && Array.isArray(doc.authored_check_kinds) ? doc.authored_check_kinds : null;
   if (!authored || authored.length === 0) {
@@ -109,7 +109,7 @@ function* walkValidations(doc) {
 }
 
 function lint(sourceDir = SOURCE_DIR) {
-  const authoredKinds = loadAuthoredCheckKinds();
+  const authoredKinds = loadKnownCheckKinds();
   const violations = [];
 
   function lintFile(p) {
@@ -184,6 +184,6 @@ if (require.main === module) main();
 module.exports = {
   RULE_MESSAGES,
   SYNTHESIZED_CHECK_KINDS,
-  loadAuthoredCheckKinds,
+  loadKnownCheckKinds,
   lint,
 };
