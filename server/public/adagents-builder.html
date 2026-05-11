@@ -3364,27 +3364,55 @@
         (keys || []).forEach((key, i) => {
           const row = document.createElement('div');
           row.style.cssText = 'display:flex;gap:8px;margin-bottom:8px;align-items:flex-start;';
-          row.innerHTML = `
-            <div style="flex:1;">
-              <div style="display:flex;gap:8px;margin-bottom:4px;">
-                <input type="text" placeholder="kid (≤8 chars)" maxlength="8"
-                  value="${key.kid || ''}"
-                  data-enc-index="${i}" data-enc-field="kid"
-                  oninput="updateEncKey(this)"
-                  style="width:120px;padding:6px;border:1px solid var(--color-border);border-radius:6px;font-size:13px;" />
-                <span style="font-size:12px;color:#666;align-self:center;">kty=OKP crv=X25519 use=enc</span>
-              </div>
-              <input type="text" placeholder="x — base64url X25519 public key (43–44 chars)"
-                value="${key.x || ''}"
-                data-enc-index="${i}" data-enc-field="x"
-                oninput="updateEncKey(this)"
-                style="width:100%;padding:6px;border:1px solid var(--color-border);border-radius:6px;font-size:13px;box-sizing:border-box;"
-                pattern="^[A-Za-z0-9_-]+$" />
-              <div data-enc-error="${i}" style="font-size:11px;color:var(--color-error-500);display:none;margin-top:2px;">Must be a base64url string of 43–44 characters (32-byte X25519 key).</div>
-            </div>
-            <button type="button" onclick="removeEncKey(${i})"
-              style="padding:4px 8px;background:var(--color-error-500);color:#fff;border:none;border-radius:6px;cursor:pointer;">🗑️</button>
-          `;
+
+          const wrap = document.createElement('div');
+          wrap.style.flex = '1';
+
+          const kidRow = document.createElement('div');
+          kidRow.style.cssText = 'display:flex;gap:8px;margin-bottom:4px;';
+
+          const kidInput = document.createElement('input');
+          kidInput.type = 'text';
+          kidInput.placeholder = 'kid (≤8 chars)';
+          kidInput.maxLength = 8;
+          kidInput.value = key.kid || '';
+          kidInput.dataset.encIndex = String(i);
+          kidInput.dataset.encField = 'kid';
+          kidInput.oninput = function () { updateEncKey(this); };
+          kidInput.style.cssText = 'width:120px;padding:6px;border:1px solid var(--color-border);border-radius:6px;font-size:13px;';
+          kidRow.appendChild(kidInput);
+
+          const kidNote = document.createElement('span');
+          kidNote.style.cssText = 'font-size:12px;color:#666;align-self:center;';
+          kidNote.textContent = 'kty=OKP crv=X25519 use=enc';
+          kidRow.appendChild(kidNote);
+          wrap.appendChild(kidRow);
+
+          const xInput = document.createElement('input');
+          xInput.type = 'text';
+          xInput.placeholder = 'x — base64url X25519 public key (43–44 chars)';
+          xInput.value = key.x || '';
+          xInput.dataset.encIndex = String(i);
+          xInput.dataset.encField = 'x';
+          xInput.oninput = function () { updateEncKey(this); };
+          xInput.style.cssText = 'width:100%;padding:6px;border:1px solid var(--color-border);border-radius:6px;font-size:13px;box-sizing:border-box;';
+          xInput.setAttribute('pattern', '^[A-Za-z0-9_-]+$');
+          wrap.appendChild(xInput);
+
+          const err = document.createElement('div');
+          err.dataset.encError = String(i);
+          err.style.cssText = 'font-size:11px;color:var(--color-error-500);display:none;margin-top:2px;';
+          err.textContent = 'Must be a base64url string of 43–44 characters (32-byte X25519 key).';
+          wrap.appendChild(err);
+
+          const removeBtn = document.createElement('button');
+          removeBtn.type = 'button';
+          removeBtn.onclick = () => removeEncKey(i);
+          removeBtn.style.cssText = 'padding:4px 8px;background:var(--color-error-500);color:#fff;border:none;border-radius:6px;cursor:pointer;';
+          removeBtn.textContent = '🗑️';
+
+          row.appendChild(wrap);
+          row.appendChild(removeBtn);
           container.appendChild(row);
         });
       }
@@ -3426,14 +3454,22 @@
         (keys || []).forEach((key, i) => {
           const row = document.createElement('div');
           row.style.cssText = 'display:flex;gap:8px;margin-bottom:8px;align-items:flex-start;';
-          const jsonVal = JSON.stringify(key, null, 2);
-          row.innerHTML = `
-            <textarea data-sig-index="${i}"
-              style="flex:1;padding:6px;border:1px solid var(--color-border);border-radius:6px;font-size:12px;font-family:monospace;resize:vertical;"
-              rows="4" placeholder='{"kid":"key-1","kty":"OKP","crv":"Ed25519","x":"base64url..."}'>${jsonVal}</textarea>
-            <button type="button" onclick="removeSigKey(${i})"
-              style="padding:4px 8px;background:var(--color-error-500);color:#fff;border:none;border-radius:6px;cursor:pointer;">🗑️</button>
-          `;
+
+          const textarea = document.createElement('textarea');
+          textarea.dataset.sigIndex = String(i);
+          textarea.style.cssText = 'flex:1;padding:6px;border:1px solid var(--color-border);border-radius:6px;font-size:12px;font-family:monospace;resize:vertical;';
+          textarea.rows = 4;
+          textarea.placeholder = '{"kid":"key-1","kty":"OKP","crv":"Ed25519","x":"base64url..."}';
+          textarea.value = JSON.stringify(key, null, 2);
+
+          const removeBtn = document.createElement('button');
+          removeBtn.type = 'button';
+          removeBtn.onclick = () => removeSigKey(i);
+          removeBtn.style.cssText = 'padding:4px 8px;background:var(--color-error-500);color:#fff;border:none;border-radius:6px;cursor:pointer;';
+          removeBtn.textContent = '🗑️';
+
+          row.appendChild(textarea);
+          row.appendChild(removeBtn);
           container.appendChild(row);
         });
       }
