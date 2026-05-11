@@ -80,7 +80,9 @@ describe('complianceResultToDbInput — effectiveRunStatus', () => {
     const out = complianceResultToDbInput(result as any, 'https://agent.example.com/mcp', 'production');
 
     expect(out.overall_status).toBe('partial');
-    expect(out.tracks_passed).toBe(0);
+    // tracks_passed counts pass + silent per SDK summary semantics; the silent
+    // track contributes 1 even though the overall verdict isn't promoted.
+    expect(out.tracks_passed).toBe(1);
     expect(out.tracks_failed).toBe(1);
     expect(out.tracks_partial).toBe(0);
   });
