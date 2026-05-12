@@ -52,10 +52,17 @@ interface ReportResult {
 /**
  * Extract declared properties from a brand.json structure.
  * Walks brands[].properties[] and collects identifier, type, and relationship.
+ *
+ * `brandJson` may be null/undefined or a non-object — brand rows can exist
+ * without a manifest (registry sync, manifest_orphaned trigger, partial
+ * onboarding). Treat those as "no declared properties" rather than throwing.
  */
-function extractDeclaredProperties(brandJson: Record<string, unknown>): DeclaredProperty[] {
+export function extractDeclaredProperties(
+  brandJson: Record<string, unknown> | null | undefined,
+): DeclaredProperty[] {
   const properties: DeclaredProperty[] = [];
 
+  if (!brandJson || typeof brandJson !== 'object') return properties;
   const brands = Array.isArray(brandJson.brands) ? brandJson.brands : [];
   for (const brand of brands) {
     if (!brand || typeof brand !== 'object') continue;
@@ -89,7 +96,7 @@ async function generateReportForOrg(
   brand: HostedBrand,
   orgAgentUrls: string[]
 ): Promise<{ report: networkHealthDb.NetworkConsistencyReport; alertsFired: number }> {
-  const brandJson = brand.brand_json as Record<string, unknown>;
+  const brandJson = brand.brand_json as Record<string, unknown> | null | undefined;
   const declared = extractDeclaredProperties(brandJson);
 
   // Build a set of domains the org's agents are authorized for (from crawl)
@@ -268,6 +275,7 @@ export async function generateNetworkConsistencyReports(
      FROM brands b
      JOIN organizations o ON o.workos_organization_id = b.workos_organization_id
      WHERE b.workos_organization_id IS NOT NULL
+       AND b.brand_manifest IS NOT NULL
      ORDER BY b.workos_organization_id
      LIMIT $1`,
     [limit]
@@ -277,8 +285,13 @@ export async function generateNetworkConsistencyReports(
     const orgId = row.workos_organization_id;
 
     try {
-      // Get org's brands and agent URLs
-      const brands = await brandDb.listHostedBrandsByOrg(orgId);
+      // Get org's brands and agent URLs. Skip brands without a manifest —
+      // they have no declared properties to report against, and passing
+      // a null `brand_json` to `generateReportForOrg` would log a noisy
+      // empty report. The outer SQL only guarantees the org has *some*
+      // brand with a manifest, not that brands[0] does.
+      const allBrands = await brandDb.listHostedBrandsByOrg(orgId);
+      const brands = allBrands.filter((b) => b.brand_json != null);
       if (brands.length === 0) {
         result.skipped++;
         continue;
@@ -289,7 +302,6 @@ export async function generateNetworkConsistencyReports(
         .filter(a => a.visibility === 'public' && a.url)
         .map(a => a.url);
 
-      // Generate report for the primary brand (first one)
       const primaryBrand = brands[0];
       const { alertsFired } = await generateReportForOrg(orgId, primaryBrand, agentUrls);
 

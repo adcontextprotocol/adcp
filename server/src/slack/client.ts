@@ -103,7 +103,7 @@ async function slackRequest<T>(
           continue;
         }
 
-        throw new Error(`Slack API error: ${data.error}`);
+        throw new Error(`Slack API error: ${data.error}${formatSlackResponseMetadata(data)}`);
       }
 
       return data;
@@ -127,6 +127,25 @@ async function slackRequest<T>(
   }
 
   throw new Error(`Slack API request failed after ${retries} retries`);
+}
+
+/**
+ * Format Slack's `response_metadata.messages` (an array of validation
+ * detail strings) into a single trailing fragment for the thrown
+ * `Error.message`. Slack returns these for `invalid_blocks`,
+ * `invalid_arguments`, and a few other validation errors — they are
+ * the only place that names *which* block or field failed. Without
+ * this they're discarded into the void and the caller logs a bare
+ * "Slack API error: invalid_blocks" with no diagnosis.
+ */
+export function formatSlackResponseMetadata(data: unknown): string {
+  const md = (data as { response_metadata?: { messages?: unknown } })?.response_metadata;
+  const messages = md?.messages;
+  if (!Array.isArray(messages) || messages.length === 0) return '';
+  const summary = messages
+    .filter((m): m is string => typeof m === 'string')
+    .join('; ');
+  return summary ? ` (${summary})` : '';
 }
 
 /**
@@ -165,7 +184,7 @@ async function slackPostRequest<T>(
           continue;
         }
 
-        throw new Error(`Slack API error: ${data.error}`);
+        throw new Error(`Slack API error: ${data.error}${formatSlackResponseMetadata(data)}`);
       }
 
       return data;
@@ -576,9 +595,48 @@ export async function sendChannelMessage(
     return { ok: true, ts: response.ts };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    logger.error({ error, channelId }, 'Failed to send Slack channel message');
+    logger.error(
+      {
+        error,
+        channelId,
+        blockSummary: summarizeBlocksForLog(message.blocks),
+        textLength: message.text?.length ?? 0,
+      },
+      'Failed to send Slack channel message',
+    );
     return { ok: false, error: errorMessage };
   }
+}
+
+/**
+ * Build a redacted block-shape summary for error logs. Captures the
+ * fields Slack's block validator most often rejects (text length,
+ * image_url length, alt_text length, element counts) without leaking
+ * draft content into application logs. Use only inside an error path
+ * where the original send already failed.
+ */
+function summarizeBlocksForLog(
+  blocks: SlackBlockMessage['blocks'],
+): Array<Record<string, unknown>> {
+  if (!Array.isArray(blocks)) return [];
+  return blocks.map((b, index) => {
+    const summary: Record<string, unknown> = { index, type: b.type };
+    if (b.text?.text != null) {
+      summary.textType = b.text.type;
+      summary.textLength = b.text.text.length;
+    }
+    if (b.image_url != null) {
+      summary.imageUrlLength = b.image_url.length;
+      summary.imageUrlScheme = b.image_url.split(':', 1)[0];
+    }
+    if (b.alt_text != null) {
+      summary.altTextLength = b.alt_text.length;
+    }
+    if (Array.isArray(b.elements)) {
+      summary.elementCount = b.elements.length;
+    }
+    return summary;
+  });
 }
 
 /**

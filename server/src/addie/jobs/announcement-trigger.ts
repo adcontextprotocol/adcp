@@ -205,6 +205,23 @@ export function sanitizeDraftForSlack(
   return out;
 }
 
+/**
+ * Slack `plain_text` cap on a `header` block. Exceeding it returns
+ * `invalid_blocks` with `must be no longer than 150 characters` —
+ * see https://api.slack.com/reference/block-kit/blocks#header.
+ */
+const SLACK_HEADER_MAX_LENGTH = 150;
+
+/**
+ * Truncate `s` to `max` chars, replacing the trailing char with `…`
+ * when truncated so the cutoff is visible. Returns `s` unchanged if
+ * already under the cap.
+ */
+function clampForHeader(s: string, max: number): string {
+  if (s.length <= max) return s;
+  return s.slice(0, max - 1).trimEnd() + '…';
+}
+
 export function buildReviewBlocks(args: {
   orgName: string;
   workosOrganizationId: string;
@@ -219,9 +236,15 @@ export function buildReviewBlocks(args: {
   const profileUrl = `${APP_URL}/members/${args.profileSlug}`;
   const safeSlack = sanitizeDraftForSlack(args.slackText);
   const safeLinkedIn = sanitizeDraftForSlack(args.linkedinText, { forFencedBlock: true });
-  const headerText = args.backfill
+  // `args.orgName` is `organizations.name` and is not length-clamped at
+  // source. The header `plain_text` block caps at 150 chars; an org name
+  // long enough to push past that returns `invalid_blocks` and the entire
+  // announcement post fails. Truncate the orgName portion (not the prefix)
+  // so the framing stays intact and only the name is shortened.
+  const rawHeader = args.backfill
     ? `[BACKFILL] New member announcement ready: ${args.orgName}`
     : `New member announcement ready: ${args.orgName}`;
+  const headerText = clampForHeader(rawHeader, SLACK_HEADER_MAX_LENGTH);
   const blocks: SlackBlock[] = [
     {
       type: 'header',
