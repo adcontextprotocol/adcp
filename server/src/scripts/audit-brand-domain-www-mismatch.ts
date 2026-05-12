@@ -30,6 +30,14 @@ interface MismatchRow {
   revision_domain: string;
   revision_count: number;
   last_revision_at: Date;
+  /**
+   * `manifest_orphaned` flag on the brand row at `revision_domain`. True
+   * means a prior reconciliation moved content off this row; the historical
+   * revisions remain (the table is a permanent log) but the row no longer
+   * serves the manifest. Use this column to distinguish "needs fix" from
+   * "already reconciled" — the audit-row presence alone is not enough.
+   */
+  revision_row_orphaned: boolean | null;
   mismatch_kind: 'www_in_revisions' | 'www_in_primary' | 'unrelated';
 }
 
@@ -80,10 +88,12 @@ async function main(): Promise<void> {
       obe.revision_domain,
       obe.revision_count,
       obe.last_revision_at,
+      b.manifest_orphaned AS revision_row_orphaned,
       'placeholder'::text AS mismatch_kind
     FROM org_brand_edits obe
     JOIN org_primary op USING (org_id)
     JOIN organizations o ON o.workos_organization_id = obe.org_id
+    LEFT JOIN brands b ON b.domain = obe.revision_domain
     WHERE lower(obe.revision_domain) != lower(op.primary_domain)
     ORDER BY o.name, obe.last_revision_at DESC
   `);
@@ -113,10 +123,11 @@ async function main(): Promise<void> {
       const last = r.last_revision_at instanceof Date
         ? r.last_revision_at.toISOString()
         : String(r.last_revision_at);
+      const reconciled = r.revision_row_orphaned ? ' [RECONCILED — www row orphaned]' : '';
       console.log(
         `  ${r.org_name} [${r.org_id}] email_domain=${r.org_email_domain ?? '-'}`
         + ` primary=${r.primary_domain} revisions_on=${r.revision_domain}`
-        + ` count=${r.revision_count} last=${last}`,
+        + ` count=${r.revision_count} last=${last}${reconciled}`,
       );
     }
     console.log('');
