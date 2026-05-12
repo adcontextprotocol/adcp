@@ -43,4 +43,17 @@ describe('formatSlackResponseMetadata', () => {
     });
     expect(out).toBe(' (ok; fine)');
   });
+
+  it('caps the summary so pathological responses can\'t flood Error.message', () => {
+    // Many blocks failing at once can return very long messages; we
+    // don't want multi-KB text traveling through `logger.error` into
+    // #admin-errors.
+    const longMsg = 'x'.repeat(2000);
+    const out = formatSlackResponseMetadata({
+      response_metadata: { messages: [longMsg] },
+    });
+    // 2 chars for the wrapping " ()" + capped summary
+    expect(out.length).toBeLessThanOrEqual(1024 + 3);
+    expect(out.endsWith('…)')).toBe(true);
+  });
 });

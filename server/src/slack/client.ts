@@ -138,14 +138,25 @@ async function slackRequest<T>(
  * this they're discarded into the void and the caller logs a bare
  * "Slack API error: invalid_blocks" with no diagnosis.
  */
+/** Cap on the joined metadata string so a pathological Slack response
+ *  (very many failing blocks, very long validator strings) can't push
+ *  multi-KB text into `Error.message` and on through `logger.error` to
+ *  `#admin-errors`. 1024 bytes is enough for ~5 typical validator
+ *  messages with JSON pointers. */
+const SLACK_METADATA_SUMMARY_MAX_LENGTH = 1024;
+
 export function formatSlackResponseMetadata(data: unknown): string {
   const md = (data as { response_metadata?: { messages?: unknown } })?.response_metadata;
   const messages = md?.messages;
   if (!Array.isArray(messages) || messages.length === 0) return '';
-  const summary = messages
+  let summary = messages
     .filter((m): m is string => typeof m === 'string')
     .join('; ');
-  return summary ? ` (${summary})` : '';
+  if (!summary) return '';
+  if (summary.length > SLACK_METADATA_SUMMARY_MAX_LENGTH) {
+    summary = summary.slice(0, SLACK_METADATA_SUMMARY_MAX_LENGTH - 1) + '…';
+  }
+  return ` (${summary})`;
 }
 
 /**
@@ -626,8 +637,12 @@ function summarizeBlocksForLog(
       summary.textLength = b.text.text.length;
     }
     if (b.image_url != null) {
-      summary.imageUrlLength = b.image_url.length;
-      summary.imageUrlScheme = b.image_url.split(':', 1)[0];
+      const scheme = b.image_url.split(':', 1)[0];
+      summary.imageUrlScheme = scheme;
+      // Only log length for https URLs. If `isSafeVisualUrl` ever
+      // regresses and a `data:` URL slips through, the base64 payload
+      // length is itself a fingerprint we don't want in #admin-errors.
+      if (scheme === 'https') summary.imageUrlLength = b.image_url.length;
     }
     if (b.alt_text != null) {
       summary.altTextLength = b.alt_text.length;
