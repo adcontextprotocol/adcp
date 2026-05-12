@@ -40,19 +40,35 @@ import express from 'express';
 import request from 'supertest';
 import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
-import { createMeOrganizationDomainsRouter } from '../../src/routes/me-organization-domains.js';
+import {
+  createMeOrganizationDomainsRouter,
+  _resetVerifyCooldown,
+} from '../../src/routes/me-organization-domains.js';
 import type { Pool } from 'pg';
 
 const TEST_ORG = 'org_me_domains_test';
+const OTHER_ORG = 'org_me_domains_other';
 const OWNER_USER = 'user_dev_admin_001';
 const MEMBER_USER = 'user_dev_member_001';
 
 async function cleanup(pool: Pool) {
-  await pool.query('DELETE FROM organization_domains WHERE workos_organization_id = $1', [TEST_ORG]);
-  await pool.query('DELETE FROM organization_memberships WHERE workos_organization_id = $1', [TEST_ORG]);
-  await pool.query('DELETE FROM member_profiles WHERE workos_organization_id = $1', [TEST_ORG]);
+  await pool.query(
+    'DELETE FROM organization_domains WHERE workos_organization_id = ANY($1)',
+    [[TEST_ORG, OTHER_ORG]],
+  );
+  await pool.query(
+    'DELETE FROM organization_memberships WHERE workos_organization_id = ANY($1)',
+    [[TEST_ORG, OTHER_ORG]],
+  );
+  await pool.query(
+    'DELETE FROM member_profiles WHERE workos_organization_id = ANY($1)',
+    [[TEST_ORG, OTHER_ORG]],
+  );
   await pool.query('DELETE FROM brands WHERE domain LIKE $1', ['me-domains-%.test']);
-  await pool.query('DELETE FROM organizations WHERE workos_organization_id = $1', [TEST_ORG]);
+  await pool.query(
+    'DELETE FROM organizations WHERE workos_organization_id = ANY($1)',
+    [[TEST_ORG, OTHER_ORG]],
+  );
 }
 
 async function seedOrgWithDomains(pool: Pool, domains: Array<{ domain: string; verified: boolean; is_primary: boolean; source?: string }>) {
@@ -337,6 +353,7 @@ describe('POST /api/me/organization/domains (issue + verify challenge)', () => {
   beforeEach(async () => {
     await cleanup(pool);
     cacheInvalidations = 0;
+    _resetVerifyCooldown();
   });
 
   it('issues a WorkOS DNS challenge and writes a pending source=workos row', async () => {
@@ -623,5 +640,165 @@ describe('POST /api/me/organization/domains (issue + verify challenge)', () => {
       .set('x-test-user', OWNER_USER);
     expect(primaryRes.status).toBe(200);
     expect(primaryRes.body.primary_domain).toBe('me-domains-new.test');
+  });
+
+  it('refuses to overwrite a local row owned by another org (cross-tenant safety)', async () => {
+    // Threat model: Org B has a local-only row for `me-domains-shared.test`
+    // (e.g. admin-imported, source='import'). WorkOS doesn't know about it.
+    // Org A's owner POSTs the same domain. Without the pre-check, the
+    // ownership-transfer-on-conflict semantic of upsertWorkosDomain would
+    // silently move the row to Org A. We expect 409, with Org B's row
+    // untouched. The transfer-on-conflict primitive is reserved for the
+    // verify path, where WorkOS confirms DNS proof.
+    await pool.query(
+      `INSERT INTO organizations (workos_organization_id, name, is_personal, created_at, updated_at)
+       VALUES ($1, $2, false, NOW(), NOW())
+       ON CONFLICT (workos_organization_id) DO NOTHING`,
+      [TEST_ORG, 'Me Domains Test Co'],
+    );
+    await pool.query(
+      `INSERT INTO organizations (workos_organization_id, name, is_personal, created_at, updated_at)
+       VALUES ($1, $2, false, NOW(), NOW())
+       ON CONFLICT (workos_organization_id) DO NOTHING`,
+      [OTHER_ORG, 'Other Org'],
+    );
+    await pool.query(
+      `INSERT INTO organization_domains (workos_organization_id, domain, verified, is_primary, source, created_at, updated_at)
+       VALUES ($1, $2, true, true, 'import', NOW(), NOW())
+       ON CONFLICT (domain) DO UPDATE SET verified = EXCLUDED.verified, is_primary = EXCLUDED.is_primary, source = EXCLUDED.source`,
+      [OTHER_ORG, 'me-domains-shared.test'],
+    );
+    await seedProfile(pool);
+    await seedMembership(pool, OWNER_USER, 'owner');
+
+    const app = buildApp(() => { cacheInvalidations += 1; }, makeFakeWorkos());
+
+    const res = await request(app)
+      .post('/api/me/organization/domains?org=' + TEST_ORG)
+      .set('x-test-user', OWNER_USER)
+      .send({ domain: 'me-domains-shared.test' });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toBe('domain_already_claimed');
+
+    // Other org's row is untouched.
+    const row = await pool.query<{ workos_organization_id: string; source: string; is_primary: boolean }>(
+      `SELECT workos_organization_id, source, is_primary FROM organization_domains WHERE domain = $1`,
+      ['me-domains-shared.test'],
+    );
+    expect(row.rowCount).toBe(1);
+    expect(row.rows[0].workos_organization_id).toBe(OTHER_ORG);
+    expect(row.rows[0].source).toBe('import');
+    expect(row.rows[0].is_primary).toBe(true);
+  });
+
+  it('detects WorkOS collision via the message-regex fallback (no code field)', async () => {
+    // WorkOS sometimes returns 422 with a plain-English message and no
+    // structured `code`. The route falls back to a regex match on the
+    // message body. Without this test the regex can silently rot.
+    await pool.query(
+      `INSERT INTO organizations (workos_organization_id, name, is_personal, created_at, updated_at)
+       VALUES ($1, $2, false, NOW(), NOW())
+       ON CONFLICT (workos_organization_id) DO NOTHING`,
+      [TEST_ORG, 'Me Domains Test Co'],
+    );
+    await seedProfile(pool);
+    await seedMembership(pool, OWNER_USER, 'owner');
+
+    const fakeWorkos = makeFakeWorkos();
+    const collisionErr: any = new Error('Domain already used');
+    collisionErr.status = 422;
+    collisionErr.response = { data: { message: 'Domain belongs to another organization' } };
+    fakeWorkos.setCreateError(collisionErr);
+    const app = buildApp(() => { cacheInvalidations += 1; }, fakeWorkos);
+
+    const res = await request(app)
+      .post('/api/me/organization/domains?org=' + TEST_ORG)
+      .set('x-test-user', OWNER_USER)
+      .send({ domain: 'me-domains-collide.test' });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toBe('domain_already_claimed');
+  });
+
+  it('deletes and recreates a broken pending WorkOS entry (no verification token)', async () => {
+    // Broken state on WorkOS: a domain is attached but verificationToken /
+    // verificationPrefix are null. Returning the broken state would echo
+    // nulls back to the user forever. The route deletes the broken entry
+    // and falls through to a fresh create.
+    await pool.query(
+      `INSERT INTO organizations (workos_organization_id, name, is_personal, created_at, updated_at)
+       VALUES ($1, $2, false, NOW(), NOW())
+       ON CONFLICT (workos_organization_id) DO NOTHING`,
+      [TEST_ORG, 'Me Domains Test Co'],
+    );
+    await seedProfile(pool);
+    await seedMembership(pool, OWNER_USER, 'owner');
+
+    const fakeWorkos = makeFakeWorkos([
+      {
+        id: 'org_domain_broken',
+        domain: 'me-domains-broken.test',
+        state: 'pending',
+        verificationToken: null,
+        verificationPrefix: null,
+        verificationStrategy: null,
+      },
+    ]);
+    const app = buildApp(() => { cacheInvalidations += 1; }, fakeWorkos);
+
+    const res = await request(app)
+      .post('/api/me/organization/domains?org=' + TEST_ORG)
+      .set('x-test-user', OWNER_USER)
+      .send({ domain: 'me-domains-broken.test' });
+
+    expect(res.status).toBe(200);
+    expect(typeof res.body.verification_token).toBe('string');
+    expect(res.body.verification_token.length).toBeGreaterThan(0);
+    expect(res.body.verification_prefix).toBe('_workos');
+    // Broken entry was deleted and a fresh one replaced it.
+    expect(fakeWorkos.state.domains).toHaveLength(1);
+    expect(fakeWorkos.state.domains[0].id).not.toBe('org_domain_broken');
+  });
+
+  it('rate-limits verify retries with a 60s cooldown', async () => {
+    // Agentic loops poll on still_pending. The cooldown stops them from
+    // burning WorkOS quota. A successful verify clears the cooldown so a
+    // follow-up "verify, then set primary" sequence doesn't have to wait.
+    await seedOrgWithDomains(pool, [
+      { domain: 'me-domains-new.test', verified: false, is_primary: false, source: 'workos' },
+    ]);
+    await seedProfile(pool);
+    await seedMembership(pool, OWNER_USER, 'owner');
+
+    const fakeWorkos = makeFakeWorkos([
+      {
+        id: 'org_domain_new',
+        domain: 'me-domains-new.test',
+        state: 'pending',
+        verificationToken: 'token123',
+        verificationPrefix: '_workos',
+        verificationStrategy: 'dns',
+      },
+    ]);
+    const pendingErr: any = new Error('not yet propagated');
+    pendingErr.status = 422;
+    fakeWorkos.setVerifyError(pendingErr);
+    const app = buildApp(() => { cacheInvalidations += 1; }, fakeWorkos);
+
+    const first = await request(app)
+      .post('/api/me/organization/domains/me-domains-new.test/verify?org=' + TEST_ORG)
+      .set('x-test-user', OWNER_USER);
+    expect(first.status).toBe(400);
+    expect(first.body.error).toBe('still_pending');
+
+    // Immediate retry — within the cooldown window. Should 429 without
+    // calling WorkOS again.
+    const second = await request(app)
+      .post('/api/me/organization/domains/me-domains-new.test/verify?org=' + TEST_ORG)
+      .set('x-test-user', OWNER_USER);
+    expect(second.status).toBe(429);
+    expect(second.body.error).toBe('still_pending');
+    expect(typeof second.body.retry_after_seconds).toBe('number');
   });
 });

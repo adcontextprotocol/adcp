@@ -20,6 +20,7 @@ import { getPool } from '../db/client.js';
 import {
   setPrimaryDomain,
   upsertWorkosDomain,
+  linkDomain,
 } from '../db/organization-domains-db.js';
 import {
   assertClaimableBrandDomain,
@@ -27,6 +28,53 @@ import {
 } from '../services/identifier-normalization.js';
 
 const logger = createLogger('me-organization-domains');
+
+// In-process verify cooldown — mirrors the brand-claim service. DNS
+// propagation is minutes-scale; agentic loops that see `still_pending`
+// will retry immediately. A 60s floor between verify attempts on the
+// same (org, domain) costs a real user nothing and kills the loop.
+// Per-process — multi-instance deployments get a softer guarantee but
+// the route's auth gate is the trust boundary.
+const VERIFY_COOLDOWN_MS = 60_000;
+const VERIFY_COOLDOWN_MAX_ENTRIES = 10_000;
+const verifyAttemptTimes = new Map<string, number>();
+
+function cooldownKey(orgId: string, domain: string) {
+  return `${orgId}:${domain}`;
+}
+
+function trimVerifyAttempts(now: number) {
+  if (verifyAttemptTimes.size < VERIFY_COOLDOWN_MAX_ENTRIES) return;
+  for (const [k, t] of verifyAttemptTimes) {
+    if (now - t >= VERIFY_COOLDOWN_MS) verifyAttemptTimes.delete(k);
+  }
+  if (verifyAttemptTimes.size < VERIFY_COOLDOWN_MAX_ENTRIES) return;
+  const overflow = verifyAttemptTimes.size - VERIFY_COOLDOWN_MAX_ENTRIES + 1;
+  let dropped = 0;
+  for (const k of verifyAttemptTimes.keys()) {
+    if (dropped >= overflow) break;
+    verifyAttemptTimes.delete(k);
+    dropped++;
+  }
+}
+
+export function _resetVerifyCooldown() {
+  verifyAttemptTimes.clear();
+}
+
+// Returns true when `domain` is already linked to an organization other
+// than `orgId`. Used by the POST issue path to refuse cross-tenant
+// ownership transfer at issue time (before DNS proof). `linkDomain` would
+// also refuse, but a pre-check keeps us from leaking a WorkOS resource
+// for a domain we can't accept locally.
+async function crossOrgConflict(domain: string, orgId: string): Promise<boolean> {
+  const row = await getPool().query<{ workos_organization_id: string }>(
+    `SELECT workos_organization_id FROM organization_domains WHERE domain = $1 LIMIT 1`,
+    [domain],
+  );
+  if (row.rowCount === 0) return false;
+  return row.rows[0].workos_organization_id !== orgId;
+}
 
 export interface MeOrganizationDomainsRouterConfig {
   workos: WorkOS | null;
@@ -254,11 +302,14 @@ export function createMeOrganizationDomainsRouter(
         logger.warn({ err, orgId }, 'POST add domain: getOrganization failed, will attempt create');
       }
       const existingEntry = existingOrg?.domains.find(d => d.domain.toLowerCase() === normalizedDomain);
+
       if (existingEntry) {
         const stateStr = String(existingEntry.state);
         const verified = stateStr === 'verified' || stateStr === 'legacy_verified';
-        const tokenMissing = !existingEntry.verificationToken || !existingEntry.verificationPrefix;
         if (verified) {
+          // WorkOS confirms DNS proof for THIS org. That's the documented
+          // contract for transfer-on-conflict, so upsertWorkosDomain is safe
+          // even if a cross-org local row exists.
           await upsertWorkosDomain({ orgId, domain: normalizedDomain, verified: true });
           invalidateMemberContextCache();
           return res.json({
@@ -270,9 +321,23 @@ export function createMeOrganizationDomainsRouter(
             verification_strategy: existingEntry.verificationStrategy ?? null,
           });
         }
+        // Non-verified branches below MUST cross-check the local DB before
+        // writing — see comment near the create path.
+        const tokenMissing = !existingEntry.verificationToken || !existingEntry.verificationPrefix;
         if (!tokenMissing) {
-          // Mirror the local row so the GET list reflects the pending state.
-          await upsertWorkosDomain({ orgId, domain: normalizedDomain, verified: false });
+          const conflict = await crossOrgConflict(normalizedDomain, orgId);
+          if (conflict) {
+            return res.status(409).json({
+              error: 'domain_already_claimed',
+              message: 'This domain is already linked to another organization.',
+            });
+          }
+          await linkDomain({
+            orgId,
+            domain: normalizedDomain,
+            source: 'workos',
+            verified: false,
+          });
           return res.json({
             domain: normalizedDomain,
             state: stateStr,
@@ -295,14 +360,35 @@ export function createMeOrganizationDomainsRouter(
         }
       }
 
+      // Cross-org local conflict check BEFORE creating the WorkOS resource.
+      // `organization_domains` is the single-source-of-truth row for both
+      // brand identity and org-membership inference (#4159 Stage 2). At
+      // issue time we have no DNS proof, so we must not overwrite a row
+      // owned by another org — even one with `source='manual'` from an
+      // admin attach or the brands FK backfill. `upsertWorkosDomain` would
+      // silently transfer; `linkDomain` refuses transfer; an explicit
+      // pre-check returns 409 cleanly and avoids leaking a WorkOS resource.
+      const preConflict = await crossOrgConflict(normalizedDomain, orgId);
+      if (preConflict) {
+        return res.status(409).json({
+          error: 'domain_already_claimed',
+          message: 'This domain is already linked to another organization.',
+        });
+      }
+
       try {
         const created = await workos.organizationDomains.createOrganizationDomain({
           organizationId: orgId,
           domain: normalizedDomain,
         });
-        await upsertWorkosDomain({
+        // linkDomain (not upsertWorkosDomain) — leaves any same-org row
+        // alone (e.g. an existing source='manual' row stays as-is until
+        // the verify path provides DNS proof). Inserts source='workos'
+        // verified=false when no local row exists.
+        await linkDomain({
           orgId,
           domain: normalizedDomain,
+          source: 'workos',
           verified: false,
         });
         logger.info(
@@ -378,6 +464,23 @@ export function createMeOrganizationDomainsRouter(
         return res.status(400).json({ error: 'invalid_domain' });
       }
 
+      // 60s cooldown per (org, domain). DNS propagation is minutes-scale,
+      // so a tight retry loop only burns WorkOS quota and gives no new
+      // information. Same guard as brand-claim.ts.
+      const cdKey = cooldownKey(orgId, normalizedDomain);
+      const now = Date.now();
+      const last = verifyAttemptTimes.get(cdKey);
+      if (last !== undefined && now - last < VERIFY_COOLDOWN_MS) {
+        const retryAfterSeconds = Math.ceil((VERIFY_COOLDOWN_MS - (now - last)) / 1000);
+        return res.status(429).json({
+          error: 'still_pending',
+          message: `Hold off — wait ${retryAfterSeconds}s before re-checking. DNS propagation takes minutes; rapid retries don't help.`,
+          retry_after_seconds: retryAfterSeconds,
+        });
+      }
+      trimVerifyAttempts(now);
+      verifyAttemptTimes.set(cdKey, now);
+
       let org;
       try {
         org = await workos.organizations.getOrganization(orgId);
@@ -428,6 +531,9 @@ export function createMeOrganizationDomainsRouter(
         verified: true,
       });
       invalidateMemberContextCache();
+      // Clear the cooldown so a follow-up call (e.g. "verify, now set primary")
+      // doesn't have to wait out the loop-prevention window.
+      verifyAttemptTimes.delete(cdKey);
 
       logger.info(
         { orgId, domain: normalizedDomain, actor: req.user!.id, already_verified: alreadyVerified },

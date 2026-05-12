@@ -1742,6 +1742,8 @@
 
     async function loadLinkedDomains() {
       const section = document.getElementById('linked-domains-section');
+      const addCard = document.getElementById('linked-domains-add');
+      const isAdmin = currentOrgRole === 'owner' || currentOrgRole === 'admin';
       try {
         const resp = await fetch('/api/me/organization/domains', { credentials: 'include' });
         if (!resp.ok) {
@@ -1749,15 +1751,20 @@
           return;
         }
         const data = await resp.json();
-        if (!data.domains || data.domains.length === 0) {
-          // Personal orgs typically have 0 verified domains. Keep the section
-          // hidden rather than showing an empty-state — there's nothing
-          // actionable for them here.
+        const domains = Array.isArray(data.domains) ? data.domains : [];
+        // Show the section when there's something to read OR the caller can
+        // act (owner/admin). Zero-domain orgs with an admin viewer still need
+        // an entry point so they can add the first domain — the original
+        // gate hid the only path to make an agent Public.
+        if (domains.length === 0 && !isAdmin) {
           if (section) section.style.display = 'none';
           return;
         }
         if (section) section.style.display = 'block';
-        renderLinkedDomains(data.domains);
+        // Backend rejects non-admin POST/verify with 403; hide the Add card
+        // client-side too so non-admin viewers don't see a button that 403s.
+        if (addCard) addCard.style.display = isAdmin ? 'block' : 'none';
+        renderLinkedDomains(domains);
       } catch (err) {
         if (section) section.style.display = 'none';
       }
@@ -2480,10 +2487,9 @@
       // Populate brand identity section
       populateBrandSection(profile);
 
-      // Populate Linked Domains section. The section starts hidden and
-      // loadLinkedDomains() reveals it only when the API returns ≥1 row,
-      // so personal orgs (which usually have 0 verified domains) silently
-      // stay hidden — no extra gating needed here.
+      // Populate Linked Domains section. The section starts hidden;
+      // loadLinkedDomains() reveals it for owner/admin viewers (so they
+      // can add the first domain) and for any viewer when ≥1 row exists.
       loadLinkedDomains();
       document.getElementById('contact_email').value = profile.contact_email || '';
       // Set phone and trigger formatting
