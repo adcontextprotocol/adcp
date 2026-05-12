@@ -54,7 +54,7 @@ import {
 } from '@adcp/sdk/testing';
 import { AuthenticationRequiredError } from '@adcp/sdk';
 import { renderAllHintFixPlans } from '../services/storyboard-fix-plan.js';
-import { AgentContextDatabase, type OAuthClientCredentials } from '../../db/agent-context-db.js';
+import { AgentContextDatabase, validateAuthTokenChars, type OAuthClientCredentials } from '../../db/agent-context-db.js';
 import { buildAgentOAuthAuthorizeUrl, isOAuthRequiredError } from '../../routes/helpers/agent-oauth-prompt.js';
 import { isOAuthRequiredErrorMessage } from '../../routes/helpers/oauth-error-detection.js';
 import {
@@ -5664,6 +5664,10 @@ export function createMemberToolHandlers(
     }
     const agentName = input.agent_name as string | undefined;
     const authToken = input.auth_token as string | undefined;
+    if (authToken !== undefined) {
+      const tokenErr = validateAuthTokenChars(authToken);
+      if (tokenErr) return tokenErr;
+    }
     const rawAuthType = input.auth_type as string | undefined;
     const authType: 'bearer' | 'basic' = rawAuthType === 'basic' ? 'basic' : 'bearer';
     const protocol = (input.protocol as 'mcp' | 'a2a') || 'mcp';
