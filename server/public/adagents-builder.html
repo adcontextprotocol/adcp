@@ -2095,7 +2095,7 @@
         const tagId = document.getElementById('contact-tag-id').value.trim();
         if (name) contact.name = name;
         if (email) contact.email = email;
-        if (domain) contact.domain = domain;
+        if (domain) contact.domain = domain.toLowerCase();
         if (privacyPolicyUrl) contact.privacy_policy_url = privacyPolicyUrl;
         if (sellerId) contact.seller_id = sellerId;
         if (tagId) contact.tag_id = tagId;
@@ -2275,14 +2275,14 @@
                     <div class="dashboard-card">
                         <div class="dashboard-card-content">
                             <div class="dashboard-card-title">
-                                ${icon} ${prop.property_id}
+                                ${icon} ${escapeHtml(prop.property_id)}
                             </div>
                             <div class="dashboard-card-meta">
-                                ${formatPropertyType(prop.property_type)} • ${prop.name}
+                                ${escapeHtml(formatPropertyType(prop.property_type))} • ${escapeHtml(prop.name)}
                             </div>
                             <div class="dashboard-card-meta" style="font-size: 13px; color: var(--color-text-muted);">
                                 ${identifierCount} identifier${identifierCount > 1 ? 's' : ''}
-                                ${prop.tags && prop.tags.length > 0 ? ` • Tags: ${prop.tags.join(', ')}` : ''}
+                                ${prop.tags && prop.tags.length > 0 ? ` • Tags: ${escapeHtml(prop.tags.join(', '))}` : ''}
                             </div>
                             <div class="dashboard-card-tags">
                                 ${assignmentTag}
@@ -2321,16 +2321,16 @@
               // Check if using tags (prefixed with 'tag:')
               const tagIds = agent.property_ids.filter(id => id.startsWith('tag:'));
               if (tagIds.length > 0) {
-                const tagNames = tagIds.map(id => id.replace('tag:', '')).join(', ');
+                const tagNames = escapeHtml(tagIds.map(id => id.replace('tag:', '')).join(', '));
                 propertyInfo = `<span class="dashboard-card-tag assigned">Can sell tags: ${tagNames}</span>`;
               } else {
                 // Regular property IDs
-                const propNames = agent.property_ids
+                const propNames = escapeHtml(agent.property_ids
                   .map(id => {
                     const prop = state.properties.find(p => p.property_id === id);
                     return prop ? prop.property_id : `${id} (missing)`;
                   })
-                  .join(', ');
+                  .join(', '));
                 propertyInfo = `<span class="dashboard-card-tag assigned">Can sell: ${propNames}</span>`;
               }
             }
@@ -2339,13 +2339,13 @@
                     <div class="dashboard-card">
                         <div class="dashboard-card-content">
                             <div class="dashboard-card-title">
-                                🤝 ${agent.url}
+                                🤝 ${escapeHtml(agent.url)}
                             </div>
                             <div class="dashboard-card-meta">
-                                ${agent.authorized_for}
+                                ${escapeHtml(agent.authorized_for)}
                             </div>
                             <div class="dashboard-card-tags">
-                                <span class="dashboard-card-tag">${agent.delegation_type || 'direct'}</span>
+                                <span class="dashboard-card-tag">${escapeHtml(agent.delegation_type || 'direct')}</span>
                                 ${propertyInfo}
                             </div>
                         </div>
@@ -2382,7 +2382,7 @@
                     <div class="dashboard-card" style="display: inline-block; min-width: 200px; margin-right: 12px; margin-bottom: 12px;">
                         <div class="dashboard-card-content">
                             <div class="dashboard-card-title">
-                                🏷️ ${tag}
+                                🏷️ ${escapeHtml(tag)}
                             </div>
                             <div class="dashboard-card-meta" style="font-size: 13px; color: var(--color-text-muted);">
                                 Used by ${propertyCount} ${propertyCount === 1 ? 'property' : 'properties'}
@@ -2399,9 +2399,13 @@
         // Update bulk tag select dropdown
         const bulkSelect = document.getElementById('bulk-tag-select');
         if (bulkSelect) {
-          bulkSelect.innerHTML =
-            '<option value="">Select a tag...</option>' +
-            state.tags.map(tag => `<option value="${tag}">${tag}</option>`).join('');
+          bulkSelect.innerHTML = '<option value="">Select a tag...</option>';
+          state.tags.forEach(tag => {
+            const opt = document.createElement('option');
+            opt.value = tag;
+            opt.textContent = tag;
+            bulkSelect.appendChild(opt);
+          });
         }
       }
 
@@ -2436,19 +2440,19 @@
             }
 
             const tagDisplay = signal.tags && signal.tags.length > 0
-              ? `Tags: ${signal.tags.join(', ')}`
+              ? `Tags: ${escapeHtml(signal.tags.join(', '))}`
               : 'No tags';
 
             return `
               <div class="dashboard-card">
                 <div class="dashboard-card-content">
                   <div class="dashboard-card-title">
-                    ${icon} ${signal.id}
+                    ${icon} ${escapeHtml(signal.id)}
                   </div>
                   <div class="dashboard-card-meta">
-                    ${typeInfo} - ${signal.name}
+                    ${escapeHtml(typeInfo)} - ${escapeHtml(signal.name)}
                   </div>
-                  ${signal.description ? `<div class="dashboard-card-meta" style="font-size: 13px; color: var(--color-text-muted);">${signal.description.substring(0, 100)}${signal.description.length > 100 ? '...' : ''}</div>` : ''}
+                  ${signal.description ? `<div class="dashboard-card-meta" style="font-size: 13px; color: var(--color-text-muted);">${escapeHtml(signal.description.substring(0, 100))}${signal.description.length > 100 ? '...' : ''}</div>` : ''}
                   <div class="dashboard-card-meta" style="font-size: 13px; color: var(--color-text-muted);">
                     ${tagDisplay}
                   </div>
@@ -2485,7 +2489,7 @@
               <div class="dashboard-card" style="display: inline-block; min-width: 200px; margin-right: 12px; margin-bottom: 12px;">
                 <div class="dashboard-card-content">
                   <div class="dashboard-card-title">
-                    🏷️ ${tag}
+                    🏷️ ${escapeHtml(tag)}
                   </div>
                   <div class="dashboard-card-meta" style="font-size: 13px; color: var(--color-text-muted);">
                     Used by ${signalCount} ${signalCount === 1 ? 'signal' : 'signals'}
@@ -3459,6 +3463,7 @@
           textarea.dataset.sigIndex = String(i);
           textarea.style.cssText = 'flex:1;padding:6px;border:1px solid var(--color-border);border-radius:6px;font-size:12px;font-family:monospace;resize:vertical;';
           textarea.rows = 4;
+          textarea.maxLength = 16384;
           textarea.placeholder = '{"kid":"key-1","kty":"OKP","crv":"Ed25519","x":"base64url..."}';
           textarea.value = JSON.stringify(key, null, 2);
 
@@ -3669,8 +3674,8 @@
 
         const countriesRaw = document.getElementById('agent-countries').value.trim();
         if (countriesRaw) {
-          const tokens = countriesRaw.split(',').map(c => c.trim().toUpperCase());
-          const countries = tokens.filter(c => /^[A-Z]{2}$/.test(c));
+          const tokens = countriesRaw.split(',').map(c => c.trim().toUpperCase()).filter(Boolean);
+          const countries = [...new Set(tokens.filter(c => /^[A-Z]{2}$/.test(c)))];
           const rejected = tokens.filter(c => !/^[A-Z]{2}$/.test(c));
           if (rejected.length > 0) {
             alert(`These country codes are not valid ISO 3166-1 alpha-2 and were ignored: ${rejected.join(', ')}\n\nOnly two-letter codes (e.g. US, CA, GB) are accepted.`);
@@ -3685,7 +3690,14 @@
         const effectiveUntil = document.getElementById('agent-effective-until').value;
         if (effectiveUntil) agent.effective_until = new Date(effectiveUntil).toISOString();
 
-        const encKeys = getEncryptionKeysFromForm().filter(k => k.kid && k.x);
+        const allEncKeys = getEncryptionKeysFromForm();
+        const halfFilledEncKey = allEncKeys.find(k => (k.kid && !k.x) || (!k.kid && k.x));
+        if (halfFilledEncKey) {
+          const rowIndex = allEncKeys.indexOf(halfFilledEncKey) + 1;
+          alert(`Encryption key row ${rowIndex}: both "kid" and "x" are required. Fill in the missing field or remove the row.`);
+          return;
+        }
+        const encKeys = allEncKeys.filter(k => k.kid && k.x);
         if (encKeys.length > 0) {
           const invalidKey = encKeys.find(k => !/^[A-Za-z0-9_-]+$/.test(k.x) || k.x.length < 43 || k.x.length > 44);
           if (invalidKey) {
@@ -3695,6 +3707,16 @@
           agent.encryption_keys = encKeys;
         }
 
+        const rawSigTextareas = document.querySelectorAll('#agent-signing-keys-list [data-sig-index]');
+        const sigParseErrors = [];
+        rawSigTextareas.forEach((ta, i) => {
+          if (!ta.value.trim()) return;
+          try { JSON.parse(ta.value); } catch (_) { sigParseErrors.push(i + 1); }
+        });
+        if (sigParseErrors.length > 0) {
+          alert(`Signing key row${sigParseErrors.length > 1 ? 's' : ''} ${sigParseErrors.join(', ')}: invalid JSON. Fix the typo or remove the row.`);
+          return;
+        }
         const sigKeys = getSigningKeysFromForm().filter(k => k.kid && k.kty);
         if (sigKeys.length > 0) agent.signing_keys = sigKeys;
 
@@ -3719,6 +3741,49 @@
       // JSON Import/Export
       // ============================================================================
 
+      // Normalize and validate data loaded at import time. Returns a list of
+      // warning strings for fields that were coerced or flagged. Invalid data
+      // is normalized where possible (e.g. uppercase countries) rather than
+      // dropped — the agent edit flow's save-time guards will catch anything
+      // that still needs attention.
+      function normalizeImportedData(data) {
+        const warnings = [];
+        (data.authorized_agents || []).forEach((agent, i) => {
+          const label = agent.url ? `Agent "${agent.url}"` : `Agent[${i}]`;
+
+          // Normalize and deduplicate country codes; warn about unrecognized tokens
+          if (Array.isArray(agent.countries)) {
+            const tokens = agent.countries.map(c => String(c).trim().toUpperCase()).filter(Boolean);
+            const valid = [...new Set(tokens.filter(c => /^[A-Z]{2}$/.test(c)))];
+            const bad = tokens.filter(c => !/^[A-Z]{2}$/.test(c));
+            if (bad.length > 0) {
+              warnings.push(`${label}: invalid country codes removed (${bad.join(', ')})`);
+            }
+            if (tokens.length !== valid.length && bad.length === 0) {
+              warnings.push(`${label}: duplicate country codes removed`);
+            }
+            agent.countries = valid.length > 0 ? valid : undefined;
+          }
+
+          // Warn about malformed encryption key x values (but keep them — the
+          // save-time guard surfaces the error when the publisher edits the agent)
+          if (Array.isArray(agent.encryption_keys)) {
+            agent.encryption_keys.forEach((k, ki) => {
+              if (k.x && (!/^[A-Za-z0-9_-]+$/.test(k.x) || k.x.length < 43 || k.x.length > 44)) {
+                warnings.push(`${label}: encryption key[${ki}] x is not a valid base64url X25519 value — review before saving`);
+              }
+            });
+          }
+        });
+
+        // Normalize contact.domain to lowercase
+        if (data.contact && data.contact.domain) {
+          data.contact.domain = data.contact.domain.toLowerCase();
+        }
+
+        return warnings;
+      }
+
       function importFile() {
         const input = document.createElement('input');
         input.type = 'file';
@@ -3729,6 +3794,19 @@
           reader.onload = event => {
             try {
               const data = JSON.parse(event.target.result);
+
+              if (!data || typeof data !== 'object' || (!data.authorized_agents && !data.authoritative_location)) {
+                alert('Import failed: file does not look like a valid adagents.json.');
+                return;
+              }
+
+              if (data.authoritative_location && !data.authorized_agents) {
+                alert(`This file is a URL reference stub pointing to:\n${data.authoritative_location}\n\nThe builder cannot edit reference-only files. Import the full file from that URL instead.`);
+                return;
+              }
+
+              const warnings = normalizeImportedData(data);
+
               state.agents = data.authorized_agents || [];
               state.properties = data.properties || [];
               state.signals = data.signals || [];
@@ -3761,7 +3839,11 @@
               state.signalTags = Array.from(signalTags).sort();
 
               render();
-              alert('File imported successfully!');
+              if (warnings.length > 0) {
+                alert(`File imported with ${warnings.length} issue${warnings.length > 1 ? 's' : ''} — review before exporting:\n\n${warnings.join('\n')}`);
+              } else {
+                alert('File imported successfully!');
+              }
             } catch (error) {
               alert(`Import failed: ${error.message}`);
             }
