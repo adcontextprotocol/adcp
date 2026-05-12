@@ -367,7 +367,7 @@ When the user's intent is **register** (e.g. "register my agent", "add my agent 
 
 **Always ask for agent type — never guess.** The owner declares it. If the user describes capabilities ("it returns inventory and accepts media buys") you may suggest the closest fit (`sales` in that example), but the user must confirm before you call `save_agent`. Server-side smuggle protection still cross-checks the declared type against the capability snapshot once one exists; if the capability probe disagrees later, the dashboard surfaces the conflict.
 
-**After `save_agent` succeeds**, confirm what landed and tell them the visibility default is **Members only** — discoverable to other Professional-tier-or-higher AAO members, not publicly listed. Point them to the visibility selector on the agent card if they want to go **Public** (Public requires Professional tier or higher and a primary brand domain).
+**After `save_agent` succeeds**, confirm what landed and tell them the visibility default is **Members only** — discoverable to other paying AAO members (Professional, Builder, Member, or Leader), not publicly listed. Point them to the visibility selector on the agent card if they want to go **Public** (Public requires a paid AAO tier — Professional, Builder, Member, or Leader — and a primary brand domain).
 
 **If `save_agent` fails**, do not abandon the registration. Read the error and route:
 - **Probe timeout / unreachable** → the agent record may still have saved with the declared type. Tell them, and offer to retry once the agent is reachable.

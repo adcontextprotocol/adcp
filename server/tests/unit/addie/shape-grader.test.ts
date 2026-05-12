@@ -27,7 +27,7 @@ const KATIE_ADDIE_RESPONSE = `Here's how agent registration on the AAO registry 
 Publishers can declare their authorized agents by hosting a /.well-known/adagents.json file on their domain. The registry crawls these automatically — when the crawler discovers an agent URL there, it's indexed as an agent.discovered event. No payment, no membership needed. This is the authoritative path.
 
 2. **Registered via the dashboard (membership required for full visibility)**
-Members can register an agent through Addie or the dashboard using the save_agent flow. New agents land with members_only visibility — discoverable to Professional-tier (or higher) members but not publicly listed. To promote an agent to full public listing in the directory and brand.json, you go through the dashboard publish flow, which requires an API-access tier (Builder at $2,500/year or higher).
+Members can register an agent through Addie or the dashboard using the save_agent flow. New agents land with members_only visibility — discoverable to paying AAO members (Professional, Builder, Member, or Leader) but not publicly listed. To promote an agent to full public listing in the directory and brand.json, you go through the dashboard publish flow, which requires an API-access tier (Professional, Builder, Member, or Leader).
 
 **Summary on membership/payment:**
 - Reading the registry (resolving brands, discovering agents, validating authorization) is **free and public** — no auth required for most endpoints.

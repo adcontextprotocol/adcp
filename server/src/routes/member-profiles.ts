@@ -1344,7 +1344,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
             status: 403,
             body: {
               error: 'tier_required',
-              message: 'Publicly listing an agent requires Professional tier or higher.',
+              message: 'Publicly listing an agent requires a paid AAO tier (Professional, Builder, Member, or Leader).',
             },
           };
         }
@@ -1570,7 +1570,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
     if (!hasApiAccess(resolveMembershipTier(org))) {
       res.status(403).json({
         error: 'tier_required',
-        message: 'Publicly listing an agent requires Professional tier or higher.',
+        message: 'Publicly listing an agent requires a paid AAO tier (Professional, Builder, Member, or Leader).',
       });
       return false;
     }

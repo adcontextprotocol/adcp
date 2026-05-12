@@ -1897,7 +1897,7 @@ components:
         - private
         - members_only
         - public
-      description: Visibility tier on the registry catalog. `private` = profile owner only; `members_only` = AAO API-tier members on operator lookup; `public` = listed in the public catalog and reflected in the org's `brand.json` (requires Professional tier or higher).
+      description: Visibility tier on the registry catalog. `private` = profile owner only; `members_only` = AAO API-tier members on operator lookup; `public` = listed in the public catalog and reflected in the org's `brand.json` (requires a paid AAO tier — Professional, Builder, Member, or Leader).
     MemberAgentType:
       type: string
       enum:
@@ -7268,7 +7268,7 @@ paths:
 
         The `type` field is resolved server-side from the agent's capability snapshot — a client cannot pin a misclassification (e.g. registering a sales agent as `buying`).
 
-        `visibility: "public"` requires Professional tier or higher and a `primary_brand_domain` set on the profile. Non-API-tier callers who request `public` will have the entry stored as `members_only` instead, and the response will include a `visibility_downgraded` warning describing the coercion.
+        `visibility: "public"` requires a paid AAO tier (Professional, Builder, Member, or Leader) and a `primary_brand_domain` set on the profile. Non-API-tier callers (Explorer or no tier) who request `public` will have the entry stored as `members_only` instead, and the response will include a `visibility_downgraded` warning describing the coercion.
       tags:
         - Member Agents
       security:
