@@ -2024,6 +2024,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
           // when the brand is orphaned. Booleans only — anything else is a
           // bad-request shape, but we let the service treat it as undefined.
           adoptPriorManifest: typeof adopt_prior_manifest === 'boolean' ? adopt_prior_manifest : undefined,
+          uploadedBy: { userId: user.id, email: user.email },
         });
       } catch (err: any) {
         if (err instanceof BrandIdentityError) {

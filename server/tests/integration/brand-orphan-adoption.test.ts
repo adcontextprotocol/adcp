@@ -25,6 +25,9 @@ vi.mock('../../src/services/brand-logo-service.js', async () => {
   return {
     ...actual,
     checkLogoUrlIsImage: vi.fn().mockResolvedValue({ ok: true, contentType: 'image/png' }),
+    // Pass-through so manifest writes use the original URL — these tests assert
+    // on `logos[0].url` and don't care about cross-origin rehosting.
+    rehostExternalLogo: vi.fn().mockImplementation(async (url: string) => url),
   };
 });
 
