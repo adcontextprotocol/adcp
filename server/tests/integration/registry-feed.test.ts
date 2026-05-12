@@ -164,30 +164,40 @@ describe('Registry Feed Integration Tests', () => {
       ]);
     });
 
+    // queryFeed has no actor filter (by design — the public feed contract
+    // doesn't expose actor). The catalog_events table is shared with the
+    // background crawler and other test files that write non-`test%` events,
+    // so each assertion below filters to this file's actor before counting.
+    // Matches the pattern at lines 57 and 78 above.
+    const ours = (events: { actor: string }[]) =>
+      events.filter(e => e.actor.startsWith('test'));
+
     it('filters by exact event type', async () => {
       const feed = await eventsDb.queryFeed(null, ['property.created']);
       if ('error' in feed) throw new Error(feed.message);
-      expect(feed.events).toHaveLength(1);
-      expect(feed.events[0].event_type).toBe('property.created');
+      const seeded = ours(feed.events);
+      expect(seeded).toHaveLength(1);
+      expect(seeded[0].event_type).toBe('property.created');
     });
 
     it('filters by glob pattern', async () => {
       const feed = await eventsDb.queryFeed(null, ['property.*']);
       if ('error' in feed) throw new Error(feed.message);
-      expect(feed.events).toHaveLength(3);
-      expect(feed.events.every(e => e.event_type.startsWith('property.'))).toBe(true);
+      const seeded = ours(feed.events);
+      expect(seeded).toHaveLength(3);
+      expect(seeded.every(e => e.event_type.startsWith('property.'))).toBe(true);
     });
 
     it('combines multiple type filters with OR', async () => {
       const feed = await eventsDb.queryFeed(null, ['property.*', 'agent.*']);
       if ('error' in feed) throw new Error(feed.message);
-      expect(feed.events).toHaveLength(4);
+      expect(ours(feed.events)).toHaveLength(4);
     });
 
     it('returns empty for non-matching type', async () => {
       const feed = await eventsDb.queryFeed(null, ['nonexistent.*']);
       if ('error' in feed) throw new Error(feed.message);
-      expect(feed.events).toHaveLength(0);
+      expect(ours(feed.events)).toHaveLength(0);
       expect(feed.has_more).toBe(false);
     });
   });
