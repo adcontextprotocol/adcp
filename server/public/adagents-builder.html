@@ -953,6 +953,12 @@
                 <button class="tab-btn" onclick="switchTab('propertyFeatures')" id="propertyFeatures-tab">
                   🏆 Features (<span id="property-features-count">0</span>)
                 </button>
+                <button class="tab-btn" onclick="switchTab('collections')" id="collections-tab">
+                  📚 Collections (<span id="collections-count">0</span>)
+                </button>
+                <button class="tab-btn" onclick="switchTab('placements')" id="placements-tab">
+                  📍 Placements (<span id="placements-count">0</span>)
+                </button>
               </div>
             </div>
 
@@ -1118,6 +1124,149 @@
               <button class="btn" onclick="showPfForm(-1)">➕ Add feature provider</button>
             </div>
           </div>
+          <!-- Collections Tab Content -->
+          <div id="collections-tab-content" class="tab-content" style="display: none">
+            <p style="font-size: 13px; color: var(--color-text-muted); margin-bottom: 16px;">
+              Recurring content programs (shows, newsletters, event series) whose inventory is sold through authorized agents.
+            </p>
+            <div id="collections-list">
+              <!-- Collection cards populated by renderCollections() -->
+            </div>
+
+            <!-- Inline add/edit form for collections -->
+            <div id="collection-form" style="display: none; background: var(--color-bg-subtle); border: 2px solid var(--color-border); border-radius: 8px; padding: 16px; margin-top: 16px;">
+              <input type="hidden" id="collection-edit-index" value="-1" />
+              <h4 style="margin: 0 0 12px 0; font-size: 15px; color: var(--color-text-heading);" id="collection-form-title">Add collection</h4>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+                <div class="form-group" style="margin: 0;">
+                  <label>Collection ID <span style="color: var(--color-error-500);">*</span></label>
+                  <input type="text" id="col-id" placeholder="e.g., morning_drive" style="width: 100%; box-sizing: border-box;" />
+                </div>
+                <div class="form-group" style="margin: 0;">
+                  <label>Name <span style="color: var(--color-error-500);">*</span></label>
+                  <input type="text" id="col-name" placeholder="e.g., The Morning Drive" style="width: 100%; box-sizing: border-box;" />
+                </div>
+                <div class="form-group" style="margin: 0;">
+                  <label>Kind</label>
+                  <select id="col-kind" style="width: 100%; padding: 8px; border-radius: 8px; border: 2px solid var(--color-border); font-size: 14px;">
+                    <option value="">— select —</option>
+                    <option value="series">series — TV/podcast program</option>
+                    <option value="publication">publication — print/newsletter</option>
+                    <option value="event_series">event_series — live events</option>
+                    <option value="rotation">rotation — DOOH scheduling</option>
+                  </select>
+                </div>
+                <div class="form-group" style="margin: 0;">
+                  <label>Language <span style="font-weight: normal; font-size: 11px; color: var(--color-text-muted);">BCP 47, e.g. en, es-MX</span></label>
+                  <input type="text" id="col-language" placeholder="en" style="width: 100%; box-sizing: border-box;" />
+                </div>
+                <div class="form-group" style="margin: 0;">
+                  <label>Status</label>
+                  <select id="col-status" style="width: 100%; padding: 8px; border-radius: 8px; border: 2px solid var(--color-border); font-size: 14px;">
+                    <option value="">— select —</option>
+                    <option value="active">active</option>
+                    <option value="hiatus">hiatus</option>
+                    <option value="ended">ended</option>
+                    <option value="upcoming">upcoming</option>
+                  </select>
+                </div>
+                <div class="form-group" style="margin: 0;">
+                  <label>Cadence</label>
+                  <select id="col-cadence" style="width: 100%; padding: 8px; border-radius: 8px; border: 2px solid var(--color-border); font-size: 14px;">
+                    <option value="">— select —</option>
+                    <option value="daily">daily</option>
+                    <option value="weekly">weekly</option>
+                    <option value="monthly">monthly</option>
+                    <option value="seasonal">seasonal</option>
+                    <option value="event">event</option>
+                    <option value="irregular">irregular</option>
+                  </select>
+                </div>
+                <div class="form-group" style="margin: 0; grid-column: 1 / -1;">
+                  <label>Description</label>
+                  <textarea id="col-description" rows="2" placeholder="What the collection is about..." style="width: 100%; box-sizing: border-box; padding: 8px; border: 2px solid var(--color-border); border-radius: 8px; font-size: 14px;"></textarea>
+                </div>
+                <div class="form-group" style="margin: 0; grid-column: 1 / -1;">
+                  <label>Additional fields <span style="font-weight: normal; font-size: 11px; color: var(--color-text-muted);">JSON for genre, talent, distribution, deadline_policy, ext, etc.</span></label>
+                  <textarea id="col-advanced" rows="3" placeholder='{"genre": ["sports"], "season": "2026"}' style="width: 100%; box-sizing: border-box; padding: 8px; border: 2px solid var(--color-border); border-radius: 8px; font-size: 13px; font-family: monospace;"></textarea>
+                </div>
+              </div>
+              <div style="display: flex; gap: 8px;">
+                <button class="btn" onclick="saveCollectionForm()" style="padding: 8px 16px;">Save</button>
+                <button class="btn btn-secondary" onclick="hideCollectionForm()" style="padding: 8px 16px;">Cancel</button>
+              </div>
+            </div>
+
+            <div style="margin-top: 20px;">
+              <button class="btn" onclick="showCollectionForm(-1)">➕ Add collection</button>
+            </div>
+          </div>
+
+          <!-- Placements Tab Content -->
+          <div id="placements-tab-content" class="tab-content" style="display: none">
+            <p style="font-size: 13px; color: var(--color-text-muted); margin-bottom: 16px;">
+              Canonical ad placements for properties in this file. Buyers can scope authorization to specific placement IDs or tags.
+            </p>
+            <div id="placements-list">
+              <!-- Placement cards populated by renderPlacements() -->
+            </div>
+
+            <!-- Inline add/edit form for placements -->
+            <div id="placement-form" style="display: none; background: var(--color-bg-subtle); border: 2px solid var(--color-border); border-radius: 8px; padding: 16px; margin-top: 16px;">
+              <input type="hidden" id="placement-edit-index" value="-1" />
+              <h4 style="margin: 0 0 12px 0; font-size: 15px; color: var(--color-text-heading);" id="placement-form-title">Add placement</h4>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+                <div class="form-group" style="margin: 0;">
+                  <label>Placement ID <span style="color: var(--color-error-500);">*</span></label>
+                  <input type="text" id="pl-id" placeholder="e.g., homepage_banner" style="width: 100%; box-sizing: border-box;" />
+                </div>
+                <div class="form-group" style="margin: 0;">
+                  <label>Name <span style="color: var(--color-error-500);">*</span></label>
+                  <input type="text" id="pl-name" placeholder="e.g., Homepage Banner" style="width: 100%; box-sizing: border-box;" />
+                </div>
+                <div class="form-group" style="margin: 0; grid-column: 1 / -1;">
+                  <label>Description</label>
+                  <input type="text" id="pl-description" placeholder="Where and how this placement appears" style="width: 100%; box-sizing: border-box;" />
+                </div>
+                <div class="form-group" style="margin: 0; grid-column: 1 / -1;">
+                  <label>Property IDs <span style="color: var(--color-error-500);">*</span> <span style="font-weight: normal; font-size: 11px; color: var(--color-text-muted);">or use property tags below (one is required)</span></label>
+                  <div id="placement-property-checkboxes" style="max-height: 120px; overflow-y: auto; padding: 8px; border: 1px solid var(--color-border-strong); border-radius: 6px;">
+                    <!-- Dynamically populated -->
+                  </div>
+                </div>
+                <div class="form-group" style="margin: 0; grid-column: 1 / -1;">
+                  <label>Property tags <span style="font-weight: normal; font-size: 11px; color: var(--color-text-muted);">alternative/addition to property IDs (comma-separated)</span></label>
+                  <input type="text" id="pl-property-tags" placeholder="premium, ctv (comma-separated)" style="width: 100%; box-sizing: border-box;" />
+                </div>
+                <div class="form-group" style="margin: 0; grid-column: 1 / -1;">
+                  <label>Placement tags <span style="font-weight: normal; font-size: 11px; color: var(--color-text-muted);">for grouping and authorization (comma-separated)</span></label>
+                  <input type="text" id="pl-tags" placeholder="homepage, native, premium" style="width: 100%; box-sizing: border-box;" />
+                </div>
+              </div>
+              <div style="display: flex; gap: 8px;">
+                <button class="btn" onclick="savePlacementForm()" style="padding: 8px 16px;">Save</button>
+                <button class="btn btn-secondary" onclick="hidePlacementForm()" style="padding: 8px 16px;">Cancel</button>
+              </div>
+            </div>
+
+            <div style="margin-top: 20px;">
+              <button class="btn" onclick="showPlacementForm(-1)">➕ Add placement</button>
+            </div>
+
+            <!-- Placement Tags sub-section -->
+            <div style="margin-top: 32px; border-top: 2px solid var(--color-border); padding-top: 20px;">
+              <h4 style="margin: 0 0 8px 0; font-size: 15px; color: var(--color-text-heading);">Placement tags</h4>
+              <p style="font-size: 13px; color: var(--color-text-muted); margin-bottom: 12px;">Named tags for grouping placements. Agents can be authorized by placement tag in the Agents tab.</p>
+              <div id="placement-tags-list">
+                <!-- Placement tag chips will be added here -->
+              </div>
+              <div style="margin-top: 12px; display: flex; gap: 12px; align-items: center">
+                <input type="text" id="new-placement-tag-input" placeholder="Enter new placement tag name..." style="flex: 1; max-width: 300px" />
+                <button class="btn" onclick="createPlacementTag()">➕ Create tag</button>
+              </div>
+            </div>
+          </div>
+
           </div>
           <!-- End of Inline Configuration -->
 
@@ -1432,6 +1581,23 @@
                   "
                 >
                   <div id="agent-tag-checkboxes">
+                    <!-- Dynamically populated -->
+                  </div>
+                </div>
+              </div>
+
+              <div class="form-group" style="margin-top: 8px; padding-top: 12px; border-top: 1px solid var(--color-border);">
+                <label>Placement constraints <span style="font-weight: normal; font-size: 12px; color: #666;">(optional — narrows authorization to specific placements)</span></label>
+                <p style="margin: 4px 0 8px 0; font-size: 12px; color: #666;">Restrict this agent to placements defined in the Placements tab. Leave unchecked for no placement restriction.</p>
+                <div style="margin-bottom: 8px;">
+                  <label style="font-size: 13px; font-weight: 500; display: block; margin-bottom: 4px;">By placement ID</label>
+                  <div id="agent-placement-id-checkboxes" style="max-height: 120px; overflow-y: auto; padding: 8px; border: 1px solid var(--color-border-strong); border-radius: 6px; background: var(--color-bg-subtle);">
+                    <!-- Dynamically populated -->
+                  </div>
+                </div>
+                <div>
+                  <label style="font-size: 13px; font-weight: 500; display: block; margin-bottom: 4px;">By placement tag</label>
+                  <div id="agent-placement-tag-checkboxes" style="max-height: 120px; overflow-y: auto; padding: 8px; border: 1px solid var(--color-border-strong); border-radius: 6px; background: var(--color-bg-subtle);">
                     <!-- Dynamically populated -->
                   </div>
                 </div>
@@ -1917,6 +2083,9 @@
         signals: [],
         signalTags: [],
         propertyFeatures: [],
+        collections: [],
+        placements: [],
+        placementTags: {},
         fileFound: false,
         bulkSelectMode: false,
         selectedPropertyIds: [],
@@ -2018,6 +2187,10 @@
                 agentObj.property_ids = agent.property_ids;
               }
 
+              // Optional placement constraints (overlay on any auth type)
+              if (agent.placement_ids?.length > 0) agentObj.placement_ids = agent.placement_ids;
+              if (agent.placement_tags?.length > 0) agentObj.placement_tags = agent.placement_tags;
+
               // v3 constraint fields
               if (agent.exclusive) agentObj.exclusive = true;
               if (agent.countries?.length > 0) agentObj.countries = agent.countries;
@@ -2059,6 +2232,21 @@
           if (state.propertyFeatures.length > 0) {
             adagents.property_features = state.propertyFeatures;
           }
+
+          // Collections
+          if (state.collections.length > 0) {
+            adagents.collections = state.collections;
+          }
+
+          // Placements
+          if (state.placements.length > 0) {
+            adagents.placements = state.placements;
+          }
+
+          // Placement tags metadata
+          if (Object.keys(state.placementTags).length > 0) {
+            adagents.placement_tags = { ...state.placementTags };
+          }
         }
 
         document.getElementById('json-output').value = JSON.stringify(adagents, null, 2);
@@ -2071,6 +2259,8 @@
         document.getElementById('signals-count').textContent = state.signals.length;
         document.getElementById('signal-tags-count').textContent = state.signalTags.length;
         document.getElementById('property-features-count').textContent = state.propertyFeatures.length;
+        document.getElementById('collections-count').textContent = state.collections.length;
+        document.getElementById('placements-count').textContent = state.placements.length;
       }
 
       function toggleContactSection() {
@@ -2233,6 +2423,477 @@
         if (confirm(`Remove feature provider "${state.propertyFeatures[index].name}"?`)) {
           state.propertyFeatures.splice(index, 1);
           render();
+        }
+      }
+
+      // ============================================================================
+      // Collections
+      // ============================================================================
+
+      function renderCollections() {
+        const container = document.getElementById('collections-list');
+        if (!container) return;
+        container.innerHTML = '';
+        if (state.collections.length === 0) {
+          const empty = document.createElement('p');
+          empty.style.cssText = 'color: var(--color-text-muted); font-size: 13px;';
+          empty.textContent = 'No collections added yet.';
+          container.appendChild(empty);
+          return;
+        }
+        state.collections.forEach((col, i) => {
+          const card = document.createElement('div');
+          card.style.cssText = 'border: 2px solid var(--color-border); border-radius: 8px; padding: 12px; margin-bottom: 10px; background: var(--color-bg-card);';
+
+          const row = document.createElement('div');
+          row.style.cssText = 'display: flex; justify-content: space-between; align-items: flex-start;';
+
+          const info = document.createElement('div');
+
+          const titleEl = document.createElement('strong');
+          titleEl.style.fontSize = '14px';
+          titleEl.textContent = col.name || '(unnamed)';
+          info.appendChild(titleEl);
+
+          const idEl = document.createElement('code');
+          idEl.style.cssText = 'display: block; font-size: 12px; margin-top: 2px;';
+          idEl.textContent = col.collection_id || '';
+          info.appendChild(idEl);
+
+          if (col.kind) {
+            const kindEl = document.createElement('span');
+            kindEl.style.cssText = 'display: inline-block; font-size: 11px; padding: 2px 6px; background: var(--color-bg-subtle); border-radius: 4px; margin-top: 4px;';
+            kindEl.textContent = col.kind;
+            info.appendChild(kindEl);
+          }
+
+          if (col.description) {
+            const descEl = document.createElement('div');
+            descEl.style.cssText = 'font-size: 12px; color: var(--color-text-muted); margin-top: 4px;';
+            descEl.textContent = col.description;
+            info.appendChild(descEl);
+          }
+
+          const actions = document.createElement('div');
+          actions.style.cssText = 'display: flex; gap: 6px;';
+
+          const editBtn = document.createElement('button');
+          editBtn.className = 'btn btn-secondary';
+          editBtn.style.cssText = 'padding: 4px 10px; font-size: 12px;';
+          editBtn.textContent = '✏️ Edit';
+          editBtn.onclick = () => showCollectionForm(i);
+
+          const removeBtn = document.createElement('button');
+          removeBtn.className = 'btn';
+          removeBtn.style.cssText = 'padding: 4px 10px; font-size: 12px; background: var(--color-error-500);';
+          removeBtn.textContent = '🗑️ Remove';
+          removeBtn.onclick = () => removeCollection(i);
+
+          actions.appendChild(editBtn);
+          actions.appendChild(removeBtn);
+          row.appendChild(info);
+          row.appendChild(actions);
+          card.appendChild(row);
+          container.appendChild(card);
+        });
+      }
+
+      function showCollectionForm(index) {
+        document.getElementById('collection-edit-index').value = index;
+        document.getElementById('collection-form-title').textContent = index === -1 ? 'Add collection' : 'Edit collection';
+        if (index === -1) {
+          document.getElementById('col-id').value = '';
+          document.getElementById('col-name').value = '';
+          document.getElementById('col-kind').value = '';
+          document.getElementById('col-language').value = '';
+          document.getElementById('col-status').value = '';
+          document.getElementById('col-cadence').value = '';
+          document.getElementById('col-description').value = '';
+          document.getElementById('col-advanced').value = '';
+        } else {
+          const col = state.collections[index];
+          document.getElementById('col-id').value = col.collection_id || '';
+          document.getElementById('col-name').value = col.name || '';
+          document.getElementById('col-kind').value = col.kind || '';
+          document.getElementById('col-language').value = col.language || '';
+          document.getElementById('col-status').value = col.status || '';
+          document.getElementById('col-cadence').value = col.cadence || '';
+          document.getElementById('col-description').value = col.description || '';
+          const basicKeys = new Set(['collection_id', 'name', 'kind', 'language', 'status', 'cadence', 'description']);
+          const advanced = Object.fromEntries(Object.entries(col).filter(([k]) => !basicKeys.has(k)));
+          document.getElementById('col-advanced').value = Object.keys(advanced).length > 0 ? JSON.stringify(advanced, null, 2) : '';
+        }
+        document.getElementById('collection-form').style.display = 'block';
+        document.getElementById('col-id').focus();
+      }
+
+      function hideCollectionForm() {
+        document.getElementById('collection-form').style.display = 'none';
+      }
+
+      function saveCollectionForm() {
+        const id = document.getElementById('col-id').value.trim();
+        const name = document.getElementById('col-name').value.trim();
+        if (!id || !name) {
+          alert('Collection ID and name are required.');
+          return;
+        }
+        const col = { collection_id: id, name };
+        const kind = document.getElementById('col-kind').value;
+        if (kind) col.kind = kind;
+        const language = document.getElementById('col-language').value.trim();
+        if (language) col.language = language;
+        const status = document.getElementById('col-status').value;
+        if (status) col.status = status;
+        const cadence = document.getElementById('col-cadence').value;
+        if (cadence) col.cadence = cadence;
+        const description = document.getElementById('col-description').value.trim();
+        if (description) col.description = description;
+        const advancedRaw = document.getElementById('col-advanced').value.trim();
+        if (advancedRaw) {
+          try {
+            const advanced = JSON.parse(advancedRaw);
+            const reservedKeys = new Set(['collection_id', 'name', 'kind', 'language', 'status', 'cadence', 'description']);
+            reservedKeys.forEach(k => delete advanced[k]);
+            Object.assign(col, advanced);
+          } catch {
+            alert('Additional fields JSON is invalid. Please fix it or leave blank.');
+            return;
+          }
+        }
+        const index = parseInt(document.getElementById('collection-edit-index').value);
+        if (state.collections.some((c, i) => c.collection_id === id && i !== index)) {
+          alert(`Collection ID "${id}" already exists.`);
+          return;
+        }
+        if (index === -1) {
+          state.collections.push(col);
+        } else {
+          state.collections[index] = col;
+        }
+        hideCollectionForm();
+        render();
+      }
+
+      function removeCollection(index) {
+        if (confirm(`Remove collection "${state.collections[index].name}"?`)) {
+          state.collections.splice(index, 1);
+          render();
+        }
+      }
+
+      // ============================================================================
+      // Placements
+      // ============================================================================
+
+      function renderPlacements() {
+        const container = document.getElementById('placements-list');
+        if (!container) return;
+        container.innerHTML = '';
+        if (state.placements.length === 0) {
+          const empty = document.createElement('p');
+          empty.style.cssText = 'color: var(--color-text-muted); font-size: 13px;';
+          empty.textContent = 'No placements added yet.';
+          container.appendChild(empty);
+          return;
+        }
+        state.placements.forEach((pl, i) => {
+          const card = document.createElement('div');
+          card.style.cssText = 'border: 2px solid var(--color-border); border-radius: 8px; padding: 12px; margin-bottom: 10px; background: var(--color-bg-card);';
+
+          const row = document.createElement('div');
+          row.style.cssText = 'display: flex; justify-content: space-between; align-items: flex-start;';
+
+          const info = document.createElement('div');
+
+          const titleEl = document.createElement('strong');
+          titleEl.style.fontSize = '14px';
+          titleEl.textContent = pl.name || '(unnamed)';
+          info.appendChild(titleEl);
+
+          const idEl = document.createElement('code');
+          idEl.style.cssText = 'display: block; font-size: 12px; margin-top: 2px;';
+          idEl.textContent = pl.placement_id || '';
+          info.appendChild(idEl);
+
+          if (pl.tags && pl.tags.length > 0) {
+            const tagsEl = document.createElement('div');
+            tagsEl.style.cssText = 'margin-top: 4px;';
+            pl.tags.forEach(tag => {
+              const chip = document.createElement('span');
+              chip.style.cssText = 'display: inline-block; font-size: 11px; padding: 2px 6px; background: var(--color-bg-subtle); border-radius: 4px; margin-right: 4px;';
+              chip.textContent = tag;
+              tagsEl.appendChild(chip);
+            });
+            info.appendChild(tagsEl);
+          }
+
+          if (pl.description) {
+            const descEl = document.createElement('div');
+            descEl.style.cssText = 'font-size: 12px; color: var(--color-text-muted); margin-top: 4px;';
+            descEl.textContent = pl.description;
+            info.appendChild(descEl);
+          }
+
+          const actions = document.createElement('div');
+          actions.style.cssText = 'display: flex; gap: 6px;';
+
+          const editBtn = document.createElement('button');
+          editBtn.className = 'btn btn-secondary';
+          editBtn.style.cssText = 'padding: 4px 10px; font-size: 12px;';
+          editBtn.textContent = '✏️ Edit';
+          editBtn.onclick = () => showPlacementForm(i);
+
+          const removeBtn = document.createElement('button');
+          removeBtn.className = 'btn';
+          removeBtn.style.cssText = 'padding: 4px 10px; font-size: 12px; background: var(--color-error-500);';
+          removeBtn.textContent = '🗑️ Remove';
+          removeBtn.onclick = () => removePlacement(i);
+
+          actions.appendChild(editBtn);
+          actions.appendChild(removeBtn);
+          row.appendChild(info);
+          row.appendChild(actions);
+          card.appendChild(row);
+          container.appendChild(card);
+        });
+      }
+
+      function renderPlacementTags() {
+        const container = document.getElementById('placement-tags-list');
+        if (!container) return;
+        container.innerHTML = '';
+        const tags = Object.keys(state.placementTags).sort();
+        if (tags.length === 0) {
+          const empty = document.createElement('p');
+          empty.style.cssText = 'color: var(--color-text-muted); font-size: 13px; margin: 0;';
+          empty.textContent = 'No placement tags yet.';
+          container.appendChild(empty);
+          return;
+        }
+        tags.forEach(tag => {
+          const placementCount = state.placements.filter(pl => pl.tags && pl.tags.includes(tag)).length;
+          const meta = state.placementTags[tag];
+
+          const card = document.createElement('div');
+          card.className = 'dashboard-card';
+          card.style.cssText = 'display: inline-block; min-width: 180px; margin-right: 12px; margin-bottom: 12px;';
+
+          const content = document.createElement('div');
+          content.className = 'dashboard-card-content';
+
+          const title = document.createElement('div');
+          title.className = 'dashboard-card-title';
+          title.textContent = `🏷️ ${tag}`;
+          content.appendChild(title);
+
+          const metaEl = document.createElement('div');
+          metaEl.className = 'dashboard-card-meta';
+          metaEl.style.cssText = 'font-size: 13px; color: var(--color-text-muted);';
+          if (meta && meta.description) {
+            const desc = document.createElement('div');
+            desc.textContent = meta.description;
+            metaEl.appendChild(desc);
+          }
+          const usedBy = document.createElement('span');
+          usedBy.textContent = `Used by ${placementCount} ${placementCount === 1 ? 'placement' : 'placements'}`;
+          metaEl.appendChild(usedBy);
+          content.appendChild(metaEl);
+
+          const actions = document.createElement('div');
+          actions.className = 'dashboard-card-actions';
+
+          const deleteBtn = document.createElement('button');
+          deleteBtn.className = 'btn';
+          deleteBtn.style.cssText = 'background: var(--color-error-500); padding: 6px 12px; font-size: 13px;';
+          deleteBtn.textContent = '🗑️ Delete';
+          deleteBtn.onclick = () => removePlacementTag(tag);
+          actions.appendChild(deleteBtn);
+
+          card.appendChild(content);
+          card.appendChild(actions);
+          container.appendChild(card);
+        });
+      }
+
+      function showPlacementForm(index) {
+        let selectedPropertyIds = [];
+        if (index !== -1) {
+          selectedPropertyIds = state.placements[index].property_ids || [];
+        }
+
+        const propCheckboxContainer = document.getElementById('placement-property-checkboxes');
+        if (state.properties.length === 0) {
+          propCheckboxContainer.innerHTML = '<p style="color: #666; font-size: 13px; margin: 0;">No properties defined. Add properties first, or use property tags.</p>';
+        } else {
+          propCheckboxContainer.innerHTML = state.properties
+            .map(prop => `
+              <label style="display: block; padding: 4px 0; cursor: pointer;">
+                <input type="checkbox" value="${escapeHtml(prop.property_id)}" ${selectedPropertyIds.includes(prop.property_id) ? 'checked' : ''} style="margin-right: 6px;">
+                ${getPropertyIcon(prop.property_type)} ${escapeHtml(prop.property_id)}${prop.name ? ' — ' + escapeHtml(prop.name) : ''}
+              </label>
+            `)
+            .join('');
+        }
+
+        document.getElementById('placement-edit-index').value = index;
+        document.getElementById('placement-form-title').textContent = index === -1 ? 'Add placement' : 'Edit placement';
+        if (index === -1) {
+          document.getElementById('pl-id').value = '';
+          document.getElementById('pl-name').value = '';
+          document.getElementById('pl-description').value = '';
+          document.getElementById('pl-property-tags').value = '';
+          document.getElementById('pl-tags').value = '';
+        } else {
+          const pl = state.placements[index];
+          document.getElementById('pl-id').value = pl.placement_id || '';
+          document.getElementById('pl-name').value = pl.name || '';
+          document.getElementById('pl-description').value = pl.description || '';
+          document.getElementById('pl-property-tags').value = (pl.property_tags || []).join(', ');
+          document.getElementById('pl-tags').value = (pl.tags || []).join(', ');
+        }
+        document.getElementById('placement-form').style.display = 'block';
+        document.getElementById('pl-id').focus();
+      }
+
+      function hidePlacementForm() {
+        document.getElementById('placement-form').style.display = 'none';
+      }
+
+      function savePlacementForm() {
+        const id = document.getElementById('pl-id').value.trim();
+        const name = document.getElementById('pl-name').value.trim();
+        if (!id || !name) {
+          alert('Placement ID and name are required.');
+          return;
+        }
+
+        const propertyIds = [];
+        document.querySelectorAll('#placement-property-checkboxes input[type="checkbox"]:checked').forEach(cb => {
+          propertyIds.push(cb.value);
+        });
+        const propertyTags = document.getElementById('pl-property-tags').value.split(',').map(t => t.trim()).filter(Boolean);
+        const invalidPropTags = propertyTags.filter(t => !/^[a-z0-9_]+$/.test(t));
+        if (invalidPropTags.length > 0) {
+          alert(`Invalid property tag(s): ${invalidPropTags.join(', ')}. Tags must be lowercase letters, digits, or underscores only.`);
+          return;
+        }
+
+        if (propertyIds.length === 0 && propertyTags.length === 0) {
+          alert('A placement requires at least one property ID or property tag.');
+          return;
+        }
+
+        const tags = document.getElementById('pl-tags').value.split(',').map(t => t.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_')).filter(Boolean);
+
+        const index = parseInt(document.getElementById('placement-edit-index').value);
+        if (state.placements.some((p, i) => p.placement_id === id && i !== index)) {
+          alert(`Placement ID "${id}" already exists.`);
+          return;
+        }
+
+        const pl = { placement_id: id, name };
+        if (propertyIds.length > 0) pl.property_ids = propertyIds;
+        if (propertyTags.length > 0) pl.property_tags = propertyTags;
+
+        const description = document.getElementById('pl-description').value.trim();
+        if (description) pl.description = description;
+
+        if (tags.length > 0) pl.tags = tags;
+
+        // Auto-register any new placement tags preserving metadata
+        tags.forEach(tag => {
+          if (!(tag in state.placementTags)) {
+            state.placementTags[tag] = {
+              name: tag.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
+              description: `Placements tagged as ${tag}`,
+            };
+          }
+        });
+
+        if (index === -1) {
+          state.placements.push(pl);
+        } else {
+          state.placements[index] = pl;
+        }
+        hidePlacementForm();
+        render();
+      }
+
+      function removePlacement(index) {
+        if (confirm(`Remove placement "${state.placements[index].name}"?`)) {
+          state.placements.splice(index, 1);
+          render();
+        }
+      }
+
+      function createPlacementTag() {
+        const input = document.getElementById('new-placement-tag-input');
+        const tagName = input.value.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_');
+        if (!tagName) return;
+        if (tagName in state.placementTags) {
+          alert(`Placement tag "${tagName}" already exists.`);
+          return;
+        }
+        state.placementTags[tagName] = {
+          name: tagName.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
+          description: `Placements tagged as ${tagName}`,
+        };
+        input.value = '';
+        render();
+      }
+
+      function removePlacementTag(tag) {
+        const placementsUsingTag = state.placements.filter(pl => pl.tags && pl.tags.includes(tag)).length;
+
+        let message = `Delete placement tag "${tag}"?`;
+        if (placementsUsingTag > 0) {
+          message += `\n\nThis tag is used by ${placementsUsingTag} placement(s). It will be removed from those placements.`;
+        }
+
+        if (confirm(message)) {
+          state.placements.forEach(pl => {
+            if (pl.tags) {
+              pl.tags = pl.tags.filter(t => t !== tag);
+              if (pl.tags.length === 0) {
+                delete pl.tags;
+              }
+            }
+          });
+          delete state.placementTags[tag];
+          render();
+        }
+      }
+
+      function updateAgentPlacementCheckboxes(selectedIds, selectedTags) {
+        const idContainer = document.getElementById('agent-placement-id-checkboxes');
+        const tagContainer = document.getElementById('agent-placement-tag-checkboxes');
+
+        if (state.placements.length === 0) {
+          idContainer.innerHTML = '<p style="color: var(--color-text-muted); font-size: 13px; margin: 0;">No placements defined yet. Add placements first.</p>';
+        } else {
+          idContainer.innerHTML = state.placements
+            .map(pl => `
+              <label style="display: block; padding: 4px 0; cursor: pointer;">
+                <input type="checkbox" value="${escapeHtml(pl.placement_id)}" ${selectedIds.includes(pl.placement_id) ? 'checked' : ''} style="margin-right: 6px;">
+                📍 ${escapeHtml(pl.placement_id)}${pl.name ? ' — ' + escapeHtml(pl.name) : ''}
+              </label>
+            `)
+            .join('');
+        }
+
+        const placementTagKeys = Object.keys(state.placementTags).sort();
+        if (placementTagKeys.length === 0) {
+          tagContainer.innerHTML = '<p style="color: var(--color-text-muted); font-size: 13px; margin: 0;">No placement tags defined yet. Add tags in the Placements tab.</p>';
+        } else {
+          tagContainer.innerHTML = placementTagKeys
+            .map(tag => `
+              <label style="display: block; padding: 4px 0; cursor: pointer;">
+                <input type="checkbox" value="${escapeHtml(tag)}" ${selectedTags.includes(tag) ? 'checked' : ''} style="margin-right: 6px;">
+                🏷️ ${escapeHtml(tag)}
+              </label>
+            `)
+            .join('');
         }
       }
 
@@ -2511,6 +3172,9 @@
         renderSignals();
         renderSignalTags();
         renderPropertyFeatures();
+        renderCollections();
+        renderPlacements();
+        renderPlacementTags();
         updateCounts();
         updateJsonPreview();
       }
@@ -3518,6 +4182,7 @@
         updateAgentAccessOptions();
         updateAgentPropertyCheckboxes([]);
         updateAgentTagCheckboxes([]);
+        updateAgentPlacementCheckboxes([], []);
 
         document.getElementById('agent-modal').style.display = 'flex';
       }
@@ -3561,6 +4226,7 @@
         updateAgentAccessOptions();
         updateAgentPropertyCheckboxes(accessType === 'properties' ? selectedItems : []);
         updateAgentTagCheckboxes(accessType === 'tags' ? selectedItems : []);
+        updateAgentPlacementCheckboxes(agent.placement_ids || [], agent.placement_tags || []);
 
         document.getElementById('agent-modal').style.display = 'flex';
       }
@@ -3720,6 +4386,19 @@
         const sigKeys = getSigningKeysFromForm().filter(k => k.kid && k.kty);
         if (sigKeys.length > 0) agent.signing_keys = sigKeys;
 
+        // Optional placement constraints
+        const placementIds = [];
+        document.querySelectorAll('#agent-placement-id-checkboxes input[type="checkbox"]:checked').forEach(cb => {
+          placementIds.push(cb.value);
+        });
+        if (placementIds.length > 0) agent.placement_ids = placementIds;
+
+        const agentPlacementTags = [];
+        document.querySelectorAll('#agent-placement-tag-checkboxes input[type="checkbox"]:checked').forEach(cb => {
+          agentPlacementTags.push(cb.value);
+        });
+        if (agentPlacementTags.length > 0) agent.placement_tags = agentPlacementTags;
+
         if (index === -1) {
           state.agents.push(agent);
         } else {
@@ -3811,6 +4490,8 @@
               state.properties = data.properties || [];
               state.signals = data.signals || [];
               state.propertyFeatures = data.property_features || [];
+              state.collections = data.collections || [];
+              state.placements = data.placements || [];
 
               // Load contact info
               state.contact = data.contact || {};
@@ -3837,6 +4518,28 @@
                 Object.keys(data.signal_tags).forEach(t => signalTags.add(t));
               }
               state.signalTags = Array.from(signalTags).sort();
+
+              // Build placement_tags map, preserving imported metadata
+              state.placementTags = {};
+              if (data.placement_tags) {
+                Object.entries(data.placement_tags).forEach(([t, meta]) => {
+                  state.placementTags[t] = (meta && typeof meta === 'object') ? meta : {
+                    name: t.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
+                    description: `Placements tagged as ${t}`,
+                  };
+                });
+              }
+              // Register tags referenced by placements but missing from the map
+              state.placements.forEach(pl => {
+                if (pl.tags) pl.tags.forEach(t => {
+                  if (!(t in state.placementTags)) {
+                    state.placementTags[t] = {
+                      name: t.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
+                      description: `Placements tagged as ${t}`,
+                    };
+                  }
+                });
+              });
 
               render();
               if (warnings.length > 0) {
@@ -3909,6 +4612,21 @@
           // Property features
           if (state.propertyFeatures.length > 0) {
             data.property_features = state.propertyFeatures;
+          }
+
+          // Collections
+          if (state.collections.length > 0) {
+            data.collections = state.collections;
+          }
+
+          // Placements
+          if (state.placements.length > 0) {
+            data.placements = state.placements;
+          }
+
+          // Placement tags metadata
+          if (Object.keys(state.placementTags).length > 0) {
+            data.placement_tags = { ...state.placementTags };
           }
         }
 
@@ -4045,6 +4763,35 @@
             }
             if (result.data.validation.raw_data.property_features) {
               state.propertyFeatures = result.data.validation.raw_data.property_features;
+            }
+
+            // Parse collections and placements (v3)
+            if (result.data.validation.raw_data.collections) {
+              state.collections = result.data.validation.raw_data.collections;
+            }
+            if (result.data.validation.raw_data.placements) {
+              state.placements = result.data.validation.raw_data.placements;
+
+              const rawPlacementTags = result.data.validation.raw_data.placement_tags || {};
+              state.placementTags = {};
+              Object.entries(rawPlacementTags).forEach(([t, meta]) => {
+                state.placementTags[t] = (meta && typeof meta === 'object') ? meta : {
+                  name: t.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
+                  description: `Placements tagged as ${t}`,
+                };
+              });
+              state.placements.forEach(pl => {
+                if (pl.tags && Array.isArray(pl.tags)) {
+                  pl.tags.forEach(tag => {
+                    if (!(tag in state.placementTags)) {
+                      state.placementTags[tag] = {
+                        name: tag.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
+                        description: `Placements tagged as ${tag}`,
+                      };
+                    }
+                  });
+                }
+              });
             }
           } else {
             // File doesn't exist or is invalid
