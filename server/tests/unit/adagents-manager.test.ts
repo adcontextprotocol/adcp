@@ -48,11 +48,13 @@ describe('AdAgentsManager', () => {
   describe('validateDomain', () => {
     it('validates a valid adagents.json file', async () => {
       const validAdAgents: AdAgentsJson = {
-        $schema: 'https://adcontextprotocol.org/schemas/v2/adagents.json',
+        $schema: 'https://adcontextprotocol.org/schemas/v3/adagents.json',
         authorized_agents: [
           {
             url: 'https://agent.example.com',
             authorized_for: 'Test authorization scope',
+            authorization_type: 'property_ids',
+            property_ids: ['p1'],
           },
         ],
         last_updated: new Date().toISOString(),
@@ -83,7 +85,7 @@ describe('AdAgentsManager', () => {
     // the route-layer tests still pass (they upsert metadata directly).
     it('captures response_bytes and resolved_url on a 200 fetch', async () => {
       const valid: AdAgentsJson = {
-        authorized_agents: [{ url: 'https://agent.example.com', authorized_for: 'Test' }],
+        authorized_agents: [{ url: 'https://agent.example.com', authorized_for: 'Test', authorization_type: 'property_ids', property_ids: ['p1'] }],
         last_updated: new Date().toISOString(),
       };
       const body = buf(valid);
@@ -130,7 +132,7 @@ describe('AdAgentsManager', () => {
       // (the authoritative_location target), not where the stub lived.
       const stubBody = buf({ authoritative_location: 'https://cdn.example.net/adagents.json' });
       const canonicalBody = buf({
-        authorized_agents: [{ url: 'https://agent.example.com', authorized_for: 'Test' }],
+        authorized_agents: [{ url: 'https://agent.example.com', authorized_for: 'Test', authorization_type: 'property_ids', property_ids: ['p1'] }],
         last_updated: new Date().toISOString(),
       });
       mockedSafeFetch
@@ -157,7 +159,7 @@ describe('AdAgentsManager', () => {
     it('normalizes domain by removing protocol', async () => {
       mockedSafeFetch.mockResolvedValue({
         status: 200,
-        data: buf({ authorized_agents: [{ url: 'https://agent.example.com', authorized_for: 'Test' }] }),
+        data: buf({ authorized_agents: [{ url: 'https://agent.example.com', authorized_for: 'Test', authorization_type: 'property_ids', property_ids: ['p1'] }] }),
         headers: { 'content-type': 'application/json' },
       });
 
@@ -170,7 +172,7 @@ describe('AdAgentsManager', () => {
     it('normalizes domain by removing trailing slash', async () => {
       mockedSafeFetch.mockResolvedValue({
         status: 200,
-        data: buf({ authorized_agents: [{ url: 'https://agent.example.com', authorized_for: 'Test' }] }),
+        data: buf({ authorized_agents: [{ url: 'https://agent.example.com', authorized_for: 'Test', authorization_type: 'property_ids', property_ids: ['p1'] }] }),
         headers: { 'content-type': 'application/json' },
       });
 
@@ -205,7 +207,7 @@ describe('AdAgentsManager', () => {
         if (url === 'https://manager.example/.well-known/adagents.json') {
           return {
             status: 200,
-            data: buf({ authorized_agents: [{ url: 'https://agent.example', authorized_for: 'All inventory', publisher_properties: [{ publisher_domain: 'publisher.example', selection_type: 'all' }] }] }),
+            data: buf({ authorized_agents: [{ url: 'https://agent.example', authorized_for: 'All inventory', authorization_type: 'publisher_properties', publisher_properties: [{ publisher_domain: 'publisher.example', selection_type: 'all' }] }] }),
             headers: { 'content-type': 'application/json' },
           };
         }
@@ -292,7 +294,7 @@ describe('AdAgentsManager', () => {
         if (url === 'https://manager.example/.well-known/adagents.json') {
           return {
             status: 200,
-            data: buf({ authorized_agents: [{ url: 'https://agent.example', authorized_for: 'All inventory', publisher_properties: [{ publisher_domain: 'publisher.example', selection_type: 'all' }] }] }),
+            data: buf({ authorized_agents: [{ url: 'https://agent.example', authorized_for: 'All inventory', authorization_type: 'publisher_properties', publisher_properties: [{ publisher_domain: 'publisher.example', selection_type: 'all' }] }] }),
             headers: { 'content-type': 'application/json' },
           };
         }
@@ -335,7 +337,7 @@ describe('AdAgentsManager', () => {
         if (url === 'https://good-manager.example/.well-known/adagents.json') {
           return {
             status: 200,
-            data: buf({ authorized_agents: [{ url: 'https://agent.example', authorized_for: 'Good', publisher_properties: [{ publisher_domain: 'publisher.example' }] }] }),
+            data: buf({ authorized_agents: [{ url: 'https://agent.example', authorized_for: 'Good', authorization_type: 'publisher_properties', publisher_properties: [{ publisher_domain: 'publisher.example' }] }] }),
             headers: { 'content-type': 'application/json' },
           };
         }
@@ -367,7 +369,7 @@ describe('AdAgentsManager', () => {
         if (url === 'https://allowed.example/.well-known/adagents.json') {
           return {
             status: 200,
-            data: buf({ authorized_agents: [{ url: 'https://agent.example', authorized_for: 'Allowed', publisher_properties: [{ publisher_domain: 'publisher.example' }] }] }),
+            data: buf({ authorized_agents: [{ url: 'https://agent.example', authorized_for: 'Allowed', authorization_type: 'publisher_properties', publisher_properties: [{ publisher_domain: 'publisher.example' }] }] }),
             headers: { 'content-type': 'application/json' },
           };
         }
@@ -393,7 +395,7 @@ describe('AdAgentsManager', () => {
         if (url === 'https://manager.example/.well-known/adagents.json') {
           return {
             status: 200,
-            data: buf({ authorized_agents: [{ url: 'https://agent.example', authorized_for: 'All inventory' }] }),
+            data: buf({ authorized_agents: [{ url: 'https://agent.example', authorized_for: 'All inventory', authorization_type: 'property_ids', property_ids: ['p1'] }] }),
             headers: { 'content-type': 'application/json' },
           };
         }
@@ -420,7 +422,7 @@ describe('AdAgentsManager', () => {
         if (url === 'https://good.example/.well-known/adagents.json') {
           return {
             status: 200,
-            data: buf({ authorized_agents: [{ url: 'https://agent.example', authorized_for: 'Good', publisher_properties: [{ publisher_domain: 'publisher.example' }] }] }),
+            data: buf({ authorized_agents: [{ url: 'https://agent.example', authorized_for: 'Good', authorization_type: 'publisher_properties', publisher_properties: [{ publisher_domain: 'publisher.example' }] }] }),
             headers: { 'content-type': 'application/json' },
           };
         }
@@ -447,7 +449,7 @@ describe('AdAgentsManager', () => {
         if (url === 'https://good.example/.well-known/adagents.json') {
           return {
             status: 200,
-            data: buf({ authorized_agents: [{ url: 'https://agent.example', authorized_for: 'Good', publisher_properties: [{ publisher_domain: 'publisher.example' }] }] }),
+            data: buf({ authorized_agents: [{ url: 'https://agent.example', authorized_for: 'Good', authorization_type: 'publisher_properties', publisher_properties: [{ publisher_domain: 'publisher.example' }] }] }),
             headers: { 'content-type': 'application/json' },
           };
         }
@@ -476,6 +478,8 @@ describe('AdAgentsManager', () => {
               authorized_agents: [{
                 url: 'https://agent.example',
                 authorized_for: 'Scoped via collection',
+                authorization_type: 'property_tags',
+                property_tags: ['network'],
                 collections: [{ publisher_domain: 'publisher.example' }],
               }],
             }),
@@ -506,6 +510,7 @@ describe('AdAgentsManager', () => {
               authorized_agents: [{
                 url: 'https://agent.example',
                 authorized_for: 'Wrong publisher',
+                authorization_type: 'publisher_properties',
                 publisher_properties: [{ publisher_domain: 'other-publisher.example' }],
               }],
             }),
@@ -744,7 +749,7 @@ describe('AdAgentsManager', () => {
     it('warns about missing optional $schema field', async () => {
       mockedSafeFetch.mockResolvedValue({
         status: 200,
-        data: buf({ authorized_agents: [{ url: 'https://agent.example.com', authorized_for: 'Test' }] }),
+        data: buf({ authorized_agents: [{ url: 'https://agent.example.com', authorized_for: 'Test', authorization_type: 'property_ids', property_ids: ['p1'] }] }),
         headers: { 'content-type': 'application/json' },
       });
 
@@ -757,7 +762,7 @@ describe('AdAgentsManager', () => {
     it('warns about missing last_updated field', async () => {
       mockedSafeFetch.mockResolvedValue({
         status: 200,
-        data: buf({ authorized_agents: [{ url: 'https://agent.example.com', authorized_for: 'Test' }] }),
+        data: buf({ authorized_agents: [{ url: 'https://agent.example.com', authorized_for: 'Test', authorization_type: 'property_ids', property_ids: ['p1'] }] }),
         headers: { 'content-type': 'application/json' },
       });
 
@@ -911,10 +916,14 @@ describe('AdAgentsManager', () => {
             {
               url: 'https://agent.example.com',
               authorized_for: 'Scope 1',
+              authorization_type: 'property_ids',
+              property_ids: ['p1'],
             },
             {
               url: 'https://agent.example.com',
               authorized_for: 'Scope 2',
+              authorization_type: 'property_ids',
+              property_ids: ['p2'],
             },
           ],
         }),
@@ -925,6 +934,85 @@ describe('AdAgentsManager', () => {
 
       expect(result.valid).toBe(true); // Valid but with warning
       expect(result.warnings.some(w => w.message.includes('Duplicate agent URL'))).toBe(true);
+    });
+
+    // Issue #4476: validator was returning valid:true on wonderstruck.org-
+    // style files that omit authorization_type. Per the v3 schema, every
+    // authorized_agents[] entry must declare authorization_type plus a
+    // matching non-empty selector — without that pairing, downstream
+    // resolvers can't decide what the agent is authorized for, and
+    // publishers see "valid" while consumers see "agent not authorized".
+    it('rejects authorized_agents entries that omit authorization_type (issue #4476)', async () => {
+      mockedSafeFetch.mockResolvedValue({
+        status: 200,
+        data: buf({
+          $schema: 'https://adcontextprotocol.org/schemas/v3/adagents.json',
+          authorized_agents: [
+            { url: 'https://wonderstruck.sales-agent.scope3.com', authorized_for: 'Authorized for display banners' },
+            { url: 'https://interchange.io', authorized_for: 'Authorized for display banners' },
+          ],
+          properties: [
+            { property_id: 'main_site', property_type: 'website', name: 'Main site', identifiers: [{ type: 'domain', value: 'wonderstruck.org' }], tags: ['sites'] },
+          ],
+          last_updated: '2026-05-03T14:32:20.587Z',
+        }),
+        headers: { 'content-type': 'application/json' },
+      });
+
+      const result = await manager.validateDomain('wonderstruck.org');
+
+      expect(result.valid).toBe(false);
+      // Per-entry error with field path so publishers can locate the
+      // missing field, plus enum list so they know which selectors to
+      // choose from.
+      expect(result.errors.some(e =>
+        e.field === 'authorized_agents[0].authorization_type' &&
+        e.message.includes('missing required field') &&
+        e.message.includes('authorization_type') &&
+        e.message.includes('property_ids') &&
+        e.message.includes('signal_tags')
+      )).toBe(true);
+      expect(result.errors.some(e => e.field === 'authorized_agents[1].authorization_type')).toBe(true);
+    });
+
+    it('rejects authorized_agents entries whose authorization_type lacks a matching selector', async () => {
+      mockedSafeFetch.mockResolvedValue({
+        status: 200,
+        data: buf({
+          authorized_agents: [
+            { url: 'https://agent.example.com', authorized_for: 'Test', authorization_type: 'property_ids' },
+          ],
+        }),
+        headers: { 'content-type': 'application/json' },
+      });
+
+      const result = await manager.validateDomain('example.com');
+
+      expect(result.valid).toBe(false);
+      expect(result.errors.some(e =>
+        e.field === 'authorized_agents[0].property_ids' &&
+        e.message.includes('missing or empty')
+      )).toBe(true);
+    });
+
+    it('rejects authorized_agents entries whose authorization_type selector is an empty array', async () => {
+      mockedSafeFetch.mockResolvedValue({
+        status: 200,
+        data: buf({
+          authorized_agents: [
+            { url: 'https://agent.example.com', authorized_for: 'Test', authorization_type: 'signal_tags', signal_tags: [] },
+          ],
+        }),
+        headers: { 'content-type': 'application/json' },
+      });
+
+      const result = await manager.validateDomain('example.com');
+
+      expect(result.valid).toBe(false);
+      expect(result.errors.some(e =>
+        e.field === 'authorized_agents[0].signal_tags' &&
+        e.message.includes('missing or empty')
+      )).toBe(true);
     });
   });
 
@@ -1179,11 +1267,13 @@ describe('AdAgentsManager', () => {
       };
 
       const authoritativeData = {
-        $schema: 'https://adcontextprotocol.org/schemas/v2/adagents.json',
+        $schema: 'https://adcontextprotocol.org/schemas/v3/adagents.json',
         authorized_agents: [
           {
             url: 'https://agent.example.com',
             authorized_for: 'Test authorization',
+            authorization_type: 'property_ids',
+            property_ids: ['p1'],
           },
         ],
         last_updated: '2025-01-15T09:00:00Z'
@@ -1392,6 +1482,8 @@ describe('AdAgentsManager', () => {
         {
           url: 'https://agent.example.com',
           authorized_for: 'Test authorization scope',
+          authorization_type: 'property_ids',
+          property_ids: ['p1'],
         },
       ];
 
@@ -1437,6 +1529,8 @@ describe('AdAgentsManager', () => {
         {
           url: 'https://agent.example.com',
           authorized_for: 'Premium inventory',
+          authorization_type: 'property_ids',
+          property_ids: ['p1'],
           exclusive: true,
           countries: ['US', 'CA'],
           effective_from: '2025-01-01T00:00:00.000Z',
@@ -1505,7 +1599,7 @@ describe('AdAgentsManager', () => {
           status: 200,
           data: buf({
             authorized_agents: [
-              { url: 'https://agent.example.com', authorized_for: 'Test' },
+              { url: 'https://agent.example.com', authorized_for: 'Test', authorization_type: 'property_ids', property_ids: ['p1'] },
             ],
             signals: [
               {
@@ -1530,7 +1624,7 @@ describe('AdAgentsManager', () => {
           status: 200,
           data: buf({
             authorized_agents: [
-              { url: 'https://agent.example.com', authorized_for: 'Test' },
+              { url: 'https://agent.example.com', authorized_for: 'Test', authorization_type: 'property_ids', property_ids: ['p1'] },
             ],
             signals: [
               {
@@ -1555,7 +1649,7 @@ describe('AdAgentsManager', () => {
           status: 200,
           data: buf({
             authorized_agents: [
-              { url: 'https://agent.example.com', authorized_for: 'Test' },
+              { url: 'https://agent.example.com', authorized_for: 'Test', authorization_type: 'property_ids', property_ids: ['p1'] },
             ],
             signals: [
               {
@@ -1580,7 +1674,7 @@ describe('AdAgentsManager', () => {
           status: 200,
           data: buf({
             authorized_agents: [
-              { url: 'https://agent.example.com', authorized_for: 'Test' },
+              { url: 'https://agent.example.com', authorized_for: 'Test', authorization_type: 'property_ids', property_ids: ['p1'] },
             ],
             signals: [
               {
@@ -1603,7 +1697,7 @@ describe('AdAgentsManager', () => {
           status: 200,
           data: buf({
             authorized_agents: [
-              { url: 'https://agent.example.com', authorized_for: 'Test' },
+              { url: 'https://agent.example.com', authorized_for: 'Test', authorization_type: 'property_ids', property_ids: ['p1'] },
             ],
             signals: [
               {
@@ -1627,7 +1721,7 @@ describe('AdAgentsManager', () => {
           status: 200,
           data: buf({
             authorized_agents: [
-              { url: 'https://agent.example.com', authorized_for: 'Test' },
+              { url: 'https://agent.example.com', authorized_for: 'Test', authorization_type: 'property_ids', property_ids: ['p1'] },
             ],
             signals: [
               {
@@ -1650,7 +1744,7 @@ describe('AdAgentsManager', () => {
           status: 200,
           data: buf({
             authorized_agents: [
-              { url: 'https://agent.example.com', authorized_for: 'Test' },
+              { url: 'https://agent.example.com', authorized_for: 'Test', authorization_type: 'property_ids', property_ids: ['p1'] },
             ],
             signals: [
               {
@@ -1674,7 +1768,7 @@ describe('AdAgentsManager', () => {
           status: 200,
           data: buf({
             authorized_agents: [
-              { url: 'https://agent.example.com', authorized_for: 'Test' },
+              { url: 'https://agent.example.com', authorized_for: 'Test', authorization_type: 'property_ids', property_ids: ['p1'] },
             ],
             signals: [
               {
@@ -1698,7 +1792,7 @@ describe('AdAgentsManager', () => {
           status: 200,
           data: buf({
             authorized_agents: [
-              { url: 'https://agent.example.com', authorized_for: 'Test' },
+              { url: 'https://agent.example.com', authorized_for: 'Test', authorization_type: 'property_ids', property_ids: ['p1'] },
             ],
             signals: [
               {
@@ -1723,7 +1817,7 @@ describe('AdAgentsManager', () => {
           status: 200,
           data: buf({
             authorized_agents: [
-              { url: 'https://agent.example.com', authorized_for: 'Test' },
+              { url: 'https://agent.example.com', authorized_for: 'Test', authorization_type: 'property_ids', property_ids: ['p1'] },
             ],
             signals: [
               {
@@ -1748,7 +1842,7 @@ describe('AdAgentsManager', () => {
           status: 200,
           data: buf({
             authorized_agents: [
-              { url: 'https://agent.example.com', authorized_for: 'Test' },
+              { url: 'https://agent.example.com', authorized_for: 'Test', authorization_type: 'property_ids', property_ids: ['p1'] },
             ],
             signals: [
               {
@@ -1773,7 +1867,7 @@ describe('AdAgentsManager', () => {
           status: 200,
           data: buf({
             authorized_agents: [
-              { url: 'https://agent.example.com', authorized_for: 'Test' },
+              { url: 'https://agent.example.com', authorized_for: 'Test', authorization_type: 'property_ids', property_ids: ['p1'] },
             ],
             signals: [
               {
@@ -1800,7 +1894,7 @@ describe('AdAgentsManager', () => {
           status: 200,
           data: buf({
             authorized_agents: [
-              { url: 'https://agent.example.com', authorized_for: 'Test' },
+              { url: 'https://agent.example.com', authorized_for: 'Test', authorization_type: 'property_ids', property_ids: ['p1'] },
             ],
             signals: [
               { id: 'test', name: 'Test', value_type: 'binary', tags: ['automotive'] },
@@ -1822,7 +1916,7 @@ describe('AdAgentsManager', () => {
           status: 200,
           data: buf({
             authorized_agents: [
-              { url: 'https://agent.example.com', authorized_for: 'Test' },
+              { url: 'https://agent.example.com', authorized_for: 'Test', authorization_type: 'property_ids', property_ids: ['p1'] },
             ],
             signals: [
               { id: 'test', name: 'Test', value_type: 'binary', tags: ['undefined_tag'] },
@@ -1842,7 +1936,7 @@ describe('AdAgentsManager', () => {
           status: 200,
           data: buf({
             authorized_agents: [
-              { url: 'https://agent.example.com', authorized_for: 'Test' },
+              { url: 'https://agent.example.com', authorized_for: 'Test', authorization_type: 'property_ids', property_ids: ['p1'] },
             ],
             signals: [
               { id: 'duplicate_id', name: 'Signal 1', value_type: 'binary' },
@@ -1937,7 +2031,7 @@ describe('AdAgentsManager', () => {
         expect(result.warnings.some(w => w.message.includes('nonexistent_signal'))).toBe(true);
       });
 
-      it('warns when signal_ids authorization type but no signal_ids array', async () => {
+      it('errors when signal_ids authorization type but no signal_ids array (v3 schema)', async () => {
         mockedSafeFetch.mockResolvedValue({
           status: 200,
           data: buf({
@@ -1954,8 +2048,13 @@ describe('AdAgentsManager', () => {
 
         const result = await manager.validateDomain('polk.com');
 
-        expect(result.valid).toBe(true);
-        expect(result.warnings.some(w => w.message.includes('signal_ids') && w.message.includes('no signal_ids provided'))).toBe(true);
+        // v3 schema requires a non-empty signal_ids selector when
+        // authorization_type is 'signal_ids' — see issue #4476.
+        expect(result.valid).toBe(false);
+        expect(result.errors.some(e =>
+          e.field === 'authorized_agents[0].signal_ids' &&
+          e.message.includes('missing or empty')
+        )).toBe(true);
       });
 
       it('errors when signal_ids is not an array', async () => {
