@@ -957,30 +957,43 @@ export class AdAgentsManager {
       }
     }
 
-    // Validate authorization_type consistency
-    if (agent.authorization_type) {
-      const validTypes = ['property_ids', 'property_tags', 'inline_properties', 'publisher_properties', 'signal_ids', 'signal_tags'];
-      if (!validTypes.includes(agent.authorization_type)) {
-        result.errors.push({
-          field: `${prefix}.authorization_type`,
-          message: `authorization_type must be one of: ${validTypes.join(', ')}`,
-          severity: 'error'
-        });
-      }
+    // Validate authorization_type per v3 schema. Every authorized_agents[]
+    // entry must declare an authorization_type and ship the matching
+    // non-empty selector — that's the schema's oneOf invariant, and it's
+    // what downstream resolvers (Python/TS SDKs) rely on to decide whether
+    // an agent is actually authorized for a given property/signal. Without
+    // it, publishers see valid:true while consumers see "agent not
+    // authorized" — issue #4476.
+    const validAuthTypes = ['property_ids', 'property_tags', 'inline_properties', 'publisher_properties', 'signal_ids', 'signal_tags'] as const;
+    const selectorByType: Record<typeof validAuthTypes[number], string> = {
+      property_ids: 'property_ids',
+      property_tags: 'property_tags',
+      inline_properties: 'properties',
+      publisher_properties: 'publisher_properties',
+      signal_ids: 'signal_ids',
+      signal_tags: 'signal_tags',
+    };
 
-      // Check that the corresponding array exists for the authorization_type
-      if (agent.authorization_type === 'signal_ids' && (!agent.signal_ids || agent.signal_ids.length === 0)) {
-        result.warnings.push({
-          field: `${prefix}.signal_ids`,
-          message: 'authorization_type is "signal_ids" but no signal_ids provided',
-          suggestion: 'Add signal_ids array with the authorized signal IDs'
-        });
-      }
-      if (agent.authorization_type === 'signal_tags' && (!agent.signal_tags || agent.signal_tags.length === 0)) {
-        result.warnings.push({
-          field: `${prefix}.signal_tags`,
-          message: 'authorization_type is "signal_tags" but no signal_tags provided',
-          suggestion: 'Add signal_tags array with the authorized signal tags'
+    if (!agent.authorization_type) {
+      result.errors.push({
+        field: `${prefix}.authorization_type`,
+        message: `missing required field \`authorization_type\` (one of ${validAuthTypes.map((t) => `\`${t}\``).join(', ')})`,
+        severity: 'error',
+      });
+    } else if (!validAuthTypes.includes(agent.authorization_type)) {
+      result.errors.push({
+        field: `${prefix}.authorization_type`,
+        message: `authorization_type must be one of: ${validAuthTypes.join(', ')}`,
+        severity: 'error',
+      });
+    } else {
+      const selectorField = selectorByType[agent.authorization_type as typeof validAuthTypes[number]];
+      const selectorValue = (agent as Record<string, unknown>)[selectorField];
+      if (!Array.isArray(selectorValue) || selectorValue.length === 0) {
+        result.errors.push({
+          field: `${prefix}.${selectorField}`,
+          message: `authorization_type is "${agent.authorization_type}" but \`${selectorField}\` is missing or empty`,
+          severity: 'error',
         });
       }
     }

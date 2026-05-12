@@ -163,7 +163,7 @@ The file must be valid JSON with UTF-8 encoding and return HTTP 200 status.
 **`authorized_agents`** *(required)*: Array of authorized sales agents
   - **`url`** *(required)*: Agent's API endpoint URL
   - **`authorized_for`** *(required)*: Human-readable authorization description
-  - **`authorization_type`** *(optional)*: One of `property_ids`, `property_tags`, `inline_properties`, `publisher_properties`
+  - **`authorization_type`** *(required)*: Discriminator naming which selector field carries the scope. One of `property_ids`, `property_tags`, `inline_properties`, `publisher_properties` (for properties) or `signal_ids`, `signal_tags` (for signal providers). The corresponding selector field must be present and non-empty — see [Authorization Patterns](#authorization-patterns) below.
   - **`delegation_type`** *(optional)*: Commercial relationship for this path: `direct`, `delegated`, or `ad_network`
   - **`collections`** *(optional)*: Additional collection selectors that narrow authorization to specific content programs
   - **`placement_ids`** *(optional)*: Placement IDs from the top-level `placements` array that narrow authorization to specific placements
