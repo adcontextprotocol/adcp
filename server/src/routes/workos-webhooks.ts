@@ -520,7 +520,7 @@ async function deleteUserMemberships(userId: string): Promise<void> {
  * Sync organization domains from WorkOS
  * This upserts domains and removes any that are no longer in WorkOS
  */
-async function syncOrganizationDomains(org: OrganizationData): Promise<void> {
+export async function syncOrganizationDomains(org: OrganizationData): Promise<void> {
   const pool = getPool();
 
   // First check if the organization exists in our database
@@ -586,13 +586,39 @@ async function syncOrganizationDomains(org: OrganizationData): Promise<void> {
     // column is the auto-membership inference key and applying it to
     // personal-tier orgs would let `@vastlint.org` users auto-resolve to a
     // 1-seat individual sub.
-    const primaryDomain = org.domains.length > 0 ? org.domains[0].domain : null;
+    //
+    // Source the value from `organization_domains.is_primary=true` (the
+    // canonical brand-primary the rest of the system honors) rather than
+    // `org.domains[0]`. WorkOS's domain-array order is not stable: orgs
+    // with multiple domains (e.g. a verified root + a `failed` www variant)
+    // can have WorkOS list the failed one first, which would otherwise
+    // overwrite the correct email_domain on every webhook fire. The
+    // `upsertWorkosDomain` loop above doesn't change `is_primary` on
+    // conflict, so our table preserves the canonical choice; reading from
+    // there keeps `email_domain` in lockstep with what auto-membership
+    // inference and brand-registry lookups already use.
+    //
+    // Fallback to `org.domains[0]` covers the initial-sync case (this is
+    // the first webhook for this org, no `organization_domains` rows are
+    // is_primary=true yet — the upsert above set `i===0` as primary, so
+    // the query usually picks it up, but the fallback is a safety net).
+    let primaryDomain: string | null = null;
     if (!isPersonal) {
+      const primaryRow = await client.query<{ domain: string }>(
+        `SELECT domain FROM organization_domains
+         WHERE workos_organization_id = $1 AND is_primary = true
+         LIMIT 1`,
+        [org.id],
+      );
+      primaryDomain = primaryRow.rows[0]?.domain
+        ?? (org.domains.length > 0 ? org.domains[0].domain : null);
       await client.query(
         `UPDATE organizations SET email_domain = $1, updated_at = NOW()
          WHERE workos_organization_id = $2`,
         [primaryDomain, org.id]
       );
+    } else if (org.domains.length > 0) {
+      primaryDomain = org.domains[0].domain;
     }
 
     await client.query('COMMIT');
