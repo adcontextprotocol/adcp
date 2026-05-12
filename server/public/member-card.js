@@ -118,7 +118,7 @@ function renderMemberCard(member, options = {}) {
     <div class="member-card" ${clickHandler}>
       <div class="member-card-header">
         ${brand?.logo_url
-          ? `<img src="${escapeHtmlSafe(brand.logo_url)}" alt="${escapeHtmlSafe(displayName)}" class="member-logo">`
+          ? `<img src="${escapeHtmlSafe(brand.logo_url)}" alt="${escapeHtmlSafe(displayName)}" class="member-logo" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div class="member-logo-placeholder" style="display:none">${escapeHtmlSafe(displayName.charAt(0))}</div>`
           : `<div class="member-logo-placeholder">${escapeHtmlSafe(displayName.charAt(0))}</div>`
         }
         <div class="member-info">

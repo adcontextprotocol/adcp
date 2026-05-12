@@ -13,8 +13,9 @@
 
 import { getPool } from '../db/client.js';
 import { canonicalizeBrandDomain, assertValidBrandDomain } from './identifier-normalization.js';
-import { checkLogoUrlIsImage } from './brand-logo-service.js';
+import { checkLogoUrlIsImage, rehostExternalLogo } from './brand-logo-service.js';
 import { getBrandPrimaryDomain } from './brand-domain-resolver.js';
+import { BrandLogoDatabase } from '../db/brand-logo-db.js';
 import { createLogger } from '../logger.js';
 
 const logger = createLogger('brand-identity');
@@ -49,6 +50,12 @@ export interface UpdateBrandIdentityInput {
    * orphan flag is cleared at write time.
    */
   adoptPriorManifest?: boolean;
+  /**
+   * Attribution for the brand_logos row when an external `logoUrl` is
+   * rehosted to our own /logos/brands/... path. Optional — rehosting
+   * still happens without it, just with null user attribution.
+   */
+  uploadedBy?: { userId?: string; email?: string };
 }
 
 export interface UpdateBrandIdentityResult {
@@ -103,7 +110,8 @@ export class BrandIdentityError extends Error {
 export async function updateBrandIdentity(
   input: UpdateBrandIdentityInput,
 ): Promise<UpdateBrandIdentityResult> {
-  const { profile, workosOrganizationId, displayName, logoUrl, brandColor, fallbackDomainHint, adoptPriorManifest } = input;
+  const { profile, workosOrganizationId, displayName, brandColor, fallbackDomainHint, adoptPriorManifest, uploadedBy } = input;
+  let logoUrl = input.logoUrl;
 
   if (logoUrl === undefined && brandColor === undefined) {
     throw new BrandIdentityError(400, 'Provide at least one of logo_url or brand_color.');
@@ -147,6 +155,18 @@ export async function updateBrandIdentity(
       'invalid_domain',
       { canonicalDomain: brandDomain },
     );
+  }
+
+  // Rehost external logo URLs as same-origin assets. Cross-origin sites often
+  // ship `Cross-Origin-Resource-Policy: same-origin` (e.g., Cloudflare default),
+  // which makes `<img src>` to their URL render as a broken image on our pages
+  // even though the URL is publicly reachable. Falls back to the original URL
+  // on any failure — the manifest stays consistent.
+  if (logoUrl) {
+    logoUrl = await rehostExternalLogo(logoUrl, brandDomain, new BrandLogoDatabase(), {
+      uploadedBy,
+      source: 'community',
+    });
   }
 
   const pool = getPool();
