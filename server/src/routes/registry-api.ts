@@ -95,7 +95,7 @@ import { resolveUserAgentAuth } from "./helpers/resolve-user-agent-auth.js";
 import { adaptAuthForSdk, type SdkAuth } from "../services/sdk-auth-adapter.js";
 import { parseOAuthClientCredentialsInput } from "./helpers/oauth-client-credentials-input.js";
 import { isOAuthRequiredErrorMessage } from "./helpers/oauth-error-detection.js";
-import { AgentContextDatabase } from "../db/agent-context-db.js";
+import { AgentContextDatabase, validateAuthTokenChars } from "../db/agent-context-db.js";
 import { getRequestLog, getRequestCount } from "../db/outbound-log-db.js";
 import { enrichUserWithMembership } from "../utils/html-config.js";
 import { classifyProbeError } from "../utils/probe-error.js";
@@ -5259,6 +5259,12 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       }
       if (auth_token && auth_token.length > 4096) {
         return res.status(400).json({ error: "auth_token exceeds maximum length" });
+      }
+      if (auth_token) {
+        const tokenErr = validateAuthTokenChars(auth_token);
+        if (tokenErr) {
+          return res.status(400).json({ error: tokenErr });
+        }
       }
 
       const validAuthTypes = ["bearer", "basic"];
