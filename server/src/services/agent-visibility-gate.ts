@@ -51,7 +51,7 @@ export function gateAgentVisibilityForCaller(
         requested: 'public',
         applied: 'members_only',
         reason: 'tier_required',
-        message: 'Publicly listing an agent requires Professional tier or higher; stored as members_only instead.',
+        message: 'Publicly listing an agent requires a paid AAO tier (Professional, Builder, Member, or Leader); stored as members_only instead.',
       });
       visibility = 'members_only';
     }

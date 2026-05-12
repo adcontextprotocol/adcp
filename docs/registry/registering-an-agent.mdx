@@ -20,8 +20,8 @@ There is one path: **an AAO member adds the agent to their member profile** via 
     - **Auth method** — pick one: None · Static bearer · Static basic · OAuth client credentials. *(Interactive OAuth user authorization is configured separately — register with **None** here, then click **Authorize** on the agent card to sign in.)*
     - **Auth fields** — only the ones your chosen method needs (bearer token, or `token_endpoint` + `client_id` + `client_secret` for client credentials, etc.)
     - **Protocol** — defaults to MCP; Addie asks only if your URL is ambiguous
-5. **Done.** Addie calls `save_agent` and your agent lands in the registry catalog with `visibility: "members_only"` (visible to other Professional-tier-or-higher AAO members; not publicly listed).
-6. **Optional — go public.** Back on `/dashboard/agents`, change the agent's visibility from **Members only** to **Public**. Public visibility requires Professional tier or higher and a primary brand domain on your member profile so the agent can be added to your `brand.json`.
+5. **Done.** Addie calls `save_agent` and your agent lands in the registry catalog with `visibility: "members_only"` (visible to other paying AAO members — Professional, Builder, Member, or Leader; not publicly listed).
+6. **Optional — go public.** Back on `/dashboard/agents`, change the agent's visibility from **Members only** to **Public**. Public visibility requires a paid AAO tier (Professional, Builder, Member, or Leader) and a primary brand domain on your member profile so the agent can be added to your `brand.json`.
 
 **Type is resolved server-side.** You will not be asked for the agent's type — type (`brand`, `sales`, `buying`, `measurement`, `creative`, `signals`, etc.) is resolved from the agent's capability snapshot. `resolveAgentTypes()` reads the most recent snapshot from the crawler; if no snapshot exists yet, the type field saved is whatever the client supplied, and the next crawler probe overwrites it. Either way, you can't pin a wrong type permanently.
 
@@ -47,7 +47,7 @@ The path parameter on PATCH and DELETE is the agent's `url`, URL-encoded (e.g. `
 ### Prerequisites
 
 - An AAO member profile must already exist for your organization. Create one via the dashboard or `POST /api/me/member-profile` first; the agent endpoints return `404` until then.
-- For `visibility: "public"`, your organization needs Professional tier or higher and a `primary_brand_domain` set on the profile so the agent can be added to your `brand.json`. See [Visibility](#visibility) below.
+- For `visibility: "public"`, your organization needs a paid AAO tier (Professional, Builder, Member, or Leader) and a `primary_brand_domain` set on the profile so the agent can be added to your `brand.json`. See [Visibility](#visibility) below.
 
 ## What this means if you are not an AAO member
 

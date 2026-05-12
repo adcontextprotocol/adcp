@@ -2950,7 +2950,7 @@
           const photoSuffix = photoSyncWarning ? ` ${photoSyncWarning}` : '';
           showError(
             `Saved, but ${downgrades.length} agent${downgrades.length > 1 ? 's' : ''} could not be listed publicly — ` +
-            `public listing requires Professional tier or higher, so they were stored as members_only instead.${detail} ` +
+            `public listing requires a paid AAO tier (Professional, Builder, Member, or Leader), so they were stored as members_only instead.${detail} ` +
             `Upgrade at /membership to publish publicly.${photoSuffix}`
           );
         } else if (photoSyncWarning) {

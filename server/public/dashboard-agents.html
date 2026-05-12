@@ -1233,14 +1233,14 @@
       const publicRequiresDomain = !brandHostingType;
       const publicDisabled = !canSetPublic || publicRequiresDomain;
       const publicDisabledReason = !canSetPublic
-        ? 'Publicly listing an agent requires Professional tier or higher.'
+        ? 'Publicly listing an agent requires a paid AAO tier (Professional, Builder, Member, or Leader).'
         : publicRequiresDomain
           ? 'Set a primary brand domain to publish publicly.'
           : '';
 
       const hints = {
         private: 'Only you can see it.',
-        members_only: 'Discoverable by Professional+ members.',
+        members_only: 'Discoverable by paying AAO members.',
         public: 'Listed publicly and added to brand.json.',
       };
 

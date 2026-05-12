@@ -21,7 +21,7 @@ const MemberAgentVisibilitySchema = z
   .enum(['private', 'members_only', 'public'])
   .openapi('MemberAgentVisibility', {
     description:
-      "Visibility tier on the registry catalog. `private` = profile owner only; `members_only` = AAO API-tier members on operator lookup; `public` = listed in the public catalog and reflected in the org's `brand.json` (requires Professional tier or higher).",
+      "Visibility tier on the registry catalog. `private` = profile owner only; `members_only` = AAO API-tier members on operator lookup; `public` = listed in the public catalog and reflected in the org's `brand.json` (requires a paid AAO tier — Professional, Builder, Member, or Leader).",
   });
 
 const MemberAgentTypeSchema = z
@@ -178,7 +178,7 @@ registry.registerPath({
     "- If the caller's org has no member profile, the server auto-creates a private profile (display name = organization name, `is_public: false`) and the response includes `profile_auto_created: true`.",
     "Both auto-bootstraps are best-effort fallbacks. To customize org name / company_type / revenue_tier, or to control profile slug / brand identity / tagline, call `POST /api/organizations` and `POST /api/me/member-profile` explicitly before registering the agent. Tier transitions never happen via this path — go through the billing flow.",
     "`type` is required and declared by the caller — the server does not infer it. Server-side smuggle protection still cross-checks the declared type against the agent's capability snapshot when one exists; if the snapshot contradicts the declaration without classifying it, the stored value is `unknown` and the dashboard surfaces the conflict for the owner to resolve.",
-    '`visibility: "public"` requires Professional tier or higher and a verified primary domain on the organization (set via the Linked Domains UI). Non-API-tier callers who request `public` will have the entry stored as `members_only` instead, and the response will include a `visibility_downgraded` warning describing the coercion.',
+    '`visibility: "public"` requires a paid AAO tier (Professional, Builder, Member, or Leader) and a verified primary domain on the organization (set via the Linked Domains UI). Non-API-tier callers (Explorer or no tier) who request `public` will have the entry stored as `members_only` instead, and the response will include a `visibility_downgraded` warning describing the coercion.',
   ].join('\n\n'),
   tags: ['Member Agents'],
   security: [{ bearerAuth: [] }, { oauth2: [] }],
