@@ -157,19 +157,38 @@ export async function updateBrandIdentity(
     );
   }
 
+  const pool = getPool();
+
   // Rehost external logo URLs as same-origin assets. Cross-origin sites often
   // ship `Cross-Origin-Resource-Policy: same-origin` (e.g., Cloudflare default),
   // which makes `<img src>` to their URL render as a broken image on our pages
   // even though the URL is publicly reachable. Falls back to the original URL
   // on any failure — the manifest stays consistent.
+  //
+  // The cross-org ownership check below runs inside the txn under FOR UPDATE,
+  // but we also pre-check it here: rehosting writes bytes into
+  // /logos/brands/<brandDomain>/<uuid>, so we must refuse to plant bytes
+  // under a domain the caller doesn't own before doing any work.
   if (logoUrl) {
+    const ownershipCheck = await pool.query<{ workos_organization_id: string | null }>(
+      `SELECT workos_organization_id FROM brands WHERE domain = $1`,
+      [brandDomain],
+    );
+    const incumbent = ownershipCheck.rows[0]?.workos_organization_id;
+    if (incumbent && incumbent !== workosOrganizationId) {
+      throw new BrandIdentityError(
+        403,
+        'This brand domain is managed by another organization.',
+        'cross_org_ownership',
+        { brandDomain, currentOwnerOrgId: incumbent },
+      );
+    }
     logoUrl = await rehostExternalLogo(logoUrl, brandDomain, new BrandLogoDatabase(), {
       uploadedBy,
       source: 'community',
     });
   }
 
-  const pool = getPool();
   const client = await pool.connect();
   let wasUpdate = false;
   let claimedOrphanedBrand = false;

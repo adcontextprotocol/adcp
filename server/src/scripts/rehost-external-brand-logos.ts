@@ -72,11 +72,23 @@ function isExternalHttpsUrl(url: unknown, ourHost: string): url is string {
  * Walk every logo object in a manifest and yield the ones with an external URL.
  * Mutating the returned object's `url` mutates the manifest in place — that's
  * the whole point.
+ *
+ * Covers every shape the resolver reads (`server/src/db/brand-db.ts:33-40`):
+ *   - `brands[*].logos[*]`     (plural, array form — canonical write target)
+ *   - `brands[*].logo`         (singular, object form — brand.json idiom)
+ *   - `logos[*]`               (top-level plural, used by rebuildManifestLogos)
+ *   - `logo`                   (top-level singular)
  */
 function* externalLogosOf(
   manifest: Record<string, unknown>,
   ourHost: string,
 ): Generator<{ logo: LogoEntry; location: string }> {
+  const yieldIfExternal = function* (l: LogoEntry | undefined, location: string) {
+    if (l && isExternalHttpsUrl(l.url, ourHost)) {
+      yield { logo: l, location };
+    }
+  };
+
   const brands = manifest.brands;
   if (Array.isArray(brands)) {
     for (let i = 0; i < brands.length; i++) {
@@ -84,22 +96,24 @@ function* externalLogosOf(
       const logos = b?.logos;
       if (Array.isArray(logos)) {
         for (let j = 0; j < logos.length; j++) {
-          const l = logos[j] as LogoEntry | undefined;
-          if (l && isExternalHttpsUrl(l.url, ourHost)) {
-            yield { logo: l, location: `brands[${i}].logos[${j}]` };
-          }
+          yield* yieldIfExternal(logos[j] as LogoEntry | undefined, `brands[${i}].logos[${j}]`);
         }
+      }
+      const singular = b?.logo;
+      if (singular && typeof singular === 'object' && !Array.isArray(singular)) {
+        yield* yieldIfExternal(singular as LogoEntry, `brands[${i}].logo`);
       }
     }
   }
   const topLogos = manifest.logos;
   if (Array.isArray(topLogos)) {
     for (let j = 0; j < topLogos.length; j++) {
-      const l = topLogos[j] as LogoEntry | undefined;
-      if (l && isExternalHttpsUrl(l.url, ourHost)) {
-        yield { logo: l, location: `logos[${j}]` };
-      }
+      yield* yieldIfExternal(topLogos[j] as LogoEntry | undefined, `logos[${j}]`);
     }
+  }
+  const topSingular = manifest.logo;
+  if (topSingular && typeof topSingular === 'object' && !Array.isArray(topSingular)) {
+    yield* yieldIfExternal(topSingular as LogoEntry, `logo`);
   }
 }
 

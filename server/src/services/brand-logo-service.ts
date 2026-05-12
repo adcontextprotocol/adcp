@@ -169,7 +169,10 @@ export async function extractDimensions(
     return {};
   }
   try {
-    const metadata = await sharp(buffer).metadata();
+    // Cap decoded pixels at 24 MP (~6000x4000). Without this, a small (<5 MB)
+    // PNG can claim gigapixel dimensions and OOM the process during decode.
+    // Throws instead of decoding when over the limit; the catch returns {}.
+    const metadata = await sharp(buffer, { limitInputPixels: 24_000_000, failOn: 'error' }).metadata();
     return { width: metadata.width, height: metadata.height };
   } catch {
     return {};
@@ -298,6 +301,18 @@ export async function rehostExternalLogo(
     return rawUrl;
   }
 
+  // Only http(s) URLs are rehostable. data: URLs are already inline bytes;
+  // safeFetch would reject other schemes anyway, but bailing early avoids the
+  // round-trip and keeps the contract uniform with the backfill's pre-filter.
+  if (parsed.protocol !== 'https:') {
+    return rawUrl;
+  }
+
+  // Hostname-only match: BASE_URL is "https://agenticadvertising.org" in prod,
+  // so a manifest URL on the same hostname is already ours regardless of port
+  // or path. In dev environments BASE_URL may collide with an unrelated
+  // localhost service; that's an acceptable false-negative for the dev-only
+  // case (the dev never had a CORP issue anyway).
   const ourHost = ourLogoHost();
   if (ourHost && parsed.hostname.toLowerCase() === ourHost) {
     return rawUrl;
