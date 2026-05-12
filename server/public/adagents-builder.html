@@ -1507,7 +1507,7 @@
                     />
                     <strong>Can sell all properties</strong>
                     <p style="margin: 4px 0 0 24px; font-size: 13px; color: #666">
-                      Agent has access to all current and future properties
+                      Snapshots every property currently in this file. Re-edit the agent after adding new properties, or use a tag-based scope to cover them automatically.
                     </p>
                   </label>
 
@@ -2169,7 +2169,7 @@
                 delegation_type: agent.delegation_type || 'direct',
               };
 
-              // Handle authorization type
+              // v3 requires authorization_type + matching selector on every entry.
               if (agent.authorization_type) {
                 agentObj.authorization_type = agent.authorization_type;
 
@@ -2182,9 +2182,6 @@
                 } else if (agent.authorization_type === 'signal_tags' && agent.signal_tags?.length > 0) {
                   agentObj.signal_tags = agent.signal_tags;
                 }
-              } else if (agent.property_ids && agent.property_ids.length > 0) {
-                // Legacy support for property_ids without authorization_type
-                agentObj.property_ids = agent.property_ids;
               }
 
               // Optional placement constraints (overlay on any auth type)
@@ -2975,25 +2972,30 @@
 
         container.innerHTML = state.agents
           .map((agent, index) => {
-            let propertyInfo = '';
-            if (!agent.property_ids || agent.property_ids.length === 0) {
-              propertyInfo = '<span class="dashboard-card-tag">Can sell: All properties</span>';
-            } else {
-              // Check if using tags (prefixed with 'tag:')
+            let propertyInfo;
+            if (agent.authorization_type === 'property_tags' && agent.property_tags?.length > 0) {
+              const tagNames = escapeHtml(agent.property_tags.join(', '));
+              propertyInfo = `<span class="dashboard-card-tag assigned">Can sell tags: ${tagNames}</span>`;
+            } else if (agent.authorization_type === 'property_ids' && agent.property_ids?.length > 0) {
+              const propNames = escapeHtml(agent.property_ids
+                .map(id => {
+                  const prop = state.properties.find(p => p.property_id === id);
+                  return prop ? prop.property_id : `${id} (missing)`;
+                })
+                .join(', '));
+              propertyInfo = `<span class="dashboard-card-tag assigned">Can sell: ${propNames}</span>`;
+            } else if (agent.property_ids?.length > 0) {
+              // Legacy v2 entry — surface it so the user knows to re-open and upgrade.
               const tagIds = agent.property_ids.filter(id => id.startsWith('tag:'));
               if (tagIds.length > 0) {
                 const tagNames = escapeHtml(tagIds.map(id => id.replace('tag:', '')).join(', '));
-                propertyInfo = `<span class="dashboard-card-tag assigned">Can sell tags: ${tagNames}</span>`;
+                propertyInfo = `<span class="dashboard-card-tag assigned">Can sell tags: ${tagNames} (v2 — re-save to upgrade)</span>`;
               } else {
-                // Regular property IDs
-                const propNames = escapeHtml(agent.property_ids
-                  .map(id => {
-                    const prop = state.properties.find(p => p.property_id === id);
-                    return prop ? prop.property_id : `${id} (missing)`;
-                  })
-                  .join(', '));
-                propertyInfo = `<span class="dashboard-card-tag assigned">Can sell: ${propNames}</span>`;
+                const propNames = escapeHtml(agent.property_ids.join(', '));
+                propertyInfo = `<span class="dashboard-card-tag assigned">Can sell: ${propNames} (v2 — re-save to upgrade)</span>`;
               }
+            } else {
+              propertyInfo = '<span class="dashboard-card-tag" style="background: var(--color-error-500); color: white;">⚠️ Scope not set — open to authorize</span>';
             }
 
             return `
@@ -4206,12 +4208,22 @@
         renderEncryptionKeysList(agent.encryption_keys || []);
         renderSigningKeysList(agent.signing_keys || []);
 
-        // Determine access type based on what's set
-        let accessType = 'all';
+        // Determine access type from v3 fields first; fall back to v2 legacy shape on import.
+        let accessType = 'properties';
         let selectedItems = [];
 
-        if (agent.property_ids && agent.property_ids.length > 0) {
-          // Check if any property_ids are tags (prefixed with 'tag:')
+        if (agent.authorization_type === 'property_tags') {
+          accessType = 'tags';
+          selectedItems = agent.property_tags || [];
+        } else if (agent.authorization_type === 'property_ids') {
+          const allIds = new Set(state.properties.map(p => p.property_id));
+          const ids = new Set(agent.property_ids || []);
+          const coversAll = allIds.size > 0 && ids.size === allIds.size
+            && [...allIds].every(id => ids.has(id));
+          accessType = coversAll ? 'all' : 'properties';
+          selectedItems = coversAll ? [] : (agent.property_ids || []);
+        } else if (agent.property_ids && agent.property_ids.length > 0) {
+          // Legacy v2 import: property_ids array with optional 'tag:' prefixes.
           const tagIds = agent.property_ids.filter(id => id.startsWith('tag:'));
           if (tagIds.length > 0) {
             accessType = 'tags';
@@ -4306,31 +4318,44 @@
         }
 
         const accessType = document.querySelector('input[name="agent-access-type"]:checked').value;
-        const propertyIds = [];
-
-        if (accessType === 'properties') {
-          // Collect selected property IDs
-          document.querySelectorAll('#agent-property-checkboxes input[type="checkbox"]:checked').forEach(checkbox => {
-            propertyIds.push(checkbox.value);
-          });
-        } else if (accessType === 'tags') {
-          // Collect selected tags and prefix with 'tag:'
-          document.querySelectorAll('#agent-tag-checkboxes input[type="checkbox"]:checked').forEach(checkbox => {
-            propertyIds.push('tag:' + checkbox.value);
-          });
-        }
-        // If accessType === 'all', propertyIds stays empty (which means all properties)
-
         const agent = {
           url: url,
           authorized_for: authorizedFor,
           delegation_type: delegationType,
-          property_ids: propertyIds,
         };
 
-        // Remove property_ids if empty (cleaner JSON)
-        if (propertyIds.length === 0) {
-          delete agent.property_ids;
+        if (accessType === 'properties') {
+          const ids = [];
+          document.querySelectorAll('#agent-property-checkboxes input[type="checkbox"]:checked').forEach(cb => {
+            ids.push(cb.value);
+          });
+          if (ids.length === 0) {
+            alert('Select at least one property, or pick a different access mode.');
+            return;
+          }
+          agent.authorization_type = 'property_ids';
+          agent.property_ids = ids;
+        } else if (accessType === 'tags') {
+          const tags = [];
+          document.querySelectorAll('#agent-tag-checkboxes input[type="checkbox"]:checked').forEach(cb => {
+            tags.push(cb.value);
+          });
+          if (tags.length === 0) {
+            alert('Select at least one tag, or pick a different access mode.');
+            return;
+          }
+          agent.authorization_type = 'property_tags';
+          agent.property_tags = tags;
+        } else {
+          // "All" snapshots every property currently in the file as an explicit property_ids list.
+          // v3 has no implicit "all + future" scope; re-edit the agent after adding new properties.
+          const allIds = state.properties.map(p => p.property_id);
+          if (allIds.length === 0) {
+            alert('Add at least one property to the file before authorizing an agent for all properties.');
+            return;
+          }
+          agent.authorization_type = 'property_ids';
+          agent.property_ids = allIds;
         }
 
         // v3 fields
@@ -4639,7 +4664,47 @@
         URL.revokeObjectURL(url);
       }
 
+      function findAgentsWithoutScope() {
+        const fileType = document.querySelector('input[name="file-type"]:checked').value;
+        if (fileType === 'reference') return [];
+        return state.agents
+          .map((agent, index) => ({ agent, index }))
+          .filter(({ agent }) => !agent.authorization_type);
+      }
+
+      function contactPartiallyFilled() {
+        const name = document.getElementById('contact-name').value.trim();
+        if (name) return false;
+        const otherFields = ['contact-email', 'contact-domain', 'contact-privacy-policy-url',
+          'contact-seller-id', 'contact-tag-id'];
+        return otherFields.some(id => document.getElementById(id).value.trim().length > 0);
+      }
+
+      function blockIfAgentsMissScope(action) {
+        const missing = findAgentsWithoutScope();
+        if (missing.length > 0) {
+          const lines = missing
+            .map(({ agent, index }) => {
+              const reason = agent.property_ids?.length > 0
+                ? '(legacy v2 — open and re-save)'
+                : '(no scope set)';
+              return `  ${index + 1}. ${agent.url || '(no URL)'} ${reason}`;
+            })
+            .join('\n');
+          alert(
+            `Cannot ${action}: ${missing.length} agent${missing.length === 1 ? '' : 's'} without a v3 authorization_type.\n\n${lines}\n\nOpen each agent card and set "Property Access" before exporting. v3 requires every authorized_agents entry to declare a scope.`
+          );
+          return true;
+        }
+        if (contactPartiallyFilled()) {
+          alert(`Cannot ${action}: contact section has fields filled but no name. v3 requires contact.name when any contact field is set. Either add a name or clear the other contact fields.`);
+          return true;
+        }
+        return false;
+      }
+
       function copyJson() {
+        if (blockIfAgentsMissScope('copy')) return;
         updateJsonPreview();
         const textarea = document.getElementById('json-output');
         textarea.select();
@@ -4648,6 +4713,7 @@
       }
 
       function downloadJson() {
+        if (blockIfAgentsMissScope('download')) return;
         exportFile();
       }
 
