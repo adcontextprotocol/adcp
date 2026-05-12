@@ -103,7 +103,7 @@ async function slackRequest<T>(
           continue;
         }
 
-        throw new Error(`Slack API error: ${data.error}`);
+        throw new Error(`Slack API error: ${data.error}${formatSlackResponseMetadata(data)}`);
       }
 
       return data;
@@ -127,6 +127,36 @@ async function slackRequest<T>(
   }
 
   throw new Error(`Slack API request failed after ${retries} retries`);
+}
+
+/**
+ * Format Slack's `response_metadata.messages` (an array of validation
+ * detail strings) into a single trailing fragment for the thrown
+ * `Error.message`. Slack returns these for `invalid_blocks`,
+ * `invalid_arguments`, and a few other validation errors — they are
+ * the only place that names *which* block or field failed. Without
+ * this they're discarded into the void and the caller logs a bare
+ * "Slack API error: invalid_blocks" with no diagnosis.
+ */
+/** Cap on the joined metadata string so a pathological Slack response
+ *  (very many failing blocks, very long validator strings) can't push
+ *  multi-KB text into `Error.message` and on through `logger.error` to
+ *  `#admin-errors`. 1024 bytes is enough for ~5 typical validator
+ *  messages with JSON pointers. */
+const SLACK_METADATA_SUMMARY_MAX_LENGTH = 1024;
+
+export function formatSlackResponseMetadata(data: unknown): string {
+  const md = (data as { response_metadata?: { messages?: unknown } })?.response_metadata;
+  const messages = md?.messages;
+  if (!Array.isArray(messages) || messages.length === 0) return '';
+  let summary = messages
+    .filter((m): m is string => typeof m === 'string')
+    .join('; ');
+  if (!summary) return '';
+  if (summary.length > SLACK_METADATA_SUMMARY_MAX_LENGTH) {
+    summary = summary.slice(0, SLACK_METADATA_SUMMARY_MAX_LENGTH - 1) + '…';
+  }
+  return ` (${summary})`;
 }
 
 /**
@@ -165,7 +195,7 @@ async function slackPostRequest<T>(
           continue;
         }
 
-        throw new Error(`Slack API error: ${data.error}`);
+        throw new Error(`Slack API error: ${data.error}${formatSlackResponseMetadata(data)}`);
       }
 
       return data;
@@ -576,9 +606,52 @@ export async function sendChannelMessage(
     return { ok: true, ts: response.ts };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    logger.error({ error, channelId }, 'Failed to send Slack channel message');
+    logger.error(
+      {
+        error,
+        channelId,
+        blockSummary: summarizeBlocksForLog(message.blocks),
+        textLength: message.text?.length ?? 0,
+      },
+      'Failed to send Slack channel message',
+    );
     return { ok: false, error: errorMessage };
   }
+}
+
+/**
+ * Build a redacted block-shape summary for error logs. Captures the
+ * fields Slack's block validator most often rejects (text length,
+ * image_url length, alt_text length, element counts) without leaking
+ * draft content into application logs. Use only inside an error path
+ * where the original send already failed.
+ */
+function summarizeBlocksForLog(
+  blocks: SlackBlockMessage['blocks'],
+): Array<Record<string, unknown>> {
+  if (!Array.isArray(blocks)) return [];
+  return blocks.map((b, index) => {
+    const summary: Record<string, unknown> = { index, type: b.type };
+    if (b.text?.text != null) {
+      summary.textType = b.text.type;
+      summary.textLength = b.text.text.length;
+    }
+    if (b.image_url != null) {
+      const scheme = b.image_url.split(':', 1)[0];
+      summary.imageUrlScheme = scheme;
+      // Only log length for https URLs. If `isSafeVisualUrl` ever
+      // regresses and a `data:` URL slips through, the base64 payload
+      // length is itself a fingerprint we don't want in #admin-errors.
+      if (scheme === 'https') summary.imageUrlLength = b.image_url.length;
+    }
+    if (b.alt_text != null) {
+      summary.altTextLength = b.alt_text.length;
+    }
+    if (Array.isArray(b.elements)) {
+      summary.elementCount = b.elements.length;
+    }
+    return summary;
+  });
 }
 
 /**

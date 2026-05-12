@@ -112,6 +112,33 @@ describe('buildReviewBlocks', () => {
     expect(byId.get('announcement_mark_linkedin')?.style).toBeUndefined();
   });
 
+  it('clamps the header to Slack\'s 150-char plain_text cap', () => {
+    // Org names come from organizations.name and are not length-clamped
+    // at source. An overly long name used to push the header text past
+    // Slack's 150-char limit and the whole post failed with
+    // `invalid_blocks`.
+    const longName = 'A'.repeat(200);
+    const { blocks } = buildReviewBlocks({ ...base, orgName: longName });
+    const header = blocks.find((b) => b.type === 'header');
+    expect(header?.text?.type).toBe('plain_text');
+    expect(header?.text?.text.length).toBeLessThanOrEqual(150);
+    expect(header?.text?.text.endsWith('…')).toBe(true);
+  });
+
+  it('leaves short headers untouched (no trailing ellipsis)', () => {
+    const { blocks } = buildReviewBlocks(base);
+    const header = blocks.find((b) => b.type === 'header');
+    expect(header?.text?.text).toBe('New member announcement ready: Acme Ad Tech');
+  });
+
+  it('clamps backfill headers too — prefix counts against the 150 cap', () => {
+    const longName = 'A'.repeat(200);
+    const { blocks } = buildReviewBlocks({ ...base, orgName: longName, backfill: true });
+    const header = blocks.find((b) => b.type === 'header');
+    expect(header?.text?.text.length).toBeLessThanOrEqual(150);
+    expect(header?.text?.text.startsWith('[BACKFILL]')).toBe(true);
+  });
+
   it('neutralizes @channel, user tags, and backticks injected into drafts', () => {
     const hostile = {
       ...base,
