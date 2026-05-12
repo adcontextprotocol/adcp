@@ -161,11 +161,11 @@ Response from Sam's buyer agent:
   "type": "identity_match_response",
   "request_id": "id-7c9e1d",
   "eligible_package_ids": ["pkg-outdoor-audio"],
-  "ttl_sec": 60
+  "serve_window_sec": 60
 }
 ```
 
-Only eligible packages are listed — `pkg-outdoor-audio` passes the buyer's checks. The `ttl_sec: 60` tells the router to cache this eligibility for 60 seconds.
+Only eligible packages are listed — `pkg-outdoor-audio` passes the buyer's checks. The `serve_window_sec: 60` is a per-package single-shot fcap: after StreamHaus serves the user one impression on `pkg-outdoor-audio`, it MUST re-query Identity Match before serving from that package again.
 
 The example sends `package_ids` explicitly, but the publisher MAY omit it — Sam's identity-match service resolves the active package set from `seller_agent_url`. When `package_ids` IS sent, its composition MUST be independent of the current page — either all-active (every Sam package at StreamHaus) or fuzzed (a random sample padded with synthetic IDs that Sam will silently drop). A page-specific subset is forbidden; it would let the buyer correlate package sets across Context Match and Identity Match, breaking the structural separation.
 
