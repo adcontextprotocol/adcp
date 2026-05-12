@@ -2662,30 +2662,58 @@
       function renderPlacementTags() {
         const container = document.getElementById('placement-tags-list');
         if (!container) return;
+        container.innerHTML = '';
         const tags = Object.keys(state.placementTags).sort();
         if (tags.length === 0) {
-          container.innerHTML = '<p style="color: var(--color-text-muted); font-size: 13px; margin: 0;">No placement tags yet.</p>';
+          const empty = document.createElement('p');
+          empty.style.cssText = 'color: var(--color-text-muted); font-size: 13px; margin: 0;';
+          empty.textContent = 'No placement tags yet.';
+          container.appendChild(empty);
           return;
         }
-        container.innerHTML = tags
-          .map(tag => {
-            const placementCount = state.placements.filter(pl => pl.tags && pl.tags.includes(tag)).length;
-            const meta = state.placementTags[tag];
-            return `
-              <div class="dashboard-card" style="display: inline-block; min-width: 180px; margin-right: 12px; margin-bottom: 12px;">
-                <div class="dashboard-card-content">
-                  <div class="dashboard-card-title">🏷️ ${escapeHtml(tag)}</div>
-                  <div class="dashboard-card-meta" style="font-size: 13px; color: var(--color-text-muted);">
-                    ${meta && meta.description ? escapeHtml(meta.description) + '<br>' : ''}Used by ${placementCount} ${placementCount === 1 ? 'placement' : 'placements'}
-                  </div>
-                </div>
-                <div class="dashboard-card-actions">
-                  <button class="btn" onclick="removePlacementTag('${escapeHtml(tag)}')" style="background: var(--color-error-500); padding: 6px 12px; font-size: 13px;">🗑️ Delete</button>
-                </div>
-              </div>
-            `;
-          })
-          .join('');
+        tags.forEach(tag => {
+          const placementCount = state.placements.filter(pl => pl.tags && pl.tags.includes(tag)).length;
+          const meta = state.placementTags[tag];
+
+          const card = document.createElement('div');
+          card.className = 'dashboard-card';
+          card.style.cssText = 'display: inline-block; min-width: 180px; margin-right: 12px; margin-bottom: 12px;';
+
+          const content = document.createElement('div');
+          content.className = 'dashboard-card-content';
+
+          const title = document.createElement('div');
+          title.className = 'dashboard-card-title';
+          title.textContent = `🏷️ ${tag}`;
+          content.appendChild(title);
+
+          const metaEl = document.createElement('div');
+          metaEl.className = 'dashboard-card-meta';
+          metaEl.style.cssText = 'font-size: 13px; color: var(--color-text-muted);';
+          if (meta && meta.description) {
+            const desc = document.createElement('div');
+            desc.textContent = meta.description;
+            metaEl.appendChild(desc);
+          }
+          const usedBy = document.createElement('span');
+          usedBy.textContent = `Used by ${placementCount} ${placementCount === 1 ? 'placement' : 'placements'}`;
+          metaEl.appendChild(usedBy);
+          content.appendChild(metaEl);
+
+          const actions = document.createElement('div');
+          actions.className = 'dashboard-card-actions';
+
+          const deleteBtn = document.createElement('button');
+          deleteBtn.className = 'btn';
+          deleteBtn.style.cssText = 'background: var(--color-error-500); padding: 6px 12px; font-size: 13px;';
+          deleteBtn.textContent = '🗑️ Delete';
+          deleteBtn.onclick = () => removePlacementTag(tag);
+          actions.appendChild(deleteBtn);
+
+          card.appendChild(content);
+          card.appendChild(actions);
+          container.appendChild(card);
+        });
       }
 
       function showPlacementForm(index) {
