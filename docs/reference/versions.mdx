@@ -5,89 +5,74 @@ description: "Every published AdCP version, its status, and its end-of-life date
 "og:title": "AdCP — Versions & Compatibility"
 ---
 
-This page enumerates every published AdCP version, its current status, and its end-of-life date. For the policy behind these states — release tiers, schema-change scope, cadence — see [Versioning & Governance](/docs/reference/versioning).
-
 ## At a glance
 
-| Status | Versions | What it means |
-|---|---|---|
-| **Active** | 3.0 (current: 3.0.11) | Default for new integrations. Receives feature and security patches. |
-| **Security-only** | 2.5.x (final: 2.5.3) | Unsupported on the AAO network. Security patches through **August 1, 2026 (UTC)**. Not safe for interoperable production — missing accounts and governance protections. |
-| **End of life** | 2.0, 2.1 | Predate 2.5.x. No patches. Upgrade required. |
-| **Planned** | 3.1 (target late June 2026), 3.2 (target late September 2026), 4.0 (target early 2027) | Not yet released. |
+| Status | Versions | Wire pin | What it means |
+|---|---|---|---|
+| **Active** | 3.0 (current: 3.0.11) | `"3.0"` | Default for new integrations. Receives feature and security patches. |
+| **Security-only** | 2.5.0, 2.5.1, 2.5.3 | `"2.5"` | Security patches through **August 1, 2026 (UTC)**. Not safe for AAO-network production — see [v2 sunset](/docs/reference/v2-sunset). |
+| **End of life** | 2.0.0, 2.1.0 | — | No patches. Migrate to 3.0. |
+| **Planned** | 3.1, 3.2, 4.0 | — | Targets in [planned releases](/docs/reference/versioning#planned-releases). |
+
+**Wire values are release-precision only.** Send `"3.0"`, not `"3.0.11"` — a patch component on the wire is rejected. See [patches are not negotiated](/docs/reference/versioning#patches-are-not-negotiated).
+
+*Status legend: Active = current generation, receiving feature work. Security-only = patches for security issues only, no features. End of life = no patches. Planned = not yet released.*
 
 ## All published versions
 
 ### 3.x — current generation
 
-| Version | Released | Status |
+| Version | Released | Notes |
 |---|---|---|
-| 3.0.0 | 2026-04-22 | GA. Stable baseline for the 3.x cycle. |
-| 3.0.1 | 2026-04-28 | Patch (stable-surface no-op). |
-| 3.0.2 | 2026-04-30 | Patch. |
-| 3.0.3 | 2026-05-01 | Patch. |
-| 3.0.4 | 2026-05-02 | Patch. |
-| 3.0.5 | 2026-05-02 | Patch. |
-| 3.0.6 | 2026-05-03 | Patch. |
-| 3.0.7 | 2026-05-08 | Patch. |
-| 3.0.8 | 2026-05-08 | Patch. |
-| 3.0.9 | 2026-05-09 | Patch. |
-| 3.0.10 | 2026-05-10 | Patch. |
-| 3.0.11 | 2026-05-11 | Patch. **Latest published.** |
+| 3.0.0 | 2026-04-22 | GA — stable baseline for the 3.x cycle. |
+| 3.0.1 through 3.0.10 | 2026-04-28 to 2026-05-10 | Patches. Wire-compatible with 3.0.0. |
+| **3.0.11** | **2026-05-11** | **Latest published patch.** |
 
-All 3.0.x patches are stable-surface no-ops for 3.0-conformant agents. Upgrading to the latest patch of your current release is always safe — see [Patch releases](/docs/reference/versioning#patch-releases).
+Patches don't change the wire contract. Upgrading within 3.0.x is always safe. For per-version detail, see [Release Notes](/docs/reference/release-notes) (curated narrative) and the [Changelog](/docs/reference/changelog) (full technical history).
 
-For per-version detail, see [Release Notes](/docs/reference/release-notes) (curated narrative) and the [Changelog](/docs/reference/changelog) (full technical history).
+### Prereleases (superseded)
 
-### 3.0 prereleases
-
-| Version | Released | Status |
+| Version | Released | Notes |
 |---|---|---|
-| 3.0.0-beta.1 | 2026-01-26 | Pre-release. Superseded. |
-| 3.0.0-beta.2 | 2026-02-02 | Pre-release. Superseded. |
-| 3.0.0-beta.3 | 2026-02-12 | Pre-release. Superseded. |
-| 3.0.0-rc.1 | 2026-03-01 | Release candidate. Superseded. |
-| 3.0.0-rc.2 | 2026-03-15 | Release candidate. Superseded. |
-| 3.0.0-rc.3 | 2026-04-01 | Release candidate. Superseded by GA. See [prerelease upgrade notes](/docs/reference/migration/prerelease-upgrades) if you adopted rc.3. |
+| 3.0.0-beta.1 through rc.2 | 2026-01-26 to 2026-03-15 | Superseded. |
+| 3.0.0-rc.3 | 2026-04-01 | Superseded by GA. See [prerelease upgrade notes](/docs/reference/migration/prerelease-upgrades) if you adopted rc.3. |
 
 ### 2.x — sunsetting
 
-| Version | Released | Status |
+| Version | Released | Notes |
 |---|---|---|
-| 2.0.0 | 2025-10-15 | End of life. Predates 2.5.x. |
-| 2.1.0 | 2025-10-19 | End of life. Predates 2.5.x. |
+| 2.0.0 | 2025-10-15 | End of life. No patches. Migrate to 3.0. |
+| 2.1.0 | 2025-10-19 | End of life. No patches. Migrate to 3.0. |
 | 2.5.0 | 2025-11-22 | Security-only through Aug 1, 2026 (UTC). |
 | 2.5.1 | 2025-12-24 | Security-only through Aug 1, 2026 (UTC). |
-| 2.5.3 | January 2026 | Security-only through Aug 1, 2026 (UTC). **Final 2.x release.** |
+| 2.5.3 | January 2026 | Security-only through Aug 1, 2026 (UTC). **Last 2.x release.** |
 
-After August 1, 2026 (UTC), the entire 2.x line is fully deprecated. The 2.x schema URLs continue to resolve so existing integrations don't break silently, but those schemas receive no further updates. See [v2 Sunset](/docs/reference/v2-sunset) for the full timeline and migration paths.
+After August 1, 2026 (UTC), the entire 2.x line is fully deprecated. The 2.x schema URLs continue to resolve so existing integrations don't break silently, but those schemas receive no further updates. See [v2 Sunset](/docs/reference/v2-sunset) for migration paths.
 
-2.x version numbers between published releases (2.2, 2.3, 2.4, 2.5.2, 2.6) appear only as in-flight changelog entries — they were either rolled forward into the next published release or deferred to 3.0. There is no implementation to integrate against.
-
-## Common version questions
+## FAQ
 
 ### What's "current"?
-**3.0.11.** Pin your integration to `"3.0"` (release precision) and upgrade patches as they ship. See [Version negotiation](/docs/reference/versioning#version-negotiation).
+**3.0.11.** Pin your integration to `"3.0"` (not `"3.0.11"`) — wire values use release precision. See [Version negotiation](/docs/reference/versioning#version-negotiation).
 
-### Why are there gaps in the 2.x numbering (no 2.2, 2.3, 2.4, 2.6)?
-The 2.x line skipped version numbers during its working-group cycle. Some numbers appear as in-flight changelog entries but were never released — the changes were rolled forward into the next published version or deferred to 3.0. The five published 2.x releases are 2.0.0, 2.1.0, 2.5.0, 2.5.1, and 2.5.3.
+### What happened to 2.2, 2.3, 2.4, 2.6?
+The 2.x line skipped version numbers during its working-group cycle. Some appear as in-flight changelog entries but were never released — the changes were rolled forward into the next published version or deferred to 3.0. The five published 2.x releases are 2.0.0, 2.1.0, 2.5.0, 2.5.1, and 2.5.3.
 
 ### Can I still register a v2 agent?
 Yes — v2 agents can be registered in the AAO registry but cannot be AAO Verified. Certification and verified-default discovery require v3.x. See [v2 Sunset → If you use the AAO registry](/docs/reference/v2-sunset#if-you-use-the-aao-registry).
 
 ### How long will 3.0 be supported?
-At least 12 months after 4.0 GA. The previous-major support commitment is documented in [Versioning → Support window for previous major](/docs/reference/versioning#support-window-for-previous-major).
+At least 12 months after 4.0 GA. See [Versioning → Support window for previous major](/docs/reference/versioning#support-window-for-previous-major).
 
 ### Where is 4.0?
-Targeted for early 2027. The current 3.x cycle is mid-stream — see the [planned releases table](/docs/reference/versioning#planned-releases).
+Targeted for early 2027. 3.x is mid-cycle — see the [planned releases table](/docs/reference/versioning#planned-releases).
 
 ## Choosing a version
 
 | If you are… | Use |
 |---|---|
-| Building a new integration today | **3.0** (latest patch). |
-| Running a 2.5.x integration | Plan to migrate to 3.0 before **Aug 1, 2026 (UTC)**. Start with the [migration guide](/docs/reference/migration). |
-| Running a 2.0 or 2.1 integration | Upgrade now — these are out of support. |
+| Building a new integration today | **3.0** (latest patch). Pin `"3.0"` on the wire. |
+| Running a 2.5.x integration | Migrate to 3.0 before **Aug 1, 2026 (UTC)**. Start with the [migration guide](/docs/reference/migration). |
+| Running a 2.0 or 2.1 integration | Upgrade now — out of support. |
 | Trying an unreleased feature | See [prerelease upgrade notes](/docs/reference/migration/prerelease-upgrades) and [experimental status](/docs/reference/experimental-status). |
 
 ## Related
