@@ -93,17 +93,71 @@ async function seedMembership(pool: Pool, userId: string, role: 'owner' | 'admin
   );
 }
 
-function buildApp(invalidateMemberContextCache: () => void) {
+function buildApp(invalidateMemberContextCache: () => void, workos: any = null) {
   const app = express();
   app.use(express.json());
   // requireAuth is replaced via vi.mock above; it reads x-test-user from
   // the request headers and populates req.user.
   const router = createMeOrganizationDomainsRouter({
-    workos: null,
+    workos,
     invalidateMemberContextCache,
   });
   app.use('/api/me/organization/domains', router);
   return app;
+}
+
+// Minimal WorkOS SDK stand-in for the add/verify routes. Each test seeds
+// the in-memory state and points the methods at it. Mirrors the real SDK
+// shapes used in the route (organizations.getOrganization,
+// organizationDomains.{create,verify,delete}OrganizationDomain).
+type FakeDomain = {
+  id: string;
+  domain: string;
+  state: string;
+  verificationToken: string | null;
+  verificationPrefix: string | null;
+  verificationStrategy: string | null;
+};
+
+function makeFakeWorkos(initial: FakeDomain[] = []) {
+  const state = { domains: initial.slice() };
+  const errors: { create?: any; verify?: any } = {};
+  return {
+    state,
+    setCreateError(err: any) { errors.create = err; },
+    setVerifyError(err: any) { errors.verify = err; },
+    organizations: {
+      async getOrganization(_orgId: string) {
+        return { domains: state.domains };
+      },
+    },
+    organizationDomains: {
+      async createOrganizationDomain({ domain }: { organizationId: string; domain: string }) {
+        if (errors.create) throw errors.create;
+        const created: FakeDomain = {
+          id: 'org_domain_' + Math.random().toString(36).slice(2, 10),
+          domain,
+          state: 'pending',
+          verificationToken: 'token_' + Math.random().toString(36).slice(2, 10),
+          verificationPrefix: '_workos',
+          verificationStrategy: 'dns',
+        };
+        state.domains.push(created);
+        return created;
+      },
+      async verifyOrganizationDomain(id: string) {
+        if (errors.verify) throw errors.verify;
+        const found = state.domains.find(d => d.id === id);
+        if (!found) throw Object.assign(new Error('not found'), { status: 404 });
+        found.state = 'verified';
+        return found;
+      },
+      async deleteOrganizationDomain(id: string) {
+        const idx = state.domains.findIndex(d => d.id === id);
+        if (idx >= 0) state.domains.splice(idx, 1);
+      },
+    },
+  };
 }
 
 describe('GET /api/me/organization/domains + PUT /:domain/primary', () => {
@@ -261,5 +315,313 @@ describe('GET /api/me/organization/domains + PUT /:domain/primary', () => {
       .set('x-test-user', OWNER_USER);
 
     expect(res.status).toBe(404);
+  });
+});
+
+describe('POST /api/me/organization/domains (issue + verify challenge)', () => {
+  let pool: Pool;
+  let cacheInvalidations: number;
+
+  beforeAll(async () => {
+    pool = initializeDatabase({
+      connectionString: process.env.DATABASE_URL || 'postgresql://adcp:localdev@localhost:5432/adcp_test',
+    });
+    await runMigrations();
+  }, 60000);
+
+  afterAll(async () => {
+    await cleanup(pool);
+    await closeDatabase();
+  });
+
+  beforeEach(async () => {
+    await cleanup(pool);
+    cacheInvalidations = 0;
+  });
+
+  it('issues a WorkOS DNS challenge and writes a pending source=workos row', async () => {
+    await pool.query(
+      `INSERT INTO organizations (workos_organization_id, name, is_personal, created_at, updated_at)
+       VALUES ($1, $2, false, NOW(), NOW())
+       ON CONFLICT (workos_organization_id) DO NOTHING`,
+      [TEST_ORG, 'Me Domains Test Co'],
+    );
+    await seedProfile(pool);
+    await seedMembership(pool, OWNER_USER, 'owner');
+
+    const fakeWorkos = makeFakeWorkos();
+    const app = buildApp(() => { cacheInvalidations += 1; }, fakeWorkos);
+
+    const res = await request(app)
+      .post('/api/me/organization/domains?org=' + TEST_ORG)
+      .set('x-test-user', OWNER_USER)
+      .send({ domain: 'me-domains-new.test' });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      domain: 'me-domains-new.test',
+      already_verified: false,
+      verification_prefix: '_workos',
+      verification_strategy: 'dns',
+    });
+    expect(typeof res.body.verification_token).toBe('string');
+    expect(res.body.verification_token.length).toBeGreaterThan(0);
+
+    const row = await pool.query<{ source: string; verified: boolean }>(
+      `SELECT source, verified FROM organization_domains WHERE workos_organization_id = $1 AND domain = $2`,
+      [TEST_ORG, 'me-domains-new.test'],
+    );
+    expect(row.rowCount).toBe(1);
+    expect(row.rows[0].source).toBe('workos');
+    expect(row.rows[0].verified).toBe(false);
+  });
+
+  it('rejects POST add from a non-owner/admin member', async () => {
+    await pool.query(
+      `INSERT INTO organizations (workos_organization_id, name, is_personal, created_at, updated_at)
+       VALUES ($1, $2, false, NOW(), NOW())
+       ON CONFLICT (workos_organization_id) DO NOTHING`,
+      [TEST_ORG, 'Me Domains Test Co'],
+    );
+    await seedProfile(pool);
+    await seedMembership(pool, MEMBER_USER, 'member');
+
+    const app = buildApp(() => { cacheInvalidations += 1; }, makeFakeWorkos());
+
+    const res = await request(app)
+      .post('/api/me/organization/domains?org=' + TEST_ORG)
+      .set('x-test-user', MEMBER_USER)
+      .send({ domain: 'me-domains-new.test' });
+
+    expect(res.status).toBe(403);
+  });
+
+  it('rejects malformed / public-suffix domains', async () => {
+    await pool.query(
+      `INSERT INTO organizations (workos_organization_id, name, is_personal, created_at, updated_at)
+       VALUES ($1, $2, false, NOW(), NOW())
+       ON CONFLICT (workos_organization_id) DO NOTHING`,
+      [TEST_ORG, 'Me Domains Test Co'],
+    );
+    await seedProfile(pool);
+    await seedMembership(pool, OWNER_USER, 'owner');
+
+    const app = buildApp(() => { cacheInvalidations += 1; }, makeFakeWorkos());
+
+    const res = await request(app)
+      .post('/api/me/organization/domains?org=' + TEST_ORG)
+      .set('x-test-user', OWNER_USER)
+      .send({ domain: 'gmail.com' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('invalid_domain');
+  });
+
+  it('surfaces the existing token when a pending challenge already exists (idempotent)', async () => {
+    await pool.query(
+      `INSERT INTO organizations (workos_organization_id, name, is_personal, created_at, updated_at)
+       VALUES ($1, $2, false, NOW(), NOW())
+       ON CONFLICT (workos_organization_id) DO NOTHING`,
+      [TEST_ORG, 'Me Domains Test Co'],
+    );
+    await seedProfile(pool);
+    await seedMembership(pool, OWNER_USER, 'owner');
+
+    const fakeWorkos = makeFakeWorkos([
+      {
+        id: 'org_domain_existing',
+        domain: 'me-domains-new.test',
+        state: 'pending',
+        verificationToken: 'preexisting-token',
+        verificationPrefix: '_workos',
+        verificationStrategy: 'dns',
+      },
+    ]);
+    const app = buildApp(() => { cacheInvalidations += 1; }, fakeWorkos);
+
+    const res = await request(app)
+      .post('/api/me/organization/domains?org=' + TEST_ORG)
+      .set('x-test-user', OWNER_USER)
+      .send({ domain: 'me-domains-new.test' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.verification_token).toBe('preexisting-token');
+    expect(res.body.already_verified).toBe(false);
+
+    // Local row mirrors pending state at source=workos.
+    const row = await pool.query<{ source: string; verified: boolean }>(
+      `SELECT source, verified FROM organization_domains WHERE workos_organization_id = $1 AND domain = $2`,
+      [TEST_ORG, 'me-domains-new.test'],
+    );
+    expect(row.rows[0].source).toBe('workos');
+    expect(row.rows[0].verified).toBe(false);
+  });
+
+  it('returns 409 when WorkOS reports the domain belongs to another org', async () => {
+    await pool.query(
+      `INSERT INTO organizations (workos_organization_id, name, is_personal, created_at, updated_at)
+       VALUES ($1, $2, false, NOW(), NOW())
+       ON CONFLICT (workos_organization_id) DO NOTHING`,
+      [TEST_ORG, 'Me Domains Test Co'],
+    );
+    await seedProfile(pool);
+    await seedMembership(pool, OWNER_USER, 'owner');
+
+    const fakeWorkos = makeFakeWorkos();
+    const collisionErr: any = new Error('Domain already used');
+    collisionErr.status = 422;
+    collisionErr.response = { data: { code: 'organization_domain_already_used', message: 'already used' } };
+    fakeWorkos.setCreateError(collisionErr);
+    const app = buildApp(() => { cacheInvalidations += 1; }, fakeWorkos);
+
+    const res = await request(app)
+      .post('/api/me/organization/domains?org=' + TEST_ORG)
+      .set('x-test-user', OWNER_USER)
+      .send({ domain: 'me-domains-collide.test' });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toBe('domain_already_claimed');
+  });
+
+  it('verify flips local row to verified=true and invalidates cache', async () => {
+    await seedOrgWithDomains(pool, [
+      { domain: 'me-domains-new.test', verified: false, is_primary: false, source: 'workos' },
+    ]);
+    await seedProfile(pool);
+    await seedMembership(pool, OWNER_USER, 'owner');
+
+    const fakeWorkos = makeFakeWorkos([
+      {
+        id: 'org_domain_new',
+        domain: 'me-domains-new.test',
+        state: 'pending',
+        verificationToken: 'token123',
+        verificationPrefix: '_workos',
+        verificationStrategy: 'dns',
+      },
+    ]);
+    const app = buildApp(() => { cacheInvalidations += 1; }, fakeWorkos);
+
+    const res = await request(app)
+      .post('/api/me/organization/domains/me-domains-new.test/verify?org=' + TEST_ORG)
+      .set('x-test-user', OWNER_USER);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ success: true, newly_verified: true, state: 'verified' });
+    expect(cacheInvalidations).toBe(1);
+
+    const row = await pool.query<{ verified: boolean; source: string }>(
+      `SELECT verified, source FROM organization_domains WHERE workos_organization_id = $1 AND domain = $2`,
+      [TEST_ORG, 'me-domains-new.test'],
+    );
+    expect(row.rows[0].verified).toBe(true);
+    expect(row.rows[0].source).toBe('workos');
+  });
+
+  it('verify returns still_pending when WorkOS finds no TXT record', async () => {
+    await seedOrgWithDomains(pool, [
+      { domain: 'me-domains-new.test', verified: false, is_primary: false, source: 'workos' },
+    ]);
+    await seedProfile(pool);
+    await seedMembership(pool, OWNER_USER, 'owner');
+
+    const fakeWorkos = makeFakeWorkos([
+      {
+        id: 'org_domain_new',
+        domain: 'me-domains-new.test',
+        state: 'pending',
+        verificationToken: 'token123',
+        verificationPrefix: '_workos',
+        verificationStrategy: 'dns',
+      },
+    ]);
+    const pendingErr: any = new Error('not yet propagated');
+    pendingErr.status = 422;
+    fakeWorkos.setVerifyError(pendingErr);
+    const app = buildApp(() => { cacheInvalidations += 1; }, fakeWorkos);
+
+    const res = await request(app)
+      .post('/api/me/organization/domains/me-domains-new.test/verify?org=' + TEST_ORG)
+      .set('x-test-user', OWNER_USER);
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('still_pending');
+
+    const row = await pool.query<{ verified: boolean }>(
+      `SELECT verified FROM organization_domains WHERE workos_organization_id = $1 AND domain = $2`,
+      [TEST_ORG, 'me-domains-new.test'],
+    );
+    expect(row.rows[0].verified).toBe(false);
+  });
+
+  it('verify returns 404 when no WorkOS challenge exists', async () => {
+    await pool.query(
+      `INSERT INTO organizations (workos_organization_id, name, is_personal, created_at, updated_at)
+       VALUES ($1, $2, false, NOW(), NOW())
+       ON CONFLICT (workos_organization_id) DO NOTHING`,
+      [TEST_ORG, 'Me Domains Test Co'],
+    );
+    await seedProfile(pool);
+    await seedMembership(pool, OWNER_USER, 'owner');
+
+    const app = buildApp(() => { cacheInvalidations += 1; }, makeFakeWorkos());
+
+    const res = await request(app)
+      .post('/api/me/organization/domains/me-domains-never-issued.test/verify?org=' + TEST_ORG)
+      .set('x-test-user', OWNER_USER);
+
+    expect(res.status).toBe(404);
+    expect(res.body.error).toBe('no_challenge');
+  });
+
+  it('rejects verify from a non-owner/admin member', async () => {
+    await seedOrgWithDomains(pool, [
+      { domain: 'me-domains-new.test', verified: false, is_primary: false, source: 'workos' },
+    ]);
+    await seedProfile(pool);
+    await seedMembership(pool, MEMBER_USER, 'member');
+
+    const app = buildApp(() => { cacheInvalidations += 1; }, makeFakeWorkos());
+
+    const res = await request(app)
+      .post('/api/me/organization/domains/me-domains-new.test/verify?org=' + TEST_ORG)
+      .set('x-test-user', MEMBER_USER);
+
+    expect(res.status).toBe(403);
+  });
+
+  it('after verify, PUT /:domain/primary accepts the WorkOS-verified row', async () => {
+    // End-to-end seam: this is the original "why does this need admin?" path —
+    // a member-issued and member-verified domain should be promotable to
+    // primary without admin intervention.
+    await seedOrgWithDomains(pool, [
+      { domain: 'me-domains-existing.test', verified: true, is_primary: true, source: 'workos' },
+      { domain: 'me-domains-new.test', verified: false, is_primary: false, source: 'workos' },
+    ]);
+    await seedProfile(pool);
+    await seedMembership(pool, OWNER_USER, 'owner');
+
+    const fakeWorkos = makeFakeWorkos([
+      {
+        id: 'org_domain_new',
+        domain: 'me-domains-new.test',
+        state: 'pending',
+        verificationToken: 'token123',
+        verificationPrefix: '_workos',
+        verificationStrategy: 'dns',
+      },
+    ]);
+    const app = buildApp(() => { cacheInvalidations += 1; }, fakeWorkos);
+
+    const verifyRes = await request(app)
+      .post('/api/me/organization/domains/me-domains-new.test/verify?org=' + TEST_ORG)
+      .set('x-test-user', OWNER_USER);
+    expect(verifyRes.status).toBe(200);
+
+    const primaryRes = await request(app)
+      .put('/api/me/organization/domains/me-domains-new.test/primary?org=' + TEST_ORG)
+      .set('x-test-user', OWNER_USER);
+    expect(primaryRes.status).toBe(200);
+    expect(primaryRes.body.primary_domain).toBe('me-domains-new.test');
   });
 });
