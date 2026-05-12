@@ -2275,14 +2275,14 @@
                     <div class="dashboard-card">
                         <div class="dashboard-card-content">
                             <div class="dashboard-card-title">
-                                ${icon} ${prop.property_id}
+                                ${icon} ${escapeHtml(prop.property_id)}
                             </div>
                             <div class="dashboard-card-meta">
-                                ${formatPropertyType(prop.property_type)} • ${prop.name}
+                                ${escapeHtml(formatPropertyType(prop.property_type))} • ${escapeHtml(prop.name)}
                             </div>
                             <div class="dashboard-card-meta" style="font-size: 13px; color: var(--color-text-muted);">
                                 ${identifierCount} identifier${identifierCount > 1 ? 's' : ''}
-                                ${prop.tags && prop.tags.length > 0 ? ` • Tags: ${prop.tags.join(', ')}` : ''}
+                                ${prop.tags && prop.tags.length > 0 ? ` • Tags: ${escapeHtml(prop.tags.join(', '))}` : ''}
                             </div>
                             <div class="dashboard-card-tags">
                                 ${assignmentTag}
@@ -2382,7 +2382,7 @@
                     <div class="dashboard-card" style="display: inline-block; min-width: 200px; margin-right: 12px; margin-bottom: 12px;">
                         <div class="dashboard-card-content">
                             <div class="dashboard-card-title">
-                                🏷️ ${tag}
+                                🏷️ ${escapeHtml(tag)}
                             </div>
                             <div class="dashboard-card-meta" style="font-size: 13px; color: var(--color-text-muted);">
                                 Used by ${propertyCount} ${propertyCount === 1 ? 'property' : 'properties'}
@@ -2399,9 +2399,13 @@
         // Update bulk tag select dropdown
         const bulkSelect = document.getElementById('bulk-tag-select');
         if (bulkSelect) {
-          bulkSelect.innerHTML =
-            '<option value="">Select a tag...</option>' +
-            state.tags.map(tag => `<option value="${tag}">${tag}</option>`).join('');
+          bulkSelect.innerHTML = '<option value="">Select a tag...</option>';
+          state.tags.forEach(tag => {
+            const opt = document.createElement('option');
+            opt.value = tag;
+            opt.textContent = tag;
+            bulkSelect.appendChild(opt);
+          });
         }
       }
 
@@ -2436,19 +2440,19 @@
             }
 
             const tagDisplay = signal.tags && signal.tags.length > 0
-              ? `Tags: ${signal.tags.join(', ')}`
+              ? `Tags: ${escapeHtml(signal.tags.join(', '))}`
               : 'No tags';
 
             return `
               <div class="dashboard-card">
                 <div class="dashboard-card-content">
                   <div class="dashboard-card-title">
-                    ${icon} ${signal.id}
+                    ${icon} ${escapeHtml(signal.id)}
                   </div>
                   <div class="dashboard-card-meta">
-                    ${typeInfo} - ${signal.name}
+                    ${escapeHtml(typeInfo)} - ${escapeHtml(signal.name)}
                   </div>
-                  ${signal.description ? `<div class="dashboard-card-meta" style="font-size: 13px; color: var(--color-text-muted);">${signal.description.substring(0, 100)}${signal.description.length > 100 ? '...' : ''}</div>` : ''}
+                  ${signal.description ? `<div class="dashboard-card-meta" style="font-size: 13px; color: var(--color-text-muted);">${escapeHtml(signal.description.substring(0, 100))}${signal.description.length > 100 ? '...' : ''}</div>` : ''}
                   <div class="dashboard-card-meta" style="font-size: 13px; color: var(--color-text-muted);">
                     ${tagDisplay}
                   </div>
@@ -2485,7 +2489,7 @@
               <div class="dashboard-card" style="display: inline-block; min-width: 200px; margin-right: 12px; margin-bottom: 12px;">
                 <div class="dashboard-card-content">
                   <div class="dashboard-card-title">
-                    🏷️ ${tag}
+                    🏷️ ${escapeHtml(tag)}
                   </div>
                   <div class="dashboard-card-meta" style="font-size: 13px; color: var(--color-text-muted);">
                     Used by ${signalCount} ${signalCount === 1 ? 'signal' : 'signals'}
@@ -3459,6 +3463,7 @@
           textarea.dataset.sigIndex = String(i);
           textarea.style.cssText = 'flex:1;padding:6px;border:1px solid var(--color-border);border-radius:6px;font-size:12px;font-family:monospace;resize:vertical;';
           textarea.rows = 4;
+          textarea.maxLength = 16384;
           textarea.placeholder = '{"kid":"key-1","kty":"OKP","crv":"Ed25519","x":"base64url..."}';
           textarea.value = JSON.stringify(key, null, 2);
 
