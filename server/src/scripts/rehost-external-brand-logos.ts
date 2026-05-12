@@ -157,6 +157,20 @@ async function main(): Promise<void> {
     const externals = Array.from(externalLogosOf(manifest, ourHost));
     if (externals.length === 0) continue;
 
+    // Dry-run is truly side-effect-free: don't call rehostExternalLogo (which
+    // would download bytes and insert a brand_logos row even if we discard the
+    // result). Just list the URLs that would be attempted. Apply mode actually
+    // does the work — the per-URL outcome (rewrite vs left-alone) is reported
+    // there.
+    if (dryRun) {
+      touched++;
+      for (const { logo, location } of externals) {
+        console.log(`  ${row.domain}  ${location}  ${logo.url as string}  (would attempt rehost)`);
+        urlsRewritten++;
+      }
+      continue;
+    }
+
     let changed = false;
     for (const { logo, location } of externals) {
       const before = logo.url as string;
@@ -176,12 +190,10 @@ async function main(): Promise<void> {
 
     if (changed) {
       touched++;
-      if (!dryRun) {
-        await pool.query(
-          `UPDATE brands SET brand_manifest = $1::jsonb, updated_at = NOW() WHERE domain = $2`,
-          [JSON.stringify(manifest), row.domain],
-        );
-      }
+      await pool.query(
+        `UPDATE brands SET brand_manifest = $1::jsonb, updated_at = NOW() WHERE domain = $2`,
+        [JSON.stringify(manifest), row.domain],
+      );
     }
   }
 
@@ -190,9 +202,14 @@ async function main(): Promise<void> {
   console.log(`Our host:       ${ourHost}`);
   console.log(`Scope:          ${onlyDomain ? `single brand (${onlyDomain})` : 'all brands with manifests'}`);
   console.log(`Scanned:        ${scanned} brands`);
-  console.log(`Brands touched: ${touched}${dryRun ? ' (would touch)' : ''}`);
-  console.log(`URLs rewritten: ${urlsRewritten}${dryRun ? ' (would rewrite)' : ''}`);
-  console.log(`URLs left:      ${urlsLeftAlone}  (rehost failed — URL stays in manifest)`);
+  if (dryRun) {
+    console.log(`Brands eligible:    ${touched}`);
+    console.log(`URLs to attempt:    ${urlsRewritten}  (per-URL success depends on the live fetch — see --apply output)`);
+  } else {
+    console.log(`Brands touched:     ${touched}`);
+    console.log(`URLs rewritten:     ${urlsRewritten}`);
+    console.log(`URLs left:          ${urlsLeftAlone}  (rehost failed — URL stays in manifest)`);
+  }
 
   if (failures.length > 0) {
     console.log('\nLeft-alone URLs (rehost failed; runtime <img onerror> fallback hides these):');
