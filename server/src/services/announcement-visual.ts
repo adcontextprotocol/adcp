@@ -152,7 +152,16 @@ async function fetchApprovedPortraitUrlByOrg(orgId: string): Promise<string | nu
      LIMIT 1`,
     [orgId],
   );
-  return result.rows[0]?.image_url ?? null;
+  const raw = result.rows[0]?.image_url ?? null;
+  if (!raw) return null;
+  // Portraits are stored as same-origin relative paths (`/api/portraits/{id}.png`).
+  // Slack needs an absolute https URL to fetch the image, so prefix APP_URL.
+  const absolute = raw.startsWith('/') ? `${APP_URL}${raw}` : raw;
+  if (!isSafeVisualUrl(absolute)) {
+    logger.warn({ orgId, reason: 'unsafe_visual_url' }, 'Rejected portrait URL');
+    return null;
+  }
+  return absolute;
 }
 
 export interface VisualResolveInputs {

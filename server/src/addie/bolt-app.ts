@@ -2468,7 +2468,9 @@ async function handleProspectClaim({ ack, body, client }: any): Promise<void> {
   try {
     const pool = getPool();
 
-    // Look up the Slack user's WorkOS identity and verify they're an admin
+    // Look up the Slack user's WorkOS identity (via slack_user_mappings) and
+    // verify they're an admin. `users` has no slack_user_id column — Slack ↔
+    // WorkOS linkage lives in slack_user_mappings.
     const userResult = await pool.query<{ workos_user_id: string; first_name: string; email: string; is_admin: boolean }>(
       `SELECT u.workos_user_id, u.first_name, u.email,
               EXISTS(
@@ -2479,7 +2481,11 @@ async function handleProspectClaim({ ack, body, client }: any): Promise<void> {
                   )
                   AND om.role IN ('admin')
               ) as is_admin
-       FROM users u WHERE u.slack_user_id = $1`,
+       FROM slack_user_mappings sm
+       JOIN users u ON u.workos_user_id = sm.workos_user_id
+       WHERE sm.slack_user_id = $1
+         AND sm.mapping_status = 'mapped'
+         AND sm.workos_user_id IS NOT NULL`,
       [userId]
     );
 
