@@ -107,7 +107,7 @@ The TMPX token does not violate structural separation because:
 If the context path sent only the packages relevant to this page, and the identity path sent only those same packages, a buyer could compare the two sets and infer which page the identity request came from. TMP prevents this by requiring structurally different sets:
 
 - **Context Match** sends no package list. The provider evaluates its synced package set for the placement — stable per placement, the same for every user. Because no packages are sent per request, the publisher cannot accidentally leak identity through package filtering.
-- **Identity Match** sends `package_ids`: ALL active packages for the buyer across all placements and properties. The buyer evaluates the user against their full package portfolio.
+- **Identity Match** sends `package_ids` (or omits it entirely, in which case the buyer evaluates against its full registered active set for `seller_agent_url`). When sent, composition MUST be statistically independent of the current placement — either all-active (every active package for this buyer at this publisher) or fuzzed (a random sample optionally padded with synthetic non-existent IDs that the buyer silently drops). The buyer evaluates the user against this set, not against just the page-specific subset.
 
 The context set is scoped to one placement. The identity set is scoped to one buyer's entire active inventory. The two sets are structurally different, and neither reveals information about the other.
 
@@ -115,9 +115,10 @@ The publisher performs the intersection locally: which packages were both activa
 
 ## Temporal Decorrelation
 
-Even with separate code paths and different package sets, if Context Match and Identity Match requests arrive at a buyer at the same instant from the same publisher, timing correlation is possible. TMP addresses this:
+Even with separate code paths and different package sets, if Context Match and Identity Match requests arrive at a buyer at the same instant — or always in the same order — from the same publisher, timing or ordering correlation is possible. TMP addresses both:
 
 - Publishers SHOULD introduce a random delay between context and identity requests. The recommended range is 100-2000ms, uniformly distributed.
+- Publishers SHOULD also randomize the order: each opportunity SHOULD have a roughly equal probability of context match going first or identity match going first. A fixed order leaks the pairing through ordering even when the delay is randomized.
 - Publishers MAY batch Identity Match requests across multiple page views, further obscuring which context request each identity request corresponds to.
 - Publishers MAY route context and identity requests through different network paths.
 
