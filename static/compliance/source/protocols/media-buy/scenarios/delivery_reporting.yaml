@@ -162,6 +162,8 @@ phases:
         expected: |
           The test controller acknowledges the simulated delivery data.
         sample_request:
+          account:
+            sandbox: true
           scenario: "simulate_delivery"
           params:
             media_buy_id: "$context.media_buy_id"
