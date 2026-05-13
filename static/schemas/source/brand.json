@@ -14,9 +14,44 @@
       "description": "Brand identifier within the house portfolio. Lowercase alphanumeric with underscores. House chooses this ID.",
       "pattern": "^[a-z0-9_]+$"
     },
+    "trademark": {
+      "type": "object",
+      "description": "A registered trademark. May appear at house level (corporate marks, e.g., 'NIKE' owned by Nike, Inc.) or at brand level (brand-specific marks, e.g., 'CONVERSE' owned by Converse). Resolution between house- and brand-level trademarks is union — both lists are valid claims about marks the publisher controls.",
+      "properties": {
+        "registry": {
+          "type": "string",
+          "description": "Trademark registry (e.g., 'USPTO', 'EUIPO', 'JPO', 'CNIPA')"
+        },
+        "number": {
+          "type": "string",
+          "description": "Registration number as issued by the registry"
+        },
+        "mark": {
+          "type": "string",
+          "description": "The registered mark as published"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["active", "pending", "abandoned", "cancelled", "expired"],
+          "description": "Registration status. Omit for active marks if status tracking is not maintained."
+        },
+        "license_type": {
+          "type": "string",
+          "enum": ["owned", "licensed_in", "licensed_out"],
+          "description": "Whether the publisher owns the mark, licenses it from another entity, or licenses it to others. 'owned' is the default if omitted."
+        },
+        "countries": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 2, "maxLength": 2 },
+          "description": "ISO 3166-1 alpha-2 country codes where this registration applies. Omit for global or where the registry's jurisdiction is implicit."
+        }
+      },
+      "required": ["registry", "number", "mark"],
+      "additionalProperties": true
+    },
     "brand_ref": {
       "type": "object",
-      "description": "Reference to a pointer brand owned by this house. The child publishes its own canonical brand.json at the named domain. House-side declaration; mutual-assertion trust requires the child's house_domain to reciprocate. See RFC: docs/brand-protocol/proposals/distributed-brand-json-rfc.mdx",
+      "description": "Reference to a pointer brand owned by this house. The child publishes its own canonical brand.json at the named domain. House-side declaration; mutual-assertion trust requires the child's house_domain to reciprocate. See docs/brand-protocol/brand-json.mdx",
       "properties": {
         "domain": {
           "$ref": "#/definitions/domain",
@@ -447,6 +482,11 @@
             "required": ["text"]
           },
           "description": "Legal disclaimers for creatives"
+        },
+        "trademarks": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/trademark" },
+          "description": "Brand-level registered trademarks. Use for marks the brand owns or controls (e.g., a sub-brand's own marks distinct from the corporate parent). House-level trademarks live on the house object; resolution between the two is union — both lists are valid claims."
         },
         "voice_synthesis": {
           "type": "object",
@@ -1397,7 +1437,7 @@
     {
       "type": "object",
       "title": "House Portfolio",
-      "description": "Full house/brand portfolio with hierarchy, creative assets, and properties. May carry inline brands (parent-owned, brands[]) and/or pointer brands (child-owned canonical documents, brand_refs[]). At least one of brands[] or brand_refs[] is required. A brand_id MUST NOT appear in both. See RFC: docs/brand-protocol/proposals/distributed-brand-json-rfc.mdx",
+      "description": "Full house/brand portfolio with hierarchy, creative assets, and properties. May carry inline brands (parent-owned, brands[]) and/or pointer brands (child-owned canonical documents, brand_refs[]). At least one of brands[] or brand_refs[] is required. A brand_id MUST NOT appear in both. See docs/brand-protocol/brand-json.mdx",
       "properties": {
         "$schema": { "type": "string" },
         "version": { "type": "string" },
@@ -1410,7 +1450,7 @@
         },
         "brand_refs": {
           "type": "array",
-          "description": "Pointer brands owned by this house (child-owned data). Each entry references a brand whose canonical document is published elsewhere — typically at the brand's own domain. Use when a child brand wants self-publish authority. Mutual-assertion trust: the pointed-to document's house_domain must equal this house's domain. A brand_id MUST NOT appear in both brands[] and brand_refs[]; brand_id values MUST be unique within brand_refs[]. See RFC: docs/brand-protocol/proposals/distributed-brand-json-rfc.mdx",
+          "description": "Pointer brands owned by this house (child-owned data). Each entry references a brand whose canonical document is published elsewhere — typically at the brand's own domain. Use when a child brand wants self-publish authority. Mutual-assertion trust: the pointed-to document's house_domain must equal this house's domain. A brand_id MUST NOT appear in both brands[] and brand_refs[]; brand_id values MUST be unique within brand_refs[]. See docs/brand-protocol/brand-json.mdx",
           "items": { "$ref": "#/definitions/brand_ref" },
           "minItems": 1
         },
@@ -1422,16 +1462,8 @@
         },
         "trademarks": {
           "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "registry": { "type": "string" },
-              "number": { "type": "string" },
-              "mark": { "type": "string" }
-            },
-            "required": ["registry", "number", "mark"],
-            "additionalProperties": true
-          }
+          "items": { "$ref": "#/definitions/trademark" },
+          "description": "House-level (corporate) registered trademarks. Brand-level marks live on individual brand entries; resolution is union."
         },
         "last_updated": { "type": "string", "format": "date-time" }
       },
@@ -1445,7 +1477,7 @@
     {
       "type": "object",
       "title": "Brand Canonical Document",
-      "description": "Self-published brand document where the brand owns its own identity attributes. Optionally declares its house via house_domain; for trust, the named house's brand_refs[] must reciprocate (mutual assertion). Standalone brands (no parent house) omit house_domain. Hosted at the brand's own /.well-known/brand.json (or via authoritative_location indirection). See RFC: docs/brand-protocol/proposals/distributed-brand-json-rfc.mdx",
+      "description": "Self-published brand document where the brand owns its own identity attributes. Optionally declares its house via house_domain; for trust, the named house's brand_refs[] must reciprocate (mutual assertion). Standalone brands (no parent house) omit house_domain. Hosted at the brand's own /.well-known/brand.json (or via authoritative_location indirection). See docs/brand-protocol/brand-json.mdx",
       "allOf": [
         {
           "type": "object",
