@@ -493,6 +493,16 @@ async function updateUserAcrossMemberships(user: UserData): Promise<void> {
     [user.email, user.id]
   );
 
+  // person_relationships denormalizes users.email too. Keep it in sync so
+  // the admin person-detail header doesn't lag the canonical email after a
+  // WorkOS-side update (dashboard edit, OIDC profile sync, primary swap).
+  await pool.query(
+    `UPDATE person_relationships SET email = $1, updated_at = NOW()
+      WHERE workos_user_id = $2
+        AND email IS DISTINCT FROM $1`,
+    [user.email, user.id]
+  );
+
   logger.info({
     userId: user.id,
     updatedCount: result.rowCount,

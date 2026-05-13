@@ -72,6 +72,10 @@ describe('mergeUsers (bind, don\'t delete)', () => {
       `DELETE FROM addie_prompt_telemetry WHERE workos_user_id IN ($1, $2)`,
       [PRIMARY_ID, SECONDARY_ID]
     );
+    await pool.query(
+      `DELETE FROM organization_memberships WHERE workos_user_id IN ($1, $2)`,
+      [PRIMARY_ID, SECONDARY_ID]
+    );
     await pool.query(`DELETE FROM users WHERE workos_user_id IN ($1, $2)`, [PRIMARY_ID, SECONDARY_ID]);
     await pool.query(`DELETE FROM organizations WHERE workos_organization_id = $1`, [ORG_ID]);
   }
@@ -224,6 +228,103 @@ describe('mergeUsers (bind, don\'t delete)', () => {
       [secondaryRelId]
     );
     expect(secondaryRelAfter.rows).toHaveLength(0);
+  });
+
+  it('refreshes person_relationships.email from users.email for the surviving primary row (promote case)', async () => {
+    // Promote shape: primary is the freshly-added credential with no
+    // person_relationships row of its own; secondary owns the row with the
+    // old email. After mergeUsers, the row is re-pointed to primary and its
+    // email column should reflect the primary's current users.email.
+    await pool.query(
+      `INSERT INTO person_relationships (workos_user_id, email, stage)
+       VALUES ($1, 'secondary@test.example', 'exploring')`,
+      [SECONDARY_ID]
+    );
+
+    await mergeUsers(PRIMARY_ID, SECONDARY_ID, PRIMARY_ID);
+
+    const rel = await pool.query<{ workos_user_id: string; email: string }>(
+      `SELECT workos_user_id, email FROM person_relationships WHERE workos_user_id = $1`,
+      [PRIMARY_ID]
+    );
+    expect(rel.rows).toHaveLength(1);
+    expect(rel.rows[0].email).toBe('primary@test.example');
+  });
+
+  it('refreshes person_relationships.email for primary\'s pre-existing row when its email is stale (merge case)', async () => {
+    // Both users have a person_relationships row, and primary's row carries a
+    // stale email that pre-dates the credential swap. After mergeUsers, the
+    // secondary's row is deleted and the primary's row keeps its id but its
+    // email column gets re-derived from users.email.
+    const primaryRel = await pool.query<{ id: string }>(
+      `INSERT INTO person_relationships (workos_user_id, email, stage)
+       VALUES ($1, 'stale-primary@test.example', 'exploring') RETURNING id`,
+      [PRIMARY_ID]
+    );
+    await pool.query(
+      `INSERT INTO person_relationships (workos_user_id, email, stage)
+       VALUES ($1, 'secondary@test.example', 'exploring')`,
+      [SECONDARY_ID]
+    );
+
+    await mergeUsers(PRIMARY_ID, SECONDARY_ID, PRIMARY_ID);
+
+    const rel = await pool.query<{ id: string; email: string }>(
+      `SELECT id, email FROM person_relationships WHERE workos_user_id = $1`,
+      [PRIMARY_ID]
+    );
+    expect(rel.rows).toHaveLength(1);
+    expect(rel.rows[0].id).toBe(primaryRel.rows[0].id);
+    expect(rel.rows[0].email).toBe('primary@test.example');
+  });
+
+  it('refreshes organization_memberships.email from users.email when it has drifted', async () => {
+    await pool.query(
+      `INSERT INTO organization_memberships (workos_user_id, workos_organization_id, email, role, created_at, updated_at)
+       VALUES ($1, $2, 'stale-primary@test.example', 'member', NOW(), NOW())`,
+      [PRIMARY_ID, ORG_ID]
+    );
+
+    await mergeUsers(PRIMARY_ID, SECONDARY_ID, PRIMARY_ID);
+
+    const row = await pool.query<{ email: string }>(
+      `SELECT email FROM organization_memberships WHERE workos_user_id = $1 AND workos_organization_id = $2`,
+      [PRIMARY_ID, ORG_ID]
+    );
+    expect(row.rows).toHaveLength(1);
+    expect(row.rows[0].email).toBe('primary@test.example');
+  });
+
+  it('refreshes email even on the consolidate path when secondary has app-state to move', async () => {
+    // Consolidate shape: secondary owns app-state (telemetry rows + a stale
+    // relationship row) and primary is the newly-bound credential. The merge
+    // moves data forward AND refreshes the denormalized email on the
+    // surviving primary row. This proves the refresh isn't short-circuited
+    // by any of the other merge branches.
+    await pool.query(
+      `INSERT INTO addie_prompt_telemetry (workos_user_id, rule_id, shown_count, clicked_count)
+       VALUES ($1, 'secondary_rule', 3, 1)`,
+      [SECONDARY_ID]
+    );
+    await pool.query(
+      `INSERT INTO person_relationships (workos_user_id, email, stage)
+       VALUES ($1, 'secondary@test.example', 'exploring')`,
+      [SECONDARY_ID]
+    );
+
+    await mergeUsers(PRIMARY_ID, SECONDARY_ID, PRIMARY_ID);
+
+    const rel = await pool.query<{ email: string }>(
+      `SELECT email FROM person_relationships WHERE workos_user_id = $1`,
+      [PRIMARY_ID]
+    );
+    expect(rel.rows[0].email).toBe('primary@test.example');
+
+    const telemetry = await pool.query<{ rule_id: string }>(
+      `SELECT rule_id FROM addie_prompt_telemetry WHERE workos_user_id = $1`,
+      [PRIMARY_ID]
+    );
+    expect(telemetry.rows.map(r => r.rule_id)).toEqual(['secondary_rule']);
   });
 
   it('merges addie_prompt_telemetry on (workos_user_id, rule_id), keeping primary\'s row when both have one for the same rule', async () => {
