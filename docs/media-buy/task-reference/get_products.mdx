@@ -7,6 +7,10 @@ testable: true
 
 Discover available advertising products based on campaign requirements using natural language briefs or structured filters.
 
+<Info>
+**Why this shape.** Targeting, pricing, and curation are folded into one round-trip — the brief drives discovery, the publisher curates against it, and `pricing_options` carry firm prices the buyer commits against via `pricing_option_id`. We rejected a separate `get_price_quote` step between products and buy creation: it splits one expert decision into two underspecified ones and breaks the brief→curation contract. Iteration is `buying_mode: "refine"` with a typed change array — not a new task. → [Design principle: the brief drives discovery](/docs/protocol/design-principles#3-the-brief-drives-discovery-targeting-is-an-input-not-a-step).
+</Info>
+
 **Authentication**: Optional (returns limited results without credentials)
 
 **Response Time**: ~60 seconds (AI inference with back-end systems)
