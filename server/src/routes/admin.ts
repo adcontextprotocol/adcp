@@ -39,6 +39,7 @@ import { setupIllustrationRoutes } from "./admin/illustrations.js";
 import { setupAddieCostRoutes } from "./admin/addie-costs.js";
 import { setupPromptMetricsRoutes } from "./admin/prompt-metrics.js";
 import { setupIntegrityRoutes } from "./admin/integrity.js";
+import { setupAdminAgentsRoutes } from "./admin/agents.js";
 import { getAllNewsletters } from "../newsletters/registry.js";
 import { createNewsletterAdminRoutes } from "../newsletters/admin-routes.js";
 // Ensure newsletters register themselves before routes mount
@@ -184,6 +185,9 @@ export function createAdminRouter(): { pageRouter: Router; apiRouter: Router } {
 
   // Cross-system integrity invariants (WorkOS ↔ Stripe ↔ AAO Postgres)
   setupIntegrityRoutes(apiRouter, { workos });
+
+  // Cross-org agent removal (rogue / disputed registrations)
+  setupAdminAgentsRoutes(apiRouter);
 
   // Unified newsletter admin routes
   for (const nlConfig of getAllNewsletters()) {
