@@ -3266,6 +3266,13 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           });
         }
 
+        if (existing.review_status === "pending") {
+          return res.status(409).json({
+            error: "Cannot edit brand pending review",
+            domain,
+          });
+        }
+
         const editInput: Parameters<typeof brandDb.editDiscoveredBrand>[1] = {
           brand_name,
           edit_summary: "API: updated brand data",
@@ -3593,6 +3600,13 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         if (discovered.length > 0) {
           return res.status(409).json({
             error: "Cannot edit authoritative property (managed via adagents.json)",
+            domain: publisher_domain,
+          });
+        }
+
+        if (existing.review_status === "pending") {
+          return res.status(409).json({
+            error: "Cannot edit property pending review",
             domain: publisher_domain,
           });
         }
