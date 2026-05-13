@@ -581,7 +581,7 @@ async function runTests() {
       "type": "identity_match_response",
       "request_id": "id-7c9e1d",
       "eligible_package_ids": ["pkg-outdoor-audio"],
-      "ttl_sec": 60
+      "serve_window_sec": 60
     },
     '/schemas/tmp/identity-match-response.json',
     'TMP Identity Match response — web (overview walkthrough)'
