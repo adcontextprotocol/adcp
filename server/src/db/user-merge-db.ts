@@ -662,6 +662,28 @@ export async function mergeUsers(
       );
     }
 
+    // Refresh denormalized email on rows now keyed to the primary credential.
+    // person_relationships and organization_memberships each carry their own
+    // copy of users.email; without this re-derive, a promote (or any merge
+    // that swings workos_user_id onto a different credential) leaves the
+    // admin UI and member list showing the old email.
+    await client.query(
+      `UPDATE person_relationships pr SET email = u.email, updated_at = NOW()
+         FROM users u
+        WHERE pr.workos_user_id = $1
+          AND u.workos_user_id = $1
+          AND pr.email IS DISTINCT FROM u.email`,
+      [primaryUserId]
+    );
+    await client.query(
+      `UPDATE organization_memberships om SET email = u.email, updated_at = NOW()
+         FROM users u
+        WHERE om.workos_user_id = $1
+          AND u.workos_user_id = $1
+          AND om.email IS DISTINCT FROM u.email`,
+      [primaryUserId]
+    );
+
     // =====================================================
     // 5. Audit log
     // =====================================================

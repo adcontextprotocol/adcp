@@ -70,6 +70,11 @@ describe('Set primary email endpoint', () => {
   it('rolls back on error', () => {
     expect(source).toMatch(/ROLLBACK/);
   });
+
+  it('refreshes denormalized email on organization_memberships and person_relationships', () => {
+    expect(source).toMatch(/UPDATE organization_memberships SET email/);
+    expect(source).toMatch(/UPDATE person_relationships SET email/);
+  });
 });
 
 describe('isEmailUnavailable', () => {
