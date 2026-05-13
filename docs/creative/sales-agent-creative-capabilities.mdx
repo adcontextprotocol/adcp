@@ -21,6 +21,9 @@ A sales agent declares Creative Protocol support in `get_adcp_capabilities`:
     "idempotency": { "supported": true, "replay_ttl_seconds": 86400 }
   },
   "supported_protocols": ["media_buy", "creative"],
+  "account": {
+    "supported_billing": ["operator", "agent"]
+  },
   "media_buy": {
     "features": {
       "inline_creative_management": true
