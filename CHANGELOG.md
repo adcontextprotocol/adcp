@@ -1,5 +1,72 @@
 # Changelog
 
+## 3.0.12
+
+### Patch Changes
+
+- d8d5cfa: Add `comply_controller_mode_gate` universal storyboard and `acme-outdoor-live` test kit.
+
+  New storyboard exercises the live-account denial path for `comply_test_controller`:
+  a seller that exposes the controller must return `FORBIDDEN` when called by a
+  live-mode (non-sandbox) principal. Optional phase for two-deployment sellers;
+  required for single-endpoint sellers that implement per-account gating.
+  Closes #4028.
+
+- 6ed6bed: Fix `account.supported_billing` schema: require it only when `media_buy` is in `supported_protocols`, not unconditionally for all agents. Adds root-level `allOf` if/then guard following the existing `sync-plans-request.json` pattern. Non-media-buy agent authors should note that `supported_billing` was previously enforced on any `account` block — SDKs using code generators that drop draft-07 `if/then` (openapi-typescript, zod-to-json-schema, quicktype) should add a runtime guard to require `supported_billing` when `account` is present and `media_buy` is declared.
+- 4e9738c: spec(compliance): document `force_scenario_unsupported` — UNKNOWN*SCENARIO on force*\* controller steps grades not_applicable
+
+  Sellers that implement `comply_test_controller` but have not implemented a specific `force_*` scenario arm (e.g., `force_create_media_buy_arm`) correctly return `{success: false, error: UNKNOWN_SCENARIO}`. The storyboard narrative in `create_media_buy_async.yaml` already said this grades `not_applicable` — that narrative was normative English. The runner contract, however, had no machine-readable enforcement layer for force\_\* scenarios (only `fixture_seed_unsupported` for auto-injected seed phases), so conforming runners were implementing FAILED instead of not_applicable.
+
+  Patch-eligibility justification (IETF errata test, playbook lines 261-265): the storyboard's own normative narrative text already required not_applicable; any runner grading FAILED was non-conforming against that existing MUST. This change adds the machine-readable form of a rule that was already in force. A conformant 3.0.0 implementation of the surrounding behavior would already have honored the narrative — the schema text closing the gap is an errata clarification, not a new requirement.
+
+  Changes:
+
+  - `storyboard-schema.yaml`: adds `force_scenario_unsupported` alongside `fixture_seed_unsupported`, with a normative MUST: detect the tuple (comply*test_controller IS present, resolved payload scenario begins with `force*`, response {success: false, error: UNKNOWN_SCENARIO}) and grade not_applicable before evaluating declared validations. Documents detection order to prevent misgrading absent-tool cases.
+  - `runner-output-contract.yaml`: adds `fixture_seed_unsupported`, `force_scenario_unsupported`, and `unresolved_scenario_reference` as recognized narrower detail values under canonical reason `not_applicable`, with the encoding MUST for `force_scenario_unsupported`.
+
+  No storyboard YAML changes — `create_media_buy_async.yaml`'s narrative was already correct; this closes the machine-readable gap the runner was missing. Runner implementation fix tracked in adcp-client (sibling-repo).
+
+  Closes #4226.
+
+- cf13380: TMP Identity Match: add required `seller_agent_url` to the request and make
+  `package_ids` optional.
+
+  **Why.** The buyer's identity-match service already keeps the authoritative
+  set of active packages it has registered per seller. Carrying that set on
+  every request was redundant and forced publishers to enumerate ALL active
+  packages on every call to avoid the set-correlation attack on Context
+  Match. Identifying the seller by URL lets the buyer resolve the package
+  set itself.
+
+  **Changes to `static/schemas/source/tmp/identity-match-request.json`.**
+
+  - New required field `seller_agent_url` (`string`, `format: uri`). The
+    seller agent's API endpoint URL. Compared using the AdCP URL
+    canonicalization rules, consistent with `seller_agent.agent_url` on
+    `AvailablePackage` and `agent_url` in `adagents.json`.
+  - `package_ids` is now optional. When omitted, the buyer evaluates against
+    the full active set registered for `seller_agent_url`. When provided,
+    the ALL-active-packages rule still applies — partial sets remain a
+    correlation risk.
+  - Top-level description updated to reflect both modes.
+
+  **Spec changes alongside the schema.**
+
+  - Reversed prior stance forbidding seller identity on `identity_match_request`. The "What This Is Not" / SellerAgentRef guidance has been narrowed to apply only to `context_match_request`.
+  - Added a fail-closed rule: when `seller_agent_url` matches no seller for which the buyer has registered active packages, the buyer MUST return an empty `eligible_package_ids`, not fall back to another seller's set.
+  - Defined precedence when both `seller_agent_url` and `package_ids` are present: buyer evaluates against the intersection of its registered active set and `package_ids`; unknown IDs are silently dropped (not error-surfaced) so the response cannot leak registry membership.
+  - Reframed the package-set-decorrelation invariant as **statistical independence of `package_ids` from the current placement**, with two acceptable modes: all-active and fuzzed (random sample padded with synthetic non-existent IDs that the buyer silently drops). The page-specific subset remains forbidden.
+  - Strengthened temporal decorrelation: random delay alone leaks the pairing through ordering. Publishers SHOULD also randomize whether Context Match or Identity Match is sent first — each opportunity SHOULD have a roughly equal probability either way.
+
+  **Privacy boundary.** `seller_agent_url` identifies the seller agent, not
+  the user; no leakage across the identity boundary. Routers do NOT strip
+  it (unlike `country`) — buyers need it to resolve the package set.
+
+  **Backwards compatibility.** Breaking for the experimental TMP schema
+  (`x-status: experimental`): callers MUST now send `seller_agent_url`. The
+  relaxation of `package_ids` is non-breaking on its own — previously valid
+  requests remain valid as long as they also include `seller_agent_url`.
+
 ## 3.0.11
 
 ### Patch Changes
