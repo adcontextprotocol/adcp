@@ -20,8 +20,24 @@
 import { Request, Response, NextFunction } from "express";
 import crypto from "crypto";
 import { createLogger } from "../logger.js";
+import { TRAINING_AGENT_HOSTNAMES } from "../training-agent/config.js";
 
 const logger = createLogger("csrf");
+
+/**
+ * Hostnames whose traffic is exclusively server-to-server (bearer-token or
+ * RFC 9421 signed) and never browser-cookie-authenticated. CSRF protects
+ * against cookie-bearing browser POSTs from foreign origins; on these hosts
+ * there are no cookie-authenticated routes to protect.
+ *
+ * Without this bypass, per-tenant routes mounted at root via host-based
+ * dispatch in `http.ts` (e.g. `test-agent.adcontextprotocol.org/<tenant>/mcp`)
+ * are blocked by CSRF before reaching the verifier — the path-based
+ * `EXEMPT_EXACT` / `EXEMPT_PREFIXES` lists only know the legacy root-mounted
+ * shape (`/mcp`, `/mcp-strict`) and the AAO-mounted prefix
+ * (`/api/training-agent/`), not the per-tenant shape.
+ */
+const EXEMPT_HOSTNAMES = TRAINING_AGENT_HOSTNAMES;
 
 const CSRF_COOKIE = "csrf-token";
 const CSRF_HEADER = "x-csrf-token";
@@ -91,6 +107,13 @@ function setNewCsrfCookie(res: Response): string {
  * Express middleware — mount after cookieParser().
  */
 export function csrfProtection(req: Request, res: Response, next: NextFunction): void {
+  // Server-to-server hosts (training agent, etc.) — no cookie-authenticated
+  // routes live here, so CSRF doesn't apply. Bypass before even setting a
+  // cookie, since these clients neither hold nor expect one.
+  if (EXEMPT_HOSTNAMES.has(req.hostname)) {
+    return next();
+  }
+
   const existingCookie = getValidCookie(req);
 
   // Safe methods — nothing to validate, just ensure cookie exists

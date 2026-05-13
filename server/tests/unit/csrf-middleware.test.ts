@@ -68,6 +68,52 @@ describe('csrfProtection', () => {
     expect(next).toHaveBeenCalledTimes(1);
   });
 
+  // --- Hostname bypass: server-to-server agent hosts ---
+
+  it('allows POST on training-agent hostname without any CSRF token (per-tenant route)', () => {
+    const req = mockReq({
+      method: 'POST',
+      hostname: 'test-agent.adcontextprotocol.org',
+      path: '/sales/mcp-strict',
+      cookies: {},
+      headers: {} as Record<string, string>,
+    } as Partial<Request>);
+    const res = mockRes();
+    csrfProtection(req, res, next);
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(res._cookies['csrf-token']).toBeUndefined();
+  });
+
+  it('allows POST on training-agent hostname for any per-tenant variant', () => {
+    for (const path of ['/sales/mcp', '/governance/mcp-strict', '/signals/mcp-strict-required', '/brand/mcp-strict-forbidden']) {
+      const localNext = vi.fn();
+      const req = mockReq({
+        method: 'POST',
+        hostname: 'test-agent.adcontextprotocol.org',
+        path,
+        cookies: {},
+        headers: {} as Record<string, string>,
+      } as Partial<Request>);
+      const res = mockRes();
+      csrfProtection(req, res, localNext);
+      expect(localNext).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it('still enforces CSRF on non-exempt hostname even for /mcp-like paths', () => {
+    const req = mockReq({
+      method: 'POST',
+      hostname: 'app.example.com',
+      path: '/sales/mcp-strict', // not a path-exempt entry
+      cookies: {},
+      headers: {} as Record<string, string>,
+    } as Partial<Request>);
+    const res = mockRes();
+    csrfProtection(req, res, next);
+    expect(next).not.toHaveBeenCalled();
+    expect(res._status).toBe(403);
+  });
+
   // --- Authorization header bypass ---
 
   it('allows POST with Authorization header (API key auth)', () => {
