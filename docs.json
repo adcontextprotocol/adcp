@@ -196,6 +196,7 @@
                       "docs/building/verification/storyboards-vs-scenarios",
                       "docs/building/verification/how-grading-works",
                       "docs/building/verification/validate-your-agent",
+                      "docs/building/verification/validate-with-mock-fixtures",
                       "docs/building/verification/addie-socket-mode",
                       "docs/building/verification/grading",
                       "docs/building/verification/get-test-ready",
@@ -769,6 +770,7 @@
                   "docs/building/verification/compliance-catalog",
                   "docs/building/verification/storyboards-vs-scenarios",
                   "docs/building/verification/validate-your-agent",
+                  "docs/building/verification/validate-with-mock-fixtures",
                   "docs/building/verification/grading",
                   "docs/building/verification/get-test-ready",
                   "docs/building/verification/aao-verified"

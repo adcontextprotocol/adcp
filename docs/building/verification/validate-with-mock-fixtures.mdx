@@ -6,12 +6,12 @@ description: "Pre-staging gate for AdCP adapter agents — published mock upstre
 ---
 
 <Note>
-**Non-normative.** This page describes a complementary harness pattern, not a compliance tier. The recipe builds on top of the storyboard runner ([Validate your agent](/docs/building/validate-your-agent)) — it does not replace storyboards or staging integration tests, and is not a certification gate. The mock-fixture conventions described here (`/_lookup/<resource>`, `/_debug/traffic`) are reference implementations in `@adcp/client`; alternative SDK implementations may diverge. Treat as harness convention, not protocol contract.
+**Non-normative.** This page describes a complementary harness pattern, not a compliance tier. The recipe builds on top of the storyboard runner ([Validate your agent](/docs/building/verification/validate-your-agent)) — it does not replace storyboards or staging integration tests, and is not a certification gate. The mock-fixture conventions described here (`/_lookup/<resource>`, `/_debug/traffic`) are reference implementations in `@adcp/client`; alternative SDK implementations may diverge. Treat as harness convention, not protocol contract.
 </Note>
 
 Most AdCP agents that wrap an external platform (a DSP, SSP, retail data warehouse, creative server, signal marketplace) ship façade bugs that storyboards alone cannot detect: handlers return shape-valid AdCP responses without actually integrating with the upstream. The recipe on this page closes that gap as a **pre-staging gate** — cheap, fast, runs in CI, surfaces façades and contract drift before code reaches a staging tenant.
 
-If your agent does not wrap an upstream — for example, a pure decisioning service that owns its own data — the storyboard runner alone is sufficient. See [Validate your agent](/docs/building/validate-your-agent).
+If your agent does not wrap an upstream — for example, a pure decisioning service that owns its own data — the storyboard runner alone is sufficient. See [Validate your agent](/docs/building/verification/validate-your-agent).
 
 ## The four-step recipe
 
@@ -122,7 +122,7 @@ Be honest with your team about what these gates do and don't catch:
 ### Runner / tooling caveats
 
 - **Storyboard cascade skips silently** when an early step's response is shape-valid but missing fields the runner extracts state from. The error you see is on the *downstream* step, not the early one — investigate "skipped" steps before "failed". Tracked at [adcontextprotocol/adcp#3796](https://github.com/adcontextprotocol/adcp/issues/3796) (runner-side).
-- **Mock seed data may not match storyboard fixture inputs.** If you see 404s on `_lookup/<resource>`, the storyboard's payloads may reference IDs the mock doesn't seed. Either widen the mock's seed or seed scenario state at runtime via the [compliance test controller](/docs/building/implementation/comply-test-controller).
+- **Mock seed data may not match storyboard fixture inputs.** If you see 404s on `_lookup/<resource>`, the storyboard's payloads may reference IDs the mock doesn't seed. Either widen the mock's seed or seed scenario state at runtime via the [compliance test controller](/docs/building/by-layer/L3/comply-test-controller).
 
 ### Traffic gate limitations
 
@@ -132,7 +132,7 @@ Be honest with your team about what these gates do and don't catch:
 
 ## What's next
 
-- **[Validate your agent](/docs/building/validate-your-agent)** — the broader storyboard-runner-driven validation checklist (fuzz, multi-instance, request-signing, webhook conformance).
-- **[Compliance test controller](/docs/building/implementation/comply-test-controller)** — seed scenario state at runtime when storyboards need fixtures the mock doesn't provide.
-- **[Build an agent](/docs/building/build-an-agent)** — the language-agnostic guide to building an AdCP agent.
-- **[Compliance catalog](/docs/building/compliance-catalog)** — the full taxonomy of universal / protocol / specialism storyboards.
+- **[Validate your agent](/docs/building/verification/validate-your-agent)** — the broader storyboard-runner-driven validation checklist (fuzz, multi-instance, request-signing, webhook conformance).
+- **[Compliance test controller](/docs/building/by-layer/L3/comply-test-controller)** — seed scenario state at runtime when storyboards need fixtures the mock doesn't provide.
+- **[Build an agent](/docs/building/by-layer/L4/build-an-agent)** — the language-agnostic guide to building an AdCP agent.
+- **[Compliance catalog](/docs/building/verification/compliance-catalog)** — the full taxonomy of universal / protocol / specialism storyboards.
