@@ -69,6 +69,7 @@ import { canonicalizeBrandDomain } from '../../services/identifier-normalization
 import { isOrgOwnerOfAgent } from '../../services/agent-ownership.js';
 import { getBrandPrimaryDomain } from '../../services/brand-domain-resolver.js';
 import { ComplianceDatabase } from '../../db/compliance-db.js';
+import { runBadgeFanOut } from '../../services/badge-issuance.js';
 import { AgentSnapshotDatabase } from '../../db/agent-snapshot-db.js';
 import { AgentValidator } from '../../validator.js';
 import {
@@ -3618,6 +3619,24 @@ export function createMemberToolHandlers(
               // notifyComplianceChange intentionally omitted: owner test runs are
               // exploratory; compliance-change notifications fire on heartbeat
               // transitions only to prevent iteration-loop spam.
+
+              // Fire badge issuance off the canonical write so an owner who
+              // just fixed a compliance issue sees their badge update on the
+              // next page load instead of waiting up to a heartbeat cycle.
+              // Verification-change notifications are intentionally skipped —
+              // the owner already received the result in their chat response.
+              const declaredSpecialisms = result.agent_profile?.specialisms ?? [];
+              if (declaredSpecialisms.length > 0) {
+                try {
+                  await runBadgeFanOut({
+                    complianceDb,
+                    agentUrl: resolved.resolvedUrl,
+                    declaredSpecialisms,
+                  });
+                } catch (badgeError) {
+                  logger.warn({ badgeError, agentUrl: resolved.resolvedUrl }, 'Badge fan-out failed after owner_test run');
+                }
+              }
             }
           } catch (error) {
             logger.warn({ error, agentUrl: resolved.resolvedUrl }, 'Could not write owner test result to canonical compliance state');
