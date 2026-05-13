@@ -5,6 +5,7 @@ const workspaceRoot = process.cwd();
 const rolesDir = path.join(workspaceRoot, ".agents", "roles");
 const codexDir = path.join(workspaceRoot, ".codex");
 const codexAgentsDir = path.join(codexDir, "agents");
+const claudeAgentsDir = path.join(workspaceRoot, ".claude", "agents");
 
 const sharedPreamble = [
   "Read AGENTS.md and .agents/playbook.md first.",
@@ -66,9 +67,13 @@ function buildRoleFile(body) {
   ].join("\n");
 }
 
+fs.rmSync(codexAgentsDir, { recursive: true, force: true });
 fs.mkdirSync(codexAgentsDir, { recursive: true });
+fs.rmSync(claudeAgentsDir, { recursive: true, force: true });
+fs.mkdirSync(claudeAgentsDir, { recursive: true });
 
 const importedRoles = [];
+const seenNames = new Set();
 
 for (const entry of fs.readdirSync(rolesDir).sort()) {
   if (!entry.endsWith(".md")) {
@@ -76,12 +81,22 @@ for (const entry of fs.readdirSync(rolesDir).sort()) {
   }
 
   const filePath = path.join(rolesDir, entry);
-  const { frontmatter, body } = parseFrontmatter(fs.readFileSync(filePath, "utf8"));
+  const source = fs.readFileSync(filePath, "utf8");
+  const { frontmatter, body } = parseFrontmatter(source);
   const name = frontmatter.name || path.basename(entry, ".md");
 
   if (!/^[a-z0-9_-]+$/.test(name)) {
     throw new Error(`Invalid agent name "${name}" in ${entry}. Use only lowercase letters, digits, hyphens, and underscores.`);
   }
+
+  if (name !== path.basename(entry, ".md")) {
+    throw new Error(`Frontmatter name "${name}" does not match filename ${entry}. Keep them aligned so Claude Code and Codex resolve to the same agent.`);
+  }
+
+  if (seenNames.has(name)) {
+    throw new Error(`Duplicate agent name "${name}" from ${entry}`);
+  }
+  seenNames.add(name);
 
   const description = frontmatter.description;
 
@@ -89,8 +104,8 @@ for (const entry of fs.readdirSync(rolesDir).sort()) {
     throw new Error(`Missing description in ${entry}`);
   }
 
-  const targetPath = path.join(codexAgentsDir, `${name}.toml`);
-  fs.writeFileSync(targetPath, buildRoleFile(body), "utf8");
+  fs.writeFileSync(path.join(codexAgentsDir, `${name}.toml`), buildRoleFile(body), "utf8");
+  fs.writeFileSync(path.join(claudeAgentsDir, `${name}.md`), source, "utf8");
 
   importedRoles.push({
     name,
@@ -114,4 +129,6 @@ const configSections = [
 
 fs.writeFileSync(path.join(codexDir, "config.toml"), `${configSections.join("\n").trim()}\n`, "utf8");
 
-console.log(`Generated Codex config from ${importedRoles.length} shared roles in .agents/roles/`);
+console.log(
+  `Synced ${importedRoles.length} roles from .agents/roles/ → .claude/agents/ (md) + .codex/agents/ (toml).`,
+);

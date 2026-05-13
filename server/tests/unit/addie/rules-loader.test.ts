@@ -84,4 +84,14 @@ describe('Addie rules loader', () => {
     expect(prompt).toContain('apply the lens');
     expect(prompt).not.toContain("voice of the relevant expert"); // v1 framing was wrong per expert review
   });
+
+  it('expert panel excludes -deep design-advisor variants', () => {
+    const prompt = loadRules();
+    const panelIdx = prompt.indexOf('# Expert Panel');
+    expect(panelIdx).toBeGreaterThan(-1);
+    const panel = prompt.slice(panelIdx);
+    // -deep files are long-form design advisors, not triage lenses; they
+    // would double-count each persona and bloat the system prompt.
+    expect(panel).not.toContain('-deep');
+  });
 });

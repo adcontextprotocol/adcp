@@ -346,9 +346,15 @@ Common buckets (verify every time):
 
 ### Step 4 — Consult the right experts
 
-Pick 2–3 experts from `.claude/agents/` based on the bucket. Spawn
-them in parallel with the Task tool. Pass them the issue body + any
-relevant files you've read.
+Pick 2–3 experts based on the bucket. Spawn them in parallel with
+the Task tool. Pass them the issue body + any relevant files you've
+read.
+
+Source of truth for expert prompts is `.agents/roles/` (also mirrored
+into `.claude/agents/` by `scripts/import-claude-agents.mjs`). Use
+the **short variants** (no `-deep` suffix) for triage — the `-deep`
+counterparts are long-form design advisors for open-ended work, not
+PR-bound triage checks.
 
 | Bucket | Default panel |
 |---|---|
