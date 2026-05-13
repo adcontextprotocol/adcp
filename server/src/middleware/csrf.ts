@@ -20,24 +20,27 @@
 import { Request, Response, NextFunction } from "express";
 import crypto from "crypto";
 import { createLogger } from "../logger.js";
-import { TRAINING_AGENT_HOSTNAMES } from "../training-agent/config.js";
 
 const logger = createLogger("csrf");
 
 /**
- * Hostnames whose traffic is exclusively server-to-server (bearer-token or
- * RFC 9421 signed) and never browser-cookie-authenticated. CSRF protects
- * against cookie-bearing browser POSTs from foreign origins; on these hosts
- * there are no cookie-authenticated routes to protect.
+ * Training-agent per-tenant MCP routes mounted at root via host-based
+ * dispatch in `http.ts` — shape `/<tenant>/mcp[-strict[-required|-forbidden]]`.
+ * These routes authenticate via bearer token or RFC 9421 signature, never
+ * cookies, so CSRF doesn't apply.
  *
- * Without this bypass, per-tenant routes mounted at root via host-based
- * dispatch in `http.ts` (e.g. `test-agent.adcontextprotocol.org/<tenant>/mcp`)
- * are blocked by CSRF before reaching the verifier — the path-based
- * `EXEMPT_EXACT` / `EXEMPT_PREFIXES` lists only know the legacy root-mounted
- * shape (`/mcp`, `/mcp-strict`) and the AAO-mounted prefix
- * (`/api/training-agent/`), not the per-tenant shape.
+ * Pattern-matched (not hostname-matched) because `req.hostname` is derived
+ * from `X-Forwarded-Host` under `trust proxy`, and Fly's edge forwards that
+ * header as-received from the client — a hostname-based bypass would let an
+ * attacker spoof `X-Forwarded-Host: test-agent.adcontextprotocol.org` on a
+ * cookie-authenticated route and skip CSRF. Path shape isn't client-spoofable.
+ *
+ * Tenant segment is `[a-z][a-z0-9-]+` to match the live TENANT_IDS
+ * (`signals`, `sales`, `governance`, `creative`, `creative-builder`, `brand`)
+ * without requiring this file to import or stay in sync with that list.
+ * Suffix variants enumerate the four production route shapes.
  */
-const EXEMPT_HOSTNAMES = TRAINING_AGENT_HOSTNAMES;
+const PER_TENANT_MCP_PATH = /^\/[a-z][a-z0-9-]+\/mcp(-strict(-required|-forbidden)?)?$/;
 
 const CSRF_COOKIE = "csrf-token";
 const CSRF_HEADER = "x-csrf-token";
@@ -73,7 +76,8 @@ const EXEMPT_EXACT = [
 
 function isExemptPath(path: string): boolean {
   return EXEMPT_EXACT.includes(path) ||
-    EXEMPT_PREFIXES.some((prefix) => path.startsWith(prefix));
+    EXEMPT_PREFIXES.some((prefix) => path.startsWith(prefix)) ||
+    PER_TENANT_MCP_PATH.test(path);
 }
 
 /**
@@ -107,13 +111,6 @@ function setNewCsrfCookie(res: Response): string {
  * Express middleware — mount after cookieParser().
  */
 export function csrfProtection(req: Request, res: Response, next: NextFunction): void {
-  // Server-to-server hosts (training agent, etc.) — no cookie-authenticated
-  // routes live here, so CSRF doesn't apply. Bypass before even setting a
-  // cookie, since these clients neither hold nor expect one.
-  if (EXEMPT_HOSTNAMES.has(req.hostname)) {
-    return next();
-  }
-
   const existingCookie = getValidCookie(req);
 
   // Safe methods — nothing to validate, just ensure cookie exists

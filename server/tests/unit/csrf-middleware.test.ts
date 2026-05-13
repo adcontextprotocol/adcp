@@ -68,46 +68,53 @@ describe('csrfProtection', () => {
     expect(next).toHaveBeenCalledTimes(1);
   });
 
-  // --- Hostname bypass: server-to-server agent hosts ---
+  // --- Per-tenant MCP path bypass ---
+  //
+  // Per-tenant routes (`/<tenant>/mcp[-strict[-required|-forbidden]]`) live
+  // on the training-agent host where everything is bearer/RFC-9421 auth, not
+  // cookies. Pattern-matched on path shape (not hostname) so a spoofed
+  // X-Forwarded-Host can't bypass CSRF on cookie-authed routes.
 
-  it('allows POST on training-agent hostname without any CSRF token (per-tenant route)', () => {
-    const req = mockReq({
-      method: 'POST',
-      hostname: 'test-agent.adcontextprotocol.org',
-      path: '/sales/mcp-strict',
-      cookies: {},
-      headers: {} as Record<string, string>,
-    } as Partial<Request>);
+  const perTenantMcpPaths = [
+    '/sales/mcp',
+    '/sales/mcp-strict',
+    '/sales/mcp-strict-required',
+    '/sales/mcp-strict-forbidden',
+    '/governance/mcp-strict',
+    '/signals/mcp-strict-required',
+    '/brand/mcp-strict-forbidden',
+    '/creative/mcp',
+    '/creative-builder/mcp', // hyphenated tenant id
+  ];
+
+  it.each(perTenantMcpPaths)('allows POST to per-tenant MCP path %s without CSRF token', (path) => {
+    const req = mockReq({ method: 'POST', path });
     const res = mockRes();
     csrfProtection(req, res, next);
     expect(next).toHaveBeenCalledTimes(1);
-    expect(res._cookies['csrf-token']).toBeUndefined();
   });
 
-  it('allows POST on training-agent hostname for any per-tenant variant', () => {
-    for (const path of ['/sales/mcp', '/governance/mcp-strict', '/signals/mcp-strict-required', '/brand/mcp-strict-forbidden']) {
-      const localNext = vi.fn();
-      const req = mockReq({
-        method: 'POST',
-        hostname: 'test-agent.adcontextprotocol.org',
-        path,
-        cookies: {},
-        headers: {} as Record<string, string>,
-      } as Partial<Request>);
-      const res = mockRes();
-      csrfProtection(req, res, localNext);
-      expect(localNext).toHaveBeenCalledTimes(1);
-    }
-  });
+  // Guard against the regex over-matching shapes that aren't real MCP routes
+  // (and could collide with future cookie-authed routes).
+  const nearMissTenantPaths = [
+    '/sales/mcp-strict/extra',     // appended path segment
+    '/sales/mcp-strictly',          // strict-prefix-but-not-equal
+    '/sales/mcp-extra',             // not a known suffix
+    '/mcp-strict',                  // root-level (handled by EXEMPT_EXACT, not this rule)
+    '//mcp',                        // empty tenant segment
+    '/sales/sub/mcp',               // two-segment tenant prefix
+    '/Sales/mcp',                   // uppercase tenant — regex is lowercase-only
+  ];
 
-  it('still enforces CSRF on non-exempt hostname even for /mcp-like paths', () => {
+  it.each(nearMissTenantPaths)('rejects POST to %s — must NOT match per-tenant MCP pattern', (path) => {
+    if (path === '/mcp-strict') return; // exempt via EXEMPT_EXACT, skip
+    const token = 'a'.repeat(64);
     const req = mockReq({
       method: 'POST',
-      hostname: 'app.example.com',
-      path: '/sales/mcp-strict', // not a path-exempt entry
-      cookies: {},
+      path,
+      cookies: { 'csrf-token': token },
       headers: {} as Record<string, string>,
-    } as Partial<Request>);
+    });
     const res = mockRes();
     csrfProtection(req, res, next);
     expect(next).not.toHaveBeenCalled();
