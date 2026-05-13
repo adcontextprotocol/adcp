@@ -236,7 +236,7 @@ When `https://{publisher}/.well-known/adagents.json` returns `404`, validators M
 - **One hop only**: maximum depth is exactly one (`publisher -> managerdomain`). Do not chain managerdomain lookups.
 - **Cycle detection required**: if `managerdomain` points to a visited domain, ignore it.
 - **`#noagents` opt-out**: if a managerdomain line has a trailing comment containing the token `noagents` (case-insensitive), clients MUST ignore that managerdomain for adagents discovery. Example: `MANAGERDOMAIN=example.com #NOAGENTS`.
-- **Explicit publisher scoping required**: a manager-hosted `adagents.json` MUST explicitly mention the source publisher domain (for example under `authorized_agents[].publisher_properties[].publisher_domain` or `authorized_agents[].collections[].publisher_domain`). If the source publisher is not explicitly scoped, fallback MUST fail closed.
+- **Explicit publisher scoping required**: a manager-hosted `adagents.json` MUST explicitly mention the source publisher domain. The publisher must appear on the *authorization path* — under `authorized_agents[].publisher_properties[].publisher_domain`, inside `authorized_agents[].publisher_properties[].publisher_domains[]` (the compact managed-network form), or under `authorized_agents[].collections[].publisher_domain`. A `publisher_domain` value that only appears inside the file's top-level `properties[]` array, or that is reached only by resolving a top-level `authorization_type: property_tags` selector through `properties[]`, does **not** satisfy this rule. If the source publisher is not explicitly scoped on an authorization path, fallback MUST fail closed.
 - **No success by silence**: if the manager lookup fails, treat the publisher as missing `adagents.json` (same as no fallback).
 
 This fallback is a compatibility affordance for publisher-manager topologies and does not replace the canonical `/.well-known/adagents.json` location.
@@ -455,6 +455,29 @@ AdCP supports four authorization patterns, each optimized for different use case
 ```
 
 **How it works**: Agent references properties from OTHER publishers' adagents.json files. The `publisher_domain` points to the publisher, and `selection_type` determines how to resolve properties (`by_id` or `by_tag`).
+
+**Compact form for managed networks (`publisher_domains`)**: when the same predicate applies to many publishers — the canonical managed-network shape — replace the singular `publisher_domain` with the plural `publisher_domains` array. Each `publisher_properties[]` entry takes exactly one of `publisher_domain` or `publisher_domains`; both are equivalent for resolution and both satisfy the [`managerdomain` fallback safety rule](#safety-rules-for-this-fallback) for every listed domain.
+
+```json
+{
+  "contact": { "name": "Example Managed Network" },
+  "authorized_agents": [{
+    "url": "https://agent.network.example/api",
+    "authorized_for": "Managed-network display inventory across represented publishers",
+    "authorization_type": "publisher_properties",
+    "publisher_properties": [
+      {
+        "publisher_domains": ["site1.example", "site2.example", "site3.example"],
+        "selection_type": "by_tag",
+        "property_tags": ["managed_network"]
+      }
+    ],
+    "delegation_type": "ad_network"
+  }]
+}
+```
+
+The above is semantically identical to repeating the singular-form entry once per domain. Use it when every represented publisher tags inventory the same way (typical of WordPress/managed-network deployments); fall back to one entry per publisher only when the selector predicate genuinely differs.
 
 ## Authorization Qualifiers
 

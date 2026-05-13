@@ -592,7 +592,7 @@ One deploy to the authoritative file changes authorization across every publishe
 **Validator fetch semantics.** The authoritative URL points at a network-controlled origin. Without explicit fetch rules, a misbehaving origin can poison caches or hang validators. Validators MUST:
 
 - Connect only over HTTPS with valid certificates, and refuse to follow redirects (a redirect changes the declared location — treat as an error).
-- Cap response size (recommended: reject > 5 MB) and enforce short connect/read timeouts (≤ 10s each).
+- Cap response size (recommended: reject > 20 MB) and enforce short connect/read timeouts (≤ 10s each). This is intentionally higher than the [general SSRF body cap](/docs/building/by-layer/L1/security#webhook-url-validation-ssrf) (5 MB) because a single authoritative file fans out across an entire publisher network and routinely needs to enumerate thousands of properties or publisher domains.
 - On 5xx or timeout, serve the previously cached authoritative file for up to 24 hours rather than failing closed. A transient CDN outage is not a revocation.
 - Attempt a refresh at least every 24 hours. Repeated 5xx responses MUST NOT extend the cache — the 7-day absolute cap is measured from the most recent successful fetch, not from the most recent response of any kind.
 - Cap cached lifetime at 7 days from the most recent successful fetch, regardless of the origin's `Cache-Control`. After that, fail closed — the network has had seven days to fix its origin.

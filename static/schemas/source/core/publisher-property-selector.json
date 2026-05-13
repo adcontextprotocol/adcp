@@ -2,40 +2,63 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/publisher-property-selector.json",
   "title": "Publisher Property Selector",
-  "description": "Selects properties from a publisher's adagents.json. Used for both product definitions and agent authorization. Supports three selection patterns: all properties, specific IDs, or by tags.",
+  "description": "Selects properties from a publisher's adagents.json. Used for both product definitions and agent authorization. Supports three selection patterns: all properties, specific IDs, or by tags. Each selector targets one publisher via `publisher_domain` (string) or a fan-out across many publishers that share the same selector via `publisher_domains` (array). Exactly one of `publisher_domain` or `publisher_domains` MUST be present. When `publisher_domains` is used, the selector is logically equivalent to repeating the same entry once per listed domain.",
   "discriminator": {
     "propertyName": "selection_type"
   },
   "oneOf": [
     {
       "type": "object",
-      "description": "Select all properties from the publisher domain",
+      "description": "Select all properties from one publisher domain, or from each publisher domain when `publisher_domains` is used.",
       "properties": {
         "publisher_domain": {
           "type": "string",
-          "description": "Domain where publisher's adagents.json is hosted (e.g., 'cnn.com')",
+          "description": "Domain where publisher's adagents.json is hosted (e.g., 'cnn.com'). Mutually exclusive with `publisher_domains`.",
           "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+        },
+        "publisher_domains": {
+          "type": "array",
+          "description": "Compact form for fanning the same selector across many publishers (e.g., a managed network listing every publisher it represents). Each entry is the domain where that publisher's adagents.json is hosted. Mutually exclusive with `publisher_domain`. Each listed domain counts as explicitly scoped for the `managerdomain` fallback safety rule.",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+          },
+          "minItems": 1,
+          "uniqueItems": true
         },
         "selection_type": {
           "type": "string",
           "const": "all",
-          "description": "Discriminator indicating all properties from this publisher are included"
+          "description": "Discriminator indicating all properties from each addressed publisher are included"
         }
       },
       "required": [
-        "publisher_domain",
         "selection_type"
+      ],
+      "oneOf": [
+        { "required": ["publisher_domain"], "not": { "required": ["publisher_domains"] } },
+        { "required": ["publisher_domains"], "not": { "required": ["publisher_domain"] } }
       ],
       "additionalProperties": true
     },
     {
       "type": "object",
-      "description": "Select specific properties by ID",
+      "description": "Select specific properties by ID. With `publisher_domains`, the same `property_ids` set is resolved against each listed publisher's adagents.json — use this only when the ID values are valid across every listed publisher (e.g., a network using globally unique IDs).",
       "properties": {
         "publisher_domain": {
           "type": "string",
-          "description": "Domain where publisher's adagents.json is hosted (e.g., 'cnn.com')",
+          "description": "Domain where publisher's adagents.json is hosted (e.g., 'cnn.com'). Mutually exclusive with `publisher_domains`.",
           "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+        },
+        "publisher_domains": {
+          "type": "array",
+          "description": "Compact form for fanning the same selector across many publishers. Each entry is the domain where that publisher's adagents.json is hosted. Mutually exclusive with `publisher_domain`. Each listed domain counts as explicitly scoped for the `managerdomain` fallback safety rule.",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+          },
+          "minItems": 1,
+          "uniqueItems": true
         },
         "selection_type": {
           "type": "string",
@@ -44,7 +67,7 @@
         },
         "property_ids": {
           "type": "array",
-          "description": "Specific property IDs from the publisher's adagents.json",
+          "description": "Specific property IDs resolved against each addressed publisher's adagents.json",
           "items": {
             "$ref": "/schemas/core/property-id.json"
           },
@@ -52,20 +75,33 @@
         }
       },
       "required": [
-        "publisher_domain",
         "selection_type",
         "property_ids"
+      ],
+      "oneOf": [
+        { "required": ["publisher_domain"], "not": { "required": ["publisher_domains"] } },
+        { "required": ["publisher_domains"], "not": { "required": ["publisher_domain"] } }
       ],
       "additionalProperties": true
     },
     {
       "type": "object",
-      "description": "Select properties by tag membership",
+      "description": "Select properties by tag membership. With `publisher_domains`, the same `property_tags` predicate is resolved against each listed publisher's adagents.json — the common managed-network case where every represented site tags inventory with a shared label.",
       "properties": {
         "publisher_domain": {
           "type": "string",
-          "description": "Domain where publisher's adagents.json is hosted (e.g., 'cnn.com')",
+          "description": "Domain where publisher's adagents.json is hosted (e.g., 'cnn.com'). Mutually exclusive with `publisher_domains`.",
           "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+        },
+        "publisher_domains": {
+          "type": "array",
+          "description": "Compact form for fanning the same tag predicate across many publishers (canonical managed-network shape). Each entry is the domain where that publisher's adagents.json is hosted. Mutually exclusive with `publisher_domain`. Each listed domain counts as explicitly scoped for the `managerdomain` fallback safety rule.",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+          },
+          "minItems": 1,
+          "uniqueItems": true
         },
         "selection_type": {
           "type": "string",
@@ -74,7 +110,7 @@
         },
         "property_tags": {
           "type": "array",
-          "description": "Property tags from the publisher's adagents.json. Selector covers all properties with these tags",
+          "description": "Property tags resolved against each addressed publisher's adagents.json. Selector covers all properties carrying any of these tags.",
           "items": {
             "$ref": "/schemas/core/property-tag.json"
           },
@@ -82,9 +118,12 @@
         }
       },
       "required": [
-        "publisher_domain",
         "selection_type",
         "property_tags"
+      ],
+      "oneOf": [
+        { "required": ["publisher_domain"], "not": { "required": ["publisher_domains"] } },
+        { "required": ["publisher_domains"], "not": { "required": ["publisher_domain"] } }
       ],
       "additionalProperties": true
     }

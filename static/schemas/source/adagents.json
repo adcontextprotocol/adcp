@@ -1017,6 +1017,25 @@
               ]
             }
           ]
+        },
+        {
+          "url": "https://agent.example/api",
+          "authorized_for": "Managed-network display inventory across represented publishers (compact form)",
+          "authorization_type": "publisher_properties",
+          "publisher_properties": [
+            {
+              "publisher_domains": [
+                "site1.example",
+                "site2.example",
+                "site3.example"
+              ],
+              "selection_type": "by_tag",
+              "property_tags": [
+                "managed_network"
+              ]
+            }
+          ],
+          "delegation_type": "ad_network"
         }
       ],
       "last_updated": "2025-01-10T17:00:00Z"
