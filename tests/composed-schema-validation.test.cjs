@@ -316,7 +316,8 @@ async function runTests() {
 
   const capabilitiesBase = {
     adcp: { major_versions: [3] },
-    supported_protocols: ['media_buy']
+    supported_protocols: ['media_buy'],
+    account: { supported_billing: ['operator', 'agent'] }
   };
 
   await testSchemaValidation(
