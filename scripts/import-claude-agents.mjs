@@ -67,13 +67,12 @@ function buildRoleFile(body) {
   ].join("\n");
 }
 
-fs.rmSync(codexAgentsDir, { recursive: true, force: true });
-fs.mkdirSync(codexAgentsDir, { recursive: true });
-fs.rmSync(claudeAgentsDir, { recursive: true, force: true });
-fs.mkdirSync(claudeAgentsDir, { recursive: true });
+// Validate every role file before doing any I/O so a malformed input
+// never leaves .claude/agents/ and .codex/agents/ half-written.
+const MAX_DESCRIPTION_CHARS = 500;
 
 const importedRoles = [];
-const seenNames = new Set();
+const seenNames = new Set(codexOnlyRoles.map((r) => r.name));
 
 for (const entry of fs.readdirSync(rolesDir).sort()) {
   if (!entry.endsWith(".md")) {
@@ -104,14 +103,56 @@ for (const entry of fs.readdirSync(rolesDir).sort()) {
     throw new Error(`Missing description in ${entry}`);
   }
 
-  fs.writeFileSync(path.join(codexAgentsDir, `${name}.toml`), buildRoleFile(body), "utf8");
-  fs.writeFileSync(path.join(claudeAgentsDir, `${name}.md`), source, "utf8");
+  if (description.length > MAX_DESCRIPTION_CHARS) {
+    throw new Error(
+      `Description in ${entry} is ${description.length} chars (limit ${MAX_DESCRIPTION_CHARS}). Long descriptions get silently truncated in Addie's expert-panel system prompt.`,
+    );
+  }
 
   importedRoles.push({
     name,
     description,
+    body,
+    source,
     configFile: `agents/${name}.toml`,
   });
+}
+
+// `-deep` is a reserved suffix for long-form design advisors that pair
+// with a short triage variant. Addie's expert-panel filter in
+// server/src/addie/rules/index.ts assumes every *-deep.md has a short
+// counterpart (and vice versa is allowed: short-only is fine, deep-only
+// is a misuse).
+const allNames = new Set(importedRoles.map((r) => r.name));
+for (const role of importedRoles) {
+  if (role.name.endsWith("-deep")) {
+    const shortName = role.name.slice(0, -"-deep".length);
+    if (!allNames.has(shortName)) {
+      throw new Error(
+        `Role "${role.name}" has no matching short variant "${shortName}.md". The -deep suffix is reserved for design-advisor counterparts of triage checkers.`,
+      );
+    }
+  }
+}
+
+// All validation passed — safe to regenerate output directories.
+// .codex/agents/ is fully owned by this script (no hand-authored files
+// live there), so wipe-and-write is safe. .claude/agents/ may contain
+// a hand-authored README.md; remove only stale role files there.
+fs.rmSync(codexAgentsDir, { recursive: true, force: true });
+fs.mkdirSync(codexAgentsDir, { recursive: true });
+fs.mkdirSync(claudeAgentsDir, { recursive: true });
+
+const expectedClaudeFiles = new Set(importedRoles.map((r) => `${r.name}.md`));
+for (const existing of fs.readdirSync(claudeAgentsDir)) {
+  if (existing.endsWith(".md") && !expectedClaudeFiles.has(existing) && existing !== "README.md") {
+    fs.rmSync(path.join(claudeAgentsDir, existing));
+  }
+}
+
+for (const role of importedRoles) {
+  fs.writeFileSync(path.join(codexAgentsDir, `${role.name}.toml`), buildRoleFile(role.body), "utf8");
+  fs.writeFileSync(path.join(claudeAgentsDir, `${role.name}.md`), role.source, "utf8");
 }
 
 const allRoles = [...codexOnlyRoles, ...importedRoles];

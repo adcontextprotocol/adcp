@@ -92,6 +92,12 @@ describe('Addie rules loader', () => {
     const panel = prompt.slice(panelIdx);
     // -deep files are long-form design advisors, not triage lenses; they
     // would double-count each persona and bloat the system prompt.
-    expect(panel).not.toContain('-deep');
+    // Each short role must appear exactly once — if a -deep variant slips
+    // through, "code-reviewer" would match both "code-reviewer" and
+    // "code-reviewer-deep" lines, so the count check catches it.
+    for (const shortName of ['code-reviewer', 'security-reviewer', 'prompt-engineer']) {
+      const occurrences = (panel.match(new RegExp(`\\b${shortName}\\b`, 'g')) ?? []).length;
+      expect(occurrences).toBe(1);
+    }
   });
 });

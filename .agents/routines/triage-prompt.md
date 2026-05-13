@@ -351,10 +351,17 @@ the Task tool. Pass them the issue body + any relevant files you've
 read.
 
 Source of truth for expert prompts is `.agents/roles/` (also mirrored
-into `.claude/agents/` by `scripts/import-claude-agents.mjs`). Use
-the **short variants** (no `-deep` suffix) for triage — the `-deep`
-counterparts are long-form design advisors for open-ended work, not
-PR-bound triage checks.
+into `.claude/agents/` by `scripts/import-claude-agents.mjs`). Default
+to the **short variants** (no `-deep` suffix) — those are the PR-bound
+triage checkers and are what the bucket table below references.
+
+**Exception for RFC / architecture-shaped issues:** if the issue is
+clearly a design proposal and your outcome will be **Flag** (not
+Execute), you may add one `-deep` advisor alongside the short checker
+in the same domain — e.g. `code-reviewer` + `code-reviewer-deep` for an
+MCP tool-surface RFC, or `security-reviewer` + `security-reviewer-deep`
+for a new auth flow. Never call `-deep` for Execute outcomes; the
+extra reasoning budget is wasted on small PR-shaped work.
 
 | Bucket | Default panel |
 |---|---|
