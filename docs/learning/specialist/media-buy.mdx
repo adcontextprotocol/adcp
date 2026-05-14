@@ -42,6 +42,7 @@ See the [Compliance Catalog](/docs/building/compliance-catalog) for the full tax
 - Negotiate `measurement_terms` and `performance_standards` on guaranteed buys: propose overrides on `create_media_buy`, interpret seller acceptance (echoed back), adjustments, or `TERMS_REJECTED`. Recover by aligning to the seller's supported vendors or accepting product defaults.
 - Know that `update_media_buy` requires `account` (not just `media_buy_id`) so billing routes to the right relationship; omitting it is a protocol error
 - Tie broadcast buys to agency billing by attaching `agency_estimate_number` at the buy or package level (package-level overrides buy-level when flights or stations differ)
+- Interpret broadcast delivery reports: `get_media_buy_delivery` returns measurement window data (`live`, `c3`, `c7`) that progresses over days after broadcast — the C7 window's DVR accumulation doesn't close until seven days post-air, and vendor processing adds further delay before final data is available; incomplete data during this period is by design, not underdelivery
 - Use `get_media_buys` to check status, `valid_actions`, and creative approvals before acting
 - Handle pricing negotiation, budget allocation, and multi-agent orchestration
 - Use refinement and package requests for complex buying scenarios
@@ -130,7 +131,7 @@ During the module, Addie will guide you through hands-on exercises:
 5. **Campaign creation and optimization** — Create a media buy, monitor delivery, execute updates. Verify `update_media_buy` fails without `account` and succeeds with it.
 6. **State machine walkthrough** — Create a buy and trace it through `pending_creatives` (no creatives attached) → `sync_creatives` → `pending_start` → `active` at flight start. Use `get_media_buys` at each step to read `status`, `valid_actions`, and transition timestamps. Force a seller rejection from `pending_start` via the sandbox controller and verify the terminal state.
 7. **Lifecycle management** — Check `valid_actions`, cancel a package, handle `NOT_CANCELLABLE`, use `revision` for concurrency
-8. **Broadcast billing** — Create a broadcast buy with a buy-level `agency_estimate_number` and one package that overrides it with a station-specific estimate number. Verify both appear on delivery reconciliation.
+8. **Broadcast billing and delivery** — Create a broadcast buy with a buy-level `agency_estimate_number` and one package that overrides it with a station-specific estimate number. Verify both appear on delivery reconciliation. Call `get_media_buy_delivery` and interpret the measurement window fields: explain why `c3` data may be incomplete immediately after broadcast and when the `c7` window closes.
 9. **Multi-agent orchestration and execution** — Manage campaigns across multiple sellers. Trace a cross-publisher suppression scenario: a viewer sees an ad on publisher A, then visits publisher B within the 2-hour recency window — what does Identity Match return and why? Configure frequency parameters (5/week, 2-hour minimum recency) and predict delivery impact. Explain why Context Match and Identity Match are structurally separated.
 
 ## Assessment
