@@ -622,6 +622,89 @@ async function runTests() {
 
   log('');
 
+  // Product `publisher_properties` rejects `publisher_domains[]` compact form (#4508):
+  //
+  // What's being exercised: the rejection comes from the `allOf` clause in
+  // `core/product.json` (`{ not: { required: ['publisher_domains'] } }`),
+  // NOT from the selector schema's XOR. The selector itself accepts both
+  // singular and plural; product-side wraps the selector to forbid plural.
+  // If a future regression removes that `allOf+not` clause, these tests
+  // turn red — the compact form would silently pass through products.
+  log('product.publisher_properties rejects compact `publisher_domains[]` form (#4508):', 'info');
+  await testSchemaValidation(
+    '/schemas/core/product.json',
+    {
+      product_id: 'singular_ok',
+      name: 'Singular OK',
+      description: 'Test',
+      publisher_properties: [
+        { publisher_domain: 'example.com', selection_type: 'all' }
+      ],
+      format_ids: [{ agent_url: 'https://creative.example.com', id: 'video_30s' }],
+      delivery_type: 'guaranteed',
+      delivery_measurement: { provider: 'Test' },
+      pricing_options: [{ pricing_option_id: 'cpm', pricing_model: 'cpm', rate: 10, currency: 'USD', is_fixed: true }],
+      reporting_capabilities: {
+        available_reporting_frequencies: ['daily'],
+        expected_delay_minutes: 240,
+        timezone: 'UTC',
+        supports_webhooks: false,
+        available_metrics: ['impressions'],
+        date_range_support: 'date_range'
+      }
+    },
+    'Product with singular publisher_domain accepted'
+  );
+  await testSchemaRejection(
+    '/schemas/core/product.json',
+    {
+      product_id: 'compact_rejected',
+      name: 'Compact rejected',
+      description: 'Test',
+      publisher_properties: [
+        { publisher_domains: ['example.com', 'other.example'], selection_type: 'by_tag', property_tags: ['t'] }
+      ],
+      format_ids: [{ agent_url: 'https://creative.example.com', id: 'video_30s' }],
+      delivery_type: 'guaranteed',
+      delivery_measurement: { provider: 'Test' },
+      pricing_options: [{ pricing_option_id: 'cpm', pricing_model: 'cpm', rate: 10, currency: 'USD', is_fixed: true }],
+      reporting_capabilities: {
+        available_reporting_frequencies: ['daily'],
+        expected_delay_minutes: 240,
+        timezone: 'UTC',
+        supports_webhooks: false,
+        available_metrics: ['impressions'],
+        date_range_support: 'date_range'
+      }
+    },
+    'Product with compact publisher_domains[] form rejected'
+  );
+  await testSchemaRejection(
+    '/schemas/core/product.json',
+    {
+      product_id: 'compact_rejected_all',
+      name: 'Compact rejected on all',
+      description: 'Test',
+      publisher_properties: [
+        { publisher_domains: ['example.com'], selection_type: 'all' }
+      ],
+      format_ids: [{ agent_url: 'https://creative.example.com', id: 'video_30s' }],
+      delivery_type: 'guaranteed',
+      delivery_measurement: { provider: 'Test' },
+      pricing_options: [{ pricing_option_id: 'cpm', pricing_model: 'cpm', rate: 10, currency: 'USD', is_fixed: true }],
+      reporting_capabilities: {
+        available_reporting_frequencies: ['daily'],
+        expected_delay_minutes: 240,
+        timezone: 'UTC',
+        supports_webhooks: false,
+        available_metrics: ['impressions'],
+        date_range_support: 'date_range'
+      }
+    },
+    'Product with compact form on `all` selector rejected'
+  );
+  log('');
+
   // Test 6: Bundled schemas (no $ref resolution needed)
   // Only test against latest/ — versioned dirs in dist/ may be from a prior release
   // and are not updated on every source change.

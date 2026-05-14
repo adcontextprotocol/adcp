@@ -13,7 +13,7 @@
       "properties": {
         "publisher_domain": {
           "type": "string",
-          "description": "Domain where publisher's adagents.json is hosted (e.g., 'cnn.com'). XOR with `publisher_domains` — exactly one MUST be present on each `publisher_properties[]` entry; both-present and neither-present both fail validation. Generated SDK types in TypeScript/Python/Java/Go expose both fields as optional; the XOR is enforced at validation time, so consumers MUST check at runtime.",
+          "description": "Domain where publisher's adagents.json is hosted (e.g., 'cnn.com'). XOR with `publisher_domains` — exactly one MUST be present on each `publisher_properties[]` entry; both-present and neither-present both fail validation.",
           "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
         },
         "publisher_domains": {
@@ -80,7 +80,7 @@
       "properties": {
         "publisher_domain": {
           "type": "string",
-          "description": "Domain where publisher's adagents.json is hosted (e.g., 'cnn.com'). XOR with `publisher_domains` — exactly one MUST be present on each `publisher_properties[]` entry; both-present and neither-present both fail validation. Generated SDK types in TypeScript/Python/Java/Go expose both fields as optional; the XOR is enforced at validation time, so consumers MUST check at runtime.",
+          "description": "Domain where publisher's adagents.json is hosted (e.g., 'cnn.com'). XOR with `publisher_domains` — exactly one MUST be present on each `publisher_properties[]` entry; both-present and neither-present both fail validation.",
           "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
         },
         "publisher_domains": {
