@@ -1119,7 +1119,7 @@ describe('catalog_agent_authorizations writer projection', () => {
           revoked_publisher_domains: [
             // Embedded space inside the domain — survives trim(); canonical
             // form retains the interior space; fails the schema pattern.
-            { publisher_domain: 'caa writer.example', revoked_at: '2026-05-13T00:00:00Z' }, caa-writer.example', revoked_at: '2026-05-13T00:00:00Z' },
+            { publisher_domain: 'caa writer.example', revoked_at: '2026-05-13T00:00:00Z' },
             // Path segment — canonical form has `/`, fails the pattern.
             { publisher_domain: 'https://caa-writer.example/path', revoked_at: '2026-05-13T00:00:00Z' },
           ],
