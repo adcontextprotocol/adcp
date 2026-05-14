@@ -265,7 +265,7 @@ When every represented publisher delegates the same agent under the same tag pre
 }
 ```
 
-One entry per shared selector predicate, not per publisher. See [Pattern 4 in the adagents.json reference](/docs/governance/property/adagents#pattern-4-publisher-property-references) for the full mechanics, the singular-vs-compact contract, and the interaction with the `managerdomain` ads.txt fallback. The compact form scales linearly with the *number of distinct selector predicates* — typically a small constant — instead of with the number of represented publishers.
+One entry per shared selector predicate, not per publisher. The above is semantically identical to repeating the singular-form entry once per listed domain. See [Pattern 4 in the adagents.json reference](/docs/governance/property/adagents#pattern-4-publisher-property-references) for the full mechanics, the singular-vs-compact contract, and the interaction with the `managerdomain` ads.txt fallback. The compact form scales linearly with the *number of distinct selector predicates* — typically a small constant — instead of with the number of represented publishers.
 
 ## Controlling what each agent can sell with placements
 
@@ -630,7 +630,8 @@ One deploy to the authoritative file changes authorization across every publishe
 
 Conditional requests are the partial-update protocol for managed networks at scale. Without them, a network with 3,000 publishers churning weekly forces every buyer-side validator to download 20 MB per refresh per buyer. With them, the steady-state cost is one round-trip and a 304.
 
-**Publisher revocation (the exit lifecycle).** Removing a publisher domain from `publisher_properties[].publisher_domains[]` alone is not enough — cached authoritative files at downstream validators will keep authorizing the departed publisher for up to the 7-day cache cap. For revocations that need to propagate on the next refresh (a publisher leaving a network in dispute, a compliance issue, a misconfiguration cleanup), the authoritative file MUST list the publisher in the top-level `revoked_publisher_domains[]` array with a `revoked_at` timestamp.
+### Publisher revocation (the exit lifecycle)
+ Removing a publisher domain from `publisher_properties[].publisher_domains[]` alone is not enough — cached authoritative files at downstream validators will keep authorizing the departed publisher for up to the 7-day cache cap. For revocations that need to propagate on the next refresh (a publisher leaving a network in dispute, a compliance issue, a misconfiguration cleanup), the authoritative file MUST list the publisher in the top-level `revoked_publisher_domains[]` array with a `revoked_at` timestamp.
 
 Validator behavior:
 

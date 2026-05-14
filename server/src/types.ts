@@ -162,7 +162,8 @@ export interface CollectionSelector {
 }
 
 export interface PublisherPropertySelector {
-  publisher_domain: string;
+  publisher_domain?: string;
+  publisher_domains?: string[];
   selection_type: "all" | "by_id" | "by_tag";
   property_ids?: string[];
   property_tags?: string[];

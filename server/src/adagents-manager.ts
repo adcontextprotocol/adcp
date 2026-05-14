@@ -50,7 +50,8 @@ export interface AuthorizedAgent {
   property_tags?: string[];
   properties?: PropertyDefinition[];
   publisher_properties?: Array<{
-    publisher_domain: string;
+    publisher_domain?: string;
+    publisher_domains?: string[];
     selection_type: 'all' | 'by_id' | 'by_tag';
     property_ids?: string[];
     property_tags?: string[];
@@ -386,8 +387,10 @@ export class AdAgentsManager {
    * Two ways the manifest can express that scope:
    *
    * 1. **Per-agent paths.** An authorized_agents[] entry directly names
-   *    the publisher under publisher_properties[].publisher_domain or
-   *    collections[].publisher_domain.
+   *    the publisher under publisher_properties[].publisher_domain
+   *    (singular) or publisher_properties[].publisher_domains[] (compact
+   *    managed-network form — exactly equivalent to repeating the entry
+   *    once per listed domain) or collections[].publisher_domain.
    *
    * 2. **Property-level paths.** A top-level properties[] entry carries
    *    publisher_domain matching the source, AND at least one
@@ -430,7 +433,15 @@ export class AdAgentsManager {
 
     return agents.some((agent) => {
       const hasPublisherProperties = Array.isArray(agent.publisher_properties)
-        && agent.publisher_properties.some((p) => p.publisher_domain.toLowerCase() === normalizedPublisher);
+        && agent.publisher_properties.some((p) => {
+          if (typeof p.publisher_domain === 'string' && p.publisher_domain.toLowerCase() === normalizedPublisher) {
+            return true;
+          }
+          if (Array.isArray(p.publisher_domains)) {
+            return p.publisher_domains.some((d) => typeof d === 'string' && d.toLowerCase() === normalizedPublisher);
+          }
+          return false;
+        });
       const hasCollections = Array.isArray(agent.collections)
         && agent.collections.some((c) => c.publisher_domain.toLowerCase() === normalizedPublisher);
 
