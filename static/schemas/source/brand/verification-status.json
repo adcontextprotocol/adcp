@@ -7,6 +7,7 @@
   "enum": [
     "owned",
     "pending_review",
+    "transferring",
     "disputed",
     "not_ours",
     "licensed_in",
@@ -15,7 +16,8 @@
   ],
   "enumDescriptions": {
     "owned": "Definitively belongs to this brand, currently.",
-    "pending_review": "The brand is aware of this claim and has not yet decided. Consumers SHOULD NOT extend governance trust through pending claims; treating them as 'will-likely-be-confirmed' is also wrong — they may still be disputed.",
+    "pending_review": "The brand is aware of this claim and has not yet decided. When returning this status, the agent MUST also return `expected_resolution_window_days` and MUST transition the claim to a terminal status (owned/disputed/not_ours) or flip to `unknown` once the window elapses. Consumers SHOULD NOT extend governance trust through pending claims.",
+    "transferring": "Ownership is provably changing — M&A in flight, divestiture closing, or a known imminent transition. Distinct from `pending_review` (under-review-by-us); `transferring` signals 'the answer is known to be becoming something else.' Consumers SHOULD treat as `owned` for stability until the agent moves to the new state, but MAY surface the in-flight state in UIs.",
     "disputed": "The brand actively rejects this claim. Consumers MUST treat the claim as invalid and SHOULD surface the dispute (e.g., 'X says this is not theirs').",
     "not_ours": "The brand affirms it is not their property / subsidiary / mark. Equivalent to 'disputed' but used when the brand-agent has no record of an existing claim — a clean 'we do not own this.'",
     "licensed_in": "The brand uses this asset under license from another entity. The response carries `licensor_domain` when this status is returned. Applies to trademarks and (rarely) properties.",

@@ -1183,7 +1183,7 @@ These invariants MUST be enforced by validators and crawlers; JSON Schema cannot
 **Self-healing**
 
 - **Leaf-only edges SHOULD trigger notification.** When a consumer encounters a leaf claiming `house_domain: X` with no reciprocal entry on X, the consumer SHOULD notify X's `contact.email` so the house team can complete the reciprocation. Notifying parties MUST rate-limit per `{leaf, house}` pair to avoid flooding.
-- **Agent-preferred verification (proposed — see [brand verification RFC](/docs/brand-protocol/proposals/brand-verification-rfc)).** When the named house publishes a brand-agent advertising `verify_subsidiary_claim` (or `verify_property` / `verify_trademark`) in its `supported_tasks`, consumers SHOULD prefer the agent's authoritative response over crawl-based mutual-assertion inference. The agent's signed response wins; the crawl path remains as fallback when the agent is unreachable or returns `unknown`. Not yet normative; the email notification SHOULD continues to apply.
+- **Agent-preferred verification (proposed — see [brand verification RFC](/docs/brand-protocol/proposals/brand-verification-rfc)).** When the named house publishes a brand-agent advertising `verify_subsidiary_claim` (or `verify_property` / `verify_trademark`) in its `supported_tasks`, consumers SHOULD prefer the agent's authoritative response over crawl-based mutual-assertion inference. The agent's response is signed under the brand's `adcp_use: "response-signing"` JWK; signed `disputed` or `not_ours` from the agent overrides any leaf-side `house_domain` claim. The crawl path remains as fallback when the agent is unreachable or returns `unknown`. Not yet normative; the email notification SHOULD continues to apply for houses without a brand-agent.
 
 ## Prior art
 

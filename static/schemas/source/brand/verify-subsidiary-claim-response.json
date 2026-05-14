@@ -14,12 +14,13 @@
       "title": "VerifySubsidiaryClaimSuccess",
       "properties": {
         "status": {
-          "$ref": "/schemas/brand/verification-status.json",
-          "description": "Verification status. Applicable values for this tool: owned, pending_review, disputed, not_ours, unknown. (licensed_in / licensed_out do not apply to subsidiaries.)"
+          "type": "string",
+          "enum": ["owned", "pending_review", "transferring", "disputed", "not_ours", "unknown"],
+          "description": "Verification status. Subset of /schemas/brand/verification-status.json applicable to subsidiary claims; `licensed_in` / `licensed_out` are excluded because subsidiaries aren't licensed (brands and trademarks are)."
         },
         "brand_id": {
           "type": "string",
-          "description": "Public — the house's brand_id for this subsidiary when status is `owned` or `pending_review`. Lets the caller cross-reference with brand_refs[] / brands[] entries.",
+          "description": "Public — the house's brand_id for this subsidiary when status is `owned`, `pending_review`, or `transferring`. Lets the caller cross-reference with brand_refs[] / brands[] entries.",
           "pattern": "^[a-z0-9_]+$"
         },
         "first_observed_by_house_at": {
@@ -30,12 +31,12 @@
         "expected_resolution_window_days": {
           "type": "integer",
           "minimum": 0,
-          "description": "Authorized-tier only. The house's expected window for resolving a `pending_review` claim. Aggregate signal, not a guarantee; does not expose queue position or internal operations."
+          "description": "Authorized-tier only when populated alongside a terminal status. REQUIRED when status is `pending_review`. The house's expected window for resolving a `pending_review` claim. Agents MUST transition the claim to a terminal status or to `unknown` once the window elapses — staleness past the window is a contract violation. Aggregate signal; does not expose queue position or internal ops."
         },
-        "dispute_reason": {
+        "context_note": {
           "type": "string",
           "maxLength": 500,
-          "description": "Public — when status is `disputed`, a short human-readable rationale (e.g., 'Trademark conflict; not affiliated'). May be empty even on disputed."
+          "description": "Public — free-text context the brand chooses to surface. When status is `disputed`, this carries the rationale (e.g., 'Trademark conflict; not affiliated'). When status is `transferring`, the in-flight transition's nature (e.g., 'Divestiture closing 2026-08'). May be empty."
         },
         "context": {
           "$ref": "/schemas/core/context.json"
@@ -45,7 +46,12 @@
         }
       },
       "required": ["status"],
-      "additionalProperties": true
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          { "required": ["errors"] }
+        ]
+      }
     },
     {
       "title": "VerifySubsidiaryClaimError",

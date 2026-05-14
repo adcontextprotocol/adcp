@@ -1,6 +1,6 @@
 ---
 title: verify_subsidiary_claim
-description: "verify_subsidiary_claim is the AdCP brand-protocol task for asking a brand-agent whether a named brand is a subsidiary of this house. Returns an authoritative status — owned, pending_review, disputed, not_ours, or unknown — used in place of crawl-based mutual-assertion inference when the brand-agent supports it."
+description: "verify_subsidiary_claim is the AdCP brand-protocol task for asking a brand-agent whether a named brand is a subsidiary of this house. Returns an authoritative status — owned, pending_review, transferring, disputed, not_ours, or unknown — used in place of crawl-based mutual-assertion inference when the brand-agent supports it."
 "og:title": "AdCP — verify_subsidiary_claim"
 testable: true
 ---
@@ -16,26 +16,42 @@ Ask a brand-agent whether the named brand is a subsidiary of this house. Returns
 - **Request**: [`verify-subsidiary-claim-request.json`](https://adcontextprotocol.org/schemas/v3/brand/verify-subsidiary-claim-request.json)
 - **Response**: [`verify-subsidiary-claim-response.json`](https://adcontextprotocol.org/schemas/v3/brand/verify-subsidiary-claim-response.json)
 
+## Capability discovery
+
+The brand-agent advertises this task in its `get_adcp_capabilities` response:
+
+```json
+{
+  "supported_protocols": ["brand"],
+  "supported_tasks": [
+    "get_brand_identity",
+    "verify_subsidiary_claim"
+  ]
+}
+```
+
+Callers MUST check capability advertisement before relying on this task; brand-agents may implement any subset of the [verification surface](/docs/brand-protocol/proposals/brand-verification-rfc).
+
 ## When to use
 
 The crawl-based mutual-assertion model — leaf publishes `house_domain: X`, X's `brand_refs[]` includes leaf, both halves verified by independent fetch — covers the common case. But it has known gaps:
 
-- **Two-state visibility.** Crawl answers "mutual" or "not mutual." It can't surface *pending review* or *disputed*.
+- **Two-state visibility.** Crawl answers "mutual" or "not mutual." It can't surface *pending review*, *transferring*, or *disputed*.
 - **TTL-bound freshness.** A consumer's view is only as fresh as its last crawl of both sides.
 - **One-sided pessimism.** A leaf-only edge gets downgraded to "claimed, unverified" even when the brand intends to confirm.
 
-`verify_subsidiary_claim` asks the brand directly. A signed `owned` from the brand's own agent is stronger than a published `brand_refs[]` entry (since it's real-time). A signed `not_ours` overrides a leaf's `house_domain` claim. And `pending_review` surfaces a state the crawl model simply can't.
+`verify_subsidiary_claim` asks the brand directly. A signed `owned` from the brand's own agent is real-time-authoritative — stronger than a published `brand_refs[]` entry. A signed `not_ours` overrides a leaf's `house_domain` claim. And `pending_review` / `transferring` surface states the crawl model simply can't.
 
-## Public by default
+## Authorization tiers
 
-Every brand-agent that implements this task MUST return a `status` to any caller. Authorized callers (linked via [`sync_accounts`](/docs/accounts/tasks/sync_accounts)) additionally receive richer context — `first_observed_by_house_at`, `expected_resolution_window_days`, and the brand's `brand_id` for the subsidiary.
+Verification tools follow the same public/authorized split as `get_brand_identity`. The authoritative tier table lives in [the RFC](/docs/brand-protocol/proposals/brand-verification-rfc#authorization-tiers); the short version for this tool:
 
 | Tier | What you get |
 |---|---|
-| **Public** | `status`, public `brand_id` (when applicable), public `dispute_reason` (when status is `disputed`). |
-| **Authorized** | Everything above, plus `first_observed_by_house_at` and `expected_resolution_window_days`. |
+| **Public** | `status`, public `brand_id` (when applicable), `context_note` (when populated by the brand — carries dispute rationale, transfer details, etc). |
+| **Authorized** (via [`sync_accounts`](/docs/accounts/tasks/sync_accounts)) | Everything above, plus `first_observed_by_house_at` and `expected_resolution_window_days`. |
 
-Queue position, internal ticket state, and team routing are NEVER exposed — neither to the public nor to authorized callers.
+Queue position, internal ticket state, and team routing are never exposed.
 
 ## Quick start
 
@@ -48,14 +64,14 @@ Queue position, internal ticket state, and team routing are NEVER exposed — ne
 }
 ```
 
-```json Response (mutual)
+```json Response (owned)
 {
   "status": "owned",
   "brand_id": "converse"
 }
 ```
 
-```json Response (pending, authorized caller)
+```json Response (pending, authorized)
 {
   "status": "pending_review",
   "brand_id": "converse",
@@ -64,10 +80,18 @@ Queue position, internal ticket state, and team routing are NEVER exposed — ne
 }
 ```
 
+```json Response (transferring)
+{
+  "status": "transferring",
+  "brand_id": "converse",
+  "context_note": "Pending divestiture; closes 2026-08-15. Treat as owned for stability."
+}
+```
+
 ```json Response (disputed)
 {
   "status": "disputed",
-  "dispute_reason": "We do not own this brand; trademark held by separate entity."
+  "context_note": "We do not own this brand; trademark held by separate entity."
 }
 ```
 
@@ -82,40 +106,55 @@ Queue position, internal ticket state, and team routing are NEVER exposed — ne
   "status": "unknown"
 }
 ```
+
+```json Response (error)
+{
+  "errors": [
+    {
+      "code": "AUTH_INVALID",
+      "message": "Signed envelope did not verify against any published JWK."
+    }
+  ]
+}
+```
 </CodeGroup>
 
 ## Trust model
 
-The agent's response is **authoritative** when signed under the brand's `adcp_use: "request-signing"` JWK. Consumers SHOULD prefer the agent's response over crawl-based mutual-assertion inference when the brand-agent advertises `verify_subsidiary_claim` in its `supported_tasks`.
+The agent's response is **authoritative** when signed under the brand's `adcp_use: "response-signing"` JWK (the AdCP webhook-signing convention applies to response-side signing too; the key purpose is distinct from `request-signing`). Consumers SHOULD prefer the agent's response over crawl-based mutual-assertion inference when the brand-agent advertises `verify_subsidiary_claim` in its `supported_tasks`.
 
-Conflict resolution between agent response and crawl observation:
+Conflict resolution between agent response and crawl observation (normative — see [RFC § Trust model](/docs/brand-protocol/proposals/brand-verification-rfc#trust-model)):
 
 | Agent says | Crawl says | Consumer treats as |
 |---|---|---|
 | `owned` | Mutual or leaf-only | Trusted edge. Governance propagation: yes. |
-| `pending_review` | Leaf-only (parent silent) | Trusted leaf identity; relationship trust withheld. UI: "Pending parent confirmation, expected within N days." |
+| `pending_review` | Leaf-only (parent silent) | Trusted leaf identity; relationship trust withheld until window elapses or status transitions. UI: "Pending parent confirmation, expected within N days." |
+| `transferring` | Any | Trusted but in-flight; consumers MAY treat as `owned` for stability and SHOULD surface the transition in UI. |
 | `disputed` | Leaf-only or mutual | The brand has spoken. Treat leaf as having a rejected parent claim. UI: "Brand X says this is not theirs." |
-| `not_ours` | Leaf-only | Leaf is misclassified; treat as standalone with disputed parent claim. |
+| `not_ours` | Leaf-only | Leaf treated as standalone with disputed parent claim. |
 | `unknown` | Any | Fall back to crawl-based mutual-assertion inference. |
 
-When the agent answers, the agent wins. The crawl path remains as fallback only when the agent is unreachable, `unknown`, or doesn't implement the task.
+When the agent answers, the agent wins. The crawl path remains the fallback only when the agent is unreachable, returns `unknown`, or doesn't implement the task.
+
+`pending_review` requires the agent to set `expected_resolution_window_days` AND transition the claim to a terminal status (or `unknown`) once the window elapses. Staleness past the window is a contract violation; consumers MAY treat such responses as `unknown`.
 
 ## Caching
 
-Brand-agent responses to this task SHOULD carry standard HTTP cache headers and a TTL appropriate to the volatility:
+Verification responses SHOULD be cacheable per standard HTTP semantics. Agents SHOULD set `Cache-Control: max-age=N`:
 
-- `owned` / `not_ours` — stable. 24h cache is reasonable.
-- `pending_review` — volatile. Re-check on each governance decision.
-- `disputed` — stable until disputed party publishes new claim. 24h cache is reasonable.
+- `owned` / `not_ours` / `disputed` — stable. 24-72h is reasonable.
+- `pending_review` — volatile. Re-check per governance decision; max-age ≤1h.
+- `transferring` — volatile until transition. Max-age ≤4h.
+- `unknown` — short cache (≤1h).
 
-The agent MAY return `Cache-Control: max-age=N` to constrain consumer caching.
+Consumers MAY override agent-supplied cache hints downward but SHOULD NOT cache beyond the agent's `max-age`.
 
 ## Error handling
 
-Tasks return the `VerifySubsidiaryClaimError` arm on transport/auth failures:
+The `VerifySubsidiaryClaimError` arm returns on transport/auth/input failures. Operational failures (agent's internal database is down, etc.) MAY return `status: "unknown"` instead of an error, so the caller can fall back to crawl.
 
-- `AUTH_INVALID` — caller's signed envelope did not verify. (Distinct from `AUTH_MISSING`: an unauthenticated public call returns the public success arm with `status`, not an error.)
-- `RATE_LIMITED` — agent has rate-limited the caller (typically per `{caller_identity, claimed_subsidiary_domain}`).
-- `INVALID_INPUT` — `claimed_subsidiary_domain` is not a valid hostname or fails the agent's input policy.
-
-Operational failures (the agent's internal database is down, etc.) MAY return `status: "unknown"` rather than an error — the caller can fall back to crawl.
+| Error code | Cause |
+|---|---|
+| `AUTH_INVALID` | Caller's signed envelope did not verify. (Distinct from `AUTH_MISSING`: an unauthenticated public call returns the public success arm with `status`, not an error.) |
+| `RATE_LIMITED` | Agent has rate-limited the caller. Agents SHOULD return `Retry-After` and SHOULD prefer returning a cached prior answer over a hard error. |
+| `INVALID_INPUT` | `claimed_subsidiary_domain` is not a valid hostname or fails the agent's input policy. |

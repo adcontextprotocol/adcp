@@ -9,25 +9,40 @@ testable: true
 **Proposed (RFC).** This task is part of the [brand verification RFC](/docs/brand-protocol/proposals/brand-verification-rfc) and not yet normative.
 </Warning>
 
-Ask a brand-agent whether a property (website, app, podcast, etc.) belongs to this brand. Used by DSPs verifying inventory ownership, fraud detectors confirming domain claims, or any consumer that wants the brand's authoritative answer rather than inferring from a crawl of `properties[]`.
+Ask a brand-agent whether a property (website, app, podcast, etc.) belongs to this brand. Used in **inventory onboarding / supply-path-curation workflows**, fraud detection, and creative-clearance — not at bid time (sub-100ms auction budgets don't accommodate MCP round-trips). Cache and re-validate periodically.
 
 ## Schema
 
 - **Request**: [`verify-property-request.json`](https://adcontextprotocol.org/schemas/v3/brand/verify-property-request.json)
 - **Response**: [`verify-property-response.json`](https://adcontextprotocol.org/schemas/v3/brand/verify-property-response.json)
 
+## Capability discovery
+
+The brand-agent advertises this task in its `get_adcp_capabilities` response (alongside any other [verification tools](/docs/brand-protocol/proposals/brand-verification-rfc) it implements):
+
+```json
+{
+  "supported_protocols": ["brand"],
+  "supported_tasks": ["get_brand_identity", "verify_property"]
+}
+```
+
 ## When to use
 
-A DSP about to bid on inventory associated with `nike.cn` wants to confirm Nike owns it before extending brand-safety trust. A fraud detector found a domain claiming to be Nike's and wants the brand's say-so. A creative-approval workflow encountered a property reference and needs ownership confirmation.
+- **Supply-path curation.** An SSP onboards a property as inventory and the buyer wants the brand's say-so before allowing bidding on it.
+- **Fraud detection.** A domain is suspected of falsely claiming brand affiliation.
+- **Creative clearance.** A creative-approval workflow encounters a property reference and needs ownership confirmation.
 
-The static `brand.json` `properties[]` array is the published self-declaration. `verify_property` is the **real-time authoritative** answer from the brand-agent, including the `relationship` enum (owned / direct / delegated / ad_network) that mirrors the static declaration plus optional `use_case_authorization` gating.
+Not bid-time. Cache 24-72h for `owned`/`not_ours`; less for `transferring`/`pending` states.
 
-## Public by default
+## Authorization tiers
 
 | Tier | What you get |
 |---|---|
-| **Public** | `status`, `relationship` (when owned), `brand_id`, `regions`, `context_note`. |
-| **Authorized** | Everything above, plus `use_case_authorization` — per-use-case permission flags. |
+| **Public** | `status`, `relationship` (when owned/transferring), `brand_id`, `regions`, `context_note`. |
+| **Authorized** (via [`sync_accounts`](/docs/accounts/tasks/sync_accounts)) | Everything above, plus `use_case_authorization` — per-use-case permission flags. |
+
+The full tier table is in [the RFC](/docs/brand-protocol/proposals/brand-verification-rfc#authorization-tiers).
 
 ## Quick start
 
@@ -52,17 +67,18 @@ The static `brand.json` `properties[]` array is the published self-declaration. 
 }
 ```
 
-```json Request (verify an app bundle)
+```json Request (verify an app bundle with use case)
 {
   "property": {
     "type": "mobile_app",
     "identifier": "com.nike.snkrs",
     "store": "apple"
-  }
+  },
+  "use_case": "advertising"
 }
 ```
 
-```json Response (owned, authorized caller with use case)
+```json Response (owned, authorized caller)
 {
   "status": "owned",
   "relationship": "owned",
@@ -71,6 +87,15 @@ The static `brand.json` `properties[]` array is the published self-declaration. 
     "advertising": true,
     "endorsement": false
   }
+}
+```
+
+```json Response (transferring)
+{
+  "status": "transferring",
+  "relationship": "owned",
+  "brand_id": "nike",
+  "context_note": "Domain transferring to subsidiary on 2026-09-01; treat as owned."
 }
 ```
 
@@ -86,31 +111,55 @@ The static `brand.json` `properties[]` array is the published self-declaration. 
   "status": "not_ours"
 }
 ```
+
+```json Response (error)
+{
+  "errors": [
+    {
+      "code": "INVALID_INPUT",
+      "message": "property.identifier must be a valid hostname or app bundle id."
+    }
+  ]
+}
+```
 </CodeGroup>
 
 ## Relationship and use case
 
-The `relationship` field — present when status is `owned` — answers "the brand controls this property, but commercially how?":
+The `relationship` field — present when status is `owned` or `transferring` — answers "the brand controls this property, but commercially how?":
 
 - `owned` — brand owns and operates the property directly.
 - `direct` — brand is the direct sales path even if a third party runs the tech.
 - `delegated` — brand has delegated monetization (e.g., Mediavine for a food blog).
 - `ad_network` — brand sells as part of a network/exchange.
 
-The `use_case` request field — and the corresponding `use_case_authorization` response — handle the orthogonal question of "is the named use case allowed on this property?" A brand may own a domain but not authorize ad-network resale on it; the use-case gate exposes that without leaking the brand's full commercial policy.
+The `use_case` request field — and the `use_case_authorization` response — handle the orthogonal question of "is the named use case allowed?" A brand may own a domain but not authorize ad-network resale on it. The registered use-case keys are `advertising`, `endorsement`, `retail_listing`, `editorial`, `commercial_advertising`, `merchandise_resale`. Agents MAY add additional keys.
 
 ## Trust model
 
-Identical to [`verify_subsidiary_claim`](/docs/brand-protocol/tasks/verify_subsidiary_claim#trust-model). Signed authoritative response from the agent overrides static `brand.json` `properties[]` inference. When the agent is unreachable or returns `unknown`, fall back to crawl-based inference from the static file.
+The agent's response is **authoritative** when signed under the brand's `adcp_use: "response-signing"` JWK. Consumers SHOULD prefer the agent's response over `brand.json` `properties[]` inference. Conflict resolution mirrors [`verify_subsidiary_claim` § Trust model](/docs/brand-protocol/tasks/verify_subsidiary_claim#trust-model):
+
+| Agent says | Consumer treats as |
+|---|---|
+| `owned` | Trusted; bid/curate against `properties[]` confirmation. |
+| `transferring` | Trusted; MAY treat as owned for stability; surface in UI. |
+| `disputed` | Brand rejects this property claim. Do not extend trust. |
+| `not_ours` | Brand affirms no relationship. |
+| `unknown` | Fall back to `brand.json` `properties[]` inference. |
+
+When the agent answers, the agent wins.
 
 ## Caching
 
-Properties churn less than subsidiary claims. Cache-friendly:
-
-- `owned` / `not_ours` — stable. 24-72h cache.
-- `disputed` — stable until disputed party changes claim. 24h cache.
-- `use_case_authorization` — MAY be more volatile (a brand might rotate ad-network authorization). Re-check per session is reasonable.
+- `owned` / `not_ours` / `disputed` — stable. 24-72h cache.
+- `transferring` — volatile until transition. Max-age ≤4h.
+- `use_case_authorization` — most volatile. Re-check per session.
+- `unknown` — short cache (≤1h).
 
 ## Error handling
 
-See [`verify_subsidiary_claim` § Error handling](/docs/brand-protocol/tasks/verify_subsidiary_claim#error-handling). Same error code surface applies.
+| Error code | Cause |
+|---|---|
+| `AUTH_INVALID` | Caller's signed envelope did not verify. |
+| `RATE_LIMITED` | Agent has rate-limited the caller. Agents SHOULD return `Retry-After` and prefer cached prior answer over hard error. |
+| `INVALID_INPUT` | `property.identifier` is not valid for the declared `type`. |

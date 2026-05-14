@@ -14,28 +14,24 @@
       "title": "VerifyTrademarkSuccess",
       "properties": {
         "status": {
-          "$ref": "/schemas/brand/verification-status.json",
-          "description": "Verification status. Applicable values for this tool: owned, licensed_in, licensed_out, disputed, not_ours, unknown. (pending_review is uncommon — trademark registrations are public-record events with definitive ownership at any given time.)"
+          "type": "string",
+          "enum": ["owned", "licensed_in", "licensed_out", "transferring", "disputed", "not_ours", "unknown"],
+          "description": "Verification status. Subset of /schemas/brand/verification-status.json applicable to trademark claims. `pending_review` is excluded — trademark registrations are public-record events with definitive ownership at any given time; mid-transition cases use `transferring`."
         },
         "matched_registration": {
           "type": "object",
-          "description": "Public — when status is `owned`, `licensed_in`, or `licensed_out`, the registration the agent matched the query to. Same shape as brand.json's #/definitions/trademark.",
+          "description": "Public — when status is `owned`, `licensed_in`, `licensed_out`, or `transferring`, the registration the agent matched the query to. Same shape as brand.json's #/definitions/trademark.",
           "properties": {
             "registry": { "type": "string" },
             "number": { "type": "string" },
             "mark": { "type": "string" },
-            "status": {
+            "registration_status": {
               "type": "string",
               "enum": ["active", "pending", "abandoned", "cancelled", "expired"],
-              "description": "Registration status from the registry, distinct from this response's outer `status` field."
+              "description": "Registration status from the registry, distinct from this response's outer `status` field. Renamed from `status` on the brand.json definition to avoid collision with the verification status above."
             }
           },
           "additionalProperties": true
-        },
-        "license_type": {
-          "type": "string",
-          "enum": ["owned", "licensed_in", "licensed_out"],
-          "description": "Public — licensing relationship when status is `owned`, `licensed_in`, or `licensed_out`. Redundant with status for owned/licensed_in/licensed_out; kept for parity with brand.json #/definitions/trademark."
         },
         "licensor_domain": {
           "type": "string",
@@ -54,13 +50,21 @@
         },
         "use_case_authorization": {
           "type": "object",
-          "description": "Authorized-tier only. Per-use-case permission for this mark.",
+          "description": "Authorized-tier only. Per-use-case permission for this mark. Registered keys: advertising, endorsement, retail_listing, editorial, commercial_advertising, merchandise_resale. Agents MAY add additional keys (additionalProperties: boolean).",
+          "properties": {
+            "advertising": { "type": "boolean" },
+            "endorsement": { "type": "boolean" },
+            "retail_listing": { "type": "boolean" },
+            "editorial": { "type": "boolean" },
+            "commercial_advertising": { "type": "boolean" },
+            "merchandise_resale": { "type": "boolean" }
+          },
           "additionalProperties": { "type": "boolean" }
         },
         "context_note": {
           "type": "string",
           "maxLength": 500,
-          "description": "Public — free-text context the brand chooses to surface."
+          "description": "Public — free-text context the brand chooses to surface. When status is `disputed`, carries the rationale."
         },
         "context": {
           "$ref": "/schemas/core/context.json"
@@ -70,7 +74,12 @@
         }
       },
       "required": ["status"],
-      "additionalProperties": true
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          { "required": ["errors"] }
+        ]
+      }
     },
     {
       "title": "VerifyTrademarkError",

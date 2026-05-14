@@ -14,13 +14,14 @@
       "title": "VerifyPropertySuccess",
       "properties": {
         "status": {
-          "$ref": "/schemas/brand/verification-status.json",
-          "description": "Verification status. Applicable values for this tool: owned, disputed, not_ours, unknown. (pending_review and licensed_in/out are uncommon for properties; agents MAY return them but most properties have a definitive yes/no answer.)"
+          "type": "string",
+          "enum": ["owned", "transferring", "disputed", "not_ours", "unknown"],
+          "description": "Verification status. Subset of /schemas/brand/verification-status.json applicable to property claims. `pending_review` is excluded because property ownership is generally definitive — agents that need to surface in-process state SHOULD use `transferring`. `licensed_in` / `licensed_out` are excluded because licensing applies to trademarks and brands, not the underlying digital property."
         },
         "relationship": {
           "type": "string",
           "enum": ["owned", "direct", "delegated", "ad_network"],
-          "description": "Public — when status is `owned`, the commercial relationship between the brand and the property. Mirrors brand.json's properties[].relationship enum. Omitted when status is not `owned`."
+          "description": "Public — when status is `owned` or `transferring`, the commercial relationship between the brand and the property. Mirrors brand.json's properties[].relationship enum. Omitted when status is not in that set."
         },
         "brand_id": {
           "type": "string",
@@ -30,22 +31,25 @@
         "regions": {
           "type": "array",
           "items": { "type": "string" },
-          "description": "Public — ISO 3166-1 alpha-2 country codes where this property is the brand's primary/canonical surface. Empty array = global / no regional restriction."
+          "description": "Public — ISO 3166-1 alpha-2 country codes where this property is the brand's primary/canonical surface. Use the sentinel `\"global\"` (matching the request schema's region field) to signal no regional restriction. Omitting the field is equivalent to `unknown regions`."
         },
         "use_case_authorization": {
           "type": "object",
-          "description": "Authorized-tier only. Per-use-case authorization flags. The agent's answer to whether the named use case is permitted on this property — distinct from ownership.",
+          "description": "Authorized-tier only. Per-use-case authorization flags. The agent's answer to whether the named use case is permitted on this property — distinct from ownership. Registered keys: advertising, endorsement, retail_listing, editorial, commercial_advertising, merchandise_resale. Agents MAY add additional keys (additionalProperties: boolean).",
           "properties": {
             "advertising": { "type": "boolean", "description": "Programmatic advertising allowed via AdCP." },
             "endorsement": { "type": "boolean", "description": "Use of the property in endorsement deals." },
-            "retail_listing": { "type": "boolean", "description": "Listing in retail / commerce contexts." }
+            "retail_listing": { "type": "boolean", "description": "Listing in retail / commerce contexts." },
+            "editorial": { "type": "boolean", "description": "Editorial mentions and reviews." },
+            "commercial_advertising": { "type": "boolean", "description": "Paid advertising placements off-AdCP." },
+            "merchandise_resale": { "type": "boolean", "description": "Resale of merchandise associated with the property." }
           },
           "additionalProperties": { "type": "boolean" }
         },
         "context_note": {
           "type": "string",
           "maxLength": 500,
-          "description": "Public — free-text context the brand chooses to surface (e.g., 'Regional CN site', 'Legacy domain, redirects to nike.com')."
+          "description": "Public — free-text context the brand chooses to surface (e.g., 'Regional CN site', 'Legacy domain, redirects to nike.com'). When status is `disputed`, carries the rationale."
         },
         "context": {
           "$ref": "/schemas/core/context.json"
@@ -55,7 +59,12 @@
         }
       },
       "required": ["status"],
-      "additionalProperties": true
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          { "required": ["errors"] }
+        ]
+      }
     },
     {
       "title": "VerifyPropertyError",
