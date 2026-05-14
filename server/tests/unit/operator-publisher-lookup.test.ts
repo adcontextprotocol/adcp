@@ -37,6 +37,38 @@ describe('OperatorLookupResult schema', () => {
     }
   });
 
+  it('validates a public profile with membership_tier fields', () => {
+    const data = {
+      domain: 'scope3.com',
+      member: {
+        slug: 'scope3',
+        display_name: 'Scope3',
+        membership_tier: 'company_leader',
+        membership_tier_label: 'Leader',
+      },
+      agents: [],
+    };
+    const result = OperatorLookupResultSchema.safeParse(data);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.member?.membership_tier).toBe('company_leader');
+      expect(result.data.member?.membership_tier_label).toBe('Leader');
+    }
+  });
+
+  it('validates a private profile without membership_tier fields', () => {
+    const data = {
+      domain: 'private.example',
+      member: { slug: 'private', display_name: 'Private Co' },
+      agents: [],
+    };
+    const result = OperatorLookupResultSchema.safeParse(data);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.member?.membership_tier).toBeUndefined();
+    }
+  });
+
   it('validates an unfound operator', () => {
     const data = {
       domain: 'unknown.com',

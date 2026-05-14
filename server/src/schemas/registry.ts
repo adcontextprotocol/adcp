@@ -182,6 +182,14 @@ export const PropertySummarySchema = z
 const MemberRefSchema = z.object({
   slug: z.string().optional(),
   display_name: z.string().optional(),
+  membership_tier: z.string().optional().openapi({
+    description:
+      "Raw AAO membership tier enum (e.g. `individual_professional`, `company_leader`). Present only when the profile owner has set their member card to public (`is_public=true`) AND the org has a resolvable tier. Absent for private profiles and for orgs without an active tier-bearing subscription.",
+  }),
+  membership_tier_label: z.string().optional().openapi({
+    description:
+      "Human-readable label for `membership_tier` (e.g. `Professional`, `Leader`). Use this for UI display; the raw enum is for programmatic gating. Presence rules match `membership_tier`.",
+  }),
 });
 
 export const ResolvedBrandSchema = z
