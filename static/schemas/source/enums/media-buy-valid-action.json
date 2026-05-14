@@ -1,9 +1,16 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/enums/media-buy-valid-action.json",
-  "title": "Media Buy Action",
-  "description": "Actions the buyer can perform on a media buy. Used as the action identifier in both the legacy flat `valid_actions[]` field (string array) and the structured `available_actions[]` field on buy responses, and in `allowed_actions[]` on Product. The coarse values (`update_budget`, `update_dates`, `update_packages`, `sync_creatives`) predate the finer-grained vocabulary and are retained for backwards compatibility. Sellers SHOULD declare the finer-grained values where their platform distinguishes them; the coarse values roll up to the finer set per the rollup table in update_media_buy task-reference. See action-to-field mapping table in docs/media-buy/task-reference/update_media_buy.mdx for the normative binding between each action and the fields it covers on update_media_buy.",
+  "title": "Media Buy Valid Action",
+  "description": "Actions the buyer can perform on a media buy. Used as the action identifier in both the legacy flat `valid_actions[]` field (string array) and the structured `available_actions[]` field on buy responses, and in `allowed_actions[]` on Product. The coarse values (`update_budget`, `update_dates`, `update_packages`, `sync_creatives`) predate the finer-grained vocabulary and are retained for backwards compatibility — see `x-deprecated-enum-values`. Sellers SHOULD declare the finer-grained values where their platform distinguishes them; the coarse values roll up to the finer set per `enumMetadata[<value>].rollup`. See action-to-field mapping table in docs/media-buy/task-reference/update_media_buy.mdx for the normative binding between each action and the fields it covers on update_media_buy.",
   "type": "string",
+  "x-deprecated-enum-values": [
+    "update_budget",
+    "update_dates",
+    "update_packages",
+    "sync_creatives"
+  ],
+  "x-deprecated-enum-values-doc": "Coarse legacy values retained for backwards compatibility with 3.x sellers. Each rolls up to one or more finer-grained values published in 3.1 (see `enumMetadata[<value>].rollup`). Removed in 4.0.",
   "enum": [
     "pause",
     "resume",
@@ -51,13 +58,13 @@
     "sync_creatives": "Coarse legacy action covering any creative-related change. Retained for backwards compatibility with 3.x sellers that emit this rather than the finer `replace_creative`/`update_creative_assignments`/`remove_creative`. Removed in 4.0. Sellers SHOULD migrate to the finer vocabulary."
   },
   "enumMetadata": {
-    "$comment": "Structured per-action metadata. Each entry carries `update_fields` (the `update_media_buy` request fields this action covers, as dotted paths rooted at the request body) and optional `deprecated` + `rollup` for legacy values superseded by finer-grained vocabulary. SDKs MUST consume this block to dispatch update_media_buy requests rather than parsing the field-mapping table in the update_media_buy task-reference doc; the doc is the human-readable mirror of this normative data. SDKs and codegen MAY hide entries with `deprecated: true` from caller-facing surfaces when any value in the entry's `rollup` array is present in the same `available_actions[]` or `valid_actions[]` payload.",
+    "$comment": "Structured per-action metadata. Each entry carries `update_fields` (the `update_media_buy` request fields this action covers, as dotted paths rooted at the request body) and optional `rollup` for legacy coarse values that are superseded by finer-grained vocabulary. SDKs MUST consume this block to dispatch update_media_buy requests rather than parsing the field-mapping table in the update_media_buy task-reference doc; the doc is the human-readable mirror of this normative data. Deprecated values are marked at the top-level `x-deprecated-enum-values` (repo convention); SDKs and codegen MAY hide deprecated values from caller-facing surfaces when any value in the entry's `rollup` array is present in the same `available_actions[]` or `valid_actions[]` payload.",
     "pause":                       { "update_fields": ["paused"] },
     "resume":                      { "update_fields": ["paused"] },
     "cancel":                      { "update_fields": ["canceled", "cancellation_reason"] },
-    "extend_flight":               { "update_fields": ["end_time"] },
-    "shorten_flight":              { "update_fields": ["end_time"] },
-    "update_flight_dates":         { "update_fields": ["start_time", "end_time"] },
+    "extend_flight":               { "update_fields": ["end_time", "packages[].end_time"] },
+    "shorten_flight":              { "update_fields": ["end_time", "packages[].end_time"] },
+    "update_flight_dates":         { "update_fields": ["start_time", "end_time", "packages[].start_time", "packages[].end_time"] },
     "increase_budget":             { "update_fields": ["packages[].budget"] },
     "decrease_budget":             { "update_fields": ["packages[].budget"] },
     "reallocate_budget":           { "update_fields": ["packages[].budget"] },
@@ -69,9 +76,9 @@
     "remove_creative":             { "update_fields": ["packages[].creatives", "packages[].creative_assignments"] },
     "add_packages":                { "update_fields": ["new_packages"] },
     "remove_packages":             { "update_fields": ["packages[].canceled"] },
-    "update_budget":               { "update_fields": ["packages[].budget"], "deprecated": true, "rollup": ["increase_budget", "decrease_budget", "reallocate_budget"] },
-    "update_dates":                { "update_fields": ["start_time", "end_time"], "deprecated": true, "rollup": ["extend_flight", "shorten_flight", "update_flight_dates"] },
-    "update_packages":             { "update_fields": ["packages[]"], "deprecated": true, "rollup": ["update_targeting", "update_pacing", "update_frequency_caps", "reallocate_budget", "remove_packages"] },
-    "sync_creatives":              { "update_fields": ["packages[].creatives", "packages[].creative_assignments"], "deprecated": true, "rollup": ["replace_creative", "update_creative_assignments", "remove_creative"] }
+    "update_budget":               { "update_fields": ["packages[].budget"], "rollup": ["increase_budget", "decrease_budget", "reallocate_budget"] },
+    "update_dates":                { "update_fields": ["start_time", "end_time", "packages[].start_time", "packages[].end_time"], "rollup": ["extend_flight", "shorten_flight", "update_flight_dates"] },
+    "update_packages":             { "update_fields": ["packages[]"], "rollup": ["update_targeting", "update_pacing", "update_frequency_caps", "reallocate_budget", "remove_packages"] },
+    "sync_creatives":              { "update_fields": ["packages[].creatives", "packages[].creative_assignments"], "rollup": ["replace_creative", "update_creative_assignments", "remove_creative"] }
   }
 }

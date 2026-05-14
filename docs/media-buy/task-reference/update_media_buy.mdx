@@ -18,7 +18,7 @@ When a specific action is unsupported for a given buy for business reasons (cont
 
 ## Action vocabulary and field mapping
 
-Buyers express intent through actions; the seller declares the actions available on each buy via the structured `available_actions[]` field (authoritative) and the flat `valid_actions[]` field (legacy, deprecated in 4.0). When a buyer issues an `update_media_buy` request, the seller maps the request's fields to one or more actions and rejects with `ACTION_NOT_ALLOWED` (carrying `attempted_action`, `reason`, and `currently_available_actions` in `error.details`) if any mapped action is not in the buy's resolved `available_actions[]`.
+Buyers express intent through actions; the seller declares the actions available on each buy via the structured `available_actions[]` field (authoritative) and the flat `valid_actions[]` field (legacy, deprecated in 4.0). When both fields are present, consumers MUST prefer `available_actions[]` — it carries the resolved `mode`, optional `sla`, and optional `terms_ref` that the flat string array cannot represent. When a buyer issues an `update_media_buy` request, the seller maps the request's fields to one or more actions and rejects with `ACTION_NOT_ALLOWED` (carrying `attempted_action`, `reason`, and `currently_available_actions` in `error.details`) if any mapped action is not in the buy's resolved `available_actions[]`.
 
 The mapping is normative — sellers and SDKs MUST use this table to translate between request fields and action identifiers so the surface is consistent across implementations.
 
@@ -27,13 +27,13 @@ The mapping is normative — sellers and SDKs MUST use this table to translate b
 | `pause` | `paused: true` |  |
 | `resume` | `paused: false` |  |
 | `cancel` | `canceled: true`, `cancellation_reason` | Irreversible |
-| `extend_flight` | `end_time` (later than current) | End-time push only |
-| `shorten_flight` | `end_time` (earlier than current) | End-time pull only |
-| `update_flight_dates` | `start_time` and/or `end_time` (shift) | Start-shift distinct from extend/shorten |
+| `extend_flight` | `end_time`, `packages[].end_time` (later than current) | End-time push only |
+| `shorten_flight` | `end_time`, `packages[].end_time` (earlier than current) | End-time pull only |
+| `update_flight_dates` | `start_time`, `end_time`, `packages[].start_time`, `packages[].end_time` (shift) | Start-shift distinct from extend/shorten; covers both buy-level and package-level dates |
 | `increase_budget` | `packages[].budget` (raise) |  |
 | `decrease_budget` | `packages[].budget` (lower) | Sellers typically bound by already-spent |
 | `reallocate_budget` | `packages[].budget` (redistribute, aggregate unchanged) |  |
-| `update_targeting` | `packages[].targeting_overlay`, `keyword_targets_add/remove`, `negative_keywords_add/remove` |  |
+| `update_targeting` | `packages[].targeting_overlay`, `packages[].keyword_targets_add`, `packages[].keyword_targets_remove`, `packages[].negative_keywords_add`, `packages[].negative_keywords_remove` |  |
 | `update_pacing` | `packages[].pacing` |  |
 | `update_frequency_caps` | `packages[].targeting_overlay.frequency_cap` | Renegotiated mid-flight more often than other targeting. Field is singular `frequency_cap` (single rule), not plural. |
 | `replace_creative` | `packages[].creatives[]` swap (assignments unchanged) | Distinct AM workflow from changing assignment set |
