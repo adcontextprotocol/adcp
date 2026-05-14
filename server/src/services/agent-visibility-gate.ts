@@ -11,6 +11,42 @@ import { isValidAgentVisibility, isValidAgentType } from '../types.js';
 import type { AgentConfig, AgentVisibility } from '../types.js';
 import { validateExternalUrl } from '../utils/url-security.js';
 
+/**
+ * Server-authoritative answer to "can this caller publish an agent publicly?"
+ * Two independent preconditions:
+ *  - `tier_required`: caller's org lacks an API-access membership tier
+ *  - `brand_domain_required`: caller's org has no `organization_domains.is_primary=true`
+ *
+ * The same two preconditions are enforced at write time by the
+ * `/agents/:index/publish` and `/agents/:index/visibility` route handlers
+ * (`tier_required` via `requireApiAccessTier`, `brand_domain_required` via
+ * the `brandPrimaryDomain` null-check inside `applyAgentVisibility`). This
+ * helper exists so the UI affordance and the write-time enforcement read
+ * from one place — the dashboard previously reverse-engineered the gate
+ * by checking whether a domain field was present on the profile response,
+ * which silently broke when the field shape changed.
+ *
+ * Shares the same `tier_required` reason code with the per-agent downgrade
+ * warnings emitted by {@link gateAgentVisibilityForCaller} below — keep the
+ * vocabulary aligned when adding new reasons.
+ */
+export type AgentVisibilityGateReason = 'tier_required' | 'brand_domain_required';
+
+export interface AgentVisibilityGate {
+  can_publish_publicly: boolean;
+  reasons: AgentVisibilityGateReason[];
+}
+
+export function computeAgentVisibilityGate(opts: {
+  hasApiAccess: boolean;
+  brandPrimaryDomain: string | null | undefined;
+}): AgentVisibilityGate {
+  const reasons: AgentVisibilityGateReason[] = [];
+  if (!opts.hasApiAccess) reasons.push('tier_required');
+  if (!opts.brandPrimaryDomain) reasons.push('brand_domain_required');
+  return { can_publish_publicly: reasons.length === 0, reasons };
+}
+
 export interface VisibilityWarning {
   code: 'visibility_downgraded';
   /**

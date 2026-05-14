@@ -901,7 +901,13 @@
       complianceMap: new Map(),
       orgId: null,
       hasApiAccess: false,
-      brandHostingType: null,
+      // Server-computed { can_publish_publicly, reasons[] }. Populated from
+      // GET /api/me/member-profile so the UI affordance reads from the
+      // same gate the publish endpoint enforces. Defaults to
+      // `brand_domain_required` (the >95% case among logged-in dashboard
+      // users) so the brand-nudge text renders during the sub-second load
+      // gap instead of an unexplained-disabled toggle.
+      visibilityGate: { can_publish_publicly: false, reasons: ['brand_domain_required'] },
       // Tracks agents that have already auto-retried once after a 429
       // (#2804). A second 429 on the same agent freezes the card with
       // "you've refreshed too quickly" guidance instead of looping.
@@ -1098,7 +1104,8 @@
         pageState.complianceMap = agentCompliance;
         pageState.orgId = currentOrgId;
         pageState.hasApiAccess = !!profileData?.has_api_access;
-        pageState.brandHostingType = null;
+        pageState.visibilityGate = profileData?.agent_visibility_gate
+          || { can_publish_publicly: false, reasons: ['brand_domain_required'] };
         renderPage(agents, agentCompliance, currentOrgId);
 
         if (agents.length > 0) {
@@ -1130,21 +1137,6 @@
           }
         }
 
-        // Brand hosting type gates the "Public" visibility option. Fetched
-        // asynchronously — the cards re-render once the answer lands.
-        const primaryBrandDomain = profileData?.profile?.primary_brand_domain;
-        if (primaryBrandDomain) {
-          fetch(`/api/brands/discovered/${encodeURIComponent(primaryBrandDomain)}/edit-status`, { credentials: 'include' })
-            .then(r => (r.ok ? r.json() : null))
-            .then(editStatus => {
-              pageState.brandHostingType = editStatus?.source_type === 'brand_json' ? 'self-hosted' : 'community';
-              renderPage(pageState.agents, pageState.complianceMap, pageState.orgId);
-            })
-            .catch(() => {
-              pageState.brandHostingType = 'community';
-              renderPage(pageState.agents, pageState.complianceMap, pageState.orgId);
-            });
-        }
       } catch (err) {
         console.error('Agents page load error:', err);
         document.getElementById('hub-loading').innerHTML =
@@ -1224,17 +1216,19 @@
 
     // Renders a compact visibility dropdown for each agent card.
     // Shows a single inline hint describing what the currently-selected
-    // visibility means. Public may be disabled for users without API access
-    // or without a primary brand domain.
+    // visibility means. The "Public" option is gated on the server-
+    // computed `agent_visibility_gate` — same two preconditions the
+    // /agents/:index/publish endpoint enforces (tier + primary brand domain).
     function renderVisibilitySelector(index, visibility) {
       const vis = visibility || 'private';
-      const canSetPublic = !!pageState.hasApiAccess;
-      const brandHostingType = pageState.brandHostingType;
-      const publicRequiresDomain = !brandHostingType;
-      const publicDisabled = !canSetPublic || publicRequiresDomain;
-      const publicDisabledReason = !canSetPublic
+      const gate = pageState.visibilityGate || { can_publish_publicly: false, reasons: [] };
+      const reasons = Array.isArray(gate.reasons) ? gate.reasons : [];
+      const publicDisabled = !gate.can_publish_publicly;
+      const tierRequired = reasons.includes('tier_required');
+      const brandRequired = reasons.includes('brand_domain_required');
+      const publicDisabledReason = tierRequired
         ? 'Publicly listing an agent requires a paid AAO tier (Professional, Builder, Member, or Leader).'
-        : publicRequiresDomain
+        : brandRequired
           ? 'Set a primary brand domain to publish publicly.'
           : '';
 
@@ -1247,10 +1241,10 @@
       const selectId = `agent-${index}-visibility`;
       const publicLabel = publicDisabled ? 'Public (unavailable)' : 'Public';
 
-      const upsell = !canSetPublic
-        ? `<span class="agent-visibility-upsell"><a href="/membership">Upgrade to Professional</a> to list publicly.</span>`
+      const upsell = tierRequired
+        ? `<span class="agent-visibility-upsell"><a href="/membership">Upgrade to a paid AAO tier</a> to list publicly.</span>`
         : '';
-      const brandNudge = canSetPublic && publicRequiresDomain
+      const brandNudge = !tierRequired && brandRequired
         ? `<span class="agent-visibility-upsell">Verify a <a href="/member-profile#linked-domains-section">primary brand domain</a> to publish publicly.</span>`
         : '';
 
