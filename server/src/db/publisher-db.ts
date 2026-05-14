@@ -145,17 +145,23 @@ function truncateResolvedUrl(url: string | undefined): string | null {
 }
 
 // Read `revoked_publisher_domains[]` from a (loose-typed) manifest and return
-// the set of lowercased publisher_domain values. Tolerant of missing or
-// malformed entries — only well-formed string publisher_domain values count.
+// the set of lowercased publisher_domain values. Entries MUST carry both
+// a string `publisher_domain` and a parseable `revoked_at` per the spec —
+// the writer is a security boundary, and silently accepting incomplete
+// revocation entries is the same shape as the cross-publisher bypass this
+// PR closes. Malformed entries are dropped, not honored.
 function extractRevokedPublisherDomains(manifest: unknown): Set<string> {
   const out = new Set<string>();
   const m = manifest as { revoked_publisher_domains?: unknown };
   if (!Array.isArray(m?.revoked_publisher_domains)) return out;
   for (const entry of m.revoked_publisher_domains) {
     const pd = (entry as { publisher_domain?: unknown })?.publisher_domain;
-    if (typeof pd === 'string' && pd.length > 0) {
-      out.add(pd.toLowerCase());
-    }
+    const ra = (entry as { revoked_at?: unknown })?.revoked_at;
+    if (typeof pd !== 'string' || pd.length === 0) continue;
+    if (typeof ra !== 'string' || ra.length === 0) continue;
+    // Require parseable date-time. Date.parse returns NaN on invalid input.
+    if (Number.isNaN(Date.parse(ra))) continue;
+    out.add(pd.toLowerCase());
   }
   return out;
 }
@@ -285,15 +291,42 @@ export class PublisherDatabase {
 
       // `revoked_publisher_domains[]` precedence: if this manifest revokes
       // the source domain, skip property and authorization projection
-      // entirely. The publisher row above is still upserted so the cache
-      // reflects the manifest verbatim, but no catalog rows land — the
-      // revocation list takes precedence over any other appearance of
-      // the domain in the file. See managed-networks.mdx for spec.
+      // entirely AND retire any catalog rows that a prior projection of
+      // this same publisher had landed. The publishers row stays as the
+      // verbatim cache of the manifest, but every writer-owned catalog
+      // row (`evidence='adagents_json'`, `created_by='system'`) gets
+      // soft-deleted so the index stops authorizing the revoked
+      // publisher on the next refresh. Without this retirement the
+      // revocation is advisory only — stale rows from before the
+      // revocation would continue to serve, defeating the security gate
+      // the spec promises. See managed-networks.mdx (Publisher
+      // revocation) and the reconciliation block below this branch.
       const revokedDomains = extractRevokedPublisherDomains(safeManifest);
       if (revokedDomains.has(domain)) {
         log.info(
           { domain, revokedCount: revokedDomains.size },
-          'Skipping projection: source domain appears in revoked_publisher_domains[]'
+          'Revoking projection: source domain appears in revoked_publisher_domains[] — retiring all writer-owned catalog rows for this publisher'
+        );
+        // Soft-delete every writer-owned CAA row for this publisher.
+        // currentCanonical is empty: no authorized_agents[] entries
+        // survive revocation. The OR-chain matches all three writer
+        // shapes (publisher-wide, property_rid-keyed, slug-keyed).
+        await client.query(
+          `UPDATE catalog_agent_authorizations caa
+              SET deleted_at = NOW()
+            WHERE caa.evidence = 'adagents_json'
+              AND caa.created_by = 'system'
+              AND caa.deleted_at IS NULL
+              AND (
+                caa.publisher_domain = $1
+                OR caa.property_rid IN (
+                  SELECT property_rid FROM catalog_properties WHERE created_by = $2
+                )
+                OR (caa.property_id_slug IS NOT NULL AND caa.property_rid IN (
+                  SELECT property_rid FROM catalog_properties WHERE created_by = $2
+                ))
+              )`,
+          [domain, adagentsCreatedBy(domain)],
         );
         await client.query('COMMIT');
         return;
@@ -834,20 +867,38 @@ export class PublisherDatabase {
     } else if (variant === 'publisher_properties') {
       const sels = Array.isArray(entry.publisher_properties) ? entry.publisher_properties : [];
       for (const sel of sels) {
+        // The spec requires XOR — exactly one of `publisher_domain` (singular)
+        // or `publisher_domains[]` (compact) is present on each selector. A
+        // manifest with both populated is malformed and dangerous: a writer
+        // that accepts the union turns a singular-points-at-victim + plural-
+        // points-at-source shape into an unintended permissive projection.
+        // Refuse and log rather than picking a winner.
+        const hasSingular = typeof sel?.publisher_domain === 'string' && sel.publisher_domain.length > 0;
+        const hasPlural = Array.isArray(sel?.publisher_domains) && sel.publisher_domains.length > 0;
+        if (hasSingular && hasPlural) {
+          log.warn(
+            { publisherDomain, agentUrl: agentCanonical, selPub: sel.publisher_domain, selPubsCount: sel.publisher_domains?.length },
+            'Skipping auth projection: publisher_properties entry violates singular/plural XOR (both present)'
+          );
+          continue;
+        }
         // A selector claims the publisher if the source publisherDomain matches
         // either the singular publisher_domain or any entry in the compact
         // publisher_domains[] array. Both forms are equivalent for projection.
-        const selPubSingular = typeof sel?.publisher_domain === 'string' ? sel.publisher_domain.toLowerCase() : null;
-        const selPubInList = Array.isArray((sel as { publisher_domains?: unknown })?.publisher_domains)
-          && (sel as { publisher_domains: unknown[] }).publisher_domains.some(
-            (d: unknown) => typeof d === 'string' && d.toLowerCase() === publisherDomain
-          );
+        const selPubSingular = hasSingular ? sel.publisher_domain!.toLowerCase() : null;
+        const selPubInList = hasPlural
+          && sel.publisher_domains!.some((d) => typeof d === 'string' && d.toLowerCase() === publisherDomain);
         if (selPubSingular !== publisherDomain && !selPubInList) {
           // Cross-publisher third-party-sales claim. Refused per spec — the
           // writer cannot land an authoritative row for another publisher's
           // properties without out-of-band corroboration.
           log.warn(
-            { publisherDomain, agentUrl: agentCanonical, selPub: selPubSingular },
+            {
+              publisherDomain,
+              agentUrl: agentCanonical,
+              selPub: selPubSingular,
+              selPubsCount: hasPlural ? sel.publisher_domains!.length : 0,
+            },
             'Skipping auth projection: publisher_properties claims a different publisher (cross-publisher refused)'
           );
           continue;
