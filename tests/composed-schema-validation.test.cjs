@@ -623,6 +623,13 @@ async function runTests() {
   log('');
 
   // Product `publisher_properties` rejects `publisher_domains[]` compact form (#4508):
+  //
+  // What's being exercised: the rejection comes from the `allOf` clause in
+  // `core/product.json` (`{ not: { required: ['publisher_domains'] } }`),
+  // NOT from the selector schema's XOR. The selector itself accepts both
+  // singular and plural; product-side wraps the selector to forbid plural.
+  // If a future regression removes that `allOf+not` clause, these tests
+  // turn red — the compact form would silently pass through products.
   log('product.publisher_properties rejects compact `publisher_domains[]` form (#4508):', 'info');
   await testSchemaValidation(
     '/schemas/core/product.json',
