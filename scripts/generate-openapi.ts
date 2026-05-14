@@ -128,3 +128,10 @@ const yamlStr = YAML.stringify(doc, {
 const outPath = path.join(__dirname, "..", "static", "openapi", "registry.yaml");
 fs.writeFileSync(outPath, yamlStr, "utf-8");
 console.log(`OpenAPI spec written to ${outPath}`);
+
+// Importing `server/src/routes/registry-api.js` pulls in auth middleware
+// and the pg rate-limit store, both of which arm module-level
+// `setInterval` timers for session-cache cleanup and rate-limit flushes.
+// Those keep the event loop alive after the yaml is written, so Node
+// will sit until the CI job timeout fires. Exit explicitly — we're done.
+process.exit(0);
