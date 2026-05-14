@@ -45,6 +45,15 @@ jobs:
         run: npm run test:schemas && npm run test:json-schema && npm run test:extension-schemas && npm run test:composed
 
       - name: OpenAPI freshness (static/openapi/registry.yaml regenerated from Zod source)
+        # generate-openapi.ts transitively imports auth middleware which
+        # constructs WorkOS at module load. CI doesn't ship those secrets
+        # and doesn't need them — the script never makes a network call.
+        # Dummy values just satisfy constructor validation.
+        env:
+          WORKOS_API_KEY: sk_dummy_ci_only
+          WORKOS_CLIENT_ID: client_dummy_ci_only
+          STRIPE_SECRET_KEY: sk_dummy_ci_only
+          RESEND_API_KEY: re_dummy_ci_only
         run: npm run test:openapi
 
       - name: Fetch 3.0.x for error-code drift comparison
