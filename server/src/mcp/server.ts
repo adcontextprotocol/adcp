@@ -26,6 +26,7 @@ import {
   ReadResourceRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import { createLogger } from '../logger.js';
+import { ToolError } from '../addie/tool-error.js';
 import type { AddieTool } from '../addie/types.js';
 import type { MCPAuthContext } from './auth.js';
 
@@ -202,7 +203,11 @@ export function createUnifiedMCPServer(authContext?: MCPAuthContext): Server {
         isError?: boolean;
       };
     } catch (error) {
-      logger.error({ error, tool: name }, 'MCP: Tool execution error');
+      if (error instanceof ToolError) {
+        logger.warn({ error: error.message, tool: name }, 'MCP: Tool returned expected error');
+      } else {
+        logger.error({ error, tool: name }, 'MCP: Tool execution error');
+      }
       return {
         content: [{ type: 'text', text: JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' }) }],
         isError: true,
