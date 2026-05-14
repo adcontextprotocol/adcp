@@ -183,6 +183,60 @@ describe('issueDomainChallenge', () => {
     expect(createFn).not.toHaveBeenCalled();
   });
 
+  it('returns workos_misconfigured when existing pending domain has a token but no verificationPrefix (no delete, no recreate)', async () => {
+    const deleteFn = vi.fn();
+    const createFn = vi.fn();
+    const workos = makeWorkos({
+      getOrganization: vi.fn().mockResolvedValue({
+        domains: [{
+          id: 'dom_no_prefix',
+          domain: DOMAIN,
+          state: 'pending',
+          verificationStrategy: 'dns',
+          verificationToken: 'tok_present',
+          verificationPrefix: null,
+        }],
+      }),
+      deleteOrganizationDomain: deleteFn,
+      createOrganizationDomain: createFn,
+    });
+    const result = await issueDomainChallenge({
+      workos: workos as any,
+      brandDb: makeBrandDb(),
+      orgId: ORG,
+      rawDomain: DOMAIN,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe('workos_misconfigured');
+    // Must not churn WorkOS — recreate won't help if the env template is the bug.
+    expect(deleteFn).not.toHaveBeenCalled();
+    expect(createFn).not.toHaveBeenCalled();
+  });
+
+  it('returns workos_misconfigured when createOrganizationDomain succeeds but returns no verificationPrefix', async () => {
+    const createFn = vi.fn().mockResolvedValue({
+      id: 'dom_new_no_prefix',
+      state: 'pending',
+      verificationStrategy: 'dns',
+      verificationToken: 'tok_new',
+      verificationPrefix: undefined,
+    });
+    const workos = makeWorkos({
+      // No existing domain on the org → fall through to create.
+      getOrganization: vi.fn().mockResolvedValue({ domains: [] }),
+      createOrganizationDomain: createFn,
+    });
+    const result = await issueDomainChallenge({
+      workos: workos as any,
+      brandDb: makeBrandDb(),
+      orgId: ORG,
+      rawDomain: DOMAIN,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe('workos_misconfigured');
+    expect(createFn).toHaveBeenCalledTimes(1);
+  });
+
   it('preserves verified short-circuit even when token is null (treats as already-verified, no delete)', async () => {
     const deleteFn = vi.fn();
     const workos = makeWorkos({

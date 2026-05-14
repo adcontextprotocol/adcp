@@ -1889,8 +1889,19 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
             domain: canonicalizeBrandDomain(rawDomain),
           });
         }
+        if (result.code === 'workos_misconfigured') {
+          return res.status(503).json({
+            error: 'Brand verification temporarily unavailable',
+            code: 'workos_misconfigured',
+            message: result.message,
+            domain: canonicalizeBrandDomain(rawDomain),
+          });
+        }
         return res.status(500).json({ error: 'Failed to issue domain verification challenge', code: 'workos_error' });
       }
+      const dnsRecordName = result.verification_prefix
+        ? `${result.verification_prefix}.${result.domain}`
+        : null;
       return res.json({
         domain: result.domain,
         workos_domain_id: result.workos_domain_id,
@@ -1898,10 +1909,13 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         verification_strategy: result.verification_strategy,
         verification_token: result.verification_token,
         verification_prefix: result.verification_prefix,
+        dns_record_name: dnsRecordName,
         prior_manifest_exists: result.prior_manifest_exists,
         instructions: result.already_verified
           ? 'Domain is already verified. Run /brand-claim/verify to sync the brand registry, or call PUT /brand-identity directly.'
-          : 'Publish the DNS TXT record at verification_prefix.{domain} with the value verification_token, then call POST /api/me/member-profile/brand-claim/verify.',
+          : dnsRecordName
+            ? `Publish a DNS TXT record at ${dnsRecordName} with the value ${result.verification_token}, then call POST /api/me/member-profile/brand-claim/verify.`
+            : 'Publish a DNS TXT record at <verification_prefix>.<domain> with the value <verification_token>, then call POST /api/me/member-profile/brand-claim/verify.',
       });
     } catch (error) {
       logger.error({ err: error }, 'Failed to issue brand claim challenge');
