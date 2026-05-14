@@ -785,6 +785,21 @@ components:
           type:
             - boolean
             - "null"
+        discovery_method:
+          type:
+            - string
+            - "null"
+          enum:
+            - direct
+            - authoritative_location
+            - ads_txt_managerdomain
+            - null
+          description: "How the publisher's adagents.json was discovered on the most recent successful crawl. `direct`: publisher's own /.well-known/ served the document. `authoritative_location`: publisher's stub redirected to a canonical URL. `ads_txt_managerdomain`: manifest was discovered via ads.txt MANAGERDOMAIN delegation — see `manager_domain` for which manager served it. Null until first crawl after migration 470."
+        manager_domain:
+          type:
+            - string
+            - "null"
+          description: The manager domain whose adagents.json was used to authorize this publisher's agents. Non-null only when `discovery_method` is `ads_txt_managerdomain`. Matches the MANAGERDOMAIN value from the publisher's ads.txt.
         hosting:
           type: object
           properties:
@@ -794,14 +809,38 @@ components:
                 - self
                 - self_invalid
                 - aao_hosted
+                - self_redirected
                 - none
-              description: Where this publisher's adagents.json lives. `self` = publisher hosts a valid file at their own /.well-known. `self_invalid` = publisher's /.well-known returns a file that fails validation (fixable misconfiguration, not absence). `aao_hosted` = the publisher hosts a stub at their own /.well-known whose `authoritative_location` points at AAO's canonical document. `none` = no adagents.json configured yet.
+              description: Where this publisher's adagents.json lives. `self` = publisher hosts a valid file at their own /.well-known. `self_invalid` = publisher's /.well-known returns a file that fails validation (fixable misconfiguration, not absence). `aao_hosted` = the publisher hosts a stub at their own /.well-known whose `authoritative_location` points at AAO's canonical document. `self_redirected` = the publisher's stub `authoritative_location` resolves to a third-party HTTPS origin (a CDN, partner CMS, or sibling host) — verifiers should audit the TLS chain at `resolved_url`, not at the publisher's own origin. `none` = no adagents.json configured yet.
             hosted_url:
               type: string
               description: Canonical AAO-hosted adagents.json URL. Present iff `mode === 'aao_hosted'`. Publishers reference this URL from their own /.well-known stub via the `authoritative_location` field (see https://docs.adcontextprotocol.org/docs/governance/property/adagents).
             expected_url:
               type: string
               description: Where adagents.json *should* live for this domain — the publisher's own /.well-known path. Always populated, regardless of `mode`.
+            resolved_url:
+              type:
+                - string
+                - "null"
+              description: Where the canonical adagents.json document actually lives after following the publisher's `authoritative_location` stub or any HTTP-layer redirects. Populated when `mode === 'self_redirected'` (the third-party HTTPS origin verifiers should audit) and when `mode === 'aao_hosted'` AND the publisher has actively set up the redirect (`authoritative_location` in the manifest body or a network-layer redirect to AAO's hosted URL). NULL when there's no resolved-URL evidence to report.
+            last_validated:
+              type:
+                - string
+                - "null"
+              description: ISO timestamp of the last successful validation crawl. Lets verifiers sanity-check freshness. NULL when never crawled.
+            last_http_status:
+              type:
+                - integer
+                - "null"
+              minimum: 100
+              maximum: 599
+              description: HTTP status code returned by AAO's most recent fetch attempt of the publisher's `/.well-known/adagents.json`. Verifier-grade chrome — lets a buy-side scraper confirm they see the same response AAO does. NULL until the first crawl records or for transient errors that never produced an HTTP response.
+            last_bytes:
+              type:
+                - integer
+                - "null"
+              minimum: 0
+              description: Response body byte length from the most recent fetch (post-decompression). When `authoritative_location` was followed, measures the canonical document body, not the stub. NULL until the first crawl records.
             origin_verified_at:
               type:
                 - string
@@ -1386,6 +1425,17 @@ components:
         is_api_access_tier:
           type: boolean
           description: "Owner-scoped: true when the owner's tier and subscription status grant badge eligibility. False for non-owners. Single source of truth — UI should not re-derive."
+        verdict_source:
+          type:
+            - string
+            - "null"
+          enum:
+            - heartbeat
+            - owner_test
+            - manual
+            - webhook
+            - null
+          description: "Owner-scoped: triggered_by value of the most recent non-dry-run compliance check. Null for non-owners and when no run has been recorded. Operators use this as a UX cue ('did this verdict come from my recent test or the system heartbeat?')."
         verified:
           type: boolean
         verified_badges:
@@ -1545,14 +1595,6 @@ components:
           type: integer
         tracks_partial:
           type: integer
-        tracks_silent:
-          type: integer
-          description: |-
-            Tracks that were configured and executed but produced no
-            lifecycle resource events during the run. Counted separately
-            from tracks_passed so dashboards can avoid over-crediting
-            silent tracks as real protection. Optional for back-compat
-            with runs persisted before SDK 6.4.
         tracks_json: {}
         total_duration_ms:
           type:
@@ -1879,10 +1921,10 @@ components:
           example: https://agent.example.com/mcp
         visibility:
           $ref: "#/components/schemas/MemberAgentVisibility"
-        name:
-          type: string
         type:
           $ref: "#/components/schemas/MemberAgentType"
+        name:
+          type: string
         health_check_url:
           type: string
           format: uri
@@ -1890,7 +1932,8 @@ components:
       required:
         - url
         - visibility
-      description: Agent entry stored on a member profile.
+        - type
+      description: Agent entry stored on a member profile. `type` is required on read because every write surface declares it and the operator endpoint always emits it; a stored value of `unknown` is the smuggle-protection outcome (snapshot contradicted the declaration without classifying it) and is the only path that surfaces an agent without a real type.
     MemberAgentVisibility:
       type: string
       enum:
@@ -1910,7 +1953,7 @@ components:
         - buying
         - signals
         - unknown
-      description: Agent type. Resolved server-side from the agent's capability snapshot when one exists; the value submitted by the client is used only as a fallback when no snapshot is available, and is never trusted to override an inferred classification.
+      description: Agent type as stored on the registry. Server-side smuggle protection compares the caller's declaration against the capability snapshot (when one exists) and may stamp `unknown` if the snapshot contradicts the declaration without classifying it. `unknown` is reserved for that server-side outcome; clients cannot submit it.
     MemberAgentResponse:
       type: object
       properties:
@@ -1966,18 +2009,31 @@ components:
           type: string
           format: uri
           example: https://agent.example.com/mcp
+        type:
+          $ref: "#/components/schemas/MemberAgentTypeInput"
         name:
           type: string
         visibility:
           $ref: "#/components/schemas/MemberAgentVisibility"
-        type:
-          $ref: "#/components/schemas/MemberAgentType"
         health_check_url:
           type: string
           format: uri
       required:
         - url
-      description: Request body for `POST /api/me/agents`.
+        - type
+      description: Request body for `POST /api/me/agents`. `type` is required — the owner declares it; the server never infers.
+    MemberAgentTypeInput:
+      type: string
+      enum:
+        - brand
+        - rights
+        - measurement
+        - governance
+        - creative
+        - sales
+        - buying
+        - signals
+      description: Agent type the caller declares. Required on register; smuggle-protection still cross-checks against the capability snapshot when one exists. The server never infers `type` — the owner declares what kind of agent this is.
     MemberAgentPatch:
       type: object
       properties:
@@ -1986,11 +2042,11 @@ components:
         visibility:
           $ref: "#/components/schemas/MemberAgentVisibility"
         type:
-          $ref: "#/components/schemas/MemberAgentType"
+          $ref: "#/components/schemas/MemberAgentTypeInput"
         health_check_url:
           type: string
           format: uri
-      description: Request body for `PATCH /api/me/agents/{url}`. The `url` field cannot be changed via PATCH; re-register at the new URL and DELETE the old entry instead.
+      description: Request body for `PATCH /api/me/agents/{url}`. The `url` field cannot be changed via PATCH; re-register at the new URL and DELETE the old entry instead. If `type` is omitted, the existing value is preserved.
     CreateOrganizationResponse:
       type: object
       properties:
@@ -3853,6 +3909,19 @@ paths:
                       type: string
                   type:
                     type: string
+                  tools_count:
+                    type: integer
+                  tools:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                        description:
+                          type: string
+                      required:
+                        - name
                   stats:
                     type: object
                     properties:
@@ -3866,6 +3935,8 @@ paths:
                   - name
                   - protocols
                   - type
+                  - tools_count
+                  - tools
                   - stats
         "504":
           description: Connection timeout
@@ -3967,6 +4038,16 @@ paths:
                     type: string
                   url:
                     type: string
+                  discovery_method:
+                    type: string
+                    enum:
+                      - direct
+                      - authoritative_location
+                      - ads_txt_managerdomain
+                    description: How the publisher's adagents.json was discovered. `ads_txt_managerdomain` indicates one-hop delegation via ads.txt MANAGERDOMAIN.
+                  manager_domain:
+                    type: string
+                    description: Manager domain that served the manifest. Present only when discovery_method is ads_txt_managerdomain.
                   agent_count:
                     type: integer
                   property_count:
@@ -3988,6 +4069,7 @@ paths:
                 required:
                   - valid
                   - domain
+                  - discovery_method
                   - agent_count
                   - property_count
                   - property_type_counts
@@ -5021,6 +5103,79 @@ paths:
                 required:
                   - error
                   - retry_after
+  /api/registry/manager-revalidation-request:
+    post:
+      operationId: requestManagerRevalidation
+      summary: Request manager fan-out re-validation
+      description: |-
+        Trigger re-validation of every publisher delegating to a manager domain via ads.txt `MANAGERDOMAIN`. Use after rotating the manager's `adagents.json` so the change propagates to delegating publishers without waiting for the next routine crawl cycle. Work is queued and drained at a bounded rate (≈50 publishers per 5-minute tick). Returns 202 immediately with the number of publishers enqueued.
+
+        **Rate limits:** 5 minutes per manager domain, 30 requests per user per hour (shared with other crawl-request endpoints).
+      tags:
+        - Agent Discovery
+      security:
+        - bearerAuth: []
+        - oauth2: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                manager_domain:
+                  type: string
+                  example: raptive.com
+                  description: Manager domain whose delegating publishers should be queued for re-validation. Must already be present as `manager_domain` on at least one publisher row.
+              required:
+                - manager_domain
+      responses:
+        "202":
+          description: Re-validation queue request accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    enum:
+                      - Manager re-validation enqueued
+                  manager_domain:
+                    type: string
+                  publishers_enqueued:
+                    type: integer
+                    description: Number of delegating publisher rows added to or refreshed in the manager_revalidation_queue. Zero if no publisher delegates to this manager.
+                required:
+                  - message
+                  - manager_domain
+                  - publishers_enqueued
+        "400":
+          description: Invalid domain format, private IP, or unresolvable domain
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  retry_after:
+                    type: integer
+                    description: Seconds to wait before retrying
+                required:
+                  - error
+                  - retry_after
   /api/registry/brand-crawl-request:
     post:
       operationId: requestBrandCrawl
@@ -5909,6 +6064,66 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /api/registry/agents/{encodedUrl}/monitoring/requeue:
+    post:
+      operationId: requeueAgentForHeartbeat
+      summary: Requeue agent for compliance heartbeat
+      description: Clears the agent's last_checked_at timestamp so it is picked up on the next heartbeat cycle (within ~1 hour). Requires authentication and ownership.
+      tags:
+        - Agent Compliance
+      security:
+        - bearerAuth: []
+        - oauth2: []
+      parameters:
+        - schema:
+            type: string
+            description: URL-encoded agent URL
+          required: true
+          description: URL-encoded agent URL
+          name: encodedUrl
+          in: path
+      responses:
+        "200":
+          description: Agent requeued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  requeued:
+                    type: boolean
+                required:
+                  - requeued
+        "400":
+          description: Invalid agent URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Not authorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Rate limited
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/registry/agents/{encodedUrl}/monitoring/requests:
     get:
       operationId: getAgentMonitoringRequests
@@ -5984,6 +6199,113 @@ paths:
                 $ref: "#/components/schemas/Error"
         "500":
           description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/registry/agents/{encodedUrl}/refresh:
+    post:
+      operationId: refreshAgent
+      summary: Refresh agent snapshot
+      description: |-
+        Re-probe the agent and update its registry health (online, tools_count, response_time_ms) and capability snapshot (inferred type, discovered tools). Use after fixing your agent so the registry shows fresh data without waiting for the periodic crawl.
+
+        **Auth:** owner of the agent or AAO admin.
+
+        **Rate limits:** 60 seconds per agent URL, 30 requests per user per hour.
+      tags:
+        - Agent Compliance
+      security:
+        - bearerAuth: []
+        - oauth2: []
+      parameters:
+        - schema:
+            type: string
+            description: URL-encoded agent URL
+            example: https%3A%2F%2Fvastlint.org%2Fmcp
+          required: true
+          description: URL-encoded agent URL
+          name: encodedUrl
+          in: path
+      responses:
+        "200":
+          description: Snapshot refreshed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  online:
+                    type: boolean
+                  tools_count:
+                    type:
+                      - integer
+                      - "null"
+                  response_time_ms:
+                    type:
+                      - integer
+                      - "null"
+                  inferred_type:
+                    type: string
+                    description: Type inferred from discovered tools (sales, creative, signals, governance, etc.) or 'unknown'
+                  type_promoted:
+                    type: boolean
+                    description: True when registry type was upgraded from unknown to inferred_type
+                  oauth_required:
+                    type: boolean
+                  checked_at:
+                    type: string
+                  error:
+                    type: string
+                required:
+                  - online
+                  - tools_count
+                  - response_time_ms
+                  - inferred_type
+                  - type_promoted
+                  - oauth_required
+                  - checked_at
+        "400":
+          description: Invalid agent URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Not authorized — must be owner or AAO admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Monitoring paused for this agent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  retry_after:
+                    type: integer
+                    description: Seconds to wait before retrying
+                required:
+                  - error
+                  - retry_after
+        "502":
+          description: Probe failed (timeout, DNS, OAuth wall, etc.)
           content:
             application/json:
               schema:
@@ -7266,9 +7588,9 @@ paths:
 
         Both auto-bootstraps are best-effort fallbacks. To customize org name / company_type / revenue_tier, or to control profile slug / brand identity / tagline, call `POST /api/organizations` and `POST /api/me/member-profile` explicitly before registering the agent. Tier transitions never happen via this path — go through the billing flow.
 
-        The `type` field is resolved server-side from the agent's capability snapshot — a client cannot pin a misclassification (e.g. registering a sales agent as `buying`).
+        `type` is required and declared by the caller — the server does not infer it. Server-side smuggle protection still cross-checks the declared type against the agent's capability snapshot when one exists; if the snapshot contradicts the declaration without classifying it, the stored value is `unknown` and the dashboard surfaces the conflict for the owner to resolve.
 
-        `visibility: "public"` requires a paid AAO tier (Professional, Builder, Member, or Leader) and a `primary_brand_domain` set on the profile. Non-API-tier callers (Explorer or no tier) who request `public` will have the entry stored as `members_only` instead, and the response will include a `visibility_downgraded` warning describing the coercion.
+        `visibility: "public"` requires a paid AAO tier (Professional, Builder, Member, or Leader) and a verified primary domain on the organization (set via the Linked Domains UI). Non-API-tier callers (Explorer or no tier) who request `public` will have the entry stored as `members_only` instead, and the response will include a `visibility_downgraded` warning describing the coercion.
       tags:
         - Member Agents
       security:
@@ -7302,7 +7624,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/MemberAgentResponse"
         "400":
-          description: Missing or invalid `url`, or the caller has memberships in other orgs but no primary org set — pass `?org=<id>` to target one explicitly. (Fresh users with no memberships at all hit the org auto-bootstrap path and do not see this error.)
+          description: Missing or invalid `url`, missing/invalid `type`, or the caller has memberships in other orgs but no primary org set — pass `?org=<id>` to target one explicitly. (Fresh users with no memberships at all hit the org auto-bootstrap path and do not see this error.)
           content:
             application/json:
               schema:
