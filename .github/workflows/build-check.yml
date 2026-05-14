@@ -44,6 +44,9 @@ jobs:
       - name: Validate schemas
         run: npm run test:schemas && npm run test:json-schema && npm run test:extension-schemas && npm run test:composed
 
+      - name: OpenAPI freshness (static/openapi/registry.yaml regenerated from Zod source)
+        run: npm run test:openapi
+
       - name: Fetch 3.0.x for error-code drift comparison
         if: github.ref != 'refs/heads/3.0.x' && github.base_ref != '3.0.x'
         run: git fetch --depth=1 origin 3.0.x:refs/remotes/origin/3.0.x
