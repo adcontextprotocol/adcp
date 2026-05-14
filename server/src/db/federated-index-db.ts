@@ -1,4 +1,5 @@
 import { query } from './client.js';
+import { canonicalizePublisherDomain } from '../services/publisher-domain.js';
 
 /**
  * Discovered agent from adagents.json or list_authorized_properties
@@ -727,6 +728,7 @@ export class FederatedIndexDatabase {
    * removed and the query collapses to catalog-only.
    */
   async getPropertiesForDomain(domain: string): Promise<DiscoveredProperty[]> {
+    const canonicalDomain = canonicalizePublisherDomain(domain);
     const result = await query<DiscoveredProperty>(
       `WITH unioned AS (
          SELECT id, property_id, publisher_domain, property_type, name,
@@ -783,7 +785,7 @@ export class FederatedIndexDatabase {
           ORDER BY publisher_domain, name, property_type, src_priority
        )
        SELECT * FROM deduped ORDER BY property_type, name`,
-      [domain]
+      [canonicalDomain]
     );
     return result.rows.map(row => this.deserializeProperty(row));
   }
@@ -1109,6 +1111,7 @@ export class FederatedIndexDatabase {
     agentUrl: string,
     publisherDomain: string
   ): Promise<'adagents_json' | 'agent_claim' | 'none'> {
+    const canonicalDomain = canonicalizePublisherDomain(publisherDomain);
     const authResult = await query<{ source: string }>(
       `WITH unioned AS (
          SELECT source, 0 AS src_priority
@@ -1133,7 +1136,7 @@ export class FederatedIndexDatabase {
         ORDER BY src_priority,
                  CASE source WHEN 'adagents_json' THEN 0 ELSE 1 END
         LIMIT 1`,
-      [agentUrl, publisherDomain]
+      [agentUrl, canonicalDomain]
     );
 
     if (authResult.rows.length === 0) return 'none';
@@ -1210,8 +1213,13 @@ export class FederatedIndexDatabase {
     publisherDomain: string
   ): Promise<DiscoveredProperty[]> {
     const all = await this.getPropertiesForAgent(agentUrl);
+    // Canonicalize both sides so a runtime query for `"https://cnn.com"` or
+    // `"cnn.com."` resolves a stored property whose `publisher_domain` was
+    // written as `"cnn.com"`. Read-side of the writer's canonicalization
+    // boundary; legacy rows may also carry non-canonical forms.
+    const target = canonicalizePublisherDomain(publisherDomain);
     return all
-      .filter((p) => p.publisher_domain === publisherDomain)
+      .filter((p) => canonicalizePublisherDomain(p.publisher_domain) === target)
       .sort((a, b) => a.property_type.localeCompare(b.property_type) || a.name.localeCompare(b.name));
   }
 

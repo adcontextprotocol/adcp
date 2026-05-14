@@ -1,6 +1,7 @@
 import { PropertyDefinition, PlacementDefinition } from './types.js';
 import { AAO_UA_VALIDATOR } from './config/user-agents.js';
 import { safeFetchAxiosLike, classifySafeFetchError } from './utils/url-security.js';
+import { canonicalizePublisherDomain } from './services/publisher-domain.js';
 
 export interface ValidationError {
   field: string;
@@ -410,7 +411,7 @@ export class AdAgentsManager {
     const data = rawData as AdAgentsJsonInline;
     const agents = Array.isArray(data.authorized_agents) ? data.authorized_agents : [];
     const properties = Array.isArray(data.properties) ? data.properties : [];
-    const normalizedPublisher = publisherDomain.toLowerCase();
+    const normalizedPublisher = canonicalizePublisherDomain(publisherDomain);
 
     // Index properties by id and by tag for the per-agent reference lookup.
     // Both indexes filter to properties whose publisher_domain matches the
@@ -420,7 +421,7 @@ export class AdAgentsManager {
     const matchingPropertyTags = new Set<string>();
     for (const prop of properties) {
       if (typeof prop?.publisher_domain !== 'string') continue;
-      if (prop.publisher_domain.toLowerCase() !== normalizedPublisher) continue;
+      if (canonicalizePublisherDomain(prop.publisher_domain) !== normalizedPublisher) continue;
       if (typeof prop.property_id === 'string' && prop.property_id.length > 0) {
         matchingPropertyIds.add(prop.property_id);
       }
@@ -434,16 +435,16 @@ export class AdAgentsManager {
     return agents.some((agent) => {
       const hasPublisherProperties = Array.isArray(agent.publisher_properties)
         && agent.publisher_properties.some((p) => {
-          if (typeof p.publisher_domain === 'string' && p.publisher_domain.toLowerCase() === normalizedPublisher) {
+          if (typeof p.publisher_domain === 'string' && canonicalizePublisherDomain(p.publisher_domain) === normalizedPublisher) {
             return true;
           }
           if (Array.isArray(p.publisher_domains)) {
-            return p.publisher_domains.some((d) => typeof d === 'string' && d.toLowerCase() === normalizedPublisher);
+            return p.publisher_domains.some((d) => typeof d === 'string' && canonicalizePublisherDomain(d) === normalizedPublisher);
           }
           return false;
         });
       const hasCollections = Array.isArray(agent.collections)
-        && agent.collections.some((c) => c.publisher_domain.toLowerCase() === normalizedPublisher);
+        && agent.collections.some((c) => canonicalizePublisherDomain(c.publisher_domain) === normalizedPublisher);
 
       // Property-level scoping: the agent reaches a property whose
       // publisher_domain matches the source. by_id walks property_ids;

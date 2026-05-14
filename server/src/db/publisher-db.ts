@@ -1,6 +1,7 @@
 import { getClient } from './client.js';
 import { uuidv7 } from './uuid.js';
 import { normalizeIdentifier } from '../services/identifier-normalization.js';
+import { canonicalizePublisherDomain } from '../services/publisher-domain.js';
 import { createLogger } from '../logger.js';
 import type { PoolClient } from 'pg';
 
@@ -144,12 +145,21 @@ function truncateResolvedUrl(url: string | undefined): string | null {
   return url.length > RESOLVED_URL_MAX ? url.slice(0, RESOLVED_URL_MAX) : url;
 }
 
+// Pattern from the JSON Schema for `publisher_domain`. Used after
+// canonicalization to drop entries whose canonical form doesn't look like
+// a publishable domain — embedded control chars, scheme remnants, paths,
+// etc. would otherwise land in the revocation set with a key that no
+// real lookup hits (silently-ignored revocation), which is the wrong
+// failure mode for a security control.
+const PUBLISHER_DOMAIN_PATTERN = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$/;
+
 // Read `revoked_publisher_domains[]` from a (loose-typed) manifest and return
-// the set of lowercased publisher_domain values. Entries MUST carry both
-// a string `publisher_domain` and a parseable `revoked_at` per the spec —
-// the writer is a security boundary, and silently accepting incomplete
-// revocation entries is the same shape as the cross-publisher bypass this
-// PR closes. Malformed entries are dropped, not honored.
+// the set of canonicalized publisher_domain values. Entries MUST carry both
+// a string `publisher_domain` (which canonicalizes to a schema-valid domain)
+// and a parseable `revoked_at` per the spec — the writer is a security
+// boundary, and silently accepting malformed revocation entries is the
+// same shape as the cross-publisher bypass this PR closes. Malformed
+// entries are dropped, not honored.
 function extractRevokedPublisherDomains(manifest: unknown): Set<string> {
   const out = new Set<string>();
   const m = manifest as { revoked_publisher_domains?: unknown };
@@ -161,7 +171,13 @@ function extractRevokedPublisherDomains(manifest: unknown): Set<string> {
     if (typeof ra !== 'string' || ra.length === 0) continue;
     // Require parseable date-time. Date.parse returns NaN on invalid input.
     if (Number.isNaN(Date.parse(ra))) continue;
-    out.add(pd.toLowerCase());
+    const canonical = canonicalizePublisherDomain(pd);
+    // Reject canonical forms that wouldn't pass the schema pattern — they
+    // can't match any legitimately-stored publisher_domain anyway, and
+    // accepting them lets a misbehaving manifest hide revocations as
+    // garbage entries.
+    if (!PUBLISHER_DOMAIN_PATTERN.test(canonical)) continue;
+    out.add(canonical);
   }
   return out;
 }
@@ -217,7 +233,7 @@ export class PublisherDatabase {
     responseBytes?: number;
     resolvedUrl?: string;
   }): Promise<void> {
-    const domain = input.domain.toLowerCase();
+    const domain = canonicalizePublisherDomain(input.domain);
     const client = await getClient();
     try {
       await client.query(
@@ -242,7 +258,7 @@ export class PublisherDatabase {
   }
 
   async upsertAdagentsCache(input: UpsertAdagentsCacheInput): Promise<void> {
-    const domain = input.domain.toLowerCase();
+    const domain = canonicalizePublisherDomain(input.domain);
     const client = await getClient();
     try {
       await client.query('BEGIN');
@@ -436,7 +452,7 @@ export class PublisherDatabase {
     try {
       const r = await client.query<{ adagents_json: AdagentsManifest | null }>(
         `SELECT adagents_json FROM publishers WHERE domain = $1 LIMIT 1`,
-        [domain.toLowerCase()],
+        [canonicalizePublisherDomain(domain)],
       );
       return r.rows[0]?.adagents_json ?? null;
     } finally {
@@ -473,7 +489,7 @@ export class PublisherDatabase {
            attempts = 0,
            last_attempted_at = NULL,
            last_error = NULL`,
-        [managerDomain.toLowerCase()],
+        [canonicalizePublisherDomain(managerDomain)],
       );
       return r.rowCount ?? 0;
     } finally {
@@ -514,7 +530,7 @@ export class PublisherDatabase {
     try {
       await client.query(
         `DELETE FROM manager_revalidation_queue WHERE publisher_domain = $1`,
-        [publisherDomain.toLowerCase()],
+        [canonicalizePublisherDomain(publisherDomain)],
       );
     } finally {
       client.release();
@@ -541,7 +557,7 @@ export class PublisherDatabase {
                   ELSE INTERVAL '3 days'
                 END
           WHERE publisher_domain = $1`,
-        [publisherDomain.toLowerCase(), err],
+        [canonicalizePublisherDomain(publisherDomain), err],
       );
     } finally {
       client.release();
@@ -885,9 +901,9 @@ export class PublisherDatabase {
         // A selector claims the publisher if the source publisherDomain matches
         // either the singular publisher_domain or any entry in the compact
         // publisher_domains[] array. Both forms are equivalent for projection.
-        const selPubSingular = hasSingular ? sel.publisher_domain!.toLowerCase() : null;
+        const selPubSingular = hasSingular ? canonicalizePublisherDomain(sel.publisher_domain!) : null;
         const selPubInList = hasPlural
-          && sel.publisher_domains!.some((d) => typeof d === 'string' && d.toLowerCase() === publisherDomain);
+          && sel.publisher_domains!.some((d) => typeof d === 'string' && canonicalizePublisherDomain(d) === publisherDomain);
         if (selPubSingular !== publisherDomain && !selPubInList) {
           // Cross-publisher third-party-sales claim. Refused per spec — the
           // writer cannot land an authoritative row for another publisher's
