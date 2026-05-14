@@ -236,7 +236,14 @@ When `https://{publisher}/.well-known/adagents.json` returns `404`, validators M
 - **One hop only**: maximum depth is exactly one (`publisher -> managerdomain`). Do not chain managerdomain lookups.
 - **Cycle detection required**: if `managerdomain` points to a visited domain, ignore it.
 - **`#noagents` opt-out**: if a managerdomain line has a trailing comment containing the token `noagents` (case-insensitive), clients MUST ignore that managerdomain for adagents discovery. Example: `MANAGERDOMAIN=example.com #NOAGENTS`.
-- **Explicit publisher scoping required**: a manager-hosted `adagents.json` MUST explicitly mention the source publisher domain (for example under `authorized_agents[].publisher_properties[].publisher_domain` or `authorized_agents[].collections[].publisher_domain`). If the source publisher is not explicitly scoped, fallback MUST fail closed.
+- **Explicit publisher scoping required**: a manager-hosted `adagents.json` MUST positively name the source publisher domain in a `publisher_domain` field that is reachable from at least one `authorized_agents[]` entry. "Reachable" means one of the following paths resolves to the source domain:
+
+  1. **Per-agent paths.** The agent entry directly carries the publisher domain under `publisher_properties[].publisher_domain`, inside `publisher_properties[].publisher_domains[]` (the compact managed-network form), or under `collections[].publisher_domain`.
+  2. **Property-level paths.** The agent entry references one or more top-level `properties[]` entries by ID (`property_ids`) or by tag (`property_tags`), and at least one resolved property carries a `publisher_domain` matching the source. This is the shape used in production by Mediavine and other managed networks where a property declares its `publisher_domain` once and many agents reference it indirectly.
+
+  What does **not** satisfy this rule: an `inline_properties` selector whose inline properties omit `publisher_domain`, or a top-level `property_tags` selector whose resolved top-level properties carry no matching `publisher_domain`. If no reachable `publisher_domain` field matches the source, fallback MUST fail closed.
+
+  The attack this protects against is implicit scoping — authorization that does not name the publisher anywhere the manager has to type the domain. Indirection through `properties[].publisher_domain` is safe because the manager has positively spelled the publisher's domain in the same manifest; the gate filters to properties whose `publisher_domain` matches the source before considering the reference.
 - **No success by silence**: if the manager lookup fails, treat the publisher as missing `adagents.json` (same as no fallback).
 
 This fallback is a compatibility affordance for publisher-manager topologies and does not replace the canonical `/.well-known/adagents.json` location.
@@ -455,6 +462,40 @@ AdCP supports four authorization patterns, each optimized for different use case
 ```
 
 **How it works**: Agent references properties from OTHER publishers' adagents.json files. The `publisher_domain` points to the publisher, and `selection_type` determines how to resolve properties (`by_id` or `by_tag`).
+
+**Compact form for managed networks (`publisher_domains`)**: when the same predicate applies to many publishers — the canonical managed-network shape — replace the singular `publisher_domain` with the plural `publisher_domains` array. Each `publisher_properties[]` entry takes exactly one of `publisher_domain` or `publisher_domains`; both are equivalent for resolution and both satisfy the [`managerdomain` fallback safety rule](#safety-rules-for-this-fallback) for every listed domain.
+
+The compact form is available on `selection_type: "all"` and `"by_tag"` only. **It is intentionally NOT available on `selection_type: "by_id"`**: property IDs are publisher-scoped, and fanning the same ID set across N publishers' files would silently authorize whichever inventory happens to share an ID at each publisher. Use one `publisher_properties[]` entry per publisher when each publisher's ID set differs. Validators MUST reject `by_id` selectors that include `publisher_domains[]`.
+
+Validators MUST reject any `publisher_properties[]` entry that includes both `publisher_domain` and `publisher_domains`, and MUST reject any entry that includes neither. Implementations MAY mix the two forms across entries — for example, use the compact form for the bulk of represented publishers and a singular-form entry for an outlier publisher with a different tag predicate.
+
+```json
+{
+  "contact": { "name": "Example Managed Network" },
+  "authorized_agents": [{
+    "url": "https://agent.network.example/api",
+    "authorized_for": "Managed-network display inventory across represented publishers",
+    "authorization_type": "publisher_properties",
+    "publisher_properties": [
+      {
+        "publisher_domains": ["site1.example", "site2.example", "site3.example"],
+        "selection_type": "by_tag",
+        "property_tags": ["managed_network"]
+      }
+    ],
+    "delegation_type": "ad_network"
+  }]
+}
+```
+
+The above is semantically identical to repeating the singular-form entry once per domain. Use it when every represented publisher tags inventory the same way (typical of WordPress/managed-network deployments); fall back to one entry per publisher only when the selector predicate genuinely differs.
+
+**Fan-out resolution semantics.** Each listed domain in `publisher_domains[]` is resolved **independently and in parallel** against that publisher's `adagents.json`:
+
+- Resolution is **consumer-side**, not publish-side. The manager file MUST NOT inline copies of each represented publisher's properties; consumers (validators, buyer agents indexing the file) fetch each listed publisher's own `adagents.json` to resolve the selector predicate. The manager file is the authorization declaration; the per-publisher files are the property catalog.
+- If a listed publisher's `adagents.json` is unreachable (404, 5xx, timeout, fails its own validation), the selector resolves to the empty set **for that publisher only** — the entry remains valid for all other listed publishers. Consumers MUST NOT treat a single unreachable publisher as poisoning the rest of the compact entry.
+- If a listed publisher's `adagents.json` carries no properties matching the predicate (no entries with the named tag), the selector resolves to the empty set for that publisher. Same partial-resolution rule applies.
+- Resolution caching follows each publisher's own cache policy on their `adagents.json`, independently. A consumer SHOULD NOT extend or shorten one publisher's cache TTL based on observations of another publisher in the same compact entry.
 
 ## Authorization Qualifiers
 
