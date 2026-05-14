@@ -12,7 +12,7 @@ import { WorkOS, DomainDataState } from "@workos-inc/node";
 import { AgentService } from "./agent-service.js";
 import { AgentValidator } from "./validator.js";
 import { configureMCPRoutes, isMCPServerReady, resolveMCPServerURL } from "./mcp/index.js";
-import { HealthChecker } from "./health.js";
+import { HealthChecker, classifyMCPError } from "./health.js";
 import { notifySystemError } from "./addie/error-notifier.js";
 import { CrawlerService } from "./crawler.js";
 import { createLogger, processRole } from "./logger.js";
@@ -8842,15 +8842,28 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           });
         }
 
-        logger.error({ err: error, url }, 'Agent discovery error');
-
         if (error instanceof Error && error.name === 'TimeoutError') {
+          logger.warn({ url }, 'Agent discovery timed out');
           return res.status(504).json({
             error: 'Connection timeout',
             message: 'Agent did not respond within 10 seconds',
           });
         }
 
+        // Classify so user-data failures (stale tunnel URLs, wrong path,
+        // unreachable hosts) don't page #admin-errors via logger.error.
+        // Only unknown kinds escalate.
+        const classified = classifyMCPError(error);
+        if (classified.kind === 'unreachable' || classified.kind === 'wrong_path') {
+          logger.warn({ url, kind: classified.kind, raw: classified.raw }, 'Agent discovery failed');
+          return res.status(502).json({
+            error: 'Agent discovery failed',
+            kind: classified.kind,
+            message: classified.message,
+          });
+        }
+
+        logger.error({ err: error, url }, 'Agent discovery error');
         return res.status(500).json({
           error: 'Agent discovery failed',
         });
