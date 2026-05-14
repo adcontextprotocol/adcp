@@ -106,7 +106,7 @@ Day-to-day technical work happens in **Working Groups**, which are the Foundatio
 
 ## 7. Transparency principles
 
-- **Open meetings** — Board meetings publish agendas and minutes.
+- **Open meetings** — Once the elected Board convenes after the first AGM (scheduled May 6, 2026), Board meeting agendas and minutes will be published on the Foundation website. Working Group meetings are open to all members and publish agendas and minutes per Working Group at [agenticadvertising.org/working-groups](https://agenticadvertising.org/working-groups).
 - **Public governing documents** — Bylaws, Membership Agreement, IPR Policy, and Antitrust Policy are publicly available.
 - **Financial reporting** — Annual financial reports are shared with the membership.
 - **Equal voice** — Each voting class has equal representation regardless of company size.
