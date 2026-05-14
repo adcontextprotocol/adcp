@@ -52,7 +52,7 @@ import { updateBrandIdentity, BrandIdentityError } from "../services/brand-ident
 import { createEscalation } from "../db/escalation-db.js";
 import { insertTypeReclassification } from "../db/type-reclassification-log-db.js";
 import { recordProfilePublishedIfNeeded } from "../services/profile-publish-event.js";
-import { gateAgentVisibilityForCaller, type VisibilityWarning } from "../services/agent-visibility-gate.js";
+import { gateAgentVisibilityForCaller, computeAgentVisibilityGate, type VisibilityWarning, type AgentVisibilityGate } from "../services/agent-visibility-gate.js";
 import { getBrandPrimaryDomain } from "../services/brand-domain-resolver.js";
 import { normalizeFoundingMemberGrant } from "../services/founding-member-grant.js";
 
@@ -673,18 +673,24 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
           });
         }
         const profile = await memberDb.getProfileByOrgId(devOrgId);
+        const devBrandPrimary = await getBrandPrimaryDomain(devOrgId);
         if (profile) {
-          const brandPrimary = await getBrandPrimaryDomain(devOrgId);
-          if (brandPrimary) {
-            profile.resolved_brand = await resolveBrand(brandDb, brandPrimary);
+          if (devBrandPrimary) {
+            profile.resolved_brand = await resolveBrand(brandDb, devBrandPrimary);
+            (profile as unknown as Record<string, unknown>).primary_brand_domain = devBrandPrimary;
           }
         }
+        const devHasApiAccess = hasApiAccess(resolveMembershipTier(localOrg));
         logger.info({ userId: user.id, orgId: devOrgId, hasProfile: !!profile, durationMs: Date.now() - startTime }, 'GET /api/me/member-profile completed (dev mode)');
         return res.json({
           profile: profile || null,
           organization_id: devOrgId,
           organization_name: localOrg.name,
-          has_api_access: hasApiAccess(resolveMembershipTier(localOrg)),
+          has_api_access: devHasApiAccess,
+          agent_visibility_gate: computeAgentVisibilityGate({
+            hasApiAccess: devHasApiAccess,
+            brandPrimaryDomain: devBrandPrimary,
+          }),
         });
       }
 
@@ -729,23 +735,32 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       }
 
       const profile = await memberDb.getProfileByOrgId(targetOrgId);
+      const brandPrimary = await getBrandPrimaryDomain(targetOrgId);
       if (profile) {
-        const brandPrimary = await getBrandPrimaryDomain(targetOrgId);
         if (brandPrimary) {
           profile.resolved_brand = await resolveBrand(brandDb, brandPrimary);
+          // After Stage 2 of #4159 dropped the column, the field is
+          // re-derived from organization_domains.is_primary so clients
+          // (member-profile.html, dashboard-agents.html) keep working.
+          (profile as unknown as Record<string, unknown>).primary_brand_domain = brandPrimary;
         }
       }
 
       // Get org name from WorkOS
       const org = await workos!.organizations.getOrganization(targetOrgId);
       const localOrg = await orgDb.getOrganization(targetOrgId);
+      const callerHasApiAccess = hasApiAccess(resolveMembershipTier(localOrg));
 
       logger.info({ userId: user.id, orgId: targetOrgId, hasProfile: !!profile, durationMs: Date.now() - startTime }, 'GET /api/me/member-profile completed');
       res.json({
         profile: profile || null,
         organization_id: targetOrgId,
         organization_name: org.name,
-        has_api_access: hasApiAccess(resolveMembershipTier(localOrg)),
+        has_api_access: callerHasApiAccess,
+        agent_visibility_gate: computeAgentVisibilityGate({
+          hasApiAccess: callerHasApiAccess,
+          brandPrimaryDomain: brandPrimary,
+        }),
       });
     } catch (error) {
       logger.error({ err: error, durationMs: Date.now() - startTime }, 'GET /api/me/member-profile error');

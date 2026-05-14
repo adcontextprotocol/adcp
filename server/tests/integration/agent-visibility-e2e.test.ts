@@ -626,4 +626,95 @@ describe('Agent visibility E2E', () => {
       updateSpy.mockRestore();
     }
   });
+
+  // Pins the contract the dashboard reads to enable/disable the "Public"
+  // visibility toggle. Stage 2 of #4159 dropped the column the dashboard
+  // was inferring from; without this surface, the toggle silently greyed
+  // out for every Builder/Member with a verified primary domain.
+  describe('GET /api/me/member-profile: agent_visibility_gate', () => {
+    it('Builder with primary brand domain: can_publish_publicly=true', async () => {
+      const orgId = `${TEST_PREFIX}_gate_ok`;
+      const userId = `${TEST_PREFIX}_gate_ok_user`;
+      await seedOrg(pool, orgId, 'company_standard');
+      await provisionUser(userId, orgId);
+      await createProfile(orgId, 'gateok');
+
+      (app as any).setCurrentUser(userId, orgId);
+      const res = await request(app).get('/api/me/member-profile');
+
+      expect(res.status).toBe(200);
+      expect(res.body.has_api_access).toBe(true);
+      expect(res.body.agent_visibility_gate).toEqual({
+        can_publish_publicly: true,
+        reasons: [],
+      });
+      // Re-derived from organization_domains.is_primary so legacy callers
+      // (member-profile.html, dashboard-agents.html) keep working post-#4313.
+      expect(res.body.profile.primary_brand_domain).toBe('gateok.example');
+    });
+
+    it('Explorer with primary brand domain: tier_required', async () => {
+      const orgId = `${TEST_PREFIX}_gate_tier`;
+      const userId = `${TEST_PREFIX}_gate_tier_user`;
+      await seedOrg(pool, orgId, 'individual_academic');
+      await provisionUser(userId, orgId);
+      await createProfile(orgId, 'gatetier');
+
+      (app as any).setCurrentUser(userId, orgId);
+      const res = await request(app).get('/api/me/member-profile');
+
+      expect(res.status).toBe(200);
+      expect(res.body.agent_visibility_gate.can_publish_publicly).toBe(false);
+      expect(res.body.agent_visibility_gate.reasons).toEqual(['tier_required']);
+    });
+
+    it('Builder without primary brand domain: brand_domain_required', async () => {
+      const orgId = `${TEST_PREFIX}_gate_brand`;
+      const userId = `${TEST_PREFIX}_gate_brand_user`;
+      await seedOrg(pool, orgId, 'company_standard');
+      await provisionUser(userId, orgId);
+      await memberDb.createProfile({
+        workos_organization_id: orgId,
+        display_name: 'No Brand Org',
+        slug: 'gatebrand',
+        is_public: true,
+        agents: [{ url: 'https://a.gatebrand.example', visibility: 'private' }],
+      });
+      // Deliberately no seedBrandPrimary — the org has no is_primary row.
+
+      (app as any).setCurrentUser(userId, orgId);
+      const res = await request(app).get('/api/me/member-profile');
+
+      expect(res.status).toBe(200);
+      expect(res.body.agent_visibility_gate.can_publish_publicly).toBe(false);
+      expect(res.body.agent_visibility_gate.reasons).toEqual(['brand_domain_required']);
+      expect(res.body.profile.primary_brand_domain).toBeUndefined();
+    });
+
+    it('unpaid tier with no brand domain: both reasons surface', async () => {
+      const orgId = `${TEST_PREFIX}_gate_both`;
+      const userId = `${TEST_PREFIX}_gate_both_user`;
+      await seedOrg(pool, orgId, null);
+      await provisionUser(userId, orgId);
+      await memberDb.createProfile({
+        workos_organization_id: orgId,
+        display_name: 'Bare Org',
+        slug: 'gateboth',
+        is_public: true,
+        agents: [{ url: 'https://a.gateboth.example', visibility: 'private' }],
+      });
+
+      (app as any).setCurrentUser(userId, orgId);
+      const res = await request(app).get('/api/me/member-profile');
+
+      expect(res.status).toBe(200);
+      expect(res.body.agent_visibility_gate.can_publish_publicly).toBe(false);
+      // Order is deterministic: tier first, then brand. Pinned in the
+      // unit test for computeAgentVisibilityGate too.
+      expect(res.body.agent_visibility_gate.reasons).toEqual([
+        'tier_required',
+        'brand_domain_required',
+      ]);
+    });
+  });
 });
