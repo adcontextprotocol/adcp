@@ -13,12 +13,12 @@
       "properties": {
         "publisher_domain": {
           "type": "string",
-          "description": "Domain where publisher's adagents.json is hosted (e.g., 'cnn.com'). Mutually exclusive with `publisher_domains`.",
+          "description": "Domain where publisher's adagents.json is hosted (e.g., 'cnn.com'). XOR with `publisher_domains` — exactly one MUST be present on each `publisher_properties[]` entry; both-present and neither-present both fail validation. Generated SDK types in TypeScript/Python/Java/Go expose both fields as optional; the XOR is enforced at validation time, so consumers MUST check at runtime.",
           "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
         },
         "publisher_domains": {
           "type": "array",
-          "description": "Compact form for fanning the same selector across many publishers (e.g., a managed network listing every publisher it represents). Each entry is the domain where that publisher's adagents.json is hosted. Mutually exclusive with `publisher_domain`. Each listed domain counts as explicitly scoped for the `managerdomain` fallback safety rule.",
+          "description": "Compact form for fanning the same selector across many publishers (e.g., a managed network listing every publisher it represents). Each entry is the domain where that publisher's adagents.json is hosted. Each listed domain MUST be canonicalized to lowercase (the `pattern` already rejects uppercase). Mutually exclusive with `publisher_domain`. Each listed domain counts as explicitly scoped for the `managerdomain` fallback safety rule.",
           "items": {
             "type": "string",
             "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
@@ -46,22 +46,12 @@
     },
     {
       "type": "object",
-      "description": "Select specific properties by ID. With `publisher_domains`, the same `property_ids` set is resolved against each listed publisher's adagents.json — use this only when the ID values are valid across every listed publisher (e.g., a network using globally unique IDs).",
+      "description": "Select specific properties by ID. Single-publisher only — property IDs are publisher-scoped, so the compact `publisher_domains[]` form is intentionally NOT available for this selector. Use multiple `publisher_properties[]` entries (one per publisher) when each publisher's ID set differs.",
       "properties": {
         "publisher_domain": {
           "type": "string",
-          "description": "Domain where publisher's adagents.json is hosted (e.g., 'cnn.com'). Mutually exclusive with `publisher_domains`.",
+          "description": "Domain where publisher's adagents.json is hosted (e.g., 'cnn.com').",
           "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
-        },
-        "publisher_domains": {
-          "type": "array",
-          "description": "Compact form for fanning the same selector across many publishers. Each entry is the domain where that publisher's adagents.json is hosted. Mutually exclusive with `publisher_domain`. Each listed domain counts as explicitly scoped for the `managerdomain` fallback safety rule.",
-          "items": {
-            "type": "string",
-            "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
-          },
-          "minItems": 1,
-          "uniqueItems": true
         },
         "selection_type": {
           "type": "string",
@@ -70,7 +60,7 @@
         },
         "property_ids": {
           "type": "array",
-          "description": "Specific property IDs resolved against each addressed publisher's adagents.json",
+          "description": "Specific property IDs from the publisher's adagents.json",
           "items": {
             "$ref": "/schemas/core/property-id.json"
           },
@@ -78,17 +68,11 @@
         }
       },
       "required": [
+        "publisher_domain",
         "selection_type",
         "property_ids"
       ],
-      "allOf": [
-        { "not": { "required": ["publisher_domain", "publisher_domains"] } },
-        { "anyOf": [
-          { "required": ["publisher_domain"] },
-          { "required": ["publisher_domains"] }
-        ]}
-      ],
-      "additionalProperties": true
+      "additionalProperties": false
     },
     {
       "type": "object",
@@ -96,12 +80,12 @@
       "properties": {
         "publisher_domain": {
           "type": "string",
-          "description": "Domain where publisher's adagents.json is hosted (e.g., 'cnn.com'). Mutually exclusive with `publisher_domains`.",
+          "description": "Domain where publisher's adagents.json is hosted (e.g., 'cnn.com'). XOR with `publisher_domains` — exactly one MUST be present on each `publisher_properties[]` entry; both-present and neither-present both fail validation. Generated SDK types in TypeScript/Python/Java/Go expose both fields as optional; the XOR is enforced at validation time, so consumers MUST check at runtime.",
           "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
         },
         "publisher_domains": {
           "type": "array",
-          "description": "Compact form for fanning the same tag predicate across many publishers (canonical managed-network shape). Each entry is the domain where that publisher's adagents.json is hosted. Mutually exclusive with `publisher_domain`. Each listed domain counts as explicitly scoped for the `managerdomain` fallback safety rule.",
+          "description": "Compact form for fanning the same tag predicate across many publishers (canonical managed-network shape). Each entry is the domain where that publisher's adagents.json is hosted. Each listed domain MUST be canonicalized to lowercase (the `pattern` already rejects uppercase). Mutually exclusive with `publisher_domain`. Each listed domain counts as explicitly scoped for the `managerdomain` fallback safety rule.",
           "items": {
             "type": "string",
             "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"

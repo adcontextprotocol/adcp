@@ -20,9 +20,12 @@
     },
     "publisher_properties": {
       "type": "array",
-      "description": "Publisher properties covered by this product. Buyers fetch actual property definitions from each publisher's adagents.json and validate agent authorization. Selection patterns mirror the authorization patterns in adagents.json for consistency.",
+      "description": "Publisher properties covered by this product. Buyers fetch actual property definitions from each publisher's adagents.json and validate agent authorization. Selection patterns mirror the authorization patterns in adagents.json for consistency. Products MUST use the singular `publisher_domain` form on each selector entry; the compact `publisher_domains[]` form is reserved for adagents.json `authorized_agents[].publisher_properties[]` and is rejected here so that buy-side traffic-and-pricing flatteners can always treat each entry as exactly one publisher.",
       "items": {
-        "$ref": "/schemas/core/publisher-property-selector.json"
+        "allOf": [
+          { "$ref": "/schemas/core/publisher-property-selector.json" },
+          { "not": { "required": ["publisher_domains"] } }
+        ]
       },
       "minItems": 1
     },
