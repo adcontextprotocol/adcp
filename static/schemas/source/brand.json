@@ -40,18 +40,27 @@
           "enum": ["owned", "licensed_in", "licensed_out"],
           "description": "Whether the publisher owns the mark, licenses it from another entity, or licenses it to others. 'owned' is the default if omitted."
         },
+        "licensor_domain": {
+          "$ref": "#/definitions/domain",
+          "description": "Domain of the entity that licenses this mark to the publisher. Meaningful when license_type=licensed_in; omit otherwise."
+        },
         "countries": {
           "type": "array",
           "items": { "type": "string", "minLength": 2, "maxLength": 2 },
           "description": "ISO 3166-1 alpha-2 country codes where this registration applies. Omit for global or where the registry's jurisdiction is implicit."
+        },
+        "nice_classes": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 1, "maximum": 45 },
+          "description": "Nice Classification class numbers (1-45) covered by this registration. Disambiguates marks across industries (e.g., Delta-airline vs Delta-faucet). Omit if scope is implicit from registry."
         }
       },
       "required": ["registry", "number", "mark"],
       "additionalProperties": true
     },
-    "brand_ref": {
+    "portfolio_entry": {
       "type": "object",
-      "description": "Reference to a pointer brand owned by this house. The child publishes its own canonical brand.json at the named domain. House-side declaration; mutual-assertion trust requires the child's house_domain to reciprocate. See docs/brand-protocol/brand-json.mdx",
+      "description": "A house's ownership entry for a brand that publishes its own canonical brand.json elsewhere. The publisher (the house) asserts 'I own this brand, hosted at this domain, effective on this date.' Mutual-assertion trust requires the child's house_domain to reciprocate. Distinct from core/brand-ref.json (which identifies brands in media-buy plans). See docs/brand-protocol/brand-json.mdx",
       "properties": {
         "domain": {
           "$ref": "#/definitions/domain",
@@ -59,14 +68,19 @@
         },
         "brand_id": {
           "$ref": "#/definitions/brand_id",
-          "description": "Stable brand identifier within the house portfolio"
+          "description": "Stable brand identifier within the house portfolio. Required so the cross-array uniqueness invariant (brand_id MUST NOT appear in both brands[] and brand_refs[]) is enforceable."
         },
         "managed_by": {
           "$ref": "#/definitions/domain",
-          "description": "Optional domain of the entity that operationally manages this brand (e.g., an agency network within a holdco). House-declared, non-trust-bearing — used for grouping and discovery only. Verifiers MUST NOT use this field for trust or authorization decisions. The child does not need to reciprocate this claim."
+          "description": "Optional domain of the entity that operationally manages this brand (e.g., an agency network within a holdco). House-declared. Consumers MUST NOT use it for trust or authorization decisions. Aggregation across houses ('show me everything BBH manages') is the intended use; trust is unaffected."
+        },
+        "effective_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp when the house established this ownership claim. Consumers age mutual-assertion edges from this date for TTL purposes. Optional; absent means the consumer ages from its own first observation."
         }
       },
-      "required": ["domain"],
+      "required": ["domain", "brand_id"],
       "additionalProperties": false
     },
     "localized_name": {
@@ -1450,8 +1464,8 @@
         },
         "brand_refs": {
           "type": "array",
-          "description": "Pointer brands owned by this house (child-owned data). Each entry references a brand whose canonical document is published elsewhere — typically at the brand's own domain. Use when a child brand wants self-publish authority. Mutual-assertion trust: the pointed-to document's house_domain must equal this house's domain. A brand_id MUST NOT appear in both brands[] and brand_refs[]; brand_id values MUST be unique within brand_refs[]. See docs/brand-protocol/brand-json.mdx",
-          "items": { "$ref": "#/definitions/brand_ref" },
+          "description": "Portfolio entries for brands owned by this house that publish their own canonical brand.json elsewhere (child-owned data). Each entry asserts ownership plus where the child's document lives. Mutual-assertion trust: the pointed-to document's house_domain must equal this house's domain. Invariants: a brand_id MUST NOT appear in both brands[] and brand_refs[]; brand_id and domain MUST each be unique within brand_refs[]. See docs/brand-protocol/brand-json.mdx",
+          "items": { "$ref": "#/definitions/portfolio_entry" },
           "minItems": 1
         },
         "contact": { "$ref": "#/definitions/contact" },
@@ -1496,6 +1510,9 @@
               { "required": ["brands"] },
               { "required": ["brand_refs"] },
               { "required": ["authorized_operators"] },
+              { "required": ["authoritative_location"] },
+              { "required": ["redirect_reason"] },
+              { "required": ["redirect_effective_at"] },
               { "required": ["region"] },
               { "required": ["note"] }
             ]
