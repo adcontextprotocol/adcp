@@ -1,5 +1,6 @@
 import { FederatedIndexDatabase, type AgentPublisherAuthorization, type DiscoveredProperty, type PropertyIdentifier, type PublisherPropertySelector } from './db/federated-index-db.js';
 import { MemberDatabase } from './db/member-db.js';
+import { canonicalizeAgentUrl } from './db/publisher-db.js';
 import type { FederatedAgent, FederatedPublisher, DomainLookupResult, AgentType } from './types.js';
 
 /**
@@ -55,8 +56,13 @@ export class FederatedIndexService {
         const agentType = agentConfig.type || 'unknown';
         if (type && agentType !== type) continue;
 
-        registeredAgents.set(agentConfig.url, {
-          url: agentConfig.url,
+        // Canonicalize the map key so two registrations differing only in
+        // case / trailing slash collapse to a single entry (issue #3573).
+        // Fall back to the raw url if canonicalization rejects (legacy
+        // whitespace etc.) so we never silently drop a stored agent.
+        const key = canonicalizeAgentUrl(agentConfig.url) ?? agentConfig.url;
+        registeredAgents.set(key, {
+          url: key,
           name: agentConfig.name || profile.display_name,
           type: agentType as FederatedAgent['type'],
           protocol: 'mcp',
@@ -114,10 +120,15 @@ export class FederatedIndexService {
     const profiles = await this.memberDb.listProfiles({});
     const registeredAgentUrls = new Map<string, { slug: string; display_name: string }>();
 
+    // Key the enrichment map on canonical form (issue #3573) so a registered
+    // `https://Example.com/` matches a discovered `https://example.com`.
+    // Fall back to the raw url if canonicalization rejects so legacy
+    // non-canonical rows still enrich.
     for (const profile of profiles) {
       for (const agentConfig of profile.agents || []) {
         if (agentConfig.visibility === 'public') {
-          registeredAgentUrls.set(agentConfig.url, {
+          const key = canonicalizeAgentUrl(agentConfig.url) ?? agentConfig.url;
+          registeredAgentUrls.set(key, {
             slug: profile.slug,
             display_name: profile.display_name,
           });
@@ -130,7 +141,8 @@ export class FederatedIndexService {
     const authorizedAgents = authorizations
       .filter(auth => auth.source === 'adagents_json')
       .map(auth => {
-        const member = registeredAgentUrls.get(auth.agent_url);
+        const lookupKey = canonicalizeAgentUrl(auth.agent_url) ?? auth.agent_url;
+        const member = registeredAgentUrls.get(lookupKey);
         return {
           url: auth.agent_url,
           authorized_for: auth.authorized_for,
@@ -141,7 +153,8 @@ export class FederatedIndexService {
     // Get sales agents claiming this domain
     const claims = await this.db.getSalesAgentsClaimingDomain(domain);
     const salesAgentsClaiming = claims.map(claim => {
-      const member = registeredAgentUrls.get(claim.discovered_by_agent);
+      const lookupKey = canonicalizeAgentUrl(claim.discovered_by_agent) ?? claim.discovered_by_agent;
+      const member = registeredAgentUrls.get(lookupKey);
       return {
         url: claim.discovered_by_agent,
         ...(member ? { member } : {}),
@@ -190,11 +203,15 @@ export class FederatedIndexService {
   async getAllAgentDomainPairs(): Promise<Map<string, Set<string>>> {
     const pairs = await this.db.getAllAgentDomainPairs();
     const result = new Map<string, Set<string>>();
+    // Canonicalize so legacy raw rows in the DB (the write path stores
+    // verbatim; SQL canonicalizes on read but not on bulk fetch) collapse
+    // into one key when a caller looks up by canonical form (issue #3573).
     for (const { agent_url, publisher_domain } of pairs) {
-      let domains = result.get(agent_url);
+      const key = canonicalizeAgentUrl(agent_url) ?? agent_url;
+      let domains = result.get(key);
       if (!domains) {
         domains = new Set();
-        result.set(agent_url, domains);
+        result.set(key, domains);
       }
       domains.add(publisher_domain);
     }

@@ -19,6 +19,7 @@ import { MemberDatabase } from "../db/member-db.js";
 import { BrandDatabase, resolveBrandFromJson } from "../db/brand-db.js";
 import { BrandManager } from "../brand-manager.js";
 import { OrganizationDatabase, hasApiAccess, readMembershipTierFromClient, resolveMembershipTier, VALID_REVENUE_TIERS, VALID_MEMBERSHIP_TIERS } from "../db/organization-db.js";
+import { canonicalizeAgentUrl } from "../db/publisher-db.js";
 import { OrgKnowledgeDatabase } from "../db/org-knowledge-db.js";
 import { linkDomain } from "../db/organization-domains-db.js";
 import { autoLinkByVerifiedDomain } from "../db/membership-db.js";
@@ -1140,6 +1141,29 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       // the POST create path via gateAgentVisibilityForCaller.
       let warnings: VisibilityWarning[] = [];
       if (Array.isArray(updates.agents)) {
+        // Canonicalize every agent url before any downstream processing
+        // (issue #3573). The per-agent POST/PATCH path canonicalizes at
+        // the handler boundary; the bulk path must match so the same write
+        // applied via two surfaces lands as the same row.
+        for (let i = 0; i < updates.agents.length; i++) {
+          const a = updates.agents[i] as AgentConfig & { url?: unknown };
+          if (a && typeof a.url === 'string') {
+            if (a.url.includes('?') || a.url.includes('#')) {
+              return res.status(400).json({
+                error: 'invalid_agent_url',
+                message: `agents[${i}].url must not contain query strings or fragments`,
+              });
+            }
+            const canonical = canonicalizeAgentUrl(a.url);
+            if (!canonical) {
+              return res.status(400).json({
+                error: 'invalid_agent_url',
+                message: `agents[${i}].url is not a valid agent URL`,
+              });
+            }
+            a.url = canonical;
+          }
+        }
         const localOrgForTier = await orgDb.getOrganization(targetOrgId);
         const callerHasApi = hasApiAccess(resolveMembershipTier(localOrgForTier));
         const gated = gateAgentVisibilityForCaller(updates.agents, callerHasApi);
