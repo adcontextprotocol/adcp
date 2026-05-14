@@ -46,6 +46,18 @@ export class AgentValidator {
     const normalizedDomain = this.normalizeDomain(domain);
     const normalizedAgentUrl = this.normalizeUrl(agentUrl);
     const normalizedScope = this.normalizeScope(scope);
+    // SSRF reject (localhost / IP / empty) collapsed normalizedDomain to "".
+    // Fail closed here so downstream comparisons can't match a selector
+    // whose canonical form is also "" (e.g., "/", ".", "https://").
+    if (normalizedDomain === "") {
+      return {
+        authorized: false,
+        domain,
+        agent_url: agentUrl,
+        checked_at: new Date().toISOString(),
+        error: "Invalid publisher domain (resolves to local/private address or empty)",
+      };
+    }
     const cacheKey = JSON.stringify({
       domain: normalizedDomain,
       agent_url: normalizedAgentUrl,
@@ -358,6 +370,11 @@ export class AgentValidator {
   // publisher_domains[] array (managed-network fan-out — exactly equivalent to
   // repeating the selector once per listed domain).
   private selectorTargetsDomain(selector: PublisherPropertySelector, normalizedDomain: string): boolean {
+    // Empty normalized source means SSRF reject fired upstream (localhost,
+    // IP literal, empty input). Never let any selector match — comparing
+    // against an empty canonical form would otherwise authorize a manifest
+    // whose own selector canonicalizes to "" (e.g., "/", ".", "https://").
+    if (normalizedDomain === "") return false;
     if (typeof selector.publisher_domain === "string"
       && canonicalizePublisherDomain(selector.publisher_domain) === normalizedDomain) {
       return true;
@@ -490,6 +507,7 @@ export class AgentValidator {
   }
 
   private propertyMatchesDomain(property: PropertyDefinition, normalizedDomain: string): boolean {
+    if (normalizedDomain === "") return false;
     if (property.publisher_domain && canonicalizePublisherDomain(property.publisher_domain) === normalizedDomain) {
       return true;
     }

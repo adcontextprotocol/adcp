@@ -677,6 +677,86 @@ describe('AdAgentsManager', () => {
       expect(result.errors.some(e => e.field === 'managerdomain_scope')).toBe(true);
     });
 
+    it('accepts managerdomain fallback when manager publisher_domain has non-canonical form (trailing dot, scheme prefix, mixed case)', async () => {
+      // Code-reviewer SF2 / #4541: hasExplicitPublisherScope must produce
+      // identical canonicalization across publisher_domain (singular),
+      // publisher_domains[] (compact), collections[].publisher_domain, and
+      // the property-level publisher_domain filter. A manifest with any of
+      // these in DNS-canonical form (trailing dot) or with a stray scheme
+      // prefix should still satisfy the gate.
+      mockedSafeFetch.mockImplementation(async (url) => {
+        if (url === 'https://publisher.example/.well-known/adagents.json') {
+          return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://publisher.example/ads.txt') {
+          return { status: 200, data: Buffer.from('MANAGERDOMAIN=manager.example\n'), headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://manager.example/.well-known/adagents.json') {
+          return {
+            status: 200,
+            data: buf({
+              authorized_agents: [{
+                url: 'https://agent.example',
+                authorized_for: 'Mixed non-canonical forms',
+                authorization_type: 'publisher_properties',
+                publisher_properties: [{
+                  // Trailing dot, mixed case, scheme prefix — should all
+                  // canonicalize to "publisher.example".
+                  publisher_domains: ['Publisher.Example.', 'https://other.example'],
+                  selection_type: 'by_tag',
+                  property_tags: ['managed_network'],
+                }],
+              }],
+            }),
+            headers: { 'content-type': 'application/json' },
+          };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+
+      const result = await manager.validateDomain('publisher.example');
+      expect(result.valid).toBe(true);
+      expect(result.discovery_method).toBe('ads_txt_managerdomain');
+    });
+
+    it('accepts managerdomain fallback via property-level path when properties[].publisher_domain has trailing dot', async () => {
+      // The property-level fallback path also flows through
+      // canonicalizePublisherDomain — locks that for trailing-dot forms.
+      mockedSafeFetch.mockImplementation(async (url) => {
+        if (url === 'https://publisher.example/.well-known/adagents.json') {
+          return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://publisher.example/ads.txt') {
+          return { status: 200, data: Buffer.from('MANAGERDOMAIN=manager.example\n'), headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://manager.example/.well-known/adagents.json') {
+          return {
+            status: 200,
+            data: buf({
+              properties: [{
+                property_id: 'pub_main_site',
+                property_type: 'website',
+                // Trailing-dot DNS-canonical form.
+                publisher_domain: 'publisher.example.',
+                tags: ['scope3-aee'],
+              }],
+              authorized_agents: [{
+                url: 'https://agent.example',
+                authorized_for: 'Property-level path with canonical mismatch',
+                authorization_type: 'property_tags',
+                property_tags: ['scope3-aee'],
+              }],
+            }),
+            headers: { 'content-type': 'application/json' },
+          };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+
+      const result = await manager.validateDomain('publisher.example');
+      expect(result.valid).toBe(true);
+    });
+
     it('accepts managerdomain fallback when manager scopes via publisher_properties[].publisher_domains[] compact form', async () => {
       // Managed networks (Raptive/Cafemedia shape) declare scope across
       // many represented publishers in a single publisher_properties[]

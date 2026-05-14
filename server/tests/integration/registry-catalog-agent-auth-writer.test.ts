@@ -1024,6 +1024,116 @@ describe('catalog_agent_authorizations writer projection', () => {
       expect(rows.map((r) => r.property_id_slug)).toEqual(['site_a']);
     });
 
+    it('revokes when revoked_publisher_domains[] entry uses non-canonical form (trailing dot, mixed case, scheme prefix)', async () => {
+      // Code-reviewer SF3 / #4541: a revocation entry of `"CAA-Writer.example."`
+      // or `"https://caa-writer.example"` must canonicalize to the same key
+      // as the publisher row under `"caa-writer.example"` and fire the
+      // retirement branch. Locks the canonicalization parity end-to-end.
+      // Step 1: grant projection under the canonical key.
+      await publisherDb.upsertAdagentsCache({
+        domain: TEST_PUB,
+        manifest: manifest(
+          [
+            {
+              url: TEST_AGENT_RAW,
+              authorization_type: 'publisher_properties',
+              publisher_properties: [
+                { publisher_domain: TEST_PUB, selection_type: 'all' },
+              ],
+            },
+          ],
+          [
+            {
+              property_id: 'site_a',
+              property_type: 'website',
+              name: 'Site A',
+              identifiers: [{ type: 'domain', value: TEST_PUB }],
+            },
+          ]
+        ),
+      });
+      // Step 2: revoke using a non-canonical form (trailing dot + mixed case).
+      await publisherDb.upsertAdagentsCache({
+        domain: TEST_PUB,
+        manifest: {
+          ...manifest(
+            [
+              {
+                url: TEST_AGENT_RAW,
+                authorization_type: 'publisher_properties',
+                publisher_properties: [
+                  { publisher_domain: TEST_PUB, selection_type: 'all' },
+                ],
+              },
+            ],
+            [
+              {
+                property_id: 'site_a',
+                property_type: 'website',
+                name: 'Site A',
+                identifiers: [{ type: 'domain', value: TEST_PUB }],
+              },
+            ]
+          ),
+          revoked_publisher_domains: [
+            // Mixed case + trailing dot — must canonicalize to TEST_PUB.
+            { publisher_domain: `CAA-Writer.example.`, revoked_at: '2026-05-13T00:00:00Z' },
+          ],
+        },
+      });
+      const { rows: liveRowsAfterRevoke } = await pool.query(
+        `SELECT 1 FROM catalog_agent_authorizations
+          WHERE agent_url_canonical = $1
+            AND deleted_at IS NULL`,
+        [TEST_AGENT_CANON]
+      );
+      expect(liveRowsAfterRevoke).toHaveLength(0);
+    });
+
+    it('drops revoked_publisher_domains[] entries whose canonical form fails the schema pattern', async () => {
+      // Security SF2 / #4541: garbage-looking entries (control chars,
+      // scheme remnants that don't strip cleanly, paths) MUST be dropped,
+      // not honored as silently-unmatching revocations.
+      await publisherDb.upsertAdagentsCache({
+        domain: TEST_PUB,
+        manifest: {
+          ...manifest(
+            [
+              {
+                url: TEST_AGENT_RAW,
+                authorization_type: 'publisher_properties',
+                publisher_properties: [
+                  { publisher_domain: TEST_PUB, selection_type: 'all' },
+                ],
+              },
+            ],
+            [
+              {
+                property_id: 'site_a',
+                property_type: 'website',
+                name: 'Site A',
+                identifiers: [{ type: 'domain', value: TEST_PUB }],
+              },
+            ]
+          ),
+          revoked_publisher_domains: [
+            // Embedded NUL — canonical form still has the NUL, fails the pattern.
+            { publisher_domain: ' caa-writer.example', revoked_at: '2026-05-13T00:00:00Z' },
+            // Path segment — canonical form has `/`, fails the pattern.
+            { publisher_domain: 'https://caa-writer.example/path', revoked_at: '2026-05-13T00:00:00Z' },
+          ],
+        },
+      });
+      // Projection should proceed normally — neither malformed entry
+      // revokes the publisher.
+      const { rows } = await pool.query<{ property_id_slug: string }>(
+        `SELECT property_id_slug FROM catalog_agent_authorizations
+          WHERE agent_url_canonical = $1 AND property_rid IS NOT NULL`,
+        [TEST_AGENT_CANON]
+      );
+      expect(rows.map((r) => r.property_id_slug)).toEqual(['site_a']);
+    });
+
     it('projects normally when revoked_publisher_domains[] lists a different domain', async () => {
       // Revocation list contains an unrelated domain; projection proceeds.
       await publisherDb.upsertAdagentsCache({

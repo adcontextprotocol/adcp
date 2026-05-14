@@ -22,6 +22,12 @@ export function canonicalizePublisherDomain(raw: string): string {
   let v = raw.trim().toLowerCase();
   if (v.startsWith('https://')) v = v.slice(8);
   else if (v.startsWith('http://')) v = v.slice(7);
+  // Trailing-slash and trailing-dot strip is interleaved on purpose — both
+  // `"cnn.com./"` and `"cnn.com/."` collapse to `"cnn.com"` because each
+  // iteration peels whichever terminator is currently at the end. This is
+  // a security boundary (writer-vs-validator parity); two strings that
+  // refer to the same publisher MUST canonicalize identically regardless
+  // of the order of their non-significant trailing characters.
   while (v.endsWith('/') || v.endsWith('.')) v = v.slice(0, -1);
   return v;
 }
