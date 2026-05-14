@@ -1,5 +1,6 @@
 import dns from "node:dns/promises";
 import net from "node:net";
+import { canonicalizePublisherDomain } from "./services/publisher-domain.js";
 import type {
   AdAgentsJson,
   AuthorizationResult,
@@ -276,7 +277,7 @@ export class AgentValidator {
     }
 
     return selectors.some((selector) =>
-      this.normalizeDomain(selector.publisher_domain) === normalizedDomain &&
+      canonicalizePublisherDomain(selector.publisher_domain) === normalizedDomain &&
       this.hasIntersection(selector.collection_ids, collectionIds)
     );
   }
@@ -358,12 +359,12 @@ export class AgentValidator {
   // repeating the selector once per listed domain).
   private selectorTargetsDomain(selector: PublisherPropertySelector, normalizedDomain: string): boolean {
     if (typeof selector.publisher_domain === "string"
-      && this.normalizeDomain(selector.publisher_domain) === normalizedDomain) {
+      && canonicalizePublisherDomain(selector.publisher_domain) === normalizedDomain) {
       return true;
     }
     if (Array.isArray(selector.publisher_domains)) {
       return selector.publisher_domains.some((d) =>
-        typeof d === "string" && this.normalizeDomain(d) === normalizedDomain
+        typeof d === "string" && canonicalizePublisherDomain(d) === normalizedDomain
       );
     }
     return false;
@@ -489,7 +490,7 @@ export class AgentValidator {
   }
 
   private propertyMatchesDomain(property: PropertyDefinition, normalizedDomain: string): boolean {
-    if (property.publisher_domain && this.normalizeDomain(property.publisher_domain) === normalizedDomain) {
+    if (property.publisher_domain && canonicalizePublisherDomain(property.publisher_domain) === normalizedDomain) {
       return true;
     }
 
@@ -535,8 +536,13 @@ export class AgentValidator {
       normalized = normalized.slice("http://".length);
     }
 
-    // Remove trailing slashes.
-    while (normalized.endsWith("/")) {
+    // Remove trailing slashes and trailing dots. Trailing dot is the
+    // DNS-canonical form for FQDNs and is round-trip equivalent to the
+    // dotless form for `publisher_domain` comparison. Stripping here
+    // keeps the validator in agreement with the shared
+    // canonicalizePublisherDomain helper used by the writer and the
+    // adagents-manager safety gate.
+    while (normalized.endsWith("/") || normalized.endsWith(".")) {
       normalized = normalized.slice(0, -1);
     }
 
@@ -713,7 +719,7 @@ export class AgentValidator {
     return [
       ...new Set(
         selectors
-          .filter((selector) => this.normalizeDomain(selector.publisher_domain) === normalizedDomain)
+          .filter((selector) => canonicalizePublisherDomain(selector.publisher_domain) === normalizedDomain)
           .flatMap((selector) => selector.collection_ids)
       ),
     ];
@@ -741,7 +747,7 @@ export class AgentValidator {
     }
 
     return placements.filter((placement) => {
-      if (placement.publisher_domain && this.normalizeDomain(placement.publisher_domain) !== normalizedDomain) {
+      if (placement.publisher_domain && canonicalizePublisherDomain(placement.publisher_domain) !== normalizedDomain) {
         return false;
       }
       if (placementIds && !placementIds.has(placement.placement_id)) {

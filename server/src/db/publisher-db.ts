@@ -1,6 +1,7 @@
 import { getClient } from './client.js';
 import { uuidv7 } from './uuid.js';
 import { normalizeIdentifier } from '../services/identifier-normalization.js';
+import { canonicalizePublisherDomain } from '../services/publisher-domain.js';
 import { createLogger } from '../logger.js';
 import type { PoolClient } from 'pg';
 
@@ -161,7 +162,7 @@ function extractRevokedPublisherDomains(manifest: unknown): Set<string> {
     if (typeof ra !== 'string' || ra.length === 0) continue;
     // Require parseable date-time. Date.parse returns NaN on invalid input.
     if (Number.isNaN(Date.parse(ra))) continue;
-    out.add(pd.toLowerCase());
+    out.add(canonicalizePublisherDomain(pd));
   }
   return out;
 }
@@ -217,7 +218,7 @@ export class PublisherDatabase {
     responseBytes?: number;
     resolvedUrl?: string;
   }): Promise<void> {
-    const domain = input.domain.toLowerCase();
+    const domain = canonicalizePublisherDomain(input.domain);
     const client = await getClient();
     try {
       await client.query(
@@ -242,7 +243,7 @@ export class PublisherDatabase {
   }
 
   async upsertAdagentsCache(input: UpsertAdagentsCacheInput): Promise<void> {
-    const domain = input.domain.toLowerCase();
+    const domain = canonicalizePublisherDomain(input.domain);
     const client = await getClient();
     try {
       await client.query('BEGIN');
@@ -885,9 +886,9 @@ export class PublisherDatabase {
         // A selector claims the publisher if the source publisherDomain matches
         // either the singular publisher_domain or any entry in the compact
         // publisher_domains[] array. Both forms are equivalent for projection.
-        const selPubSingular = hasSingular ? sel.publisher_domain!.toLowerCase() : null;
+        const selPubSingular = hasSingular ? canonicalizePublisherDomain(sel.publisher_domain!) : null;
         const selPubInList = hasPlural
-          && sel.publisher_domains!.some((d) => typeof d === 'string' && d.toLowerCase() === publisherDomain);
+          && sel.publisher_domains!.some((d) => typeof d === 'string' && canonicalizePublisherDomain(d) === publisherDomain);
         if (selPubSingular !== publisherDomain && !selPubInList) {
           // Cross-publisher third-party-sales claim. Refused per spec — the
           // writer cannot land an authoritative row for another publisher's

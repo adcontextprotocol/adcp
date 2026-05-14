@@ -634,6 +634,77 @@ describe('catalog_agent_authorizations writer projection', () => {
       expect(rows).toHaveLength(0);
     });
 
+    it('matches own publisher when selector publisher_domain has a trailing dot (DNS-canonical form)', async () => {
+      // A hand-edited or DNS-tool-emitted manifest may use the trailing-dot
+      // FQDN form (`"caa-writer.example."`). The writer MUST treat this as
+      // equivalent to the dotless form to stay in agreement with the
+      // validator. See canonicalizePublisherDomain in
+      // services/publisher-domain.ts.
+      await publisherDb.upsertAdagentsCache({
+        domain: TEST_PUB,
+        manifest: manifest(
+          [
+            {
+              url: TEST_AGENT_RAW,
+              authorization_type: 'publisher_properties',
+              publisher_properties: [
+                { publisher_domain: `${TEST_PUB}.`, selection_type: 'all' },
+              ],
+            },
+          ],
+          [
+            {
+              property_id: 'site_a',
+              property_type: 'website',
+              name: 'Site A',
+              identifiers: [{ type: 'domain', value: TEST_PUB }],
+            },
+          ]
+        ),
+      });
+      const { rows } = await pool.query<{ property_id_slug: string }>(
+        `SELECT property_id_slug FROM catalog_agent_authorizations
+          WHERE agent_url_canonical = $1 AND property_rid IS NOT NULL`,
+        [TEST_AGENT_CANON]
+      );
+      expect(rows.map((r) => r.property_id_slug)).toEqual(['site_a']);
+    });
+
+    it('matches own publisher when selector publisher_domain has an http(s) scheme prefix', async () => {
+      // Scheme-prefixed publisher_domain is technically invalid per the JSON
+      // Schema pattern, but the writer accepts loose-typed input and was
+      // previously diverging from the validator (which strips scheme via
+      // normalizeDomain). Unified through canonicalizePublisherDomain now.
+      await publisherDb.upsertAdagentsCache({
+        domain: TEST_PUB,
+        manifest: manifest(
+          [
+            {
+              url: TEST_AGENT_RAW,
+              authorization_type: 'publisher_properties',
+              publisher_properties: [
+                { publisher_domain: `https://${TEST_PUB}`, selection_type: 'all' },
+              ],
+            },
+          ],
+          [
+            {
+              property_id: 'site_a',
+              property_type: 'website',
+              name: 'Site A',
+              identifiers: [{ type: 'domain', value: TEST_PUB }],
+            },
+          ]
+        ),
+      });
+      const { rows } = await pool.query<{ property_id_slug: string }>(
+        `SELECT property_id_slug FROM catalog_agent_authorizations
+          WHERE agent_url_canonical = $1 AND property_rid IS NOT NULL`,
+        [TEST_AGENT_CANON]
+      );
+      expect(rows.map((r) => r.property_id_slug)).toEqual(['site_a']);
+    });
+
     it('matches own publisher when selector publisher_domain has mixed case', async () => {
       // Legacy or hand-edited manifests may use mixed-case publisher_domain.
       // The selector is lowercased before comparison; own-publisher claims
