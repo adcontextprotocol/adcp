@@ -679,7 +679,7 @@ export class BrandManager {
               parent_brand: brand.parent_brand,
               house_domain: portfolioData.house.domain,
               house_name: portfolioData.house.name,
-              brand_manifest: brand.brand_manifest as Record<string, unknown> | undefined,
+              brand_manifest: this.buildBrandManifest(brand),
               source: 'brand_json',
             };
             this.resolutionCache.set(cacheKey, result);
@@ -700,6 +700,7 @@ export class BrandManager {
                 keller_type: masterBrand.keller_type,
                 house_domain: portfolioData.house.domain,
                 house_name: portfolioData.house.name,
+                brand_manifest: this.buildBrandManifest(masterBrand),
                 source: 'brand_json',
               };
               this.resolutionCache.set(cacheKey, result);
@@ -757,13 +758,39 @@ export class BrandManager {
           parent_brand: brand.parent_brand,
           house_domain: portfolio.house.domain,
           house_name: portfolio.house.name,
-          brand_manifest: brand.brand_manifest as Record<string, unknown> | undefined,
+          brand_manifest: this.buildBrandManifest(brand),
           source: 'brand_json',
         };
       }
     }
 
     return null;
+  }
+
+  /**
+   * Build the brand_manifest payload from a BrandDefinition by stripping
+   * identity/locator fields that are already surfaced as top-level
+   * ResolvedBrand fields. Returns undefined when no manifest data remains.
+   *
+   * Brand fields are flat on the brand object per the unified brand.json
+   * schema (post-commit 892da1df2). A legacy nested `brand_manifest`
+   * sub-key, if present, is merged in for backwards compatibility.
+   */
+  private buildBrandManifest(brand: BrandDefinition): Record<string, unknown> | undefined {
+    const { id, names, keller_type, parent_brand, brand_manifest, ...rest } =
+      brand as BrandDefinition & Record<string, unknown>;
+    void id;
+    void names;
+    void keller_type;
+    void parent_brand;
+
+    const legacy =
+      brand_manifest && typeof brand_manifest === 'object'
+        ? (brand_manifest as Record<string, unknown>)
+        : undefined;
+
+    const merged: Record<string, unknown> = { ...(legacy ?? {}), ...rest };
+    return Object.keys(merged).length > 0 ? merged : undefined;
   }
 
   /**
