@@ -14,7 +14,10 @@ jobs:
   build:
     name: TypeScript Build
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # 15-min default was right at the edge; adding the OpenAPI freshness
+    # step (which re-runs the schema generator) tipped it over. 20 gives
+    # headroom without masking real regressions.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
 
