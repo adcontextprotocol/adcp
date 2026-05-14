@@ -319,6 +319,16 @@
       "pullRequestNo": 3,
       "comment_id": 4446011071,
       "comment_url": "https://github.com/adcontextprotocol/adcp-sdk-java/pull/3#issuecomment-4446011071"
+    },
+    {
+      "name": "fizyxbt",
+      "id": 17788586,
+      "created_at": "2026-05-14T11:24:48Z",
+      "method": "pr_comment",
+      "repo": "adcontextprotocol/adcp-client",
+      "pullRequestNo": 1748,
+      "comment_id": 4450235782,
+      "comment_url": "https://github.com/adcontextprotocol/adcp-client/pull/1748#issuecomment-4450235782"
     }
   ]
 }
