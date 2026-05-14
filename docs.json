@@ -367,6 +367,7 @@
                     "expanded": false,
                     "pages": [
                       "docs/governance/overview",
+                      "docs/governance/rfc-process",
                       "docs/governance/embedded-human-judgment",
                       "docs/governance/policy-registry",
                       "docs/governance/policy-registry-sync",
@@ -941,6 +942,7 @@
                 "expanded": false,
                 "pages": [
                   "docs/governance/overview",
+                  "docs/governance/rfc-process",
                   "docs/governance/embedded-human-judgment",
                   "docs/governance/policy-registry",
                   "docs/governance/policy-registry-sync",
