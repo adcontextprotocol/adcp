@@ -150,6 +150,14 @@
       "recovery": "correctable",
       "suggestion": "provide credentials when missing; do NOT auto-retry rejected credentials — escalate for rotation"
     },
+    "AUTH_MISSING": {
+      "recovery": "correctable",
+      "suggestion": "provide credentials via the auth header and retry"
+    },
+    "AUTH_INVALID": {
+      "recovery": "terminal",
+      "suggestion": "do NOT auto-retry — credentials were rejected; rotate keys, refresh OAuth tokens once if applicable, otherwise escalate to a human"
+    },
     "RATE_LIMITED": {
       "recovery": "transient",
       "suggestion": "retry after the retry_after interval"
