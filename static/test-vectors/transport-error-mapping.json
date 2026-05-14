@@ -113,13 +113,40 @@
       "expected_action": "retry"
     },
     {
-      "id": "mcp-jsonrpc-auth-required",
-      "description": "MCP transport-level auth error via JSON-RPC error -32028",
+      "id": "mcp-jsonrpc-auth-missing",
+      "description": "MCP transport-level auth error via JSON-RPC error -32028 — no credentials presented",
       "transport": "mcp",
       "path": "jsonrpc_error",
       "response": {
         "jsonrpc": "2.0",
         "id": "req-456",
+        "error": {
+          "code": -32028,
+          "message": "Authentication required",
+          "data": {
+            "adcp_error": {
+              "code": "AUTH_MISSING",
+              "message": "No credentials were presented",
+              "recovery": "correctable"
+            }
+          }
+        }
+      },
+      "expected_error": {
+        "code": "AUTH_MISSING",
+        "message": "No credentials were presented",
+        "recovery": "correctable"
+      },
+      "expected_action": "surface_to_caller"
+    },
+    {
+      "id": "mcp-jsonrpc-auth-required-deprecated",
+      "description": "MCP transport-level auth error via JSON-RPC error -32028 — deprecated AUTH_REQUIRED alias (backward compat)",
+      "transport": "mcp",
+      "path": "jsonrpc_error",
+      "response": {
+        "jsonrpc": "2.0",
+        "id": "req-457",
         "error": {
           "code": -32028,
           "message": "Authentication required",
