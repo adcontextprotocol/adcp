@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/media-buy-available-action.json",
+  "title": "Media Buy Available Action",
+  "description": "An action currently available on a media buy, resolved against the buy's current status, negotiated terms, account tier, and any buy-level overrides. Authoritative per-buy capability — buyer SDKs MUST read this rather than re-deriving from the product's `allowed_actions[]`, because divergence from the product template is expected (negotiated terms and IO addenda live on the deal, not the product SKU). The containing `available_actions[]` array is uniquely keyed by `action`; predicate evaluators consuming dotted paths like `available_actions.extend_flight.sla.response_max` MUST index by `action` rather than by array position.",
+  "type": "object",
+  "properties": {
+    "action": {
+      "$ref": "/schemas/enums/media-buy-valid-action.json",
+      "description": "The action identifier."
+    },
+    "mode": {
+      "$ref": "/schemas/enums/media-buy-action-mode.json",
+      "description": "The single mode that applies right now on this buy for this action. Singular because the buy has a concrete state, exactly one mode applies. Buyer SDKs branch on this to decide whether to expect a synchronous response, a proposal task, or an asynchronous approval callback."
+    },
+    "sla": {
+      "$ref": "/schemas/core/sla-window.json",
+      "description": "Optional SLA commitment for this action on this buy. Absence means no commitment, not zero commitment."
+    },
+    "terms_ref": {
+      "type": "string",
+      "description": "Optional pointer into buy-terms negotiation (forward-references the buy-terms namespace landing via separate RFC)."
+    }
+  },
+  "required": ["action", "mode"],
+  "additionalProperties": false
+}

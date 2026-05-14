@@ -50,10 +50,18 @@
         },
         "valid_actions": {
           "type": "array",
-          "description": "Actions the buyer can perform after this update. Saves a round-trip to get_media_buys.",
+          "description": "Flat-vocabulary actions the buyer can perform after this update. Saves a round-trip to get_media_buys. Deprecated in favor of `available_actions[]`, which carries `mode`, optional SLA, and optional `terms_ref`. Sellers SHOULD populate both during the 3.x deprecation window; consumers MUST prefer `available_actions[]` when both are present. Removed in 4.0.",
           "items": {
             "$ref": "/schemas/enums/media-buy-valid-action.json"
           }
+        },
+        "available_actions": {
+          "type": "array",
+          "description": "Structured per-buy resolution of actions available after this update. Authoritative — see `get-media-buys-response.json` for full semantics.",
+          "items": {
+            "$ref": "/schemas/core/media-buy-available-action.json"
+          },
+          "uniqueItems": true
         },
         "sandbox": {
           "type": "boolean",
