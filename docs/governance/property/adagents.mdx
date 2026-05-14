@@ -172,7 +172,10 @@ The file must be valid JSON with UTF-8 encoding and return HTTP 200 status.
   - **`effective_from` / `effective_until`** *(optional)*: Time window for the authorization
   - **`exclusive`** *(optional)*: Whether this is the publisher's sole authorized path for the scoped inventory slice
   - **`signing_keys`** *(optional)*: Publisher-attested public keys buyers can pin when verifying signed agent responses
+  - **`last_updated`** *(optional)*: ISO 8601 timestamp when this `authorized_agents[]` entry last changed. Independent of the file-level `last_updated`. Advisory — enables validators to skip unchanged entries on partial walks. See [managed-networks security](/docs/governance/property/managed-networks#security-considerations) for the conditional-refresh protocol it enables.
   - **Additional fields**: Depends on authorization_type (see patterns below)
+
+**`revoked_publisher_domains`** *(optional, managed-network use)*: Top-level array of publisher domains explicitly removed from a managed network's authoritative file. Each entry has `publisher_domain`, `revoked_at` (ISO 8601), and optional `reason`. Validators MUST treat any listed domain as no-longer-authorized regardless of where else it appears in the file. See [Publisher revocation](/docs/governance/property/managed-networks#publisher-revocation-the-exit-lifecycle) for the operational lifecycle and validator-side durability rule.
 
 **`last_updated`** *(optional)*: ISO 8601 timestamp of last modification
 
