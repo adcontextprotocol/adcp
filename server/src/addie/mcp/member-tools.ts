@@ -2318,6 +2318,11 @@ export function createMemberToolHandlers(
       if (result.code === 'invalid_domain') {
         return `<!-- STATUS: invalid_domain -->\n\nI can't claim that — ${result.message} Try a clean apex domain (e.g., "acme.com" rather than "acme.com/", "vercel.app", or "co.uk").`;
       }
+      if (result.code === 'workos_misconfigured') {
+        // Anti-loop: don't have the model offer to retry. The fix lives in
+        // the WorkOS dashboard, not in the user's flow.
+        return `<!-- STATUS: workos_misconfigured -->\n\nI can't issue a DNS challenge for ${rawDomain} right now — our identity provider isn't returning a DNS record prefix, which means I have nowhere to tell you to publish the TXT record. This is an operator-side issue (WorkOS DNS verification template), not something you can fix. **Stop here.** The AAO team has been alerted; ask them to set this up manually if you need to move forward today.`;
+      }
       return `<!-- STATUS: workos_error -->\n\nCouldn't issue the domain challenge: ${result.message}`;
     }
 
@@ -2325,8 +2330,12 @@ export function createMemberToolHandlers(
       return `<!-- STATUS: already_verified -->\n\n${result.domain} is already verified for your organization in WorkOS. The brand registry should already reflect that — call \`verify_brand_domain_challenge\` if you want to force a sync.`;
     }
 
+    // Defensive: the service should have returned workos_misconfigured before
+    // reaching here, but if WorkOS returns a token without a prefix and the
+    // service guard ever regresses, surface the same failure mode rather than
+    // handing the model a half-broken record to render.
     if (!result.verification_token || !result.verification_prefix) {
-      return `<!-- STATUS: workos_error -->\n\nIssued a challenge for ${result.domain} but WorkOS didn't return a DNS record to publish — that's unusual. Check the WorkOS dashboard or contact support.`;
+      return `<!-- STATUS: workos_misconfigured -->\n\nIssued a challenge for ${result.domain} but WorkOS didn't return a complete DNS record (missing prefix or token). This is an operator-side issue — ask the AAO team to verify ${result.domain} manually for you.`;
     }
 
     const recordName = `${result.verification_prefix}.${result.domain}`;
