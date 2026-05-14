@@ -544,7 +544,7 @@ export class BrandManager {
 
     // Validate properties if present
     if (brand.properties) {
-      brand.properties.forEach((prop, propIndex) => {
+      brand.properties.forEach((prop: BrandProperty, propIndex: number) => {
         this.validateProperty(prop, `${prefix}.properties[${propIndex}]`, result);
       });
     }
