@@ -12,7 +12,7 @@ import { WorkOS, DomainDataState } from "@workos-inc/node";
 import { AgentService } from "./agent-service.js";
 import { AgentValidator } from "./validator.js";
 import { configureMCPRoutes, isMCPServerReady, resolveMCPServerURL } from "./mcp/index.js";
-import { HealthChecker } from "./health.js";
+import { HealthChecker, classifyMCPError } from "./health.js";
 import { notifySystemError } from "./addie/error-notifier.js";
 import { CrawlerService } from "./crawler.js";
 import { createLogger, processRole } from "./logger.js";
@@ -37,7 +37,8 @@ import Stripe from "stripe";
 import { OrganizationDatabase, getUserSeatType, buildSubscriptionUpdate, TIER_PRESERVING_STATUSES, type SeatType, type MembershipTier } from "./db/organization-db.js";
 import { MemberDatabase } from "./db/member-db.js";
 import { ensureMemberProfilePublished } from "./services/member-profile-autopublish.js";
-import { getGitHubConnectedAccount, getGitHubAuthorizeUrl, disconnectGitHub, buildPipesReturnTo } from "./services/pipes.js";
+import { getBrandPrimaryDomain, getBrandPrimaryDomainsForOrgs } from "./services/brand-domain-resolver.js";
+import { getGitHubConnectedAccount, resolveGitHubConnectUrl, disconnectGitHub, buildPipesReturnTo } from "./services/pipes.js";
 import { BrandDatabase, resolveBrandFromJson } from "./db/brand-db.js";
 import { CatalogEventsDatabase } from "./db/catalog-events-db.js";
 import { AgentInventoryProfilesDatabase } from "./db/agent-inventory-profiles-db.js";
@@ -1089,11 +1090,34 @@ export class HTTPServer {
         const brand = await this.brandDb.getDiscoveredBrandByDomain(domain);
         if (!brand || brand.is_public === false) return res.status(404).json({ error: 'Brand not found' });
 
-        const manifest = (brand.brand_manifest as Record<string, unknown>) || {};
-        const brandJson: Record<string, unknown> = {
-          name: brand.brand_name || domain,
-          ...manifest,
-        };
+        // Only serve brand_json and community source types. Enriched (Brandfetch) entries are
+        // not brand-attested — serving them under this URL would misrepresent third-party data
+        // as brand-authoritative. Community entries are served only when structurally valid.
+        if (brand.source_type !== 'brand_json' && brand.source_type !== 'community') {
+          return res.status(404).json({ error: 'Brand not found' });
+        }
+
+        const manifest = brand.brand_manifest as Record<string, unknown> | undefined;
+        if (!manifest) return res.status(404).json({ error: 'Brand not found' });
+
+        if (brand.source_type === 'community') {
+          // Community entries must be approved and have a recognizable brand.json root shape.
+          if (brand.review_status === 'pending') return res.status(404).json({ error: 'Brand not found' });
+          const hasValidShape =
+            (typeof manifest.house === 'object' && Array.isArray(manifest.brands)) ||
+            typeof manifest.house === 'string' ||
+            Array.isArray(manifest.agents) ||
+            Boolean(manifest.brand_agent) ||
+            typeof manifest.authoritative_location === 'string';
+          if (!hasValidShape) return res.status(404).json({ error: 'Brand not found' });
+        }
+
+        const schemaUrl = 'https://adcontextprotocol.org/schemas/v3/brand.json';
+        const brandJson: Record<string, unknown> =
+          typeof manifest.$schema === 'string' && manifest.$schema.startsWith('https://')
+            ? { ...manifest }
+            : { $schema: schemaUrl, ...manifest };
+
         res.setHeader('Content-Type', 'application/json');
         res.setHeader('Cache-Control', 'public, max-age=300');
         return res.json(brandJson);
@@ -2077,12 +2101,15 @@ export class HTTPServer {
     // outbound traffic to every registered agent. Per-agent refresh is
     // available to owners at POST /api/registry/agents/:encodedUrl/refresh.
     this.app.post("/api/crawler/run", requireAuth, requireAdmin, async (req, res) => {
-      // Crawler iterates sales agents — they're the ones with publisher
-      // authorizations and list_authorized_properties responses to walk.
-      // Pre-#3540 this filter was inverted (matched 'buying' against the
-      // accidentally-aligned classification); see #3774 for the sweep
-      // that closed the remaining gaps.
-      const agents = await this.agentService.listAgents("sales");
+      // Full-registry crawl: all registered agents. Sales agents drive the
+      // publisher adagents.json walk; all agent types get health + capability
+      // snapshots via refreshAgentSnapshots. Mirrors the periodic-crawl scope
+      // added in #4213 so a manual admin run and the scheduled run behave
+      // identically. `viewerHasApiAccess` defaults to false — members_only
+      // agents are excluded from both paths intentionally (periodic crawl
+      // probes the public-facing registry surface; refreshSingleAgent covers
+      // owner-triggered probes for members_only agents).
+      const agents = await this.agentService.listAgents();
       const result = await this.crawler.crawlAllAgents(agents);
       res.json(result);
     });
@@ -7446,8 +7473,8 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
     this.app.post('/api/me/connected-accounts/github/authorize', requireAuth, async (req, res) => {
       try {
         const returnTo = buildPipesReturnTo(req.get('host') || '', req.protocol, req.body?.return_to);
-        const url = await getGitHubAuthorizeUrl(req.user!.id, returnTo);
-        res.json({ url });
+        const result = await resolveGitHubConnectUrl(req.user!.id, returnTo);
+        res.json({ url: result.url, already_connected: result.status === 'already_connected' });
       } catch (error) {
         logger.error({ err: error }, 'Failed to mint GitHub authorize URL');
         res.status(502).json({ error: 'Failed to start GitHub connection' });
@@ -7477,8 +7504,8 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
       const requestedReturnTo = typeof req.query.return_to === 'string' ? req.query.return_to : null;
       try {
         const returnTo = buildPipesReturnTo(reqHost, reqProto, req.query.return_to);
-        const url = await getGitHubAuthorizeUrl(req.user!.id, returnTo);
-        return res.redirect(302, url);
+        const result = await resolveGitHubConnectUrl(req.user!.id, returnTo);
+        return res.redirect(302, result.url);
       } catch (error) {
         logger.error(
           {
@@ -8309,11 +8336,13 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           offset: offset ? parseInt(offset as string, 10) : 0,
         });
 
-        // Batch-fetch all brand data and credentials in two queries instead of N+1
-        const brandDomains = profiles
-          .map(p => p.primary_brand_domain)
-          .filter((d): d is string => !!d);
+        // Batch-fetch brand data and credentials in a constant number of queries
+        // (resolver + brandsMap + credentialsMap) instead of N+1. Brand-primary
+        // domains come from the Stage 1 resolver (org_domains.is_primary first,
+        // member_profiles fallback), keyed by org_id rather than a per-row column.
         const orgIds = profiles.map(p => p.workos_organization_id);
+        const brandPrimaryByOrg = await getBrandPrimaryDomainsForOrgs(orgIds);
+        const brandDomains = Array.from(brandPrimaryByOrg.values());
 
         const [brandsMap, credentialsMap] = await Promise.all([
           this.brandDb.getDiscoveredBrandsByDomains(brandDomains),
@@ -8323,11 +8352,12 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
         ]);
 
         for (const profile of profiles) {
-          if (profile.primary_brand_domain) {
-            const brand = brandsMap.get(profile.primary_brand_domain.toLowerCase());
+          const brandPrimaryDomain = brandPrimaryByOrg.get(profile.workos_organization_id);
+          if (brandPrimaryDomain) {
+            const brand = brandsMap.get(brandPrimaryDomain.toLowerCase());
             if (brand?.brand_manifest) {
               profile.resolved_brand = resolveBrandFromJson(
-                profile.primary_brand_domain,
+                brandPrimaryDomain,
                 brand.brand_manifest as Record<string, unknown>,
                 brand.domain_verified ?? false
               );
@@ -8353,19 +8383,22 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
       try {
         const profiles = await memberDb.getCarouselProfiles();
 
-        // Batch-fetch all brand data in a single query to avoid pool exhaustion
+        // Batch-fetch all brand data in two queries to avoid pool exhaustion.
+        // Brand-primary domains come from the Stage 1 resolver (org_domains.is_primary
+        // first, member_profiles fallback), keyed by org_id.
         // codeql[js/user-controlled-bypass] - brand domains come from server-side DB, not user input
-        const brandDomains = profiles
-          .map(p => p.primary_brand_domain)
-          .filter((d): d is string => !!d);
+        const orgIds = profiles.map(p => p.workos_organization_id);
+        const brandPrimaryByOrg = await getBrandPrimaryDomainsForOrgs(orgIds);
+        const brandDomains = Array.from(brandPrimaryByOrg.values());
         const brandsMap = await this.brandDb.getDiscoveredBrandsByDomains(brandDomains);
 
         for (const profile of profiles) {
-          if (profile.primary_brand_domain) {
-            const brand = brandsMap.get(profile.primary_brand_domain.toLowerCase());
+          const brandPrimaryDomain = brandPrimaryByOrg.get(profile.workos_organization_id);
+          if (brandPrimaryDomain) {
+            const brand = brandsMap.get(brandPrimaryDomain.toLowerCase());
             if (brand?.brand_manifest) {
               profile.resolved_brand = resolveBrandFromJson(
-                profile.primary_brand_domain,
+                brandPrimaryDomain,
                 brand.brand_manifest as Record<string, unknown>,
                 brand.domain_verified ?? false
               );
@@ -8471,11 +8504,12 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
         // Resolve brand data from registry if linked. Skip orphaned brands —
         // the manifest is preserved server-side for adoption-at-claim-time
         // but must not surface on the public member-profile endpoint.
-        if (profile.primary_brand_domain) {
-          const brand = await this.brandDb.getDiscoveredBrandByDomain(profile.primary_brand_domain);
+        const brandPrimaryDomain = await getBrandPrimaryDomain(profile.workos_organization_id);
+        if (brandPrimaryDomain) {
+          const brand = await this.brandDb.getDiscoveredBrandByDomain(brandPrimaryDomain);
           if (brand?.brand_manifest && !brand.manifest_orphaned) {
             profile.resolved_brand = resolveBrandFromJson(
-              profile.primary_brand_domain,
+              brandPrimaryDomain,
               brand.brand_manifest as Record<string, unknown>,
               brand.domain_verified ?? false
             );
@@ -8808,15 +8842,28 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           });
         }
 
-        logger.error({ err: error, url }, 'Agent discovery error');
-
         if (error instanceof Error && error.name === 'TimeoutError') {
+          logger.warn({ url }, 'Agent discovery timed out');
           return res.status(504).json({
             error: 'Connection timeout',
             message: 'Agent did not respond within 10 seconds',
           });
         }
 
+        // Classify so user-data failures (stale tunnel URLs, wrong path,
+        // unreachable hosts) don't page #admin-errors via logger.error.
+        // Only unknown kinds escalate.
+        const classified = classifyMCPError(error);
+        if (classified.kind === 'unreachable' || classified.kind === 'wrong_path') {
+          logger.warn({ url, kind: classified.kind, raw: classified.raw }, 'Agent discovery failed');
+          return res.status(502).json({
+            error: 'Agent discovery failed',
+            kind: classified.kind,
+            message: classified.message,
+          });
+        }
+
+        logger.error({ err: error, url }, 'Agent discovery error');
         return res.status(500).json({
           error: 'Agent discovery failed',
         });
@@ -8827,7 +8874,11 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
     this.app.get('/api/public/publishers', async (req, res) => {
       try {
         const memberDb = new MemberDatabase();
-        const members = await memberDb.getPublicProfiles({});
+        // Walk every member profile. `member_profiles.is_public` is the
+        // member-directory gate; per-publisher `is_public` is what gates
+        // the public publisher surface. Matches `FederatedIndexService.
+        // listAllPublishers`.
+        const members = await memberDb.listProfiles({});
 
         // Collect all public publishers from members
         const publishers = members.flatMap((m) =>
@@ -8872,6 +8923,8 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           valid: result.valid,
           domain: result.domain,
           url: result.url,
+          discovery_method: result.discovery_method,
+          manager_domain: result.manager_domain ?? undefined,
           agent_count: stats.agentCount,
           property_count: stats.propertyCount,
           property_type_counts: stats.propertyTypeCounts,
@@ -9017,19 +9070,24 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
     logger.info({ isWorker }, 'Process role resolved');
 
     if (isWorker) {
-      // Start periodic property crawler for sales agents — they're the
-      // ones with publisher authorizations and list_authorized_properties
-      // responses to walk. Pre-#3540 this filtered on 'buying' (inverted-
-      // but-aligned with the classification bug); see #3774 for the
-      // sweep that closed remaining gaps.
-      const salesAgents = await this.agentService.listAgents("sales");
-      if (salesAgents.length > 0) {
-        logger.debug({ salesAgentCount: salesAgents.length }, 'Starting property crawler');
-        this.crawler.startPeriodicCrawl(salesAgents, 360); // Crawl every 6 hours
-      }
+      // Start periodic registry crawler for all registered agents. Re-fetches
+      // the agent list on every tick so newly registered agents are picked up
+      // without a restart. Sales agents drive publisher adagents.json
+      // discovery; signals/buying/creative agents still need health +
+      // capability snapshots on the same cycle. `viewerHasApiAccess` defaults
+      // to false — members_only agents are intentionally excluded from the
+      // periodic crawl (the public-facing registry surface is the target);
+      // owner-triggered probes for members_only agents go through
+      // POST /api/registry/agents/:encodedUrl/refresh. Fixes #4213.
+      logger.debug('Starting registry crawler');
+      this.crawler.startPeriodicCrawl(() => this.agentService.listAgents(), 360); // Crawl every 6 hours
 
       // Crawl catalog domains for adagents.json (demand-driven queue)
       this.crawler.startPeriodicCatalogCrawl(30); // Process queue every 30 minutes
+
+      // Drain manager_revalidation_queue (#4200 item 2) — fan-out
+      // re-validation when a manager rotates its adagents.json.
+      this.crawler.startPeriodicManagerRevalidation(5); // 5-minute tick
 
       // Register and start all scheduled jobs
       registerAllJobs();
@@ -9047,6 +9105,11 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
       logger.info('Worker process: scheduled jobs and crawlers started');
     } else {
       logger.info('Web process: skipping scheduled jobs and crawlers');
+      // Watchdog so silent worker death (firecracker-stage crashloop, OOM,
+      // failed deploy) reaches #admin-errors instead of being noticed days
+      // later via a user escalation. See escalation #329, May 2026.
+      const { startWorkerWatchdog } = await import('./services/worker-watchdog.js');
+      startWorkerWatchdog();
     }
 
     this.server = this.app.listen(port, () => {

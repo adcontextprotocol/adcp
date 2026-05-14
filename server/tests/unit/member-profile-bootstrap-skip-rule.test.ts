@@ -28,7 +28,6 @@ describe('isMemberProfileBootstrapBody', () => {
         company_type: 'publisher',
         revenue_tier: '5m_50m',
         corporate_domain: 'acme.example',
-        primary_brand_domain: 'acme.example',
         marketing_opt_in: true,
         membership_tier: 'individual_academic',
       }),

@@ -243,6 +243,30 @@ Each property appears once. Tags handle the mapping. When a new domain joins the
 
 This keeps the file readable, maintainable, and compact even at thousands of properties.
 
+## Representing many publishers under a single authorization
+
+The pattern above is for a single publisher's `adagents.json` listing its own properties. Managed networks that represent many *other* publishers (WordPress networks, content-recommendation networks, multi-property holding-company configurations) host one authoritative file that declares which agents are authorized to sell on each represented publisher's behalf.
+
+When every represented publisher delegates the same agent under the same tag predicate — the canonical managed-network shape — use the compact `publisher_domains[]` form of `publisher_properties`:
+
+```json
+{
+  "authorized_agents": [{
+    "url": "https://agent.network.example/api",
+    "authorized_for": "Managed-network inventory across represented publishers",
+    "authorization_type": "publisher_properties",
+    "publisher_properties": [{
+      "publisher_domains": ["site1.example", "site2.example", "site3.example"],
+      "selection_type": "by_tag",
+      "property_tags": ["managed_network"]
+    }],
+    "delegation_type": "ad_network"
+  }]
+}
+```
+
+One entry per shared selector predicate, not per publisher. The above is semantically identical to repeating the singular-form entry once per listed domain. See [Pattern 4 in the adagents.json reference](/docs/governance/property/adagents#pattern-4-publisher-property-references) for the full mechanics, the singular-vs-compact contract, and the interaction with the `managerdomain` ads.txt fallback. The compact form scales linearly with the *number of distinct selector predicates* — typically a small constant — instead of with the number of represented publishers.
+
 ## Controlling what each agent can sell with placements
 
 Unlike `ads.txt`, where every authorized seller appears to have access to everything, `adagents.json` lets networks declare exactly which placements each agent is authorized to sell. This preserves sales leverage — buyers can see that premium inventory is only available through specific paths.
@@ -592,11 +616,30 @@ One deploy to the authoritative file changes authorization across every publishe
 **Validator fetch semantics.** The authoritative URL points at a network-controlled origin. Without explicit fetch rules, a misbehaving origin can poison caches or hang validators. Validators MUST:
 
 - Connect only over HTTPS with valid certificates, and refuse to follow redirects (a redirect changes the declared location — treat as an error).
-- Cap response size (recommended: reject > 5 MB) and enforce short connect/read timeouts (≤ 10s each).
+- Cap response size with a two-tier policy: pointer files served at `/.well-known/adagents.json` (whether inline or carrying `authoritative_location`) keep the [general SSRF body cap](/docs/building/by-layer/L1/security#webhook-url-validation-ssrf) of 5 MB — a per-publisher pointer file should be tiny, and 5 MB catches misconfiguration. Authoritative files reached by dereferencing `authoritative_location` (the second hop) use a higher recommended cap of 20 MB, because that origin has explicitly opted in to fanning out across a publisher network and routinely needs to enumerate thousands of properties or publisher domains. Enforce short connect/read timeouts (≤ 10s each) on both hops.
 - On 5xx or timeout, serve the previously cached authoritative file for up to 24 hours rather than failing closed. A transient CDN outage is not a revocation.
 - Attempt a refresh at least every 24 hours. Repeated 5xx responses MUST NOT extend the cache — the 7-day absolute cap is measured from the most recent successful fetch, not from the most recent response of any kind.
 - Cap cached lifetime at 7 days from the most recent successful fetch, regardless of the origin's `Cache-Control`. After that, fail closed — the network has had seven days to fix its origin.
 - Treat a non-monotonic `last_updated` (the refreshed file's timestamp is older than the cached file's) as an invalid response, equivalent to a 5xx: serve the cache, alert, do not adopt the older file. This blocks rollback attacks where an attacker re-serves a stale file to reinstate a previously revoked agent.
+
+**Incremental refresh (conditional requests).** A 20 MB authoritative file refreshed naïvely on every consumer is expensive on both sides and turns every publisher churn into a full re-walk. Authoritative-file origins SHOULD support HTTP conditional requests, and validators SHOULD use them:
+
+- Origins SHOULD emit `ETag` and `Last-Modified` headers on the authoritative file, regenerated whenever the file content changes.
+- Validators SHOULD send `If-None-Match` (preferred) or `If-Modified-Since` on every refresh and treat a `304 Not Modified` as "cache stays valid, restart the 7-day clock from this success" — same effect as a successful body fetch for cache-lifetime purposes.
+- The per-`authorized_agents[]` optional `last_updated` field (see `adagents.json` schema) gives consumers a second axis for partial-walk indexing: a validator that already has an index keyed by the file-level `last_updated` can skip authorized-agents entries whose own `last_updated` is older than the indexed value. This is advisory — consumers MAY ignore it and re-index the full file.
+
+Conditional requests are the partial-update protocol for managed networks at scale. Without them, a network with 3,000 publishers churning weekly forces every buyer-side validator to download 20 MB per refresh per buyer. With them, the steady-state cost is one round-trip and a 304.
+
+### Publisher revocation (the exit lifecycle)
+ Removing a publisher domain from `publisher_properties[].publisher_domains[]` alone is not enough — cached authoritative files at downstream validators will keep authorizing the departed publisher for up to the 7-day cache cap. For revocations that need to propagate on the next refresh (a publisher leaving a network in dispute, a compliance issue, a misconfiguration cleanup), the authoritative file MUST list the publisher in the top-level `revoked_publisher_domains[]` array with a `revoked_at` timestamp.
+
+Validator behavior:
+
+- Validators MUST treat any publisher domain in `revoked_publisher_domains[]` as no-longer-authorized, **regardless** of whether the same domain still appears in any `publisher_properties[].publisher_domain` / `.publisher_domains[]` or in top-level `properties[].publisher_domain` elsewhere in the file. The revocation list takes precedence — this lets a network ship a revocation without redeploying every selector entry.
+- Validators with a cached prior version of the file MUST apply the revocation as of the validator's `last_updated` adoption time, not the entry's `revoked_at` (which can be in the past for catch-up entries).
+- The network SHOULD retain each `revoked_publisher_domains[]` entry for at least 7 days after `revoked_at` so any cached copy of the previous file is overridden before the entry ages out.
+
+For multi-publisher exits or routine churn under a normal commercial relationship-end, networks SHOULD use `reason: "relationship_ended"` so validator change-detection can suppress alerts on routine revocations and route the rest for review.
 
 **Change detection.** Because one deploy affects every publisher, buyer agents and validators SHOULD store the previous authoritative file and diff on each refresh, alerting on outlier changes. Concrete default thresholds that partners can implement on day one: any newly added `authorized_agents` entry that was not present in the previous fetch, any delegation-type downgrade (for example, an `exclusive` entry becoming non-exclusive), any property-count decrease greater than 10% or 50 absolute properties, and any change to `authoritative_location` itself. Tune from there — the goal is to catch a compromised deploy before it routes spend, not to suppress routine updates.
 

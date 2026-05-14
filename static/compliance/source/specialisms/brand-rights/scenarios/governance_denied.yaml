@@ -165,11 +165,12 @@ phases:
             description: "Response matches get-rights-response.json schema"
 
       - id: acquire_rights_denied
-        title: "acquire_rights — governance denies"
+        title: "acquire_rights — governance denies via rejection arm"
         task: acquire_rights
         schema_ref: "brand/acquire-rights-request.json"
         response_schema_ref: "brand/acquire-rights-response.json"
         doc_ref: "/brand-protocol/tasks/acquire_rights"
+        expected_arm: "rejected"
         stateful: true
         expected: |
           Brand agent returns the canonical denial shape for a task with a structured rejection arm:
@@ -216,6 +217,13 @@ phases:
           - check: field_present
             path: "reason"
             description: "Rejection arm carries the operator-readable reason (governance findings propagated verbatim per wire-placement guidance)"
+          - check: field_absent
+            path: "errors"
+            description: "errors[] absent — GOVERNANCE_DENIED MUST NOT dual-emit on acquire_rights; rejection arm IS the canonical denial shape"
           - check: field_present
             path: "context"
             description: "Response echoes back the context object on the rejection arm"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "brand_rights--governance_denied--acquire"
+            description: "Context correlation_id returned unchanged"

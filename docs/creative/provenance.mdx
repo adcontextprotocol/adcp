@@ -5,10 +5,10 @@ description: "AdCP provenance metadata declares AI involvement, tools used, and 
 sidebarTitle: Provenance
 ---
 
-Provenance metadata declares how creative content was produced — whether AI was involved, which tools were used, and what disclosure obligations apply. As regulations like the EU AI Act and California SB 942 require machine-readable AI disclosure in advertising, AdCP carries this metadata at the protocol level so every party in the supply chain can declare, transmit, and verify it using the same structure. Provenance attaches to creative manifests, individual assets, or content-standards artifacts. It is a claim by the declaring party — receiving parties verify claims independently using their own detection tools.
+Provenance metadata declares how creative content was produced — whether AI was involved, which tools were used, and what disclosure obligations the declaring party believes apply. Regulations like the EU AI Act and California SB 942 place disclosure obligations on deployers and covered platforms; AdCP carries the structured provenance signals those parties rely on through the programmatic supply chain so every participant can declare, transmit, and verify the same data. Provenance attaches to creative manifests, individual assets, or content-standards artifacts. It is a claim by the declaring party — receiving parties verify claims independently using their own detection tools.
 
 <Info>
-EU AI Act Article 50 enforcement begins August 2026. California SB 942 is already in effect. Major platforms mandate AI content labeling today. AdCP's provenance metadata provides the structured, machine-readable disclosure that these regulations require — carried through the programmatic supply chain where no standard for it previously existed.
+EU AI Act Article 50 enforcement begins August 2026. California SB 942 is already in effect. Major platforms mandate AI content labeling today. AdCP carries the structured, machine-readable provenance and disclosure metadata these regulations rely on through the programmatic supply chain, where no standard for it previously existed. The protocol moves the data; the legal obligation still sits with the deployer making the disclosure to the end user.
 </Info>
 
 ## The provenance object
@@ -155,6 +155,10 @@ The `human_oversight` enum describes the level of human involvement in an AI-ass
 | `directed` | Human directed the creative process with AI as an assistive tool |
 
 This field is relevant when `digital_source_type` indicates AI involvement. For non-AI content, omit it.
+
+<Warning>
+`human_oversight` and `disclosure.required` are independent fields, and the protocol does not derive one from the other. Some regulations carve out human-edited or human-directed AI output from disclosure obligations (for example, EU AI Act Article 50(4) where a human takes editorial responsibility), and the protocol leaves that determination to the declaring party's legal analysis. Asserting `human_oversight: edited` or `directed` does not by itself justify `disclosure.required: false` — the carve-out has factual prerequisites the schema cannot evaluate. Sellers and governance agents may treat the combination as an audit-worthy claim and require corroborating evidence from the declaring party.
+</Warning>
 
 ## Inheritance
 
@@ -349,7 +353,7 @@ Verification results use one of four outcomes:
 
 Acme Brands is running a spring campaign. Their agency, Meridian Media, uses an AI image generator to produce a set of display banners — photorealistic product shots with AI-generated backgrounds. Meridian attaches provenance to the creative manifest: `digital_source_type` is `composite_with_trained_algorithmic_media`, `ai_tool` identifies the generator, and `disclosure.required` is `true` with `eu_ai_act_article_50` and `ca_sb_942` listed as applicable regulations. For the EU jurisdiction, Meridian sets `render_guidance.persistence` to `continuous` with `positions` preferring `overlay` — expressing the EU AI Act's requirement for persistent labeling.
 
-The campaign is submitted to Pinnacle Publishing through AdCP. Pinnacle's ad operations platform checks the provenance claim, then runs the creative through its verification pipeline via `get_creative_features`. The AI detection service returns `ai_modified` with 0.94 confidence — consistent with the declared source type. Pinnacle's system confirms the claim, reads the render guidance for the serving jurisdiction, applies the required disclosure label with the specified persistence, and clears the creative for serving. The provenance metadata, the detection result, the render guidance, and the disclosure decision are all recorded and auditable.
+The campaign is submitted to Pinnacle Publishing through AdCP. Pinnacle's ad operations platform checks the provenance claim, then runs the creative through its verification pipeline via `get_creative_features`. The AI detection service returns `ai_modified` with 0.94 confidence — consistent with the declared source type. With the claim verified, Pinnacle applies its own jurisdictional policy — as the covered platform under SB 942, it makes its own disclosure determination rather than relying on Meridian's `disclosure.required: true` as authoritative — reads the render guidance for the serving jurisdiction, applies the disclosure label with the specified persistence, and clears the creative for serving. The provenance metadata, the detection result, the render guidance, and the disclosure decision are all recorded and auditable.
 
 If Meridian had declared `digital_capture` instead — claiming no AI involvement — Pinnacle's detection service would have flagged the inconsistency. The creative would be held for review, not served.
 

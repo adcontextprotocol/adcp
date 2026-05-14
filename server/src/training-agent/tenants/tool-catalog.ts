@@ -41,13 +41,18 @@ export const TOOL_CATALOG: Readonly<Record<string, readonly string[]>> = {
   list_creative_formats: ['sales', 'creative', 'creative-builder'],
 
   // creative — exposed on multiple tenants
-  list_creatives: ['sales', 'creative', 'creative-builder'],
+  // list_creatives / get_creative_delivery are sales-side / ad-server-side
+  // operations. SDK 7.0's `CreativeBuilderPlatform` interface dropped them
+  // (they live on `CreativeAdServerPlatform`); the /creative-builder tenant
+  // no longer advertises them in tools/list.
+  list_creatives: ['sales', 'creative'],
   sync_creatives: ['sales', 'creative', 'creative-builder'],
   build_creative: ['creative', 'creative-builder'],
   preview_creative: ['creative', 'creative-builder'],
-  get_creative_delivery: ['creative', 'creative-builder'],
+  get_creative_delivery: ['creative'],
 
-  // signals
+  // signals — sync_governance rides customTools (governance-aware-seller pattern)
+  sync_governance: ['signals'],
   get_signals: ['signals'],
   activate_signal: ['signals'],
 

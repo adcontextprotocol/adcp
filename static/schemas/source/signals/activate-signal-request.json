@@ -22,7 +22,7 @@
     },
     "signal_agent_segment_id": {
       "type": "string",
-      "description": "The universal identifier for the signal to activate",
+      "description": "Opaque activation handle returned in the signal_agent_segment_id field of each get_signals response entry. Pass this string verbatim — do not pass the signal_id object.",
       "x-entity": "signal_activation_id"
     },
     "destinations": {

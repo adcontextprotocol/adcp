@@ -13,22 +13,22 @@ description: "What 'AdCP-conformant' means, defined by the storyboards that veri
 AdCP conformance has two load-bearing terms. A third (one you'll hear in the wild) is a trap.
 
 - **Conformant** — the agent meets the normative rules. Defined by the storyboards this document indexes.
-- **Verified** — AAO has tested the agent recently and issued a signed attestation. Gated on active membership and a live heartbeat. The [AAO Verified badge](/docs/building/verification/aao-verified) carries one of two qualifiers: **(Spec)** for storyboard-conformance against a test-mode endpoint, **(Live)** for AAO-observed real production traffic via canonical campaigns. An agent can earn either or both.
+- **Verified** — AAO has tested the agent recently and issued a signed attestation. Gated on active membership and a live heartbeat. The [AAO Verified badge](/docs/building/verification/aao-verified) carries one of two qualifiers: **(Spec)** for storyboard-conformance against a test deployment or dev endpoint, **(Sandbox)** for storyboard-conformance against the seller's real production endpoint under `account.sandbox: true` flagging. An agent can earn either or both.
 - **"Compliant"** — self-attested, unverified, no external check. Don't claim it; don't design for it. This document uses *conformant* and *verified* exclusively.
 
 Put differently:
 
 - Conformance is a property of the agent's wire behavior.
-- Verification is a time-bounded third-party attestation. **(Spec)** verifies conformance via simulation; **(Live)** verifies the underlying production capability via real-traffic observation. Each independently demonstrates conformance through different evidence.
-- The two axes are independent: a seller without a test-mode endpoint can earn **(Live)** directly, and a test agent that can never serve real impressions earns **(Spec)** as a complete claim.
+- Verification is a time-bounded third-party attestation. **(Spec)** attests wire-format conformance against any registered endpoint; **(Sandbox)** attests the same storyboard suite passes against the seller's real production endpoint under sandbox-flagged traffic. Same storyboards, different attestation surface.
+- The two axes are independent: a seller without a separate test deployment can earn **(Sandbox)** directly on production; a test agent that can never serve real impressions earns **(Spec)** as a complete claim.
 
 ## Storyboard conformance vs. AAO Verified
 
-This page indexes **storyboard conformance** — the property an agent's wire behavior has when it matches the spec, verified by storyboards running against seeded test data. Storyboard passing earns the **AAO Verified (Spec)** qualifier on an agent's badge.
+This page indexes **storyboard conformance** — the property an agent's wire behavior has when it matches the spec, verified by storyboards running against seeded test data. Storyboard passing earns the **AAO Verified (Spec)** or **AAO Verified (Sandbox)** qualifier (or both) on an agent's badge, depending on where the runner targeted.
 
-A second axis — **AAO Verified (Live)** — verifies the production code path behind the protocol actually delivers real impressions on real inventory. (Live) is opt-in, observed continuously over a 7–14 day rolling window on a designated compliance account, and orthogonal to storyboard conformance: a seller can pass every storyboard with a broken ad-server integration because `simulate_delivery` is a parallel code path from the production reporting path. (Live) closes that gap.
+A second axis — **AAO Verified (Sandbox)** — verifies the seller's real production endpoint correctly handles the full storyboard suite under `account.sandbox: true` flagging. (Sandbox) is the stronger claim: a seller can pass (Spec) on a test deployment while their production stack has a broken sandbox gate (real-world side effects under flagged traffic, missing account-mode verification, etc.) — (Sandbox) closes that gap.
 
-The two qualifiers share one brand mark — **AAO Verified** — and an agent can earn either or both. **(Spec) and (Live) are independent**: each independently demonstrates conformance through different evidence. (Spec) verifies it via simulated interactions against a test endpoint; (Live) verifies it via observed real traffic that the eight checks exercise (wire format, filters, lifecycle, scope introspection). A seller without a test-mode endpoint can earn (Live) directly; a test agent that can never serve real impressions earns (Spec) as a complete claim. See [AAO Verified](/docs/building/verification/aao-verified) for the full qualifier model and the (Live) spec; the rest of this page indexes the storyboards that back (Spec).
+The two qualifiers share one brand mark — **AAO Verified** — and an agent can earn either or both. **(Spec) and (Sandbox) are independent**: each independently demonstrates conformance through different evidence. (Spec) attests wire-format conformance against any registered endpoint; (Sandbox) attests the production code path correctly tolerates sandbox-flagged traffic. See [AAO Verified](/docs/building/verification/aao-verified) for the qualifier model and the [Sandbox framing verdict](https://github.com/adcontextprotocol/adcp/issues/4379); the rest of this page indexes the storyboards that back both qualifiers.
 
 ## Storyboards are the truth
 
@@ -37,6 +37,10 @@ Rather than restate every MUST in prose — which would inevitably drift from th
 Every normative rule in the suite has exactly one home: the storyboard YAML at [`/compliance/latest/`](https://adcontextprotocol.org/compliance/latest/). Changes to what "conformant" means happen there, in a versioned release, tested against real agents. If a rule isn't in a storyboard, it's not part of conformance.
 
 This is deliberate. A separate prose spec that restates storyboard rules creates two sources of truth. Two sources of truth drift. We pick one: the suite.
+
+<Note>
+The `@adcp/sdk` package also ships TypeScript files under `testing/scenarios/` that pre-date storyboard-driven `comply()`. They are **not** the conformance spec — see [Storyboards vs. scenarios](/docs/building/verification/storyboards-vs-scenarios) for which is which.
+</Note>
 
 The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in the referenced storyboards and prose sections below are to be interpreted as described in [RFC 2119](https://www.rfc-editor.org/rfc/rfc2119).
 

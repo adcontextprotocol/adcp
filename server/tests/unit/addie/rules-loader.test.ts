@@ -84,4 +84,20 @@ describe('Addie rules loader', () => {
     expect(prompt).toContain('apply the lens');
     expect(prompt).not.toContain("voice of the relevant expert"); // v1 framing was wrong per expert review
   });
+
+  it('expert panel excludes -deep design-advisor variants', () => {
+    const prompt = loadRules();
+    const panelIdx = prompt.indexOf('# Expert Panel');
+    expect(panelIdx).toBeGreaterThan(-1);
+    const panel = prompt.slice(panelIdx);
+    // -deep files are long-form design advisors, not triage lenses; they
+    // would double-count each persona and bloat the system prompt.
+    // Each short role must appear exactly once — if a -deep variant slips
+    // through, "code-reviewer" would match both "code-reviewer" and
+    // "code-reviewer-deep" lines, so the count check catches it.
+    for (const shortName of ['code-reviewer', 'security-reviewer', 'prompt-engineer']) {
+      const occurrences = (panel.match(new RegExp(`\\b${shortName}\\b`, 'g')) ?? []).length;
+      expect(occurrences).toBe(1);
+    }
+  });
 });

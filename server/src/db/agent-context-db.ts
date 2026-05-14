@@ -135,14 +135,33 @@ export interface RecordTestInput {
   agent_profile_json?: any;
 }
 
+/**
+ * Validate an auth token for characters that cannot legitimately appear in
+ * an HTTP Authorization header value. NUL bytes crash Postgres TEXT-column
+ * writes; CR/LF are header-injection vectors. Returns a user-facing error
+ * message when the token is rejected, or null when the token is acceptable.
+ *
+ * TODO: apply the same character validation to OAuth client_id / client_secret
+ * / scope / resource / audience in parseOAuthClientCredentialsInput — those
+ * strings hit the same encrypted-storage path and are also body-encoded into
+ * outbound token-endpoint requests.
+ */
+export function validateAuthTokenChars(token: string): string | null {
+  if (/[\u0000\r\n]/.test(token)) {
+    return 'Auth token contains invalid characters (NUL, CR, or LF). This usually means the token picked up stray bytes from copy/paste — paste it again from the source.';
+  }
+  return null;
+}
+
 function getTokenHint(token: string, authType: AuthType = 'bearer'): string {
+  const sanitize = (s: string): string => s.replace(/[\u0000\r\n]/g, '');
   if (authType === 'basic') {
     // For Basic auth, try to show username only (token is base64-encoded user:password)
     try {
       const decoded = Buffer.from(token, 'base64').toString();
       const colonIndex = decoded.indexOf(':');
       if (colonIndex > 0) {
-        return decoded.substring(0, colonIndex) + ':****';
+        return sanitize(decoded.substring(0, colonIndex)) + ':****';
       }
     } catch {
       // Not valid base64, fall through
@@ -150,7 +169,7 @@ function getTokenHint(token: string, authType: AuthType = 'bearer'): string {
     return '****';
   }
   if (token.length <= 4) return '****';
-  return '****' + token.slice(-4);
+  return '****' + sanitize(token.slice(-4));
 }
 
 // =====================================================

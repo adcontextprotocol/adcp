@@ -122,13 +122,7 @@ async function lumaFetch<T>(
 
   if (!response.ok) {
     const errorText = await response.text();
-    logger.error({
-      endpoint,
-      status: response.status,
-      statusText: response.statusText,
-      error: errorText,
-    }, 'Luma API request failed');
-    throw new Error(`Luma API error: ${response.status} ${response.statusText} - ${errorText}`);
+    throw new Error(`Luma API error ${response.status} ${response.statusText} at ${endpoint} - ${errorText}`);
   }
 
   return response.json() as Promise<T>;

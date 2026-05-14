@@ -1,5 +1,130 @@
 # Changelog
 
+## 3.0.12
+
+### Patch Changes
+
+- d8d5cfa: Add `comply_controller_mode_gate` universal storyboard and `acme-outdoor-live` test kit.
+
+  New storyboard exercises the live-account denial path for `comply_test_controller`:
+  a seller that exposes the controller must return `FORBIDDEN` when called by a
+  live-mode (non-sandbox) principal. Optional phase for two-deployment sellers;
+  required for single-endpoint sellers that implement per-account gating.
+  Closes #4028.
+
+- 6ed6bed: Fix `account.supported_billing` schema: require it only when `media_buy` is in `supported_protocols`, not unconditionally for all agents. Adds root-level `allOf` if/then guard following the existing `sync-plans-request.json` pattern. Non-media-buy agent authors should note that `supported_billing` was previously enforced on any `account` block — SDKs using code generators that drop draft-07 `if/then` (openapi-typescript, zod-to-json-schema, quicktype) should add a runtime guard to require `supported_billing` when `account` is present and `media_buy` is declared.
+- 4e9738c: spec(compliance): document `force_scenario_unsupported` — UNKNOWN*SCENARIO on force*\* controller steps grades not_applicable
+
+  Sellers that implement `comply_test_controller` but have not implemented a specific `force_*` scenario arm (e.g., `force_create_media_buy_arm`) correctly return `{success: false, error: UNKNOWN_SCENARIO}`. The storyboard narrative in `create_media_buy_async.yaml` already said this grades `not_applicable` — that narrative was normative English. The runner contract, however, had no machine-readable enforcement layer for force\_\* scenarios (only `fixture_seed_unsupported` for auto-injected seed phases), so conforming runners were implementing FAILED instead of not_applicable.
+
+  Patch-eligibility justification (IETF errata test, playbook lines 261-265): the storyboard's own normative narrative text already required not_applicable; any runner grading FAILED was non-conforming against that existing MUST. This change adds the machine-readable form of a rule that was already in force. A conformant 3.0.0 implementation of the surrounding behavior would already have honored the narrative — the schema text closing the gap is an errata clarification, not a new requirement.
+
+  Changes:
+
+  - `storyboard-schema.yaml`: adds `force_scenario_unsupported` alongside `fixture_seed_unsupported`, with a normative MUST: detect the tuple (comply*test_controller IS present, resolved payload scenario begins with `force*`, response {success: false, error: UNKNOWN_SCENARIO}) and grade not_applicable before evaluating declared validations. Documents detection order to prevent misgrading absent-tool cases.
+  - `runner-output-contract.yaml`: adds `fixture_seed_unsupported`, `force_scenario_unsupported`, and `unresolved_scenario_reference` as recognized narrower detail values under canonical reason `not_applicable`, with the encoding MUST for `force_scenario_unsupported`.
+
+  No storyboard YAML changes — `create_media_buy_async.yaml`'s narrative was already correct; this closes the machine-readable gap the runner was missing. Runner implementation fix tracked in adcp-client (sibling-repo).
+
+  Closes #4226.
+
+- cf13380: TMP Identity Match: add required `seller_agent_url` to the request and make
+  `package_ids` optional.
+
+  **Why.** The buyer's identity-match service already keeps the authoritative
+  set of active packages it has registered per seller. Carrying that set on
+  every request was redundant and forced publishers to enumerate ALL active
+  packages on every call to avoid the set-correlation attack on Context
+  Match. Identifying the seller by URL lets the buyer resolve the package
+  set itself.
+
+  **Changes to `static/schemas/source/tmp/identity-match-request.json`.**
+
+  - New required field `seller_agent_url` (`string`, `format: uri`). The
+    seller agent's API endpoint URL. Compared using the AdCP URL
+    canonicalization rules, consistent with `seller_agent.agent_url` on
+    `AvailablePackage` and `agent_url` in `adagents.json`.
+  - `package_ids` is now optional. When omitted, the buyer evaluates against
+    the full active set registered for `seller_agent_url`. When provided,
+    the ALL-active-packages rule still applies — partial sets remain a
+    correlation risk.
+  - Top-level description updated to reflect both modes.
+
+  **Spec changes alongside the schema.**
+
+  - Reversed prior stance forbidding seller identity on `identity_match_request`. The "What This Is Not" / SellerAgentRef guidance has been narrowed to apply only to `context_match_request`.
+  - Added a fail-closed rule: when `seller_agent_url` matches no seller for which the buyer has registered active packages, the buyer MUST return an empty `eligible_package_ids`, not fall back to another seller's set.
+  - Defined precedence when both `seller_agent_url` and `package_ids` are present: buyer evaluates against the intersection of its registered active set and `package_ids`; unknown IDs are silently dropped (not error-surfaced) so the response cannot leak registry membership.
+  - Reframed the package-set-decorrelation invariant as **statistical independence of `package_ids` from the current placement**, with two acceptable modes: all-active and fuzzed (random sample padded with synthetic non-existent IDs that the buyer silently drops). The page-specific subset remains forbidden.
+  - Strengthened temporal decorrelation: random delay alone leaks the pairing through ordering. Publishers SHOULD also randomize whether Context Match or Identity Match is sent first — each opportunity SHOULD have a roughly equal probability either way.
+
+  **Privacy boundary.** `seller_agent_url` identifies the seller agent, not
+  the user; no leakage across the identity boundary. Routers do NOT strip
+  it (unlike `country`) — buyers need it to resolve the package set.
+
+  **Backwards compatibility.** Breaking for the experimental TMP schema
+  (`x-status: experimental`): callers MUST now send `seller_agent_url`. The
+  relaxation of `package_ids` is non-breaking on its own — previously valid
+  requests remain valid as long as they also include `seller_agent_url`.
+
+## 3.0.11
+
+### Patch Changes
+
+- e03978d: Collapse the `key_reuse_conflict` phase of `universal/idempotency.yaml` into
+  `replay_same_payload` as a fourth step. The conflict step deliberately shares
+  the `$generate:uuid_v4#replay_key` alias with the replay steps so the seller
+  receives one cached entry that the conflict request probes with a different
+  body. With adcp-client#1658's phase-boundary alias reset, the conflict step
+  must live in the same phase as the replay steps — a separate phase mints a
+  fresh UUID and the seller treats the request as new, defeating the
+  IDEMPOTENCY_CONFLICT assertion. Companion to adcp-client#1657 / #1658; no
+  behavior change for sellers, only restructures the storyboard so the runner
+  fix is safe to land.
+
+## 3.0.10
+
+### Patch Changes
+
+- fa86695: Convert the 12 remaining static `idempotency_key` literals across error, governance,
+  signal, schema-validation, and creative-ad-server storyboard scenarios to
+  `$generate:uuid_v4#<alias>` form. Closes the static-key sweep for the 3.0.x line so
+  storyboard re-runs against any spec-compliant seller no longer collide with the
+  seller's idempotency cache after deploys. 3.0.x port of #4231; closes #4344 on the
+  patch line.
+
+## 3.0.9
+
+### Patch Changes
+
+- 753dbe3: Propagate account discovery MUST from `required-tasks.mdx` into `accounts/overview.mdx`. Every seller agent must expose at least one of `list_accounts` or `sync_accounts` — this restates the existing `required-tasks.mdx` MUST in the surface-level overview where implementors look first. No wire shape change.
+- 5d2e7be: Fix stale HMAC-as-recommended framing in reporting-webhook.json, auth-scheme.json, and create-media-buy-request.json's artifact_webhook; add RFC 9421 default guidance to call-adcp-agent SKILL.md. Description-only fixes aligning these surfaces with the existing push-notification-config.json framing (HMAC is the deprecated fallback, RFC 9421 is the default). No wire format changes.
+
+## 3.0.8
+
+### Patch Changes
+
+- 8f82d46: fix(compliance): UUID-aliased idempotency_keys across remaining storyboard scenarios
+
+  Extends the [#4218](https://github.com/adcontextprotocol/adcp/pull/4218) precedent (`measurement_terms_rejected`) to the rest of the suite. 15 storyboard steps across 9 scenarios still shipped hardcoded `idempotency_key` literals on state-mutating tasks (`create_media_buy`, `sync_creatives`, `sync_plans`, `update_media_buy`). The runner shifts dynamic `start_time` substitutions forward to keep buys future-dated, so against a long-running seller deployment those static keys collide cross-run with the same key + a different canonical body, arming the spec-mandated `IDEMPOTENCY_CONFLICT` (or, when the seller's emit shape changed between runs, replaying a now-spec-non-compliant cached payload — the production failure mode that surfaced this).
+
+  Switch every remaining literal to `$generate:uuid_v4#<scenario>_<step>` so each storyboard run mints fresh keys and never collides with stale cached state. Affected scenarios: `creative_fate_after_cancellation` (5), `governance_approved`, `governance_conditions`, `governance_denied`, `governance_denied_recovery` (3), `invalid_transitions`, `inventory_list_no_match`, `inventory_list_targeting`, `pending_creatives_to_start`.
+
+  Closes #4230.
+
+## 3.0.7
+
+### Patch Changes
+
+- 866abe2: docs(creative): tighten type column in the `list_creatives` filtering options table to match `core/creative-filters.json`. `accounts` now shows `AccountRef[]` (was `array`), `format_ids` shows `FormatID[]` (was `format_id[]`, matching the casing used in `list_creative_formats`, `get_products`, and `create_media_buy`), and `statuses` links to `CreativeStatus` rather than the under-specified `string[]`. Docs only — no schema or wire-format change. Patch-eligible per the non-normative-docs rule in `.agents/playbook.md`.
+- b2f7a3d: fix(compliance): `measurement_terms_rejected` — UUID-aliased idempotency_keys + spec-aligned narrative
+
+  The `media_buy_seller/measurement_terms_rejected` storyboard shipped hardcoded `idempotency_key` literals on both `create_media_buy` steps. Combined with runner-side dynamic `start_time` substitution (the runner shifts stale dates forward to keep the buy future-dated), this produced **same key + different body** on every run against a long-running seller deployment, arming the spec-mandated `IDEMPOTENCY_CONFLICT` on the seller side. Switch to `$generate:uuid_v4#…` aliases so each run mints fresh keys (matches the established pattern across the storyboard suite).
+
+  Also rewrites the narrative, which previously told implementers the buyer "retries the same `create_media_buy` `idempotency_key` with an adjusted payload" — a direct spec violation — to describe minting a fresh key for the retry.
+
+  Closes #4219. Refs adcontextprotocol/adcp-client#1586.
+
 ## 3.0.6
 
 ### Patch Changes

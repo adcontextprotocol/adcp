@@ -250,11 +250,12 @@ export function createAccountLinkingRouter(): Router {
       //
       // If WorkOS accepts but the local swap below fails, `users.email` and
       // `organization_memberships.email` will eventually re-sync via the
-      // user.updated webhook. The `user_email_aliases` table is NOT touched
-      // by the webhook, so a partial failure here can leave the alias list
-      // stale (the new email remains as a verified alias, the old primary
-      // is not recorded). UNIQUE(LOWER(email)) on aliases prevents anyone
-      // else from claiming the abandoned email; cleanup is manual.
+      // user.updated webhook. `user_email_aliases` and `person_relationships`
+      // are NOT touched by the webhook, so a partial failure here can leave
+      // the alias list stale (new email remains as a verified alias, old
+      // primary is not recorded) and the relationship row's email lagging.
+      // UNIQUE(LOWER(email)) on aliases prevents anyone else from claiming
+      // the abandoned email; cleanup is manual.
       try {
         // Mutate the actually-signed-in WorkOS user's email, not the
         // post-swap canonical. Email is per-credential.
@@ -312,7 +313,15 @@ export function createAccountLinkingRouter(): Router {
 
         await client.query(
           `UPDATE organization_memberships SET email = $1, updated_at = NOW()
-           WHERE workos_user_id = $2`,
+           WHERE workos_user_id = $2
+             AND email IS DISTINCT FROM $1`,
+          [aliasEmail, userId]
+        );
+
+        await client.query(
+          `UPDATE person_relationships SET email = $1, updated_at = NOW()
+           WHERE workos_user_id = $2
+             AND email IS DISTINCT FROM $1`,
           [aliasEmail, userId]
         );
 

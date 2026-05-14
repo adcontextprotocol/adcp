@@ -468,6 +468,45 @@ describe('stripe-client', () => {
         },
       });
     });
+
+    test('re-throws resource_missing so callers can recover from a stale ID', async () => {
+      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+
+      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
+      const notFound = Object.assign(new Error('No such customer'), {
+        code: 'resource_missing',
+        statusCode: 404,
+      });
+      const mockStripeInstance = {
+        customerSessions: {
+          create: vi.fn<any>().mockRejectedValue(notFound),
+        },
+      };
+      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+
+      const { createCustomerSession } = await import('../../server/src/billing/stripe-client.js');
+
+      await expect(createCustomerSession('cus_stale')).rejects.toMatchObject({
+        code: 'resource_missing',
+      });
+    });
+
+    test('returns null and swallows other Stripe errors', async () => {
+      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+
+      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
+      const mockStripeInstance = {
+        customerSessions: {
+          create: vi.fn<any>().mockRejectedValue(new Error('boom')),
+        },
+      };
+      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+
+      const { createCustomerSession } = await import('../../server/src/billing/stripe-client.js');
+
+      const result = await createCustomerSession('cus_123');
+      expect(result).toBeNull();
+    });
   });
 
   describe('createAndSendInvoice', () => {
@@ -1029,6 +1068,122 @@ describe('stripe-client', () => {
         .toBe('aao_membership_corporate_5m');
       expect(resolveLookupKeyAlias('corporate_under5m', catalog)?.lookup_key)
         .toBe('aao_membership_corporate_under5m');
+    });
+  });
+
+  describe('getAllOpenInvoices', () => {
+    test('does not exceed Stripe 4-level expand cap (data.lines.data.price.product is 5)', async () => {
+      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+
+      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
+      const listMock = vi.fn<any>().mockImplementation(({ expand }: { expand?: string[] }) => {
+        for (const path of expand || []) {
+          // Stripe rejects expand paths deeper than 4 levels.
+          if (path.split('.').length > 4) {
+            const err = new Error(
+              `You cannot expand more than 4 levels of a property. Property: ${path}`,
+            );
+            return Promise.reject(err);
+          }
+        }
+        return {
+          [Symbol.asyncIterator]: async function* () {
+            // empty
+          },
+        };
+      });
+      const mockStripeInstance = {
+        invoices: { list: listMock },
+        products: { retrieve: vi.fn() },
+      };
+      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+
+      const { getAllOpenInvoices } = await import('../../server/src/billing/stripe-client.js');
+
+      // No expand path the function actually sends should exceed 4 levels —
+      // i.e. the function must complete without the stub's >4-level rejection
+      // firing. If a regression reintroduces `data.lines.data.price.product`,
+      // listMock rejects and getAllOpenInvoices propagates the throw.
+      await expect(getAllOpenInvoices(50)).resolves.toEqual([]);
+      const allExpands = listMock.mock.calls.flatMap(
+        (call) => (call[0] as { expand?: string[] }).expand || [],
+      );
+      expect(allExpands.length).toBeGreaterThan(0);
+      for (const path of allExpands) {
+        expect(path.split('.').length).toBeLessThanOrEqual(4);
+      }
+    });
+
+    test('propagates Stripe errors to the caller (no silent empty-array fallback)', async () => {
+      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+
+      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
+      // Stripe SDK throws synchronously here to model how the previous swallow
+      // turned a real 400 into "No pending invoices found" for the admin UI.
+      const listMock = vi.fn<any>().mockImplementation(() => {
+        throw new Error('You cannot expand more than 4 levels of a property. Property: data.lines.data.price.product');
+      });
+      const mockStripeInstance = {
+        invoices: { list: listMock },
+        products: { retrieve: vi.fn() },
+      };
+      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+
+      const { getAllOpenInvoices } = await import('../../server/src/billing/stripe-client.js');
+
+      await expect(getAllOpenInvoices(50)).rejects.toThrow(/4 levels/);
+    });
+
+    test('resolves product names via separate stripe.products.retrieve, with caching', async () => {
+      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+
+      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
+
+      const makeInvoice = (id: string, productId: string) => ({
+        id,
+        status: 'open',
+        amount_due: 10000,
+        currency: 'usd',
+        created: 1700000000,
+        due_date: null,
+        hosted_invoice_url: null,
+        customer: { id: 'cus_1', name: 'Acme', email: 'a@example.com', metadata: {} },
+        lines: {
+          data: [{ price: { id: 'price_1', product: productId } }],
+        },
+      });
+
+      const productRetrieve = vi.fn<any>().mockImplementation((id: string) =>
+        Promise.resolve({ id, name: `Product ${id}` }),
+      );
+
+      const mockStripeInstance = {
+        invoices: {
+          list: vi.fn<any>().mockImplementation(({ status }: { status: string }) => {
+            const invoices = status === 'open'
+              ? [makeInvoice('in_1', 'prod_A'), makeInvoice('in_2', 'prod_A')]
+              : [];
+            return {
+              [Symbol.asyncIterator]: async function* () {
+                for (const inv of invoices) yield inv;
+              },
+            };
+          }),
+        },
+        products: { retrieve: productRetrieve },
+      };
+      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+
+      const { getAllOpenInvoices } = await import('../../server/src/billing/stripe-client.js');
+
+      const result = await getAllOpenInvoices(50);
+
+      expect(result).toHaveLength(2);
+      expect(result[0].product_name).toBe('Product prod_A');
+      expect(result[1].product_name).toBe('Product prod_A');
+      // Cached: only fetched once even though referenced twice.
+      expect(productRetrieve).toHaveBeenCalledTimes(1);
+      expect(productRetrieve).toHaveBeenCalledWith('prod_A');
     });
   });
 

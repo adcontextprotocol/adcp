@@ -34,6 +34,7 @@ import {
   SAMPLE_BRIEFS,
   classifyCapabilityResolutionError,
   presentCapabilityResolutionError,
+  complianceResultToDbInput,
   type ComplyOptions,
   type ComplianceTrack,
 } from '../services/compliance-testing.js';
@@ -53,7 +54,7 @@ import {
 } from '@adcp/sdk/testing';
 import { AuthenticationRequiredError } from '@adcp/sdk';
 import { renderAllHintFixPlans } from '../services/storyboard-fix-plan.js';
-import { AgentContextDatabase, type OAuthClientCredentials } from '../../db/agent-context-db.js';
+import { AgentContextDatabase, validateAuthTokenChars, type OAuthClientCredentials } from '../../db/agent-context-db.js';
 import { buildAgentOAuthAuthorizeUrl, isOAuthRequiredError } from '../../routes/helpers/agent-oauth-prompt.js';
 import { isOAuthRequiredErrorMessage } from '../../routes/helpers/oauth-error-detection.js';
 import {
@@ -65,7 +66,10 @@ import { MemberDatabase } from '../../db/member-db.js';
 import { ensureMemberProfileExists } from '../../services/member-profile-autopublish.js';
 import { updateBrandIdentity, BrandIdentityError } from '../../services/brand-identity.js';
 import { canonicalizeBrandDomain } from '../../services/identifier-normalization.js';
+import { isOrgOwnerOfAgent } from '../../services/agent-ownership.js';
+import { getBrandPrimaryDomain } from '../../services/brand-domain-resolver.js';
 import { ComplianceDatabase } from '../../db/compliance-db.js';
+import { runBadgeFanOut } from '../../services/badge-issuance.js';
 import { AgentSnapshotDatabase } from '../../db/agent-snapshot-db.js';
 import { AgentValidator } from '../../validator.js';
 import {
@@ -84,7 +88,8 @@ import {
   deleteCommitteeDocument as deleteCommitteeDocumentService,
   WorkingGroupContentError,
 } from '../../services/working-group-content-service.js';
-import type { CommitteeDocumentType } from '../../types.js';
+import type { AgentType, CommitteeDocumentType } from '../../types.js';
+import { isValidAgentType } from '../../types.js';
 import { getPool, query } from '../../db/client.js';
 import { MemberSearchAnalyticsDatabase } from '../../db/member-search-analytics-db.js';
 import { OrganizationDatabase } from '../../db/organization-db.js';
@@ -1195,13 +1200,18 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'save_agent',
     description:
-      'Register an agent in the AAO registry on behalf of the current organization. Adds the agent to the org\'s member profile; surfaces in `/dashboard/agents`. New agents land with `members_only` visibility (discoverable to other Professional-tier-or-higher AAO members; not publicly listed in the directory or brand.json). To list publicly, the caller promotes the agent via the dashboard; public visibility requires Professional tier or higher and a primary brand domain. Auth modes: (1) none — public agent, no credentials; (2) static `auth_token` + `auth_type` (`bearer` or `basic`, stored encrypted); (3) `oauth_client_credentials` for machine-to-machine (RFC 6749 §4.4). For interactive OAuth user authorization, save with no auth fields and have the user complete the dashboard\'s **Authorize** flow afterward — `save_agent` does not collect end-user OAuth state. The agent\'s `type` is resolved server-side from the capability snapshot; the schema does not accept a `type` field. If the user mentions their MCP endpoint requires auth, lives at a non-root path (e.g. /adcp/mcp), or shows up as offline after saving, suggest setting `health_check_url` for a liveness fallback while they fix the underlying URL. See the "Registering an Agent in the AAO Registry" section of the rules for the intake script.',
-    usage_hints: 'use for "register my agent", "add an agent", "save my agent", "store my auth token", "configure client credentials". When the user opens the conversation with a registration intent and no details, follow the intake script in the rules — do not call save_agent until you have `agent_url` and an explicit auth-mode choice.',
+      'Register an agent in the AAO registry on behalf of the current organization. Adds the agent to the org\'s member profile; surfaces in `/dashboard/agents`. New agents land with `members_only` visibility (discoverable to other paying AAO members — Professional, Builder, Member, or Leader; not publicly listed in the directory or brand.json). To list publicly, the caller promotes the agent via the dashboard; public visibility requires a paid AAO tier (Professional, Builder, Member, or Leader) and a primary brand domain. Auth modes: (1) none — public agent, no credentials; (2) static `auth_token` + `auth_type` (`bearer` or `basic`, stored encrypted); (3) `oauth_client_credentials` for machine-to-machine (RFC 6749 §4.4). For interactive OAuth user authorization, save with no auth fields and have the user complete the dashboard\'s **Authorize** flow afterward — `save_agent` does not collect end-user OAuth state. The caller MUST declare the agent\'s `type` (`brand`, `rights`, `measurement`, `governance`, `creative`, `sales`, `buying`, `signals`); ask the owner — do not guess. Server-side smuggle protection still validates the declared type against the capability snapshot when one is available. If the user mentions their MCP endpoint requires auth, lives at a non-root path (e.g. /adcp/mcp), or shows up as offline after saving, suggest setting `health_check_url` for a liveness fallback while they fix the underlying URL. See the "Registering an Agent in the AAO Registry" section of the rules for the intake script.',
+    usage_hints: 'use for "register my agent", "add an agent", "save my agent", "store my auth token", "configure client credentials". When the user opens the conversation with a registration intent and no details, follow the intake script in the rules — do not call save_agent until you have `agent_url`, `type`, and an explicit auth-mode choice.',
     input_schema: {
       type: 'object',
       properties: {
         agent_url: { type: 'string', description: 'Agent URL' },
         agent_name: { type: 'string', description: 'Agent name' },
+        type: {
+          type: 'string',
+          enum: ['brand', 'rights', 'measurement', 'governance', 'creative', 'sales', 'buying', 'signals'],
+          description: 'What kind of agent this is. Required — ask the owner; do not guess. `brand` (brand-side intent), `rights` (rights/clearance), `measurement` (verification/attribution), `governance` (policy/compliance), `creative` (creative production/format), `sales` (publisher/sell-side inventory), `buying` (DSP/buy-side execution), `signals` (audience/signal provider).',
+        },
         auth_token: { type: 'string', description: 'Static auth token (stored encrypted). Mutually exclusive with oauth_client_credentials on any given save call.' },
         auth_type: { type: 'string', enum: ['bearer', 'basic'], description: 'How the auth_token is sent. "bearer" (default): sends Authorization: Bearer <token>. "basic": auth_token must be the base64-encoded "user:password" string, sent as Authorization: Basic <token>' },
         oauth_client_credentials: {
@@ -1221,7 +1231,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
         protocol: { type: 'string', enum: ['mcp', 'a2a'], description: 'Protocol (default: mcp)' },
         health_check_url: { type: 'string', description: 'Optional fallback liveness URL. The dashboard probe tries the protocol handshake first; if it fails and this URL is set, the probe GETs it and treats any 2xx as "online." Used by sellers whose protocol endpoint requires auth or is path-prefixed (e.g. /adcp/mcp). Liveness only — does not populate type or tools. Pass an empty string to clear a previously-set value.' },
       },
-      required: ['agent_url'],
+      required: ['agent_url', 'type'],
     },
   },
   {
@@ -1283,7 +1293,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
     name: 'create_github_issue',
     description:
       'File a GitHub issue on adcontextprotocol/adcp authored by the logged-in user via their WorkOS Pipes GitHub connection. Use after showing the user a draft and getting their confirmation. If the user has not yet connected GitHub, the tool returns a message with a one-time Connect link AND reminds them they can ask for `draft_github_issue` instead — include that full message in your reply.',
-    usage_hints: 'use after draft_github_issue when the user confirms they want the issue created. If the tool result asks the user to connect GitHub, show the full Connect link — do not silently fall back.',
+    usage_hints: 'use after draft_github_issue when the user confirms they want the issue created. If the tool result asks the user to connect GitHub, show the full Connect link — do not silently fall back. Exception: if the user\'s message was a direct completion reply immediately after you sent them a Connect link (e.g. "connected", "just connected", "all set", "done connecting") and the tool still returns not-connected, tell them the connection may still be propagating and ask them to send the same filing request again — do not show the Connect link a second time.',
     input_schema: {
       type: 'object',
       properties: {
@@ -2184,7 +2194,8 @@ export function createMemberToolHandlers(
     }
 
     let fallbackDomainHint: string | undefined;
-    if (!profile.primary_brand_domain && !profile.contact_website && logoUrl) {
+    const existingBrandPrimary = await getBrandPrimaryDomain(orgId);
+    if (!existingBrandPrimary && !profile.contact_website && logoUrl) {
       try {
         fallbackDomainHint = canonicalizeBrandDomain(new URL(logoUrl).hostname);
       } catch { /* validated below */ }
@@ -2307,6 +2318,11 @@ export function createMemberToolHandlers(
       if (result.code === 'invalid_domain') {
         return `<!-- STATUS: invalid_domain -->\n\nI can't claim that — ${result.message} Try a clean apex domain (e.g., "acme.com" rather than "acme.com/", "vercel.app", or "co.uk").`;
       }
+      if (result.code === 'workos_misconfigured') {
+        // Anti-loop: don't have the model offer to retry. The fix lives in
+        // the WorkOS dashboard, not in the user's flow.
+        return `<!-- STATUS: workos_misconfigured -->\n\nI can't issue a DNS challenge for ${rawDomain} right now — our identity provider isn't returning a DNS record prefix, which means I have nowhere to tell you to publish the TXT record. This is an operator-side issue (WorkOS DNS verification template), not something you can fix. **Stop here.** The AAO team has been alerted; ask them to set this up manually if you need to move forward today.`;
+      }
       return `<!-- STATUS: workos_error -->\n\nCouldn't issue the domain challenge: ${result.message}`;
     }
 
@@ -2314,8 +2330,12 @@ export function createMemberToolHandlers(
       return `<!-- STATUS: already_verified -->\n\n${result.domain} is already verified for your organization in WorkOS. The brand registry should already reflect that — call \`verify_brand_domain_challenge\` if you want to force a sync.`;
     }
 
+    // Defensive: the service should have returned workos_misconfigured before
+    // reaching here, but if WorkOS returns a token without a prefix and the
+    // service guard ever regresses, surface the same failure mode rather than
+    // handing the model a half-broken record to render.
     if (!result.verification_token || !result.verification_prefix) {
-      return `<!-- STATUS: workos_error -->\n\nIssued a challenge for ${result.domain} but WorkOS didn't return a DNS record to publish — that's unusual. Check the WorkOS dashboard or contact support.`;
+      return `<!-- STATUS: workos_misconfigured -->\n\nIssued a challenge for ${result.domain} but WorkOS didn't return a complete DNS record (missing prefix or token). This is an operator-side issue — ask the AAO team to verify ${result.domain} manually for you.`;
     }
 
     const recordName = `${result.verification_prefix}.${result.domain}`;
@@ -3504,6 +3524,18 @@ export function createMemberToolHandlers(
     const urlError = validateAgentUrl(agentUrl);
     if (urlError) return `**Error:** ${urlError}`;
 
+    // Rate limit. Owner-paced usage hits this nowhere near the default cap,
+    // but a runaway loop (or a script that races the heartbeat to keep the
+    // canonical verdict in a preferred state) is bounded here. comply() takes
+    // 10-60s per run so the natural-rate ceiling is already ~1-2/min; this
+    // adds the hard wall so even in-process retries / a hot debug loop stop.
+    const workosUserId = memberContext?.workos_user?.workos_user_id;
+    const rateCheck = await checkToolRateLimit('evaluate_agent_quality', workosUserId ?? null);
+    if (!rateCheck.ok) {
+      const retrySeconds = Math.max(1, Math.ceil((rateCheck.retryAfterMs ?? 60_000) / 1000));
+      return `Rate limit exceeded on evaluate_agent_quality. Try again in ~${retrySeconds} seconds.`;
+    }
+
     const organizationId = memberContext?.organization?.workos_organization_id;
     const resolved = await resolveAgentAuth(agentUrl, organizationId);
 
@@ -3553,8 +3585,83 @@ export function createMemberToolHandlers(
         );
       }
 
-      // Record result if the user has an org with this agent saved
+      // Record result when the user has an org context for this agent.
       if (organizationId) {
+        // Write to canonical compliance tables when the calling org owns this agent.
+        // isOrgOwnerOfAgent verifies the resolved member-context org IS the
+        // owning org (tighter than findOwnerOrgForUser, which would accept any
+        // org the user is a member of). Non-owner runs skip the canonical
+        // write and fall through to the legacy agent_test_history path below.
+        const workosUserId = memberContext?.workos_user?.workos_user_id;
+        let isAgentOwner = false;
+        if (workosUserId) {
+          isAgentOwner = await isOrgOwnerOfAgent(
+            organizationId,
+            workosUserId,
+            resolved.resolvedUrl,
+          );
+        }
+
+        if (isAgentOwner) {
+          try {
+            const metadata = await complianceDb.getRegistryMetadata(resolved.resolvedUrl);
+            // Skip canonical write if the owner has opted out of compliance monitoring.
+            if (!metadata?.compliance_opt_out) {
+              const dbInput = {
+                ...complianceResultToDbInput(
+                  result,
+                  resolved.resolvedUrl,
+                  metadata?.lifecycle_stage ?? 'production',
+                  'owner_test',
+                ),
+                // Owner test runs are not dry runs — they update the live public record.
+                // (complianceResultToDbInput hard-codes dry_run: true; override here.)
+                dry_run: false,
+                // Known gap (deferred to follow-up): the canonical write doesn't
+                // carry the triggering org id. If two orgs both own the same
+                // agent URL (rare — staging vs prod orgs of one publisher), an
+                // owner_test from Org A surfaces in Org B's dashboard without
+                // attribution. Acceptable for the unblock; full fix adds
+                // `triggered_org_id` to agent_compliance_runs (#4247 PR 4).
+              };
+              await complianceDb.recordComplianceRun(dbInput);
+              // notifyComplianceChange intentionally omitted: owner test runs are
+              // exploratory; compliance-change notifications fire on heartbeat
+              // transitions only to prevent iteration-loop spam.
+
+              // Fire badge issuance off the canonical write so an owner who
+              // just fixed a compliance issue sees their badge update on the
+              // next page load instead of waiting up to a heartbeat cycle.
+              // Verification-change notifications are intentionally skipped —
+              // the owner already received the result in their chat response.
+              const declaredSpecialisms = result.agent_profile?.specialisms ?? [];
+              if (declaredSpecialisms.length > 0) {
+                try {
+                  await runBadgeFanOut({
+                    complianceDb,
+                    agentUrl: resolved.resolvedUrl,
+                    declaredSpecialisms,
+                  });
+                } catch (badgeError) {
+                  logger.warn({ badgeError, agentUrl: resolved.resolvedUrl }, 'Badge fan-out failed after owner_test run');
+                }
+              }
+            }
+          } catch (error) {
+            logger.warn({ error, agentUrl: resolved.resolvedUrl }, 'Could not write owner test result to canonical compliance state');
+          }
+        }
+
+        // Legacy session-scoped audit trail. Retained until Emma's #4247 PR 3
+        // backfills + drops `agent_test_history`. NOT a public-state write —
+        // the previous dual-write to `recordComplianceRun(..., 'manual')` was
+        // dropped because (a) it was gated only on `agent_contexts` row
+        // existence (which `save_agent` lets any org create for any URL — no
+        // ownership check), so any user could publish a `manual` verdict on
+        // someone else's agent; and (b) the owner-test branch above already
+        // updates canonical state with proper ownership checking, so the
+        // legacy write has no remaining function for owners. Non-owner runs
+        // continue to land here in `agent_test_history` only.
         try {
           const context = await agentContextDb.getByOrgAndUrl(organizationId, resolved.resolvedUrl);
           if (context) {
@@ -5338,6 +5445,8 @@ export function createMemberToolHandlers(
         `**[Connect GitHub](${connectUrl})** — one click and I'll file this under your GitHub account.`,
         '',
         `Or ask me to use \`draft_github_issue\` and I'll give you a pre-filled link instead.`,
+        '',
+        `_(If you just completed the GitHub connect flow, the connection may still be propagating — wait a moment and ask me to try again.)_`,
       ].join('\n');
     }
 
@@ -5583,9 +5692,25 @@ export function createMemberToolHandlers(
     }
     const agentName = input.agent_name as string | undefined;
     const authToken = input.auth_token as string | undefined;
+    if (authToken !== undefined) {
+      const tokenErr = validateAuthTokenChars(authToken);
+      if (tokenErr) return tokenErr;
+    }
     const rawAuthType = input.auth_type as string | undefined;
     const authType: 'bearer' | 'basic' = rawAuthType === 'basic' ? 'basic' : 'bearer';
     const protocol = (input.protocol as 'mcp' | 'a2a') || 'mcp';
+
+    // Caller-declared agent type. Required at the schema level — the JSON-RPC
+    // layer has already enforced presence via input_schema.required, so this
+    // check is the runtime belt to the schema's suspenders. We only accept the
+    // 8 real values; 'unknown' is reserved for server-side smuggle protection
+    // when a snapshot exists but couldn't classify (resolveAgentTypes), never
+    // for client input.
+    const declaredType = input.type;
+    if (typeof declaredType !== 'string' || !isValidAgentType(declaredType) || declaredType === 'unknown') {
+      return 'Agent type is required. Please specify one of: brand, rights, measurement, governance, creative, sales, buying, signals.';
+    }
+    const agentType = declaredType as Exclude<AgentType, 'unknown'>;
 
     // null sentinel and explicit empty string both clear a previously-set
     // value; a present non-empty string is validated through the same SSRF
@@ -5652,17 +5777,49 @@ export function createMemberToolHandlers(
           agents.push({
             url: agentUrl,
             name: displayName,
+            type: agentType,
             visibility: 'members_only',
             ...(healthCheckUrl ? { health_check_url: healthCheckUrl } : {}),
           });
           await memberDb.updateProfile(profile.id, { agents });
-        } else if (clearHealthCheckUrl && (existing as any).health_check_url) {
-          delete (existing as any).health_check_url;
-          await memberDb.updateProfile(profile.id, { agents });
-        } else if (healthCheckUrl && (existing as any).health_check_url !== healthCheckUrl) {
-          (existing as any).health_check_url = healthCheckUrl;
-          await memberDb.updateProfile(profile.id, { agents });
+        } else {
+          let dirty = false;
+          if ((existing as any).type !== agentType) {
+            (existing as any).type = agentType;
+            dirty = true;
+          }
+          if (clearHealthCheckUrl && (existing as any).health_check_url) {
+            delete (existing as any).health_check_url;
+            dirty = true;
+          } else if (healthCheckUrl && (existing as any).health_check_url !== healthCheckUrl) {
+            (existing as any).health_check_url = healthCheckUrl;
+            dirty = true;
+          }
+          if (dirty) await memberDb.updateProfile(profile.id, { agents });
         }
+
+        // Seed an `agent_registry_metadata` row so the compliance heartbeat
+        // picks this agent up. Without this, an agent registered via
+        // save_agent lives only in `member_profiles.agents` JSONB and never
+        // enters the heartbeat's `known_agents` CTE — the dashboard's
+        // compliance tile stays `unknown` indefinitely. ON CONFLICT DO
+        // NOTHING preserves any owner-customized lifecycle / opt-out /
+        // check-interval the heartbeat or dashboard wrote earlier.
+        try {
+          await query(
+            `INSERT INTO agent_registry_metadata (agent_url)
+             VALUES ($1)
+             ON CONFLICT (agent_url) DO NOTHING`,
+            [agentUrl],
+          );
+        } catch (err) {
+          // Non-fatal: the read-side CTE widening (member_profiles.agents
+          // unioned into known_agents) catches this case as a fallback.
+          // We log so a real metadata-table outage is visible without
+          // failing the user's registration.
+          logger.warn({ err, agentUrl }, 'Addie: failed to seed agent_registry_metadata row');
+        }
+
         return { ok: true, createdProfile };
       } catch (err) {
         logger.warn({ err, agentUrl, orgId: saveOrgId }, 'Addie: failed to add agent to member profile');
@@ -5739,7 +5896,7 @@ export function createMemberToolHandlers(
         response += `_The client secret is encrypted and will never be shown again. The SDK exchanges and refreshes at test time._\n`;
       }
       if (profileStatus.ok) {
-        response += `\nThe agent has been added to your dashboard with **members_only** visibility — other Professional-tier members can discover it, but it won't appear in the public directory. To publish publicly, use the dashboard publish flow (requires a Professional or higher subscription). When you test this agent, I'll automatically use the saved credentials.`;
+        response += `\nThe agent has been added to your dashboard with **members_only** visibility — other paying AAO members (Professional, Builder, Member, or Leader) can discover it, but it won't appear in the public directory. To publish publicly, use the dashboard publish flow (requires a paid AAO tier). When you test this agent, I'll automatically use the saved credentials.`;
       } else {
         response += `\n⚠️ The credentials are saved on the backend, but I couldn't add this agent to your dashboard listing right now (${profileStatus.reason}). The team has been notified — please check back shortly, or use the dashboard's manual register flow at https://agenticadvertising.org/dashboard/agents.`;
       }

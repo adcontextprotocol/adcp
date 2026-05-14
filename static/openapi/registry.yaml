@@ -387,6 +387,15 @@ components:
               type: string
             display_name:
               type: string
+            membership_tier:
+              type: string
+              description: Raw AAO membership tier enum (e.g. `individual_professional`, `company_leader`). Present only when the profile owner has set their member card to public (`is_public=true`) AND the org has a resolvable tier. Absent for private profiles and for orgs without an active tier-bearing subscription.
+            membership_tier_label:
+              type: string
+              description: Human-readable label for `membership_tier` (e.g. `Professional`, `Partner`, `Leader`). Matches the AAO pricing page. Use this for UI display; the raw enum is for programmatic gating. Presence rules match `membership_tier`.
+            is_founding_member:
+              type: boolean
+              description: True when the profile owner carries the Founding Member badge (joined before the founding-cohort cutoff). Surfaced when the profile owner has set their member card to public (`is_public=true`). Absent for private profiles. Founding Member is orthogonal to tier — founding orgs typically display both (e.g. Scope3 shows `Partner` + `Founding Member`).
           description: AAO member that owns this agent record. The registry contains only agents that members have explicitly enrolled on their member profile.
         health:
           $ref: "#/components/schemas/AgentHealth"
@@ -652,6 +661,15 @@ components:
               type: string
             display_name:
               type: string
+            membership_tier:
+              type: string
+              description: Raw AAO membership tier enum (e.g. `individual_professional`, `company_leader`). Present only when the profile owner has set their member card to public (`is_public=true`) AND the org has a resolvable tier. Absent for private profiles and for orgs without an active tier-bearing subscription.
+            membership_tier_label:
+              type: string
+              description: Human-readable label for `membership_tier` (e.g. `Professional`, `Partner`, `Leader`). Matches the AAO pricing page. Use this for UI display; the raw enum is for programmatic gating. Presence rules match `membership_tier`.
+            is_founding_member:
+              type: boolean
+              description: True when the profile owner carries the Founding Member badge (joined before the founding-cohort cutoff). Surfaced when the profile owner has set their member card to public (`is_public=true`). Absent for private profiles. Founding Member is orthogonal to tier — founding orgs typically display both (e.g. Scope3 shows `Partner` + `Founding Member`).
         agent_count:
           type: integer
         last_validated:
@@ -682,6 +700,15 @@ components:
                     type: string
                   display_name:
                     type: string
+                  membership_tier:
+                    type: string
+                    description: Raw AAO membership tier enum (e.g. `individual_professional`, `company_leader`). Present only when the profile owner has set their member card to public (`is_public=true`) AND the org has a resolvable tier. Absent for private profiles and for orgs without an active tier-bearing subscription.
+                  membership_tier_label:
+                    type: string
+                    description: Human-readable label for `membership_tier` (e.g. `Professional`, `Partner`, `Leader`). Matches the AAO pricing page. Use this for UI display; the raw enum is for programmatic gating. Presence rules match `membership_tier`.
+                  is_founding_member:
+                    type: boolean
+                    description: True when the profile owner carries the Founding Member badge (joined before the founding-cohort cutoff). Surfaced when the profile owner has set their member card to public (`is_public=true`). Absent for private profiles. Founding Member is orthogonal to tier — founding orgs typically display both (e.g. Scope3 shows `Partner` + `Founding Member`).
             required:
               - url
         sales_agents_claiming:
@@ -698,6 +725,15 @@ components:
                     type: string
                   display_name:
                     type: string
+                  membership_tier:
+                    type: string
+                    description: Raw AAO membership tier enum (e.g. `individual_professional`, `company_leader`). Present only when the profile owner has set their member card to public (`is_public=true`) AND the org has a resolvable tier. Absent for private profiles and for orgs without an active tier-bearing subscription.
+                  membership_tier_label:
+                    type: string
+                    description: Human-readable label for `membership_tier` (e.g. `Professional`, `Partner`, `Leader`). Matches the AAO pricing page. Use this for UI display; the raw enum is for programmatic gating. Presence rules match `membership_tier`.
+                  is_founding_member:
+                    type: boolean
+                    description: True when the profile owner carries the Founding Member badge (joined before the founding-cohort cutoff). Surfaced when the profile owner has set their member card to public (`is_public=true`). Absent for private profiles. Founding Member is orthogonal to tier — founding orgs typically display both (e.g. Scope3 shows `Partner` + `Founding Member`).
             required:
               - url
       required:
@@ -719,6 +755,15 @@ components:
               type: string
             display_name:
               type: string
+            membership_tier:
+              type: string
+              description: Raw AAO membership tier enum (e.g. `individual_professional`, `company_leader`). Present only when the profile owner has set their member card to public (`is_public=true`) AND the org has a resolvable tier. Absent for private profiles and for orgs without an active tier-bearing subscription.
+            membership_tier_label:
+              type: string
+              description: Human-readable label for `membership_tier` (e.g. `Professional`, `Partner`, `Leader`). Matches the AAO pricing page. Use this for UI display; the raw enum is for programmatic gating. Presence rules match `membership_tier`.
+            is_founding_member:
+              type: boolean
+              description: True when the profile owner carries the Founding Member badge (joined before the founding-cohort cutoff). Surfaced when the profile owner has set their member card to public (`is_public=true`). Absent for private profiles. Founding Member is orthogonal to tier — founding orgs typically display both (e.g. Scope3 shows `Partner` + `Founding Member`).
         agents:
           type: array
           items:
@@ -781,10 +826,126 @@ components:
               type: string
             display_name:
               type: string
+            membership_tier:
+              type: string
+              description: Raw AAO membership tier enum (e.g. `individual_professional`, `company_leader`). Present only when the profile owner has set their member card to public (`is_public=true`) AND the org has a resolvable tier. Absent for private profiles and for orgs without an active tier-bearing subscription.
+            membership_tier_label:
+              type: string
+              description: Human-readable label for `membership_tier` (e.g. `Professional`, `Partner`, `Leader`). Matches the AAO pricing page. Use this for UI display; the raw enum is for programmatic gating. Presence rules match `membership_tier`.
+            is_founding_member:
+              type: boolean
+              description: True when the profile owner carries the Founding Member badge (joined before the founding-cohort cutoff). Surfaced when the profile owner has set their member card to public (`is_public=true`). Absent for private profiles. Founding Member is orthogonal to tier — founding orgs typically display both (e.g. Scope3 shows `Partner` + `Founding Member`).
         adagents_valid:
           type:
             - boolean
             - "null"
+        discovery_method:
+          type:
+            - string
+            - "null"
+          enum:
+            - direct
+            - authoritative_location
+            - ads_txt_managerdomain
+            - null
+          description: "How the publisher's adagents.json was discovered on the most recent successful crawl. `direct`: publisher's own /.well-known/ served the document. `authoritative_location`: publisher's stub redirected to a canonical URL. `ads_txt_managerdomain`: manifest was discovered via ads.txt MANAGERDOMAIN delegation — see `manager_domain` for which manager served it. Null until first crawl after migration 470."
+        manager_domain:
+          type:
+            - string
+            - "null"
+          description: The manager domain whose adagents.json was used to authorize this publisher's agents. Non-null only when `discovery_method` is `ads_txt_managerdomain`. Matches the MANAGERDOMAIN value from the publisher's ads.txt.
+        hosting:
+          type: object
+          properties:
+            mode:
+              type: string
+              enum:
+                - self
+                - self_invalid
+                - aao_hosted
+                - self_redirected
+                - none
+              description: Where this publisher's adagents.json lives. `self` = publisher hosts a valid file at their own /.well-known. `self_invalid` = publisher's /.well-known returns a file that fails validation (fixable misconfiguration, not absence). `aao_hosted` = the publisher hosts a stub at their own /.well-known whose `authoritative_location` points at AAO's canonical document. `self_redirected` = the publisher's stub `authoritative_location` resolves to a third-party HTTPS origin (a CDN, partner CMS, or sibling host) — verifiers should audit the TLS chain at `resolved_url`, not at the publisher's own origin. `none` = no adagents.json configured yet.
+            hosted_url:
+              type: string
+              description: Canonical AAO-hosted adagents.json URL. Present iff `mode === 'aao_hosted'`. Publishers reference this URL from their own /.well-known stub via the `authoritative_location` field (see https://docs.adcontextprotocol.org/docs/governance/property/adagents).
+            expected_url:
+              type: string
+              description: Where adagents.json *should* live for this domain — the publisher's own /.well-known path. Always populated, regardless of `mode`.
+            resolved_url:
+              type:
+                - string
+                - "null"
+              description: Where the canonical adagents.json document actually lives after following the publisher's `authoritative_location` stub or any HTTP-layer redirects. Populated when `mode === 'self_redirected'` (the third-party HTTPS origin verifiers should audit) and when `mode === 'aao_hosted'` AND the publisher has actively set up the redirect (`authoritative_location` in the manifest body or a network-layer redirect to AAO's hosted URL). NULL when there's no resolved-URL evidence to report.
+            last_validated:
+              type:
+                - string
+                - "null"
+              description: ISO timestamp of the last successful validation crawl. Lets verifiers sanity-check freshness. NULL when never crawled.
+            last_http_status:
+              type:
+                - integer
+                - "null"
+              minimum: 100
+              maximum: 599
+              description: HTTP status code returned by AAO's most recent fetch attempt of the publisher's `/.well-known/adagents.json`. Verifier-grade chrome — lets a buy-side scraper confirm they see the same response AAO does. NULL until the first crawl records or for transient errors that never produced an HTTP response.
+            last_bytes:
+              type:
+                - integer
+                - "null"
+              minimum: 0
+              description: Response body byte length from the most recent fetch (post-decompression). When `authoritative_location` was followed, measures the canonical document body, not the stub. NULL until the first crawl records.
+            origin_verified_at:
+              type:
+                - string
+                - "null"
+              description: ISO timestamp of the last successful origin verification — AAO fetched the publisher's own /.well-known/adagents.json and confirmed `authoritative_location` points at our hosted URL. When set, the publisher's authorization rows have been promoted to `source='adagents_json'` (origin-attested). NULL when never verified or last attempt failed. Only populated when `mode === 'aao_hosted'`.
+            origin_last_checked_at:
+              type:
+                - string
+                - "null"
+              description: ISO timestamp of the last verification attempt regardless of result. Lets a caller render "checked X minutes ago, not yet verified" vs "never checked." Only populated when `mode === 'aao_hosted'`.
+          required:
+            - mode
+            - expected_url
+        files:
+          type: object
+          properties:
+            adagents_json:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum:
+                    - valid
+                    - invalid
+                    - unknown
+                    - checking
+                  description: What we know about the publisher's adagents.json right now. `valid` = crawler fetched a parsing-and-shape-valid file. `invalid` = crawler fetched a file that failed validation. `unknown` = never crawled or last result is stale. `checking` = an auto-crawl was kicked off by this request; the page should poll for fresh data shortly.
+                expected_url:
+                  type: string
+                  description: Where adagents.json should live on the publisher's own origin.
+              required:
+                - status
+                - expected_url
+            brand_json:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum:
+                    - present
+                    - unknown
+                    - checking
+                  description: What we know about the publisher's brand.json. `present` = a brand record with manifest data exists. `unknown` = no record yet. `checking` = an auto-crawl was kicked off.
+                name:
+                  type: string
+              required:
+                - status
+          required:
+            - adagents_json
+            - brand_json
+          description: Plain-English summary of what AAO has found at the publisher's origin. The publisher page leads with this — `you have a valid adagents.json` is the primary signal, not `mode === self`. Optional in the schema for backwards compatibility; the handler always populates it.
         properties:
           type: array
           items:
@@ -804,6 +965,21 @@ components:
                 type: array
                 items:
                   type: string
+                description: Arbitrary string tags on this property. The `relationship:` prefix tag (e.g. `relationship:owned`) is deprecated in favour of the `delegation_type` field and will be removed in a future release.
+              source:
+                type: string
+                enum:
+                  - adagents_json
+                  - discovered
+                  - brand_json
+                description: Where this property came from. `adagents_json`/`discovered` come from the federated index (publisher's own adagents.json or crawler discovery). `brand_json` is hydrated from the publisher's brand.json when no federated-index data exists yet.
+              delegation_type:
+                type: string
+                enum:
+                  - direct
+                  - delegated
+                  - ad_network
+                description: "Delegation relationship declared in brand.json. Populated only when `source` is `brand_json` — for `adagents_json` and `discovered` sources the authoritative value is on the matching `authorized_agents` entry. Mirrors adagents.json `delegation_type` for bilateral verification: `direct` = publisher treats this as a direct buying path, even if a third party operates the software; `delegated` = a rep firm or manager is authorized to sell on the publisher's behalf (operator-declared, unilateral until corroborated by the publisher's adagents.json); `ad_network` = sold as part of a network/exchange package. `owned` properties have no `delegation_type` — ownership is implicit and has no adagents.json counterpart."
         authorized_agents:
           type: array
           items:
@@ -817,14 +993,46 @@ components:
                 type: string
                 enum:
                   - adagents_json
+                  - aao_hosted
                   - agent_claim
+                description: "How strongly this authorization is attested. `adagents_json`: the publisher's origin actually serves a valid adagents.json (origin-verified). `aao_hosted`: AAO is hosting the canonical document on the publisher's behalf — represents publisher intent but origin has NOT been verified to redirect to AAO. `agent_claim`: the agent claimed it; publisher has not confirmed."
+              properties_authorized:
+                type: integer
+                minimum: 0
+                description: Count of this publisher's properties the agent is authorized to sell. Absent when `rollup_truncated` is set (call `/api/registry/publisher/authorization` for the per-agent count) or when properties are entirely brand.json-hydrated (no adagents.json claim has actually been made about them).
+              properties_total:
+                type: integer
+                minimum: 0
+                description: Total number of properties this publisher exposes through the registry. Same value across all agents in the response. Absent when `properties_authorized` is absent.
+              publisher_wide:
+                type: boolean
+                description: True when the agent has only a publisher-wide authorization row and `properties_authorized` was synthesized as `properties_total`. False when the agent has property-level authorization rows. Absent when the rollup is absent.
             required:
               - url
               - source
+        rollup_truncated:
+          type: object
+          properties:
+            cap:
+              type: integer
+              exclusiveMinimum: 0
+              description: Maximum number of agents for which the rollup is computed in a single response.
+            total_agents:
+              type: integer
+              minimum: 0
+              description: Total authorized-agent count for this publisher (the full population the cap was applied to).
+          required:
+            - cap
+            - total_agents
+          description: Set when the publisher has more authorized agents than the per-agent rollup cap. Above the cap, agents beyond `cap` are returned without `properties_authorized` / `properties_total` / `publisher_wide`; call `/api/registry/publisher/authorization?domain=X&agent=Y` for the per-agent count. Lets a caller decide whether to fan out individual calls or stop reading.
+        auto_crawl_triggered:
+          type: boolean
+          description: Set to `true` when this request triggered a background crawl of the publisher's origin (we hadn't crawled before). The client should refetch in ~3-5s to pick up fresh data. Debounced per-domain so a tight refresh loop won't keep firing crawls.
       required:
         - domain
         - member
         - adagents_valid
+        - hosting
         - properties
         - authorized_agents
     PublisherPropertySelector:
@@ -1271,6 +1479,17 @@ components:
         is_api_access_tier:
           type: boolean
           description: "Owner-scoped: true when the owner's tier and subscription status grant badge eligibility. False for non-owners. Single source of truth — UI should not re-derive."
+        verdict_source:
+          type:
+            - string
+            - "null"
+          enum:
+            - heartbeat
+            - owner_test
+            - manual
+            - webhook
+            - null
+          description: "Owner-scoped: triggered_by value of the most recent non-dry-run compliance check. Null for non-owners and when no run has been recorded. Operators use this as a UX cue ('did this verdict come from my recent test or the system heartbeat?')."
         verified:
           type: boolean
         verified_badges:
@@ -1756,10 +1975,10 @@ components:
           example: https://agent.example.com/mcp
         visibility:
           $ref: "#/components/schemas/MemberAgentVisibility"
-        name:
-          type: string
         type:
           $ref: "#/components/schemas/MemberAgentType"
+        name:
+          type: string
         health_check_url:
           type: string
           format: uri
@@ -1767,14 +1986,15 @@ components:
       required:
         - url
         - visibility
-      description: Agent entry stored on a member profile.
+        - type
+      description: Agent entry stored on a member profile. `type` is required on read because every write surface declares it and the operator endpoint always emits it; a stored value of `unknown` is the smuggle-protection outcome (snapshot contradicted the declaration without classifying it) and is the only path that surfaces an agent without a real type.
     MemberAgentVisibility:
       type: string
       enum:
         - private
         - members_only
         - public
-      description: Visibility tier on the registry catalog. `private` = profile owner only; `members_only` = AAO API-tier members on operator lookup; `public` = listed in the public catalog and reflected in the org's `brand.json` (requires Professional tier or higher).
+      description: Visibility tier on the registry catalog. `private` = profile owner only; `members_only` = AAO API-tier members on operator lookup; `public` = listed in the public catalog and reflected in the org's `brand.json` (requires a paid AAO tier — Professional, Builder, Member, or Leader).
     MemberAgentType:
       type: string
       enum:
@@ -1787,7 +2007,7 @@ components:
         - buying
         - signals
         - unknown
-      description: Agent type. Resolved server-side from the agent's capability snapshot when one exists; the value submitted by the client is used only as a fallback when no snapshot is available, and is never trusted to override an inferred classification.
+      description: Agent type as stored on the registry. Server-side smuggle protection compares the caller's declaration against the capability snapshot (when one exists) and may stamp `unknown` if the snapshot contradicts the declaration without classifying it. `unknown` is reserved for that server-side outcome; clients cannot submit it.
     MemberAgentResponse:
       type: object
       properties:
@@ -1797,6 +2017,12 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/MemberAgentVisibilityWarning"
+        org_auto_created:
+          type: boolean
+          description: "Set to `true` when this `POST` was the caller's first interaction with the registry and the server auto-created the organization (display name derived from the user's email domain for corporate emails, or `<First Last>'s Workspace` for free-email providers). Combined with `profile_auto_created`, this is the one-call storefront experience: a third-party app holding only an OAuth token gets the org, profile, and registered agent in a single request."
+        profile_auto_created:
+          type: boolean
+          description: "Set to `true` when this `POST` was the first agent registration on the caller's organization and the server auto-created a private member profile (display name = organization name, `is_public: false`). Absent on subsequent calls and on update-in-place. Surfaced so storefront-style integrations can show a \"we set up your profile\" hint without needing to detect the prior 404 → bootstrap → retry shape."
       required:
         - agent
     MemberAgentVisibilityWarning:
@@ -1837,18 +2063,31 @@ components:
           type: string
           format: uri
           example: https://agent.example.com/mcp
+        type:
+          $ref: "#/components/schemas/MemberAgentTypeInput"
         name:
           type: string
         visibility:
           $ref: "#/components/schemas/MemberAgentVisibility"
-        type:
-          $ref: "#/components/schemas/MemberAgentType"
         health_check_url:
           type: string
           format: uri
       required:
         - url
-      description: Request body for `POST /api/me/agents`.
+        - type
+      description: Request body for `POST /api/me/agents`. `type` is required — the owner declares it; the server never infers.
+    MemberAgentTypeInput:
+      type: string
+      enum:
+        - brand
+        - rights
+        - measurement
+        - governance
+        - creative
+        - sales
+        - buying
+        - signals
+      description: Agent type the caller declares. Required on register; smuggle-protection still cross-checks against the capability snapshot when one exists. The server never infers `type` — the owner declares what kind of agent this is.
     MemberAgentPatch:
       type: object
       properties:
@@ -1857,12 +2096,67 @@ components:
         visibility:
           $ref: "#/components/schemas/MemberAgentVisibility"
         type:
-          $ref: "#/components/schemas/MemberAgentType"
+          $ref: "#/components/schemas/MemberAgentTypeInput"
         health_check_url:
           type: string
           format: uri
-      description: Request body for `PATCH /api/me/agents/{url}`. The `url` field cannot be changed via PATCH; re-register at the new URL and DELETE the old entry instead.
-    MemberCompanyType:
+      description: Request body for `PATCH /api/me/agents/{url}`. The `url` field cannot be changed via PATCH; re-register at the new URL and DELETE the old entry instead. If `type` is omitted, the existing value is preserved.
+    CreateOrganizationResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        organization:
+          type: object
+          properties:
+            id:
+              type: string
+              example: org_01HXZAB123
+            name:
+              type: string
+              example: Acme Media
+          required:
+            - id
+            - name
+        id:
+          type: string
+          description: "Set on the **prospect-adoption** path: when an org with the user's email domain already exists in a `prospect` state (i.e. the registry pre-recorded it from a brand crawl but no human had claimed it yet), this call adopts that org for the caller instead of creating a new one."
+        name:
+          type: string
+        adopted:
+          type: boolean
+          description: "`true` when the response is the prospect-adoption path. When `true`, no new WorkOS organization was created — the caller is now the owner of an existing prospect record."
+      description: 'Response from `POST /api/organizations`. The body shape varies by path: a fresh creation returns `{ success: true, organization: { id, name } }`; a prospect adoption returns `{ id, name, adopted: true }` directly. Both paths are 2xx; downstream callers should treat any `2xx` as "the org now exists and you are an owner of it" and read whichever id is present.'
+    CreateOrganizationInput:
+      type: object
+      properties:
+        organization_name:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: Display name for the organization. Used both as the org row name and (when auto-bootstrapping a member profile via the first agent registration) as the profile's `display_name`.
+          example: Acme Media
+        is_personal:
+          type: boolean
+          default: false
+          description: Set to `true` to create a personal workspace instead of a corporate organization. Personal workspaces skip corporate-domain verification, are limited to one per user, and cannot host the `company_*` membership tiers.
+        company_type:
+          $ref: "#/components/schemas/OrganizationCompanyType"
+        revenue_tier:
+          $ref: "#/components/schemas/OrganizationRevenueTier"
+        marketing_opt_in:
+          type: boolean
+          default: false
+          description: Whether the caller opted in to AAO marketing communications. Recorded once per user (not overwritten on subsequent calls). Independent of Terms-of-Service consent, which is recorded server-side from the request context.
+      required:
+        - organization_name
+      description: |-
+        Request body for `POST /api/organizations`.
+
+        Bootstraps a WorkOS organization, mirrors the caller as `owner`, records the caller's ToS / privacy-policy acceptance, and (for non-personal orgs) inserts an email-verified record into `organization_domains` so subsequent registry calls can skip explicit domain-verification.
+
+        Membership tier and corporate domain are *not* caller-supplied: the tier is set by the Stripe webhook on subscription events, and the corporate domain is derived from the authenticated user's email.
+    OrganizationCompanyType:
       type: string
       enum:
         - adtech
@@ -1872,8 +2166,8 @@ components:
         - data
         - ai
         - other
-      description: Coarse classification of the member organization's role in the open ad ecosystem. Drives default verification badges and the member profile's display category.
-    MemberRevenueTier:
+      description: Coarse classification of the organization's role in the open ad ecosystem. Drives default verification badges and the member profile's display category.
+    OrganizationRevenueTier:
       type: string
       enum:
         - under_1m
@@ -1882,102 +2176,7 @@ components:
         - 50m_250m
         - 250m_1b
         - 1b_plus
-      description: Annual revenue band, USD. Used for tier-based pricing and aggregated industry stats; not exposed on the public profile.
-    CreateMemberProfileInput:
-      type: object
-      properties:
-        organization_name:
-          type: string
-          minLength: 1
-          maxLength: 200
-          description: Display name for the organization (shown on the member profile and in the registry catalog).
-          example: Acme Media
-        company_type:
-          $ref: "#/components/schemas/MemberCompanyType"
-        revenue_tier:
-          $ref: "#/components/schemas/MemberRevenueTier"
-        corporate_domain:
-          type: string
-          description: "Canonical domain for the organization. Must match the email domain of the authenticated caller (e.g. an `@acme.com` user can only create a profile for `acme.com`). Personal email domains (gmail.com, yahoo.com, etc.) are rejected — register as an individual via the dashboard onboarding instead."
-          example: acme.com
-        primary_brand_domain:
-          type: string
-          description: "The brand domain whose `brand.json` will reflect this profile's `public` agents. Optional at creation; required before any agent can be set to `visibility: public`."
-          example: acme.com
-        marketing_opt_in:
-          type: boolean
-          default: false
-          description: Whether the caller agreed to receive AAO marketing communications. Independent of Terms of Service consent (which is required and recorded server-side from the request context).
-        membership_tier:
-          type: string
-          enum:
-            - individual_academic
-          description: |-
-            Initial membership tier. Only `individual_academic` (the free Explorer baseline) is accepted on this endpoint — paid tiers must come through a Stripe checkout session via the AAO `/membership` dashboard, and the webhook stamps the paid tier on the org row. Sending a paid tier value here returns `400 "Paid tier requires checkout"`.
-      required:
-        - organization_name
-        - company_type
-        - corporate_domain
-      description: |-
-        Request body for `POST /api/me/member-profile`. Creates the organization member profile that backs the per-agent registry endpoints. Fails with `403` if the caller's email domain does not match `corporate_domain`.
-
-        Org metadata fields (`organization_name`, `company_type`, `revenue_tier`, `membership_tier`) are written to the organization row **only when the field is currently null**. If a value is already set (e.g. an admin curated it via the dashboard), the body value is silently ignored and the response surfaces a `metadata_unchanged` warning naming the affected API fields. This prevents a programmatic bootstrap from clobbering admin-curated metadata on subsequent calls.
-
-        If `corporate_domain` is already linked to a different organization (e.g. an earlier bootstrap on a sibling org), the profile is still created on the requested organization but the domain is **not** attached, and the response surfaces a `domain_already_claimed` warning naming the affected domain. Registry surfaces that depend on the verified domain (brand.json publish, brand resolution) will not reflect the profile until support resolves the conflict.
-
-        The caller's Terms-of-Service and Privacy-Policy acceptance is recorded server-side from the request context (`X-Forwarded-For` IP + User-Agent), against the current published agreement version, against the target organization. There is no opt-out — calling this endpoint is the consent.
-
-        The endpoint is rate-limited at 15 failed attempts per hour per user — successful calls do not count. The legacy `display_name`+`slug` body shape (used by the AAO dashboard profile-edit form) bypasses the rate limit and the bootstrap flow entirely; that shape continues to return `409` on conflict and writes the full profile body as before.
-    MemberProfile:
-      type: object
-      properties:
-        organization_id:
-          type: string
-          description: WorkOS organization id for the new profile.
-          example: org_01HXZAB123
-        organization_name:
-          type: string
-          example: Acme Media
-        company_type:
-          $ref: "#/components/schemas/MemberCompanyType"
-        revenue_tier:
-          $ref: "#/components/schemas/MemberRevenueTier"
-        corporate_domain:
-          type: string
-        primary_brand_domain:
-          type: string
-        membership_tier:
-          type: string
-          enum:
-            - individual_professional
-            - individual_academic
-            - company_standard
-            - company_icl
-            - company_leader
-          description: Active membership tier. Omitted entirely when the org has no tier set (free Explorer).
-        created_at:
-          type: string
-          format: date-time
-        agents:
-          type: array
-          items:
-            $ref: "#/components/schemas/MemberAgent"
-          description: Convenience snapshot of registered agents — initially empty for a freshly created profile. Use `GET /api/me/agents` for the canonical list.
-      required:
-        - organization_id
-        - organization_name
-        - company_type
-        - corporate_domain
-        - created_at
-        - agents
-      description: The member profile shape returned from `POST /api/me/member-profile` and `GET /api/me/member-profile`.
-    MemberProfileResponse:
-      type: object
-      properties:
-        profile:
-          $ref: "#/components/schemas/MemberProfile"
-      required:
-        - profile
+      description: Annual revenue band, USD. Drives membership-tier eligibility for company-tier seats.
 paths:
   /api:
     get:
@@ -2705,6 +2904,84 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /api/properties/hosted/{domain}/verify-origin:
+    post:
+      operationId: verifyHostedPropertyOrigin
+      summary: Verify AAO-hosted publisher origin
+      description: |-
+        Trigger origin verification for an AAO-hosted publisher: fetches the publisher's own `/.well-known/adagents.json` and checks for an `authoritative_location` field pointing at the AAO-hosted URL. On success, promotes `agent_publisher_authorizations` rows from `source='aao_hosted'` to `source='adagents_json'` for the manifest's authorized agents — buyers reading the registry then see them as origin-attested.
+
+        Requires authentication and either AAO admin OR org-membership matching the hosted property's owner. Fail-closed on NULL ownership.
+
+        Failure classification:
+        - `not_found`: publisher origin returned 404 (permanent — demotes if previously verified).
+        - `invalid_json` / `no_authoritative_location` / `authoritative_location_mismatch`: publisher origin returned a parseable response that doesn't satisfy the spec stub pattern (permanent — demotes).
+        - `unresolvable`: DNS NXDOMAIN, private IP, or non-http scheme (permanent — demotes).
+        - `transient`: 5xx / 429 / 3xx / network timeout (leaves persisted state alone, stamps `origin_last_checked_at`).
+      tags:
+        - Property Resolution
+      security:
+        - bearerAuth: []
+        - oauth2: []
+      parameters:
+        - schema:
+            type: string
+            example: examplepub.com
+          required: true
+          name: domain
+          in: path
+      responses:
+        "200":
+          description: Verification outcome
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  verified:
+                    type: boolean
+                  reason:
+                    type: string
+                    enum:
+                      - authoritative_location_pointer
+                      - not_found
+                      - invalid_json
+                      - no_authoritative_location
+                      - authoritative_location_mismatch
+                      - unresolvable
+                      - transient
+                  checked_at:
+                    type: string
+                  detail:
+                    type: string
+                required:
+                  - verified
+                  - reason
+                  - checked_at
+        "400":
+          description: Invalid domain
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Caller does not own this hosted property (and is not an AAO admin)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No hosted property for this domain
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/properties/check:
     post:
       operationId: checkPropertyList
@@ -2971,6 +3248,27 @@ paths:
           description: "Measurement-vendor filter: case-insensitive substring match against `measurement.metrics[].metric_id`. v1 scope: metric_id only (description/standard search is a follow-up). Max 64 chars; SQL wildcard characters are escaped. Implies `type=measurement`."
           name: q
           in: query
+        - schema:
+            type: array
+            items:
+              type: string
+              enum:
+                - spec
+                - live
+            description: "Filter to agents whose active badge covers the given verification axis. Repeat the parameter for AND semantics: ?verification_mode=spec&verification_mode=live returns only agents verified on both axes."
+          required: false
+          description: "Filter to agents whose active badge covers the given verification axis. Repeat the parameter for AND semantics: ?verification_mode=spec&verification_mode=live returns only agents verified on both axes."
+          name: verification_mode
+          in: query
+        - schema:
+            type: string
+            enum:
+              - "true"
+            description: When true, filter to agents that hold any active verification badge.
+          required: false
+          description: When true, filter to agents that hold any active verification badge.
+          name: verified
+          in: query
       responses:
         "200":
           description: Agent list
@@ -2993,7 +3291,16 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                type: object
+                properties:
+                  error:
+                    type: string
+                  valid_values:
+                    type: array
+                    items:
+                      type: string
+                required:
+                  - error
   /api/registry/publishers:
     get:
       operationId: listPublishers
@@ -3037,8 +3344,9 @@ paths:
   /api/registry/lookup/domain/{domain}:
     get:
       operationId: lookupDomain
-      summary: Domain lookup
-      description: Find all agents authorized for a given publisher domain.
+      summary: Domain lookup (deprecated)
+      description: "**Deprecated.** Use `/api/registry/publisher?domain=X` for richer data including hosting state, per-agent rollup, and brand.json fallback. This endpoint will be removed in a future release."
+      deprecated: true
       tags:
         - Authorization Lookups
       parameters:
@@ -3136,6 +3444,8 @@ paths:
         Given a domain, returns the agents this entity operates and which publishers trust them.
 
         **Response shape is auth-aware.** Anonymous callers see only `public` agents. Authenticated callers on an AAO membership tier with API access also see `members_only` agents. Profile owners (callers whose org owns the queried domain) additionally see `private` agents. This is the primary mechanism by which AAO membership unlocks deeper registry visibility.
+
+        **Member level visibility.** When the profile owner has set their member card to public (`is_public=true`), the `member` object additionally carries `is_founding_member` (boolean) plus `membership_tier` (raw enum) and `membership_tier_label` (e.g. `Professional`, `Partner`, `Leader`) when the org has a resolvable tier. Founding Member is orthogonal to tier — founding orgs typically display both. For private profiles these fields are absent.
       tags:
         - Authorization Lookups
       parameters:
@@ -3166,6 +3476,10 @@ paths:
         Given a domain, returns the inventory this entity publishes and which agents it authorizes.
 
         **This endpoint is unauthenticated and returns the same response shape for every caller.** Compare to `/api/registry/operator`, where AAO membership tier and profile ownership unlock additional agent visibility (`members_only`, `private`). AAO membership does not change the `/publisher` response today.
+
+        **Property source precedence:** authoritative adagents.json properties win over crawler-discovered rows; both win over brand.json hydration. Each property carries a `source` field (`adagents_json` / `discovered` / `brand_json`).
+
+        **Per-agent rollup:** each entry in `authorized_agents` may carry `properties_authorized` + `properties_total` + `publisher_wide`. The rollup is suppressed (fields absent) when (a) properties are entirely brand.json-hydrated — no adagents.json claim has been made — or (b) the publisher has more than 50 authorized agents (above-cap entries are returned without rollup; `rollup_truncated` is set with `{ cap, total_agents }`). Use `/api/registry/publisher/authorization?domain=X&agent=Y` for the per-agent count when the index rollup is absent.
       tags:
         - Authorization Lookups
       parameters:
@@ -3184,6 +3498,88 @@ paths:
                 $ref: "#/components/schemas/PublisherLookupResult"
         "400":
           description: Missing domain
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/registry/publisher/authorization:
+    get:
+      operationId: lookupPublisherAgentAuthorization
+      summary: Per-agent authorization rollup
+      description: Returns whether a given agent is authorized for a publisher domain and how many of the publisher's properties it can sell. When the agent has property-level authorization rows, the count is the intersection with the publisher's property set; when it only has a publisher-wide row, the count equals the total. Returns 404 when the agent has no authorization (publisher-wide or property-level) for the domain.
+      tags:
+        - Authorization Lookups
+      parameters:
+        - schema:
+            type: string
+            example: voxmedia.com
+          required: true
+          name: domain
+          in: query
+        - schema:
+            type: string
+            example: https://sales.pubmatic.com/mcp
+          required: true
+          name: agent
+          in: query
+      responses:
+        "200":
+          description: Authorization rollup
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  publisher_domain:
+                    type: string
+                  agent_url:
+                    type: string
+                  authorized:
+                    type: integer
+                    minimum: 0
+                    description: Count of publisher's properties the agent can sell.
+                  total:
+                    type: integer
+                    minimum: 0
+                    description: Total properties the publisher exposes.
+                  publisher_wide:
+                    type: boolean
+                    description: True when the agent has only a publisher-wide authorization (no property-level rows). In that case `authorized` equals `total`.
+                  source:
+                    type: string
+                    enum:
+                      - adagents_json
+                      - agent_claim
+                  authorized_for:
+                    type: string
+                  unauthorized_properties:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        name:
+                          type: string
+                        type:
+                          type: string
+                    description: Properties the agent is NOT authorized for. Empty when publisher_wide is true.
+                required:
+                  - publisher_domain
+                  - agent_url
+                  - authorized
+                  - total
+                  - publisher_wide
+                  - source
+                  - unauthorized_properties
+        "400":
+          description: Missing domain or agent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No authorization record for this agent on this publisher
           content:
             application/json:
               schema:
@@ -3599,6 +3995,19 @@ paths:
                       type: string
                   type:
                     type: string
+                  tools_count:
+                    type: integer
+                  tools:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                        description:
+                          type: string
+                      required:
+                        - name
                   stats:
                     type: object
                     properties:
@@ -3612,6 +4021,8 @@ paths:
                   - name
                   - protocols
                   - type
+                  - tools_count
+                  - tools
                   - stats
         "504":
           description: Connection timeout
@@ -3713,6 +4124,16 @@ paths:
                     type: string
                   url:
                     type: string
+                  discovery_method:
+                    type: string
+                    enum:
+                      - direct
+                      - authoritative_location
+                      - ads_txt_managerdomain
+                    description: How the publisher's adagents.json was discovered. `ads_txt_managerdomain` indicates one-hop delegation via ads.txt MANAGERDOMAIN.
+                  manager_domain:
+                    type: string
+                    description: Manager domain that served the manifest. Present only when discovery_method is ads_txt_managerdomain.
                   agent_count:
                     type: integer
                   property_count:
@@ -3734,6 +4155,7 @@ paths:
                 required:
                   - valid
                   - domain
+                  - discovery_method
                   - agent_count
                   - property_count
                   - property_type_counts
@@ -4767,6 +5189,79 @@ paths:
                 required:
                   - error
                   - retry_after
+  /api/registry/manager-revalidation-request:
+    post:
+      operationId: requestManagerRevalidation
+      summary: Request manager fan-out re-validation
+      description: |-
+        Trigger re-validation of every publisher delegating to a manager domain via ads.txt `MANAGERDOMAIN`. Use after rotating the manager's `adagents.json` so the change propagates to delegating publishers without waiting for the next routine crawl cycle. Work is queued and drained at a bounded rate (≈50 publishers per 5-minute tick). Returns 202 immediately with the number of publishers enqueued.
+
+        **Rate limits:** 5 minutes per manager domain, 30 requests per user per hour (shared with other crawl-request endpoints).
+      tags:
+        - Agent Discovery
+      security:
+        - bearerAuth: []
+        - oauth2: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                manager_domain:
+                  type: string
+                  example: raptive.com
+                  description: Manager domain whose delegating publishers should be queued for re-validation. Must already be present as `manager_domain` on at least one publisher row.
+              required:
+                - manager_domain
+      responses:
+        "202":
+          description: Re-validation queue request accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    enum:
+                      - Manager re-validation enqueued
+                  manager_domain:
+                    type: string
+                  publishers_enqueued:
+                    type: integer
+                    description: Number of delegating publisher rows added to or refreshed in the manager_revalidation_queue. Zero if no publisher delegates to this manager.
+                required:
+                  - message
+                  - manager_domain
+                  - publishers_enqueued
+        "400":
+          description: Invalid domain format, private IP, or unresolvable domain
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  retry_after:
+                    type: integer
+                    description: Seconds to wait before retrying
+                required:
+                  - error
+                  - retry_after
   /api/registry/brand-crawl-request:
     post:
       operationId: requestBrandCrawl
@@ -5655,6 +6150,66 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /api/registry/agents/{encodedUrl}/monitoring/requeue:
+    post:
+      operationId: requeueAgentForHeartbeat
+      summary: Requeue agent for compliance heartbeat
+      description: Clears the agent's last_checked_at timestamp so it is picked up on the next heartbeat cycle (within ~1 hour). Requires authentication and ownership.
+      tags:
+        - Agent Compliance
+      security:
+        - bearerAuth: []
+        - oauth2: []
+      parameters:
+        - schema:
+            type: string
+            description: URL-encoded agent URL
+          required: true
+          description: URL-encoded agent URL
+          name: encodedUrl
+          in: path
+      responses:
+        "200":
+          description: Agent requeued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  requeued:
+                    type: boolean
+                required:
+                  - requeued
+        "400":
+          description: Invalid agent URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Not authorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Rate limited
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/registry/agents/{encodedUrl}/monitoring/requests:
     get:
       operationId: getAgentMonitoringRequests
@@ -5730,6 +6285,113 @@ paths:
                 $ref: "#/components/schemas/Error"
         "500":
           description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/registry/agents/{encodedUrl}/refresh:
+    post:
+      operationId: refreshAgent
+      summary: Refresh agent snapshot
+      description: |-
+        Re-probe the agent and update its registry health (online, tools_count, response_time_ms) and capability snapshot (inferred type, discovered tools). Use after fixing your agent so the registry shows fresh data without waiting for the periodic crawl.
+
+        **Auth:** owner of the agent or AAO admin.
+
+        **Rate limits:** 60 seconds per agent URL, 30 requests per user per hour.
+      tags:
+        - Agent Compliance
+      security:
+        - bearerAuth: []
+        - oauth2: []
+      parameters:
+        - schema:
+            type: string
+            description: URL-encoded agent URL
+            example: https%3A%2F%2Fvastlint.org%2Fmcp
+          required: true
+          description: URL-encoded agent URL
+          name: encodedUrl
+          in: path
+      responses:
+        "200":
+          description: Snapshot refreshed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  online:
+                    type: boolean
+                  tools_count:
+                    type:
+                      - integer
+                      - "null"
+                  response_time_ms:
+                    type:
+                      - integer
+                      - "null"
+                  inferred_type:
+                    type: string
+                    description: Type inferred from discovered tools (sales, creative, signals, governance, etc.) or 'unknown'
+                  type_promoted:
+                    type: boolean
+                    description: True when registry type was upgraded from unknown to inferred_type
+                  oauth_required:
+                    type: boolean
+                  checked_at:
+                    type: string
+                  error:
+                    type: string
+                required:
+                  - online
+                  - tools_count
+                  - response_time_ms
+                  - inferred_type
+                  - type_promoted
+                  - oauth_required
+                  - checked_at
+        "400":
+          description: Invalid agent URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Not authorized — must be owner or AAO admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Monitoring paused for this agent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  retry_after:
+                    type: integer
+                    description: Seconds to wait before retrying
+                required:
+                  - error
+                  - retry_after
+        "502":
+          description: Probe failed (timeout, DNS, OAuth wall, etc.)
           content:
             application/json:
               schema:
@@ -7004,9 +7666,17 @@ paths:
 
         Idempotent on `url`: re-posting the same `url` updates the entry in place rather than creating a duplicate. New entries return `201`; updates return `200`.
 
-        The `type` field is resolved server-side from the agent's capability snapshot — a client cannot pin a misclassification (e.g. registering a sales agent as `buying`).
+        **True one-call storefront experience.** A third-party app holding only a user's OAuth token can `POST /api/me/agents` once and have the entire bootstrap chain materialize:
 
-        `visibility: "public"` requires Professional tier or higher and a `primary_brand_domain` set on the profile. Non-API-tier callers who request `public` will have the entry stored as `members_only` instead, and the response will include a `visibility_downgraded` warning describing the coercion.
+        - If the caller has zero org memberships, the server auto-creates an organization (corporate or personal workspace based on the user's email domain) and the response includes `org_auto_created: true`.
+
+        - If the caller's org has no member profile, the server auto-creates a private profile (display name = organization name, `is_public: false`) and the response includes `profile_auto_created: true`.
+
+        Both auto-bootstraps are best-effort fallbacks. To customize org name / company_type / revenue_tier, or to control profile slug / brand identity / tagline, call `POST /api/organizations` and `POST /api/me/member-profile` explicitly before registering the agent. Tier transitions never happen via this path — go through the billing flow.
+
+        `type` is required and declared by the caller — the server does not infer it. Server-side smuggle protection still cross-checks the declared type against the agent's capability snapshot when one exists; if the snapshot contradicts the declaration without classifying it, the stored value is `unknown` and the dashboard surfaces the conflict for the owner to resolve.
+
+        `visibility: "public"` requires a paid AAO tier (Professional, Builder, Member, or Leader) and a verified primary domain on the organization (set via the Linked Domains UI). Non-API-tier callers (Explorer or no tier) who request `public` will have the entry stored as `members_only` instead, and the response will include a `visibility_downgraded` warning describing the coercion.
       tags:
         - Member Agents
       security:
@@ -7034,13 +7704,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/MemberAgentResponse"
         "201":
-          description: Agent registered.
+          description: "Agent registered. When this is the first agent on a freshly created organization, the response includes `profile_auto_created: true`."
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/MemberAgentResponse"
         "400":
-          description: Missing or invalid `url`, or no organization associated with this account.
+          description: Missing or invalid `url`, missing/invalid `type`, or the caller has memberships in other orgs but no primary org set — pass `?org=<id>` to target one explicitly. (Fresh users with no memberships at all hit the org auto-bootstrap path and do not see this error.)
           content:
             application/json:
               schema:
@@ -7058,7 +7728,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
         "404":
-          description: No member profile exists yet — create one via `POST /api/me/member-profile`.
+          description: Auto-bootstrap could not run (e.g. the organization has no name yet). Call `POST /api/me/member-profile` to create a profile explicitly, then retry.
           content:
             application/json:
               schema:
@@ -7192,95 +7862,56 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-  /api/me/member-profile:
-    get:
-      operationId: getMemberProfile
-      summary: Get my member profile
-      description: |-
-        Return the organization member profile for the caller's primary org (or `?org=` if supplied). This is the canonical "do I have a member profile yet?" check — clients hitting `404` from `GET /api/me/agents` should call this to confirm before prompting onboarding.
-      tags:
-        - Member Profile
-      security:
-        - bearerAuth: []
-        - oauth2: []
-      parameters:
-        - schema:
-            type: string
-            description: WorkOS organization id to act on. Defaults to the caller's primary organization.
-            example: org_01HXZAB123
-          required: false
-          name: org
-          in: query
-      responses:
-        "200":
-          description: Member profile.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/MemberProfileResponse"
-        "401":
-          description: Authentication required
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "403":
-          description: "`?org=` was supplied but the caller is not a member of that organization."
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "404":
-          description: No member profile exists yet — create one via `POST /api/me/member-profile`.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+  /api/organizations:
     post:
-      operationId: createMemberProfile
-      summary: Create my member profile
+      operationId: createOrganization
+      summary: Create or adopt my organization
       description: |-
-        Bootstrap a new organization member profile. This is the **first-time onboarding** call that has historically been reachable only through the AAO dashboard's `/onboarding` form — making it a public REST surface lets registry API consumers (e.g. SSP/publisher integrations like the Scope3 storefront) drive the entire registration flow programmatically, without iframes or cross-domain redirects.
+        Bootstrap the caller's organization explicitly. Use this when the caller wants to control the organization name, `company_type`, `revenue_tier`, or `is_personal` flag before any agents are registered.
 
-        The caller must already be authenticated via OAuth (the user's own WorkOS session). The profile is created on the caller's primary WorkOS organization unless `?org=` is supplied; in either case, the caller's email domain must match `corporate_domain` (personal email domains like gmail.com / yahoo.com are rejected).
+        **Most storefront-style integrations don't need this call** — `POST /api/me/agents` will auto-create an org for a fresh OAuth user (corporate or personal workspace based on the email domain) and surface `org_auto_created: true` in the response. Reach for `POST /api/organizations` only when the auto-derived defaults aren't acceptable.
 
-        Idempotent on `(organization_id, corporate_domain)`: re-posting for an organization that already has a profile returns `200` with the existing profile and a `profile_already_exists` warning, instead of `409`.
+        Three outcomes depending on the caller's state:
 
-        Once the profile exists, follow up with `POST /api/me/agents` to register agents.
+        - **Fresh create** (most common): a new WorkOS organization is created, the caller is added as `owner`, the corporate domain is recorded as email-verified, and ToS / privacy-policy acceptance is logged from the request context. Returns `{ success: true, organization: { id, name } }`.
+
+        - **Prospect adoption**: an organization with the caller's email domain already exists as a `prospect` (the registry pre-recorded it from a brand crawl but no human had claimed it yet). The caller is promoted to `owner` of the existing record instead of forking a duplicate. Returns `{ id, name, adopted: true }`.
+
+        - **Already-active conflict**: the org exists and is already claimed by another paying member or a previously joined user. Returns `409` with the existing org id so the caller can switch to a join-request flow (`POST /api/organizations/:orgId/join-requests`) instead of trying to register a duplicate.
+
+        Tier transitions happen via the billing flow only — there is no `membership_tier` field on this endpoint. After org creation, send the user to `POST /api/checkout-session` (or the dashboard `/membership` page) to start a subscription; the Stripe webhook is the sole writer of `organizations.membership_tier`.
+
+        Rate-limited per user: `15` failed attempts per hour; successful calls do not count against the limit so a legitimate registration is never penalized by earlier validation errors.
       tags:
-        - Member Profile
+        - Onboarding
       security:
         - bearerAuth: []
         - oauth2: []
-      parameters:
-        - schema:
-            type: string
-            description: WorkOS organization id to act on. Defaults to the caller's primary organization.
-            example: org_01HXZAB123
-          required: false
-          name: org
-          in: query
       requestBody:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CreateMemberProfileInput"
+              $ref: "#/components/schemas/CreateOrganizationInput"
       responses:
         "200":
-          description: A profile already exists for this organization; the existing profile is returned and no fields are mutated.
+          description: "Prospect adoption — an existing prospect organization for this domain was claimed by the caller. Body is `{ id, name, adopted: true }`."
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/MemberProfileResponse"
+                $ref: "#/components/schemas/CreateOrganizationResponse"
         "201":
-          description: Member profile created.
+          description: "New organization created. Body is `{ success: true, organization: { id, name } }`. The caller is the `owner`; the corporate domain is recorded as email-verified for downstream registry calls."
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/MemberProfileResponse"
+                $ref: "#/components/schemas/CreateOrganizationResponse"
         "400":
           description: |-
-            One of: missing or invalid required field (`organization_name`, `company_type`, `corporate_domain`); malformed `corporate_domain`; or `membership_tier` is set to a paid tier (`individual_professional`, `company_*`) — those require a Stripe checkout session and cannot be claimed via this endpoint.
+            One of:
+            - `organization_name` missing or invalid
+            - `company_type` / `revenue_tier` value not in the documented enum
+            - caller is on a personal-email domain (gmail.com, yahoo.com, …) and is trying to register a corporate org — register `is_personal: true` instead
+            - per-user organization cap reached (10 orgs per user)
           content:
             application/json:
               schema:
@@ -7291,24 +7922,23 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        "403":
-          description: |-
-            One of: `?org=` was supplied but the caller is not a member of that organization; or the caller's email domain does not match the supplied `corporate_domain`; or the caller's email is on a personal-email domain (gmail.com, yahoo.com, etc.) and cannot create a corporate profile.
+        "409":
+          description: An active organization already exists for this caller's email domain. The body includes `existing_org_id` and `existing_org_name`; the caller should switch to the join-request flow rather than retrying.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
         "429":
-          description: Rate limit exceeded (15 failed attempts per hour per user; successful calls do not count).
+          description: Rate limit exceeded — 15 failed attempts per hour per user. Successful calls do not count against the limit.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
 tags:
+  - name: Onboarding
+    description: Explicitly bootstrap a third-party integration into the AAO registry. Most callers don't need this tag — `POST /api/me/agents` auto-creates the org (for fresh users) and the member profile (for first-time agent registration) without a separate round trip. Use `POST /api/organizations` only when you need to override the auto-derived org name / company_type / revenue_tier. Tier transitions happen via the billing flow only; the Stripe webhook is the sole writer of `organizations.membership_tier`.
   - name: Member Agents
     description: Register, list, update, and remove agents on the caller's organization member profile. Authenticated programmatic surface for CI / scripts that don't want to round-trip the full member profile.
-  - name: Member Profile
-    description: Bootstrap and inspect the organization member profile. The profile is the prerequisite for the per-agent endpoints under `Member Agents`.
   - name: Brand Resolution
     description: Resolve advertiser domains to canonical brand identities.
   - name: Property Resolution

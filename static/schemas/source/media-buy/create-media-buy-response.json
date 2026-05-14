@@ -47,6 +47,16 @@
           "description": "Initial revision number for this media buy. Use in subsequent update_media_buy requests for optimistic concurrency.",
           "minimum": 1
         },
+        "currency": {
+          "type": "string",
+          "description": "ISO 4217 currency code (e.g., USD, EUR, GBP) for monetary values at this media buy level. total_budget is denominated in this currency. Package-level fields may override with package.currency. In proposal mode the seller derives this from the request's total_budget object (total_budget.currency); in manual mode it is present when all packages share a currency. Matches the currency field in subsequent get_media_buys responses.",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "total_budget": {
+          "type": "number",
+          "description": "Total budget amount across all packages, denominated in currency. Note: the create_media_buy request encodes total_budget as an object {amount, currency} (proposal mode only); this response field is the flattened scalar amount, with currency promoted to the sibling currency field. Present when the seller can compute a deterministic aggregate — always in proposal mode, conditionally in manual mode when all packages share a currency. Matches the total_budget field in subsequent get_media_buys responses.",
+          "minimum": 0
+        },
         "valid_actions": {
           "type": "array",
           "description": "Flat-vocabulary actions the buyer can perform on this media buy after creation. Saves a round-trip to get_media_buys. Deprecated in favor of `available_actions[]`, which carries `mode`, optional SLA, and optional `terms_ref`. Sellers SHOULD populate both during the 3.x deprecation window; consumers MUST prefer `available_actions[]` when both are present. Removed in 4.0.",

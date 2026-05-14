@@ -101,6 +101,9 @@
                     ]
                   },
                   "docs/protocol/architecture",
+                  "docs/protocol/design-principles",
+                  "docs/protocol/capabilities-explorer",
+                  "docs/spec-guidelines",
                   "docs/protocol/required-tasks",
                   "docs/protocol/calling-an-agent",
                   "docs/protocol/format-references",
@@ -158,6 +161,7 @@
                         "pages": [
                           "docs/building/by-layer/L1/index",
                           "docs/building/by-layer/L1/security",
+                          "docs/building/by-layer/L1/request-signing",
                           "docs/building/by-layer/L1/webhook-verifier-tuning"
                         ]
                       },
@@ -192,7 +196,10 @@
                     "pages": [
                       "docs/building/verification/conformance",
                       "docs/building/verification/compliance-catalog",
+                      "docs/building/verification/storyboards-vs-scenarios",
+                      "docs/building/verification/how-grading-works",
                       "docs/building/verification/validate-your-agent",
+                      "docs/building/verification/validate-with-mock-fixtures",
                       "docs/building/verification/addie-socket-mode",
                       "docs/building/verification/grading",
                       "docs/building/verification/get-test-ready",
@@ -360,6 +367,7 @@
                     "expanded": false,
                     "pages": [
                       "docs/governance/overview",
+                      "docs/governance/rfc-process",
                       "docs/governance/embedded-human-judgment",
                       "docs/governance/policy-registry",
                       "docs/governance/policy-registry-sync",
@@ -529,6 +537,7 @@
                       "docs/trusted-match/specification",
                       "docs/trusted-match/router-architecture",
                       "docs/trusted-match/privacy-architecture",
+                      "docs/trusted-match/data-protection-roles",
                       "docs/trusted-match/migration-from-axe",
                       {
                         "group": "Surface Guides",
@@ -566,7 +575,9 @@
                   "docs/reference/media-channel-taxonomy",
                   "docs/measurement/taxonomy",
                   "docs/reference/roadmap",
+                  "docs/reference/versions",
                   "docs/reference/versioning",
+                  "docs/reference/specification-lifecycle",
                   "docs/reference/url-canonicalization",
                   "docs/reference/verifying-protocol-tarballs",
                   "docs/reference/test-vectors/index",
@@ -579,7 +590,8 @@
                   "docs/reference/changelog",
                   "docs/reference/implementor-faq",
                   "docs/reference/glossary",
-                  "docs/community/working-group"
+                  "docs/community/working-group",
+                  "docs/community/joining-slack"
                 ]
               },
               {
@@ -594,6 +606,7 @@
                     "pages": [
                       "docs/learning/foundations/a1-agentic-advertising",
                       "docs/learning/foundations/a2-protocol-architecture",
+                      "docs/learning/foundations/a2b-testing-your-first-agent",
                       "docs/learning/foundations/a3-ecosystem-governance"
                     ]
                   },
@@ -728,6 +741,7 @@
                     "pages": [
                       "docs/building/by-layer/L1/index",
                       "docs/building/by-layer/L1/security",
+                      "docs/building/by-layer/L1/request-signing",
                       "docs/building/by-layer/L1/webhook-verifier-tuning"
                     ]
                   },
@@ -762,7 +776,9 @@
                 "pages": [
                   "docs/building/verification/conformance",
                   "docs/building/verification/compliance-catalog",
+                  "docs/building/verification/storyboards-vs-scenarios",
                   "docs/building/verification/validate-your-agent",
+                  "docs/building/verification/validate-with-mock-fixtures",
                   "docs/building/verification/grading",
                   "docs/building/verification/get-test-ready",
                   "docs/building/verification/aao-verified"
@@ -928,6 +944,7 @@
                 "expanded": false,
                 "pages": [
                   "docs/governance/overview",
+                  "docs/governance/rfc-process",
                   "docs/governance/embedded-human-judgment",
                   "docs/governance/policy-registry",
                   "docs/governance/policy-registry-sync",
@@ -1115,6 +1132,7 @@
               "docs/reference/media-channel-taxonomy",
               "docs/measurement/taxonomy",
               "docs/reference/roadmap",
+              "docs/reference/versions",
               "docs/reference/versioning",
               "docs/reference/url-canonicalization",
               "docs/reference/verifying-protocol-tarballs",
@@ -1126,7 +1144,8 @@
               "docs/reference/changelog",
               "docs/reference/implementor-faq",
               "docs/reference/glossary",
-              "docs/community/working-group"
+              "docs/community/working-group",
+              "docs/community/joining-slack"
             ]
           },
           {
@@ -1141,6 +1160,7 @@
                 "pages": [
                   "docs/learning/foundations/a1-agentic-advertising",
                   "docs/learning/foundations/a2-protocol-architecture",
+                  "docs/learning/foundations/a2b-testing-your-first-agent",
                   "docs/learning/foundations/a3-ecosystem-governance"
                 ]
               },
@@ -1571,6 +1591,10 @@
     {
       "source": "/docs/building/implementation/webhook-verifier-tuning",
       "destination": "/docs/building/by-layer/L1/webhook-verifier-tuning"
+    },
+    {
+      "source": "/docs/building/implementation/request-signing",
+      "destination": "/docs/building/by-layer/L1/request-signing"
     },
     {
       "source": "/docs/building/implementation/mcp-response-extraction",

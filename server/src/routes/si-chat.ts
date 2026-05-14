@@ -47,7 +47,10 @@ async function getBrandProfile(memberProfileId: string): Promise<{
     `SELECT mp.id, mp.display_name, mp.slug, mp.tagline, mp.description,
             hb.brand_manifest AS brand_json
      FROM member_profiles mp
-     LEFT JOIN brands hb ON hb.domain = mp.primary_brand_domain
+     LEFT JOIN organization_domains primary_od
+       ON primary_od.workos_organization_id = mp.workos_organization_id
+      AND primary_od.is_primary = true
+     LEFT JOIN brands hb ON hb.domain = primary_od.domain
      WHERE mp.id = $1`,
     [memberProfileId]
   );

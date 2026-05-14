@@ -9,6 +9,7 @@ import { Router } from "express";
 import type { RequestHandler } from "express";
 import { z } from "zod";
 import escapeHtml from "escape-html";
+import { findOwnerOrgForUser } from "../services/agent-ownership.js";
 import { CreativeAgentClient, SingleAgentClient, exchangeClientCredentials, ClientCredentialsExchangeError } from "@adcp/sdk";
 import { runStoryboardStep, getComplianceStoryboardById, getFirstStepPreview, testCapabilityDiscovery, resolveStoryboardsForCapabilities, loadComplianceIndex } from "@adcp/sdk/testing";
 import type { Agent, AgentType, AgentWithStats } from "../types.js";
@@ -29,7 +30,8 @@ import {
 } from "../addie/services/compliance-testing.js";
 import { getPublicJwks } from "../services/verification-token.js";
 import { renderBadgeSvg, VALID_BADGE_ROLES } from "../services/badge-svg.js";
-import { resolveOwnerMembership } from "../services/membership-tiers.js";
+import { runBadgeFanOut } from "../services/badge-issuance.js";
+import { resolveOwnerMembership, tierLabel } from "../services/membership-tiers.js";
 import { inferDiagnosticAgentType } from "../lib/diagnostic-agent-type-inference.js";
 import { isValidAdcpVersionShape } from "../services/adcp-taxonomy.js";
 import { buildAaoVerificationBlock } from "../services/aao-verification-enrichment.js";
@@ -89,12 +91,13 @@ import { PropertyCheckService } from "../services/property-check.js";
 import { PropertyCheckDatabase } from "../db/property-check-db.js";
 import { BulkPropertyCheckService } from "../services/bulk-property-check.js";
 import { ComplianceDatabase, type LifecycleStage } from "../db/compliance-db.js";
+import { VERIFICATION_MODES, isVerificationMode } from "../services/adcp-taxonomy.js";
 import { AgentSnapshotDatabase } from "../db/agent-snapshot-db.js";
 import { resolveUserAgentAuth } from "./helpers/resolve-user-agent-auth.js";
-import { adaptAuthForSdk } from "../services/sdk-auth-adapter.js";
+import { adaptAuthForSdk, type SdkAuth } from "../services/sdk-auth-adapter.js";
 import { parseOAuthClientCredentialsInput } from "./helpers/oauth-client-credentials-input.js";
 import { isOAuthRequiredErrorMessage } from "./helpers/oauth-error-detection.js";
-import { AgentContextDatabase } from "../db/agent-context-db.js";
+import { AgentContextDatabase, validateAuthTokenChars } from "../db/agent-context-db.js";
 import { getRequestLog, getRequestCount } from "../db/outbound-log-db.js";
 import { enrichUserWithMembership } from "../utils/html-config.js";
 import { classifyProbeError } from "../utils/probe-error.js";
@@ -102,7 +105,7 @@ import { isWebUserAAOAdmin } from "../addie/admin-status-lookup.js";
 import { getDevUser, isDevModeEnabled } from "../middleware/auth.js";
 import { OrganizationDatabase, hasApiAccess, resolveMembershipTier } from "../db/organization-db.js";
 import { resolveCallerOrgId } from "./helpers/resolve-caller-org.js";
-import { canonicalizeAgentUrl } from "../db/publisher-db.js";
+import { canonicalizeAgentUrl, PublisherDatabase } from "../db/publisher-db.js";
 import {
   AuthorizationSnapshotDatabase,
   EvidenceValidationError,
@@ -632,6 +635,14 @@ registry.registerPath({
         description: "Measurement-vendor filter: case-insensitive substring match against `measurement.metrics[].metric_id`. v1 scope: metric_id only (description/standard search is a follow-up). Max 64 chars; SQL wildcard characters are escaped. Implies `type=measurement`.",
         example: "attention",
       }),
+      verification_mode: z.array(z.enum(["spec", "live"])).optional().openapi({
+        description:
+          "Filter to agents whose active badge covers the given verification axis. Repeat the parameter for AND semantics: " +
+          "?verification_mode=spec&verification_mode=live returns only agents verified on both axes.",
+      }),
+      verified: z.enum(["true"]).optional().openapi({
+        description: "When true, filter to agents that hold any active verification badge.",
+      }),
     }),
   },
   responses: {
@@ -646,7 +657,14 @@ registry.registerPath({
         },
       },
     },
-    400: { description: "Invalid query parameter", content: { "application/json": { schema: ErrorSchema } } },
+    400: {
+      description: "Invalid query parameter",
+      content: {
+        "application/json": {
+          schema: z.object({ error: z.string(), valid_values: z.array(z.string()).optional() }),
+        },
+      },
+    },
   },
 });
 
@@ -737,7 +755,12 @@ registry.registerPath({
     "**Response shape is auth-aware.** Anonymous callers see only `public` agents. " +
     "Authenticated callers on an AAO membership tier with API access also see `members_only` agents. " +
     "Profile owners (callers whose org owns the queried domain) additionally see `private` agents. " +
-    "This is the primary mechanism by which AAO membership unlocks deeper registry visibility.",
+    "This is the primary mechanism by which AAO membership unlocks deeper registry visibility.\n\n" +
+    "**Member level visibility.** When the profile owner has set their member card to public " +
+    "(`is_public=true`), the `member` object additionally carries `is_founding_member` (boolean) " +
+    "plus `membership_tier` (raw enum) and `membership_tier_label` (e.g. `Professional`, `Partner`, " +
+    "`Leader`) when the org has a resolvable tier. Founding Member is orthogonal to tier — founding " +
+    "orgs typically display both. For private profiles these fields are absent.",
   tags: ["Authorization Lookups"],
   request: {
     query: z.object({
@@ -997,7 +1020,7 @@ registry.registerPath({
   tags: ["Agent Probing"],
   request: { query: z.object({ url: z.string() }) },
   responses: {
-    200: { description: "Discovered agent info", content: { "application/json": { schema: z.object({ name: z.string(), description: z.string().optional(), protocols: z.array(z.string()), type: z.string(), stats: z.object({ format_count: z.number().int().optional(), product_count: z.number().int().optional(), publisher_count: z.number().int().optional() }) }) } } },
+    200: { description: "Discovered agent info", content: { "application/json": { schema: z.object({ name: z.string(), description: z.string().optional(), protocols: z.array(z.string()), type: z.string(), tools_count: z.number().int(), tools: z.array(z.object({ name: z.string(), description: z.string().optional() })), stats: z.object({ format_count: z.number().int().optional(), product_count: z.number().int().optional(), publisher_count: z.number().int().optional() }) }) } } },
     504: { description: "Connection timeout", content: { "application/json": { schema: z.object({ error: z.string(), message: z.string() }) } } },
   },
 });
@@ -1045,6 +1068,12 @@ registry.registerPath({
             valid: z.boolean(),
             domain: z.string(),
             url: z.string().optional(),
+            discovery_method: z.enum(["direct", "authoritative_location", "ads_txt_managerdomain"]).openapi({
+              description: "How the publisher's adagents.json was discovered. `ads_txt_managerdomain` indicates one-hop delegation via ads.txt MANAGERDOMAIN.",
+            }),
+            manager_domain: z.string().optional().openapi({
+              description: "Manager domain that served the manifest. Present only when discovery_method is ads_txt_managerdomain.",
+            }),
             agent_count: z.number().int(),
             property_count: z.number().int(),
             property_type_counts: z.record(z.string(), z.number().int()),
@@ -1491,6 +1520,60 @@ registry.registerPath({
           schema: z.object({
             message: z.literal("Crawl request accepted"),
             domain: z.string(),
+          }),
+        },
+      },
+    },
+    400: { description: "Invalid domain format, private IP, or unresolvable domain", content: { "application/json": { schema: ErrorSchema } } },
+    401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
+    429: {
+      description: "Rate limit exceeded",
+      content: {
+        "application/json": {
+          schema: z.object({
+            error: z.string(),
+            retry_after: z.number().int().openapi({ description: "Seconds to wait before retrying" }),
+          }),
+        },
+      },
+    },
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/api/registry/manager-revalidation-request",
+  operationId: "requestManagerRevalidation",
+  summary: "Request manager fan-out re-validation",
+  description:
+    "Trigger re-validation of every publisher delegating to a manager domain via ads.txt `MANAGERDOMAIN`. Use after rotating the manager's `adagents.json` so the change propagates to delegating publishers without waiting for the next routine crawl cycle. Work is queued and drained at a bounded rate (≈50 publishers per 5-minute tick). Returns 202 immediately with the number of publishers enqueued.\n\n**Rate limits:** 5 minutes per manager domain, 30 requests per user per hour (shared with other crawl-request endpoints).",
+  tags: ["Agent Discovery"],
+  security: [{ bearerAuth: [] }, { oauth2: [] }],
+  request: {
+    body: {
+      content: {
+        "application/json": {
+          schema: z.object({
+            manager_domain: z.string().openapi({
+              example: "raptive.com",
+              description: "Manager domain whose delegating publishers should be queued for re-validation. Must already be present as `manager_domain` on at least one publisher row.",
+            }),
+          }),
+        },
+      },
+    },
+  },
+  responses: {
+    202: {
+      description: "Re-validation queue request accepted",
+      content: {
+        "application/json": {
+          schema: z.object({
+            message: z.literal("Manager re-validation enqueued"),
+            manager_domain: z.string(),
+            publishers_enqueued: z.number().int().openapi({
+              description: "Number of delegating publisher rows added to or refreshed in the manager_revalidation_queue. Zero if no publisher delegates to this manager.",
+            }),
           }),
         },
       },
@@ -1994,6 +2077,30 @@ registry.registerPath({
     400: { description: "Invalid agent URL or interval", content: { "application/json": { schema: ErrorSchema } } },
     401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
     403: { description: "Not authorized", content: { "application/json": { schema: ErrorSchema } } },
+    500: { description: "Server error", content: { "application/json": { schema: ErrorSchema } } },
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/api/registry/agents/{encodedUrl}/monitoring/requeue",
+  operationId: "requeueAgentForHeartbeat",
+  summary: "Requeue agent for compliance heartbeat",
+  description:
+    "Clears the agent's last_checked_at timestamp so it is picked up on the next heartbeat cycle (within ~1 hour). Requires authentication and ownership.",
+  tags: ["Agent Compliance"],
+  security: [{ bearerAuth: [] }, { oauth2: [] }],
+  request: {
+    params: z.object({
+      encodedUrl: z.string().openapi({ description: "URL-encoded agent URL" }),
+    }),
+  },
+  responses: {
+    200: { description: "Agent requeued", content: { "application/json": { schema: z.object({ requeued: z.boolean() }) } } },
+    400: { description: "Invalid agent URL", content: { "application/json": { schema: ErrorSchema } } },
+    401: { description: "Authentication required", content: { "application/json": { schema: ErrorSchema } } },
+    403: { description: "Not authorized", content: { "application/json": { schema: ErrorSchema } } },
+    429: { description: "Rate limited", content: { "application/json": { schema: ErrorSchema } } },
     500: { description: "Server error", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
@@ -2735,6 +2842,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
   const noopMiddleware: RequestHandler = (_req, _res, next) => next();
   const optAuth: RequestHandler = optionalAuthMiddleware ?? noopMiddleware;
   const orgDb = new OrganizationDatabase();
+  const publisherDb = new PublisherDatabase();
 
   const catalogDb = new CatalogDatabase();
 
@@ -3180,6 +3288,13 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           });
         }
 
+        if (existing.review_status === "pending") {
+          return res.status(409).json({
+            error: "Cannot edit brand pending review",
+            domain,
+          });
+        }
+
         const editInput: Parameters<typeof brandDb.editDiscoveredBrand>[1] = {
           brand_name,
           edit_summary: "API: updated brand data",
@@ -3507,6 +3622,13 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         if (discovered.length > 0) {
           return res.status(409).json({
             error: "Cannot edit authoritative property (managed via adagents.json)",
+            domain: publisher_domain,
+          });
+        }
+
+        if (existing.review_status === "pending") {
+          return res.status(409).json({
+            error: "Cannot edit property pending review",
             domain: publisher_domain,
           });
         }
@@ -3912,6 +4034,24 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         }
       }
 
+      // Verification-mode filters (#3505). Repeatable param normalized to
+      // string[]; `verified=true` is the any-axis shortcut.
+      const rawVerificationMode = req.query.verification_mode;
+      const verificationModes: string[] | undefined = rawVerificationMode
+        ? (Array.isArray(rawVerificationMode) ? (rawVerificationMode as string[]) : [rawVerificationMode as string])
+        : undefined;
+      const withVerified = req.query.verified === "true";
+
+      if (verificationModes?.length) {
+        const invalid = verificationModes.filter((m) => !isVerificationMode(m));
+        if (invalid.length > 0) {
+          return res.status(400).json({
+            error: `Invalid verification_mode value(s): ${invalid.join(", ")}`,
+            valid_values: [...VERIFICATION_MODES],
+          });
+        }
+      }
+
       // members_only agents are discoverable to authenticated API-access
       // members (Professional+). Crawlers and anonymous callers only see
       // public agents.
@@ -3938,7 +4078,7 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         federatedAgents = federatedAgents.filter((fa) => matchingUrls.has(fa.url));
       }
 
-      const agents = federatedAgents.map((fa) => ({
+      let agents = federatedAgents.map((fa) => ({
         name: fa.name || fa.url,
         url: fa.url,
         type: isValidAgentType(fa.type) ? fa.type : ("unknown" as const),
@@ -3952,6 +4092,30 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         },
         member: fa.member,
       }));
+
+      // Apply verification filter before enrichment so downstream enrichment
+      // only sees the filtered set.
+      let prefetchedBadgeMap: Map<string, Awaited<ReturnType<typeof complianceDb.getBadgesForAgent>>> | null = null;
+      if (verificationModes?.length || withVerified) {
+        let verificationBadgeMap: Map<string, Awaited<ReturnType<typeof complianceDb.getBadgesForAgent>>>;
+        try {
+          verificationBadgeMap = await complianceDb.bulkGetActiveBadges(agents.map((a) => a.url));
+        } catch (err) {
+          logger.error({ err }, "Verification mode filter failed");
+          return res.status(503).json({ error: "Verification filter temporarily unavailable" });
+        }
+        agents = agents.filter((a) => {
+          const badges = verificationBadgeMap.get(a.url) || [];
+          // Both params additive (AND): badge must satisfy mode constraints AND have any mode.
+          return badges.some((b) => {
+            const modesOk = !verificationModes?.length || verificationModes.every((m) => b.verification_modes.includes(m));
+            const verifiedOk = !withVerified || b.verification_modes.length > 0;
+            return modesOk && verifiedOk;
+          });
+        });
+        prefetchedBadgeMap = verificationBadgeMap;
+      }
+
 
       if (!withHealth && !withCapabilities && !withProperties && !withCompliance) {
         return res.json({ agents, count: agents.length });
@@ -3972,7 +4136,9 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       let badgeMap: Map<string, Awaited<ReturnType<typeof complianceDb.getBadgesForAgent>>> | null = null;
       if (withCompliance) {
         try {
-          badgeMap = await complianceDb.bulkGetActiveBadges(agentUrls);
+          // Reuse the badge map already fetched for verification filtering when available,
+          // since it covers the same filtered agent set.
+          badgeMap = prefetchedBadgeMap ?? await complianceDb.bulkGetActiveBadges(agentUrls);
         } catch (err) {
           logger.warn({ err }, "Badge bulk query failed (table may not exist yet)");
         }
@@ -4247,6 +4413,19 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         membership_tier_label: ownerMembership.membership_tier_label,
         subscription_status: ownerMembership.subscription_status,
         is_api_access_tier: ownerMembership.is_api_access_tier,
+        // `verdict_source` is owner-scoped: operators benefit from seeing
+        // whether the current verdict came from their own owner_test vs
+        // the scheduled heartbeat (UX cue while iterating on a fix). Non-
+        // owners see null — heartbeat and owner_test both call comply()
+        // against the same registered URL with the same owner-saved
+        // credentials, so exposing the source label publicly would
+        // create a trust distinction the underlying observation doesn't
+        // actually carry. Gated on `is_owner` (any owner, including free
+        // tier) — `is_api_access_tier` would be too narrow and would
+        // hide the UX cue from Explorer-tier agent owners.
+        verdict_source: ownerMembership.is_owner
+          ? (status.last_triggered_by ?? null)
+          : null,
         verified: badges.length > 0,
         verified_badges: badges.map(b => ({
           role: b.role,
@@ -4715,32 +4894,10 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
 
   const complianceWriteMiddleware = authMiddleware ? [authMiddleware] : [];
 
-  /**
-   * Resolve the workos_organization_id of the org that owns this agent,
-   * for the authenticated user. Returns null if the user is not a member
-   * of any org whose member_profile lists the agent (403 case).
-   *
-   * Mirrors the query driving the `auth-status` endpoint so the org id the
-   * UI surfaces ("Auth configured via OAuth") is the one we consult for
-   * Test-your-agent credentials.
-   */
-  async function resolveAgentOwnerOrg(userId: string, agentUrl: string): Promise<string | null> {
-    try {
-      const result = await query<{ workos_organization_id: string }>(
-        `SELECT mp.workos_organization_id
-         FROM member_profiles mp
-         JOIN organization_memberships om
-           ON om.workos_organization_id = mp.workos_organization_id
-         WHERE mp.agents @> $1::jsonb
-           AND om.workos_user_id = $2
-         LIMIT 1`,
-        [JSON.stringify([{ url: agentUrl }]), userId],
-      );
-      return result.rows[0]?.workos_organization_id ?? null;
-    } catch {
-      return null;
-    }
-  }
+  // `resolveAgentOwnerOrg` is now a thin alias for the shared helper. The
+  // closure-scoped alias is kept so existing call sites inside this factory
+  // don't need to thread the import.
+  const resolveAgentOwnerOrg = findOwnerOrgForUser;
 
   async function verifyAgentOwnership(userId: string, agentUrl: string): Promise<boolean> {
     return (await resolveAgentOwnerOrg(userId, agentUrl)) !== null;
@@ -4921,6 +5078,50 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     }
   });
 
+  // Requeue rate limit — separate from /refresh so iterating owners aren't
+  // counted against the capability-probe quota. 60 s per agent URL is plenty
+  // since the heartbeat only ticks hourly; a user hammering the button gains
+  // nothing after the first call clears last_checked_at.
+  const requeueAgentRateLimits = new Map<string, number>();
+  const REQUEUE_AGENT_RATE_LIMIT_MS = 60 * 1000;
+  const requeueRateLimitCleanup = setInterval(() => {
+    const now = Date.now();
+    for (const [url, ts] of requeueAgentRateLimits) {
+      if (now - ts > 2 * REQUEUE_AGENT_RATE_LIMIT_MS) requeueAgentRateLimits.delete(url);
+    }
+  }, REQUEUE_AGENT_RATE_LIMIT_MS);
+  requeueRateLimitCleanup.unref();
+
+  router.post("/registry/agents/:encodedUrl/monitoring/requeue", ...complianceWriteMiddleware, async (req, res) => {
+    try {
+      const agentUrl = decodeURIComponent(req.params.encodedUrl);
+      if (!validateAgentUrlParam(agentUrl)) {
+        return res.status(400).json({ error: "Invalid agent URL" });
+      }
+      if (!req.user) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+      const isOwner = await verifyAgentOwnership(req.user.id, agentUrl);
+      if (!isOwner) {
+        return res.status(403).json({ error: "You do not have permission to modify this agent" });
+      }
+
+      const now = Date.now();
+      const lastRequeue = requeueAgentRateLimits.get(agentUrl);
+      if (lastRequeue && now - lastRequeue < REQUEUE_AGENT_RATE_LIMIT_MS) {
+        const retryAfter = Math.ceil((REQUEUE_AGENT_RATE_LIMIT_MS - (now - lastRequeue)) / 1000);
+        return res.status(429).json({ error: "Rate limited", retry_after: retryAfter });
+      }
+      requeueAgentRateLimits.set(agentUrl, now);
+
+      await complianceDb.requeueForHeartbeat(agentUrl);
+      res.json({ requeued: true });
+    } catch (error) {
+      logger.error({ err: error, path: req.path }, "Failed to requeue agent for heartbeat");
+      res.status(500).json({ error: "Failed to requeue agent" });
+    }
+  });
+
   // Per-agent refresh rate limits. In-memory; resets on deploy. 60 seconds
   // per agent URL — owners iterating on their own agent (fix DNS, retry,
   // fix something else, retry) need a tight loop. The /crawl-request 5-min
@@ -4993,8 +5194,21 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       // Owner sees 502/409 error → has 60s to fix and try again.
       refreshAgentRateLimits.set(agentUrl, now);
 
+      // Resolve saved owner auth (static bearer / basic / OAuth) so the
+      // probe sees the same credentials evaluate_agent_quality uses. The
+      // periodic crawl path stays unauthenticated by design. Auth is
+      // only resolved when the caller belongs to the owning org —
+      // resolveAgentOwnerOrg returns null for an AAO admin probing an
+      // agent they don't own, so the admin path probes unauthed.
+      const ownerOrgId = await resolveAgentOwnerOrg(req.user.id, agentUrl);
+      let resolvedAuth: SdkAuth | undefined;
+      if (ownerOrgId) {
+        const auth = await resolveUserAgentAuth(agentContextDb, ownerOrgId, agentUrl, logger);
+        resolvedAuth = await adaptAuthForSdk(auth, { tokenEndpointLabel: `refresh:${agentUrl}` });
+      }
+
       try {
-        const result = await crawler.refreshSingleAgent(agentUrl);
+        const result = await crawler.refreshSingleAgent(agentUrl, { auth: resolvedAuth });
         return res.json(result);
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Probe failed';
@@ -5125,6 +5339,12 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       }
       if (auth_token && auth_token.length > 4096) {
         return res.status(400).json({ error: "auth_token exceeds maximum length" });
+      }
+      if (auth_token) {
+        const tokenErr = validateAuthTokenChars(auth_token);
+        if (tokenErr) {
+          return res.status(400).json({ error: tokenErr });
+        }
       }
 
       const validAuthTypes = ["bearer", "basic"];
@@ -5601,11 +5821,33 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           });
         }
 
-        // Record the run (pass storyboard ID for per-storyboard status materialization)
+        // Record the run (pass storyboard ID for per-storyboard status materialization).
+        // Owner-only path (gated above by resolveAgentOwnerOrg), so triggered_by
+        // matches evaluate_agent_quality semantics: owner_test, not the legacy
+        // 'manual' label.
         const metadata = await complianceDb.getRegistryMetadata(agentUrl);
         await complianceDb.recordComplianceRun(
-          complianceResultToDbInput(complyResult, agentUrl, metadata?.lifecycle_stage || "development", "manual", [req.params.storyboardId]),
+          complianceResultToDbInput(complyResult, agentUrl, metadata?.lifecycle_stage || "development", "owner_test", [req.params.storyboardId]),
         );
+
+        // Fan out badge issuance on the canonical write so an owner who
+        // just fixed a single storyboard sees the badge update on their
+        // next page load. The helper loads ALL latest storyboard statuses
+        // from agent_storyboard_status so this partial run doesn't degrade
+        // badges for storyboards it didn't touch. No notification — the
+        // owner already sees the result in the HTTP response.
+        const declaredSpecialisms = complyResult.agent_profile?.specialisms ?? [];
+        if (declaredSpecialisms.length > 0) {
+          try {
+            await runBadgeFanOut({
+              complianceDb,
+              agentUrl,
+              declaredSpecialisms,
+            });
+          } catch (badgeError) {
+            logger.warn({ err: badgeError, agentUrl }, 'Badge fan-out failed after storyboard-run');
+          }
+        }
 
         // Annotate storyboard phases with comply results
         const annotatedPhases = storyboard.phases.map((phase) => ({
@@ -5805,8 +6047,35 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       const federatedIndex = crawler.getFederatedIndex();
 
       const profile = await memberDb.getProfileByDomain(domain);
+
+      // Membership tier and Founding Member status are surfaced on the
+      // public response only when the profile owner has opted their member
+      // card into public visibility (`is_public=true`). Tier reflects billing
+      // state, so we don't leak it for private profiles even though
+      // slug/display_name are exposed for domain-keyed lookup. Profile owner
+      // controls visibility via the member card; we follow it here rather
+      // than introducing a second toggle. Founding Member is orthogonal to
+      // tier — founding orgs typically display both badges.
+      let memberTier: string | null = null;
+      if (profile?.is_public && profile.workos_organization_id) {
+        const profileOrg = await orgDb.getOrganization(profile.workos_organization_id);
+        memberTier = resolveMembershipTier(profileOrg);
+      }
+
       const member = profile
-        ? { slug: profile.slug, display_name: profile.display_name }
+        ? {
+            slug: profile.slug,
+            display_name: profile.display_name,
+            ...(profile.is_public
+              ? { is_founding_member: profile.is_founding_member === true }
+              : {}),
+            ...(memberTier
+              ? {
+                  membership_tier: memberTier,
+                  membership_tier_label: tierLabel(memberTier),
+                }
+              : {}),
+          }
         : null;
 
       const callerOrgId = await resolveCallerOrgId(req);
@@ -5834,10 +6103,29 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       const agents = await Promise.all(
         agentConfigs.map(async (ac) => {
           const auths = await federatedIndex.getAuthorizationsForAgent(ac.url);
+          // `type` is required at every write surface (POST/PATCH
+          // /api/me/agents and the `save_agent` MCP tool), so a missing or
+          // out-of-enum value here means corrupt data slipped past those
+          // gates (direct SQL, pre-validation row, etc.) — log it loud so
+          // it's caught instead of silently served as "unknown".
+          // `resolveAgentTypes` is the only path that may legitimately stamp
+          // `"unknown"` on a write (when smuggle-protection invalidates a
+          // declared type without a snapshot to override from); that case
+          // passes `isValidAgentType` and serves through cleanly.
+          let agentType: AgentType;
+          if (isValidAgentType(ac.type)) {
+            agentType = ac.type;
+          } else {
+            logger.warn(
+              { domain, url: ac.url, storedType: ac.type, profileSlug: profile?.slug },
+              "operator lookup: agent has missing/invalid `type` — owner must re-declare via save_agent or PATCH /api/me/agents"
+            );
+            agentType = "unknown";
+          }
           return {
             url: ac.url,
             name: ac.name || displayName,
-            type: ac.type || "unknown",
+            type: agentType,
             authorized_by: auths.map(a => ({
               publisher_domain: a.publisher_domain,
               authorized_for: a.authorized_for,
@@ -5895,6 +6183,8 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           last_http_status: number | null;
           last_response_bytes: number | null;
           resolved_url: string | null;
+          discovery_method: string | null;
+          manager_domain: string | null;
         }>(
           // Drop the source_type='adagents_json' filter. Phase B writes
           // failed-fetch metadata onto rows with source_type='community',
@@ -5902,7 +6192,8 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
           // "Last attempted: <ts> · HTTP <code>" even for never-validated
           // domains. Read whatever row exists; downstream code handles
           // null adagents_json gracefully.
-          `SELECT adagents_json, last_validated, last_http_status, last_response_bytes, resolved_url
+          `SELECT adagents_json, last_validated, last_http_status, last_response_bytes, resolved_url,
+                  discovery_method, manager_domain
              FROM publishers WHERE domain = $1 LIMIT 1`,
           [domain],
         ).then(r => r.rows[0] ?? null),
@@ -5912,6 +6203,8 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       const cachedHttpStatus = cachedAdagentsRow?.last_http_status ?? null;
       const cachedResponseBytes = cachedAdagentsRow?.last_response_bytes ?? null;
       const cachedResolvedUrl = cachedAdagentsRow?.resolved_url ?? null;
+      const cachedDiscoveryMethod = cachedAdagentsRow?.discovery_method ?? null;
+      const cachedManagerDomain = cachedAdagentsRow?.manager_domain ?? null;
 
       // Auto-crawl on view: if we've never crawled this domain (adagents
       // never seen, brand never seen), kick off background fetches so a
@@ -6306,6 +6599,8 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         domain,
         member,
         adagents_valid: adagentsValid,
+        discovery_method: cachedDiscoveryMethod ?? undefined,
+        manager_domain: cachedManagerDomain ?? undefined,
         hosting,
         files,
         properties: projectedProperties,
@@ -6624,7 +6919,8 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         }
       }
 
-      return res.json({ name: agentName, description: agentInfo.description, protocols, type: agentType, stats });
+      const publicTools = tools.map(({ name, description }: { name: string; description?: string }) => ({ name, description }));
+      return res.json({ name: agentName, description: agentInfo.description, protocols, type: agentType, tools_count: publicTools.length, tools: publicTools, stats });
     } catch (error) {
       logger.warn({ err: error, url }, "Public agent discovery error");
 
@@ -6733,6 +7029,8 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         valid: result.valid,
         domain: result.domain,
         url: result.url,
+        discovery_method: result.discovery_method,
+        manager_domain: result.manager_domain ?? undefined,
         agent_count: stats.agentCount,
         property_count: stats.propertyCount,
         property_type_counts: stats.propertyTypeCounts,
@@ -6860,13 +7158,9 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         }
       }
 
-      // Link the member profile to this brand domain using authenticated user's org
-      const memberDb = new MemberDatabase();
-      if (orgId) {
-        await memberDb.updateProfileByOrgId(orgId, {
-          primary_brand_domain: domain,
-        });
-      }
+      // Brand→org attribution lives on `brands.workos_organization_id`
+      // (set above on create/update). Stage 3 of #4159 owns the canonical
+      // setPrimaryDomain writer for `organization_domains.is_primary`.
 
       const hostedBrandJsonUrl = aaoHostedBrandJsonUrl(domain);
       const pointerSnippet = JSON.stringify(
@@ -7546,6 +7840,48 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
     } catch (error) {
       logger.error({ error }, "Failed to process brand crawl request");
       return res.status(500).json({ error: "Failed to process brand crawl request" });
+    }
+  });
+
+  // Manager fan-out re-validation: when a manager rotates its
+  // adagents.json, this endpoint short-circuits the 60-minute organic
+  // crawl cycle by enqueueing every delegating publisher directly into
+  // manager_revalidation_queue. The crawler worker drains the queue at
+  // a bounded rate; each per-publisher validation re-fetches the
+  // manager's file via the ads.txt MANAGERDOMAIN fallback, so the
+  // publishers see the rotated content without us needing to re-crawl
+  // the manager itself first.
+  //
+  // Rate-limit key is namespaced ("manager:") so a manager-recrawl
+  // request doesn't bypass an in-window publisher recrawl on the same
+  // domain (or vice-versa). Hourly per-member limit is shared.
+  router.post("/registry/manager-revalidation-request", authMiddleware, async (req, res) => {
+    try {
+      // Translate manager_domain → domain for the shared validator,
+      // which reads req.body.domain.
+      const managerInput = req.body?.manager_domain?.toLowerCase?.()?.trim?.() || '';
+      if (!managerInput || typeof managerInput !== 'string') {
+        return res.status(400).json({ error: "manager_domain is required" });
+      }
+      const reqWithDomain: typeof req = Object.assign({}, req, {
+        body: { ...req.body, domain: managerInput },
+      });
+      const normalizedDomain = await validateAndRateLimitCrawl(
+        reqWithDomain,
+        res,
+        `manager:${managerInput}`,
+      );
+      if (!normalizedDomain) return;
+
+      const enqueued = await publisherDb.enqueueManagerRevalidation(normalizedDomain);
+      return res.status(202).json({
+        message: "Manager re-validation enqueued",
+        manager_domain: normalizedDomain,
+        publishers_enqueued: enqueued,
+      });
+    } catch (error) {
+      logger.error({ error }, "Failed to enqueue manager revalidation");
+      return res.status(500).json({ error: "Failed to enqueue manager revalidation" });
     }
   });
 

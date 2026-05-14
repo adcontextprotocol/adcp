@@ -50,22 +50,22 @@ jobs:
           # from the storyboard's positive + negative conformance vectors.
           - tenant: signals
             min_clean_storyboards: 67
-            min_passing_steps: 58
+            min_passing_steps: 111
           - tenant: sales
             min_clean_storyboards: 67
-            min_passing_steps: 258
+            min_passing_steps: 314
           - tenant: governance
             min_clean_storyboards: 65
-            min_passing_steps: 102
+            min_passing_steps: 153
           - tenant: creative
             min_clean_storyboards: 66
-            min_passing_steps: 118
+            min_passing_steps: 169
           - tenant: creative-builder
-            min_clean_storyboards: 60
-            min_passing_steps: 100
+            min_clean_storyboards: 63
+            min_passing_steps: 146
           - tenant: brand
             min_clean_storyboards: 66
-            min_passing_steps: 45
+            min_passing_steps: 96
     steps:
       - uses: actions/checkout@v6
 

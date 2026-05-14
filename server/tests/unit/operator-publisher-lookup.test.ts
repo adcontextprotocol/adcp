@@ -37,6 +37,81 @@ describe('OperatorLookupResult schema', () => {
     }
   });
 
+  it('validates a public founding-member profile with tier (Scope3 shape)', () => {
+    const data = {
+      domain: 'scope3.com',
+      member: {
+        slug: 'scope3',
+        display_name: 'Scope3',
+        is_founding_member: true,
+        membership_tier: 'company_icl',
+        membership_tier_label: 'Partner',
+      },
+      agents: [],
+    };
+    const result = OperatorLookupResultSchema.safeParse(data);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.member?.is_founding_member).toBe(true);
+      expect(result.data.member?.membership_tier).toBe('company_icl');
+      expect(result.data.member?.membership_tier_label).toBe('Partner');
+    }
+  });
+
+  it('validates a public non-founding profile with tier', () => {
+    const data = {
+      domain: 'example.com',
+      member: {
+        slug: 'example',
+        display_name: 'Example Co',
+        is_founding_member: false,
+        membership_tier: 'company_leader',
+        membership_tier_label: 'Leader',
+      },
+      agents: [],
+    };
+    const result = OperatorLookupResultSchema.safeParse(data);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.member?.is_founding_member).toBe(false);
+      expect(result.data.member?.membership_tier_label).toBe('Leader');
+    }
+  });
+
+  it('validates a public profile without a resolvable tier (founding flag still present)', () => {
+    const data = {
+      domain: 'newco.example',
+      member: {
+        slug: 'newco',
+        display_name: 'NewCo',
+        is_founding_member: false,
+      },
+      agents: [],
+    };
+    const result = OperatorLookupResultSchema.safeParse(data);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.member?.is_founding_member).toBe(false);
+      expect(result.data.member?.membership_tier).toBeUndefined();
+      expect(result.data.member?.membership_tier_label).toBeUndefined();
+    }
+  });
+
+  it('validates a private profile with no tier or founding fields', () => {
+    const data = {
+      domain: 'private.example',
+      member: { slug: 'private', display_name: 'Private Co' },
+      agents: [],
+    };
+    const result = OperatorLookupResultSchema.safeParse(data);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.member?.is_founding_member).toBeUndefined();
+      expect(result.data.member?.membership_tier).toBeUndefined();
+      expect(result.data.member?.membership_tier_label).toBeUndefined();
+    }
+  });
+
   it('validates an unfound operator', () => {
     const data = {
       domain: 'unknown.com',

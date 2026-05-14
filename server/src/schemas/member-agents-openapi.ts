@@ -21,7 +21,7 @@ const MemberAgentVisibilitySchema = z
   .enum(['private', 'members_only', 'public'])
   .openapi('MemberAgentVisibility', {
     description:
-      "Visibility tier on the registry catalog. `private` = profile owner only; `members_only` = AAO API-tier members on operator lookup; `public` = listed in the public catalog and reflected in the org's `brand.json` (requires Professional tier or higher).",
+      "Visibility tier on the registry catalog. `private` = profile owner only; `members_only` = AAO API-tier members on operator lookup; `public` = listed in the public catalog and reflected in the org's `brand.json` (requires a paid AAO tier — Professional, Builder, Member, or Leader).",
   });
 
 const MemberAgentTypeSchema = z
@@ -38,42 +38,61 @@ const MemberAgentTypeSchema = z
   ])
   .openapi('MemberAgentType', {
     description:
-      "Agent type. Resolved server-side from the agent's capability snapshot when one exists; the value submitted by the client is used only as a fallback when no snapshot is available, and is never trusted to override an inferred classification.",
+      "Agent type as stored on the registry. Server-side smuggle protection compares the caller's declaration against the capability snapshot (when one exists) and may stamp `unknown` if the snapshot contradicts the declaration without classifying it. `unknown` is reserved for that server-side outcome; clients cannot submit it.",
+  });
+
+const MemberAgentTypeInputSchema = z
+  .enum([
+    'brand',
+    'rights',
+    'measurement',
+    'governance',
+    'creative',
+    'sales',
+    'buying',
+    'signals',
+  ])
+  .openapi('MemberAgentTypeInput', {
+    description:
+      "Agent type the caller declares. Required on register; smuggle-protection still cross-checks against the capability snapshot when one exists. The server never infers `type` — the owner declares what kind of agent this is.",
   });
 
 const MemberAgentSchema = z
   .object({
     url: z.string().url().openapi({ example: 'https://agent.example.com/mcp' }),
     visibility: MemberAgentVisibilitySchema,
+    type: MemberAgentTypeSchema,
     name: z.string().optional(),
-    type: MemberAgentTypeSchema.optional(),
     health_check_url: z.string().url().optional().openapi({
       description:
         'Optional fallback liveness URL used by the health probe when the protocol handshake fails.',
     }),
   })
-  .openapi('MemberAgent', { description: 'Agent entry stored on a member profile.' });
+  .openapi('MemberAgent', {
+    description:
+      "Agent entry stored on a member profile. `type` is required on read because every write surface declares it and the operator endpoint always emits it; a stored value of `unknown` is the smuggle-protection outcome (snapshot contradicted the declaration without classifying it) and is the only path that surfaces an agent without a real type.",
+  });
 
 const MemberAgentInputSchema = z
   .object({
     url: z.string().url().openapi({ example: 'https://agent.example.com/mcp' }),
+    type: MemberAgentTypeInputSchema,
     name: z.string().optional(),
     visibility: MemberAgentVisibilitySchema.optional(),
-    type: MemberAgentTypeSchema.optional(),
     health_check_url: z.string().url().optional(),
   })
-  .openapi('MemberAgentInput', { description: 'Request body for `POST /api/me/agents`.' });
+  .openapi('MemberAgentInput', { description: 'Request body for `POST /api/me/agents`. `type` is required — the owner declares it; the server never infers.' });
 
 const MemberAgentPatchSchema = z
   .object({
     name: z.string().optional(),
     visibility: MemberAgentVisibilitySchema.optional(),
-    type: MemberAgentTypeSchema.optional(),
+    type: MemberAgentTypeInputSchema.optional(),
     health_check_url: z.string().url().optional(),
   })
   .openapi('MemberAgentPatch', {
     description:
-      'Request body for `PATCH /api/me/agents/{url}`. The `url` field cannot be changed via PATCH; re-register at the new URL and DELETE the old entry instead.',
+      'Request body for `PATCH /api/me/agents/{url}`. The `url` field cannot be changed via PATCH; re-register at the new URL and DELETE the old entry instead. If `type` is omitted, the existing value is preserved.',
   });
 
 const MemberAgentVisibilityWarningSchema = z
@@ -93,6 +112,14 @@ const MemberAgentResponseSchema = z
   .object({
     agent: MemberAgentSchema,
     warnings: z.array(MemberAgentVisibilityWarningSchema).optional(),
+    org_auto_created: z.boolean().optional().openapi({
+      description:
+        "Set to `true` when this `POST` was the caller's first interaction with the registry and the server auto-created the organization (display name derived from the user's email domain for corporate emails, or `<First Last>'s Workspace` for free-email providers). Combined with `profile_auto_created`, this is the one-call storefront experience: a third-party app holding only an OAuth token gets the org, profile, and registered agent in a single request.",
+    }),
+    profile_auto_created: z.boolean().optional().openapi({
+      description:
+        'Set to `true` when this `POST` was the first agent registration on the caller\'s organization and the server auto-created a private member profile (display name = organization name, `is_public: false`). Absent on subsequent calls and on update-in-place. Surfaced so storefront-style integrations can show a "we set up your profile" hint without needing to detect the prior 404 → bootstrap → retry shape.',
+    }),
   })
   .openapi('MemberAgentResponse');
 
@@ -146,8 +173,12 @@ registry.registerPath({
   description: [
     "Register an agent on the caller's organization member profile.",
     'Idempotent on `url`: re-posting the same `url` updates the entry in place rather than creating a duplicate. New entries return `201`; updates return `200`.',
-    "The `type` field is resolved server-side from the agent's capability snapshot — a client cannot pin a misclassification (e.g. registering a sales agent as `buying`).",
-    '`visibility: "public"` requires Professional tier or higher and a `primary_brand_domain` set on the profile. Non-API-tier callers who request `public` will have the entry stored as `members_only` instead, and the response will include a `visibility_downgraded` warning describing the coercion.',
+    "**True one-call storefront experience.** A third-party app holding only a user's OAuth token can `POST /api/me/agents` once and have the entire bootstrap chain materialize:",
+    "- If the caller has zero org memberships, the server auto-creates an organization (corporate or personal workspace based on the user's email domain) and the response includes `org_auto_created: true`.",
+    "- If the caller's org has no member profile, the server auto-creates a private profile (display name = organization name, `is_public: false`) and the response includes `profile_auto_created: true`.",
+    "Both auto-bootstraps are best-effort fallbacks. To customize org name / company_type / revenue_tier, or to control profile slug / brand identity / tagline, call `POST /api/organizations` and `POST /api/me/member-profile` explicitly before registering the agent. Tier transitions never happen via this path — go through the billing flow.",
+    "`type` is required and declared by the caller — the server does not infer it. Server-side smuggle protection still cross-checks the declared type against the agent's capability snapshot when one exists; if the snapshot contradicts the declaration without classifying it, the stored value is `unknown` and the dashboard surfaces the conflict for the owner to resolve.",
+    '`visibility: "public"` requires a paid AAO tier (Professional, Builder, Member, or Leader) and a verified primary domain on the organization (set via the Linked Domains UI). Non-API-tier callers (Explorer or no tier) who request `public` will have the entry stored as `members_only` instead, and the response will include a `visibility_downgraded` warning describing the coercion.',
   ].join('\n\n'),
   tags: ['Member Agents'],
   security: [{ bearerAuth: [] }, { oauth2: [] }],
@@ -161,12 +192,13 @@ registry.registerPath({
       content: { 'application/json': { schema: MemberAgentResponseSchema } },
     },
     201: {
-      description: 'Agent registered.',
+      description:
+        'Agent registered. When this is the first agent on a freshly created organization, the response includes `profile_auto_created: true`.',
       content: { 'application/json': { schema: MemberAgentResponseSchema } },
     },
     400: {
       description:
-        'Missing or invalid `url`, or no organization associated with this account.',
+        'Missing or invalid `url`, missing/invalid `type`, or the caller has memberships in other orgs but no primary org set — pass `?org=<id>` to target one explicitly. (Fresh users with no memberships at all hit the org auto-bootstrap path and do not see this error.)',
       content: { 'application/json': { schema: ErrorSchema } },
     },
     401: {
@@ -180,7 +212,7 @@ registry.registerPath({
     },
     404: {
       description:
-        'No member profile exists yet — create one via `POST /api/me/member-profile`.',
+        'Auto-bootstrap could not run (e.g. the organization has no name yet). Call `POST /api/me/member-profile` to create a profile explicitly, then retry.',
       content: { 'application/json': { schema: ErrorSchema } },
     },
     429: {

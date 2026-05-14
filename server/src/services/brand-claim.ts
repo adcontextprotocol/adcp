@@ -35,7 +35,13 @@ export type IssueChallengeResult =
     }
   | { ok: false; code: 'invalid_domain'; message: string }
   | { ok: false; code: 'collision'; message: string }
-  | { ok: false; code: 'workos_error'; message: string };
+  | { ok: false; code: 'workos_error'; message: string }
+  // WorkOS issued a domain record but didn't return a verification_prefix —
+  // typically an env-wide config gap (no DNS-verification template set up
+  // in the WorkOS dashboard). Without the prefix, the caller has no hostname
+  // to publish the TXT record at, so the flow is unrecoverable without
+  // operator action. Surface clearly instead of returning broken instructions.
+  | { ok: false; code: 'workos_misconfigured'; message: string };
 
 export type VerifyChallengeResult =
   | {
@@ -130,20 +136,25 @@ export async function issueDomainChallenge(input: {
   // Idempotent re-issue: if the domain is already attached to this org
   // (pending or verified), surface the existing challenge instead of
   // creating a new one. WorkOS would reject the duplicate create anyway.
-  // Exception: a non-verified entry with null verificationToken/Prefix is
-  // broken state — there's no DNS record the user can publish, and every
-  // retry would echo nulls back. Delete and recreate so the user gets a
-  // fresh, usable challenge.
+  //
+  // Two distinct broken states to separate:
+  //   - `tokenMissing`: WorkOS returned a domain with no verificationToken.
+  //     Recoverable — delete and recreate produces a usable challenge.
+  //   - `prefixMissing` (with token present): the WorkOS env isn't returning
+  //     a verification_prefix at all. Recreate won't fix it; the operator
+  //     needs to fix the WorkOS DNS-verification template. Surface
+  //     `workos_misconfigured` instead of churning tokens in a no-win loop.
   try {
     const existing = await workos.organizations.getOrganization(orgId);
     const existingDomain = existing.domains.find(d => d.domain.toLowerCase() === domain);
     if (existingDomain) {
       const verified = isVerifiedState(existingDomain.state);
-      const tokenMissing = !existingDomain.verificationToken || !existingDomain.verificationPrefix;
+      const tokenMissing = !existingDomain.verificationToken;
+      const prefixMissing = !!existingDomain.verificationToken && !existingDomain.verificationPrefix;
       if (!verified && tokenMissing) {
         logger.warn(
           { orgId, domain, existingDomainId: existingDomain.id, state: String(existingDomain.state) },
-          'brand-claim: existing org-domain has null verification token/prefix; deleting to recreate',
+          'brand-claim: existing org-domain has null verificationToken; deleting to recreate',
         );
         try {
           await workos.organizationDomains.deleteOrganizationDomain(existingDomain.id);
@@ -152,6 +163,16 @@ export async function issueDomainChallenge(input: {
           return { ok: false, code: 'workos_error', message: 'Failed to clear a broken pending challenge for this domain. Try again or contact support.' };
         }
         // Fall through to the create branch below.
+      } else if (!verified && prefixMissing) {
+        logger.error(
+          { orgId, domain, existingDomainId: existingDomain.id, state: String(existingDomain.state) },
+          'brand-claim: WorkOS env returned a domain without verificationPrefix; cannot construct DNS instructions',
+        );
+        return {
+          ok: false,
+          code: 'workos_misconfigured',
+          message: 'WorkOS did not return a DNS record prefix for this domain. The WorkOS environment is missing a DNS verification template — an operator needs to configure it before brand claims can complete.',
+        };
       } else {
         return {
           ok: true,
@@ -172,6 +193,21 @@ export async function issueDomainChallenge(input: {
 
   try {
     const created = await workos.organizationDomains.createOrganizationDomain({ organizationId: orgId, domain });
+    // Same prefix-missing guard as the existing-domain branch. WorkOS now
+    // owns a pending record we can't give the user instructions for; leave
+    // it in place so an operator can either fix the env template (the next
+    // issue call will succeed idempotently) or clean it up via the dashboard.
+    if (!isVerifiedState(created.state) && created.verificationToken && !created.verificationPrefix) {
+      logger.error(
+        { orgId, domain, createdDomainId: created.id, state: String(created.state) },
+        'brand-claim: WorkOS created a domain without verificationPrefix; cannot construct DNS instructions',
+      );
+      return {
+        ok: false,
+        code: 'workos_misconfigured',
+        message: 'WorkOS did not return a DNS record prefix for this domain. The WorkOS environment is missing a DNS verification template — an operator needs to configure it before brand claims can complete.',
+      };
+    }
     return {
       ok: true,
       domain,

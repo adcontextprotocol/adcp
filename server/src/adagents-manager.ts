@@ -14,6 +14,8 @@ export interface ValidationWarning {
   suggestion?: string;
 }
 
+export type DiscoveryMethod = 'direct' | 'authoritative_location' | 'ads_txt_managerdomain';
+
 export interface AdAgentsValidationResult {
   valid: boolean;
   errors: ValidationError[];
@@ -36,6 +38,8 @@ export interface AdAgentsValidationResult {
    */
   resolved_url?: string;
   raw_data?: any;
+  discovery_method: DiscoveryMethod;
+  manager_domain?: string;
 }
 
 export interface AuthorizedAgent {
@@ -46,7 +50,8 @@ export interface AuthorizedAgent {
   property_tags?: string[];
   properties?: PropertyDefinition[];
   publisher_properties?: Array<{
-    publisher_domain: string;
+    publisher_domain?: string;
+    publisher_domains?: string[];
     selection_type: 'all' | 'by_id' | 'by_tag';
     property_ids?: string[];
     property_tags?: string[];
@@ -171,6 +176,14 @@ export class AdAgentsManager {
    * Validates a domain's adagents.json file
    */
   async validateDomain(domain: string): Promise<AdAgentsValidationResult> {
+    return this.validateDomainInternal(domain, 0, new Set<string>());
+  }
+
+  private async validateDomainInternal(
+    domain: string,
+    managerFallbackDepth: number,
+    visitedDomains: Set<string>
+  ): Promise<AdAgentsValidationResult> {
     // Normalize domain - remove protocol and trailing slash
     const normalizedDomain = domain.replace(/^https?:\/\//, '').replace(/\/$/, '');
     const url = `https://${normalizedDomain}/.well-known/adagents.json`;
@@ -180,7 +193,8 @@ export class AdAgentsManager {
       errors: [],
       warnings: [],
       domain: normalizedDomain,
-      url
+      url,
+      discovery_method: 'direct',
     };
 
     try {
@@ -208,6 +222,65 @@ export class AdAgentsManager {
 
       // Check HTTP status
       if (response.status !== 200) {
+        // Fallback for publisher-manager patterns: if the publisher does not
+        // serve /.well-known/adagents.json but does serve ads.txt with a
+        // managerdomain declaration, attempt discovery on the manager domain.
+        if (response.status === 404) {
+          const managerDomains = await this.tryResolveManagerDomains(normalizedDomain);
+          const isHopAllowed = managerFallbackDepth < 1;
+          if (managerDomains.length > 0 && isHopAllowed) {
+            const managerDomain = managerDomains[managerDomains.length - 1];
+            const nextVisited = new Set(visitedDomains);
+            nextVisited.add(normalizedDomain);
+            const isCycle = nextVisited.has(managerDomain);
+            if (isCycle) {
+              result.warnings.push({
+                field: 'managerdomain',
+                message: `Ignoring ads.txt managerdomain ${managerDomain} due to cycle detection`,
+              });
+            } else {
+              const managerResult = await this.validateDomainInternal(
+                managerDomain,
+                managerFallbackDepth + 1,
+                nextVisited
+              );
+              if (managerResult.valid) {
+                if (!this.hasExplicitPublisherScope(managerResult.raw_data, normalizedDomain)) {
+                  result.errors.push({
+                    field: 'managerdomain_scope',
+                    message: `Manager domain ${managerDomain} must explicitly scope authorization to publisher ${normalizedDomain}`,
+                    severity: 'error',
+                  });
+                  return result;
+                }
+                return {
+                  ...managerResult,
+                  domain: normalizedDomain,
+                  url,
+                  discovery_method: 'ads_txt_managerdomain',
+                  manager_domain: managerDomain,
+                  warnings: [
+                    ...managerResult.warnings,
+                    {
+                      field: 'managerdomain',
+                      message: `No adagents.json at ${url}; used ads.txt managerdomain ${managerDomain}`,
+                    },
+                  ],
+                };
+              }
+              // Surface manager-side warnings (e.g. nested depth/cycle) on the
+              // outer result so callers can see why the fallback didn't validate.
+              for (const w of managerResult.warnings) {
+                result.warnings.push(w);
+              }
+            }
+          } else if (managerDomains.length > 0 && !isHopAllowed) {
+            result.warnings.push({
+              field: 'managerdomain',
+              message: `Ignoring ads.txt managerdomain entries: max fallback depth reached`,
+            });
+          }
+        }
         const statusMessage = response.status === 404
           ? `File not found at ${url}`
           : `HTTP ${response.status} error fetching ${url}`;
@@ -238,7 +311,9 @@ export class AdAgentsManager {
       result.raw_data = adagentsData;
 
       // Check if this is a URL reference
+      let wasUrlReference = false;
       if (this.isUrlReference(adagentsData)) {
+        wasUrlReference = true;
         // Follow the reference to get the authoritative file
         const authoritativeData = await this.fetchAuthoritativeFile(
           adagentsData.authoritative_location,
@@ -256,6 +331,7 @@ export class AdAgentsManager {
       this.validateStructure(adagentsData, result);
       this.validateContent(adagentsData, result);
 
+      if (wasUrlReference) result.discovery_method = 'authoritative_location';
       // If no errors, mark as valid
       result.valid = result.errors.length === 0;
 
@@ -265,6 +341,120 @@ export class AdAgentsManager {
     }
 
     return result;
+  }
+
+  private async tryResolveManagerDomains(domain: string): Promise<string[]> {
+    const adsTxtUrl = `https://${domain}/ads.txt`;
+    try {
+      const response = await safeFetchAxiosLike(adsTxtUrl, {
+        timeoutMs: 10000,
+        maxRedirects: 1,
+        headers: {
+          'Accept': 'text/plain',
+          'User-Agent': AAO_UA_VALIDATOR,
+        },
+      });
+      if (response.status !== 200) return [];
+      return this.parseManagerDomains(response.data.toString('utf-8'));
+    } catch {
+      return [];
+    }
+  }
+
+  private parseManagerDomains(adsTxtContent: string): string[] {
+    const managers: string[] = [];
+    const lines = adsTxtContent.split(/\r?\n/);
+    for (const line of lines) {
+      const trimmed = line.trim();
+      const match = trimmed.match(/^managerdomain\s*=\s*([A-Za-z0-9.-]+)(?:\s+#\s*(.*))?$/i);
+      if (match?.[1]) {
+        const trailingComment = (match[2] || '').toLowerCase();
+        if (/\bnoagents\b/.test(trailingComment)) {
+          continue;
+        }
+        managers.push(match[1].toLowerCase());
+      }
+    }
+    return managers;
+  }
+
+  /**
+   * Verify that a manager-served adagents.json explicitly authorizes the
+   * source publisher domain. Required by the ads.txt MANAGERDOMAIN
+   * fallback (#4173) so a manager-side compromise can't auto-implicate
+   * publishers that merely point at the manager via ads.txt.
+   *
+   * Two ways the manifest can express that scope:
+   *
+   * 1. **Per-agent paths.** An authorized_agents[] entry directly names
+   *    the publisher under publisher_properties[].publisher_domain
+   *    (singular) or publisher_properties[].publisher_domains[] (compact
+   *    managed-network form — exactly equivalent to repeating the entry
+   *    once per listed domain) or collections[].publisher_domain.
+   *
+   * 2. **Property-level paths.** A top-level properties[] entry carries
+   *    publisher_domain matching the source, AND at least one
+   *    authorized_agents[] entry references that property indirectly via
+   *    property_ids or property_tags. This is the shape Mediavine and
+   *    other managed networks use in production: the property declares
+   *    its publisher_domain once, and many agents reference it through
+   *    a tag without re-spelling the publisher.
+   *
+   * Both shapes establish the same invariant: the manager has
+   * positively named the publisher in its own manifest. Inline or
+   * implicit references that don't tie back to a publisher_domain
+   * field do not satisfy the gate — fail closed.
+   */
+  private hasExplicitPublisherScope(rawData: unknown, publisherDomain: string): boolean {
+    if (!rawData || typeof rawData !== 'object') return false;
+    const data = rawData as AdAgentsJsonInline;
+    const agents = Array.isArray(data.authorized_agents) ? data.authorized_agents : [];
+    const properties = Array.isArray(data.properties) ? data.properties : [];
+    const normalizedPublisher = publisherDomain.toLowerCase();
+
+    // Index properties by id and by tag for the per-agent reference lookup.
+    // Both indexes filter to properties whose publisher_domain matches the
+    // source — properties belonging to other publishers can't satisfy the
+    // gate even if an agent references them.
+    const matchingPropertyIds = new Set<string>();
+    const matchingPropertyTags = new Set<string>();
+    for (const prop of properties) {
+      if (typeof prop?.publisher_domain !== 'string') continue;
+      if (prop.publisher_domain.toLowerCase() !== normalizedPublisher) continue;
+      if (typeof prop.property_id === 'string' && prop.property_id.length > 0) {
+        matchingPropertyIds.add(prop.property_id);
+      }
+      if (Array.isArray(prop.tags)) {
+        for (const tag of prop.tags) {
+          if (typeof tag === 'string' && tag.length > 0) matchingPropertyTags.add(tag);
+        }
+      }
+    }
+
+    return agents.some((agent) => {
+      const hasPublisherProperties = Array.isArray(agent.publisher_properties)
+        && agent.publisher_properties.some((p) => {
+          if (typeof p.publisher_domain === 'string' && p.publisher_domain.toLowerCase() === normalizedPublisher) {
+            return true;
+          }
+          if (Array.isArray(p.publisher_domains)) {
+            return p.publisher_domains.some((d) => typeof d === 'string' && d.toLowerCase() === normalizedPublisher);
+          }
+          return false;
+        });
+      const hasCollections = Array.isArray(agent.collections)
+        && agent.collections.some((c) => c.publisher_domain.toLowerCase() === normalizedPublisher);
+
+      // Property-level scoping: the agent reaches a property whose
+      // publisher_domain matches the source. by_id walks property_ids;
+      // by_tag walks property_tags.
+      const hasPropertyIdLink = Array.isArray(agent.property_ids)
+        && agent.property_ids.some((id) => typeof id === 'string' && matchingPropertyIds.has(id));
+      const hasPropertyTagLink = Array.isArray(agent.property_tags)
+        && agent.property_tags.some((tag) => typeof tag === 'string' && matchingPropertyTags.has(tag));
+
+      return hasPublisherProperties || hasCollections || hasPropertyIdLink || hasPropertyTagLink;
+    });
   }
 
   /**
@@ -519,7 +709,7 @@ export class AdAgentsManager {
       result.warnings.push({
         field: '$schema',
         message: 'Consider adding $schema field for validation',
-        suggestion: 'Add "$schema": "https://adcontextprotocol.org/schemas/v2/adagents.json"'
+        suggestion: 'Add "$schema": "https://adcontextprotocol.org/schemas/v3/adagents.json"'
       });
     }
 
@@ -778,30 +968,43 @@ export class AdAgentsManager {
       }
     }
 
-    // Validate authorization_type consistency
-    if (agent.authorization_type) {
-      const validTypes = ['property_ids', 'property_tags', 'inline_properties', 'publisher_properties', 'signal_ids', 'signal_tags'];
-      if (!validTypes.includes(agent.authorization_type)) {
-        result.errors.push({
-          field: `${prefix}.authorization_type`,
-          message: `authorization_type must be one of: ${validTypes.join(', ')}`,
-          severity: 'error'
-        });
-      }
+    // Validate authorization_type per v3 schema. Every authorized_agents[]
+    // entry must declare an authorization_type and ship the matching
+    // non-empty selector — that's the schema's oneOf invariant, and it's
+    // what downstream resolvers (Python/TS SDKs) rely on to decide whether
+    // an agent is actually authorized for a given property/signal. Without
+    // it, publishers see valid:true while consumers see "agent not
+    // authorized" — issue #4476.
+    const validAuthTypes = ['property_ids', 'property_tags', 'inline_properties', 'publisher_properties', 'signal_ids', 'signal_tags'] as const;
+    const selectorByType: Record<typeof validAuthTypes[number], string> = {
+      property_ids: 'property_ids',
+      property_tags: 'property_tags',
+      inline_properties: 'properties',
+      publisher_properties: 'publisher_properties',
+      signal_ids: 'signal_ids',
+      signal_tags: 'signal_tags',
+    };
 
-      // Check that the corresponding array exists for the authorization_type
-      if (agent.authorization_type === 'signal_ids' && (!agent.signal_ids || agent.signal_ids.length === 0)) {
-        result.warnings.push({
-          field: `${prefix}.signal_ids`,
-          message: 'authorization_type is "signal_ids" but no signal_ids provided',
-          suggestion: 'Add signal_ids array with the authorized signal IDs'
-        });
-      }
-      if (agent.authorization_type === 'signal_tags' && (!agent.signal_tags || agent.signal_tags.length === 0)) {
-        result.warnings.push({
-          field: `${prefix}.signal_tags`,
-          message: 'authorization_type is "signal_tags" but no signal_tags provided',
-          suggestion: 'Add signal_tags array with the authorized signal tags'
+    if (!agent.authorization_type) {
+      result.errors.push({
+        field: `${prefix}.authorization_type`,
+        message: `missing required field \`authorization_type\` (one of ${validAuthTypes.map((t) => `\`${t}\``).join(', ')})`,
+        severity: 'error',
+      });
+    } else if (!validAuthTypes.includes(agent.authorization_type)) {
+      result.errors.push({
+        field: `${prefix}.authorization_type`,
+        message: `authorization_type must be one of: ${validAuthTypes.join(', ')}`,
+        severity: 'error',
+      });
+    } else {
+      const selectorField = selectorByType[agent.authorization_type as typeof validAuthTypes[number]];
+      const selectorValue = (agent as Record<string, unknown>)[selectorField];
+      if (!Array.isArray(selectorValue) || selectorValue.length === 0) {
+        result.errors.push({
+          field: `${prefix}.${selectorField}`,
+          message: `authorization_type is "${agent.authorization_type}" but \`${selectorField}\` is missing or empty`,
+          severity: 'error',
         });
       }
     }
@@ -1423,7 +1626,7 @@ export class AdAgentsManager {
     }
 
     if (opts.includeSchema !== false) {
-      adagents.$schema = 'https://adcontextprotocol.org/schemas/v2/adagents.json';
+      adagents.$schema = 'https://adcontextprotocol.org/schemas/v3/adagents.json';
     }
 
     if (opts.includeTimestamp !== false) {
@@ -1438,7 +1641,7 @@ export class AdAgentsManager {
    */
   validateProposed(agents: AuthorizedAgent[]): AdAgentsValidationResult {
     const mockData = {
-      $schema: 'https://adcontextprotocol.org/schemas/v2/adagents.json',
+      $schema: 'https://adcontextprotocol.org/schemas/v3/adagents.json',
       authorized_agents: agents,
       last_updated: new Date().toISOString()
     };
@@ -1448,7 +1651,8 @@ export class AdAgentsManager {
       errors: [],
       warnings: [],
       domain: 'proposed',
-      url: 'proposed'
+      url: 'proposed',
+      discovery_method: 'direct',
     };
 
     this.validateStructure(mockData, result);

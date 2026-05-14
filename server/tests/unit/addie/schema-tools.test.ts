@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   extractRegistryPaths,
   findClosestSchema,
+  formatSchemaJson,
+  SCHEMA_MAX_DISPLAY_CHARS,
   type SchemaRegistry,
 } from '../../../src/addie/mcp/schema-tools.js';
 
@@ -72,6 +74,72 @@ describe('extractRegistryPaths', () => {
     const cyclic: Cyclic = { $ref: '/schemas/v3/core/product.json' };
     cyclic.self = cyclic;
     expect(extractRegistryPaths(cyclic)).toEqual(['core/product.json']);
+  });
+});
+
+describe('formatSchemaJson', () => {
+  const smallSchema = JSON.stringify({ title: 'Test', properties: { foo: { type: 'string' } } }, null, 2);
+
+  it('returns schema verbatim when under the character limit', () => {
+    const { displayJson, truncationNote } = formatSchemaJson(smallSchema, ['foo']);
+    expect(displayJson).toBe(smallSchema);
+    expect(truncationNote).toBeNull();
+  });
+
+  it('truncates schemas that exceed SCHEMA_MAX_DISPLAY_CHARS', () => {
+    const largeJson = 'x'.repeat(SCHEMA_MAX_DISPLAY_CHARS + 500);
+    const { displayJson, truncationNote } = formatSchemaJson(largeJson, []);
+    expect(displayJson).toHaveLength(SCHEMA_MAX_DISPLAY_CHARS);
+    expect(truncationNote).not.toBeNull();
+  });
+
+  it('truncation note mentions property parameter when propNames are present', () => {
+    const largeJson = 'x'.repeat(SCHEMA_MAX_DISPLAY_CHARS + 1);
+    const { truncationNote } = formatSchemaJson(largeJson, ['assets', 'renders']);
+    expect(truncationNote).toContain('property');
+    expect(truncationNote).toContain('assets');
+  });
+
+  it('truncation note mentions union types when no propNames are present', () => {
+    const largeJson = 'x'.repeat(SCHEMA_MAX_DISPLAY_CHARS + 1);
+    const { truncationNote } = formatSchemaJson(largeJson, []);
+    expect(truncationNote).toContain('oneOf');
+    expect(truncationNote).not.toContain('All properties');
+  });
+
+  it('truncation note does not suggest property param for union-only schemas (regression guard for #4397)', () => {
+    // Schemas like creative/preview-render.json use oneOf at root with no
+    // top-level properties. The old note incorrectly suggested `property`
+    // would help; it doesn't for union schemas.
+    const largeJson = 'x'.repeat(SCHEMA_MAX_DISPLAY_CHARS + 1);
+    const { truncationNote } = formatSchemaJson(largeJson, []);
+    // Should NOT tell the agent to drill into schema.properties
+    expect(truncationNote).not.toMatch(/Use the `property` parameter with one of the \*\*All properties\*\*/);
+  });
+
+  it('SCHEMA_MAX_DISPLAY_CHARS is at least 20_000', () => {
+    // Regression guard: the old 6K limit silently hid oneOf branches.
+    // creative/preview-creative-response.json is ~11K — must not be truncated.
+    // core/format.json (~29K) and core/product.json (~25K) also require ≥25K.
+    expect(SCHEMA_MAX_DISPLAY_CHARS).toBeGreaterThanOrEqual(20_000);
+  });
+
+  it('truncation note for union schemas does not suggest list_schemas (regression guard for #4397)', () => {
+    // Schemas like brand.json use inline oneOf branches — list_schemas only returns
+    // registry paths and cannot surface inline branches, so suggesting it is a dead end.
+    const largeJson = 'x'.repeat(SCHEMA_MAX_DISPLAY_CHARS + 1);
+    const { truncationNote } = formatSchemaJson(largeJson, []);
+    expect(truncationNote).not.toContain('list_schemas');
+    expect(truncationNote).toContain('validate_json');
+  });
+
+  it('truncation note for empty-properties schema (properties: {}) fires union hint', () => {
+    // comply-test-controller-response.json has "properties": {} at root.
+    // Object.keys({}) === [] so propNames is empty and the union hint fires.
+    const largeJson = 'x'.repeat(SCHEMA_MAX_DISPLAY_CHARS + 1);
+    const { truncationNote } = formatSchemaJson(largeJson, Object.keys({}));
+    expect(truncationNote).toContain('oneOf');
+    expect(truncationNote).not.toContain('All properties');
   });
 });
 

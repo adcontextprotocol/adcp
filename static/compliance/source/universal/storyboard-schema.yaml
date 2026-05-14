@@ -129,6 +129,97 @@
 #   rule above), not a schema concern — the same storyboard runs against
 #   different topologies.)
 #
+# requires: string[] (optional — storyboard-level runtime requirement gate.
+#   Known values: controller | seeded_state | real_wire (forward-compat:
+#   unrecognized values are NOT schema violations — runners emit
+#   requirement_unmet at runtime; see Forward compatibility below).
+#   Default when absent: [real_wire] — untagged storyboards run unchanged.
+#   minItems: 1 — runners MUST fail-load on requires: [] (empty array) because
+#   no distinct semantic exists between the empty set and omitting the field;
+#   the error message SHOULD read "use requires: [real_wire] for the default
+#   behavior, or omit the field entirely."
+#
+#   Values and availability:
+#
+#     controller   — gate on agent advertising comply_test_controller.
+#                    Available when the agent's get_adcp_capabilities response
+#                    includes comply_test_controller in its tool list. When
+#                    unmet, the runner MUST emit skip_result.reason:
+#                    requirement_unmet with detail naming "controller".
+#                    Orthogonal to prerequisites.controller_seeding: the two
+#                    fields are independent. controller_seeding is an execution-
+#                    phase instruction ("inject a fixtures phase before the main
+#                    phases run"); requires: [controller] is a load-phase gate
+#                    ("skip the whole storyboard if the capability is absent").
+#                    Storyboards may declare both: the gate fires first, and
+#                    controller_seeding takes effect only if the gate passes.
+#                    Declaring controller_seeding: true without requires:
+#                    [controller] is also valid — mid-run, individual steps
+#                    grade missing_test_controller if the agent lacks the
+#                    tool; requires: [controller] coalesces that into a single
+#                    whole-storyboard skip at load time instead.
+#                    Mid-run transient loss: if the load-phase gate passes
+#                    (the agent advertised comply_test_controller at load
+#                    time) but the tool becomes unavailable mid-run, the
+#                    runner MUST grade the affected step missing_test_controller
+#                    per the existing per-step path, NOT a retroactive
+#                    requirement_unmet at storyboard scope.
+#
+#     seeded_state — gate on operator asserting out-of-band state provisioning.
+#                    Available when the operator declares (e.g., via a CLI flag
+#                    or runner option) that prerequisite state has been seeded
+#                    externally before the run. When unmet, the runner MUST emit
+#                    skip_result.reason: requirement_unmet with detail naming
+#                    "seeded_state". Scenarios fail naturally on the first
+#                    stateful step if state is not actually present.
+#                    ANTI-GAMING: trust signals (verified-live badges, Tier-2
+#                    production scores) MUST NOT consume requires: [seeded_state]
+#                    pass results without independent verification. The field
+#                    widens the graded set; it does not attest the state.
+#                    This is an operator-governance norm; the runner cannot
+#                    enforce it on behalf of downstream certification dashboards.
+#
+#     real_wire    — reserved for a future --mock-only execution mode. Current
+#                    behavior: no runtime effect (gate is always met). Authors
+#                    SHOULD omit this value rather than listing it explicitly,
+#                    since the default when the field is absent is semantically
+#                    equivalent to [real_wire] today (this equivalence holds
+#                    only while --mock-only is not active; the --mock-only
+#                    inversion may break it — see below).
+#                    IMPORTANT: the future --mock-only semantics INVERT the
+#                    skip direction compared to other values — this value will
+#                    cause a storyboard to skip when --mock-only is active (i.e.,
+#                    skip-when-mocked, pass-when-live), opposite to the
+#                    skip-when-absent logic of controller and seeded_state.
+#                    Whether the default-when-absent (omitting `requires`)
+#                    also triggers the skip under --mock-only is to be defined
+#                    when --mock-only ships; until then, authors MUST NOT rely
+#                    on any particular behavior for omitted vs. explicit
+#                    real_wire under a mock-only runner.
+#                    Composing real_wire with other values (e.g., requires:
+#                    [controller, real_wire]) is syntactically valid but the
+#                    combined behavior under --mock-only is unspecified; authors
+#                    SHOULD NOT mix real_wire with other values until --mock-only
+#                    semantics are defined.
+#                    Harnesses that consume this value MUST account for the
+#                    skip-direction inversion when --mock-only support lands.
+#
+#   Forward compatibility: runners encountering a requires value they do not
+#   recognize MUST emit skip_result.reason: requirement_unmet (not fail-load)
+#   and MUST name the unrecognized value in skip_result.detail so dashboards
+#   can surface it. This matches runner-output-contract.yaml > requirement_unmet
+#   and is consistent with the forward-compat posture throughout the harness —
+#   an unrecognized gate is not a coverage gap (not_applicable would signal
+#   "agent did not claim the protocol"), it is an unmet requirement. Only
+#   requires: [] (empty array) is a hard fail-load — that is a schema
+#   constraint, not a semantic gate, and schema violations are always loader
+#   errors.
+#
+#   Interaction with per-step requires_tool: the two fields are independent.
+#   requires gates the whole storyboard at load time; requires_tool gates
+#   individual steps at execution time. Both may be declared on the same
+#   storyboard.)
+#
 # agent:
 #   interaction_model: enum (stateless_transform | stateful_preloaded | stateful_push | stateless_generate | media_buy_seller | marketplace_catalog | owned_signals | si_platform | brand_rights_holder | governance_agent)
 #   capabilities: string[] (AdCP capability flags: supports_transformation, has_creative_library, supports_generation, sells_media, accepts_briefs, supports_guaranteed, supports_non_guaranteed, catalog_signals)
@@ -796,6 +887,9 @@
 #                "field_value_or_absent", "status_code", "http_status", "http_status_in",
 #                "error_code", "on_401_require_header", "resource_equals_agent_url",
 #                "any_of", "refs_resolve", "a2a_submitted_artifact",
+#                "field_less_than" / "field_equals_context" (compare a field on this
+#                step's response against a value captured by a prior step — see
+#                "Cross-step comparison" section below),
 #                "upstream_traffic" (asserts side-effects via comply_test_controller's
 #                query_upstream_traffic scenario — see "upstream_traffic" section below))
 # severity: string (optional, default "required"): "required" | "advisory".
@@ -901,9 +995,19 @@
 #                judgment call).
 # path: string (JSON path to the field, e.g., "formats[0].format_id")
 # value: any (expected value — string, number, or boolean; required when check is "field_value";
-#             accepted (optional) when check is "field_value_or_absent")
+#             accepted (optional) when check is "field_value_or_absent";
+#             accepted (optional) on "field_less_than" as a literal comparand when
+#             `context_key` is not set)
 # allowed_values: array (acceptable values for "field_value", "field_value_or_absent",
 #                        "http_status_in", "error_code", "any_of")
+# context_key: string (only meaningful for "field_less_than" / "field_equals_context"
+#                      cross-step comparison checks — names a key populated by a prior
+#                      step's `context_outputs`. Required on "field_equals_context";
+#                      optional on "field_less_than" (falls back to the literal `value`
+#                      when omitted). Ignored on every other check kind. When set and
+#                      the key is absent from the storyboard accumulator, the check
+#                      passes with a `context_key_absent` observation — see
+#                      "Cross-step comparison" section below.)
 # description: string (human-readable description of validation)
 #
 # field_value_or_absent check:
@@ -1008,6 +1112,98 @@
 #         key: agent_url
 #         equals: $agent_url
 #       on_out_of_scope: warn
+#
+# Cross-step comparison — use `check: field_less_than` / `field_equals_context`:
+#   These two checks compare a field in THIS step's response against a value
+#   captured by a PRIOR step via `context_outputs`. Without them, every existing
+#   `check:` is single-step (`field_value` resolves the comparand at YAML
+#   authoring time via `$context.<name>` substitution; the runtime value the
+#   prior step actually returned is opaque to the validation).
+#
+#   Use cases:
+#     - Round-trip identity: assert that `media_buys[0].media_buy_id` on
+#       `get_media_buys` equals the id returned by the earlier `create_media_buy`
+#       step. Today's `field_value` + `$context.media_buy_id` substitution
+#       resolves the placeholder against the request, not the response — a
+#       seller could return a different id on the read and still pass.
+#     - Filtered-vs-baseline: assert that a filtered `get_rights` returns a
+#       strictly smaller `rights.length` than the unfiltered baseline call.
+#     - Idempotency replay: assert that the replayed response's body hash
+#       equals the originally captured hash (byte-for-byte cache hit).
+#
+#   Fields:
+#     check: field_less_than | field_equals_context
+#     path: string                  # JSON path on this step's response.
+#     context_key: string           # name set by a prior step's
+#                                   # `context_outputs[].name`. Required for
+#                                   # `field_equals_context`. Optional for
+#                                   # `field_less_than` — when omitted, the
+#                                   # check falls back to the literal `value`
+#                                   # (so authors can compare against a
+#                                   # static threshold without context).
+#     value: number                 # Literal comparand for `field_less_than`
+#                                   # when `context_key` is not set. Ignored on
+#                                   # `field_equals_context` (which always reads
+#                                   # from context).
+#     description: string
+#
+#   Type semantics:
+#     `field_less_than` requires both operands to be finite numbers; non-numeric
+#     or absent values fail the check with a type error in the validation_result.
+#     `field_equals_context` deep-equals the response value against the captured
+#     comparand using the same equality semantics as `field_value`.
+#
+#   Absent context_key — context_key_absent observation:
+#     When `context_key` is set but the named entry is missing from the
+#     storyboard accumulator (typically because the prior capturing step was
+#     legitimately skipped on a branch-set path), the check PASSES with a
+#     `context_key_absent` observation rather than failing. This preserves the
+#     "skipped prerequisite cascades to skip, not fail" semantics that
+#     `context_outputs` already establishes for `$context.<name>` substitution.
+#     A genuinely missing capture (the prior step ran but its capture path did
+#     not resolve) is graded `capture_path_not_resolvable` ON THE PRIOR STEP —
+#     downstream cross-step checks on a never-populated key are not the place
+#     to surface that failure.
+#
+#   Examples:
+#     # Round-trip: get_media_buys returns the id we just created.
+#     # Pair with `context_outputs` on the earlier create_media_buy step:
+#     #   context_outputs:
+#     #     - name: created_media_buy_id
+#     #       path: "media_buy_id"
+#     - check: field_equals_context
+#       path: "media_buys[0].media_buy_id"
+#       context_key: "created_media_buy_id"
+#       description: "get_media_buys echoes the id returned by create_media_buy"
+#
+#     # Filtered call returns fewer rights than baseline.
+#     # Capture the baseline length on the unfiltered step:
+#     #   context_outputs:
+#     #     - name: baseline_rights_count
+#     #       path: "rights.length"
+#     - check: field_less_than
+#       path: "rights.length"
+#       context_key: "baseline_rights_count"
+#       description: "Filtered rights array is smaller than unfiltered baseline"
+#
+#     # Idempotency replay: replayed body deep-equals the originally-captured one.
+#     # Pair with `context_outputs` on the original call:
+#     #   context_outputs:
+#     #     - name: original_create_response
+#     #       path: ""              # capture the entire response body
+#     - check: field_equals_context
+#       path: ""
+#       context_key: "original_create_response"
+#       description: "Replay returned the cached response body, deep-equal to the original"
+#
+#     # Static threshold (single-step form — no context_key).
+#     # NOTE: `field_less_than` is primarily a cross-step check; the literal-
+#     # `value` form is a convenience for numeric thresholds. Authors who
+#     # need same-step equality should reach for `field_value` instead.
+#     - check: field_less_than
+#       path: "delivery.spend"
+#       value: 10000
+#       description: "Spend stays under the buy's budget cap"
 #
 # A2A wire-shape — use `check: a2a_submitted_artifact`:
 #   Asserts the A2A envelope invariants for AdCP `submitted` arms: `Task.id` /
@@ -1241,6 +1437,73 @@
 #       identifier_paths:
 #         - "audiences[*].add[*].hashed_email"
 #         - "audiences[*].add[*].external_id"
+#
+# Cross-response assertions — `check: cross_response_field_equal` / `cross_response_count_distinct`:
+#   These check kinds operate on the RESPONSE SET of a step that dispatches
+#   multiple parallel requests under the `parallel_dispatch_runner` contract
+#   (see test-kits/parallel-dispatch-runner.yaml). They are NOT applicable to
+#   single-dispatch steps: a single response trivially has cardinality 1 on any
+#   field. Runners MUST gate these checks on the step declaring
+#   `requires_contract: parallel_dispatch_runner` and a `parallel_dispatch`
+#   block; outside that gate the check MUST grade `not_applicable`. The
+#   canonical use case is rule-9 testing (concurrent retries / first-insert-wins
+#   from L1/security.mdx#idempotency) — fire N parallel calls with the same
+#   `idempotency_key`, assert exactly one resource was created.
+#
+#   `parallel_dispatch` is a step-level block that travels alongside `requires_contract`:
+#
+#     - id: concurrent_create
+#       task: create_media_buy
+#       requires_contract: parallel_dispatch_runner
+#       parallel_dispatch:
+#         count: 2                    # required, integer 2..10. The runner fires
+#                                     # `count` logically-simultaneous requests
+#                                     # using the SDK's batch primitive.
+#         same_idempotency_key: true  # required for rule-9 tests; future
+#                                     # non-idempotency parallel tests MAY set
+#                                     # this false.
+#         barrier_timeout_ms: 5000    # optional; default 5000 — how long the
+#                                     # runner waits at the dispatch barrier
+#                                     # before firing requests anyway.
+#       validations:
+#         - check: cross_response_count_distinct
+#           path: "media_buy_id"
+#           allowed_values: [1]
+#           description: "Exactly one media_buy_id across all dispatches"
+#         - check: cross_response_field_equal
+#           path: "media_buy_id"
+#           description: "All dispatches converge on the same media_buy_id"
+#
+#   `cross_response_field_equal`:
+#     - path (string, required): JSON path checked on every resolved response.
+#       All non-null observed values at `path` MUST be deeply equal. A missing
+#       value on a response is treated as a non-equal observation and fails the
+#       check.
+#
+#   `cross_response_count_distinct`:
+#     - path (string, required): JSON path scanned on every resolved response.
+#     - allowed_values (array of integers, required): permitted cardinalities of
+#       distinct values observed at `path` across the resolved response set.
+#       For rule-9 tests, `allowed_values: [1]` — exactly one resource was
+#       created across all dispatches.
+#
+#   Resolution semantics. A seller adopting the reject-and-redirect policy under
+#   rule 9 may return `IDEMPOTENCY_IN_FLIGHT` on the second (or later) dispatch
+#   rather than block. The runner MUST resolve `IDEMPOTENCY_IN_FLIGHT` responses
+#   to their eventual cached response before applying these checks: wait
+#   `error.details.retry_after` seconds and retry with the SAME idempotency_key,
+#   exactly as the buyer-side normative behavior specifies. The cross-response
+#   check operates on the resolved response set, not the raw initial set. If
+#   resolution exceeds the runner's step-timeout budget, the step grades
+#   `step_timeout` (a runner-synthesized code), not a rule-9 violation.
+#
+#   Grading output. `expected` carries the declared assertion fields
+#   (`path`, plus `allowed_values` for `count_distinct`). `actual` summarizes
+#   what was observed across the resolved response set:
+#     cross_response_field_equal → { observed_values: [...] }
+#     cross_response_count_distinct → { observed_cardinality, observed_values: [...] }
+#   See runner-output-contract.yaml > validation_result > expected/actual for
+#   the canonical shapes.
 #
 # --- Runner output ---
 #

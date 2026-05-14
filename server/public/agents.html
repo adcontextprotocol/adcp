@@ -746,7 +746,7 @@
                 if (trackEntries.length > 0) {
                     complianceHtml += '<div class="track-pills">';
                     for (const [track, status] of trackEntries) {
-                        const pillClass = status === 'pass' ? 'track-pill--pass'
+                        const pillClass = status === 'pass' || status === 'silent' ? 'track-pill--pass'
                             : status === 'fail' ? 'track-pill--fail'
                             : status === 'partial' ? 'track-pill--partial'
                             : 'track-pill--skip';
@@ -1008,7 +1008,7 @@
                 let trackPillsHtml = '';
                 const tracks = cs.tracks || {};
                 for (const [track, status] of Object.entries(tracks).filter(([, s]) => s !== 'skip' && s !== 'expected')) {
-                    const pillClass = status === 'pass' ? 'track-pill--pass'
+                    const pillClass = status === 'pass' || status === 'silent' ? 'track-pill--pass'
                         : status === 'fail' ? 'track-pill--fail'
                         : status === 'partial' ? 'track-pill--partial'
                         : 'track-pill--skip';

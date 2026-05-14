@@ -49,16 +49,17 @@ const SYNTHESIZED_CHECK_KINDS = new Set([
   'unresolved_substitution',
 ]);
 
-function loadAuthoredCheckKinds() {
+function loadKnownCheckKinds() {
   const doc = yaml.load(fs.readFileSync(CONTRACT_FILE, 'utf8'));
-  const kinds = doc && Array.isArray(doc.authored_check_kinds) ? doc.authored_check_kinds : null;
-  if (!kinds || kinds.length === 0) {
+  const authored = doc && Array.isArray(doc.authored_check_kinds) ? doc.authored_check_kinds : null;
+  if (!authored || authored.length === 0) {
     throw new Error(
       `runner-output-contract.yaml is missing the \`authored_check_kinds\` list. ` +
       `This lint reads that field as the canonical enum; restore it before running.`
     );
   }
-  return new Set(kinds);
+  const crossResponse = doc && Array.isArray(doc.cross_response_check_kinds) ? doc.cross_response_check_kinds : [];
+  return new Set([...authored, ...crossResponse]);
 }
 
 const RULE_MESSAGES = {
@@ -108,7 +109,7 @@ function* walkValidations(doc) {
 }
 
 function lint(sourceDir = SOURCE_DIR) {
-  const authoredKinds = loadAuthoredCheckKinds();
+  const authoredKinds = loadKnownCheckKinds();
   const violations = [];
 
   function lintFile(p) {
@@ -183,6 +184,6 @@ if (require.main === module) main();
 module.exports = {
   RULE_MESSAGES,
   SYNTHESIZED_CHECK_KINDS,
-  loadAuthoredCheckKinds,
+  loadKnownCheckKinds,
   lint,
 };

@@ -112,6 +112,8 @@ phases:
           - scenarios: array or object of scenario names
 
         sample_request:
+          account:
+            sandbox: true
           scenario: 'list_scenarios'
 
           context:
@@ -150,6 +152,8 @@ phases:
           - error: UNKNOWN_SCENARIO
 
         sample_request:
+          account:
+            sandbox: true
           scenario: 'nonexistent_scenario'
           params: {}
 
@@ -196,6 +200,8 @@ phases:
                    UNKNOWN_SCENARIO (when scenario not on this tenant)
 
         sample_request:
+          account:
+            sandbox: true
           scenario: 'force_creative_status'
           params: {}
 
@@ -242,6 +248,8 @@ phases:
                    UNKNOWN_SCENARIO (when scenario not on this tenant)
 
         sample_request:
+          account:
+            sandbox: true
           scenario: 'force_creative_status'
           params:
             creative_id: 'comply-test-nonexistent-000000000000'
@@ -358,6 +366,8 @@ phases:
           - current_state: suspended
 
         sample_request:
+          account:
+            sandbox: true
           scenario: 'force_account_status'
           params:
             account_id: '$context.account_id'
@@ -400,6 +410,8 @@ phases:
           - current_state: active
 
         sample_request:
+          account:
+            sandbox: true
           scenario: 'force_account_status'
           params:
             account_id: '$context.account_id'
@@ -439,6 +451,8 @@ phases:
           Return a successful state transition to payment_required.
 
         sample_request:
+          account:
+            sandbox: true
           scenario: 'force_account_status'
           params:
             account_id: '$context.account_id'
@@ -472,6 +486,8 @@ phases:
           Account restored to active state.
 
         sample_request:
+          account:
+            sandbox: true
           scenario: 'force_account_status'
           params:
             account_id: '$context.account_id'
@@ -559,6 +575,8 @@ phases:
           Return a successful state transition to active.
 
         sample_request:
+          account:
+            sandbox: true
           brand:
             domain: 'acmeoutdoor.example'
           scenario: 'force_media_buy_status'
@@ -639,6 +657,8 @@ phases:
           Return a successful transition to completed.
 
         sample_request:
+          account:
+            sandbox: true
           brand:
             domain: 'acmeoutdoor.example'
           scenario: 'force_media_buy_status'
@@ -684,6 +704,8 @@ phases:
           - error: INVALID_TRANSITION
 
         sample_request:
+          account:
+            sandbox: true
           brand:
             domain: 'acmeoutdoor.example'
           scenario: 'force_media_buy_status'
@@ -783,6 +805,8 @@ phases:
           Successful transition to approved.
 
         sample_request:
+          account:
+            sandbox: true
           brand:
             domain: 'acmeoutdoor.example'
           scenario: 'force_creative_status'
@@ -823,6 +847,8 @@ phases:
           Successful transition to archived.
 
         sample_request:
+          account:
+            sandbox: true
           brand:
             domain: 'acmeoutdoor.example'
           scenario: 'force_creative_status'
@@ -861,6 +887,8 @@ phases:
           Return error with INVALID_TRANSITION.
 
         sample_request:
+          account:
+            sandbox: true
           brand:
             domain: 'acmeoutdoor.example'
           scenario: 'force_creative_status'
@@ -952,6 +980,8 @@ phases:
           Successful transition to rejected with reason preserved.
 
         sample_request:
+          account:
+            sandbox: true
           brand:
             domain: 'acmeoutdoor.example'
           scenario: 'force_creative_status'
@@ -1037,6 +1067,8 @@ phases:
           Successful transition to terminated.
 
         sample_request:
+          account:
+            sandbox: true
           scenario: 'force_session_status'
           params:
             session_id: '$context.session_id'
@@ -1162,6 +1194,8 @@ phases:
           Return success with simulated delivery metrics acknowledged.
 
         sample_request:
+          account:
+            sandbox: true
           brand:
             domain: 'acmeoutdoor.example'
           scenario: 'simulate_delivery'
@@ -1295,6 +1329,8 @@ phases:
           Return success with budget spend simulated to 95%.
 
         sample_request:
+          account:
+            sandbox: true
           brand:
             domain: 'acmeoutdoor.example'
           scenario: 'simulate_budget_spend'
@@ -1331,6 +1367,8 @@ phases:
           Return success with budget fully depleted.
 
         sample_request:
+          account:
+            sandbox: true
           brand:
             domain: 'acmeoutdoor.example'
           scenario: 'simulate_budget_spend'

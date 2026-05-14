@@ -79,6 +79,13 @@ const SHARED_PLATFORM_DOMAINS = new Set<string>([
   'github.io', 'gitlab.io', 'bitbucket.io', 'readthedocs.io',
   'medium.com', 'substack.com', 'wordpress.com', 'blogspot.com',
   'tumblr.com', 'wixsite.com', 'squarespace.com',
+  // Social / profile platforms — owned by other entities, claiming one would
+  // route their entire user base into the claiming tenant via auto-link
+  // (e.g., Mangrove had `linkedin.com` as their primary brand domain).
+  'linkedin.com', 'twitter.com', 'x.com', 'facebook.com', 'fb.com',
+  'instagram.com', 'youtube.com', 'tiktok.com', 'reddit.com',
+  'pinterest.com', 'discord.com', 'snapchat.com', 'threads.net',
+  'whatsapp.com', 'wa.me',
   // Common eTLDs that pass the apex regex
   'co.uk', 'co.jp', 'com.au', 'com.br', 'co.in', 'co.nz', 'co.za',
   'org.uk', 'ac.uk', 'gov.uk', 'me.uk', 'ne.jp', 'or.jp',
@@ -89,16 +96,48 @@ const SHARED_PLATFORM_DOMAINS = new Set<string>([
 ]);
 
 /**
+ * Shared-content / SaaS domains where any subdomain belongs to the platform
+ * vendor, not the tenant whose content is hosted there. Stage 0.3 surfaced
+ * `243380875.fs1.hubspotusercontent-na2.net` as a stored brand domain —
+ * exact-match against the apex misses that, so we also reject anything
+ * ending in one of these suffixes.
+ *
+ * Suffix matches must include the leading `.` (so `hubspotusercontent.com`
+ * matches `foo.hubspotusercontent.com` but not `xhubspotusercontent.com`).
+ */
+const SHARED_PLATFORM_SUFFIXES: readonly string[] = [
+  // HubSpot user-content CDN (multi-region)
+  '.hubspotusercontent.com',
+  '.hubspotusercontent-na1.net', '.hubspotusercontent-na2.net',
+  '.hubspotusercontent-eu1.net', '.hubspotusercontent-ap1.net',
+  // Other shared SaaS content hosts
+  '.amazonaws.com',                        // S3 buckets, Amplify, etc.
+  '.googleusercontent.com',                // Drive shares, public Sheets, etc.
+  '.atlassian.net',                        // Confluence/Jira hosted
+  '.zendesk.com', '.freshdesk.com',        // Helpdesk hosted
+  '.salesforce.com', '.force.com', '.lightning.force.com',
+  '.shopify.com', '.myshopify.com',
+  '.typeform.com', '.airtable.com', '.notion.site',
+  '.canva.site', '.canva.com',
+  '.mailchimp.com', '.intercom.io',
+];
+
+/**
  * Throw if a caller is trying to claim a domain that's a shared platform
- * (vercel.app, github.io) or a country-code public suffix (co.uk). Used
- * by the brand-claim flow before issuing a verification challenge —
- * letting one member claim `vercel.app` would steal the brand identity
- * for every Vercel-hosted site.
+ * (vercel.app, github.io), a public-suffix etld (co.uk), a free-email
+ * provider (gmail.com), or a subdomain of a shared SaaS host
+ * (243380875.fs1.hubspotusercontent-na2.net). Used by the brand-claim flow
+ * before issuing a verification challenge.
  */
 export function assertClaimableBrandDomain(canonical: string): void {
   assertValidBrandDomain(canonical);
   if (SHARED_PLATFORM_DOMAINS.has(canonical)) {
     throw new Error(`"${canonical}" is a shared platform or public-suffix domain and can't be claimed as a single brand.`);
+  }
+  for (const suffix of SHARED_PLATFORM_SUFFIXES) {
+    if (canonical.endsWith(suffix)) {
+      throw new Error(`"${canonical}" is hosted on a shared SaaS platform (${suffix.slice(1)}) and can't be claimed as a brand domain.`);
+    }
   }
 }
 

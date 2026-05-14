@@ -13,7 +13,9 @@
 
 import { getPool } from '../db/client.js';
 import { canonicalizeBrandDomain, assertValidBrandDomain } from './identifier-normalization.js';
-import { checkLogoUrlIsImage } from './brand-logo-service.js';
+import { checkLogoUrlIsImage, rehostExternalLogo } from './brand-logo-service.js';
+import { getBrandPrimaryDomain } from './brand-domain-resolver.js';
+import { BrandLogoDatabase } from '../db/brand-logo-db.js';
 import { createLogger } from '../logger.js';
 
 const logger = createLogger('brand-identity');
@@ -23,17 +25,19 @@ export interface UpdateBrandIdentityInput {
   workosOrganizationId: string;
   /** Display name used when minting a new brand record. */
   displayName: string;
-  /** Member profile, if one exists. Required for primary_brand_domain link-back. */
+  /**
+   * Member profile, if one exists. `contact_website` is a fallback
+   * brand-domain hint used when the resolver returns null.
+   */
   profile?: {
     id: string;
-    primary_brand_domain?: string;
     contact_website?: string;
   } | null;
   /** New logo URL. HTTPS, must HEAD-resolve to image/*. Pass undefined to leave unchanged. */
   logoUrl?: string | null;
   /** New primary brand color. #RRGGBB. Pass undefined to leave unchanged. */
   brandColor?: string | null;
-  /** Domain hint used when the profile has no primary_brand_domain yet (e.g., logo URL hostname). */
+  /** Domain hint used when the resolver has nothing yet (e.g., logo URL hostname). */
   fallbackDomainHint?: string;
   /**
    * When the brand row is orphaned (prior owner relinquished, manifest
@@ -46,6 +50,12 @@ export interface UpdateBrandIdentityInput {
    * orphan flag is cleared at write time.
    */
   adoptPriorManifest?: boolean;
+  /**
+   * Attribution for the brand_logos row when an external `logoUrl` is
+   * rehosted to our own /logos/brands/... path. Optional — rehosting
+   * still happens without it, just with null user attribution.
+   */
+  uploadedBy?: { userId?: string; email?: string };
 }
 
 export interface UpdateBrandIdentityResult {
@@ -100,7 +110,8 @@ export class BrandIdentityError extends Error {
 export async function updateBrandIdentity(
   input: UpdateBrandIdentityInput,
 ): Promise<UpdateBrandIdentityResult> {
-  const { profile, workosOrganizationId, displayName, logoUrl, brandColor, fallbackDomainHint, adoptPriorManifest } = input;
+  const { profile, workosOrganizationId, displayName, brandColor, fallbackDomainHint, adoptPriorManifest, uploadedBy } = input;
+  let logoUrl = input.logoUrl;
 
   if (logoUrl === undefined && brandColor === undefined) {
     throw new BrandIdentityError(400, 'Provide at least one of logo_url or brand_color.');
@@ -120,9 +131,11 @@ export async function updateBrandIdentity(
     throw new BrandIdentityError(400, 'Brand color must be a hex color (e.g., #FF5733).');
   }
 
-  // Pick a brand domain. Prefer the profile's, fall back to website hostname,
-  // then to a hint from the caller (typically the logo URL hostname).
-  let brandDomain = profile?.primary_brand_domain ?? undefined;
+  // Pick a brand domain. Prefer the resolver's value (org_domains.is_primary
+  // first, member_profiles fallback), then the profile's website hostname,
+  // then a hint from the caller (typically the logo URL hostname).
+  const existingPrimary = (await getBrandPrimaryDomain(workosOrganizationId)) ?? undefined;
+  let brandDomain: string | undefined = existingPrimary;
   if (!brandDomain && profile?.contact_website) {
     try { brandDomain = new URL(profile.contact_website).hostname; } catch { /* ignore */ }
   }
@@ -145,6 +158,37 @@ export async function updateBrandIdentity(
   }
 
   const pool = getPool();
+
+  // Rehost external logo URLs as same-origin assets. Cross-origin sites often
+  // ship `Cross-Origin-Resource-Policy: same-origin` (e.g., Cloudflare default),
+  // which makes `<img src>` to their URL render as a broken image on our pages
+  // even though the URL is publicly reachable. Falls back to the original URL
+  // on any failure — the manifest stays consistent.
+  //
+  // The cross-org ownership check below runs inside the txn under FOR UPDATE,
+  // but we also pre-check it here: rehosting writes bytes into
+  // /logos/brands/<brandDomain>/<uuid>, so we must refuse to plant bytes
+  // under a domain the caller doesn't own before doing any work.
+  if (logoUrl) {
+    const ownershipCheck = await pool.query<{ workos_organization_id: string | null }>(
+      `SELECT workos_organization_id FROM brands WHERE domain = $1`,
+      [brandDomain],
+    );
+    const incumbent = ownershipCheck.rows[0]?.workos_organization_id;
+    if (incumbent && incumbent !== workosOrganizationId) {
+      throw new BrandIdentityError(
+        403,
+        'This brand domain is managed by another organization.',
+        'cross_org_ownership',
+        { brandDomain, currentOwnerOrgId: incumbent },
+      );
+    }
+    logoUrl = await rehostExternalLogo(logoUrl, brandDomain, new BrandLogoDatabase(), {
+      uploadedBy,
+      source: 'community',
+    });
+  }
+
   const client = await pool.connect();
   let wasUpdate = false;
   let claimedOrphanedBrand = false;
@@ -227,12 +271,12 @@ export async function updateBrandIdentity(
       );
     }
 
-    if (profile && profile.primary_brand_domain !== brandDomain) {
-      await client.query(
-        'UPDATE member_profiles SET primary_brand_domain = $1, updated_at = NOW() WHERE id = $2',
-        [brandDomain, profile.id]
-      );
-    }
+    // Stage 2 of #4159 dropped member_profiles.primary_brand_domain. The
+    // canonical brand-primary now lives on organization_domains.is_primary;
+    // when the brand-claim verify path needs to flip a primary, that should
+    // happen via setPrimaryDomain (Stage 3). This function still writes the
+    // brand identity itself (logos, colors) into the brands registry; it no
+    // longer mirrors the chosen domain back into member_profiles.
 
     await client.query('COMMIT');
   } catch (error) {

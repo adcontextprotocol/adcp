@@ -91,7 +91,7 @@ Specialisms are grouped below by parent protocol.
 |-----------|--------|---------|
 | `sales-guaranteed` | stable | Guaranteed media buys with human IO approval |
 | `sales-non-guaranteed` | stable | Non-guaranteed auction-based media buys |
-| `sales-proposal-mode` | stable | Media buys negotiated via proposal acceptance |
+| `sales-proposal-mode` | deprecated | **Deprecated in 3.1.** Drop this claim and replace with `sales-guaranteed` + `media_buy.supports_proposals: true`. See [#3823](https://github.com/adcontextprotocol/adcp/issues/3823). |
 | `sales-catalog-driven` | stable | Catalog-driven commerce with conversion tracking |
 | `sales-broadcast-tv` | stable | Broadcast linear TV with guaranteed inventory and FCC cancellation rules |
 | `sales-social` | stable | Social media advertising platform with self-service flows |
@@ -105,6 +105,108 @@ Specialisms are grouped below by parent protocol.
 <Note>
 `audience-sync` moved from the `governance` protocol to `media-buy` to match its tool family. If your agent claims `audience-sync` but only declares `governance` in `supported_protocols`, add `media_buy` to `supported_protocols` — the runner now expects the media-buy baseline to run alongside the audience-sync storyboard.
 </Note>
+
+### creative
+
+| Specialism | Status | Purpose |
+|-----------|--------|---------|
+| `creative-ad-server` | stable | Creative ad server with tag-based delivery |
+| `creative-generative` | stable | Generative creative agent producing assets on demand |
+| `creative-template` | stable | Creative template and transformation agent |
+
+### signals
+
+| Specialism | Status | Purpose |
+|-----------|--------|---------|
+| `signal-owned` | stable | Owned signal agent exposing first-party segments |
+| `signal-marketplace` | stable | Marketplace signal agent reselling third-party data |
+
+### governance
+
+| Specialism | Status | Purpose |
+|-----------|--------|---------|
+| `content-standards` | stable | Content standards enforcement (brand safety, policy compliance) |
+| `property-lists` | stable | Property list governance — curated inclusion and exclusion lists for targeting and delivery compliance |
+| `collection-lists` | stable | Collection list governance — curated inclusion and exclusion lists of content programs (shows, series, podcasts) for program-level brand safety |
+| `governance-delivery-monitor` | stable | Campaign delivery monitoring with drift detection |
+| `governance-spend-authority` | stable | Conditional spend approval and human-in-the-loop governance |
+
+<Note>
+**Coming in 3.1.** `measurement-verification` (third-party viewability, attribution, brand-safety, and SI-outcome verification) is scheduled for 3.1 under a dedicated `measurement` protocol.
+</Note>
+
+### brand
+
+| Specialism | Status | Purpose |
+|-----------|--------|---------|
+| `brand-rights` | stable | Brand identity and rights licensing (talent, music, stock media) |
+
+## Choosing a sales specialism
+
+The `sales-*` specialisms are not mutually exclusive — a hybrid platform with both a guaranteed direct desk and an auction floor should claim both `sales-guaranteed` and `sales-non-guaranteed`. Follow the steps below to resolve your claim.
+
+<Warning>
+**`sales-proposal-mode` is deprecated in 3.1.** Do not claim it for new agents. Existing agents that declare it must drop it entirely and replace it with `sales-guaranteed` + `media_buy.supports_proposals: true` in `get_adcp_capabilities`. See [#3823](https://github.com/adcontextprotocol/adcp/issues/3823).
+</Warning>
+
+<Steps>
+
+<Step title="Is your inventory channel-specific?">
+
+Three specialisms apply to specific delivery channels and have their own storyboards. If you only sell one of these channel types, claim only the matching specialism. If you also sell general display or video inventory outside these channels, continue to Step 2.
+
+| If you operate… | Claim |
+|---|---|
+| Broadcast linear TV with FCC cancellation rules | `sales-broadcast-tv` |
+| Catalog-driven dynamic ads (product listings, restaurant menus, hotel listings, local commerce) | `sales-catalog-driven` |
+| Social platform with platform-managed creative | `sales-social` |
+
+</Step>
+
+<Step title="What purchase model do you support?">
+
+| If you sell… | Claim |
+|---|---|
+| Guaranteed media (IO approval, fixed pricing) | `sales-guaranteed` → see Step 3 |
+| Auction / PMP non-guaranteed | `sales-non-guaranteed` |
+| Both guaranteed and non-guaranteed | `sales-guaranteed` + `sales-non-guaranteed` |
+
+</Step>
+
+<Step title="Set media_buy.supports_proposals (sales-guaranteed only)">
+
+`media_buy.supports_proposals` is a boolean in the `media_buy` capabilities block of your `get_adcp_capabilities` response. It gates whether the `proposal_finalize` compliance scenario runs.
+
+| If you… | Set |
+|---|---|
+| Accept RFPs, generate proposals, and finalize to committed status before IO | `media_buy.supports_proposals: true` |
+| Sell direct-buy guaranteed only (auction PG, retail SKU, quoted-rate — no RFP flow) | `media_buy.supports_proposals: false` (or omit — default is `false`) |
+
+```jsonc
+// Full-service guaranteed seller — proposal lifecycle graded
+{
+  "supported_protocols": ["media_buy"],
+  "specialisms": ["sales-guaranteed"],
+  "media_buy": {
+    "supports_proposals": true
+  }
+}
+```
+
+```jsonc
+// Direct-buy guaranteed seller — proposal scenario skipped as capability_unsupported
+{
+  "supported_protocols": ["media_buy"],
+  "specialisms": ["sales-guaranteed"],
+  "media_buy": {
+    "supports_proposals": false
+  }
+}
+```
+
+</Step>
+
+</Steps>
 
 ### creative
 
@@ -169,7 +271,7 @@ The storyboard runner:
 **Implement the tools AND claim the specialism.** An agent that wires all of a specialism's required tools but omits the kebab-case ID from `capabilities.specialisms[]` will be graded **"No applicable tracks found"** by the runner — `tracks_passed = 0, tracks_failed = 0, tracks_skipped = 1`. This is a silent pass at the step level and a silent fail at the track level. The fix is to add the specialism ID (e.g., `"creative-generative"`) to your `get_adcp_capabilities` response.
 </Warning>
 
-If any `stable` storyboard fails, your agent is not compliant for that claim. See [Validate Your Agent](/docs/building/verification/validate-your-agent) for how to run the suite locally.
+If any `stable` storyboard fails, your agent is not compliant for that claim. See [Validate Your Agent](/docs/building/verification/validate-your-agent) for how to run the suite locally. For a detailed walkthrough of how the runner resolves specialism manifests into graded scenarios — including how capability flags like `media_buy.supports_proposals` gate individual scenarios — see [How grading works](/docs/building/verification/how-grading-works).
 
 ## Naming conventions
 
@@ -234,3 +336,7 @@ The build pipeline verifies the specialism filesystem ↔ enum parity and that e
 <Note>
 The catalog on this page is maintained by hand to give human context. The authoritative enumeration is always `/compliance/{version}/index.json`.
 </Note>
+
+<Tip>
+**Building an agent that wraps an upstream platform?** Storyboards in this catalog grade the AdCP wire contract; they cannot detect adapters that return shape-valid responses without integrating with the upstream. See **[Validate adapter agents with mock upstream fixtures](/docs/building/verification/validate-with-mock-fixtures)** for the complementary pre-staging gate.
+</Tip>

@@ -61,7 +61,7 @@ phases:
         expected: |
           The governance agent acknowledges the plan with a plan_id.
         sample_request:
-          idempotency_key: "comply-gov-denied-sync-plans-v1"
+          idempotency_key: "$generate:uuid_v4#governance_denied_sync_plans"
           plans:
             - plan_id: "comply-gov-denied-plan"
               brand:
@@ -201,4 +201,4 @@ phases:
         validations:
           - check: error_code
             value: "GOVERNANCE_DENIED"
-            description: "Error code indicates governance denial"
+            description: "Error code indicates governance denial — Case-2 wire placement: create_media_buy has no rejection arm, so GOVERNANCE_DENIED surfaces via errors[].code or adcp_error.code (per the two-layer model in error-handling.mdx)"

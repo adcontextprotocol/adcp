@@ -1008,6 +1008,10 @@ const ACCOUNT_REF_SCHEMA = {
 // on the errors array.
 const ERROR_IN_BODY_TOOLS = new Set<string>([
   'update_media_buy',
+  // activate_signal errors (e.g. GOVERNANCE_DENIED) are returned in body
+  // on the legacy /mcp path. The v6 per-tenant path handles this in
+  // v6-platform.ts:activateSignal directly (translateV5Result bypass).
+  'activate_signal',
 ]);
 
 // ── Tool definitions ──────────────────────────────────────────────
@@ -1310,16 +1314,14 @@ const TOOLS = [
       type: 'object' as const,
       properties: {
         signal_agent_segment_id: { type: 'string' },
-        signal_id: { type: 'string', description: 'Alias for signal_agent_segment_id (SDK compatibility)' },
+        idempotency_key: { type: 'string', description: 'UUID v4 for retry safety' },
         action: { type: 'string', enum: ['activate', 'deactivate'] },
         destinations: { type: 'array', items: { type: 'object' } },
-        destination: { type: 'object', description: 'Single destination (SDK compatibility)' },
-        options: { type: 'object', description: 'Activation options (SDK compatibility)' },
         pricing_option_id: { type: 'string' },
         governance_context: { type: 'string', maxLength: 4096, description: 'Opaque governance context from check_governance. Persisted on the activation.' },
         account: ACCOUNT_REF_SCHEMA,
       },
-      required: [] as const,
+      required: ['signal_agent_segment_id', 'destinations', 'idempotency_key'] as const,
     },
   },
   ...ACCOUNT_TOOLS,
@@ -2723,14 +2725,6 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   // Media buy cancellation
   const isCanceled = req.canceled === true;
   if (isCanceled) {
-    if (mb.canceledAt) {
-      return {
-        errors: [{
-          code: 'INVALID_STATE',
-          message: `Media buy ${mb.mediaBuyId} is already canceled (canceled_at ${mb.canceledAt}) and cannot be canceled again.`,
-        }],
-      };
-    }
     const reason = req.cancellation_reason;
     mb.canceledAt = now;
     mb.canceledBy = 'buyer';
@@ -2948,6 +2942,24 @@ export async function handleGetAdcpCapabilities(_args: ToolArgs, ctx: TrainingCo
   const channels = [...new Set(PUBLISHERS.flatMap(p => p.channels))].sort();
   const publisherDomains = PUBLISHERS.map(p => p.domain);
   const signingCap = selectSigningCapability(ctx);
+  // Wire shape splits the SDK's flat `required_for` / `supported_for` lists
+  // back into the two namespaces defined in the spec (adcp#4318):
+  //   - `required_for` / `supported_for`: AdCP tool names (no `/`)
+  //   - `protocol_methods_*`: JSON-RPC method names (e.g. `tasks/cancel`)
+  // The internal verifier capability merges both for by-string matching;
+  // the wire response separates them so verifiers and storyboard runners
+  // don't conflate the two namespaces.
+  //
+  // The `/` test is the structural inverse of the schema's
+  // `pattern: "^[a-z][a-z0-9_]*/[a-z][a-z0-9_]*$"` constraint on
+  // `protocol_methods_*` items in `static/schemas/source/protocol/get-adcp-capabilities-response.json`.
+  // AdCP tool names are snake_case and have never contained `/`; this filter
+  // is correct as long as that invariant holds.
+  const isProtocolMethod = (op: string): boolean => op.includes('/');
+  const requiredFor = signingCap.required_for.filter(op => !isProtocolMethod(op));
+  const supportedFor = signingCap.supported_for?.filter(op => !isProtocolMethod(op));
+  const protocolMethodsRequiredFor = signingCap.required_for.filter(isProtocolMethod);
+  const protocolMethodsSupportedFor = signingCap.supported_for?.filter(isProtocolMethod) ?? [];
   return {
     adcp: {
       major_versions: [...SUPPORTED_MAJOR_VERSIONS],
@@ -2958,8 +2970,10 @@ export async function handleGetAdcpCapabilities(_args: ToolArgs, ctx: TrainingCo
     request_signing: {
       supported: signingCap.supported,
       covers_content_digest: signingCap.covers_content_digest,
-      required_for: signingCap.required_for,
-      ...(signingCap.supported_for && { supported_for: signingCap.supported_for }),
+      required_for: requiredFor,
+      ...(supportedFor && { supported_for: supportedFor }),
+      ...(protocolMethodsRequiredFor.length > 0 && { protocol_methods_required_for: protocolMethodsRequiredFor }),
+      ...(protocolMethodsSupportedFor.length > 0 && { protocol_methods_supported_for: protocolMethodsSupportedFor }),
     },
     protocol_version: '3.0',
     tasks,
@@ -3214,24 +3228,10 @@ export async function handleGetSignals(args: ToolArgs, ctx: TrainingContext) {
 }
 
 export async function handleActivateSignal(args: ToolArgs, ctx: TrainingContext) {
-  const req = args as unknown as ActivateSignalRequest & ToolArgs & {
-    signal_id?: string;
-    destination?: { type?: string; platform?: string; account?: string; account_id?: string; agent_url?: string };
-  };
-  // Accept both signal_agent_segment_id (protocol) and signal_id (SDK test tool)
-  const segmentId = req.signal_agent_segment_id || req.signal_id || '';
+  const req = args as unknown as ActivateSignalRequest & ToolArgs;
+  const segmentId = req.signal_agent_segment_id || '';
   const action = req.action || 'activate';
-  // Accept both destinations (array, protocol) and destination (singular, SDK test tool)
-  let destinations: Destination[] = req.destinations || [];
-  if (!destinations.length && req.destination) {
-    const dest = req.destination;
-    // SDK sends platform + account_id; normalize to protocol format
-    if (dest.agent_url) {
-      destinations = [{ type: 'agent', agent_url: dest.agent_url, account: dest.account || dest.account_id }];
-    } else {
-      destinations = [{ type: 'platform', platform: dest.platform || '', account: dest.account || dest.account_id }];
-    }
-  }
+  const destinations: Destination[] = req.destinations || [];
   const pricingOptionId = req.pricing_option_id;
   const rawGovCtx = (req as unknown as Record<string, unknown>).governance_context;
   const governanceContext = typeof rawGovCtx === 'string' && rawGovCtx.length <= 4096 ? rawGovCtx : undefined;

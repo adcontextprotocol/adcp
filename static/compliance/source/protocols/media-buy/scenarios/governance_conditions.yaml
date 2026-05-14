@@ -61,7 +61,7 @@ phases:
         expected: |
           The governance agent acknowledges the plan with a plan_id.
         sample_request:
-          idempotency_key: "comply-gov-conditions-sync-plans-v1"
+          idempotency_key: "$generate:uuid_v4#governance_conditions_sync_plans"
           plans:
             - plan_id: "comply-gov-conditions-plan"
               brand:

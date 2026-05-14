@@ -21,6 +21,11 @@
 import { Router, Request, Response } from 'express';
 import { createLogger } from '../logger.js';
 import { getPool } from '../db/client.js';
+import {
+  upsertWorkosDomain,
+  autoPromotePrimaryIfNone,
+  removeWorkosDomainAndReselectPrimary,
+} from '../db/organization-domains-db.js';
 import { BrandDatabase } from '../db/brand-db.js';
 import { getWorkos } from '../auth/workos-client.js';
 import { invalidateUnifiedUsersCache } from '../cache/unified-users.js';
@@ -488,6 +493,16 @@ async function updateUserAcrossMemberships(user: UserData): Promise<void> {
     [user.email, user.id]
   );
 
+  // person_relationships denormalizes users.email too. Keep it in sync so
+  // the admin person-detail header doesn't lag the canonical email after a
+  // WorkOS-side update (dashboard edit, OIDC profile sync, primary swap).
+  await pool.query(
+    `UPDATE person_relationships SET email = $1, updated_at = NOW()
+      WHERE workos_user_id = $2
+        AND email IS DISTINCT FROM $1`,
+    [user.email, user.id]
+  );
+
   logger.info({
     userId: user.id,
     updatedCount: result.rowCount,
@@ -515,7 +530,7 @@ async function deleteUserMemberships(userId: string): Promise<void> {
  * Sync organization domains from WorkOS
  * This upserts domains and removes any that are no longer in WorkOS
  */
-async function syncOrganizationDomains(org: OrganizationData): Promise<void> {
+export async function syncOrganizationDomains(org: OrganizationData): Promise<void> {
   const pool = getPool();
 
   // First check if the organization exists in our database
@@ -551,24 +566,17 @@ async function syncOrganizationDomains(org: OrganizationData): Promise<void> {
       workOSDomains.add(domainData.domain);
 
       // is_primary + the email_domain update below drive auto-membership
-      // inference and only apply to non-personal orgs (see upsertOrganizationDomain).
+      // inference and only apply to non-personal orgs.
       const isPrimaryEligible = !isPersonal && i === 0;
 
-      await client.query(
-        `INSERT INTO organization_domains (
-          workos_organization_id, domain, is_primary, verified, source
-        ) VALUES ($1, $2, $3, $4, 'workos')
-        ON CONFLICT (domain) DO UPDATE SET
-          workos_organization_id = EXCLUDED.workos_organization_id,
-          verified = EXCLUDED.verified,
-          source = 'workos',
-          updated_at = NOW()`,
-        [
-          org.id,
-          domainData.domain,
-          isPrimaryEligible,
-          domainData.state === 'verified',
-        ]
+      await upsertWorkosDomain(
+        {
+          orgId: org.id,
+          domain: domainData.domain,
+          verified: domainData.state === 'verified',
+          isPrimary: isPrimaryEligible,
+        },
+        client,
       );
     }
 
@@ -588,13 +596,39 @@ async function syncOrganizationDomains(org: OrganizationData): Promise<void> {
     // column is the auto-membership inference key and applying it to
     // personal-tier orgs would let `@vastlint.org` users auto-resolve to a
     // 1-seat individual sub.
-    const primaryDomain = org.domains.length > 0 ? org.domains[0].domain : null;
+    //
+    // Source the value from `organization_domains.is_primary=true` (the
+    // canonical brand-primary the rest of the system honors) rather than
+    // `org.domains[0]`. WorkOS's domain-array order is not stable: orgs
+    // with multiple domains (e.g. a verified root + a `failed` www variant)
+    // can have WorkOS list the failed one first, which would otherwise
+    // overwrite the correct email_domain on every webhook fire. The
+    // `upsertWorkosDomain` loop above doesn't change `is_primary` on
+    // conflict, so our table preserves the canonical choice; reading from
+    // there keeps `email_domain` in lockstep with what auto-membership
+    // inference and brand-registry lookups already use.
+    //
+    // Fallback to `org.domains[0]` covers the initial-sync case (this is
+    // the first webhook for this org, no `organization_domains` rows are
+    // is_primary=true yet — the upsert above set `i===0` as primary, so
+    // the query usually picks it up, but the fallback is a safety net).
+    let primaryDomain: string | null = null;
     if (!isPersonal) {
+      const primaryRow = await client.query<{ domain: string }>(
+        `SELECT domain FROM organization_domains
+         WHERE workos_organization_id = $1 AND is_primary = true
+         LIMIT 1`,
+        [org.id],
+      );
+      primaryDomain = primaryRow.rows[0]?.domain
+        ?? (org.domains.length > 0 ? org.domains[0].domain : null);
       await client.query(
         `UPDATE organizations SET email_domain = $1, updated_at = NOW()
          WHERE workos_organization_id = $2`,
         [primaryDomain, org.id]
       );
+    } else if (org.domains.length > 0) {
+      primaryDomain = org.domains[0].domain;
     }
 
     await client.query('COMMIT');
@@ -693,20 +727,13 @@ export async function upsertOrganizationDomain(domainData: OrganizationDomainEve
     // (multi-user companies sneaking onto a 1-seat individual sub) is
     // enforced at the seat-cap layer (checkSeatAvailability), not by hiding
     // the ownership claim in the data layer.
-    await client.query(
-      `INSERT INTO organization_domains (
-        workos_organization_id, domain, verified, source
-      ) VALUES ($1, $2, $3, 'workos')
-      ON CONFLICT (domain) DO UPDATE SET
-        workos_organization_id = EXCLUDED.workos_organization_id,
-        verified = EXCLUDED.verified,
-        source = 'workos',
-        updated_at = NOW()`,
-      [
-        domainData.organization_id,
-        normalizedDomain,
-        domainData.state === 'verified',
-      ]
+    await upsertWorkosDomain(
+      {
+        orgId: domainData.organization_id,
+        domain: normalizedDomain,
+        verified: domainData.state === 'verified',
+      },
+      client,
     );
 
     // is_primary + organizations.email_domain drive auto-membership inference
@@ -716,24 +743,10 @@ export async function upsertOrganizationDomain(domainData: OrganizationDomainEve
     // Skip the inference wiring for personal orgs; the verified row above
     // still records the ownership fact.
     if (!isPersonal && domainData.state === 'verified') {
-      const updated = await client.query(
-        `UPDATE organization_domains SET is_primary = true, updated_at = NOW()
-         WHERE workos_organization_id = $1 AND domain = $2
-         AND NOT EXISTS (
-           SELECT 1 FROM organization_domains
-           WHERE workos_organization_id = $1 AND is_primary = true AND domain != $2
-         )
-         RETURNING domain`,
-        [domainData.organization_id, normalizedDomain]
+      await autoPromotePrimaryIfNone(
+        { orgId: domainData.organization_id, domain: normalizedDomain },
+        client,
       );
-
-      if (updated.rows.length > 0) {
-        await client.query(
-          `UPDATE organizations SET email_domain = $1, updated_at = NOW()
-           WHERE workos_organization_id = $2`,
-          [normalizedDomain, domainData.organization_id]
-        );
-      }
     }
 
     await client.query('COMMIT');
@@ -787,31 +800,12 @@ export async function upsertOrganizationDomain(domainData: OrganizationDomainEve
           logger.error({ err, orgId: domainData.organization_id, domain: normalizedDomain }, 'Failed to sync verified domain to brand registry');
         }
 
-        // Auto-populate `member_profiles.primary_brand_domain` when a member
-        // verifies a claimable domain via WorkOS and they haven't already
-        // staked a brand identity. Without this, members who verified a
-        // domain via SSO still hit the publish-agent gate that requires a
-        // primary brand domain — surprising for the common case where their
-        // email domain *is* their brand. Only writes when NULL so an
-        // intentional brand-claim (request_brand_domain_challenge / verify)
-        // pointing at a different domain is never clobbered.
-        try {
-          const updated = await pool.query(
-            `UPDATE member_profiles
-               SET primary_brand_domain = $1, updated_at = NOW()
-             WHERE workos_organization_id = $2
-               AND primary_brand_domain IS NULL`,
-            [normalizedDomain, domainData.organization_id]
-          );
-          if (updated.rowCount && updated.rowCount > 0) {
-            logger.info({
-              orgId: domainData.organization_id,
-              domain: normalizedDomain,
-            }, 'Auto-set primary_brand_domain on member_profile from verified WorkOS domain');
-          }
-        } catch (err) {
-          logger.error({ err, orgId: domainData.organization_id, domain: normalizedDomain }, 'Failed to auto-set primary_brand_domain on member_profile');
-        }
+        // After Stage 2 of #4159, brand-identity primary lives on the same
+        // organization_domains.is_primary row as org-membership-inference.
+        // The auto-promote-to-is_primary above (when no other primary exists)
+        // covers the auto-populate case — a member verifying their first
+        // domain via WorkOS now seeds both facets in one write. Stage 1's
+        // separate primary_brand_domain auto-populate is no longer needed.
       }
     }
   } catch (error) {
@@ -836,54 +830,20 @@ async function deleteSingleOrganizationDomain(domainData: OrganizationDomainEven
     // Normalize domain to lowercase
     const normalizedDomain = domainData.domain.toLowerCase();
 
-    const result = await client.query(
-      `DELETE FROM organization_domains
-       WHERE workos_organization_id = $1 AND domain = $2 AND source = 'workos'
-       RETURNING is_primary`,
-      [domainData.organization_id, normalizedDomain]
+    const result = await removeWorkosDomainAndReselectPrimary(
+      { orgId: domainData.organization_id, domain: normalizedDomain },
+      client,
     );
 
-    if (result.rowCount && result.rowCount > 0) {
-      const wasPrimary = result.rows[0]?.is_primary;
+    await client.query('COMMIT');
 
-      // If we deleted the primary domain, pick a new one
-      let newPrimary: string | null = null;
-      if (wasPrimary) {
-        const remaining = await client.query(
-          `SELECT domain FROM organization_domains
-           WHERE workos_organization_id = $1 AND verified = true
-           ORDER BY created_at ASC
-           LIMIT 1`,
-          [domainData.organization_id]
-        );
-
-        newPrimary = remaining.rows.length > 0 ? remaining.rows[0].domain : null;
-
-        if (newPrimary) {
-          await client.query(
-            `UPDATE organization_domains SET is_primary = true, updated_at = NOW()
-             WHERE workos_organization_id = $1 AND domain = $2`,
-            [domainData.organization_id, newPrimary]
-          );
-        }
-
-        await client.query(
-          `UPDATE organizations SET email_domain = $1, updated_at = NOW()
-           WHERE workos_organization_id = $2`,
-          [newPrimary, domainData.organization_id]
-        );
-      }
-
-      await client.query('COMMIT');
-
+    if (result.deleted) {
       logger.info({
         orgId: domainData.organization_id,
         domain: normalizedDomain,
-        wasPrimary,
-        newPrimary,
+        wasPrimary: result.wasPrimary,
+        newPrimary: result.newPrimary,
       }, 'Deleted organization domain');
-    } else {
-      await client.query('COMMIT');
     }
   } catch (error) {
     await client.query('ROLLBACK');

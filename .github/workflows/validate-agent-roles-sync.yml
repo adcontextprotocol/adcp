@@ -1,0 +1,32 @@
+name: Validate agent roles sync
+
+on:
+  pull_request:
+    paths:
+      - '.agents/roles/**'
+      - '.claude/agents/**'
+      - 'scripts/import-claude-agents.mjs'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: .claude/agents matches .agents/roles
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - name: Regenerate from source
+        run: node scripts/import-claude-agents.mjs
+      - name: Fail if .claude/agents drifted from .agents/roles
+        run: |
+          if ! git diff --exit-code .claude/agents/; then
+            echo ""
+            echo "::error::.claude/agents/ is out of sync with .agents/roles/."
+            echo "Run 'node scripts/import-claude-agents.mjs' locally and commit the result."
+            exit 1
+          fi

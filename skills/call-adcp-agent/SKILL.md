@@ -35,7 +35,8 @@ UUID format. The key is your retry-safety guarantee — and the most common way 
 
 - **Same key on retry → replay.** The server returns the SAME response — same `task_id`, same `media_buy_id`, same shape, byte-for-byte. Use this for transport-level retries (timeout, 5xx, dropped connection).
 - **Fresh key on retry → NEW operation.** Generating a new UUID because the previous attempt failed is how you double-book. Reuse the key until you've seen a terminal response (success, error, or non-retryable error).
-- **Same key, different body → server-defined.** Most agents return the original cached response and ignore the body change. Don't rely on it — pick a fresh key only when you genuinely want a new operation.
+- **Same key, different canonical body → `IDEMPOTENCY_CONFLICT`.** Servers MUST reject. Do not silently apply the second body; do not silently replay the first. If your planner re-ran and produced different bytes, the intent changed — mint a new key.
+- **Same key while first request still running → `IDEMPOTENCY_IN_FLIGHT`.** Server returns this with `error.details.retry_after` (seconds) when it doesn't want to block. Wait the hint and retry with the **same key** — minting a fresh key here turns a safe retry into a double-execution race.
 - For async flows, the replayed response carries the **same `task_id`**, so polling continues against the same task instead of forking a duplicate.
 
 Required on: `create_media_buy`, `update_media_buy`, `sync_creatives`, `sync_audiences`, `sync_accounts`, `sync_catalogs`, `sync_event_sources`, `sync_plans`, `sync_governance`, `activate_signal`, `acquire_rights`, `log_event`, `report_usage`, `provide_performance_feedback`, `report_plan_outcome`, `create_property_list`, `update_property_list`, `delete_property_list`, `create_collection_list`, `update_collection_list`, `delete_collection_list`, `create_content_standards`, `update_content_standards`, `calibrate_content`, `si_initiate_session`, `si_send_message`.
@@ -88,6 +89,25 @@ When you see `status: 'submitted'`, the work is NOT complete. Poll via `tasks/ge
 ```
 
 `budget` is a **number** (not `{amount, currency}` — currency is implied by the pricing option). Required per package: `product_id`, `budget`, `pricing_option_id`. `buyer_ref` is optional but strongly recommended as a buyer-side correlation id across retries and reporting.
+
+### Webhook signing — omit `authentication` for new integrations
+
+When you include `push_notification_config` in a request, do **not** set `authentication`
+unless you are integrating with a legacy receiver. Omitting `authentication` selects the
+default: the seller signs each inbound webhook POST with its RFC 9421
+`adcp_use: "webhook-signing"` key, published at the `jwks_uri` in its own `brand.json`
+`agents[]` entry. You verify against the seller's JWKS. No shared secret crosses the wire.
+
+Presence of `authentication` is a **switch, not a fallback** — it opts the seller into
+Bearer or HMAC-SHA256 and disables 9421 for that registration. A buyer MUST NOT attempt
+"try 9421 first, fall back to HMAC" verification — mode is fixed at registration time.
+
+The `authentication` block (Bearer / HMAC-SHA256) is deprecated and sellers MAY decline
+to support it. It is removed in AdCP 4.0. The `token` field (a correlation token echoed
+back in the webhook payload) is separate from `authentication` and is not deprecated.
+
+See [Webhook callbacks](https://adcontextprotocol.org/docs/building/implementation/security#webhook-callbacks) for the
+full verifier checklist and downgrade-resistance rules.
 
 ## Error envelope — read `issues[]` to recover
 

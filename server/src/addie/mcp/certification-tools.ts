@@ -507,7 +507,7 @@ export async function buildCertificationContext(
   lines.push('- First turn: greet the learner and ask about their background. Never run tools on the first turn.');
   lines.push('- NEVER re-ask something the learner already told you. If they said "I work at an audio SSP" do NOT later ask "are you on the buy side or sell side?" — they already told you (sell side, SSP). If they said "I run programmatic at an agency" do NOT ask "what is your role?" This is the #1 complaint from learners. Before asking ANY question about the learner, check: did they already answer this? If yes, use what they said.');
   lines.push('- If you research the learner\'s company, USE that knowledge — never ask them to explain what their company does. Instead, weave it into your teaching: "Given that Acme is an audio SSP, how would you..." Asking someone about their own company after you already looked it up feels like surveillance, not personalization.');
-  lines.push('- Run ONE live demo (get_products against the sandbox training agent) on turn 2-3. Do not wait for the learner to ask. Show, then discuss. After the initial demo, do NOT keep running demos every turn — use the demo result as a reference point for teaching.');
+  lines.push('- If the module has sandbox demo scenarios listed below: run ONE live demo using the first scenario\'s tool on turn 2-3. Do not wait for the learner to ask. Show, then discuss. After the initial demo, do NOT keep running demos every turn — use the demo result as a reference point for teaching.');
   lines.push('- Use concrete, specific language. Never use abstract terms without grounding them. Say "evaluate whether a placement fits" not "reason about impressions."');
   lines.push('- Only assess what you actually taught in the conversation. Never test doc-only details or claim "we covered this" if you didn\'t.');
   lines.push('- If a demo fails, pivot immediately. Never offer the same failed demo twice.');
@@ -517,7 +517,7 @@ export async function buildCertificationContext(
   lines.push('');
   lines.push('**Mastery model**: There is no failing — teach until the learner masters every objective, then complete the module. Never share scores or percentages with the learner. Internal scores are for admin analytics only.');
   lines.push('');
-  lines.push('**Mastery fast-track (CHECK EVERY TURN after turn 3)**: Teaching and assessment serve different purposes. Teaching is for the learner; assessment is for the credential. After each learner response, ask: "Has this learner given correct, detailed answers to 3+ concepts without needing correction?" If YES: (1) STOP running demos — no more get_products calls, (2) SAY SO: "You clearly know this material — I\'m going to skip the tutorial and have you demonstrate the remaining concepts directly," (3) for each remaining concept, ask ONE targeted demonstration question (scenario-based, teach-back, or "walk me through") that produces auditable evidence of competency. The conversation transcript is the audit trail — the learner\'s own words showing they understand each dimension. Same scoring rubric, same dimension requirements, same minimum engagement — just no unnecessary instruction. Continuing to teach or demo after someone has demonstrated mastery is the #1 learner complaint.');
+  lines.push('**Mastery fast-track (CHECK EVERY TURN after turn 3)**: Teaching and assessment serve different purposes. Teaching is for the learner; assessment is for the credential. After each learner response, ask: "Has this learner given correct, detailed answers to 3+ concepts without needing correction?" If YES: (1) STOP running demos — no more sandbox tool calls, (2) SAY SO: "You clearly know this material — I\'m going to skip the tutorial and have you demonstrate the remaining concepts directly," (3) for each remaining concept, ask ONE targeted demonstration question (scenario-based, teach-back, or "walk me through") that produces auditable evidence of competency. The conversation transcript is the audit trail — the learner\'s own words showing they understand each dimension. Same scoring rubric, same dimension requirements, same minimum engagement — just no unnecessary instruction. Continuing to teach or demo after someone has demonstrated mastery is the #1 learner complaint.');
 
   lines.push('**Protocol accuracy (non-negotiable)**: When a learner asks about protocol details (field definitions, message flows, terminology, agent roles), use search_docs or search_repos to verify before answering. Never construct protocol answers from general knowledge. If you cannot verify, say "I need to check that" and search. Teaching mode does not override accuracy — a wrong answer during certification is worse than saying "let me look that up."');
   lines.push('');
@@ -554,7 +554,6 @@ export async function buildCertificationContext(
   lines.push('');
   lines.push('**Sandbox training agent**:');
   lines.push(formatTenantBlock(tenants));
-  lines.push('Use brand domain "demo.example.com" for the account.');
 
   // Inject cross-module learner profile from completed modules
   if (userId) {
@@ -994,6 +993,7 @@ function getIllustrations(topics: string[]): { alt: string; url: string }[] {
 const MODULE_ILLUSTRATION_TOPICS: Record<string, string[]> = {
   A1: ['protocol-overview'],
   A2: ['media-buy', 'media-buy-lifecycle', 'get-products', 'create-media-buy'],
+  A2B: ['media-buy', 'media-buy-lifecycle', 'get-products', 'create-media-buy'],
   A3: ['protocol-overview', 'governance', 'creative-workflow', 'signals', 'trusted-match'],
   B2: ['creative-formats', 'creative-manifests', 'creative-workflow', 'sync-creatives'],
   B3: ['signals', 'governance', 'delivery', 'creative-delivery', 'trusted-match'],
@@ -1023,6 +1023,14 @@ export const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> 
     { label: 'AdCP quickstart', url: `${DOCS_BASE}/docs/quickstart` },
     { label: 'Media buy protocol', url: `${DOCS_BASE}/docs/media-buy` },
     { label: 'Create media buy task', url: `${DOCS_BASE}/docs/media-buy/task-reference/create_media_buy` },
+  ],
+  A2B: [
+    { label: 'A2B: Testing your first agent call', url: `${DOCS_BASE}/docs/learning/foundations/a2b-testing-your-first-agent` },
+    { label: 'Task lifecycle', url: `${DOCS_BASE}/docs/building/implementation/task-lifecycle` },
+    { label: 'Create media buy task', url: `${DOCS_BASE}/docs/media-buy/task-reference/create_media_buy` },
+    { label: 'Sync creatives task', url: `${DOCS_BASE}/docs/creative/task-reference/sync_creatives` },
+    { label: 'Error handling', url: `${DOCS_BASE}/docs/building/implementation/error-handling` },
+    { label: 'MCP integration guide', url: `${DOCS_BASE}/docs/building/integration/mcp-guide` },
   ],
   A3: [
     { label: 'AdCP protocol overview', url: `${DOCS_BASE}/docs/intro` },
@@ -1373,7 +1381,7 @@ export function createCertificationToolHandlers(
       }
 
       lines.push('---');
-      lines.push('Modules A1, A2, and A3 are free for everyone. Other modules require AgenticAdvertising.org membership.');
+      lines.push('Modules A1, A2, A2B, and A3 are free for everyone. Other modules require AgenticAdvertising.org membership.');
       lines.push('To start a module, say "start module [ID]" (e.g., "start module A1").');
       lines.push('To start a specialist deep dive, say "start capstone S1" (or S2/S3/S4/S5).');
       lines.push('Already familiar with AdCP? Say "assess my level" to take a placement assessment and skip modules you already know.');
@@ -1434,6 +1442,13 @@ export function createCertificationToolHandlers(
             lines.push(`Expected outcome: ${ds.expected_outcome}`);
             lines.push('');
           });
+          const scenarioTools = lp.demo_scenarios.flatMap(ds => ds.tools);
+          if (scenarioTools.some(t => ['acquire_rights', 'sync_accounts'].includes(t))) {
+            lines.push('For acquire_rights / sync_accounts buyer.domain: use "demo.example.com".');
+          }
+          if (scenarioTools.includes('get_brand_identity')) {
+            lines.push('For get_brand_identity: pass a brand_id from the tool\'s "Available brands" list — not a domain name.');
+          }
         }
       }
 
@@ -1555,7 +1570,13 @@ export function createCertificationToolHandlers(
           lp.demo_scenarios.forEach(ds => {
             lines.push(`- ${ds.description} (tools: ${ds.tools.join(', ')})`);
           });
-          lines.push('Use brand domain "demo.example.com" for the account.');
+          const scenarioTools = lp.demo_scenarios.flatMap(ds => ds.tools);
+          if (scenarioTools.some(t => ['acquire_rights', 'sync_accounts'].includes(t))) {
+            lines.push('For acquire_rights / sync_accounts buyer.domain: use "demo.example.com".');
+          }
+          if (scenarioTools.includes('get_brand_identity')) {
+            lines.push('For get_brand_identity: pass a brand_id from the tool\'s "Available brands" list — not a domain name.');
+          }
           lines.push('');
         }
       }

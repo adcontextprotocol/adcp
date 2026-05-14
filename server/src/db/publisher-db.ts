@@ -77,6 +77,17 @@ export interface UpsertAdagentsCacheInput {
    * `self_redirected` or `aao_hosted`.
    */
   resolvedUrl?: string;
+  /**
+   * How the publisher's adagents.json was discovered. Mirrors
+   * AdAgentsValidationResult.discovery_method. Written to
+   * publishers.discovery_method so the API can surface provenance.
+   */
+  discoveryMethod?: string;
+  /**
+   * When discoveryMethod is 'ads_txt_managerdomain', the manager domain
+   * whose adagents.json was used. Written to publishers.manager_domain.
+   */
+  managerDomain?: string;
 }
 
 const ADAGENTS_CREATED_BY_PREFIX = 'adagents_json:';
@@ -229,8 +240,9 @@ export class PublisherDatabase {
       await client.query(
         `INSERT INTO publishers
            (domain, adagents_json, source_type, last_validated, expires_at,
-            last_http_status, last_response_bytes, resolved_url)
-         VALUES ($1, $2::jsonb, 'adagents_json', NOW(), $3, $4, $5, $6)
+            last_http_status, last_response_bytes, resolved_url,
+            discovery_method, manager_domain)
+         VALUES ($1, $2::jsonb, 'adagents_json', NOW(), $3, $4, $5, $6, $7, $8)
          ON CONFLICT (domain) DO UPDATE SET
            adagents_json = EXCLUDED.adagents_json,
            source_type = 'adagents_json',
@@ -239,6 +251,8 @@ export class PublisherDatabase {
            last_http_status = EXCLUDED.last_http_status,
            last_response_bytes = EXCLUDED.last_response_bytes,
            resolved_url = EXCLUDED.resolved_url,
+           discovery_method = EXCLUDED.discovery_method,
+           manager_domain = EXCLUDED.manager_domain,
            updated_at = NOW()`,
         [
           domain,
@@ -247,6 +261,8 @@ export class PublisherDatabase {
           clampHttpStatus(input.statusCode),
           input.responseBytes ?? null,
           truncateResolvedUrl(input.resolvedUrl),
+          input.discoveryMethod ?? null,
+          input.managerDomain ?? null,
         ]
       );
 
@@ -338,6 +354,129 @@ export class PublisherDatabase {
     } catch (err) {
       await client.query('ROLLBACK');
       throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Read the cached adagents.json body for a domain. Used by the crawler
+   * to decide whether a re-fetch produced an actual content change before
+   * fanning out manager re-validation. Returns null when the domain has
+   * never been successfully crawled.
+   */
+  async getCachedAdagentsJson(domain: string): Promise<AdagentsManifest | null> {
+    const client = await getClient();
+    try {
+      const r = await client.query<{ adagents_json: AdagentsManifest | null }>(
+        `SELECT adagents_json FROM publishers WHERE domain = $1 LIMIT 1`,
+        [domain.toLowerCase()],
+      );
+      return r.rows[0]?.adagents_json ?? null;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Insert one queue row per publisher delegating to this manager via
+   * ads.txt MANAGERDOMAIN. Idempotent: if a publisher is already queued
+   * (e.g. previous fan-out hasn't drained yet), the row is reset to
+   * "due now" with attempts=0 so the upstream manager change supersedes
+   * any in-flight backoff. Returns the number of rows touched (inserts
+   * + ON CONFLICT updates) — a delegating publisher with a stale row
+   * still counts since the supersede is the load-bearing semantic.
+   *
+   * The SELECT scans the partial index added in migration 470
+   * (idx_publishers_manager_domain) so the lookup stays cheap even at
+   * managed-network scale.
+   */
+  async enqueueManagerRevalidation(managerDomain: string): Promise<number> {
+    const client = await getClient();
+    try {
+      const r = await client.query(
+        `INSERT INTO manager_revalidation_queue
+           (publisher_domain, manager_domain, enqueued_at, next_attempt_after, attempts, last_attempted_at, last_error)
+         SELECT domain, $1, NOW(), NOW(), 0, NULL, NULL
+           FROM publishers
+          WHERE manager_domain = $1
+         ON CONFLICT (publisher_domain) DO UPDATE SET
+           manager_domain = EXCLUDED.manager_domain,
+           enqueued_at = NOW(),
+           next_attempt_after = NOW(),
+           attempts = 0,
+           last_attempted_at = NULL,
+           last_error = NULL`,
+        [managerDomain.toLowerCase()],
+      );
+      return r.rowCount ?? 0;
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Pull a bounded batch of due rows from the queue. The caller (crawler
+   * worker tick) must call markRevalidationSucceeded / Failed for each
+   * returned row to advance the queue.
+   */
+  async dequeueRevalidationBatch(
+    limit: number,
+  ): Promise<Array<{ publisher_domain: string; manager_domain: string; attempts: number }>> {
+    const client = await getClient();
+    try {
+      const r = await client.query<{
+        publisher_domain: string;
+        manager_domain: string;
+        attempts: number;
+      }>(
+        `SELECT publisher_domain, manager_domain, attempts
+           FROM manager_revalidation_queue
+          WHERE next_attempt_after <= NOW()
+          ORDER BY enqueued_at ASC
+          LIMIT $1`,
+        [limit],
+      );
+      return r.rows;
+    } finally {
+      client.release();
+    }
+  }
+
+  async markRevalidationSucceeded(publisherDomain: string): Promise<void> {
+    const client = await getClient();
+    try {
+      await client.query(
+        `DELETE FROM manager_revalidation_queue WHERE publisher_domain = $1`,
+        [publisherDomain.toLowerCase()],
+      );
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * Advance the queue row with exponential backoff. Schedule mirrors the
+   * catalog_crawl_queue cadence (1h / 6h / 24h / 72h) so a manager whose
+   * file is briefly unparseable doesn't clog the queue forever.
+   */
+  async markRevalidationFailed(publisherDomain: string, err: string): Promise<void> {
+    const client = await getClient();
+    try {
+      await client.query(
+        `UPDATE manager_revalidation_queue
+            SET attempts = attempts + 1,
+                last_attempted_at = NOW(),
+                last_error = LEFT($2, 500),
+                next_attempt_after = NOW() + CASE
+                  WHEN attempts < 1 THEN INTERVAL '1 hour'
+                  WHEN attempts < 2 THEN INTERVAL '6 hours'
+                  WHEN attempts < 3 THEN INTERVAL '1 day'
+                  ELSE INTERVAL '3 days'
+                END
+          WHERE publisher_domain = $1`,
+        [publisherDomain.toLowerCase(), err],
+      );
     } finally {
       client.release();
     }

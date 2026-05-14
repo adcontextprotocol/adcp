@@ -1007,7 +1007,14 @@ export class OrganizationDatabase {
        FROM organizations o
        LEFT JOIN member_profiles mp ON mp.workos_organization_id = o.workos_organization_id
        LEFT JOIN LATERAL (
-         SELECT brand_manifest AS brand_json FROM brands WHERE domain = mp.primary_brand_domain LIMIT 1
+         SELECT od.domain
+           FROM organization_domains od
+          WHERE od.workos_organization_id = o.workos_organization_id
+            AND od.is_primary = true
+          LIMIT 1
+       ) pd ON true
+       LEFT JOIN LATERAL (
+         SELECT brand_manifest AS brand_json FROM brands WHERE domain = pd.domain LIMIT 1
        ) hb ON true
        WHERE ${conditions.join(' AND ')}
        ORDER BY o.name ASC

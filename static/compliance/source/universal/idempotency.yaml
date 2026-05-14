@@ -2,7 +2,7 @@ id: idempotency
 version: "1.0.0"
 title: "Idempotency enforcement"
 category: core
-summary: "Validates that mutating requests enforce idempotency_key — replays return cached responses, key reuse with a different payload returns IDEMPOTENCY_CONFLICT, and fresh keys create new resources."
+summary: "Validates that mutating requests enforce idempotency_key — replays return cached responses, key reuse with a different payload returns IDEMPOTENCY_CONFLICT, fresh keys create new resources, and concurrent retries with the same key produce exactly one resource (first-insert-wins under rule 9)."
 track: core
 
 # Cross-step assertions (adcontextprotocol/adcp#2639). These convert two
@@ -33,7 +33,7 @@ invariants:
 
 narrative: |
   Every mutating request in AdCP carries an idempotency_key so buyers can safely retry
-  after network errors without double-booking. This storyboard walks through the four
+  after network errors without double-booking. This storyboard walks through the
   observable behaviors a seller MUST implement:
 
   1. First call with a fresh key is processed normally and returns the canonical response.
@@ -55,6 +55,12 @@ narrative: |
      key_reuse_conflict. An end-to-end phase that drives a deterministic terminal
      error and replays the key is deferred pending a generic force-error controller
      verb (see adcontextprotocol/adcp#2760).
+  6. Concurrent retries with the same key produce exactly one resource. The seller
+     MAY wait-and-replay or return IDEMPOTENCY_IN_FLIGHT — both are conformant under
+     security.mdx#idempotency rule 9 (first-insert-wins) as long as the resolved
+     response set converges on a single media_buy_id. Graded via the
+     parallel_dispatch_runner contract; runners without parallel-dispatch skip
+     this phase with a stable not_applicable marker.
 
   Missing idempotency_key on any mutating request MUST be rejected with INVALID_REQUEST.
   Sellers MUST declare adcp.idempotency on get_adcp_capabilities — either
@@ -223,12 +229,28 @@ phases:
             description: "Context correlation_id returned unchanged"
 
   - id: replay_same_payload
-    title: "Replay returns cached response"
+    title: "Replay returns cached response; key reuse with different payload conflicts"
     narrative: |
-      The canonical retry-safety case: a buyer's first request times out but actually
-      succeeded on the server. The buyer retries with the same idempotency_key and
-      the same payload. The seller MUST return the same response — same media_buy_id,
-      no new side effects.
+      Two halves of the same key-reuse contract, exercised against a single cached
+      entry on the seller:
+
+      1. Same key + same payload (the canonical retry-safety case): a buyer's first
+         request times out but actually succeeded on the server. The buyer retries
+         with the same idempotency_key and the same payload. The seller MUST return
+         the same response — same media_buy_id, no new side effects.
+
+      2. Same key + materially different payload (key reuse): the buyer reuses the
+         same idempotency_key with a different payload within the replay window. The
+         seller MUST reject with IDEMPOTENCY_CONFLICT. Silently applying the new
+         payload would break the at-most-once guarantee; silently returning the old
+         response would hide a real bug in the buyer's retry logic.
+
+      Both branches share a single `$generate:uuid_v4#replay_key` placeholder. They
+      live in the same phase so the alias resolves to one UUID across all four steps
+      — the seller sees one cached idempotency entry that the conflict step probes
+      with a different body. Splitting these into separate phases would reset the
+      alias cache at the phase boundary (adcp-client#1657) and mint a fresh UUID for
+      the conflict step, defeating the test.
 
     steps:
       - id: create_media_buy_initial
@@ -419,24 +441,21 @@ phases:
           duplicate_webhook_on_replay. Not_applicable when the runner does not
           host a webhook receiver.
 
-  - id: key_reuse_conflict
-    title: "Key reuse with different payload returns IDEMPOTENCY_CONFLICT"
-    narrative: |
-      When a buyer reuses an idempotency_key with a different payload within the
-      replay window, the seller MUST reject the second request with
-      IDEMPOTENCY_CONFLICT. Silently applying the new payload would break the
-      at-most-once guarantee; silently returning the old response would hide a
-      real bug in the buyer's retry logic.
-
-    steps:
       - id: create_media_buy_conflict
         title: "Same key, different payload returns IDEMPOTENCY_CONFLICT"
         narrative: |
-          Re-send create_media_buy with the same idempotency_key as the replay
-          phase but a materially different payload — a different end_time and
-          a different budget. The seller MUST reject this with IDEMPOTENCY_CONFLICT.
-          CONFLICT is accepted as a fallback for sellers that haven't adopted the
-          new error code yet.
+          Re-send create_media_buy with the same idempotency_key as the prior
+          replay steps but a materially different payload — a different end_time
+          and a different budget. The seller MUST reject this with
+          IDEMPOTENCY_CONFLICT. CONFLICT is accepted as a fallback for sellers
+          that haven't adopted the new error code yet.
+
+          This step shares the `$generate:uuid_v4#replay_key` alias with the
+          initial and replay steps above, so the runner injects the same UUID
+          on the wire. Lives in the same phase as those steps because the
+          runner's alias cache resets at phase boundaries (adcp-client#1657);
+          a separate phase would mint a fresh UUID and the seller would treat
+          the call as a new request rather than a conflicting key reuse.
         task: create_media_buy
         schema_ref: "media-buy/create-media-buy-request.json"
         response_schema_ref: "media-buy/create-media-buy-response.json"
@@ -552,21 +571,139 @@ phases:
             value: "idempotency--create_media_buy_fresh_key"
             description: "Context correlation_id returned unchanged"
 
+  - id: concurrent_retry
+    title: "Concurrent retries with the same key produce exactly one resource"
+    narrative: |
+      A buyer's transport timeout fires before the seller's downstream call
+      returns; the buyer retries with the same idempotency_key while the
+      first request is still executing. Per L1/security.mdx#idempotency
+      rule 9 (first-insert-wins), the seller MUST resolve the race
+      deterministically — exactly one resource is created, and both buyer
+      requests converge on the same media_buy_id.
+
+      The seller picks one of two policies and MUST behave consistently:
+
+      - **Wait-and-replay**: the second request blocks until the first
+        completes, then returns the cached response with `replayed: true`.
+      - **Reject-and-redirect**: the second request returns
+        `IDEMPOTENCY_IN_FLIGHT` immediately with
+        `error.details.retry_after`. The buyer retries with the same key
+        after the hint elapses and receives the cached response.
+
+      This phase exercises both policies via the parallel_dispatch_runner
+      contract: it fires two requests with the same fresh idempotency_key
+      and the same canonical payload, and asserts that the resolved
+      response set contains exactly one distinct media_buy_id. The runner
+      transparently resolves IDEMPOTENCY_IN_FLIGHT responses by retrying
+      with the same key after `retry_after` elapses, so the cross-response
+      check operates on the resolved set regardless of which policy the
+      seller adopted.
+
+      Runners without parallel-dispatch support skip this phase with a
+      stable not_applicable marker. The phase does not regress the
+      sequential idempotency contract — sellers that fail this phase due
+      to runner absence are still gradeable on the rest of the storyboard.
+
+    steps:
+      - id: create_media_buy_concurrent
+        title: "Two parallel create_media_buy calls with same key converge on one resource"
+        narrative: |
+          Fire two create_media_buy requests with the same fresh UUID v4
+          idempotency_key and byte-identical canonical payloads. The
+          runner dispatches them via its parallel-dispatch primitive (SDK
+          batch-call or distributed barrier), observes both responses,
+          resolves any IDEMPOTENCY_IN_FLIGHT to its eventual cached
+          response, and applies the cross-response checks below.
+
+          Programmatic verification of "exactly one resource created" runs
+          via `cross_response_count_distinct` on `media_buy_id`. A seller
+          that ignored rule 9 (re-executed both, two media buys created)
+          would produce cardinality 2 here and fail; a seller that
+          correctly serializes via first-insert-wins produces cardinality
+          1 regardless of which policy (wait-and-replay or
+          reject-and-redirect) it adopted.
+
+          The accompanying `cross_response_field_equal` check is redundant
+          when cardinality is 1, but documents the equivalence intent
+          directly: every dispatch's resolved response carries the same
+          media_buy_id.
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: idempotency_concurrent
+        stateful: true
+        requires_contract: parallel_dispatch_runner
+        parallel_dispatch:
+          count: 2
+          same_idempotency_key: true
+          barrier_timeout_ms: 5000
+        expected: |
+          After resolving any IDEMPOTENCY_IN_FLIGHT responses to their
+          eventual cached response, both dispatches' responses carry the
+          same media_buy_id. Exactly one media buy was created. The
+          resolved-response set has cardinality 1 on media_buy_id.
+
+          A seller adopting wait-and-replay returns the same response on
+          both dispatches directly. A seller adopting reject-and-redirect
+          returns the cached response on one dispatch and
+          IDEMPOTENCY_IN_FLIGHT on the other; the runner resolves the
+          latter by retrying with the same key after `retry_after` and
+          observes the cached response. Either path is conformant.
+
+        sample_request:
+          idempotency_key: "$generate:uuid_v4#concurrent_key"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          brand:
+            domain: "acmeoutdoor.example"
+          start_time: "2026-07-01T00:00:00Z"
+          end_time: "2026-07-31T23:59:59Z"
+          packages:
+            - product_id: "test-product"
+              budget: 5000
+              pricing_option_id: "test-pricing"
+
+          context:
+            correlation_id: "idempotency--create_media_buy_concurrent"
+        validations:
+          - check: cross_response_count_distinct
+            path: "media_buy_id"
+            allowed_values: [1]
+            description: "Concurrent retries produced exactly one distinct media_buy_id across both dispatches (rule 9: first-insert-wins)"
+          - check: cross_response_field_equal
+            path: "media_buy_id"
+            description: "Both dispatches' resolved responses carry the same media_buy_id"
+
+        reviewer_checks:
+          - "Confirm the seller's claim-row / unique-constraint implementation backs the observed first-insert-wins behavior, rather than a happy-path race the test happened to avoid (review code or runbook describing the INSERT … ON CONFLICT pattern on the scope tuple)."
+          - "If the seller returned IDEMPOTENCY_IN_FLIGHT on the second dispatch, confirm `error.details.retry_after` was populated with a plausible value (seconds, integer, > 0) and that the cached response was available within the hint window. A seller that consistently overshoots retry_after produces brittle retry timing for buyers."
+          - "Confirm the seller's in-flight detection does NOT leak across (authenticated_agent, account_id) scope boundaries — probe with a stolen key from a different scope and verify the response shape and timing match the never-seen-key path."
+
   - id: verify_media_buy_count
     title: "Verify dedup actually happened"
     narrative: |
-      Call get_media_buys to confirm that only TWO media buys were created across
-      all prior steps — one for the initial + replay pair (same key, deduplicated)
-      and one for the fresh-key request. If the seller ignored the idempotency_key,
-      there would be three or more.
+      Call get_media_buys to confirm the two captured media_buy_ids both exist
+      and are distinct. `initial_media_buy_id` was created on the first
+      `create_media_buy` call and reused on the replay (same key, deduplicated);
+      `fresh_key_media_buy_id` was created on the fresh-key request. The
+      `concurrent_retry` phase (when graded) also exercises first-insert-wins
+      but its resource is not queried here — that phase has its own
+      cross-response cardinality check. If the seller ignored the idempotency_key
+      on the replay branch, `initial_media_buy_id` would not match across the
+      replay step's response.
 
     steps:
       - id: get_media_buys_dedup_check
-        title: "Confirm dedup via get_media_buys"
+        title: "Confirm captured media_buy_ids exist and are distinct"
         narrative: |
-          Query the two media_buy_ids captured from prior steps. Both should exist
-          and be distinct. This is an end-to-end verification that the replay did
-          not create a duplicate row.
+          Query the two captured media_buy_ids from prior steps. Both should
+          exist (proving fresh-key and initial calls each created a real
+          resource) and be distinct (proving the fresh-key call was treated as
+          a new request, not deduplicated against the initial). This is an
+          end-to-end verification that the replay did not create a duplicate row.
         task: get_media_buys
         schema_ref: "media-buy/get-media-buys-request.json"
         response_schema_ref: "media-buy/get-media-buys-response.json"
@@ -574,7 +711,7 @@ phases:
         comply_scenario: idempotency_verify
         stateful: true
         expected: |
-          Return exactly two media buys with the two captured IDs. Not three.
+          Return both captured media buys with the two captured IDs, distinct.
 
         sample_request:
           account:

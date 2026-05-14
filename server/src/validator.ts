@@ -334,7 +334,7 @@ export class AgentValidator {
     const matchedProperties = this.resolveScopedTopLevelProperties(normalizedDomain, scope, properties);
     return matchedProperties.filter((property) =>
       selectors.some((selector) => {
-        if (this.normalizeDomain(selector.publisher_domain) !== normalizedDomain) {
+        if (!this.selectorTargetsDomain(selector, normalizedDomain)) {
           return false;
         }
 
@@ -350,6 +350,23 @@ export class AgentValidator {
         }
       })
     );
+  }
+
+  // A PublisherPropertySelector targets normalizedDomain if either the singular
+  // publisher_domain matches, or normalizedDomain appears in the compact
+  // publisher_domains[] array (managed-network fan-out — exactly equivalent to
+  // repeating the selector once per listed domain).
+  private selectorTargetsDomain(selector: PublisherPropertySelector, normalizedDomain: string): boolean {
+    if (typeof selector.publisher_domain === "string"
+      && this.normalizeDomain(selector.publisher_domain) === normalizedDomain) {
+      return true;
+    }
+    if (Array.isArray(selector.publisher_domains)) {
+      return selector.publisher_domains.some((d) =>
+        typeof d === "string" && this.normalizeDomain(d) === normalizedDomain
+      );
+    }
+    return false;
   }
 
   private matchesPlacements(

@@ -182,6 +182,18 @@ export const PropertySummarySchema = z
 const MemberRefSchema = z.object({
   slug: z.string().optional(),
   display_name: z.string().optional(),
+  membership_tier: z.string().optional().openapi({
+    description:
+      "Raw AAO membership tier enum (e.g. `individual_professional`, `company_leader`). Present only when the profile owner has set their member card to public (`is_public=true`) AND the org has a resolvable tier. Absent for private profiles and for orgs without an active tier-bearing subscription.",
+  }),
+  membership_tier_label: z.string().optional().openapi({
+    description:
+      "Human-readable label for `membership_tier` (e.g. `Professional`, `Partner`, `Leader`). Matches the AAO pricing page. Use this for UI display; the raw enum is for programmatic gating. Presence rules match `membership_tier`.",
+  }),
+  is_founding_member: z.boolean().optional().openapi({
+    description:
+      "True when the profile owner carries the Founding Member badge (joined before the founding-cohort cutoff). Surfaced when the profile owner has set their member card to public (`is_public=true`). Absent for private profiles. Founding Member is orthogonal to tier — founding orgs typically display both (e.g. Scope3 shows `Partner` + `Founding Member`).",
+  }),
 });
 
 export const ResolvedBrandSchema = z
@@ -341,6 +353,8 @@ export const AgentComplianceDetailSchema = z
     membership_tier_label: z.string().nullable().optional().openapi({ description: "Owner-scoped: human-readable label for membership_tier (e.g. 'Builder'). Null for non-owners." }),
     subscription_status: z.string().nullable().optional().openapi({ description: "Owner-scoped: the agent owner's subscription status (active, past_due, trialing, etc.). Null for non-owners." }),
     is_api_access_tier: z.boolean().optional().openapi({ description: "Owner-scoped: true when the owner's tier and subscription status grant badge eligibility. False for non-owners. Single source of truth — UI should not re-derive." }),
+    verdict_source: z.enum(["heartbeat", "owner_test", "manual", "webhook"]).nullable().optional()
+      .openapi({ description: "Owner-scoped: triggered_by value of the most recent non-dry-run compliance check. Null for non-owners and when no run has been recorded. Operators use this as a UX cue ('did this verdict come from my recent test or the system heartbeat?')." }),
     verified: z.boolean().optional(),
     verified_badges: z.array(VerificationBadgeSchema).optional(),
   })
@@ -651,6 +665,14 @@ export const PublisherLookupResultSchema = z
     domain: z.string().openapi({ example: "voxmedia.com" }),
     member: MemberRefSchema.nullable(),
     adagents_valid: z.boolean().nullable(),
+    discovery_method: z.enum(["direct", "authoritative_location", "ads_txt_managerdomain"]).nullable().optional().openapi({
+      description:
+        "How the publisher's adagents.json was discovered on the most recent successful crawl. `direct`: publisher's own /.well-known/ served the document. `authoritative_location`: publisher's stub redirected to a canonical URL. `ads_txt_managerdomain`: manifest was discovered via ads.txt MANAGERDOMAIN delegation — see `manager_domain` for which manager served it. Null until first crawl after migration 470.",
+    }),
+    manager_domain: z.string().nullable().optional().openapi({
+      description:
+        "The manager domain whose adagents.json was used to authorize this publisher's agents. Non-null only when `discovery_method` is `ads_txt_managerdomain`. Matches the MANAGERDOMAIN value from the publisher's ads.txt.",
+    }),
     hosting: PublisherHostingSchema,
     files: PublisherFilesSchema.optional().openapi({
       description:

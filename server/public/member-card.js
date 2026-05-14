@@ -118,7 +118,7 @@ function renderMemberCard(member, options = {}) {
     <div class="member-card" ${clickHandler}>
       <div class="member-card-header">
         ${brand?.logo_url
-          ? `<img src="${escapeHtmlSafe(brand.logo_url)}" alt="${escapeHtmlSafe(displayName)}" class="member-logo">`
+          ? `<img src="${escapeHtmlSafe(brand.logo_url)}" alt="${escapeHtmlSafe(displayName)}" class="member-logo" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div class="member-logo-placeholder" style="display:none">${escapeHtmlSafe(displayName.charAt(0))}</div>`
           : `<div class="member-logo-placeholder">${escapeHtmlSafe(displayName.charAt(0))}</div>`
         }
         <div class="member-info">
@@ -531,7 +531,7 @@ function renderAgentCard(agentInfo, agentUrl, options = {}) {
     const publicRequiresDomain = !brandHostingType;
     const publicDisabled = !canSetPublic || publicRequiresDomain;
     const publicDisabledReason = !canSetPublic
-      ? 'Publicly listing an agent requires Professional tier or higher.'
+      ? 'Publicly listing an agent requires a paid AAO tier (Professional, Builder, Member, or Leader).'
       : publicRequiresDomain
         ? 'Set a primary brand domain to publish publicly.'
         : '';
@@ -553,7 +553,7 @@ function renderAgentCard(agentInfo, agentUrl, options = {}) {
     };
     const rows = [
       optionRow('private', 'Private', 'Only you can see it.', false, ''),
-      optionRow('members_only', 'Members only', 'Discoverable by Professional+ members.', false, ''),
+      optionRow('members_only', 'Members only', 'Discoverable by paying AAO members.', false, ''),
       optionRow('public', 'Public', 'Listed publicly and added to brand.json.', publicDisabled, publicDisabledReason),
     ].join('');
     const upsell = !canSetPublic

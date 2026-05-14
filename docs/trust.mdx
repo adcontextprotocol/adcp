@@ -55,7 +55,7 @@ A house publishes [`brand.json`](/docs/brand-protocol/brand-json) at `/.well-kno
 
 A bilateral verification chain ties the two together: brand.json's `properties[].relationship` MUST match adagents.json's `delegation_type` for the inventory path to be valid. The brand-protocol's mutual-assertion model (RFC [#3533](https://github.com/adcontextprotocol/adcp/issues/3533)) — child brands declare a `parent_house`, parent houses reciprocate via `brand_refs[]` — produces a five-state trust signal (`inline` / `mutual_assertion` / `one_sided_brand` / `one_sided_house` / `standalone`) that downstream consumers can act on directly.
 
-The [AAO Verified](/docs/building/aao-verified) mark, with `(Spec)` and `(Live)` qualifiers, continuously attests behavioral conformance through canonical test campaigns running against a seller's real ad-server integration.
+The [AAO Verified](/docs/building/verification/aao-verified) mark, with `(Spec)` and `(Live)` qualifiers, continuously attests behavioral conformance through canonical test campaigns running against a seller's real ad-server integration.
 
 **What AdCP does not provide — three gaps to know.**
 
@@ -65,7 +65,9 @@ Second: **no buyer-side authorization primitive symmetric to `adagents.json`.** 
 
 Third: **no operator/human KYC primitive in the protocol.** The protocol does not carry an attestation that a human or organizational operator has been identity-verified by a KYC provider (Persona, Stripe Identity, Onfido) or rooted in an authoritative IdP. KYC is punted to the membership and account layer; protocol-side, only the cryptographic facts (which key signed which message) are normative. See [Known Limitations — Authentication and Identity](/docs/reference/known-limitations#authentication-and-identity).
 
-→ [brand.json](/docs/brand-protocol/brand-json) · [adagents.json and agent identity](/docs/governance/property/adagents) · [AAO Verified](/docs/building/aao-verified)
+**Inventory and product claims.** When a buyer evaluates a [`get_products`](/docs/media-buy/task-reference/get_products) response, the chain above establishes *who is authorized to sell* the inventory in question: the seller's domain resolves to an agent declared in the property owner's `adagents.json`, that file matches the property owner's `brand.json` under the bilateral verification rule, and the response itself is RFC 9421-signed by a key listed in `adagents.json`. What the chain does not establish is whether a specific product line — availability window, price, inventory volume — reflects reality at delivery time. Catalog accuracy is not protocol-attested: publishers do not sign individual product entries, and per-product attestation does not match how inventory operates in production. Delivery-time truth lives in measurement reports and the billing reconciliation flow ([#2391](https://github.com/adcontextprotocol/adcp/issues/2391)); a misbehaving authorized seller is remediated by the publisher revoking the `adagents.json` entry, not by an in-protocol claim check. This is the C2PA "claim-not-certification" posture applied to inventory: AdCP carries the authorization claim and makes it verifiable; it does not certify that the claimed inventory exists.
+
+→ [brand.json](/docs/brand-protocol/brand-json) · [adagents.json and agent identity](/docs/governance/property/adagents) · [AAO Verified](/docs/building/verification/aao-verified)
 
 ---
 

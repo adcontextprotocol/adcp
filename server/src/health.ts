@@ -7,6 +7,7 @@ import { logOutboundRequest } from "./db/outbound-log-db.js";
 import { safeFetch } from "./utils/url-security.js";
 import { logger } from "./logger.js";
 import { promises as dnsPromises } from "node:dns";
+import { agentConfigAuthFields, type SdkAuth } from "./services/sdk-auth-adapter.js";
 
 export interface ClassifiedProbeError {
   kind: ProbeErrorKind;
@@ -156,23 +157,30 @@ export class HealthChecker {
     this.formatsService = new FormatsService();
   }
 
-  async checkHealth(agent: Agent): Promise<AgentHealth> {
-    const cached = this.healthCache.get(agent.url);
-    if (cached) return cached;
+  async checkHealth(agent: Agent, auth?: SdkAuth): Promise<AgentHealth> {
+    // Skip cache when auth is provided — manual owner-triggered refresh
+    // wants fresh data. Periodic crawls (no auth) keep the cache.
+    if (!auth) {
+      const cached = this.healthCache.get(agent.url);
+      if (cached) return cached;
+    }
 
-    const health = await this.performHealthCheck(agent);
-    this.healthCache.set(agent.url, health);
+    const health = await this.performHealthCheck(agent, auth);
+    // Don't write authed probe results back to the shared cache —
+    // tools_count discovered with credentials may differ from what
+    // the agent exposes publicly, and the cache feeds unauthed reads.
+    if (!auth) this.healthCache.set(agent.url, health);
     return health;
   }
 
-  private async performHealthCheck(agent: Agent): Promise<AgentHealth> {
+  private async performHealthCheck(agent: Agent, auth?: SdkAuth): Promise<AgentHealth> {
     const startTime = Date.now();
     const protocol = agent.protocol || "mcp";
 
     // Only try the protocol the agent declares
     const health = protocol === "a2a"
-      ? await this.tryA2A(agent, startTime)
-      : await this.tryMCP(agent, startTime);
+      ? await this.tryA2A(agent, startTime, auth)
+      : await this.tryMCP(agent, startTime, auth);
 
     logOutboundRequest({
       agent_url: agent.url,
@@ -186,7 +194,7 @@ export class HealthChecker {
     return health;
   }
 
-  private async tryMCP(agent: Agent, startTime: number): Promise<AgentHealth> {
+  private async tryMCP(agent: Agent, startTime: number, auth?: SdkAuth): Promise<AgentHealth> {
     try {
       // Use AdCPClient to handle MCP protocol complexity (sessions, SSE, etc.)
       const { AdCPClient } = await import("@adcp/sdk");
@@ -195,6 +203,7 @@ export class HealthChecker {
         name: "Health Checker",
         agent_uri: agent.url,
         protocol: "mcp",
+        ...agentConfigAuthFields(auth),
       }], { userAgent: AAO_UA_HEALTH_CHECK });
       const client = multiClient.agent("health-check");
 
@@ -276,13 +285,26 @@ export class HealthChecker {
     }
   }
 
-  private async tryA2A(agent: Agent, startTime: number): Promise<AgentHealth> {
+  private async tryA2A(agent: Agent, startTime: number, auth?: SdkAuth): Promise<AgentHealth> {
     try {
       // Check for A2A agent card at /.well-known/agent.json
       const agentCardUrl = `${agent.url.replace(/\/$/, "")}/.well-known/agent.json`;
+      const headers: Record<string, string> = { 'User-Agent': AAO_UA_HEALTH_CHECK };
+      const authFields = agentConfigAuthFields(auth);
+      if (authFields.auth_token) {
+        headers['Authorization'] = `Bearer ${authFields.auth_token}`;
+      } else if (authFields.headers?.Authorization) {
+        headers['Authorization'] = authFields.headers.Authorization;
+      } else if (authFields.oauth_tokens?.access_token) {
+        headers['Authorization'] = `Bearer ${authFields.oauth_tokens.access_token}`;
+      }
       const response = await fetch(agentCardUrl, {
-        headers: { 'User-Agent': AAO_UA_HEALTH_CHECK },
+        headers,
         signal: AbortSignal.timeout(5000),
+        // Don't let the saved Authorization header travel to a different
+        // origin via a 302 — if the agent host gets compromised that's a
+        // credential exfil vector.
+        redirect: 'error',
       });
 
       if (!response.ok) {
@@ -314,33 +336,35 @@ export class HealthChecker {
     }
   }
 
-  async getStats(agent: Agent): Promise<AgentStats> {
-    const cached = this.statsCache.get(agent.url);
-    if (cached) return cached;
+  async getStats(agent: Agent, auth?: SdkAuth): Promise<AgentStats> {
+    if (!auth) {
+      const cached = this.statsCache.get(agent.url);
+      if (cached) return cached;
+    }
 
-    const stats = await this.fetchStats(agent);
-    this.statsCache.set(agent.url, stats);
+    const stats = await this.fetchStats(agent, auth);
+    if (!auth) this.statsCache.set(agent.url, stats);
     return stats;
   }
 
-  private async fetchStats(agent: Agent): Promise<AgentStats> {
+  private async fetchStats(agent: Agent, auth?: SdkAuth): Promise<AgentStats> {
     const stats: AgentStats = {};
 
     try {
       if (agent.type === "sales") {
         // Use PropertyIndex if available (populated by crawler)
         const index = getPropertyIndex();
-        const auth = index.getAgentAuthorizations(agent.url);
+        const authorizations = index.getAgentAuthorizations(agent.url);
 
-        if (auth && auth.properties.length > 0) {
-          stats.property_count = auth.properties.length;
-          stats.publishers = auth.publisher_domains;
-          stats.publisher_count = auth.publisher_domains.length;
+        if (authorizations && authorizations.properties.length > 0) {
+          stats.property_count = authorizations.properties.length;
+          stats.publishers = authorizations.publisher_domains;
+          stats.publisher_count = authorizations.publisher_domains.length;
         }
       } else if (agent.type === "creative") {
         // For creative agents, get format count from FormatsService
         try {
-          const formatsProfile = await this.formatsService.getFormatsForAgent(agent);
+          const formatsProfile = await this.formatsService.getFormatsForAgent(agent, auth);
           if (formatsProfile.formats && formatsProfile.formats.length > 0) {
             stats.creative_formats = formatsProfile.formats.length;
           }

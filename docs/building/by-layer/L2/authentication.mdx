@@ -65,6 +65,8 @@ Tokens may be:
 
 Implementations MUST enforce TLS 1.2+ on all Bearer-authenticated endpoints. See the [implementation security reference](/docs/building/by-layer/L1/security) for transport requirements.
 
+The credential MUST be carried in the `Authorization` request header per [RFC 6750 §2](https://www.rfc-editor.org/rfc/rfc6750#section-2). Sellers MUST NOT require non-canonical aliases (e.g. `x-adcp-auth`, which appeared in some early MCP-only deployments) and MUST NOT advertise them as the supported header in agent cards, capability responses, or documentation. A seller MAY accept such an alias as a transitional input while it phases out an existing adopter's integration, but `Authorization: Bearer` MUST also be accepted on the same endpoint. Buyer agents and SDKs MUST emit `Authorization: Bearer`; SDK examples and docstrings MUST NOT show alias headers as the canonical form.
+
 ### RFC 9421 request signing (recommended; required for mutating ops in 3.1+)
 
 Signed requests bind `@method`, `@target-uri`, `@authority`, `content-type`, and `content-digest` under an `Ed25519`, `ecdsa-p256-sha256`, or `rsa-pss-sha512` signature with a ±60 s timestamp window and ≥128-bit nonce. The full verifier checklist, key-discovery rules (`brand.json` → `agents[]` → `jwks_uri`), and rotation semantics are defined in the [implementation security reference](/docs/building/by-layer/L1/security#request-signing). Capability discovery via `get_adcp_capabilities.request_signing.supported` lets clients detect whether a seller enforces signing before sending a mutating call.
@@ -128,7 +130,7 @@ The agency / A2A relay topology (brand → relay → seller) authenticates **und
 
 ## Protocol Configuration
 
-Both MCP and A2A protocols use the same authentication header. Configure your client with:
+Both MCP and A2A use `Authorization: Bearer <token>` ([RFC 6750 §2](https://www.rfc-editor.org/rfc/rfc6750#section-2)) as the authentication header. Configure your client with:
 
 ```json
 {
@@ -140,6 +142,15 @@ Both MCP and A2A protocols use the same authentication header. Configure your cl
 ```
 
 The client library handles adding the `Authorization: Bearer <token>` header to requests.
+
+**Header alias policy by leg.** The two protocol legs differ in what aliases they accept beyond the standard header:
+
+- **A2A** — `Authorization: Bearer <token>` only. The `x-adcp-auth` custom header is not recognized on the A2A surface; the seller's agent card declares a `bearerAuth` `HTTPAuthSecurityScheme` (see the [A2A guide — Agent Cards](/docs/building/by-layer/L0/a2a-guide#agent-cards)). Sending `x-adcp-auth` on the A2A leg returns HTTP 401.
+- **MCP** — `Authorization: Bearer <token>` (primary). `x-adcp-auth` is accepted as a back-compat alias for integrations predating adcp 4.5.0. New implementations should use the standard header on both legs.
+
+<Warning>
+**Sellers migrating to adcp 4.5.0.** If you previously configured `x-adcp-auth` as the A2A leg header via the `a2a_header_name` knob, verify that knob is set to the RFC 6750 default before updating your agent card to declare `bearerAuth` — buyers that have not yet migrated off the legacy header will otherwise receive HTTP 401.
+</Warning>
 
 ## MCP Client Configuration
 

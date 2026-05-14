@@ -128,6 +128,10 @@ describe('Agent visibility E2E', () => {
 
   afterAll(async () => {
     await pool.query(
+      `DELETE FROM organization_domains WHERE workos_organization_id LIKE $1`,
+      [`${TEST_PREFIX}%`],
+    );
+    await pool.query(
       `DELETE FROM member_profiles WHERE workos_organization_id LIKE $1`,
       [`${TEST_PREFIX}%`],
     );
@@ -145,6 +149,18 @@ describe('Agent visibility E2E', () => {
     );
     await closeDatabase();
   });
+
+  async function seedBrandPrimary(orgId: string, domain: string) {
+    await pool.query(
+      `INSERT INTO organization_domains
+         (workos_organization_id, domain, verified, is_primary, source, created_at, updated_at)
+       VALUES ($1, $2, true, true, 'workos', NOW(), NOW())
+       ON CONFLICT (domain) DO UPDATE SET
+         workos_organization_id = EXCLUDED.workos_organization_id,
+         verified = true, is_primary = true, source = 'workos'`,
+      [orgId, domain],
+    );
+  }
 
   async function provisionUser(userId: string, orgId: string) {
     await pool.query(
@@ -169,16 +185,20 @@ describe('Agent visibility E2E', () => {
       workos_organization_id: orgId,
       display_name: `Test ${slug}`,
       slug,
-      primary_brand_domain: `${slug}.example`,
       is_public: true,
       agents: [
         { url: `https://a1.${slug}.example`, visibility: 'private' },
         { url: `https://a2.${slug}.example`, visibility: 'members_only' },
       ],
     });
+    await seedBrandPrimary(orgId, `${slug}.example`);
   }
 
   beforeEach(async () => {
+    await pool.query(
+      `DELETE FROM organization_domains WHERE workos_organization_id LIKE $1`,
+      [`${TEST_PREFIX}%`],
+    );
     await pool.query(
       `DELETE FROM member_profiles WHERE workos_organization_id LIKE $1`,
       [`${TEST_PREFIX}%`],
@@ -280,7 +300,6 @@ describe('Agent visibility E2E', () => {
       workos_organization_id: orgId,
       display_name: 'Listing Org',
       slug: 'listing',
-      primary_brand_domain: 'listing.example',
       is_public: true,
       agents: [
         { url: 'https://pub.listing.example', visibility: 'public' },
@@ -288,6 +307,7 @@ describe('Agent visibility E2E', () => {
         { url: 'https://priv.listing.example', visibility: 'private' },
       ],
     });
+    await seedBrandPrimary(orgId, 'listing.example');
 
     const service = new AgentService();
     const publicOnly = await service.listAgents();
@@ -310,7 +330,6 @@ describe('Agent visibility E2E', () => {
       workos_organization_id: orgId,
       display_name: 'Downgrade Org',
       slug: 'downgrade',
-      primary_brand_domain: 'downgrade.example',
       is_public: true,
       agents: [
         { url: 'https://p1.downgrade.example', visibility: 'public' },
@@ -318,6 +337,7 @@ describe('Agent visibility E2E', () => {
         { url: 'https://m.downgrade.example', visibility: 'members_only' },
       ],
     });
+    await seedBrandPrimary(orgId, 'downgrade.example');
 
     const result = await demotePublicAgentsOnTierDowngrade(
       orgId,
@@ -342,10 +362,10 @@ describe('Agent visibility E2E', () => {
       workos_organization_id: orgId,
       display_name: 'Cancel Org',
       slug: 'cancel',
-      primary_brand_domain: 'cancel.example',
       is_public: true,
       agents: [{ url: 'https://p.cancel.example', visibility: 'public' }],
     });
+    await seedBrandPrimary(orgId, 'cancel.example');
 
     const result = await demotePublicAgentsOnTierDowngrade(
       orgId,
@@ -420,12 +440,12 @@ describe('Agent visibility E2E', () => {
       workos_organization_id: orgId,
       display_name: 'Private Profile Org',
       slug: 'private-profile',
-      primary_brand_domain: 'privp.example',
       is_public: false, // Profile is not in public directory
       agents: [
         { url: 'https://members.privp.example', visibility: 'members_only' },
       ],
     });
+    await seedBrandPrimary(orgId, 'privp.example');
 
     const service = new AgentService();
     const publicOnly = await service.listAgents();
@@ -433,6 +453,30 @@ describe('Agent visibility E2E', () => {
 
     const withApi = await service.listAgents({ viewerHasApiAccess: true });
     expect(withApi.map((a) => a.url)).toContain('https://members.privp.example');
+  });
+
+  it('public agent on private-profile member appears in listAgents (regression guard for #4194)', async () => {
+    // Pins the fix in #4194: before this PR, the early-continue
+    //   `if (visibility==='public' && !profile.is_public && !viewerHasApiAccess) continue`
+    // silently hid public agents on profiles that opted out of the member
+    // directory. Per-agent visibility is the only gate; is_public gates only
+    // the /Members directory listing.
+    const orgId = `${TEST_PREFIX}_pub_private`;
+    await seedOrg(pool, orgId, 'individual_professional');
+    await memberDb.createProfile({
+      workos_organization_id: orgId,
+      display_name: 'Pub On Private Org',
+      slug: 'pub-on-private',
+      is_public: false,
+      agents: [
+        { url: 'https://agent.pubprivate.example', visibility: 'public' },
+      ],
+    });
+    await seedBrandPrimary(orgId, 'pubprivate.example');
+
+    const service = new AgentService();
+    const agents = await service.listAgents();
+    expect(agents.map((a) => a.url)).toContain('https://agent.pubprivate.example');
   });
 
   it('legacy is_public agents are normalized on read', async () => {
@@ -453,10 +497,14 @@ describe('Agent visibility E2E', () => {
       ],
     );
 
-    // Re-run migration 419 explicitly to simulate the transform on legacy rows
+    // Re-run migration 419 explicitly to simulate the transform on legacy rows.
+    // Resolve relative to this file so the path works regardless of vitest cwd
+    // (root invocation vs. server/ invocation both stable).
     const fs = await import('fs/promises');
     const path = await import('path');
-    const sqlPath = path.resolve(process.cwd(), 'server/src/db/migrations/419_agent_visibility.sql');
+    const url = await import('url');
+    const here = path.dirname(url.fileURLToPath(import.meta.url));
+    const sqlPath = path.resolve(here, '../../src/db/migrations/419_agent_visibility.sql');
     const sql = await fs.readFile(sqlPath, 'utf-8');
     await pool.query(sql);
 
@@ -487,12 +535,12 @@ describe('Agent visibility E2E', () => {
       workos_organization_id: orgId,
       display_name: 'Manifest Fail Org',
       slug: 'manifestfail',
-      primary_brand_domain: domain,
       is_public: true,
       agents: [
         { url: `https://agent.${domain}`, visibility: 'private' },
       ],
     });
+    await seedBrandPrimary(orgId, domain);
     // Seed a community-hosted brand row so the publish hits the
     // intended code path (`target==='public' && !isSelfHosted`). Without
     // this, `discovered` is null and the test passes via the missing-
@@ -550,12 +598,12 @@ describe('Agent visibility E2E', () => {
       workos_organization_id: orgId,
       display_name: 'Self Hosted Org',
       slug: 'selfhosted',
-      primary_brand_domain: domain,
       is_public: true,
       agents: [
         { url: `https://agent.${domain}`, visibility: 'private' },
       ],
     });
+    await seedBrandPrimary(orgId, domain);
     await brandDb.upsertDiscoveredBrand({
       domain,
       source_type: 'brand_json',
@@ -577,5 +625,96 @@ describe('Agent visibility E2E', () => {
     } finally {
       updateSpy.mockRestore();
     }
+  });
+
+  // Pins the contract the dashboard reads to enable/disable the "Public"
+  // visibility toggle. Stage 2 of #4159 dropped the column the dashboard
+  // was inferring from; without this surface, the toggle silently greyed
+  // out for every Builder/Member with a verified primary domain.
+  describe('GET /api/me/member-profile: agent_visibility_gate', () => {
+    it('Builder with primary brand domain: can_publish_publicly=true', async () => {
+      const orgId = `${TEST_PREFIX}_gate_ok`;
+      const userId = `${TEST_PREFIX}_gate_ok_user`;
+      await seedOrg(pool, orgId, 'company_standard');
+      await provisionUser(userId, orgId);
+      await createProfile(orgId, 'gateok');
+
+      (app as any).setCurrentUser(userId, orgId);
+      const res = await request(app).get('/api/me/member-profile');
+
+      expect(res.status).toBe(200);
+      expect(res.body.has_api_access).toBe(true);
+      expect(res.body.agent_visibility_gate).toEqual({
+        can_publish_publicly: true,
+        reasons: [],
+      });
+      // Re-derived from organization_domains.is_primary so legacy callers
+      // (member-profile.html, dashboard-agents.html) keep working post-#4313.
+      expect(res.body.profile.primary_brand_domain).toBe('gateok.example');
+    });
+
+    it('Explorer with primary brand domain: tier_required', async () => {
+      const orgId = `${TEST_PREFIX}_gate_tier`;
+      const userId = `${TEST_PREFIX}_gate_tier_user`;
+      await seedOrg(pool, orgId, 'individual_academic');
+      await provisionUser(userId, orgId);
+      await createProfile(orgId, 'gatetier');
+
+      (app as any).setCurrentUser(userId, orgId);
+      const res = await request(app).get('/api/me/member-profile');
+
+      expect(res.status).toBe(200);
+      expect(res.body.agent_visibility_gate.can_publish_publicly).toBe(false);
+      expect(res.body.agent_visibility_gate.reasons).toEqual(['tier_required']);
+    });
+
+    it('Builder without primary brand domain: brand_domain_required', async () => {
+      const orgId = `${TEST_PREFIX}_gate_brand`;
+      const userId = `${TEST_PREFIX}_gate_brand_user`;
+      await seedOrg(pool, orgId, 'company_standard');
+      await provisionUser(userId, orgId);
+      await memberDb.createProfile({
+        workos_organization_id: orgId,
+        display_name: 'No Brand Org',
+        slug: 'gatebrand',
+        is_public: true,
+        agents: [{ url: 'https://a.gatebrand.example', visibility: 'private' }],
+      });
+      // Deliberately no seedBrandPrimary — the org has no is_primary row.
+
+      (app as any).setCurrentUser(userId, orgId);
+      const res = await request(app).get('/api/me/member-profile');
+
+      expect(res.status).toBe(200);
+      expect(res.body.agent_visibility_gate.can_publish_publicly).toBe(false);
+      expect(res.body.agent_visibility_gate.reasons).toEqual(['brand_domain_required']);
+      expect(res.body.profile.primary_brand_domain).toBeUndefined();
+    });
+
+    it('unpaid tier with no brand domain: both reasons surface', async () => {
+      const orgId = `${TEST_PREFIX}_gate_both`;
+      const userId = `${TEST_PREFIX}_gate_both_user`;
+      await seedOrg(pool, orgId, null);
+      await provisionUser(userId, orgId);
+      await memberDb.createProfile({
+        workos_organization_id: orgId,
+        display_name: 'Bare Org',
+        slug: 'gateboth',
+        is_public: true,
+        agents: [{ url: 'https://a.gateboth.example', visibility: 'private' }],
+      });
+
+      (app as any).setCurrentUser(userId, orgId);
+      const res = await request(app).get('/api/me/member-profile');
+
+      expect(res.status).toBe(200);
+      expect(res.body.agent_visibility_gate.can_publish_publicly).toBe(false);
+      // Order is deterministic: tier first, then brand. Pinned in the
+      // unit test for computeAgentVisibilityGate too.
+      expect(res.body.agent_visibility_gate.reasons).toEqual([
+        'tier_required',
+        'brand_domain_required',
+      ]);
+    });
   });
 });

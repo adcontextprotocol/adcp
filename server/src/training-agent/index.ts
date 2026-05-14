@@ -24,7 +24,6 @@ import {
   extractBearerToken,
   respondUnauthorized,
   requireSignatureWhenPresent,
-  mcpToolNameResolver,
   signatureErrorCodeFromCause,
   AuthError,
   type Authenticator,
@@ -42,8 +41,12 @@ import { getPublicJwks } from './webhooks.js';
 import {
   buildRequestSigningAuthenticator,
   buildStrictRequestSigningAuthenticator,
+  buildStrictRequiredRequestSigningAuthenticator,
+  buildStrictForbiddenRequestSigningAuthenticator,
   enforceSigningWhenWebhookAuthPresent,
+  mcpOperationResolver,
   STRICT_REQUIRED_FOR,
+  STRICT_PROTOCOL_METHODS_REQUIRED_FOR,
 } from './request-signing.js';
 import { isWorkOSApiKeyFormat } from '../middleware/api-key-format.js';
 import { PUBLIC_TEST_AGENT } from '../config/test-agent.js';
@@ -139,6 +142,22 @@ function lazyStrictSigningAuth(): Authenticator {
   };
 }
 
+let _strictRequiredSigningAuth: Authenticator | null = null;
+function lazyStrictRequiredSigningAuth(): Authenticator {
+  return (req) => {
+    if (!_strictRequiredSigningAuth) _strictRequiredSigningAuth = buildStrictRequiredRequestSigningAuthenticator();
+    return _strictRequiredSigningAuth(req);
+  };
+}
+
+let _strictForbiddenSigningAuth: Authenticator | null = null;
+function lazyStrictForbiddenSigningAuth(): Authenticator {
+  return (req) => {
+    if (!_strictForbiddenSigningAuth) _strictForbiddenSigningAuth = buildStrictForbiddenRequestSigningAuthenticator();
+    return _strictForbiddenSigningAuth(req);
+  };
+}
+
 /**
  * Tenant-route authenticator: presence-gated signature composition.
  * Callers with no `Signature-Input` header fall through to bearer auth.
@@ -154,10 +173,12 @@ function buildDefaultAuthenticator(): Authenticator | null {
  * Strict-route authenticator: same presence-gated composition wrapping
  * the strict signing verifier, plus two enforcement gates:
  *
- *   - `requiredFor: STRICT_REQUIRED_FOR` + `mcpToolNameResolver` so
- *     unsigned calls to `create_media_buy` (and other required-for ops)
- *     surface `request_signature_required` (vector 001) instead of
- *     admitting bearer.
+ *   - `requiredFor: [...STRICT_REQUIRED_FOR, ...STRICT_PROTOCOL_METHODS_REQUIRED_FOR]`
+ *     + `mcpOperationResolver` so unsigned calls to required AdCP operations
+ *     (`create_media_buy`, `update_media_buy`, `sync_creatives`) AND unsigned
+ *     calls to required JSON-RPC protocol methods (`tasks/cancel`) surface
+ *     `request_signature_required` instead of admitting bearer. The resolver
+ *     handles both namespaces so the union match works on a single flat list.
  *   - `enforceSigningWhenWebhookAuthPresent` wrapper so an unsigned
  *     webhook-registration carrying `push_notification_config.authentication`
  *     fires the same `request_signature_required` error (vector 027).
@@ -174,8 +195,36 @@ function buildStrictAuthenticator(): Authenticator | null {
     lazyStrictSigningAuth(),
     bearerAuth,
     {
+      requiredFor: [...STRICT_REQUIRED_FOR, ...STRICT_PROTOCOL_METHODS_REQUIRED_FOR],
+      resolveOperation: mcpOperationResolver,
+    },
+  );
+  return enforceSigningWhenWebhookAuthPresent(presenceGated);
+}
+
+function buildStrictRequiredAuthenticator(): Authenticator | null {
+  const bearerAuth = buildBearerAuthenticator();
+  if (!bearerAuth) return null;
+  const presenceGated = requireSignatureWhenPresent(
+    lazyStrictRequiredSigningAuth(),
+    bearerAuth,
+    {
       requiredFor: [...STRICT_REQUIRED_FOR],
-      resolveOperation: mcpToolNameResolver,
+      resolveOperation: mcpOperationResolver,
+    },
+  );
+  return enforceSigningWhenWebhookAuthPresent(presenceGated);
+}
+
+function buildStrictForbiddenAuthenticator(): Authenticator | null {
+  const bearerAuth = buildBearerAuthenticator();
+  if (!bearerAuth) return null;
+  const presenceGated = requireSignatureWhenPresent(
+    lazyStrictForbiddenSigningAuth(),
+    bearerAuth,
+    {
+      requiredFor: [...STRICT_REQUIRED_FOR],
+      resolveOperation: mcpOperationResolver,
     },
   );
   return enforceSigningWhenWebhookAuthPresent(presenceGated);
@@ -183,6 +232,8 @@ function buildStrictAuthenticator(): Authenticator | null {
 
 const defaultAuthenticator = buildDefaultAuthenticator();
 const strictAuthenticator = buildStrictAuthenticator();
+const strictRequiredAuthenticator = buildStrictRequiredAuthenticator();
+const strictForbiddenAuthenticator = buildStrictForbiddenAuthenticator();
 
 function buildRequireToken(authenticator: Authenticator | null) {
   return async function requireToken(req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -225,6 +276,8 @@ function buildRequireToken(authenticator: Authenticator | null) {
 
 const requireTokenDefault = buildRequireToken(defaultAuthenticator);
 const requireTokenStrict = buildRequireToken(strictAuthenticator);
+const requireTokenStrictRequired = buildRequireToken(strictRequiredAuthenticator);
+const requireTokenStrictForbidden = buildRequireToken(strictForbiddenAuthenticator);
 
 function getBaseUrl(req: Request): string {
   if (process.env.BASE_URL) return process.env.BASE_URL.replace(/\/$/, '');
@@ -368,59 +421,68 @@ export function createTrainingAgentRouter(): Router {
   // conformance grader target for the `signed_requests` storyboard.
   // Same v5 monolith handler as the legacy `/mcp` mount, but stamped
   // with `ctx.strict = true` so `get_adcp_capabilities` advertises
-  // `request_signing.required_for: STRICT_REQUIRED_FOR` and the
-  // verifier rejects unsigned mutating calls with
-  // `request_signature_required` (vector 001). One handler shared
-  // across all tenants — request-signing is a transport-layer property,
-  // not specialism-specific, so the strict route doesn't need v6
-  // platform dispatch. The default `/<tenant>/mcp` continues to serve
-  // the v6 framework with sandbox signing (presence-gated, no
-  // required_for enforcement).
-  async function strictMcpHandler(req: Request, res: Response): Promise<void> {
-    setLegacyCORS(res);
-    let server: ReturnType<typeof createTrainingAgentServer> | null = null;
-    try {
-      const principal = (res.locals.trainingPrincipal as string | undefined) ?? 'anonymous';
-      const ctx: TrainingContext = { mode: 'open', principal, strict: true };
-      server = createTrainingAgentServer(ctx);
+  // `request_signing.required_for: STRICT_REQUIRED_FOR` and
+  // `request_signing.protocol_methods_required_for:
+  // STRICT_PROTOCOL_METHODS_REQUIRED_FOR`, and the verifier rejects
+  // unsigned mutating AdCP calls AND unsigned JSON-RPC protocol-method
+  // calls (e.g. `tasks/cancel`) with `request_signature_required`
+  // (vector 001). One handler shared across all tenants —
+  // request-signing is a transport-layer property, not
+  // specialism-specific, so the strict route doesn't need v6 platform
+  // dispatch. The default `/<tenant>/mcp` continues to serve the v6
+  // framework with sandbox signing (presence-gated, no required_for
+  // enforcement).
+  function makeStrictMcpHandler(digestMode?: 'either' | 'required' | 'forbidden') {
+    return async function strictMcpHandler(req: Request, res: Response): Promise<void> {
+      setLegacyCORS(res);
+      let server: ReturnType<typeof createTrainingAgentServer> | null = null;
+      try {
+        const principal = (res.locals.trainingPrincipal as string | undefined) ?? 'anonymous';
+        const ctx: TrainingContext = { mode: 'open', principal, strict: true, ...(digestMode !== undefined && { digestMode }) };
+        server = createTrainingAgentServer(ctx);
 
-      const acceptHeader = req.headers.accept;
-      const hasJson = typeof acceptHeader === 'string' && acceptHeader.includes('application/json');
-      const hasSse = typeof acceptHeader === 'string' && acceptHeader.includes('text/event-stream');
-      if (hasJson && !hasSse) {
-        const rewritten = `${acceptHeader}, text/event-stream`;
-        req.headers.accept = rewritten;
-        const raw = (req as unknown as { rawHeaders?: string[] }).rawHeaders;
-        if (Array.isArray(raw)) {
-          for (let i = 0; i < raw.length; i += 2) {
-            if (raw[i].toLowerCase() === 'accept') raw[i + 1] = rewritten;
+        const acceptHeader = req.headers.accept;
+        const hasJson = typeof acceptHeader === 'string' && acceptHeader.includes('application/json');
+        const hasSse = typeof acceptHeader === 'string' && acceptHeader.includes('text/event-stream');
+        if (hasJson && !hasSse) {
+          const rewritten = `${acceptHeader}, text/event-stream`;
+          req.headers.accept = rewritten;
+          const raw = (req as unknown as { rawHeaders?: string[] }).rawHeaders;
+          if (Array.isArray(raw)) {
+            for (let i = 0; i < raw.length; i += 2) {
+              if (raw[i].toLowerCase() === 'accept') raw[i + 1] = rewritten;
+            }
           }
         }
-      }
 
-      const transport = new StreamableHTTPServerTransport({
-        sessionIdGenerator: undefined,
-        enableJsonResponse: true,
-      });
-      await server.connect(transport);
-      logger.debug({ method: req.body?.method, route: req.originalUrl ?? req.url }, 'Training agent: strict request');
-      await runWithSessionContext(async () => {
-        await transport.handleRequest(req, res, req.body);
-        await flushDirtySessions();
-      });
-    } catch (error) {
-      logger.error({ error, route: req.originalUrl ?? req.url }, 'Training agent: strict request error');
-      if (!res.headersSent) {
-        res.status(500).json({
-          jsonrpc: '2.0',
-          id: null,
-          error: { code: -32603, message: 'Internal server error' },
+        const transport = new StreamableHTTPServerTransport({
+          sessionIdGenerator: undefined,
+          enableJsonResponse: true,
         });
+        await server.connect(transport);
+        logger.debug({ method: req.body?.method, route: req.originalUrl ?? req.url }, 'Training agent: strict request');
+        await runWithSessionContext(async () => {
+          await transport.handleRequest(req, res, req.body);
+          await flushDirtySessions();
+        });
+      } catch (error) {
+        logger.error({ error, route: req.originalUrl ?? req.url }, 'Training agent: strict request error');
+        if (!res.headersSent) {
+          res.status(500).json({
+            jsonrpc: '2.0',
+            id: null,
+            error: { code: -32603, message: 'Internal server error' },
+          });
+        }
+      } finally {
+        await server?.close().catch(() => {});
       }
-    } finally {
-      await server?.close().catch(() => {});
-    }
+    };
   }
+
+  const strictMcpHandler = makeStrictMcpHandler();
+  const strictRequiredMcpHandler = makeStrictMcpHandler('required');
+  const strictForbiddenMcpHandler = makeStrictMcpHandler('forbidden');
 
   for (const tenantId of TENANT_IDS) {
     router.options(`/${tenantId}/mcp-strict`, (_req: Request, res: Response) => {
@@ -429,6 +491,36 @@ export function createTrainingAgentRouter(): Router {
     });
     router.post(`/${tenantId}/mcp-strict`, mcpRateLimiter, requireTokenStrict, strictMcpHandler);
     router.get(`/${tenantId}/mcp-strict`, (_req: Request, res: Response) => {
+      setLegacyCORS(res);
+      res.setHeader('Allow', 'POST, OPTIONS');
+      res.status(405).json({
+        jsonrpc: '2.0',
+        id: null,
+        error: { code: -32000, message: 'Method not allowed. Use POST for MCP requests.' },
+      });
+    });
+
+    router.options(`/${tenantId}/mcp-strict-required`, (_req: Request, res: Response) => {
+      setLegacyCORS(res);
+      res.status(204).end();
+    });
+    router.post(`/${tenantId}/mcp-strict-required`, mcpRateLimiter, requireTokenStrictRequired, strictRequiredMcpHandler);
+    router.get(`/${tenantId}/mcp-strict-required`, (_req: Request, res: Response) => {
+      setLegacyCORS(res);
+      res.setHeader('Allow', 'POST, OPTIONS');
+      res.status(405).json({
+        jsonrpc: '2.0',
+        id: null,
+        error: { code: -32000, message: 'Method not allowed. Use POST for MCP requests.' },
+      });
+    });
+
+    router.options(`/${tenantId}/mcp-strict-forbidden`, (_req: Request, res: Response) => {
+      setLegacyCORS(res);
+      res.status(204).end();
+    });
+    router.post(`/${tenantId}/mcp-strict-forbidden`, mcpRateLimiter, requireTokenStrictForbidden, strictForbiddenMcpHandler);
+    router.get(`/${tenantId}/mcp-strict-forbidden`, (_req: Request, res: Response) => {
       setLegacyCORS(res);
       res.setHeader('Allow', 'POST, OPTIONS');
       res.status(405).json({

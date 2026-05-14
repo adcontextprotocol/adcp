@@ -23,6 +23,7 @@ import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { MemberDatabase } from '../../src/db/member-db.js';
 import { OrganizationDatabase, type MembershipTier } from '../../src/db/organization-db.js';
+import { ComplianceDatabase } from '../../src/db/compliance-db.js';
 import { createMemberAgentsRouter } from '../../src/routes/member-agents.js';
 
 const TEST_PREFIX = 'org_member_agents_api';
@@ -183,13 +184,25 @@ describe('Per-agent REST API (/api/me/agents)', () => {
       workos_organization_id: orgId,
       display_name: `Test ${slug}`,
       slug,
-      primary_brand_domain: `${slug}.example`,
       is_public: false,
       agents: [{ url: 'https://existing.example/mcp', visibility: 'private' }],
     });
+    await pool.query(
+      `INSERT INTO organization_domains
+         (workos_organization_id, domain, verified, is_primary, source, created_at, updated_at)
+       VALUES ($1, $2, true, true, 'workos', NOW(), NOW())
+       ON CONFLICT (domain) DO UPDATE SET
+         workos_organization_id = EXCLUDED.workos_organization_id,
+         verified = true, is_primary = true, source = 'workos'`,
+      [orgId, `${slug}.example`],
+    );
   }
 
   beforeEach(async () => {
+    await pool.query(
+      `DELETE FROM organization_domains WHERE workos_organization_id LIKE $1`,
+      [`${TEST_PREFIX}%`],
+    );
     await pool.query(
       `DELETE FROM member_profiles WHERE workos_organization_id LIKE $1`,
       [`${TEST_PREFIX}%`],
@@ -248,14 +261,14 @@ describe('Per-agent REST API (/api/me/agents)', () => {
     (app as any).setCurrentUser(userId);
     const created = await request(app)
       .post('/api/me/agents')
-      .send({ url: 'https://new.example/mcp', name: 'New', visibility: 'private' });
+      .send({ url: 'https://new.example/mcp', name: 'New', type: 'sales', visibility: 'private' });
     expect(created.status).toBe(201);
     expect(created.body.agent.url).toBe('https://new.example/mcp');
     expect(created.body.agent.name).toBe('New');
 
     const updated = await request(app)
       .post('/api/me/agents')
-      .send({ url: 'https://new.example/mcp', name: 'Renamed', visibility: 'private' });
+      .send({ url: 'https://new.example/mcp', name: 'Renamed', type: 'sales', visibility: 'private' });
     expect(updated.status).toBe(200);
     expect(updated.body.agent.name).toBe('Renamed');
 
@@ -272,10 +285,17 @@ describe('Per-agent REST API (/api/me/agents)', () => {
     await createProfile(orgId, 'postinv');
 
     (app as any).setCurrentUser(userId);
-    const noUrl = await request(app).post('/api/me/agents').send({ name: 'No URL' });
+    // Both cases include `type: 'sales'` so the 400 is unambiguously from
+    // the URL validator and not the new type-required gate (covered
+    // separately below).
+    const noUrl = await request(app)
+      .post('/api/me/agents')
+      .send({ name: 'No URL', type: 'sales' });
     expect(noUrl.status).toBe(400);
 
-    const badUrl = await request(app).post('/api/me/agents').send({ url: 'not a url' });
+    const badUrl = await request(app)
+      .post('/api/me/agents')
+      .send({ url: 'not a url', type: 'sales' });
     expect(badUrl.status).toBe(400);
   });
 
@@ -289,7 +309,7 @@ describe('Per-agent REST API (/api/me/agents)', () => {
     (app as any).setCurrentUser(userId);
     const res = await request(app)
       .post('/api/me/agents')
-      .send({ url: 'https://upgrade.example/mcp', visibility: 'public' });
+      .send({ url: 'https://upgrade.example/mcp', type: 'sales', visibility: 'public' });
     expect(res.status).toBe(201);
     expect(res.body.agent.visibility).toBe('members_only');
     expect(res.body.warnings).toBeDefined();
@@ -384,7 +404,7 @@ describe('Per-agent REST API (/api/me/agents)', () => {
     (app as any).setCurrentUser(userId);
     const res = await request(app)
       .post(`/api/me/agents?org=${secondaryOrg}`)
-      .send({ url: 'https://multi.example/mcp', visibility: 'private' });
+      .send({ url: 'https://multi.example/mcp', type: 'sales', visibility: 'private' });
     expect(res.status).toBe(201);
     expect(res.body.agent.url).toBe('https://multi.example/mcp');
 
@@ -443,6 +463,216 @@ describe('Per-agent REST API (/api/me/agents)', () => {
     expect(stored?.type).toBe('sales');
   });
 
+  // ── Type-required contract (PR #4235) ──────────────────────────
+  // The owner declares `type` at registration; the server never infers.
+  // 'unknown' is reserved for the server-side smuggle-protection outcome
+  // (covered by the snapshot-override test above) and is not accepted on
+  // input.
+
+  it('POST returns 400 when type is missing', async () => {
+    const orgId = `${TEST_PREFIX}_type_missing`;
+    const userId = `${TEST_PREFIX}_type_missing_user`;
+    await seedOrg(pool, orgId, 'individual_professional');
+    await provisionUser(userId, orgId);
+    await createProfile(orgId, 'typemissing');
+
+    (app as any).setCurrentUser(userId);
+    const res = await request(app)
+      .post('/api/me/agents')
+      .send({ url: 'https://no-type.example/mcp', visibility: 'private' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('type is required');
+  });
+
+  it('POST returns 400 when type is "unknown" (reserved for server-side outcome)', async () => {
+    const orgId = `${TEST_PREFIX}_type_unknown`;
+    const userId = `${TEST_PREFIX}_type_unknown_user`;
+    await seedOrg(pool, orgId, 'individual_professional');
+    await provisionUser(userId, orgId);
+    await createProfile(orgId, 'typeunknown');
+
+    (app as any).setCurrentUser(userId);
+    const res = await request(app)
+      .post('/api/me/agents')
+      .send({ url: 'https://unknown.example/mcp', type: 'unknown', visibility: 'private' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('type is required');
+  });
+
+  it('POST returns 400 when type is not in the AgentType enum', async () => {
+    const orgId = `${TEST_PREFIX}_type_garbage`;
+    const userId = `${TEST_PREFIX}_type_garbage_user`;
+    await seedOrg(pool, orgId, 'individual_professional');
+    await provisionUser(userId, orgId);
+    await createProfile(orgId, 'typegarbage');
+
+    (app as any).setCurrentUser(userId);
+    const res = await request(app)
+      .post('/api/me/agents')
+      .send({ url: 'https://garbage.example/mcp', type: 'seller', visibility: 'private' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('type is required');
+  });
+
+  it('PATCH returns 400 invalid_type when patch.type is invalid; preserves existing type when omitted', async () => {
+    const orgId = `${TEST_PREFIX}_patch_type`;
+    const userId = `${TEST_PREFIX}_patch_type_user`;
+    await seedOrg(pool, orgId, 'individual_professional');
+    await provisionUser(userId, orgId);
+    // Seed a profile with one agent that already has a declared type so
+    // we can verify omission preserves it.
+    await memberDb.createProfile({
+      workos_organization_id: orgId,
+      display_name: 'Test patchtype',
+      slug: 'patchtype',
+      is_public: false,
+      agents: [
+        { url: 'https://existing.example/mcp', type: 'sales', visibility: 'private' },
+      ],
+    });
+
+    (app as any).setCurrentUser(userId);
+    const target = encodeURIComponent('https://existing.example/mcp');
+
+    // Invalid type → 400 invalid_type (caller-supplied 'unknown' rejected,
+    // out-of-enum strings rejected).
+    const badEnum = await request(app)
+      .patch(`/api/me/agents/${target}`)
+      .send({ type: 'seller' });
+    expect(badEnum.status).toBe(400);
+    expect(badEnum.body.error).toBe('invalid_type');
+
+    const unknown = await request(app)
+      .patch(`/api/me/agents/${target}`)
+      .send({ type: 'unknown' });
+    expect(unknown.status).toBe(400);
+    expect(unknown.body.error).toBe('invalid_type');
+
+    // Omitting type → existing 'sales' preserved on the row.
+    const renamed = await request(app)
+      .patch(`/api/me/agents/${target}`)
+      .send({ name: 'Renamed' });
+    expect(renamed.status).toBe(200);
+    expect(renamed.body.agent.type).toBe('sales');
+
+    // Valid type → updated.
+    const swapped = await request(app)
+      .patch(`/api/me/agents/${target}`)
+      .send({ type: 'buying' });
+    expect(swapped.status).toBe(200);
+    expect(swapped.body.agent.type).toBe('buying');
+  });
+
+  // ── agent_registry_metadata seed on register (PR follow-up) ────
+  // Without this seed, an agent registered via /api/me/agents lives only
+  // in member_profiles.agents JSONB and never enters the heartbeat's
+  // known_agents CTE — compliance status stays `unknown` forever. The
+  // seed is best-effort; the read-side CTE was widened in the same change
+  // as defense-in-depth.
+
+  it('POST seeds an agent_registry_metadata row so the heartbeat can pick it up', async () => {
+    const orgId = `${TEST_PREFIX}_meta_seed`;
+    const userId = `${TEST_PREFIX}_meta_seed_user`;
+    await seedOrg(pool, orgId, 'individual_professional');
+    await provisionUser(userId, orgId);
+    await createProfile(orgId, 'metaseed');
+
+    const targetUrl = 'https://meta-seed.example/mcp';
+    // Sanity: no metadata row before the POST.
+    const before = await pool.query(
+      'SELECT agent_url FROM agent_registry_metadata WHERE agent_url = $1',
+      [targetUrl],
+    );
+    expect(before.rowCount).toBe(0);
+
+    (app as any).setCurrentUser(userId);
+    const res = await request(app)
+      .post('/api/me/agents')
+      .send({ url: targetUrl, type: 'sales', visibility: 'private' });
+    expect(res.status).toBe(201);
+
+    // Metadata row exists post-write, with default lifecycle_stage so the
+    // heartbeat will include it.
+    const after = await pool.query<{ agent_url: string; lifecycle_stage: string; compliance_opt_out: boolean }>(
+      `SELECT agent_url, lifecycle_stage, compliance_opt_out
+       FROM agent_registry_metadata WHERE agent_url = $1`,
+      [targetUrl],
+    );
+    expect(after.rowCount).toBe(1);
+    expect(after.rows[0].lifecycle_stage).toBe('production');
+    expect(after.rows[0].compliance_opt_out).toBe(false);
+
+    // Cleanup the metadata row to avoid leaking state across tests.
+    await pool.query('DELETE FROM agent_registry_metadata WHERE agent_url = $1', [targetUrl]);
+  });
+
+  it('heartbeat picks up an agent that lives only in member_profiles.agents (read-side CTE widening)', async () => {
+    // Defense-in-depth case: a row whose write-side seed never landed
+    // (best-effort fallback fired) must still be visible to the
+    // compliance heartbeat. We bypass the route deliberately to simulate
+    // pre-fix data and to isolate the read-side CTE behavior from the
+    // write-side seed.
+    const orgId = `${TEST_PREFIX}_cte_only`;
+    const userId = `${TEST_PREFIX}_cte_only_user`;
+    const targetUrl = 'https://cte-only.example/mcp';
+    await seedOrg(pool, orgId, 'individual_professional');
+    await provisionUser(userId, orgId);
+    await memberDb.createProfile({
+      workos_organization_id: orgId,
+      display_name: 'Test cteonly',
+      slug: 'cteonly',
+      is_public: false,
+      agents: [{ url: targetUrl, type: 'sales', visibility: 'private' }],
+    });
+    // Sanity: no metadata row, no discovered_agents row.
+    await pool.query('DELETE FROM agent_registry_metadata WHERE agent_url = $1', [targetUrl]);
+    await pool.query('DELETE FROM discovered_agents WHERE agent_url = $1', [targetUrl]);
+
+    const complianceDb = new ComplianceDatabase();
+    const due = await complianceDb.getAgentsDueForCheck(100);
+    const matched = due.find((d) => d.agent_url === targetUrl);
+    // The read-side CTE's third leg (member_profiles.agents) is what
+    // makes this match. With the pre-fix two-leg CTE this assertion
+    // would fail.
+    expect(matched).toBeDefined();
+    expect(matched!.lifecycle_stage).toBe('production');
+    expect(matched!.last_checked_at).toBeNull();
+  });
+
+  it('POST does NOT overwrite an existing agent_registry_metadata row on re-register', async () => {
+    const orgId = `${TEST_PREFIX}_meta_existing`;
+    const userId = `${TEST_PREFIX}_meta_existing_user`;
+    await seedOrg(pool, orgId, 'individual_professional');
+    await provisionUser(userId, orgId);
+    await createProfile(orgId, 'metaexisting');
+
+    const targetUrl = 'https://meta-existing.example/mcp';
+    // Seed metadata with non-default lifecycle and a custom interval — the
+    // re-register MUST preserve these so an owner who tuned cadence /
+    // lifecycle from the dashboard doesn't see it reset by the next save.
+    await pool.query(
+      `INSERT INTO agent_registry_metadata (agent_url, lifecycle_stage, check_interval_hours)
+       VALUES ($1, 'testing', 24)`,
+      [targetUrl],
+    );
+
+    (app as any).setCurrentUser(userId);
+    const res = await request(app)
+      .post('/api/me/agents')
+      .send({ url: targetUrl, type: 'sales', visibility: 'private' });
+    expect(res.status).toBe(201);
+
+    const after = await pool.query<{ lifecycle_stage: string; check_interval_hours: number }>(
+      `SELECT lifecycle_stage, check_interval_hours
+       FROM agent_registry_metadata WHERE agent_url = $1`,
+      [targetUrl],
+    );
+    expect(after.rows[0].lifecycle_stage).toBe('testing');
+    expect(after.rows[0].check_interval_hours).toBe(24);
+
+    await pool.query('DELETE FROM agent_registry_metadata WHERE agent_url = $1', [targetUrl]);
+  });
+
   it('DELETE returns 409 unpublish_first when the agent is currently public', async () => {
     const orgId = `${TEST_PREFIX}_delete_public`;
     const userId = `${TEST_PREFIX}_delete_public_user`;
@@ -452,7 +682,6 @@ describe('Per-agent REST API (/api/me/agents)', () => {
       workos_organization_id: orgId,
       display_name: 'Test deletepublic',
       slug: 'deletepublic',
-      primary_brand_domain: 'deletepublic.example',
       is_public: false,
       agents: [{ url: 'https://pub.example/mcp', visibility: 'public' }],
     });

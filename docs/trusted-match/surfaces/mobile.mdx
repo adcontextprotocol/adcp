@@ -194,13 +194,13 @@ Seven package IDs — the example uses all-active mode (every active package for
     "pkg-sports-banner-05",
     "pkg-sports-rewarded-07"
   ],
-  "ttl_sec": 60
+  "serve_window_sec": 60
 }
 ```
 
 Only eligible packages are listed. The buyer computes eligibility from frequency caps, audience membership, purchase history, and any other identity-based signals. The reasons are opaque to the publisher. The publisher does not learn why `pkg-telecom-inter-03` is ineligible — just that it is absent from the list.
 
-The `ttl_sec` tells the router how long to cache this response. During the TTL window, the router uses cached eligibility to fill interstitials, banners, and rewarded ads without re-querying the buyer.
+The `serve_window_sec` tells the router how long to cache this response. During the TTL window, the router uses cached eligibility to fill interstitials, banners, and rewarded ads without re-querying the buyer.
 
 ## Joining and Activation
 

@@ -90,6 +90,32 @@
           },
           "minItems": 1
         },
+        "revoked_publisher_domains": {
+          "type": "array",
+          "description": "Publisher domains explicitly removed from this managed network. Validators MUST treat any publisher domain listed here as no-longer-authorized, taking precedence over any appearance of the same domain in `authorized_agents[].publisher_properties[].publisher_domain` / `.publisher_domains[]` or in top-level `properties[].publisher_domain`. Lets a network propagate per-publisher revocations on the next refresh instead of waiting for the file-level 7-day cache cap. Entries SHOULD be retained for at least 7 days after `revoked_at` so any cached copy of the previous file is overridden before the entry is removed.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "publisher_domain": {
+                "type": "string",
+                "description": "Publisher domain being revoked. Matches against the same canonicalized form used in `publisher_properties[].publisher_domain`.",
+                "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+              },
+              "revoked_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "ISO 8601 timestamp when this publisher was revoked. Validators MAY use this to order revocations against their own cached state."
+              },
+              "reason": {
+                "type": "string",
+                "enum": ["relationship_ended", "compliance_violation", "publisher_request", "other"],
+                "description": "Reason for revocation. `relationship_ended` is the routine commercial case; the other values are signals to operator review."
+              }
+            },
+            "required": ["publisher_domain", "revoked_at"],
+            "additionalProperties": true
+          }
+        },
         "collections": {
           "type": "array",
           "description": "Collections produced or distributed by this publisher. Declares the content programs whose inventory is sold through authorized agents. Products in get_products responses reference these collections by collection_id.",
@@ -253,6 +279,11 @@
                       "$ref": "/schemas/core/agent-encryption-key.json"
                     },
                     "minItems": 1
+                  },
+                  "last_updated": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "Optional ISO 8601 timestamp indicating when this `authorized_agents[]` entry last changed. Independent of the file-level `last_updated`. Lets validators perform a partial walk by skipping entries whose `last_updated` is older than their indexed value. Advisory — consumers MAY ignore and re-index the full file."
                   }
                 },
                 "required": [
@@ -359,6 +390,11 @@
                       "$ref": "/schemas/core/agent-encryption-key.json"
                     },
                     "minItems": 1
+                  },
+                  "last_updated": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "Optional ISO 8601 timestamp indicating when this `authorized_agents[]` entry last changed. Independent of the file-level `last_updated`. Lets validators perform a partial walk by skipping entries whose `last_updated` is older than their indexed value. Advisory — consumers MAY ignore and re-index the full file."
                   }
                 },
                 "required": [
@@ -465,6 +501,11 @@
                       "$ref": "/schemas/core/agent-encryption-key.json"
                     },
                     "minItems": 1
+                  },
+                  "last_updated": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "Optional ISO 8601 timestamp indicating when this `authorized_agents[]` entry last changed. Independent of the file-level `last_updated`. Lets validators perform a partial walk by skipping entries whose `last_updated` is older than their indexed value. Advisory — consumers MAY ignore and re-index the full file."
                   }
                 },
                 "required": [
@@ -571,6 +612,11 @@
                       "$ref": "/schemas/core/agent-encryption-key.json"
                     },
                     "minItems": 1
+                  },
+                  "last_updated": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "Optional ISO 8601 timestamp indicating when this `authorized_agents[]` entry last changed. Independent of the file-level `last_updated`. Lets validators perform a partial walk by skipping entries whose `last_updated` is older than their indexed value. Advisory — consumers MAY ignore and re-index the full file."
                   }
                 },
                 "required": [
@@ -625,6 +671,11 @@
                       "$ref": "/schemas/core/agent-encryption-key.json"
                     },
                     "minItems": 1
+                  },
+                  "last_updated": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "Optional ISO 8601 timestamp indicating when this `authorized_agents[]` entry last changed. Independent of the file-level `last_updated`. Lets validators perform a partial walk by skipping entries whose `last_updated` is older than their indexed value. Advisory — consumers MAY ignore and re-index the full file."
                   }
                 },
                 "required": [
@@ -679,6 +730,11 @@
                       "$ref": "/schemas/core/agent-encryption-key.json"
                     },
                     "minItems": 1
+                  },
+                  "last_updated": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "Optional ISO 8601 timestamp indicating when this `authorized_agents[]` entry last changed. Independent of the file-level `last_updated`. Lets validators perform a partial walk by skipping entries whose `last_updated` is older than their indexed value. Advisory — consumers MAY ignore and re-index the full file."
                   }
                 },
                 "required": [
@@ -1017,6 +1073,25 @@
               ]
             }
           ]
+        },
+        {
+          "url": "https://agent.example/api",
+          "authorized_for": "Managed-network display inventory across represented publishers (compact form)",
+          "authorization_type": "publisher_properties",
+          "publisher_properties": [
+            {
+              "publisher_domains": [
+                "site1.example",
+                "site2.example",
+                "site3.example"
+              ],
+              "selection_type": "by_tag",
+              "property_tags": [
+                "managed_network"
+              ]
+            }
+          ],
+          "delegation_type": "ad_network"
         }
       ],
       "last_updated": "2025-01-10T17:00:00Z"

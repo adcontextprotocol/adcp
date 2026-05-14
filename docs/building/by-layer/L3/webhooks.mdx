@@ -214,6 +214,23 @@ A2A sends a `Task` object (for final states) or `TaskStatusUpdateEvent` (for pro
 | **Result location** | `result` field | `.artifacts[0].parts[].data` (final) / `status.message.parts[].data` (interim) |
 | **Data schemas** | Identical AdCP schemas | Identical AdCP schemas |
 
+### Registration channel determines envelope shape
+
+Webhook envelope shape is determined by **which registration mechanism the buyer used**, not by which transport the sync request was sent over:
+
+| Registered via | Delivered envelope |
+|---|---|
+| AdCP `push_notification_config` (task argument, MCP/A2A/REST) | [`mcp-webhook-payload.json`](#mcp) |
+| A2A `TaskPushNotificationConfig` ([`CreateTaskPushNotificationConfig`](https://a2a-protocol.org/latest/specification/) RPC, or inline `task_push_notification_config` on `SendMessage`) | A2A native `Task` / `TaskStatusUpdateEvent` per A2A 1.0 §4.3.3 |
+
+The two channels are independent. A buyer MAY register both for the same task and receive both webhooks per status change.
+
+**Why this is the model, not "match inbound transport".** Each channel is purpose-built for its envelope: AdCP `push_notification_config` is the AdCP-layer registration for the AdCP `mcp-webhook-payload` shape; A2A `TaskPushNotificationConfig` is the A2A-layer registration for A2A's own `StreamResponse`-wrapped delivery. The buyer picks the channel that matches the receiver — there's no need for a discriminator field, and no ambiguity to override.
+
+**Typical case: A2A sync, AdCP-shape webhooks.** A buyer orchestrating from an MCP-native runtime that uses A2A for one specific high-throughput sync operation puts `push_notification_config` in the AdCP task arguments inside its `SendMessage` body. The seller honors it as an AdCP-shape registration, regardless of A2A being the sync transport. The buyer's receiver gets the same `mcp-webhook-payload` shape it gets from every other AdCP webhook in its pipeline.
+
+**A2A buyers wanting A2A-shape webhooks** register through A2A's native push notification mechanism; AdCP doesn't need to add anything for that case.
+
 ### Status-specific result data
 
 | Status | `result` / `data` contains |

@@ -31,7 +31,7 @@
     },
     "human_oversight": {
       "type": "string",
-      "description": "Level of human involvement in the AI-assisted creation process",
+      "description": "Level of human involvement in the AI-assisted creation process. Independent of `disclosure.required` — the protocol does not derive disclosure obligations from oversight level. Some regulations include carve-outs for human-edited or human-directed AI output, but those carve-outs have factual prerequisites the schema cannot evaluate. Asserting `edited` or `directed` does not by itself justify `disclosure.required: false`.",
       "enum": [
         "none",
         "prompt_only",
@@ -195,7 +195,7 @@
       "properties": {
         "required": {
           "type": "boolean",
-          "description": "Whether AI disclosure is required for this content based on applicable regulations"
+          "description": "The declaring party's claim that AI disclosure is required for this content under applicable regulations. This is a declared signal carried through the supply chain — useful as a routing and audit input — not a regulatory determination made by the protocol. Receiving parties remain responsible for their own jurisdictional analysis and should not treat `required: false` as compliance cover."
         },
         "jurisdictions": {
           "type": "array",

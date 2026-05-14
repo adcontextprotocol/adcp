@@ -20,6 +20,7 @@ import { BrandDatabase, resolveBrandFromJson } from "../db/brand-db.js";
 import { BrandManager } from "../brand-manager.js";
 import { OrganizationDatabase, hasApiAccess, readMembershipTierFromClient, resolveMembershipTier, VALID_REVENUE_TIERS, VALID_MEMBERSHIP_TIERS } from "../db/organization-db.js";
 import { OrgKnowledgeDatabase } from "../db/org-knowledge-db.js";
+import { linkDomain } from "../db/organization-domains-db.js";
 import { autoLinkByVerifiedDomain } from "../db/membership-db.js";
 import { resolvePrimaryOrganization } from "../db/users-db.js";
 import { AAO_HOST } from "../config/aao.js";
@@ -51,7 +52,8 @@ import { updateBrandIdentity, BrandIdentityError } from "../services/brand-ident
 import { createEscalation } from "../db/escalation-db.js";
 import { insertTypeReclassification } from "../db/type-reclassification-log-db.js";
 import { recordProfilePublishedIfNeeded } from "../services/profile-publish-event.js";
-import { gateAgentVisibilityForCaller, type VisibilityWarning } from "../services/agent-visibility-gate.js";
+import { gateAgentVisibilityForCaller, computeAgentVisibilityGate, type VisibilityWarning, type AgentVisibilityGate } from "../services/agent-visibility-gate.js";
+import { getBrandPrimaryDomain } from "../services/brand-domain-resolver.js";
 import { normalizeFoundingMemberGrant } from "../services/founding-member-grant.js";
 
 const orgKnowledgeDb = new OrgKnowledgeDatabase();
@@ -235,6 +237,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
     profile: any,
     org: any,
     corporateDomain: string,
+    brandPrimaryDomain: string | null,
   ): Record<string, unknown> {
     const created = profile?.created_at instanceof Date
       ? profile.created_at.toISOString()
@@ -245,9 +248,10 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       company_type: org?.company_type ?? null,
       ...(org?.revenue_tier ? { revenue_tier: org.revenue_tier } : {}),
       corporate_domain: corporateDomain,
-      ...(profile.primary_brand_domain
-        ? { primary_brand_domain: profile.primary_brand_domain }
-        : {}),
+      // After Stage 2 of #4159, brand-primary lives on
+      // organization_domains.is_primary and is resolved via getBrandPrimaryDomain.
+      // Caller passes the resolved value through so this function stays pure.
+      ...(brandPrimaryDomain ? { primary_brand_domain: brandPrimaryDomain } : {}),
       ...(org?.membership_tier ? { membership_tier: org.membership_tier } : {}),
       created_at: created,
       agents: Array.isArray(profile.agents) ? profile.agents : [],
@@ -283,10 +287,15 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         company_type,
         revenue_tier,
         corporate_domain,
-        primary_brand_domain,
         marketing_opt_in,
         membership_tier,
       } = req.body as Record<string, unknown>;
+      // After Stage 2 of #4159, brand-primary lives on
+      // organization_domains.is_primary, not on the member profile. Members
+      // set it via the Linked Domains UI (PR #4179) or it auto-promotes
+      // from a verified WorkOS email domain. The bootstrap endpoint no
+      // longer accepts primary_brand_domain — silently ignored if old
+      // clients still pass it.
 
       const trimmedName = typeof organization_name === 'string' ? organization_name.trim() : '';
       if (!trimmedName || trimmedName.length > 200) {
@@ -336,24 +345,6 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
           });
         }
       }
-      let normalizedBrandDomain: string | null = null;
-      if (primary_brand_domain !== undefined && primary_brand_domain !== null && primary_brand_domain !== '') {
-        if (typeof primary_brand_domain !== 'string') {
-          return res.status(400).json({
-            error: 'Invalid primary_brand_domain',
-            message: 'primary_brand_domain must be a string',
-          });
-        }
-        const candidate = primary_brand_domain.toLowerCase().trim();
-        if (!candidate || candidate.length > 253 || !DOMAIN_RE.test(candidate)) {
-          return res.status(400).json({
-            error: 'Invalid primary_brand_domain',
-            message: 'primary_brand_domain must be a valid domain like "acme.com"',
-          });
-        }
-        normalizedBrandDomain = candidate;
-      }
-
       // Email-domain match. getCompanyDomain returns null for personal-email
       // domains (gmail.com, yahoo.com, etc.) — those cannot bootstrap a
       // corporate profile. Mismatch between the verified email domain and
@@ -445,9 +436,10 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       if (existingProfile) {
         const existingOrg = await orgDb.getOrganization(targetOrgId);
         const primaryDomain = await resolvePrimaryDomain(targetOrgId, corporateDomain);
+        const brandPrimaryDomain = await getBrandPrimaryDomain(targetOrgId);
         logger.info({ userId: user.id, orgId: targetOrgId, durationMs: Date.now() - startTime }, 'POST /api/me/member-profile (bootstrap) idempotent hit');
         return res.status(200).json({
-          profile: toSpecMemberProfile(existingProfile, existingOrg, primaryDomain),
+          profile: toSpecMemberProfile(existingProfile, existingOrg, primaryDomain, brandPrimaryDomain),
           warnings: [{
             code: 'profile_already_exists',
             message: 'Member profile already exists for this organization; no fields were mutated.',
@@ -510,27 +502,16 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       // on this org and no domain link — half-broken state, no signal.
       // We still create the profile so programmatic callers aren't blocked
       // on an admin-resolvable issue.
-      const pool = getPool();
       let domainConflictOrgId: string | null = null;
       try {
-        const existingDomain = await pool.query<{ workos_organization_id: string }>(
-          `SELECT workos_organization_id FROM organization_domains WHERE LOWER(domain) = LOWER($1)`,
-          [corporateDomain],
-        );
-        if (existingDomain.rows.length === 0) {
-          await pool.query(
-            `INSERT INTO organization_domains (workos_organization_id, domain, is_primary, verified, source)
-             VALUES ($1, $2, true, true, 'email_verification')
-             ON CONFLICT (domain) DO NOTHING`,
-            [targetOrgId, corporateDomain],
-          );
-        } else if (existingDomain.rows[0].workos_organization_id !== targetOrgId) {
-          domainConflictOrgId = existingDomain.rows[0].workos_organization_id;
-          logger.warn(
-            { orgId: targetOrgId, conflictOrgId: domainConflictOrgId, domain: corporateDomain },
-            'Bootstrap: corporate_domain already linked to a different org; profile created without domain link',
-          );
-        }
+        const result = await linkDomain({
+          orgId: targetOrgId,
+          domain: corporateDomain,
+          source: 'email_verification',
+          verified: true,
+          isPrimary: true,
+        });
+        domainConflictOrgId = result.conflictOrgId;
       } catch (err) {
         logger.warn({ err, orgId: targetOrgId, domain: corporateDomain }, 'Failed to write organization_domains during bootstrap');
       }
@@ -541,7 +522,6 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         workos_organization_id: targetOrgId,
         display_name: trimmedName,
         slug,
-        ...(normalizedBrandDomain ? { primary_brand_domain: normalizedBrandDomain } : {}),
         // Default privacy posture for a bootstrapped profile is private —
         // the caller can flip is_public via PUT /api/me/member-profile/visibility
         // once they have an active subscription. The legacy POST path applies
@@ -660,8 +640,9 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         });
       }
 
+      const newBrandPrimaryDomain = await getBrandPrimaryDomain(targetOrgId);
       return res.status(201).json({
-        profile: toSpecMemberProfile(profile, refreshedOrg, primaryDomain),
+        profile: toSpecMemberProfile(profile, refreshedOrg, primaryDomain, newBrandPrimaryDomain),
         ...(warnings.length ? { warnings } : {}),
       });
     } catch (error) {
@@ -692,15 +673,24 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
           });
         }
         const profile = await memberDb.getProfileByOrgId(devOrgId);
-        if (profile?.primary_brand_domain) {
-          profile.resolved_brand = await resolveBrand(brandDb, profile.primary_brand_domain);
+        const devBrandPrimary = await getBrandPrimaryDomain(devOrgId);
+        if (profile) {
+          if (devBrandPrimary) {
+            profile.resolved_brand = await resolveBrand(brandDb, devBrandPrimary);
+            (profile as unknown as Record<string, unknown>).primary_brand_domain = devBrandPrimary;
+          }
         }
+        const devHasApiAccess = hasApiAccess(resolveMembershipTier(localOrg));
         logger.info({ userId: user.id, orgId: devOrgId, hasProfile: !!profile, durationMs: Date.now() - startTime }, 'GET /api/me/member-profile completed (dev mode)');
         return res.json({
           profile: profile || null,
           organization_id: devOrgId,
           organization_name: localOrg.name,
-          has_api_access: hasApiAccess(resolveMembershipTier(localOrg)),
+          has_api_access: devHasApiAccess,
+          agent_visibility_gate: computeAgentVisibilityGate({
+            hasApiAccess: devHasApiAccess,
+            brandPrimaryDomain: devBrandPrimary,
+          }),
         });
       }
 
@@ -745,20 +735,32 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       }
 
       const profile = await memberDb.getProfileByOrgId(targetOrgId);
-      if (profile?.primary_brand_domain) {
-        profile.resolved_brand = await resolveBrand(brandDb, profile.primary_brand_domain);
+      const brandPrimary = await getBrandPrimaryDomain(targetOrgId);
+      if (profile) {
+        if (brandPrimary) {
+          profile.resolved_brand = await resolveBrand(brandDb, brandPrimary);
+          // After Stage 2 of #4159 dropped the column, the field is
+          // re-derived from organization_domains.is_primary so clients
+          // (member-profile.html, dashboard-agents.html) keep working.
+          (profile as unknown as Record<string, unknown>).primary_brand_domain = brandPrimary;
+        }
       }
 
       // Get org name from WorkOS
       const org = await workos!.organizations.getOrganization(targetOrgId);
       const localOrg = await orgDb.getOrganization(targetOrgId);
+      const callerHasApiAccess = hasApiAccess(resolveMembershipTier(localOrg));
 
       logger.info({ userId: user.id, orgId: targetOrgId, hasProfile: !!profile, durationMs: Date.now() - startTime }, 'GET /api/me/member-profile completed');
       res.json({
         profile: profile || null,
         organization_id: targetOrgId,
         organization_name: org.name,
-        has_api_access: hasApiAccess(resolveMembershipTier(localOrg)),
+        has_api_access: callerHasApiAccess,
+        agent_visibility_gate: computeAgentVisibilityGate({
+          hasApiAccess: callerHasApiAccess,
+          brandPrimaryDomain: brandPrimary,
+        }),
       });
     } catch (error) {
       logger.error({ err: error, durationMs: Date.now() - startTime }, 'GET /api/me/member-profile error');
@@ -791,7 +793,6 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         slug,
         tagline,
         description,
-        primary_brand_domain,
         contact_email,
         contact_website,
         contact_phone,
@@ -805,6 +806,10 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         is_public,
         show_in_carousel,
       } = req.body;
+      // After Stage 2 of #4159, primary_brand_domain is no longer a field
+      // on member_profiles. Old clients passing it in this POST body have
+      // their value silently dropped — brand-primary now lives on
+      // organization_domains.is_primary.
 
       // Validate required fields
       if (!display_name || !slug) {
@@ -962,7 +967,6 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         slug,
         tagline,
         description,
-        primary_brand_domain: primary_brand_domain || null,
         contact_email,
         contact_website,
         contact_phone,
@@ -1326,7 +1330,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       await client.query('BEGIN');
 
       const profileRow = await client.query(
-        `SELECT id, agents, primary_brand_domain
+        `SELECT id, agents
          FROM member_profiles
          WHERE workos_organization_id = $1
          FOR UPDATE`,
@@ -1355,12 +1359,22 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
             status: 403,
             body: {
               error: 'tier_required',
-              message: 'Publicly listing an agent requires Professional tier or higher.',
+              message: 'Publicly listing an agent requires a paid AAO tier (Professional, Builder, Member, or Leader).',
             },
           };
         }
       }
-      const row = profileRow.rows[0] as { id: string; agents: unknown; primary_brand_domain: string | null };
+      const row = profileRow.rows[0] as { id: string; agents: unknown };
+
+      // Brand-primary read runs on a separate pool connection — outside the
+      // FOR UPDATE on member_profiles. The lock here is load-bearing for
+      // tier downgrade and the agents JSONB read; brand-primary ownership
+      // is enforced at write time (member self-service PUT verifies
+      // membership; brand-claim verify proves DNS control). A concurrent
+      // setPrimaryDomain (Stage 3) racing this read lands old-or-new — both
+      // states the org legitimately controls, so worst case is wrong-brand
+      // listing recoverable by re-publish.
+      const brandPrimaryDomain = await getBrandPrimaryDomain(orgId);
       const parsedAgents = typeof row.agents === 'string'
         ? JSON.parse(row.agents)
         : Array.isArray(row.agents) ? row.agents : [];
@@ -1388,7 +1402,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       // Only the public path needs to reach out to brand.json, so the
       // brand-domain requirement is scoped to `target === 'public'`.
       if (target === 'public') {
-        if (!row.primary_brand_domain) {
+        if (!brandPrimaryDomain) {
           await client.query('ROLLBACK');
           return {
             status: 400,
@@ -1410,7 +1424,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         }
       }
 
-      const domain = row.primary_brand_domain;
+      const domain = brandPrimaryDomain;
       const discovered = domain ? await brandDb.getDiscoveredBrandByDomain(domain) : null;
       const isSelfHosted = discovered?.source_type === 'brand_json';
 
@@ -1571,7 +1585,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
     if (!hasApiAccess(resolveMembershipTier(org))) {
       res.status(403).json({
         error: 'tier_required',
-        message: 'Publicly listing an agent requires Professional tier or higher.',
+        message: 'Publicly listing an agent requires a paid AAO tier (Professional, Builder, Member, or Leader).',
       });
       return false;
     }
@@ -1662,13 +1676,13 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
 
       const profile = await memberDb.getProfileByOrgId(orgId);
       if (!profile) return res.status(404).json({ error: 'Profile not found' });
-      if (!profile.primary_brand_domain) return res.status(400).json({ error: 'No primary brand domain' });
+
+      const domain = await getBrandPrimaryDomain(orgId);
+      if (!domain) return res.status(400).json({ error: 'No primary brand domain' });
 
       const agents = profile.agents || [];
       if (index >= agents.length) return res.status(404).json({ error: 'Agent not found at index' });
       const agent = agents[index];
-
-      const domain = profile.primary_brand_domain;
 
       // Validate domain is safe to fetch (SSRF protection)
       try {
@@ -1729,12 +1743,19 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         return res.status(400).json({ error: 'No organization associated with this account' });
       }
 
+      // Existence check stays separate from the brand-primary lookup so the
+      // two failure modes can keep their distinct status codes — 404 for no
+      // profile, 400 for "profile but no brand domain."
       const profile = await memberDb.getProfileByOrgId(orgId);
-      if (!profile?.primary_brand_domain) {
+      if (!profile) {
+        return res.status(404).json({ error: 'Profile not found' });
+      }
+
+      const domain = await getBrandPrimaryDomain(orgId);
+      if (!domain) {
         return res.status(400).json({ error: 'No brand domain configured' });
       }
 
-      const domain = profile.primary_brand_domain;
       const brandManager = new BrandManager();
       const result = await brandManager.validateDomain(domain, { skipCache: true });
 
@@ -1868,8 +1889,19 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
             domain: canonicalizeBrandDomain(rawDomain),
           });
         }
+        if (result.code === 'workos_misconfigured') {
+          return res.status(503).json({
+            error: 'Brand verification temporarily unavailable',
+            code: 'workos_misconfigured',
+            message: result.message,
+            domain: canonicalizeBrandDomain(rawDomain),
+          });
+        }
         return res.status(500).json({ error: 'Failed to issue domain verification challenge', code: 'workos_error' });
       }
+      const dnsRecordName = result.verification_prefix
+        ? `${result.verification_prefix}.${result.domain}`
+        : null;
       return res.json({
         domain: result.domain,
         workos_domain_id: result.workos_domain_id,
@@ -1877,10 +1909,13 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         verification_strategy: result.verification_strategy,
         verification_token: result.verification_token,
         verification_prefix: result.verification_prefix,
+        dns_record_name: dnsRecordName,
         prior_manifest_exists: result.prior_manifest_exists,
         instructions: result.already_verified
           ? 'Domain is already verified. Run /brand-claim/verify to sync the brand registry, or call PUT /brand-identity directly.'
-          : 'Publish the DNS TXT record at verification_prefix.{domain} with the value verification_token, then call POST /api/me/member-profile/brand-claim/verify.',
+          : dnsRecordName
+            ? `Publish a DNS TXT record at ${dnsRecordName} with the value ${result.verification_token}, then call POST /api/me/member-profile/brand-claim/verify.`
+            : 'Publish a DNS TXT record at <verification_prefix>.<domain> with the value <verification_token>, then call POST /api/me/member-profile/brand-claim/verify.',
       });
     } catch (error) {
       logger.error({ err: error }, 'Failed to issue brand claim challenge');
@@ -1994,7 +2029,8 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       // If no brand domain on file, fall back to the logo URL hostname (only if
       // the candidate domain isn't already owned by another org)
       let fallbackDomainHint: string | undefined;
-      if (!profile?.primary_brand_domain && !profile?.contact_website && logo_url) {
+      const existingBrandPrimary = await getBrandPrimaryDomain(targetOrgId);
+      if (!existingBrandPrimary && !profile?.contact_website && logo_url) {
         try {
           const candidate = canonicalizeBrandDomain(new URL(logo_url).hostname);
           const existingBrand = await brandDb.getHostedBrandByDomain(candidate);
@@ -2017,6 +2053,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
           // when the brand is orphaned. Booleans only — anything else is a
           // bad-request shape, but we let the service treat it as undefined.
           adoptPriorManifest: typeof adopt_prior_manifest === 'boolean' ? adopt_prior_manifest : undefined,
+          uploadedBy: { userId: user.id, email: user.email },
         });
       } catch (err: any) {
         if (err instanceof BrandIdentityError) {

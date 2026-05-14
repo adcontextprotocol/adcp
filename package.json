@@ -7,6 +7,7 @@
     "start": "bash -c 'source <(grep CONDUCTOR_PORT .env.local | sed \"s/^/export /\") && DOTENV_CONFIG_PATH=.env.local PORT=${CONDUCTOR_PORT:-3000} tsx watch server/src/index.ts'",
     "start:mintlify": "bash scripts/start-mintlify.sh",
     "sync:docs": "bash scripts/sync-versioned-docs.sh",
+    "sync:agents": "node scripts/import-claude-agents.mjs",
     "start:stripe": "bash -c 'source <(grep CONDUCTOR_PORT .env.local | sed \"s/^/export /\") && PORT=${CONDUCTOR_PORT:-3000} && stripe listen --forward-to localhost:$PORT/api/webhooks/stripe'",
     "dev": "echo 'Use docker compose up --build for local development' && exit 1",
     "db:migrate": "DOTENV_CONFIG_PATH=.env.local tsx --import dotenv/config server/src/db/migrate.ts",
@@ -55,6 +56,7 @@
     "test:callapi-state-change": "node --test --test-force-exit --test-timeout=30000 tests/lint-callapi-state-change.test.cjs",
     "test:build-schemas-hoist-enums": "node --test --test-force-exit --test-timeout=30000 tests/build-schemas-hoist-enums.test.cjs",
     "test:error-codes": "node scripts/lint-error-codes.cjs",
+    "test:error-code-drift": "node scripts/lint-error-code-drift.cjs",
     "test:substitution-vector-names": "node scripts/lint-substitution-vector-names.cjs",
     "test:unit": "vitest run --dir tests/ --pool=threads",
     "test:redteam": "tsx server/src/addie/testing/redteam-cli.ts",
@@ -90,7 +92,7 @@
     "dev:docs": "node scripts/dev-docs.mjs"
   },
   "dependencies": {
-    "@adcp/sdk": "^6.11.0",
+    "@adcp/sdk": "^7.3.0",
     "@anthropic-ai/sdk": "^0.91.1",
     "@asteasolutions/zod-to-openapi": "^8.5.0",
     "@contentauth/c2pa-node": "^0.5.4",
@@ -114,7 +116,7 @@
     "csv-parse": "^6.2.1",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
-    "express-rate-limit": "^8.4.1",
+    "express-rate-limit": "^8.5.1",
     "file-type": "^22.0.1",
     "free-email-domains": "^1.2.26",
     "googleapis": "^171.4.0",

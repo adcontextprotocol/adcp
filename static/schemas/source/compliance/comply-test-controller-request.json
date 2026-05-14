@@ -561,17 +561,36 @@
     },
     "ext": {
       "$ref": "/schemas/core/ext.json"
+    },
+    "account": {
+      "type": "object",
+      "description": "Sandbox account assertion. The runner MUST set sandbox: true on every comply_test_controller request. The seller MUST refuse the request (returning a structured error) if the targeted account is not a sandbox account in the seller's persisted records. This field is a caller-side declaration of intent — it does not grant sandbox status; sellers verify against their own account state. The (Sandbox) verification tier is defined by this gate: real production endpoints accept sandbox-flagged traffic and process it without real-world side effects, no separate test-mode endpoint required. See spec issue #3755 and the (Sandbox) framing in #4379.",
+      "required": [
+        "sandbox"
+      ],
+      "properties": {
+        "sandbox": {
+          "type": "boolean",
+          "const": true,
+          "description": "MUST be true. The seller MUST verify the targeted account is sandbox by looking up the persisted account record, not by trusting this field. A request asserting sandbox: false schema-rejects before reaching the seller — defense-in-depth on top of the per-request gate."
+        }
+      },
+      "additionalProperties": true
     }
   },
   "required": [
-    "scenario"
+    "scenario",
+    "account"
   ],
   "additionalProperties": true,
   "examples": [
     {
       "description": "List supported scenarios",
       "data": {
-        "scenario": "list_scenarios"
+        "scenario": "list_scenarios",
+        "account": {
+          "sandbox": true
+        }
       }
     },
     {
@@ -582,6 +601,9 @@
           "creative_id": "cr-123",
           "status": "rejected",
           "rejection_reason": "Brand safety policy violation"
+        },
+        "account": {
+          "sandbox": true
         }
       }
     },
@@ -592,6 +614,9 @@
         "params": {
           "account_id": "acct-456",
           "status": "suspended"
+        },
+        "account": {
+          "sandbox": true
         }
       }
     },
@@ -603,6 +628,9 @@
           "arm": "submitted",
           "task_id": "task_async_signed_io_q2",
           "message": "Awaiting IO signature from sales team; typical turnaround 2–4 hours"
+        },
+        "account": {
+          "sandbox": true
         }
       }
     },
@@ -623,6 +651,9 @@
               }
             ]
           }
+        },
+        "account": {
+          "sandbox": true
         }
       }
     },
@@ -634,6 +665,9 @@
           "session_id": "sess-abc",
           "status": "terminated",
           "termination_reason": "session_timeout"
+        },
+        "account": {
+          "sandbox": true
         }
       }
     },
@@ -649,6 +683,9 @@
             "amount": 150,
             "currency": "USD"
           }
+        },
+        "account": {
+          "sandbox": true
         }
       }
     },
@@ -659,6 +696,9 @@
         "params": {
           "media_buy_id": "mb-789",
           "spend_percentage": 95
+        },
+        "account": {
+          "sandbox": true
         }
       }
     },
@@ -682,6 +722,9 @@
               }
             ]
           }
+        },
+        "account": {
+          "sandbox": true
         }
       }
     },
@@ -697,6 +740,9 @@
               "id": "video_30s"
             }
           }
+        },
+        "account": {
+          "sandbox": true
         }
       }
     },
@@ -708,6 +754,9 @@
           "since_timestamp": "2026-05-02T14:30:00Z",
           "endpoint_pattern": "POST *",
           "limit": 100
+        },
+        "account": {
+          "sandbox": true
         }
       }
     }

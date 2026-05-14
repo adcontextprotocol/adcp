@@ -1,3 +1,5 @@
+import type { BrandJson } from '@adcp/sdk';
+
 export type AgentType = "brand" | "rights" | "measurement" | "governance" | "creative" | "sales" | "buying" | "signals" | "unknown";
 
 /**
@@ -162,7 +164,8 @@ export interface CollectionSelector {
 }
 
 export interface PublisherPropertySelector {
-  publisher_domain: string;
+  publisher_domain?: string;
+  publisher_domains?: string[];
   selection_type: "all" | "by_id" | "by_tag";
   property_ids?: string[];
   property_tags?: string[];
@@ -489,28 +492,21 @@ export interface LocalizedName {
 }
 
 /**
- * Brand property (digital touchpoint owned by a brand)
+ * Brand definition within a house portfolio.
+ *
+ * Derived from the canonical `BrandJson` zod schema in `@adcp/sdk` so flat
+ * brand fields (logos, colors, fonts, tone, description, properties, etc.)
+ * stay in sync with the brand.json spec. Adding fields to the schema
+ * regenerates the SDK type; consumers here pick them up automatically.
  */
-export interface BrandProperty {
-  type: 'website' | 'mobile_app' | 'ctv_app' | 'desktop_app' | 'dooh' | 'podcast' | 'radio' | 'streaming_audio';
-  identifier: string;
-  store?: 'apple' | 'google' | 'amazon' | 'roku' | 'samsung' | 'lg' | 'other';
-  region?: string;
-  primary?: boolean;
-}
+type BrandJsonHousePortfolio = Extract<BrandJson, { brands: unknown[] }>;
+export type BrandDefinition = BrandJsonHousePortfolio['brands'][number];
 
 /**
- * Brand definition within a house portfolio
+ * Brand property (digital touchpoint owned by a brand). Derived from
+ * `BrandDefinition` so it tracks the schema.
  */
-export interface BrandDefinition {
-  id: string;
-  names: LocalizedName[];
-  keller_type?: KellerType;
-  parent_brand?: string;
-  properties?: BrandProperty[];
-  brand_standards?: string;
-  brand_manifest?: Record<string, unknown> | string;
-}
+export type BrandProperty = NonNullable<BrandDefinition['properties']>[number];
 
 /**
  * House definition (corporate entity that owns brands)
@@ -738,7 +734,6 @@ export interface MemberProfile {
   slug: string;
   tagline?: string;
   description?: string;
-  primary_brand_domain?: string;
   resolved_brand?: MemberBrandInfo;
   contact_email?: string;
   contact_website?: string;
@@ -771,7 +766,6 @@ export interface CreateMemberProfileInput {
   slug: string;
   tagline?: string;
   description?: string;
-  primary_brand_domain?: string;
   contact_email?: string;
   contact_website?: string;
   contact_phone?: string;
@@ -794,7 +788,6 @@ export interface UpdateMemberProfileInput {
   display_name?: string;
   tagline?: string;
   description?: string;
-  primary_brand_domain?: string;
   contact_email?: string;
   contact_website?: string;
   contact_phone?: string;

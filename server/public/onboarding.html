@@ -1439,19 +1439,22 @@
       createBtn.disabled = true;
       createBtn.textContent = 'Registering...';
 
-      // Get the corporate domain from the user's email
+      // The server derives the corporate domain from the authenticated
+      // user's email; we still need a copy here for the brand-setup step.
       var corporateDomain = getEmailDomain(currentUser?.email);
 
       var body = {
         organization_name: orgName,
         company_type: companyType.value,
         revenue_tier: revenueTier.value,
-        corporate_domain: corporateDomain,
         marketing_opt_in: marketingOptIn
       };
-      // Only include membership_tier if a paid tier was selected
+      // Stash paid-tier intent in localStorage so the dashboard's
+      // /membership page can pre-select it for Stripe checkout. Tier is
+      // never sent on org-create — the Stripe webhook is the only writer
+      // of `organizations.membership_tier`.
       if (companyTier && companyTier.value) {
-        body.membership_tier = companyTier.value;
+        try { localStorage.setItem('aao_intent_tier', companyTier.value); } catch (e) { /* storage disabled */ }
       }
 
       try {
@@ -1513,9 +1516,12 @@
           is_personal: true,
           marketing_opt_in: marketingOptIn
         };
-        // Only include membership_tier if a paid tier was selected
+        // Stash paid-tier intent in localStorage so the dashboard's
+        // /membership page can pre-select it for Stripe checkout. Tier is
+        // never sent on org-create — the Stripe webhook is the only writer
+        // of `organizations.membership_tier`.
         if (membershipTier && membershipTier.value) {
-          body.membership_tier = membershipTier.value;
+          try { localStorage.setItem('aao_intent_tier', membershipTier.value); } catch (e) { /* storage disabled */ }
         }
 
         var response = await fetch('/api/organizations', {
