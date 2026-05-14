@@ -72,7 +72,7 @@
         "selection_type",
         "property_ids"
       ],
-      "additionalProperties": false
+      "additionalProperties": true
     },
     {
       "type": "object",
