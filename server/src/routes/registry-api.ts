@@ -31,7 +31,7 @@ import {
 import { getPublicJwks } from "../services/verification-token.js";
 import { renderBadgeSvg, VALID_BADGE_ROLES } from "../services/badge-svg.js";
 import { runBadgeFanOut } from "../services/badge-issuance.js";
-import { resolveOwnerMembership } from "../services/membership-tiers.js";
+import { resolveOwnerMembership, tierLabel } from "../services/membership-tiers.js";
 import { inferDiagnosticAgentType } from "../lib/diagnostic-agent-type-inference.js";
 import { isValidAdcpVersionShape } from "../services/adcp-taxonomy.js";
 import { buildAaoVerificationBlock } from "../services/aao-verification-enrichment.js";
@@ -755,7 +755,12 @@ registry.registerPath({
     "**Response shape is auth-aware.** Anonymous callers see only `public` agents. " +
     "Authenticated callers on an AAO membership tier with API access also see `members_only` agents. " +
     "Profile owners (callers whose org owns the queried domain) additionally see `private` agents. " +
-    "This is the primary mechanism by which AAO membership unlocks deeper registry visibility.",
+    "This is the primary mechanism by which AAO membership unlocks deeper registry visibility.\n\n" +
+    "**Member level visibility.** When the profile owner has set their member card to public " +
+    "(`is_public=true`), the `member` object additionally carries `is_founding_member` (boolean) " +
+    "plus `membership_tier` (raw enum) and `membership_tier_label` (e.g. `Professional`, `Partner`, " +
+    "`Leader`) when the org has a resolvable tier. Founding Member is orthogonal to tier — founding " +
+    "orgs typically display both. For private profiles these fields are absent.",
   tags: ["Authorization Lookups"],
   request: {
     query: z.object({
@@ -6042,8 +6047,35 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       const federatedIndex = crawler.getFederatedIndex();
 
       const profile = await memberDb.getProfileByDomain(domain);
+
+      // Membership tier and Founding Member status are surfaced on the
+      // public response only when the profile owner has opted their member
+      // card into public visibility (`is_public=true`). Tier reflects billing
+      // state, so we don't leak it for private profiles even though
+      // slug/display_name are exposed for domain-keyed lookup. Profile owner
+      // controls visibility via the member card; we follow it here rather
+      // than introducing a second toggle. Founding Member is orthogonal to
+      // tier — founding orgs typically display both badges.
+      let memberTier: string | null = null;
+      if (profile?.is_public && profile.workos_organization_id) {
+        const profileOrg = await orgDb.getOrganization(profile.workos_organization_id);
+        memberTier = resolveMembershipTier(profileOrg);
+      }
+
       const member = profile
-        ? { slug: profile.slug, display_name: profile.display_name }
+        ? {
+            slug: profile.slug,
+            display_name: profile.display_name,
+            ...(profile.is_public
+              ? { is_founding_member: profile.is_founding_member === true }
+              : {}),
+            ...(memberTier
+              ? {
+                  membership_tier: memberTier,
+                  membership_tier_label: tierLabel(memberTier),
+                }
+              : {}),
+          }
         : null;
 
       const callerOrgId = await resolveCallerOrgId(req);

@@ -55,7 +55,7 @@ const TIER_LABELS: Record<string, string> = {
   explorer: 'Explorer',
   individual_professional: 'Professional',
   company_standard: 'Builder',
-  company_icl: 'Member',
+  company_icl: 'Partner',
   company_leader: 'Leader',
 };
 

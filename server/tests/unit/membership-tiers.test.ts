@@ -72,7 +72,7 @@ describe('membership-tiers', () => {
       expect(tierLabel('explorer')).toBe('Explorer');
       expect(tierLabel('individual_professional')).toBe('Professional');
       expect(tierLabel('company_standard')).toBe('Builder');
-      expect(tierLabel('company_icl')).toBe('Member');
+      expect(tierLabel('company_icl')).toBe('Partner');
       expect(tierLabel('company_leader')).toBe('Leader');
     });
 
