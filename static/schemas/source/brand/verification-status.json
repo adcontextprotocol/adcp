@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/brand/verification-status.json",
+  "title": "Verification Status",
+  "description": "Status returned by brand-agent verification tools (verify_subsidiary_claim, verify_property, verify_trademark). Captures the rich state surface crawl-based mutual-assertion cannot express: pending review, disputed, licensed in/out, and explicit not-ours / unknown answers. Not every tool returns every status — see each tool's response schema for the applicable subset.",
+  "type": "string",
+  "enum": [
+    "owned",
+    "pending_review",
+    "disputed",
+    "not_ours",
+    "licensed_in",
+    "licensed_out",
+    "unknown"
+  ],
+  "enumDescriptions": {
+    "owned": "Definitively belongs to this brand, currently.",
+    "pending_review": "The brand is aware of this claim and has not yet decided. Consumers SHOULD NOT extend governance trust through pending claims; treating them as 'will-likely-be-confirmed' is also wrong — they may still be disputed.",
+    "disputed": "The brand actively rejects this claim. Consumers MUST treat the claim as invalid and SHOULD surface the dispute (e.g., 'X says this is not theirs').",
+    "not_ours": "The brand affirms it is not their property / subsidiary / mark. Equivalent to 'disputed' but used when the brand-agent has no record of an existing claim — a clean 'we do not own this.'",
+    "licensed_in": "The brand uses this asset under license from another entity. The response carries `licensor_domain` when this status is returned. Applies to trademarks and (rarely) properties.",
+    "licensed_out": "The brand licenses this asset to another entity. Applies to trademarks; rare for properties or subsidiaries.",
+    "unknown": "The agent has no position. Caller MAY fall back to crawl-based mutual-assertion inference. Returned when the agent cannot classify the input (insufficient context, unrecognized identifier, out-of-scope query)."
+  }
+}

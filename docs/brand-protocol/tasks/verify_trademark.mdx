@@ -1,0 +1,145 @@
+---
+title: verify_trademark
+description: "verify_trademark is the AdCP brand-protocol task for asking a brand-agent whether a trademark is owned, licensed in, or licensed out by this brand. Returns registration details, jurisdictions, Nice classes, and optional per-use-case authorization."
+"og:title": "AdCP — verify_trademark"
+testable: true
+---
+
+<Warning>
+**Proposed (RFC).** This task is part of the [brand verification RFC](/docs/brand-protocol/proposals/brand-verification-rfc) and not yet normative.
+</Warning>
+
+Ask a brand-agent whether a trademark is owned, licensed in, or licensed out by this brand. Used in creative approval workflows, brand-safety pipelines, and any consumer that needs the brand's authoritative ownership statement over a mark.
+
+## Schema
+
+- **Request**: [`verify-trademark-request.json`](https://adcontextprotocol.org/schemas/v3/brand/verify-trademark-request.json)
+- **Response**: [`verify-trademark-response.json`](https://adcontextprotocol.org/schemas/v3/brand/verify-trademark-response.json)
+
+## When to use
+
+Trademark ownership has gnarly edges that static publication can't always resolve:
+
+- **Cross-jurisdiction conflicts.** USPTO `CONVERSE` and EUIPO `CONVERSE` may be held by different parties.
+- **Nice class disambiguation.** `DELTA` (airline, class 39) and `DELTA` (faucet, class 11) are different brands with the same mark.
+- **Licensing chains.** A brand uses a mark under license (`licensed_in`) or licenses it out (`licensed_out`) — neither is captured cleanly by static publication alone.
+
+`verify_trademark` lets a consumer ask the brand's authoritative agent for a definitive answer, including the matched registration and the licensing relationship.
+
+## Public by default
+
+| Tier | What you get |
+|---|---|
+| **Public** | `status`, `matched_registration`, `license_type`, `licensor_domain` (when `licensed_in`), `countries`, `nice_classes`, `context_note`. |
+| **Authorized** | Everything above, plus `use_case_authorization` — per-use-case permission flags. |
+
+Trademark facts are largely public-record (registry filings are open). The agent surfaces this for callers who don't want to crawl every registry; authorized callers additionally learn which use cases the brand authorizes for the mark.
+
+## Quick start
+
+<CodeGroup>
+```json Request (verify by registry number)
+{
+  "mark": "AIR JORDAN",
+  "registry": "USPTO",
+  "number": "1234567"
+}
+```
+
+```json Response (owned)
+{
+  "status": "owned",
+  "matched_registration": {
+    "registry": "USPTO",
+    "number": "1234567",
+    "mark": "AIR JORDAN",
+    "status": "active"
+  },
+  "license_type": "owned",
+  "countries": ["US"],
+  "nice_classes": [25, 41]
+}
+```
+
+```json Request (verify by mark + region)
+{
+  "mark": "CONVERSE",
+  "countries": ["EU"]
+}
+```
+
+```json Response (licensed_in)
+{
+  "status": "licensed_in",
+  "matched_registration": {
+    "registry": "EUIPO",
+    "number": "EU98765",
+    "mark": "CONVERSE",
+    "status": "active"
+  },
+  "license_type": "licensed_in",
+  "licensor_domain": "converseholdings-eu.com",
+  "countries": ["FR", "DE", "IT", "ES"],
+  "nice_classes": [25]
+}
+```
+
+```json Response (authorized, with use cases)
+{
+  "status": "owned",
+  "matched_registration": { "registry": "USPTO", "number": "9999999", "mark": "SWOOSH", "status": "active" },
+  "license_type": "owned",
+  "countries": ["US"],
+  "nice_classes": [25, 41],
+  "use_case_authorization": {
+    "editorial": true,
+    "commercial_advertising": false,
+    "merchandise_resale": false
+  }
+}
+```
+
+```json Response (disputed)
+{
+  "status": "disputed",
+  "context_note": "Mark in this jurisdiction held by separate entity; we contest their registration."
+}
+```
+
+```json Response (not ours)
+{
+  "status": "not_ours"
+}
+```
+</CodeGroup>
+
+## Status semantics for trademarks
+
+| Status | Meaning |
+|---|---|
+| `owned` | The brand holds the registration. |
+| `licensed_in` | The brand uses the mark under license from another entity (`licensor_domain` populated). |
+| `licensed_out` | The brand licenses the mark to another entity. |
+| `disputed` | The brand actively contests this registration (e.g., another party registered the mark in a jurisdiction the brand intends to challenge). |
+| `not_ours` | The brand has no relationship to this registration. |
+| `unknown` | The agent cannot match the input to any registration. Caller MAY fall back to public registry crawls. |
+
+`pending_review` is uncommon for trademarks — registration is a public-record event with definitive ownership at any given time. Agents MAY return it for marks under M&A or licensing transition.
+
+## Trust model
+
+Identical to [`verify_subsidiary_claim`](/docs/brand-protocol/tasks/verify_subsidiary_claim#trust-model). The agent's signed response is authoritative; crawl of public trademark registries is the fallback. When the agent and registry disagree (rare but real — e.g., a mark recently transferred but not yet reflected in the registry's public records), the agent wins because the brand is the authority over its current licensing relationships.
+
+## Caching
+
+Trademark registration data is stable; licensing relationships less so:
+
+- `owned` / `not_ours` / `disputed` — stable. 24-72h cache.
+- `licensed_in` / `licensed_out` — moderately volatile. 24h cache; re-check on contract-affected workflows.
+- `use_case_authorization` — most volatile field. Re-check per session.
+
+## Error handling
+
+See [`verify_subsidiary_claim` § Error handling](/docs/brand-protocol/tasks/verify_subsidiary_claim#error-handling). Additional error codes specific to trademarks:
+
+- `AMBIGUOUS_MATCH` — multiple registrations match the input (typically when neither `registry` nor `number` is provided and the mark exists in several jurisdictions). Caller should narrow the query with `registry`, `number`, or `countries`.

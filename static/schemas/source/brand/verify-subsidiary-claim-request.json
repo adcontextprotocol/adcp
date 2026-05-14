@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/brand/verify-subsidiary-claim-request.json",
+  "title": "Verify Subsidiary Claim Request",
+  "description": "Ask a brand-agent whether the named brand is a subsidiary of this house. Used by consumers (DSPs, crawlers, partner agents) that have detected a leaf claiming `house_domain` pointing at this brand and want an authoritative answer before extending governance trust. The crawl-based mutual-assertion path remains the fallback when the brand-agent doesn't implement this task or returns `unknown`. Read-only; naturally idempotent — the brand's internal claim-bookkeeping deduplicates on (caller_identity, claimed_subsidiary_domain).",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
+  "properties": {
+    "claimed_subsidiary_domain": {
+      "type": "string",
+      "description": "The domain of the leaf brand whose `house_domain` claim is being verified. Typically the leaf's canonical brand.json is hosted at this domain (or via authoritative_location indirection).",
+      "format": "hostname"
+    },
+    "claimed_brand_id": {
+      "type": "string",
+      "description": "Stable brand identifier the leaf uses for itself. Optional but recommended — lets the agent disambiguate when multiple brands share a domain (rare but legal).",
+      "pattern": "^[a-z0-9_]+$"
+    },
+    "observed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the caller observed the leaf's claim. Helps the agent age claims and prioritize fresh ones in its internal queue."
+    }
+  },
+  "required": ["claimed_subsidiary_domain"],
+  "additionalProperties": true
+}

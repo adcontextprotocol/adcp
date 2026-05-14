@@ -1,0 +1,87 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/brand/verify-property-response.json",
+  "title": "Verify Property Response",
+  "description": "The brand-agent's authoritative answer on property ownership. Mirrors the property-relationship enum used in brand.json properties[].",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
+  "oneOf": [
+    {
+      "title": "VerifyPropertySuccess",
+      "properties": {
+        "status": {
+          "$ref": "/schemas/brand/verification-status.json",
+          "description": "Verification status. Applicable values for this tool: owned, disputed, not_ours, unknown. (pending_review and licensed_in/out are uncommon for properties; agents MAY return them but most properties have a definitive yes/no answer.)"
+        },
+        "relationship": {
+          "type": "string",
+          "enum": ["owned", "direct", "delegated", "ad_network"],
+          "description": "Public — when status is `owned`, the commercial relationship between the brand and the property. Mirrors brand.json's properties[].relationship enum. Omitted when status is not `owned`."
+        },
+        "brand_id": {
+          "type": "string",
+          "description": "Public — the brand_id within the house this property belongs to. Lets the caller cross-reference with brand.json data.",
+          "pattern": "^[a-z0-9_]+$"
+        },
+        "regions": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Public — ISO 3166-1 alpha-2 country codes where this property is the brand's primary/canonical surface. Empty array = global / no regional restriction."
+        },
+        "use_case_authorization": {
+          "type": "object",
+          "description": "Authorized-tier only. Per-use-case authorization flags. The agent's answer to whether the named use case is permitted on this property — distinct from ownership.",
+          "properties": {
+            "advertising": { "type": "boolean", "description": "Programmatic advertising allowed via AdCP." },
+            "endorsement": { "type": "boolean", "description": "Use of the property in endorsement deals." },
+            "retail_listing": { "type": "boolean", "description": "Listing in retail / commerce contexts." }
+          },
+          "additionalProperties": { "type": "boolean" }
+        },
+        "context_note": {
+          "type": "string",
+          "maxLength": 500,
+          "description": "Public — free-text context the brand chooses to surface (e.g., 'Regional CN site', 'Legacy domain, redirects to nike.com')."
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": ["status"],
+      "additionalProperties": true
+    },
+    {
+      "title": "VerifyPropertyError",
+      "properties": {
+        "errors": {
+          "type": "array",
+          "items": {
+            "$ref": "/schemas/core/error.json"
+          },
+          "minItems": 1
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": ["errors"],
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          { "required": ["status"] }
+        ]
+      }
+    }
+  ],
+  "properties": {}
+}

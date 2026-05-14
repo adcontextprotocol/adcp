@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/brand/verify-trademark-request.json",
+  "title": "Verify Trademark Request",
+  "description": "Ask a brand-agent whether a trademark is owned, licensed in, or licensed out by this brand. Used in creative approval workflows, brand-safety pipelines, and any consumer that needs the brand's authoritative ownership statement over a mark. Read-only; naturally idempotent.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
+  "properties": {
+    "mark": {
+      "type": "string",
+      "description": "The registered mark as published (e.g., 'AIR JORDAN', 'NIKE', 'SWOOSH'). At minimum, callers must provide the mark text; registry and number narrow the query when multiple registrations exist.",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "registry": {
+      "type": "string",
+      "description": "Trademark registry (e.g., 'USPTO', 'EUIPO', 'JPO', 'CNIPA'). Strongly recommended when the same mark is registered separately by different parties across jurisdictions.",
+      "maxLength": 50
+    },
+    "number": {
+      "type": "string",
+      "description": "Registration number as issued by the registry. Most precise narrowing key; agents will use this when present.",
+      "maxLength": 100
+    },
+    "countries": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 2, "maxLength": 2 },
+      "description": "Optional ISO 3166-1 alpha-2 country codes scoping the query. If a brand owns a mark in some jurisdictions and not others, this lets the caller ask about the specific region."
+    },
+    "use_case": {
+      "type": "string",
+      "description": "Optional caller-declared use case. The agent MAY scope its answer (e.g., a brand may permit editorial use of a mark but not commercial use).",
+      "maxLength": 100
+    }
+  },
+  "required": ["mark"],
+  "additionalProperties": true
+}

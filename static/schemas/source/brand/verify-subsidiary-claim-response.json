@@ -1,0 +1,77 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/brand/verify-subsidiary-claim-response.json",
+  "title": "Verify Subsidiary Claim Response",
+  "description": "The brand-agent's authoritative answer to whether the claimed brand is a subsidiary of this house. Always returns a `status`; richer fields are gated by caller authorization.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "/schemas/core/version-envelope.json"
+    }
+  ],
+  "oneOf": [
+    {
+      "title": "VerifySubsidiaryClaimSuccess",
+      "properties": {
+        "status": {
+          "$ref": "/schemas/brand/verification-status.json",
+          "description": "Verification status. Applicable values for this tool: owned, pending_review, disputed, not_ours, unknown. (licensed_in / licensed_out do not apply to subsidiaries.)"
+        },
+        "brand_id": {
+          "type": "string",
+          "description": "Public — the house's brand_id for this subsidiary when status is `owned` or `pending_review`. Lets the caller cross-reference with brand_refs[] / brands[] entries.",
+          "pattern": "^[a-z0-9_]+$"
+        },
+        "first_observed_by_house_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Authorized-tier only. When the house first became aware of this claim (whether via this RPC, an inbound notification, or its own discovery)."
+        },
+        "expected_resolution_window_days": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Authorized-tier only. The house's expected window for resolving a `pending_review` claim. Aggregate signal, not a guarantee; does not expose queue position or internal operations."
+        },
+        "dispute_reason": {
+          "type": "string",
+          "maxLength": 500,
+          "description": "Public — when status is `disputed`, a short human-readable rationale (e.g., 'Trademark conflict; not affiliated'). May be empty even on disputed."
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": ["status"],
+      "additionalProperties": true
+    },
+    {
+      "title": "VerifySubsidiaryClaimError",
+      "properties": {
+        "errors": {
+          "type": "array",
+          "items": {
+            "$ref": "/schemas/core/error.json"
+          },
+          "minItems": 1
+        },
+        "context": {
+          "$ref": "/schemas/core/context.json"
+        },
+        "ext": {
+          "$ref": "/schemas/core/ext.json"
+        }
+      },
+      "required": ["errors"],
+      "additionalProperties": true,
+      "not": {
+        "anyOf": [
+          { "required": ["status"] }
+        ]
+      }
+    }
+  ],
+  "properties": {}
+}

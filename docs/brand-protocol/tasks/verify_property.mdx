@@ -1,0 +1,116 @@
+---
+title: verify_property
+description: "verify_property is the AdCP brand-protocol task for asking a brand-agent whether a property — website, app, podcast, etc. — belongs to this brand. Returns an authoritative ownership status with the commercial relationship (owned, direct, delegated, ad_network) and optional use-case authorization."
+"og:title": "AdCP — verify_property"
+testable: true
+---
+
+<Warning>
+**Proposed (RFC).** This task is part of the [brand verification RFC](/docs/brand-protocol/proposals/brand-verification-rfc) and not yet normative.
+</Warning>
+
+Ask a brand-agent whether a property (website, app, podcast, etc.) belongs to this brand. Used by DSPs verifying inventory ownership, fraud detectors confirming domain claims, or any consumer that wants the brand's authoritative answer rather than inferring from a crawl of `properties[]`.
+
+## Schema
+
+- **Request**: [`verify-property-request.json`](https://adcontextprotocol.org/schemas/v3/brand/verify-property-request.json)
+- **Response**: [`verify-property-response.json`](https://adcontextprotocol.org/schemas/v3/brand/verify-property-response.json)
+
+## When to use
+
+A DSP about to bid on inventory associated with `nike.cn` wants to confirm Nike owns it before extending brand-safety trust. A fraud detector found a domain claiming to be Nike's and wants the brand's say-so. A creative-approval workflow encountered a property reference and needs ownership confirmation.
+
+The static `brand.json` `properties[]` array is the published self-declaration. `verify_property` is the **real-time authoritative** answer from the brand-agent, including the `relationship` enum (owned / direct / delegated / ad_network) that mirrors the static declaration plus optional `use_case_authorization` gating.
+
+## Public by default
+
+| Tier | What you get |
+|---|---|
+| **Public** | `status`, `relationship` (when owned), `brand_id`, `regions`, `context_note`. |
+| **Authorized** | Everything above, plus `use_case_authorization` — per-use-case permission flags. |
+
+## Quick start
+
+<CodeGroup>
+```json Request (verify a regional domain)
+{
+  "property": {
+    "type": "website",
+    "identifier": "nike.cn",
+    "region": "CN"
+  }
+}
+```
+
+```json Response (owned)
+{
+  "status": "owned",
+  "relationship": "owned",
+  "brand_id": "nike",
+  "regions": ["CN"],
+  "context_note": "Regional site for China market"
+}
+```
+
+```json Request (verify an app bundle)
+{
+  "property": {
+    "type": "mobile_app",
+    "identifier": "com.nike.snkrs",
+    "store": "apple"
+  }
+}
+```
+
+```json Response (owned, authorized caller with use case)
+{
+  "status": "owned",
+  "relationship": "owned",
+  "brand_id": "jordan",
+  "use_case_authorization": {
+    "advertising": true,
+    "endorsement": false
+  }
+}
+```
+
+```json Response (disputed)
+{
+  "status": "disputed",
+  "context_note": "Domain owned by unaffiliated third party; we do not authorize use of our marks on it."
+}
+```
+
+```json Response (not ours)
+{
+  "status": "not_ours"
+}
+```
+</CodeGroup>
+
+## Relationship and use case
+
+The `relationship` field — present when status is `owned` — answers "the brand controls this property, but commercially how?":
+
+- `owned` — brand owns and operates the property directly.
+- `direct` — brand is the direct sales path even if a third party runs the tech.
+- `delegated` — brand has delegated monetization (e.g., Mediavine for a food blog).
+- `ad_network` — brand sells as part of a network/exchange.
+
+The `use_case` request field — and the corresponding `use_case_authorization` response — handle the orthogonal question of "is the named use case allowed on this property?" A brand may own a domain but not authorize ad-network resale on it; the use-case gate exposes that without leaking the brand's full commercial policy.
+
+## Trust model
+
+Identical to [`verify_subsidiary_claim`](/docs/brand-protocol/tasks/verify_subsidiary_claim#trust-model). Signed authoritative response from the agent overrides static `brand.json` `properties[]` inference. When the agent is unreachable or returns `unknown`, fall back to crawl-based inference from the static file.
+
+## Caching
+
+Properties churn less than subsidiary claims. Cache-friendly:
+
+- `owned` / `not_ours` — stable. 24-72h cache.
+- `disputed` — stable until disputed party changes claim. 24h cache.
+- `use_case_authorization` — MAY be more volatile (a brand might rotate ad-network authorization). Re-check per session is reasonable.
+
+## Error handling
+
+See [`verify_subsidiary_claim` § Error handling](/docs/brand-protocol/tasks/verify_subsidiary_claim#error-handling). Same error code surface applies.

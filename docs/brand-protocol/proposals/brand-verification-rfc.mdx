@@ -1,0 +1,215 @@
+---
+title: "RFC — Brand verification surface"
+description: "Proposal for a federated trust surface on the brand-agent. Three interrogative tools — verify_subsidiary_claim, verify_property, verify_trademark — let partners ask the brand authoritatively whether something belongs to it."
+"og:title": "AdCP — Brand verification RFC"
+---
+
+<Warning>
+**RFC — discussion in progress.** Not yet normative. Tracks the federated trust capability discussed in [#4521](https://github.com/adcontextprotocol/adcp/issues/4521) and the spec-side follow-ups from PR [#4505](https://github.com/adcontextprotocol/adcp/pull/4505).
+</Warning>
+
+## Summary
+
+Add three interrogative tools to the brand-protocol surface that let partners ask a brand's authoritative agent whether something belongs to it:
+
+- **`verify_subsidiary_claim`** — "Is this brand a subsidiary of yours?"
+- **`verify_property`** — "Is this site / app / property actually one of yours?"
+- **`verify_trademark`** — "Is this trademark one of yours?"
+
+These collapse the original [self-healing notification](/docs/brand-protocol/brand-json#self-healing-through-notification) surface (PR #4505 landed an email-based SHOULD) into a richer **pull-based federated trust** capability. A consumer (DSP, crawler, partner agent) detecting a leaf-only edge no longer pushes a notification at the house and waits — it asks the brand's agent directly and gets an authoritative answer.
+
+The mutual-assertion crawl model stays the decentralized backstop. The brand-agent verification path is the federated alternative for brands that opt in.
+
+## Motivation
+
+`brand.json`'s mutual-assertion model is decentralized — two parties publish their halves at well-known URLs and a consumer crawls both to confirm. It's the right primitive for the open web, but it has known gaps:
+
+- **Two-state visibility.** Crawling answers "mutual or not." It can't surface *pending review*, *disputed*, *licensed in*, or *under M&A*. Brands need a richer state surface.
+- **TTL-bound freshness.** A consumer's view is only as fresh as its last crawl. M&A-driven changes don't propagate until the next refresh.
+- **One-sided pessimism.** When a leaf claims a parent and the parent hasn't reciprocated, the leaf gets downgraded to "claimed, unverified." Even if the parent's intent is to confirm, the protocol can't surface that intent before the file edit propagates.
+- **No partner-side double-check primitive.** A "good partner" — say, a DSP about to extend governance trust through a leaf — has no way to ask the brand "is this really yours, with my use case in mind?" before acting.
+
+The brand-agent surface (variant 3 / typed `agents[]`) already exists for this kind of authoritative-source pattern. `get_brand_identity` is the Tier 1 implementation. The verification tools are Tier 2.
+
+This is **DRM-shaped for brand identity**: the brand owns its own answers to "what's mine," and authorized partners can ask before they act. It's not gating access to public data — the data is still public — it's providing nuanced, authoritative answers that crawling cannot.
+
+## Proposal
+
+### Three tools, one shape
+
+Each tool follows the same shape:
+
+- **Input:** the claim being verified (subsidiary domain, property, trademark)
+- **Output:** an enum status from a shared `VerificationStatus` vocabulary, plus tool-specific context
+
+The status enum captures the rich state the crawl model can't express:
+
+| Status | Meaning |
+|---|---|
+| `owned` | Definitively belongs to this brand, currently. |
+| `pending_review` | The claim is known to the brand; no decision yet. Common for newly self-publishing sub-brand teams whose parent hasn't reciprocated. |
+| `disputed` | The brand actively rejects this claim. |
+| `not_ours` | The brand affirms it is not their property. |
+| `licensed_in` | This brand uses the asset under license from another entity (typed: `licensor_domain`). |
+| `licensed_out` | This brand licenses the asset to another entity. |
+| `unknown` | The agent has no position. Caller MAY fall back to crawl. |
+
+Not every tool returns every status — e.g., `verify_subsidiary_claim` doesn't return `licensed_in` / `licensed_out` (subsidiaries aren't licensed; brands and trademarks can be). The shared enum keeps callers' decoding logic uniform.
+
+### `verify_subsidiary_claim`
+
+A consumer detects a leaf-only edge: `converse.com` claims `house_domain: "nikeinc.com"`, but Nike's `brand_refs[]` doesn't include it yet. Today the consumer is told to email `contact.email` and wait. With this tool:
+
+```json
+// Request to nikeinc.com's brand-agent
+{
+  "claimed_subsidiary_domain": "converse.com",
+  "claimed_brand_id": "converse"
+}
+```
+
+```json
+// Response
+{
+  "status": "pending_review",
+  "first_observed_by_house_at": "2026-05-12T14:00:00Z",
+  "expected_resolution_window_days": 7
+}
+```
+
+The agent's response is authoritative. The crawl backstop becomes unnecessary for the partner who has this answer.
+
+### `verify_property`
+
+A DSP shopping inventory finds a property declaration on a brand's `properties[]` and wants to confirm before bidding. Or a fraud detector found a domain claiming to be Nike's and wants the brand's say-so:
+
+```json
+// Request
+{
+  "property": {
+    "type": "website",
+    "identifier": "nike.cn"
+  }
+}
+```
+
+```json
+// Response
+{
+  "status": "owned",
+  "relationship": "owned",
+  "regions": ["CN"],
+  "context": "Regional site for China market"
+}
+```
+
+The `relationship` field mirrors `brand.json`'s [property relationship enum](/docs/brand-protocol/brand-json#property-relationships) (`owned`, `direct`, `delegated`, `ad_network`). A `not_ours` response carries no `relationship`.
+
+### `verify_trademark`
+
+A creative-approval workflow encounters a mark and wants to verify ownership and use:
+
+```json
+// Request
+{
+  "mark": "AIR JORDAN",
+  "registry": "USPTO",
+  "number": "1234567"
+}
+```
+
+```json
+// Response
+{
+  "status": "owned",
+  "license_type": "owned",
+  "countries": ["US", "EU", "JP"],
+  "nice_classes": [25, 41]
+}
+```
+
+For licensed marks, `status: "licensed_in"` carries `licensor_domain`. The full schema covers the same shape as `brand.json`'s [`#/definitions/trademark`](/docs/brand-protocol/brand-json#trademarks), which this tool's responses reuse where applicable.
+
+## Discovery and routing
+
+Existing AdCP convention: a brand-agent advertises its tasks via `get_adcp_capabilities`. The verification tools surface as additional task names alongside `get_brand_identity`:
+
+```json
+{
+  "supported_protocols": ["brand"],
+  "supported_tasks": [
+    "get_brand_identity",
+    "verify_subsidiary_claim",
+    "verify_property",
+    "verify_trademark"
+  ]
+}
+```
+
+Brand-agent implementations are free to support all, some, or none. A brand without a brand-agent (variants 1, 2, 4, 5 with no `agents[]` entry) falls back to the existing crawl-based mutual-assertion model and the `contact.email` SHOULD from PR #4505.
+
+When a brand-agent is advertised and the relevant tool is in `supported_tasks`, the [Conformance](/docs/brand-protocol/brand-json#conformance) clause around mutual-assertion verification SHOULD prefer the agent's authoritative answer over the crawl-based inference. The crawl path remains the default; the agent path is a discoverable upgrade.
+
+## Authorization and access tiers
+
+Verification tools follow the same public/authorized split as `get_brand_identity`:
+
+| Tier | What the agent returns |
+|---|---|
+| **Public** (no linked account) | Status enum + minimal context. "Is this mine?" gets a yes/no/pending answer. |
+| **Authorized** (linked via [`sync_accounts`](/docs/accounts/tasks/sync_accounts)) | Status + richer context (registration details, regions, use case eligibility, expected resolution window for pending). |
+
+A consumer that is NOT authorized still gets a useful answer — the binary "is this yours" — without exposing the brand's internal queue state or licensing detail. Authorized consumers (e.g., a DSP that has linked accounts with the brand for inventory shopping) get the nuanced state.
+
+The `status` enum is always returned at both tiers. Optional fields (`first_observed_by_house_at`, `licensor_domain`, `expected_resolution_window_days`) are gated.
+
+## Trust model
+
+The agent's response is **authoritative**: signed under the brand's `adcp_use: "request-signing"` JWK (existing AdCP convention) and consumed under that contract. A signed `not_ours` from the brand's own agent overrides a third-party leaf's `house_domain` claim — the brand has spoken and is the authority over its own ownership.
+
+The crawl-based mutual-assertion model remains the fallback when:
+- No brand-agent is advertised in the brand.json `agents[]`
+- The advertised agent doesn't implement the relevant task
+- The agent's response is `unknown`
+- The agent is unreachable (transport-level failure)
+
+When both paths exist and the agent answers, the agent wins.
+
+## Internal house responsibility — the self-healing loop
+
+The brand-agent is responsible for what was previously the email-notification surface. When a consumer asks `verify_subsidiary_claim` and the brand has never seen the claim before, the agent:
+
+1. Returns `pending_review` to the caller (or `unknown` if it can't classify).
+2. **Internally** logs the inbound claim, optionally notifies the house's portfolio team, and queues the claim for review.
+
+This is implementation-defined and not part of the protocol contract. The protocol just provides the entry point; what the brand does internally is its business. The [PR #4505 self-healing SHOULD](/docs/brand-protocol/brand-json#self-healing-through-notification) effectively migrates from "consumer emails the house" to "the agent is the house's intake." For houses without a brand-agent, the email SHOULD remains.
+
+## Out of scope
+
+Three categories the verification surface deliberately doesn't cover:
+
+- **Creative conflict / brand-safety scoring.** "Is this creative in conflict with our guidelines?" is its own design space — overlaps with creative protocol and brand-safety vendors. May land as a separate RFC.
+- **Competitive relationships.** "Is this brand competitive to us?" is interesting but politically loaded; a brand declaring competitors machine-readably has different incentives than declaring its own assets. Deferred.
+- **Cryptographic provenance** of agent-issued statements. Today: rely on transport-level signing (RFC 9421) and `adcp_use`-tagged keys. Cryptographic claim-chains (e.g., "this trademark assertion is signed by the registrar plus the brand") are out of scope.
+
+## Migration
+
+No migration burden. All three tools are additive — a brand-agent that doesn't implement them simply doesn't advertise them. Consumers that don't speak these tools fall back to the existing crawl + `contact.email` paths.
+
+The [Conformance](/docs/brand-protocol/brand-json#conformance) update is one sentence: "Where the named house publishes a brand-agent advertising `verify_subsidiary_claim` in `supported_tasks`, consumers SHOULD prefer the agent's response over crawl-based mutual-assertion inference."
+
+## Open questions
+
+1. **Should `verify_property` accept a `use_case` field** (advertising / endorsement / retail / etc.) that the agent can scope its answer to? E.g., a brand might own a domain but not authorize ad-network resale on it. Vote: yes, mirror the `get_brand_identity` `use_case` pattern.
+2. **Should `pending_review` include the queue position** or expected resolution time as authorized-tier data, or is `expected_resolution_window_days` (an aggregate) enough? Vote: aggregate only — exposing queue position leaks brand-internal operations.
+3. **What happens when a brand-agent answers `not_ours` and the leaf publishes `house_domain` pointing at the brand?** Spec says agent wins (treat leaf as having a disputed parent claim). UI guidance: surface "disputed" prominently — this is the brand telling the consumer "we reject this." Vote: confirm.
+4. **Rate-limiting.** The agent decides, but the spec should set expectations. Vote: agent MAY rate-limit per `{caller_identity, tool, query_target}` pair; caller's `idempotency_key` (from `version-envelope`) lets it retry without duplicate side effects.
+5. **Bulk variants** (`verify_subsidiary_claims`, plural). For a crawler verifying 100 leaves at once, a bulk API reduces round-trips. Vote: defer — single-target tools cover v1; bulk is additive when call volume justifies it.
+
+## References
+
+- [#4505](https://github.com/adcontextprotocol/adcp/pull/4505) — landed distributed brand.json + the email-based self-healing SHOULD this RFC supersedes
+- [#4521](https://github.com/adcontextprotocol/adcp/issues/4521) — original "typed verification endpoint" issue that motivated this work
+- [`brand.json`](/docs/brand-protocol/brand-json) — normative spec for the underlying mutual-assertion trust model
+- [`building-a-brand-agent`](/docs/brand-protocol/building-a-brand-agent) — Tier 1 (`get_brand_identity`) reference; Tier 2 (this RFC) implementation guide is a planned addition
+- [`get_brand_identity`](/docs/brand-protocol/tasks/get_brand_identity) — the existing tool whose pattern these verifications follow
