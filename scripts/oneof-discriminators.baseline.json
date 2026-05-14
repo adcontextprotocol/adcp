@@ -38,8 +38,8 @@
     },
     "brand.json##/oneOf": {
       "kind": "dangerous",
-      "variants": 4,
-      "note": "shared-required=[∅]; 0:req=[authoritative_location] | 1:req=[house] | 2:req=[∅] | 3:req=[house,brands]"
+      "variants": 5,
+      "note": "shared-required=[∅]; 0:req=[authoritative_location] | 1:req=[house] | 2:req=[∅] | 3:req=[house] | 4:req=[∅]"
     },
     "brand/acquire-rights-response.json##/oneOf": {
       "kind": "dangerous",
@@ -75,6 +75,21 @@
       "kind": "narrowable",
       "variants": 2,
       "note": "0:[rights_id,terms] | 1:[errors]"
+    },
+    "brand/verify-property-response.json##/oneOf": {
+      "kind": "narrowable",
+      "variants": 2,
+      "note": "0:[status] | 1:[errors]"
+    },
+    "brand/verify-subsidiary-claim-response.json##/oneOf": {
+      "kind": "narrowable",
+      "variants": 2,
+      "note": "0:[status] | 1:[errors]"
+    },
+    "brand/verify-trademark-response.json##/oneOf": {
+      "kind": "narrowable",
+      "variants": 2,
+      "note": "0:[status] | 1:[errors]"
     },
     "compliance/comply-test-controller-response.json##/oneOf": {
       "kind": "dangerous",
