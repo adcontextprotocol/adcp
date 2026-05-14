@@ -9,6 +9,55 @@ High-level summaries of major AdCP releases with migration guidance. For the at-
 
 ---
 
+## Version 3.1.0 (unreleased)
+
+**Status:** Accumulating — minor release. The published 3.0.x line remains the stable surface; 3.1 features land here as their changesets accumulate. SDKs pin to a specific 3.x and pick up minors at their own cadence.
+
+**Headline:** **Distributed `brand.json`.** A brand can now publish its **own** canonical document on its own domain while the corporate house declares ownership via a portfolio pointer. The hierarchy stays one level deep — only houses declare ownership — and trust between a leaf and a house resolves via mutual assertion (both sides reciprocate). Identity attributes (logos, colors, tone, tagline) trust on the leaf's TLS alone; relationship trust (governance propagation, billable inclusion) gates on the reciprocal entry.
+
+Additive over 3.0 — every existing brand.json publisher continues to validate unchanged.
+
+<Info>
+**Upgrading from 3.0.x?** No code changes required. Schemas remain wire-compatible. SDK consumers bump `ADCP_VERSION` to `3.1.0` on release to pick up the new variant and field shapes. The one publisher-visible behaviour change: free-text values for `trademarks[].status` or `trademarks[].countries` now validate against the typed enum / ISO 3166-1 alpha-2 — non-conforming values surface as schema errors.
+</Info>
+
+### Adopter action
+
+| If you are… | What you need to do |
+|---|---|
+| A 3.0-conformant production agent | Nothing. Stable schemas remain wire-compatible with 3.0.0. |
+| A brand on the existing inline `brands[]` shape | Nothing. Pull-based migration — you move out of `brands[]` only when you decide to self-publish. |
+| A sub-brand team that wants self-publish authority | Stand up `/.well-known/brand.json` at your own domain as a Brand Canonical Document. Declare `house_domain: "<parent-house>"`. Ask the parent house team to add `{ domain, brand_id, effective_at }` to their `brand_refs[]`. Mutual assertion completes on the next crawl. |
+| A house running the AAO crawler today (or any consumer that walks brand hierarchy) | Read [`brand.json` § Mutual-assertion trust model](/docs/brand-protocol/brand-json#mutual-assertion-trust-model). The 3-tier read — identity-trusted vs relationship-trusted vs unverified — replaces the binary "is this in my portfolio" check for `brand_refs[]` pointer children. The 180-day TTL is already AAO's reference behavior. |
+| A publisher using free-text `status` or `countries` on `trademarks[]` entries | Move `status` values to the enum (`active`, `pending`, `abandoned`, `cancelled`, `expired`) and `countries` values to ISO 3166-1 alpha-2 codes. The fields were untyped via `additionalProperties: true`; they're now typed. Non-conforming values surface validation errors. |
+| An agency named in a house's `managed_by` claim | Nothing required at the protocol level. Aggregation by `managed_by` ("show me everything BBH manages") is the intended use; trust is not extended through it. Manager-side reciprocation is tracked as a follow-up. |
+
+### Distributed `brand.json` — new 5th variant and `brand_refs[]` (#4505, closes #3409 / #3533 / #3764 / #3910 / #3909)
+
+**New variant — Brand Canonical Document.** A self-published per-brand document carrying the brand's identity attributes (logos, colors, tone, visual guidelines, etc.) plus optional `house_domain` pointer. Standalone brands (no parent) omit the pointer. Excludes top-level house-only and redirect-variant fields to disambiguate against the other four variants.
+
+**House Portfolio additions — `brand_refs[]`.** Portfolio entries for brands whose canonical documents live elsewhere. Each entry has shape `{ domain, brand_id, managed_by?, effective_at? }`. A house may mix inline `brands[]` (parent owns the data) and pointer `brand_refs[]` (child owns the data) freely; a given `brand_id` appears in exactly one.
+
+**Mutual-assertion trust model.** A leaf says `house_domain: A`; A's `brand_refs[]` includes the leaf. Both halves are crawler-readable from well-known URLs. Same shape as IAB's `ads.txt` / `sellers.json` / `app-ads.txt` reciprocal-publication pattern. Identity is TLS-only; relationships are mutual-assertion-gated. A leaf-only edge keeps identity trust and triggers a self-healing notification SHOULD to the house's `contact.email`.
+
+**`managed_by` is a directory field.** House-declared, non-trust-bearing. Aggregation across houses ("show me everything BBH manages") is the intended use — it's the operational directory a buyer-DSP wants. Consumers MUST NOT use it for trust or authorization decisions; that line still flows through mutual assertion between leaf and house.
+
+**Typed brand-level trademarks.** New `#/definitions/trademark` extracts the inline house-portfolio shape (`{registry, number, mark}`) as a named definition with optional `status`, `license_type`, `licensor_domain` (when `license_type=licensed_in`), `countries`, and `nice_classes` (Nice Classification for cross-industry disambiguation — Delta-airline vs Delta-faucet). Both inline `brands[]` entries and self-publishing Brand Canonical Documents now typed-publish their marks. House-level `trademarks[]` remains for corporate-level marks; resolution between the two is union.
+
+**Compliance fields strictest-of.** For governance fields (`data_subject_contestation`, `compliance_policies`, `policy_categories`, audience exclusions, regulated-category flags, brand-level `disclaimers[]`), the resolved value is the union/strictest of house-level and brand-level. Brand-level publishers cannot weaken house-level assertions; they can only add stricter constraints. Identity fields stay brand-wins; this asymmetry is intentional — brand teams own brand identity, legal owns compliance.
+
+**Out-of-scope cases** documented in the spec: JVs with two parents (Hulu pre-Disney), PE-rollups wanting opacity, jurisdictional governance divergence. These belong in governance / corporate-structure specs, not brand.json — see [follow-ups](https://github.com/adcontextprotocol/adcp/issues/4522) and [#4523](https://github.com/adcontextprotocol/adcp/issues/4523) for the design discussions.
+
+**Follow-ups tracking related work:**
+- [#4521](https://github.com/adcontextprotocol/adcp/issues/4521) — typed `verification_endpoint` for the self-healing loop (today: email)
+- [#4522](https://github.com/adcontextprotocol/adcp/issues/4522) — JV / two-parent shape
+- [#4523](https://github.com/adcontextprotocol/adcp/issues/4523) — PE-opacity vs mutual-assertion tradeoff
+- [#4524](https://github.com/adcontextprotocol/adcp/issues/4524) — manager-edge reciprocation for `managed_by`
+
+See [`brand.json` § Distributed publishing](/docs/brand-protocol/brand-json) for the full normative spec including resolution algorithm, Conformance MUSTs, adoption path, and prior art.
+
+---
+
 ## Version 3.0.6
 
 **Status:** Patch release — stable-surface no-op for 3.0-conformant agents
