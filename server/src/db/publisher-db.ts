@@ -43,6 +43,7 @@ export interface AdagentsAuthorizedAgent {
   properties?: AdagentsProperty[];           // for inline_properties variant
   publisher_properties?: Array<{
     publisher_domain?: string;
+    publisher_domains?: string[];
     selection_type?: 'all' | 'by_id' | 'by_tag';
     property_ids?: string[];
     property_tags?: string[];
@@ -141,6 +142,22 @@ const RESOLVED_URL_MAX = 2048;
 function truncateResolvedUrl(url: string | undefined): string | null {
   if (typeof url !== 'string' || url.length === 0) return null;
   return url.length > RESOLVED_URL_MAX ? url.slice(0, RESOLVED_URL_MAX) : url;
+}
+
+// Read `revoked_publisher_domains[]` from a (loose-typed) manifest and return
+// the set of lowercased publisher_domain values. Tolerant of missing or
+// malformed entries — only well-formed string publisher_domain values count.
+function extractRevokedPublisherDomains(manifest: unknown): Set<string> {
+  const out = new Set<string>();
+  const m = manifest as { revoked_publisher_domains?: unknown };
+  if (!Array.isArray(m?.revoked_publisher_domains)) return out;
+  for (const entry of m.revoked_publisher_domains) {
+    const pd = (entry as { publisher_domain?: unknown })?.publisher_domain;
+    if (typeof pd === 'string' && pd.length > 0) {
+      out.add(pd.toLowerCase());
+    }
+  }
+  return out;
 }
 
 export function canonicalizeAgentUrl(raw: string): string | null {
@@ -265,6 +282,22 @@ export class PublisherDatabase {
           input.managerDomain ?? null,
         ]
       );
+
+      // `revoked_publisher_domains[]` precedence: if this manifest revokes
+      // the source domain, skip property and authorization projection
+      // entirely. The publisher row above is still upserted so the cache
+      // reflects the manifest verbatim, but no catalog rows land — the
+      // revocation list takes precedence over any other appearance of
+      // the domain in the file. See managed-networks.mdx for spec.
+      const revokedDomains = extractRevokedPublisherDomains(safeManifest);
+      if (revokedDomains.has(domain)) {
+        log.info(
+          { domain, revokedCount: revokedDomains.size },
+          'Skipping projection: source domain appears in revoked_publisher_domains[]'
+        );
+        await client.query('COMMIT');
+        return;
+      }
 
       const properties = Array.isArray(safeManifest.properties) ? safeManifest.properties : [];
       for (let i = 0; i < properties.length; i += 1) {
@@ -801,13 +834,20 @@ export class PublisherDatabase {
     } else if (variant === 'publisher_properties') {
       const sels = Array.isArray(entry.publisher_properties) ? entry.publisher_properties : [];
       for (const sel of sels) {
-        const selPub = typeof sel?.publisher_domain === 'string' ? sel.publisher_domain.toLowerCase() : null;
-        if (selPub !== publisherDomain) {
+        // A selector claims the publisher if the source publisherDomain matches
+        // either the singular publisher_domain or any entry in the compact
+        // publisher_domains[] array. Both forms are equivalent for projection.
+        const selPubSingular = typeof sel?.publisher_domain === 'string' ? sel.publisher_domain.toLowerCase() : null;
+        const selPubInList = Array.isArray((sel as { publisher_domains?: unknown })?.publisher_domains)
+          && (sel as { publisher_domains: unknown[] }).publisher_domains.some(
+            (d: unknown) => typeof d === 'string' && d.toLowerCase() === publisherDomain
+          );
+        if (selPubSingular !== publisherDomain && !selPubInList) {
           // Cross-publisher third-party-sales claim. Refused per spec — the
           // writer cannot land an authoritative row for another publisher's
           // properties without out-of-band corroboration.
           log.warn(
-            { publisherDomain, agentUrl: agentCanonical, selPub },
+            { publisherDomain, agentUrl: agentCanonical, selPub: selPubSingular },
             'Skipping auth projection: publisher_properties claims a different publisher (cross-publisher refused)'
           );
           continue;

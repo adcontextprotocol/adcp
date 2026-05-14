@@ -559,6 +559,81 @@ describe('catalog_agent_authorizations writer projection', () => {
       expect(rows).toHaveLength(0);
     });
 
+    it('accepts publisher_properties[].publisher_domains[] compact form when source domain is listed', async () => {
+      // Managed-network shape: the entry uses publisher_domains[] (plural)
+      // instead of singular publisher_domain. The source publisher (TEST_PUB)
+      // appears in the list, so the projection MUST resolve as if the
+      // selector had named TEST_PUB directly. See #4506.
+      await publisherDb.upsertAdagentsCache({
+        domain: TEST_PUB,
+        manifest: manifest(
+          [
+            {
+              url: TEST_AGENT_RAW,
+              authorization_type: 'publisher_properties',
+              publisher_properties: [
+                {
+                  publisher_domains: [VICTIM_PUB, TEST_PUB, 'other.example'],
+                  selection_type: 'all',
+                },
+              ],
+            },
+          ],
+          [
+            {
+              property_id: 'site_a',
+              property_type: 'website',
+              name: 'Site A',
+              identifiers: [{ type: 'domain', value: TEST_PUB }],
+            },
+          ]
+        ),
+      });
+      const { rows } = await pool.query<{ property_id_slug: string }>(
+        `SELECT property_id_slug FROM catalog_agent_authorizations
+          WHERE agent_url_canonical = $1 AND property_rid IS NOT NULL`,
+        [TEST_AGENT_CANON]
+      );
+      expect(rows.map((r) => r.property_id_slug)).toEqual(['site_a']);
+    });
+
+    it('refuses publisher_domains[] compact form when source domain is NOT listed', async () => {
+      // Same compact form, but the source publisher (TEST_PUB) is absent
+      // from the list. Refused for the same cross-publisher reason as the
+      // singular form.
+      await publisherDb.upsertAdagentsCache({
+        domain: TEST_PUB,
+        manifest: manifest(
+          [
+            {
+              url: TEST_AGENT_RAW,
+              authorization_type: 'publisher_properties',
+              publisher_properties: [
+                {
+                  publisher_domains: [VICTIM_PUB, 'other.example'],
+                  selection_type: 'all',
+                },
+              ],
+            },
+          ],
+          [
+            {
+              property_id: 'site_a',
+              property_type: 'website',
+              name: 'Site A',
+              identifiers: [{ type: 'domain', value: TEST_PUB }],
+            },
+          ]
+        ),
+      });
+      const { rows } = await pool.query(
+        `SELECT 1 FROM catalog_agent_authorizations
+          WHERE agent_url_canonical = $1 AND property_rid IS NOT NULL`,
+        [TEST_AGENT_CANON]
+      );
+      expect(rows).toHaveLength(0);
+    });
+
     it('matches own publisher when selector publisher_domain has mixed case', async () => {
       // Legacy or hand-edited manifests may use mixed-case publisher_domain.
       // The selector is lowercased before comparison; own-publisher claims
@@ -624,6 +699,94 @@ describe('catalog_agent_authorizations writer projection', () => {
         [TEST_AGENT_CANON]
       );
       expect(rows).toHaveLength(0);
+    });
+  });
+
+  // ──────────────────────────────────────────────────────────────────
+  // revoked_publisher_domains[] precedence (#4506)
+  // ──────────────────────────────────────────────────────────────────
+
+  describe('revoked_publisher_domains[] precedence', () => {
+    it('skips both property and auth projection when the source domain is revoked', async () => {
+      // Manifest authorizes an agent for the publisher's own property AND
+      // lists the publisher in revoked_publisher_domains[]. The revocation
+      // MUST win — no CAA rows for the auth, no catalog_properties either.
+      await publisherDb.upsertAdagentsCache({
+        domain: TEST_PUB,
+        manifest: {
+          ...manifest(
+            [
+              {
+                url: TEST_AGENT_RAW,
+                authorization_type: 'publisher_properties',
+                publisher_properties: [
+                  { publisher_domain: TEST_PUB, selection_type: 'all' },
+                ],
+              },
+            ],
+            [
+              {
+                property_id: 'site_a',
+                property_type: 'website',
+                name: 'Site A',
+                identifiers: [{ type: 'domain', value: TEST_PUB }],
+              },
+            ]
+          ),
+          revoked_publisher_domains: [
+            { publisher_domain: TEST_PUB, revoked_at: '2026-05-13T00:00:00Z', reason: 'relationship_ended' },
+          ],
+        },
+      });
+      const { rows: authRows } = await pool.query(
+        `SELECT 1 FROM catalog_agent_authorizations
+          WHERE agent_url_canonical = $1`,
+        [TEST_AGENT_CANON]
+      );
+      const { rows: propRows } = await pool.query(
+        `SELECT 1 FROM catalog_properties
+          WHERE created_by = $1`,
+        [`adagents_json:${TEST_PUB}`]
+      );
+      expect(authRows).toHaveLength(0);
+      expect(propRows).toHaveLength(0);
+    });
+
+    it('projects normally when revoked_publisher_domains[] lists a different domain', async () => {
+      // Revocation list contains an unrelated domain; projection proceeds.
+      await publisherDb.upsertAdagentsCache({
+        domain: TEST_PUB,
+        manifest: {
+          ...manifest(
+            [
+              {
+                url: TEST_AGENT_RAW,
+                authorization_type: 'publisher_properties',
+                publisher_properties: [
+                  { publisher_domain: TEST_PUB, selection_type: 'all' },
+                ],
+              },
+            ],
+            [
+              {
+                property_id: 'site_a',
+                property_type: 'website',
+                name: 'Site A',
+                identifiers: [{ type: 'domain', value: TEST_PUB }],
+              },
+            ]
+          ),
+          revoked_publisher_domains: [
+            { publisher_domain: 'some-other.example', revoked_at: '2026-05-13T00:00:00Z' },
+          ],
+        },
+      });
+      const { rows } = await pool.query<{ property_id_slug: string }>(
+        `SELECT property_id_slug FROM catalog_agent_authorizations
+          WHERE agent_url_canonical = $1 AND property_rid IS NOT NULL`,
+        [TEST_AGENT_CANON]
+      );
+      expect(rows.map((r) => r.property_id_slug)).toEqual(['site_a']);
     });
   });
 
