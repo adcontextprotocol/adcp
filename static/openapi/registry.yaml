@@ -3248,6 +3248,27 @@ paths:
           description: "Measurement-vendor filter: case-insensitive substring match against `measurement.metrics[].metric_id`. v1 scope: metric_id only (description/standard search is a follow-up). Max 64 chars; SQL wildcard characters are escaped. Implies `type=measurement`."
           name: q
           in: query
+        - schema:
+            type: array
+            items:
+              type: string
+              enum:
+                - spec
+                - live
+            description: "Filter to agents whose active badge covers the given verification axis. Repeat the parameter for AND semantics: ?verification_mode=spec&verification_mode=live returns only agents verified on both axes."
+          required: false
+          description: "Filter to agents whose active badge covers the given verification axis. Repeat the parameter for AND semantics: ?verification_mode=spec&verification_mode=live returns only agents verified on both axes."
+          name: verification_mode
+          in: query
+        - schema:
+            type: string
+            enum:
+              - "true"
+            description: When true, filter to agents that hold any active verification badge.
+          required: false
+          description: When true, filter to agents that hold any active verification badge.
+          name: verified
+          in: query
       responses:
         "200":
           description: Agent list
@@ -3270,7 +3291,16 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                type: object
+                properties:
+                  error:
+                    type: string
+                  valid_values:
+                    type: array
+                    items:
+                      type: string
+                required:
+                  - error
   /api/registry/publishers:
     get:
       operationId: listPublishers
