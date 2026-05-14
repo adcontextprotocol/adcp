@@ -768,25 +768,29 @@ export class BrandManager {
   }
 
   /**
-   * Build the brand_manifest payload from a BrandDefinition by stripping
-   * identity/locator fields that are already surfaced as top-level
-   * ResolvedBrand fields. Returns undefined when no manifest data remains.
+   * Build the brand_manifest payload (creative asset data) from a brand by
+   * stripping identity (`id`, `names`, `keller_type`, `parent_brand`) and
+   * ownership (`properties`) fields that have separate semantic meaning.
+   * Returns undefined when no manifest data remains.
    *
    * Brand fields are flat on the brand object per the unified brand.json
-   * schema (post-commit 892da1df2). A legacy nested `brand_manifest`
-   * sub-key, if present, is merged in for backwards compatibility.
+   * schema. A legacy nested `brand_manifest` sub-key, if present, is merged
+   * in for backwards compatibility; flat fields take precedence.
    */
   private buildBrandManifest(brand: BrandDefinition): Record<string, unknown> | undefined {
-    const { id, names, keller_type, parent_brand, brand_manifest, ...rest } =
-      brand as BrandDefinition & Record<string, unknown>;
-    void id;
-    void names;
-    void keller_type;
-    void parent_brand;
+    const {
+      id: _id,
+      names: _names,
+      keller_type: _kellerType,
+      parent_brand: _parentBrand,
+      properties: _properties,
+      brand_manifest: brandManifest,
+      ...rest
+    } = brand;
 
     const legacy =
-      brand_manifest && typeof brand_manifest === 'object'
-        ? (brand_manifest as Record<string, unknown>)
+      brandManifest && typeof brandManifest === 'object'
+        ? (brandManifest as Record<string, unknown>)
         : undefined;
 
     const merged: Record<string, unknown> = { ...(legacy ?? {}), ...rest };

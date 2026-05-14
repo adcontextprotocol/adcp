@@ -340,6 +340,10 @@ describe('BrandManager caching', () => {
       expect(result).not.toBeNull();
       expect(result?.brand_manifest).toBeDefined();
       expect(result?.brand_manifest?.description).toBe('A sub-brand');
+      // properties is ownership/identity data, not creative payload — must
+      // not leak into brand_manifest, which downstream consumers treat as
+      // logos/colors/fonts/tone (see services/brand-enrichment.ts).
+      expect(result?.brand_manifest).not.toHaveProperty('properties');
     });
 
     it('merges legacy nested brand_manifest with flat fields', async () => {

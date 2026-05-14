@@ -490,7 +490,8 @@ export interface LocalizedName {
 }
 
 /**
- * Brand property (digital touchpoint owned by a brand)
+ * Brand property (digital touchpoint owned by a brand).
+ * Mirrors the `properties[]` shape in static/schemas/source/brand.json.
  */
 export interface BrandProperty {
   type: 'website' | 'mobile_app' | 'ctv_app' | 'desktop_app' | 'dooh' | 'podcast' | 'radio' | 'streaming_audio';
@@ -498,19 +499,42 @@ export interface BrandProperty {
   store?: 'apple' | 'google' | 'amazon' | 'roku' | 'samsung' | 'lg' | 'other';
   region?: string;
   primary?: boolean;
+  relationship?: 'owned' | 'direct' | 'delegated' | 'ad_network';
 }
 
 /**
- * Brand definition within a house portfolio
+ * Brand definition within a house portfolio.
+ *
+ * Mirrors the `brand` object in static/schemas/source/brand.json. The schema
+ * is the source of truth; this interface is hand-maintained until `BrandJson`
+ * is exported from `@adcp/sdk`'s public surface (the inferred type exists at
+ * `dist/lib/types/wellknown-schemas.generated` but is not re-exported).
  */
 export interface BrandDefinition {
   id: string;
+  url?: string;
   names: LocalizedName[];
   keller_type?: KellerType;
   parent_brand?: string;
+  description?: string;
+  industries?: string[];
+  target_audience?: string;
+  logos?: Array<Record<string, unknown>>;
+  colors?: Record<string, unknown>;
+  fonts?: Record<string, unknown>;
+  tone?: string | Record<string, unknown>;
+  tagline?: string | Array<Record<string, string>>;
+  assets?: Array<Record<string, unknown>>;
   properties?: BrandProperty[];
+  product_catalog?: Record<string, unknown>;
+  privacy_policy_url?: string;
+  data_subject_contestation?: Record<string, unknown>;
+  disclaimers?: Array<Record<string, unknown>>;
   brand_standards?: string;
+  /** Legacy nested manifest — flat fields above are preferred. */
   brand_manifest?: Record<string, unknown> | string;
+  /** Schema allows additional creative/identity properties via `additionalProperties: true`. */
+  [key: string]: unknown;
 }
 
 /**
