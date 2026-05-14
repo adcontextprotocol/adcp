@@ -9,7 +9,7 @@ testable: true
 **Proposed (RFC).** This task is part of the [brand verification RFC](/docs/brand-protocol/proposals/brand-verification-rfc) and not yet normative.
 </Warning>
 
-Ask a brand-agent whether a property (website, app, podcast, etc.) belongs to this brand. Used in **inventory onboarding / supply-path-curation workflows**, fraud detection, and creative-clearance — not at bid time (sub-100ms auction budgets don't accommodate MCP round-trips). Cache and re-validate periodically.
+Ask a brand-agent whether a property (website, app, podcast, etc.) belongs to this brand. **This is a prerequisite gate — check before you proceed, not a signal you consume after a decision is locked in.** Used at inventory onboarding, creative clearance, and fraud-escalation gates. Never at bid time (sub-100ms auction budgets don't accommodate MCP round-trips). Cache and re-validate at the next gate.
 
 ## Schema
 
@@ -29,11 +29,15 @@ The brand-agent advertises this task in its `get_adcp_capabilities` response (al
 
 ## When to use
 
-- **Supply-path curation.** An SSP onboards a property as inventory and the buyer wants the brand's say-so before allowing bidding on it.
-- **Fraud detection.** A domain is suspected of falsely claiming brand affiliation.
-- **Creative clearance.** A creative-approval workflow encounters a property reference and needs ownership confirmation.
+Verification gates the *next step* in a workflow. Concrete gating points:
 
-Not bid-time. Cache 24-72h for `owned`/`not_ours`; less for `transferring`/`pending` states.
+- **Inventory onboarding.** An SSP adds a property to its catalog; verification gates the catalog entry before the property goes live for bidding.
+- **Creative clearance.** A creative-approval workflow encounters a property reference; verification gates approval.
+- **Fraud escalation.** A domain is suspected of falsely claiming brand affiliation; verification gates the chosen escalation path (block, flag, investigate).
+
+If the answer is "consumed informationally after the decision is already locked in," you're using the wrong tool — read `brand.json` `properties[]` directly. The gate-before-proceed semantics are what justify the MCP round-trip.
+
+Cache 24-72h for `owned`/`not_ours`; less for `transferring`. Re-check at the next gate, not at every bid.
 
 ## Authorization tiers
 

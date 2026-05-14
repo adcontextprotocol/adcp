@@ -49,7 +49,7 @@ The status enum captures the rich state the crawl model can't express:
 | Status | Meaning |
 |---|---|
 | `owned` | Definitively belongs to this brand, currently. |
-| `pending_review` | Claim known to the brand; no decision yet. **MUST be returned only with `expected_resolution_window_days`**, and the agent MUST transition to a terminal status or `unknown` once the window elapses. Without aging, `pending_review` becomes a polite shrug. |
+| `pending_review` | Claim known to the brand; no decision yet. **MUST be returned with `expected_resolution_window_days`**; the agent MUST transition to a terminal status or `unknown` once the window elapses. Enforcement is agent-side (not spec-level) — see [pending_review aging](#pending_review-aging-and-the-crawl-safety-net) below. |
 | `transferring` | Ownership is provably changing — M&A in flight, divestiture closing, known imminent transition. Distinct from `pending_review` (under-review-by-us); `transferring` signals "the answer is known to be becoming something else." |
 | `disputed` | The brand actively rejects this claim. |
 | `not_ours` | The brand affirms it is not their property / subsidiary / mark. |
@@ -60,6 +60,8 @@ The status enum captures the rich state the crawl model can't express:
 Each tool's response schema **constrains** the enum to the statuses applicable to that tool — not every status applies to every tool. Subsidiaries aren't licensed; properties don't have `pending_review` (use `transferring` for in-flight ownership); trademarks are mostly definitive but can be `transferring` during M&A.
 
 ### `verify_subsidiary_claim`
+
+**Like `verify_property`, this is a gate before you proceed.** Inventory onboarding, brand-relationship establishment, creative clearance, member-feature provisioning — anywhere a downstream system would extend governance trust through a brand → house relationship, this call gates that step. You check the claim with the named house and act on the answer, you don't post-hoc reconcile a state after the fact.
 
 A consumer detects a leaf-only edge: `converse.com` claims `house_domain: "nikeinc.com"`, but Nike's `brand_refs[]` doesn't include it yet. Today the consumer is told to email `contact.email` and wait. With this tool:
 
@@ -93,13 +95,15 @@ The agent's signed response is authoritative. The crawl backstop becomes unneces
 
 ### `verify_property`
 
-This is **not a bid-time tool.** Sub-100ms auction budgets don't permit MCP round-trips. `verify_property` slots in at:
+**This is a prerequisite check, not a mid-flight signal.** Verification gates the *next step* in a workflow: you check before you proceed, not after. Sub-100ms auction budgets don't permit MCP round-trips, so this is never bid-time. It runs at decision points where you can still say no:
 
-- **Supply-path curation** — when an SSP onboards a new property as inventory and the buyer wants the brand's say-so before allowing bidding on it.
-- **Fraud detection** — when a domain is suspected of falsely claiming brand affiliation.
-- **Creative clearance** — when a creative-approval workflow encounters a property reference.
+- **Inventory onboarding** — an SSP adds a property to its catalog; the buyer requires brand confirmation before allowing bidding on it. The verification gates the catalog entry.
+- **Creative clearance** — a creative-approval workflow encounters a property reference; verification gates approval.
+- **Fraud detection** — a domain is suspected of falsely claiming brand affiliation; verification gates whatever escalation path follows (block, flag, investigate).
 
-Cache the answer (24-72h is appropriate for `owned`/`not_ours`); re-check periodically.
+The gating semantics are what justifies the round-trip cost. If you're consuming the answer after a decision is locked in, you're using the wrong tool — `brand.json` properties[] inference is the read-only signal for that case.
+
+Cache the answer (24-72h is appropriate for `owned`/`not_ours`); re-check at the next gate, not every bid.
 
 ```json
 // Request
@@ -201,7 +205,7 @@ The agent's response is **authoritative**: signed under the brand's `adcp_use: "
 | Agent says | Crawl observes | Consumer treats as |
 |---|---|---|
 | `owned` | Mutual or leaf-only | Trusted edge. Governance propagation: yes. |
-| `pending_review` | Leaf-only (parent silent) | Trusted leaf identity; relationship trust withheld until window elapses or status transitions. |
+| `pending_review` | Leaf-only (parent silent) | Trusted leaf identity; relationship trust withheld. When the response's `expected_resolution_window_days` is exceeded without transition, consumer SHOULD treat as if `unknown` returned and fall back to crawl-based inference. |
 | `transferring` | Any | Trusted but in-flight; consumers MAY treat as `owned` for stability and SHOULD surface the transition in UI. |
 | `disputed` | Leaf-only or mutual | The brand has spoken. **Leaf is treated as having a rejected parent claim.** UI: "Brand X says this is not theirs." |
 | `not_ours` | Leaf-only or mutual | The brand affirms no relationship. **Leaf treated as standalone with a disputed parent claim, regardless of leaf's `house_domain` declaration.** UI surfaces the rejection. |
@@ -223,6 +227,17 @@ Verification responses SHOULD be cacheable per standard HTTP semantics. Agents S
 - `unknown` — short cache only (≤1h) so consumers can re-query as the agent's knowledge grows.
 
 Consumers MAY override agent-supplied cache hints downward. A consumer SHOULD NOT cache beyond the agent's supplied `max-age`.
+
+## `pending_review` aging and the crawl safety net
+
+The aging contract — `pending_review` MUST come with `expected_resolution_window_days` AND the agent MUST transition to a terminal status (`owned` / `disputed` / `not_ours`) or to `unknown` once the window elapses — reads cleanly as a normative MUST. The enforcement story is more honest:
+
+- **Enforcement is agent-side, not spec-level.** No external party validates the aging contract. The protocol can't compel a brand's portfolio team to action a queue, and the spec doesn't try.
+- **Day-one deployments will lag.** Most brand-side implementations (especially self-hosted holdcos) won't ship with automated `pending_review → unknown` flipping on launch. Portfolio teams operate at human-week timescales; flipping stale claims is not the first automation they build.
+- **The safety net is the crawl fallback, not the spec.** When an agent returns stale `pending_review` past its declared window, the **consumer** treats the response as effectively `unknown` and falls back to crawl-based mutual-assertion inference. This is the same fallback consumers use when the agent is unreachable or genuinely returns `unknown` — it requires nothing new on the consumer side.
+- **MUST is the right normative language anyway.** It states declared intent and a defined fallback. That's better than the status quo, where `pending` limbo has no expiry and no recourse. A noisy `pending_review` from an under-automated agent is recoverable; silence isn't.
+
+In summary: agents SHOULD transition or flip past the window; consumers MUST tolerate agents that don't, by falling back to crawl. The aging contract is real, the enforcement is realistic, the fallback is graceful.
 
 ## Rate limiting (normative expectation)
 
@@ -312,7 +327,7 @@ The [Conformance](/docs/brand-protocol/brand-json#conformance) update is one SHO
 The following were open during draft and are now resolved as the spec contract:
 
 1. **`verify_property.use_case` field.** Kept. Mirrors the `get_brand_identity` `use_case` precedent.
-2. **`pending_review` queue position vs aggregate window.** Aggregate only (`expected_resolution_window_days`). Queue position leaks operational state. Additionally: `pending_review` MUST come with the window AND the agent MUST transition or flip to `unknown` past the window — an aging contract, not a polite shrug.
+2. **`pending_review` queue position vs aggregate window.** Aggregate only (`expected_resolution_window_days`). Queue position leaks operational state. Additionally: `pending_review` MUST come with the window AND the agent MUST transition or flip to `unknown` past the window. Enforcement is agent-side, not spec-level; the safety net is consumer-side fallback to crawl on stale `pending_review` responses. See [`pending_review` aging and the crawl safety net](#pending_review-aging-and-the-crawl-safety-net).
 3. **Agent says `not_ours` while leaf publishes `house_domain` claim.** Normative: agent wins. See [Trust model § conflict resolution](#trust-model). UI guidance for leaf's recourse is a follow-up issue.
 4. **Rate-limiting.** Agent's call; spec sets the expectation of per-`{caller, tool, target}`. Agents SHOULD return `Retry-After` on limit and SHOULD prefer cached-prior-answer over `RATE_LIMITED` error.
 5. **Bulk variants** (`verify_subsidiary_claims`, plural). Deferred. Filed as follow-up — crawlers will demand it within 6 months; v1 ships single-target shape.

@@ -9,7 +9,7 @@ testable: true
 **Proposed (RFC).** This task is part of the [brand verification RFC](/docs/brand-protocol/proposals/brand-verification-rfc) and not yet normative. The crawl-based [mutual-assertion model](/docs/brand-protocol/brand-json#mutual-assertion-trust-model) remains authoritative until the RFC ratifies.
 </Warning>
 
-Ask a brand-agent whether the named brand is a subsidiary of this house. Returns an authoritative status from the brand's own agent, replacing crawl-based inference when the brand-agent supports this task.
+Ask a brand-agent whether the named brand is a subsidiary of this house. **This is a prerequisite gate — check before you proceed.** Returns an authoritative status from the brand's own agent, replacing crawl-based inference when the brand-agent supports this task.
 
 ## Schema
 
@@ -34,7 +34,9 @@ Callers MUST check capability advertisement before relying on this task; brand-a
 
 ## When to use
 
-The crawl-based mutual-assertion model — leaf publishes `house_domain: X`, X's `brand_refs[]` includes leaf, both halves verified by independent fetch — covers the common case. But it has known gaps:
+Verification gates the *next step* in a workflow. Call this where you would otherwise extend governance trust through a brand → house relationship: inventory onboarding, brand-relationship establishment, member-feature provisioning, creative clearance that depends on parent-brand authorization. Check the claim with the named house, act on the answer — don't reconcile state after the fact.
+
+The crawl-based mutual-assertion model — leaf publishes `house_domain: X`, X's `brand_refs[]` includes leaf, both halves verified by independent fetch — covers the common case but has gaps this tool closes:
 
 - **Two-state visibility.** Crawl answers "mutual" or "not mutual." It can't surface *pending review*, *transferring*, or *disputed*.
 - **TTL-bound freshness.** A consumer's view is only as fresh as its last crawl of both sides.
@@ -128,7 +130,7 @@ Conflict resolution between agent response and crawl observation (normative — 
 | Agent says | Crawl says | Consumer treats as |
 |---|---|---|
 | `owned` | Mutual or leaf-only | Trusted edge. Governance propagation: yes. |
-| `pending_review` | Leaf-only (parent silent) | Trusted leaf identity; relationship trust withheld until window elapses or status transitions. UI: "Pending parent confirmation, expected within N days." |
+| `pending_review` | Leaf-only (parent silent) | Trusted leaf identity; relationship trust withheld. When the response's `expected_resolution_window_days` is exceeded without transition, consumer SHOULD treat as if `unknown` returned and fall back to crawl. UI: "Pending parent confirmation, expected within N days." |
 | `transferring` | Any | Trusted but in-flight; consumers MAY treat as `owned` for stability and SHOULD surface the transition in UI. |
 | `disputed` | Leaf-only or mutual | The brand has spoken. Treat leaf as having a rejected parent claim. UI: "Brand X says this is not theirs." |
 | `not_ours` | Leaf-only | Leaf treated as standalone with disputed parent claim. |
@@ -136,7 +138,7 @@ Conflict resolution between agent response and crawl observation (normative — 
 
 When the agent answers, the agent wins. The crawl path remains the fallback only when the agent is unreachable, returns `unknown`, or doesn't implement the task.
 
-`pending_review` requires the agent to set `expected_resolution_window_days` AND transition the claim to a terminal status (or `unknown`) once the window elapses. Staleness past the window is a contract violation; consumers MAY treat such responses as `unknown`.
+`pending_review` requires the agent to set `expected_resolution_window_days` AND transition the claim to a terminal status (or `unknown`) once the window elapses. **Enforcement is agent-side, not spec-level** — most day-one brand deployments won't have the automation to auto-flip stale claims. The safety net is consumer-side: when a `pending_review` response is older than its declared window, consumers SHOULD treat the answer as effectively `unknown` and fall back to crawl-based inference (same fallback used when the agent is unreachable). The aging contract is a declared intent with a defined fallback, not an externally-enforced guarantee. See [RFC § pending_review aging](/docs/brand-protocol/proposals/brand-verification-rfc#pending_review-aging-and-the-crawl-safety-net).
 
 ## Caching
 
