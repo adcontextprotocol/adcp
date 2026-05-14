@@ -188,7 +188,11 @@ const MemberRefSchema = z.object({
   }),
   membership_tier_label: z.string().optional().openapi({
     description:
-      "Human-readable label for `membership_tier` (e.g. `Professional`, `Leader`). Use this for UI display; the raw enum is for programmatic gating. Presence rules match `membership_tier`.",
+      "Human-readable label for `membership_tier` (e.g. `Professional`, `Partner`, `Leader`). Matches the AAO pricing page. Use this for UI display; the raw enum is for programmatic gating. Presence rules match `membership_tier`.",
+  }),
+  is_founding_member: z.boolean().optional().openapi({
+    description:
+      "True when the profile owner carries the Founding Member badge (joined before the founding-cohort cutoff). Surfaced when the profile owner has set their member card to public (`is_public=true`). Absent for private profiles. Founding Member is orthogonal to tier — founding orgs typically display both (e.g. Scope3 shows `Partner` + `Founding Member`).",
   }),
 });
 

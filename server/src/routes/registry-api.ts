@@ -756,9 +756,11 @@ registry.registerPath({
     "Authenticated callers on an AAO membership tier with API access also see `members_only` agents. " +
     "Profile owners (callers whose org owns the queried domain) additionally see `private` agents. " +
     "This is the primary mechanism by which AAO membership unlocks deeper registry visibility.\n\n" +
-    "**Member tier visibility.** When the profile owner has set their member card to public " +
-    "(`is_public=true`), the `member` object additionally carries `membership_tier` (raw enum) and " +
-    "`membership_tier_label` (e.g. `Professional`, `Leader`). For private profiles these fields are absent.",
+    "**Member level visibility.** When the profile owner has set their member card to public " +
+    "(`is_public=true`), the `member` object additionally carries `is_founding_member` (boolean) " +
+    "plus `membership_tier` (raw enum) and `membership_tier_label` (e.g. `Professional`, `Partner`, " +
+    "`Leader`) when the org has a resolvable tier. Founding Member is orthogonal to tier — founding " +
+    "orgs typically display both. For private profiles these fields are absent.",
   tags: ["Authorization Lookups"],
   request: {
     query: z.object({
@@ -6046,12 +6048,14 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
 
       const profile = await memberDb.getProfileByDomain(domain);
 
-      // Membership tier is surfaced on the public response only when the
-      // profile owner has opted their member card into public visibility
-      // (`is_public=true`). Tier reflects billing state, so we don't leak it
-      // for private profiles even though slug/display_name are exposed for
-      // domain-keyed lookup. Profile owner controls visibility via the member
-      // card; we follow it here rather than introducing a second toggle.
+      // Membership tier and Founding Member status are surfaced on the
+      // public response only when the profile owner has opted their member
+      // card into public visibility (`is_public=true`). Tier reflects billing
+      // state, so we don't leak it for private profiles even though
+      // slug/display_name are exposed for domain-keyed lookup. Profile owner
+      // controls visibility via the member card; we follow it here rather
+      // than introducing a second toggle. Founding Member is orthogonal to
+      // tier — founding orgs typically display both badges.
       let memberTier: string | null = null;
       if (profile?.is_public && profile.workos_organization_id) {
         const profileOrg = await orgDb.getOrganization(profile.workos_organization_id);
@@ -6062,6 +6066,9 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         ? {
             slug: profile.slug,
             display_name: profile.display_name,
+            ...(profile.is_public
+              ? { is_founding_member: profile.is_founding_member === true }
+              : {}),
             ...(memberTier
               ? {
                   membership_tier: memberTier,

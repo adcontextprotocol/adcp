@@ -392,7 +392,10 @@ components:
               description: Raw AAO membership tier enum (e.g. `individual_professional`, `company_leader`). Present only when the profile owner has set their member card to public (`is_public=true`) AND the org has a resolvable tier. Absent for private profiles and for orgs without an active tier-bearing subscription.
             membership_tier_label:
               type: string
-              description: Human-readable label for `membership_tier` (e.g. `Professional`, `Leader`). Use this for UI display; the raw enum is for programmatic gating. Presence rules match `membership_tier`.
+              description: Human-readable label for `membership_tier` (e.g. `Professional`, `Partner`, `Leader`). Matches the AAO pricing page. Use this for UI display; the raw enum is for programmatic gating. Presence rules match `membership_tier`.
+            is_founding_member:
+              type: boolean
+              description: True when the profile owner carries the Founding Member badge (joined before the founding-cohort cutoff). Surfaced when the profile owner has set their member card to public (`is_public=true`). Absent for private profiles. Founding Member is orthogonal to tier — founding orgs typically display both (e.g. Scope3 shows `Partner` + `Founding Member`).
           description: AAO member that owns this agent record. The registry contains only agents that members have explicitly enrolled on their member profile.
         health:
           $ref: "#/components/schemas/AgentHealth"
@@ -663,7 +666,10 @@ components:
               description: Raw AAO membership tier enum (e.g. `individual_professional`, `company_leader`). Present only when the profile owner has set their member card to public (`is_public=true`) AND the org has a resolvable tier. Absent for private profiles and for orgs without an active tier-bearing subscription.
             membership_tier_label:
               type: string
-              description: Human-readable label for `membership_tier` (e.g. `Professional`, `Leader`). Use this for UI display; the raw enum is for programmatic gating. Presence rules match `membership_tier`.
+              description: Human-readable label for `membership_tier` (e.g. `Professional`, `Partner`, `Leader`). Matches the AAO pricing page. Use this for UI display; the raw enum is for programmatic gating. Presence rules match `membership_tier`.
+            is_founding_member:
+              type: boolean
+              description: True when the profile owner carries the Founding Member badge (joined before the founding-cohort cutoff). Surfaced when the profile owner has set their member card to public (`is_public=true`). Absent for private profiles. Founding Member is orthogonal to tier — founding orgs typically display both (e.g. Scope3 shows `Partner` + `Founding Member`).
         agent_count:
           type: integer
         last_validated:
@@ -699,7 +705,10 @@ components:
                     description: Raw AAO membership tier enum (e.g. `individual_professional`, `company_leader`). Present only when the profile owner has set their member card to public (`is_public=true`) AND the org has a resolvable tier. Absent for private profiles and for orgs without an active tier-bearing subscription.
                   membership_tier_label:
                     type: string
-                    description: Human-readable label for `membership_tier` (e.g. `Professional`, `Leader`). Use this for UI display; the raw enum is for programmatic gating. Presence rules match `membership_tier`.
+                    description: Human-readable label for `membership_tier` (e.g. `Professional`, `Partner`, `Leader`). Matches the AAO pricing page. Use this for UI display; the raw enum is for programmatic gating. Presence rules match `membership_tier`.
+                  is_founding_member:
+                    type: boolean
+                    description: True when the profile owner carries the Founding Member badge (joined before the founding-cohort cutoff). Surfaced when the profile owner has set their member card to public (`is_public=true`). Absent for private profiles. Founding Member is orthogonal to tier — founding orgs typically display both (e.g. Scope3 shows `Partner` + `Founding Member`).
             required:
               - url
         sales_agents_claiming:
@@ -721,7 +730,10 @@ components:
                     description: Raw AAO membership tier enum (e.g. `individual_professional`, `company_leader`). Present only when the profile owner has set their member card to public (`is_public=true`) AND the org has a resolvable tier. Absent for private profiles and for orgs without an active tier-bearing subscription.
                   membership_tier_label:
                     type: string
-                    description: Human-readable label for `membership_tier` (e.g. `Professional`, `Leader`). Use this for UI display; the raw enum is for programmatic gating. Presence rules match `membership_tier`.
+                    description: Human-readable label for `membership_tier` (e.g. `Professional`, `Partner`, `Leader`). Matches the AAO pricing page. Use this for UI display; the raw enum is for programmatic gating. Presence rules match `membership_tier`.
+                  is_founding_member:
+                    type: boolean
+                    description: True when the profile owner carries the Founding Member badge (joined before the founding-cohort cutoff). Surfaced when the profile owner has set their member card to public (`is_public=true`). Absent for private profiles. Founding Member is orthogonal to tier — founding orgs typically display both (e.g. Scope3 shows `Partner` + `Founding Member`).
             required:
               - url
       required:
@@ -748,7 +760,10 @@ components:
               description: Raw AAO membership tier enum (e.g. `individual_professional`, `company_leader`). Present only when the profile owner has set their member card to public (`is_public=true`) AND the org has a resolvable tier. Absent for private profiles and for orgs without an active tier-bearing subscription.
             membership_tier_label:
               type: string
-              description: Human-readable label for `membership_tier` (e.g. `Professional`, `Leader`). Use this for UI display; the raw enum is for programmatic gating. Presence rules match `membership_tier`.
+              description: Human-readable label for `membership_tier` (e.g. `Professional`, `Partner`, `Leader`). Matches the AAO pricing page. Use this for UI display; the raw enum is for programmatic gating. Presence rules match `membership_tier`.
+            is_founding_member:
+              type: boolean
+              description: True when the profile owner carries the Founding Member badge (joined before the founding-cohort cutoff). Surfaced when the profile owner has set their member card to public (`is_public=true`). Absent for private profiles. Founding Member is orthogonal to tier — founding orgs typically display both (e.g. Scope3 shows `Partner` + `Founding Member`).
         agents:
           type: array
           items:
@@ -816,7 +831,10 @@ components:
               description: Raw AAO membership tier enum (e.g. `individual_professional`, `company_leader`). Present only when the profile owner has set their member card to public (`is_public=true`) AND the org has a resolvable tier. Absent for private profiles and for orgs without an active tier-bearing subscription.
             membership_tier_label:
               type: string
-              description: Human-readable label for `membership_tier` (e.g. `Professional`, `Leader`). Use this for UI display; the raw enum is for programmatic gating. Presence rules match `membership_tier`.
+              description: Human-readable label for `membership_tier` (e.g. `Professional`, `Partner`, `Leader`). Matches the AAO pricing page. Use this for UI display; the raw enum is for programmatic gating. Presence rules match `membership_tier`.
+            is_founding_member:
+              type: boolean
+              description: True when the profile owner carries the Founding Member badge (joined before the founding-cohort cutoff). Surfaced when the profile owner has set their member card to public (`is_public=true`). Absent for private profiles. Founding Member is orthogonal to tier — founding orgs typically display both (e.g. Scope3 shows `Partner` + `Founding Member`).
         adagents_valid:
           type:
             - boolean
@@ -3397,7 +3415,7 @@ paths:
 
         **Response shape is auth-aware.** Anonymous callers see only `public` agents. Authenticated callers on an AAO membership tier with API access also see `members_only` agents. Profile owners (callers whose org owns the queried domain) additionally see `private` agents. This is the primary mechanism by which AAO membership unlocks deeper registry visibility.
 
-        **Member tier visibility.** When the profile owner has set their member card to public (`is_public=true`), the `member` object additionally carries `membership_tier` (raw enum) and `membership_tier_label` (e.g. `Professional`, `Leader`). For private profiles these fields are absent.
+        **Member level visibility.** When the profile owner has set their member card to public (`is_public=true`), the `member` object additionally carries `is_founding_member` (boolean) plus `membership_tier` (raw enum) and `membership_tier_label` (e.g. `Professional`, `Partner`, `Leader`) when the org has a resolvable tier. Founding Member is orthogonal to tier — founding orgs typically display both. For private profiles these fields are absent.
       tags:
         - Authorization Lookups
       parameters:
