@@ -14,7 +14,51 @@ Modify an existing media buy using PATCH semantics. Supports campaign-level and 
 
 `update_media_buy` operates on any `media_buy_id` returned by [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys), not just buys created via `create_media_buy`. Sales agents MUST NOT refuse updates on the basis that a buy was originally created outside AdCP (direct ad-server entry, legacy APIs, manual trafficking). Creation surface is not a supported axis of authorization; account ownership is.
 
-When a specific action is unsupported for a given buy for business reasons (contractual obligations, platform constraints, policy), the seller MUST omit only that action from `valid_actions` on the buy rather than silently rejecting the corresponding update. **Creation surface is not a business reason.** Sellers MUST NOT return `INVALID_STATE` on an otherwise-valid update against a non-AdCP-created buy, and MUST NOT return a buy with systematically empty `valid_actions` simply because it was booked outside AdCP — that pattern is indistinguishable from hiding the buy and violates the [Account Ownership vs. Creation Surface](/docs/media-buy/specification#account-ownership-vs-creation-surface) rule.
+When a specific action is unsupported for a given buy for business reasons (contractual obligations, platform constraints, policy), the seller MUST omit only that action from `valid_actions` (and the corresponding entry from `available_actions[]`) on the buy rather than silently rejecting the corresponding update. **Creation surface is not a business reason.** Sellers MUST NOT return `INVALID_STATE` on an otherwise-valid update against a non-AdCP-created buy, and MUST NOT return a buy with systematically empty `valid_actions` simply because it was booked outside AdCP — that pattern is indistinguishable from hiding the buy and violates the [Account Ownership vs. Creation Surface](/docs/media-buy/specification#account-ownership-vs-creation-surface) rule.
+
+## Action vocabulary and field mapping
+
+Buyers express intent through actions; the seller declares the actions available on each buy via the structured `available_actions[]` field (authoritative) and the flat `valid_actions[]` field (legacy, deprecated in 4.0). When both fields are present, consumers MUST prefer `available_actions[]` — it carries the resolved `mode`, optional `sla`, and optional `terms_ref` that the flat string array cannot represent. When a buyer issues an `update_media_buy` request, the seller maps the request's fields to one or more actions and rejects with `ACTION_NOT_ALLOWED` (carrying `attempted_action`, `reason`, and `currently_available_actions` in `error.details`) if any mapped action is not in the buy's resolved `available_actions[]`.
+
+The mapping is normative — sellers and SDKs MUST use this table to translate between request fields and action identifiers so the surface is consistent across implementations.
+
+| Action | update_media_buy fields | Notes |
+|--------|-------------------------|-------|
+| `pause` | `paused: true` |  |
+| `resume` | `paused: false` |  |
+| `cancel` | `canceled: true`, `cancellation_reason` | Irreversible |
+| `extend_flight` | `end_time`, `packages[].end_time` (later than current) | End-time push only |
+| `shorten_flight` | `end_time`, `packages[].end_time` (earlier than current) | End-time pull only |
+| `update_flight_dates` | `start_time`, `end_time`, `packages[].start_time`, `packages[].end_time` (shift) | Start-shift distinct from extend/shorten; covers both buy-level and package-level dates |
+| `increase_budget` | `packages[].budget` (raise) |  |
+| `decrease_budget` | `packages[].budget` (lower) | Sellers typically bound by already-spent |
+| `reallocate_budget` | `packages[].budget` (redistribute, aggregate unchanged) |  |
+
+The direction-of-change actions (`extend_flight` / `shorten_flight`, `increase_budget` / `decrease_budget` / `reallocate_budget`) share their `update_fields` paths; the action is determined by comparing the requested value against the buy's current state, not by which field is set. Server-side dispatch enforcement MUST diff request-vs-current to pick the right action and reject with `ACTION_NOT_ALLOWED` if the resolved action is not in the buy's `available_actions[]`.
+
+| `update_targeting` | `packages[].targeting_overlay`, `packages[].keyword_targets_add`, `packages[].keyword_targets_remove`, `packages[].negative_keywords_add`, `packages[].negative_keywords_remove` |  |
+| `update_pacing` | `packages[].pacing` |  |
+| `update_frequency_caps` | `packages[].targeting_overlay.frequency_cap` | Renegotiated mid-flight more often than other targeting. Field is singular `frequency_cap` (single rule), not plural. |
+| `replace_creative` | `packages[].creatives[]` swap (assignments unchanged) | Distinct AM workflow from changing assignment set |
+| `update_creative_assignments` | `packages[].creative_assignments` | Which creatives go where |
+| `remove_creative` | Creative omitted from `packages[].creatives[]` and/or `packages[].creative_assignments` on a replacement payload | Both arrays use replacement semantics, so removal is expressed by sending the desired post-state with the creative absent (no explicit delete primitive in 3.x). Time-sensitive; sellers SHOULD support self_serve removal even when add/swap require approval |
+| `add_packages` | `new_packages[]` |  |
+| `remove_packages` | `packages[].canceled: true` |  |
+
+The coarse legacy actions (`update_budget`, `update_dates`, `update_packages`, `sync_creatives`) cover the finer-grained vocabulary in a single value for sellers still emitting the 3.0 enum surface. Sellers SHOULD migrate to the finer set; the legacy values are removed in 4.0.
+
+### Action modes
+
+Each entry in `available_actions[]` carries a singular `mode` (resolved against the buy's current state). On the product-level `allowed_actions[]` template the field is `modes[]` (plural) because a product can offer multiple conditional modes (e.g. `self_serve` within tolerances, escalating to `requires_approval` outside).
+
+| Mode | Meaning |
+|------|---------|
+| `self_serve` | Seller honors the request synchronously |
+| `conditional_self_serve` | Auto-approves within tolerances, escalates outside them (programmatic guaranteed pattern) |
+| `requires_proposal` | Routes through `create_proposal` / `finalize_proposal`; buyer SDK expects a proposal task back |
+| `requires_approval` | Human-in-the-loop, async, no proposal artifact; buyer SDK polls or awaits webhook |
+
+Buyer SDKs MUST branch on `mode` to decide whether to expect a synchronous response, a proposal task, or an asynchronous approval callback.
 
 **PATCH Semantics**: Only specified fields are updated; omitted fields remain unchanged.
 
@@ -210,7 +254,8 @@ Configure automated delivery reporting for this media buy:
 | `revision` | Revision number after this update. Use in subsequent requests for optimistic concurrency. |
 | `implementation_date` | ISO 8601 timestamp when changes take effect (null if pending approval) |
 | `invoice_recipient` | Updated invoice recipient, echoed from request when provided. Confirms the seller accepted the billing override. Bank details are omitted (write-only). |
-| `valid_actions` | Actions the buyer can perform after this update. Saves a round-trip to `get_media_buys`. |
+| `valid_actions` | Flat-vocabulary actions the buyer can perform after this update. Saves a round-trip to `get_media_buys`. Deprecated in favor of `available_actions[]` and removed in 4.0. |
+| `available_actions` | Structured per-buy resolution of actions available after this update, each entry with action, resolved `mode`, optional `sla`, optional `terms_ref`. Authoritative — buyer SDKs SHOULD prefer this over `valid_actions` when both are present. |
 | `affected_packages` | Array of full Package objects showing complete state after update |
 
 ### Error Response

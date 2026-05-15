@@ -61,7 +61,7 @@
     },
     "new_packages": {
       "type": "array",
-      "description": "New packages to add to this media buy. Uses the same schema as create_media_buy packages. Sellers that support mid-flight package additions advertise add_packages in valid_actions. Sellers that do not support this MUST reject with UNSUPPORTED_FEATURE.",
+      "description": "New packages to add to this media buy. Uses the same schema as create_media_buy packages. Sellers that support mid-flight package additions advertise `add_packages` in both `valid_actions[]` (deprecated) and as an entry in `available_actions[]` (authoritative). Sellers that do not support this MUST reject with ACTION_NOT_ALLOWED (preferred) or UNSUPPORTED_FEATURE (legacy).",
       "items": {
         "$ref": "/schemas/media-buy/package-request.json"
       },

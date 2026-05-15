@@ -113,6 +113,15 @@
       "$ref": "/schemas/core/cancellation-policy.json",
       "description": "Cancellation terms for this product. Declares the minimum notice period required before cancellation takes effect and any penalties for insufficient notice. Relevant for guaranteed delivery products. Buyers accept these terms by creating a media buy against the product."
     },
+    "allowed_actions": {
+      "type": "array",
+      "description": "Actions buyers may perform on buys created against this product, scoped to statuses and modes. Advisory template — the authoritative per-buy capability is `available_actions[]` on the buy response, which resolves modes against current buy state, account tier, and negotiated terms. Buyers SHOULD use this for pre-flight product selection (\"which products let me self-serve cancel within 72hr?\") and read `available_actions[]` for runtime decisions. The array is uniquely keyed by `action` — sellers MUST NOT emit two entries with the same `action` value. Absence means the seller has not declared a structured action surface for this product — buyers fall back to `valid_actions[]` on buy responses for the flat string vocabulary.",
+      "items": {
+        "$ref": "/schemas/core/product-allowed-action.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
     "reporting_capabilities": {
       "$ref": "/schemas/core/reporting-capabilities.json"
     },
