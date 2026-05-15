@@ -756,6 +756,11 @@ registry.registerPath({
     "Authenticated callers on an AAO membership tier with API access also see `members_only` agents. " +
     "Profile owners (callers whose org owns the queried domain) additionally see `private` agents. " +
     "This is the primary mechanism by which AAO membership unlocks deeper registry visibility.\n\n" +
+    "**`scope` bucket filter.** Callers can opt INTO a single visibility bucket (or the full " +
+    "union) regardless of what their auth would otherwise unlock — useful for picker UIs that " +
+    "want exactly one slice (e.g. anonymous-equivalent, members-only catalog, owner's private " +
+    "drafts). `scope` only narrows; it never escalates (e.g. `scope=member` on an explorer or " +
+    "anonymous caller silently returns public only).\n\n" +
     "**Member level visibility.** When the profile owner has set their member card to public " +
     "(`is_public=true`), the `member` object additionally carries `is_founding_member` (boolean) " +
     "plus `membership_tier` (raw enum) and `membership_tier_label` (e.g. `Professional`, `Partner`, " +
@@ -765,6 +770,20 @@ registry.registerPath({
   request: {
     query: z.object({
       domain: z.string().openapi({ example: "pubmatic.com" }),
+      scope: z.enum(["public", "member", "private", "all"]).optional().openapi({
+        description:
+          "Visibility bucket filter for returned agents. One value per agent-visibility enum " +
+          "value plus a catch-all. Each bucket is still gated by auth — `scope` can only narrow, " +
+          "never escalate.\n\n" +
+          "- `public` → only `visibility=public` agents.\n" +
+          "- `member` → public + members_only (members_only is gated on caller's tier; anonymous " +
+          "or explorer-tier callers silently fall through to public-only rather than 403).\n" +
+          "- `private` → only `visibility=private`. Private agents are visible only to the profile " +
+          "owner; non-owners get an empty list.\n" +
+          "- Omitted or `all` → tier-aware full unlock: public + members_only for API-tier " +
+          "members + private for the profile owner.",
+        example: "member",
+      }),
     }),
   },
   responses: {
@@ -6080,11 +6099,36 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
 
       const callerOrgId = await resolveCallerOrgId(req);
 
-      let includeMembersOnly = false;
-      if (callerOrgId) {
+      // `scope` is a narrowing filter — it picks WHICH visibility buckets the
+      // caller wants, but each bucket is still gated by auth (it can never
+      // escalate). Four values, one per agent-visibility enum value plus a
+      // catch-all:
+      //   - `public`  → only visibility=public
+      //   - `member`  → public + members_only (members_only still tier-gated,
+      //                 so anonymous/explorer callers silently fall through to
+      //                 public only rather than 403'ing)
+      //   - `private` → only visibility=private (only the profile owner can
+      //                 see private agents; non-owners get an empty list)
+      //   - omitted / `all` → tier-aware full unlock (public + members_only
+      //                 for API-tier members + private for the profile owner)
+      const rawScope = (req.query.scope as string | undefined)?.toLowerCase();
+      const scope: 'public' | 'member' | 'private' | 'all' =
+        rawScope === 'public' || rawScope === 'member' || rawScope === 'private' || rawScope === 'all'
+          ? rawScope
+          : 'all';
+
+      // Which buckets the scope param asks for, before auth gating.
+      const scopeAllowsPublic = scope === 'public' || scope === 'member' || scope === 'all';
+      const scopeAllowsMembersOnly = scope === 'member' || scope === 'all';
+      const scopeAllowsPrivate = scope === 'private' || scope === 'all';
+
+      // Tier check is only worth running if the scope could plausibly admit
+      // members_only — otherwise the org lookup is wasted work.
+      let callerHasApiAccess = false;
+      if (scopeAllowsMembersOnly && callerOrgId) {
         const org = await orgDb.getOrganization(callerOrgId);
         if (org && hasApiAccess(resolveMembershipTier(org))) {
-          includeMembersOnly = true;
+          callerHasApiAccess = true;
         }
       }
 
@@ -6092,11 +6136,15 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
         callerOrgId && profile?.workos_organization_id && profile.workos_organization_id === callerOrgId
       );
 
+      const allowPublic = scopeAllowsPublic;
+      const allowMembersOnly = scopeAllowsMembersOnly && callerHasApiAccess;
+      const allowPrivate = scopeAllowsPrivate && isProfileOwner;
+
       const displayName = profile?.display_name || domain;
       const agentConfigs = (profile?.agents || []).filter(a => {
-        if (a.visibility === 'public') return true;
-        if (includeMembersOnly && a.visibility === 'members_only') return true;
-        if (isProfileOwner && a.visibility === 'private') return true;
+        if (allowPublic && a.visibility === 'public') return true;
+        if (allowMembersOnly && a.visibility === 'members_only') return true;
+        if (allowPrivate && a.visibility === 'private') return true;
         return false;
       }).slice(0, 20);
 
