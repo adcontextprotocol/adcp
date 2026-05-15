@@ -3445,6 +3445,8 @@ paths:
 
         **Response shape is auth-aware.** Anonymous callers see only `public` agents. Authenticated callers on an AAO membership tier with API access also see `members_only` agents. Profile owners (callers whose org owns the queried domain) additionally see `private` agents. This is the primary mechanism by which AAO membership unlocks deeper registry visibility.
 
+        **`scope` bucket filter.** Callers can opt INTO a single visibility bucket (or the full union) regardless of what their auth would otherwise unlock — useful for picker UIs that want exactly one slice (e.g. anonymous-equivalent, members-only catalog, owner's private drafts). `scope` only narrows; it never escalates (e.g. `scope=member` on an explorer or anonymous caller silently returns public only).
+
         **Member level visibility.** When the profile owner has set their member card to public (`is_public=true`), the `member` object additionally carries `is_founding_member` (boolean) plus `membership_tier` (raw enum) and `membership_tier_label` (e.g. `Professional`, `Partner`, `Leader`) when the org has a resolvable tier. Founding Member is orthogonal to tier — founding orgs typically display both. For private profiles these fields are absent.
       tags:
         - Authorization Lookups
@@ -3454,6 +3456,31 @@ paths:
             example: pubmatic.com
           required: true
           name: domain
+          in: query
+        - schema:
+            type: string
+            enum:
+              - public
+              - member
+              - private
+              - all
+            description: |-
+              Visibility bucket filter for returned agents. One value per agent-visibility enum value plus a catch-all. Each bucket is still gated by auth — `scope` can only narrow, never escalate.
+
+              - `public` → only `visibility=public` agents.
+              - `member` → public + members_only (members_only is gated on caller's tier; anonymous or explorer-tier callers silently fall through to public-only rather than 403).
+              - `private` → only `visibility=private`. Private agents are visible only to the profile owner; non-owners get an empty list.
+              - Omitted or `all` → tier-aware full unlock: public + members_only for API-tier members + private for the profile owner.
+            example: member
+          required: false
+          description: |-
+            Visibility bucket filter for returned agents. One value per agent-visibility enum value plus a catch-all. Each bucket is still gated by auth — `scope` can only narrow, never escalate.
+
+            - `public` → only `visibility=public` agents.
+            - `member` → public + members_only (members_only is gated on caller's tier; anonymous or explorer-tier callers silently fall through to public-only rather than 403).
+            - `private` → only `visibility=private`. Private agents are visible only to the profile owner; non-owners get an empty list.
+            - Omitted or `all` → tier-aware full unlock: public + members_only for API-tier members + private for the profile owner.
+          name: scope
           in: query
       responses:
         "200":
