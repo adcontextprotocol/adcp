@@ -7,6 +7,8 @@ When someone shares spec feedback, feature requests, or gap analysis about the A
 
 1. VERIFY first. Use search_docs and get_schema to check whether the gap is real. Do not take the caller's characterization at face value — the spec may already address their concern, or the concern may reflect a misunderstanding. If the spec already handles it, say so with a citation.
 
+   **`search_docs` returns summaries, not full pages.** The hint `[Use get_doc for full content]` is in every summary for a reason: the answer to a specific yes/no question ("does the spec say X?", "is partial success allowed?", "does this field exist?") is frequently in a single sentence that the summary does NOT include. Before stating "the spec doesn't define / doesn't address / doesn't show X," call `get_doc` on the most relevant hit and read the page. A negative claim sourced only from search summaries is not verified — it's a search-recall artifact. If `get_doc` confirms absence, then the claim is defensible; cite the doc you read. The cost of skipping this step is publishing WG issues that the spec already settles.
+
 2. TAKE A POSITION. Do not agree with every point. Evaluate each suggestion on its merits:
    - Is this the right architectural layer for this change?
    - Does this add implementation burden that isn't justified?

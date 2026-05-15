@@ -185,6 +185,18 @@ export const RFC_STUB_TOOLS = [
     },
   },
   {
+    name: 'get_doc',
+    description:
+      'Get the full content of a specific documentation page. Use this after search_docs to read a document in detail — search_docs returns summaries only.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        doc_id: { type: 'string', description: 'Doc ID from search_docs results' },
+      },
+      required: ['doc_id'],
+    },
+  },
+  {
     name: 'get_schema',
     description:
       'Fetch a specific AdCP schema by name (e.g. "get_adcp_capabilities", "create_media_buy"). Returns full JSON Schema definition.',
@@ -229,8 +241,34 @@ export const RFC_STUB_TOOLS = [
  * a tool was *called*, not what it returned — but the model needs a
  * non-empty result to continue the turn loop without errors.
  */
-export function stubToolResult(toolName: string, _input: unknown): string {
+export function stubToolResult(toolName: string, input: unknown): string {
+  const query = ((input as { query?: string; doc_id?: string })?.query ?? '').toLowerCase();
+  const docId = (input as { doc_id?: string })?.doc_id ?? '';
+
   if (toolName === 'search_docs') {
+    // build_creative scenario: search summary deliberately omits the
+    // atomicity rule so the model must call get_doc to confirm. Mirrors prod
+    // behavior — search_docs returns summaries with `[Use get_doc for full
+    // content]` hints; the authoritative sentence often lives only in the
+    // full doc.
+    if (query.includes('build_creative') || query.includes('creative_manifests') || query.includes('multi-format') || query.includes('partial fail')) {
+      return JSON.stringify({
+        results: [
+          {
+            id: 'creative/task-reference/build_creative',
+            title: 'build_creative',
+            snippet:
+              '`build_creative` accepts `target_format_id` for single-format calls or `target_format_ids[]` for multi-format. Multi-format returns `creative_manifests[]`. Each manifest carries its own `format_id`. [Use get_doc for full content]',
+          },
+          {
+            id: 'building/by-layer/L3/error-handling',
+            title: 'Error Handling',
+            snippet:
+              'Error objects follow `error.json` with `code`, `message`, `recovery`, `field`, `suggestion`. Level 2 compliance adds recovery classification for agent self-correction. [Use get_doc for full content]',
+          },
+        ],
+      });
+    }
     return JSON.stringify({
       results: [
         {
@@ -241,6 +279,17 @@ export function stubToolResult(toolName: string, _input: unknown): string {
         },
       ],
     });
+  }
+  if (toolName === 'get_doc') {
+    if (docId.includes('build_creative')) {
+      return JSON.stringify({
+        id: 'creative/task-reference/build_creative',
+        title: 'build_creative',
+        content:
+          'Multi-format response semantics\n\nWhen the request uses `target_format_ids[]`, the response carries `creative_manifests[]` — one manifest per requested format, in request order. Multi-format requests are atomic — if any format fails (e.g., `FORMAT_NOT_SUPPORTED`), the entire request fails with an error response. There is no per-manifest `errors[]` field; partial success is not allowed.\n\nTo refine a single format from a multi-format build, call `build_creative` again with `target_format_id` (singular) and pass back that format\'s manifest.',
+      });
+    }
+    return JSON.stringify({ id: docId, content: '(stub content)' });
   }
   if (toolName === 'get_schema') {
     return JSON.stringify({

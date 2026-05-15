@@ -262,6 +262,26 @@ const scenarios: Scenario[] = [
     },
   },
   {
+    name: 'RFC: build_creative multi-format partial failure (Vid Križnar, #4556)',
+    who: 'Vid Križnar',
+    message:
+      "Does the adcp build_creative protocol define how the server responds when something goes wrong, and what went wrong for each creative the agent tried to build via creative_manifest with multiple creatives to build in a single iteration? Like a warning/error property on each creative_manifest item in the response?",
+    source: 'dm',
+    prodBehavior:
+      "Web-Addie searched docs, got summaries marked `[Use get_doc for full content]`, never called get_doc, hedged 'the docs I just pulled don't show whether each manifest item carries its own errors[]', and drafted issue #4556 — which the spec already settles. build_creative.mdx:304 states multi-format requests are atomic.",
+    expectedBehavior:
+      'RESPOND — call search_docs AND follow up with get_doc on the build_creative page; cite the atomicity rule; push back on the partial-failure framing rather than drafting a clarification issue.',
+    category: 'rfc',
+    rfc: {
+      expectedToolSets: ['knowledge'],
+      // get_doc is the new requirement: search summaries omit the atomicity
+      // sentence, so a verified answer requires a full-doc read.
+      expectedToolCalls: ['search_docs', 'get_doc'],
+      expectedFieldCitations: ['atomic', 'atomicity', 'entire request fails', 'all formats'],
+      shouldRefusePremise: true,
+    },
+  },
+  {
     name: 'RFC: brand.json verification',
     who: 'Jeffrey Mayer (DanAds)',
     message:
