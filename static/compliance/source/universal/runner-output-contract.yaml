@@ -61,14 +61,17 @@ authored_check_kinds:
   - upstream_traffic
 
 # Cross-response check kinds — applied across the response set of a
-# step that dispatches multiple parallel requests under the
-# `parallel_dispatch_runner` contract. These kinds are NOT applicable
-# to single-dispatch steps: a runner that applies them per-response
-# produces nonsense (a single response trivially has cardinality 1
-# on any field). Runners MUST gate dispatch of these checks on the
-# step declaring `requires_contract: parallel_dispatch_runner` and a
-# `parallel_dispatch` block; otherwise grade the validation
-# `not_applicable` per the forward-compat clause.
+# step that dispatches multiple requests under a runner contract that
+# produces a structured multi-response observation, today either
+# `parallel_dispatch_runner` (N parallel dispatches with the same
+# idempotency_key) or `rate_limit_trip_runner` (sequential burst +
+# replay). These kinds are NOT applicable to single-dispatch steps: a
+# runner that applies them per-response produces nonsense (a single
+# response trivially has cardinality 1 on any field). Runners MUST gate
+# dispatch of these checks on the step declaring the appropriate
+# `requires_contract:` and its accompanying parameter block
+# (`parallel_dispatch:` or `rate_limit_trip:`); otherwise grade the
+# validation `not_applicable` per the forward-compat clause.
 #
 # The `lint-storyboard-check-enum.cjs` lint reads BOTH this list and
 # `authored_check_kinds` as the canonical published-time enum, so
@@ -76,6 +79,7 @@ authored_check_kinds:
 cross_response_check_kinds:
   - cross_response_field_equal
   - cross_response_count_distinct
+  - replay_not_cached_rate_limit
 
 # Conforming implementation: adcp-client PR #611
 # (src/lib/testing/storyboard/types.ts — RunnerRequestRecord,

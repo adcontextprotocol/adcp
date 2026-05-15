@@ -69,16 +69,22 @@ narrative: |
   validates the supported: true behavior; sellers declaring supported: false
   MUST skip this storyboard (they have no replay window to test).
 
-  **Cache-growth defense (MUST, not yet runtime-graded).** Per
+  **Cache-growth defense (partial runtime grading).** Per
   security.mdx bullet 8 on the idempotency section, sellers MUST apply per-agent
   rate limits on idempotency-cache inserts and MUST return RATE_LIMITED when the
   per-agent insert rate exceeds the configured ceiling. The recommended
   first-deployment ceiling is 60 inserts/sec sustained per agent (3,600/min)
   with burst allowance to 300/sec over rolling 10-second windows. This storyboard
-  does not yet drive the high-volume burst that would exercise the ceiling —
-  runtime grading is tracked as a follow-up once a burst-runner test-kit
-  contract is defined. Sellers SHOULD self-attest to this requirement until the
-  runtime phase lands.
+  does NOT attest the threshold itself — burst-volume measurement is
+  structurally non-deterministic in CI (runner CPU, network jitter, agent
+  cold-start) and better evaluated via operator-side load testing. What it
+  DOES attest, via the `rate_limit_replay_invariant` phase below, is the
+  invariant that matters most for client safety: a `RATE_LIMITED` response on
+  insert MUST NOT be cached as the canonical idempotency replay for that
+  key. Otherwise a client retrying past `retry_after` receives the cached
+  rate-limit error forever, defeating the point of `retry_after`. The
+  threshold (60/300 req/sec) remains seller self-attestation pending
+  operator-side tooling.
 
 agent:
   interaction_model: media_buy_seller
@@ -738,3 +744,118 @@ phases:
             path: "context.correlation_id"
             value: "idempotency--get_media_buys_dedup_check"
             description: "Context correlation_id returned unchanged"
+
+  - id: rate_limit_replay_invariant
+    title: "RATE_LIMITED responses are not cached as idempotency replays"
+    narrative: |
+      Per L1/security.mdx#idempotency rule 3 ("Only successful responses
+      are cached") and bullet 8 (insert-rate ceiling): when the seller's
+      idempotency-cache insert-rate limiter trips and a request receives
+      `RATE_LIMITED`, the response MUST NOT be cached as the canonical
+      replay for that idempotency_key. A buyer retrying with the same key
+      after `error.details.retry_after` elapses MUST observe the real
+      handler result (success or a state-dependent error) — not a cached
+      rate-limit response that would persist for the entire replay TTL.
+
+      Without this invariant, `retry_after` is a meaningless signal: a
+      buyer who hits the limiter once would receive the cached
+      `RATE_LIMITED` on every subsequent retry until the replay window
+      expires, regardless of when the limiter actually cleared. The
+      invariant collapses a real client-safety regression into a
+      cross-response check.
+
+      This phase runs the `expect_rate_limit_not_replayed` task via the
+      `rate_limit_trip_runner` contract. The runner drives a sequential
+      fresh-key burst against `create_media_buy` until one request receives
+      `RATE_LIMITED`, captures that request's `idempotency_key`, waits the
+      response's `retry_after` seconds, then re-submits the captured key
+      with the same payload. The cross-response check
+      `replay_not_cached_rate_limit` fails if the replay response carries
+      `error.code = RATE_LIMITED` (i.e., the cached rate-limit was served
+      as the replay).
+
+      Runners without `rate_limit_trip_runner` skip this phase with a
+      stable `not_applicable` marker. Runners with the contract that
+      exhaust `max_attempts` without observing `RATE_LIMITED` also grade
+      `not_applicable` (reason: `rate_limit_not_triggered`) — a sandbox
+      limiter sitting above the contract's burst ceiling is not a seller
+      conformance fault, only a configuration choice that prevents the
+      invariant from being verified end-to-end.
+
+      The 60/300 req/sec ceiling itself is NOT attested here. Burst-volume
+      measurement is structurally non-deterministic in CI environments and
+      remains seller self-attestation per the cache-growth-defense note
+      above.
+
+    steps:
+      - id: expect_rate_limit_not_replayed
+        title: "Trip the limiter, replay the key after retry_after, assert the cached response is not RATE_LIMITED"
+        narrative: |
+          The runner fires up to `max_attempts` sequential `create_media_buy`
+          requests with fresh UUID v4 idempotency_keys and otherwise-identical
+          canonical payloads. On the first response with envelope error_code
+          = `RATE_LIMITED`, the runner captures the request's
+          `idempotency_key` and the response's `error.details.retry_after`,
+          waits that long (capped by `replay_max_wait_seconds`), and
+          re-submits the captured key with the same payload but a distinct
+          `context.correlation_id` for traceability.
+
+          The cross-response `replay_not_cached_rate_limit` check compares
+          `trip_response.error.code` against `replay_response.error.code`
+          (when the replay carries an error envelope) or against the absence
+          of error (when the replay carries a success envelope). The check
+          fails iff both responses carry `error.code = RATE_LIMITED` — that
+          is the cached-replay regression. Any other replay response shape
+          passes the invariant: either the handler succeeded (the seller
+          correctly re-executed against the cleared budget), or the handler
+          returned a different error (the seller correctly re-executed and
+          a state-dependent error fired).
+
+          The `trip_target_sample_request` below intentionally uses a
+          minimal `create_media_buy` payload — the goal of the burst is to
+          generate insert-rate pressure on the idempotency cache, not to
+          exercise the create flow itself. The replay payload is byte-
+          identical to the trip request to keep the canonical hash stable.
+        task: expect_rate_limit_not_replayed
+        requires_contract: rate_limit_trip_runner
+        rate_limit_trip:
+          trip_target_task: create_media_buy
+          max_attempts: 200
+          replay_max_wait_seconds: 30
+          trip_target_sample_request:
+            account:
+              brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+            brand:
+              domain: "acmeoutdoor.example"
+            start_time: "2026-07-01T00:00:00Z"
+            end_time: "2026-07-31T23:59:59Z"
+            packages:
+              - product_id: "test-product"
+                budget: 5000
+                pricing_option_id: "test-pricing"
+            context:
+              correlation_id: "idempotency--rate_limit_trip_request"
+        expected: |
+          One of two outcomes:
+
+          - At least one burst request returns `RATE_LIMITED`. The runner
+            captures the request's idempotency_key, waits the response's
+            retry_after, replays the captured key, and the replay response
+            does NOT carry `error.code = RATE_LIMITED`. The
+            `replay_not_cached_rate_limit` check passes.
+
+          - All `max_attempts` requests complete without producing
+            `RATE_LIMITED`. The step grades `not_applicable` with reason
+            `rate_limit_not_triggered`. The rest of the storyboard is
+            unaffected.
+
+        validations:
+          - check: replay_not_cached_rate_limit
+            description: "RATE_LIMITED response on rate-limit trip was not cached as the idempotency replay for the same key"
+
+        reviewer_checks:
+          - "Confirm the seller's idempotency-cache implementation explicitly excludes RATE_LIMITED (and other transient-error) responses from the cached-replay path. Review the storage layer or runbook describing which response classes are persisted under idempotency_key."
+          - "Confirm the seller's RATE_LIMITED response carries a usable retry_after value (seconds, integer, > 0, ≤ a documented ceiling). A seller that returns retry_after values larger than buyers' realistic retry windows produces unusable rate-limit signaling."
+          - "Confirm the seller's rate-limit budget is scoped per (authenticated_agent, account) tuple — not shared across all agents or accounts globally — so one agent's burst cannot exhaust another's budget."

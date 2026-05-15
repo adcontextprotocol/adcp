@@ -1767,6 +1767,42 @@
 #   http_status | content_type | size_exceeded | redirect_returned |
 #   ssrf_blocked | fetch_timeout).
 #
+# task: expect_rate_limit_not_replayed
+#   Assert that a `RATE_LIMITED` response on idempotency-cache insert MUST NOT
+#   be cached as the canonical replay for that idempotency_key, per
+#   L1/security.mdx#idempotency rule 3 ("Only successful responses are cached")
+#   and bullet 8 (insert-rate ceiling). The runner drives a sequential fresh-
+#   key burst against the named mutating-op target until a RATE_LIMITED
+#   response appears, then re-submits the same idempotency_key after waiting
+#   `error.details.retry_after` seconds. The cross-step assertion fails if the
+#   replay returned the cached RATE_LIMITED response shape.
+#
+#   When `max_attempts` requests complete without producing a RATE_LIMITED
+#   response, the step grades as `not_applicable` with reason
+#   `rate_limit_not_triggered` — a seller's sandbox limiter may legitimately
+#   sit above the contract's burst ceiling. Runner delegates the burst,
+#   wait, and replay mechanics to the `@adcp/client` RateLimitTripObserver
+#   primitive (see test-kit rate-limit-trip-runner.yaml).
+#
+#   Fields:
+#     rate_limit_trip:
+#       trip_target_task: "<task name, e.g. create_media_buy>"
+#                                       # the mutating-op the burst targets
+#       trip_target_sample_request: { ... }
+#                                       # full canonical request body; the runner
+#                                       # rewrites `idempotency_key` per attempt
+#                                       # and on the replay reuses the captured key
+#       max_attempts: 200               # 50–500; see test-kit max_attempts bounds
+#       replay_max_wait_seconds: 30     # optional; caps the post-trip wait. Sellers
+#                                       # returning retry_after > this fail with
+#                                       # `replay_wait_exceeded` rather than the
+#                                       # invariant itself.
+#     requires_contract: rate_limit_trip_runner
+#
+#   Error modes: rate_limit_response_cached_as_replay,
+#   missing_retry_after, replay_wait_exceeded, rate_limit_not_triggered
+#   (the not_applicable case, surfaced for runner output transparency).
+#
 # --- shared_receiver (deferred / out of scope v1) ---
 #
 # Storyboards with multiple webhook-triggering steps MUST use per-step receiver
