@@ -33,12 +33,15 @@ The mapping is normative — sellers and SDKs MUST use this table to translate b
 | `increase_budget` | `packages[].budget` (raise) |  |
 | `decrease_budget` | `packages[].budget` (lower) | Sellers typically bound by already-spent |
 | `reallocate_budget` | `packages[].budget` (redistribute, aggregate unchanged) |  |
+
+The direction-of-change actions (`extend_flight` / `shorten_flight`, `increase_budget` / `decrease_budget` / `reallocate_budget`) share their `update_fields` paths; the action is determined by comparing the requested value against the buy's current state, not by which field is set. Server-side dispatch enforcement MUST diff request-vs-current to pick the right action and reject with `ACTION_NOT_ALLOWED` if the resolved action is not in the buy's `available_actions[]`.
+
 | `update_targeting` | `packages[].targeting_overlay`, `packages[].keyword_targets_add`, `packages[].keyword_targets_remove`, `packages[].negative_keywords_add`, `packages[].negative_keywords_remove` |  |
 | `update_pacing` | `packages[].pacing` |  |
 | `update_frequency_caps` | `packages[].targeting_overlay.frequency_cap` | Renegotiated mid-flight more often than other targeting. Field is singular `frequency_cap` (single rule), not plural. |
 | `replace_creative` | `packages[].creatives[]` swap (assignments unchanged) | Distinct AM workflow from changing assignment set |
 | `update_creative_assignments` | `packages[].creative_assignments` | Which creatives go where |
-| `remove_creative` | Creative removed from `packages[].creatives[]` or `creative_assignments` | Time-sensitive; sellers SHOULD support self_serve removal even when add/swap require approval |
+| `remove_creative` | Creative omitted from `packages[].creatives[]` and/or `packages[].creative_assignments` on a replacement payload | Both arrays use replacement semantics, so removal is expressed by sending the desired post-state with the creative absent (no explicit delete primitive in 3.x). Time-sensitive; sellers SHOULD support self_serve removal even when add/swap require approval |
 | `add_packages` | `new_packages[]` |  |
 | `remove_packages` | `packages[].canceled: true` |  |
 

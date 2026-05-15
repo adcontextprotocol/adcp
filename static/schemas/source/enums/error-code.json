@@ -410,7 +410,7 @@
     },
     "ACTION_NOT_ALLOWED": {
       "recovery": "correctable",
-      "suggestion": "branch on error.details.reason: for wrong_status, wait for or transition to a status listed under the action's allowed_statuses; for mode_mismatch, re-issue via the flow named in available_actions[<action>].mode (e.g. through the proposal lifecycle for requires_proposal); for not_supported_on_product or not_supported_on_buy, do not retry — the action is unavailable on this buy and buyer must select a different product or renegotiate"
+      "suggestion": "branch on error.details.reason: for wrong_status, wait for or transition to a status listed under the action's allowed_statuses; for mode_mismatch, this is a flow switch (not a retry against update_media_buy) — re-issue through the flow named in available_actions[<action>].mode (call create_proposal/finalize_proposal for requires_proposal; await the seller's webhook for requires_approval); for not_supported_on_product or not_supported_on_buy, do not retry — the action is unavailable on this buy and buyer must select a different product or renegotiate"
     }
   }
 }

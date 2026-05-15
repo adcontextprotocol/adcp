@@ -14,6 +14,6 @@
     "wrong_status": "The action is supported by the product and the buy, but the buy's current status does not permit it. Recovery: transition the buy to an allowed status (or wait for one) before retrying.",
     "not_supported_on_product": "The product does not declare this action in its `allowed_actions[]`. Recovery: not retryable on this buy. Buyer must select a different product for future buys requiring this action.",
     "not_supported_on_buy": "The product would permit the action in general but the specific buy was negotiated without this capability (account tier, IO terms, or buy-level override). Recovery: not retryable; renegotiate buy terms.",
-    "mode_mismatch": "The action is available but only in a mode the buyer's request did not satisfy (for example, a mutation that requires a proposal was issued as a direct update). Recovery: re-issue the request through the appropriate flow indicated by `available_actions[<action>].mode`."
+    "mode_mismatch": "The action is available but only in a mode the buyer's request did not satisfy (for example, a mutation that requires a proposal was issued as a direct update). Recovery is a flow switch, not a retry against the same task: re-issue through the appropriate flow indicated by `available_actions[<action>].mode` (e.g. call `create_proposal` / `finalize_proposal` for `requires_proposal`; wait for the seller's webhook for `requires_approval`)."
   }
 }
