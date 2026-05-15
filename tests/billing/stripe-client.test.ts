@@ -1187,6 +1187,131 @@ describe('stripe-client', () => {
     });
   });
 
+  describe('getPendingInvoices', () => {
+    // Issue #4564: abandoned subscription attempts leave $0 / no-line-item drafts
+    // on the Stripe customer. Surfacing them as "pending invoice" confuses members
+    // (Rishi @ InMobi, 2026-05-14). Filter them out, but keep real drafts (with
+    // line items + amount) and all `open` invoices.
+    test('drops empty draft invoices (no line items or zero amount)', async () => {
+      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+
+      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
+      const listMock = vi.fn<any>().mockImplementation(({ status }: { status: string }) => {
+        if (status === 'open') return { data: [] };
+        return {
+          data: [
+            // Empty draft — no line items. Must be filtered out.
+            {
+              id: 'in_empty',
+              status: 'draft',
+              amount_due: 0,
+              currency: 'usd',
+              created: 1700000000,
+              due_date: null,
+              hosted_invoice_url: null,
+              customer_email: 'r@example.com',
+              lines: { data: [] },
+            },
+            // Real draft — has product + amount. Must survive.
+            {
+              id: 'in_real',
+              status: 'draft',
+              amount_due: 5000000,
+              currency: 'usd',
+              created: 1700000000,
+              due_date: null,
+              hosted_invoice_url: null,
+              customer_email: 'r@example.com',
+              lines: { data: [{ price: { product: { name: 'Leader' } } }] },
+            },
+          ],
+        };
+      });
+      const mockStripeInstance = {
+        invoices: { list: listMock },
+        products: { retrieve: vi.fn() },
+      };
+      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+
+      const { getPendingInvoices } = await import('../../server/src/billing/stripe-client.js');
+      const result = await getPendingInvoices('cus_x');
+
+      expect(result.map(r => r.id)).toEqual(['in_real']);
+    });
+
+    test('drops a draft that has a non-zero amount_due but no line items', async () => {
+      // Locks down the AND semantics of the filter: both conditions must
+      // hold. A draft with amount but no lines is still not actionable —
+      // there's nothing for Stripe to invoice — and should not surface.
+      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+
+      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
+      const listMock = vi.fn<any>().mockImplementation(({ status }: { status: string }) => {
+        if (status === 'open') return { data: [] };
+        return {
+          data: [{
+            id: 'in_phantom_amount',
+            status: 'draft',
+            amount_due: 1000,
+            currency: 'usd',
+            created: 1700000000,
+            due_date: null,
+            hosted_invoice_url: null,
+            customer_email: 'r@example.com',
+            lines: { data: [] },
+          }],
+        };
+      });
+      const mockStripeInstance = {
+        invoices: { list: listMock },
+        products: { retrieve: vi.fn() },
+      };
+      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+
+      const { getPendingInvoices } = await import('../../server/src/billing/stripe-client.js');
+      const result = await getPendingInvoices('cus_x');
+
+      expect(result).toEqual([]);
+    });
+
+    test('keeps open invoices regardless of amount/line state', async () => {
+      // Stripe `open` invoices have already been finalized + sent. Even an
+      // edge-case open invoice with a $0 balance (e.g. fully refunded) is
+      // legitimate state that the UI needs to render.
+      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+
+      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
+      const listMock = vi.fn<any>().mockImplementation(({ status }: { status: string }) => {
+        if (status === 'open') {
+          return {
+            data: [{
+              id: 'in_open',
+              status: 'open',
+              amount_due: 0,
+              currency: 'usd',
+              created: 1700000000,
+              due_date: null,
+              hosted_invoice_url: 'https://invoice.example/x',
+              customer_email: 'r@example.com',
+              lines: { data: [] },
+            }],
+          };
+        }
+        return { data: [] };
+      });
+      const mockStripeInstance = {
+        invoices: { list: listMock },
+        products: { retrieve: vi.fn() },
+      };
+      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+
+      const { getPendingInvoices } = await import('../../server/src/billing/stripe-client.js');
+      const result = await getPendingInvoices('cus_x');
+
+      expect(result.map(r => r.id)).toEqual(['in_open']);
+    });
+  });
+
   describe('buildOrgCouponName', () => {
     test('keeps short org names intact', async () => {
       const { buildOrgCouponName } = await import('../../server/src/billing/stripe-client.js');

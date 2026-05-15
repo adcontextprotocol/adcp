@@ -1963,14 +1963,11 @@ export class HTTPServer {
       const query = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
       res.redirect(301, `/account${query}`);
     });
-    this.app.get('/dashboard/membership', (req, res) => {
-      const query = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
-      res.redirect(301, `/organization${query}#membership`);
-    });
-    // Redirect old billing path to new membership path
+    this.app.get('/dashboard/membership', (req, res) => serveDashboardPage(req, res, 'dashboard-membership.html'));
+    // Redirect old billing path to membership path
     this.app.get('/dashboard/billing', (req, res) => {
       const query = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
-      res.redirect(301, `/organization${query}#membership`);
+      res.redirect(301, `/dashboard/membership${query}`);
     });
     this.app.get('/dashboard/emails', (req, res) => {
       const query = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';

@@ -980,6 +980,68 @@ export function createPublicBillingRouter(): Router {
     }
   );
 
+  // PUT /api/organizations/:orgId/billing-address - Update org billing address standalone
+  // (no agreement gate, no invoice creation). Lets members set/edit their billing
+  // address from the membership page without going through the full invoice flow.
+  router.put(
+    "/organizations/:orgId/billing-address",
+    requireAuth,
+    async (req: Request, res: Response) => {
+      try {
+        const user = req.user!;
+        const { orgId } = req.params;
+        const sanitized = sanitizeBillingAddress(req.body);
+        if (!sanitized) {
+          return res.status(400).json({
+            error: "Incomplete billing address",
+            message:
+              "Please provide line1, city, state, postal_code, and country (each ≤ 200 chars)",
+          });
+        }
+
+        const org = await orgDb.getOrganization(orgId);
+        if (!org) {
+          return res.status(404).json({
+            error: "Organization not found",
+            message: "The requested organization does not exist",
+          });
+        }
+
+        const isDevUserBilling =
+          isDevModeEnabled() &&
+          Object.values(DEV_USERS).some((du) => du.id === user.id) &&
+          orgId.startsWith("org_dev_");
+        if (!isDevUserBilling) {
+          const memberships = await workos!.userManagement.listOrganizationMemberships({
+            userId: user.id,
+            organizationId: orgId,
+          });
+          if (memberships.data.length === 0) {
+            return res.status(403).json({
+              error: "Access denied",
+              message: "You are not a member of this organization",
+            });
+          }
+        }
+
+        await orgDb.updateOrganization(orgId, { billing_address: sanitized });
+
+        logger.info(
+          { orgId, userId: user.id },
+          "Updated organization billing address",
+        );
+
+        res.json({ success: true, billing_address: sanitized });
+      } catch (error) {
+        logger.error({ err: error }, "Update billing address error:");
+        res.status(500).json({
+          error: "Failed to update billing address",
+          message: "An unexpected error occurred. Please try again.",
+        });
+      }
+    },
+  );
+
   // GET /api/user/escalations - Get escalations for the authenticated user
   router.get(
     "/user/escalations",
