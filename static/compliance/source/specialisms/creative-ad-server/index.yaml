@@ -343,12 +343,14 @@ phases:
 
           Agents that bill through AdCP verify the rate and return accepted: 1
           with empty errors. Agents that bill out of band return accepted: 0 and
-          populate errors with a field pointing at the offending record (e.g.
-          `usage[0].pricing_option_id`) and a human-readable message. Don't
-          fake-accept records you won't bill on — silent acceptance breaks
-          reconciliation for buyers who trust the response. A standard error
-          code for "billing is handled out of band" is not yet defined in the
-          spec; vendor codes are fine today.
+          populate errors with code `BILLING_OUT_OF_BAND`, a `field` pointing at
+          the offending record (e.g. `usage[0]` or `usage[0].pricing_option_id`),
+          and a human-readable message. Don't fake-accept records you won't bill
+          on — silent acceptance breaks reconciliation for buyers who trust the
+          response. Buyers SHOULD pre-filter by reading
+          `capabilities.creative.bills_through_adcp` from `get_adcp_capabilities`
+          before calling `report_usage`; agents that have not yet declared the
+          capability stay in the probe-to-discover mode.
         task: report_usage
         schema_ref: "account/report-usage-request.json"
         response_schema_ref: "account/report-usage-response.json"

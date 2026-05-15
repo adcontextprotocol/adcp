@@ -31,6 +31,11 @@
       "target_version": "3.1",
       "note": "From sync_accounts billing coverage (#3831). Adjacent to but distinct from 3.0.x's ACCOUNT_PAYMENT_REQUIRED (which signals payment due on an existing account); BILLING_NOT_SUPPORTED signals the seller doesn't support the requested billing arrangement. Not a rename. Held for 3.1."
     },
+    "BILLING_OUT_OF_BAND": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.1",
+      "note": "Creative-agent report_usage rejection for accounts that bill via a non-AdCP channel (flat license, SaaS contract, bundled enterprise). Pairs with capabilities.creative.bills_through_adcp pre-call discriminator (#2881). Distinct from BILLING_NOT_SUPPORTED (per-value rejection on a billable account) — this signals the whole billing surface is offline. Wire change — held for 3.1."
+    },
     "BRAND_REQUIRED": {
       "disposition": "held-for-next-minor",
       "target_version": "3.1",
