@@ -10,6 +10,7 @@ required_tools:
   - sync_catalogs
   - sync_creatives
   - sync_event_sources
+  - preview_creative
 
 # Cross-step assertion (adcp#2664). status.monotonic rejects resource
 # status transitions observed across steps that aren't on the spec
@@ -331,10 +332,10 @@ phases:
       dynamic showcase) are platform-specific refinements tracked as follow-ups on
       #2640; the AdCP-native format is the interop baseline.
 
-      Runtime substitution-safety checks (that the emitted tracker URLs percent-encode
-      the macro values per `docs/creative/universal-macros#substitution-safety-catalog-item-macros`)
-      require the substitution-observer contract tracked in #2638; phases gated on
-      that contract activate when runners advertise it.
+      Runtime substitution-safety — assertion that emitted tracker URLs percent-encode
+      catalog-item macro values per `docs/creative/universal-macros#substitution-safety-catalog-item-macros` —
+      runs in the separate `catalog_substitution_safety` phase below, gated on the
+      `substitution_observer_runner` test-kit contract.
 
     steps:
       - id: sync_product_catalog
@@ -455,6 +456,243 @@ phases:
             path: "context.correlation_id"
             value: "sales_social--sync_dpa_creative"
             description: "Context correlation_id returned unchanged"
+  - id: catalog_substitution_safety
+    title: "Catalog-item macro substitution safety"
+    narrative: |
+      Per docs/creative/universal-macros#substitution-safety-catalog-item-macros,
+      sales agents MUST percent-encode catalog-item macro values such that only
+      RFC 3986 `unreserved` characters remain unescaped before substituting them
+      into a URL context. Nested macro expansion is prohibited.
+
+      This phase exercises the rule on the social-platform flow: push a probe
+      catalog whose items carry attacker-shaped `sku` values, push a DPA
+      creative template that binds to that catalog and references `{SKU}` in
+      its tracker URLs, then call `preview_creative` to render the bound
+      preview. The substitution-observer runner inspects `preview_html` from
+      the response and asserts each substituted `{SKU}` value is encoded per
+      the fixture at `static/test-vectors/catalog-macro-substitution.json`.
+
+      Scope note: this phase validates substitution on the PREVIEW surface
+      only. Social platforms with divergent preview vs impression-time
+      substitution paths MAY pass here while failing at serve time; serve-time
+      attestation is a known coverage limitation shared with creative-generative.
+      Real-impression observability for sales-social is deferred to a future
+      revision when platform attestation hooks become standardized.
+
+      The `expect_substitution_safe` step is gated on the
+      `substitution_observer_runner` test-kit contract (see
+      `test-kits/substitution-observer-runner.yaml`). Runners that do not
+      advertise the contract grade the step as `not_applicable` — the earlier
+      `sync_substitution_probe_catalog`, `sync_substitution_probe_creative`,
+      and `preview_substitution_probe_creative` steps still run (exercising
+      the catalog-acceptance, creative-push, and preview paths), but the
+      substituted-URL assertion is skipped.
+
+    steps:
+      - id: sync_substitution_probe_catalog
+        title: "Push a probe catalog with attacker-shaped values"
+        narrative: |
+          Push a small probe catalog whose `sku` fields contain five canonical
+          attacker-shaped values from the substitution-safety fixture. The
+          platform MUST accept the payload — the encoding rule applies at
+          substitution time, not at ingest — but the downstream `preview_creative`
+          output must percent-encode each value into tracker URLs.
+        task: sync_catalogs
+        schema_ref: "media-buy/sync-catalogs-request.json"
+        response_schema_ref: "media-buy/sync-catalogs-response.json"
+        doc_ref: "/media-buy/task-reference/sync_catalogs"
+        stateful: true
+        expected: |
+          Catalog accepted with per-item counts. Runner captures the
+          catalog_id + item_ids for the downstream assertion binding.
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          catalogs:
+            - catalog_id: "sales_social_substitution_probe_v1"
+              type: "product"
+              content_id_type: "sku"
+              name: "Substitution safety probe"
+              items:
+                - item_id: "reserved_char_breakout"
+                  sku: "00013&cmd=drop"
+                  title: "Reserved-char breakout probe"
+                  url: "https://acmeoutdoor.example/probe/reserved"
+                  image_url: "https://cdn.acmeoutdoor.example/probe/reserved.jpg"
+                  price: { amount: 1.00, currency: "USD" }
+                - item_id: "nested_expansion"
+                  sku: "vacancy-{DEVICE_ID}-42"
+                  title: "Nested-expansion probe"
+                  url: "https://acmeoutdoor.example/probe/nested"
+                  image_url: "https://cdn.acmeoutdoor.example/probe/nested.jpg"
+                  price: { amount: 1.00, currency: "USD" }
+                - item_id: "non_ascii"
+                  sku: "café-amsterdam"
+                  title: "Non-ASCII UTF-8 probe"
+                  url: "https://acmeoutdoor.example/probe/non-ascii"
+                  image_url: "https://cdn.acmeoutdoor.example/probe/non-ascii.jpg"
+                  price: { amount: 1.00, currency: "USD" }
+                - item_id: "crlf_injection"
+                  sku: "abc\r\nHost: evil.example"
+                  title: "CRLF injection probe"
+                  url: "https://acmeoutdoor.example/probe/crlf"
+                  image_url: "https://cdn.acmeoutdoor.example/probe/crlf.jpg"
+                  price: { amount: 1.00, currency: "USD" }
+                - item_id: "bidi_override"
+                  sku: "VIN-‮1234"
+                  title: "Bidi-override probe"
+                  url: "https://acmeoutdoor.example/probe/bidi"
+                  image_url: "https://cdn.acmeoutdoor.example/probe/bidi.jpg"
+                  price: { amount: 1.00, currency: "USD" }
+
+          idempotency_key: "$generate:uuid_v4#sales_social_catalog_substitution_safety_sync_substitution_probe_catalog"
+          context:
+            correlation_id: "sales_social--sync_substitution_probe_catalog"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-catalogs-response.json schema"
+          - check: field_present
+            path: "catalogs[0].catalog_id"
+            description: "Probe catalog accepted"
+
+      - id: sync_substitution_probe_creative
+        title: "Push a DPA creative bound to the probe catalog"
+        narrative: |
+          Push a DPA creative template whose `product_catalog` asset binds to
+          the probe catalog from the previous step. Tracker URLs reference
+          `{SKU}` so the platform's substitution path resolves attacker-shaped
+          values into URL contexts at preview time.
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
+        doc_ref: "/creative/task-reference/sync_creatives"
+        comply_scenario: creative_sync
+        stateful: true
+        expected: |
+          DPA creative template accepted. Per-creative action: created or updated.
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          creatives:
+            - creative_id: "sales_social_substitution_probe_creative_v1"
+              name: "Substitution safety probe DPA"
+              format_id:
+                agent_url: "https://creative.adcontextprotocol.org"
+                id: "product_carousel_3_to_10"
+              assets:
+                product_catalog:
+                  asset_type: "catalog"
+                  type: "product"
+                  catalog_id: "sales_social_substitution_probe_v1"
+                impression_pixel:
+                  asset_type: "url"
+                  url: "https://track.acmeoutdoor.example/imp?sku={SKU}"
+                click_url:
+                  asset_type: "url"
+                  url: "https://track.acmeoutdoor.example/click?sku={SKU}"
+
+          idempotency_key: "$generate:uuid_v4#sales_social_catalog_substitution_safety_sync_substitution_probe_creative"
+          context:
+            correlation_id: "sales_social--sync_substitution_probe_creative"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-creatives-response.json schema"
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+
+      - id: preview_substitution_probe_creative
+        title: "Render a preview against the probe catalog"
+        narrative: |
+          Call `preview_creative` against the probe creative. The platform
+          renders the DPA template by binding `{SKU}` against the probe
+          catalog's items, returning `preview_html` whose tracker URLs carry
+          substituted SKU values. The substitution-observer runner uses this
+          response as its observation source in the next step.
+
+          `format: html` is requested so the response surfaces `preview_html`
+          directly; `item_limit: 5` ensures every probe catalog item is
+          rendered at least once so the observer can match every binding.
+        task: preview_creative
+        schema_ref: "creative/preview-creative-request.json"
+        response_schema_ref: "creative/preview-creative-response.json"
+        doc_ref: "/creative/task-reference/preview_creative"
+        stateful: true
+        expected: |
+          Preview returned with at least one render carrying preview_html
+          containing the substituted tracker URLs.
+
+        sample_request:
+          request_type: "single"
+          format: "html"
+          item_limit: 5
+          creative_manifest:
+            format_id:
+              agent_url: "https://creative.adcontextprotocol.org"
+              id: "product_carousel_3_to_10"
+            assets:
+              product_catalog:
+                asset_type: "catalog"
+                type: "product"
+                catalog_id: "sales_social_substitution_probe_v1"
+              impression_pixel:
+                asset_type: "url"
+                url: "https://track.acmeoutdoor.example/imp?sku={SKU}"
+              click_url:
+                asset_type: "url"
+                url: "https://track.acmeoutdoor.example/click?sku={SKU}"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+
+          idempotency_key: "$generate:uuid_v4#sales_social_catalog_substitution_safety_preview_substitution_probe_creative"
+          context:
+            correlation_id: "sales_social--preview_substitution_probe_creative"
+        validations:
+          - check: response_schema
+            description: "Response matches preview-creative-response.json schema"
+          - check: field_present
+            path: "previews[0].renders[0].preview_html"
+            description: "Preview render carries preview_html"
+
+      - id: expect_substitution_safe
+        title: "Assert substituted tracker URLs percent-encode attacker shapes"
+        narrative: |
+          The runner inspects the `preview_html` from the previous step,
+          extracts tracker URLs that bind `{SKU}` to a probe catalog item,
+          and asserts each value is percent-encoded per RFC 3986
+          (unreserved-whitelist). Raw-byte leakage fails. Every declared
+          binding MUST be observed — a platform that silently strips `{SKU}`
+          rather than substituting it fails with `substitution_binding_missing`.
+        task: expect_substitution_safe
+        requires_contract: substitution_observer_runner
+        source: html_inline
+        source_path: "/previews/0/renders/0/preview_html"
+        macro_template: "https://track.acmeoutdoor.example/imp?sku={SKU}"
+        require_every_binding_observed: true
+        catalog_bindings:
+          - macro: "{SKU}"
+            catalog_item_id: "reserved_char_breakout"
+            vector_name: "reserved-character-breakout"
+          - macro: "{SKU}"
+            catalog_item_id: "nested_expansion"
+            vector_name: "nested-expansion-preserved-as-literal"
+          - macro: "{SKU}"
+            catalog_item_id: "non_ascii"
+            vector_name: "non-ascii-utf8-percent-encoding"
+          - macro: "{SKU}"
+            catalog_item_id: "crlf_injection"
+            vector_name: "crlf-injection-neutralized"
+          - macro: "{SKU}"
+            catalog_item_id: "bidi_override"
+            vector_name: "bidi-override-neutralized"
   - id: event_setup
     title: "Event source setup"
     narrative: |
