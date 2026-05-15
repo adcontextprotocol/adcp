@@ -238,8 +238,8 @@
     },
     "media-buy/sync-audiences-response.json##/oneOf": {
       "kind": "narrowable",
-      "variants": 2,
-      "note": "0:[audiences] | 1:[errors]"
+      "variants": 3,
+      "note": "0:[audiences] | 1:[errors] | 2:[status,task_id]"
     },
     "media-buy/sync-catalogs-response.json##/oneOf": {
       "kind": "narrowable",
