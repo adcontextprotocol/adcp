@@ -132,6 +132,7 @@ These shapes are real ad-industry product types — but they're either multi-can
   "format_options": [
     {
       "format_kind": "custom",
+      "v2_only": true,
       "format_shape": "multi_placement_takeover",
       "format_schema": {
         "uri": "https://nytimes.adcp/schemas/formats/homepage_takeover_v3",
@@ -157,6 +158,19 @@ Three required pieces when `format_kind: "custom"`:
 1. **`format_shape`** — recognized global pattern from the [format-shape vocabulary registry](https://adcontextprotocol.org/schemas/v3/core/format-shape-vocabulary.json). Tells buyer agents what kind of pattern they're looking at (`multi_placement_takeover`, `branded_content`, `ar_lens`, etc.). The registry currently lists 9 shapes; non-canonical values are valid (validators MAY soft-warn) so adopters CAN ship a shape that isn't yet in the registry — adding entries is a vocabulary PR, not a major-version bump.
 2. **`format_schema`** — URI+digest reference to a fetchable schema describing the shape's actual `params` and `slots`. **Same hosting model as `platform_extensions`**: open-ecosystem publishers host the artifact at the canonical URI on their subdomain; closed-platform / walled-garden shapes resolve through the AAO mirror at `https://mirror.adcontextprotocol.org/translated/...`. Buyer agents fetch by `uri@digest` (immutable per digest, aggressive caching), validate `params` and `slots` against the fetched schema, and reason about manifests structurally.
 3. **`params`** — the actual structure, governed by the schema fetched from `format_schema.uri`. AdCP doesn't bake the params shape; the seller's schema does.
+
+### `format_schema` fetch contract (normative)
+
+`format_schema` gates validation — without the schema, a buyer cannot reason about the custom shape. The fetch contract is tighter than `platform_extensions` (which is informational):
+
+- **Transport**: `https://` only. `http://`, `file://`, `data:`, and other schemes MUST be rejected.
+- **Digest mismatch is a hard fail.** SHA-256 of the fetched body MUST equal `format_schema.digest`. On mismatch, the buyer MUST treat the declaration as unresolvable. No fallback to the unverified body.
+- **Timeout** ≤5s recommended. Timeout treated as a 5xx (transient — retry or skip).
+- **`$ref` sandboxing**: fetched schemas MAY use `$ref`, but only to (a) same-origin URIs, (b) the AAO mirror namespace, or (c) intra-document JSON Pointer refs. Cross-origin `$ref` to arbitrary URIs MUST be rejected. `$ref: file://...` MUST be rejected. Transitive `$ref` depth bounded (SDKs SHOULD cap at 8).
+- **Cache** by `uri@digest`, immutable. On 404 / partition / persistent failure: skip the declaration for this session, surface a structured warning, do NOT fail the whole `get_products` response.
+- **Schema validity**: fetched body must be a valid JSON Schema (Draft 07 or 2020-12). Invalid schema → same as digest mismatch (unresolvable, warning, skip).
+
+These rules apply specifically to `format_schema`. `platform_extensions` keep their looser informational contract; `format_schema` is the load-bearing one.
 
 ### Why custom + format_schema instead of `ext`
 
@@ -775,6 +789,40 @@ The two paths share the digest-pinned cache and graceful-degradation semantics. 
 
 Buyer's SDK caches by URI@digest. Subsequent `get_products` responses can reference by digest alone if the buyer has the extension cached. Direct URI fetch is supported for tooling but the primary path is bundled-in-`get_products`.
 
+## Dual emission and v2↔v1 projection (normative)
+
+Products MAY carry both `format_ids` (v1) and `format_options` (v2) during the migration window. When both ship, the two MUST refer to the same underlying format declaration — divergent shapes are a contract violation.
+
+### Producer rules
+
+- SDKs that derive both shapes from a single source guarantee the invariant. Hand-authored products MUST be reviewed for agreement.
+- A producer that cannot guarantee agreement MUST emit one shape only.
+- For `format_kind: "custom"` declarations, producers MUST set `v2_only: true` and MUST NOT synthesize a v1 `format_id`. The protocol does NOT mint synthetic format_ids (an `aao-synth/*` namespace was considered and rejected — adopters would index on identifiers with no stable identity).
+- For `format_options` declarations whose canonical/parameter shape has no clean v1 named-format equivalent (e.g., a structural shape not in `v1-canonical-mapping.json` and not declared on any v1 file), producers SHOULD set `v2_only: true` rather than emit only one of the two shapes silently.
+
+### Consumer rules (v1→v2)
+
+When reading a product on the v1 path, SDKs project `format_ids` to `format_options` using the resolution order from `v1-canonical-mapping.json`:
+
+1. Explicit `canonical` field on the v1 format declaration (seller-declared, highest priority).
+2. `format_id_glob` match in the registry.
+3. Structural match in the registry.
+4. **Fail closed**: SDK MUST NOT synthesize a `format_options` entry. SDKs SHOULD emit a structured warning (telemetry / logger) so adopters can spot non-projectable inventory; absence is silent loss of inventory visibility for v2-only buyers.
+
+### Consumer rules (divergence detection)
+
+When a product carries BOTH `format_ids` and `format_options` and the two disagree (different canonical, different dimensions, different orientation, etc.):
+
+- SDKs MUST treat this as a producer contract violation.
+- SDKs SHOULD prefer `format_options` (v2 is the richer surface) and emit a structured warning identifying the divergent product. Hard-failing the entire `get_products` response is discouraged — it punishes downstream buyers for a producer bug.
+- SDKs MUST NOT silently pick one shape and discard the other without surfacing the divergence to the calling agent.
+
+The schema cannot enforce agreement (no cross-field constraint expresses "the v1 mapped form of `format_ids[i]` must equal `format_options[j]`"). Consumer-side detection is the only line of defense; SDK conformance suites SHOULD include divergence fixtures.
+
+### v2-only declarations on the wire
+
+A buyer reading a product on the v1 wire path sees `format_options` entries with `v2_only: true` absent from `format_ids`. This is intentional and not a producer error. v2-aware buyers reading `format_options` see them. v1-only buyers see fewer options on `format_ids` than a v2-aware buyer sees on `format_options` for the same product — the v1 surface is a strict subset on these products until v1 sunset (5.0).
+
 ## What's NOT in v2
 
 By design, v2 doesn't introduce new vocabulary for things AdCP already handles or that belong elsewhere:
@@ -807,6 +855,16 @@ The `*_source` enums (including `seller_pre_rendered_from_brief` and `agent_synt
 
 The third-party-creative-agent worked example assumes Flashtalking-shaped tools serve buyers via `build_creative` and let the buyer ship the produced manifest to the seller. Operators reading this should not infer that v2 strips creative agents of their hosting / serving / tracking revenue. Production happens at `build_creative`; the produced manifest can include hosted asset URLs on the creative agent's CDN (Flashtalking-hosted asset URLs in the example), and platform extensions can attach creative-agent-specific tracking (Flashtalking pixel IDs, viewability vendor configurations) that the seller honors at serve time. The v2 disaggregation is conceptual (the spec separates production from serving from tracking) — the operational integration path lets creative agents continue to host and instrument their produced creatives. v2 doesn't dictate where the asset bytes live or whose tracking JS runs; it only formalizes the production-vs-serving boundary that already exists implicitly.
 
+### Codegen vs runtime: the validator is the gate
+
+`product-format-declaration.json` carries an `allOf/if/then/else` that conditionally requires `format_shape`, `format_schema`, and `v2_only` only when `format_kind === "custom"`. The same pattern applies to `validate-input-result.json`'s `result_kind` discriminator with conditional `violations`. JSON Schema captures these conditionals cleanly, but most codegen pipelines (`json-schema-to-typescript`, `datamodel-codegen`) strip `if/then/else` before emitting types because conditional narrowing doesn't map to TypeScript's structural type system or to Pydantic's class model. The generated types are therefore strictly more permissive than the schema:
+
+- Generated TS / Python types accept a `format_kind: "custom"` declaration that omits `format_shape` or `format_schema` — the type system has no way to narrow on the discriminator and require the conditional fields.
+- The Ajv (or equivalent) runtime validator IS the gate. SDKs MUST run the JSON Schema validator before trusting a `ProductFormatDeclaration` parsed from the wire; the codegenned type is a convenience layer, not a contract.
+- Buyer-agent authors writing v2 in TypeScript SHOULD treat the generated types as a starting point and add their own runtime validation step — same pattern adopters already use for any JSON-Schema-validated API. Adopters who skip runtime validation will get type-system success on declarations that the schema rejects, and discover the gap only when their declarations hit a strict downstream validator.
+
+This is a doc concern, not a schema concern. The schema is more strict than the codegenned types; runtime validation closes the gap.
+
 ## Migration
 
 | Adopter | Cost | Realistic timeline |
@@ -818,6 +876,10 @@ The third-party-creative-agent worked example assumes Flashtalking-shaped tools 
 | Publisher direct (GAM/prebid path) | Medium | Blocked on native canonical pre-audit |
 
 **v1 stays first-class.** v1 named formats remain supported; sellers SHOULD provide server-side flatten wrappers that derive the v1 `list_creative_formats` shape from v2 product format declarations through 4.0. v2 is the *new* path, not the only path.
+
+### Realistic 3.1 coverage
+
+`v1-canonical-mapping.json` ships with ~15 unambiguous entries at 3.1 (IAB display sizes, VAST 4.x, DAAST 1.x). The full v1 audit catalogued 86 formats across 12 platforms; ~76% of those (≈65 formats) fit existing canonicals structurally but **only project automatically when either (a) the seller adds an explicit `canonical` field to their v1 format file, or (b) someone files a registry PR adding the `format_id_glob` or structural match.** Out of the gate at 3.1, 71+ of the audited formats are v1-only — they don't lose support, but a v2-only buyer agent doesn't see them on `format_options` until a seller or AAO contributor closes the gap. Through 3.x, expect most product traffic to remain v1 wire shape with opt-in `format_options` from early-adopter sellers (Meta, NYTimes, AudioStack, generative-DSP, retail-media). Buyer agents planning v2-only consumption in 3.x will see meaningfully thinner inventory than v1-aware agents; planning the codepath as dual-read through at least 3.3 is realistic. The 5.0 sunset for v1 is the floor on dual-emission, not the expected switchover date — anyone planning v2-only should pencil that in for 4.x at the earliest.
 
 ## Phase status
 

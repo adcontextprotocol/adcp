@@ -109,6 +109,28 @@ const NEGATIVE_CASES = {
       expected: true,
       doc: {
         format_kind: 'custom',
+        v2_only: true,
+        params: { foo: 'bar' },
+        format_shape: 'multi_placement_takeover',
+        format_schema: { uri: 'https://x.example/s', digest: SHA },
+      },
+    },
+    {
+      label: 'format_kind=custom rejects missing v2_only',
+      expected: false,
+      doc: {
+        format_kind: 'custom',
+        params: { foo: 'bar' },
+        format_shape: 'multi_placement_takeover',
+        format_schema: { uri: 'https://x.example/s', digest: SHA },
+      },
+    },
+    {
+      label: 'format_kind=custom rejects v2_only=false',
+      expected: false,
+      doc: {
+        format_kind: 'custom',
+        v2_only: false,
         params: { foo: 'bar' },
         format_shape: 'multi_placement_takeover',
         format_schema: { uri: 'https://x.example/s', digest: SHA },

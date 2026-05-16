@@ -21,6 +21,11 @@
       "uniqueItems": true,
       "description": "Optional subset of the parent product's `channels` to which this declaration applies. When omitted, the declaration applies to ALL channels declared on the product. Lets a multi-channel product (e.g., `channels: ['display', 'video']`) carry distinct format_options per channel — `format_options: [{format_kind: 'image', applies_to_channels: ['display']}, {format_kind: 'video_hosted', applies_to_channels: ['video']}]`. Buyers ship channel-appropriate manifests per `applies_to_channels`."
     },
+    "v2_only": {
+      "type": "boolean",
+      "default": false,
+      "description": "When true, this format declaration has no clean v1 projection and SDKs MUST NOT synthesize a v1 `format_id` for it. Buyers reading the product on the v1 wire path see this declaration absent from `format_ids`; only v2-aware buyers (reading `format_options`) discover it. Set explicitly for `format_kind: \"custom\"` declarations (no canonical exists in v1 to project onto) and for declarations whose canonical/parameter shape cannot round-trip through a v1 named format without semantic loss. The protocol does NOT mint synthetic v1 format_ids for unmappable declarations — the alternative (an `aao-synth/*` namespace populated automatically) was considered and rejected because adopters would index on synthetic IDs that have no stable identity. Producers SHOULD set `v2_only: true` rather than omit the declaration from `format_options` — explicit v2-only is more useful than silent absence."
+    },
     "runtime_status": {
       "type": "string",
       "enum": ["stable", "preview", "declared_only"],
@@ -33,7 +38,7 @@
     },
     "format_schema": {
       "$ref": "/schemas/core/platform-extension-ref.json",
-      "description": "REQUIRED when `format_kind: \"custom\"`; otherwise MUST be absent. URI+digest reference to a fetchable schema describing this custom shape's actual `params` and `slots`. Same hosting model as `platform_extensions`: open-ecosystem publishers host the artifact at the canonical URI on their subdomain; closed-platform / walled-garden shapes resolve through the AAO mirror at `https://mirror.adcontextprotocol.org/translated/...`. Buyer agents fetch by `uri@digest` (immutable per digest, aggressive caching, `Cache-Control: public, max-age=31536000, immutable`), validate `params` and `slots` against the fetched schema, and reason about manifests structurally — same mechanic as platform_extensions but at the format-structure level. Without `format_schema`, custom shapes would be opaque to buyer agents and the protocol would regress to per-seller integration code; that's why the schema is required, not optional."
+      "description": "REQUIRED when `format_kind: \"custom\"`; otherwise MUST be absent. URI+digest reference to a fetchable schema describing this custom shape's actual `params` and `slots`. Same hosting model as `platform_extensions`: open-ecosystem publishers host the artifact at the canonical URI on their subdomain; closed-platform / walled-garden shapes resolve through the AAO mirror at `https://mirror.adcontextprotocol.org/translated/...`. Buyer agents fetch by `uri@digest` (immutable per digest, aggressive caching, `Cache-Control: public, max-age=31536000, immutable`), validate `params` and `slots` against the fetched schema, and reason about manifests structurally — same mechanic as platform_extensions but at the format-structure level. Without `format_schema`, custom shapes would be opaque to buyer agents and the protocol would regress to per-seller integration code; that's why the schema is required, not optional.\n\n**Fetch contract (normative)** — `format_schema` is load-bearing for validation (unlike `platform_extensions`, which is informational), so the fetch semantics are tighter:\n\n- **Transport**: `https` only. Buyers MUST reject `http://`, `file://`, `data:`, and any non-`https` scheme. The URI MUST resolve to a JSON document that is itself a valid JSON Schema (Draft 07 or 2020-12; producers MUST declare `$schema`).\n- **Digest verification**: SHA-256 of the response body MUST equal `digest`. **Digest mismatch is a hard fail** — the buyer MUST treat the format declaration as unresolvable and MUST NOT validate manifests against the mismatched body. A divergent digest is either a malicious substitution or producer error; either way, falling back to the un-verified body breaks the trust model.\n- **Timeout**: SDKs SHOULD apply a fetch timeout ≤5 seconds. Timeout SHOULD be treated identically to an HTTP 5xx response (transient — retry policy at the SDK's discretion; on persistent failure surface as unresolved and skip the declaration for this session).\n- **Sandboxing of `$ref`**: fetched schemas MAY use `$ref`. Buyers MUST resolve `$ref` only to URIs that are (a) same-origin as the parent `format_schema.uri`, OR (b) hosted under the AAO mirror namespace (`https://mirror.adcontextprotocol.org/...`), OR (c) intra-document JSON Pointer refs (`#/...`). Cross-origin `$ref` to arbitrary URIs MUST be rejected. `$ref: file://...` MUST be rejected unconditionally. Transitive `$ref` chains MUST be bounded (SDKs SHOULD cap at depth 8) and each fetched component MUST be digest-pinned by the parent schema (publishers SHOULD inline rather than $ref where possible; cross-document $ref is supported but a smaller surface).\n- **Cache**: buyers cache fetched schemas by `uri@digest` and treat them as immutable (the same hosting contract as `platform_extensions`). On `404`, network partition, or persistent fetch failure, buyers SHOULD degrade gracefully (treat the declaration as unresolved, skip it for the current `get_products` response, surface a structured warning) rather than failing the entire session.\n- **Schema-not-valid handling**: if the fetched body parses as JSON but is not a valid JSON Schema, the buyer MUST treat the declaration as unresolvable (same as digest mismatch) and surface a structured warning. Validators MUST NOT attempt partial validation against an invalid schema."
     }
   },
   "allOf": [
@@ -43,7 +48,10 @@
         "required": ["format_kind"]
       },
       "then": {
-        "required": ["format_shape", "format_schema"]
+        "required": ["format_shape", "format_schema", "v2_only"],
+        "properties": {
+          "v2_only": { "const": true }
+        }
       },
       "else": {
         "not": { "anyOf": [
@@ -218,9 +226,10 @@
       }
     },
     {
-      "description": "NYTimes Homepage Takeover — custom format_kind, classified against the multi_placement_takeover format_shape, with format_schema pointing at NYTimes's hosted schema. Buyer agents fetch the schema by uri@digest (cached, immutable) and validate the manifest structurally.",
+      "description": "NYTimes Homepage Takeover — custom format_kind, classified against the multi_placement_takeover format_shape, with format_schema pointing at NYTimes's hosted schema. Buyer agents fetch the schema by uri@digest (cached, immutable) and validate the manifest structurally. `v2_only: true` is required for custom declarations — no v1 named format can express the multi-placement shape.",
       "data": {
         "format_kind": "custom",
+        "v2_only": true,
         "format_shape": "multi_placement_takeover",
         "format_schema": {
           "uri": "https://nytimes.adcp/schemas/formats/homepage_takeover_v3",
