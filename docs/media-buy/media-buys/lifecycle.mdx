@@ -157,6 +157,94 @@ Deadline hierarchy:
 
 When a media buy reaches `rejected`, `canceled`, or `completed`, creative assignments are released. The creatives themselves are not deleted — they remain in the library with their existing review status and are available for assignment to other media buys.
 
+## Health and dependency impairment
+
+`status` describes operational state — is the buy serving, paused, or terminal? **`health`** is a separate orthogonal field describing whether upstream dependencies are intact:
+
+| Field | Tracks | Values |
+|-------|--------|--------|
+| `status` | Operational state | `pending_creatives`, `pending_start`, `active`, `paused`, `completed`, `rejected`, `canceled` |
+| `health` | Dependency state | `ok`, `impaired` |
+
+The two are orthogonal. A buy can be `paused`-and-impaired, `pending_creatives`-and-impaired, or `active`-and-impaired. Health does not change `status`; `valid_actions` is unaffected.
+
+### When `health` is `impaired`
+
+`health` transitions to `impaired` when an upstream dependency referenced by the buy enters an offline state that affects delivery for at least one package:
+
+- An audience the buy targets transitions to `suspended` (consent expiry, TTL, policy enforcement).
+- A creative the buy uses transitions from `approved` to `rejected` (post-approval revocation).
+- A catalog item the buy targets transitions to `withdrawn` (seller-initiated removal).
+- An event source the buy depends on enters `insufficient` (zero events received).
+- A property the buy targets is depublished via brand.json / adagents.json.
+
+The buy's `impairments[]` array carries one entry per affected dependency:
+
+```json
+{
+  "media_buy_id": "mb_456",
+  "status": "active",
+  "health": "impaired",
+  "impairments": [
+    {
+      "impairment_id": "imp_01HZX9...",
+      "resource_type": "audience",
+      "resource_id": "aud_123",
+      "package_ids": ["pkg_a"],
+      "transition": { "from": "ready", "to": "suspended" },
+      "reason_code": "consent_expired",
+      "reason": "Hashed identifier consent basis expired on 2026-06-01.",
+      "observed_at": "2026-06-02T14:11:00Z",
+      "remediation": "Re-sync audience after refreshing consent upstream."
+    }
+  ]
+}
+```
+
+### Materiality
+
+Each entry in `impairments[]` MUST list at least one package whose ability to serve is degraded. Cosmetic effects (one rejected creative in a package that still has serviceable peers) MUST NOT be reported as impairments — they're surfaced via the resource's own status, not the buy's.
+
+### Reverse direction
+
+When the underlying resource returns to a serviceable state (audience re-syncs, creative re-approved), the seller MUST remove the corresponding entry from `impairments[]` and flip `health` to `ok` if no other impairments remain. The buyer sees the recovered state on the next snapshot read or via the next `impairment` push (which carries the closure).
+
+### Pushed via `impairment` webhook
+
+When a buy's `health` transitions or an impairment is added/removed, the seller fires an `impairment` notification against the buy's `push_notification_config`. The payload reuses the `impairment` object shape plus the buy's updated `health`. See the [persistent webhook contract](/docs/building/by-layer/L3/webhooks#persistent-channel-contract) for delivery semantics (at-least-once, no-ordering, coalescence, replay via snapshot).
+
+### Materiality coverage
+
+The MUST-strength materiality rule applies to resource types where the resource → buy join is cheap and 1:N — audience, event_source, property. For creative and catalog_item, materiality is SHOULD-strength: a creative in a large pool may not degrade serving when removed, and the join is more expensive for sellers to compute. Implementers SHOULD report conservatively when uncertain and MUST NOT report when serving is provably unaffected.
+
+### Remediation by `reason_code`
+
+Each `reason_code` has a typical buyer remediation path. Sellers don't fill this in per-impairment — buyer agents key remediation off `reason_code` directly. The table below is the protocol-level guidance; the per-impairment free-text `remediation` field carries seller-specific context that doesn't fit the typical path (e.g., "we restored this audience yesterday; sync now to pick up the refresh").
+
+| `reason_code` | Typical buyer remediation |
+|---|---|
+| `consent_expired` | Refresh upstream consent (e.g., hashed-id consent renewal on a clean-room flow), then re-sync the audience via `sync_audiences`. |
+| `ttl_expired` | Re-sync the audience via `sync_audiences` to renew. |
+| `pii_audit_failed` | Address audit findings upstream (hashing, identifier hygiene). Re-sync only **after** the seller signals the audit is cleared — a buyer agent that loops `sync_audiences` against an uncleared audit will not converge. |
+| `content_rejected` | Same path as initial creative approval — fix the issue and resubmit via `sync_creatives`. Campaign-level decision (replace vs. wait for resubmit) depends on creative pool composition and is left to the buyer. |
+| `source_offline` | Verify the tag is firing on the buyer's properties (this is often a buyer/publisher integration issue, not a seller-side outage), then re-sync via `sync_event_sources`. |
+| `seller_removed` | No buyer-side resubmit path. Find a replacement via the same discovery tool used at campaign setup (`get_products`, `get_signals`, `list_creative_formats`), or contact the seller for restoration ETA. |
+| `policy_violation` | Seller-side enforcement; buyer-side resubmit unlikely to clear. Await resolution or escalate per the seller's standard contact path. |
+| `property_depublished` | No buyer-side fix — property publication is controlled by the publisher's `brand.json` / `adagents.json`. Find a replacement property via `get_products` or remove from targeting. |
+
+### Impairments are operational signals, not commercial events
+
+An `impairment` reports degraded delivery from upstream dependency change. It is **not** a billing event, makegood trigger, or credit dispute. Commercial remedies for under-delivery are governed by `accountability_terms` on guaranteed buys and remain out of scope for this surface. Integrators building dispute pipelines should drive them from delivery reports and accountability terms, not from `impairments[]`.
+
+### Compliance
+
+The `impairment.coherence` assertion verifies that:
+
+- Every entry in `impairments[]` references a resource currently in an offline state.
+- Every resource in an offline state referenced by a non-terminal media buy appears in that buy's `impairments[]`.
+
+See the [Snapshot and log contract](/docs/protocol/snapshot-and-log) for the read-side rules that tie `impairments[]` (snapshot) to the `impairment` push (log).
+
 <Tip>
 Creative library state and creative assignment state are tracked independently. A creative that was assigned to a canceled buy still has whatever review status it earned and can be immediately assigned to a new buy. See [creative state and assignment state](/docs/creative/creative-libraries#creative-state-and-assignment-state-are-separate).
 </Tip>
