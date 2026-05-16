@@ -37,11 +37,16 @@ Each event carries a stable `notification_id` and corresponds to a change visibl
 
 These rules apply across every snapshot/log pair in the protocol. If you're building a new notification type, your design must satisfy all five.
 
-### 1. Every push event has a stable `notification_id`
+### 1. Two distinct ids: per-fire and per-state
 
-Buyers dedupe on `notification_id`. The seller MUST issue an id stable across retry attempts of the same logical event and stable across re-emission of the same open-state event (e.g., re-firing an open impairment after a webhook receiver outage uses the same id).
+Every persistent webhook carries **two** distinct ids. They serve different needs and receivers MUST track both:
 
-For state-shaped events (impairment, lifecycle), the id is typically the resource's stable id (e.g., `impairment_id` doubles as the `notification_id` for an `impairment` push). For point-in-time events (delivery report), the id is event-scoped.
+- **`idempotency_key`** — transport-layer, **per delivery attempt**. Issued by the seller for each fire. Receivers dedupe on this to suppress retries of the same logical fire. Defined in the [webhooks transport contract](/docs/building/by-layer/L3/webhooks).
+- **`notification_id`** — event-layer, **per state event**. Stable across re-emissions of the same logical event. For state-shaped events this equals the resource's stable id (e.g., `impairment_id` is the `notification_id` for impairment events). Receivers use this to correlate webhook fires with current state on the snapshot.
+
+The split is intentional. A receiver seeing the same `idempotency_key` twice is observing a transport retry — uninteresting, dedupe and move on. A receiver seeing the same `notification_id` twice under **different** `idempotency_key`s is observing a re-emission — signal. The seller is repeating itself, usually because the buyer's receiver was unreachable for long enough that the seller wants to make sure the state was delivered. That's a missed-events warning the receiver should not collapse.
+
+For state-shaped events (impairment, lifecycle), the per-state id is the resource id. For point-in-time data events (delivery report fires), there is no persistent state id — the per-fire `idempotency_key` is all there is. That asymmetry is honest about the limits of Rule 4 below.
 
 ### 2. Every push event corresponds to a snapshot delta
 
@@ -55,11 +60,13 @@ When push and snapshot disagree, the snapshot wins. A duplicate webhook fire (sa
 
 This is why receivers MUST verify against the snapshot before taking irreversible action on a push.
 
-### 4. Replay = re-read the snapshot
+### 4. Replay = re-read the snapshot (for state events)
 
-There is no event-replay primitive in v1. If a buyer's webhook receiver was offline and missed a fire, the recovery path is to call the relevant `get_*` task and pick up current state.
+For **state-shaped events** (impairment, lifecycle, status changes), if a buyer's webhook receiver was offline and missed a fire, the recovery path is to call the relevant `get_*` task and read current state. The snapshot fully reconstructs.
 
-This works for any state surface — impairments, statuses, delivery aggregates — because rule 2 guarantees the snapshot reflects every push. It does not work for purely point-in-time events that drain from the log (e.g., individual delivery report fires after retention expires). For those, the webhook delivery visibility surface (`webhook_activity[]` on `get_media_buys`) exposes recent fires within a retention window for debugging. It is not a guaranteed catch-up channel — buyers MUST NOT rely on it for state reconciliation; that's what the snapshot is for.
+For **data-bearing events** (delivery report fires, individual log events), this rule is **weaker today**. The snapshot reflects the cumulative integral (`get_media_buy_delivery` aggregates) but may not reconstruct the per-fire differential. Buyers SHOULD treat data-bearing webhook channels as primary delivery and SHOULD NOT assume snapshot recovery is lossless for them. The bounded event-history surface (`webhook_activity[]`, proposed in [#4278](https://github.com/adcontextprotocol/adcp/issues/4278)) is the path to making this rule hold universally — when it lands, the snapshot subsumes the log for data events too.
+
+This honesty matters. Pretending Rule 4 holds for every push channel today would invite buyers to build recovery paths that silently lose data. The rule is the **destination**, not a uniform present-day claim.
 
 ### 5. Push events and log entries share an id space
 

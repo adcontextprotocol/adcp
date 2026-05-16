@@ -7,7 +7,7 @@
   "properties": {
     "impairment_id": {
       "type": "string",
-      "description": "Stable identifier for this impairment. Used as the notification_id when the impairment fires via webhook. Buyer agents dedupe by this value across at-least-once delivery. Remains stable for the lifetime of the open impairment (re-emission on snapshot reads carries the same id). When an impairment clears, the closing webhook fire (if any) MUST reuse this same impairment_id as its notification_id — receivers reconcile open-vs-closed state via the snapshot, not via a separate id. A new impairment for the same resource_id after closure receives a new impairment_id.",
+      "description": "Stable identifier for this impairment, used as the notification_id when the impairment fires via webhook. Stable across re-emissions of the same open impairment (e.g., the seller re-fires after the buyer's receiver was down) and across the closing fire that signals resolution. A new impairment for the same resource_id after closure receives a new impairment_id. Distinct from the per-fire idempotency_key issued at the webhook transport layer — see snapshot-and-log Rule 1. Receivers correlate webhook fires to current impairments[] state by impairment_id; receivers suppress duplicate transport-layer retries by idempotency_key. Seeing the same impairment_id with different idempotency_keys is a re-emission signal, not a retry — the buyer should treat it as a notice that something may have been missed.",
       "x-entity": "impairment"
     },
     "resource_type": {

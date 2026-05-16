@@ -519,11 +519,16 @@ This section is the transport half of the [Snapshot and log contract](/docs/prot
 
 ### Coalescence
 
-For state-shaped event types (e.g., `impairment`), sellers SHOULD coalesce multiple near-simultaneous changes on the same resource into a single push:
+For state-shaped event types, sellers SHOULD coalesce multiple near-simultaneous changes on the same resource into a single push. **Coalescence windows are per event type and not a flat ceiling** — a latency-sensitive event (fraud, brand safety) cannot wait the same window an advisory can.
 
-- Window SHOULD NOT exceed 5 minutes.
-- Acute event types (impairment) coalesce on the short end; advisory or batched event types MAY use longer windows defined per type.
-- Delivery report fires (`scheduled`, `final`) follow their own cadence and are not subject to this coalescence rule.
+| Event type | Default coalescence window | Notes |
+|---|---|---|
+| `impairment` (general) | 5 minutes (SHOULD NOT exceed) | Default for resource-state impairments — audience suspended, creative revoked, etc. |
+| `impairment` (latency-sensitive) | Sub-minute / no coalescence | Fraud-driven, brand-safety-driven, or other classes where the buyer's response window is short. Sellers MUST NOT apply the general default to these. |
+| Future advisory events | Hours to daily | Higher noise tolerance; bigger window appropriate. |
+| Future defect events | Minutes to hours | Between impairment and advisory in urgency. |
+
+Sellers MAY declare a shorter coalescence window via `get_agent_capabilities` for receivers that need sub-default latency. Sellers MUST NOT exceed the per-type default without explicit buyer opt-in declared on the receiver side. Delivery report fires (`scheduled`, `final`) follow their own cadence and are not subject to this coalescence rule.
 
 ### Replay and recovery
 
