@@ -815,10 +815,11 @@ Products MAY carry both `format_ids` (v1) and `format_options` (v2) during the m
 
 When reading a product on the v1 path, SDKs project `format_ids` to `format_options` using the resolution order from `v1-canonical-mapping.json`:
 
-1. Explicit `canonical` field on the v1 format declaration (seller-declared, highest priority).
-2. `format_id_glob` match in the registry.
-3. Structural match in the registry.
-4. **Fail closed**: SDK MUST NOT synthesize a `format_options` entry. SDKs MUST surface the failure via the `errors[]` array on the `get_products` response envelope with `code: FORMAT_PROJECTION_FAILED` (NOT logger-only — a buyer that silently sees N fewer products has no remediation path; the warning needs to reach the response, not just the log file). The advisory is non-fatal: the response stays 200/success, the product is still valid on the v1 path, only the v2 `format_options` projection is absent.
+1. **Authoritative v2 → v1 link**: if any v2 `ProductFormatDeclaration` on the same product carries `v1_format_ref` pointing at this v1 `format_id`, use that v2 declaration directly. Highest priority — seller asserts the link.
+2. **Seller-asserted on the v1 file**: explicit `canonical` field on the v1 format declaration.
+3. **Registry glob**: `format_id_glob` match.
+4. **Structural match**: registry structural-shape match.
+5. **Fail closed**: SDK MUST NOT synthesize a `format_options` entry. SDKs MUST surface the failure via the `errors[]` array on the `get_products` response envelope with `code: FORMAT_PROJECTION_FAILED` (NOT logger-only — a buyer that silently sees N fewer products has no remediation path; the warning needs to reach the response, not just the log file). The advisory is non-fatal: the response stays 200/success, the product is still valid on the v1 path, only the v2 `format_options` projection is absent.
 
 ### Consumer rules (divergence detection)
 
@@ -846,6 +847,24 @@ When the spec says a v2 `format_options` entry MUST refer to the same underlying
 The narrows relation is one-directional: v2 narrows v1 (v2 is the stricter shape). The reverse (v1 narrows v2) is NOT how the dual-emission contract is checked.
 
 SDK authors implementing the narrowing check SHOULD apply parameter-by-parameter subsumption per the rules above. Edge cases (composite parameters, platform_extensions, slot vocabulary changes) are not yet specified; SDKs MAY treat them as "unknown — pass" for 3.1 and surface a structured warning, with the working group tightening them per adopter feedback through 3.x.
+
+### v2 → v1 linking via `v1_format_ref`
+
+When a seller has both a published v1 named format AND a v2 declaration for the same underlying product/inventory, the v2 declaration carries `v1_format_ref: { agent_url, id }` linking back to the v1 identifier. The v2 declaration is the source of truth for shape; the v1 format file stays a pure v1 shape — no mirrored declaration.
+
+```json test=false
+{
+  "format_kind": "custom",
+  "format_shape": "multi_placement_takeover",
+  "format_schema": { "uri": "https://nytimes.adcp/schemas/formats/homepage_takeover_v3", "digest": "sha256:..." },
+  "v1_format_ref": { "agent_url": "https://nytimes.adcp", "id": "homepage_takeover" },
+  "params": { ... }
+}
+```
+
+This replaces the earlier `canonical_parameters` field on v1 `format.json` files (which is deprecated in 3.1 and removed at 4.0). The directional link from v2 → v1 captures the same fact without the parallel-shape drift surface — v1 files no longer mirror the v2 shape.
+
+`v1_format_ref` is mutually exclusive with `canonical_formats_only: true` — a declaration either has a v1 home (linked via `v1_format_ref`) or doesn't (asserted via `canonical_formats_only: true`). For `format_kind: "custom"` declarations, exactly one of the two MUST be set.
 
 ### v2-only declarations on the wire
 

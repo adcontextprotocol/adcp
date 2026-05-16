@@ -151,6 +151,46 @@ const NEGATIVE_CASES = {
       expected: true,
       doc: { format_kind: 'image', canonical_formats_only: false, params: { width: 300, height: 250 } },
     },
+    {
+      label: 'format_kind=image with v1_format_ref accepted (Track-A canonical linking to v1 named format)',
+      expected: true,
+      doc: {
+        format_kind: 'image',
+        v1_format_ref: { agent_url: 'https://nytimes.adcp', id: 'mrec_300x250' },
+        params: { width: 300, height: 250 },
+      },
+    },
+    {
+      label: 'format_kind=custom with v1_format_ref accepted (custom format linked to a v1 named format)',
+      expected: true,
+      doc: {
+        format_kind: 'custom',
+        v1_format_ref: { agent_url: 'https://nytimes.adcp', id: 'homepage_takeover' },
+        format_shape: 'multi_placement_takeover',
+        format_schema: { uri: 'https://x.example/s', digest: SHA },
+        params: { foo: 'bar' },
+      },
+    },
+    {
+      label: 'canonical_formats_only=true AND v1_format_ref rejected (mutually exclusive)',
+      expected: false,
+      doc: {
+        format_kind: 'image',
+        canonical_formats_only: true,
+        v1_format_ref: { agent_url: 'https://nytimes.adcp', id: 'mrec_300x250' },
+        params: { width: 300, height: 250 },
+      },
+    },
+    {
+      label: 'format_kind=custom with neither canonical_formats_only:true nor v1_format_ref rejected',
+      expected: false,
+      doc: {
+        format_kind: 'custom',
+        format_shape: 'multi_placement_takeover',
+        format_schema: { uri: 'https://x.example/s', digest: SHA },
+        params: { foo: 'bar' },
+      },
+    },
   ],
   '/schemas/creative/validate-input-result.json': [
     {
