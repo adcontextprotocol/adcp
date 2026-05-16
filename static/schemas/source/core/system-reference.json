@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/system-reference.json",
   "title": "System Reference",
-  "description": "Reference to a value within a named identity, taxonomy, geographic, or measurement system — e.g., a Nielsen DMA market, an IAB Audience Taxonomy node, a UID2 identity, a Comscore audience. Provides a single canonical shape `{system, id, version?, name?}` reused across signals, deployments, buy-terms, and delivery reporting wherever a value is defined against an external reference frame. The `system` axis is intentionally an open string at the primitive level; per-use constraints (closed enums, vendor allowlists) belong in the consuming schema's `oneOf` or `enum`, not here. Decision D1 from the signal epistemic-model umbrella (see issue #4616).",
+  "description": "Reference to a value within a named identity, taxonomy, geographic, or measurement system — e.g., a Nielsen DMA market, an IAB Audience Taxonomy node, a UID2 identity, a Comscore audience. Provides a single canonical shape `{system, value, version?, name?}` reused across signals, deployments, buy-terms, and delivery reporting wherever a value is defined against an external reference frame. The `system` axis is intentionally an open string at the primitive level; per-use constraints (closed enums, vendor allowlists) belong in the consuming schema's `oneOf` or `enum`, not here. Decision D1 from the signal epistemic-model umbrella (see issue #4616).",
   "type": "object",
   "properties": {
     "system": {
@@ -18,14 +18,14 @@
         "omb_msa"
       ]
     },
-    "id": {
+    "value": {
       "type": "string",
-      "description": "Identifier within the system. Format is system-dependent — Nielsen DMA codes are numeric strings (e.g. `501`), IAB Audience Taxonomy nodes are dotted paths (e.g. `4-1-2-3`), UID2 values are opaque tokens. The pair `(system, id)` is the durable wire reference; consumers MUST compare on both axes.",
+      "description": "The value within the system that this reference points to. Format is system-dependent — Nielsen DMA codes are numeric strings (e.g. `501`), IAB Audience Taxonomy nodes are dotted paths (e.g. `4-1-2-3`), UID2 values are opaque tokens, measurement currencies use methodology labels. Named `value` rather than `id` because the primitive is cross-axis: identity systems issue IDs, taxonomies issue values/terms, measurement systems issue methodology labels. The pair `(system, value)` is the durable wire reference; consumers MUST compare on both axes.",
       "minLength": 1
     },
     "version": {
       "type": "string",
-      "description": "Optional version of the reference system this `id` is defined against. RECOMMENDED whenever the system has a versioned definition history where boundaries, IDs, or semantics drift between versions (e.g. `nielsen_dma` boundaries differ between 2020 and 2024 releases; IAB Audience Taxonomy v2 ≠ v3). Omitting `version` implies the latest stable release as known to the emitting party. Buyer-side comparators SHOULD treat omitted `version` as a wildcard match against any version.",
+      "description": "Optional version of the reference system this `value` is defined against. RECOMMENDED whenever the system has a versioned definition history where boundaries, values, or semantics drift between versions (e.g. `nielsen_dma` boundaries differ between 2020 and 2024 releases; IAB Audience Taxonomy v2 ≠ v3). Omitting `version` implies the latest stable release as known to the emitting party. Buyer-side comparators SHOULD treat omitted `version` as a wildcard match against any version.",
       "minLength": 1,
       "examples": [
         "2024",
@@ -35,37 +35,37 @@
     },
     "name": {
       "type": "string",
-      "description": "Optional human-readable label for UI display (e.g. `\"New York\"` for `nielsen_dma:501`). Strictly informational — never used for equality or routing; the canonical reference is `(system, id, version?)`.",
+      "description": "Optional human-readable label for UI display (e.g. `\"New York\"` for `nielsen_dma:501`). Strictly informational — never used for equality or routing; the canonical reference is `(system, value, version?)`.",
       "minLength": 1
     }
   },
-  "required": ["system", "id"],
+  "required": ["system", "value"],
   "additionalProperties": false,
   "examples": [
     {
       "system": "nielsen_dma",
-      "id": "501",
+      "value": "501",
       "name": "New York"
     },
     {
       "system": "nielsen_dma",
-      "id": "501",
+      "value": "501",
       "version": "2024",
       "name": "New York"
     },
     {
       "system": "iab_audience",
-      "id": "4-1-2-3",
+      "value": "4-1-2-3",
       "version": "v3",
       "name": "Affluent Households"
     },
     {
       "system": "uid2",
-      "id": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+      "value": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
     },
     {
       "system": "comscore_market",
-      "id": "NYC-100",
+      "value": "NYC-100",
       "version": "2025-Q1"
     }
   ]

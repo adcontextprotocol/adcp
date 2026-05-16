@@ -1,0 +1,65 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/system-reference-conversion.json",
+  "title": "System Reference Conversion",
+  "description": "Describes the conversion from a signal's reference system to the destination's native system. REQUIRED when the deployment's fidelity is `converted`; OPTIONAL surfacing when fidelity is `approximated` (lets buyers see WHY a deployment is approximated, not just that it is). Lets buyer agents reason about source, destination, and conversion method without parsing free-text descriptions. The conversion claim itself (`from` system → `to` system, by `method`) is self-reported by the seller; third-party verification of the claim is a future attestation concern (decision D3 in #4616).",
+  "type": "object",
+  "properties": {
+    "from": {
+      "$ref": "/schemas/core/system-reference.json",
+      "description": "The signal's original reference system as defined by the seller. Identifies what the seller advertises in the signal definition before conversion."
+    },
+    "to": {
+      "$ref": "/schemas/core/system-reference.json",
+      "description": "The system the destination natively uses. After conversion, the activated value lives in this system."
+    },
+    "method": {
+      "type": "string",
+      "enum": [
+        "id_graph",
+        "name_match",
+        "crosswalk",
+        "custom"
+      ],
+      "enumDescriptions": {
+        "id_graph": "Translation via an identity-graph link (e.g. UID2 → ID5 via LiveRamp, TTD, or similar graph provider). Lossless when the graph link is direct; buyer should inspect graph coverage for edge cases (universe shrinkage, link freshness, regional gaps).",
+        "name_match": "Match based on a shared external identifier present in both systems (e.g. hashed email common to both sides). Match rate is finite — buyer-decision point on accepted match-rate floor.",
+        "crosswalk": "Published 1:1 mapping with no information loss (e.g. Nielsen DMA → Comscore Market via the canonical county crosswalk; IAB Audience Taxonomy v2 → v3 via the published migration mapping). When `method` is `crosswalk`, the seller asserts the conversion is mathematically reversible.",
+        "custom": "Vendor-specific mapping; buyer should consult the destination's documentation for the conversion's semantics, coverage, and edge cases. Buyer agents SHOULD treat `custom` as the weakest preservation claim and inspect `method_details`."
+      }
+    },
+    "method_details": {
+      "type": "string",
+      "description": "Free-text vendor-specific elaboration on the method (e.g. graph provider name, crosswalk version, match-rate floor). Strictly informational; buyer agents MUST NOT branch on this field. Useful for human triage and audit log surfacing.",
+      "maxLength": 1024
+    }
+  },
+  "required": ["from", "to", "method"],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "from": { "system": "nielsen_dma", "value": "501", "version": "2024", "name": "New York" },
+      "to":   { "system": "comscore_market", "value": "NYC-100", "version": "2025-Q1" },
+      "method": "crosswalk",
+      "method_details": "Canonical county-union mapping per Nielsen DMA 2024 spec + Comscore Market 2025-Q1 definition."
+    },
+    {
+      "from": { "system": "uid2", "value": "AAAA..." },
+      "to":   { "system": "ramp_id", "value": "RA-9876" },
+      "method": "id_graph",
+      "method_details": "LiveRamp graph v2026.05. Coverage ~94% in US, ~71% in EU."
+    },
+    {
+      "from": { "system": "iab_audience", "value": "4-1-2-3", "version": "v2" },
+      "to":   { "system": "iab_audience", "value": "4-1-2-3", "version": "v3" },
+      "method": "crosswalk",
+      "method_details": "IAB published v2→v3 migration map. Direct 1:1 for this node; some sibling nodes are merged in v3."
+    },
+    {
+      "from": { "system": "publisher_panel", "value": "panel_A_18-49" },
+      "to":   { "system": "nielsen_p_18_49", "value": "P18-49" },
+      "method": "custom",
+      "method_details": "Publisher's panel reweighted to Nielsen P18-49 distribution. Match-rate floor 80%; see publisher methodology docs."
+    }
+  ]
+}

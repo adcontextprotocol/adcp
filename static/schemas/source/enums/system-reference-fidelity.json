@@ -2,15 +2,17 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/enums/system-reference-fidelity.json",
   "title": "System Reference Fidelity",
-  "description": "How faithfully a deployment can honor a value defined against an external reference system (see /schemas/core/system-reference.json). Surfaces the cross-system fidelity question at the deployment layer — buyer agents read this BEFORE activating a signal so they can make an informed decision about geographic, taxonomic, or identity drift introduced by the destination's mapping. Generalizes the `market_fidelity` mechanism proposed in #4475 to all reference-system axes (markets, ID graphs, taxonomies, measurement currencies). Used as a property on `deployments[]` entries or analogous per-destination structures; not used on the signal definition itself (the signal's reference is canonical; fidelity is a function of where it's activated).",
+  "description": "How faithfully a deployment can honor a value defined against an external reference system (see /schemas/core/system-reference.json). Surfaces the cross-system fidelity question at the deployment layer — buyer agents read this BEFORE activating a signal so they can make an informed decision about geographic, taxonomic, or identity drift introduced by the destination's mapping. Generalizes the `market_fidelity` mechanism proposed in #4475 to all reference-system axes (markets, ID graphs, taxonomies, measurement currencies). Used as a property on `deployments[]` entries or analogous per-destination structures; not used on the signal definition itself (the signal's reference is canonical; fidelity is a function of where it's activated). When fidelity is `converted` or `approximated`, the deployment SHOULD also surface a structured conversion descriptor (see /schemas/core/system-reference-conversion.json) so buyer agents can reason about the source, destination, and method without parsing free text.",
   "type": "string",
   "enum": [
     "exact",
+    "converted",
     "approximated",
     "unsupported"
   ],
   "enumDescriptions": {
     "exact": "Destination uses the same `system` (and `version` when both are present) — activation preserves the reference frame byte-for-byte.",
+    "converted": "Destination uses a different `system` from the signal but the seller asserts the conversion is deterministic and lossless — e.g. Nielsen DMA → Comscore Market via the canonical county crosswalk, or UID2 → ID5 via a direct identity-graph link. Functionally equivalent to `exact` for buyers who only need preservation; structurally distinct because the system axis changed. Buyer agents that need to inspect the conversion chain (source / destination / method) read the deployment's `conversion` descriptor.",
     "approximated": "Destination maps to a different `system` or a different `version` of the same system; the resulting activation is geographically, taxonomically, or identity-wise close but NOT byte-equivalent. Buyer agents SHOULD treat `approximated` as a buyer-decision point — for modeled audiences whose statistical validity depends on the reference frame, `approximated` activation may invalidate the model.",
     "unsupported": "Destination cannot resolve the `system` at all. Activation against this destination will fail or silently degrade. Buyer agents MUST NOT proceed without an explicit opt-in to whatever fallback behavior the seller advertises."
   }
