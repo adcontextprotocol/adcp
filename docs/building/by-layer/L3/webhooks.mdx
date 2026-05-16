@@ -505,6 +505,56 @@ Reporting webhooks are separate from task status webhooks. They deliver periodic
 
 See [Task Reference](/docs/media-buy/task-reference) for details on `reporting_webhook`.
 
+## Persistent channel contract
+
+Task webhooks fire once per logical task and stop when the task settles. **Persistent webhooks** — `reporting_webhook` and `push_notification_config` on a media buy — outlive any single operation and fire repeatedly for the life of the resource. The contract below applies to persistent channels.
+
+This section is the transport half of the [Snapshot and log contract](/docs/protocol/snapshot-and-log). For the read-side rules (snapshot is authoritative, replay = re-read), see that page.
+
+### Delivery semantics
+
+- **At-least-once delivery.** Sellers MAY re-fire the same logical event under retry. Receivers MUST dedupe by `idempotency_key` (or the equivalent event-scoped id surfaced in the payload — e.g., `notification_id` for `notification-type` events).
+- **No ordering guarantee.** Two events on the same resource within seconds MAY arrive out of order. Receivers MUST reconcile via the resource snapshot rather than treating webhook ordering as canonical.
+- **Idempotent application.** Apply the same payload twice and the resulting receiver state MUST be identical.
+
+### Coalescence
+
+For state-shaped event types (e.g., `impairment`), sellers SHOULD coalesce multiple near-simultaneous changes on the same resource into a single push:
+
+- Window SHOULD NOT exceed 5 minutes.
+- Acute event types (impairment) coalesce on the short end; advisory or batched event types MAY use longer windows defined per type.
+- Delivery report fires (`scheduled`, `final`) follow their own cadence and are not subject to this coalescence rule.
+
+### Replay and recovery
+
+If a buyer's receiver was offline and missed a fire, recovery is **read the snapshot**:
+
+- Missed `impairment` event → call `get_media_buys` and read `impairments[]`.
+- Missed delivery report fire → call `get_media_buy_delivery` and read aggregates.
+- Missed any other state-shaped event → call the corresponding `get_*` task.
+
+AdCP does not commit to an event-replay primitive in v1. The [webhook delivery visibility surface (`webhook_activity[]` on `get_media_buys`)](https://github.com/adcontextprotocol/adcp/issues/4278) exposes recent fires within a retention window for debugging; it is not a guaranteed catch-up channel.
+
+### Mutability and rotation
+
+`push_notification_config` and `reporting_webhook` on a media buy MAY be updated via `update_media_buy` without re-creating the buy. Common reasons: rotating the receiver URL, replacing an expired bearer token, swapping signing keys.
+
+Sellers MUST honor the updated config on the next fire after the update is acknowledged. There is no formal handoff window — buyers MAY receive a small number of fires against the prior URL during the propagation window and SHOULD treat both URLs as live until the prior URL has been quiet for a coalescence window.
+
+### Auth renewal
+
+Persistent webhooks outlive bearer tokens. Receivers using bearer auth (legacy HMAC profile or token-based mTLS) SHOULD rotate tokens via `update_media_buy` before expiry. Receivers using the 9421 signing profile do not need token rotation — verification is against the seller's published JWKS, which the seller rotates independently.
+
+If a seller's fire receives a 401 from the receiver, the seller SHOULD treat this as a transient receiver-side configuration error: retry per the standard schedule, surface the failure in `webhook_activity[]` for debugging, and do not auto-disable the webhook.
+
+### Termination
+
+Persistent webhooks fire through the buy's terminal lifecycle moves:
+
+- `final` delivery report fires after the buy reaches `completed`, `canceled`, or `rejected`.
+- Any pending `impairment` events fire (or are coalesced and fired) before termination if the seller has them queued.
+- After the final fire, no further events fire against the configured URLs. Sellers MAY retain `webhook_activity[]` for the retention window after termination so buyers can audit the closing sequence.
+
 ## Next steps
 
 - [Task Lifecycle](/docs/building/by-layer/L3/task-lifecycle) — status values and transitions

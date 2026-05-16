@@ -17,6 +17,17 @@
     "status": {
       "$ref": "/schemas/enums/media-buy-status.json"
     },
+    "health": {
+      "$ref": "/schemas/enums/media-buy-health.json",
+      "description": "Aggregate health based on open impairments[]. Orthogonal to status — a paused, pending, or active buy can each be impaired. Defaults to 'ok' when impairments[] is empty."
+    },
+    "impairments": {
+      "type": "array",
+      "description": "Open impairments — upstream dependency state changes that affect delivery for at least one package on this buy. Empty when health is 'ok'. Sellers MUST add an entry on next sync/poll response after a referenced resource transitions to an offline state, and MUST remove the entry (flipping health to 'ok' when the array empties) when the resource returns to a serviceable state. See impairment.coherence assertion for the cross-resource invariant.",
+      "items": {
+        "$ref": "/schemas/core/impairment.json"
+      }
+    },
     "rejection_reason": {
       "type": "string",
       "description": "Reason provided by the seller when status is 'rejected'. Present only when status is 'rejected'."

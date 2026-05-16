@@ -1,0 +1,74 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/impairment.json",
+  "title": "Impairment",
+  "description": "A single upstream dependency state change that affects delivery for one or more packages within a media buy. An impairment is open until the underlying resource returns to a serviceable state. Materiality rule: an impairment MUST list at least one package whose ability to serve is degraded; cosmetic-only effects (e.g., one rejected creative when peers remain serviceable in the same package) MUST NOT be reported as impairments.",
+  "type": "object",
+  "properties": {
+    "impairment_id": {
+      "type": "string",
+      "description": "Stable identifier for this impairment. Used as the notification_id when the impairment fires via webhook. Buyer agents dedupe by this value across at-least-once delivery. Remains stable for the lifetime of the open impairment (re-emission on snapshot reads carries the same id).",
+      "x-entity": "impairment"
+    },
+    "resource_type": {
+      "type": "string",
+      "enum": ["audience", "creative", "catalog_item", "event_source", "property"],
+      "description": "The kind of upstream dependency that transitioned to an offline state."
+    },
+    "resource_id": {
+      "type": "string",
+      "description": "Seller's identifier for the specific resource that transitioned. References the same id space as the corresponding sync_/list_ task responses (e.g., audience_id, creative_id)."
+    },
+    "package_ids": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "description": "Packages within this media buy whose delivery is degraded by the impairment. MUST list at least one package — cosmetic effects that do not degrade any package's ability to serve MUST NOT be reported as impairments."
+    },
+    "transition": {
+      "type": "object",
+      "description": "The resource-level status transition that triggered this impairment.",
+      "required": ["from", "to"],
+      "properties": {
+        "from": {
+          "type": "string",
+          "description": "Prior status of the resource (e.g., 'ready', 'approved', 'good')."
+        },
+        "to": {
+          "type": "string",
+          "description": "Current (offline) status of the resource (e.g., 'suspended', 'rejected', 'withdrawn', 'insufficient'). For property resource_type without a per-resource status field, set to a documented offline marker (e.g., 'depublished')."
+        }
+      },
+      "additionalProperties": false
+    },
+    "reason_code": {
+      "$ref": "/schemas/enums/impairment-reason-code.json",
+      "description": "Categorical reason for the offline transition. Drives buyer-side remediation logic."
+    },
+    "reason": {
+      "type": "string",
+      "maxLength": 500,
+      "description": "Human-readable explanation. Supplements reason_code with seller-specific detail."
+    },
+    "observed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when the seller observed the resource transition to its offline state."
+    },
+    "remediation": {
+      "type": "string",
+      "maxLength": 500,
+      "description": "Action the buyer can take to clear the impairment, if any. Free text. Absent when no buyer-side remediation is possible (e.g., seller-initiated withdrawal pending re-publication)."
+    }
+  },
+  "required": [
+    "impairment_id",
+    "resource_type",
+    "resource_id",
+    "package_ids",
+    "transition",
+    "reason_code",
+    "observed_at"
+  ],
+  "additionalProperties": false
+}

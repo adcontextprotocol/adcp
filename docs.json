@@ -107,6 +107,7 @@
                   "docs/protocol/required-tasks",
                   "docs/protocol/calling-an-agent",
                   "docs/protocol/format-references",
+                  "docs/protocol/snapshot-and-log",
                   {
                     "group": "Concepts",
                     "expanded": false,

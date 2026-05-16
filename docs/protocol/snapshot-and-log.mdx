@@ -1,0 +1,87 @@
+---
+title: Snapshot and log
+description: "The contract that ties every read API to its push channel — what a snapshot is, what a log is, how they share an id space, and why pulling the snapshot is the only replay primitive AdCP commits to."
+"og:title": "AdCP — Snapshot and log"
+---
+
+# Snapshot and log
+
+Every state surface AdCP exposes has two faces: a **snapshot** read from a `get_*` task and a **log** of push events fired against a registered webhook URL. The snapshot says *what is true now*. The log says *what fired, when, with what id*. This page is the contract that keeps them coherent.
+
+You don't need to read this page to call an AdCP task. You do need to read it to build a webhook receiver, to propose a new notification type, or to argue that a missing-event scenario is a spec gap rather than a buyer-side bug.
+
+## The two faces
+
+### Snapshot
+
+The current truth, exposed on a read API:
+
+- `get_media_buys` returns each buy's `status`, `health`, open `impairments[]`, and `webhook_activity[]`.
+- `list_creatives` returns each creative's `status`.
+- `sync_audiences` (without changes) returns each audience's current `status`.
+- `get_event_source_health` returns each source's current `assessment-status`.
+
+A snapshot is always re-readable. It carries no history — only what's true at the moment of the read.
+
+### Log
+
+A stream of push events fired to the buyer's registered webhook URL:
+
+- Delivery report fires (`notification_type: scheduled | final | delayed | adjusted`).
+- Dependency impairment fires (`notification_type: impairment`).
+- Future event types are added the same way: a new `notification-type` value, a defined payload, the same delivery contract.
+
+Each event carries a stable `notification_id` and corresponds to a change visible on the snapshot.
+
+## The five rules
+
+These rules apply across every snapshot/log pair in the protocol. If you're building a new notification type, your design must satisfy all five.
+
+### 1. Every push event has a stable `notification_id`
+
+Buyers dedupe on `notification_id`. The seller MUST issue an id stable across retry attempts of the same logical event and stable across re-emission of the same open-state event (e.g., re-firing an open impairment after a webhook receiver outage uses the same id).
+
+For state-shaped events (impairment, lifecycle), the id is typically the resource's stable id (e.g., `impairment_id` doubles as the `notification_id` for an `impairment` push). For point-in-time events (delivery report), the id is event-scoped.
+
+### 2. Every push event corresponds to a snapshot delta
+
+There is no webhook-only state. If a webhook fires with `notification_type: impairment`, the affected media buy's `impairments[]` will show the impairment on the next read. If a delivery report fires, the next `get_media_buy_delivery` reflects the same reporting window. Push channels do not carry information unavailable from the read API.
+
+This rule rules out push events that exist solely as ephemeral signals — "you might want to know X" without a corresponding readable state. If you want to surface a suggestion that doesn't change state, build a pull tool, not a webhook.
+
+### 3. Push is at-least-once; the snapshot is authoritative
+
+When push and snapshot disagree, the snapshot wins. A duplicate webhook fire (same `notification_id`) is the expected behavior under at-least-once delivery — buyer agents dedupe and continue. A stale webhook fire (the push reports a state that the snapshot no longer reflects, because the resource moved on) is also expected — buyer agents re-read the snapshot rather than acting on the push payload.
+
+This is why receivers MUST verify against the snapshot before taking irreversible action on a push.
+
+### 4. Replay = re-read the snapshot
+
+There is no event-replay primitive in v1. If a buyer's webhook receiver was offline and missed a fire, the recovery path is to call the relevant `get_*` task and pick up current state.
+
+This works for any state surface — impairments, statuses, delivery aggregates — because rule 2 guarantees the snapshot reflects every push. It does not work for purely point-in-time events that drain from the log (e.g., individual delivery report fires after retention expires). For those, the [webhook delivery visibility surface](/docs/media-buy/task-reference/get_media_buys) (`webhook_activity[]`) provides a bounded recent-fire window — that's the closest AdCP gets to a replay primitive.
+
+### 5. Push events and log entries share an id space
+
+A webhook delivery surfaced via `webhook_activity[]` references the same `notification_id` that the buyer received in the push body. A buyer can correlate "I received fire X" with "the seller's log shows fire X" without bookkeeping across two namespaces. Likewise, an `impairment_id` referenced in `impairments[]` matches the `notification_id` of the push that announced it.
+
+## What this rules out
+
+- **A push channel for suggestions that don't change state.** If "the seller wants you to know X" doesn't correspond to a readable field, it's not a snapshot/log event. Build a pull tool instead. (See the advisory epic.)
+- **A replay tool that re-fires past webhooks.** Snapshot reads are the replay. A replay tool is an operator-side debug feature; it's not part of the buyer-facing protocol contract.
+- **Per-event subscription filtering.** Subscription is per-resource (or per-account, for resources that outlive a buy). A buyer who registers `push_notification_config` on a media buy receives every event type fired against that buy. Filtering at the receiver is fine; filtering at the protocol surface is out of scope.
+- **A "did you receive my webhook?" confirmation step.** Receivers acknowledge via HTTP 2xx; senders retry on non-2xx per the [persistent webhook contract](/docs/building/by-layer/L3/webhooks#persistent-channel-contract). Sellers do not poll buyers for receipt.
+
+## When you'd be right to push back
+
+When a use case genuinely needs an event with no snapshot half — a high-frequency signal where polling cost dominates and recovery isn't critical (e.g., a metrics stream). AdCP doesn't have one of these today. If you're proposing one, name it explicitly and argue why pull-via-snapshot doesn't fit; reviewers will weigh that against the contract this page commits to.
+
+## Where the surface doesn't yet follow this
+
+- **Delivery reports** (`scheduled` / `final` / `delayed` / `adjusted`) predate this contract. Their `notification_id` shape is defined per delivery; the snapshot half is `get_media_buy_delivery`, which returns the current state of aggregates but does not surface every past fire as a discrete row. The [webhook delivery visibility surface (#4278)](https://github.com/adcontextprotocol/adcp/issues/4278) closes this gap by exposing recent fires via `webhook_activity[]`.
+- **Resource lifecycle webhooks beyond media-buy scope** (creative state changes, audience suspensions outside a buy's scope) are in progress under the [creative-lifecycle webhooks RFC (#2261)](https://github.com/adcontextprotocol/adcp/issues/2261). Until those land, the snapshot half (a fresh `list_creatives` or `sync_audiences` call) is the only reliable signal for changes to resources not currently referenced by an active buy.
+
+## Related
+
+- [Push notifications](/docs/building/by-layer/L3/webhooks) — the transport contract that this page sits on top of.
+- [Media buy lifecycle](/docs/media-buy/media-buys/lifecycle) — applies snapshot/log to `status` + `health` + `impairments[]`.

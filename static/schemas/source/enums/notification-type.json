@@ -2,12 +2,20 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/enums/notification-type.json",
   "title": "Notification Type",
-  "description": "Type of delivery notification for media buy reporting",
+  "description": "Type of push notification fired against a media buy's push_notification_config. Delivery notifications (scheduled/final/delayed/adjusted) carry reporting payloads; health notifications (impairment) carry dependency state changes that affect serving.",
   "type": "string",
   "enum": [
     "scheduled",
     "final",
     "delayed",
-    "adjusted"
-  ]
+    "adjusted",
+    "impairment"
+  ],
+  "enumDescriptions": {
+    "scheduled": "Scheduled delivery report fire at a regular interval (e.g., hourly, daily).",
+    "final": "Final delivery report fire after the buy reaches a terminal lifecycle state.",
+    "delayed": "Delivery report fire signaling a deviation from expected pacing.",
+    "adjusted": "Delivery report fire signaling a seller-side adjustment (e.g., reforecast, makegood).",
+    "impairment": "Dependency state change fire. Sent when a resource referenced by the buy enters an offline state that affects delivery for at least one package. Payload carries the impairment object and the buy's updated health. See impairment.json and the impairment.coherence assertion."
+  }
 }
