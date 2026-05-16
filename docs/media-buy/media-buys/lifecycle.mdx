@@ -238,10 +238,15 @@ An `impairment` reports degraded delivery from upstream dependency change. It is
 
 ### Compliance
 
-The `impairment.coherence` assertion verifies that:
+The `impairment.coherence` assertion verifies that the buy's `impairments[]` surface stays in sync with the underlying resources it references. It is a cross-resource invariant — it observes both the resource transition and the buy snapshot in the same compliance run.
 
-- Every entry in `impairments[]` references a resource currently in an offline state.
-- Every resource in an offline state referenced by a non-terminal media buy appears in that buy's `impairments[]`.
+**Forward rule.** Every entry in a buy's `impairments[]` MUST reference a resource whose current status is an offline state — `audience: suspended`, `creative: rejected`, `catalog_item: withdrawn`, `event_source: insufficient`, or a property depublished via `brand.json` / `adagents.json`. A buy reporting an impairment whose referenced resource is no longer offline fails the check — the seller has stale state on the buy.
+
+**Inverse rule.** Any resource in an offline state that is referenced by a non-terminal buy MUST appear in that buy's `impairments[]`, and the buy's `health` MUST be `impaired` whenever `impairments[]` is non-empty (and `ok` when empty). A seller that transitions a resource without propagating to the affected buys fails the check — the seller has stale state on the resource.
+
+**Out of scope.** Buys in terminal status (`completed`, `canceled`, `rejected`) MAY remain unreported even when a referenced resource is offline; the buy is no longer serving and the synchronisation cost is wasted. Materiality (the requirement that `package_ids` be non-empty) is enforced at the schema layer by `package_ids: minItems: 1` on `impairment.json` — `impairment.coherence` does not re-check it.
+
+**Relationship to other invariants.** `impairment.coherence` complements `status.monotonic`, which observes single-resource transitions only. The two run together on every specialism whose storyboard exercises both a resource-state transition and a media-buy snapshot read — audience-sync, creative-ad-server, creative-template, creative-generative, sales-catalog-driven. The cross-resource exercise itself is the dependency-impairment storyboard (#2860); until that lands, `impairment.coherence` grades `not_applicable` on storyboards that don't observe both surfaces.
 
 See the [Snapshot and log contract](/docs/protocol/snapshot-and-log) for the read-side rules that tie `impairments[]` (snapshot) to the `impairment` push (log).
 

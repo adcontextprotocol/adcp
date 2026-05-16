@@ -17,8 +17,21 @@ required_tools:
 # path too_small → processing → ready. Off-graph regressions (e.g. a seller
 # silently downgrading from ready to an unknown enum value) fail here rather
 # than slipping past per-step schema checks.
+#
+# Cross-resource assertion (adcp#2859). impairment.coherence verifies that
+# audience.suspended transitions propagate to any non-terminal media buy
+# that references the audience: the buy's impairments[] MUST list an entry
+# for the suspended audience, and the buy's health MUST be `impaired`.
+# Inverse direction: clearing an impairment without returning the audience
+# to a serviceable state, or returning the audience without removing the
+# impairment, both fail the assertion. Out of scope: buys in terminal
+# status (completed/canceled/rejected) MAY remain unreported. Grades
+# not_applicable for storyboards that don't exercise both a resource
+# transition AND a media-buy snapshot read; #2860 wires the cross-resource
+# exercise into the audience-track storyboard.
 invariants:
   - status.monotonic
+  - impairment.coherence
 
 platform_types:
   - display_ad_server
