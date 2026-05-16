@@ -496,6 +496,7 @@
                       "docs/brand-protocol/for-rights-holders",
                       "docs/brand-protocol/brand-json",
                       "docs/brand-protocol/building-a-brand-agent",
+                      "docs/brand-protocol/ui-guidance",
                       {
                         "group": "Tasks",
                         "pages": [
@@ -1066,6 +1067,7 @@
                   "docs/brand-protocol/for-rights-holders",
                   "docs/brand-protocol/brand-json",
                   "docs/brand-protocol/building-a-brand-agent",
+                  "docs/brand-protocol/ui-guidance",
                   {
                     "group": "Tasks",
                     "pages": [
