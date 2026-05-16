@@ -329,11 +329,12 @@ A complete walkthrough for a partner verifying the full Nike portfolio. Assumes 
 
 ## Out of scope
 
-Three categories the verification surface deliberately doesn't cover:
+Four categories the verification surface deliberately doesn't cover:
 
 - **Creative conflict / brand-safety scoring.** "Is this creative in conflict with our guidelines?" is its own design space — overlaps with creative protocol and brand-safety vendors. May land as a separate RFC.
 - **Competitive relationships.** "Is this brand competitive to us?" is **indefinitely deferred.** A brand declaring competitors machine-readably has different incentives than declaring its own assets (legal exposure, antitrust optics). The protocol won't ship a primitive that asks brands to publicly enumerate enemies.
 - **Cryptographic provenance** of agent-issued statements beyond transport-level signing. Today: rely on RFC 9421 and `adcp_use`-tagged keys. Cryptographic claim-chains (e.g., "this trademark assertion is signed by the registrar plus the brand") are out of scope.
+- **Standing licensed relationships as a static brand.json surface.** `verify_trademark` returns `licensed_in` / `licensed_out` because the underlying relationships are real — Marriott franchisees use the MARRIOTT mark under license, music catalogs are licensed-out per territory, sub-brands license rights bidirectionally with their parents. The brand-agent can speak to these because they're in its internal records. **But `brand.json` itself doesn't yet have a publishing surface for standing licensed relationships** parallel to `brand_refs[]` for ownership. The existing rights protocol (`rights_agent`, `acquire_rights`) handles *transactional* licensing — negotiate a deal — not standing declarations like "I license-in the X mark from Y for Z use cases in CN" or "I've granted Acme Distribution rights to my catalog in CN." This gap is real and deserves its own RFC alongside the rights-protocol team. For this RFC: the verification surface exposes the licensed states because partners need to consume them, but the static-file substrate that backs them is a separate design. The `licensed_in` / `licensed_out` answers come from the brand-agent's internal records, not from a crawlable file. Tracked as a follow-up — the design likely needs `licensed_from[]` / `licensed_to[]` entries on the brand definition with jurisdictional scoping, mutual-assertion shape parallel to `brand_refs[]`, and integration with the rights protocol's `available_uses` / `right_types` vocabulary.
 
 ## Prior art and adjacent standards
 
