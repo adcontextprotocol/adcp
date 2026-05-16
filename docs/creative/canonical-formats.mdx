@@ -132,7 +132,7 @@ These shapes are real ad-industry product types — but they're either multi-can
   "format_options": [
     {
       "format_kind": "custom",
-      "v2_only": true,
+      "canonical_formats_only": true,
       "format_shape": "multi_placement_takeover",
       "format_schema": {
         "uri": "https://nytimes.adcp/schemas/formats/homepage_takeover_v3",
@@ -797,8 +797,8 @@ Products MAY carry both `format_ids` (v1) and `format_options` (v2) during the m
 
 - SDKs that derive both shapes from a single source guarantee the invariant. Hand-authored products MUST be reviewed for agreement.
 - A producer that cannot guarantee agreement MUST emit one shape only.
-- For `format_kind: "custom"` declarations, producers MUST set `v2_only: true` and MUST NOT synthesize a v1 `format_id`. The protocol does NOT mint synthetic format_ids (an `aao-synth/*` namespace was considered and rejected — adopters would index on identifiers with no stable identity).
-- For `format_options` declarations whose canonical/parameter shape has no clean v1 named-format equivalent (e.g., a structural shape not in `v1-canonical-mapping.json` and not declared on any v1 file), producers SHOULD set `v2_only: true` rather than emit only one of the two shapes silently.
+- For `format_kind: "custom"` declarations, producers MUST set `canonical_formats_only: true` and MUST NOT synthesize a v1 `format_id`. The protocol does NOT mint synthetic format_ids (an `aao-synth/*` namespace was considered and rejected — adopters would index on identifiers with no stable identity).
+- For `format_options` declarations whose canonical/parameter shape has no clean v1 named-format equivalent (e.g., a structural shape not in `v1-canonical-mapping.json` and not declared on any v1 file), producers SHOULD set `canonical_formats_only: true` rather than emit only one of the two shapes silently.
 
 ### Consumer rules (v1→v2)
 
@@ -821,7 +821,7 @@ The schema cannot enforce agreement (no cross-field constraint expresses "the v1
 
 ### v2-only declarations on the wire
 
-A buyer reading a product on the v1 wire path sees `format_options` entries with `v2_only: true` absent from `format_ids`. This is intentional and not a producer error. v2-aware buyers reading `format_options` see them. v1-only buyers see fewer options on `format_ids` than a v2-aware buyer sees on `format_options` for the same product — the v1 surface is a strict subset on these products until v1 sunset (5.0).
+A buyer reading a product on the v1 wire path sees `format_options` entries with `canonical_formats_only: true` absent from `format_ids`. This is intentional and not a producer error. v2-aware buyers reading `format_options` see them. v1-only buyers see fewer options on `format_ids` than a v2-aware buyer sees on `format_options` for the same product — the v1 surface is a strict subset on these products until v1 sunset (5.0).
 
 ## What's NOT in v2
 
@@ -857,7 +857,7 @@ The third-party-creative-agent worked example assumes Flashtalking-shaped tools 
 
 ### Codegen vs runtime: the validator is the gate
 
-`product-format-declaration.json` carries an `allOf/if/then/else` that conditionally requires `format_shape`, `format_schema`, and `v2_only` only when `format_kind === "custom"`. The same pattern applies to `validate-input-result.json`'s `result_kind` discriminator with conditional `violations`. JSON Schema captures these conditionals cleanly, but most codegen pipelines (`json-schema-to-typescript`, `datamodel-codegen`) strip `if/then/else` before emitting types because conditional narrowing doesn't map to TypeScript's structural type system or to Pydantic's class model. The generated types are therefore strictly more permissive than the schema:
+`product-format-declaration.json` carries an `allOf/if/then/else` that conditionally requires `format_shape`, `format_schema`, and `canonical_formats_only` only when `format_kind === "custom"`. The same pattern applies to `validate-input-result.json`'s `result_kind` discriminator with conditional `violations`. JSON Schema captures these conditionals cleanly, but most codegen pipelines (`json-schema-to-typescript`, `datamodel-codegen`) strip `if/then/else` before emitting types because conditional narrowing doesn't map to TypeScript's structural type system or to Pydantic's class model. The generated types are therefore strictly more permissive than the schema:
 
 - Generated TS / Python types accept a `format_kind: "custom"` declaration that omits `format_shape` or `format_schema` — the type system has no way to narrow on the discriminator and require the conditional fields.
 - The Ajv (or equivalent) runtime validator IS the gate. SDKs MUST run the JSON Schema validator before trusting a `ProductFormatDeclaration` parsed from the wire; the codegenned type is a convenience layer, not a contract.

@@ -21,10 +21,10 @@
       "uniqueItems": true,
       "description": "Optional subset of the parent product's `channels` to which this declaration applies. When omitted, the declaration applies to ALL channels declared on the product. Lets a multi-channel product (e.g., `channels: ['display', 'video']`) carry distinct format_options per channel — `format_options: [{format_kind: 'image', applies_to_channels: ['display']}, {format_kind: 'video_hosted', applies_to_channels: ['video']}]`. Buyers ship channel-appropriate manifests per `applies_to_channels`."
     },
-    "v2_only": {
+    "canonical_formats_only": {
       "type": "boolean",
       "default": false,
-      "description": "When true, this format declaration has no clean v1 projection and SDKs MUST NOT synthesize a v1 `format_id` for it. Buyers reading the product on the v1 wire path see this declaration absent from `format_ids`; only v2-aware buyers (reading `format_options`) discover it. Set explicitly for `format_kind: \"custom\"` declarations (no canonical exists in v1 to project onto) and for declarations whose canonical/parameter shape cannot round-trip through a v1 named format without semantic loss. The protocol does NOT mint synthetic v1 format_ids for unmappable declarations — the alternative (an `aao-synth/*` namespace populated automatically) was considered and rejected because adopters would index on synthetic IDs that have no stable identity. Producers SHOULD set `v2_only: true` rather than omit the declaration from `format_options` — explicit v2-only is more useful than silent absence."
+      "description": "When true, this format declaration has no clean v1 projection and SDKs MUST NOT synthesize a v1 `format_id` for it. Buyers reading the product on the v1 wire path see this declaration absent from `format_ids`; only v2-aware buyers (reading `format_options`) discover it. Set explicitly for `format_kind: \"custom\"` declarations (no canonical exists in v1 to project onto) and for declarations whose canonical/parameter shape cannot round-trip through a v1 named format without semantic loss. The protocol does NOT mint synthetic v1 format_ids for unmappable declarations — the alternative (an `aao-synth/*` namespace populated automatically) was considered and rejected because adopters would index on synthetic IDs that have no stable identity. Producers SHOULD set `canonical_formats_only: true` rather than omit the declaration from `format_options` — explicit v2-only is more useful than silent absence."
     },
     "runtime_status": {
       "type": "string",
@@ -48,9 +48,9 @@
         "required": ["format_kind"]
       },
       "then": {
-        "required": ["format_shape", "format_schema", "v2_only"],
+        "required": ["format_shape", "format_schema", "canonical_formats_only"],
         "properties": {
-          "v2_only": { "const": true }
+          "canonical_formats_only": { "const": true }
         }
       },
       "else": {
@@ -226,10 +226,10 @@
       }
     },
     {
-      "description": "NYTimes Homepage Takeover — custom format_kind, classified against the multi_placement_takeover format_shape, with format_schema pointing at NYTimes's hosted schema. Buyer agents fetch the schema by uri@digest (cached, immutable) and validate the manifest structurally. `v2_only: true` is required for custom declarations — no v1 named format can express the multi-placement shape.",
+      "description": "NYTimes Homepage Takeover — custom format_kind, classified against the multi_placement_takeover format_shape, with format_schema pointing at NYTimes's hosted schema. Buyer agents fetch the schema by uri@digest (cached, immutable) and validate the manifest structurally. `canonical_formats_only: true` is required for custom declarations — no v1 named format can express the multi-placement shape.",
       "data": {
         "format_kind": "custom",
-        "v2_only": true,
+        "canonical_formats_only": true,
         "format_shape": "multi_placement_takeover",
         "format_schema": {
           "uri": "https://nytimes.adcp/schemas/formats/homepage_takeover_v3",
