@@ -22,6 +22,7 @@ import type { Pool } from 'pg';
 import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { PublisherDatabase, type AdagentsManifest } from '../../src/db/publisher-db.js';
+import { FederatedIndexDatabase } from '../../src/db/federated-index-db.js';
 
 const TEST_PUB = 'caa-writer.example';
 const VICTIM_PUB = 'caa-writer-victim.example';
@@ -903,6 +904,53 @@ describe('catalog_agent_authorizations writer projection', () => {
         [TEST_AGENT_CANON]
       );
       expect(retiredRowsAfterRevoke.length).toBeGreaterThan(0);
+    });
+
+    it('drops the (agent, publisher) pair from getAllAgentDomainPairs after revocation — crawler-diff contract', async () => {
+      // #4506 part B: the in-memory AuthorizationIndex revocation
+      // propagation chain is:
+      //   1. writer revocation branch soft-deletes CAA rows
+      //   2. next crawler cycle reads getAllAgentDomainPairs (which
+      //      reads from v_effective_agent_authorizations, EXCLUDING
+      //      soft-deleted rows via the partial index)
+      //   3. crawler diff (pre vs post snapshot) detects the pair is
+      //      gone and emits an `authorization.revoked` event
+      //   4. registry-sync consumes the event and calls
+      //      authorizationIndex.removeEntry
+      // This test exercises step 2 explicitly: the pair MUST not appear
+      // in getAllAgentDomainPairs after revocation. Without this contract
+      // holding, the crawler-side diff misses the change and the
+      // in-memory index keeps authorizing the revoked publisher until
+      // the next full re-index.
+      const federatedDb = new FederatedIndexDatabase();
+      // Step 1: project a manifest that authorizes the agent.
+      await publisherDb.upsertAdagentsCache({
+        domain: TEST_PUB,
+        manifest: manifest([
+          { url: TEST_AGENT_RAW, authorized_for: 'display' },
+        ]),
+      });
+      const beforeRevoke = await federatedDb.getAllAgentDomainPairs();
+      const pairBefore = beforeRevoke.find(
+        (r) => r.agent_url === TEST_AGENT_CANON && r.publisher_domain === TEST_PUB
+      );
+      expect(pairBefore).toBeDefined();
+
+      // Step 2: revoke and confirm the pair is gone from the snapshot.
+      await publisherDb.upsertAdagentsCache({
+        domain: TEST_PUB,
+        manifest: {
+          ...manifest([{ url: TEST_AGENT_RAW, authorized_for: 'display' }]),
+          revoked_publisher_domains: [
+            { publisher_domain: TEST_PUB, revoked_at: '2026-05-13T00:00:00Z' },
+          ],
+        },
+      });
+      const afterRevoke = await federatedDb.getAllAgentDomainPairs();
+      const pairAfter = afterRevoke.find(
+        (r) => r.agent_url === TEST_AGENT_CANON && r.publisher_domain === TEST_PUB
+      );
+      expect(pairAfter).toBeUndefined();
     });
 
     it('matches publisher_domains[] case-insensitively', async () => {
