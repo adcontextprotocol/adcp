@@ -8,7 +8,7 @@
 -- One row per (leaf_domain, house_domain) pair. Insert/update is a single
 -- statement so concurrent notify calls can't both clear the cooldown.
 
-CREATE TABLE brand_assertion_notifications (
+CREATE TABLE IF NOT EXISTS brand_assertion_notifications (
   leaf_domain TEXT NOT NULL,
   house_domain TEXT NOT NULL,
   last_notified_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -18,7 +18,7 @@ CREATE TABLE brand_assertion_notifications (
 
 -- Per-house index for ops: "which leaves have I been notified about?"
 -- Useful when a house team is auditing pending reciprocation requests.
-CREATE INDEX idx_brand_assertion_notifications_house
+CREATE INDEX IF NOT EXISTS idx_brand_assertion_notifications_house
   ON brand_assertion_notifications (house_domain, last_notified_at DESC);
 
 COMMENT ON TABLE brand_assertion_notifications IS
