@@ -513,7 +513,7 @@ This section is the transport half of the [Snapshot and log contract](/docs/prot
 
 ### Delivery semantics
 
-- **At-least-once delivery.** Sellers MAY re-fire the same logical event under retry. Receivers MUST dedupe by `idempotency_key` (or the equivalent event-scoped id surfaced in the payload — e.g., `notification_id` for `notification-type` events).
+- **At-least-once delivery.** Sellers MAY re-fire the same logical event under retry. Receivers MUST dedupe transport retries by `idempotency_key`. For state-shaped events that also carry a typed `notification_id` (see [`mcp-webhook-payload.json`](https://adcontextprotocol.org/schemas/v3/core/mcp-webhook-payload.json) and [snapshot-and-log Rule 1](/docs/protocol/snapshot-and-log#1-two-distinct-ids-per-fire-and-per-state)), receivers MUST also track `notification_id` to correlate fires to current snapshot state — seeing the same `notification_id` under two different `idempotency_key` values is a re-emission signal, not a transport retry.
 - **No ordering guarantee.** Two events on the same resource within seconds MAY arrive out of order. Receivers MUST reconcile via the resource snapshot rather than treating webhook ordering as canonical.
 - **Idempotent application.** Apply the same payload twice and the resulting receiver state MUST be identical.
 

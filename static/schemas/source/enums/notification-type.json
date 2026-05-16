@@ -12,10 +12,10 @@
     "impairment"
   ],
   "enumDescriptions": {
-    "scheduled": "Scheduled delivery report fire. Fired at the cadence the buyer registered on reporting_webhook (e.g., hourly, daily). Carries the window's delivery metrics.",
-    "final": "Terminal delivery report fire. Sent once after the media buy reaches a terminal lifecycle state (completed, canceled, rejected). Carries final delivery aggregates.",
-    "delayed": "Off-cadence delivery report fire indicating that the seller has detected late-arriving data for a prior window. Buyers SHOULD reconcile the affected window against this fire.",
-    "adjusted": "Off-cadence delivery report fire indicating that the seller has revised a prior window's metrics (e.g., IVT filtering applied, attribution model run, makegood adjustment). Buyers SHOULD replace prior values for the affected window.",
-    "impairment": "Dependency state change fire. Sent when a resource referenced by the buy enters an offline state that affects delivery for at least one package. Payload carries the impairment object and the buy's updated health. See impairment.json and the impairment.coherence assertion."
+    "scheduled": "Scheduled delivery report fire. Fired at the cadence the buyer registered on reporting_webhook (e.g., hourly, daily). Carries the window's delivery metrics. **notification_id**: absent — point-in-time data event with no persistent state id (snapshot-and-log Rule 1). Dedupe by `idempotency_key` only.",
+    "final": "Terminal delivery report fire. Sent once after the media buy reaches a terminal lifecycle state (completed, canceled, rejected). Carries final delivery aggregates. **notification_id**: absent — point-in-time data event with no persistent state id (snapshot-and-log Rule 1). Dedupe by `idempotency_key` only.",
+    "delayed": "Off-cadence delivery report fire indicating that the seller has detected late-arriving data for a prior window. Buyers SHOULD reconcile the affected window against this fire. **notification_id**: absent — point-in-time data event with no persistent state id (snapshot-and-log Rule 1). Dedupe by `idempotency_key` only.",
+    "adjusted": "Off-cadence delivery report fire indicating that the seller has revised a prior window's metrics (e.g., IVT filtering applied, attribution model run, makegood adjustment). Buyers SHOULD replace prior values for the affected window. **notification_id**: absent — point-in-time data event with no persistent state id (snapshot-and-log Rule 1). Dedupe by `idempotency_key` only.",
+    "impairment": "Dependency state change fire. Sent when a resource referenced by the buy enters an offline state that affects delivery for at least one package. Payload carries the impairment object and the buy's updated health. See impairment.json and the impairment.coherence assertion. **notification_id**: equals `impairment.impairment_id`. Stable across re-emissions of the same open impairment and across the closing fire that signals resolution; a new impairment for the same resource after closure receives a new id."
   }
 }
