@@ -68,8 +68,16 @@ interface ProfileRow {
   agents: Record<string, unknown>[];
 }
 
-function pickMostRecent<T extends { updated_at: Date }>(rows: T[]): T {
-  return rows.reduce((a, b) => (a.updated_at >= b.updated_at ? a : b));
+function pickMostRecent<T extends { updated_at: Date; agent_url: string }>(rows: T[], canonical: string): T {
+  // Ties on updated_at break toward the canonical-form row so the merged
+  // lifecycle_stage matches what a fresh canonical write would produce.
+  return rows.reduce((a, b) => {
+    if (a.updated_at > b.updated_at) return a;
+    if (b.updated_at > a.updated_at) return b;
+    if (a.agent_url === canonical) return a;
+    if (b.agent_url === canonical) return b;
+    return a;
+  });
 }
 
 function minDate(dates: Date[]): Date {
@@ -140,10 +148,18 @@ function mergeJsonbAgents(
 
     // Two or more elements share a canonical key. Pick the "winner": the
     // sibling whose raw url already equals the canonical form. If none
-    // is already canonical (all are slashed/cased variants), fall back
-    // to the first sibling in array order.
+    // is already canonical (all are slashed/cased variants — possible
+    // only on pre-#4551 data where neither sibling was ever written
+    // canonically), fall back to the first sibling in array order and
+    // warn — operator should inspect.
     changed = true;
-    const winner = group.find(e => e.url === key) ?? group[0];
+    let winner = group.find(e => e.url === key);
+    if (!winner) {
+      console.warn(
+        `  WARN profile=${profileSlug} canonical=${key}: no canonical-form sibling; defaulting to first array element. Inspect manually.`,
+      );
+      winner = group[0];
+    }
     const out: Record<string, unknown> = { ...winner, url: key };
 
     // Log any field where the winner kept its value over a non-empty
@@ -215,7 +231,7 @@ async function main(): Promise<void> {
         continue;
       }
 
-      const mostRecent = pickMostRecent(rows);
+      const mostRecent = pickMostRecent(rows, canonical);
       const merged = {
         agent_url: canonical,
         lifecycle_stage: mostRecent.lifecycle_stage,
@@ -293,20 +309,50 @@ async function main(): Promise<void> {
   `);
 
   console.log(`\n   Singleton non-canonical rows to normalize: ${singletonsQ.rowCount}`);
+  let singletonsNormalized = 0;
   for (const { agent_url } of singletonsQ.rows) {
     const canonical = canonicalizeAgentUrl(agent_url);
     if (!canonical || canonical === agent_url) continue;
     console.log(`     ${agent_url}  →  ${canonical}`);
-    if (apply) {
-      await pool.query(
+    if (!apply) continue;
+    // Race with concurrent member-side writes: a writer could insert the
+    // canonical PK between our SELECT above and the UPDATE below. Lock
+    // both rows FOR UPDATE inside one transaction so the writer either
+    // blocks on us (we win, our UPDATE conflicts → ON CONFLICT skip) or
+    // we block on the writer (their canonical row already exists → skip).
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(
+        `SELECT agent_url FROM agent_registry_metadata
+         WHERE agent_url IN ($1, $2) FOR UPDATE`,
+        [agent_url, canonical],
+      );
+      const exists = await client.query(
+        `SELECT 1 FROM agent_registry_metadata WHERE agent_url = $1`,
+        [canonical],
+      );
+      if (exists.rowCount && exists.rowCount > 0) {
+        console.log(`     (skip — canonical row appeared during run)`);
+        await client.query('ROLLBACK');
+        continue;
+      }
+      await client.query(
         `UPDATE agent_registry_metadata SET agent_url = $1 WHERE agent_url = $2`,
         [canonical, agent_url],
       );
+      await client.query('COMMIT');
+      singletonsNormalized += 1;
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
     }
   }
 
   console.log(
-    `\n   metadata pairs merged: ${metadataMerged}, rows dropped: ${metadataDeleted}, singletons normalized: ${singletonsQ.rowCount}\n`,
+    `\n   metadata pairs merged: ${metadataMerged}, rows dropped: ${metadataDeleted}, singletons normalized: ${apply ? singletonsNormalized : singletonsQ.rowCount}\n`,
   );
 
   // ─── 2. member_profiles.agents ───────────────────────────────────
