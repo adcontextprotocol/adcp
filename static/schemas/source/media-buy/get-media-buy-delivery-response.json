@@ -871,6 +871,72 @@
               ]
             }
           },
+          "windows": {
+            "type": "array",
+            "description": "Per-window delivery slices over the reporting period at the requested time_granularity. Only present when the request set time_granularity and include_window_breakdown: true. Each slice mirrors what reporting_webhook would have delivered for the same window — buyers who missed webhook fires can reconstruct identical data by reading this array. Slice rows are ordered by window_start ascending; consecutive rows are contiguous (each row's window_end equals the next row's window_start) and partition the requested date range at the chosen granularity. Sellers MUST exclude this field when time_granularity is omitted; when set, sellers MUST honor pulls at any granularity in reporting_capabilities.windowed_pull_granularities (otherwise return UNSUPPORTED_GRANULARITY). See snapshot-and-log Rule 4 for the two-paths-parity contract this surface anchors.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "window_start": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "ISO 8601 start of the window slice (inclusive, UTC unless reporting_capabilities.timezone declares otherwise)."
+                },
+                "window_end": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "ISO 8601 end of the window slice (exclusive). The next row's window_start equals this value when slices are contiguous."
+                },
+                "totals": {
+                  "allOf": [
+                    {
+                      "$ref": "/schemas/core/delivery-metrics.json"
+                    }
+                  ],
+                  "description": "Aggregate metrics for this window slice across all packages. Shape-aligned with reporting_webhook fire payloads at the same granularity."
+                },
+                "by_package": {
+                  "type": "array",
+                  "description": "Per-package metrics for this window slice. Same shape as the parent media_buy_deliveries[].by_package row but scoped to the window. Sellers MAY omit when per-package window-level data is unavailable; when present, package_id values MUST match the parent by_package entries.",
+                  "items": {
+                    "allOf": [
+                      {
+                        "$ref": "/schemas/core/delivery-metrics.json"
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "package_id": {
+                            "type": "string",
+                            "description": "Seller's package identifier",
+                            "x-entity": "package"
+                          }
+                        },
+                        "required": [
+                          "package_id"
+                        ]
+                      }
+                    ]
+                  }
+                },
+                "is_final": {
+                  "type": "boolean",
+                  "description": "Whether the slice data is final for this window. Same semantics as the per-package is_final flag — when false, a later read may return revised numbers for the same window as measurement matures (broadcast C3 → C7, post-IVT filtering, etc.)."
+                },
+                "measurement_window": {
+                  "type": "string",
+                  "maxLength": 50,
+                  "description": "Which measurement-window stage this slice represents (e.g., 'live', 'c3', 'c7'), referencing a window_id from the product's reporting_capabilities.measurement_windows. Absent when the data is not phased."
+                }
+              },
+              "required": [
+                "window_start",
+                "window_end",
+                "totals"
+              ],
+              "additionalProperties": true
+            }
+          },
           "daily_breakdown": {
             "type": "array",
             "description": "Day-by-day delivery",

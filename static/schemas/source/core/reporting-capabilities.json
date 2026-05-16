@@ -112,6 +112,19 @@
       "description": "Whether delivery data can be filtered to arbitrary date ranges. 'date_range' means the platform supports start_date/end_date parameters. 'lifetime_only' means the platform returns campaign lifetime totals and date range parameters are not accepted.",
       "default": "date_range"
     },
+    "windowed_pull_granularities": {
+      "type": "array",
+      "description": "Granularities at which this product honors per-window pulls on get_media_buy_delivery (via request `time_granularity` + `include_window_breakdown: true`). Closes the GET-side half of the snapshot/log two-paths-parity contract for data-bearing events: a buyer who missed a webhook fire at any granularity listed here can reconstruct an identical payload by polling. Capability-scoped MUST — sellers MUST honor pulls at any granularity declared here, and MUST return UNSUPPORTED_GRANULARITY for pulls outside the set. Sellers MAY emit higher-frequency webhooks than they expose for pull (common where the webhook is a Kafka tap and historical reads go through a warehouse with coarser granularity); buyers see the gap up front via this capability and treat the webhook as primary for those frequencies. Absent or empty means the product only supports cumulative date-range pulls and full per-window recovery via GET is unavailable — see snapshot-and-log Rule 4.",
+      "items": {
+        "$ref": "/schemas/enums/reporting-frequency.json"
+      },
+      "uniqueItems": true,
+      "examples": [
+        ["daily"],
+        ["hourly", "daily"],
+        ["hourly", "daily", "monthly"]
+      ]
+    },
     "measurement_windows": {
       "type": "array",
       "description": "Measurement maturation stages available for this product. Used by any channel where billing-grade data is produced in phases rather than arriving final on day one. Examples: broadcast/linear TV (Live → C3 → C7 DVR accumulation), DOOH (tentative plays → post-IVT/fraud-check final), digital with IVT filtering (raw → GIVT filtered → SIVT filtered), podcast (7-day downloads → 30-day downloads). Each window defines an accumulation period and expected data availability. When present, delivery reports reference a specific window_id. Sellers whose data is final on first delivery typically omit this.",
