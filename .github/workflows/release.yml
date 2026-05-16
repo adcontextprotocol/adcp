@@ -6,6 +6,7 @@ on:
       - main
       - '3.0.x'
       - '2.6.x'
+      - '2.5-maintenance'
 
 concurrency: ${{ github.workflow }}-${{ github.ref }}
 
