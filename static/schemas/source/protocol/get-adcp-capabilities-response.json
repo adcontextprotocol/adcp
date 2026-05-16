@@ -959,6 +959,11 @@
           "type": "boolean",
           "description": "When true, this creative agent bills through the AdCP rate-card surface: list_creatives returns pricing_options when include_pricing=true with an authenticated account, build_creative populates pricing_option_id and vendor_cost on the response, and report_usage accepts records against the rate card. When false or absent, the agent bills out of band (flat license, SaaS contract, bundled enterprise agreement) and buyers should skip pricing fields and tolerate report_usage returning accepted: 0 with errors carrying BILLING_OUT_OF_BAND. A pre-call discriminator so buyer agents can route across many creative agents without first establishing an account to probe pricing.",
           "default": false
+        },
+        "canonical_catalog_version": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+(\\.\\d+)?$",
+          "description": "Optional. The AdCP canonical-formats catalog version this agent's runtime is built against (e.g., `3.1`, `3.2.0`). Lets buyer SDKs detect canonical-catalog skew between their generated types and the seller's actual support. SDKs MAY declare the version they were generated against (typically the AdCP version they ship for); when seller and SDK versions disagree, SDKs SHOULD soft-warn rather than fail (the open-enum semantics on `canonical-format-kind.json` make unknown canonicals safe to retain, so skew is not a hard error — it just means the older side might not understand newer canonical values). Omitted by sellers who haven't yet generated against a versioned catalog; absence is interpreted as the AdCP version advertised by the broader capabilities response."
         }
       },
       "additionalProperties": true
