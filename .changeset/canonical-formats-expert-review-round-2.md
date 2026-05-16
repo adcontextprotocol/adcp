@@ -1,5 +1,5 @@
 ---
-"@adcontextprotocol/adcp": minor
+"adcontextprotocol": minor
 ---
 
 canonical-formats: second expert-review pass on PR #3307 — wire-level concerns, security hardening, auto-promote-stable, and narrowing semantics.

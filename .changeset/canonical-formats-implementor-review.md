@@ -1,5 +1,5 @@
 ---
-"@adcontextprotocol/adcp": minor
+"adcontextprotocol": minor
 ---
 
 canonical-formats: address SDK-team implementor review on PR #3307 with inline normative tightening.

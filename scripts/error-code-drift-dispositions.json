@@ -115,6 +115,16 @@
       "disposition": "held-for-next-minor",
       "target_version": "3.1",
       "note": "Part of agent-permission-denied scope codes (#3887). Held for 3.1."
+    },
+    "FORMAT_PROJECTION_FAILED": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.1",
+      "note": "Canonical-formats v1→v2 projection advisory (#3307). Non-fatal; surfaces on get_products errors[] when an SDK can't project a v1 named format to a v2 canonical via the registry. Wire change — held for 3.1."
+    },
+    "FORMAT_DECLARATION_DIVERGENT": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.1",
+      "note": "Canonical-formats dual-emission divergence advisory (#3307). Non-fatal; surfaces when a product carries both format_ids (v1) and format_options (v2) that disagree after projection. Wire change — held for 3.1."
     }
   }
 }
