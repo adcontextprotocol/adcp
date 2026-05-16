@@ -112,7 +112,7 @@ The brand can also reject — rejection direction is authoritative on a single s
 }
 ```
 
-Applicable statuses: `owned`, `pending_review`, `transferring`, `disputed`, `not_ours`, `unknown`. (`licensed_in` / `licensed_out` don't apply — subsidiaries aren't licensed; brands and trademarks are.)
+Applicable statuses: `owned`, `pending_review`, `transferring`, `disputed`, `not_ours`, `archived`, `unknown`. (`licensed_in` / `licensed_out` don't apply — subsidiaries aren't licensed; brands and trademarks are.) `archived` means the brand once held this subsidiary (e.g., a divested business unit) but no longer does — distinct from `not_ours` (never owned).
 
 **Request `claim` fields:**
 
@@ -247,7 +247,7 @@ The brand can also reject — rejection direction is authoritative on a single s
 }
 ```
 
-Applicable statuses: `owned`, `transferring`, `disputed`, `not_ours`, `unknown`. (`pending_review` is uncommon for properties; use `transferring` for in-flight ownership changes.)
+Applicable statuses: `owned`, `transferring`, `disputed`, `not_ours`, `archived`, `unknown`. (`pending_review` is uncommon for properties; use `transferring` for in-flight ownership changes.) `archived` means the brand once operated this property (e.g., a sold-off domain) but no longer does.
 
 **Request `claim` fields:**
 
@@ -328,7 +328,7 @@ The brand can also reject — rejection direction is authoritative on a single s
 }
 ```
 
-Applicable statuses: `owned`, `licensed_in`, `licensed_out`, `transferring`, `disputed`, `not_ours`, `unknown`. (`pending_review` is uncommon — trademark registrations are public-record events with definitive ownership at any given time.)
+Applicable statuses: `owned`, `licensed_in`, `licensed_out`, `transferring`, `disputed`, `not_ours`, `archived`, `unknown`. (`pending_review` is uncommon — trademark registrations are public-record events with definitive ownership at any given time.) `archived` means the brand once held this mark (expired, cancelled, transferred to another party) but no longer does.
 
 **`details` fields:**
 

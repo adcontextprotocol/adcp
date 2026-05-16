@@ -10,12 +10,14 @@
     "transferring",
     "disputed",
     "not_ours",
+    "archived",
     "licensed_in",
     "licensed_out",
     "unknown"
   ],
   "enumDescriptions": {
     "owned": "Definitively belongs to this brand, currently.",
+    "archived": "The brand once held this but no longer does — divested subsidiary, expired/transferred trademark, sold-off property. Distinct from `not_ours` (never owned). Consumers MUST NOT extend present-tense governance trust through archived records, but the historical-record signal is useful for fraud detection, fair-use analysis, and recent-divestiture awareness. `details.context_note` MAY carry disposition (e.g., 'divested to X in 2024').",
     "pending_review": "The brand is aware of this claim and has not yet decided. When returning this status, the agent MUST also return `expected_resolution_window_days` and MUST transition the claim to a terminal status (owned/disputed/not_ours) or flip to `unknown` once the window elapses. Consumers SHOULD NOT extend governance trust through pending claims.",
     "transferring": "Ownership is provably changing — M&A in flight, divestiture closing, or a known imminent transition. Distinct from `pending_review` (under-review-by-us); `transferring` signals 'the answer is known to be becoming something else.' Consumers SHOULD treat as `owned` for stability until the agent moves to the new state, but MAY surface the in-flight state in UIs.",
     "disputed": "The brand actively rejects this claim. Consumers MUST treat the claim as invalid and SHOULD surface the dispute (e.g., 'X says this is not theirs').",
