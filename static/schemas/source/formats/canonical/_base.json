@@ -17,12 +17,12 @@
     },
     "since_version": {
       "type": "string",
-      "pattern": "^\\d+\\.\\d+$",
+      "pattern": "^[1-9]\\d*\\.(0|[1-9]\\d*)$",
       "description": "AdCP MAJOR.MINOR version that introduced this canonical (e.g., '3.1', '3.2'). Lets adopters reason about minimum protocol version requirements when consuming a format declaration. Patch precision is intentionally rejected — canonicals are introduced at minor-version boundaries."
     },
     "migration_target_version": {
       "type": "string",
-      "pattern": "^\\d+\\.\\d+$",
+      "pattern": "^[1-9]\\d*\\.(0|[1-9]\\d*)$",
       "description": "AdCP MAJOR.MINOR version by which the working group expects this canonical to stabilize, surface a breaking revision, or (when `deprecated: true`) be removed. Patch precision is intentionally rejected — canonicals shift at minor-version boundaries. Absence signals 'no specific target' (omit the field rather than use a placeholder like 'unknown')."
     },
     "composition_model": {

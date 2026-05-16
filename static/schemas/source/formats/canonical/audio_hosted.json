@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/formats/canonical/audio_hosted.json",
   "title": "Canonical Format: Hosted Audio",
-  "description": "Direct audio creative — buyer ships an `audio` asset (mp3/aac/wav) for asset-driven products, or ships a `script` / `creative_brief` text asset for products where the seller produces audio internally (podcast host-reads, TTS synthesis). Optional companion slots: `companion_image`, `brand_name`, `landing_page_url`. Tracking model: standard impression + completion + companion-image-click pixels via universal_macros. Distinct from `audio_daast` (DAAST tag, inherent DAAST event tracking). For host-reads and synthesized audio, the format declares `audio_source: 'publisher_host_recorded'` or `'agent_synthesized'` plus `buyer_audio_acceptance: 'rejected'`; the format's `slots` declaration enumerates which assets the buyer ships (e.g., `script` text asset for host-reads). The seller decides how to consume each asset (render verbatim vs produce audio from text) — there is no separate manifest 'inputs' map; everything the buyer ships goes in `assets`.",
+  "description": "Direct audio creative — buyer ships an `audio` asset (mp3/aac/wav) for asset-driven products, or ships a `script` / `creative_brief` text asset for products where the seller produces audio internally (podcast host-reads, TTS synthesis). Optional companion slots: `companion_image`, `brand_name`, `landing_page_url`. Tracking model: standard impression + completion + companion-image-click pixels via universal_macros. Distinct from `audio_daast` (DAAST tag, inherent DAAST event tracking). For host-reads and synthesized audio, the format declares `asset_source: 'publisher_host_recorded'` or `'agent_synthesized'` plus `buyer_asset_acceptance: 'rejected'`; the format's `slots` declaration enumerates which assets the buyer ships (e.g., `script` text asset for host-reads). The seller decides how to consume each asset (render verbatim vs produce audio from text) — there is no separate manifest 'inputs' map; everything the buyer ships goes in `assets`.",
   "allOf": [{ "$ref": "/schemas/formats/canonical/_base.json" }],
   "properties": {
     "slots": {
@@ -12,7 +12,7 @@
         { "asset_group_id": "brand_name", "asset_type": "text", "required": false },
         { "asset_group_id": "landing_page_url", "asset_type": "url", "required": false }
       ],
-      "description": "Default slots for buyer-uploaded audio. Host-read products override with a `script` (asset_type: text) or `creative_brief` (asset_type: brief) slot in place of `audio_main`, plus `audio_source: 'publisher_host_recorded'` and `buyer_audio_acceptance: 'rejected'`. TTS-from-script products override similarly with `audio_source: 'seller_pre_rendered_from_brief'`."
+      "description": "Default slots for buyer-uploaded audio. Host-read products override with a `script` (asset_type: text) or `creative_brief` (asset_type: brief) slot in place of `audio_main`, plus `asset_source: 'publisher_host_recorded'` and `buyer_asset_acceptance: 'rejected'`. TTS-from-script products override similarly with `asset_source: 'seller_pre_rendered_from_brief'`."
     },
     "duration_ms_range": {
       "type": "array",

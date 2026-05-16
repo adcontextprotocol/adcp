@@ -38,8 +38,8 @@
     },
     "brand.json##/oneOf": {
       "kind": "dangerous",
-      "variants": 4,
-      "note": "shared-required=[∅]; 0:req=[authoritative_location] | 1:req=[house] | 2:req=[∅] | 3:req=[house,brands]"
+      "variants": 5,
+      "note": "shared-required=[∅]; 0:req=[authoritative_location] | 1:req=[house] | 2:req=[∅] | 3:req=[house] | 4:req=[∅]"
     },
     "brand/acquire-rights-response.json##/oneOf": {
       "kind": "dangerous",
@@ -146,10 +146,30 @@
       "variants": 3,
       "note": "0:[travel_time,transport_mode] | 1:[radius] | 2:[geometry]"
     },
+    "core/creative-asset.json##/oneOf": {
+      "kind": "narrowable",
+      "variants": 2,
+      "note": "0:[format_id] | 1:[format_kind]"
+    },
+    "core/creative-asset.json##/properties/assets/patternProperties/^[a-z0-9_]+$/oneOf": {
+      "kind": "dangerous",
+      "variants": 2,
+      "note": "shared-required=[∅]; 0:nested-union(/schemas/core/assets/asset-union.json) | 1:array"
+    },
+    "core/creative-manifest.json##/oneOf": {
+      "kind": "narrowable",
+      "variants": 2,
+      "note": "0:[format_id] | 1:[format_kind]"
+    },
+    "core/creative-manifest.json##/properties/assets/patternProperties/^[a-z0-9_]+$/oneOf": {
+      "kind": "dangerous",
+      "variants": 2,
+      "note": "shared-required=[∅]; 0:nested-union(/schemas/core/assets/asset-union.json) | 1:array"
+    },
     "core/format.json##/properties/assets/items/oneOf": {
       "kind": "dangerous",
-      "variants": 15,
-      "note": "shared-required=[∅]; 0:req=[∅] | 1:req=[∅] | 2:req=[∅] | 3:req=[∅] | 4:req=[∅] | 5:req=[∅] | 6:req=[∅] | 7:req=[∅] | 8:req=[∅] | 9:req=[∅] | 10:req=[∅] | 11:req=[∅] | 12:req=[∅] | 13:req=[∅] | 14:req=[item_type,asset_group_id,required,min_count,max_count,assets]"
+      "variants": 16,
+      "note": "shared-required=[∅]; 0:req=[∅] | 1:req=[∅] | 2:req=[∅] | 3:req=[∅] | 4:req=[∅] | 5:req=[∅] | 6:req=[∅] | 7:req=[∅] | 8:req=[∅] | 9:req=[∅] | 10:req=[∅] | 11:req=[∅] | 12:req=[∅] | 13:req=[∅] | 14:req=[∅] | 15:req=[item_type,asset_group_id,required,min_count,max_count,assets]"
     },
     "core/format.json##/properties/renders/items/oneOf": {
       "kind": "narrowable",
@@ -180,6 +200,11 @@
       "kind": "narrowable",
       "variants": 2,
       "note": "0:[results] | 1:[errors]"
+    },
+    "creative/list-creatives-response.json##/properties/creatives/items/properties/assets/patternProperties/^[a-z0-9_]+$/oneOf": {
+      "kind": "dangerous",
+      "variants": 2,
+      "note": "shared-required=[∅]; 0:nested-union(/schemas/core/assets/asset-union.json) | 1:array"
     },
     "creative/preview-creative-response.json##/oneOf/1/properties/results/items/oneOf": {
       "kind": "narrowable",
@@ -270,6 +295,11 @@
       "kind": "dangerous",
       "variants": 2,
       "note": "shared-required=[∅]; 0:string | 1:ref-only(/schemas/core/property-id.json)"
+    },
+    "registries/v1-canonical-mapping.json##/properties/mappings/items/properties/v1_pattern/oneOf": {
+      "kind": "narrowable",
+      "variants": 2,
+      "note": "0:[format_id_glob] | 1:[structural]"
     },
     "signals/activate-signal-response.json##/oneOf": {
       "kind": "narrowable",

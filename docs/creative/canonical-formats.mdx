@@ -36,7 +36,7 @@ Canonical formats collapse today's separate format registry into product-bound d
 | **`synthesis_nondeterministic`** | When true, the production pipeline cannot guarantee in-spec output (Veo/Sora-class). Implies QA-loop + retry semantics. |
 | **`provenance_required`** | When true, the product rejects unsigned synthesized assets. Builders attach C2PA-compatible provenance manifests. |
 | **`platform_extensions`** | URI+digest references to platform-specific extensions narrowing the canonical (pixel ID shapes, conversion event taxonomies). |
-| **`asset_source` / `asset_source`** | Per-canonical production-source declaration: who renders the asset bytes. Single shared `asset_source` enum across `image` / `video_hosted` / `audio_hosted`; `item_production_model` on `sponsored_placement` shares the same enum. Replaces the earlier per-canonical `audio_source` / `image_source` / `video_source` fields. |
+| **`asset_source`** | Production-source declaration: who renders the asset bytes. Single shared 5-value enum across `image` / `video_hosted` / `audio_hosted`. `item_production_model` on `sponsored_placement` covers the same axis with a 4-value subset (drops `publisher_host_recorded`, which is audio-specific). |
 | **`status` on canonicals** | Spec-maturity axis (`stable` / `preview` / `deprecated`). All canonicals are `preview` while v2 itself is in preview; per-canonical promotion to `stable` happens at 3.1 GA based on adopter evidence. |
 | **`since_version` / `migration_target_version`** | Release-precision lifecycle metadata on canonicals — when introduced, when stabilization or breaking revision is expected. |
 | **`validate_input`** | Spec-defined dry-run primitive — buyers verify a manifest against canonicals/products without committing to a render. |
@@ -106,13 +106,11 @@ Two orthogonal patterns govern how a creative is produced and how it serves. Con
 - `deterministic` — buyer can predict per-slot rendering. The surface serves what it received. (`image`, `video_hosted`, `audio_hosted`, `video_vast`, `audio_daast`, `sponsored_placement`.)
 - `algorithmic` — surface picks combinations from a buyer-supplied asset pool per-impression. The buyer ships a pool; the surface composes. (`responsive_creative` for Google PMax / Meta Advantage+; `agent_placement` for AI-surface composition.)
 
-**Production source** — per-canonical `asset_source` parameters, all sharing a single 5-value enum: `buyer_uploaded | publisher_host_recorded | seller_pre_rendered_from_brief | seller_human_designed | agent_synthesized`. Describes **who renders the rendered asset, and when**:
-- `audio_source` on `audio_hosted`
-- `image_source` on `image`
-- `video_source` on `video_hosted`
-- `item_production_model` on `sponsored_placement` — same enum, applied per catalog item (the multi-output generative case: 1 brief × N catalog items → N rendered creatives)
+**Production source** — `asset_source` describes **who renders the rendered asset, and when**:
+- `asset_source` on `image`, `video_hosted`, `audio_hosted` — single shared 5-value enum: `buyer_uploaded | publisher_host_recorded | seller_pre_rendered_from_brief | seller_human_designed | agent_synthesized`. `publisher_host_recorded` is audio-specific (podcast host-read pattern) and meaningful only on `audio_hosted`.
+- `item_production_model` on `sponsored_placement` — same axis, 4-value subset (drops `publisher_host_recorded`), applied per catalog item (the multi-output generative case: 1 brief × N catalog items → N rendered creatives)
 
-The two axes don't collapse. A generative DSP that produces ONE rendered image from a brief is `composition_model: deterministic` (the surface serves what it received) + `image_source: seller_pre_rendered_from_brief` (seller produced it from inputs at sync_creatives time). A retail-media surface that runs an AI synthesis pipeline per catalog item is `composition_model: deterministic` + `item_production_model: agent_synthesized`. Google PMax is `composition_model: algorithmic` + (production-source unspecified — buyer ships a pool of pre-rendered assets so the production-source question doesn't apply at the format level).
+The two axes don't collapse. A generative DSP that produces ONE rendered image from a brief is `composition_model: deterministic` (the surface serves what it received) + `asset_source: seller_pre_rendered_from_brief` (seller produced it from inputs at sync_creatives time). A retail-media surface that runs an AI synthesis pipeline per catalog item is `composition_model: deterministic` + `item_production_model: agent_synthesized`. Google PMax is `composition_model: algorithmic` + (production-source unspecified — buyer ships a pool of pre-rendered assets so the production-source question doesn't apply at the format level).
 
 The production-source enums are informational, not the binding contract. The format's `slots` declaration is the contract — what the buyer ships, in what shape. The `asset_source` field tells the buyer "here's how this product produces the rendered creative" so they can pick products whose production model fits their workflow (in-house pre-rendered vs upstream creative agent vs seller-driven generative).
 
@@ -435,7 +433,7 @@ The buyer submits assets directly to the seller; the seller produces internally 
 3. Seller produces internally; how is invisible to the buyer
 4. Returns async status; buyer polls or waits for completion
 
-The format's `audio_source: "publisher_host_recorded"` + `buyer_audio_acceptance: "rejected"` tells the buyer which flows are accepted. For The Daily's host-read, both flows are valid because the publisher's host needs to be the producer in either case — the difference is whether the buyer drives the build call or the seller drives it. Other products might accept Flow 1 only (buyer must pre-produce) or Flow 2 only.
+The format's `asset_source: "publisher_host_recorded"` + `buyer_asset_acceptance: "rejected"` tells the buyer which flows are accepted. For The Daily's host-read, both flows are valid because the publisher's host needs to be the producer in either case — the difference is whether the buyer drives the build call or the seller drives it. Other products might accept Flow 1 only (buyer must pre-produce) or Flow 2 only.
 
 For brief-driven (talking-points-style) host-reads, the same shape applies with a `creative_brief` slot (asset_type `brief`) in place of the `script` slot. Same target format (`audio_hosted`); different slot declaration.
 
@@ -511,7 +509,7 @@ Buyer calls `sync_creatives` on NYTimes with the manifest from Flashtalking. NYT
 
 The seller's validation contract is the canonical, not the creative agent. This is what makes the third-party path additive rather than coupled: the buyer can swap creative agents without changing the seller-facing flow.
 
-## Worked example — generative DSP (universalads-class, image_source: seller_pre_rendered_from_brief)
+## Worked example — generative DSP (universalads-class, asset_source: seller_pre_rendered_from_brief)
 
 A generative DSP (universalads, Pencil, AdCreative.ai-shaped tools) is a sales agent that ALSO renders creatives inline at `sync_creatives` time — it is NOT a creative agent the buyer calls separately. The buyer ships a brief plus structured copy; the seller renders ONE image and serves it like any deterministic creative.
 
@@ -551,7 +549,7 @@ A generative DSP (universalads, Pencil, AdCreative.ai-shaped tools) is a sales a
 }
 ```
 
-Buyer's manifest carries the brief, headline, and clickthrough URL — no rendered image asset. Seller's `sync_creatives` produces the rendered MREC PNG and registers it. Two axes: `composition_model: deterministic` (the surface serves what it received), `image_source: seller_pre_rendered_from_brief` (the seller renders from inputs at sync time). `buyer_image_acceptance: "rejected"` makes it explicit that the buyer cannot ship a pre-rendered image directly — the production model is brief-driven only.
+Buyer's manifest carries the brief, headline, and clickthrough URL — no rendered image asset. Seller's `sync_creatives` produces the rendered MREC PNG and registers it. Two axes: `composition_model: deterministic` (the surface serves what it received), `asset_source: seller_pre_rendered_from_brief` (the seller renders from inputs at sync time). `buyer_asset_acceptance: "rejected"` makes it explicit that the buyer cannot ship a pre-rendered image directly — the production model is brief-driven only.
 
 ## Worked example — multi-format product (Flashtalking html5 OR internal display_tag)
 
