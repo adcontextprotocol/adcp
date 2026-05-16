@@ -81,6 +81,16 @@
       "variants": 2,
       "note": "0:[claim_type,status] | 1:[errors]"
     },
+    "brand/verify-brand-claims-response.json##/definitions/result_entry/oneOf": {
+      "kind": "narrowable",
+      "variants": 2,
+      "note": "0:[claim_type,status] | 1:[error]"
+    },
+    "brand/verify-brand-claims-response.json##/oneOf": {
+      "kind": "narrowable",
+      "variants": 2,
+      "note": "0:[results] | 1:[errors]"
+    },
     "compliance/comply-test-controller-response.json##/oneOf": {
       "kind": "dangerous",
       "variants": 7,

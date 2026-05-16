@@ -501,6 +501,7 @@
                         "pages": [
                           "docs/brand-protocol/tasks/get_brand_identity",
                           "docs/brand-protocol/tasks/verify_brand_claim",
+                          "docs/brand-protocol/tasks/verify_brand_claims",
                           "docs/brand-protocol/tasks/get_rights",
                           "docs/brand-protocol/tasks/acquire_rights",
                           "docs/brand-protocol/tasks/update_rights"
@@ -1071,6 +1072,7 @@
                     "pages": [
                       "docs/brand-protocol/tasks/get_brand_identity",
                       "docs/brand-protocol/tasks/verify_brand_claim",
+                      "docs/brand-protocol/tasks/verify_brand_claims",
                       "docs/brand-protocol/tasks/get_rights",
                       "docs/brand-protocol/tasks/acquire_rights",
                       "docs/brand-protocol/tasks/update_rights"
