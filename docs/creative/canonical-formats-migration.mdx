@@ -1,15 +1,17 @@
 ---
-title: Creative Formats v1 → v2 Migration
-description: "Concrete migration paths for sellers, creative agents, buyers, and tooling moving from v1 named formats to v2 product-bound declarations."
-"og:title": "AdCP — Creative Formats v1 → v2 Migration"
+title: Migration to Canonical Formats
+description: "Concrete migration paths for sellers, creative agents, buyers, and tooling moving from v1 named formats to canonical-format product-bound declarations."
+"og:title": "AdCP — Canonical Formats Migration"
 testable: true
 ---
 
-# Migration: v1 → v2 Creative Formats
+# Migration: v1 named formats → Canonical Formats
 
-This guide walks through the shift from v1 named formats (`format_id` as `{ agent_url, id }` referencing a separately-defined format file) to v2 product-bound declarations introduced by [RFC #3305](https://github.com/adcontextprotocol/adcp/issues/3305). v1 named formats remain a first-class path through 4.x; v2 is the new path, opt-in indefinitely.
+This guide walks through the shift from v1 named formats (`format_id` as `{ agent_url, id }` referencing a separately-defined format file) to canonical-format product-bound declarations introduced by [RFC #3305](https://github.com/adcontextprotocol/adcp/issues/3305). v1 named formats remain a first-class path through 4.x; canonical formats are the new path, opt-in indefinitely.
 
-For the architecture, read [`v2-overview`](/docs/creative/v2-overview) first. This page is just the migration mechanics.
+For the architecture, read [`canonical-formats`](/docs/creative/canonical-formats) first. This page is just the migration mechanics.
+
+> *Naming note*: The v1↔v2 terminology used throughout this page describes the two format-authoring models — `format_ids` (legacy, v1) vs `format_options` (canonical formats, v2). It does NOT refer to AdCP-the-protocol's version (currently 3.x). The "v2" path is also called the canonical-formats path; both phrasings mean the same thing.
 
 ## What stays unchanged
 
@@ -99,7 +101,7 @@ Most of AdCP doesn't change. v2 builds on the existing primitives:
 
 **Dual emission during the migration window**: Products MAY carry `format_ids`, `format_options`, or BOTH; at least one is required (the schema enforces this via an `anyOf`, not `oneOf`). The recommended seller pattern is to author once and let the SDK project to both wire shapes via the [v1↔v2 canonical mapping registry](https://adcontextprotocol.org/schemas/v3/registries/v1-canonical-mapping.json), so every buyer reads what it knows. When both shapes are present on a product, the two MUST refer to the same underlying format declaration — the `format_options[i]` must narrow the canonical that `format_ids[i]` resolves to via the registry. SDKs that derive both shapes from one source guarantee this invariant; SDKs that hand-author both MUST treat divergence as a build error and refuse to emit. Buyers prefer `format_options` when both are present; treat `format_ids` as fallback for v1-only buyers. Sellers whose v1 named formats have no clean v2 projection ship `format_ids` only for those products until they add an explicit `canonical` declaration on the v1 format (see "v1 → v2 canonical mapping" below) — the SDK MUST NOT emit `format_options` for non-projectable formats.
 
-For 12 fully-validated reference Product fixtures spanning all 11 canonical formats — Meta Reels (`video_hosted` vertical), IAB MREC (`image` 300×250), NYTimes HTML5 (`html5`), GAM 3P display tag (`display_tag`), Meta Carousel (`image_carousel`), YouTube VAST pre-roll (`video_vast`), podcast 30s host-read (`audio_hosted`), Triton DAAST audio (`audio_daast`), Amazon Sponsored Products (`sponsored_placement`), Google PMax (`responsive_creative`), ChatGPT brand mention (`agent_placement`), Veo 15s generative video (`video_hosted` with `synthesis_nondeterministic` + `provenance_required`) — plus 1 `get_products` response fixture exercising bundled extensions, see `static/examples/products/v2/` and `static/examples/get_products_responses/v2/`. The Veo fixture exercises `synthesis_nondeterministic: true` and `provenance_required: true`. Each fixture passes `npm run test:v2-fixtures`.
+For 12 fully-validated reference Product fixtures spanning all 11 canonical formats — Meta Reels (`video_hosted` vertical), IAB MREC (`image` 300×250), NYTimes HTML5 (`html5`), GAM 3P display tag (`display_tag`), Meta Carousel (`image_carousel`), YouTube VAST pre-roll (`video_vast`), podcast 30s host-read (`audio_hosted`), Triton DAAST audio (`audio_daast`), Amazon Sponsored Products (`sponsored_placement`), Google PMax (`responsive_creative`), ChatGPT brand mention (`agent_placement`), Veo 15s generative video (`video_hosted` with `synthesis_nondeterministic` + `provenance_required`) — plus 1 `get_products` response fixture exercising bundled extensions, see `static/examples/products/canonical/` and `static/examples/get_products_responses/canonical/`. The Veo fixture exercises `synthesis_nondeterministic: true` and `provenance_required: true`. Each fixture passes `npm run test:canonical-fixtures`.
 
 ## v1 → v2 canonical mapping
 
@@ -294,7 +296,7 @@ Override fields take precedence over `brand.json` for that creative.
 1. **Inventory**: enumerate your existing v1 named formats. Confirm each maps to one of the 11 v2 canonicals OR to a custom shape (see "Shipping a custom format" below). Composed/coordinated/sponsorship shapes (multi-placement takeover, roadblock, branded content, cross-screen sponsorship, sponsorship lockup, newsletter, AR lens, playable, live event sponsorship) ship as `format_kind: "custom"` with a `format_shape` registry classifier and a `format_schema` URI+digest reference.
 2. **Translate**: for each named format, write a v2 `ProductFormatDeclaration` narrowing the canonical with your platform's parameters. For custom shapes, author a JSON Schema describing your format's `params` and `slots`, host it at a stable URI on your subdomain (or via the AAO mirror for walled-garden sellers), and reference it from `format_schema`.
 3. **Be honest about runtime readiness**: set `runtime_status` on each declaration. `stable` (default) means your runtime fully honors the declared format and production source. `preview` means the basic path works but advanced axes (per-item fan-out under `item_production_model`, brief-driven overrides, advanced `platform_extensions`) may be partial. `declared_only` means the catalog declaration is forward-looking and your runtime does NOT yet implement the path — common during migration when you port v1 catalog declarations forward but haven't wired the new production-source axis yet. Buyers can filter on this; compliance storyboards skip-gate `declared_only` entries gracefully. Upgrade the value as your runtime catches up.
-4. **Test**: validate translated declarations against `/schemas/core/product.json` (use the `npm run test:v2-fixtures` pattern).
+4. **Test**: validate translated declarations against `/schemas/core/product.json` (use the `npm run test:canonical-fixtures` pattern).
 5. **Publish dual**: keep your v1 named formats and `list_creative_formats` working through 4.x. Add the v2 `format_options` field on products that have it.
 6. **Flatten wrapper**: implement a server-side wrapper that derives the v1 `list_creative_formats` shape from v2 product declarations. Lets v1-era dashboards and tooling keep working.
 7. **Deprecate timing**: at 5.0, remove v1 `format_ids` references on your products. Until then, both paths coexist.
@@ -555,14 +557,14 @@ v2 doesn't replace OpenRTB at the auction layer (where OpenRTB Display, Video, A
 Run the fixture validation against your translated products:
 
 ```bash test=false
-npm run test:v2-fixtures
+npm run test:canonical-fixtures
 ```
 
-The reference fixtures at `static/examples/products/v2/` are validated against `/schemas/core/product.json`. Adopters can drop their own translated products into a sibling directory and reuse the same validator pattern.
+The reference fixtures at `static/examples/products/canonical/` are validated against `/schemas/core/product.json`. Adopters can drop their own translated products into a sibling directory and reuse the same validator pattern.
 
 ## Related
 
-- [Creative Formats v2 overview](/docs/creative/v2-overview)
+- [Canonical Formats overview](/docs/creative/canonical-formats)
 - [RFC #3305](https://github.com/adcontextprotocol/adcp/issues/3305) — architectural decisions and rationale
 - [Asset group vocabulary](https://adcontextprotocol.org/schemas/v3/core/asset-group-vocabulary.json)
 - [BrandRef schema](https://adcontextprotocol.org/schemas/v3/core/brand-ref.json)

@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * v2 Reference Fixture Validation Test
+ * Canonical Formats Reference Fixture Validation Test
  *
- * Validates the reference Product fixtures at static/examples/products/v2/*.json
+ * Validates the reference Product fixtures at static/examples/products/canonical/*.json
  * against /schemas/core/product.json AND against the per-canonical params schema
  * in strict mode (to catch typos in `params` that the product-envelope schema's
  * `additionalProperties: true` would otherwise let slip through).
@@ -18,7 +18,7 @@
  *      letting `params: { with: 'a typo' }` validate vacuously under
  *      additionalProperties: true).
  *
- * Run: npm run test:v2-fixtures
+ * Run: npm run test:canonical-fixtures
  */
 
 const Ajv = require('ajv').default;
@@ -27,8 +27,8 @@ const fs = require('fs');
 const path = require('path');
 
 const SCHEMAS_DIR = path.resolve(__dirname, '../static/schemas/source');
-const FIXTURES_DIR = path.resolve(__dirname, '../static/examples/products/v2');
-const RESPONSE_FIXTURES_DIR = path.resolve(__dirname, '../static/examples/get_products_responses/v2');
+const FIXTURES_DIR = path.resolve(__dirname, '../static/examples/products/canonical');
+const RESPONSE_FIXTURES_DIR = path.resolve(__dirname, '../static/examples/get_products_responses/canonical');
 
 const RED = '\x1b[31m';
 const YELLOW = '\x1b[33m';
@@ -145,7 +145,7 @@ function main() {
     process.exit(2);
   }
 
-  console.log('v2 Reference Fixture Validation');
+  console.log('Canonical Formats Reference Fixture Validation');
   console.log('================================');
   console.log(`Schema: /schemas/core/product.json (envelope) + per-canonical params (strict)`);
   console.log(`Fixtures: ${FIXTURES_DIR}`);
@@ -222,7 +222,7 @@ function main() {
 
   console.log('');
   if (fail === 0 && strictWarnings === 0) {
-    console.log(`${GREEN}✅ All ${pass} v2 reference fixtures validate (envelope + per-canonical strict).${RESET}`);
+    console.log(`${GREEN}✅ All ${pass} canonical-formats reference fixtures validate (envelope + per-canonical strict).${RESET}`);
     process.exit(0);
   }
   if (fail === 0) {

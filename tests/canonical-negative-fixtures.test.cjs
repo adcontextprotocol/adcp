@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /**
- * v2 Negative-fixture regression tests
+ * Canonical Formats Negative-fixture regression tests
  *
- * Validates that the v2 schemas REJECT specific malformed inputs. Complements
- * tests/v2-fixture-validation.test.cjs (which validates that valid fixtures
- * pass) with the inverse: that the schema's `allOf` if/then/else, oneOf
- * discriminators, and required/not constraints actually reject the shapes
+ * Validates that the canonical-formats schemas REJECT specific malformed inputs.
+ * Complements tests/canonical-fixture-validation.test.cjs (which validates that
+ * valid fixtures pass) with the inverse: that the schema's `allOf` if/then/else,
+ * oneOf discriminators, and required/not constraints actually reject the shapes
  * they're meant to reject.
  *
  * Filed against PR #3307 review comment R3 (composability of top-level
@@ -14,7 +14,7 @@
  * the schema's negative-side behavior; without these tests, regressions to
  * silent-pass on malformed declarations would slip through.
  *
- * Run: npm run test:v2-negative
+ * Run: npm run test:canonical-negative
  */
 
 const Ajv = require('ajv').default;

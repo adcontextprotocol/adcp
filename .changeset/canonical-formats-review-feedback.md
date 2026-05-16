@@ -2,9 +2,11 @@
 "adcontextprotocol": minor
 ---
 
-feat(creative): v2 review-feedback round — `format_options` array, canonical `status`, hosting paragraph, third-party creative-agent worked example
+feat(creative): canonical-formats review-feedback round — `format_options` array, canonical `status`, hosting paragraph, third-party creative-agent worked example
 
-Addresses external review feedback on RFC #3305 / PR #3307 before the 3.1.0 beta cycle opens.
+Addresses external review feedback on RFC #3305 / PR #3307 (canonical formats) before the 3.1.0 beta cycle opens.
+
+> *Naming note*: This work was drafted as "v2 creative formats" before adoption surfaced the collision with AdCP-the-protocol's version numbering. File paths and surface descriptions now use **canonical formats** terminology; the v1↔v2 narrative contrast still appears in schema descriptions where it disambiguates the two format-authoring paths (`format_ids` legacy vs `format_options` canonical formats).
 
 **Schema changes:**
 
@@ -20,7 +22,7 @@ Addresses external review feedback on RFC #3305 / PR #3307 before the 3.1.0 beta
 **Schema housekeeping:**
 
 - Added a description note on `validate-input-response.json` documenting the intent behind the 3-schema split (`request` / `response` / `result`): the `Result` type is split for planned reuse by adjacent async-validation surfaces (per-batch result envelopes on `build_creative` async paths, asynchronous canonical-against-product validation in `sync_creatives`). Producers that only need the synchronous batch shape today MAY treat the split as YAGNI; the schema reuse anchors the violation/retry shape so downstream surfaces don't drift.
-- Updated all 12 v2 reference fixtures (`static/examples/products/v2/*.json`) plus the `meta_with_bundled_extensions.json` get_products response fixture to use the new `format_options` array shape. All 13 fixtures still validate via `npm run test:v2-fixtures`.
+- Updated all 12 canonical-formats reference fixtures (`static/examples/products/canonical/*.json`) plus the `meta_with_bundled_extensions.json` get_products response fixture to use the new `format_options` array shape. All 13 fixtures still validate via `npm run test:canonical-fixtures`.
 - Updated `tests/schema-validation.test.cjs` core-required-fields rule to assert `format_options` (not `format`) on the v2 oneOf branch.
 
 **Why minor:** structural rename of `product.format` → `product.format_options` is technically breaking for anyone who built against the v2 path during the preview window, but the v2 path was only landed in this PR (#3307) and is not yet released — no published 3.x version carries `format`. The shipping shape is `format_options`. Anyone building against the preview branch should re-pull. The other changes are additive.
@@ -41,7 +43,7 @@ Schema fixes:
 - Veo fixture used `audio_source` / `buyer_audio_acceptance` on a `video_hosted` format. Renamed to `video_source` / `buyer_video_acceptance`.
 
 Doc additions:
-- v2-overview.mdx glossary covering ~25 v2 terms.
+- canonical-formats.mdx glossary covering ~25 canonical-formats terms.
 - Asset group vocabulary table (was previously only in the JSON schema).
 - "Two axes" section refined to show the unified 5-value source enum.
 - Tracker assembly under seller-rendered sources documented (macro-substituted vs sync-creatives tracker block).
@@ -79,6 +81,6 @@ This change adds:
 
 These are informational fields, not the binding contract — the format's `slots` declaration is the contract. The `*_source` fields let buyers pick products whose production model fits their workflow (in-house pre-rendered vs upstream creative agent vs seller-driven generative).
 
-The v2-overview.mdx narrative now explicitly differentiates the two orthogonal axes — `composition_model` (how the surface composes per-impression: deterministic vs algorithmic) and per-canonical production source (who renders, and when). Conflating them was the gap that left generative DSPs without a clean expression in v2.
+The canonical-formats.mdx narrative now explicitly differentiates the two orthogonal axes — `composition_model` (how the surface composes per-impression: deterministic vs algorithmic) and per-canonical production source (who renders, and when). Conflating them was the gap that left generative DSPs without a clean expression in the canonical-formats path.
 
 Tracks #3305 (v2 RFC) and #3307 (preview branch).
