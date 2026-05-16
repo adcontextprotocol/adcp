@@ -781,14 +781,16 @@ registry.registerPath({
           "- `private` → only `visibility=private`. Private agents are visible only to the profile " +
           "owner; non-owners get an empty list.\n" +
           "- Omitted or `all` → tier-aware full unlock: public + members_only for API-tier " +
-          "members + private for the profile owner.",
+          "members + private for the profile owner.\n\n" +
+          "Unknown values return 400 — a silent coerce to `all` could leak data the caller " +
+          "explicitly tried to scope away from.",
         example: "member",
       }),
     }),
   },
   responses: {
     200: { description: "Operator lookup result", content: { "application/json": { schema: OperatorLookupResultSchema } } },
-    400: { description: "Missing domain", content: { "application/json": { schema: ErrorSchema } } },
+    400: { description: "Missing or invalid domain, or unknown scope value", content: { "application/json": { schema: ErrorSchema } } },
   },
 });
 
@@ -6062,6 +6064,20 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       if (!isValidDomain(domain)) {
         return res.status(400).json({ error: "Invalid domain" });
       }
+      // Validate `scope` before doing any DB work. Unknown values are
+      // rejected rather than silently coerced — a typo like `?scope=membr`
+      // would otherwise return the full union (the opposite of what the
+      // caller asked for) and there's no header to surface the swap.
+      const rawScopeQuery = req.query.scope;
+      if (rawScopeQuery !== undefined && typeof rawScopeQuery !== 'string') {
+        return res.status(400).json({ error: "Invalid scope: must be a string" });
+      }
+      const rawScopeLower = rawScopeQuery?.toLowerCase();
+      if (rawScopeLower !== undefined && !['public', 'member', 'private', 'all'].includes(rawScopeLower)) {
+        return res.status(400).json({
+          error: "Invalid scope: must be one of public, member, private, all",
+        });
+      }
       const memberDb = new MemberDatabase();
       const federatedIndex = crawler.getFederatedIndex();
 
@@ -6111,11 +6127,10 @@ export function createRegistryApiRouter(config: RegistryApiConfig): Router {
       //                 see private agents; non-owners get an empty list)
       //   - omitted / `all` → tier-aware full unlock (public + members_only
       //                 for API-tier members + private for the profile owner)
-      const rawScope = (req.query.scope as string | undefined)?.toLowerCase();
+      // Unknown values were rejected above; only the four literals (or
+      // undefined) reach this point.
       const scope: 'public' | 'member' | 'private' | 'all' =
-        rawScope === 'public' || rawScope === 'member' || rawScope === 'private' || rawScope === 'all'
-          ? rawScope
-          : 'all';
+        (rawScopeLower as 'public' | 'member' | 'private' | 'all' | undefined) ?? 'all';
 
       // Which buckets the scope param asks for, before auth gating.
       const scopeAllowsPublic = scope === 'public' || scope === 'member' || scope === 'all';

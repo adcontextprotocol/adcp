@@ -3471,6 +3471,8 @@ paths:
               - `member` → public + members_only (members_only is gated on caller's tier; anonymous or explorer-tier callers silently fall through to public-only rather than 403).
               - `private` → only `visibility=private`. Private agents are visible only to the profile owner; non-owners get an empty list.
               - Omitted or `all` → tier-aware full unlock: public + members_only for API-tier members + private for the profile owner.
+
+              Unknown values return 400 — a silent coerce to `all` could leak data the caller explicitly tried to scope away from.
             example: member
           required: false
           description: |-
@@ -3480,6 +3482,8 @@ paths:
             - `member` → public + members_only (members_only is gated on caller's tier; anonymous or explorer-tier callers silently fall through to public-only rather than 403).
             - `private` → only `visibility=private`. Private agents are visible only to the profile owner; non-owners get an empty list.
             - Omitted or `all` → tier-aware full unlock: public + members_only for API-tier members + private for the profile owner.
+
+            Unknown values return 400 — a silent coerce to `all` could leak data the caller explicitly tried to scope away from.
           name: scope
           in: query
       responses:
@@ -3490,7 +3494,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/OperatorLookupResult"
         "400":
-          description: Missing domain
+          description: Missing or invalid domain, or unknown scope value
           content:
             application/json:
               schema:
