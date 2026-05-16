@@ -299,13 +299,30 @@ Validation is a runtime check (the crawler fetches both documents and compares);
 
 The leaf-only edge case is common in practice — a sub-brand team stands up its own canonical document before the parent's portfolio team has time to add the reciprocal entry. Today this leaves the brand stuck: identity is good, but media buys and governance decisions are blocked.
 
-The spec defines a self-healing loop:
+The spec defines a self-healing loop. For houses **without** a brand-agent:
 
-1. The house publishes a reachable `contact.email` at the top level of its `brand.json` (already part of the House Portfolio schema).
+1. The house publishes a reachable `contact.email` at the top level of its `brand.json`.
 2. When a consumer encounters a leaf-only edge — leaf claims `house_domain: A`, A's `brand_refs[]` doesn't include leaf — the consumer **SHOULD** notify A's `contact.email` that a leaf is claiming reciprocation and is blocked pending verification.
 3. The house team adds the entry to `brand_refs[]`. On the next crawl/re-validation, the edge upgrades to mutual.
 
-This turns mutual assertion from static two-party coordination into a feedback loop. The publisher of the consumer-side notification mechanism (email today; a typed verification endpoint is a planned follow-up) is responsible for rate-limiting and de-duplication.
+For houses **with** a brand-agent advertising [`verify_brand_claim`](/docs/brand-protocol/tasks/verify_brand_claim), the consumer asks the agent directly instead — see [Agent-augmented verification](#agent-augmented-verification) below. The agent path surfaces richer states (`pending_review`, `transferring`, `disputed`, `licensed_in`) than the email loop can express, and when both house and leaf publish agents, mutual assertion completes via two signed agent calls without a static-file crawl.
+
+### Agent-augmented verification
+
+When the brand publishes a brand-agent ([variant 3](#3-brand-agent) or a `type: "brand"` entry in `agents[]` on variant 4/5), the agent can be asked verification questions via [`verify_brand_claim`](/docs/brand-protocol/tasks/verify_brand_claim) — a single tool that takes a `claim_type` (`subsidiary` / `parent` / `property` / `trademark`) and returns the brand's authoritative answer. The brand-agent is brand.json hidden behind a server: same data the static file carries, plus the richer states the static file can't capture (`pending_review`, `transferring`, `disputed`, `licensed_in`, `licensed_out`).
+
+**The trust model is asymmetric by direction.** Without this asymmetry, a malicious or mistaken house could claim subsidiaries it doesn't own and have consumers extend trust on the strength of the signature alone.
+
+| Direction | Trust rule |
+|---|---|
+| **Rejection** — agent signs `disputed` or `not_ours` | Authoritative unilaterally. A brand has standing to refuse association regardless of what any other party publishes. Overrides any reciprocating claim. |
+| **Assertion** — agent signs `owned` / `pending_review` / `transferring` / `licensed_*` | Informative but NOT trust-extending alone. The reciprocating side must still confirm (via its own brand-agent's `parent` claim type, or via static crawl) before relationship trust extends. |
+
+When both house and leaf publish brand-agents, mutual assertion can complete at the agent layer: partner calls `verify_brand_claim` with `claim_type: "subsidiary"` on the house AND with `claim_type: "parent"` on the leaf. Both `owned` → mutual assertion, real-time, signed by both parties, no crawl required. This is the cleanest path for trust extension.
+
+**Mutual assertion proves consistency between two parties, not standing.** Two reciprocally-asserting agents at attacker-controlled domains can sign matching `owned` responses; mutual assertion confirms only that they agree, not that either has legitimate authority over the underlying brand. The final trust gate is still domain control + TLS — verified on the consumer side, against the legal/operational entity the consumer expects to own the domain. Mutual assertion at the agent layer is the floor; consumer-side standing checks (domain registration, real-world identity) are still the caller's responsibility for high-trust decisions.
+
+Agent responses are signed under the brand's `adcp_use: "response-signing"` JWK. See the [task reference](/docs/brand-protocol/tasks/verify_brand_claim) for the full request/response shapes and per-claim-type details.
 
 ### Field resolution
 
@@ -354,13 +371,14 @@ The AAO registry consumes both shapes today and will not re-classify a brand tha
 
 ### Out of scope
 
-The single-house, single-hop trust model deliberately doesn't cover three shapes:
+The single-house, single-hop trust model deliberately doesn't cover four shapes:
 
 - **Joint ventures with two parents** (Hulu pre-Disney, JVs in pharma, automotive partnerships). A leaf has at most one `house_domain`. JV structures must pick one canonical parent or use a holding entity; the protocol won't model two-parent ownership.
 - **PE rollups and white-label arrangements that want opacity.** Mutual assertion publishes ownership at well-known URLs. A holdco that wants to operate brands without public disclosure can use the existing monolithic `brands[]` shape (which doesn't expose the parent to leaf-domain crawlers) but cannot use mutual-assertion. Mutual assertion trades opacity for verifiability — that's the design.
 - **Jurisdictional governance divergence** (e.g., a Marriott franchisee in Germany whose data-subject contestation rules differ from the US parent's). Strictest-of resolution means brand-level publishers can only *add* constraints. A brand in a less-regulated jurisdiction cannot drop a house-level rule that doesn't apply to it. Workaround: the house publishes the strictest applicable per-region rule.
+- **Standing licensed relationships as a static brand.json surface.** [`verify_brand_claim`](/docs/brand-protocol/tasks/verify_brand_claim) with `claim_type: "trademark"` can return `licensed_in` / `licensed_out` because the underlying relationships are real — Marriott franchisees use the MARRIOTT mark under license, music catalogs are licensed-out per territory, jurisdictional licensing splits ("licensed in CN, self-managed elsewhere") are common. The brand-agent can speak to these from internal records. **But `brand.json` itself doesn't yet have a publishing surface for standing licensed relationships** parallel to `brand_refs[]` for ownership. The existing rights protocol (`rights_agent`, `acquire_rights`) handles *transactional* licensing — negotiate a deal — not standing declarations. This gap is real and tracked as a follow-up; the verify surface exposes the states because partners need to consume them, but the static-file substrate that backs them is a separate design alongside the rights-protocol team.
 
-These cases belong in governance / corporate-structure specs, not brand.json. `brand.json` is the brand-identity surface; corporate legal structure is its own concern.
+These cases belong in governance / corporate-structure specs, not brand.json. `brand.json` is the brand-identity surface; corporate legal structure and licensing-relationship publishing are their own concerns.
 
 ## House definition
 
@@ -920,6 +938,11 @@ Visual prohibitions and guardrails — the visual equivalent of `tone.donts`. Th
 
 Registered trademarks may appear at the **house level** (corporate marks — e.g., NIKE owned by Nike, Inc.) or at the **brand level** (brand-specific marks — e.g., CONVERSE owned by Converse). Both arrays are valid claims; resolution between them is **union**.
 
+<Info>
+**Licensed-in / licensed-out relationships** (Marriott franchisees using the MARRIOTT mark, music catalogs licensed per territory, etc.) are queryable via the brand-agent today through [`verify_brand_claim`](/docs/brand-protocol/tasks/verify_brand_claim) with `claim_type: "trademark"`. A static `brand.json` publishing surface for standing licensed relationships (parallel to `brand_refs[]` for ownership) is a future RFC alongside the rights-protocol team. The static `trademarks[]` array below covers ownership only; licensing posture comes from the agent.
+</Info>
+
+
 ```json
 {
   "trademarks": [
@@ -1183,6 +1206,7 @@ These invariants MUST be enforced by validators and crawlers; JSON Schema cannot
 **Self-healing**
 
 - **Leaf-only edges SHOULD trigger notification.** When a consumer encounters a leaf claiming `house_domain: X` with no reciprocal entry on X, the consumer SHOULD notify X's `contact.email` so the house team can complete the reciprocation. Notifying parties MUST rate-limit per `{leaf, house}` pair to avoid flooding.
+- **Agent-augmented verification.** When the named house publishes a brand-agent advertising [`verify_brand_claim`](/docs/brand-protocol/tasks/verify_brand_claim) in its `supported_tasks` with a relevant `claim_type` (subsidiary / parent / property / trademark), consumers SHOULD call the agent in addition to performing crawl-based mutual-assertion inference. The trust model is asymmetric by direction: signed `disputed` / `not_ours` overrides any reciprocating claim (rejection is unilateral); signed `owned` / `pending_review` / `transferring` / `licensed_*` does NOT replace mutual-assertion verification — the reciprocating side must still confirm before relationship trust extends. When both sides have brand-agents, mutual assertion completes via two signed agent calls (`subsidiary` on the house + `parent` on the leaf). The crawl path is the fallback when the agent is unreachable or returns `unknown`. The email notification SHOULD continues to apply for houses without a brand-agent. See [Agent-augmented verification](#agent-augmented-verification) for the full trust table.
 
 ## Prior art
 
