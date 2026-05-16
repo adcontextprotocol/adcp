@@ -75,6 +75,10 @@ import {
   createBrandToolHandlers,
 } from './mcp/brand-tools.js';
 import {
+  BRAND_CANONICAL_TOOLS,
+  createBrandCanonicalToolHandlers,
+} from './mcp/brand-canonical-tools.js';
+import {
   BRAND_PROPERTY_TOOLS,
   createBrandPropertyToolHandlers,
 } from './mcp/brand-property-tools.js';
@@ -215,6 +219,17 @@ export async function initializeAddie(): Promise<void> {
   const brandHandlers = createBrandToolHandlers();
   for (const tool of BRAND_TOOLS) {
     const handler = brandHandlers.get(tool.name);
+    if (handler) {
+      claudeClient.registerTool(tool, handler);
+    }
+  }
+
+  // Register brand-canonical-document tools (#4527 — distributed brand.json
+  // authoring: publish canonical docs, add brand_refs pointers, check mutual
+  // assertion, notify houses on leaf-only edges).
+  const brandCanonicalHandlers = createBrandCanonicalToolHandlers();
+  for (const tool of BRAND_CANONICAL_TOOLS) {
+    const handler = brandCanonicalHandlers.get(tool.name);
     if (handler) {
       claudeClient.registerTool(tool, handler);
     }

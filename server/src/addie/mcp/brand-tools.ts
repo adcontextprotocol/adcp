@@ -23,6 +23,15 @@ const brandManager = new BrandManager();
 const brandDb = new BrandDatabase();
 const brandLogoDb = new BrandLogoDatabase();
 
+// Re-export the brand-canonical-document tools (#4527) so callers importing
+// from brand-tools.ts get the full Addie brand surface in one import. The
+// implementation lives in brand-canonical-tools.ts to keep this file focused
+// on the existing research/registry flow.
+export {
+  BRAND_CANONICAL_TOOLS,
+  createBrandCanonicalToolHandlers,
+} from './brand-canonical-tools.js';
+
 /**
  * Brand tool definitions for Addie
  */
