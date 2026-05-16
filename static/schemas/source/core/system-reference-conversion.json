@@ -19,18 +19,38 @@
         "id_graph",
         "name_match",
         "crosswalk",
+        "upscaled",
+        "inferred",
+        "projected",
         "custom"
       ],
       "enumDescriptions": {
-        "id_graph": "Translation via an identity-graph link (e.g. UID2 → ID5 via LiveRamp, TTD, or similar graph provider). Lossless when the graph link is direct; buyer should inspect graph coverage for edge cases (universe shrinkage, link freshness, regional gaps).",
+        "id_graph": "Translation via an identity-graph link (e.g. UID2 → ID5 via LiveRamp, TTD, or similar graph provider). Lossless when the graph link is direct; buyer should inspect graph coverage for edge cases (universe shrinkage, link freshness, regional gaps). Vendor SHOULD be surfaced in `method_provider`.",
         "name_match": "Match based on a shared external identifier present in both systems (e.g. hashed email common to both sides). Match rate is finite — buyer-decision point on accepted match-rate floor.",
         "crosswalk": "Published 1:1 mapping with no information loss (e.g. Nielsen DMA → Comscore Market via the canonical county crosswalk; IAB Audience Taxonomy v2 → v3 via the published migration mapping). When `method` is `crosswalk`, the seller asserts the conversion is mathematically reversible.",
-        "custom": "Vendor-specific mapping; buyer should consult the destination's documentation for the conversion's semantics, coverage, and edge cases. Buyer agents SHOULD treat `custom` as the weakest preservation claim and inspect `method_details`."
+        "upscaled": "Aggregation of finer-grained units into a coarser system (e.g. zip codes → DMA, counties → state, postcodes → MSA). Deterministic and forward-lossless — every fine-grained unit is fully accounted for in the coarser unit. Inverse is undefined: the upscaled value cannot recover the original granularity. For modeled audiences where statistical validity depends on the finer granularity, the deployment's `fidelity` SHOULD be `approximated` even when the method is `upscaled`.",
+        "inferred": "ML-predicted or rule-based inference (e.g. predicting a buyer's IAB taxonomy node from browsing behavior; predicting demographic membership from device-graph signals). Probabilistic — no deterministic guarantee that any individual value is correctly mapped. Buyer-decision point on accepted confidence floor; `method_provider` SHOULD identify the model or vendor.",
+        "projected": "Statistical projection from a sample to a population (e.g. panel-projected reach, currency-projected impression counts, audience extrapolation from a measured sub-sample). Used primarily for measurement currencies and modeled audiences. Buyer should inspect `method_details` for sample size, weighting methodology, and confidence intervals where relevant.",
+        "custom": "Vendor-specific mapping not covered by the named methods. Buyer should consult the destination's documentation for the conversion's semantics, coverage, and edge cases. Buyer agents SHOULD treat `custom` as the weakest preservation claim and inspect `method_provider` + `method_details`."
       }
+    },
+    "method_provider": {
+      "type": "string",
+      "description": "Optional vendor or organization providing the conversion method. Opaque string by convention — consumers MAY branch on well-known provider names (e.g. `LiveRamp`, `ID5`, `IAB`, `Nielsen`, `Comscore`) but the field is not constrained to a closed enum, since new providers enter the ecosystem additively. Useful for ID-graph and inference methods where the vendor IS the meaningful identifier; less useful for crosswalk methods where the published mapping is canonical regardless of who hosts it.",
+      "minLength": 1,
+      "maxLength": 128,
+      "examples": [
+        "LiveRamp",
+        "ID5",
+        "IAB",
+        "Nielsen",
+        "Comscore",
+        "TTD"
+      ]
     },
     "method_details": {
       "type": "string",
-      "description": "Free-text vendor-specific elaboration on the method (e.g. graph provider name, crosswalk version, match-rate floor). Strictly informational; buyer agents MUST NOT branch on this field. Useful for human triage and audit log surfacing.",
+      "description": "Free-text vendor-specific elaboration on the method (e.g. graph version, crosswalk publication date, match-rate floor, model name, sample size). Strictly informational; buyer agents MUST NOT branch on this field. Useful for human triage and audit log surfacing.",
       "maxLength": 1024
     }
   },
@@ -41,25 +61,42 @@
       "from": { "system": "nielsen_dma", "value": "501", "version": "2024", "name": "New York" },
       "to":   { "system": "comscore_market", "value": "NYC-100", "version": "2025-Q1" },
       "method": "crosswalk",
+      "method_provider": "IAB",
       "method_details": "Canonical county-union mapping per Nielsen DMA 2024 spec + Comscore Market 2025-Q1 definition."
     },
     {
       "from": { "system": "uid2", "value": "AAAA..." },
       "to":   { "system": "ramp_id", "value": "RA-9876" },
       "method": "id_graph",
+      "method_provider": "LiveRamp",
       "method_details": "LiveRamp graph v2026.05. Coverage ~94% in US, ~71% in EU."
     },
     {
       "from": { "system": "iab_audience", "value": "4-1-2-3", "version": "v2" },
       "to":   { "system": "iab_audience", "value": "4-1-2-3", "version": "v3" },
       "method": "crosswalk",
+      "method_provider": "IAB",
       "method_details": "IAB published v2→v3 migration map. Direct 1:1 for this node; some sibling nodes are merged in v3."
+    },
+    {
+      "from": { "system": "us_zip", "value": "10001" },
+      "to":   { "system": "nielsen_dma", "value": "501", "version": "2024", "name": "New York" },
+      "method": "upscaled",
+      "method_details": "Zip 10001 lies entirely within DMA 501. Aggregation is deterministic forward; inverse is undefined."
+    },
+    {
+      "from": { "system": "device_graph", "value": "device_abc123" },
+      "to":   { "system": "iab_audience", "value": "4-1-2-3", "version": "v3" },
+      "method": "inferred",
+      "method_provider": "Lotame",
+      "method_details": "ML model v2026.04. Predicted membership confidence 0.78."
     },
     {
       "from": { "system": "publisher_panel", "value": "panel_A_18-49" },
       "to":   { "system": "nielsen_p_18_49", "value": "P18-49" },
-      "method": "custom",
-      "method_details": "Publisher's panel reweighted to Nielsen P18-49 distribution. Match-rate floor 80%; see publisher methodology docs."
+      "method": "projected",
+      "method_provider": "Nielsen",
+      "method_details": "Publisher's panel reweighted to Nielsen P18-49 distribution via post-stratification. Sample n=4,800, design effect 1.3."
     }
   ]
 }
