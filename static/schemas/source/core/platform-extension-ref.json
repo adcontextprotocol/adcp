@@ -9,7 +9,8 @@
     "uri": {
       "type": "string",
       "format": "uri",
-      "description": "URL identifying the extension. The URI base is the owning agent's URL; the path identifies the extension within that agent. Example: 'https://meta.adcp/extensions/meta_pixel'."
+      "pattern": "^https://",
+      "description": "HTTPS URL identifying the extension. `https://` is mandatory — `http://`, `file://`, `data:`, and other schemes are rejected at the schema layer (defense-in-depth on top of the fetch-contract normative rules). The URI base is the owning agent's URL; the path identifies the extension within that agent. Example: 'https://meta.adcp/extensions/meta_pixel'. The full fetch contract — SSRF allowlist, response-size cap, $ref sandbox, schema-compile bounds — is documented on `product-format-declaration.json#format_schema` and applies to ALL fetches of this reference shape regardless of whether the field is named `format_schema` (load-bearing for validation) or `platform_extensions` (informational); the *transport* rules are identical, only the *consumption* semantics differ."
     },
     "digest": {
       "type": "string",

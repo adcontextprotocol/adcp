@@ -5,6 +5,10 @@
   "description": "Direct video file (mp4/webm/mov) hosted by the buyer. Slot: `video_main` (video asset, file or hosted URL), optional `headline`, `brand_name`, `cta`, `companion_banner`, `landing_page_url`. Tracking model: IAB Open Measurement SDK + external impression/click/quartile pixels via universal_macros. Orientation is a parameter (vertical 9:16 / horizontal 16:9 / square 1:1); slot shape includes optional `brand_name` (typical for vertical short-form) and optional `companion_banner` (typical for horizontal instream). Distinct from `video_vast` (VAST tag, inherent VAST event tracking) — receivers fire impression and click pixels at delivery time.",
   "allOf": [{ "$ref": "/schemas/formats/canonical/_base.json" }],
   "properties": {
+    "status": {
+      "default": "stable",
+      "description": "Track A (v1-translatable): default `stable` at 3.1 GA. Hosted video with OM-SDK + external tracker pixels is a settled pattern; the parameter shape is locked at GA. See `_base.json#status` for the rubric."
+    },
     "slots": {
       "default": [
         { "asset_group_id": "video_main", "asset_type": "video", "required": true },

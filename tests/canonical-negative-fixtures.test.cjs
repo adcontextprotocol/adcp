@@ -54,7 +54,7 @@ function loadAllSchemas(ajv) {
   walk(SCHEMAS_DIR);
 }
 
-const ajv = new Ajv({ allErrors: true, strict: false });
+const ajv = new Ajv({ allErrors: true, strict: false, discriminator: true });
 addFormats(ajv);
 ajv.addFormat('uri-template', true);
 loadAllSchemas(ajv);
@@ -140,6 +140,16 @@ const NEGATIVE_CASES = {
       label: 'format_kind=image clean (positive control)',
       expected: true,
       doc: { format_kind: 'image', params: { width: 300, height: 250 } },
+    },
+    {
+      label: 'format_kind=image with canonical_formats_only=true accepted (Track-B canonical without v1 mapping)',
+      expected: true,
+      doc: { format_kind: 'image', canonical_formats_only: true, params: { width: 300, height: 250 } },
+    },
+    {
+      label: 'format_kind=image with canonical_formats_only=false accepted',
+      expected: true,
+      doc: { format_kind: 'image', canonical_formats_only: false, params: { width: 300, height: 250 } },
     },
   ],
   '/schemas/creative/validate-input-result.json': [

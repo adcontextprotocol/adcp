@@ -5,6 +5,10 @@
   "description": "Direct audio creative — buyer ships an `audio` asset (mp3/aac/wav) for asset-driven products, or ships a `script` / `creative_brief` text asset for products where the seller produces audio internally (podcast host-reads, TTS synthesis). Optional companion slots: `companion_image`, `brand_name`, `landing_page_url`. Tracking model: standard impression + completion + companion-image-click pixels via universal_macros. Distinct from `audio_daast` (DAAST tag, inherent DAAST event tracking). For host-reads and synthesized audio, the format declares `audio_source: 'publisher_host_recorded'` or `'agent_synthesized'` plus `buyer_audio_acceptance: 'rejected'`; the format's `slots` declaration enumerates which assets the buyer ships (e.g., `script` text asset for host-reads). The seller decides how to consume each asset (render verbatim vs produce audio from text) — there is no separate manifest 'inputs' map; everything the buyer ships goes in `assets`.",
   "allOf": [{ "$ref": "/schemas/formats/canonical/_base.json" }],
   "properties": {
+    "status": {
+      "default": "stable",
+      "description": "Track A (v1-translatable): default `stable` at 3.1 GA. Hosted audio with companion-image trackers is a settled pattern; the parameter shape is locked at GA. See `_base.json#status` for the rubric."
+    },
     "slots": {
       "default": [
         { "asset_group_id": "audio_main", "asset_type": "audio", "required": true },

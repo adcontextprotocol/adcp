@@ -5,6 +5,10 @@
   "description": "Third-party-served display tag (JS, iframe, or 1×1 redirect). The buyer's adserver hosts the creative; the seller calls the tag URL at impression time. Slot: `tag_url` (url asset with appropriate `url_type`). Tracking model: opaque to seller — third party serves and measures. Click tracking via redirect URL substitution using universal_macros. Distinct from `image` (static asset hosted by seller) and `html5` (zip bundle hosted by seller).",
   "allOf": [{ "$ref": "/schemas/formats/canonical/_base.json" }],
   "properties": {
+    "status": {
+      "default": "stable",
+      "description": "Track A (v1-translatable): default `stable` at 3.1 GA. Third-party display-tag delivery is a settled industry pattern; the parameter shape is locked at GA. See `_base.json#status` for the rubric."
+    },
     "slots": {
       "default": [
         { "asset_group_id": "tag_url", "asset_type": "url", "required": true },

@@ -7,9 +7,15 @@ testable: true
 
 # Canonical Formats (preview)
 
-> **Status:** Preview track. The canonical-formats surface is being designed in flight against [RFC #3305](https://github.com/adcontextprotocol/adcp/issues/3305) and the [#3307 implementation branch](https://github.com/adcontextprotocol/adcp/pull/3307). The v1 named-format model (`format_id` as `{ agent_url, id }`) remains a first-class path through 4.x with a 5.0 sunset; canonical formats are opt-in and additive at the schema layer. **The typed-tagged-union ergonomics this design earns require SDK codegen to deliver — Phase 4 (TypeScript and Python codegen) is the gating dependency for adopter consumption. Until Phase 4 ships, adopters can build against the schemas directly, but the buyer-side mental simplification this design promises lands fully only with codegen.**
+> **TL;DR for adopters reading cold:**
+> - **6 of 11 canonical formats ship `stable` at 3.1 GA** (`image`, `display_tag`, `video_hosted`, `video_vast`, `audio_hosted`, `audio_daast` — all re-encodings of IAB/VAST/DAAST). 5 stay `preview` past GA (`html5`, `image_carousel`, `sponsored_placement`, `responsive_creative`, `agent_placement`).
+> - **v1 named formats stay first-class** through 4.x with a 5.0 sunset floor. Dual-emission is the migration mode; SDKs translate either direction. Realistic v2-only buyer-agent timing is 4.x at the earliest.
+> - **15 v1→v2 mapping registry entries at GA, 71+ of audited v1 formats are v1-only** out of the gate (need seller `canonical` field or registry PR to project to v2). v2-aware buyers see meaningfully thinner inventory than v1-aware ones through 3.x. Dual-read codepath realistic through 3.3.
+> - **Phase 4 (SDK codegen) is the gating dependency for adopter consumption.** Schemas are shippable today; the typed-tagged-union ergonomics this design earns land fully only with codegen. The runtime Ajv validator is the load-bearing gate — generated TS/Pydantic types lose `if/then` narrowing on `format_kind: "custom"` and `result_kind`.
+
+> **Status:** Preview track. The canonical-formats surface is being designed in flight against [RFC #3305](https://github.com/adcontextprotocol/adcp/issues/3305) and the [#3307 implementation branch](https://github.com/adcontextprotocol/adcp/pull/3307).
 >
-> *Naming note*: This work was originally drafted as "creative formats v2" — the v1↔v2 contrast describes the two format-authoring models (legacy named-format registry vs new canonical formats on products). To avoid collision with AdCP-the-protocol's own version numbering (currently 3.x), file paths and references use **canonical formats** terminology. The v1↔v2 contrast remains useful narrative shorthand inside schema descriptions where it disambiguates the two authoring paths on `Product.format_ids` vs `Product.format_options`.
+> *Naming note*: This work was originally drafted as "creative formats v2" — the v1↔v2 contrast describes the two format-authoring models (legacy named-format registry vs new canonical formats on products). To avoid collision with AdCP-the-protocol's own version numbering (currently 3.x), file paths, identifiers, and the body of this doc use **canonical formats** terminology. The v1↔v2 contrast is reserved as schema-description shorthand where it disambiguates the two authoring paths on `Product.format_ids` vs `Product.format_options`.
 
 Canonical formats collapse today's separate format registry into product-bound declarations. AdCP defines a small set of **canonical formats** (universal building blocks); sellers' products carry inline `ProductFormatDeclaration`s that narrow canonicals with platform-specific parameters. Creative agents become transformation services declaring `build_creative` capabilities targeting canonical formats. Most existing concepts (CTAs, destinations, tracking, brand identity) are reused or stay in their current homes — canonical formats don't create a new vocabulary layer for those.
 
@@ -161,16 +167,19 @@ Three required pieces when `format_kind: "custom"`:
 
 ### `format_schema` fetch contract (normative)
 
-`format_schema` gates validation — without the schema, a buyer cannot reason about the custom shape. The fetch contract is tighter than `platform_extensions` (which is informational):
+`format_schema` gates validation — without the schema, a buyer cannot reason about the custom shape. The **transport** rules below apply identically to BOTH `format_schema` and `platform_extensions` (any SDK fetching a `platform-extension-ref.json` URI applies the same rules — a shared fetch path that drops to the weakest bar undermines `format_schema`'s hardening). The **consumption** distinction (`format_schema` is load-bearing, `platform_extensions` is informational) is about *what the body means*, not about how it's fetched.
 
 - **Transport**: `https://` only. `http://`, `file://`, `data:`, and other schemes MUST be rejected.
-- **Digest mismatch is a hard fail.** SHA-256 of the fetched body MUST equal `format_schema.digest`. On mismatch, the buyer MUST treat the declaration as unresolvable. No fallback to the unverified body.
+- **SSRF protection**: resolved hostname MUST NOT land on RFC 1918 (10/8, 172.16/12, 192.168/16), loopback (127/8, ::1), link-local (169.254/16, fe80::/10), CGNAT (100.64/10), or RFC 6761 special-use names (`.local`, `.localhost`, `.internal`, `.test`, `.example`, `.invalid`). Cloud metadata endpoints (`169.254.169.254`, `metadata.google.internal`, `kubernetes.default.svc`) are explicitly forbidden — these are credential-leak primitives. Connection MUST be pinned to the resolved IP (or re-resolved and re-validated per request) to defeat DNS rebinding.
+- **No redirects.** HTTP redirects MUST be disabled on these fetches. Open redirects on same-origin paths are otherwise a free SSRF primitive.
+- **1 MiB response cap.** Enforce during streaming. Over-cap = hard fail.
+- **Digest mismatch is a hard fail.** SHA-256 of the body MUST equal `format_schema.digest` (`sha256:` + 64 lowercase hex). On mismatch, the buyer MUST treat the declaration as unresolvable. No fallback to the unverified body. Sustained mismatch (vs network flap) MUST be distinguishable in telemetry — it's a substitution-attack signal.
 - **Timeout** ≤5s recommended. Timeout treated as a 5xx (transient — retry or skip).
-- **`$ref` sandboxing**: fetched schemas MAY use `$ref`, but only to (a) same-origin URIs, (b) the AAO mirror namespace, or (c) intra-document JSON Pointer refs. Cross-origin `$ref` to arbitrary URIs MUST be rejected. `$ref: file://...` MUST be rejected. Transitive `$ref` depth bounded (SDKs SHOULD cap at 8).
-- **Cache** by `uri@digest`, immutable. On 404 / partition / persistent failure: skip the declaration for this session, surface a structured warning, do NOT fail the whole `get_products` response.
-- **Schema validity**: fetched body must be a valid JSON Schema (Draft 07 or 2020-12). Invalid schema → same as digest mismatch (unresolvable, warning, skip).
-
-These rules apply specifically to `format_schema`. `platform_extensions` keep their looser informational contract; `format_schema` is the load-bearing one.
+- **`$ref` sandboxing**: fetched schemas MAY use `$ref`, but only to (a) same-origin URIs after RFC 3986 §6 normalization (lowercase scheme + host, strip default port, no userinfo), (b) the AAO mirror namespace, or (c) intra-document JSON Pointer refs bounded to the parent document. Cross-origin `$ref` to arbitrary URIs MUST be rejected. `$ref: file://...` MUST be rejected. Transitive `$ref` depth ≤8 AND total `$ref` count ≤256 across the resolved tree (depth alone is not enough — depth 8 × breadth 100 = 10^16 nodes).
+- **Schema-compile bounds (DoS protection)**: validators MUST bound CPU/memory. Recommended: compiled-schema keyword count ≤10 000, `pattern` regexes evaluated with `re2` OR under a per-pattern timeout, per-manifest validation budget ≤250 ms (exceeded → invalid + telemetry signal). Without these, a "valid" schema with catastrophic regex backtracking pins a CPU forever.
+- **Cache** by `uri@digest`, immutable. On 404 / partition / persistent failure: skip the declaration for this session, surface via `errors[]`, do NOT fail the whole `get_products` response.
+- **Schema validity**: fetched body must be a valid JSON Schema (Draft 07 or 2020-12). Invalid schema → same as digest mismatch (unresolvable, surface via `errors[]`, skip).
+- **AAO mirror**: `https://mirror.adcontextprotocol.org/*` is a single trust anchor in the allowlist; compromise of the mirror or its CA compromises every buyer agent. Mirror-served bodies are digest-pinned identically to origin fetches. Signed-body + transparency-log hardening is tracked as a 3.2 follow-up.
 
 ### Why custom + format_schema instead of `ext`
 
@@ -807,17 +816,34 @@ When reading a product on the v1 path, SDKs project `format_ids` to `format_opti
 1. Explicit `canonical` field on the v1 format declaration (seller-declared, highest priority).
 2. `format_id_glob` match in the registry.
 3. Structural match in the registry.
-4. **Fail closed**: SDK MUST NOT synthesize a `format_options` entry. SDKs SHOULD emit a structured warning (telemetry / logger) so adopters can spot non-projectable inventory; absence is silent loss of inventory visibility for v2-only buyers.
+4. **Fail closed**: SDK MUST NOT synthesize a `format_options` entry. SDKs MUST surface the failure via the `errors[]` array on the `get_products` response envelope with `code: FORMAT_PROJECTION_FAILED` (NOT logger-only — a buyer that silently sees N fewer products has no remediation path; the warning needs to reach the response, not just the log file). The advisory is non-fatal: the response stays 200/success, the product is still valid on the v1 path, only the v2 `format_options` projection is absent.
 
 ### Consumer rules (divergence detection)
 
 When a product carries BOTH `format_ids` and `format_options` and the two disagree (different canonical, different dimensions, different orientation, etc.):
 
 - SDKs MUST treat this as a producer contract violation.
-- SDKs SHOULD prefer `format_options` (v2 is the richer surface) and emit a structured warning identifying the divergent product. Hard-failing the entire `get_products` response is discouraged — it punishes downstream buyers for a producer bug.
+- SDKs SHOULD prefer `format_options` (canonical formats are the richer surface) and SHOULD surface the divergent product via the response's `errors[]` array with `code: FORMAT_DECLARATION_DIVERGENT` (NOT logger-only — operators need wire-visible signal). Hard-failing the entire `get_products` response is discouraged — it punishes downstream buyers for a producer bug.
 - SDKs MUST NOT silently pick one shape and discard the other without surfacing the divergence to the calling agent.
 
 The schema cannot enforce agreement (no cross-field constraint expresses "the v1 mapped form of `format_ids[i]` must equal `format_options[j]`"). Consumer-side detection is the only line of defense; SDK conformance suites SHOULD include divergence fixtures.
+
+### "Narrows" — formal definition (normative)
+
+When the spec says a v2 `format_options` entry MUST refer to the same underlying declaration as a v1 `format_ids` entry on the same product (dual-emission invariant), or when an SDK compares an authored v2 declaration against the registry-projected one to detect divergence, the comparison MUST follow this definition:
+
+**v2.params *narrows* the v1-projected baseline** when every parameter present on v2.params is structurally a subset of the equivalent v1 requirement after registry expansion. Specifically:
+
+- **Scalar constraints**: a v2 scalar value `narrows` a v1 range when the v2 value is contained within the v1 range. `v2.width: 300` narrows `v1.width_range: [200, 400]`; `v2.duration_ms_exact: 30000` narrows `v1.min_duration_ms: 3000`.
+- **Enum constraints**: v2.enum_value is a `narrowing` if it appears in v1.allowed_values (or v1.allowed_values is absent — open enum). `v2.image_formats: ["jpg", "png"]` narrows `v1.image_formats: ["jpg", "png", "gif", "webp"]`.
+- **Range constraints**: v2.range narrows v1.range when v2's lower bound ≥ v1's lower bound AND v2's upper bound ≤ v1's upper bound. `v2.duration_ms_range: [5000, 30000]` narrows `v1.duration_ms_range: [3000, 90000]`.
+- **Absent v2 parameter**: when v2.params omits a parameter that v1 specified, v2 inherits v1's value (no narrowing constraint added). Producers SHOULD omit rather than restate v1 defaults.
+- **Asymmetric narrowing**: when v1 says nothing about a parameter but v2 specifies one (e.g., v1 has no `image_formats` constraint, v2 declares `image_formats: ["jpg"]`), v2 is `narrowing` against the implicit "any value" v1 baseline. This is the expected v2-tightens-v1 pattern.
+- **Conflict**: any v2 parameter value that falls outside the corresponding v1 constraint is a *conflict*, not narrowing. SDKs MUST treat conflict between dual-emitted shapes as divergence and surface via `FORMAT_DECLARATION_DIVERGENT`.
+
+The narrows relation is one-directional: v2 narrows v1 (v2 is the stricter shape). The reverse (v1 narrows v2) is NOT how the dual-emission contract is checked.
+
+SDK authors implementing the narrowing check SHOULD apply parameter-by-parameter subsumption per the rules above. Edge cases (composite parameters, platform_extensions, slot vocabulary changes) are not yet specified; SDKs MAY treat them as "unknown — pass" for 3.1 and surface a structured warning, with the working group tightening them per adopter feedback through 3.x.
 
 ### v2-only declarations on the wire
 
@@ -855,7 +881,7 @@ The `*_source` enums (including `seller_pre_rendered_from_brief` and `agent_synt
 
 The third-party-creative-agent worked example assumes Flashtalking-shaped tools serve buyers via `build_creative` and let the buyer ship the produced manifest to the seller. Operators reading this should not infer that v2 strips creative agents of their hosting / serving / tracking revenue. Production happens at `build_creative`; the produced manifest can include hosted asset URLs on the creative agent's CDN (Flashtalking-hosted asset URLs in the example), and platform extensions can attach creative-agent-specific tracking (Flashtalking pixel IDs, viewability vendor configurations) that the seller honors at serve time. The v2 disaggregation is conceptual (the spec separates production from serving from tracking) — the operational integration path lets creative agents continue to host and instrument their produced creatives. v2 doesn't dictate where the asset bytes live or whose tracking JS runs; it only formalizes the production-vs-serving boundary that already exists implicitly.
 
-### Codegen vs runtime: the validator is the gate
+## Codegen vs runtime: the validator is the gate
 
 `product-format-declaration.json` carries an `allOf/if/then/else` that conditionally requires `format_shape`, `format_schema`, and `canonical_formats_only` only when `format_kind === "custom"`. The same pattern applies to `validate-input-result.json`'s `result_kind` discriminator with conditional `violations`. JSON Schema captures these conditionals cleanly, but most codegen pipelines (`json-schema-to-typescript`, `datamodel-codegen`) strip `if/then/else` before emitting types because conditional narrowing doesn't map to TypeScript's structural type system or to Pydantic's class model. The generated types are therefore strictly more permissive than the schema:
 
