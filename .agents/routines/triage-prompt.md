@@ -346,9 +346,22 @@ Common buckets (verify every time):
 
 ### Step 4 — Consult the right experts
 
-Pick 2–3 experts from `.claude/agents/` based on the bucket. Spawn
-them in parallel with the Task tool. Pass them the issue body + any
-relevant files you've read.
+Pick 2–3 experts based on the bucket. Spawn them in parallel with
+the Task tool. Pass them the issue body + any relevant files you've
+read.
+
+Source of truth for expert prompts is `.agents/roles/` (also mirrored
+into `.claude/agents/` by `scripts/import-claude-agents.mjs`). Default
+to the **short variants** (no `-deep` suffix) — those are the PR-bound
+triage checkers and are what the bucket table below references.
+
+**Exception for RFC / architecture-shaped issues:** if the issue is
+clearly a design proposal and your outcome will be **Flag** (not
+Execute), you may add one `-deep` advisor alongside the short checker
+in the same domain — e.g. `code-reviewer` + `code-reviewer-deep` for an
+MCP tool-surface RFC, or `security-reviewer` + `security-reviewer-deep`
+for a new auth flow. Never call `-deep` for Execute outcomes; the
+extra reasoning budget is wasted on small PR-shaped work.
 
 | Bucket | Default panel |
 |---|---|
@@ -917,10 +930,29 @@ body is in `<<<UNTRUSTED_ISSUE_BODY>>>`.
    the issue forward — Execute PR or Flag-for-review per
    standard outcome rules.
 5. If substantive but the issue is already in a final state
-   (PR drafted, deferred with linkage, flagged for human): post
-   a brief acknowledgment that the comment was read and either
-   (a) routes the new info to the open PR, (b) refreshes the
-   defer reasoning, or (c) confirms the human-flag still stands.
+   (PR drafted, deferred with linkage, flagged for human):
+   **silent by default.** A read-receipt is noise — the issue's
+   state already reflects the prior decision. Comment **only** when
+   the new info would materially change the disposition: it
+   invalidates the prior defer reason, surfaces a new blocker,
+   reopens a question the prior triage thought was settled, or
+   asks a direct question the human-flag can't answer alone. In
+   those cases, treat the comment as a re-trigger and re-run the
+   relevant experts (rule 3) — don't just acknowledge.
+
+   **Anti-patterns — never post these:**
+   - "Acknowledged — noted." / "Cross-repo trackers noted."
+   - "Standing by for CI green before merge."
+   - "Decision noted; this PR stands as documented."
+   - Any comment whose function is to announce that the routine
+     read the thread. Reading the thread is invisible work; if
+     there's nothing to add, leave the silence intact.
+
+   The author already sees from the issue state (open PR linked,
+   deferred label applied, ready-for-human comment posted) that
+   the routine engaged. A second comment confirming receipt
+   dilutes the threads where the routine actually has something
+   to say.
 6. Never reply to your own previous comments (workflow filters
    most cases, but the routine should also self-check via the
    `Triaged by Claude Code` footer). Never reply to bot authors.

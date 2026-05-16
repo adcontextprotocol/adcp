@@ -60,7 +60,7 @@ export interface AnnounceCandidate {
   tagline: string | null;
   description: string | null;
   offerings: string[] | null;
-  primary_brand_domain: string | null;
+  brand_primary_domain: string | null;
   brand_manifest: Record<string, unknown> | null;
   last_published_at: Date | null;
 }
@@ -68,7 +68,7 @@ export interface AnnounceCandidate {
 /**
  * Orgs eligible for a draft. Base filter (always applied):
  *  - `member_profiles.is_public = true` right now
- *  - A brand.json manifest exists for their primary_brand_domain
+ *  - A brand.json manifest exists for their primary brand domain
  *  - `member_profiles.metadata->>'no_announcement'` is not 'true'
  *  - No prior `announcement_draft_posted` or `announcement_skipped` activity
  *
@@ -108,7 +108,7 @@ export async function findAnnounceCandidates(
         mp.tagline,
         mp.description,
         mp.offerings,
-        mp.primary_brand_domain,
+        primary_od.domain AS brand_primary_domain,
         b.brand_manifest,
         (
           SELECT MAX(activity_date)
@@ -119,8 +119,11 @@ export async function findAnnounceCandidates(
       FROM organizations o
       JOIN member_profiles mp
         ON mp.workos_organization_id = o.workos_organization_id
+      JOIN organization_domains primary_od
+        ON primary_od.workos_organization_id = o.workos_organization_id
+       AND primary_od.is_primary = true
       JOIN brands b
-        ON b.domain = LOWER(mp.primary_brand_domain)
+        ON b.domain = LOWER(primary_od.domain)
        AND b.brand_manifest IS NOT NULL
       WHERE mp.is_public = true
         AND COALESCE(mp.metadata->>'no_announcement', 'false') <> 'true'
@@ -202,6 +205,23 @@ export function sanitizeDraftForSlack(
   return out;
 }
 
+/**
+ * Slack `plain_text` cap on a `header` block. Exceeding it returns
+ * `invalid_blocks` with `must be no longer than 150 characters` —
+ * see https://api.slack.com/reference/block-kit/blocks#header.
+ */
+const SLACK_HEADER_MAX_LENGTH = 150;
+
+/**
+ * Truncate `s` to `max` chars, replacing the trailing char with `…`
+ * when truncated so the cutoff is visible. Returns `s` unchanged if
+ * already under the cap.
+ */
+function clampForHeader(s: string, max: number): string {
+  if (s.length <= max) return s;
+  return s.slice(0, max - 1).trimEnd() + '…';
+}
+
 export function buildReviewBlocks(args: {
   orgName: string;
   workosOrganizationId: string;
@@ -216,9 +236,15 @@ export function buildReviewBlocks(args: {
   const profileUrl = `${APP_URL}/members/${args.profileSlug}`;
   const safeSlack = sanitizeDraftForSlack(args.slackText);
   const safeLinkedIn = sanitizeDraftForSlack(args.linkedinText, { forFencedBlock: true });
-  const headerText = args.backfill
+  // `args.orgName` is `organizations.name` and is not length-clamped at
+  // source. The header `plain_text` block caps at 150 chars; an org name
+  // long enough to push past that returns `invalid_blocks` and the entire
+  // announcement post fails. Truncate the orgName portion (not the prefix)
+  // so the framing stays intact and only the name is shortened.
+  const rawHeader = args.backfill
     ? `[BACKFILL] New member announcement ready: ${args.orgName}`
     : `New member announcement ready: ${args.orgName}`;
+  const headerText = clampForHeader(rawHeader, SLACK_HEADER_MAX_LENGTH);
   const blocks: SlackBlock[] = [
     {
       type: 'header',
@@ -318,7 +344,7 @@ async function processAnnounceCandidate(
       tagline: candidate.tagline,
       description: candidate.description,
       offerings: candidate.offerings ?? [],
-      primaryBrandDomain: candidate.primary_brand_domain,
+      primaryBrandDomain: candidate.brand_primary_domain,
       agents: summarizeAgents(candidate.brand_manifest),
       profileSlug: candidate.slug,
     });
@@ -326,7 +352,7 @@ async function processAnnounceCandidate(
     const visual = await resolveAnnouncementVisual({
       workosOrganizationId: candidate.workos_organization_id,
       membershipTier: candidate.membership_tier,
-      primaryBrandDomain: candidate.primary_brand_domain,
+      primaryBrandDomain: candidate.brand_primary_domain,
       displayName: candidate.display_name,
     });
 
@@ -497,7 +523,7 @@ export type BackfillPreviewRow = {
   workos_organization_id: string;
   org_name: string;
   membership_tier: string | null;
-  primary_brand_domain: string | null;
+  brand_primary_domain: string | null;
   last_published_at: Date | null;
 };
 
@@ -543,7 +569,7 @@ function previewRow(c: AnnounceCandidate): BackfillPreviewRow {
     workos_organization_id: c.workos_organization_id,
     org_name: c.org_name,
     membership_tier: c.membership_tier,
-    primary_brand_domain: c.primary_brand_domain,
+    brand_primary_domain: c.brand_primary_domain,
     last_published_at: c.last_published_at,
   };
 }

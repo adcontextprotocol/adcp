@@ -161,7 +161,7 @@ function buildMultimodalContentBlocks(
  * Action-claiming patterns mapped to the tools that should back them up.
  * Hoisted to module scope to avoid re-allocation on every response.
  */
-const HALLUCINATION_PATTERNS: ReadonlyArray<{ pattern: RegExp; expectedTools: string[] }> = [
+export const HALLUCINATION_PATTERNS: ReadonlyArray<{ pattern: RegExp; expectedTools: string[] }> = [
   { pattern: /invoice\s+(?:resent|sent)\s+successfully/i, expectedTools: ['resend_invoice', 'send_invoice', 'send_payment_request'] },
   { pattern: /(?:successfully\s+)?resent\s+(?:the\s+)?invoice/i, expectedTools: ['resend_invoice', 'send_invoice', 'send_payment_request'] },
   { pattern: /(?:billing\s+)?email\s+(?:updated|changed)\s+successfully/i, expectedTools: ['update_billing_email'] },
@@ -171,6 +171,22 @@ const HALLUCINATION_PATTERNS: ReadonlyArray<{ pattern: RegExp; expectedTools: st
   { pattern: /(?:I'?ve\s+|I\s+)?(?:created|generated|sent)\s+(?:a\s+)?payment\s+link/i, expectedTools: ['create_payment_link'] },
   { pattern: /(?:I'?ve\s+|I\s+)?(?:sent|delivered)\s+(?:a\s+)?(?:DM|direct message|notification)/i, expectedTools: ['send_member_dm', 'resolve_escalation'] },
   { pattern: /(?:I'?ve\s+|I\s+)?added\s+\S+(?:\s+\S+){0,5}\s+to\s+the\s+(?:meeting|call|series)/i, expectedTools: ['add_meeting_attendee'] },
+  // Fake-escalation patterns. `escalate_to_admin` is in the always-available
+  // tool set, so claiming an escalation/notification was made without firing
+  // it is the same class of fabrication as the rest. Real GitHub-issue tools
+  // count too because Addie sometimes describes filing a ticket as creating
+  // an issue.
+  //
+  // The two creation-verb patterns require a first-person subject so we
+  // don't fire on "see ticket 42" or "Stripe opened a ticket on your behalf"
+  // — those are informational, not fabricated actions. The "team notified"
+  // pattern stays loose because it's the primary signal for the original
+  // failure shape ("Done — the team has been notified (ticket #228)") where
+  // no other pattern fits the punctuation context.
+  { pattern: /(?:I'?ve|I\s+just|I)\s+(?:created|opened|filed|generated)\s+(?:a\s+)?(?:support\s+)?ticket\s+#?\d+/i, expectedTools: ['escalate_to_admin', 'create_github_issue', 'draft_github_issue'] },
+  { pattern: /(?:the\s+)?team\s+(?:has\s+been\s+|will\s+be\s+|is\s+being\s+)notified/i, expectedTools: ['escalate_to_admin'] },
+  { pattern: /I'?ve\s+(?:flagged|escalated|notified)\s+(?:this|the\s+team|the\s+admins?)/i, expectedTools: ['escalate_to_admin'] },
+  { pattern: /(?:I'?ve|I\s+just)\s+(?:created|opened|filed)\s+(?:a\s+)?(?:support\s+)?(?:ticket|issue)\b/i, expectedTools: ['escalate_to_admin', 'create_github_issue', 'draft_github_issue'] },
 ];
 
 /**
@@ -178,7 +194,7 @@ const HALLUCINATION_PATTERNS: ReadonlyArray<{ pattern: RegExp; expectedTools: st
  * Returns a flag reason if the text claims to have completed an action
  * but no corresponding tool was actually called AND succeeded.
  */
-function detectHallucinatedAction(text: string, toolExecutions: ToolExecution[]): string | null {
+export function detectHallucinatedAction(text: string, toolExecutions: ToolExecution[]): string | null {
   for (const { pattern, expectedTools } of HALLUCINATION_PATTERNS) {
     if (pattern.test(text)) {
       // Check that a matching tool was called AND succeeded (not just called)
@@ -192,6 +208,20 @@ function detectHallucinatedAction(text: string, toolExecutions: ToolExecution[])
   }
 
   return null;
+}
+
+/**
+ * Empty-turn detector (#3721). The user gets nothing back when the model
+ * produces no text AND no successful tool calls — same UX as a transport
+ * drop, and the signature failure mode behind silent invoice-tool failures.
+ * Returns a reason string when this happens so the caller can flag + log it.
+ */
+export function detectEmptyTurn(text: string, toolExecutions: ToolExecution[]): string | null {
+  if (text.length > 0) return null;
+  const successful = toolExecutions.filter(t => !t.is_error).length;
+  if (successful > 0) return null;
+  const errored = toolExecutions.length - successful;
+  return `Empty turn: no text and no successful tool calls (toolExecutions=${toolExecutions.length}, errored=${errored})`;
 }
 
 /** Default max tool iterations for regular users */
@@ -788,6 +818,12 @@ export class AddieClaudeClient {
           logger.warn({ toolsUsed, reason: hallucinationReason }, 'Addie: Possible hallucinated action detected');
         }
 
+        const emptyTurnReason = detectEmptyTurn(text, toolExecutions);
+        if (emptyTurnReason) {
+          logger.warn({ toolsUsed, toolExecutions: toolExecutions.length }, 'Addie: Empty turn — no text and no successful tool calls');
+        }
+        const flagReason = hallucinationReason ?? emptyTurnReason;
+
         const finalUsage = {
           input_tokens: totalInputTokens,
           output_tokens: totalOutputTokens,
@@ -810,8 +846,8 @@ export class AddieClaudeClient {
           text,
           tools_used: toolsUsed,
           tool_executions: toolExecutions,
-          flagged: !!hallucinationReason,
-          flag_reason: hallucinationReason ?? undefined,
+          flagged: !!flagReason,
+          flag_reason: flagReason ?? undefined,
           active_rule_ids: undefined,
           config_version_id: configVersionId ?? undefined,
           timing: {
@@ -1415,22 +1451,31 @@ export class AddieClaudeClient {
         if (currentResponse.stop_reason === 'end_turn') {
           totalToolExecutionMs = toolExecutions.reduce((sum, t) => sum + t.duration_ms, 0);
 
-          // Detect possible hallucinated actions (text claims success without successful tool calls)
-          const hallucinationReason = detectHallucinatedAction(fullText, toolExecutions);
+          // Run both detectors against the post-pipeline text — same as the
+          // non-stream path. If applyResponsePipeline strips the only text
+          // (e.g., scrubbed a refused-action sentence), that should look like
+          // an empty turn to the user, which is what we want to flag.
+          const pipelined = applyResponsePipeline(userMessage, fullText);
+          const hallucinationReason = detectHallucinatedAction(pipelined, toolExecutions);
           if (hallucinationReason) {
             logger.warn({ toolsUsed, reason: hallucinationReason }, 'Addie Stream: Possible hallucinated action detected');
           }
+          const emptyTurnReason = detectEmptyTurn(pipelined, toolExecutions);
+          if (emptyTurnReason) {
+            logger.warn({ toolsUsed, toolExecutions: toolExecutions.length }, 'Addie Stream: Empty turn — no text and no successful tool calls');
+          }
+          const flagReason = hallucinationReason ?? emptyTurnReason;
 
           const streamUsage = buildStreamUsage();
           await chargeStreamCost(streamUsage);
           yield {
             type: 'done',
             response: {
-              text: applyResponsePipeline(userMessage, fullText),
+              text: pipelined,
               tools_used: toolsUsed,
               tool_executions: toolExecutions,
-              flagged: !!hallucinationReason,
-              flag_reason: hallucinationReason ?? undefined,
+              flagged: !!flagReason,
+              flag_reason: flagReason ?? undefined,
               active_rule_ids: undefined,
               config_version_id: configVersionId ?? undefined,
               timing: {

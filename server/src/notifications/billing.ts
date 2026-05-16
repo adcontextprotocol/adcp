@@ -104,32 +104,102 @@ async function sendBillingNotification(
   }
 }
 
+export type NewSubscriptionPaymentStatus =
+  | 'paid'
+  | 'invoice_sent_pending'
+  | 'payment_failed'
+  | 'payment_pending'
+  | 'unknown';
+
 /**
- * Notify when a new subscription is created
+ * Notify when a new subscription is created. The amount field is the
+ * post-discount amount actually being billed — show list price + discount
+ * summary as a separate field when they differ. Status reflects whether
+ * the first invoice has been collected yet.
  */
 export async function notifyNewSubscription(data: {
   organizationName: string;
   customerEmail: string;
   productName?: string;
   amount?: number;
+  /** Catalog list price, only set when different from `amount`. Drives "(was $X)". */
+  listAmount?: number;
+  /** Free-text discount line, e.g. "$5,000 referral discount" or "20% off". */
+  discountSummary?: string;
   currency?: string;
   interval?: string;
+  paymentStatus?: NewSubscriptionPaymentStatus;
+  /** For send_invoice mode: days from invoice creation to due date. 0 = "due upon receipt". */
+  invoiceTermsDays?: number;
 }): Promise<boolean> {
   const intervalText = data.interval === 'year' ? '/year' : '/month';
-  const amountText = data.amount ? formatAmount(data.amount, data.currency) + intervalText : 'Custom';
+  const amountText = data.amount
+    ? formatAmount(data.amount, data.currency) + intervalText
+    : 'Custom';
+
+  const planText = formatPlanLine(data);
+  const statusText = formatPaymentStatus(data.paymentStatus, data.invoiceTermsDays);
+
+  const fields: Array<{ label: string; value: string }> = [
+    { label: 'Organization', value: data.organizationName },
+    { label: 'Email', value: maskEmail(data.customerEmail) },
+    { label: 'Plan', value: planText },
+    { label: 'Amount', value: amountText },
+  ];
+  if (statusText) {
+    fields.push({ label: 'Status', value: statusText });
+  }
 
   return sendBillingNotification(
     `New Member: ${data.organizationName}`,
-    [
-      headerBlock('New Member!'),
-      sectionBlock([
-        { label: 'Organization', value: data.organizationName },
-        { label: 'Email', value: maskEmail(data.customerEmail) },
-        { label: 'Plan', value: data.productName || 'Membership' },
-        { label: 'Amount', value: amountText },
-      ]),
-    ]
+    [headerBlock('New Member!'), sectionBlock(fields)],
   );
+}
+
+/**
+ * Plan field — shows the product name plus list price + discount summary
+ * when a discount was applied, so admins can see the framing at a glance.
+ */
+function formatPlanLine(data: {
+  productName?: string;
+  listAmount?: number;
+  discountSummary?: string;
+  currency?: string;
+}): string {
+  const base = data.productName || 'Membership';
+  if (data.listAmount && data.discountSummary) {
+    return `${base} (${formatAmount(data.listAmount, data.currency)} list, ${data.discountSummary})`;
+  }
+  if (data.discountSummary) {
+    return `${base} (${data.discountSummary})`;
+  }
+  return base;
+}
+
+function formatPaymentStatus(
+  status: NewSubscriptionPaymentStatus | undefined,
+  termsDays: number | undefined,
+): string | undefined {
+  switch (status) {
+    case 'paid':
+      return 'Paid';
+    case 'invoice_sent_pending': {
+      const terms =
+        termsDays === undefined
+          ? 'awaiting payment'
+          : termsDays === 0
+            ? 'Net 0 — due upon receipt, not yet paid'
+            : `Net ${termsDays}, not yet paid`;
+      return `Invoice sent (${terms})`;
+    }
+    case 'payment_pending':
+      return 'Charge pending — Stripe is processing the payment';
+    case 'payment_failed':
+      return 'Payment failed — admin action needed';
+    case 'unknown':
+    case undefined:
+      return undefined;
+  }
 }
 
 /**

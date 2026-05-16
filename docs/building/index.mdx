@@ -1,73 +1,96 @@
 ---
 title: Building with AdCP
 sidebarTitle: Overview
-description: "Build with AdCP: integration guides for MCP and A2A protocols, authentication, async operations, error handling, and orchestrator design patterns."
+description: "Single decision page for AdCP implementers. Pick the right entry point — caller, agent, or migration — based on what you're building and how much of the protocol you want to inherit."
 "og:title": "AdCP — Building with AdCP"
 ---
 
-{/* Remove after 2026-04-25 */}
-<Info>
-**`adcp comply` is now `npx @adcp/client@latest storyboard run`.** Running without a storyboard ID discovers your agent's tools and runs all matching storyboards — same behavior, one less concept. See [Validate Your Agent](/docs/building/validate-your-agent) for the updated CLI reference.
-</Info>
+You're about to write AdCP code. The first decision is **where you want to spend your engineering time** — letting an AdCP SDK handle the protocol surface so you focus on what makes your agent or caller yours, or going lower.
 
-This section provides everything you need to understand, integrate, and build robust systems with AdCP.
+This page picks an entry point. The [SDK stack reference](/docs/building/cross-cutting/sdk-stack) is the reasoning.
 
-## Learning Path
+## The five layers
 
-<CardGroup cols={3}>
-  <Card title="Understanding AdCP" icon="lightbulb" href="/docs/building/understanding">
-    Why AdCP exists, the problems it solves, and protocol comparison. Start here if you're new.
+Every AdCP request crosses five layers between the wire and your business logic. SDKs absorb L0–L3; **L4 is the part you write either way.**
+
+```mermaid
+%%{init: {"flowchart": {"htmlLabels": true, "wrappingWidth": 9999}, "themeVariables": {"fontSize": "14px"}}}%%
+flowchart TB
+    subgraph yours["yours, always"]
+        L4["<b>L4 — Business logic</b><br/>Inventory · pricing · creative review · planning · buying · reporting<br/><i>What makes your agent or caller yours</i>"]
+    end
+
+    subgraph sdk["what an AdCP SDK provides"]
+        direction TB
+        L3["<b>L3 — Protocol semantics</b><br/>Lifecycle state machines · idempotency · error catalog · async tasks · webhooks · conformance"]
+        L2["<b>L2 — Auth &amp; registry</b><br/>Principal resolution · brand resolution · multi-tenant account routing"]
+        L1["<b>L1 — Identity &amp; signing</b><br/>RFC 9421 message signatures · JWKS · replay-window · key rotation"]
+        L0["<b>L0 — Wire &amp; transport</b><br/>JSON-over-HTTP · MCP envelopes · A2A SSE · schema validation · typed bindings"]
+        L3 ~~~ L2
+        L2 ~~~ L1
+        L1 ~~~ L0
+    end
+
+    L4 ~~~ L3
+```
+
+Where you start determines how much of L0–L3 you own. The work is asymmetric across the two sides of an AdCP conversation: an agent **enforces** the protocol (~3–4 person-months at L0–L3); a caller **consumes** it (weeks of handler glue). The [SDK stack reference](/docs/building/cross-cutting/sdk-stack) decomposes each layer and the [server-vs-client comparison](/docs/building/cross-cutting/sdk-stack#server-vs-client-at-each-layer) makes the cost asymmetry concrete.
+
+## Recommended path
+
+For ~95% of adopters: **start at L4 with the full-stack SDK in your language.**
+
+<CardGroup cols={2}>
+  <Card title="Build an agent" icon="server" href="/docs/building/by-layer/L4/build-an-agent">
+    Server side, with engineering capacity. Point a coding agent at a skill file, get a storyboard-compliant AdCP agent in 2–8 minutes (protocol layer only — see [Operating an agent](/docs/building/operating/operating-an-agent) for the full going-live scope).
   </Card>
-  <Card title="Foundations" icon="cubes" href="/docs/building/integration">
-    Technical building blocks: MCP or A2A protocols, capability discovery, authentication, and data models.
+  <Card title="Build a caller" icon="phone" href="/docs/building/by-layer/L4/build-a-caller">
+    Client side. Install the SDK, write the calls, handle async responses and errors, ingest reporting. Weeks-of-handler-glue scope, not months.
   </Card>
-  <Card title="Implementation Patterns" icon="gears" href="/docs/building/implementation">
-    Build production-ready systems with async operations, webhooks, error handling, and orchestrator patterns.
+  <Card title="Run a prebuilt agent" icon="cube" href="/docs/building/operating/operating-an-agent">
+    Small team or no engineering capacity. Self-host [Prebid SalesAgent](https://github.com/prebid/salesagent), or partner with a managed platform that runs an AdCP agent on your behalf. Configuration over code.
+  </Card>
+  <Card title="Migrate from hand-rolled" icon="code-merge" href="/docs/building/by-layer/L4/migrate-from-hand-rolled">
+    Already running an AdCP agent built before the SDKs were mature? Swap one layer at a time, with conflict modes, per-step rollback, and intermediate states that pass conformance.
+  </Card>
+  <Card title="Go lower than L4" icon="layer-group" href="/docs/building/cross-cutting/sdk-stack">
+    Porting an SDK to a new language, building a special-purpose proxy, or integrating into a stack that already owns L0–L2. Read the SDK stack reference for the per-layer contract.
   </Card>
 </CardGroup>
 
-## Quick Start
+After your first build: run [Validate your agent](/docs/building/verification/validate-your-agent) to confirm conformance against the storyboards, then enroll for the [AAO Verified](/docs/building/verification/aao-verified) trust mark.
 
-**Want a coding agent to build it for you?**
+## Two checks before you start
 
-- [Build an Agent](/docs/building/build-an-agent) - Point a coding agent at a skill file, get a storyboard-compliant agent in minutes
+**1. What's your team's value-add?**
 
-**Already know which protocol you're using?**
+- **Inventory, pricing, creative review, decisioning** (agent L4) or **planning, buying, reporting** (caller L4) → start at L4.
+- **You're an SDK author / language porter, building a proxy, or integrating into a stack that already owns L0–L2** → go lower. Read the [SDK stack reference](/docs/building/cross-cutting/sdk-stack) for what each layer must satisfy.
+- **Anything else** → default to L4. See [what you write at each layer](/docs/building/cross-cutting/sdk-stack#where-can-you-start) before going lower.
 
-- [MCP Integration Guide](/docs/building/integration/mcp-guide) - For Claude, AI assistants, and MCP-compatible tools
-- [A2A Integration Guide](/docs/building/integration/a2a-guide) - For Google AI agents and A2A-compatible workflows
+**2. Do you already have a working agent built before the SDKs were mature?**
 
-**Need to choose a protocol?**
+If yes: re-evaluate against [today's SDK coverage](/docs/building/cross-cutting/sdk-stack#current-sdk-coverage), not the SDK you remember. The [L3 changelog from 2.5](/docs/building/cross-cutting/version-adaptation#what-changed-at-l3-in-3-0) names the new floor; the [migration guide](/docs/building/by-layer/L4/migrate-from-hand-rolled) walks the swap-one-layer-at-a-time path.
 
-See [Protocol Comparison](/docs/building/understanding/protocol-comparison) for a detailed comparison.
+## Cross-cutting concerns
 
-## Section Overview
+Things every AdCP implementation needs, regardless of starting layer:
 
-### Understanding AdCP
+- **[Schemas](/docs/building/by-layer/L0/schemas)** — schema bundles, type generation, version pinning, supply-chain verification.
+- **[Choose your SDK](/docs/building/by-layer/L4/choose-your-sdk)** — language coverage matrix, install commands, package exports, CLI tools.
+- **[Version adaptation](/docs/building/cross-cutting/version-adaptation)** — per-call spec-version pinning, co-existence imports across SDK majors, on-wire `VERSION_UNSUPPORTED` negotiation. Lets you talk to peers on any supported version without forking handler code.
+- **[Conformance](/docs/building/verification/conformance)** — the L3 protocol bar every agent must reach. Storyboards probe state transitions, error shapes, and the async-task contract.
+- **[AAO Verified](/docs/building/verification/aao-verified)** — the public trust mark. Storyboard pass earns `(Spec)`; observed live traffic earns `(Live)`.
+- **[Operating an agent](/docs/building/operating/operating-an-agent)** — runtime concerns once you're past first launch: monitoring, on-call, version drift, multi-tenant scaling.
 
-Conceptual foundation for everyone working with AdCP:
+## Going deeper
 
-- **[Why AdCP](/docs/building/understanding)** - The strategic vision: unifying buying paradigms and enabling AI surfaces
-- **[Protocol Comparison](/docs/building/understanding/protocol-comparison)** - MCP vs A2A at a glance
+- **[Concepts](/docs/building/concepts)** — why AdCP exists, protocol comparison, security model, industry context. Start here if you're new and want context before code.
+- **[L0 — Wire & transport](/docs/building/by-layer/L0)** — MCP and A2A integration, schema validation, type generation.
+- **[L2 — Auth & registry](/docs/building/by-layer/L2)** — authentication, multi-tenant account state, principal scoping.
+- **[L3 — Protocol semantics](/docs/building/by-layer/L3)** — task lifecycle, async operations, webhooks, error handling, conformance test surface.
+- **[Talk to Addie](/docs/learning/overview)** — stuck on a concept? Addie is the AdCP teaching agent. She walks the protocol with you in conversation, and runs the certification path when you're ready to make it stick.
 
-### Foundations
+## Audience
 
-Technical building blocks for any AdCP implementation:
-
-- **[MCP Guide](/docs/building/integration/mcp-guide)** - Tool calls, context, and examples
-- **[A2A Guide](/docs/building/integration/a2a-guide)** - Tasks, streaming, and artifacts
-- **[Capability Discovery](/docs/protocol/get_adcp_capabilities)** - Discover what an agent supports
-- **[Authentication](/docs/building/integration/authentication)** - Credentials and permissions
-- **[Context & Sessions](/docs/building/integration/context-sessions)** - Managing state across requests
-- **[Schemas and SDKs](/docs/building/schemas-and-sdks)** - Access schemas and official client libraries
-
-### Implementation Patterns
-
-For building robust, production-ready systems:
-
-- **[Task Lifecycle](/docs/building/implementation/task-lifecycle)** - Status values, transitions, and polling
-- **[Async Operations](/docs/building/implementation/async-operations)** - Handling sync, async, and interactive tasks
-- **[Webhooks](/docs/building/implementation/webhooks)** - Push notifications and reliability patterns
-- **[Error Handling](/docs/building/implementation/error-handling)** - Error categories, codes, and recovery
-- **[Security](/docs/building/implementation/security)** - Security considerations and best practices
-- **[Orchestrator Design](/docs/building/implementation/orchestrator-design)** - State machines and system architecture
+AdCP implementers in any language — building an agent, building a caller, authoring an SDK, or evaluating one. **Python and TypeScript are the first-class languages** (TypeScript GA on `@adcp/sdk` 6.x; Python GA on `adcp` 3.x with 4.x in beta); **Go** has L0 and partial L1 in active development; community-maintained ports for other languages are welcome — see the [Builders Working Group](/docs/community/working-group).

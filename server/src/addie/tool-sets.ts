@@ -192,6 +192,12 @@ export const TOOL_SETS: Record<string, ToolSet> = {
     ],
   },
 
+  agent_conformance: {
+    name: 'agent_conformance',
+    description: 'Run AdCP compliance storyboards against the user\'s own dev/staging MCP server via Addie\'s Socket Mode channel — outbound WebSocket from the adopter to Addie, no public DNS or ngrok needed. Use when the user wants to test their own AdCP agent during development. Requires the user to be mapped to a WorkOS organization. Tools issue a session-bound token and then run a storyboard against the connected adopter agent.',
+    tools: ['issue_conformance_token', 'run_conformance_against_my_agent'],
+  },
+
   adcp_operations: {
     name: 'adcp_operations',
     description: 'Execute AdCP protocol operations - discover documentation, execute tasks against agents, check agent capabilities. Covers media buy, creative, signals, governance, SI, and brand protocol.',

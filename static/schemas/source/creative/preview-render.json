@@ -3,6 +3,9 @@
   "$id": "/schemas/creative/preview-render.json",
   "title": "Preview Render",
   "description": "A single rendered piece of a creative preview with discriminated output format",
+  "discriminator": {
+    "propertyName": "output_format"
+  },
   "oneOf": [
     {
       "type": "object",

@@ -746,7 +746,7 @@
   <div class="container">
     <div id="loading" class="loading">Loading your profile...</div>
 
-    <div id="error-container" style="display: none;"></div>
+    <div id="error-container" role="alert" style="display: none;"></div>
 
     <div id="no-profile" class="card no-profile" style="display: none;">
       <h2>Create Your Member Profile</h2>
@@ -896,6 +896,46 @@
             </div>
           </div>
           </div><!-- end photo-section -->
+
+          <!-- Linked Domains: WorkOS-verified domains owned by this org.
+               Self-service mirror of the admin "Linked Domains" card; lets
+               members switch the primary without filing a support ticket. -->
+          <div id="linked-domains-section" style="display: none;">
+            <h2>Linked Domains</h2>
+            <p style="color: var(--color-text-secondary); font-size: var(--text-sm); margin-bottom: var(--space-3);">
+              Domains your organization has verified via SSO. The primary domain drives auto-membership inference (employees signing up with this domain auto-link to your org) and seeds your brand identity.
+            </p>
+            <div id="linked-domains-list" style="margin-bottom: var(--space-4);"></div>
+
+            <!-- Add domain (DNS TXT challenge via WorkOS) -->
+            <div id="linked-domains-add" style="background: var(--color-bg-subtle); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: var(--space-4);">
+              <div style="font-weight: var(--font-semibold); color: var(--color-text-heading); margin-bottom: var(--space-2);">Add a domain</div>
+              <p style="font-size: var(--text-sm); color: var(--color-text-secondary); margin: 0 0 var(--space-3) 0;">
+                Prove your organization controls a new domain via a DNS TXT record. After verification you can set it as primary.
+              </p>
+              <div style="display: flex; gap: var(--space-2); align-items: stretch; flex-wrap: wrap;">
+                <input type="text" id="add-domain-input" placeholder="example.com" autocomplete="off" style="flex: 1 1 240px; min-width: 200px; padding: var(--space-2) var(--space-3); border: 1px solid var(--color-gray-300); border-radius: var(--radius-md); font-size: var(--text-sm); background: var(--color-bg-card); color: var(--color-text);">
+                <button type="button" id="add-domain-btn" onclick="addLinkedDomain()" style="padding: var(--space-2) var(--space-5); background: var(--color-brand); color: white; border: none; border-radius: var(--radius-md); font-size: var(--text-sm); cursor: pointer; font-weight: var(--font-medium); white-space: nowrap;">Issue challenge</button>
+              </div>
+              <div id="add-domain-error" style="display: none; color: var(--color-error-600); font-size: var(--text-sm); margin-top: var(--space-2);"></div>
+
+              <!-- TXT record callout, shown after a challenge is issued -->
+              <div id="add-domain-challenge" style="display: none; margin-top: var(--space-4); background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: var(--space-3);">
+                <div style="font-weight: var(--font-semibold); color: var(--color-text-heading); margin-bottom: var(--space-2);">Publish this DNS TXT record</div>
+                <p style="font-size: var(--text-sm); color: var(--color-text-secondary); margin: 0 0 var(--space-2) 0;">
+                  Add a TXT record at <code id="add-domain-host" style="background: var(--color-bg-subtle); padding: 1px 4px; border-radius: 3px;"></code> with the value below. DNS propagation can take 5–15 minutes.
+                </p>
+                <div style="position: relative;">
+                  <pre id="add-domain-token" style="background: var(--color-gray-900); color: var(--color-gray-100); padding: var(--space-3); border-radius: var(--radius-md); font-size: var(--text-sm); overflow-x: auto; margin: 0;"></pre>
+                  <button onclick="copyAddDomainToken()" style="position: absolute; top: var(--space-2); right: var(--space-2); padding: 4px 10px; background: var(--color-gray-700); color: white; border: none; border-radius: var(--radius-sm); font-size: 11px; cursor: pointer;">Copy</button>
+                </div>
+                <div style="margin-top: var(--space-3);">
+                  <button type="button" onclick="verifyAddedDomain()" id="add-domain-verify-btn" style="padding: var(--space-2) var(--space-5); background: var(--color-brand); color: white; border: none; border-radius: var(--radius-md); font-size: var(--text-sm); cursor: pointer; font-weight: var(--font-medium);">Verify DNS</button>
+                  <span id="add-domain-verify-status" style="margin-left: var(--space-3); font-size: var(--text-sm);"></span>
+                </div>
+              </div>
+            </div>
+          </div>
 
           <!-- Brand identity (companies only) -->
           <div id="logos-section">
@@ -1456,9 +1496,14 @@
       } catch (error) {
         console.error('Load profile error:', error);
         document.getElementById('loading').style.display = 'none';
-        const msg = error.name === 'AbortError'
-          ? 'The server is taking too long to respond. Please try again in a moment.'
-          : 'Failed to load your profile. Please try again.';
+        let msg;
+        if (error.name === 'AbortError') {
+          msg = 'The server is taking too long to respond. Please try again in a moment.';
+        } else if (error.message) {
+          msg = error.message;
+        } else {
+          msg = 'Failed to load your profile. Please try again.';
+        }
         showError(msg);
       }
     }
@@ -1689,6 +1734,210 @@
         btn.textContent = 'Copied!';
         setTimeout(function() { btn.textContent = 'Copy'; }, 2000);
       });
+    }
+
+    // ============================================================
+    // Linked Domains (self-service primary-domain switching)
+    // ============================================================
+
+    async function loadLinkedDomains() {
+      const section = document.getElementById('linked-domains-section');
+      const addCard = document.getElementById('linked-domains-add');
+      const isAdmin = currentOrgRole === 'owner' || currentOrgRole === 'admin';
+      try {
+        const resp = await fetch('/api/me/organization/domains', { credentials: 'include' });
+        if (!resp.ok) {
+          if (section) section.style.display = 'none';
+          return;
+        }
+        const data = await resp.json();
+        const domains = Array.isArray(data.domains) ? data.domains : [];
+        // Show the section when there's something to read OR the caller can
+        // act (owner/admin). Zero-domain orgs with an admin viewer still need
+        // an entry point so they can add the first domain — the original
+        // gate hid the only path to make an agent Public.
+        if (domains.length === 0 && !isAdmin) {
+          if (section) section.style.display = 'none';
+          return;
+        }
+        if (section) section.style.display = 'block';
+        // Backend rejects non-admin POST/verify with 403; hide the Add card
+        // client-side too so non-admin viewers don't see a button that 403s.
+        if (addCard) addCard.style.display = isAdmin ? 'block' : 'none';
+        renderLinkedDomains(domains);
+      } catch (err) {
+        if (section) section.style.display = 'none';
+      }
+    }
+
+    function renderLinkedDomains(domains) {
+      const list = document.getElementById('linked-domains-list');
+      list.innerHTML = domains.map(function(d) {
+        const verifiedBadge = d.verified
+          ? '<span style="display: inline-block; padding: 2px 8px; background: var(--color-success-100, #dcfce7); color: var(--color-success-700, #15803d); border-radius: var(--radius-sm); font-size: 11px; font-weight: var(--font-medium);">Verified</span>'
+          : '<span style="display: inline-block; padding: 2px 8px; background: var(--color-warning-100, #fef3c7); color: var(--color-warning-700, #b45309); border-radius: var(--radius-sm); font-size: 11px; font-weight: var(--font-medium);">Pending</span>';
+        const primaryBadge = d.is_primary
+          ? '<span style="display: inline-block; padding: 2px 8px; background: var(--color-brand-bg); color: var(--color-primary-700); border-radius: var(--radius-sm); font-size: 11px; font-weight: var(--font-semibold);">Primary</span>'
+          : '';
+        const sourceLabel = d.source ? '<span style="color: var(--color-text-muted); font-size: var(--text-xs);">' + escapeHtml(d.source) + '</span>' : '';
+        let action = '';
+        if (!d.verified) {
+          action = '<button type="button" onclick="verifyLinkedDomain(\'' + escapeHtml(d.domain) + '\', this)" style="padding: var(--space-2) var(--space-4); background: var(--color-bg-subtle); color: var(--color-text-secondary); border: 1px solid var(--color-border); border-radius: var(--radius-md); font-size: var(--text-sm); cursor: pointer;">Verify DNS</button>';
+        } else if (!d.is_primary) {
+          action = '<button type="button" onclick="setLinkedDomainPrimary(\'' + escapeHtml(d.domain) + '\', this)" style="padding: var(--space-2) var(--space-4); background: var(--color-bg-subtle); color: var(--color-text-secondary); border: 1px solid var(--color-border); border-radius: var(--radius-md); font-size: var(--text-sm); cursor: pointer;">Set Primary</button>';
+        }
+        return (
+          '<div style="display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-4); background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: var(--radius-md); margin-bottom: var(--space-2);">' +
+            '<div style="font-weight: var(--font-medium); color: var(--color-text-heading); flex-grow: 1;">' + escapeHtml(d.domain) + '</div>' +
+            '<div style="display: flex; gap: var(--space-2); align-items: center;">' +
+              verifiedBadge + primaryBadge + sourceLabel +
+            '</div>' +
+            '<div style="margin-left: auto;">' + action + '</div>' +
+          '</div>'
+        );
+      }).join('');
+    }
+
+    // Tracks the domain whose challenge is currently displayed in the
+    // "Publish this DNS TXT record" callout so the Verify button knows
+    // which domain to confirm.
+    let pendingChallengeDomain = null;
+
+    async function addLinkedDomain() {
+      const input = document.getElementById('add-domain-input');
+      const btn = document.getElementById('add-domain-btn');
+      const errEl = document.getElementById('add-domain-error');
+      const challengeEl = document.getElementById('add-domain-challenge');
+      const raw = (input.value || '').trim();
+      if (!raw) {
+        errEl.style.display = 'block';
+        errEl.textContent = 'Enter a domain';
+        return;
+      }
+      errEl.style.display = 'none';
+      btn.disabled = true;
+      const original = btn.textContent;
+      btn.textContent = 'Issuing...';
+      try {
+        const resp = await fetch('/api/me/organization/domains', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ domain: raw }),
+        });
+        const data = await resp.json().catch(function() { return {}; });
+        if (!resp.ok) {
+          errEl.style.display = 'block';
+          errEl.textContent = data.message || data.error || 'Failed to add domain';
+          return;
+        }
+        if (data.already_verified) {
+          challengeEl.style.display = 'none';
+          pendingChallengeDomain = null;
+          await loadLinkedDomains();
+          if (typeof loadProfile === 'function') loadProfile();
+          return;
+        }
+        pendingChallengeDomain = data.domain;
+        document.getElementById('add-domain-host').textContent = (data.verification_prefix || '_workos') + '.' + data.domain;
+        document.getElementById('add-domain-token').textContent = data.verification_token || '';
+        document.getElementById('add-domain-verify-status').textContent = '';
+        challengeEl.style.display = 'block';
+        await loadLinkedDomains();
+      } catch (err) {
+        errEl.style.display = 'block';
+        errEl.textContent = 'Failed to add domain: ' + err.message;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = original;
+      }
+    }
+
+    function copyAddDomainToken() {
+      const text = document.getElementById('add-domain-token').textContent;
+      navigator.clipboard.writeText(text).then(function() {
+        const btn = event.target;
+        btn.textContent = 'Copied!';
+        setTimeout(function() { btn.textContent = 'Copy'; }, 2000);
+      });
+    }
+
+    async function verifyAddedDomain() {
+      if (!pendingChallengeDomain) return;
+      await runVerify(pendingChallengeDomain, document.getElementById('add-domain-verify-btn'), document.getElementById('add-domain-verify-status'));
+    }
+
+    async function verifyLinkedDomain(domain, btn) {
+      await runVerify(domain, btn, null);
+    }
+
+    async function runVerify(domain, btn, statusEl) {
+      const originalText = btn ? btn.textContent : '';
+      if (btn) { btn.disabled = true; btn.textContent = 'Checking...'; }
+      if (statusEl) { statusEl.textContent = ''; statusEl.style.color = ''; }
+      try {
+        const resp = await fetch('/api/me/organization/domains/' + encodeURIComponent(domain) + '/verify', {
+          method: 'POST',
+          credentials: 'include',
+        });
+        const data = await resp.json().catch(function() { return {}; });
+        if (!resp.ok) {
+          const msg = data.message || data.error || 'Verification failed';
+          if (statusEl) {
+            statusEl.style.color = 'var(--color-error-600)';
+            statusEl.textContent = msg;
+          } else {
+            alert(msg);
+          }
+          if (btn) { btn.disabled = false; btn.textContent = originalText; }
+          return;
+        }
+        if (statusEl) {
+          statusEl.style.color = 'var(--color-success-700)';
+          statusEl.textContent = 'Verified.';
+        }
+        // Clear the challenge UI if this was the pending one.
+        if (pendingChallengeDomain === domain) {
+          document.getElementById('add-domain-challenge').style.display = 'none';
+          document.getElementById('add-domain-input').value = '';
+          pendingChallengeDomain = null;
+        }
+        await loadLinkedDomains();
+        if (typeof loadProfile === 'function') loadProfile();
+      } catch (err) {
+        const msg = 'Failed to verify domain: ' + err.message;
+        if (statusEl) {
+          statusEl.style.color = 'var(--color-error-600)';
+          statusEl.textContent = msg;
+        } else {
+          alert(msg);
+        }
+        if (btn) { btn.disabled = false; btn.textContent = originalText; }
+      }
+    }
+
+    async function setLinkedDomainPrimary(domain, btn) {
+      const originalText = btn ? btn.textContent : '';
+      if (btn) { btn.disabled = true; btn.textContent = 'Setting...'; }
+      try {
+        const resp = await fetch('/api/me/organization/domains/' + encodeURIComponent(domain) + '/primary', {
+          method: 'PUT',
+          credentials: 'include',
+        });
+        const data = await resp.json().catch(function() { return {}; });
+        if (!resp.ok) {
+          alert(data.message || data.error || 'Failed to set primary domain');
+          if (btn) { btn.disabled = false; btn.textContent = originalText; }
+          return;
+        }
+        // Reload both the domain list and the brand section since
+        // primary_brand_domain may have changed too.
+        await loadLinkedDomains();
+        if (typeof loadProfile === 'function') loadProfile();
+      } catch (err) {
+        alert('Failed to set primary domain: ' + err.message);
+        if (btn) { btn.disabled = false; btn.textContent = originalText; }
+      }
     }
 
     async function verifyBrandNow(domain) {
@@ -2237,6 +2486,11 @@
       }
       // Populate brand identity section
       populateBrandSection(profile);
+
+      // Populate Linked Domains section. The section starts hidden;
+      // loadLinkedDomains() reveals it for owner/admin viewers (so they
+      // can add the first domain) and for any viewer when ≥1 row exists.
+      loadLinkedDomains();
       document.getElementById('contact_email').value = profile.contact_email || '';
       // Set phone and trigger formatting
       const phoneInput = document.getElementById('contact_phone');
@@ -2544,14 +2798,15 @@
       }
 
       if (photoUrl) {
+        let parsed;
         try {
-          const parsed = new URL(photoUrl);
-          if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
-            setPreviewMessage('Only http/https URLs allowed', 'var(--color-error-500)', '11px');
-            return;
-          }
+          parsed = new URL(photoUrl);
         } catch {
           setPreviewMessage('Invalid URL', 'var(--color-error-500)', '11px');
+          return;
+        }
+        if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+          setPreviewMessage('Only http/https URLs allowed', 'var(--color-error-500)', '11px');
           return;
         }
         const img = document.createElement('img');
@@ -2590,40 +2845,76 @@
       const file = input.files[0];
       if (!file) return;
 
-      // Check file size (max 2MB)
+      const previewEl = document.getElementById('photo-preview');
+      const setPreviewMsg = (msg, color) => {
+        if (!previewEl) return;
+        previewEl.textContent = msg;
+        previewEl.style.color = color || '';
+        previewEl.style.fontSize = '11px';
+      };
+
       if (file.size > 2 * 1024 * 1024) {
-        alert('File too large. Maximum size is 2MB.');
+        setPreviewMsg('File too large (max 2MB)', 'var(--color-error-500)');
         input.value = '';
         return;
       }
 
-      // Check file type
       if (!file.type.startsWith('image/')) {
-        alert('Please select an image file.');
+        setPreviewMsg('Please select an image file', 'var(--color-error-500)');
         input.value = '';
         return;
       }
 
-      // Update filename display
-      const filenameEl = document.getElementById(filenameId);
-      filenameEl.textContent = file.name;
-      filenameEl.classList.add('has-file');
+      const brandDomain = currentProfile?.primary_brand_domain;
+      if (!brandDomain) {
+        setPreviewMsg('Set your brand domain first, then upload', 'var(--color-error-500)');
+        input.value = '';
+        return;
+      }
 
-      // Show clear button
-      const clearBtn = document.getElementById(targetFieldId.replace('_url', '_clear'));
-      if (clearBtn) clearBtn.style.display = 'block';
+      setPreviewMsg('Uploading…', 'var(--color-text-muted)');
 
-      // Convert to data URL
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        document.getElementById(targetFieldId).value = e.target.result;
+      try {
+        const fd = new FormData();
+        fd.append('file', file);
+        fd.append('tags', 'primary');
+        const resp = await fetch(`/api/brands/${encodeURIComponent(brandDomain)}/logos`, {
+          method: 'POST',
+          body: fd,
+          credentials: 'include',
+        });
+
+        if (!resp.ok) {
+          let msg = `Upload failed (${resp.status})`;
+          try {
+            const errData = await resp.json();
+            if (errData?.error) msg = errData.error;
+          } catch { /* non-JSON response */ }
+          setPreviewMsg(msg, 'var(--color-error-500)');
+          input.value = '';
+          return;
+        }
+
+        const data = await resp.json();
+        const hostedUrl = new URL(data.url, window.location.origin).href;
+
+        document.getElementById(targetFieldId).value = hostedUrl;
+
+        const filenameEl = document.getElementById(filenameId);
+        filenameEl.textContent = file.name;
+        filenameEl.classList.add('has-file');
+
+        const clearBtn = document.getElementById(targetFieldId.replace('_url', '_clear'));
+        if (clearBtn) clearBtn.style.display = 'block';
+
         updatePhotoPreview();
         updateMemberCardPreview();
-      };
-      reader.readAsDataURL(file);
-
-      // Clear file input for potential re-upload
-      input.value = '';
+      } catch (err) {
+        console.error('Photo upload failed', err);
+        setPreviewMsg('Upload failed — check connection', 'var(--color-error-500)');
+      } finally {
+        input.value = '';
+      }
     }
 
     function clearLogo(fieldId, filenameId) {
@@ -2720,6 +3011,13 @@
         formData.slug = document.getElementById('slug').value;
       }
 
+      // Photo URL is persisted via the brand-identity endpoint (logo_url on the
+      // brand row), not the profile PUT. Capture the desired and current values
+      // here so we can fire a follow-up update after the main save succeeds.
+      const desiredPhotoUrl = (document.getElementById('photo_url')?.value || '').trim();
+      const originalPhotoUrl = currentProfile?.resolved_brand?.logo_url || '';
+      const photoChanged = desiredPhotoUrl !== originalPhotoUrl;
+
       try {
         const method = isNewProfile ? 'POST' : 'PUT';
         const response = await fetch(buildApiUrl('/api/me/member-profile'), {
@@ -2749,6 +3047,39 @@
         const wasNewProfile = isNewProfile;
         isNewProfile = false;
 
+        // If the photo changed, persist it as the primary brand logo. The main
+        // profile PUT doesn't accept logo_url; brand-identity does. Surface
+        // failure as a warning rather than blocking the success path.
+        let photoSyncWarning = null;
+        if (!wasNewProfile && photoChanged) {
+          try {
+            const photoResp = await fetch(buildApiUrl('/api/me/member-profile/brand-identity'), {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ logo_url: desiredPhotoUrl || null }),
+              credentials: 'include',
+            });
+            if (photoResp.ok) {
+              const photoData = await photoResp.json();
+              currentResolvedBrand = photoData.brand || null;
+              if (currentProfile) {
+                currentProfile.resolved_brand = photoData.brand;
+                currentProfile.primary_brand_domain = photoData.brand_domain;
+              }
+            } else {
+              let errMsg = `Photo could not be saved (${photoResp.status})`;
+              try {
+                const errData = await photoResp.json();
+                if (errData?.message) errMsg = `Photo not saved: ${errData.message}`;
+              } catch { /* non-JSON */ }
+              photoSyncWarning = errMsg;
+            }
+          } catch (err) {
+            console.error('Photo sync failed', err);
+            photoSyncWarning = 'Photo not saved — connection error.';
+          }
+        }
+
         // Server may have coerced visibility settings the caller isn't
         // eligible for (e.g. public → members_only on a non-API-access
         // tier). Surface those warnings so the user knows we didn't
@@ -2772,11 +3103,14 @@
           const detail = agents.length
             ? ` Affected agents: ${agents.join(', ')}.`
             : '';
+          const photoSuffix = photoSyncWarning ? ` ${photoSyncWarning}` : '';
           showError(
             `Saved, but ${downgrades.length} agent${downgrades.length > 1 ? 's' : ''} could not be listed publicly — ` +
-            `public listing requires Professional tier or higher, so they were stored as members_only instead.${detail} ` +
-            `Upgrade at /membership to publish publicly.`
+            `public listing requires a paid AAO tier (Professional, Builder, Member, or Leader), so they were stored as members_only instead.${detail} ` +
+            `Upgrade at /membership to publish publicly.${photoSuffix}`
           );
+        } else if (photoSyncWarning) {
+          showError(`Profile saved, but ${photoSyncWarning}`);
         } else {
           showSuccess('Profile saved successfully!');
         }
@@ -2841,10 +3175,24 @@
     }
 
     function showError(message) {
-      const el = document.getElementById('error-message');
+      // #error-message lives inside #profile-form, which is display:none until
+      // a profile loads. Routing load-time errors there silently hides them.
+      // Fall back to the top-level #error-container when the form is hidden.
+      const form = document.getElementById('profile-form');
+      const formVisible = form && form.style.display !== 'none';
+      const el = formVisible
+        ? document.getElementById('error-message')
+        : document.getElementById('error-container');
+      if (!formVisible) {
+        el.className = 'alert alert-error';
+      }
       el.textContent = message;
       el.style.display = 'block';
-      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      // Only scroll for in-form errors; #error-container sits at the top of
+      // the page where scrolling would push the nav off-screen.
+      if (formVisible) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
     }
 
     function hideMessages() {

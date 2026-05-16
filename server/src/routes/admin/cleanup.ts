@@ -273,15 +273,21 @@ export function setupCleanupRoutes(apiRouter: Router): void {
 
   // POST /api/admin/cleanup/merge - Execute organization merge
   apiRouter.post("/cleanup/merge", requireAuth, requireAdmin, async (req, res) => {
-    try {
-      const { primary_org_id, secondary_org_id, stripe_customer_resolution } = req.body;
+    // Pull org ids out before the try-block so the 500 catch path can
+    // log them. Without this, an error thrown inside the try (where the
+    // destructure used to live) leaves the catch with no idea which
+    // pair was being merged — admins running curl get a bare "Internal
+    // server error" with no diagnostic context.
+    const { primary_org_id, secondary_org_id, stripe_customer_resolution } = req.body;
 
-      if (!primary_org_id || !secondary_org_id) {
-        return res.status(400).json({
-          error: "Missing parameters",
-          message: "Both 'primary_org_id' and 'secondary_org_id' are required",
-        });
-      }
+    if (!primary_org_id || !secondary_org_id) {
+      return res.status(400).json({
+        error: "Missing parameters",
+        message: "Both 'primary_org_id' and 'secondary_org_id' are required",
+      });
+    }
+
+    try {
 
       // Validate stripe_customer_resolution if provided
       const validResolutions: StripeCustomerResolution[] = ['keep_primary', 'use_secondary', 'keep_both_unlinked'];
@@ -320,7 +326,18 @@ export function setupCleanupRoutes(apiRouter: Router): void {
 
       res.json(result);
     } catch (error) {
-      logger.error({ err: error }, "Error executing merge");
+      logger.error(
+        {
+          err: error,
+          errMessage: error instanceof Error ? error.message : String(error),
+          errName: error instanceof Error ? error.name : undefined,
+          errStack: error instanceof Error ? error.stack : undefined,
+          errCause: error instanceof Error ? (error as Error & { cause?: unknown }).cause : undefined,
+          primary_org_id,
+          secondary_org_id,
+        },
+        "Error executing merge",
+      );
 
       // Return 400 for validation errors (e.g., personal workspace merge attempts, Stripe conflicts)
       if (error instanceof Error && (
@@ -334,8 +351,15 @@ export function setupCleanupRoutes(apiRouter: Router): void {
         });
       }
 
+      // 500 path: surface the underlying message in `details` so admins
+      // running merges via curl don't have to dig through Fly logs to
+      // see whether the merge rolled back or which step failed. (May
+      // 2026: Media.net-2 cleanup returned a bare "Internal server
+      // error" with no log entry visible from the caller side, hiding
+      // the real cause for ~30min.)
       res.status(500).json({
         error: "Internal server error",
+        details: error instanceof Error ? error.message : String(error),
       });
     }
   });

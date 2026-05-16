@@ -1,0 +1,90 @@
+---
+title: Schema Extensions
+sidebarTitle: Schema Extensions
+description: "Reference for AdCP-specific `x-` prefixed schema annotations."
+"og:title": "AdCP — Schema Extensions"
+---
+
+AdCP schemas carry several `x-` prefixed annotation keywords that supplement the JSON Schema vocabulary. JSON Schema validators ignore unknown `x-` keywords per [draft-07 §6](https://json-schema.org/draft-07/schema), so adding these keys is wire-compatible with any conforming validator.
+
+This page is the canonical reference for those annotations. Codegen consumers (TypeScript / Python / Go type generators), the storyboard runner, and the AdCP SDK family read these annotations programmatically; verifiers MAY read them but the normative behavior they describe is also documented in the relevant section of [security.mdx](/docs/building/implementation/security) or the field's own description.
+
+## `x-status`
+
+Marks a schema or property as **experimental** — part of the core protocol but not yet frozen. Sellers implementing experimental surfaces declare the feature id in `experimental_features` on `get_adcp_capabilities`. See [Experimental Status](/docs/reference/experimental-status) for the full graduation policy.
+
+```jsonc
+"trusted_match": {
+  "type": "object",
+  "x-status": "experimental",
+  "description": "Trusted Match Protocol support..."
+}
+```
+
+Allowed values: `"experimental"`. The keyword is omitted on stable surfaces.
+
+## `x-adcp-validation`
+
+Lifts structured normative constraints out of prose descriptions into a machine-readable shape. Storyboard runners and SDK validators consume the structured rules; codegen consumers can ignore the annotation and read the human description.
+
+The keyword is most useful for fields whose description currently carries a "MUST be present when..." or "MUST equal the host of..." clause that the storyboard runner cannot enforce by parsing English.
+
+### Shape
+
+```jsonc
+"some_field": {
+  "type": "string",
+  "format": "uri",
+  "description": "Brief one or two sentences for codegen JSDoc; full constraints live in x-adcp-validation and the linked spec.",
+  "x-adcp-validation": {
+    "trust_root": true,
+    "required_when": { "any_of": [ ... ] },
+    "schema_required_when": { ... },
+    "verifier_constraints": { ... },
+    "distinct_from": "other.field.path",
+    "spec": "docs/.../section.mdx#anchor"
+  }
+}
+```
+
+### Sub-keys
+
+| Key | Type | Purpose |
+|---|---|---|
+| `trust_root` | boolean | Field is load-bearing for signature verification; verifiers MUST treat as authoritative. |
+| `required_when` | object wrapping `any_of` / `all_of` | Storyboard-enforced required-when rules (3.x). The object has exactly one of `any_of` (OR-joined) or `all_of` (AND-joined), each containing an array of leaf conditions. Each leaf is one of: `{ "field": "...", "non_empty": true }`, `{ "field": "...", "equals": <value> }`, `{ "field": "...", "any_subfield_present": true }`. The wrapping object mirrors JSON Schema's `anyOf`/`allOf` precedent so tooling readers can reuse familiar boolean-combinator semantics. Bare arrays are NOT accepted — always wrap. |
+| `schema_required_when` | condition | When the rule promotes from storyboard-enforced to schema-required. Typically keyed on `adcp.supported_versions` matching a version pattern via `any_item_matches_pattern` (e.g., `"^4\\."` for the 4.0 cutover and any 4.x patch). |
+| `forbidden_when` | object wrapping `any_of` / `all_of` | Inverse of `required_when`. The field MUST be absent (or `false`/empty, depending on type) when the wrapped condition holds. Same leaf shape as `required_when`. Use for fields whose presence is mutually exclusive with another posture. |
+| `disjoint_with` | string (dotted path) or array of dotted paths | Item-level mutual exclusion: no value in this field's array MAY appear in any of the named arrays. Storyboard runners assert set-disjointness on each. Example: `request_signing.warn_for` carries `disjoint_with: "request_signing.required_for"` because an operation can be in one or the other, never both. |
+| `subset_of` | string (dotted path) | Item-level subset constraint: every value in this field's array MUST also appear in the named array. Example: `request_signing.required_for` carries `subset_of: "request_signing.supported_for"` — an operation can't be required without being supported. |
+| `verifier_constraints` | object | Free-form key-value map of verifier-side rules that don't fit the structured sub-keys above. Keys are normative (e.g., `agent_url_match: "byte_equal"`); the storyboard runner enforces these against test vectors. Prefer the structured sub-keys (`required_when`, `forbidden_when`, `disjoint_with`, `subset_of`) when they fit; reach for `verifier_constraints` only for one-off rules that don't generalize. |
+| `distinct_from` | string (dotted path) | Names another field that has a similar shape but different semantics, to defuse name confusion (e.g., `identity.brand_json_url` distinct from `sponsored_intelligence.brand_url`). Verifiers MUST NOT substitute one for the other. |
+| `spec` | string (relative path with anchor) | Pointer to the normative section in the docs that defines the field's full semantics. Always required when other sub-keys are present. |
+
+### Conformance
+
+- Validators MUST ignore unknown sub-keys for forward-compatibility (the schema may add new entries in a minor release).
+- The storyboard runner consumes `required_when`, `schema_required_when`, and `verifier_constraints` to generate test cases per release; runners that don't yet recognize a sub-key MUST skip it and emit an "unrecognized validation rule" warning.
+- Codegen consumers (TypeScript / Python / Go type generators) MAY surface `x-adcp-validation.spec` as a `@see` JSDoc link but otherwise treat the annotation as opaque.
+
+### Current usage
+
+All within `static/schemas/source/protocol/get-adcp-capabilities-response.json`:
+
+| Field | Sub-keys used | Rule |
+|---|---|---|
+| `identity.brand_json_url` | `trust_root`, `required_when`, `schema_required_when`, `verifier_constraints`, `distinct_from` | Trust-root pointer for signing-key discovery; required-when tied to signing posture; schema-required in 4.0; distinct from `sponsored_intelligence.brand_url`. See [security.mdx §Discovering an agent's signing keys](/docs/building/implementation/security#discovering-an-agents-signing-keys-via-brand_json_url). |
+| `identity.key_origins` | `verifier_constraints` (`purpose_anchoring`) | Every purpose listed MUST have a corresponding signing posture declared elsewhere on the response. Cross-field rule. See [security.mdx §Origin separation](/docs/building/implementation/security#origin-separation). |
+| `request_signing.required_for` | `subset_of` | Every operation listed MUST also appear in `supported_for` — an operation can't be required without being supported. |
+| `request_signing.warn_for` | `disjoint_with`, `subset_of` | An operation MUST NOT appear in both `warn_for` and `required_for`. Every operation listed MUST also appear in `supported_for`. |
+| `webhook_signing.supported` | `verifier_constraints` (`must_equal_when`) | When the seller advertises mutating-webhook emission (`media_buy.reporting_delivery_methods` includes `webhook` OR `media_buy.content_standards.supports_webhook_delivery: true`), `supported` MUST be `true`. Closes a downgrade vector. |
+
+Already enforced natively by JSON Schema and excluded from migration:
+- **`adcp.idempotency`** — the discriminated `oneOf` already requires `replay_ttl_seconds` in the supported branch and forbids it in the unsupported branch.
+- **`webhook_signing.algorithms`** — the `enum: ["ed25519", "ecdsa-p256-sha256"]` on each item already enforces the allowlist.
+
+Migration history tracked at [adcontextprotocol/adcp#3827](https://github.com/adcontextprotocol/adcp/issues/3827).
+
+## Future extensions
+
+New `x-adcp-*` keywords are added in minor releases. Consumers MUST tolerate unknown `x-` keywords without erroring. The convention reserves the `x-adcp-` namespace; vendor-specific or deployment-specific annotations SHOULD use a vendor-specific prefix (e.g., `x-yourorg-`) to avoid collision.

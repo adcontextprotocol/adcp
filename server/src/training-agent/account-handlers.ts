@@ -10,6 +10,8 @@ import type { TrainingContext, ToolArgs, AccountRef } from './types.js';
 import { sessionKeyFromArgs } from './state.js';
 import { getAgentUrl } from './config.js';
 import { encodeOffsetCursor, decodeOffsetCursor } from './pagination.js';
+import { getCommercialRelationship } from './commercial-relationships.js';
+import { isPerAccountBillingRestricted } from './account-billing-relationships.js';
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -312,6 +314,19 @@ export const ACCOUNT_TOOLS = [
 
 const SUPPORTED_PAYMENT_TERMS = ['net_15', 'net_30', 'net_45', 'net_60', 'net_90', 'prepay'];
 
+// Seller-wide capability for the legacy /mcp route. Consumed both here
+// (for the BILLING_NOT_SUPPORTED capability gate) and by
+// task-handlers.ts (for the `supported_billing` advertisement on
+// get_adcp_capabilities) — exported so the two surfaces are
+// mechanically locked rather than comment-coupled. Submitting a value
+// not in this list rejects with BILLING_NOT_SUPPORTED +
+// error.details.scope: "capability". Per-tenant v6 routes carry their
+// own supportedBillings declaration (see v6-*-platform.ts); the gate
+// plumbing for those lands when accounts.upsert is wired on those
+// platforms.
+export const SUPPORTED_BILLINGS = ['agent', 'operator', 'advertiser'] as const;
+type SupportedBilling = typeof SUPPORTED_BILLINGS[number];
+
 export function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
   const req = args as unknown as SyncAccountsInput;
 
@@ -360,6 +375,90 @@ export function handleSyncAccounts(args: ToolArgs, ctx: TrainingContext) {
         errors: [{
           code: 'PAYMENT_TERMS_NOT_SUPPORTED',
           message: `Payment terms '${input.payment_terms}' are not available. Supported: ${SUPPORTED_PAYMENT_TERMS.join(', ')}.`,
+        }],
+      });
+      continue;
+    }
+
+    // Capability gate (BILLING_NOT_SUPPORTED, scope: "capability"). The
+    // schema enum on `billing` already rejects anything outside operator/
+    // agent/advertiser at validation time; this gate fires when the value
+    // is structurally valid but not in the seller's advertised
+    // `supported_billing` capability list. See
+    // error-details/billing-not-supported.json.
+    if (!SUPPORTED_BILLINGS.includes(input.billing as SupportedBilling)) {
+      results.push({
+        brand: input.brand,
+        operator: input.operator,
+        action: 'failed',
+        status: 'rejected',
+        errors: [{
+          code: 'BILLING_NOT_SUPPORTED',
+          message: `Billing model '${input.billing}' is not supported by this seller. Supported: ${SUPPORTED_BILLINGS.join(', ')}.`,
+          recovery: 'correctable',
+          details: {
+            scope: 'capability',
+            supported_billing: [...SUPPORTED_BILLINGS],
+          },
+        }],
+      });
+      continue;
+    }
+
+    // Per-account-relationship gate (BILLING_NOT_SUPPORTED, scope: "account").
+    // Distinct from the capability gate above: the seller's capability
+    // accepts the value, but the seller has no direct billing
+    // relationship for THIS specific operator on THIS account. See
+    // account-billing-relationships.ts for the operator-domain
+    // convention the training-agent uses to simulate per-(operator,
+    // billing) onboarding state. Recovery advice: same as the
+    // capability gate (try the next-most-permissive value the seller's
+    // supported_billing allows).
+    if (isPerAccountBillingRestricted(input.operator, input.billing)) {
+      results.push({
+        brand: input.brand,
+        operator: input.operator,
+        action: 'failed',
+        status: 'rejected',
+        errors: [{
+          code: 'BILLING_NOT_SUPPORTED',
+          message: `Operator '${input.operator}' has no direct billing relationship for '${input.billing}' billing. Try a different supported value.`,
+          recovery: 'correctable',
+          details: {
+            scope: 'account',
+            supported_billing: [...SUPPORTED_BILLINGS],
+          },
+        }],
+      });
+      continue;
+    }
+
+    // Per-buyer-agent commercial gate (BILLING_NOT_PERMITTED_FOR_AGENT).
+    // The seller's capability accepts the value, but the calling buyer
+    // agent's commercial relationship with the seller does not. Bright
+    // line: emit only when agent identity has been established AND a
+    // commercial-relationship record exists. `getCommercialRelationship`
+    // returns undefined for principals without an onboarded record,
+    // which falls through to no per-agent gate — preventing the code
+    // from acting as an onboarding oracle for unrecognized callers.
+    // See error-details/billing-not-permitted-for-agent.json (the
+    // additionalProperties: false clamp on this details shape closes
+    // the per-agent commercial-state oracle vector).
+    const relationship = getCommercialRelationship(ctx.principal);
+    if (relationship === 'passthrough_only' && input.billing !== 'operator') {
+      results.push({
+        brand: input.brand,
+        operator: input.operator,
+        action: 'failed',
+        status: 'rejected',
+        errors: [{
+          code: 'BILLING_NOT_PERMITTED_FOR_AGENT',
+          message: 'This buyer agent is onboarded as passthrough-only; only operator billing is permitted.',
+          recovery: 'correctable',
+          details: {
+            rejected_billing: input.billing,
+            suggested_billing: 'operator',
+          },
         }],
       });
       continue;

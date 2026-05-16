@@ -1,0 +1,683 @@
+id: media_buy_governance_escalation
+version: "1.0.0"
+title: "Governance denial and human escalation"
+category: media_buy_governance_escalation
+summary: "Buyer's governance agent denies a media buy that exceeds spending authority, escalates to a human who approves with conditions."
+track: campaign_governance
+required_tools:
+  - sync_plans
+  - check_governance
+
+narrative: |
+  The buyer's governance agent denies a media buy because it exceeds the agent's spending
+  authority. The governance check escalates to a human reviewer who approves with conditions.
+
+  This storyboard shows the full governance loop: plan registration with spending authority
+  limits, product discovery, pre-buy governance check that gets denied, human escalation
+  that results in conditional approval, media buy creation with the approved governance
+  context, outcome reporting, and a complete audit trail.
+
+  Governance exists to ensure that automated agents operate within defined boundaries. When
+  those boundaries are exceeded, the system escalates to humans rather than blocking
+  entirely. The audit trail provides accountability for every decision in the chain.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - governance_aware
+  examples:
+    - "Publisher platform integrated with buyer governance"
+    - "SSP that respects governance checks"
+    - "Retail media network with governance support"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The caller needs a brand identity, operator credentials, and a governance agent
+    URL. The test kit provides a sample brand (Acme Outdoor) with campaign parameters
+    and a governance configuration with spending authority limits.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "sports_ctv_q2"
+      delivery_type: "guaranteed"
+      channels: ["ctv"]
+      format_ids:
+        - id: "video_30s"
+    - product_id: "outdoor_video_q2"
+      delivery_type: "guaranteed"
+      channels: ["video"]
+      format_ids:
+        - id: "video_15s"
+  pricing_options:
+    - product_id: "sports_ctv_q2"
+      pricing_option_id: "cpm_guaranteed"
+      pricing_model: "cpm"
+      currency: "USD"
+      fixed_price: 45.0
+    - product_id: "outdoor_video_q2"
+      pricing_option_id: "cpm_standard"
+      pricing_model: "cpm"
+      currency: "USD"
+      fixed_price: 12.0
+  plans:
+    - plan_id: "gov_acme_q2_2027"
+      brand:
+        domain: "acmeoutdoor.example"
+      objectives: "Q2 outdoor lifestyle campaign — display and video, Adults 25-54, US"
+      budget:
+        total: 50000
+        currency: "USD"
+        reallocation_threshold: 20000
+      flight:
+        start: "2027-04-01T00:00:00Z"
+        end: "2027-06-30T23:59:59Z"
+      countries: ["US"]
+      custom_policies:
+        - policy_id: "weekly_reporting_over_10k"
+          enforcement: "must"
+          policy: "Weekly reporting required for buys over $10K."
+        - policy_id: "seller_concentration_cap"
+          enforcement: "must"
+          policy: "No single-seller concentration above 60% of total budget."
+
+phases:
+  - id: capability_discovery
+    title: "Capability discovery"
+    narrative: |
+      The buyer calls get_adcp_capabilities to confirm the agent supports media buying before sending briefs or creating buys.
+
+    steps:
+      - id: get_capabilities
+        title: "Check agent capabilities"
+        narrative: |
+          Verify that the agent declares the expected protocol support before
+          proceeding with domain-specific operations.
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: capability_discovery
+        stateful: false
+        expected: |
+          Return capabilities declaring media_buy in supported_protocols, confirming the agent sells media.
+        sample_request:
+          context:
+            correlation_id: "media_buy_governance_escalation--get_capabilities"
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json schema"
+          - check: field_present
+            path: "supported_protocols"
+            description: "Agent declares supported protocols"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "media_buy_governance_escalation--get_capabilities"
+            description: "Context correlation_id returned unchanged"
+  - id: account_setup
+    title: "Account and governance setup"
+    narrative: |
+      The buyer establishes an account and registers their governance agent with the
+      seller. The governance agent will be called before media buys are confirmed to
+      validate spending authority, brand safety, and compliance.
+
+    steps:
+      - id: sync_accounts
+        title: "Establish account relationship"
+        narrative: |
+          The buyer registers their brand and operator with your platform.
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        expected: |
+          Return the account with:
+          - account_id: your platform's identifier
+          - action: created or updated
+          - status: active or pending_approval
+
+        sample_request:
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+              billing: "operator"
+              payment_terms: "net_30"
+
+          idempotency_key: "$generate:uuid_v4#media_buy_governance_escalation_account_setup_sync_accounts"
+          context:
+            correlation_id: "media_buy_governance_escalation--sync_accounts"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-accounts-response.json schema"
+          - check: field_present
+            path: "accounts[0].account_id"
+            description: "Account has a platform-assigned ID"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "media_buy_governance_escalation--sync_accounts"
+            description: "Context correlation_id returned unchanged"
+      - id: sync_governance
+        title: "Register governance agent"
+        narrative: |
+          The buyer tells your platform: "Before you confirm any media buy for this
+          account, call this governance agent to validate it." Your platform stores
+          the governance agent URL and will call it during create_media_buy.
+        task: sync_governance
+        schema_ref: "account/sync-governance-request.json"
+        response_schema_ref: "account/sync-governance-response.json"
+        doc_ref: "/accounts/tasks/sync_governance"
+        stateful: true
+        expected: |
+          Acknowledge the governance agents. Your platform should:
+          - Store the governance agent URLs for the specified accounts
+          - Return confirmation that agents were registered
+          - Use these agents during create_media_buy validation
+
+        sample_request:
+          accounts:
+            - account:
+                brand:
+                  domain: "acmeoutdoor.example"
+                operator: "pinnacle-agency.example"
+              governance_agents:
+                - url: "https://governance.pinnacle-agency.example"
+                  authentication:
+                    schemes: ["Bearer"]
+                    credentials: "gov-token-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                  categories: ["budget_authority", "brand_policy"]
+
+          idempotency_key: "$generate:uuid_v4#media_buy_governance_escalation_account_setup_sync_governance"
+          context:
+            correlation_id: "media_buy_governance_escalation--sync_governance"
+          ext:
+            test_platform:
+              test_run: true
+        validations:
+          - check: response_schema
+            description: "Response matches sync-governance-response.json schema"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "media_buy_governance_escalation--sync_governance"
+            description: "Context correlation_id returned unchanged"
+  - id: register_plan
+    title: "Register governance plan with spending limits"
+    narrative: |
+      The buyer registers a governance plan that defines the agent's spending authority.
+      The plan sets a per-transaction threshold below the intended media buy amount.
+      This ensures the governance check will trigger an escalation when the buy exceeds
+      the agent's authority.
+
+    steps:
+      - id: sync_plans
+        title: "Register a governance plan with agent-limited authority"
+        narrative: |
+          The buyer's governance agent registers a plan with spending authority limits.
+          The plan sets a per-transaction threshold of $20K via reallocation_threshold
+          on the budget. Any media buy above this amount requires human approval.
+        task: sync_plans
+        schema_ref: "governance/sync-plans-request.json"
+        response_schema_ref: "governance/sync-plans-response.json"
+        doc_ref: "/governance/campaign/tasks/sync_plans"
+        comply_scenario: campaign_governance
+        stateful: true
+        expected: |
+          Acknowledge the governance plan:
+          - plan_id: identifier for this governance plan
+          - budget.reallocation_threshold: spending limit before re-evaluation
+          - human_review_required: set when the plan mandates escalation
+
+        sample_request:
+          idempotency_key: "media-buy-governance-escalation-sync-plans-v1"
+          plans:
+            - plan_id: "gov_acme_q2_2027"
+              brand:
+                domain: "acmeoutdoor.example"
+              objectives: "Q2 outdoor lifestyle campaign — display and video, Adults 25-54, US"
+              budget:
+                total: 50000
+                currency: "USD"
+                reallocation_threshold: 20000
+              flight:
+                start: "2027-04-01T00:00:00Z"
+                end: "2027-06-30T23:59:59Z"
+              countries: ["US"]
+              custom_policies:
+                - policy_id: "weekly_reporting_over_10k"
+                  enforcement: "must"
+                  policy: "Weekly reporting required for buys over $10K."
+                - policy_id: "seller_concentration_cap"
+                  enforcement: "must"
+                  policy: "No single-seller concentration above 60% of total budget."
+
+          context:
+            correlation_id: "media_buy_governance_escalation--sync_plans"
+        context_outputs:
+          - name: plan_id
+            path: 'plans[0].plan_id'
+        validations:
+          - check: response_schema
+            description: "Response matches sync-plans-response.json schema"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "media_buy_governance_escalation--sync_plans"
+            description: "Context correlation_id returned unchanged"
+          - check: field_present
+            path: "plans[0].plan_id"
+            description: "Governance agent assigns plan_id — must be echoed in check_governance"
+  - id: discover_products
+    title: "Product discovery"
+    narrative: |
+      The buyer sends a brief to discover products. The products returned will exceed
+      the governance agent's spending authority when assembled into a media buy.
+
+    steps:
+      - id: get_products_brief
+        title: "Send a brief"
+        narrative: |
+          The buyer describes what they want. Your platform returns products with
+          pricing that, when combined, will exceed the $20K per-transaction threshold
+          set in the governance plan.
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: full_sales_flow
+        stateful: false
+        expected: |
+          Return products matching the brief with pricing that totals above $20K:
+          - product_id, name, description
+          - delivery_type: guaranteed or non_guaranteed
+          - pricing_models with CPM and budget recommendations
+          - forecast: estimated delivery
+
+        sample_request:
+          buying_mode: "brief"
+          brief: "Premium CTV and video on sports publishers. Q2 flight, $50K budget. Adults 25-54, US."
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+
+          context:
+            correlation_id: "media_buy_governance_escalation--get_products_brief"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_present
+            path: "products"
+            description: "Response contains a products array"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "media_buy_governance_escalation--get_products_brief"
+            description: "Context correlation_id returned unchanged"
+          - check: field_present
+            path: "products[0].format_ids"
+            description: "Products include format_ids for creative requirements"
+          - check: field_present
+            path: "products[0].format_ids[0].agent_url"
+            description: "Format IDs include agent_url — must match this agent's URL"
+          - check: field_present
+            path: "products[0].format_ids[0].id"
+            description: "Format IDs include id — must be accepted back in sync_creatives"
+  - id: governance_check_denied
+    title: "Governance check — denied"
+    narrative: |
+      Before creating the media buy, the buyer's governance agent runs a pre-buy check.
+      The proposed buy totals $50K, which exceeds the agent's $20K per-transaction
+      authority. The governance agent denies the buy with a must-severity finding and
+      returns escalation instructions for human review.
+
+    steps:
+      - id: check_governance_denied
+        title: "Pre-buy governance check (denied)"
+        narrative: |
+          The buyer calls check_governance with the proposed media buy binding. The
+          governance agent evaluates the buy against the registered plan and finds that
+          the total exceeds the agent's spending authority. The check returns denied
+          with a must-severity finding and instructions for escalating to a human.
+        task: check_governance
+        schema_ref: "governance/check-governance-request.json"
+        response_schema_ref: "governance/check-governance-response.json"
+        doc_ref: "/governance/campaign/tasks/check_governance"
+        comply_scenario: governance_spend_authority/denied
+        stateful: true
+        expected: |
+          Return a denied governance decision:
+          - decision: denied
+          - findings: array with at least one must-severity finding
+            - severity: must
+            - code: SPENDING_AUTHORITY_EXCEEDED
+            - message: explains the agent's authority limit and how much the buy exceeds it
+            - escalation: instructions for human review
+          - governance_context: token/ID the buyer passes to the next check after escalation
+          - plan_id: the governance plan that triggered the denial
+
+        sample_request:
+          plan_id: "$context.plan_id"
+          caller: "https://pinnacle-agency.example"
+          tool: "create_media_buy"
+          payload:
+            idempotency_key: "$generate:uuid_v4#media_buy_governance_escalation_check_governance_denied_payload"
+            account:
+              brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+            brand:
+              domain: "acmeoutdoor.example"
+            start_time: "2027-01-01T00:00:00Z"
+            end_time: "2027-03-31T23:59:59Z"
+            packages:
+              - product_id: "sports_ctv_q2"
+                budget: 30000
+                pricing_option_id: "cpm_standard"
+              - product_id: "outdoor_video_q2"
+                budget: 20000
+                pricing_option_id: "cpm_standard"
+
+          context:
+            correlation_id: "media_buy_governance_escalation--check_governance_denied"
+        validations:
+          - check: response_schema
+            description: "Response matches check-governance-response.json schema"
+          - check: field_present
+            path: "status"
+            description: "Response contains a governance decision"
+          - check: field_present
+            path: "findings"
+            description: "Response contains findings explaining the denial"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "media_buy_governance_escalation--check_governance_denied"
+            description: "Context correlation_id returned unchanged"
+  - id: human_escalation
+    title: "Human escalation — conditional approval"
+    narrative: |
+      The governance denial triggers human escalation. A human reviewer at the agency
+      reviews the proposed buy, the denial reason, and the governance plan. The human
+      approves the buy with conditions — for example, requiring weekly reporting. The
+      buyer calls check_governance again with the human's approval, and this time
+      the check returns approved with conditions.
+
+    steps:
+      - id: check_governance_approved
+        title: "Re-check governance after human approval (approved with conditions)"
+        narrative: |
+          After the human reviewer approves the buy, the buyer calls check_governance
+          again with the governance_context from the prior denial and the human's
+          approval. The governance agent returns approved with conditions that the
+          buyer must honor during the campaign.
+        task: check_governance
+        schema_ref: "governance/check-governance-request.json"
+        response_schema_ref: "governance/check-governance-response.json"
+        doc_ref: "/governance/campaign/tasks/check_governance"
+        comply_scenario: governance_spend_authority
+        stateful: true
+        expected: |
+          Return an approved governance decision with conditions:
+          - decision: approved
+          - conditions: array of requirements the buyer must honor
+            - e.g., "Weekly delivery reporting required"
+            - e.g., "Human review required for any budget increase"
+          - governance_context: updated token the buyer passes to create_media_buy
+          - approved_by: identifier of the human who approved
+          - approved_at: timestamp of approval
+
+        sample_request:
+          plan_id: "$context.plan_id"
+          caller: "https://pinnacle-agency.example"
+          governance_context: "gov_ctx_acme_q2_escalated"
+          tool: "create_media_buy"
+          payload:
+            idempotency_key: "$generate:uuid_v4#media_buy_governance_escalation_check_governance_approved_payload"
+            account:
+              brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+            brand:
+              domain: "acmeoutdoor.example"
+            start_time: "2027-01-01T00:00:00Z"
+            end_time: "2027-03-31T23:59:59Z"
+            packages:
+              - product_id: "sports_ctv_q2"
+                budget: 30000
+                pricing_option_id: "cpm_standard"
+              - product_id: "outdoor_video_q2"
+                budget: 20000
+                pricing_option_id: "cpm_standard"
+
+          context:
+            correlation_id: "media_buy_governance_escalation--check_governance_approved"
+        context_outputs:
+          - name: check_id
+            path: 'check_id'
+        validations:
+          - check: response_schema
+            description: "Response matches check-governance-response.json schema"
+          - check: field_present
+            path: "status"
+            description: "Response contains an approved governance decision"
+          - check: field_present
+            path: "conditions"
+            description: "Approval includes conditions"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "media_buy_governance_escalation--check_governance_approved"
+            description: "Context correlation_id returned unchanged"
+          - check: field_present
+            path: "check_id"
+            description: "Check ID for audit trail — must be echoed in report_plan_outcome"
+  - id: create_buy_with_governance
+    title: "Create media buy with governance context"
+    narrative: |
+      The buyer creates the media buy, passing the governance_context from the approved
+      governance check. The seller's platform verifies the governance approval before
+      confirming the buy.
+
+    steps:
+      - id: create_media_buy
+        title: "Create a media buy with governance approval"
+        narrative: |
+          The buyer creates the media buy with the governance_context token from the
+          approved check. The seller's platform validates the governance approval and
+          confirms the buy. Without a valid governance_context, the platform would
+          reject the buy because the governance agent is registered for this account.
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: create_media_buy
+        stateful: true
+        expected: |
+          Confirm the media buy with governance approval:
+          - media_buy_id: your platform's identifier
+          - status: active
+          - confirmed_at: timestamp
+          - governance_context: echoed back confirming governance was validated
+          - packages: confirmed line items
+          - valid_actions: creative sync, get_delivery, etc.
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          brand:
+            domain: "acmeoutdoor.example"
+          governance_context: "gov_ctx_acme_q2_approved"
+          start_time: "2026-04-01T00:00:00Z"
+          end_time: "2026-06-30T23:59:59Z"
+          packages:
+            - product_id: "sports_ctv_q2"
+              budget: 30000
+              pricing_option_id: "cpm_guaranteed"
+              creative_assignments:
+                - creative_id: "video_30s_trail_pro"
+            - product_id: "outdoor_video_q2"
+              budget: 20000
+              pricing_option_id: "cpm_standard"
+              creative_assignments:
+                - creative_id: "video_15s_trail_pro"
+
+          idempotency_key: "$generate:uuid_v4#media_buy_governance_escalation_create_buy_with_governance_create_media_buy"
+          context:
+            correlation_id: "media_buy_governance_escalation--create_media_buy"
+        context_outputs:
+          - name: media_buy_id
+            path: "media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "media_buy_governance_escalation--create_media_buy"
+            description: "Context correlation_id returned unchanged"
+  - id: report_outcome
+    title: "Report governance outcome"
+    narrative: |
+      After the media buy is created, the buyer reports the outcome back to the
+      governance agent. This closes the governance loop by linking the actual media
+      buy to the governance check that authorized it.
+
+    steps:
+      - id: report_plan_outcome
+        title: "Report media buy outcome to governance"
+        narrative: |
+          The buyer reports the media buy creation back to the governance agent,
+          linking the media_buy_id to the governance check. This enables the governance
+          agent to track what was actually purchased against what was approved.
+        task: report_plan_outcome
+        schema_ref: "governance/report-plan-outcome-request.json"
+        response_schema_ref: "governance/report-plan-outcome-response.json"
+        doc_ref: "/governance/campaign/tasks/report_plan_outcome"
+        comply_scenario: campaign_governance
+        stateful: true
+        expected: |
+          Acknowledge the outcome report:
+          - outcome_id: identifier for this outcome record
+          - plan_id: the governance plan
+          - media_buy_id: the buy that was created
+          - governance_context: the approval that authorized it
+          - status: recorded
+
+        sample_request:
+          plan_id: "$context.plan_id"
+          governance_context: "gov_ctx_acme_q2_approved"
+          outcome: "completed"
+          seller_response:
+            seller_reference: "$context.media_buy_id"
+            committed_budget: 50000
+            packages:
+              - package_id: "pkg_sports_ctv_q2"
+                committed_budget: 30000
+              - package_id: "pkg_outdoor_video_q2"
+                committed_budget: 20000
+
+          idempotency_key: "$generate:uuid_v4#media_buy_governance_escalation_report_outcome_report_plan_outcome"
+          context:
+            correlation_id: "media_buy_governance_escalation--report_plan_outcome"
+        validations:
+          - check: response_schema
+            description: "Response matches report-plan-outcome-response.json schema"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "media_buy_governance_escalation--report_plan_outcome"
+            description: "Context correlation_id returned unchanged"
+  - id: audit_trail
+    title: "Governance audit trail"
+    narrative: |
+      The buyer (or an auditor) retrieves the full audit trail for the governance
+      plan. This shows every decision in the chain: the initial denial, the human
+      escalation, the conditional approval, the media buy creation, and the outcome
+      report. The audit trail provides accountability for automated spending decisions.
+
+    steps:
+      - id: get_plan_audit_logs
+        title: "Retrieve the full governance audit trail"
+        narrative: |
+          The buyer requests the audit log for the governance plan. The log shows
+          every governance event: check requests, denials, escalations, approvals,
+          and outcome reports. Each entry has a timestamp, actor, and decision.
+        task: get_plan_audit_logs
+        schema_ref: "governance/get-plan-audit-logs-request.json"
+        response_schema_ref: "governance/get-plan-audit-logs-response.json"
+        doc_ref: "/governance/campaign/tasks/get_plan_audit_logs"
+        comply_scenario: campaign_governance
+        stateful: false
+        expected: |
+          Return the complete audit trail for the governance plan:
+          - plan_id: the governance plan
+          - entries: ordered list of governance events, including:
+            1. Plan registered with $20K per-transaction threshold
+            2. Governance check denied — spending authority exceeded ($50K > $20K)
+            3. Human escalation initiated
+            4. Human approved with conditions (weekly reporting, budget increase review)
+            5. Media buy created with governance approval
+            6. Outcome reported linking media_buy_id to governance context
+          - Each entry includes: timestamp, event_type, actor, decision, details
+
+        sample_request:
+          plan_ids:
+            - "$context.plan_id"
+
+          context:
+            correlation_id: "media_buy_governance_escalation--get_plan_audit_logs"
+        validations:
+          - check: response_schema
+            description: "Response matches get-plan-audit-logs-response.json schema"
+          - check: field_present
+            path: "plans"
+            description: "Response contains audit log entries"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "media_buy_governance_escalation--get_plan_audit_logs"
+            description: "Context correlation_id returned unchanged"

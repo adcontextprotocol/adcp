@@ -411,3 +411,91 @@ phases:
             path: "context.correlation_id"
             value: "creative_template--build_multi_format"
             description: "Context correlation_id returned unchanged"
+  - id: audio_build
+    title: "Audio creative build (optional)"
+    # Optional phase: runner grades this not_applicable for agents that do not declare
+    # any audio format in list_creative_formats. To enable, set supports_audio_formats:
+    # true in the test kit (acme-outdoor.yaml) and ensure the agent returns at least one
+    # audio format from list_creative_formats before this phase runs.
+    optional: true
+    skip_if: "!test_kit.supports_audio_formats"
+    narrative: |
+      Audio-creative platforms — TTS services, voice generation agents, audio mix/master
+      pipelines — produce audio assets rather than display tags. They cannot pass the
+      existing build phase, which sends image inputs and expects HTML/VAST output.
+
+      This optional phase exercises build_creative with audio inputs (a script and a voice
+      descriptor) and validates that the output carries a servable audio asset.
+
+      The phase accepts both sync returns (small platforms render fast) and task-envelope
+      async returns (TTS pipelines may run for minutes). The comply_scenario: creative_flow
+      gate covers both paths.
+
+    steps:
+      - id: build_audio_creative
+        title: "Build an audio creative from assets"
+        narrative: |
+          The buyer passes audio inputs — a script and a voice descriptor — alongside a
+          target audio format and asks the agent to produce a finished audio creative.
+          The output must carry an audio asset with a resolvable URL.
+
+          Audio platforms that render synchronously may return the creative_manifest
+          immediately. TTS pipelines that take minutes may return a task envelope
+          (submitted → working → completed). Both are valid under comply_scenario:
+          creative_flow.
+        task: build_creative
+        schema_ref: "media-buy/build-creative-request.json"
+        response_schema_ref: "media-buy/build-creative-response.json"
+        doc_ref: "/creative/task-reference/build_creative"
+        comply_scenario: creative_flow
+        stateful: false
+        expected: |
+          Return a creative manifest with an audio output asset. The response should include:
+          - A creative manifest with an audio asset (asset_type: audio) and a resolvable URL
+          - The format_id matching the target audio format
+
+          Both sync (immediate creative_manifest) and task-envelope async returns are accepted.
+
+        sample_request:
+          creative_manifest:
+            format_id:
+              agent_url: "https://your-agent.example.com"
+              id: "audio_30s"
+            assets:
+              script:
+                asset_type: "text"
+                content: "Built for the trail. Acme Outdoor — premium gear for every adventure."
+              voice:
+                asset_type: "text"
+                content: "narrator-warm"
+              click_url:
+                asset_type: "url"
+                url: "https://acmeoutdoor.example/summer-sale"
+          target_format_id:
+            agent_url: "https://your-agent.example.com"
+            id: "audio_30s"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+
+          idempotency_key: "$generate:uuid_v4#creative_template_audio_build_build_audio_creative"
+          context:
+            correlation_id: "creative_template--build_audio_creative"
+        validations:
+          - check: response_schema
+            description: "Response matches build-creative-response.json schema"
+          - check: field_present
+            path: "creative_manifest.assets"
+            description: "Output manifest includes assets"
+          - check: field_present
+            path: "creative_manifest.format_id"
+            description: "Output manifest includes format_id"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "creative_template--build_audio_creative"
+            description: "Context correlation_id returned unchanged"

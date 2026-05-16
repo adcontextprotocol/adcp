@@ -21,7 +21,11 @@ narrative: |
   from the governance agent.
 
   By default, the governance agent is the training agent at test-agent.adcontextprotocol.org.
-  Override with --governance-agent-url to use a custom governance agent.
+  Override by supplying a different `governance_agent_url` in the run's initial context
+  (e.g., via `--context` on `adcp storyboard run` once the CLI supports it).
+
+context:
+  governance_agent_url: "https://test-agent.adcontextprotocol.org"
 
 agent:
   interaction_model: marketplace_catalog
@@ -183,7 +187,7 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
-          idempotency_key: "signal-gov-denied-v1"
+          idempotency_key: "$generate:uuid_v4#signal-gov-denied"
 
           context:
             correlation_id: "signal_marketplace--governance_denied--activate"

@@ -20,9 +20,12 @@
     },
     "publisher_properties": {
       "type": "array",
-      "description": "Publisher properties covered by this product. Buyers fetch actual property definitions from each publisher's adagents.json and validate agent authorization. Selection patterns mirror the authorization patterns in adagents.json for consistency.",
+      "description": "SDK implementers MUST enforce singular-only at runtime: each entry uses the singular `publisher_domain` form; the compact `publisher_domains[]` form is rejected on products. Codegen toolchains (json-schema-to-typescript, quicktype, datamodel-code-generator, openapi-typescript-codegen) often flatten the `allOf + $ref + not.required` restriction below poorly and may drop the rejection constraint silently, emitting an unrestricted type — runtime enforcement is the safety net. Publisher properties covered by this product. Buyers fetch actual property definitions from each publisher's adagents.json and validate agent authorization. Selection patterns mirror the authorization patterns in adagents.json for consistency. The compact `publisher_domains[]` form is reserved for adagents.json `authorized_agents[].publisher_properties[]` so that buy-side traffic-and-pricing flatteners can always treat each entry as exactly one publisher.",
       "items": {
-        "$ref": "/schemas/core/publisher-property-selector.json"
+        "allOf": [
+          { "$ref": "/schemas/core/publisher-property-selector.json" },
+          { "not": { "required": ["publisher_domains"] } }
+        ]
       },
       "minItems": 1
     },
@@ -77,24 +80,30 @@
       "description": "Forecasted delivery metrics for this product. Gives buyers an estimate of expected performance before requesting a proposal."
     },
     "outcome_measurement": {
-      "$ref": "/schemas/core/outcome-measurement.json"
+      "$ref": "/schemas/core/outcome-measurement.json",
+      "description": "**Deprecated as of this minor.** Outcome capabilities (incremental sales lift, brand lift, foot traffic, etc.) are now declared via `reporting_capabilities.available_metrics` (the same path used for impressions, conversions, ROAS) with `qualifier.attribution_methodology` and `qualifier.attribution_window` carrying the methodology and window on commit. New implementations SHOULD use the unified pattern; this field is retained for one-minor backwards compatibility and removed at the next major. See `outcome-measurement.json` description for migration guidance."
     },
     "delivery_measurement": {
       "type": "object",
-      "description": "Measurement provider and methodology for delivery metrics. The buyer accepts the declared provider as the source of truth for the buy. When absent, buyers should apply their own measurement defaults.",
+      "description": "Measurement vendors and methodology for delivery metrics. The buyer accepts the declared vendors as the source of truth for the buy. When absent, buyers should apply their own measurement defaults. Senders SHOULD populate `vendors` (structured BrandRef array) for new implementations; the legacy `provider` string field is deprecated and retained for one-minor backwards compatibility.",
       "properties": {
+        "vendors": {
+          "type": "array",
+          "description": "Measurement vendors used for this product, as structured `BrandRef` identities. Multiple entries when multiple vendors play different roles (e.g., the ad server plus a separate viewability vendor like IAS or DV; or a retail-media seller plus a third-party retail measurement vendor like Circana or NielsenIQ). Each vendor's `brand.json` `agents[type='measurement']` is the discovery anchor; metric definitions live on the agent's `get_adcp_capabilities.measurement.metrics[]` block. Distinct from `performance_standards[].vendor` which carries vendor identity for *committed* metrics with thresholds — this field carries vendor identity for the overall measurement story, including non-committed-but-reported metrics.",
+          "items": {
+            "$ref": "/schemas/core/brand-ref.json"
+          },
+          "minItems": 1
+        },
         "provider": {
           "type": "string",
-          "description": "Measurement provider(s) used for this product (e.g., 'Google Ad Manager with IAS viewability', 'Nielsen DAR', 'Geopath for DOOH impressions')"
+          "description": "**Deprecated as of this minor.** Free-form measurement provider description (e.g., 'Google Ad Manager with IAS viewability', 'Nielsen DAR', 'Geopath for DOOH impressions'). New implementations SHOULD use the structured `vendors` field instead. Retained for one-minor backwards compatibility; removed at the next major. When both `vendors` and `provider` are present, consumers MUST use `vendors` for vendor identity and treat `provider` as informational text."
         },
         "notes": {
           "type": "string",
-          "description": "Additional details about measurement methodology in plain language (e.g., 'MRC-accredited viewability. 50% in-view for 1s display / 2s video', 'Panel-based demographic measurement updated monthly')"
+          "description": "Additional details about measurement methodology in plain language (e.g., 'MRC-accredited viewability. 50% in-view for 1s display / 2s video', 'Panel-based demographic measurement updated monthly'). Free-form prose for context that doesn't fit the structured `vendors` field."
         }
-      },
-      "required": [
-        "provider"
-      ]
+      }
     },
     "measurement_terms": {
       "$ref": "/schemas/core/measurement-terms.json",
@@ -111,6 +120,15 @@
     "cancellation_policy": {
       "$ref": "/schemas/core/cancellation-policy.json",
       "description": "Cancellation terms for this product. Declares the minimum notice period required before cancellation takes effect and any penalties for insufficient notice. Relevant for guaranteed delivery products. Buyers accept these terms by creating a media buy against the product."
+    },
+    "allowed_actions": {
+      "type": "array",
+      "description": "Actions buyers may perform on buys created against this product, scoped to statuses and modes. Advisory template — the authoritative per-buy capability is `available_actions[]` on the buy response, which resolves modes against current buy state, account tier, and negotiated terms. Buyers SHOULD use this for pre-flight product selection (\"which products let me self-serve cancel within 72hr?\") and read `available_actions[]` for runtime decisions. The array is uniquely keyed by `action` — sellers MUST NOT emit two entries with the same `action` value. Absence means the seller has not declared a structured action surface for this product — buyers fall back to `valid_actions[]` on buy responses for the flat string vocabulary.",
+      "items": {
+        "$ref": "/schemas/core/product-allowed-action.json"
+      },
+      "minItems": 1,
+      "uniqueItems": true
     },
     "reporting_capabilities": {
       "$ref": "/schemas/core/reporting-capabilities.json"

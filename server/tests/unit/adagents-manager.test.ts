@@ -1,13 +1,38 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
+
+vi.mock('../../src/utils/url-security.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../src/utils/url-security.js')>();
+  return {
+    ...actual,
+    safeFetchAxiosLike: vi.fn(),
+  };
+});
+
+// Mock @adcp/sdk so MCP validation doesn't try a real network connect.
+// The MCP path dynamically imports the SDK; without this mock, a missing
+// agent test waits on the SDK's connect-then-timeout (5s) plus library
+// init overhead, which can blow the test timeout.
+vi.mock('@adcp/sdk', () => {
+  class AdCPClient {
+    constructor() {}
+    agent() {
+      return {
+        getAgentInfo: () => Promise.reject(new Error('mock: MCP unreachable')),
+      };
+    }
+  }
+  return {
+    AdCPClient,
+    is401Error: () => false,
+  };
+});
+
 import { AdAgentsManager } from '../../src/adagents-manager.js';
 import type { AuthorizedAgent, AdAgentsJson } from '../../src/types.js';
-import axios from 'axios';
+import { safeFetchAxiosLike } from '../../src/utils/url-security.js';
 
-// Mock axios
-vi.mock('axios');
-const mockedAxios = vi.mocked(axios, true);
+const mockedSafeFetch = vi.mocked(safeFetchAxiosLike);
 
-// Helper: simulate arraybuffer response (how axios delivers data with responseType: 'arraybuffer')
 function buf(data: unknown): Buffer {
   return Buffer.from(JSON.stringify(data));
 }
@@ -17,30 +42,29 @@ describe('AdAgentsManager', () => {
 
   beforeEach(() => {
     manager = new AdAgentsManager();
-    vi.clearAllMocks();
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
+    mockedSafeFetch.mockReset();
   });
 
   describe('validateDomain', () => {
     it('validates a valid adagents.json file', async () => {
       const validAdAgents: AdAgentsJson = {
-        $schema: 'https://adcontextprotocol.org/schemas/v2/adagents.json',
+        $schema: 'https://adcontextprotocol.org/schemas/v3/adagents.json',
         authorized_agents: [
           {
             url: 'https://agent.example.com',
             authorized_for: 'Test authorization scope',
+            authorization_type: 'property_ids',
+            property_ids: ['p1'],
           },
         ],
         last_updated: new Date().toISOString(),
       };
 
-      mockedAxios.get.mockResolvedValue({
+      mockedSafeFetch.mockResolvedValue({
         status: 200,
         data: buf(validAdAgents),
         headers: { 'content-type': 'application/json' },
+        url: 'https://example.com/.well-known/adagents.json',
       });
 
       const result = await manager.validateDomain('example.com');
@@ -50,12 +74,92 @@ describe('AdAgentsManager', () => {
       expect(result.domain).toBe('example.com');
       expect(result.url).toBe('https://example.com/.well-known/adagents.json');
       expect(result.status_code).toBe(200);
+      expect(result.discovery_method).toBe('direct');
+    });
+
+    // Phase B regression: validator must capture response body byte
+    // length and post-redirect resolved URL on success. The crawler
+    // threads both into publishers.last_response_bytes / resolved_url
+    // for verifier-grade hero chrome. Without these tests, a
+    // refactor that loses the captures would silently regress while
+    // the route-layer tests still pass (they upsert metadata directly).
+    it('captures response_bytes and resolved_url on a 200 fetch', async () => {
+      const valid: AdAgentsJson = {
+        authorized_agents: [{ url: 'https://agent.example.com', authorized_for: 'Test', authorization_type: 'property_ids', property_ids: ['p1'] }],
+        last_updated: new Date().toISOString(),
+      };
+      const body = buf(valid);
+      mockedSafeFetch.mockResolvedValue({
+        status: 200,
+        data: body,
+        headers: { 'content-type': 'application/json' },
+        // Simulate a 301 redirect: input was example.com, final URL
+        // is the CDN host. Validator should record the post-redirect URL.
+        url: 'https://cdn.example.net/.well-known/adagents.json',
+      });
+
+      const result = await manager.validateDomain('example.com');
+
+      expect(result.valid).toBe(true);
+      expect(result.response_bytes).toBe(body.byteLength);
+      expect(result.resolved_url).toBe('https://cdn.example.net/.well-known/adagents.json');
+    });
+
+    it('captures response_bytes and resolved_url even on a non-200', async () => {
+      // Failed fetch still surfaces the metadata via
+      // recordFailedAdagentsFetch downstream — the validator must
+      // populate both before early-returning.
+      const errBody = Buffer.from('<html>Not Found</html>');
+      mockedSafeFetch.mockResolvedValue({
+        status: 404,
+        data: errBody,
+        headers: { 'content-type': 'text/html' },
+        url: 'https://example.com/.well-known/adagents.json',
+      });
+
+      const result = await manager.validateDomain('example.com');
+
+      expect(result.valid).toBe(false);
+      expect(result.status_code).toBe(404);
+      expect(result.response_bytes).toBe(errBody.byteLength);
+      expect(result.resolved_url).toBe('https://example.com/.well-known/adagents.json');
+    });
+
+    it('overwrites resolved_url when authoritative_location is followed', async () => {
+      // Phase A behavior reaffirmed: when the publisher's stub points
+      // at a different canonical URL, the validator follows it and the
+      // resolved_url should reflect WHERE the canonical body came from
+      // (the authoritative_location target), not where the stub lived.
+      const stubBody = buf({ authoritative_location: 'https://cdn.example.net/adagents.json' });
+      const canonicalBody = buf({
+        authorized_agents: [{ url: 'https://agent.example.com', authorized_for: 'Test', authorization_type: 'property_ids', property_ids: ['p1'] }],
+        last_updated: new Date().toISOString(),
+      });
+      mockedSafeFetch
+        .mockResolvedValueOnce({
+          status: 200,
+          data: stubBody,
+          headers: { 'content-type': 'application/json' },
+          url: 'https://example.com/.well-known/adagents.json',
+        })
+        .mockResolvedValueOnce({
+          status: 200,
+          data: canonicalBody,
+          headers: { 'content-type': 'application/json' },
+          url: 'https://cdn.example.net/adagents.json',
+        });
+
+      const result = await manager.validateDomain('example.com');
+
+      expect(result.valid).toBe(true);
+      expect(result.resolved_url).toBe('https://cdn.example.net/adagents.json');
+      expect(result.response_bytes).toBe(canonicalBody.byteLength);
     });
 
     it('normalizes domain by removing protocol', async () => {
-      mockedAxios.get.mockResolvedValue({
+      mockedSafeFetch.mockResolvedValue({
         status: 200,
-        data: buf({ authorized_agents: [{ url: 'https://agent.example.com', authorized_for: 'Test' }] }),
+        data: buf({ authorized_agents: [{ url: 'https://agent.example.com', authorized_for: 'Test', authorization_type: 'property_ids', property_ids: ['p1'] }] }),
         headers: { 'content-type': 'application/json' },
       });
 
@@ -66,9 +170,9 @@ describe('AdAgentsManager', () => {
     });
 
     it('normalizes domain by removing trailing slash', async () => {
-      mockedAxios.get.mockResolvedValue({
+      mockedSafeFetch.mockResolvedValue({
         status: 200,
-        data: buf({ authorized_agents: [{ url: 'https://agent.example.com', authorized_for: 'Test' }] }),
+        data: buf({ authorized_agents: [{ url: 'https://agent.example.com', authorized_for: 'Test', authorization_type: 'property_ids', property_ids: ['p1'] }] }),
         headers: { 'content-type': 'application/json' },
       });
 
@@ -78,7 +182,7 @@ describe('AdAgentsManager', () => {
     });
 
     it('detects missing adagents.json (404)', async () => {
-      mockedAxios.get.mockResolvedValue({
+      mockedSafeFetch.mockResolvedValue({
         status: 404,
         data: '<html>Not Found</html>',
         headers: { 'content-type': 'text/html' },
@@ -92,12 +196,700 @@ describe('AdAgentsManager', () => {
       expect(result.raw_data).toBeUndefined(); // Don't include HTML error pages
     });
 
-    it('handles network connection errors', async () => {
-      mockedAxios.get.mockRejectedValue({
-        isAxiosError: true,
-        code: 'ENOTFOUND',
+    it('falls back to managerdomain adagents.json when origin adagents.json is missing and ads.txt declares managerdomain', async () => {
+      mockedSafeFetch.mockImplementation(async (url) => {
+        if (url === 'https://publisher.example/.well-known/adagents.json') {
+          return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://publisher.example/ads.txt') {
+          return { status: 200, data: Buffer.from('MANAGERDOMAIN=manager.example\n'), headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://manager.example/.well-known/adagents.json') {
+          return {
+            status: 200,
+            data: buf({ authorized_agents: [{ url: 'https://agent.example', authorized_for: 'All inventory', authorization_type: 'publisher_properties', publisher_properties: [{ publisher_domain: 'publisher.example', selection_type: 'all' }] }] }),
+            headers: { 'content-type': 'application/json' },
+          };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
       });
-      mockedAxios.isAxiosError = vi.fn().mockReturnValue(true);
+
+      const result = await manager.validateDomain('publisher.example');
+      expect(result.valid).toBe(true);
+      expect(result.warnings.some(w => w.field === 'managerdomain')).toBe(true);
+      expect(result.domain).toBe('publisher.example');
+      expect(result.url).toBe('https://publisher.example/.well-known/adagents.json');
+      expect(result.discovery_method).toBe('ads_txt_managerdomain');
+      expect(result.manager_domain).toBe('manager.example');
+    });
+
+    it('does not recurse indefinitely when managerdomain points back to original domain', async () => {
+      mockedSafeFetch.mockImplementation(async (url) => {
+        if (url === 'https://publisher.example/.well-known/adagents.json') {
+          return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://publisher.example/ads.txt') {
+          return { status: 200, data: Buffer.from('MANAGERDOMAIN=publisher.example\n'), headers: { 'content-type': 'text/plain' } };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+
+      const result = await manager.validateDomain('publisher.example');
+      expect(result.valid).toBe(false);
+      expect(result.warnings.some(w => w.message.includes('cycle detection'))).toBe(true);
+      expect(result.errors.some(e => e.field === 'http_status')).toBe(true);
+    });
+
+    it('enforces one-hop managerdomain fallback depth', async () => {
+      mockedSafeFetch.mockImplementation(async (url) => {
+        if (url === 'https://publisher.example/.well-known/adagents.json') {
+          return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://publisher.example/ads.txt') {
+          return { status: 200, data: Buffer.from('MANAGERDOMAIN=manager1.example\n'), headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://manager1.example/.well-known/adagents.json') {
+          return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://manager1.example/ads.txt') {
+          return { status: 200, data: Buffer.from('MANAGERDOMAIN=manager2.example\n'), headers: { 'content-type': 'text/plain' } };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+
+      const result = await manager.validateDomain('publisher.example');
+      expect(result.valid).toBe(false);
+      expect(result.warnings.some(w => w.message.includes('max fallback depth'))).toBe(true);
+      expect(result.errors.some(e => e.field === 'http_status')).toBe(true);
+    });
+
+    it('ignores managerdomain when the managerdomain line has #noagents', async () => {
+      mockedSafeFetch.mockImplementation(async (url) => {
+        if (url === 'https://publisher.example/.well-known/adagents.json') {
+          return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://publisher.example/ads.txt') {
+          return {
+            status: 200,
+            data: Buffer.from('MANAGERDOMAIN=manager.example #noagents\n'),
+            headers: { 'content-type': 'text/plain' },
+          };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+
+      const result = await manager.validateDomain('publisher.example');
+      expect(result.valid).toBe(false);
+      expect(result.errors.some(e => e.field === 'http_status')).toBe(true);
+    });
+
+    it('accepts MANAGERDOMAIN directive form (non-comment) case-insensitively', async () => {
+      mockedSafeFetch.mockImplementation(async (url) => {
+        if (url === 'https://publisher.example/.well-known/adagents.json') {
+          return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://publisher.example/ads.txt') {
+          return { status: 200, data: Buffer.from('MANAGERDOMAIN=Manager.Example\n'), headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://manager.example/.well-known/adagents.json') {
+          return {
+            status: 200,
+            data: buf({ authorized_agents: [{ url: 'https://agent.example', authorized_for: 'All inventory', authorization_type: 'publisher_properties', publisher_properties: [{ publisher_domain: 'publisher.example', selection_type: 'all' }] }] }),
+            headers: { 'content-type': 'application/json' },
+          };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+
+      const result = await manager.validateDomain('publisher.example');
+      expect(result.valid).toBe(true);
+      expect(result.warnings.some(w => w.field === 'managerdomain')).toBe(true);
+    });
+
+    it('ignores comment-only managerdomain lines', async () => {
+      mockedSafeFetch.mockImplementation(async (url) => {
+        if (url === 'https://publisher.example/.well-known/adagents.json') {
+          return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://publisher.example/ads.txt') {
+          return { status: 200, data: Buffer.from('# managerdomain=comment-only.example\n'), headers: { 'content-type': 'text/plain' } };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+
+      const result = await manager.validateDomain('publisher.example');
+      expect(result.valid).toBe(false);
+      expect(result.errors.some(e => e.field === 'http_status')).toBe(true);
+    });
+
+    it('uses the last managerdomain entry when multiple managerdomain entries are present', async () => {
+      mockedSafeFetch.mockImplementation(async (url) => {
+        if (url === 'https://publisher.example/.well-known/adagents.json') {
+          return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://publisher.example/ads.txt') {
+          return {
+            status: 200,
+            data: Buffer.from('MANAGERDOMAIN=bad-manager.example\nMANAGERDOMAIN=good-manager.example\n'),
+            headers: { 'content-type': 'text/plain' },
+          };
+        }
+        if (url === 'https://good-manager.example/.well-known/adagents.json') {
+          return {
+            status: 200,
+            data: buf({ authorized_agents: [{ url: 'https://agent.example', authorized_for: 'Good', authorization_type: 'publisher_properties', publisher_properties: [{ publisher_domain: 'publisher.example' }] }] }),
+            headers: { 'content-type': 'application/json' },
+          };
+        }
+        if (url === 'https://bad-manager.example/.well-known/adagents.json') {
+          throw new Error('bad-manager.example should not be tried; last entry wins');
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+
+      const result = await manager.validateDomain('publisher.example');
+      expect(result.valid).toBe(true);
+      expect(result.discovery_method).toBe('ads_txt_managerdomain');
+      expect(result.manager_domain).toBe('good-manager.example');
+      expect(result.warnings.some(w => w.message.includes('good-manager.example'))).toBe(true);
+    });
+
+    it('uses next eligible managerdomain when #noagents removes the first candidate', async () => {
+      mockedSafeFetch.mockImplementation(async (url) => {
+        if (url === 'https://publisher.example/.well-known/adagents.json') {
+          return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://publisher.example/ads.txt') {
+          return {
+            status: 200,
+            data: Buffer.from('MANAGERDOMAIN=blocked.example #NOAGENTS\nMANAGERDOMAIN=allowed.example\n'),
+            headers: { 'content-type': 'text/plain' },
+          };
+        }
+        if (url === 'https://allowed.example/.well-known/adagents.json') {
+          return {
+            status: 200,
+            data: buf({ authorized_agents: [{ url: 'https://agent.example', authorized_for: 'Allowed', authorization_type: 'publisher_properties', publisher_properties: [{ publisher_domain: 'publisher.example' }] }] }),
+            headers: { 'content-type': 'application/json' },
+          };
+        }
+        if (url === 'https://blocked.example/.well-known/adagents.json') {
+          throw new Error('blocked.example should be skipped due to #NOAGENTS');
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+
+      const result = await manager.validateDomain('publisher.example');
+      expect(result.valid).toBe(true);
+      expect(result.warnings.some(w => w.message.includes('allowed.example'))).toBe(true);
+    });
+
+    it('rejects managerdomain fallback when manager adagents.json does not explicitly scope to source publisher', async () => {
+      mockedSafeFetch.mockImplementation(async (url) => {
+        if (url === 'https://publisher.example/.well-known/adagents.json') {
+          return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://publisher.example/ads.txt') {
+          return { status: 200, data: Buffer.from('MANAGERDOMAIN=manager.example\n'), headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://manager.example/.well-known/adagents.json') {
+          return {
+            status: 200,
+            data: buf({ authorized_agents: [{ url: 'https://agent.example', authorized_for: 'All inventory', authorization_type: 'property_ids', property_ids: ['p1'] }] }),
+            headers: { 'content-type': 'application/json' },
+          };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+
+      const result = await manager.validateDomain('publisher.example');
+      expect(result.valid).toBe(false);
+      expect(result.errors.some(e => e.field === 'managerdomain_scope')).toBe(true);
+    });
+
+    it('ignores managerdomain lines with invalid host token and continues scanning', async () => {
+      mockedSafeFetch.mockImplementation(async (url) => {
+        if (url === 'https://publisher.example/.well-known/adagents.json') {
+          return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://publisher.example/ads.txt') {
+          return {
+            status: 200,
+            data: Buffer.from('MANAGERDOMAIN=https://bad.example\nMANAGERDOMAIN=good.example\n'),
+            headers: { 'content-type': 'text/plain' },
+          };
+        }
+        if (url === 'https://good.example/.well-known/adagents.json') {
+          return {
+            status: 200,
+            data: buf({ authorized_agents: [{ url: 'https://agent.example', authorized_for: 'Good', authorization_type: 'publisher_properties', publisher_properties: [{ publisher_domain: 'publisher.example' }] }] }),
+            headers: { 'content-type': 'application/json' },
+          };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+
+      const result = await manager.validateDomain('publisher.example');
+      expect(result.valid).toBe(true);
+      expect(result.warnings.some(w => w.message.includes('good.example'))).toBe(true);
+    });
+
+    it('uses the last managerdomain entry when multiple entries include cyclic and non-cyclic managerdomain values', async () => {
+      mockedSafeFetch.mockImplementation(async (url) => {
+        if (url === 'https://publisher.example/.well-known/adagents.json') {
+          return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://publisher.example/ads.txt') {
+          return {
+            status: 200,
+            data: Buffer.from('MANAGERDOMAIN=publisher.example\nMANAGERDOMAIN=good.example\n'),
+            headers: { 'content-type': 'text/plain' },
+          };
+        }
+        if (url === 'https://good.example/.well-known/adagents.json') {
+          return {
+            status: 200,
+            data: buf({ authorized_agents: [{ url: 'https://agent.example', authorized_for: 'Good', authorization_type: 'publisher_properties', publisher_properties: [{ publisher_domain: 'publisher.example' }] }] }),
+            headers: { 'content-type': 'application/json' },
+          };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+
+      const result = await manager.validateDomain('publisher.example');
+      expect(result.valid).toBe(true);
+      expect(result.warnings.some(w => w.message.includes('good.example'))).toBe(true);
+    });
+
+
+
+    it('accepts managerdomain fallback when manager adagents.json scopes via collections', async () => {
+      mockedSafeFetch.mockImplementation(async (url) => {
+        if (url === 'https://publisher.example/.well-known/adagents.json') {
+          return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://publisher.example/ads.txt') {
+          return { status: 200, data: Buffer.from('MANAGERDOMAIN=manager.example\n'), headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://manager.example/.well-known/adagents.json') {
+          return {
+            status: 200,
+            data: buf({
+              authorized_agents: [{
+                url: 'https://agent.example',
+                authorized_for: 'Scoped via collection',
+                authorization_type: 'property_tags',
+                property_tags: ['network'],
+                collections: [{ publisher_domain: 'publisher.example' }],
+              }],
+            }),
+            headers: { 'content-type': 'application/json' },
+          };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+
+      const result = await manager.validateDomain('publisher.example');
+      expect(result.valid).toBe(true);
+      expect(result.discovery_method).toBe('ads_txt_managerdomain');
+      expect(result.manager_domain).toBe('manager.example');
+    });
+
+    it('rejects managerdomain fallback when manager adagents.json scopes a different publisher', async () => {
+      mockedSafeFetch.mockImplementation(async (url) => {
+        if (url === 'https://publisher.example/.well-known/adagents.json') {
+          return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://publisher.example/ads.txt') {
+          return { status: 200, data: Buffer.from('MANAGERDOMAIN=manager.example\n'), headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://manager.example/.well-known/adagents.json') {
+          return {
+            status: 200,
+            data: buf({
+              authorized_agents: [{
+                url: 'https://agent.example',
+                authorized_for: 'Wrong publisher',
+                authorization_type: 'publisher_properties',
+                publisher_properties: [{ publisher_domain: 'other-publisher.example' }],
+              }],
+            }),
+            headers: { 'content-type': 'application/json' },
+          };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+
+      const result = await manager.validateDomain('publisher.example');
+      expect(result.valid).toBe(false);
+      expect(result.errors.some(e => e.field === 'managerdomain_scope')).toBe(true);
+    });
+
+    it('accepts managerdomain fallback when manager scopes via property_tags + property-level publisher_domain (Mediavine pattern)', async () => {
+      // Real-world shape: properties[] carries publisher_domain, agents
+      // reference properties indirectly via property_tags. The cross-
+      // publisher commitment is declared, just routed through the
+      // property layer.
+      mockedSafeFetch.mockImplementation(async (url) => {
+        if (url === 'https://publisher.example/.well-known/adagents.json') {
+          return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://publisher.example/ads.txt') {
+          return { status: 200, data: Buffer.from('MANAGERDOMAIN=manager.example\n'), headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://manager.example/.well-known/adagents.json') {
+          return {
+            status: 200,
+            data: buf({
+              properties: [{
+                property_id: 'pub_main_site',
+                property_type: 'website',
+                publisher_domain: 'publisher.example',
+                tags: ['scope3-aee', 'managed_network'],
+              }],
+              authorized_agents: [{
+                url: 'https://agent.example',
+                authorized_for: 'Display via tag',
+                authorization_type: 'property_tags',
+                property_tags: ['scope3-aee'],
+              }],
+            }),
+            headers: { 'content-type': 'application/json' },
+          };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+
+      const result = await manager.validateDomain('publisher.example');
+      expect(result.valid).toBe(true);
+      expect(result.discovery_method).toBe('ads_txt_managerdomain');
+      expect(result.manager_domain).toBe('manager.example');
+    });
+
+    it('accepts managerdomain fallback when manager scopes via property_ids + property-level publisher_domain', async () => {
+      mockedSafeFetch.mockImplementation(async (url) => {
+        if (url === 'https://publisher.example/.well-known/adagents.json') {
+          return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://publisher.example/ads.txt') {
+          return { status: 200, data: Buffer.from('MANAGERDOMAIN=manager.example\n'), headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://manager.example/.well-known/adagents.json') {
+          return {
+            status: 200,
+            data: buf({
+              properties: [{
+                property_id: 'pub_main_site',
+                property_type: 'website',
+                publisher_domain: 'publisher.example',
+              }],
+              authorized_agents: [{
+                url: 'https://agent.example',
+                authorized_for: 'Display via id',
+                authorization_type: 'property_ids',
+                property_ids: ['pub_main_site'],
+              }],
+            }),
+            headers: { 'content-type': 'application/json' },
+          };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+
+      const result = await manager.validateDomain('publisher.example');
+      expect(result.valid).toBe(true);
+      expect(result.discovery_method).toBe('ads_txt_managerdomain');
+    });
+
+    it('rejects fallback when property-level publisher_domain belongs to a different publisher', async () => {
+      // The property carries publisher_domain, the agent points at it
+      // by tag — but the property belongs to another publisher.
+      // Cross-publisher confusion attack must still fail closed.
+      mockedSafeFetch.mockImplementation(async (url) => {
+        if (url === 'https://publisher.example/.well-known/adagents.json') {
+          return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://publisher.example/ads.txt') {
+          return { status: 200, data: Buffer.from('MANAGERDOMAIN=manager.example\n'), headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://manager.example/.well-known/adagents.json') {
+          return {
+            status: 200,
+            data: buf({
+              properties: [{
+                property_id: 'someone_elses_site',
+                publisher_domain: 'other-publisher.example',
+                tags: ['scope3-aee'],
+              }],
+              authorized_agents: [{
+                url: 'https://agent.example',
+                authorized_for: 'Display via tag',
+                authorization_type: 'property_tags',
+                property_tags: ['scope3-aee'],
+              }],
+            }),
+            headers: { 'content-type': 'application/json' },
+          };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+
+      const result = await manager.validateDomain('publisher.example');
+      expect(result.valid).toBe(false);
+      expect(result.errors.some(e => e.field === 'managerdomain_scope')).toBe(true);
+    });
+
+    it('rejects fallback when agent references a tag with no publisher-scoped property carrying it', async () => {
+      // The publisher's property exists, but the agent points at a tag
+      // that none of the publisher's properties carry. Must fail closed
+      // — the agent has no scoping path back to the publisher.
+      mockedSafeFetch.mockImplementation(async (url) => {
+        if (url === 'https://publisher.example/.well-known/adagents.json') {
+          return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://publisher.example/ads.txt') {
+          return { status: 200, data: Buffer.from('MANAGERDOMAIN=manager.example\n'), headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://manager.example/.well-known/adagents.json') {
+          return {
+            status: 200,
+            data: buf({
+              properties: [{
+                property_id: 'pub_main_site',
+                publisher_domain: 'publisher.example',
+                tags: ['display'],
+              }],
+              authorized_agents: [{
+                url: 'https://agent.example',
+                authorized_for: 'Video via different tag',
+                authorization_type: 'property_tags',
+                property_tags: ['video'],
+              }],
+            }),
+            headers: { 'content-type': 'application/json' },
+          };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+
+      const result = await manager.validateDomain('publisher.example');
+      expect(result.valid).toBe(false);
+      expect(result.errors.some(e => e.field === 'managerdomain_scope')).toBe(true);
+    });
+
+    it('accepts managerdomain fallback when manager publisher_domain has non-canonical form (trailing dot, scheme prefix, mixed case)', async () => {
+      // Code-reviewer SF2 / #4541: hasExplicitPublisherScope must produce
+      // identical canonicalization across publisher_domain (singular),
+      // publisher_domains[] (compact), collections[].publisher_domain, and
+      // the property-level publisher_domain filter. A manifest with any of
+      // these in DNS-canonical form (trailing dot) or with a stray scheme
+      // prefix should still satisfy the gate.
+      mockedSafeFetch.mockImplementation(async (url) => {
+        if (url === 'https://publisher.example/.well-known/adagents.json') {
+          return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://publisher.example/ads.txt') {
+          return { status: 200, data: Buffer.from('MANAGERDOMAIN=manager.example\n'), headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://manager.example/.well-known/adagents.json') {
+          return {
+            status: 200,
+            data: buf({
+              authorized_agents: [{
+                url: 'https://agent.example',
+                authorized_for: 'Mixed non-canonical forms',
+                authorization_type: 'publisher_properties',
+                publisher_properties: [{
+                  // Trailing dot, mixed case, scheme prefix — should all
+                  // canonicalize to "publisher.example".
+                  publisher_domains: ['Publisher.Example.', 'https://other.example'],
+                  selection_type: 'by_tag',
+                  property_tags: ['managed_network'],
+                }],
+              }],
+            }),
+            headers: { 'content-type': 'application/json' },
+          };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+
+      const result = await manager.validateDomain('publisher.example');
+      expect(result.valid).toBe(true);
+      expect(result.discovery_method).toBe('ads_txt_managerdomain');
+    });
+
+    it('accepts managerdomain fallback via property-level path when properties[].publisher_domain has trailing dot', async () => {
+      // The property-level fallback path also flows through
+      // canonicalizePublisherDomain — locks that for trailing-dot forms.
+      mockedSafeFetch.mockImplementation(async (url) => {
+        if (url === 'https://publisher.example/.well-known/adagents.json') {
+          return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://publisher.example/ads.txt') {
+          return { status: 200, data: Buffer.from('MANAGERDOMAIN=manager.example\n'), headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://manager.example/.well-known/adagents.json') {
+          return {
+            status: 200,
+            data: buf({
+              properties: [{
+                property_id: 'pub_main_site',
+                property_type: 'website',
+                // Trailing-dot DNS-canonical form.
+                publisher_domain: 'publisher.example.',
+                tags: ['scope3-aee'],
+              }],
+              authorized_agents: [{
+                url: 'https://agent.example',
+                authorized_for: 'Property-level path with canonical mismatch',
+                authorization_type: 'property_tags',
+                property_tags: ['scope3-aee'],
+              }],
+            }),
+            headers: { 'content-type': 'application/json' },
+          };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+
+      const result = await manager.validateDomain('publisher.example');
+      expect(result.valid).toBe(true);
+    });
+
+    it('accepts managerdomain fallback when manager scopes via publisher_properties[].publisher_domains[] compact form', async () => {
+      // Managed networks (Raptive/Cafemedia shape) declare scope across
+      // many represented publishers in a single publisher_properties[]
+      // entry using publisher_domains[]. The source publisher domain
+      // appearing anywhere in that array satisfies the safety gate.
+      mockedSafeFetch.mockImplementation(async (url) => {
+        if (url === 'https://publisher.example/.well-known/adagents.json') {
+          return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://publisher.example/ads.txt') {
+          return { status: 200, data: Buffer.from('MANAGERDOMAIN=manager.example\n'), headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://manager.example/.well-known/adagents.json') {
+          return {
+            status: 200,
+            data: buf({
+              authorized_agents: [{
+                url: 'https://agent.example',
+                authorized_for: 'Managed network display inventory',
+                authorization_type: 'publisher_properties',
+                publisher_properties: [{
+                  publisher_domains: ['other.example', 'publisher.example', 'third.example'],
+                  selection_type: 'by_tag',
+                  property_tags: ['managed_network'],
+                }],
+              }],
+            }),
+            headers: { 'content-type': 'application/json' },
+          };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+
+      const result = await manager.validateDomain('publisher.example');
+      expect(result.valid).toBe(true);
+      expect(result.discovery_method).toBe('ads_txt_managerdomain');
+    });
+
+    it('rejects compact-form fallback when source publisher is NOT in publisher_domains[]', async () => {
+      mockedSafeFetch.mockImplementation(async (url) => {
+        if (url === 'https://publisher.example/.well-known/adagents.json') {
+          return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://publisher.example/ads.txt') {
+          return { status: 200, data: Buffer.from('MANAGERDOMAIN=manager.example\n'), headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://manager.example/.well-known/adagents.json') {
+          return {
+            status: 200,
+            data: buf({
+              authorized_agents: [{
+                url: 'https://agent.example',
+                authorized_for: 'Managed network — different publishers',
+                authorization_type: 'publisher_properties',
+                publisher_properties: [{
+                  publisher_domains: ['other.example', 'third.example'],
+                  selection_type: 'by_tag',
+                  property_tags: ['managed_network'],
+                }],
+              }],
+            }),
+            headers: { 'content-type': 'application/json' },
+          };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+
+      const result = await manager.validateDomain('publisher.example');
+      expect(result.valid).toBe(false);
+      expect(result.errors.some(e => e.field === 'managerdomain_scope')).toBe(true);
+    });
+
+    it('does not crash when a publisher_properties[] entry omits publisher_domain (compact-form only)', async () => {
+      // Regression: pre-PR code did `.publisher_domain.toLowerCase()`
+      // unconditionally and threw TypeError on compact-form entries
+      // where publisher_domain is undefined. The gate must degrade
+      // gracefully instead of crashing.
+      mockedSafeFetch.mockImplementation(async (url) => {
+        if (url === 'https://publisher.example/.well-known/adagents.json') {
+          return { status: 404, data: 'Not Found', headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://publisher.example/ads.txt') {
+          return { status: 200, data: Buffer.from('MANAGERDOMAIN=manager.example\n'), headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://manager.example/.well-known/adagents.json') {
+          return {
+            status: 200,
+            data: buf({
+              authorized_agents: [{
+                url: 'https://agent.example',
+                authorized_for: 'Compact form only',
+                authorization_type: 'publisher_properties',
+                publisher_properties: [{
+                  publisher_domains: ['publisher.example'],
+                  selection_type: 'all',
+                }],
+              }],
+            }),
+            headers: { 'content-type': 'application/json' },
+          };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+
+      const result = await manager.validateDomain('publisher.example');
+      expect(result.valid).toBe(true);
+    });
+
+    it('does not trigger manager fallback on non-404 adagents responses', async () => {
+      let calledAdsTxt = false;
+      mockedSafeFetch.mockImplementation(async (url) => {
+        if (url === 'https://publisher.example/.well-known/adagents.json') {
+          return { status: 500, data: 'Server error', headers: { 'content-type': 'text/plain' } };
+        }
+        if (url === 'https://publisher.example/ads.txt') {
+          calledAdsTxt = true;
+          return { status: 200, data: Buffer.from('MANAGERDOMAIN=good.example\n'), headers: { 'content-type': 'text/plain' } };
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+
+      const result = await manager.validateDomain('publisher.example');
+      expect(result.valid).toBe(false);
+      expect(calledAdsTxt).toBe(false);
+      expect(result.errors.some(e => e.message.includes('HTTP 500'))).toBe(true);
+    });
+
+    it('handles network connection errors', async () => {
+      mockedSafeFetch.mockRejectedValue(
+        Object.assign(new Error('getaddrinfo ENOTFOUND nonexistent.example.com'), {
+          cause: { code: 'ENOTFOUND' },
+        })
+      );
 
       const result = await manager.validateDomain('nonexistent.example.com');
 
@@ -106,11 +898,9 @@ describe('AdAgentsManager', () => {
     });
 
     it('handles request timeout', async () => {
-      mockedAxios.get.mockRejectedValue({
-        isAxiosError: true,
-        code: 'ECONNABORTED',
-      });
-      mockedAxios.isAxiosError = vi.fn().mockReturnValue(true);
+      mockedSafeFetch.mockRejectedValue(
+        Object.assign(new Error('The operation was aborted'), { name: 'AbortError' })
+      );
 
       const result = await manager.validateDomain('slow.example.com');
 
@@ -119,7 +909,7 @@ describe('AdAgentsManager', () => {
     });
 
     it('detects missing authorized_agents field', async () => {
-      mockedAxios.get.mockResolvedValue({
+      mockedSafeFetch.mockResolvedValue({
         status: 200,
         data: buf({ $schema: 'https://adcontextprotocol.org/schemas/v2/adagents.json' }),
         headers: { 'content-type': 'application/json' },
@@ -132,7 +922,7 @@ describe('AdAgentsManager', () => {
     });
 
     it('detects invalid authorized_agents type', async () => {
-      mockedAxios.get.mockResolvedValue({
+      mockedSafeFetch.mockResolvedValue({
         status: 200,
         data: buf({ authorized_agents: 'not an array' }),
         headers: { 'content-type': 'application/json' },
@@ -145,9 +935,9 @@ describe('AdAgentsManager', () => {
     });
 
     it('warns about missing optional $schema field', async () => {
-      mockedAxios.get.mockResolvedValue({
+      mockedSafeFetch.mockResolvedValue({
         status: 200,
-        data: buf({ authorized_agents: [{ url: 'https://agent.example.com', authorized_for: 'Test' }] }),
+        data: buf({ authorized_agents: [{ url: 'https://agent.example.com', authorized_for: 'Test', authorization_type: 'property_ids', property_ids: ['p1'] }] }),
         headers: { 'content-type': 'application/json' },
       });
 
@@ -158,9 +948,9 @@ describe('AdAgentsManager', () => {
     });
 
     it('warns about missing last_updated field', async () => {
-      mockedAxios.get.mockResolvedValue({
+      mockedSafeFetch.mockResolvedValue({
         status: 200,
-        data: buf({ authorized_agents: [{ url: 'https://agent.example.com', authorized_for: 'Test' }] }),
+        data: buf({ authorized_agents: [{ url: 'https://agent.example.com', authorized_for: 'Test', authorization_type: 'property_ids', property_ids: ['p1'] }] }),
         headers: { 'content-type': 'application/json' },
       });
 
@@ -173,7 +963,7 @@ describe('AdAgentsManager', () => {
 
   describe('validateAgent', () => {
     it('validates required url field', async () => {
-      mockedAxios.get.mockResolvedValue({
+      mockedSafeFetch.mockResolvedValue({
         status: 200,
         data: buf({ authorized_agents: [{ authorized_for: 'Test' }] }),
         headers: { 'content-type': 'application/json' },
@@ -186,7 +976,7 @@ describe('AdAgentsManager', () => {
     });
 
     it('validates url is a valid URL', async () => {
-      mockedAxios.get.mockResolvedValue({
+      mockedSafeFetch.mockResolvedValue({
         status: 200,
         data: buf({
           authorized_agents: [
@@ -206,7 +996,7 @@ describe('AdAgentsManager', () => {
     });
 
     it('requires HTTPS for agent URLs', async () => {
-      mockedAxios.get.mockResolvedValue({
+      mockedSafeFetch.mockResolvedValue({
         status: 200,
         data: buf({
           authorized_agents: [
@@ -226,7 +1016,7 @@ describe('AdAgentsManager', () => {
     });
 
     it('validates required authorized_for field', async () => {
-      mockedAxios.get.mockResolvedValue({
+      mockedSafeFetch.mockResolvedValue({
         status: 200,
         data: buf({
           authorized_agents: [
@@ -245,7 +1035,7 @@ describe('AdAgentsManager', () => {
     });
 
     it('validates authorized_for is not empty', async () => {
-      mockedAxios.get.mockResolvedValue({
+      mockedSafeFetch.mockResolvedValue({
         status: 200,
         data: buf({
           authorized_agents: [
@@ -266,7 +1056,7 @@ describe('AdAgentsManager', () => {
     });
 
     it('validates authorized_for length constraint', async () => {
-      mockedAxios.get.mockResolvedValue({
+      mockedSafeFetch.mockResolvedValue({
         status: 200,
         data: buf({
           authorized_agents: [
@@ -286,7 +1076,7 @@ describe('AdAgentsManager', () => {
     });
 
     it('validates property_ids is an array', async () => {
-      mockedAxios.get.mockResolvedValue({
+      mockedSafeFetch.mockResolvedValue({
         status: 200,
         data: buf({
           authorized_agents: [
@@ -307,17 +1097,21 @@ describe('AdAgentsManager', () => {
     });
 
     it('warns about duplicate agent URLs', async () => {
-      mockedAxios.get.mockResolvedValue({
+      mockedSafeFetch.mockResolvedValue({
         status: 200,
         data: buf({
           authorized_agents: [
             {
               url: 'https://agent.example.com',
               authorized_for: 'Scope 1',
+              authorization_type: 'property_ids',
+              property_ids: ['p1'],
             },
             {
               url: 'https://agent.example.com',
               authorized_for: 'Scope 2',
+              authorization_type: 'property_ids',
+              property_ids: ['p2'],
             },
           ],
         }),
@@ -328,6 +1122,85 @@ describe('AdAgentsManager', () => {
 
       expect(result.valid).toBe(true); // Valid but with warning
       expect(result.warnings.some(w => w.message.includes('Duplicate agent URL'))).toBe(true);
+    });
+
+    // Issue #4476: validator was returning valid:true on wonderstruck.org-
+    // style files that omit authorization_type. Per the v3 schema, every
+    // authorized_agents[] entry must declare authorization_type plus a
+    // matching non-empty selector — without that pairing, downstream
+    // resolvers can't decide what the agent is authorized for, and
+    // publishers see "valid" while consumers see "agent not authorized".
+    it('rejects authorized_agents entries that omit authorization_type (issue #4476)', async () => {
+      mockedSafeFetch.mockResolvedValue({
+        status: 200,
+        data: buf({
+          $schema: 'https://adcontextprotocol.org/schemas/v3/adagents.json',
+          authorized_agents: [
+            { url: 'https://wonderstruck.sales-agent.scope3.com', authorized_for: 'Authorized for display banners' },
+            { url: 'https://interchange.io', authorized_for: 'Authorized for display banners' },
+          ],
+          properties: [
+            { property_id: 'main_site', property_type: 'website', name: 'Main site', identifiers: [{ type: 'domain', value: 'wonderstruck.org' }], tags: ['sites'] },
+          ],
+          last_updated: '2026-05-03T14:32:20.587Z',
+        }),
+        headers: { 'content-type': 'application/json' },
+      });
+
+      const result = await manager.validateDomain('wonderstruck.org');
+
+      expect(result.valid).toBe(false);
+      // Per-entry error with field path so publishers can locate the
+      // missing field, plus enum list so they know which selectors to
+      // choose from.
+      expect(result.errors.some(e =>
+        e.field === 'authorized_agents[0].authorization_type' &&
+        e.message.includes('missing required field') &&
+        e.message.includes('authorization_type') &&
+        e.message.includes('property_ids') &&
+        e.message.includes('signal_tags')
+      )).toBe(true);
+      expect(result.errors.some(e => e.field === 'authorized_agents[1].authorization_type')).toBe(true);
+    });
+
+    it('rejects authorized_agents entries whose authorization_type lacks a matching selector', async () => {
+      mockedSafeFetch.mockResolvedValue({
+        status: 200,
+        data: buf({
+          authorized_agents: [
+            { url: 'https://agent.example.com', authorized_for: 'Test', authorization_type: 'property_ids' },
+          ],
+        }),
+        headers: { 'content-type': 'application/json' },
+      });
+
+      const result = await manager.validateDomain('example.com');
+
+      expect(result.valid).toBe(false);
+      expect(result.errors.some(e =>
+        e.field === 'authorized_agents[0].property_ids' &&
+        e.message.includes('missing or empty')
+      )).toBe(true);
+    });
+
+    it('rejects authorized_agents entries whose authorization_type selector is an empty array', async () => {
+      mockedSafeFetch.mockResolvedValue({
+        status: 200,
+        data: buf({
+          authorized_agents: [
+            { url: 'https://agent.example.com', authorized_for: 'Test', authorization_type: 'signal_tags', signal_tags: [] },
+          ],
+        }),
+        headers: { 'content-type': 'application/json' },
+      });
+
+      const result = await manager.validateDomain('example.com');
+
+      expect(result.valid).toBe(false);
+      expect(result.errors.some(e =>
+        e.field === 'authorized_agents[0].signal_tags' &&
+        e.message.includes('missing or empty')
+      )).toBe(true);
     });
   });
 
@@ -340,12 +1213,12 @@ describe('AdAgentsManager', () => {
         },
       ];
 
-      mockedAxios.get.mockResolvedValue({
+      mockedSafeFetch.mockResolvedValue({
         status: 200,
-        data: {
+        data: buf({
           name: 'Test Agent',
           capabilities: ['media-buy'],
-        },
+        }),
         headers: { 'content-type': 'application/json' },
       });
 
@@ -366,7 +1239,7 @@ describe('AdAgentsManager', () => {
       ];
 
       let callCount = 0;
-      mockedAxios.get.mockImplementation((url) => {
+      mockedSafeFetch.mockImplementation((url) => {
         callCount++;
         if (url === 'https://agent.example.com/.well-known/agent-card.json') {
           return Promise.resolve({
@@ -377,7 +1250,7 @@ describe('AdAgentsManager', () => {
         }
         return Promise.resolve({
           status: 200,
-          data: { name: 'Agent' },
+          data: buf({ name: 'Agent' }),
           headers: { 'content-type': 'application/json' },
         });
       });
@@ -396,10 +1269,13 @@ describe('AdAgentsManager', () => {
         },
       ];
 
-      mockedAxios.get.mockResolvedValue({
-        status: 404,
-        data: {},
-        headers: {},
+      // A2A endpoints (GET) return 404, MCP preflight (POST) fails so the
+      // MCP path bails out before the live @adcp/sdk import.
+      mockedSafeFetch.mockImplementation(async (_url, opts) => {
+        if (opts?.method === 'POST') {
+          throw new Error('Network error');
+        }
+        return { status: 404, data: buf({}), headers: {} };
       });
 
       const results = await manager.validateAgentCards(agents);
@@ -407,7 +1283,7 @@ describe('AdAgentsManager', () => {
       expect(results[0].valid).toBe(false);
       // Error is prefixed with A2A: since both protocols are tried
       expect(results[0].errors.some(e => e.includes('No agent card found'))).toBe(true);
-    }, 10000);
+    }, 20000);
 
     it('detects wrong content-type for agent card', async () => {
       const agents: AuthorizedAgent[] = [
@@ -417,16 +1293,20 @@ describe('AdAgentsManager', () => {
         },
       ];
 
-      mockedAxios.get.mockResolvedValue({
+      mockedSafeFetch.mockResolvedValue({
         status: 200,
-        data: { name: 'Agent' },
+        data: buf({ name: 'Agent' }),
         headers: { 'content-type': 'text/plain' },
       });
 
       const results = await manager.validateAgentCards(agents);
 
       expect(results[0].valid).toBe(false);
-      expect(results[0].errors.some(e => e.includes('content-type'))).toBe(true);
+      // SUT must hit the "JSON parsed but wrong content-type" branch (parsed
+      // is an object, content-type isn't application/json) — not the
+      // "couldn't parse at all" fallback. Pin the exact message so the test
+      // doesn't silently start passing through the wrong path.
+      expect(results[0].errors.some(e => e.includes('Should be application/json'))).toBe(true);
     }, 10000);
 
     it('detects HTML instead of JSON', async () => {
@@ -437,9 +1317,9 @@ describe('AdAgentsManager', () => {
         },
       ];
 
-      mockedAxios.get.mockResolvedValue({
+      mockedSafeFetch.mockResolvedValue({
         status: 200,
-        data: '<html><body>Website</body></html>',
+        data: Buffer.from('<html><body>Website</body></html>'),
         headers: { 'content-type': 'text/html' },
       });
 
@@ -461,15 +1341,19 @@ describe('AdAgentsManager', () => {
         },
       ];
 
-      mockedAxios.get.mockResolvedValue({
+      mockedSafeFetch.mockResolvedValue({
         status: 200,
-        data: { name: 'Agent' },
+        data: buf({ name: 'Agent' }),
         headers: { 'content-type': 'application/json' },
       });
 
       const results = await manager.validateAgentCards(agents);
 
       expect(results).toHaveLength(2);
+      // Pin valid:true so the parallel test exercises the JSON-parse success
+      // path, not a silently-broken Buffer.from(plainObject) fallback.
+      expect(results[0].valid).toBe(true);
+      expect(results[1].valid).toBe(true);
       expect(results[0].agent_url).toBe('https://agent1.example.com');
       expect(results[1].agent_url).toBe('https://agent2.example.com');
     });
@@ -487,7 +1371,7 @@ describe('AdAgentsManager', () => {
       const json = manager.createAdAgentsJson(agents, true, true);
       const parsed = JSON.parse(json);
 
-      expect(parsed.$schema).toBe('https://adcontextprotocol.org/schemas/v2/adagents.json');
+      expect(parsed.$schema).toBe('https://adcontextprotocol.org/schemas/v3/adagents.json');
       expect(parsed.authorized_agents).toEqual(agents);
       expect(parsed.last_updated).toBeDefined();
       expect(new Date(parsed.last_updated).toISOString()).toBe(parsed.last_updated);
@@ -534,6 +1418,32 @@ describe('AdAgentsManager', () => {
       expect(json).toContain('  '); // Contains 2-space indentation
       expect(json.split('\n').length).toBeGreaterThan(1); // Multiple lines
     });
+
+    it('round-trips v3 agent fields (exclusive, countries, effective_from/until, signing_keys)', () => {
+      const agents: AuthorizedAgent[] = [
+        {
+          url: 'https://agent.example.com',
+          authorized_for: 'Premium inventory',
+          exclusive: true,
+          countries: ['US', 'CA', 'GB'],
+          effective_from: '2025-01-01T00:00:00.000Z',
+          effective_until: '2025-12-31T23:59:59.000Z',
+          signing_keys: [{ kid: 'key-1', kty: 'OKP', crv: 'Ed25519', x: 'base64urlvalue' }],
+        },
+      ];
+
+      const json = manager.createAdAgentsJson(agents, true, true);
+      const parsed = JSON.parse(json);
+      const agent = parsed.authorized_agents[0];
+
+      expect(agent.exclusive).toBe(true);
+      expect(agent.countries).toEqual(['US', 'CA', 'GB']);
+      expect(agent.effective_from).toBe('2025-01-01T00:00:00.000Z');
+      expect(agent.effective_until).toBe('2025-12-31T23:59:59.000Z');
+      expect(agent.signing_keys).toHaveLength(1);
+      expect(agent.signing_keys[0].kid).toBe('key-1');
+      expect(agent.signing_keys[0].kty).toBe('OKP');
+    });
   });
 
   describe('URL Reference Support', () => {
@@ -545,18 +1455,20 @@ describe('AdAgentsManager', () => {
       };
 
       const authoritativeData = {
-        $schema: 'https://adcontextprotocol.org/schemas/v2/adagents.json',
+        $schema: 'https://adcontextprotocol.org/schemas/v3/adagents.json',
         authorized_agents: [
           {
             url: 'https://agent.example.com',
             authorized_for: 'Test authorization',
+            authorization_type: 'property_ids',
+            property_ids: ['p1'],
           },
         ],
         last_updated: '2025-01-15T09:00:00Z'
       };
 
       let callCount = 0;
-      mockedAxios.get.mockImplementation((url) => {
+      mockedSafeFetch.mockImplementation((url) => {
         callCount++;
         if (url.includes('/.well-known/adagents.json')) {
           return Promise.resolve({
@@ -579,10 +1491,11 @@ describe('AdAgentsManager', () => {
       expect(callCount).toBe(2); // Two requests: initial + authoritative
       expect(result.valid).toBe(true);
       expect(result.errors).toHaveLength(0);
+      expect(result.discovery_method).toBe('authoritative_location');
     });
 
     it('rejects non-HTTPS authoritative locations', async () => {
-      mockedAxios.get.mockResolvedValue({
+      mockedSafeFetch.mockResolvedValue({
         status: 200,
         data: buf({
           authoritative_location: 'http://insecure.example.com/adagents.json',
@@ -597,7 +1510,7 @@ describe('AdAgentsManager', () => {
     });
 
     it('rejects invalid authoritative locations', async () => {
-      mockedAxios.get.mockResolvedValue({
+      mockedSafeFetch.mockResolvedValue({
         status: 200,
         data: buf({
           authoritative_location: 'not-a-valid-url',
@@ -616,7 +1529,7 @@ describe('AdAgentsManager', () => {
         authoritative_location: 'https://cdn.example.com/adagents.json',
       };
 
-      mockedAxios.get.mockImplementation((url) => {
+      mockedSafeFetch.mockImplementation((url) => {
         if (url.includes('/.well-known/adagents.json')) {
           return Promise.resolve({
             status: 200,
@@ -647,7 +1560,7 @@ describe('AdAgentsManager', () => {
         authoritative_location: 'https://cdn2.example.com/adagents.json',
       };
 
-      mockedAxios.get.mockImplementation((url) => {
+      mockedSafeFetch.mockImplementation((url) => {
         if (url.includes('/.well-known/adagents.json')) {
           return Promise.resolve({
             status: 200,
@@ -675,7 +1588,7 @@ describe('AdAgentsManager', () => {
         authoritative_location: 'https://cdn.example.com/adagents.json',
       };
 
-      mockedAxios.get.mockImplementation((url) => {
+      mockedSafeFetch.mockImplementation((url) => {
         if (url.includes('/.well-known/adagents.json')) {
           return Promise.resolve({
             status: 200,
@@ -683,13 +1596,9 @@ describe('AdAgentsManager', () => {
             headers: { 'content-type': 'application/json' },
           });
         } else {
-          return Promise.reject({
-            isAxiosError: true,
-            message: 'Network error',
-          });
+          return Promise.reject(new Error('Network error'));
         }
       });
-      mockedAxios.isAxiosError = vi.fn().mockReturnValue(true);
 
       const result = await manager.validateDomain('example.com');
 
@@ -707,17 +1616,16 @@ describe('AdAgentsManager', () => {
         },
       ];
 
-      // A2A endpoints return 404, MCP preflight returns 200 with valid JSON-RPC
-      mockedAxios.get.mockResolvedValue({
-        status: 404,
-        data: {},
-        headers: {},
-      });
-      // MCP preflight POST returns non-401 so it continues to the AdCPClient path
-      mockedAxios.post.mockResolvedValue({
-        status: 200,
-        data: { jsonrpc: '2.0', result: {} },
-        headers: { 'content-type': 'application/json' },
+      // A2A endpoints (GET) return 404, MCP preflight (POST) returns 200 with valid JSON-RPC
+      mockedSafeFetch.mockImplementation(async (_url, opts) => {
+        if (opts?.method === 'POST') {
+          return {
+            status: 200,
+            data: buf({ jsonrpc: '2.0', result: {} }),
+            headers: { 'content-type': 'application/json' },
+          };
+        }
+        return { status: 404, data: buf({}), headers: {} };
       });
 
       // vi.doMock does not intercept dynamic imports inside the SUT.
@@ -740,14 +1648,13 @@ describe('AdAgentsManager', () => {
         },
       ];
 
-      // A2A endpoints return 404
-      mockedAxios.get.mockResolvedValue({
-        status: 404,
-        data: {},
-        headers: {},
+      // A2A endpoints (GET) return 404, MCP preflight (POST) fails
+      mockedSafeFetch.mockImplementation(async (_url, opts) => {
+        if (opts?.method === 'POST') {
+          throw new Error('Network error');
+        }
+        return { status: 404, data: buf({}), headers: {} };
       });
-      // MCP preflight POST fails
-      mockedAxios.post.mockRejectedValue(new Error('Network error'));
 
       const results = await manager.validateAgentCards(agents);
 
@@ -763,6 +1670,8 @@ describe('AdAgentsManager', () => {
         {
           url: 'https://agent.example.com',
           authorized_for: 'Test authorization scope',
+          authorization_type: 'property_ids',
+          property_ids: ['p1'],
         },
       ];
 
@@ -771,7 +1680,7 @@ describe('AdAgentsManager', () => {
       expect(result.valid).toBe(true);
       expect(result.errors).toHaveLength(0);
       expect(result.domain).toBe('proposed');
-      expect(mockedAxios.get).not.toHaveBeenCalled();
+      expect(mockedSafeFetch).not.toHaveBeenCalled();
     });
 
     it('detects invalid agents in proposal', () => {
@@ -802,16 +1711,83 @@ describe('AdAgentsManager', () => {
       expect(result.valid).toBe(false);
       expect(result.errors.some(e => e.field.includes('.authorized_for') && e.message.includes('required'))).toBe(true);
     });
+
+    it('accepts valid v3 agent fields', () => {
+      const agents: AuthorizedAgent[] = [
+        {
+          url: 'https://agent.example.com',
+          authorized_for: 'Premium inventory',
+          authorization_type: 'property_ids',
+          property_ids: ['p1'],
+          exclusive: true,
+          countries: ['US', 'CA'],
+          effective_from: '2025-01-01T00:00:00.000Z',
+          effective_until: '2025-12-31T23:59:59.000Z',
+          signing_keys: [{ kid: 'key-1', kty: 'OKP', crv: 'Ed25519', x: 'base64urlvalue' }],
+        },
+      ];
+
+      const result = manager.validateProposed(agents);
+
+      expect(result.valid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it('rejects invalid country codes in proposal', () => {
+      const agents: AuthorizedAgent[] = [
+        {
+          url: 'https://agent.example.com',
+          authorized_for: 'Test',
+          countries: ['us', 'USA'] as any,
+        },
+      ];
+
+      const result = manager.validateProposed(agents);
+
+      expect(result.valid).toBe(false);
+      expect(result.errors.some(e => e.field.includes('.countries') && e.message.includes('ISO 3166-1 alpha-2'))).toBe(true);
+    });
+
+    it('rejects effective_until before effective_from', () => {
+      const agents: AuthorizedAgent[] = [
+        {
+          url: 'https://agent.example.com',
+          authorized_for: 'Test',
+          effective_from: '2025-06-01T00:00:00.000Z',
+          effective_until: '2025-01-01T00:00:00.000Z',
+        },
+      ];
+
+      const result = manager.validateProposed(agents);
+
+      expect(result.valid).toBe(false);
+      expect(result.errors.some(e => e.field.includes('.effective_until'))).toBe(true);
+    });
+
+    it('rejects malformed signing_keys entries', () => {
+      const agents: AuthorizedAgent[] = [
+        {
+          url: 'https://agent.example.com',
+          authorized_for: 'Test',
+          signing_keys: [{ kty: 'OKP' } as any],
+        },
+      ];
+
+      const result = manager.validateProposed(agents);
+
+      expect(result.valid).toBe(false);
+      expect(result.errors.some(e => e.field.includes('.signing_keys') && e.message.includes('kid'))).toBe(true);
+    });
   });
 
   describe('Signals Support', () => {
     describe('validateSignal', () => {
       it('validates a valid binary signal', async () => {
-        mockedAxios.get.mockResolvedValue({
+        mockedSafeFetch.mockResolvedValue({
           status: 200,
           data: buf({
             authorized_agents: [
-              { url: 'https://agent.example.com', authorized_for: 'Test' },
+              { url: 'https://agent.example.com', authorized_for: 'Test', authorization_type: 'property_ids', property_ids: ['p1'] },
             ],
             signals: [
               {
@@ -832,11 +1808,11 @@ describe('AdAgentsManager', () => {
       });
 
       it('validates a valid categorical signal', async () => {
-        mockedAxios.get.mockResolvedValue({
+        mockedSafeFetch.mockResolvedValue({
           status: 200,
           data: buf({
             authorized_agents: [
-              { url: 'https://agent.example.com', authorized_for: 'Test' },
+              { url: 'https://agent.example.com', authorized_for: 'Test', authorization_type: 'property_ids', property_ids: ['p1'] },
             ],
             signals: [
               {
@@ -857,11 +1833,11 @@ describe('AdAgentsManager', () => {
       });
 
       it('validates a valid numeric signal with range', async () => {
-        mockedAxios.get.mockResolvedValue({
+        mockedSafeFetch.mockResolvedValue({
           status: 200,
           data: buf({
             authorized_agents: [
-              { url: 'https://agent.example.com', authorized_for: 'Test' },
+              { url: 'https://agent.example.com', authorized_for: 'Test', authorization_type: 'property_ids', property_ids: ['p1'] },
             ],
             signals: [
               {
@@ -882,11 +1858,11 @@ describe('AdAgentsManager', () => {
       });
 
       it('detects missing signal id', async () => {
-        mockedAxios.get.mockResolvedValue({
+        mockedSafeFetch.mockResolvedValue({
           status: 200,
           data: buf({
             authorized_agents: [
-              { url: 'https://agent.example.com', authorized_for: 'Test' },
+              { url: 'https://agent.example.com', authorized_for: 'Test', authorization_type: 'property_ids', property_ids: ['p1'] },
             ],
             signals: [
               {
@@ -905,11 +1881,11 @@ describe('AdAgentsManager', () => {
       });
 
       it('detects invalid signal id pattern', async () => {
-        mockedAxios.get.mockResolvedValue({
+        mockedSafeFetch.mockResolvedValue({
           status: 200,
           data: buf({
             authorized_agents: [
-              { url: 'https://agent.example.com', authorized_for: 'Test' },
+              { url: 'https://agent.example.com', authorized_for: 'Test', authorization_type: 'property_ids', property_ids: ['p1'] },
             ],
             signals: [
               {
@@ -929,11 +1905,11 @@ describe('AdAgentsManager', () => {
       });
 
       it('detects missing signal name', async () => {
-        mockedAxios.get.mockResolvedValue({
+        mockedSafeFetch.mockResolvedValue({
           status: 200,
           data: buf({
             authorized_agents: [
-              { url: 'https://agent.example.com', authorized_for: 'Test' },
+              { url: 'https://agent.example.com', authorized_for: 'Test', authorization_type: 'property_ids', property_ids: ['p1'] },
             ],
             signals: [
               {
@@ -952,11 +1928,11 @@ describe('AdAgentsManager', () => {
       });
 
       it('detects invalid value_type', async () => {
-        mockedAxios.get.mockResolvedValue({
+        mockedSafeFetch.mockResolvedValue({
           status: 200,
           data: buf({
             authorized_agents: [
-              { url: 'https://agent.example.com', authorized_for: 'Test' },
+              { url: 'https://agent.example.com', authorized_for: 'Test', authorization_type: 'property_ids', property_ids: ['p1'] },
             ],
             signals: [
               {
@@ -976,11 +1952,11 @@ describe('AdAgentsManager', () => {
       });
 
       it('warns about categorical signal without allowed_values', async () => {
-        mockedAxios.get.mockResolvedValue({
+        mockedSafeFetch.mockResolvedValue({
           status: 200,
           data: buf({
             authorized_agents: [
-              { url: 'https://agent.example.com', authorized_for: 'Test' },
+              { url: 'https://agent.example.com', authorized_for: 'Test', authorization_type: 'property_ids', property_ids: ['p1'] },
             ],
             signals: [
               {
@@ -1000,11 +1976,11 @@ describe('AdAgentsManager', () => {
       });
 
       it('validates numeric signal range min > max', async () => {
-        mockedAxios.get.mockResolvedValue({
+        mockedSafeFetch.mockResolvedValue({
           status: 200,
           data: buf({
             authorized_agents: [
-              { url: 'https://agent.example.com', authorized_for: 'Test' },
+              { url: 'https://agent.example.com', authorized_for: 'Test', authorization_type: 'property_ids', property_ids: ['p1'] },
             ],
             signals: [
               {
@@ -1025,11 +2001,11 @@ describe('AdAgentsManager', () => {
       });
 
       it('validates standard signal category', async () => {
-        mockedAxios.get.mockResolvedValue({
+        mockedSafeFetch.mockResolvedValue({
           status: 200,
           data: buf({
             authorized_agents: [
-              { url: 'https://agent.example.com', authorized_for: 'Test' },
+              { url: 'https://agent.example.com', authorized_for: 'Test', authorization_type: 'property_ids', property_ids: ['p1'] },
             ],
             signals: [
               {
@@ -1050,11 +2026,11 @@ describe('AdAgentsManager', () => {
       });
 
       it('warns about non-standard signal category', async () => {
-        mockedAxios.get.mockResolvedValue({
+        mockedSafeFetch.mockResolvedValue({
           status: 200,
           data: buf({
             authorized_agents: [
-              { url: 'https://agent.example.com', authorized_for: 'Test' },
+              { url: 'https://agent.example.com', authorized_for: 'Test', authorization_type: 'property_ids', property_ids: ['p1'] },
             ],
             signals: [
               {
@@ -1075,11 +2051,11 @@ describe('AdAgentsManager', () => {
       });
 
       it('errors when signal category is not a string', async () => {
-        mockedAxios.get.mockResolvedValue({
+        mockedSafeFetch.mockResolvedValue({
           status: 200,
           data: buf({
             authorized_agents: [
-              { url: 'https://agent.example.com', authorized_for: 'Test' },
+              { url: 'https://agent.example.com', authorized_for: 'Test', authorization_type: 'property_ids', property_ids: ['p1'] },
             ],
             signals: [
               {
@@ -1102,11 +2078,11 @@ describe('AdAgentsManager', () => {
 
     describe('signal_tags validation', () => {
       it('validates valid signal_tags', async () => {
-        mockedAxios.get.mockResolvedValue({
+        mockedSafeFetch.mockResolvedValue({
           status: 200,
           data: buf({
             authorized_agents: [
-              { url: 'https://agent.example.com', authorized_for: 'Test' },
+              { url: 'https://agent.example.com', authorized_for: 'Test', authorization_type: 'property_ids', property_ids: ['p1'] },
             ],
             signals: [
               { id: 'test', name: 'Test', value_type: 'binary', tags: ['automotive'] },
@@ -1124,11 +2100,11 @@ describe('AdAgentsManager', () => {
       });
 
       it('warns about signal tags used but not defined', async () => {
-        mockedAxios.get.mockResolvedValue({
+        mockedSafeFetch.mockResolvedValue({
           status: 200,
           data: buf({
             authorized_agents: [
-              { url: 'https://agent.example.com', authorized_for: 'Test' },
+              { url: 'https://agent.example.com', authorized_for: 'Test', authorization_type: 'property_ids', property_ids: ['p1'] },
             ],
             signals: [
               { id: 'test', name: 'Test', value_type: 'binary', tags: ['undefined_tag'] },
@@ -1144,11 +2120,11 @@ describe('AdAgentsManager', () => {
       });
 
       it('detects duplicate signal IDs', async () => {
-        mockedAxios.get.mockResolvedValue({
+        mockedSafeFetch.mockResolvedValue({
           status: 200,
           data: buf({
             authorized_agents: [
-              { url: 'https://agent.example.com', authorized_for: 'Test' },
+              { url: 'https://agent.example.com', authorized_for: 'Test', authorization_type: 'property_ids', property_ids: ['p1'] },
             ],
             signals: [
               { id: 'duplicate_id', name: 'Signal 1', value_type: 'binary' },
@@ -1167,7 +2143,7 @@ describe('AdAgentsManager', () => {
 
     describe('signal authorization types', () => {
       it('validates signal_ids authorization type', async () => {
-        mockedAxios.get.mockResolvedValue({
+        mockedSafeFetch.mockResolvedValue({
           status: 200,
           data: buf({
             authorized_agents: [
@@ -1192,7 +2168,7 @@ describe('AdAgentsManager', () => {
       });
 
       it('validates signal_tags authorization type', async () => {
-        mockedAxios.get.mockResolvedValue({
+        mockedSafeFetch.mockResolvedValue({
           status: 200,
           data: buf({
             authorized_agents: [
@@ -1219,7 +2195,7 @@ describe('AdAgentsManager', () => {
       });
 
       it('warns when signal_ids authorization has no matching signals', async () => {
-        mockedAxios.get.mockResolvedValue({
+        mockedSafeFetch.mockResolvedValue({
           status: 200,
           data: buf({
             authorized_agents: [
@@ -1243,8 +2219,8 @@ describe('AdAgentsManager', () => {
         expect(result.warnings.some(w => w.message.includes('nonexistent_signal'))).toBe(true);
       });
 
-      it('warns when signal_ids authorization type but no signal_ids array', async () => {
-        mockedAxios.get.mockResolvedValue({
+      it('errors when signal_ids authorization type but no signal_ids array (v3 schema)', async () => {
+        mockedSafeFetch.mockResolvedValue({
           status: 200,
           data: buf({
             authorized_agents: [
@@ -1260,12 +2236,17 @@ describe('AdAgentsManager', () => {
 
         const result = await manager.validateDomain('polk.com');
 
-        expect(result.valid).toBe(true);
-        expect(result.warnings.some(w => w.message.includes('signal_ids') && w.message.includes('no signal_ids provided'))).toBe(true);
+        // v3 schema requires a non-empty signal_ids selector when
+        // authorization_type is 'signal_ids' — see issue #4476.
+        expect(result.valid).toBe(false);
+        expect(result.errors.some(e =>
+          e.field === 'authorized_agents[0].signal_ids' &&
+          e.message.includes('missing or empty')
+        )).toBe(true);
       });
 
       it('errors when signal_ids is not an array', async () => {
-        mockedAxios.get.mockResolvedValue({
+        mockedSafeFetch.mockResolvedValue({
           status: 200,
           data: buf({
             authorized_agents: [
@@ -1362,7 +2343,7 @@ describe('AdAgentsManager', () => {
         });
         const parsed = JSON.parse(json);
 
-        expect(parsed.$schema).toBe('https://adcontextprotocol.org/schemas/v2/adagents.json');
+        expect(parsed.$schema).toBe('https://adcontextprotocol.org/schemas/v3/adagents.json');
         expect(parsed.last_updated).toBeUndefined();
         expect(parsed.signals).toHaveLength(1);
         expect(parsed.signals[0].id).toBe('likely_ev_buyers');
@@ -1380,7 +2361,7 @@ describe('AdAgentsManager', () => {
         });
         const parsed = JSON.parse(json);
 
-        expect(parsed.$schema).toBe('https://adcontextprotocol.org/schemas/v2/adagents.json');
+        expect(parsed.$schema).toBe('https://adcontextprotocol.org/schemas/v3/adagents.json');
         expect(parsed.last_updated).toBeDefined();
       });
     });

@@ -1,0 +1,4 @@
+---
+---
+
+`/api/registry/publisher` now trusts the publisher's live `/.well-known/adagents.json` over a stale `hosted_properties` opt-in row when computing `hosting.mode`. A publisher who once opted into AAO hosting and later migrated to self-hosting was being reported as `aao_hosted` indefinitely; the route now reads `authoritative_location` from the cached origin response and only reports `aao_hosted` when the publisher's stub actually points at AAO. Properties surfaced through the federated index now carry `source: "adagents_json"` (instead of the misleading hardcoded `"discovered"`) when the publisher's adagents.json validates. Stale `brand_json` rows older than an hour bypass the auto-crawl debounce so popular publishers whose `brand.json` went live after the first crawl don't stay stuck on `unknown`. The publisher page also honors a `?return=` query parameter (same-origin / localhost only) to render a back link when opened from a partner storefront.

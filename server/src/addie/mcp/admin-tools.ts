@@ -18,6 +18,7 @@ import { ToolError } from '../tool-error.js';
 import type { AddieTool } from '../types.js';
 import { COMMITTEE_TYPE_LABELS, VALID_MEMBER_OFFERINGS } from '../../types.js';
 import type { MemberContext } from '../member-context.js';
+import { FREE_EMAIL_PROVIDER_DOMAINS } from '../../services/identifier-normalization.js';
 // invalidateMemberContextCache is imported lazily in the two handlers that
 // call it (see below). Top-level import would pull member-context.ts, which
 // imports middleware/auth.ts, which constructs a WorkOS client at module load
@@ -30,7 +31,9 @@ import { WorkingGroupDatabase } from '../../db/working-group-db.js';
 import { getPool, escapeLikePattern } from '../../db/client.js';
 import { MemberSearchAnalyticsDatabase } from '../../db/member-search-analytics-db.js';
 import { MemberDatabase } from '../../db/member-db.js';
+import { normalizeFoundingMemberGrant, foundingMemberFieldsTouched } from '../../services/founding-member-grant.js';
 import { BrandDatabase } from '../../db/brand-db.js';
+import { coerceStringArray } from './input-coercion.js';
 import {
   getPendingInvoices,
   getAllOpenInvoices,
@@ -1456,7 +1459,16 @@ For logo changes, use update_member_logo instead.`,
         },
         is_public: { type: 'boolean', description: 'Whether profile is visible in the public member directory.' },
         show_in_carousel: { type: 'boolean', description: 'Whether profile appears in the homepage carousel.' },
-        is_founding_member: { type: 'boolean', description: 'Whether this member has founding member status. Admin-only. Use to grant founding status to members who joined late due to billing or other issues.' },
+        is_founding_member: { type: 'boolean', description: 'Whether this member has founding member status. Admin-only. Setting true requires founding_member_source.' },
+        founding_member_source: {
+          type: 'string',
+          enum: ['auto_pre_cutoff', 'manual_grandfather'],
+          description: 'Provenance for the founding member flag. Use "manual_grandfather" for admin overrides outside the auto-cutoff window.',
+        },
+        founding_member_granted_reason: {
+          type: 'string',
+          description: 'Free-text reason for a manual grandfather grant (e.g., "site issues blocked pre-deadline enrollment"). Recorded for audit.',
+        },
       },
     },
   },
@@ -5190,13 +5202,14 @@ Use add_committee_leader to assign a leader.`;
 
         response += `### Data Moved\n`;
         const totalMoved = result.tables_merged.reduce((sum, t) => sum + t.rows_moved, 0);
-        const totalSkipped = result.tables_merged.reduce((sum, t) => sum + t.rows_skipped_duplicate, 0);
+        const totalSkipped = result.tables_merged.reduce((sum, t) => sum + (t.rows_skipped_duplicate ?? 0), 0);
 
         for (const table of result.tables_merged) {
-          if (table.rows_moved > 0 || table.rows_skipped_duplicate > 0) {
+          const skipped = table.rows_skipped_duplicate ?? 0;
+          if (table.rows_moved > 0 || skipped > 0) {
             response += `- **${table.table_name}**: ${table.rows_moved} moved`;
-            if (table.rows_skipped_duplicate > 0) {
-              response += ` (${table.rows_skipped_duplicate} skipped as duplicates)`;
+            if (skipped > 0) {
+              response += ` (${skipped} skipped as duplicates)`;
             }
             response += `\n`;
           }
@@ -5792,12 +5805,7 @@ Use add_committee_leader to assign a leader.`;
     const limit = Math.min(Math.max((input.limit as number) || 20, 1), 100);
     const pool = getPool();
 
-    // Common free email providers to exclude
-    const freeEmailDomains = [
-      'gmail.com', 'googlemail.com', 'yahoo.com', 'yahoo.co.uk', 'hotmail.com',
-      'outlook.com', 'live.com', 'msn.com', 'aol.com', 'icloud.com', 'me.com',
-      'mac.com', 'protonmail.com', 'proton.me', 'mail.com', 'zoho.com',
-    ];
+    const freeEmailDomains = FREE_EMAIL_PROVIDER_DOMAINS;
 
     let response = `## Domain Health Check\n\n`;
     let issueCount = 0;
@@ -6108,12 +6116,15 @@ Use add_committee_leader to assign a leader.`;
     const pool = getPool();
     const limit = Math.min((input.limit as number) || 10, 20);
     const includeLusha = input.include_lusha !== false;
-    const lushaKeywords = (input.lusha_keywords as string[]) || ['programmatic', 'DSP', 'ad tech'];
+    const lushaKeywords = input.lusha_keywords === undefined
+      ? ['programmatic', 'DSP', 'ad tech']
+      : coerceStringArray(input.lusha_keywords);
 
     let response = `## Suggested Prospects\n\n`;
 
     // 1. Find unmapped corporate domains (already engaged, high value)
     try {
+      const freePlaceholders = FREE_EMAIL_PROVIDER_DOMAINS.map((_, i) => `$${i + 1}`).join(', ');
       const unmappedResult = await pool.query(`
         WITH corporate_domains AS (
           -- Extract domains from Slack users not in personal orgs
@@ -6123,13 +6134,7 @@ Use add_committee_leader to assign a leader.`;
           FROM slack_user_mappings sm
           WHERE sm.slack_email IS NOT NULL
             AND sm.slack_is_bot IS NOT TRUE
-            -- Exclude common personal email domains
-            AND LOWER(sm.slack_email) NOT LIKE '%@gmail.com'
-            AND LOWER(sm.slack_email) NOT LIKE '%@yahoo.com'
-            AND LOWER(sm.slack_email) NOT LIKE '%@hotmail.com'
-            AND LOWER(sm.slack_email) NOT LIKE '%@outlook.com'
-            AND LOWER(sm.slack_email) NOT LIKE '%@icloud.com'
-            AND LOWER(sm.slack_email) NOT LIKE '%@aol.com'
+            AND LOWER(SUBSTRING(sm.slack_email FROM POSITION('@' IN sm.slack_email) + 1)) NOT IN (${freePlaceholders})
           GROUP BY domain
         )
         SELECT
@@ -6147,8 +6152,8 @@ Use add_committee_leader to assign a leader.`;
           WHERE o.email_domain = cd.domain
         )
         ORDER BY cd.user_count DESC
-        LIMIT $1
-      `, [limit]);
+        LIMIT $${FREE_EMAIL_PROVIDER_DOMAINS.length + 1}
+      `, [...FREE_EMAIL_PROVIDER_DOMAINS, limit]);
 
       if (unmappedResult.rows.length > 0) {
         response += `### 🎯 Unmapped Domains (Already in Slack!)\n\n`;
@@ -7929,7 +7934,25 @@ Use add_committee_leader to assign a leader.`;
 
       if (input.is_founding_member !== undefined) {
         updates.is_founding_member = input.is_founding_member;
-        updatedFields.push('is_founding_member');
+      }
+      if (input.founding_member_source !== undefined) {
+        updates.founding_member_source = input.founding_member_source;
+      }
+      if (input.founding_member_granted_reason !== undefined) {
+        updates.founding_member_granted_reason = input.founding_member_granted_reason;
+      }
+
+      const foundingError = normalizeFoundingMemberGrant(updates);
+      if (foundingError) {
+        return `❌ ${foundingError.message}`;
+      }
+      // Mirror everything the helper actually wrote — including the
+      // server-set granted_at and any cleared metadata on revoke — so the
+      // user-facing report doesn't lie about which columns changed.
+      for (const field of foundingMemberFieldsTouched(updates)) {
+        if (!updatedFields.includes(field)) {
+          updatedFields.push(field);
+        }
       }
 
       if (updatedFields.length === 0) {

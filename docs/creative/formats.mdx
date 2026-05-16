@@ -377,6 +377,25 @@ Each asset type has its own requirements schema that defines what constraints ap
 - `min_lines`, `max_lines` - Line count limits
 - `character_pattern` - Regex for allowed characters
 - `prohibited_terms` - Words/phrases not allowed
+- `allowed_values` - Closed list of permitted strings; submissions outside the list are rejected with `CREATIVE_VALUE_NOT_ALLOWED`
+
+**Closed-set text example (legal/brand-approved CTA list):**
+
+```json
+{
+  "asset_id": "cta_label",
+  "asset_type": "text",
+  "required": true,
+  "requirements": {
+    "max_length": 14,
+    "allowed_values": ["Shop Now", "Learn More", "Get Quote", "Find a Provider"]
+  }
+}
+```
+
+Sellers in regulated verticals (pharma, financial services) and brand-controlled programs use `allowed_values` to expose the exact strings legal or brand has pre-approved. All declared constraints are conjunctive (every allowed value must also satisfy `max_length`, `character_pattern`, etc.) and matching is case-sensitive — buyers MUST submit one of the listed strings verbatim. Buyer agents using LLMs to fill text slots should pass `allowed_values` as a constrained-sampling option rather than generating freely and retrying after rejection.
+
+When a submitted value is not in the list, sellers MUST return `CREATIVE_VALUE_NOT_ALLOWED` with `error.field` pointing at the offending asset path and `error.details.allowed_values` echoing the format's list so the buyer can re-prompt deterministically.
 
 **URL assets** (`asset_type: "url"`):
 - `role` - Standard purpose (clickthrough, impression_tracker, click_tracker, etc.)

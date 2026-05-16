@@ -1,10 +1,17 @@
-import { FederatedIndexDatabase, type DiscoveredAgent, type DiscoveredPublisher, type AgentPublisherAuthorization, type DiscoveredProperty, type PropertyIdentifier, type PublisherPropertySelector } from './db/federated-index-db.js';
+import { FederatedIndexDatabase, type AgentPublisherAuthorization, type DiscoveredProperty, type PropertyIdentifier, type PublisherPropertySelector } from './db/federated-index-db.js';
 import { MemberDatabase } from './db/member-db.js';
+import { canonicalizeAgentUrl } from './db/publisher-db.js';
 import type { FederatedAgent, FederatedPublisher, DomainLookupResult, AgentType } from './types.js';
 
 /**
- * Service layer for federated agent/publisher discovery.
- * Merges registered data (from member_profiles) with discovered data (from crawling).
+ * Service layer for the federated agent/publisher registry.
+ *
+ * The registry surface (listAllAgents, listAllPublishers) returns only
+ * agents/publishers that AAO members have explicitly enrolled on their
+ * member profile. The crawler still populates the `discovered_agents` /
+ * `discovered_publishers` tables to support the publisher-authorization
+ * graph (lookupDomain, hasValidAdagents) — those tables back internal
+ * relationship queries, not the public registry contract.
  */
 export class FederatedIndexService {
   private db: FederatedIndexDatabase;
@@ -20,8 +27,7 @@ export class FederatedIndexService {
   // ============================================
 
   /**
-   * List all agents (registered + discovered), optionally filtered by type.
-   * Registered agents take precedence for deduplication.
+   * List all registered agents, optionally filtered by type.
    *
    * `includeMembersOnly` expands the visibility filter to also include
    * `members_only` agents — for authenticated member callers the registry
@@ -32,33 +38,14 @@ export class FederatedIndexService {
     options: { includeMembersOnly?: boolean } = {},
   ): Promise<FederatedAgent[]> {
     const { includeMembersOnly = false } = options;
-    // Get registered agents from member profiles
-    const profiles = await this.memberDb.listProfiles({ is_public: true });
+    // Walk every member profile. `member_profiles.is_public` is the
+    // member-directory gate (per migration 011: "Show in member
+    // directory") and predates per-agent `visibility`; gating registry
+    // listings on it as well silently hides agents that the owner
+    // explicitly marked public. Agent-level `visibility` is the only
+    // gate for whether an agent is listed.
+    const profiles = await this.memberDb.listProfiles({});
     const registeredAgents = new Map<string, FederatedAgent>();
-
-    // Build a publisher-domain -> member-ref index from the same profiles
-    // we already loaded. Used to populate `endorsed_by_publisher_member`
-    // on discovered agents whose publisher_domain is claimed by a member
-    // (option C from issue #3547 / Problem 6 of #3538). Reuses the loaded
-    // profiles instead of re-querying — no extra DB round-trip.
-    const publisherToMember = new Map<
-      string,
-      { slug: string; display_name: string }
-    >();
-    for (const profile of profiles) {
-      for (const pubConfig of profile.publishers || []) {
-        if (!pubConfig.is_public) continue;
-        // First member that claims a publisher_domain wins. In practice
-        // publisher_domain ownership is unique per profile; collisions are
-        // a registry data-quality bug, not a runtime concern.
-        if (!publisherToMember.has(pubConfig.domain)) {
-          publisherToMember.set(pubConfig.domain, {
-            slug: profile.slug,
-            display_name: profile.display_name,
-          });
-        }
-      }
-    }
 
     for (const profile of profiles) {
       for (const agentConfig of profile.agents || []) {
@@ -69,12 +56,16 @@ export class FederatedIndexService {
         const agentType = agentConfig.type || 'unknown';
         if (type && agentType !== type) continue;
 
-        registeredAgents.set(agentConfig.url, {
-          url: agentConfig.url,
+        // Canonicalize the map key so two registrations differing only in
+        // case / trailing slash collapse to a single entry (issue #3573).
+        // Fall back to the raw url if canonicalization rejects (legacy
+        // whitespace etc.) so we never silently drop a stored agent.
+        const key = canonicalizeAgentUrl(agentConfig.url) ?? agentConfig.url;
+        registeredAgents.set(key, {
+          url: key,
           name: agentConfig.name || profile.display_name,
           type: agentType as FederatedAgent['type'],
           protocol: 'mcp',
-          source: 'registered',
           member: {
             slug: profile.slug,
             display_name: profile.display_name,
@@ -83,69 +74,17 @@ export class FederatedIndexService {
       }
     }
 
-    // Get discovered agents
-    const discoveredAgents = await this.db.getAllDiscoveredAgents(type);
-
-    // Bulk-fetch first authorization for all discovered agents in a single query
-    const agentUrls = discoveredAgents.map(a => a.agent_url);
-    const allAuths = await this.db.bulkGetFirstAuthForAgents(agentUrls);
-
-    // Merge: agent_url collapses across registered + discovered when
-    // both signals exist; registered wins. The skip below is the
-    // collapse behaviour referenced by option B in issue #3547.
-    const result: FederatedAgent[] = Array.from(registeredAgents.values());
-
-    for (const discovered of discoveredAgents) {
-      if (registeredAgents.has(discovered.agent_url)) {
-        continue; // Skip if already registered
-      }
-
-      const auth = allAuths.get(discovered.agent_url);
-      const publisherDomain = auth?.publisher_domain || discovered.source_domain;
-
-      // Option C / option A: if the publisher_domain is claimed by an
-      // AAO member, surface the endorsement signal. Agent stays
-      // source='discovered' — the publisher endorsed it, the agent
-      // itself didn't opt in.
-      const endorsingMember = publisherDomain
-        ? publisherToMember.get(publisherDomain)
-        : undefined;
-
-      result.push({
-        url: discovered.agent_url,
-        name: discovered.name,
-        type: (discovered.agent_type as FederatedAgent['type']) || 'unknown',
-        protocol: (discovered.protocol as 'mcp' | 'a2a') || 'mcp',
-        source: 'discovered',
-        discovered_from: auth ? {
-          publisher_domain: auth.publisher_domain,
-          authorized_for: auth.authorized_for,
-        } : {
-          publisher_domain: discovered.source_domain,
-        },
-        ...(endorsingMember && publisherDomain
-          ? {
-              endorsed_by_publisher_member: {
-                slug: endorsingMember.slug,
-                display_name: endorsingMember.display_name,
-                publisher_domain: publisherDomain,
-              },
-            }
-          : {}),
-        discovered_at: discovered.discovered_at?.toISOString(),
-      });
-    }
-
-    return result;
+    return Array.from(registeredAgents.values());
   }
 
   /**
-   * List all publishers (registered + discovered).
-   * Registered publishers take precedence for deduplication.
+   * List all registered publishers.
    */
   async listAllPublishers(): Promise<FederatedPublisher[]> {
-    // Get registered publishers from member profiles
-    const profiles = await this.memberDb.listProfiles({ is_public: true });
+    // Walk every member profile — see `listAllAgents` above for why
+    // `member_profiles.is_public` is the wrong gate. Each publisher's
+    // own `is_public` flag is what decides whether it's listed.
+    const profiles = await this.memberDb.listProfiles({});
     const registeredPublishers = new Map<string, FederatedPublisher>();
 
     for (const profile of profiles) {
@@ -154,7 +93,6 @@ export class FederatedIndexService {
 
         registeredPublishers.set(pubConfig.domain, {
           domain: pubConfig.domain,
-          source: 'registered',
           member: {
             slug: profile.slug,
             display_name: profile.display_name,
@@ -165,29 +103,7 @@ export class FederatedIndexService {
       }
     }
 
-    // Get discovered publishers
-    const discoveredPublishers = await this.db.getAllDiscoveredPublishers();
-
-    // Merge: registered takes precedence
-    const result: FederatedPublisher[] = Array.from(registeredPublishers.values());
-
-    for (const discovered of discoveredPublishers) {
-      if (registeredPublishers.has(discovered.domain)) {
-        continue; // Skip if already registered
-      }
-
-      result.push({
-        domain: discovered.domain,
-        source: 'discovered',
-        discovered_from: {
-          agent_url: discovered.discovered_by_agent,
-        },
-        has_valid_adagents: discovered.has_valid_adagents,
-        discovered_at: discovered.discovered_at?.toISOString(),
-      });
-    }
-
-    return result;
+    return Array.from(registeredPublishers.values());
   }
 
   // ============================================
@@ -198,14 +114,21 @@ export class FederatedIndexService {
    * Lookup a domain to find all authorized agents and sales agents claiming it.
    */
   async lookupDomain(domain: string): Promise<DomainLookupResult> {
-    // Build a map of registered agents for enrichment
-    const profiles = await this.memberDb.listProfiles({ is_public: true });
+    // Build a map of registered agents for enrichment. Agent-level
+    // `visibility = 'public'` is the gate; the parent profile's
+    // `is_public` only controls the member directory listing.
+    const profiles = await this.memberDb.listProfiles({});
     const registeredAgentUrls = new Map<string, { slug: string; display_name: string }>();
 
+    // Key the enrichment map on canonical form (issue #3573) so a registered
+    // `https://Example.com/` matches a discovered `https://example.com`.
+    // Fall back to the raw url if canonicalization rejects so legacy
+    // non-canonical rows still enrich.
     for (const profile of profiles) {
       for (const agentConfig of profile.agents || []) {
         if (agentConfig.visibility === 'public') {
-          registeredAgentUrls.set(agentConfig.url, {
+          const key = canonicalizeAgentUrl(agentConfig.url) ?? agentConfig.url;
+          registeredAgentUrls.set(key, {
             slug: profile.slug,
             display_name: profile.display_name,
           });
@@ -218,23 +141,23 @@ export class FederatedIndexService {
     const authorizedAgents = authorizations
       .filter(auth => auth.source === 'adagents_json')
       .map(auth => {
-        const member = registeredAgentUrls.get(auth.agent_url);
+        const lookupKey = canonicalizeAgentUrl(auth.agent_url) ?? auth.agent_url;
+        const member = registeredAgentUrls.get(lookupKey);
         return {
           url: auth.agent_url,
           authorized_for: auth.authorized_for,
-          source: member ? 'registered' as const : 'discovered' as const,
-          member,
+          ...(member ? { member } : {}),
         };
       });
 
     // Get sales agents claiming this domain
     const claims = await this.db.getSalesAgentsClaimingDomain(domain);
     const salesAgentsClaiming = claims.map(claim => {
-      const member = registeredAgentUrls.get(claim.discovered_by_agent);
+      const lookupKey = canonicalizeAgentUrl(claim.discovered_by_agent) ?? claim.discovered_by_agent;
+      const member = registeredAgentUrls.get(lookupKey);
       return {
         url: claim.discovered_by_agent,
-        source: member ? 'registered' as const : 'discovered' as const,
-        member,
+        ...(member ? { member } : {}),
       };
     });
 
@@ -280,11 +203,15 @@ export class FederatedIndexService {
   async getAllAgentDomainPairs(): Promise<Map<string, Set<string>>> {
     const pairs = await this.db.getAllAgentDomainPairs();
     const result = new Map<string, Set<string>>();
+    // Canonicalize so legacy raw rows in the DB (the write path stores
+    // verbatim; SQL canonicalizes on read but not on bulk fetch) collapse
+    // into one key when a caller looks up by canonical form (issue #3573).
     for (const { agent_url, publisher_domain } of pairs) {
-      let domains = result.get(agent_url);
+      const key = canonicalizeAgentUrl(agent_url) ?? agent_url;
+      let domains = result.get(key);
       if (!domains) {
         domains = new Set();
-        result.set(agent_url, domains);
+        result.set(key, domains);
       }
       domains.add(publisher_domain);
     }
@@ -319,6 +246,29 @@ export class FederatedIndexService {
       property_ids: propertyIds,
       source: 'adagents_json',
     });
+  }
+
+  /**
+   * Reconcile the adagents_json authorization rows for a publisher
+   * after a successful crawl. Hard-deletes legacy rows where
+   * source='adagents_json' and the canonical agent_url is no longer in
+   * the manifest's authorized_agents list — this is how an agent that
+   * the publisher REMOVED from their /.well-known stops appearing in
+   * the federated index. agent_claim rows are untouched: a removal
+   * from one publisher's adagents.json must not erase the agent's
+   * own first-party claims of authorization elsewhere.
+   *
+   * The crawler must call this once per domain after the per-agent
+   * upsert loop. `currentAgentUrls` is the canonical-form (lowercased,
+   * trailing slashes stripped) list of agents in the freshly-crawled
+   * manifest; an empty list is valid and will delete every prior
+   * adagents_json row for the publisher.
+   */
+  async reconcileAdagentsAuthorizations(
+    publisherDomain: string,
+    currentAgentUrls: string[],
+  ): Promise<void> {
+    await this.db.reconcileAdagentsAuthorizations(publisherDomain, currentAgentUrls);
   }
 
   /**
@@ -535,8 +485,10 @@ export class FederatedIndexService {
     authorizations_by_source: { adagents_json: number; agent_claim: number };
     properties_by_type: Record<string, number>;
   }> {
-    // Count registered
-    const profiles = await this.memberDb.listProfiles({ is_public: true });
+    // Count registered (the public registry surface). Match
+    // `listAllAgents` / `listAllPublishers` and let agent-/publisher-
+    // level visibility decide what counts.
+    const profiles = await this.memberDb.listProfiles({});
     let registeredAgents = 0;
     let registeredPublishers = 0;
 
@@ -545,7 +497,9 @@ export class FederatedIndexService {
       registeredPublishers += (profile.publishers || []).filter(p => p.is_public).length;
     }
 
-    // Get discovered stats
+    // discovered_* counts back the publisher-authorization graph
+    // (lookupDomain, hasValidAdagents) — not the public registry surface.
+    // Public registry counts are registered_*.
     const dbStats = await this.db.getStats();
 
     return {

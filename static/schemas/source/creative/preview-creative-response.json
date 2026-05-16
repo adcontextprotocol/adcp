@@ -8,6 +8,9 @@
       "$ref": "/schemas/core/version-envelope.json"
     }
   ],
+  "discriminator": {
+    "propertyName": "response_type"
+  },
   "oneOf": [
     {
       "title": "PreviewCreativeSingleResponse",

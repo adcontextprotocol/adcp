@@ -2372,7 +2372,7 @@ describe('build_creative pricing', () => {
     // To test without pricing, we'd need a different session setup
   });
 
-  it('returns NOT_FOUND for unknown creative_id', async () => {
+  it('returns CREATIVE_NOT_FOUND for unknown creative_id', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result, isError } = await simulateCallTool(server, 'build_creative', {
       account,
@@ -2381,7 +2381,7 @@ describe('build_creative pricing', () => {
 
     // MCP layer wraps errors via adcpError, simulateCallTool unwraps adcp_error
     expect(isError).toBe(true);
-    expect(result.code).toBe('NOT_FOUND');
+    expect(result.code).toBe('CREATIVE_NOT_FOUND');
   });
 
   it('video formats get higher CPM', async () => {
@@ -2491,7 +2491,7 @@ describe('report_usage handler', () => {
 
     // All records rejected → MCP wraps as error
     expect(isError).toBe(true);
-    expect(result.code).toBe('NOT_FOUND');
+    expect(result.code).toBe('CREATIVE_NOT_FOUND');
   });
 
   it('returns INVALID_PRICING_OPTION when pricing_option_id mismatches', async () => {
@@ -2577,10 +2577,10 @@ describe('report_usage handler', () => {
     expect(result.accepted).toBe(1);
     const rejected = result.rejected as Array<Record<string, unknown>>;
     expect(rejected).toHaveLength(1);
-    expect(rejected[0].code).toBe('NOT_FOUND');
+    expect(rejected[0].code).toBe('CREATIVE_NOT_FOUND');
   });
 
-  it('returns NOT_FOUND for unknown signal_agent_segment_id', async () => {
+  it('returns SIGNAL_NOT_FOUND for unknown signal_agent_segment_id', async () => {
     const server = createTrainingAgentServer(DEFAULT_CTX);
     const { result, isError } = await simulateCallTool(server, 'report_usage', {
       account,
@@ -2596,7 +2596,7 @@ describe('report_usage handler', () => {
     });
 
     expect(isError).toBe(true);
-    expect(result.code).toBe('NOT_FOUND');
+    expect(result.code).toBe('SIGNAL_NOT_FOUND');
     expect(result.message).toContain('nonexistent_segment');
   });
 
@@ -4773,6 +4773,138 @@ describe('get_adcp_capabilities handler', () => {
     expect(channels).toEqual(publisherChannels);
     expect(channels.length).toBeGreaterThan(4);
   });
+
+  // request_signing — wire shape splits AdCP operation names from JSON-RPC
+  // protocol method names per adcp#4318. The default sandbox route advertises
+  // an empty required_for; the strict route advertises both buckets so a
+  // buyer that signs `create_media_buy` but forgets `tasks/cancel` gets a
+  // 401 instead of silent acceptance (adcp#4314).
+  it('default route emits empty required_for and no protocol_methods buckets', async () => {
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+    const { result } = await simulateCallTool(server, 'get_adcp_capabilities', {});
+    const rs = result.request_signing as Record<string, unknown>;
+    expect(rs.supported).toBe(true);
+    expect(rs.required_for).toEqual([]);
+    expect(rs.protocol_methods_required_for).toBeUndefined();
+    expect(rs.protocol_methods_supported_for).toBeUndefined();
+    // supported_for advertises every mutating tool; none should be a JSON-RPC method.
+    const supportedFor = rs.supported_for as string[];
+    expect(supportedFor.length).toBeGreaterThan(0);
+    expect(supportedFor.every(op => !op.includes('/'))).toBe(true);
+  });
+
+  it('strict route emits AdCP names in required_for and JSON-RPC methods in protocol_methods_required_for', async () => {
+    const server = createTrainingAgentServer({ mode: 'open', strict: true });
+    const { result } = await simulateCallTool(server, 'get_adcp_capabilities', {});
+    const rs = result.request_signing as Record<string, unknown>;
+
+    expect(rs.supported).toBe(true);
+    const requiredFor = rs.required_for as string[];
+    expect(requiredFor).toContain('create_media_buy');
+    expect(requiredFor).toContain('update_media_buy');
+    expect(requiredFor).toContain('sync_creatives');
+    // Wire shape — namespace is enforced by absence of `/`.
+    expect(requiredFor.every(op => !op.includes('/'))).toBe(true);
+
+    expect(rs.protocol_methods_required_for).toEqual(['tasks/cancel']);
+    expect(rs.protocol_methods_supported_for).toEqual(['tasks/cancel']);
+
+    // Cross-namespace leak guard.
+    const supportedFor = rs.supported_for as string[];
+    expect(supportedFor.every(op => !op.includes('/'))).toBe(true);
+  });
+});
+
+// mcpOperationResolver — namespace-aware resolver that returns the AdCP tool
+// name for `tools/call` AND the bare JSON-RPC method name for protocol methods
+// like `tasks/cancel`. Used by the strict-route pre-check so unsigned calls to
+// either namespace surface `request_signature_required` (adcp#4318).
+describe('mcpOperationResolver', () => {
+  it('returns the tool name for tools/call', async () => {
+    const { mcpOperationResolver } = await import('../../src/training-agent/request-signing.js');
+    const rawBody = JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'tools/call',
+      params: { name: 'create_media_buy', arguments: {} },
+      id: 1,
+    });
+    expect(mcpOperationResolver({ rawBody })).toBe('create_media_buy');
+  });
+
+  it('returns the JSON-RPC method name for tasks/cancel', async () => {
+    const { mcpOperationResolver } = await import('../../src/training-agent/request-signing.js');
+    const rawBody = JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'tasks/cancel',
+      params: { taskId: 'task-1' },
+      id: 1,
+    });
+    expect(mcpOperationResolver({ rawBody })).toBe('tasks/cancel');
+  });
+
+  it('returns the JSON-RPC method name for tasks/get', async () => {
+    const { mcpOperationResolver } = await import('../../src/training-agent/request-signing.js');
+    const rawBody = JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'tasks/get',
+      params: { taskId: 'task-1' },
+      id: 1,
+    });
+    expect(mcpOperationResolver({ rawBody })).toBe('tasks/get');
+  });
+
+  it('returns undefined for missing rawBody', async () => {
+    const { mcpOperationResolver } = await import('../../src/training-agent/request-signing.js');
+    expect(mcpOperationResolver({})).toBeUndefined();
+  });
+
+  it('returns undefined for malformed JSON', async () => {
+    const { mcpOperationResolver } = await import('../../src/training-agent/request-signing.js');
+    expect(mcpOperationResolver({ rawBody: 'not-json' })).toBeUndefined();
+  });
+
+  it('returns undefined for tools/call with non-string name', async () => {
+    const { mcpOperationResolver } = await import('../../src/training-agent/request-signing.js');
+    const rawBody = JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'tools/call',
+      params: { name: 42 },
+      id: 1,
+    });
+    expect(mcpOperationResolver({ rawBody })).toBeUndefined();
+  });
+
+  it('returns undefined for tools/call with missing params', async () => {
+    const { mcpOperationResolver } = await import('../../src/training-agent/request-signing.js');
+    const rawBody = JSON.stringify({ jsonrpc: '2.0', method: 'tools/call', id: 1 });
+    expect(mcpOperationResolver({ rawBody })).toBeUndefined();
+  });
+
+  // Cross-namespace match prevention (security.mdx: "Verifiers MUST NOT
+  // cross-namespace match"). A tools/call body with params.name="tasks/cancel"
+  // smuggles a JSON-RPC method string into the AdCP slot; the resolver must
+  // refuse so a signed tools/call cannot satisfy protocol_methods_required_for.
+  it('refuses tools/call with params.name containing slash (cross-namespace smuggling)', async () => {
+    const { mcpOperationResolver } = await import('../../src/training-agent/request-signing.js');
+    const rawBody = JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'tools/call',
+      params: { name: 'tasks/cancel' },
+      id: 1,
+    });
+    expect(mcpOperationResolver({ rawBody })).toBeUndefined();
+  });
+
+  it('refuses non-tools/call method that does not contain slash (defense in depth)', async () => {
+    const { mcpOperationResolver } = await import('../../src/training-agent/request-signing.js');
+    const rawBody = JSON.stringify({
+      jsonrpc: '2.0',
+      method: 'create_media_buy',
+      params: {},
+      id: 1,
+    });
+    expect(mcpOperationResolver({ rawBody })).toBeUndefined();
+  });
 });
 
 // ── Governance: tool inputSchema (#2845) ───────────────────────────
@@ -4970,7 +5102,7 @@ describe('sync_plans input validation', () => {
     });
 
     expect(isError).toBe(true);
-    expect(result.code).toBe('validation_error');
+    expect(result.code).toBe('VALIDATION_ERROR');
   });
 
   it('returns validation error when plan is missing budget', async () => {
@@ -4985,7 +5117,7 @@ describe('sync_plans input validation', () => {
     });
 
     expect(isError).toBe(true);
-    expect(result.code).toBe('validation_error');
+    expect(result.code).toBe('VALIDATION_ERROR');
   });
 
   it('returns validation error when flight is empty object', async () => {
@@ -5001,7 +5133,7 @@ describe('sync_plans input validation', () => {
     });
 
     expect(isError).toBe(true);
-    expect(result.code).toBe('validation_error');
+    expect(result.code).toBe('VALIDATION_ERROR');
     expect(result.message).toContain('flight requires start and end');
   });
 
@@ -5018,7 +5150,7 @@ describe('sync_plans input validation', () => {
     });
 
     expect(isError).toBe(true);
-    expect(result.code).toBe('validation_error');
+    expect(result.code).toBe('VALIDATION_ERROR');
     expect(result.message).toContain('budget requires total (number) and currency (string)');
   });
 
@@ -7320,7 +7452,7 @@ describe('get_brand_identity handler', () => {
       brand_id: 'does_not_exist',
     });
 
-    expect(result.code).toBe('brand_not_found');
+    expect(result.code).toBe('REFERENCE_NOT_FOUND');
   });
 });
 
@@ -7486,7 +7618,7 @@ describe('human_review_required auto-flip and enforcement', () => {
       plans: [{ ...PLAN_BASE, policy_categories: ['fair_housing'], human_review_required: false }],
     });
     expect(isError).toBe(true);
-    expect(result.code).toBe('validation_error');
+    expect(result.code).toBe('VALIDATION_ERROR');
     expect(result.message).toContain('fair_housing');
   });
 
@@ -7636,7 +7768,7 @@ describe('human_review_required auto-flip and enforcement', () => {
       }],
     });
     expect(isError).toBe(true);
-    expect(result.code).toBe('validation_error');
+    expect(result.code).toBe('VALIDATION_ERROR');
     expect(result.message).toContain('human_override');
   });
 

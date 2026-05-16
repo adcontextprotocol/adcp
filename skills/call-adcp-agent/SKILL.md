@@ -35,7 +35,8 @@ UUID format. The key is your retry-safety guarantee — and the most common way 
 
 - **Same key on retry → replay.** The server returns the SAME response — same `task_id`, same `media_buy_id`, same shape, byte-for-byte. Use this for transport-level retries (timeout, 5xx, dropped connection).
 - **Fresh key on retry → NEW operation.** Generating a new UUID because the previous attempt failed is how you double-book. Reuse the key until you've seen a terminal response (success, error, or non-retryable error).
-- **Same key, different body → server-defined.** Most agents return the original cached response and ignore the body change. Don't rely on it — pick a fresh key only when you genuinely want a new operation.
+- **Same key, different canonical body → `IDEMPOTENCY_CONFLICT`.** Servers MUST reject. Do not silently apply the second body; do not silently replay the first. If your planner re-ran and produced different bytes, the intent changed — mint a new key.
+- **Same key while first request still running → `IDEMPOTENCY_IN_FLIGHT`.** Server returns this with `error.details.retry_after` (seconds) when it doesn't want to block. Wait the hint and retry with the **same key** — minting a fresh key here turns a safe retry into a double-execution race.
 - For async flows, the replayed response carries the **same `task_id`**, so polling continues against the same task instead of forking a duplicate.
 
 Required on: `create_media_buy`, `update_media_buy`, `sync_creatives`, `sync_audiences`, `sync_accounts`, `sync_catalogs`, `sync_event_sources`, `sync_plans`, `sync_governance`, `activate_signal`, `acquire_rights`, `log_event`, `report_usage`, `provide_performance_feedback`, `report_plan_outcome`, `create_property_list`, `update_property_list`, `delete_property_list`, `create_collection_list`, `update_collection_list`, `delete_collection_list`, `create_content_standards`, `update_content_standards`, `calibrate_content`, `si_initiate_session`, `si_send_message`.
@@ -89,6 +90,25 @@ When you see `status: 'submitted'`, the work is NOT complete. Poll via `tasks/ge
 
 `budget` is a **number** (not `{amount, currency}` — currency is implied by the pricing option). Required per package: `product_id`, `budget`, `pricing_option_id`. `buyer_ref` is optional but strongly recommended as a buyer-side correlation id across retries and reporting.
 
+### Webhook signing — omit `authentication` for new integrations
+
+When you include `push_notification_config` in a request, do **not** set `authentication`
+unless you are integrating with a legacy receiver. Omitting `authentication` selects the
+default: the seller signs each inbound webhook POST with its RFC 9421
+`adcp_use: "webhook-signing"` key, published at the `jwks_uri` in its own `brand.json`
+`agents[]` entry. You verify against the seller's JWKS. No shared secret crosses the wire.
+
+Presence of `authentication` is a **switch, not a fallback** — it opts the seller into
+Bearer or HMAC-SHA256 and disables 9421 for that registration. A buyer MUST NOT attempt
+"try 9421 first, fall back to HMAC" verification — mode is fixed at registration time.
+
+The `authentication` block (Bearer / HMAC-SHA256) is deprecated and sellers MAY decline
+to support it. It is removed in AdCP 4.0. The `token` field (a correlation token echoed
+back in the webhook payload) is separate from `authentication` and is not deprecated.
+
+See [Webhook callbacks](https://adcontextprotocol.org/docs/building/implementation/security#webhook-callbacks) for the
+full verifier checklist and downgrade-resistance rules.
+
 ## Error envelope — read `issues[]` to recover
 
 Every validation failure produces:
@@ -115,11 +135,22 @@ Every validation failure produces:
 }
 ```
 
+**Required fields — every conformant validator surfaces these:**
+
 - `issues[].pointer` — RFC 6901 JSON Pointer to the field.
 - `issues[].keyword` — AJV keyword (`required`, `type`, `oneOf`, `anyOf`, `additionalProperties`, `format`, `enum`).
 - `issues[].variants` — when the keyword is `oneOf` or `anyOf`, each entry lists one variant's `required` + declared `properties`. **Pick ONE variant**, send only its `required` fields. This is the fastest recovery path when you didn't know the field was a union.
 
-Patch the pointers, don't re-guess what the skill or the `variants` already told you, resend. Three attempts should cover every field.
+**Spec-optional wire fields — sellers MAY emit per `error.json`:**
+
+- `issues[].schema_id` — `$id` of the rejecting (sub-)schema (e.g. `/schemas/3.1.0/core/activation-key.json`). Diagnostic; the actionable lever is `discriminator` + `variants` + `pointer`. Sellers MUST omit when the rejection is against a private extension or pre-release element. See [error-handling.mdx](../docs/protocol/error-handling.mdx).
+- `issues[].discriminator` — `[{property_name, value}, …]` pairs identifying the const-discriminated `oneOf`/`anyOf` variant the validator selected from values present in the payload. Reads as "you targeted this branch; the missing/wrong fields are at the same level." Compound discriminators like `audience-selector`'s `(type, value_type)` produce two-entry arrays. Example: `discriminator: [{property_name: 'type', value: 'key_value'}]` plus `pointer: '/deployments/0/activation_key/key'` and `keyword: 'required'` means "you picked the `key_value` activation_key variant and it requires top-level `key` and `value`."
+
+Both fields are optional in the spec — their presence shortens recovery; their absence just means falling back to `pointer` + `keyword` + `variants`. They are wire-level: a Python or Go caller reading the raw JSON sees them as `schema_id` and `discriminator`. SDKs that normalize keys (e.g. `@adcp/sdk` camelCases to `schemaId`) surface the SDK-shaped name.
+
+**Recovery order:** patch the `pointer`s using `keyword` + `variants`, resend. If `discriminator` is present, prefer it — it names the branch directly so you don't have to walk `variants`. If `schema_id` is present, use it for diagnostic logging only. Three attempts should cover every field.
+
+> **SDK-side enrichment.** Some SDKs synthesize additional fields client-side after parsing — e.g. `@adcp/sdk` adds `hint` (one-sentence curated recipes for known shape gotchas) and `allowedValues` (closed enum lists for `keyword: 'enum'`). These are **not** wire fields and are not emitted by sellers; if you're not using that SDK, you won't see them regardless of the seller. When present, prefer them over walking `variants`. See your SDK's docs for the full list.
 
 ## Minimal working examples
 
@@ -225,6 +256,8 @@ Quick lookup before reading the full envelope. Match what you see in `adcp_error
 | Symptom | What it means | Fix |
 |---|---|---|
 | `keyword: 'oneOf'` with `variants[]` | Discriminated union — you sent fields from multiple variants, or none | Pick ONE variant from `variants[]`. Send only its `required` fields. |
+| `discriminator: [{property_name, value}]` on a `required` issue | Seller's validator inferred which branch you targeted; you missed required fields IN that branch | Read the `discriminator` pair, fill the missing required fields at the same level (don't nest under the discriminator property name). |
+| `hint:` field present (SDK-side enrichment, not on the wire) | Your SDK matched a curated shape-gotcha rule | Apply the hint directly — it's the validated fix path. |
 | 2-3 `additionalProperties` errors at the same pointer | You merged `oneOf` variants (`` `{account_id, brand, operator, …}` ``) | Drop to one variant. Don't keep "extra" fields "for completeness". |
 | `keyword: 'required'`, `pointer: '/idempotency_key'` | Mutating tool, no UUID | Generate fresh UUID per logical operation. Reuse it on retries. |
 | `keyword: 'type'` or `additionalProperties` at `/budget` | Sent `{amount, currency}` | `budget` is a number. Currency is implied by `pricing_option_id`. |

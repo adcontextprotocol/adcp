@@ -14,6 +14,7 @@ import { registryRequestsDb } from '../../db/registry-requests-db.js';
 import { PropertyCheckService } from '../../services/property-check.js';
 import { PropertyCheckDatabase } from '../../db/property-check-db.js';
 import { enhanceProperty } from '../../services/property-enhancement.js';
+import { syncHostedPropertyToFederatedIndex } from '../../services/hosted-property-sync.js';
 import { fileDispute } from '../../services/catalog-governance.js';
 import type { DisputeType } from '../../db/catalog-disputes-db.js';
 import { AAO_HOST } from '../../config/aao.js';
@@ -437,6 +438,12 @@ export function createPropertyToolHandlers(): Map<string, (args: Record<string, 
           });
         }
 
+        // Approval flips is_public=true; mirror the now-public document
+        // into the federated index. approveAndPublishProperty returns
+        // boolean only, so re-read the row to hand sync a typed object.
+        const approved = await propertyDb.getHostedPropertyByDomain(publisherDomain);
+        if (approved) await syncHostedPropertyToFederatedIndex(approved);
+
         return JSON.stringify({
           success: true,
           message: `Property "${publisherDomain}" approved and published to registry`,
@@ -452,6 +459,7 @@ export function createPropertyToolHandlers(): Map<string, (args: Record<string, 
         editor_email: 'addie@agenticadvertising.org',
         editor_name: 'Addie',
       });
+      await syncHostedPropertyToFederatedIndex(property);
 
       return JSON.stringify({
         success: true,
@@ -469,6 +477,7 @@ export function createPropertyToolHandlers(): Map<string, (args: Record<string, 
       is_public: true,
       review_status: 'approved',
     });
+    await syncHostedPropertyToFederatedIndex(saved);
 
     return JSON.stringify({
       success: true,

@@ -24,7 +24,7 @@ import { query } from '../../db/client.js';
 import { getPool } from '../../db/client.js';
 import { createLogger } from '../../logger.js';
 import { notifySpecialistCredential } from '../jobs/credential-digest.js';
-import { TRAINING_AGENT_URL } from '../../training-agent/config.js';
+import { TRAINING_AGENT_URL, tenantUrlsForModule, type ModuleTenantUrls } from '../../training-agent/config.js';
 import { ToolError } from '../tool-error.js';
 import { stripe } from '../../billing/stripe-client.js';
 import { attemptStripeReconciliation } from '../../billing/lazy-reconcile.js';
@@ -35,6 +35,36 @@ const logger = createLogger('certification-tools');
  * Build a membership-required message that gives Addie context about the user's
  * account type so she can tailor the enrollment pitch appropriately.
  */
+/**
+ * Format a tenant-URL block for injection into Sage prompts. Single-tenant
+ * modules collapse to `agent_url: "..."` (one URL — Sage uses it). Multi-
+ * tenant emits a primary URL plus an internal sibling map gated behind an
+ * explicit error trigger, so Sage doesn't enumerate URLs to the learner
+ * and only switches when a tool call actually fails. Empty pinning falls
+ * through to the legacy `/mcp` alias.
+ *
+ * Tone matches the rest of `buildCertificationContext`: imperative,
+ * agent-only-context, no docs prose. The "Internal" tag is load-bearing —
+ * without it Sage paraphrases the URL list into the conversation.
+ *
+ * Exported for unit-testing the prompt-shape output without standing up
+ * the full handlers.set() registry.
+ */
+export function formatTenantBlock(tenants: ModuleTenantUrls): string {
+  if (tenants.ids.length <= 1) {
+    return `agent_url: "${tenants.primary}"`;
+  }
+  const siblings = tenants.ids
+    .map((id, i) => `  - ${id} → ${tenants.all[i]}`)
+    .join('\n');
+  return [
+    `agent_url (primary): "${tenants.primary}"`,
+    `**Internal — do not narrate to the learner**: this module also has tools on sibling agents. Default to the primary for every call. Only switch if a tool call returns an "unknown tool" or "not found" error — then GET \`/.well-known/adagents.json\` on the primary, read \`_training_agent_tenants\`, pick the sibling that owns the tool, retry. Do not enumerate siblings to the learner.`,
+    `Siblings (for sibling-switch lookups only):`,
+    siblings,
+  ].join('\n');
+}
+
 function membershipRequiredMessage(moduleId: string, memberContext: MemberContext | null): string {
   const isPersonal = memberContext?.organization?.is_personal !== false;
   const orgName = memberContext?.organization?.name;
@@ -477,7 +507,7 @@ export async function buildCertificationContext(
   lines.push('- First turn: greet the learner and ask about their background. Never run tools on the first turn.');
   lines.push('- NEVER re-ask something the learner already told you. If they said "I work at an audio SSP" do NOT later ask "are you on the buy side or sell side?" — they already told you (sell side, SSP). If they said "I run programmatic at an agency" do NOT ask "what is your role?" This is the #1 complaint from learners. Before asking ANY question about the learner, check: did they already answer this? If yes, use what they said.');
   lines.push('- If you research the learner\'s company, USE that knowledge — never ask them to explain what their company does. Instead, weave it into your teaching: "Given that Acme is an audio SSP, how would you..." Asking someone about their own company after you already looked it up feels like surveillance, not personalization.');
-  lines.push('- Run ONE live demo (get_products against the sandbox training agent) on turn 2-3. Do not wait for the learner to ask. Show, then discuss. After the initial demo, do NOT keep running demos every turn — use the demo result as a reference point for teaching.');
+  lines.push('- If the module has sandbox demo scenarios listed below: run ONE live demo using the first scenario\'s tool on turn 2-3. Do not wait for the learner to ask. Show, then discuss. After the initial demo, do NOT keep running demos every turn — use the demo result as a reference point for teaching.');
   lines.push('- Use concrete, specific language. Never use abstract terms without grounding them. Say "evaluate whether a placement fits" not "reason about impressions."');
   lines.push('- Only assess what you actually taught in the conversation. Never test doc-only details or claim "we covered this" if you didn\'t.');
   lines.push('- If a demo fails, pivot immediately. Never offer the same failed demo twice.');
@@ -487,15 +517,43 @@ export async function buildCertificationContext(
   lines.push('');
   lines.push('**Mastery model**: There is no failing — teach until the learner masters every objective, then complete the module. Never share scores or percentages with the learner. Internal scores are for admin analytics only.');
   lines.push('');
-  lines.push('**Mastery fast-track (CHECK EVERY TURN after turn 3)**: Teaching and assessment serve different purposes. Teaching is for the learner; assessment is for the credential. After each learner response, ask: "Has this learner given correct, detailed answers to 3+ concepts without needing correction?" If YES: (1) STOP running demos — no more get_products calls, (2) SAY SO: "You clearly know this material — I\'m going to skip the tutorial and have you demonstrate the remaining concepts directly," (3) for each remaining concept, ask ONE targeted demonstration question (scenario-based, teach-back, or "walk me through") that produces auditable evidence of competency. The conversation transcript is the audit trail — the learner\'s own words showing they understand each dimension. Same scoring rubric, same dimension requirements, same minimum engagement — just no unnecessary instruction. Continuing to teach or demo after someone has demonstrated mastery is the #1 learner complaint.');
+  lines.push('**Mastery fast-track (CHECK EVERY TURN after turn 3)**: Teaching and assessment serve different purposes. Teaching is for the learner; assessment is for the credential. After each learner response, ask: "Has this learner given correct, detailed answers to 3+ concepts without needing correction?" If YES: (1) STOP running demos — no more sandbox tool calls, (2) SAY SO: "You clearly know this material — I\'m going to skip the tutorial and have you demonstrate the remaining concepts directly," (3) for each remaining concept, ask ONE targeted demonstration question (scenario-based, teach-back, or "walk me through") that produces auditable evidence of competency. The conversation transcript is the audit trail — the learner\'s own words showing they understand each dimension. Same scoring rubric, same dimension requirements, same minimum engagement — just no unnecessary instruction. Continuing to teach or demo after someone has demonstrated mastery is the #1 learner complaint.');
 
   lines.push('**Protocol accuracy (non-negotiable)**: When a learner asks about protocol details (field definitions, message flows, terminology, agent roles), use search_docs or search_repos to verify before answering. Never construct protocol answers from general knowledge. If you cannot verify, say "I need to check that" and search. Teaching mode does not override accuracy — a wrong answer during certification is worse than saying "let me look that up."');
   lines.push('');
 
-  // Inject training agent URL for demos
-  const trainingAgentUrl = process.env.TRAINING_AGENT_URL || TRAINING_AGENT_URL;
+  // Inject training-agent URLs for demos. Pull the union of tenant_ids
+  // across in-progress modules so Sage gets a single deterministic source
+  // of truth even when a learner has work open in two specialisms at once.
+  // Module ids are canonically uppercase in the table; normalize once here
+  // and cache the lookups so the per-module loop below doesn't re-fetch.
+  const baseUrl = process.env.TRAINING_AGENT_URL || TRAINING_AGENT_URL;
+  const normalizedInProgress = inProgressModules.map((im) => ({
+    ...im,
+    module_id: im.module_id.toUpperCase(),
+  }));
+  const activeModules = await Promise.all(
+    normalizedInProgress.map((im) => certDb.getModule(im.module_id)),
+  );
+  const moduleCache = new Map<string, certDb.CertificationModule>();
+  activeModules.forEach((m, i) => {
+    if (m) moduleCache.set(normalizedInProgress[i].module_id, m);
+  });
+  const seenIds = new Set<string>();
+  const unionIds: string[] = [];
+  for (const m of activeModules) {
+    if (!m) continue;
+    for (const id of m.tenant_ids ?? []) {
+      if (!seenIds.has(id)) {
+        seenIds.add(id);
+        unionIds.push(id);
+      }
+    }
+  }
+  const tenants = tenantUrlsForModule(unionIds.length > 0 ? unionIds : null, baseUrl);
   lines.push('');
-  lines.push(`**Sandbox training agent**: For all demos and exercises, use agent_url: "${trainingAgentUrl}/mcp". Use brand domain "demo.example.com" for the account.`);
+  lines.push('**Sandbox training agent**:');
+  lines.push(formatTenantBlock(tenants));
 
   // Inject cross-module learner profile from completed modules
   if (userId) {
@@ -524,16 +582,17 @@ export async function buildCertificationContext(
     }
   }
 
-  for (const p of inProgressModules) {
+  for (const p of normalizedInProgress) {
     const startedAgo = p.started_at ? Math.round((Date.now() - new Date(p.started_at).getTime()) / 60000) : null;
     lines.push(`- **${p.module_id}** (in progress${startedAgo !== null ? `, started ${startedAgo} min ago` : ''})`);
 
-    // Include assessment dimensions and learning resources so they persist after trimming
+    // Include assessment dimensions and learning resources so they persist after trimming.
+    // `mod` was already fetched above into moduleCache — reuse it.
     try {
-      const [mod, checkpoint] = await Promise.all([
-        certDb.getModule(p.module_id),
-        userId ? certDb.getLatestCheckpoint(userId, p.module_id) : Promise.resolve(null),
-      ]);
+      const mod = moduleCache.get(p.module_id) ?? null;
+      const checkpoint = userId
+        ? await certDb.getLatestCheckpoint(userId, p.module_id)
+        : null;
       if (mod?.assessment_criteria) {
         const ac = mod.assessment_criteria as certDb.AssessmentCriteria;
         if (ac.dimensions?.length) {
@@ -934,6 +993,7 @@ function getIllustrations(topics: string[]): { alt: string; url: string }[] {
 const MODULE_ILLUSTRATION_TOPICS: Record<string, string[]> = {
   A1: ['protocol-overview'],
   A2: ['media-buy', 'media-buy-lifecycle', 'get-products', 'create-media-buy'],
+  A2B: ['media-buy', 'media-buy-lifecycle', 'get-products', 'create-media-buy'],
   A3: ['protocol-overview', 'governance', 'creative-workflow', 'signals', 'trusted-match'],
   B2: ['creative-formats', 'creative-manifests', 'creative-workflow', 'sync-creatives'],
   B3: ['signals', 'governance', 'delivery', 'creative-delivery', 'trusted-match'],
@@ -955,7 +1015,7 @@ export const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> 
   // Track A: Basics (all free)
   A1: [
     { label: 'Introduction to AdCP and agentic advertising', url: `${DOCS_BASE}/docs/intro` },
-    { label: 'Why AdCP — the fragmentation problem', url: `${DOCS_BASE}/docs/building/understanding` },
+    { label: 'Why AdCP — the fragmentation problem', url: `${DOCS_BASE}/docs/building/concepts` },
     { label: 'Media channel taxonomy', url: `${DOCS_BASE}/docs/reference/media-channel-taxonomy` },
     { label: 'Campaign governance — always-on compliance', url: `${DOCS_BASE}/docs/governance/campaign` },
   ],
@@ -963,6 +1023,14 @@ export const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> 
     { label: 'AdCP quickstart', url: `${DOCS_BASE}/docs/quickstart` },
     { label: 'Media buy protocol', url: `${DOCS_BASE}/docs/media-buy` },
     { label: 'Create media buy task', url: `${DOCS_BASE}/docs/media-buy/task-reference/create_media_buy` },
+  ],
+  A2B: [
+    { label: 'A2B: Testing your first agent call', url: `${DOCS_BASE}/docs/learning/foundations/a2b-testing-your-first-agent` },
+    { label: 'Task lifecycle', url: `${DOCS_BASE}/docs/building/implementation/task-lifecycle` },
+    { label: 'Create media buy task', url: `${DOCS_BASE}/docs/media-buy/task-reference/create_media_buy` },
+    { label: 'Sync creatives task', url: `${DOCS_BASE}/docs/creative/task-reference/sync_creatives` },
+    { label: 'Error handling', url: `${DOCS_BASE}/docs/building/implementation/error-handling` },
+    { label: 'MCP integration guide', url: `${DOCS_BASE}/docs/building/integration/mcp-guide` },
   ],
   A3: [
     { label: 'AdCP protocol overview', url: `${DOCS_BASE}/docs/intro` },
@@ -986,7 +1054,7 @@ export const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> 
     { label: 'Catalogs and product data', url: `${DOCS_BASE}/docs/creative/catalogs` },
     { label: 'Capability discovery', url: `${DOCS_BASE}/docs/protocol/get_adcp_capabilities` },
     { label: 'Sponsored Intelligence guide', url: `${DOCS_BASE}/docs/sponsored-intelligence/monetizing-ai` },
-    { label: 'Seller integration guide', url: `${DOCS_BASE}/docs/building/implementation/seller-integration` },
+    { label: 'Seller integration guide', url: `${DOCS_BASE}/docs/building/operating/seller-integration` },
   ],
   B2: [
     { label: 'Publisher track overview', url: `${DOCS_BASE}/docs/learning/tracks/publisher` },
@@ -1015,9 +1083,9 @@ export const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> 
   ],
   B4: [
     { label: 'Publisher track overview', url: `${DOCS_BASE}/docs/learning/tracks/publisher` },
-    { label: 'Build an Agent (skill files and storyboards)', url: `${DOCS_BASE}/docs/building/build-an-agent` },
-    { label: 'Validate Your Agent (storyboard CLI)', url: `${DOCS_BASE}/docs/building/validate-your-agent` },
-    { label: 'Schemas and SDKs (adcp client library)', url: `${DOCS_BASE}/docs/building/schemas-and-sdks` },
+    { label: 'Build an Agent (skill files and storyboards)', url: `${DOCS_BASE}/docs/building/by-layer/L4/build-an-agent` },
+    { label: 'Validate Your Agent (storyboard CLI)', url: `${DOCS_BASE}/docs/building/verification/validate-your-agent` },
+    { label: 'Schemas and SDKs (adcp client library)', url: `${DOCS_BASE}/docs/building/by-layer/L4/choose-your-sdk` },
     { label: 'MCP integration guide', url: `${DOCS_BASE}/docs/building/integration/mcp-guide` },
     { label: 'get_products task reference', url: `${DOCS_BASE}/docs/media-buy/task-reference/get_products` },
     { label: 'create_media_buy task reference', url: `${DOCS_BASE}/docs/media-buy/task-reference/create_media_buy` },
@@ -1068,8 +1136,8 @@ export const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> 
   ],
   C4: [
     { label: 'Buyer track overview', url: `${DOCS_BASE}/docs/learning/tracks/buyer` },
-    { label: 'Validate Your Agent (testing workflow)', url: `${DOCS_BASE}/docs/building/validate-your-agent` },
-    { label: 'Schemas and SDKs (adcp client library)', url: `${DOCS_BASE}/docs/building/schemas-and-sdks` },
+    { label: 'Validate Your Agent (testing workflow)', url: `${DOCS_BASE}/docs/building/verification/validate-your-agent` },
+    { label: 'Schemas and SDKs (adcp client library)', url: `${DOCS_BASE}/docs/building/by-layer/L4/choose-your-sdk` },
     { label: 'Orchestrator design patterns', url: `${DOCS_BASE}/docs/building/implementation/orchestrator-design` },
     { label: 'Building a brand agent', url: `${DOCS_BASE}/docs/brand-protocol/building-a-brand-agent` },
     { label: 'get_products task reference', url: `${DOCS_BASE}/docs/media-buy/task-reference/get_products` },
@@ -1097,7 +1165,7 @@ export const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> 
   ],
   D3: [
     { label: 'Platform track overview', url: `${DOCS_BASE}/docs/learning/tracks/platform` },
-    { label: 'How AdCP compares to OpenRTB', url: `${DOCS_BASE}/docs/building/understanding/adcp-vs-openrtb` },
+    { label: 'How AdCP compares to OpenRTB', url: `${DOCS_BASE}/docs/building/concepts/adcp-vs-openrtb` },
     { label: 'Trusted Match Protocol', url: `${DOCS_BASE}/docs/trusted-match` },
     { label: 'TMP specification', url: `${DOCS_BASE}/docs/trusted-match/specification` },
     { label: 'TMP router architecture', url: `${DOCS_BASE}/docs/trusted-match/router-architecture` },
@@ -1105,9 +1173,9 @@ export const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> 
   ],
   D4: [
     { label: 'Platform track overview', url: `${DOCS_BASE}/docs/learning/tracks/platform` },
-    { label: 'Build an Agent (skill files and storyboards)', url: `${DOCS_BASE}/docs/building/build-an-agent` },
-    { label: 'Validate Your Agent (storyboard CLI)', url: `${DOCS_BASE}/docs/building/validate-your-agent` },
-    { label: 'Schemas and SDKs (adcp client library)', url: `${DOCS_BASE}/docs/building/schemas-and-sdks` },
+    { label: 'Build an Agent (skill files and storyboards)', url: `${DOCS_BASE}/docs/building/by-layer/L4/build-an-agent` },
+    { label: 'Validate Your Agent (storyboard CLI)', url: `${DOCS_BASE}/docs/building/verification/validate-your-agent` },
+    { label: 'Schemas and SDKs (adcp client library)', url: `${DOCS_BASE}/docs/building/by-layer/L4/choose-your-sdk` },
     { label: 'MCP integration guide', url: `${DOCS_BASE}/docs/building/integration/mcp-guide` },
     { label: 'Capability discovery', url: `${DOCS_BASE}/docs/protocol/get_adcp_capabilities` },
     { label: 'Authentication', url: `${DOCS_BASE}/docs/building/integration/authentication` },
@@ -1121,7 +1189,7 @@ export const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> 
     { label: 'Trusted Match Protocol', url: `${DOCS_BASE}/docs/trusted-match` },
     { label: 'Context Match and Identity Match', url: `${DOCS_BASE}/docs/trusted-match/context-and-identity` },
     { label: 'TMP Router architecture', url: `${DOCS_BASE}/docs/trusted-match/router-architecture` },
-    { label: 'AdCP and OpenRTB', url: `${DOCS_BASE}/docs/building/understanding/adcp-vs-openrtb` },
+    { label: 'AdCP and OpenRTB', url: `${DOCS_BASE}/docs/building/concepts/adcp-vs-openrtb` },
   ],
   S2: [
     { label: 'Creative protocol', url: `${DOCS_BASE}/docs/creative` },
@@ -1176,7 +1244,7 @@ export const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> 
     { label: 'Media channel taxonomy', url: `${DOCS_BASE}/docs/reference/media-channel-taxonomy` },
     { label: 'Catalogs and product data', url: `${DOCS_BASE}/docs/creative/catalogs` },
     { label: 'Generative creative', url: `${DOCS_BASE}/docs/creative/generative-creative` },
-    { label: 'Seller integration guide', url: `${DOCS_BASE}/docs/building/implementation/seller-integration` },
+    { label: 'Seller integration guide', url: `${DOCS_BASE}/docs/building/operating/seller-integration` },
     { label: 'Accounts and agent identity', url: `${DOCS_BASE}/docs/building/integration/accounts-and-agents` },
   ],
 };
@@ -1313,7 +1381,7 @@ export function createCertificationToolHandlers(
       }
 
       lines.push('---');
-      lines.push('Modules A1, A2, and A3 are free for everyone. Other modules require AgenticAdvertising.org membership.');
+      lines.push('Modules A1, A2, A2B, and A3 are free for everyone. Other modules require AgenticAdvertising.org membership.');
       lines.push('To start a module, say "start module [ID]" (e.g., "start module A1").');
       lines.push('To start a specialist deep dive, say "start capstone S1" (or S2/S3/S4/S5).');
       lines.push('Already familiar with AdCP? Say "assess my level" to take a placement assessment and skip modules you already know.');
@@ -1363,8 +1431,10 @@ export function createCertificationToolHandlers(
         }
 
         if (lp.demo_scenarios?.length) {
-          const trainingAgentUrl = process.env.TRAINING_AGENT_URL || TRAINING_AGENT_URL;
-          lines.push('', `## Demo scenarios (use agent_url: ${trainingAgentUrl}/mcp)`);
+          const baseUrl = process.env.TRAINING_AGENT_URL || TRAINING_AGENT_URL;
+          const tenants = tenantUrlsForModule(mod.tenant_ids, baseUrl);
+          lines.push('', '## Demo scenarios');
+          lines.push(formatTenantBlock(tenants));
           lines.push('YOU (Sage) run ONE demo early (turn 2-3) to ground concepts. Clearly label it as YOUR demonstration — say "Let me show you..." before calling the tool. Do NOT attribute tool results to the learner. After the demo, invite the learner to try the exercise themselves.');
           lp.demo_scenarios.forEach(ds => {
             lines.push(`### ${ds.description}`);
@@ -1372,6 +1442,13 @@ export function createCertificationToolHandlers(
             lines.push(`Expected outcome: ${ds.expected_outcome}`);
             lines.push('');
           });
+          const scenarioTools = lp.demo_scenarios.flatMap(ds => ds.tools);
+          if (scenarioTools.some(t => ['acquire_rights', 'sync_accounts'].includes(t))) {
+            lines.push('For acquire_rights / sync_accounts buyer.domain: use "demo.example.com".');
+          }
+          if (scenarioTools.includes('get_brand_identity')) {
+            lines.push('For get_brand_identity: pass a brand_id from the tool\'s "Available brands" list — not a domain name.');
+          }
         }
       }
 
@@ -1486,12 +1563,20 @@ export function createCertificationToolHandlers(
         }
 
         if (lp.demo_scenarios?.length) {
-          const trainingAgentUrl = process.env.TRAINING_AGENT_URL || TRAINING_AGENT_URL;
-          lines.push(`**Live demos** (run these against the sandbox training agent at agent_url: ${trainingAgentUrl}/mcp):`);
+          const baseUrl = process.env.TRAINING_AGENT_URL || TRAINING_AGENT_URL;
+          const tenants = tenantUrlsForModule(mod.tenant_ids, baseUrl);
+          lines.push('**Live demos** (run these against the sandbox training agent):');
+          lines.push(formatTenantBlock(tenants));
           lp.demo_scenarios.forEach(ds => {
             lines.push(`- ${ds.description} (tools: ${ds.tools.join(', ')})`);
           });
-          lines.push(`When calling AdCP tools (get_products, create_media_buy, etc.) for demos, always use agent_url: "${trainingAgentUrl}/mcp". Use brand domain "demo.example.com" for the account.`);
+          const scenarioTools = lp.demo_scenarios.flatMap(ds => ds.tools);
+          if (scenarioTools.some(t => ['acquire_rights', 'sync_accounts'].includes(t))) {
+            lines.push('For acquire_rights / sync_accounts buyer.domain: use "demo.example.com".');
+          }
+          if (scenarioTools.includes('get_brand_identity')) {
+            lines.push('For get_brand_identity: pass a brand_id from the tool\'s "Available brands" list — not a domain name.');
+          }
           lines.push('');
         }
       }
@@ -2193,9 +2278,9 @@ export function createCertificationToolHandlers(
       return `get_build_phase_instructions is only for build project modules (B4, C4, D4). Module "${moduleId}" is not a build project.`;
     }
 
-    const BUILD_AN_AGENT_URL = 'https://docs.adcontextprotocol.org/docs/building/build-an-agent';
-    const VALIDATE_URL = 'https://docs.adcontextprotocol.org/docs/building/validate-your-agent';
-    const SDKS_URL = 'https://docs.adcontextprotocol.org/docs/building/schemas-and-sdks';
+    const BUILD_AN_AGENT_URL = 'https://docs.adcontextprotocol.org/docs/building/by-layer/L4/build-an-agent';
+    const VALIDATE_URL = 'https://docs.adcontextprotocol.org/docs/building/verification/validate-your-agent';
+    const SDKS_URL = 'https://docs.adcontextprotocol.org/docs/building/by-layer/L4/choose-your-sdk';
 
     if (moduleId === 'C4') {
       // Buyer track: SDK against the public test agent, no skill file

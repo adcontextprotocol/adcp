@@ -957,7 +957,19 @@
         </div>
       </div>
 
-      <!-- Agreements section (for subscribers) -->
+      <!-- Billing address (always visible once org loaded; required before invoice) -->
+      <div id="billingAddressCard" class="billing-card" style="display: none;">
+        <div class="billing-card-header">
+          <h2>Billing Address</h2>
+        </div>
+        <div class="billing-card-body">
+          <div id="billingAddressDisplay">
+            <!-- Filled by JS -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Agreements section -->
       <div id="agreementsCard" class="billing-card" style="display: none;">
         <div class="billing-card-header">
           <h2>Agreements</h2>
@@ -1119,6 +1131,80 @@
     </div>
   </div>
 
+  <!-- Standalone Sign Agreement Modal (no checkout) -->
+  <div id="signAgreementModal" class="profile-modal-overlay" style="display: none;">
+    <div style="background: var(--color-bg-card); border-radius: 12px; max-width: 700px; width: 100%; max-height: 90vh; display: flex; flex-direction: column; box-shadow: var(--shadow-xl);">
+      <div style="padding: 20px 24px; border-bottom: 1px solid var(--color-border); display: flex; justify-content: space-between; align-items: center;">
+        <h2 style="margin: 0; font-size: 18px; color: var(--color-text-heading);">Membership Agreement</h2>
+        <button onclick="closeSignAgreementModal()" style="background: none; border: none; font-size: 24px; color: var(--color-text-muted); cursor: pointer; padding: 0; line-height: 1;">&times;</button>
+      </div>
+      <div style="padding: 24px; flex: 1; overflow-y: auto;">
+        <p style="margin: 0 0 16px; color: var(--color-text-secondary); font-size: 14px;">
+          Review and accept the agreement. You can do this before requesting an invoice or selecting a tier.
+        </p>
+        <div id="signModalAgreementContent" style="background: var(--color-bg-subtle); border: 1px solid var(--color-border); border-radius: 8px; padding: 20px; max-height: 320px; overflow-y: auto; font-size: 13px; line-height: 1.6; margin-bottom: 20px;">
+          Loading agreement...
+        </div>
+        <label style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer;">
+          <input type="checkbox" id="signModalAgreementCheckbox" style="margin-top: 3px; cursor: pointer;">
+          <span style="font-size: 14px;">I have read and agree to the <strong>AgenticAdvertising.org Membership Agreement</strong></span>
+        </label>
+        <div id="signAgreementError" style="display: none; color: var(--color-error-600); font-size: 14px; margin-top: 12px; padding: 10px; background: var(--color-error-bg); border-radius: 8px;"></div>
+      </div>
+      <div style="padding: 16px 24px; border-top: 1px solid var(--color-border); display: flex; justify-content: flex-end; gap: 12px;">
+        <button class="btn btn-secondary" onclick="closeSignAgreementModal()">Cancel</button>
+        <button class="btn btn-primary" id="signAgreementBtn" onclick="submitSignAgreement()" disabled>Sign Agreement</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Billing Address Modal (standalone) -->
+  <div id="billingAddressModal" class="profile-modal-overlay" style="display: none;">
+    <div style="background: var(--color-bg-card); border-radius: 12px; max-width: 500px; width: 100%; max-height: 90vh; overflow-y: auto; box-shadow: var(--shadow-xl);">
+      <div style="padding: 20px 24px; border-bottom: 1px solid var(--color-border); display: flex; justify-content: space-between; align-items: center;">
+        <h2 id="billingAddressModalTitle" style="margin: 0; font-size: 18px; color: var(--color-text-heading);">Edit Billing Address</h2>
+        <button onclick="closeBillingAddressModal()" style="background: none; border: none; font-size: 24px; color: var(--color-text-muted); cursor: pointer; padding: 0; line-height: 1;">&times;</button>
+      </div>
+      <form id="billingAddressForm" onsubmit="submitBillingAddress(event)">
+        <div style="padding: 24px;">
+          <div style="margin-bottom: 16px;">
+            <label style="display: block; font-size: 14px; font-weight: 500; color: var(--color-text); margin-bottom: 4px;">Address Line 1 *</label>
+            <input type="text" id="addr-line1" name="line1" required maxlength="200" placeholder="123 Main Street" style="width: 100%; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 8px; font-size: 14px;">
+          </div>
+          <div style="margin-bottom: 16px;">
+            <label style="display: block; font-size: 14px; font-weight: 500; color: var(--color-text); margin-bottom: 4px;">Address Line 2</label>
+            <input type="text" id="addr-line2" name="line2" maxlength="200" placeholder="Suite 100" style="width: 100%; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 8px; font-size: 14px;">
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
+            <div>
+              <label style="display: block; font-size: 14px; font-weight: 500; color: var(--color-text); margin-bottom: 4px;">City *</label>
+              <input type="text" id="addr-city" name="city" required maxlength="200" style="width: 100%; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 8px; font-size: 14px;">
+            </div>
+            <div>
+              <label style="display: block; font-size: 14px; font-weight: 500; color: var(--color-text); margin-bottom: 4px;">State/Province *</label>
+              <input type="text" id="addr-state" name="state" required maxlength="200" style="width: 100%; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 8px; font-size: 14px;">
+            </div>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
+            <div>
+              <label style="display: block; font-size: 14px; font-weight: 500; color: var(--color-text); margin-bottom: 4px;">Postal Code *</label>
+              <input type="text" id="addr-postal" name="postal_code" required maxlength="200" style="width: 100%; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 8px; font-size: 14px;">
+            </div>
+            <div>
+              <label style="display: block; font-size: 14px; font-weight: 500; color: var(--color-text); margin-bottom: 4px;">Country *</label>
+              <input type="text" id="addr-country" name="country" required maxlength="200" value="US" style="width: 100%; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 8px; font-size: 14px;">
+            </div>
+          </div>
+          <div id="billingAddressError" style="display: none; color: var(--color-error-600); font-size: 14px; margin-bottom: 16px; padding: 12px; background: var(--color-error-bg); border-radius: 8px;"></div>
+        </div>
+        <div style="padding: 16px 24px; border-top: 1px solid var(--color-border); display: flex; justify-content: flex-end; gap: 12px;">
+          <button type="button" class="btn btn-secondary" onclick="closeBillingAddressModal()">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="saveBillingAddressBtn">Save Address</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <script>
     let currentOrg = null;
     let selectedProduct = null;
@@ -1259,30 +1345,42 @@
 
     function renderBilling() {
       const hasSubscription = currentOrg.billing?.status === 'active';
+      const isPersonal = currentOrg.is_personal || currentOrg.billing?.is_personal;
       const subscriptionCard = document.getElementById('subscriptionCard');
       const membershipSection = document.getElementById('membershipSection');
       const agreementsCard = document.getElementById('agreementsCard');
+      const billingAddressCard = document.getElementById('billingAddressCard');
       const memberBenefitsCard = document.getElementById('memberBenefitsCard');
       const whatsNextCard = document.getElementById('whatsNextCard');
 
       const upgradeCard = document.getElementById('upgradeCard');
 
+      // Billing address + agreements are pre-invoice surfaces and must be
+      // visible whether or not a subscription exists. Hide for personal
+      // workspaces where neither is meaningful before an invoice request.
+      if (!isPersonal) {
+        billingAddressCard.style.display = 'block';
+        agreementsCard.style.display = 'block';
+        renderBillingAddress();
+        loadMyAgreements();
+      } else {
+        billingAddressCard.style.display = 'none';
+        agreementsCard.style.display = 'none';
+      }
+
       if (hasSubscription) {
         subscriptionCard.style.display = 'block';
         memberBenefitsCard.style.display = 'block';
         whatsNextCard.style.display = 'block';
-        agreementsCard.style.display = 'block';
         membershipSection.style.display = 'none';
         renderSubscriptionStatus();
         renderMemberBenefitsForSubscriber();
-        loadMyAgreements();
         loadUpgradeOptions();
       } else {
         upgradeCard.style.display = 'none';
         subscriptionCard.style.display = 'none';
         memberBenefitsCard.style.display = 'none';
         whatsNextCard.style.display = 'none';
-        agreementsCard.style.display = 'none';
         membershipSection.style.display = 'block';
         renderMembershipBenefits();
         loadProducts();
@@ -1662,6 +1760,13 @@
         });
       }
 
+      const signCheckbox = document.getElementById('signModalAgreementCheckbox');
+      if (signCheckbox) {
+        signCheckbox.addEventListener('change', function() {
+          document.getElementById('signAgreementBtn').disabled = !this.checked;
+        });
+      }
+
       // Close modal on outside click
       const modal = document.getElementById('agreementModal');
       if (modal) {
@@ -1669,6 +1774,18 @@
           if (e.target === this) {
             closeAgreementModal();
           }
+        });
+      }
+      const signModal = document.getElementById('signAgreementModal');
+      if (signModal) {
+        signModal.addEventListener('click', function(e) {
+          if (e.target === this) closeSignAgreementModal();
+        });
+      }
+      const addrModal = document.getElementById('billingAddressModal');
+      if (addrModal) {
+        addrModal.addEventListener('click', function(e) {
+          if (e.target === this) closeBillingAddressModal();
         });
       }
 
@@ -1962,12 +2079,22 @@
             ? `Signed on ${signedDate}${isOutdated ? ' • New version available' : ''}`
             : statusLabel;
 
-          // Actions
+          // Actions. For the membership agreement we offer in-page review +
+          // signing via openSignAgreementModal — same write path as the
+          // checkout flow, no tier required. Other agreement types still
+          // open the read-only view in a new tab.
           let actions = '';
+          const typeStr = escapeHtml(agreement.type);
           if (!isSigned) {
-            actions = `<button class="btn btn-primary btn-sm" onclick="viewAgreement('${escapeHtml(agreement.type)}')">Review & Sign</button>`;
+            if (agreement.type === 'membership') {
+              actions = `<button class="btn btn-primary btn-sm" onclick="openSignAgreementModal()">Review & Sign</button>`;
+            } else {
+              actions = `<button class="btn btn-primary btn-sm" onclick="viewAgreement('${typeStr}')">Review & Sign</button>`;
+            }
+          } else if (isOutdated && agreement.type === 'membership') {
+            actions = `<button class="btn btn-primary btn-sm" onclick="openSignAgreementModal()">Review & Sign update</button>`;
           } else {
-            actions = `<button class="btn btn-secondary btn-sm" onclick="viewAgreement('${escapeHtml(agreement.type)}')">View</button>`;
+            actions = `<button class="btn btn-secondary btn-sm" onclick="viewAgreement('${typeStr}')">View</button>`;
           }
 
           return `
@@ -1994,6 +2121,164 @@
     // View an agreement
     function viewAgreement(type) {
       window.open(`/api/agreement?type=${encodeURIComponent(type)}`, '_blank');
+    }
+
+    // Standalone "Review & Sign" flow for the membership agreement. Opens a
+    // modal, fetches the current agreement, and POSTs acceptance directly to
+    // /pending-agreement — no checkout, no tier selection. Same write path as
+    // the invoice flow, just decoupled.
+    let signLoadedAgreementVersion = null;
+
+    function openSignAgreementModal() {
+      const modal = document.getElementById('signAgreementModal');
+      const errorEl = document.getElementById('signAgreementError');
+      const checkbox = document.getElementById('signModalAgreementCheckbox');
+      const btn = document.getElementById('signAgreementBtn');
+      errorEl.style.display = 'none';
+      checkbox.checked = false;
+      btn.disabled = true;
+      btn.textContent = 'Sign Agreement';
+      modal.style.display = 'flex';
+      loadSignAgreementContent();
+    }
+
+    function closeSignAgreementModal() {
+      document.getElementById('signAgreementModal').style.display = 'none';
+    }
+
+    async function loadSignAgreementContent() {
+      const contentEl = document.getElementById('signModalAgreementContent');
+      try {
+        const response = await fetch('/api/agreement/current?type=membership');
+        if (!response.ok) throw new Error('Failed to load agreement');
+        const data = await response.json();
+        signLoadedAgreementVersion = data.version || null;
+        contentEl.innerHTML = DOMPurify.sanitize(marked.parse(data.text || 'Agreement not available.'));
+      } catch (error) {
+        console.error('Error loading agreement:', error);
+        contentEl.textContent = 'Unable to load agreement. Please refresh.';
+      }
+    }
+
+    async function submitSignAgreement() {
+      const btn = document.getElementById('signAgreementBtn');
+      const errorEl = document.getElementById('signAgreementError');
+      if (!signLoadedAgreementVersion) {
+        errorEl.textContent = 'Agreement version not loaded. Please close and retry.';
+        errorEl.style.display = 'block';
+        return;
+      }
+      btn.disabled = true;
+      btn.textContent = 'Signing...';
+      errorEl.style.display = 'none';
+      try {
+        const response = await fetch(`/api/organizations/${currentOrg.id}/pending-agreement`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            agreement_version: signLoadedAgreementVersion,
+            agreement_accepted_at: new Date().toISOString(),
+          }),
+        });
+        if (!response.ok) {
+          const data = await response.json().catch(() => ({}));
+          throw new Error(data.message || 'Failed to sign agreement');
+        }
+        showToast('Agreement signed');
+        closeSignAgreementModal();
+        loadMyAgreements();
+      } catch (error) {
+        errorEl.textContent = error.message || 'Something went wrong. Please try again.';
+        errorEl.style.display = 'block';
+      } finally {
+        btn.disabled = !document.getElementById('signModalAgreementCheckbox').checked;
+        btn.textContent = 'Sign Agreement';
+      }
+    }
+
+    // Render the billing-address card. Standalone — does not gate on agreement.
+    function renderBillingAddress() {
+      const display = document.getElementById('billingAddressDisplay');
+      const address = currentOrg?.billing_address;
+      if (!address || !address.line1) {
+        display.innerHTML = `
+          <p style="margin: 0 0 12px; color: var(--color-text-secondary); font-size: 14px;">
+            Add your billing address so invoices and receipts list the correct legal entity.
+          </p>
+          <button class="btn btn-primary btn-sm" onclick="openBillingAddressModal()">Add billing address</button>
+        `;
+        return;
+      }
+      const lines = [address.line1];
+      if (address.line2) lines.push(address.line2);
+      lines.push(`${address.city}, ${address.state} ${address.postal_code}`);
+      lines.push(address.country);
+      const html = lines.map((l) => escapeHtml(l)).join('<br>');
+      display.innerHTML = `
+        <div style="background: var(--color-bg-subtle); border: 1px solid var(--color-border); border-radius: 8px; padding: 16px; font-size: 14px; line-height: 1.6; margin-bottom: 12px;">${html}</div>
+        <button class="btn btn-secondary btn-sm" onclick="openBillingAddressModal()">Edit</button>
+      `;
+    }
+
+    function openBillingAddressModal() {
+      const a = currentOrg?.billing_address || {};
+      document.getElementById('billingAddressModalTitle').textContent =
+        a.line1 ? 'Edit Billing Address' : 'Add Billing Address';
+      document.getElementById('addr-line1').value = a.line1 || '';
+      document.getElementById('addr-line2').value = a.line2 || '';
+      document.getElementById('addr-city').value = a.city || '';
+      document.getElementById('addr-state').value = a.state || '';
+      document.getElementById('addr-postal').value = a.postal_code || '';
+      document.getElementById('addr-country').value = a.country || 'US';
+      document.getElementById('billingAddressError').style.display = 'none';
+      document.getElementById('billingAddressModal').style.display = 'flex';
+    }
+
+    function closeBillingAddressModal() {
+      document.getElementById('billingAddressModal').style.display = 'none';
+    }
+
+    async function submitBillingAddress(event) {
+      event.preventDefault();
+      const btn = document.getElementById('saveBillingAddressBtn');
+      const errorEl = document.getElementById('billingAddressError');
+      const form = document.getElementById('billingAddressForm');
+      const fd = new FormData(form);
+      const body = {
+        line1: (fd.get('line1') || '').trim(),
+        line2: (fd.get('line2') || '').trim() || undefined,
+        city: (fd.get('city') || '').trim(),
+        state: (fd.get('state') || '').trim(),
+        postal_code: (fd.get('postal_code') || '').trim(),
+        country: (fd.get('country') || '').trim(),
+      };
+
+      btn.disabled = true;
+      btn.textContent = 'Saving...';
+      errorEl.style.display = 'none';
+      try {
+        const response = await fetch(`/api/organizations/${currentOrg.id}/billing-address`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(body),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(data.message || data.error || 'Failed to save address');
+        }
+        currentOrg.billing_address = data.billing_address;
+        renderBillingAddress();
+        closeBillingAddressModal();
+        showToast('Billing address saved');
+      } catch (error) {
+        errorEl.textContent = error.message || 'Something went wrong. Please try again.';
+        errorEl.style.display = 'block';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Save Address';
+      }
     }
 
     // Profile modal functions

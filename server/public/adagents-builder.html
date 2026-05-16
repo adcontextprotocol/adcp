@@ -885,7 +885,7 @@
             <input
               type="url"
               id="authoritative-location"
-              placeholder="https://cdn.example.com/adagents/v2/adagents.json"
+              placeholder="https://cdn.example.com/adagents/v3/adagents.json"
               style="width: 100%; padding: 12px; font-size: 15px; border: 2px solid #fed7aa; border-radius: 6px"
               oninput="updateJsonPreview()"
             />
@@ -894,11 +894,47 @@
             </p>
           </div>
 
+          <!-- Contact Section (optional, file-level metadata) -->
+          <div id="contact-section" style="background: var(--color-bg-subtle); border: 2px solid var(--color-border); border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; cursor: pointer;" onclick="toggleContactSection()">
+              <label style="font-weight: 600; color: var(--color-text-heading); margin: 0; cursor: pointer;">📋 Contact Info <span style="font-weight: normal; font-size: 13px; color: var(--color-text-muted);">(optional)</span></label>
+              <span id="contact-toggle-icon" style="font-size: 13px; color: var(--color-text-muted);">▼ Show</span>
+            </div>
+            <div id="contact-fields" style="display: none;">
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+                <div class="form-group" style="margin: 0;">
+                  <label>Contact name</label>
+                  <input type="text" id="contact-name" placeholder="e.g., Pinnacle Agency Ad Ops" oninput="updateJsonPreview()" style="width: 100%; box-sizing: border-box;" />
+                </div>
+                <div class="form-group" style="margin: 0;">
+                  <label>Contact email</label>
+                  <input type="email" id="contact-email" placeholder="adops@example.com" oninput="updateJsonPreview()" style="width: 100%; box-sizing: border-box;" />
+                </div>
+                <div class="form-group" style="margin: 0;">
+                  <label>Domain</label>
+                  <input type="text" id="contact-domain" placeholder="example.com" oninput="updateJsonPreview()" style="width: 100%; box-sizing: border-box;" />
+                </div>
+                <div class="form-group" style="margin: 0;">
+                  <label>Privacy policy URL</label>
+                  <input type="url" id="contact-privacy-policy-url" placeholder="https://example.com/privacy" oninput="updateJsonPreview()" style="width: 100%; box-sizing: border-box;" />
+                </div>
+                <div class="form-group" style="margin: 0;">
+                  <label>Seller ID <span style="font-weight: normal; font-size: 11px; color: var(--color-text-muted);">IAB sellers.json</span></label>
+                  <input type="text" id="contact-seller-id" placeholder="pub-12345" oninput="updateJsonPreview()" style="width: 100%; box-sizing: border-box;" />
+                </div>
+                <div class="form-group" style="margin: 0;">
+                  <label>TAG ID <span style="font-weight: normal; font-size: 11px; color: var(--color-text-muted);">TAG Certified Against Fraud</span></label>
+                  <input type="text" id="contact-tag-id" placeholder="12345" oninput="updateJsonPreview()" style="width: 100%; box-sizing: border-box;" />
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- Inline Configuration Section (visible by default) -->
           <div id="inline-configuration">
             <!-- Tabs -->
             <div style="border-bottom: 2px solid var(--color-border); margin-bottom: 24px">
-              <div style="display: flex; gap: 4px">
+              <div style="display: flex; gap: 4px; flex-wrap: wrap;">
                 <button class="tab-btn active" onclick="switchTab('properties')" id="properties-tab">
                   🏢 Properties (<span id="properties-count">0</span>)
                 </button>
@@ -913,6 +949,15 @@
                 </button>
                 <button class="tab-btn" onclick="switchTab('signalTags')" id="signalTags-tab">
                   🏷️ Signal Tags (<span id="signal-tags-count">0</span>)
+                </button>
+                <button class="tab-btn" onclick="switchTab('propertyFeatures')" id="propertyFeatures-tab">
+                  🏆 Features (<span id="property-features-count">0</span>)
+                </button>
+                <button class="tab-btn" onclick="switchTab('collections')" id="collections-tab">
+                  📚 Collections (<span id="collections-count">0</span>)
+                </button>
+                <button class="tab-btn" onclick="switchTab('placements')" id="placements-tab">
+                  📍 Placements (<span id="placements-count">0</span>)
                 </button>
               </div>
             </div>
@@ -1001,8 +1046,9 @@
               <!-- Agent cards will be added here -->
             </div>
 
-            <div style="margin-top: 20px">
+            <div style="margin-top: 20px; display: flex; gap: 12px; flex-wrap: wrap">
               <button class="btn" onclick="addAgent()">➕ Add Agent</button>
+              <button class="btn btn-secondary" onclick="openRegistryPicker()">🔍 Import from registry</button>
             </div>
           </div>
 
@@ -1035,6 +1081,192 @@
               <button class="btn" onclick="createSignalTag()">➕ Create Tag</button>
             </div>
           </div>
+
+          <!-- Property Features Tab Content -->
+          <div id="propertyFeatures-tab-content" class="tab-content" style="display: none">
+            <p style="font-size: 13px; color: var(--color-text-muted); margin-bottom: 16px;">
+              Third-party certification agents (e.g., Scope3, TAG, OneTrust) that provide property-level data.
+              Buyers use these to discover which certification agents cover your inventory.
+            </p>
+            <div id="property-features-list">
+              <!-- Property feature cards populated by renderPropertyFeatures() -->
+            </div>
+
+            <!-- Inline add/edit form for property features -->
+            <div id="pf-form" style="display: none; background: var(--color-bg-subtle); border: 2px solid var(--color-border); border-radius: 8px; padding: 16px; margin-top: 16px;">
+              <input type="hidden" id="pf-edit-index" value="-1" />
+              <h4 style="margin: 0 0 12px 0; font-size: 15px; color: var(--color-text-heading);" id="pf-form-title">Add feature provider</h4>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+                <div class="form-group" style="margin: 0;">
+                  <label>Provider name <span style="color: var(--color-error-500);">*</span></label>
+                  <input type="text" id="pf-name" placeholder="e.g., Scope3" style="width: 100%; box-sizing: border-box;" />
+                </div>
+                <div class="form-group" style="margin: 0;">
+                  <label>Provider API URL <span style="color: var(--color-error-500);">*</span></label>
+                  <input type="url" id="pf-url" placeholder="https://api.scope3.com/..." style="width: 100%; box-sizing: border-box;" />
+                </div>
+                <div class="form-group" style="margin: 0;">
+                  <label>Feature IDs <span style="font-weight: normal; font-size: 11px; color: var(--color-text-muted);">comma-separated</span></label>
+                  <input type="text" id="pf-features" placeholder="carbon_score, tag_certified_against_fraud" style="width: 100%; box-sizing: border-box;" />
+                </div>
+                <div class="form-group" style="margin: 0;">
+                  <label>Publisher ID <span style="font-weight: normal; font-size: 11px; color: var(--color-text-muted);">optional</span></label>
+                  <input type="text" id="pf-publisher-id" placeholder="Your ID at this provider" style="width: 100%; box-sizing: border-box;" />
+                </div>
+              </div>
+              <div style="display: flex; gap: 8px;">
+                <button class="btn" onclick="savePfForm()" style="padding: 8px 16px;">Save</button>
+                <button class="btn btn-secondary" onclick="hidePfForm()" style="padding: 8px 16px;">Cancel</button>
+              </div>
+            </div>
+
+            <div style="margin-top: 20px;">
+              <button class="btn" onclick="showPfForm(-1)">➕ Add feature provider</button>
+            </div>
+          </div>
+          <!-- Collections Tab Content -->
+          <div id="collections-tab-content" class="tab-content" style="display: none">
+            <p style="font-size: 13px; color: var(--color-text-muted); margin-bottom: 16px;">
+              Recurring content programs (shows, newsletters, event series) whose inventory is sold through authorized agents.
+            </p>
+            <div id="collections-list">
+              <!-- Collection cards populated by renderCollections() -->
+            </div>
+
+            <!-- Inline add/edit form for collections -->
+            <div id="collection-form" style="display: none; background: var(--color-bg-subtle); border: 2px solid var(--color-border); border-radius: 8px; padding: 16px; margin-top: 16px;">
+              <input type="hidden" id="collection-edit-index" value="-1" />
+              <h4 style="margin: 0 0 12px 0; font-size: 15px; color: var(--color-text-heading);" id="collection-form-title">Add collection</h4>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+                <div class="form-group" style="margin: 0;">
+                  <label>Collection ID <span style="color: var(--color-error-500);">*</span></label>
+                  <input type="text" id="col-id" placeholder="e.g., morning_drive" style="width: 100%; box-sizing: border-box;" />
+                </div>
+                <div class="form-group" style="margin: 0;">
+                  <label>Name <span style="color: var(--color-error-500);">*</span></label>
+                  <input type="text" id="col-name" placeholder="e.g., The Morning Drive" style="width: 100%; box-sizing: border-box;" />
+                </div>
+                <div class="form-group" style="margin: 0;">
+                  <label>Kind</label>
+                  <select id="col-kind" style="width: 100%; padding: 8px; border-radius: 8px; border: 2px solid var(--color-border); font-size: 14px;">
+                    <option value="">— select —</option>
+                    <option value="series">series — TV/podcast program</option>
+                    <option value="publication">publication — print/newsletter</option>
+                    <option value="event_series">event_series — live events</option>
+                    <option value="rotation">rotation — DOOH scheduling</option>
+                  </select>
+                </div>
+                <div class="form-group" style="margin: 0;">
+                  <label>Language <span style="font-weight: normal; font-size: 11px; color: var(--color-text-muted);">BCP 47, e.g. en, es-MX</span></label>
+                  <input type="text" id="col-language" placeholder="en" style="width: 100%; box-sizing: border-box;" />
+                </div>
+                <div class="form-group" style="margin: 0;">
+                  <label>Status</label>
+                  <select id="col-status" style="width: 100%; padding: 8px; border-radius: 8px; border: 2px solid var(--color-border); font-size: 14px;">
+                    <option value="">— select —</option>
+                    <option value="active">active</option>
+                    <option value="hiatus">hiatus</option>
+                    <option value="ended">ended</option>
+                    <option value="upcoming">upcoming</option>
+                  </select>
+                </div>
+                <div class="form-group" style="margin: 0;">
+                  <label>Cadence</label>
+                  <select id="col-cadence" style="width: 100%; padding: 8px; border-radius: 8px; border: 2px solid var(--color-border); font-size: 14px;">
+                    <option value="">— select —</option>
+                    <option value="daily">daily</option>
+                    <option value="weekly">weekly</option>
+                    <option value="monthly">monthly</option>
+                    <option value="seasonal">seasonal</option>
+                    <option value="event">event</option>
+                    <option value="irregular">irregular</option>
+                  </select>
+                </div>
+                <div class="form-group" style="margin: 0; grid-column: 1 / -1;">
+                  <label>Description</label>
+                  <textarea id="col-description" rows="2" placeholder="What the collection is about..." style="width: 100%; box-sizing: border-box; padding: 8px; border: 2px solid var(--color-border); border-radius: 8px; font-size: 14px;"></textarea>
+                </div>
+                <div class="form-group" style="margin: 0; grid-column: 1 / -1;">
+                  <label>Additional fields <span style="font-weight: normal; font-size: 11px; color: var(--color-text-muted);">JSON for genre, talent, distribution, deadline_policy, ext, etc.</span></label>
+                  <textarea id="col-advanced" rows="3" placeholder='{"genre": ["sports"], "season": "2026"}' style="width: 100%; box-sizing: border-box; padding: 8px; border: 2px solid var(--color-border); border-radius: 8px; font-size: 13px; font-family: monospace;"></textarea>
+                </div>
+              </div>
+              <div style="display: flex; gap: 8px;">
+                <button class="btn" onclick="saveCollectionForm()" style="padding: 8px 16px;">Save</button>
+                <button class="btn btn-secondary" onclick="hideCollectionForm()" style="padding: 8px 16px;">Cancel</button>
+              </div>
+            </div>
+
+            <div style="margin-top: 20px;">
+              <button class="btn" onclick="showCollectionForm(-1)">➕ Add collection</button>
+            </div>
+          </div>
+
+          <!-- Placements Tab Content -->
+          <div id="placements-tab-content" class="tab-content" style="display: none">
+            <p style="font-size: 13px; color: var(--color-text-muted); margin-bottom: 16px;">
+              Canonical ad placements for properties in this file. Buyers can scope authorization to specific placement IDs or tags.
+            </p>
+            <div id="placements-list">
+              <!-- Placement cards populated by renderPlacements() -->
+            </div>
+
+            <!-- Inline add/edit form for placements -->
+            <div id="placement-form" style="display: none; background: var(--color-bg-subtle); border: 2px solid var(--color-border); border-radius: 8px; padding: 16px; margin-top: 16px;">
+              <input type="hidden" id="placement-edit-index" value="-1" />
+              <h4 style="margin: 0 0 12px 0; font-size: 15px; color: var(--color-text-heading);" id="placement-form-title">Add placement</h4>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+                <div class="form-group" style="margin: 0;">
+                  <label>Placement ID <span style="color: var(--color-error-500);">*</span></label>
+                  <input type="text" id="pl-id" placeholder="e.g., homepage_banner" style="width: 100%; box-sizing: border-box;" />
+                </div>
+                <div class="form-group" style="margin: 0;">
+                  <label>Name <span style="color: var(--color-error-500);">*</span></label>
+                  <input type="text" id="pl-name" placeholder="e.g., Homepage Banner" style="width: 100%; box-sizing: border-box;" />
+                </div>
+                <div class="form-group" style="margin: 0; grid-column: 1 / -1;">
+                  <label>Description</label>
+                  <input type="text" id="pl-description" placeholder="Where and how this placement appears" style="width: 100%; box-sizing: border-box;" />
+                </div>
+                <div class="form-group" style="margin: 0; grid-column: 1 / -1;">
+                  <label>Property IDs <span style="color: var(--color-error-500);">*</span> <span style="font-weight: normal; font-size: 11px; color: var(--color-text-muted);">or use property tags below (one is required)</span></label>
+                  <div id="placement-property-checkboxes" style="max-height: 120px; overflow-y: auto; padding: 8px; border: 1px solid var(--color-border-strong); border-radius: 6px;">
+                    <!-- Dynamically populated -->
+                  </div>
+                </div>
+                <div class="form-group" style="margin: 0; grid-column: 1 / -1;">
+                  <label>Property tags <span style="font-weight: normal; font-size: 11px; color: var(--color-text-muted);">alternative/addition to property IDs (comma-separated)</span></label>
+                  <input type="text" id="pl-property-tags" placeholder="premium, ctv (comma-separated)" style="width: 100%; box-sizing: border-box;" />
+                </div>
+                <div class="form-group" style="margin: 0; grid-column: 1 / -1;">
+                  <label>Placement tags <span style="font-weight: normal; font-size: 11px; color: var(--color-text-muted);">for grouping and authorization (comma-separated)</span></label>
+                  <input type="text" id="pl-tags" placeholder="homepage, native, premium" style="width: 100%; box-sizing: border-box;" />
+                </div>
+              </div>
+              <div style="display: flex; gap: 8px;">
+                <button class="btn" onclick="savePlacementForm()" style="padding: 8px 16px;">Save</button>
+                <button class="btn btn-secondary" onclick="hidePlacementForm()" style="padding: 8px 16px;">Cancel</button>
+              </div>
+            </div>
+
+            <div style="margin-top: 20px;">
+              <button class="btn" onclick="showPlacementForm(-1)">➕ Add placement</button>
+            </div>
+
+            <!-- Placement Tags sub-section -->
+            <div style="margin-top: 32px; border-top: 2px solid var(--color-border); padding-top: 20px;">
+              <h4 style="margin: 0 0 8px 0; font-size: 15px; color: var(--color-text-heading);">Placement tags</h4>
+              <p style="font-size: 13px; color: var(--color-text-muted); margin-bottom: 12px;">Named tags for grouping placements. Agents can be authorized by placement tag in the Agents tab.</p>
+              <div id="placement-tags-list">
+                <!-- Placement tag chips will be added here -->
+              </div>
+              <div style="margin-top: 12px; display: flex; gap: 12px; align-items: center">
+                <input type="text" id="new-placement-tag-input" placeholder="Enter new placement tag name..." style="flex: 1; max-width: 300px" />
+                <button class="btn" onclick="createPlacementTag()">➕ Create tag</button>
+              </div>
+            </div>
+          </div>
+
           </div>
           <!-- End of Inline Configuration -->
 
@@ -1213,6 +1445,45 @@
               </div>
 
               <div class="form-group">
+                <label>
+                  <input type="checkbox" id="agent-exclusive" style="margin-right: 6px;" />
+                  Exclusive — sole authorized path for this inventory slice
+                </label>
+                <p style="margin: 4px 0 0 0; font-size: 12px; color: #666;">When checked, other agents in this file are NOT authorized for the same scoped inventory.</p>
+              </div>
+
+              <div class="form-group">
+                <label>Countries <span style="font-weight: normal; font-size: 12px; color: #666;">(optional — leave blank for worldwide)</span></label>
+                <input type="text" id="agent-countries" placeholder="US, CA, GB  (comma-separated ISO 3166-1 alpha-2)" style="width: 100%; box-sizing: border-box;" />
+                <p style="margin: 4px 0 0 0; font-size: 12px; color: #666;">Restrict this authorization to specific countries. Two-letter country codes, e.g. US, CA.</p>
+              </div>
+
+              <div class="form-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <div>
+                  <label>Effective from <span style="font-weight: normal; font-size: 12px; color: #666;">(optional)</span></label>
+                  <input type="datetime-local" id="agent-effective-from" style="width: 100%; box-sizing: border-box;" />
+                </div>
+                <div>
+                  <label>Effective until <span style="font-weight: normal; font-size: 12px; color: #666;">(optional)</span></label>
+                  <input type="datetime-local" id="agent-effective-until" style="width: 100%; box-sizing: border-box;" />
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label>Encryption keys <span style="font-weight: normal; font-size: 12px; color: #666;">(optional — X25519 public keys for TMPX)</span></label>
+                <p style="margin: 0 0 8px 0; font-size: 12px; color: #666;">Each key: enter the JWK <code>kid</code> (≤8 chars) and base64url-encoded X25519 public key (<code>x</code>, 43–44 chars).</p>
+                <div id="agent-encryption-keys-list"></div>
+                <button type="button" class="btn btn-secondary" onclick="addEncryptionKeyEntry()" style="margin-top: 8px; padding: 6px 12px; font-size: 13px;">➕ Add encryption key</button>
+              </div>
+
+              <div class="form-group">
+                <label>Signing keys <span style="font-weight: normal; font-size: 12px; color: #666;">(optional — publisher-attested public signing keys)</span></label>
+                <p style="margin: 0 0 8px 0; font-size: 12px; color: #666;">Paste each key as a JWK JSON object (Ed25519, P-256, or RSA public key).</p>
+                <div id="agent-signing-keys-list"></div>
+                <button type="button" class="btn btn-secondary" onclick="addSigningKeyEntry()" style="margin-top: 8px; padding: 6px 12px; font-size: 13px;">➕ Add signing key</button>
+              </div>
+
+              <div class="form-group">
                 <label>Property Access</label>
 
                 <div style="margin-bottom: 16px">
@@ -1236,7 +1507,7 @@
                     />
                     <strong>Can sell all properties</strong>
                     <p style="margin: 4px 0 0 24px; font-size: 13px; color: #666">
-                      Agent has access to all current and future properties
+                      Snapshots every property currently in this file. Re-edit the agent after adding new properties, or use a tag-based scope to cover them automatically.
                     </p>
                   </label>
 
@@ -1314,11 +1585,66 @@
                   </div>
                 </div>
               </div>
+
+              <div class="form-group" style="margin-top: 8px; padding-top: 12px; border-top: 1px solid var(--color-border);">
+                <label>Placement constraints <span style="font-weight: normal; font-size: 12px; color: #666;">(optional — narrows authorization to specific placements)</span></label>
+                <p style="margin: 4px 0 8px 0; font-size: 12px; color: #666;">Restrict this agent to placements defined in the Placements tab. Leave unchecked for no placement restriction.</p>
+                <div style="margin-bottom: 8px;">
+                  <label style="font-size: 13px; font-weight: 500; display: block; margin-bottom: 4px;">By placement ID</label>
+                  <div id="agent-placement-id-checkboxes" style="max-height: 120px; overflow-y: auto; padding: 8px; border: 1px solid var(--color-border-strong); border-radius: 6px; background: var(--color-bg-subtle);">
+                    <!-- Dynamically populated -->
+                  </div>
+                </div>
+                <div>
+                  <label style="font-size: 13px; font-weight: 500; display: block; margin-bottom: 4px;">By placement tag</label>
+                  <div id="agent-placement-tag-checkboxes" style="max-height: 120px; overflow-y: auto; padding: 8px; border: 1px solid var(--color-border-strong); border-radius: 6px; background: var(--color-bg-subtle);">
+                    <!-- Dynamically populated -->
+                  </div>
+                </div>
+              </div>
             </div>
             <div class="modal-footer">
               <button class="btn btn-secondary" onclick="closeAgentModal()">Cancel</button>
               <button class="btn" onclick="saveAgent()">💾 Save Agent</button>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Registry Picker Modal -->
+      <div id="registry-picker-modal" class="modal" style="display: none">
+        <div class="modal-content" style="max-width: 600px">
+          <div class="modal-header">
+            <h3>Import from registry</h3>
+            <button class="modal-close" onclick="closeRegistryPicker()">✖️</button>
+          </div>
+          <div class="modal-body">
+            <div class="form-group">
+              <label>Search by platform name</label>
+              <input
+                type="text"
+                id="registry-picker-search"
+                placeholder="e.g. Magnite, OpenX, Index Exchange…"
+                oninput="filterRegistryPicker(this.value)"
+              />
+            </div>
+            <div
+              id="registry-picker-list"
+              style="
+                max-height: 360px;
+                overflow-y: auto;
+                border: var(--border-1) solid var(--color-border);
+                border-radius: var(--radius-md);
+              "
+            ></div>
+          </div>
+          <div class="modal-footer">
+            <span
+              id="registry-picker-selected-count"
+              style="flex: 1; font-size: var(--text-sm); color: var(--color-text-muted); align-self: center"
+            ></span>
+            <button class="btn btn-secondary" onclick="closeRegistryPicker()">Cancel</button>
+            <button class="btn" onclick="importFromRegistry()">Import selected</button>
           </div>
         </div>
       </div>
@@ -1750,11 +2076,16 @@
       // In-memory state (represents the adagents.json file)
       const state = {
         domain: '',
+        contact: {},
         properties: [],
         agents: [],
         tags: [],
         signals: [],
         signalTags: [],
+        propertyFeatures: [],
+        collections: [],
+        placements: [],
+        placementTags: {},
         fileFound: false,
         bulkSelectMode: false,
         selectedPropertyIds: [],
@@ -1823,14 +2154,14 @@
           // URL Reference structure
           const authLocation = document.getElementById('authoritative-location').value.trim();
           adagents = {
-            $schema: 'https://adcontextprotocol.org/schemas/v2/adagents.json',
-            authoritative_location: authLocation || 'https://cdn.example.com/adagents/v2/adagents.json',
+            $schema: 'https://adcontextprotocol.org/schemas/v3/adagents.json',
+            authoritative_location: authLocation || 'https://cdn.example.com/adagents/v3/adagents.json',
             last_updated: new Date().toISOString(),
           };
         } else {
           // Inline structure
           adagents = {
-            $schema: 'https://adcontextprotocol.org/schemas/v2/adagents.json',
+            $schema: 'https://adcontextprotocol.org/schemas/v3/adagents.json',
             authorized_agents: state.agents.map(agent => {
               const agentObj = {
                 url: agent.url,
@@ -1838,7 +2169,7 @@
                 delegation_type: agent.delegation_type || 'direct',
               };
 
-              // Handle authorization type
+              // v3 requires authorization_type + matching selector on every entry.
               if (agent.authorization_type) {
                 agentObj.authorization_type = agent.authorization_type;
 
@@ -1851,15 +2182,28 @@
                 } else if (agent.authorization_type === 'signal_tags' && agent.signal_tags?.length > 0) {
                   agentObj.signal_tags = agent.signal_tags;
                 }
-              } else if (agent.property_ids && agent.property_ids.length > 0) {
-                // Legacy support for property_ids without authorization_type
-                agentObj.property_ids = agent.property_ids;
               }
+
+              // Optional placement constraints (overlay on any auth type)
+              if (agent.placement_ids?.length > 0) agentObj.placement_ids = agent.placement_ids;
+              if (agent.placement_tags?.length > 0) agentObj.placement_tags = agent.placement_tags;
+
+              // v3 constraint fields
+              if (agent.exclusive) agentObj.exclusive = true;
+              if (agent.countries?.length > 0) agentObj.countries = agent.countries;
+              if (agent.effective_from) agentObj.effective_from = agent.effective_from;
+              if (agent.effective_until) agentObj.effective_until = agent.effective_until;
+              if (agent.signing_keys?.length > 0) agentObj.signing_keys = agent.signing_keys;
+              if (agent.encryption_keys?.length > 0) agentObj.encryption_keys = agent.encryption_keys;
 
               return agentObj;
             }),
             last_updated: new Date().toISOString(),
           };
+
+          // Contact metadata
+          const contact = getContactFromForm();
+          if (contact) adagents.contact = contact;
 
           if (state.properties.length > 0) {
             adagents.properties = state.properties;
@@ -1880,6 +2224,26 @@
               };
             });
           }
+
+          // Property features
+          if (state.propertyFeatures.length > 0) {
+            adagents.property_features = state.propertyFeatures;
+          }
+
+          // Collections
+          if (state.collections.length > 0) {
+            adagents.collections = state.collections;
+          }
+
+          // Placements
+          if (state.placements.length > 0) {
+            adagents.placements = state.placements;
+          }
+
+          // Placement tags metadata
+          if (Object.keys(state.placementTags).length > 0) {
+            adagents.placement_tags = { ...state.placementTags };
+          }
         }
 
         document.getElementById('json-output').value = JSON.stringify(adagents, null, 2);
@@ -1891,6 +2255,643 @@
         document.getElementById('agents-count').textContent = state.agents.length;
         document.getElementById('signals-count').textContent = state.signals.length;
         document.getElementById('signal-tags-count').textContent = state.signalTags.length;
+        document.getElementById('property-features-count').textContent = state.propertyFeatures.length;
+        document.getElementById('collections-count').textContent = state.collections.length;
+        document.getElementById('placements-count').textContent = state.placements.length;
+      }
+
+      function toggleContactSection() {
+        const fields = document.getElementById('contact-fields');
+        const icon = document.getElementById('contact-toggle-icon');
+        if (fields.style.display === 'none') {
+          fields.style.display = 'block';
+          icon.textContent = '▲ Hide';
+        } else {
+          fields.style.display = 'none';
+          icon.textContent = '▼ Show';
+        }
+      }
+
+      function getContactFromForm() {
+        const contact = {};
+        const name = document.getElementById('contact-name').value.trim();
+        const email = document.getElementById('contact-email').value.trim();
+        const domain = document.getElementById('contact-domain').value.trim();
+        const privacyPolicyUrl = document.getElementById('contact-privacy-policy-url').value.trim();
+        const sellerId = document.getElementById('contact-seller-id').value.trim();
+        const tagId = document.getElementById('contact-tag-id').value.trim();
+        if (name) contact.name = name;
+        if (email) contact.email = email;
+        if (domain) contact.domain = domain.toLowerCase();
+        if (privacyPolicyUrl) contact.privacy_policy_url = privacyPolicyUrl;
+        if (sellerId) contact.seller_id = sellerId;
+        if (tagId) contact.tag_id = tagId;
+        return Object.keys(contact).length > 0 ? contact : null;
+      }
+
+      function populateContactForm(contact) {
+        if (!contact) return;
+        document.getElementById('contact-name').value = contact.name || '';
+        document.getElementById('contact-email').value = contact.email || '';
+        document.getElementById('contact-domain').value = contact.domain || '';
+        document.getElementById('contact-privacy-policy-url').value = contact.privacy_policy_url || '';
+        document.getElementById('contact-seller-id').value = contact.seller_id || '';
+        document.getElementById('contact-tag-id').value = contact.tag_id || '';
+        if (Object.values(contact).some(v => v)) {
+          document.getElementById('contact-fields').style.display = 'block';
+          document.getElementById('contact-toggle-icon').textContent = '▲ Hide';
+        }
+      }
+
+      function renderPropertyFeatures() {
+        const container = document.getElementById('property-features-list');
+        if (!container) return;
+        container.innerHTML = '';
+        if (state.propertyFeatures.length === 0) {
+          const empty = document.createElement('p');
+          empty.style.cssText = 'color: var(--color-text-muted); font-size: 13px;';
+          empty.textContent = 'No feature providers added yet.';
+          container.appendChild(empty);
+          return;
+        }
+        state.propertyFeatures.forEach((pf, i) => {
+          const card = document.createElement('div');
+          card.style.cssText = 'border: 2px solid var(--color-border); border-radius: 8px; padding: 12px; margin-bottom: 10px; background: var(--color-bg-card);';
+
+          const row = document.createElement('div');
+          row.style.cssText = 'display: flex; justify-content: space-between; align-items: flex-start;';
+
+          const info = document.createElement('div');
+
+          const nameEl = document.createElement('strong');
+          nameEl.style.fontSize = '14px';
+          nameEl.textContent = pf.name || '(unnamed)';
+          info.appendChild(nameEl);
+
+          const urlEl = document.createElement('div');
+          urlEl.style.cssText = 'font-size: 12px; color: var(--color-text-muted); margin-top: 2px;';
+          urlEl.textContent = pf.url || '';
+          info.appendChild(urlEl);
+
+          const featEl = document.createElement('div');
+          featEl.style.cssText = 'font-size: 12px; margin-top: 4px;';
+          featEl.textContent = 'Features: ';
+          const featCode = document.createElement('code');
+          featCode.textContent = (pf.features || []).join(', ');
+          featEl.appendChild(featCode);
+          info.appendChild(featEl);
+
+          if (pf.publisher_id) {
+            const pidEl = document.createElement('div');
+            pidEl.style.cssText = 'font-size: 12px; color: var(--color-text-muted);';
+            pidEl.textContent = `Publisher ID: ${pf.publisher_id}`;
+            info.appendChild(pidEl);
+          }
+
+          const actions = document.createElement('div');
+          actions.style.cssText = 'display: flex; gap: 6px;';
+
+          const editBtn = document.createElement('button');
+          editBtn.className = 'btn btn-secondary';
+          editBtn.style.cssText = 'padding: 4px 10px; font-size: 12px;';
+          editBtn.textContent = '✏️ Edit';
+          editBtn.onclick = () => showPfForm(i);
+
+          const removeBtn = document.createElement('button');
+          removeBtn.className = 'btn';
+          removeBtn.style.cssText = 'padding: 4px 10px; font-size: 12px; background: var(--color-error-500);';
+          removeBtn.textContent = '🗑️ Remove';
+          removeBtn.onclick = () => removePropertyFeature(i);
+
+          actions.appendChild(editBtn);
+          actions.appendChild(removeBtn);
+          row.appendChild(info);
+          row.appendChild(actions);
+          card.appendChild(row);
+          container.appendChild(card);
+        });
+      }
+
+      function showPfForm(index) {
+        document.getElementById('pf-edit-index').value = index;
+        document.getElementById('pf-form-title').textContent = index === -1 ? 'Add feature provider' : 'Edit feature provider';
+        if (index === -1) {
+          document.getElementById('pf-name').value = '';
+          document.getElementById('pf-url').value = '';
+          document.getElementById('pf-features').value = '';
+          document.getElementById('pf-publisher-id').value = '';
+        } else {
+          const pf = state.propertyFeatures[index];
+          document.getElementById('pf-name').value = pf.name || '';
+          document.getElementById('pf-url').value = pf.url || '';
+          document.getElementById('pf-features').value = (pf.features || []).join(', ');
+          document.getElementById('pf-publisher-id').value = pf.publisher_id || '';
+        }
+        document.getElementById('pf-form').style.display = 'block';
+        document.getElementById('pf-name').focus();
+      }
+
+      function hidePfForm() {
+        document.getElementById('pf-form').style.display = 'none';
+      }
+
+      function savePfForm() {
+        const name = document.getElementById('pf-name').value.trim();
+        const url = document.getElementById('pf-url').value.trim();
+        if (!name || !url) {
+          alert('Provider name and URL are required.');
+          return;
+        }
+        const features = document.getElementById('pf-features').value.split(',').map(f => f.trim()).filter(Boolean);
+        const publisherId = document.getElementById('pf-publisher-id').value.trim() || undefined;
+        const pf = { url, name, features };
+        if (publisherId) pf.publisher_id = publisherId;
+        const index = parseInt(document.getElementById('pf-edit-index').value);
+        if (index === -1) {
+          state.propertyFeatures.push(pf);
+        } else {
+          state.propertyFeatures[index] = pf;
+        }
+        hidePfForm();
+        render();
+      }
+
+      function removePropertyFeature(index) {
+        if (confirm(`Remove feature provider "${state.propertyFeatures[index].name}"?`)) {
+          state.propertyFeatures.splice(index, 1);
+          render();
+        }
+      }
+
+      // ============================================================================
+      // Collections
+      // ============================================================================
+
+      function renderCollections() {
+        const container = document.getElementById('collections-list');
+        if (!container) return;
+        container.innerHTML = '';
+        if (state.collections.length === 0) {
+          const empty = document.createElement('p');
+          empty.style.cssText = 'color: var(--color-text-muted); font-size: 13px;';
+          empty.textContent = 'No collections added yet.';
+          container.appendChild(empty);
+          return;
+        }
+        state.collections.forEach((col, i) => {
+          const card = document.createElement('div');
+          card.style.cssText = 'border: 2px solid var(--color-border); border-radius: 8px; padding: 12px; margin-bottom: 10px; background: var(--color-bg-card);';
+
+          const row = document.createElement('div');
+          row.style.cssText = 'display: flex; justify-content: space-between; align-items: flex-start;';
+
+          const info = document.createElement('div');
+
+          const titleEl = document.createElement('strong');
+          titleEl.style.fontSize = '14px';
+          titleEl.textContent = col.name || '(unnamed)';
+          info.appendChild(titleEl);
+
+          const idEl = document.createElement('code');
+          idEl.style.cssText = 'display: block; font-size: 12px; margin-top: 2px;';
+          idEl.textContent = col.collection_id || '';
+          info.appendChild(idEl);
+
+          if (col.kind) {
+            const kindEl = document.createElement('span');
+            kindEl.style.cssText = 'display: inline-block; font-size: 11px; padding: 2px 6px; background: var(--color-bg-subtle); border-radius: 4px; margin-top: 4px;';
+            kindEl.textContent = col.kind;
+            info.appendChild(kindEl);
+          }
+
+          if (col.description) {
+            const descEl = document.createElement('div');
+            descEl.style.cssText = 'font-size: 12px; color: var(--color-text-muted); margin-top: 4px;';
+            descEl.textContent = col.description;
+            info.appendChild(descEl);
+          }
+
+          const actions = document.createElement('div');
+          actions.style.cssText = 'display: flex; gap: 6px;';
+
+          const editBtn = document.createElement('button');
+          editBtn.className = 'btn btn-secondary';
+          editBtn.style.cssText = 'padding: 4px 10px; font-size: 12px;';
+          editBtn.textContent = '✏️ Edit';
+          editBtn.onclick = () => showCollectionForm(i);
+
+          const removeBtn = document.createElement('button');
+          removeBtn.className = 'btn';
+          removeBtn.style.cssText = 'padding: 4px 10px; font-size: 12px; background: var(--color-error-500);';
+          removeBtn.textContent = '🗑️ Remove';
+          removeBtn.onclick = () => removeCollection(i);
+
+          actions.appendChild(editBtn);
+          actions.appendChild(removeBtn);
+          row.appendChild(info);
+          row.appendChild(actions);
+          card.appendChild(row);
+          container.appendChild(card);
+        });
+      }
+
+      function showCollectionForm(index) {
+        document.getElementById('collection-edit-index').value = index;
+        document.getElementById('collection-form-title').textContent = index === -1 ? 'Add collection' : 'Edit collection';
+        if (index === -1) {
+          document.getElementById('col-id').value = '';
+          document.getElementById('col-name').value = '';
+          document.getElementById('col-kind').value = '';
+          document.getElementById('col-language').value = '';
+          document.getElementById('col-status').value = '';
+          document.getElementById('col-cadence').value = '';
+          document.getElementById('col-description').value = '';
+          document.getElementById('col-advanced').value = '';
+        } else {
+          const col = state.collections[index];
+          document.getElementById('col-id').value = col.collection_id || '';
+          document.getElementById('col-name').value = col.name || '';
+          document.getElementById('col-kind').value = col.kind || '';
+          document.getElementById('col-language').value = col.language || '';
+          document.getElementById('col-status').value = col.status || '';
+          document.getElementById('col-cadence').value = col.cadence || '';
+          document.getElementById('col-description').value = col.description || '';
+          const basicKeys = new Set(['collection_id', 'name', 'kind', 'language', 'status', 'cadence', 'description']);
+          const advanced = Object.fromEntries(Object.entries(col).filter(([k]) => !basicKeys.has(k)));
+          document.getElementById('col-advanced').value = Object.keys(advanced).length > 0 ? JSON.stringify(advanced, null, 2) : '';
+        }
+        document.getElementById('collection-form').style.display = 'block';
+        document.getElementById('col-id').focus();
+      }
+
+      function hideCollectionForm() {
+        document.getElementById('collection-form').style.display = 'none';
+      }
+
+      function saveCollectionForm() {
+        const id = document.getElementById('col-id').value.trim();
+        const name = document.getElementById('col-name').value.trim();
+        if (!id || !name) {
+          alert('Collection ID and name are required.');
+          return;
+        }
+        const col = { collection_id: id, name };
+        const kind = document.getElementById('col-kind').value;
+        if (kind) col.kind = kind;
+        const language = document.getElementById('col-language').value.trim();
+        if (language) col.language = language;
+        const status = document.getElementById('col-status').value;
+        if (status) col.status = status;
+        const cadence = document.getElementById('col-cadence').value;
+        if (cadence) col.cadence = cadence;
+        const description = document.getElementById('col-description').value.trim();
+        if (description) col.description = description;
+        const advancedRaw = document.getElementById('col-advanced').value.trim();
+        if (advancedRaw) {
+          try {
+            const advanced = JSON.parse(advancedRaw);
+            const reservedKeys = new Set(['collection_id', 'name', 'kind', 'language', 'status', 'cadence', 'description']);
+            reservedKeys.forEach(k => delete advanced[k]);
+            Object.assign(col, advanced);
+          } catch {
+            alert('Additional fields JSON is invalid. Please fix it or leave blank.');
+            return;
+          }
+        }
+        const index = parseInt(document.getElementById('collection-edit-index').value);
+        if (state.collections.some((c, i) => c.collection_id === id && i !== index)) {
+          alert(`Collection ID "${id}" already exists.`);
+          return;
+        }
+        if (index === -1) {
+          state.collections.push(col);
+        } else {
+          state.collections[index] = col;
+        }
+        hideCollectionForm();
+        render();
+      }
+
+      function removeCollection(index) {
+        if (confirm(`Remove collection "${state.collections[index].name}"?`)) {
+          state.collections.splice(index, 1);
+          render();
+        }
+      }
+
+      // ============================================================================
+      // Placements
+      // ============================================================================
+
+      function renderPlacements() {
+        const container = document.getElementById('placements-list');
+        if (!container) return;
+        container.innerHTML = '';
+        if (state.placements.length === 0) {
+          const empty = document.createElement('p');
+          empty.style.cssText = 'color: var(--color-text-muted); font-size: 13px;';
+          empty.textContent = 'No placements added yet.';
+          container.appendChild(empty);
+          return;
+        }
+        state.placements.forEach((pl, i) => {
+          const card = document.createElement('div');
+          card.style.cssText = 'border: 2px solid var(--color-border); border-radius: 8px; padding: 12px; margin-bottom: 10px; background: var(--color-bg-card);';
+
+          const row = document.createElement('div');
+          row.style.cssText = 'display: flex; justify-content: space-between; align-items: flex-start;';
+
+          const info = document.createElement('div');
+
+          const titleEl = document.createElement('strong');
+          titleEl.style.fontSize = '14px';
+          titleEl.textContent = pl.name || '(unnamed)';
+          info.appendChild(titleEl);
+
+          const idEl = document.createElement('code');
+          idEl.style.cssText = 'display: block; font-size: 12px; margin-top: 2px;';
+          idEl.textContent = pl.placement_id || '';
+          info.appendChild(idEl);
+
+          if (pl.tags && pl.tags.length > 0) {
+            const tagsEl = document.createElement('div');
+            tagsEl.style.cssText = 'margin-top: 4px;';
+            pl.tags.forEach(tag => {
+              const chip = document.createElement('span');
+              chip.style.cssText = 'display: inline-block; font-size: 11px; padding: 2px 6px; background: var(--color-bg-subtle); border-radius: 4px; margin-right: 4px;';
+              chip.textContent = tag;
+              tagsEl.appendChild(chip);
+            });
+            info.appendChild(tagsEl);
+          }
+
+          if (pl.description) {
+            const descEl = document.createElement('div');
+            descEl.style.cssText = 'font-size: 12px; color: var(--color-text-muted); margin-top: 4px;';
+            descEl.textContent = pl.description;
+            info.appendChild(descEl);
+          }
+
+          const actions = document.createElement('div');
+          actions.style.cssText = 'display: flex; gap: 6px;';
+
+          const editBtn = document.createElement('button');
+          editBtn.className = 'btn btn-secondary';
+          editBtn.style.cssText = 'padding: 4px 10px; font-size: 12px;';
+          editBtn.textContent = '✏️ Edit';
+          editBtn.onclick = () => showPlacementForm(i);
+
+          const removeBtn = document.createElement('button');
+          removeBtn.className = 'btn';
+          removeBtn.style.cssText = 'padding: 4px 10px; font-size: 12px; background: var(--color-error-500);';
+          removeBtn.textContent = '🗑️ Remove';
+          removeBtn.onclick = () => removePlacement(i);
+
+          actions.appendChild(editBtn);
+          actions.appendChild(removeBtn);
+          row.appendChild(info);
+          row.appendChild(actions);
+          card.appendChild(row);
+          container.appendChild(card);
+        });
+      }
+
+      function renderPlacementTags() {
+        const container = document.getElementById('placement-tags-list');
+        if (!container) return;
+        container.innerHTML = '';
+        const tags = Object.keys(state.placementTags).sort();
+        if (tags.length === 0) {
+          const empty = document.createElement('p');
+          empty.style.cssText = 'color: var(--color-text-muted); font-size: 13px; margin: 0;';
+          empty.textContent = 'No placement tags yet.';
+          container.appendChild(empty);
+          return;
+        }
+        tags.forEach(tag => {
+          const placementCount = state.placements.filter(pl => pl.tags && pl.tags.includes(tag)).length;
+          const meta = state.placementTags[tag];
+
+          const card = document.createElement('div');
+          card.className = 'dashboard-card';
+          card.style.cssText = 'display: inline-block; min-width: 180px; margin-right: 12px; margin-bottom: 12px;';
+
+          const content = document.createElement('div');
+          content.className = 'dashboard-card-content';
+
+          const title = document.createElement('div');
+          title.className = 'dashboard-card-title';
+          title.textContent = `🏷️ ${tag}`;
+          content.appendChild(title);
+
+          const metaEl = document.createElement('div');
+          metaEl.className = 'dashboard-card-meta';
+          metaEl.style.cssText = 'font-size: 13px; color: var(--color-text-muted);';
+          if (meta && meta.description) {
+            const desc = document.createElement('div');
+            desc.textContent = meta.description;
+            metaEl.appendChild(desc);
+          }
+          const usedBy = document.createElement('span');
+          usedBy.textContent = `Used by ${placementCount} ${placementCount === 1 ? 'placement' : 'placements'}`;
+          metaEl.appendChild(usedBy);
+          content.appendChild(metaEl);
+
+          const actions = document.createElement('div');
+          actions.className = 'dashboard-card-actions';
+
+          const deleteBtn = document.createElement('button');
+          deleteBtn.className = 'btn';
+          deleteBtn.style.cssText = 'background: var(--color-error-500); padding: 6px 12px; font-size: 13px;';
+          deleteBtn.textContent = '🗑️ Delete';
+          deleteBtn.onclick = () => removePlacementTag(tag);
+          actions.appendChild(deleteBtn);
+
+          card.appendChild(content);
+          card.appendChild(actions);
+          container.appendChild(card);
+        });
+      }
+
+      function showPlacementForm(index) {
+        let selectedPropertyIds = [];
+        if (index !== -1) {
+          selectedPropertyIds = state.placements[index].property_ids || [];
+        }
+
+        const propCheckboxContainer = document.getElementById('placement-property-checkboxes');
+        if (state.properties.length === 0) {
+          propCheckboxContainer.innerHTML = '<p style="color: #666; font-size: 13px; margin: 0;">No properties defined. Add properties first, or use property tags.</p>';
+        } else {
+          propCheckboxContainer.innerHTML = state.properties
+            .map(prop => `
+              <label style="display: block; padding: 4px 0; cursor: pointer;">
+                <input type="checkbox" value="${escapeHtml(prop.property_id)}" ${selectedPropertyIds.includes(prop.property_id) ? 'checked' : ''} style="margin-right: 6px;">
+                ${getPropertyIcon(prop.property_type)} ${escapeHtml(prop.property_id)}${prop.name ? ' — ' + escapeHtml(prop.name) : ''}
+              </label>
+            `)
+            .join('');
+        }
+
+        document.getElementById('placement-edit-index').value = index;
+        document.getElementById('placement-form-title').textContent = index === -1 ? 'Add placement' : 'Edit placement';
+        if (index === -1) {
+          document.getElementById('pl-id').value = '';
+          document.getElementById('pl-name').value = '';
+          document.getElementById('pl-description').value = '';
+          document.getElementById('pl-property-tags').value = '';
+          document.getElementById('pl-tags').value = '';
+        } else {
+          const pl = state.placements[index];
+          document.getElementById('pl-id').value = pl.placement_id || '';
+          document.getElementById('pl-name').value = pl.name || '';
+          document.getElementById('pl-description').value = pl.description || '';
+          document.getElementById('pl-property-tags').value = (pl.property_tags || []).join(', ');
+          document.getElementById('pl-tags').value = (pl.tags || []).join(', ');
+        }
+        document.getElementById('placement-form').style.display = 'block';
+        document.getElementById('pl-id').focus();
+      }
+
+      function hidePlacementForm() {
+        document.getElementById('placement-form').style.display = 'none';
+      }
+
+      function savePlacementForm() {
+        const id = document.getElementById('pl-id').value.trim();
+        const name = document.getElementById('pl-name').value.trim();
+        if (!id || !name) {
+          alert('Placement ID and name are required.');
+          return;
+        }
+
+        const propertyIds = [];
+        document.querySelectorAll('#placement-property-checkboxes input[type="checkbox"]:checked').forEach(cb => {
+          propertyIds.push(cb.value);
+        });
+        const propertyTags = document.getElementById('pl-property-tags').value.split(',').map(t => t.trim()).filter(Boolean);
+        const invalidPropTags = propertyTags.filter(t => !/^[a-z0-9_]+$/.test(t));
+        if (invalidPropTags.length > 0) {
+          alert(`Invalid property tag(s): ${invalidPropTags.join(', ')}. Tags must be lowercase letters, digits, or underscores only.`);
+          return;
+        }
+
+        if (propertyIds.length === 0 && propertyTags.length === 0) {
+          alert('A placement requires at least one property ID or property tag.');
+          return;
+        }
+
+        const tags = document.getElementById('pl-tags').value.split(',').map(t => t.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_')).filter(Boolean);
+
+        const index = parseInt(document.getElementById('placement-edit-index').value);
+        if (state.placements.some((p, i) => p.placement_id === id && i !== index)) {
+          alert(`Placement ID "${id}" already exists.`);
+          return;
+        }
+
+        const pl = { placement_id: id, name };
+        if (propertyIds.length > 0) pl.property_ids = propertyIds;
+        if (propertyTags.length > 0) pl.property_tags = propertyTags;
+
+        const description = document.getElementById('pl-description').value.trim();
+        if (description) pl.description = description;
+
+        if (tags.length > 0) pl.tags = tags;
+
+        // Auto-register any new placement tags preserving metadata
+        tags.forEach(tag => {
+          if (!(tag in state.placementTags)) {
+            state.placementTags[tag] = {
+              name: tag.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
+              description: `Placements tagged as ${tag}`,
+            };
+          }
+        });
+
+        if (index === -1) {
+          state.placements.push(pl);
+        } else {
+          state.placements[index] = pl;
+        }
+        hidePlacementForm();
+        render();
+      }
+
+      function removePlacement(index) {
+        if (confirm(`Remove placement "${state.placements[index].name}"?`)) {
+          state.placements.splice(index, 1);
+          render();
+        }
+      }
+
+      function createPlacementTag() {
+        const input = document.getElementById('new-placement-tag-input');
+        const tagName = input.value.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_');
+        if (!tagName) return;
+        if (tagName in state.placementTags) {
+          alert(`Placement tag "${tagName}" already exists.`);
+          return;
+        }
+        state.placementTags[tagName] = {
+          name: tagName.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
+          description: `Placements tagged as ${tagName}`,
+        };
+        input.value = '';
+        render();
+      }
+
+      function removePlacementTag(tag) {
+        const placementsUsingTag = state.placements.filter(pl => pl.tags && pl.tags.includes(tag)).length;
+
+        let message = `Delete placement tag "${tag}"?`;
+        if (placementsUsingTag > 0) {
+          message += `\n\nThis tag is used by ${placementsUsingTag} placement(s). It will be removed from those placements.`;
+        }
+
+        if (confirm(message)) {
+          state.placements.forEach(pl => {
+            if (pl.tags) {
+              pl.tags = pl.tags.filter(t => t !== tag);
+              if (pl.tags.length === 0) {
+                delete pl.tags;
+              }
+            }
+          });
+          delete state.placementTags[tag];
+          render();
+        }
+      }
+
+      function updateAgentPlacementCheckboxes(selectedIds, selectedTags) {
+        const idContainer = document.getElementById('agent-placement-id-checkboxes');
+        const tagContainer = document.getElementById('agent-placement-tag-checkboxes');
+
+        if (state.placements.length === 0) {
+          idContainer.innerHTML = '<p style="color: var(--color-text-muted); font-size: 13px; margin: 0;">No placements defined yet. Add placements first.</p>';
+        } else {
+          idContainer.innerHTML = state.placements
+            .map(pl => `
+              <label style="display: block; padding: 4px 0; cursor: pointer;">
+                <input type="checkbox" value="${escapeHtml(pl.placement_id)}" ${selectedIds.includes(pl.placement_id) ? 'checked' : ''} style="margin-right: 6px;">
+                📍 ${escapeHtml(pl.placement_id)}${pl.name ? ' — ' + escapeHtml(pl.name) : ''}
+              </label>
+            `)
+            .join('');
+        }
+
+        const placementTagKeys = Object.keys(state.placementTags).sort();
+        if (placementTagKeys.length === 0) {
+          tagContainer.innerHTML = '<p style="color: var(--color-text-muted); font-size: 13px; margin: 0;">No placement tags defined yet. Add tags in the Placements tab.</p>';
+        } else {
+          tagContainer.innerHTML = placementTagKeys
+            .map(tag => `
+              <label style="display: block; padding: 4px 0; cursor: pointer;">
+                <input type="checkbox" value="${escapeHtml(tag)}" ${selectedTags.includes(tag) ? 'checked' : ''} style="margin-right: 6px;">
+                🏷️ ${escapeHtml(tag)}
+              </label>
+            `)
+            .join('');
+        }
       }
 
       function renderProperties() {
@@ -1932,14 +2933,14 @@
                     <div class="dashboard-card">
                         <div class="dashboard-card-content">
                             <div class="dashboard-card-title">
-                                ${icon} ${prop.property_id}
+                                ${icon} ${escapeHtml(prop.property_id)}
                             </div>
                             <div class="dashboard-card-meta">
-                                ${formatPropertyType(prop.property_type)} • ${prop.name}
+                                ${escapeHtml(formatPropertyType(prop.property_type))} • ${escapeHtml(prop.name)}
                             </div>
                             <div class="dashboard-card-meta" style="font-size: 13px; color: var(--color-text-muted);">
                                 ${identifierCount} identifier${identifierCount > 1 ? 's' : ''}
-                                ${prop.tags && prop.tags.length > 0 ? ` • Tags: ${prop.tags.join(', ')}` : ''}
+                                ${prop.tags && prop.tags.length > 0 ? ` • Tags: ${escapeHtml(prop.tags.join(', '))}` : ''}
                             </div>
                             <div class="dashboard-card-tags">
                                 ${assignmentTag}
@@ -1971,38 +2972,43 @@
 
         container.innerHTML = state.agents
           .map((agent, index) => {
-            let propertyInfo = '';
-            if (!agent.property_ids || agent.property_ids.length === 0) {
-              propertyInfo = '<span class="dashboard-card-tag">Can sell: All properties</span>';
-            } else {
-              // Check if using tags (prefixed with 'tag:')
+            let propertyInfo;
+            if (agent.authorization_type === 'property_tags' && agent.property_tags?.length > 0) {
+              const tagNames = escapeHtml(agent.property_tags.join(', '));
+              propertyInfo = `<span class="dashboard-card-tag assigned">Can sell tags: ${tagNames}</span>`;
+            } else if (agent.authorization_type === 'property_ids' && agent.property_ids?.length > 0) {
+              const propNames = escapeHtml(agent.property_ids
+                .map(id => {
+                  const prop = state.properties.find(p => p.property_id === id);
+                  return prop ? prop.property_id : `${id} (missing)`;
+                })
+                .join(', '));
+              propertyInfo = `<span class="dashboard-card-tag assigned">Can sell: ${propNames}</span>`;
+            } else if (agent.property_ids?.length > 0) {
+              // Legacy v2 entry — surface it so the user knows to re-open and upgrade.
               const tagIds = agent.property_ids.filter(id => id.startsWith('tag:'));
               if (tagIds.length > 0) {
-                const tagNames = tagIds.map(id => id.replace('tag:', '')).join(', ');
-                propertyInfo = `<span class="dashboard-card-tag assigned">Can sell tags: ${tagNames}</span>`;
+                const tagNames = escapeHtml(tagIds.map(id => id.replace('tag:', '')).join(', '));
+                propertyInfo = `<span class="dashboard-card-tag assigned">Can sell tags: ${tagNames} (v2 — re-save to upgrade)</span>`;
               } else {
-                // Regular property IDs
-                const propNames = agent.property_ids
-                  .map(id => {
-                    const prop = state.properties.find(p => p.property_id === id);
-                    return prop ? prop.property_id : `${id} (missing)`;
-                  })
-                  .join(', ');
-                propertyInfo = `<span class="dashboard-card-tag assigned">Can sell: ${propNames}</span>`;
+                const propNames = escapeHtml(agent.property_ids.join(', '));
+                propertyInfo = `<span class="dashboard-card-tag assigned">Can sell: ${propNames} (v2 — re-save to upgrade)</span>`;
               }
+            } else {
+              propertyInfo = '<span class="dashboard-card-tag" style="background: var(--color-error-500); color: white;">⚠️ Scope not set — open to authorize</span>';
             }
 
             return `
                     <div class="dashboard-card">
                         <div class="dashboard-card-content">
                             <div class="dashboard-card-title">
-                                🤝 ${agent.url}
+                                🤝 ${escapeHtml(agent.url)}
                             </div>
                             <div class="dashboard-card-meta">
-                                ${agent.authorized_for}
+                                ${escapeHtml(agent.authorized_for)}
                             </div>
                             <div class="dashboard-card-tags">
-                                <span class="dashboard-card-tag">${agent.delegation_type || 'direct'}</span>
+                                <span class="dashboard-card-tag">${escapeHtml(agent.delegation_type || 'direct')}</span>
                                 ${propertyInfo}
                             </div>
                         </div>
@@ -2039,7 +3045,7 @@
                     <div class="dashboard-card" style="display: inline-block; min-width: 200px; margin-right: 12px; margin-bottom: 12px;">
                         <div class="dashboard-card-content">
                             <div class="dashboard-card-title">
-                                🏷️ ${tag}
+                                🏷️ ${escapeHtml(tag)}
                             </div>
                             <div class="dashboard-card-meta" style="font-size: 13px; color: var(--color-text-muted);">
                                 Used by ${propertyCount} ${propertyCount === 1 ? 'property' : 'properties'}
@@ -2056,9 +3062,13 @@
         // Update bulk tag select dropdown
         const bulkSelect = document.getElementById('bulk-tag-select');
         if (bulkSelect) {
-          bulkSelect.innerHTML =
-            '<option value="">Select a tag...</option>' +
-            state.tags.map(tag => `<option value="${tag}">${tag}</option>`).join('');
+          bulkSelect.innerHTML = '<option value="">Select a tag...</option>';
+          state.tags.forEach(tag => {
+            const opt = document.createElement('option');
+            opt.value = tag;
+            opt.textContent = tag;
+            bulkSelect.appendChild(opt);
+          });
         }
       }
 
@@ -2093,19 +3103,19 @@
             }
 
             const tagDisplay = signal.tags && signal.tags.length > 0
-              ? `Tags: ${signal.tags.join(', ')}`
+              ? `Tags: ${escapeHtml(signal.tags.join(', '))}`
               : 'No tags';
 
             return `
               <div class="dashboard-card">
                 <div class="dashboard-card-content">
                   <div class="dashboard-card-title">
-                    ${icon} ${signal.id}
+                    ${icon} ${escapeHtml(signal.id)}
                   </div>
                   <div class="dashboard-card-meta">
-                    ${typeInfo} - ${signal.name}
+                    ${escapeHtml(typeInfo)} - ${escapeHtml(signal.name)}
                   </div>
-                  ${signal.description ? `<div class="dashboard-card-meta" style="font-size: 13px; color: var(--color-text-muted);">${signal.description.substring(0, 100)}${signal.description.length > 100 ? '...' : ''}</div>` : ''}
+                  ${signal.description ? `<div class="dashboard-card-meta" style="font-size: 13px; color: var(--color-text-muted);">${escapeHtml(signal.description.substring(0, 100))}${signal.description.length > 100 ? '...' : ''}</div>` : ''}
                   <div class="dashboard-card-meta" style="font-size: 13px; color: var(--color-text-muted);">
                     ${tagDisplay}
                   </div>
@@ -2142,7 +3152,7 @@
               <div class="dashboard-card" style="display: inline-block; min-width: 200px; margin-right: 12px; margin-bottom: 12px;">
                 <div class="dashboard-card-content">
                   <div class="dashboard-card-title">
-                    🏷️ ${tag}
+                    🏷️ ${escapeHtml(tag)}
                   </div>
                   <div class="dashboard-card-meta" style="font-size: 13px; color: var(--color-text-muted);">
                     Used by ${signalCount} ${signalCount === 1 ? 'signal' : 'signals'}
@@ -2163,6 +3173,10 @@
         renderAgents();
         renderSignals();
         renderSignalTags();
+        renderPropertyFeatures();
+        renderCollections();
+        renderPlacements();
+        renderPlacementTags();
         updateCounts();
         updateJsonPreview();
       }
@@ -3014,18 +4028,163 @@
       // Agent CRUD Operations with Modal
       // ============================================================================
 
+      function renderEncryptionKeysList(keys) {
+        const container = document.getElementById('agent-encryption-keys-list');
+        container.innerHTML = '';
+        (keys || []).forEach((key, i) => {
+          const row = document.createElement('div');
+          row.style.cssText = 'display:flex;gap:8px;margin-bottom:8px;align-items:flex-start;';
+
+          const wrap = document.createElement('div');
+          wrap.style.flex = '1';
+
+          const kidRow = document.createElement('div');
+          kidRow.style.cssText = 'display:flex;gap:8px;margin-bottom:4px;';
+
+          const kidInput = document.createElement('input');
+          kidInput.type = 'text';
+          kidInput.placeholder = 'kid (≤8 chars)';
+          kidInput.maxLength = 8;
+          kidInput.value = key.kid || '';
+          kidInput.dataset.encIndex = String(i);
+          kidInput.dataset.encField = 'kid';
+          kidInput.oninput = function () { updateEncKey(this); };
+          kidInput.style.cssText = 'width:120px;padding:6px;border:1px solid var(--color-border);border-radius:6px;font-size:13px;';
+          kidRow.appendChild(kidInput);
+
+          const kidNote = document.createElement('span');
+          kidNote.style.cssText = 'font-size:12px;color:#666;align-self:center;';
+          kidNote.textContent = 'kty=OKP crv=X25519 use=enc';
+          kidRow.appendChild(kidNote);
+          wrap.appendChild(kidRow);
+
+          const xInput = document.createElement('input');
+          xInput.type = 'text';
+          xInput.placeholder = 'x — base64url X25519 public key (43–44 chars)';
+          xInput.value = key.x || '';
+          xInput.dataset.encIndex = String(i);
+          xInput.dataset.encField = 'x';
+          xInput.oninput = function () { updateEncKey(this); };
+          xInput.style.cssText = 'width:100%;padding:6px;border:1px solid var(--color-border);border-radius:6px;font-size:13px;box-sizing:border-box;';
+          xInput.setAttribute('pattern', '^[A-Za-z0-9_-]+$');
+          wrap.appendChild(xInput);
+
+          const err = document.createElement('div');
+          err.dataset.encError = String(i);
+          err.style.cssText = 'font-size:11px;color:var(--color-error-500);display:none;margin-top:2px;';
+          err.textContent = 'Must be a base64url string of 43–44 characters (32-byte X25519 key).';
+          wrap.appendChild(err);
+
+          const removeBtn = document.createElement('button');
+          removeBtn.type = 'button';
+          removeBtn.onclick = () => removeEncKey(i);
+          removeBtn.style.cssText = 'padding:4px 8px;background:var(--color-error-500);color:#fff;border:none;border-radius:6px;cursor:pointer;';
+          removeBtn.textContent = '🗑️';
+
+          row.appendChild(wrap);
+          row.appendChild(removeBtn);
+          container.appendChild(row);
+        });
+      }
+
+      function addEncryptionKeyEntry() {
+        const keys = getEncryptionKeysFromForm();
+        keys.push({ kid: '', kty: 'OKP', crv: 'X25519', use: 'enc', x: '' });
+        renderEncryptionKeysList(keys);
+      }
+
+      function updateEncKey(input) {
+        const idx = parseInt(input.dataset.encIndex);
+        const field = input.dataset.encField;
+        if (field === 'x') {
+          const val = input.value.trim();
+          const errEl = document.querySelector(`[data-enc-error="${idx}"]`);
+          const validX = /^[A-Za-z0-9_-]+$/.test(val) && val.length >= 43 && val.length <= 44;
+          errEl.style.display = (val && !validX) ? 'block' : 'none';
+        }
+      }
+
+      function removeEncKey(index) {
+        const keys = getEncryptionKeysFromForm();
+        keys.splice(index, 1);
+        renderEncryptionKeysList(keys);
+      }
+
+      function getEncryptionKeysFromForm() {
+        const rows = document.querySelectorAll('#agent-encryption-keys-list [data-enc-field="kid"]');
+        return Array.from(rows).map((kidInput, i) => {
+          const xInput = document.querySelector(`#agent-encryption-keys-list [data-enc-index="${i}"][data-enc-field="x"]`);
+          return { kid: kidInput.value.trim(), kty: 'OKP', crv: 'X25519', use: 'enc', x: xInput ? xInput.value.trim() : '' };
+        });
+      }
+
+      function renderSigningKeysList(keys) {
+        const container = document.getElementById('agent-signing-keys-list');
+        container.innerHTML = '';
+        (keys || []).forEach((key, i) => {
+          const row = document.createElement('div');
+          row.style.cssText = 'display:flex;gap:8px;margin-bottom:8px;align-items:flex-start;';
+
+          const textarea = document.createElement('textarea');
+          textarea.dataset.sigIndex = String(i);
+          textarea.style.cssText = 'flex:1;padding:6px;border:1px solid var(--color-border);border-radius:6px;font-size:12px;font-family:monospace;resize:vertical;';
+          textarea.rows = 4;
+          textarea.maxLength = 16384;
+          textarea.placeholder = '{"kid":"key-1","kty":"OKP","crv":"Ed25519","x":"base64url..."}';
+          textarea.value = JSON.stringify(key, null, 2);
+
+          const removeBtn = document.createElement('button');
+          removeBtn.type = 'button';
+          removeBtn.onclick = () => removeSigKey(i);
+          removeBtn.style.cssText = 'padding:4px 8px;background:var(--color-error-500);color:#fff;border:none;border-radius:6px;cursor:pointer;';
+          removeBtn.textContent = '🗑️';
+
+          row.appendChild(textarea);
+          row.appendChild(removeBtn);
+          container.appendChild(row);
+        });
+      }
+
+      function addSigningKeyEntry() {
+        const keys = getSigningKeysFromForm();
+        keys.push({ kid: '', kty: 'OKP' });
+        renderSigningKeysList(keys);
+      }
+
+      function removeSigKey(index) {
+        const keys = getSigningKeysFromForm();
+        keys.splice(index, 1);
+        renderSigningKeysList(keys);
+      }
+
+      function getSigningKeysFromForm() {
+        const textareas = document.querySelectorAll('#agent-signing-keys-list [data-sig-index]');
+        const keys = [];
+        textareas.forEach(ta => {
+          try { keys.push(JSON.parse(ta.value)); } catch (_) { /* skip invalid JSON */ }
+        });
+        return keys;
+      }
+
       function addAgent() {
         document.getElementById('agent-edit-index').value = '-1';
         document.getElementById('agent-modal-title').textContent = 'Add Agent';
         document.getElementById('agent-url').value = '';
         document.getElementById('agent-authorized-for').value = '';
         document.getElementById('agent-delegation-type').value = 'direct';
+        document.getElementById('agent-exclusive').checked = false;
+        document.getElementById('agent-countries').value = '';
+        document.getElementById('agent-effective-from').value = '';
+        document.getElementById('agent-effective-until').value = '';
+        renderEncryptionKeysList([]);
+        renderSigningKeysList([]);
 
         // Default to "all" access
         document.querySelector('input[name="agent-access-type"][value="all"]').checked = true;
         updateAgentAccessOptions();
         updateAgentPropertyCheckboxes([]);
         updateAgentTagCheckboxes([]);
+        updateAgentPlacementCheckboxes([], []);
 
         document.getElementById('agent-modal').style.display = 'flex';
       }
@@ -3039,12 +4198,32 @@
         document.getElementById('agent-authorized-for').value = agent.authorized_for;
         document.getElementById('agent-delegation-type').value = agent.delegation_type || 'direct';
 
-        // Determine access type based on what's set
-        let accessType = 'all';
+        // v3 fields
+        document.getElementById('agent-exclusive').checked = agent.exclusive === true;
+        document.getElementById('agent-countries').value = (agent.countries || []).join(', ');
+        document.getElementById('agent-effective-from').value = agent.effective_from
+          ? agent.effective_from.slice(0, 16) : '';
+        document.getElementById('agent-effective-until').value = agent.effective_until
+          ? agent.effective_until.slice(0, 16) : '';
+        renderEncryptionKeysList(agent.encryption_keys || []);
+        renderSigningKeysList(agent.signing_keys || []);
+
+        // Determine access type from v3 fields first; fall back to v2 legacy shape on import.
+        let accessType = 'properties';
         let selectedItems = [];
 
-        if (agent.property_ids && agent.property_ids.length > 0) {
-          // Check if any property_ids are tags (prefixed with 'tag:')
+        if (agent.authorization_type === 'property_tags') {
+          accessType = 'tags';
+          selectedItems = agent.property_tags || [];
+        } else if (agent.authorization_type === 'property_ids') {
+          const allIds = new Set(state.properties.map(p => p.property_id));
+          const ids = new Set(agent.property_ids || []);
+          const coversAll = allIds.size > 0 && ids.size === allIds.size
+            && [...allIds].every(id => ids.has(id));
+          accessType = coversAll ? 'all' : 'properties';
+          selectedItems = coversAll ? [] : (agent.property_ids || []);
+        } else if (agent.property_ids && agent.property_ids.length > 0) {
+          // Legacy v2 import: property_ids array with optional 'tag:' prefixes.
           const tagIds = agent.property_ids.filter(id => id.startsWith('tag:'));
           if (tagIds.length > 0) {
             accessType = 'tags';
@@ -3059,6 +4238,7 @@
         updateAgentAccessOptions();
         updateAgentPropertyCheckboxes(accessType === 'properties' ? selectedItems : []);
         updateAgentTagCheckboxes(accessType === 'tags' ? selectedItems : []);
+        updateAgentPlacementCheckboxes(agent.placement_ids || [], agent.placement_tags || []);
 
         document.getElementById('agent-modal').style.display = 'flex';
       }
@@ -3138,32 +4318,111 @@
         }
 
         const accessType = document.querySelector('input[name="agent-access-type"]:checked').value;
-        const propertyIds = [];
-
-        if (accessType === 'properties') {
-          // Collect selected property IDs
-          document.querySelectorAll('#agent-property-checkboxes input[type="checkbox"]:checked').forEach(checkbox => {
-            propertyIds.push(checkbox.value);
-          });
-        } else if (accessType === 'tags') {
-          // Collect selected tags and prefix with 'tag:'
-          document.querySelectorAll('#agent-tag-checkboxes input[type="checkbox"]:checked').forEach(checkbox => {
-            propertyIds.push('tag:' + checkbox.value);
-          });
-        }
-        // If accessType === 'all', propertyIds stays empty (which means all properties)
-
         const agent = {
           url: url,
           authorized_for: authorizedFor,
           delegation_type: delegationType,
-          property_ids: propertyIds,
         };
 
-        // Remove property_ids if empty (cleaner JSON)
-        if (propertyIds.length === 0) {
-          delete agent.property_ids;
+        if (accessType === 'properties') {
+          const ids = [];
+          document.querySelectorAll('#agent-property-checkboxes input[type="checkbox"]:checked').forEach(cb => {
+            ids.push(cb.value);
+          });
+          if (ids.length === 0) {
+            alert('Select at least one property, or pick a different access mode.');
+            return;
+          }
+          agent.authorization_type = 'property_ids';
+          agent.property_ids = ids;
+        } else if (accessType === 'tags') {
+          const tags = [];
+          document.querySelectorAll('#agent-tag-checkboxes input[type="checkbox"]:checked').forEach(cb => {
+            tags.push(cb.value);
+          });
+          if (tags.length === 0) {
+            alert('Select at least one tag, or pick a different access mode.');
+            return;
+          }
+          agent.authorization_type = 'property_tags';
+          agent.property_tags = tags;
+        } else {
+          // "All" snapshots every property currently in the file as an explicit property_ids list.
+          // v3 has no implicit "all + future" scope; re-edit the agent after adding new properties.
+          const allIds = state.properties.map(p => p.property_id);
+          if (allIds.length === 0) {
+            alert('Add at least one property to the file before authorizing an agent for all properties.');
+            return;
+          }
+          agent.authorization_type = 'property_ids';
+          agent.property_ids = allIds;
         }
+
+        // v3 fields
+        if (document.getElementById('agent-exclusive').checked) {
+          agent.exclusive = true;
+        }
+
+        const countriesRaw = document.getElementById('agent-countries').value.trim();
+        if (countriesRaw) {
+          const tokens = countriesRaw.split(',').map(c => c.trim().toUpperCase()).filter(Boolean);
+          const countries = [...new Set(tokens.filter(c => /^[A-Z]{2}$/.test(c)))];
+          const rejected = tokens.filter(c => !/^[A-Z]{2}$/.test(c));
+          if (rejected.length > 0) {
+            alert(`These country codes are not valid ISO 3166-1 alpha-2 and were ignored: ${rejected.join(', ')}\n\nOnly two-letter codes (e.g. US, CA, GB) are accepted.`);
+            return;
+          }
+          if (countries.length > 0) agent.countries = countries;
+        }
+
+        const effectiveFrom = document.getElementById('agent-effective-from').value;
+        if (effectiveFrom) agent.effective_from = new Date(effectiveFrom).toISOString();
+
+        const effectiveUntil = document.getElementById('agent-effective-until').value;
+        if (effectiveUntil) agent.effective_until = new Date(effectiveUntil).toISOString();
+
+        const allEncKeys = getEncryptionKeysFromForm();
+        const halfFilledEncKey = allEncKeys.find(k => (k.kid && !k.x) || (!k.kid && k.x));
+        if (halfFilledEncKey) {
+          const rowIndex = allEncKeys.indexOf(halfFilledEncKey) + 1;
+          alert(`Encryption key row ${rowIndex}: both "kid" and "x" are required. Fill in the missing field or remove the row.`);
+          return;
+        }
+        const encKeys = allEncKeys.filter(k => k.kid && k.x);
+        if (encKeys.length > 0) {
+          const invalidKey = encKeys.find(k => !/^[A-Za-z0-9_-]+$/.test(k.x) || k.x.length < 43 || k.x.length > 44);
+          if (invalidKey) {
+            alert(`Encryption key "${invalidKey.kid}": x must be a base64url string of 43–44 characters.`);
+            return;
+          }
+          agent.encryption_keys = encKeys;
+        }
+
+        const rawSigTextareas = document.querySelectorAll('#agent-signing-keys-list [data-sig-index]');
+        const sigParseErrors = [];
+        rawSigTextareas.forEach((ta, i) => {
+          if (!ta.value.trim()) return;
+          try { JSON.parse(ta.value); } catch (_) { sigParseErrors.push(i + 1); }
+        });
+        if (sigParseErrors.length > 0) {
+          alert(`Signing key row${sigParseErrors.length > 1 ? 's' : ''} ${sigParseErrors.join(', ')}: invalid JSON. Fix the typo or remove the row.`);
+          return;
+        }
+        const sigKeys = getSigningKeysFromForm().filter(k => k.kid && k.kty);
+        if (sigKeys.length > 0) agent.signing_keys = sigKeys;
+
+        // Optional placement constraints
+        const placementIds = [];
+        document.querySelectorAll('#agent-placement-id-checkboxes input[type="checkbox"]:checked').forEach(cb => {
+          placementIds.push(cb.value);
+        });
+        if (placementIds.length > 0) agent.placement_ids = placementIds;
+
+        const agentPlacementTags = [];
+        document.querySelectorAll('#agent-placement-tag-checkboxes input[type="checkbox"]:checked').forEach(cb => {
+          agentPlacementTags.push(cb.value);
+        });
+        if (agentPlacementTags.length > 0) agent.placement_tags = agentPlacementTags;
 
         if (index === -1) {
           state.agents.push(agent);
@@ -3186,6 +4445,49 @@
       // JSON Import/Export
       // ============================================================================
 
+      // Normalize and validate data loaded at import time. Returns a list of
+      // warning strings for fields that were coerced or flagged. Invalid data
+      // is normalized where possible (e.g. uppercase countries) rather than
+      // dropped — the agent edit flow's save-time guards will catch anything
+      // that still needs attention.
+      function normalizeImportedData(data) {
+        const warnings = [];
+        (data.authorized_agents || []).forEach((agent, i) => {
+          const label = agent.url ? `Agent "${agent.url}"` : `Agent[${i}]`;
+
+          // Normalize and deduplicate country codes; warn about unrecognized tokens
+          if (Array.isArray(agent.countries)) {
+            const tokens = agent.countries.map(c => String(c).trim().toUpperCase()).filter(Boolean);
+            const valid = [...new Set(tokens.filter(c => /^[A-Z]{2}$/.test(c)))];
+            const bad = tokens.filter(c => !/^[A-Z]{2}$/.test(c));
+            if (bad.length > 0) {
+              warnings.push(`${label}: invalid country codes removed (${bad.join(', ')})`);
+            }
+            if (tokens.length !== valid.length && bad.length === 0) {
+              warnings.push(`${label}: duplicate country codes removed`);
+            }
+            agent.countries = valid.length > 0 ? valid : undefined;
+          }
+
+          // Warn about malformed encryption key x values (but keep them — the
+          // save-time guard surfaces the error when the publisher edits the agent)
+          if (Array.isArray(agent.encryption_keys)) {
+            agent.encryption_keys.forEach((k, ki) => {
+              if (k.x && (!/^[A-Za-z0-9_-]+$/.test(k.x) || k.x.length < 43 || k.x.length > 44)) {
+                warnings.push(`${label}: encryption key[${ki}] x is not a valid base64url X25519 value — review before saving`);
+              }
+            });
+          }
+        });
+
+        // Normalize contact.domain to lowercase
+        if (data.contact && data.contact.domain) {
+          data.contact.domain = data.contact.domain.toLowerCase();
+        }
+
+        return warnings;
+      }
+
       function importFile() {
         const input = document.createElement('input');
         input.type = 'file';
@@ -3196,9 +4498,29 @@
           reader.onload = event => {
             try {
               const data = JSON.parse(event.target.result);
+
+              if (!data || typeof data !== 'object' || (!data.authorized_agents && !data.authoritative_location)) {
+                alert('Import failed: file does not look like a valid adagents.json.');
+                return;
+              }
+
+              if (data.authoritative_location && !data.authorized_agents) {
+                alert(`This file is a URL reference stub pointing to:\n${data.authoritative_location}\n\nThe builder cannot edit reference-only files. Import the full file from that URL instead.`);
+                return;
+              }
+
+              const warnings = normalizeImportedData(data);
+
               state.agents = data.authorized_agents || [];
               state.properties = data.properties || [];
               state.signals = data.signals || [];
+              state.propertyFeatures = data.property_features || [];
+              state.collections = data.collections || [];
+              state.placements = data.placements || [];
+
+              // Load contact info
+              state.contact = data.contact || {};
+              populateContactForm(data.contact || null);
 
               // Extract property tags from properties
               const propertyTags = new Set();
@@ -3222,8 +4544,34 @@
               }
               state.signalTags = Array.from(signalTags).sort();
 
+              // Build placement_tags map, preserving imported metadata
+              state.placementTags = {};
+              if (data.placement_tags) {
+                Object.entries(data.placement_tags).forEach(([t, meta]) => {
+                  state.placementTags[t] = (meta && typeof meta === 'object') ? meta : {
+                    name: t.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
+                    description: `Placements tagged as ${t}`,
+                  };
+                });
+              }
+              // Register tags referenced by placements but missing from the map
+              state.placements.forEach(pl => {
+                if (pl.tags) pl.tags.forEach(t => {
+                  if (!(t in state.placementTags)) {
+                    state.placementTags[t] = {
+                      name: t.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
+                      description: `Placements tagged as ${t}`,
+                    };
+                  }
+                });
+              });
+
               render();
-              alert('File imported successfully!');
+              if (warnings.length > 0) {
+                alert(`File imported with ${warnings.length} issue${warnings.length > 1 ? 's' : ''} — review before exporting:\n\n${warnings.join('\n')}`);
+              } else {
+                alert('File imported successfully!');
+              }
             } catch (error) {
               alert(`Import failed: ${error.message}`);
             }
@@ -3249,17 +4597,21 @@
             return;
           }
           data = {
-            $schema: 'https://adcontextprotocol.org/schemas/v2/adagents.json',
+            $schema: 'https://adcontextprotocol.org/schemas/v3/adagents.json',
             authoritative_location: authLocation,
             last_updated: new Date().toISOString(),
           };
         } else {
           // Inline structure
           data = {
-            $schema: 'https://adcontextprotocol.org/schemas/v2/adagents.json',
+            $schema: 'https://adcontextprotocol.org/schemas/v3/adagents.json',
             authorized_agents: state.agents,
             last_updated: new Date().toISOString(),
           };
+
+          // Contact metadata
+          const contact = getContactFromForm();
+          if (contact) data.contact = contact;
 
           // Only include properties if there are any
           if (state.properties.length > 0) {
@@ -3281,6 +4633,26 @@
               };
             });
           }
+
+          // Property features
+          if (state.propertyFeatures.length > 0) {
+            data.property_features = state.propertyFeatures;
+          }
+
+          // Collections
+          if (state.collections.length > 0) {
+            data.collections = state.collections;
+          }
+
+          // Placements
+          if (state.placements.length > 0) {
+            data.placements = state.placements;
+          }
+
+          // Placement tags metadata
+          if (Object.keys(state.placementTags).length > 0) {
+            data.placement_tags = { ...state.placementTags };
+          }
         }
 
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -3292,7 +4664,47 @@
         URL.revokeObjectURL(url);
       }
 
+      function findAgentsWithoutScope() {
+        const fileType = document.querySelector('input[name="file-type"]:checked').value;
+        if (fileType === 'reference') return [];
+        return state.agents
+          .map((agent, index) => ({ agent, index }))
+          .filter(({ agent }) => !agent.authorization_type);
+      }
+
+      function contactPartiallyFilled() {
+        const name = document.getElementById('contact-name').value.trim();
+        if (name) return false;
+        const otherFields = ['contact-email', 'contact-domain', 'contact-privacy-policy-url',
+          'contact-seller-id', 'contact-tag-id'];
+        return otherFields.some(id => document.getElementById(id).value.trim().length > 0);
+      }
+
+      function blockIfAgentsMissScope(action) {
+        const missing = findAgentsWithoutScope();
+        if (missing.length > 0) {
+          const lines = missing
+            .map(({ agent, index }) => {
+              const reason = agent.property_ids?.length > 0
+                ? '(legacy v2 — open and re-save)'
+                : '(no scope set)';
+              return `  ${index + 1}. ${agent.url || '(no URL)'} ${reason}`;
+            })
+            .join('\n');
+          alert(
+            `Cannot ${action}: ${missing.length} agent${missing.length === 1 ? '' : 's'} without a v3 authorization_type.\n\n${lines}\n\nOpen each agent card and set "Property Access" before exporting. v3 requires every authorized_agents entry to declare a scope.`
+          );
+          return true;
+        }
+        if (contactPartiallyFilled()) {
+          alert(`Cannot ${action}: contact section has fields filled but no name. v3 requires contact.name when any contact field is set. Either add a name or clear the other contact fields.`);
+          return true;
+        }
+        return false;
+      }
+
       function copyJson() {
+        if (blockIfAgentsMissScope('copy')) return;
         updateJsonPreview();
         const textarea = document.getElementById('json-output');
         textarea.select();
@@ -3301,6 +4713,7 @@
       }
 
       function downloadJson() {
+        if (blockIfAgentsMissScope('download')) return;
         exportFile();
       }
 
@@ -3407,6 +4820,44 @@
                 Object.keys(result.data.validation.raw_data.signal_tags).forEach(t => allSignalTags.add(t));
               }
               state.signalTags = Array.from(allSignalTags).sort();
+            }
+
+            // Parse contact and property_features (v3)
+            if (result.data.validation.raw_data.contact) {
+              state.contact = result.data.validation.raw_data.contact;
+              populateContactForm(result.data.validation.raw_data.contact);
+            }
+            if (result.data.validation.raw_data.property_features) {
+              state.propertyFeatures = result.data.validation.raw_data.property_features;
+            }
+
+            // Parse collections and placements (v3)
+            if (result.data.validation.raw_data.collections) {
+              state.collections = result.data.validation.raw_data.collections;
+            }
+            if (result.data.validation.raw_data.placements) {
+              state.placements = result.data.validation.raw_data.placements;
+
+              const rawPlacementTags = result.data.validation.raw_data.placement_tags || {};
+              state.placementTags = {};
+              Object.entries(rawPlacementTags).forEach(([t, meta]) => {
+                state.placementTags[t] = (meta && typeof meta === 'object') ? meta : {
+                  name: t.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
+                  description: `Placements tagged as ${t}`,
+                };
+              });
+              state.placements.forEach(pl => {
+                if (pl.tags && Array.isArray(pl.tags)) {
+                  pl.tags.forEach(tag => {
+                    if (!(tag in state.placementTags)) {
+                      state.placementTags[tag] = {
+                        name: tag.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
+                        description: `Placements tagged as ${tag}`,
+                      };
+                    }
+                  });
+                }
+              });
             }
           } else {
             // File doesn't exist or is invalid
@@ -4042,6 +5493,148 @@
         document.getElementById('json-preview-toggle').textContent = '📄 View JSON ▼';
 
         console.log('Reset adagents.json creator to domain entry step');
+      }
+
+      // ============================================================================
+      // Registry Picker
+      // ============================================================================
+
+      let registryAgents = [];
+      let registryFetchController = null;
+
+      async function openRegistryPicker() {
+        const list = document.getElementById('registry-picker-list');
+        document.getElementById('registry-picker-search').value = '';
+        document.getElementById('registry-picker-selected-count').textContent = '';
+        list.textContent = 'Loading…';
+        document.getElementById('registry-picker-modal').style.display = 'flex';
+
+        if (registryFetchController) registryFetchController.abort();
+        registryFetchController = new AbortController();
+        const signal = registryFetchController.signal;
+
+        try {
+          const res = await fetch('/api/registry/agents?type=sales', { signal });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const data = await res.json();
+          registryAgents = (data.agents || [])
+            .slice()
+            .sort((a, b) => (b.stats?.publisher_count || 0) - (a.stats?.publisher_count || 0));
+          renderRegistryPicker('');
+        } catch (err) {
+          if (err.name !== 'AbortError') {
+            list.textContent = 'Failed to load agents from registry. Please try again.';
+          }
+        }
+      }
+
+      function filterRegistryPicker(query) {
+        renderRegistryPicker(query.toLowerCase().trim());
+      }
+
+      function renderRegistryPicker(query) {
+        const list = document.getElementById('registry-picker-list');
+        const filtered = query
+          ? registryAgents.filter(
+              a =>
+                (a.name || '').toLowerCase().includes(query) ||
+                (a.url || '').toLowerCase().includes(query)
+            )
+          : registryAgents;
+
+        if (filtered.length === 0) {
+          list.textContent = registryAgents.length === 0 ? 'No sales agents found in registry.' : 'No matching agents.';
+          updateRegistryPickerCount();
+          return;
+        }
+
+        list.innerHTML = '';
+        filtered.forEach(agent => {
+          const alreadyAdded = state.agents.some(a => a.url === agent.url);
+
+          const row = document.createElement('label');
+          row.style.cssText =
+            'display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border-bottom: var(--border-1) solid var(--color-border); cursor: pointer;';
+          if (alreadyAdded) row.style.opacity = '0.5';
+
+          const checkbox = document.createElement('input');
+          checkbox.type = 'checkbox';
+          checkbox.value = agent.url;
+          checkbox.disabled = alreadyAdded;
+          checkbox.style.marginTop = '3px';
+          checkbox.addEventListener('change', updateRegistryPickerCount);
+
+          const info = document.createElement('div');
+          info.style.flex = '1';
+
+          const nameEl = document.createElement('div');
+          nameEl.style.cssText = 'font-weight: 600; font-size: 14px;';
+          nameEl.textContent = agent.name || agent.url;
+
+          const urlEl = document.createElement('div');
+          urlEl.style.cssText =
+            'font-size: 12px; color: var(--color-text-muted); font-family: var(--font-mono); margin-top: 2px; word-break: break-all;';
+          urlEl.textContent = agent.url;
+
+          const metaEl = document.createElement('div');
+          metaEl.style.cssText = 'font-size: 12px; color: var(--color-text-secondary); margin-top: 4px;';
+          if (alreadyAdded) {
+            metaEl.textContent = 'Already in your list';
+          } else {
+            const count = agent.stats?.publisher_count;
+            metaEl.textContent =
+              count != null
+                ? `${count} publisher${count === 1 ? '' : 's'} already authorize this agent`
+                : '';
+          }
+
+          info.appendChild(nameEl);
+          info.appendChild(urlEl);
+          if (metaEl.textContent) info.appendChild(metaEl);
+
+          row.appendChild(checkbox);
+          row.appendChild(info);
+          list.appendChild(row);
+        });
+
+        updateRegistryPickerCount();
+      }
+
+      function updateRegistryPickerCount() {
+        const selected = document.querySelectorAll('#registry-picker-list input[type="checkbox"]:checked').length;
+        const el = document.getElementById('registry-picker-selected-count');
+        el.textContent = selected > 0 ? `${selected} agent${selected === 1 ? '' : 's'} selected` : '';
+      }
+
+      function closeRegistryPicker() {
+        document.getElementById('registry-picker-modal').style.display = 'none';
+      }
+
+      function importFromRegistry() {
+        const checkboxes = document.querySelectorAll('#registry-picker-list input[type="checkbox"]:checked');
+        if (checkboxes.length === 0) {
+          alert('Select at least one agent to import.');
+          return;
+        }
+        let added = 0;
+        checkboxes.forEach(cb => {
+          const url = cb.value;
+          try {
+            const parsed = new URL(url);
+            if (parsed.protocol !== 'https:') return;
+          } catch {
+            return;
+          }
+          if (!state.agents.some(a => a.url === url)) {
+            state.agents.push({ url, authorized_for: '', delegation_type: 'direct' });
+            added++;
+          }
+        });
+        closeRegistryPicker();
+        render();
+        if (added > 0) {
+          alert(`${added} agent${added === 1 ? '' : 's'} added. Open each card to set the authorization scope.`);
+        }
       }
 
       // Initialize on page load

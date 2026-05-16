@@ -42,7 +42,8 @@ After all eight steps, comparison is byte-for-byte. Implementations MUST NOT app
 | `adagents.json` lookups | Any caller asking "is this agent authorized for this property?" | [adagents.json schema](https://adcontextprotocol.org/schemas/v3/adagents.json) |
 | `format-id` resolution | `format-id.agent_url` against the URL an agent publishes for its formats | [format-id schema](https://adcontextprotocol.org/schemas/v3/core/format-id.json) |
 | `adagents.json` `authoritative_location` indirection | Following the pointer; the target URL MUST canonicalize the same way | [Managed networks](/docs/governance/property/managed-networks#security-considerations) |
-| Any registry with a URL primary key | Canonical form is the key; raw input is not | — |
+| Provenance verifier allowlist | `verify_agent.agent_url` vs `creative_policy.accepted_verifiers[].agent_url` | [Provenance Verification](/docs/governance/creative/provenance-verification#the-verifier-contract-seller-publishes-buyer-represents-seller-confirms) |
+| Any registry with a URL primary key | Canonical form is the key; raw input is not | - |
 
 ## Signing profile extensions
 

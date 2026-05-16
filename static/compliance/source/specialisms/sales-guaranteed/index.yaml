@@ -16,6 +16,8 @@ requires_scenarios:
   - media_buy_seller/inventory_list_targeting
   - media_buy_seller/inventory_list_no_match
   - media_buy_seller/invalid_transitions
+  - media_buy_seller/proposal_finalize
+  - media_buy_seller/proposal_finalize_asap_timing
 
 # Cross-step assertion (adcp#2664). status.monotonic rejects resource
 # status transitions observed across steps that aren't on the spec
@@ -39,6 +41,25 @@ narrative: |
   automation and human decision-making that makes guaranteed buys work in practice. IO review
   is modelled entirely at the A2A task layer; there is no interim "pending_approval" media buy
   status (that value only exists on Account.status, not MediaBuy.status).
+
+  Proposal-driven workflows are part of guaranteed selling: most guaranteed deals start with
+  an RFP/brief, generate a proposal with curated bundles and rationale, refine, finalize to
+  committed status with firm pricing and an inventory hold, and then the buyer accepts via
+  create_media_buy. The `media_buy_seller/proposal_finalize` scenario covers that flow and is
+  capability-gated on `media_buy.supports_proposals` — sellers that declare `false` (or omit
+  the field, since the schema default is false) skip it with skip_result.reason: not_applicable;
+  sellers that explicitly declare `true` are graded against it. Direct-buy guaranteed sellers
+  (auction PG, retail SKU, quoted-rate) declare `supports_proposals: false`; full-service
+  guaranteed sellers declare `true`.
+
+  The requires_io_approval capability is scoped to creates that reference products with
+  delivery_type: guaranteed (those in this storyboard's primary fixtures). Four of the
+  general seller scenarios included via requires_scenarios — measurement_terms_rejected,
+  pending_creatives_to_start, inventory_list_targeting, and invalid_transitions — use
+  open-ended product briefs and must complete creates synchronously, returning a media_buy_id
+  directly rather than a task envelope. This storyboard seeds non-guaranteed fixture products
+  so those four scenarios have a synchronous-create path available. A seller whose catalog
+  contains only guaranteed products will fail those four shared scenarios.
 
 agent:
   interaction_model: media_buy_seller
@@ -65,6 +86,22 @@ prerequisites:
 
 fixtures:
   products:
+    # Non-guaranteed products listed first so open-brief get_products calls (used by
+    # requires_scenarios) resolve to products[0] as a non-guaranteed product, enabling
+    # synchronous creates. The four shared scenarios (measurement_terms_rejected,
+    # pending_creatives_to_start, inventory_list_targeting, invalid_transitions) capture
+    # products[0].product_id and must get a non-guaranteed ID to complete synchronously.
+    - product_id: "display_outdoor_non_guaranteed"
+      delivery_type: "non_guaranteed"
+      channels: ["display"]
+      format_ids:
+        - id: "display_300x250"
+    - product_id: "video_outdoor_non_guaranteed"
+      delivery_type: "non_guaranteed"
+      channels: ["video"]
+      format_ids:
+        - id: "video_30s"
+    # Guaranteed products used by the main storyboard phases (hardcoded in sample_requests).
     - product_id: "sports_preroll_q2_guaranteed"
       delivery_type: "guaranteed"
       channels: ["video"]
@@ -76,6 +113,16 @@ fixtures:
       format_ids:
         - id: "video_30s"
   pricing_options:
+    - product_id: "display_outdoor_non_guaranteed"
+      pricing_option_id: "cpm_display_non_guaranteed"
+      pricing_model: "cpm"
+      currency: "USD"
+      floor_price: 5.0
+    - product_id: "video_outdoor_non_guaranteed"
+      pricing_option_id: "cpm_video_non_guaranteed"
+      pricing_model: "cpm"
+      currency: "USD"
+      floor_price: 12.0
     - product_id: "sports_preroll_q2_guaranteed"
       pricing_option_id: "cpm_guaranteed_fixed"
       pricing_model: "cpm"
@@ -317,7 +364,7 @@ phases:
             correlation_id: "sales_guaranteed--create_media_buy"
         context_outputs:
           - name: media_buy_id
-            path: "media_buy_id"
+            path: "task_completion.media_buy_id"
         validations:
           - check: response_schema
             description: "Response matches create-media-buy-response.json schema"

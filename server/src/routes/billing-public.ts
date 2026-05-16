@@ -22,6 +22,7 @@ import {
   type InvoiceRequestData,
   type CheckoutSessionData,
 } from "../billing/stripe-client.js";
+import { isStripeNotFound } from "../audit/integrity/stripe-helpers.js";
 import * as referralDb from "../db/referral-codes-db.js";
 import { sanitizeBillingAddress } from "../billing/billing-address.js";
 import {
@@ -739,12 +740,14 @@ export function createPublicBillingRouter(): Router {
           try {
             const workosOrg = await workos!.organizations.getOrganization(orgId);
             if (workosOrg) {
+              const primaryDomain = workosOrg.domains?.[0]?.domain;
               org = await orgDb.createOrganization({
                 workos_organization_id: workosOrg.id,
                 name: workosOrg.name,
+                email_domain: primaryDomain,
               });
               logger.info(
-                { orgId, name: workosOrg.name },
+                { orgId, name: workosOrg.name, email_domain: primaryDomain },
                 "On-demand synced organization from WorkOS"
               );
             }
@@ -798,30 +801,52 @@ export function createPublicBillingRouter(): Router {
         // Ensure Stripe customer exists before showing pricing table
         // This is critical: if we don't create the customer first, Stripe Pricing Table
         // will create one without workos_organization_id metadata, breaking the linkage
-        const stripeCustomerId = await orgDb.getOrCreateStripeCustomer(orgId, () =>
+        const makeCustomer = () =>
           createStripeCustomer({
             email: user.email,
             name: org.name,
             metadata: { workos_organization_id: orgId },
-          })
-        );
+          });
+
+        let stripeCustomerId = await orgDb.getOrCreateStripeCustomer(orgId, makeCustomer);
 
         if (!stripeCustomerId) {
           logger.error({ orgId }, "Failed to create Stripe customer for pricing table");
         }
 
-        // Create customer session for pricing table
-        let customerSessionSecret = null;
+        // Create customer session for pricing table. If the stored customer
+        // ID points at a non-existent (deleted/wrong-mode) Stripe customer,
+        // unlink and recreate so the next attempt succeeds — otherwise every
+        // page load 500s and pages the on-call channel.
+        let customerSessionSecret: string | null = null;
+        let pendingInvoices: Awaited<ReturnType<typeof getPendingInvoices>> = [];
         if (stripeCustomerId) {
-          customerSessionSecret = await createCustomerSession(stripeCustomerId);
+          try {
+            customerSessionSecret = await createCustomerSession(stripeCustomerId);
+          } catch (err) {
+            if (isStripeNotFound(err)) {
+              logger.warn(
+                { orgId, staleCustomerId: stripeCustomerId },
+                "Stored Stripe customer no longer exists — unlinking and recreating"
+              );
+              await orgDb.unlinkStripeCustomer(orgId);
+              stripeCustomerId = await orgDb.getOrCreateStripeCustomer(orgId, makeCustomer);
+              if (stripeCustomerId) {
+                customerSessionSecret = await createCustomerSession(stripeCustomerId);
+              }
+            } else {
+              throw err;
+            }
+          }
         }
 
-        // Get pending invoices if customer exists
-        let pendingInvoices: Awaited<ReturnType<typeof getPendingInvoices>> = [];
         if (stripeCustomerId) {
           try {
             pendingInvoices = await getPendingInvoices(stripeCustomerId);
           } catch (err) {
+            // resource_missing here means the customer was deleted between
+            // the auto-heal above and this call — extremely rare, treat as
+            // empty rather than failing the page render.
             logger.warn(
               { err, orgId, stripeCustomerId },
               "Error fetching pending invoices"
@@ -953,6 +978,68 @@ export function createPublicBillingRouter(): Router {
         });
       }
     }
+  );
+
+  // PUT /api/organizations/:orgId/billing-address - Update org billing address standalone
+  // (no agreement gate, no invoice creation). Lets members set/edit their billing
+  // address from the membership page without going through the full invoice flow.
+  router.put(
+    "/organizations/:orgId/billing-address",
+    requireAuth,
+    async (req: Request, res: Response) => {
+      try {
+        const user = req.user!;
+        const { orgId } = req.params;
+        const sanitized = sanitizeBillingAddress(req.body);
+        if (!sanitized) {
+          return res.status(400).json({
+            error: "Incomplete billing address",
+            message:
+              "Please provide line1, city, state, postal_code, and country (each ≤ 200 chars)",
+          });
+        }
+
+        const org = await orgDb.getOrganization(orgId);
+        if (!org) {
+          return res.status(404).json({
+            error: "Organization not found",
+            message: "The requested organization does not exist",
+          });
+        }
+
+        const isDevUserBilling =
+          isDevModeEnabled() &&
+          Object.values(DEV_USERS).some((du) => du.id === user.id) &&
+          orgId.startsWith("org_dev_");
+        if (!isDevUserBilling) {
+          const memberships = await workos!.userManagement.listOrganizationMemberships({
+            userId: user.id,
+            organizationId: orgId,
+          });
+          if (memberships.data.length === 0) {
+            return res.status(403).json({
+              error: "Access denied",
+              message: "You are not a member of this organization",
+            });
+          }
+        }
+
+        await orgDb.updateOrganization(orgId, { billing_address: sanitized });
+
+        logger.info(
+          { orgId, userId: user.id },
+          "Updated organization billing address",
+        );
+
+        res.json({ success: true, billing_address: sanitized });
+      } catch (error) {
+        logger.error({ err: error }, "Update billing address error:");
+        res.status(500).json({
+          error: "Failed to update billing address",
+          message: "An unexpected error occurred. Please try again.",
+        });
+      }
+    },
   );
 
   // GET /api/user/escalations - Get escalations for the authenticated user

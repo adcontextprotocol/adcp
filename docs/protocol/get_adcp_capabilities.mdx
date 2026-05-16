@@ -7,6 +7,10 @@ testable: false
 
 Discover a seller's protocol support and capabilities across all AdCP protocols. This is the first call a buyer should make to understand what a seller supports.
 
+<Info>
+**Why this shape.** Capabilities are organized into ~14 top-level domain keys (one per protocol plus identity and signing infrastructure), with feature flags nested under each domain's `features`/`execution`/etc. sub-namespace. We rejected a flat capability list — it forces every implementer to scan an unbounded surface, and it removes the discoverability that comes from related flags sitting next to each other. New capability flags belong under existing domains, not in new top-level keys; declarations are commitments, not advertisements (the conformance runner probes them). → [Capabilities explorer](/docs/protocol/capabilities-explorer) walks the tree before you propose. → [Design principle: capabilities are commitments](/docs/protocol/design-principles#4-capabilities-are-commitments-declared-under-existing-buckets).
+</Info>
+
 **Response Time**: ~2 seconds (configuration lookup)
 
 **Purpose**:
@@ -358,6 +362,7 @@ Creative protocol capabilities. Only present if `creative` is in `supported_prot
 | Field | Type | Description |
 |-------|------|-------------|
 | `supports_compliance` | boolean | When `true`, this creative agent can process briefs with compliance requirements (`required_disclosures`, `prohibited_claims`) and will validate that disclosures can be satisfied by the target format. Use the `disclosure_positions` filter on `list_creative_formats` to find compatible formats. |
+| `bills_through_adcp` | boolean | When `true`, this creative agent bills through the AdCP rate-card surface — `list_creatives` returns `pricing_options` (with `include_pricing=true` and an authenticated account), `build_creative` populates `pricing_option_id` and `vendor_cost`, and `report_usage` accepts records against the rate card. When `false` or absent, the agent bills out of band (flat license, SaaS contract, bundled enterprise agreement); buyers should skip pricing fields and tolerate `report_usage` returning `accepted: 0` with `BILLING_OUT_OF_BAND` errors. Pre-call discriminator for routing across creative agents. |
 
 ### governance
 
@@ -491,6 +496,8 @@ Array of metrics this measurement agent computes.
 
 Compliance testing capabilities. The presence of this block declares that the agent supports deterministic testing via [`comply_test_controller`](/docs/building/implementation/comply-test-controller). Omit the block if the agent does not support compliance testing.
 
+**Production deployments MUST NOT include this block.** `comply_test_controller` is sandbox-only at the deployment level; advertising the capability on a production endpoint is non-conformant even if dispatch is gated. See [Compliance test controller § Sandbox gating](/docs/building/implementation/comply-test-controller#sandbox-gating).
+
 | Field | Type | Description |
 |-------|------|-------------|
 | `scenarios` | string[] | Compliance testing scenarios this agent supports. Possible values: `force_creative_status`, `force_account_status`, `force_media_buy_status`, `force_session_status`, `simulate_delivery`, `simulate_budget_spend`, `seed_product`, `seed_pricing_option`, `seed_creative`, `seed_plan`, `seed_media_buy`. Runners MUST accept unknown scenario strings — new scenarios may be added in additive minor bumps. |
@@ -500,7 +507,7 @@ Storyboard runners check for the `compliance_testing` block before running deter
 Agents that implement `comply_test_controller` SHOULD include the `compliance_testing` capability block and list supported scenarios. Agents that only support a subset of scenarios (e.g., media buy status but not SI sessions) declare only those scenarios — the runner skips unsupported ones.
 
 :::note
-Compliance testing requires sandbox mode. The `comply_test_controller` tool returns `FORBIDDEN` if the account is not in sandbox.
+Compliance testing is sandbox-only at the deployment level — production deployments MUST NOT advertise this block or expose `comply_test_controller` on any surface. `FORBIDDEN` is returned only when an in-sandbox caller passes `params` that reference a non-sandbox account; live-mode probes for the tool by name receive the transport's standard unknown-tool error. See [Sandbox gating](/docs/building/implementation/comply-test-controller#sandbox-gating).
 :::
 
 ### webhook_signing
@@ -588,7 +595,7 @@ No silent ignoring. If a seller can't support a capability, they should declare 
 ### Basic Capability Discovery
 
 ```javascript
-import { AdcpClient } from '@adcp/client';
+import { AdcpClient } from '@adcp/sdk';
 
 const client = new AdcpClient({ baseUrl: 'https://seller.example.com/mcp' });
 
@@ -919,7 +926,8 @@ An agent can implement multiple protocols from a single endpoint. This is common
     "has_creative_library": true,
     "supports_generation": true,
     "supports_transformation": false,
-    "supports_compliance": false
+    "supports_compliance": false,
+    "bills_through_adcp": true
   }
 }
 ```
@@ -971,7 +979,8 @@ New fields:
 
 | Error Code | Description | Resolution |
 |------------|-------------|------------|
-| `AUTH_REQUIRED` | Authentication needed | Provide credentials |
+| `AUTH_MISSING` | No credentials presented | Provide credentials via auth header |
+| `AUTH_INVALID` | Credentials rejected (expired / revoked) | Human credential rotation required |
 | `VERSION_UNSUPPORTED` | Declared `adcp_major_version` not in seller's `major_versions` | Call without `adcp_major_version` to discover supported versions, then retry |
 | `INTERNAL_ERROR` | Server error | Retry with backoff |
 

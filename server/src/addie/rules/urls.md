@@ -17,6 +17,7 @@ are excluded from CI checks).
 - https://agenticadvertising.org/dashboard/membership — Membership and renewal management
 - https://agenticadvertising.org/account — Personal account settings (form fields you type into: name, bio, expertise, social links, including the GitHub-username text field that surfaces on the user's community profile). NOT where the GitHub OAuth connection lives.
 - https://agenticadvertising.org/member-hub — "Your hub" — the personal dashboard (engagement, working group recs, profile completeness). Hosts the **Connections card** where users connect or disconnect GitHub OAuth (the one-click toggle backed by WorkOS Pipes). Use this URL when the user asks how to disconnect or manage their GitHub OAuth connection.
+- https://agenticadvertising.org/brand-builder — brand.json builder tool; accepts `?domain=example.com` to pre-load a specific brand domain into the editor
 - https://agenticadvertising.org/connect/github — Session-aware bouncer that starts the WorkOS Pipes GitHub OAuth flow on click. Use when the user wants to **start** an OAuth connection from a Slack-shared link; the Connections card on /member-hub is where they go to manage or disconnect afterward.
 - https://agenticadvertising.org/member-profile — Member profile, company description, and logo upload
 - https://agenticadvertising.org/community — Community hub
@@ -29,10 +30,10 @@ are excluded from CI checks).
 ## docs.adcontextprotocol.org
 
 - https://docs.adcontextprotocol.org/docs/quickstart — 5-minute hands-on quickstart; no signup required
-- https://docs.adcontextprotocol.org/docs/building/build-an-agent — Skill-based agent generation guide
-- https://docs.adcontextprotocol.org/docs/building/validate-your-agent — Build-validate-fix loop and storyboard runner; replaces the deprecated interactive testing UI
-- https://docs.adcontextprotocol.org/docs/building/schemas-and-sdks — Schema access, CLI tools, and SDK exports
-- https://docs.adcontextprotocol.org/docs/building/understanding/adcp-vs-openrtb — AdCP vs OpenRTB comparison
+- https://docs.adcontextprotocol.org/docs/building/by-layer/L4/build-an-agent — Skill-based agent generation guide
+- https://docs.adcontextprotocol.org/docs/building/verification/validate-your-agent — Build-validate-fix loop and storyboard runner; replaces the deprecated interactive testing UI
+- https://docs.adcontextprotocol.org/docs/building/by-layer/L4/choose-your-sdk — Schema access, CLI tools, and SDK exports
+- https://docs.adcontextprotocol.org/docs/building/concepts/adcp-vs-openrtb — AdCP vs OpenRTB comparison
 - https://docs.adcontextprotocol.org/docs/registry — Registry reference
 - https://docs.adcontextprotocol.org/docs/registry#authentication — Registry authentication section
 - https://docs.adcontextprotocol.org/docs/aao/connect-addie — MCP client connection guide (Claude Desktop, Claude Code, ChatGPT, Cursor); includes OAuth reconnect workaround
@@ -65,4 +66,4 @@ substitute listed or call `search_docs`. Do not emit the hallucinated path.
 CRITICAL: Do NOT cite these URLs in any response. They are recorded here only
 as an audit trail so future editors know the URL exists and its status.
 
-- https://testing.adcontextprotocol.org — Deprecated Feb 2026; now auto-redirects to /docs/building/validate-your-agent. Use the redirect target instead. Note: `test-agent.adcontextprotocol.org` is a separate active service.
+- https://testing.adcontextprotocol.org — Deprecated Feb 2026; now auto-redirects to /docs/building/verification/validate-your-agent. Use the redirect target instead. Note: `test-agent.adcontextprotocol.org` is a separate active service.

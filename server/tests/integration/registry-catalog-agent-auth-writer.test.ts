@@ -559,6 +559,152 @@ describe('catalog_agent_authorizations writer projection', () => {
       expect(rows).toHaveLength(0);
     });
 
+    it('accepts publisher_properties[].publisher_domains[] compact form when source domain is listed', async () => {
+      // Managed-network shape: the entry uses publisher_domains[] (plural)
+      // instead of singular publisher_domain. The source publisher (TEST_PUB)
+      // appears in the list, so the projection MUST resolve as if the
+      // selector had named TEST_PUB directly. See #4506.
+      await publisherDb.upsertAdagentsCache({
+        domain: TEST_PUB,
+        manifest: manifest(
+          [
+            {
+              url: TEST_AGENT_RAW,
+              authorization_type: 'publisher_properties',
+              publisher_properties: [
+                {
+                  publisher_domains: [VICTIM_PUB, TEST_PUB, 'other.example'],
+                  selection_type: 'all',
+                },
+              ],
+            },
+          ],
+          [
+            {
+              property_id: 'site_a',
+              property_type: 'website',
+              name: 'Site A',
+              identifiers: [{ type: 'domain', value: TEST_PUB }],
+            },
+          ]
+        ),
+      });
+      const { rows } = await pool.query<{ property_id_slug: string }>(
+        `SELECT property_id_slug FROM catalog_agent_authorizations
+          WHERE agent_url_canonical = $1 AND property_rid IS NOT NULL`,
+        [TEST_AGENT_CANON]
+      );
+      expect(rows.map((r) => r.property_id_slug)).toEqual(['site_a']);
+    });
+
+    it('refuses publisher_domains[] compact form when source domain is NOT listed', async () => {
+      // Same compact form, but the source publisher (TEST_PUB) is absent
+      // from the list. Refused for the same cross-publisher reason as the
+      // singular form.
+      await publisherDb.upsertAdagentsCache({
+        domain: TEST_PUB,
+        manifest: manifest(
+          [
+            {
+              url: TEST_AGENT_RAW,
+              authorization_type: 'publisher_properties',
+              publisher_properties: [
+                {
+                  publisher_domains: [VICTIM_PUB, 'other.example'],
+                  selection_type: 'all',
+                },
+              ],
+            },
+          ],
+          [
+            {
+              property_id: 'site_a',
+              property_type: 'website',
+              name: 'Site A',
+              identifiers: [{ type: 'domain', value: TEST_PUB }],
+            },
+          ]
+        ),
+      });
+      const { rows } = await pool.query(
+        `SELECT 1 FROM catalog_agent_authorizations
+          WHERE agent_url_canonical = $1 AND property_rid IS NOT NULL`,
+        [TEST_AGENT_CANON]
+      );
+      expect(rows).toHaveLength(0);
+    });
+
+    it('matches own publisher when selector publisher_domain has a trailing dot (DNS-canonical form)', async () => {
+      // A hand-edited or DNS-tool-emitted manifest may use the trailing-dot
+      // FQDN form (`"caa-writer.example."`). The writer MUST treat this as
+      // equivalent to the dotless form to stay in agreement with the
+      // validator. See canonicalizePublisherDomain in
+      // services/publisher-domain.ts.
+      await publisherDb.upsertAdagentsCache({
+        domain: TEST_PUB,
+        manifest: manifest(
+          [
+            {
+              url: TEST_AGENT_RAW,
+              authorization_type: 'publisher_properties',
+              publisher_properties: [
+                { publisher_domain: `${TEST_PUB}.`, selection_type: 'all' },
+              ],
+            },
+          ],
+          [
+            {
+              property_id: 'site_a',
+              property_type: 'website',
+              name: 'Site A',
+              identifiers: [{ type: 'domain', value: TEST_PUB }],
+            },
+          ]
+        ),
+      });
+      const { rows } = await pool.query<{ property_id_slug: string }>(
+        `SELECT property_id_slug FROM catalog_agent_authorizations
+          WHERE agent_url_canonical = $1 AND property_rid IS NOT NULL`,
+        [TEST_AGENT_CANON]
+      );
+      expect(rows.map((r) => r.property_id_slug)).toEqual(['site_a']);
+    });
+
+    it('matches own publisher when selector publisher_domain has an http(s) scheme prefix', async () => {
+      // Scheme-prefixed publisher_domain is technically invalid per the JSON
+      // Schema pattern, but the writer accepts loose-typed input and was
+      // previously diverging from the validator (which strips scheme via
+      // normalizeDomain). Unified through canonicalizePublisherDomain now.
+      await publisherDb.upsertAdagentsCache({
+        domain: TEST_PUB,
+        manifest: manifest(
+          [
+            {
+              url: TEST_AGENT_RAW,
+              authorization_type: 'publisher_properties',
+              publisher_properties: [
+                { publisher_domain: `https://${TEST_PUB}`, selection_type: 'all' },
+              ],
+            },
+          ],
+          [
+            {
+              property_id: 'site_a',
+              property_type: 'website',
+              name: 'Site A',
+              identifiers: [{ type: 'domain', value: TEST_PUB }],
+            },
+          ]
+        ),
+      });
+      const { rows } = await pool.query<{ property_id_slug: string }>(
+        `SELECT property_id_slug FROM catalog_agent_authorizations
+          WHERE agent_url_canonical = $1 AND property_rid IS NOT NULL`,
+        [TEST_AGENT_CANON]
+      );
+      expect(rows.map((r) => r.property_id_slug)).toEqual(['site_a']);
+    });
+
     it('matches own publisher when selector publisher_domain has mixed case', async () => {
       // Legacy or hand-edited manifests may use mixed-case publisher_domain.
       // The selector is lowercased before comparison; own-publisher claims
@@ -628,6 +774,406 @@ describe('catalog_agent_authorizations writer projection', () => {
   });
 
   // ──────────────────────────────────────────────────────────────────
+  // revoked_publisher_domains[] precedence (#4506)
+  // ──────────────────────────────────────────────────────────────────
+
+  describe('revoked_publisher_domains[] precedence', () => {
+    it('skips both property and auth projection when the source domain is revoked', async () => {
+      // Manifest authorizes an agent for the publisher's own property AND
+      // lists the publisher in revoked_publisher_domains[]. The revocation
+      // MUST win — no CAA rows for the auth, no catalog_properties either.
+      await publisherDb.upsertAdagentsCache({
+        domain: TEST_PUB,
+        manifest: {
+          ...manifest(
+            [
+              {
+                url: TEST_AGENT_RAW,
+                authorization_type: 'publisher_properties',
+                publisher_properties: [
+                  { publisher_domain: TEST_PUB, selection_type: 'all' },
+                ],
+              },
+            ],
+            [
+              {
+                property_id: 'site_a',
+                property_type: 'website',
+                name: 'Site A',
+                identifiers: [{ type: 'domain', value: TEST_PUB }],
+              },
+            ]
+          ),
+          revoked_publisher_domains: [
+            { publisher_domain: TEST_PUB, revoked_at: '2026-05-13T00:00:00Z', reason: 'relationship_ended' },
+          ],
+        },
+      });
+      const { rows: authRows } = await pool.query(
+        `SELECT 1 FROM catalog_agent_authorizations
+          WHERE agent_url_canonical = $1`,
+        [TEST_AGENT_CANON]
+      );
+      const { rows: propRows } = await pool.query(
+        `SELECT 1 FROM catalog_properties
+          WHERE created_by = $1`,
+        [`adagents_json:${TEST_PUB}`]
+      );
+      expect(authRows).toHaveLength(0);
+      expect(propRows).toHaveLength(0);
+    });
+
+    it('retires prior CAA rows when a later manifest revokes the publisher (regression)', async () => {
+      // Step 1: project a manifest that authorizes the agent.
+      await publisherDb.upsertAdagentsCache({
+        domain: TEST_PUB,
+        manifest: manifest(
+          [
+            {
+              url: TEST_AGENT_RAW,
+              authorization_type: 'publisher_properties',
+              publisher_properties: [
+                { publisher_domain: TEST_PUB, selection_type: 'all' },
+              ],
+            },
+          ],
+          [
+            {
+              property_id: 'site_a',
+              property_type: 'website',
+              name: 'Site A',
+              identifiers: [{ type: 'domain', value: TEST_PUB }],
+            },
+          ]
+        ),
+      });
+      const { rows: rowsAfterGrant } = await pool.query(
+        `SELECT 1 FROM catalog_agent_authorizations
+          WHERE agent_url_canonical = $1
+            AND property_rid IS NOT NULL
+            AND deleted_at IS NULL`,
+        [TEST_AGENT_CANON]
+      );
+      expect(rowsAfterGrant).toHaveLength(1);
+
+      // Step 2: a later manifest revokes the publisher. The writer MUST
+      // soft-delete the prior CAA rows — not just skip new projection.
+      // Without this, revocation is advisory and the index keeps
+      // authorizing the agent against the revoked publisher.
+      await publisherDb.upsertAdagentsCache({
+        domain: TEST_PUB,
+        manifest: {
+          ...manifest(
+            [
+              {
+                url: TEST_AGENT_RAW,
+                authorization_type: 'publisher_properties',
+                publisher_properties: [
+                  { publisher_domain: TEST_PUB, selection_type: 'all' },
+                ],
+              },
+            ],
+            [
+              {
+                property_id: 'site_a',
+                property_type: 'website',
+                name: 'Site A',
+                identifiers: [{ type: 'domain', value: TEST_PUB }],
+              },
+            ]
+          ),
+          revoked_publisher_domains: [
+            { publisher_domain: TEST_PUB, revoked_at: '2026-05-13T00:00:00Z' },
+          ],
+        },
+      });
+      const { rows: liveRowsAfterRevoke } = await pool.query(
+        `SELECT 1 FROM catalog_agent_authorizations
+          WHERE agent_url_canonical = $1
+            AND deleted_at IS NULL`,
+        [TEST_AGENT_CANON]
+      );
+      expect(liveRowsAfterRevoke).toHaveLength(0);
+      // And confirm the soft-delete actually landed (rows still exist
+      // historically, just retired).
+      const { rows: retiredRowsAfterRevoke } = await pool.query(
+        `SELECT 1 FROM catalog_agent_authorizations
+          WHERE agent_url_canonical = $1
+            AND deleted_at IS NOT NULL`,
+        [TEST_AGENT_CANON]
+      );
+      expect(retiredRowsAfterRevoke.length).toBeGreaterThan(0);
+    });
+
+    it('matches publisher_domains[] case-insensitively', async () => {
+      // Pattern at line 17-18 of the JSON Schema already enforces
+      // lowercase, but the writer's comparison MUST also be case-
+      // insensitive so a hand-edited mixed-case manifest still resolves.
+      await publisherDb.upsertAdagentsCache({
+        domain: TEST_PUB,
+        manifest: manifest(
+          [
+            {
+              url: TEST_AGENT_RAW,
+              authorization_type: 'publisher_properties',
+              publisher_properties: [
+                {
+                  publisher_domains: [`OTHER.example`, `CAA-Writer.EXAMPLE`],
+                  selection_type: 'all',
+                },
+              ],
+            },
+          ],
+          [
+            {
+              property_id: 'site_a',
+              property_type: 'website',
+              name: 'Site A',
+              identifiers: [{ type: 'domain', value: TEST_PUB }],
+            },
+          ]
+        ),
+      });
+      const { rows } = await pool.query<{ property_id_slug: string }>(
+        `SELECT property_id_slug FROM catalog_agent_authorizations
+          WHERE agent_url_canonical = $1 AND property_rid IS NOT NULL`,
+        [TEST_AGENT_CANON]
+      );
+      expect(rows.map((r) => r.property_id_slug)).toEqual(['site_a']);
+    });
+
+    it('refuses selector when both publisher_domain and publisher_domains are present (XOR violation)', async () => {
+      // A malformed/malicious manifest could put the source publisher
+      // in the compact list while pointing the singular at a victim.
+      // The writer MUST refuse rather than accept the union — accepting
+      // either-match converts schema XOR into a permissive projection.
+      await publisherDb.upsertAdagentsCache({
+        domain: TEST_PUB,
+        manifest: manifest(
+          [
+            {
+              url: TEST_AGENT_RAW,
+              authorization_type: 'publisher_properties',
+              publisher_properties: [
+                {
+                  publisher_domain: VICTIM_PUB,
+                  publisher_domains: [TEST_PUB],
+                  selection_type: 'all',
+                },
+              ],
+            },
+          ],
+          [
+            {
+              property_id: 'site_a',
+              property_type: 'website',
+              name: 'Site A',
+              identifiers: [{ type: 'domain', value: TEST_PUB }],
+            },
+          ]
+        ),
+      });
+      const { rows } = await pool.query(
+        `SELECT 1 FROM catalog_agent_authorizations
+          WHERE agent_url_canonical = $1 AND property_rid IS NOT NULL`,
+        [TEST_AGENT_CANON]
+      );
+      expect(rows).toHaveLength(0);
+    });
+
+    it('ignores revoked_publisher_domains[] entries missing revoked_at or with invalid date', async () => {
+      // The writer is a security boundary. Silently accepting incomplete
+      // revocation entries (e.g., publisher_domain but no revoked_at)
+      // is the same shape as the cross-publisher bypass the rest of
+      // this PR closes. Malformed entries MUST be dropped, not honored.
+      await publisherDb.upsertAdagentsCache({
+        domain: TEST_PUB,
+        manifest: {
+          ...manifest(
+            [
+              {
+                url: TEST_AGENT_RAW,
+                authorization_type: 'publisher_properties',
+                publisher_properties: [
+                  { publisher_domain: TEST_PUB, selection_type: 'all' },
+                ],
+              },
+            ],
+            [
+              {
+                property_id: 'site_a',
+                property_type: 'website',
+                name: 'Site A',
+                identifiers: [{ type: 'domain', value: TEST_PUB }],
+              },
+            ]
+          ),
+          revoked_publisher_domains: [
+            { publisher_domain: TEST_PUB }, // missing revoked_at
+            { publisher_domain: TEST_PUB, revoked_at: 'not-a-date' }, // invalid
+          ],
+        },
+      });
+      // Projection should proceed normally — neither malformed entry
+      // is honored as a revocation.
+      const { rows } = await pool.query<{ property_id_slug: string }>(
+        `SELECT property_id_slug FROM catalog_agent_authorizations
+          WHERE agent_url_canonical = $1 AND property_rid IS NOT NULL`,
+        [TEST_AGENT_CANON]
+      );
+      expect(rows.map((r) => r.property_id_slug)).toEqual(['site_a']);
+    });
+
+    it('revokes when revoked_publisher_domains[] entry uses non-canonical form (trailing dot, mixed case, scheme prefix)', async () => {
+      // Code-reviewer SF3 / #4541: a revocation entry of `"CAA-Writer.example."`
+      // or `"https://caa-writer.example"` must canonicalize to the same key
+      // as the publisher row under `"caa-writer.example"` and fire the
+      // retirement branch. Locks the canonicalization parity end-to-end.
+      // Step 1: grant projection under the canonical key.
+      await publisherDb.upsertAdagentsCache({
+        domain: TEST_PUB,
+        manifest: manifest(
+          [
+            {
+              url: TEST_AGENT_RAW,
+              authorization_type: 'publisher_properties',
+              publisher_properties: [
+                { publisher_domain: TEST_PUB, selection_type: 'all' },
+              ],
+            },
+          ],
+          [
+            {
+              property_id: 'site_a',
+              property_type: 'website',
+              name: 'Site A',
+              identifiers: [{ type: 'domain', value: TEST_PUB }],
+            },
+          ]
+        ),
+      });
+      // Step 2: revoke using a non-canonical form (trailing dot + mixed case).
+      await publisherDb.upsertAdagentsCache({
+        domain: TEST_PUB,
+        manifest: {
+          ...manifest(
+            [
+              {
+                url: TEST_AGENT_RAW,
+                authorization_type: 'publisher_properties',
+                publisher_properties: [
+                  { publisher_domain: TEST_PUB, selection_type: 'all' },
+                ],
+              },
+            ],
+            [
+              {
+                property_id: 'site_a',
+                property_type: 'website',
+                name: 'Site A',
+                identifiers: [{ type: 'domain', value: TEST_PUB }],
+              },
+            ]
+          ),
+          revoked_publisher_domains: [
+            // Mixed case + trailing dot — must canonicalize to TEST_PUB.
+            { publisher_domain: `CAA-Writer.example.`, revoked_at: '2026-05-13T00:00:00Z' },
+          ],
+        },
+      });
+      const { rows: liveRowsAfterRevoke } = await pool.query(
+        `SELECT 1 FROM catalog_agent_authorizations
+          WHERE agent_url_canonical = $1
+            AND deleted_at IS NULL`,
+        [TEST_AGENT_CANON]
+      );
+      expect(liveRowsAfterRevoke).toHaveLength(0);
+    });
+
+    it('drops revoked_publisher_domains[] entries whose canonical form fails the schema pattern', async () => {
+      // Security SF2 / #4541: garbage-looking entries (control chars,
+      // scheme remnants that don't strip cleanly, paths) MUST be dropped,
+      // not honored as silently-unmatching revocations.
+      await publisherDb.upsertAdagentsCache({
+        domain: TEST_PUB,
+        manifest: {
+          ...manifest(
+            [
+              {
+                url: TEST_AGENT_RAW,
+                authorization_type: 'publisher_properties',
+                publisher_properties: [
+                  { publisher_domain: TEST_PUB, selection_type: 'all' },
+                ],
+              },
+            ],
+            [
+              {
+                property_id: 'site_a',
+                property_type: 'website',
+                name: 'Site A',
+                identifiers: [{ type: 'domain', value: TEST_PUB }],
+              },
+            ]
+          ),
+          revoked_publisher_domains: [
+            // Embedded space inside the domain — survives trim(); canonical
+            // form retains the interior space; fails the schema pattern.
+            { publisher_domain: 'caa writer.example', revoked_at: '2026-05-13T00:00:00Z' },
+            // Path segment — canonical form has `/`, fails the pattern.
+            { publisher_domain: 'https://caa-writer.example/path', revoked_at: '2026-05-13T00:00:00Z' },
+          ],
+        },
+      });
+      // Projection should proceed normally — neither malformed entry
+      // revokes the publisher.
+      const { rows } = await pool.query<{ property_id_slug: string }>(
+        `SELECT property_id_slug FROM catalog_agent_authorizations
+          WHERE agent_url_canonical = $1 AND property_rid IS NOT NULL`,
+        [TEST_AGENT_CANON]
+      );
+      expect(rows.map((r) => r.property_id_slug)).toEqual(['site_a']);
+    });
+
+    it('projects normally when revoked_publisher_domains[] lists a different domain', async () => {
+      // Revocation list contains an unrelated domain; projection proceeds.
+      await publisherDb.upsertAdagentsCache({
+        domain: TEST_PUB,
+        manifest: {
+          ...manifest(
+            [
+              {
+                url: TEST_AGENT_RAW,
+                authorization_type: 'publisher_properties',
+                publisher_properties: [
+                  { publisher_domain: TEST_PUB, selection_type: 'all' },
+                ],
+              },
+            ],
+            [
+              {
+                property_id: 'site_a',
+                property_type: 'website',
+                name: 'Site A',
+                identifiers: [{ type: 'domain', value: TEST_PUB }],
+              },
+            ]
+          ),
+          revoked_publisher_domains: [
+            { publisher_domain: 'some-other.example', revoked_at: '2026-05-13T00:00:00Z' },
+          ],
+        },
+      });
+      const { rows } = await pool.query<{ property_id_slug: string }>(
+        `SELECT property_id_slug FROM catalog_agent_authorizations
+          WHERE agent_url_canonical = $1 AND property_rid IS NOT NULL`,
+        [TEST_AGENT_CANON]
+      );
+      expect(rows.map((r) => r.property_id_slug)).toEqual(['site_a']);
+    });
+  });
+
+  // ──────────────────────────────────────────────────────────────────
   // Deferred variants — no rows projected, no errors
   // ──────────────────────────────────────────────────────────────────
 
@@ -689,6 +1235,81 @@ describe('catalog_agent_authorizations writer projection', () => {
       );
       expect(rows).toHaveLength(1);
       expect(rows[0].authorized_for).toBe('video');
+    });
+  });
+
+  // ──────────────────────────────────────────────────────────────────
+  // Reconcile: agents removed from a manifest must drop out of the
+  // catalog. Without the reconcile step inside upsertAdagentsCache the
+  // writer is upsert-only and a stale row would linger forever — this
+  // is the second wonderstruck-shaped follow-up bug.
+  // ──────────────────────────────────────────────────────────────────
+
+  describe('reconcile on re-crawl', () => {
+    it('soft-deletes catalog rows for agents the new manifest no longer authorizes', async () => {
+      // First crawl: two agents.
+      await publisherDb.upsertAdagentsCache({
+        domain: TEST_PUB,
+        manifest: manifest([
+          { url: TEST_AGENT_RAW, authorized_for: 'display' },
+          { url: OTHER_AGENT, authorized_for: 'video' },
+        ]),
+      });
+      const beforeRows = await pool.query<{ agent_url_canonical: string; deleted_at: Date | null }>(
+        `SELECT agent_url_canonical, deleted_at FROM catalog_agent_authorizations
+          WHERE publisher_domain = $1`,
+        [TEST_PUB],
+      );
+      expect(beforeRows.rows.filter(r => !r.deleted_at)).toHaveLength(2);
+
+      // Second crawl: publisher removed OTHER_AGENT.
+      await publisherDb.upsertAdagentsCache({
+        domain: TEST_PUB,
+        manifest: manifest([{ url: TEST_AGENT_RAW, authorized_for: 'display' }]),
+      });
+
+      const live = await pool.query<{ agent_url_canonical: string }>(
+        `SELECT agent_url_canonical FROM catalog_agent_authorizations
+          WHERE publisher_domain = $1 AND deleted_at IS NULL`,
+        [TEST_PUB],
+      );
+      expect(live.rows).toHaveLength(1);
+      expect(live.rows[0].agent_url_canonical).toBe(TEST_AGENT_CANON);
+
+      const tombstoned = await pool.query<{ agent_url_canonical: string }>(
+        `SELECT agent_url_canonical FROM catalog_agent_authorizations
+          WHERE publisher_domain = $1 AND deleted_at IS NOT NULL`,
+        [TEST_PUB],
+      );
+      expect(tombstoned.rows).toHaveLength(1);
+      expect(tombstoned.rows[0].agent_url_canonical).toBe(OTHER_AGENT);
+    });
+
+    it('does not touch agent_claim or community-evidence rows belonging to other writers', async () => {
+      // Plant an agent_claim-style row for OTHER_AGENT against TEST_PUB
+      // (different evidence + created_by than the writer-sourced rows).
+      // The reconcile must NOT remove this — it represents a different
+      // publisher's discovery flow attesting to OTHER_AGENT's authorization.
+      await pool.query(
+        `INSERT INTO catalog_agent_authorizations
+           (agent_url, agent_url_canonical, publisher_domain, evidence, created_by)
+         VALUES ($1, $2, $3, 'agent_claim', 'community')`,
+        [OTHER_AGENT, OTHER_AGENT, TEST_PUB],
+      );
+
+      // Writer cache: only TEST_AGENT_RAW.
+      await publisherDb.upsertAdagentsCache({
+        domain: TEST_PUB,
+        manifest: manifest([{ url: TEST_AGENT_RAW, authorized_for: 'display' }]),
+      });
+
+      const claimRow = await pool.query<{ deleted_at: Date | null }>(
+        `SELECT deleted_at FROM catalog_agent_authorizations
+          WHERE agent_url_canonical = $1 AND publisher_domain = $2 AND evidence = 'agent_claim'`,
+        [OTHER_AGENT, TEST_PUB],
+      );
+      expect(claimRow.rows).toHaveLength(1);
+      expect(claimRow.rows[0].deleted_at).toBeNull();
     });
   });
 });

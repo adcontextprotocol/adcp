@@ -468,6 +468,45 @@ describe('stripe-client', () => {
         },
       });
     });
+
+    test('re-throws resource_missing so callers can recover from a stale ID', async () => {
+      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+
+      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
+      const notFound = Object.assign(new Error('No such customer'), {
+        code: 'resource_missing',
+        statusCode: 404,
+      });
+      const mockStripeInstance = {
+        customerSessions: {
+          create: vi.fn<any>().mockRejectedValue(notFound),
+        },
+      };
+      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+
+      const { createCustomerSession } = await import('../../server/src/billing/stripe-client.js');
+
+      await expect(createCustomerSession('cus_stale')).rejects.toMatchObject({
+        code: 'resource_missing',
+      });
+    });
+
+    test('returns null and swallows other Stripe errors', async () => {
+      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+
+      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
+      const mockStripeInstance = {
+        customerSessions: {
+          create: vi.fn<any>().mockRejectedValue(new Error('boom')),
+        },
+      };
+      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+
+      const { createCustomerSession } = await import('../../server/src/billing/stripe-client.js');
+
+      const result = await createCustomerSession('cus_123');
+      expect(result).toBeNull();
+    });
   });
 
   describe('createAndSendInvoice', () => {
@@ -1029,6 +1068,310 @@ describe('stripe-client', () => {
         .toBe('aao_membership_corporate_5m');
       expect(resolveLookupKeyAlias('corporate_under5m', catalog)?.lookup_key)
         .toBe('aao_membership_corporate_under5m');
+    });
+  });
+
+  describe('getAllOpenInvoices', () => {
+    test('does not exceed Stripe 4-level expand cap (data.lines.data.price.product is 5)', async () => {
+      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+
+      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
+      const listMock = vi.fn<any>().mockImplementation(({ expand }: { expand?: string[] }) => {
+        for (const path of expand || []) {
+          // Stripe rejects expand paths deeper than 4 levels.
+          if (path.split('.').length > 4) {
+            const err = new Error(
+              `You cannot expand more than 4 levels of a property. Property: ${path}`,
+            );
+            return Promise.reject(err);
+          }
+        }
+        return {
+          [Symbol.asyncIterator]: async function* () {
+            // empty
+          },
+        };
+      });
+      const mockStripeInstance = {
+        invoices: { list: listMock },
+        products: { retrieve: vi.fn() },
+      };
+      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+
+      const { getAllOpenInvoices } = await import('../../server/src/billing/stripe-client.js');
+
+      // No expand path the function actually sends should exceed 4 levels —
+      // i.e. the function must complete without the stub's >4-level rejection
+      // firing. If a regression reintroduces `data.lines.data.price.product`,
+      // listMock rejects and getAllOpenInvoices propagates the throw.
+      await expect(getAllOpenInvoices(50)).resolves.toEqual([]);
+      const allExpands = listMock.mock.calls.flatMap(
+        (call) => (call[0] as { expand?: string[] }).expand || [],
+      );
+      expect(allExpands.length).toBeGreaterThan(0);
+      for (const path of allExpands) {
+        expect(path.split('.').length).toBeLessThanOrEqual(4);
+      }
+    });
+
+    test('propagates Stripe errors to the caller (no silent empty-array fallback)', async () => {
+      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+
+      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
+      // Stripe SDK throws synchronously here to model how the previous swallow
+      // turned a real 400 into "No pending invoices found" for the admin UI.
+      const listMock = vi.fn<any>().mockImplementation(() => {
+        throw new Error('You cannot expand more than 4 levels of a property. Property: data.lines.data.price.product');
+      });
+      const mockStripeInstance = {
+        invoices: { list: listMock },
+        products: { retrieve: vi.fn() },
+      };
+      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+
+      const { getAllOpenInvoices } = await import('../../server/src/billing/stripe-client.js');
+
+      await expect(getAllOpenInvoices(50)).rejects.toThrow(/4 levels/);
+    });
+
+    test('resolves product names via separate stripe.products.retrieve, with caching', async () => {
+      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+
+      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
+
+      const makeInvoice = (id: string, productId: string) => ({
+        id,
+        status: 'open',
+        amount_due: 10000,
+        currency: 'usd',
+        created: 1700000000,
+        due_date: null,
+        hosted_invoice_url: null,
+        customer: { id: 'cus_1', name: 'Acme', email: 'a@example.com', metadata: {} },
+        lines: {
+          data: [{ price: { id: 'price_1', product: productId } }],
+        },
+      });
+
+      const productRetrieve = vi.fn<any>().mockImplementation((id: string) =>
+        Promise.resolve({ id, name: `Product ${id}` }),
+      );
+
+      const mockStripeInstance = {
+        invoices: {
+          list: vi.fn<any>().mockImplementation(({ status }: { status: string }) => {
+            const invoices = status === 'open'
+              ? [makeInvoice('in_1', 'prod_A'), makeInvoice('in_2', 'prod_A')]
+              : [];
+            return {
+              [Symbol.asyncIterator]: async function* () {
+                for (const inv of invoices) yield inv;
+              },
+            };
+          }),
+        },
+        products: { retrieve: productRetrieve },
+      };
+      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+
+      const { getAllOpenInvoices } = await import('../../server/src/billing/stripe-client.js');
+
+      const result = await getAllOpenInvoices(50);
+
+      expect(result).toHaveLength(2);
+      expect(result[0].product_name).toBe('Product prod_A');
+      expect(result[1].product_name).toBe('Product prod_A');
+      // Cached: only fetched once even though referenced twice.
+      expect(productRetrieve).toHaveBeenCalledTimes(1);
+      expect(productRetrieve).toHaveBeenCalledWith('prod_A');
+    });
+  });
+
+  describe('getPendingInvoices', () => {
+    // Issue #4564: abandoned subscription attempts leave $0 / no-line-item drafts
+    // on the Stripe customer. Surfacing them as "pending invoice" confuses members
+    // (Rishi @ InMobi, 2026-05-14). Filter them out, but keep real drafts (with
+    // line items + amount) and all `open` invoices.
+    test('drops empty draft invoices (no line items or zero amount)', async () => {
+      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+
+      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
+      const listMock = vi.fn<any>().mockImplementation(({ status }: { status: string }) => {
+        if (status === 'open') return { data: [] };
+        return {
+          data: [
+            // Empty draft — no line items. Must be filtered out.
+            {
+              id: 'in_empty',
+              status: 'draft',
+              amount_due: 0,
+              currency: 'usd',
+              created: 1700000000,
+              due_date: null,
+              hosted_invoice_url: null,
+              customer_email: 'r@example.com',
+              lines: { data: [] },
+            },
+            // Real draft — has product + amount. Must survive.
+            {
+              id: 'in_real',
+              status: 'draft',
+              amount_due: 5000000,
+              currency: 'usd',
+              created: 1700000000,
+              due_date: null,
+              hosted_invoice_url: null,
+              customer_email: 'r@example.com',
+              lines: { data: [{ price: { product: { name: 'Leader' } } }] },
+            },
+          ],
+        };
+      });
+      const mockStripeInstance = {
+        invoices: { list: listMock },
+        products: { retrieve: vi.fn() },
+      };
+      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+
+      const { getPendingInvoices } = await import('../../server/src/billing/stripe-client.js');
+      const result = await getPendingInvoices('cus_x');
+
+      expect(result.map(r => r.id)).toEqual(['in_real']);
+    });
+
+    test('drops a draft that has a non-zero amount_due but no line items', async () => {
+      // Locks down the AND semantics of the filter: both conditions must
+      // hold. A draft with amount but no lines is still not actionable —
+      // there's nothing for Stripe to invoice — and should not surface.
+      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+
+      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
+      const listMock = vi.fn<any>().mockImplementation(({ status }: { status: string }) => {
+        if (status === 'open') return { data: [] };
+        return {
+          data: [{
+            id: 'in_phantom_amount',
+            status: 'draft',
+            amount_due: 1000,
+            currency: 'usd',
+            created: 1700000000,
+            due_date: null,
+            hosted_invoice_url: null,
+            customer_email: 'r@example.com',
+            lines: { data: [] },
+          }],
+        };
+      });
+      const mockStripeInstance = {
+        invoices: { list: listMock },
+        products: { retrieve: vi.fn() },
+      };
+      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+
+      const { getPendingInvoices } = await import('../../server/src/billing/stripe-client.js');
+      const result = await getPendingInvoices('cus_x');
+
+      expect(result).toEqual([]);
+    });
+
+    test('keeps open invoices regardless of amount/line state', async () => {
+      // Stripe `open` invoices have already been finalized + sent. Even an
+      // edge-case open invoice with a $0 balance (e.g. fully refunded) is
+      // legitimate state that the UI needs to render.
+      process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
+
+      const StripeMock = (await import('stripe')).default as unknown as MockedClass<typeof Stripe>;
+      const listMock = vi.fn<any>().mockImplementation(({ status }: { status: string }) => {
+        if (status === 'open') {
+          return {
+            data: [{
+              id: 'in_open',
+              status: 'open',
+              amount_due: 0,
+              currency: 'usd',
+              created: 1700000000,
+              due_date: null,
+              hosted_invoice_url: 'https://invoice.example/x',
+              customer_email: 'r@example.com',
+              lines: { data: [] },
+            }],
+          };
+        }
+        return { data: [] };
+      });
+      const mockStripeInstance = {
+        invoices: { list: listMock },
+        products: { retrieve: vi.fn() },
+      };
+      StripeMock.mockImplementation(function () { return mockStripeInstance as any; });
+
+      const { getPendingInvoices } = await import('../../server/src/billing/stripe-client.js');
+      const result = await getPendingInvoices('cus_x');
+
+      expect(result.map(r => r.id)).toEqual(['in_open']);
+    });
+  });
+
+  describe('buildOrgCouponName', () => {
+    test('keeps short org names intact', async () => {
+      const { buildOrgCouponName } = await import('../../server/src/billing/stripe-client.js');
+      expect(buildOrgCouponName('Acme Inc', '$500.00 off'))
+        .toBe('Acme Inc - $500.00 off');
+    });
+
+    test('truncates long org names so total stays at most 40 chars', async () => {
+      const { buildOrgCouponName } = await import('../../server/src/billing/stripe-client.js');
+      // Real-world repro: a long org name plus " - $500.00 off" overflowed Stripe's 40-char cap
+      const result = buildOrgCouponName(
+        'The Omnichannel Network Exchange  O-N-X',
+        '$500.00 off',
+      );
+      expect(result.length).toBeLessThanOrEqual(40);
+      expect(result.endsWith(' - $500.00 off')).toBe(true);
+    });
+
+    test('collapses internal whitespace runs in the org name', async () => {
+      const { buildOrgCouponName } = await import('../../server/src/billing/stripe-client.js');
+      expect(buildOrgCouponName('Acme    \t  Inc', '10% off'))
+        .toBe('Acme Inc - 10% off');
+    });
+
+    test('handles a percent discount description', async () => {
+      const { buildOrgCouponName } = await import('../../server/src/billing/stripe-client.js');
+      const result = buildOrgCouponName('Some Very Long Company Name LLC International', '25% off');
+      expect(result.length).toBeLessThanOrEqual(40);
+      expect(result.endsWith(' - 25% off')).toBe(true);
+    });
+
+    test('falls back to discount description alone when org name is empty', async () => {
+      const { buildOrgCouponName } = await import('../../server/src/billing/stripe-client.js');
+      expect(buildOrgCouponName('', '$500.00 off'))
+        .toBe('$500.00 off');
+    });
+
+    test('treats whitespace-only org names as empty', async () => {
+      const { buildOrgCouponName } = await import('../../server/src/billing/stripe-client.js');
+      expect(buildOrgCouponName('   \t\n', '10% off'))
+        .toBe('10% off');
+    });
+
+    test('strips bidi and zero-width format characters', async () => {
+      const { buildOrgCouponName } = await import('../../server/src/billing/stripe-client.js');
+      // U+202E (RTL override) and U+200B (zero-width space) must not survive
+      const result = buildOrgCouponName('Acme‮​ Inc', '$500.00 off');
+      expect(result).toBe('Acme Inc - $500.00 off');
+      expect(/[‪-‮​-‍]/.test(result)).toBe(false);
+    });
+
+    test('slices by code points so emoji and CJK names are not split mid-surrogate', async () => {
+      const { buildOrgCouponName } = await import('../../server/src/billing/stripe-client.js');
+      // Each "🚀" is a UTF-16 surrogate pair; a string-byte slice could halve one.
+      const orgName = '🚀'.repeat(20);
+      const result = buildOrgCouponName(orgName, '$500.00 off');
+      expect(result.length).toBeLessThanOrEqual(40);
+      // Re-encoding the result must round-trip — no lone surrogates.
+      expect(result).toBe(result.normalize('NFC'));
+      expect(result.endsWith(' - $500.00 off')).toBe(true);
     });
   });
 });

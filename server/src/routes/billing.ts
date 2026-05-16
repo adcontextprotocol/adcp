@@ -14,6 +14,7 @@ import { getPool } from "../db/client.js";
 import {
   stripe,
   getBillingProducts,
+  getProductsForCustomer,
   createProduct,
   updateProductMetadata,
   archiveProduct,
@@ -177,6 +178,51 @@ export function createBillingRouter(): { pageRouter: Router; apiRouter: Router }
       });
     }
   });
+
+  // GET /api/admin/orgs/:orgId/invite-products
+  // Catalog scoped to the Send Membership Invitation flow: applies the
+  // founding-member cutoff (so retired tiers don't surface after April 1) and
+  // attaches the org's discount fields so the UI can render a net-of-discount
+  // price instead of the raw Stripe sticker.
+  apiRouter.get(
+    "/orgs/:orgId/invite-products",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const { orgId } = req.params;
+        const orgDb = new OrganizationDatabase();
+        const org = await orgDb.getOrganization(orgId);
+        if (!org) {
+          return res.status(404).json({ error: "Organization not found" });
+        }
+
+        const products = await getProductsForCustomer({ invoiceableOnly: true });
+
+        const hasPercent =
+          org.discount_percent !== null && org.discount_percent !== undefined;
+        const hasAmount =
+          org.discount_amount_cents !== null &&
+          org.discount_amount_cents !== undefined;
+        const orgDiscount = hasPercent || hasAmount
+          ? {
+              discount_percent: hasPercent ? org.discount_percent : null,
+              discount_amount_cents: hasAmount ? org.discount_amount_cents : null,
+              label: hasPercent
+                ? `${org.discount_percent}% off`
+                : `$${((org.discount_amount_cents ?? 0) / 100).toFixed(2)} off`,
+              has_stripe_coupon: !!org.stripe_coupon_id,
+              reason: org.discount_reason ?? null,
+            }
+          : null;
+
+        res.json({ products, orgDiscount });
+      } catch (error) {
+        logger.error({ err: error }, "Error fetching invite products for org");
+        res.status(500).json({ error: "Failed to fetch invite products" });
+      }
+    }
+  );
 
   // POST /api/admin/products - Create a new product
   apiRouter.post("/products", requireAuth, requireAdmin, async (req, res) => {

@@ -194,10 +194,12 @@ When linking to schemas in docs, use the correct version alias:
 3. If only in `static/schemas/source/`, use `latest`
 
 **Version aliases:**
-- `/schemas/v3/` → latest 3.x release (currently 3.0.0-rc.3)
-- `/schemas/v2/` → latest 2.x release (currently 2.5.3)
+- `/schemas/v3/` → latest published 3.x release (do not hardcode a patch/RC number here; check `dist/schemas/` for the current target)
+- `/schemas/v2/` → latest published 2.x release (check `dist/schemas/` for the current target)
 - `/schemas/v1/` → points to `latest` (for backward compatibility)
 - `/schemas/latest/` → development version (`static/schemas/source/`)
+
+This avoids drift with the release-line section below, where `3.0.x` continues to advance after release candidates.
 
 **CI validation:** The `check-schema-links.yml` workflow validates schema URLs in PRs and will warn about unreleased schemas or suggest the correct version.
 
@@ -207,6 +209,21 @@ Task responses contain ONLY domain data. Protocol concerns (message, context_id,
 ## Versioning
 
 ### Changesets
+#### Mandatory: changeset on every PR
+Every PR **must** include a changeset file. Before pushing, run:
+
+```bash
+npx changeset --empty
+```
+
+Then **immediately rename** the generated file from its random name (for example, `petite-beds-film.md`) to a descriptive name matching the change (for example, `fix-pg-idle-timeout-retry.md`):
+
+```bash
+mv .changeset/<random-name>.md .changeset/<descriptive-name>.md
+```
+
+Add a clear description in the changeset body. Use `--empty` (no package entry) for non-protocol changes (server, UI, docs, infra, tools). Use `patch`/`minor`/`major` only for changes to the published AdCP protocol spec (schemas, task definitions, API reference).
+
 **NEVER manually edit versions.** Use changesets:
 ```bash
 # Create .changeset/your-feature.md
@@ -252,7 +269,35 @@ Default flow when a fix is needed in both lines:
    git cherry-pick <main-sha>
    git push origin 3.0.x
    ```
-3. The forward-merge workflow (`.github/workflows/forward-merge-3.0.yml`) opens a PR back to `main` whenever `3.0.x` updates. Merging it is a near-no-op (the cherry-pick is already in `main`) but keeps the lines provably in sync.
+3. The forward-merge workflow (`.github/workflows/forward-merge-3.0.yml`) opens a PR back to `main` whenever `3.0.x` updates. Merging it keeps the lines provably in sync. Auto-resolution is **metadata-only** — anything else fails the workflow loud and requires human review.
+
+   **Auto-resolved (metadata that legitimately diverges by-design):**
+   - `package.json` / `package-lock.json` → preserve main's (main may carry structural changes — package renames, new deps — that 3.0.x doesn't)
+   - `.changeset/*.md` / `.changeset/pre.json` → preserve main's (independent pre-mode pool)
+   - `static/schemas/source/index.json` / `static/schemas/source/registry/index.yaml` → take 3.0.x's (regenerated on next release build)
+   - `CHANGELOG.md` → take 3.0.x's (main's next Version Packages cut prepends its own entries above)
+   - `dist/{schemas,compliance,protocol,docs}/*` → take 3.0.x's (immutable per release; main only ever ADDS)
+
+   **Fails loud (everything else):** every other conflict is a real backport decision and surfaces for human review. This includes the known cross-line divergences in `static/compliance/source/universal/{storyboard-schema,runner-output-contract}.yaml`, `static/schemas/source/{core/error.json,enums/error-code.json,protocol/get-adcp-capabilities-response.json}`, `.github/workflows/training-agent-storyboards.yml`, and `docs/building/implementation/error-handling.mdx` — main carries 3.1-track additions (new enum codes, schema discriminators, the CANONICAL CHECK ENUM block) that can't ship to 3.0.x without breaking the patch contract. Each push to 3.0.x that touches one of these regions will require a manual forward-merge PR until 3.1.0 cuts and replaces both lines.
+
+   **Why metadata-only:** an earlier version of the workflow auto-resolved the cross-line content files via whole-file `git checkout --ours`, which silently dropped 3.0.x's non-conflicting changes alongside the divergent regions. Five days of patches (v3.0.5 → v3.0.9, ~30 commits) silently failed to forward-merge before the bug was found. Loud failure on every content conflict is the right primitive: it's annoying for the divergent files but it surfaces real decisions instead of dropping work. See #4306 / #4308 / #4310 for context.
+
+   **Manual resolution recipe** (when the workflow fails):
+   ```bash
+   git fetch origin
+   git checkout -b forward-merge/3.0.x-<descriptor> origin/main
+   git merge origin/3.0.x  # resolve conflicts in editor — for the 7 known-divergent files,
+                            # take main's side (it carries 3.1-track shape)
+   git push origin forward-merge/3.0.x-<descriptor>
+   gh pr create --base main --head forward-merge/3.0.x-<descriptor>
+   ```
+   Branch name **must** start with `forward-merge/` — the changeset-check workflow skips on this prefix (the merge brings package-changing commits whose changesets were already consumed by 3.0.x's Version Packages cut).
+
+4. **Skip rules for release-machinery PRs.** The changeset-check workflow (`.github/workflows/changeset-check.yml`) skips PRs whose `head_ref` starts with:
+   - `changeset-release/` — Version Packages PRs (changesets already consumed)
+   - `forward-merge/` — forward-merge PRs (changesets explained by source branch's CHANGELOG, not by a new file on main)
+
+   Any other PR head triggers the check normally. Don't bypass via empty changeset padding — the skip is the right primitive.
 
 #### Patch eligibility
 
@@ -294,6 +339,35 @@ git add -A && git commit -m "chore(release): exit pre mode for 3.1.0 stable cut"
 ```
 
 Next Version Packages cut after the exit PR merges produces `3.1.0` stable.
+
+#### When 3.1.0 cuts — release-line transition
+
+Cutting 3.1.0 ends the 3.0.x ↔ main divergence and starts a new 3.0.x → 3.1.x lifecycle. Steps to take **at the same time as the 3.1.0 stable release**:
+
+1. **Cut the `3.1.x` branch.** Branch off `main` immediately after the 3.1.0 tag is published:
+   ```bash
+   git checkout main && git pull
+   git checkout -b 3.1.x origin/main
+   git push -u origin 3.1.x
+   ```
+   `main` then advances toward `3.2.0-beta.N` (re-enter pre mode with `npx changeset pre enter beta` and a new `.changeset/pre.json`).
+
+2. **Update `forward-merge-3.0.yml` → `forward-merge-3.1.yml`.** The workflow targets `3.1.x` now; rename the file and update `branches:` and the merge target. Keep `3.0.x` only if 3.0.x stays in maintenance for security fixes (see step 4).
+
+3. **Reset the auto-resolve allowlist if needed.** When 3.1.0 absorbs the 3.1-track additions on main, the cross-line divergences in `error-code.json`, `error.json`, `runner-output-contract.yaml`, `storyboard-schema.yaml`, `get-adcp-capabilities-response.json`, `training-agent-storyboards.yml`, and `error-handling.mdx` collapse — `3.1.x` and `main` start identical. The allowlist stays metadata-only (the same list as for 3.0.x is correct for 3.1.x), but the **known-divergent file list documented in the cherry-pick section above no longer applies**. Update that list in this playbook to reflect any new 3.2-track-only divergences that emerge.
+
+4. **Decide 3.0.x's fate.** Options:
+   - **Sunset immediately**: archive the `3.0.x` branch, stop publishing patches. Document the EOL in `docs/reference/version-support.mdx` and announce in the release notes.
+   - **Maintenance window**: keep `3.0.x` for security-only fixes for N months. If you do this, **also keep `forward-merge-3.0.yml`** so security patches still flow forward — but expect every push to fail loud (3.1.x has structurally diverged from 3.0.x at this point) and require manual resolution. Maintenance windows are heavy ops; only do this if there's an active security commitment.
+
+5. **Update `RELEASING.md` and this playbook** with the new release-line topology. The stale 3.0.x examples in this section will need to be rewritten in terms of 3.1.x.
+
+**Lessons captured from the 3.0.x line** (apply to every future maintenance line):
+- **Never auto-resolve content files with `git checkout --ours` on whole files.** Whole-file resolution silently drops non-conflict changes. Allowlist metadata only; let content fail loud.
+- **The forward-merge workflow's exit code must reflect actual merge state.** A "success" run that produced no PR for a non-empty divergence is a silent failure mode. Always log the merge tree-state explicitly (the workflow now does: `git diff --quiet origin/main HEAD` gates the PR-creation step).
+- **Permanent cross-line divergences accumulate.** Once a file has any divergent region, every subsequent 3.0.x patch that lands near that region produces a real conflict. Manual forward-merges are the steady state, not the exception. Plan ops capacity accordingly.
+- **Forward-merge PRs can't carry their own changesets** — the source branch's changesets are already consumed. The changeset-check workflow needs an explicit skip rule keyed on `head_ref` prefix (`forward-merge/*`). Carry this skip rule forward when you create the 3.1.x → main pipeline.
+- **Reference implementations should land on `main` first**, then cherry-pick to maintenance lines only when truly needed (security, severe bugs). Don't dual-track features — that's how you grow the divergent-file list.
 
 #### App-token convention
 
@@ -619,11 +693,21 @@ issue payload. The routine itself does all the comment/label work.
 ## Cross-Agent Integration
 
 - **Role definitions** live in `.agents/roles/*.md` (markdown with frontmatter).
-  These are the canonical source for all subagent/role prompts.
+  This directory is the single source of truth for all subagent/role prompts.
+  Each role exists in one of two forms:
+  - `{name}.md` — **short triage checker.** Terse, structured, PR-bound. Used
+    by the triage routine's expert consultation step. Most roles have one.
+  - `{name}-deep.md` — **long design advisor.** Full domain reasoning for
+    open-ended work (MCP tool design, threat models, curriculum architecture).
+    Opt-in; not for triage. Nine roles have a `-deep` counterpart; the rest
+    are checker-only or advisor-only by intent.
 - **Prompt shortcuts** live in `.agents/shortcuts/`.
-- **Codex wiring** (`.codex/`) is generated from `.agents/roles/` via
-  `node scripts/import-claude-agents.mjs`. Don't edit `.codex/agents/` by hand.
-- **Claude Code** can read `.agents/roles/` directly as project-scoped agents.
+- **Generated outputs** (don't edit by hand) — `scripts/import-claude-agents.mjs`
+  syncs `.agents/roles/` to:
+  - `.claude/agents/*.md` — verbatim copies for Claude Code's agent loader.
+  - `.codex/agents/*.toml` — TOML form for Codex, plus a generated
+    `.codex/config.toml` that registers every role.
+  Run the script after editing any file in `.agents/roles/`.
 - `AGENTS.md` and `CLAUDE.md` are thin compatibility wrappers only.
 - Add or change shared repo behavior here first, then update wrappers only if
   the agent needs a pointer to the new location.

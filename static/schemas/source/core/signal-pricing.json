@@ -4,6 +4,9 @@
   "title": "Vendor Pricing",
   "description": "Pricing model for a vendor service. Discriminated by model: 'cpm' (fixed CPM), 'percent_of_media' (percentage of spend with optional CPM cap), 'flat_fee' (fixed charge per reporting period), 'per_unit' (fixed price per unit of work), or 'custom' (escape hatch for models not covered by the enumerated forms — requires a description and structured metadata).",
   "type": "object",
+  "discriminator": {
+    "propertyName": "model"
+  },
   "oneOf": [
     {
       "title": "CpmPricing",

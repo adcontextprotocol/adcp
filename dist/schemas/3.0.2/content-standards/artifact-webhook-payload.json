@@ -1,0 +1,79 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.2/content-standards/artifact-webhook-payload.json",
+  "title": "Artifact Webhook Payload",
+  "description": "Payload sent by sales agents to orchestrators when pushing content artifacts for governance validation. Complements get_media_buy_artifacts for push-based artifact delivery.",
+  "type": "object",
+  "properties": {
+    "idempotency_key": {
+      "type": "string",
+      "description": "Sender-generated key stable across retries of the same webhook event. Sales agents MUST generate a cryptographically random value (UUID v4 recommended) per distinct emission of a batch and reuse the same key on every retry. Recipients MUST dedupe by this key, scoped to the authenticated sender identity (HMAC secret or Bearer credential) — keys from different sales agents are independent. Distinct from `batch_id`, which identifies the logical batch: `idempotency_key` identifies this specific emission event, so a re-emission of the same `batch_id` (e.g., after a correction) is a different event and MUST carry a fresh `idempotency_key`.",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
+    "media_buy_id": {
+      "type": "string",
+      "description": "Media buy identifier these artifacts belong to"
+    },
+    "batch_id": {
+      "type": "string",
+      "description": "Unique identifier for this batch of artifacts. Use for deduplication and acknowledgment."
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this batch was generated (ISO 8601)"
+    },
+    "artifacts": {
+      "type": "array",
+      "description": "Content artifacts from delivered impressions",
+      "items": {
+        "type": "object",
+        "properties": {
+          "artifact": {
+            "$ref": "/schemas/3.0.2/content-standards/artifact.json",
+            "description": "The content artifact"
+          },
+          "delivered_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the impression was delivered (ISO 8601)"
+          },
+          "impression_id": {
+            "type": "string",
+            "description": "Optional impression identifier for correlation with delivery reports"
+          },
+          "package_id": {
+            "type": "string",
+            "description": "Package within the media buy this artifact relates to"
+          }
+        },
+        "required": ["artifact", "delivered_at"]
+      }
+    },
+    "pagination": {
+      "type": "object",
+      "description": "Pagination info when batching large artifact sets",
+      "properties": {
+        "total_artifacts": {
+          "type": "integer",
+          "description": "Total artifacts in the delivery period"
+        },
+        "batch_number": {
+          "type": "integer",
+          "description": "Current batch number (1-indexed)"
+        },
+        "total_batches": {
+          "type": "integer",
+          "description": "Total batches for this delivery period"
+        }
+      }
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.2/core/ext.json"
+    }
+  },
+  "required": ["idempotency_key", "media_buy_id", "batch_id", "timestamp", "artifacts"],
+  "additionalProperties": true
+}

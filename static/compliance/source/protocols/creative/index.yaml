@@ -375,8 +375,8 @@ phases:
           The buyer builds a serving tag for the video creative. The platform produces
           a VAST-compatible tag that the buyer can traffic to ad servers.
         task: build_creative
-        schema_ref: "creative/build-creative-request.json"
-        response_schema_ref: "creative/build-creative-response.json"
+        schema_ref: "media-buy/build-creative-request.json"
+        response_schema_ref: "media-buy/build-creative-response.json"
         doc_ref: "/creative/task-reference/build_creative"
         comply_scenario: creative_flow
         stateful: true

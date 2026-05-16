@@ -59,6 +59,22 @@ rewrite_file() {
 
   mv "$tmp" "$file"
 
+  # Phase 1b: undo the rewrite for /api-reference/ paths. Snapshots don't
+  # include OpenAPI-generated pages — those live only at runtime under the
+  # live /docs/ tree, served by Mintlify against the current
+  # static/openapi/*.yaml. A snapshot link to
+  # /dist/docs/<version>/<section>/api-reference/<page> resolves to a 404
+  # because no such file is on disk. Routing those links back to the live
+  # /docs/<section>/api-reference/ path keeps versioned prose pages (which
+  # ARE snapshotted) functional without dragging in OpenAPI page generation.
+  local tmp2
+  tmp2=$(mktemp)
+  sed \
+    -e "s|](/dist/docs/$VERSION/\\(.*\\)/api-reference/|](/docs/\\1/api-reference/|g" \
+    -e "s|href=\"/dist/docs/$VERSION/\\(.*\\)/api-reference/|href=\"/docs/\\1/api-reference/|g" \
+    "$file" > "$tmp2"
+  mv "$tmp2" "$file"
+
   # Phase 2: rewrite *escaping* relative links (`../../...` etc.) to compensate
   # for the `dist/docs/<version>/` mirror layer. Depth-aware via a node helper
   # so this works at any source-file depth, not just `docs/<section>/file.md`.

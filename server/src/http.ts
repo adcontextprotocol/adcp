@@ -5,24 +5,26 @@ import { slowResponseTracker } from "./middleware/slow-response.js";
 import { requestMetrics } from "./middleware/request-metrics.js";
 import escapeHtml from "escape-html";
 import * as fs from "fs/promises";
+import { readFileSync } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { WorkOS, DomainDataState } from "@workos-inc/node";
 import { AgentService } from "./agent-service.js";
 import { AgentValidator } from "./validator.js";
 import { configureMCPRoutes, isMCPServerReady, resolveMCPServerURL } from "./mcp/index.js";
-import { HealthChecker } from "./health.js";
+import { HealthChecker, classifyMCPError } from "./health.js";
 import { notifySystemError } from "./addie/error-notifier.js";
 import { CrawlerService } from "./crawler.js";
 import { createLogger, processRole } from "./logger.js";
 import { CapabilityDiscovery } from "./capabilities.js";
+import { inferDiagnosticAgentType } from "./lib/diagnostic-agent-type-inference.js";
 import { getPublicSigningJwks } from "./security/jwks.js";
 import { PublisherTracker } from "./publishers.js";
 import { PropertiesService } from "./properties.js";
 import { AdAgentsManager } from "./adagents-manager.js";
 import { mountSchemasRoutes, mountComplianceRoutes, mountProtocolRoutes } from "./schemas-middleware.js";
 import { closeDatabase, getPool, healthCheck } from "./db/client.js";
-import { CreativeAgentClient, SingleAgentClient } from "@adcp/sdk";
+import { AuthenticationRequiredError, CreativeAgentClient, SingleAgentClient } from "@adcp/sdk";
 import type { Agent, AgentType, AgentWithStats, Company } from "./types.js";
 import { isValidAgentType, VALID_MEMBER_OFFERINGS, VALID_LEGAL_DOCUMENT_TYPES } from "./types.js";
 import type { Server } from "http";
@@ -30,11 +32,13 @@ import { stripe, STRIPE_WEBHOOK_SECRET, createStripeCustomer, createCustomerPort
 import { handleSubscriptionCreated, type ActivationAdminContext } from "./billing/handle-subscription-created.js";
 import { resolveOrgForStripeCustomer } from "./billing/webhook-helpers.js";
 import { dedupOnSubscriptionCreated } from "./billing/dedup-on-subscription-created.js";
+import { pickMembershipSubWithProductFetch } from "./billing/membership-prices.js";
 import Stripe from "stripe";
 import { OrganizationDatabase, getUserSeatType, buildSubscriptionUpdate, TIER_PRESERVING_STATUSES, type SeatType, type MembershipTier } from "./db/organization-db.js";
 import { MemberDatabase } from "./db/member-db.js";
 import { ensureMemberProfilePublished } from "./services/member-profile-autopublish.js";
-import { getGitHubConnectedAccount, getGitHubAuthorizeUrl, disconnectGitHub, buildPipesReturnTo } from "./services/pipes.js";
+import { getBrandPrimaryDomain, getBrandPrimaryDomainsForOrgs } from "./services/brand-domain-resolver.js";
+import { getGitHubConnectedAccount, resolveGitHubConnectUrl, disconnectGitHub, buildPipesReturnTo } from "./services/pipes.js";
 import { BrandDatabase, resolveBrandFromJson } from "./db/brand-db.js";
 import { CatalogEventsDatabase } from "./db/catalog-events-db.js";
 import { AgentInventoryProfilesDatabase } from "./db/agent-inventory-profiles-db.js";
@@ -72,7 +76,7 @@ import { createAddieChatRouter } from "./routes/addie-chat.js";
 import { createTavusRouter } from "./routes/tavus.js";
 import { createSiChatRoutes } from "./routes/si-chat.js";
 import { sendAccountLinkedMessage, invalidateMemberContextCache, isAddieBoltReady } from "./addie/index.js";
-import { invalidateMembershipCache } from "./db/org-filters.js";
+import { invalidateMembershipCache, findClaimableProspectOrgForDomain } from "./db/org-filters.js";
 import * as relationshipDb from "./db/relationship-db.js";
 import * as personEvents from "./db/person-events-db.js";
 import { isWebUserAAOAdmin } from "./addie/mcp/admin-tools.js";
@@ -96,6 +100,8 @@ import { createCommitteeRouters } from "./routes/committees.js";
 import { createContentRouter, createMyContentRouter } from "./routes/content.js";
 import { createMeetingRouters } from "./routes/meetings.js";
 import { createMemberProfileRouter, createAdminMemberProfileRouter } from "./routes/member-profiles.js";
+import { createMemberAgentsRouter } from "./routes/member-agents.js";
+import { createMeOrganizationDomainsRouter } from "./routes/me-organization-domains.js";
 import { createPublicPortraitRouter, createPortraitRouter, createAdminPortraitRouter } from "./routes/portraits.js";
 import { createCommunityRouters } from "./routes/community.js";
 import { createCertificationRouters } from "./routes/certification.js";
@@ -107,6 +113,11 @@ import { CommunityDatabase } from "./db/community-db.js";
 import { OrgKnowledgeDatabase } from "./db/org-knowledge-db.js";
 import { WorkingGroupDatabase } from "./db/working-group-db.js";
 import { createAgentOAuthRouter } from "./routes/agent-oauth.js";
+import {
+  attachConformanceWS,
+  buildConformanceTokenRouter,
+  conformanceSessions,
+} from "./conformance/index.js";
 import { createRegistryApiRouter } from "./routes/registry-api.js";
 import { getPublicJwks } from "./services/verification-token.js";
 import { createCatalogApiRouter } from "./routes/catalog-api.js";
@@ -118,7 +129,7 @@ import { createNetworkHealthApiRouter } from "./routes/network-health.js";
 import { createBrandLogoRouter } from "./routes/brand-logos.js";
 import { createBrandFeedsRouter } from "./routes/brand-feeds.js";
 import { createTrainingAgentRouter } from "./training-agent/index.js";
-import { TRAINING_AGENT_HOSTNAMES, TRAINING_AGENT_HOSTNAME_DEPRECATED } from "./training-agent/config.js";
+import { TRAINING_AGENT_HOSTNAMES, TRAINING_AGENT_HOSTNAME_DEPRECATED, TRAINING_AGENT_URL } from "./training-agent/config.js";
 import { createCreativeAgentRouter } from "./creative-agent/index.js";
 import { sendWelcomeEmail, sendUserSignupEmail, sendDuplicateSubscriptionNotice, emailDb } from "./notifications/email.js";
 import { emailPrefsDb } from "./db/email-preferences-db.js";
@@ -131,6 +142,9 @@ import { BansDatabase } from "./db/bans-db.js";
 import { registryRequestsDb } from "./db/registry-requests-db.js";
 import { notifyRegistryEdit, notifyRegistryCreate, notifyRegistryRollback, notifyRegistryBan } from "./notifications/registry.js";
 import { reviewNewRecord, reviewRegistryEdit } from "./addie/mcp/registry-review.js";
+import { AgentContextDatabase } from "./db/agent-context-db.js";
+import { getWebMemberContext } from "./addie/member-context.js";
+import { buildAgentOAuthAuthorizeUrl } from "./routes/helpers/agent-oauth-prompt.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -454,10 +468,31 @@ function getAppConfigScript(user?: { id?: string; email: string; firstName?: str
     ? `<script src="/posthog-init.js" defer></script>`
     : '';
 
-  // csrf.js patches fetch() to include the X-CSRF-Token header on POSTs
-  const csrfScript = `<script src="/csrf.js"></script>`;
+  // csrf.js patches fetch() to include the X-CSRF-Token header on POSTs.
+  // Cache-bust the URL with a content hash so the wrapper updates without
+  // waiting for the browser's day-long cached copy of /csrf.js to expire.
+  const csrfScript = `<script src="/csrf.js?v=${getCsrfScriptVersion()}"></script>`;
 
   return `${configScript}\n${csrfScript}\n${posthogScript}`;
+}
+
+/**
+ * Hash of csrf.js content, used as the ?v= cache-bust query string.
+ * Cached at module-load time — rebuild/redeploy gets a new hash.
+ */
+let _csrfScriptVersion: string | null = null;
+function getCsrfScriptVersion(): string {
+  if (_csrfScriptVersion) return _csrfScriptVersion;
+  try {
+    const csrfPath = process.env.NODE_ENV === 'production'
+      ? path.join(__dirname, "../server/public/csrf.js")
+      : path.join(__dirname, "../public/csrf.js");
+    const buf = readFileSync(csrfPath);
+    _csrfScriptVersion = crypto.createHash("sha256").update(buf).digest("hex").slice(0, 8);
+  } catch {
+    _csrfScriptVersion = String(Date.now());
+  }
+  return _csrfScriptVersion;
 }
 
 /**
@@ -630,14 +665,29 @@ export class HTTPServer {
     this.app.use(csrfProtection);
 
     // Serve brand.json for both AAO domains.
-    // AdCP domain redirects to the AAO house. AAO domain redirects to the DB-managed hosted brand.
+    // AdCP domain serves a "Brand Agent" record that lists the training agent
+    //   (test-agent.adcontextprotocol.org) so the keys-from-agent-URL discovery
+    //   chain in security.mdx (capabilities → identity.brand_json_url →
+    //   brand.json → agents[] → jwks_uri) terminates at the AdCP-hosted JWKS.
+    //   eTLD+1 of test-agent.adcontextprotocol.org and adcontextprotocol.org both
+    //   collapse to adcontextprotocol.org, so the step-3 origin-binding check
+    //   passes without `authorized_operators[]`.
+    // AAO domain redirects to the DB-managed hosted brand.
     this.app.get('/.well-known/brand.json', (req, res) => {
       res.setHeader('Cache-Control', 'public, max-age=3600');
       if (this.isAdcpDomain(req)) {
         return res.json({
           "$schema": "https://adcontextprotocol.org/schemas/latest/brand.json",
-          "house": "agenticadvertising.org",
-          "note": "AdCP is a sub-brand of AgenticAdvertising.org"
+          "agents": [
+            {
+              "type": "sales",
+              "id": "training_agent",
+              "url": `${TRAINING_AGENT_URL}/api/training-agent/mcp`,
+              "description": "AdCP training agent — public sandbox for protocol testing and certification.",
+              "jwks_uri": "https://adcontextprotocol.org/.well-known/jwks.json"
+            }
+          ],
+          "last_updated": new Date().toISOString().slice(0, 19) + 'Z'
         });
       }
       return res.json({
@@ -956,6 +1006,11 @@ export class HTTPServer {
     const agentOAuthRouter = createAgentOAuthRouter();
     this.app.use('/api/oauth/agent', agentOAuthRouter); // OAuth routes: /api/oauth/agent/start, /api/oauth/agent/callback
 
+    // Mount Addie conformance Socket Mode token endpoint. The WebSocket
+    // upgrade handler is attached to the http.Server in start() — see
+    // attachConformanceWS below.
+    this.app.use('/api/conformance', buildConformanceTokenRouter());
+
     // Mount Slack routes (public webhook endpoints)
     // All Slack routes under /api/slack/ for consistency
     const { aaobotRouter, addieRouter: slackAddieRouter } = createSlackRouter();
@@ -1035,11 +1090,34 @@ export class HTTPServer {
         const brand = await this.brandDb.getDiscoveredBrandByDomain(domain);
         if (!brand || brand.is_public === false) return res.status(404).json({ error: 'Brand not found' });
 
-        const manifest = (brand.brand_manifest as Record<string, unknown>) || {};
-        const brandJson: Record<string, unknown> = {
-          name: brand.brand_name || domain,
-          ...manifest,
-        };
+        // Only serve brand_json and community source types. Enriched (Brandfetch) entries are
+        // not brand-attested — serving them under this URL would misrepresent third-party data
+        // as brand-authoritative. Community entries are served only when structurally valid.
+        if (brand.source_type !== 'brand_json' && brand.source_type !== 'community') {
+          return res.status(404).json({ error: 'Brand not found' });
+        }
+
+        const manifest = brand.brand_manifest as Record<string, unknown> | undefined;
+        if (!manifest) return res.status(404).json({ error: 'Brand not found' });
+
+        if (brand.source_type === 'community') {
+          // Community entries must be approved and have a recognizable brand.json root shape.
+          if (brand.review_status === 'pending') return res.status(404).json({ error: 'Brand not found' });
+          const hasValidShape =
+            (typeof manifest.house === 'object' && Array.isArray(manifest.brands)) ||
+            typeof manifest.house === 'string' ||
+            Array.isArray(manifest.agents) ||
+            Boolean(manifest.brand_agent) ||
+            typeof manifest.authoritative_location === 'string';
+          if (!hasValidShape) return res.status(404).json({ error: 'Brand not found' });
+        }
+
+        const schemaUrl = 'https://adcontextprotocol.org/schemas/v3/brand.json';
+        const brandJson: Record<string, unknown> =
+          typeof manifest.$schema === 'string' && manifest.$schema.startsWith('https://')
+            ? { ...manifest }
+            : { $schema: schemaUrl, ...manifest };
+
         res.setHeader('Content-Type', 'application/json');
         res.setHeader('Cache-Control', 'public, max-age=300');
         return res.json(brandJson);
@@ -1164,6 +1242,23 @@ export class HTTPServer {
     this.app.use('/api/me/member-profile', memberProfileRouter); // User profile routes: /api/me/member-profile/*
     const adminMemberProfileRouter = createAdminMemberProfileRouter(memberProfileConfig);
     this.app.use('/api/admin/member-profiles', adminMemberProfileRouter); // Admin profile routes: /api/admin/member-profiles/*
+
+    // Per-agent REST surface for members — register/list/update/delete a
+    // single agent via API key or session, no full-profile round-trip.
+    const memberAgentsRouter = createMemberAgentsRouter({
+      memberDb,
+      orgDb,
+      workos,
+      invalidateMemberContextCache,
+    });
+    this.app.use('/api/me/agents', memberAgentsRouter);
+
+    // Member-facing self-service for org-linked domains.
+    const meOrganizationDomainsRouter = createMeOrganizationDomainsRouter({
+      workos,
+      invalidateMemberContextCache,
+    });
+    this.app.use('/api/me/organization/domains', meOrganizationDomainsRouter);
 
     // Mount portrait routes
     this.app.use('/api/portraits', createPublicPortraitRouter());
@@ -1868,14 +1963,11 @@ export class HTTPServer {
       const query = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
       res.redirect(301, `/account${query}`);
     });
-    this.app.get('/dashboard/membership', (req, res) => {
-      const query = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
-      res.redirect(301, `/organization${query}#membership`);
-    });
-    // Redirect old billing path to new membership path
+    this.app.get('/dashboard/membership', (req, res) => serveDashboardPage(req, res, 'dashboard-membership.html'));
+    // Redirect old billing path to membership path
     this.app.get('/dashboard/billing', (req, res) => {
       const query = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
-      res.redirect(301, `/organization${query}#membership`);
+      res.redirect(301, `/dashboard/membership${query}`);
     });
     this.app.get('/dashboard/emails', (req, res) => {
       const query = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
@@ -2002,9 +2094,19 @@ export class HTTPServer {
       });
     });
 
-    // Crawler endpoints
-    this.app.post("/api/crawler/run", async (req, res) => {
-      const agents = await this.agentService.listAgents("buying");
+    // Crawler endpoints. Admin-gated because /run amplifies one POST into
+    // outbound traffic to every registered agent. Per-agent refresh is
+    // available to owners at POST /api/registry/agents/:encodedUrl/refresh.
+    this.app.post("/api/crawler/run", requireAuth, requireAdmin, async (req, res) => {
+      // Full-registry crawl: all registered agents. Sales agents drive the
+      // publisher adagents.json walk; all agent types get health + capability
+      // snapshots via refreshAgentSnapshots. Mirrors the periodic-crawl scope
+      // added in #4213 so a manual admin run and the scheduled run behave
+      // identically. `viewerHasApiAccess` defaults to false — members_only
+      // agents are excluded from both paths intentionally (periodic crawl
+      // probes the public-facing registry surface; refreshSingleAgent covers
+      // owner-triggered probes for members_only agents).
+      const agents = await this.agentService.listAgents();
       const result = await this.crawler.crawlAllAgents(agents);
       res.json(result);
     });
@@ -2049,7 +2151,9 @@ export class HTTPServer {
       }
     });
 
-    this.app.post("/api/capabilities/discover-all", async (req, res) => {
+    // Admin-gated for the same reason as /api/crawler/run — fan-out
+    // outbound traffic to every registered agent.
+    this.app.post("/api/capabilities/discover-all", requireAuth, requireAdmin, async (req, res) => {
       const agents = await this.agentService.listAgents();
       try {
         const profiles = await this.capabilityDiscovery.discoverAll(agents);
@@ -2970,6 +3074,69 @@ export class HTTPServer {
       await this.serveHtmlWithConfig(req, res, 'property-viewer.html');
     });
 
+    // GET /publisher/:domain/.well-known/adagents.json - AAO-hosted
+    // adagents.json for a publisher that has opted into AAO hosting. The
+    // publisher saves their authorized agents + properties via the hosted
+    // property flow; this endpoint serves the canonical document so the
+    // publisher can either paste the snippet at their own /.well-known
+    // path OR point a CNAME / redirect at AAO. Returns 404 unless a public
+    // hosted-property row exists. Must register before the /publisher
+    // wildcard route below.
+    this.app.get('/publisher/:domain/.well-known/adagents.json', async (req, res) => {
+      // Local domain shape check — keeps malformed input out of the DB
+      // lookup and out of structured logs / metrics. Mirrors the regex used
+      // by /api/registry/publisher (see routes/registry-api.ts:isValidDomain).
+      const validDomainRe = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/;
+      let domain: string;
+      try {
+        domain = decodeURIComponent(req.params.domain).toLowerCase();
+      } catch {
+        return res.status(400).json({ error: 'Malformed domain' });
+      }
+      if (domain.length > 253 || !validDomainRe.test(domain)) {
+        return res.status(400).json({ error: 'Invalid domain' });
+      }
+      try {
+        const hosted = await this.propertyDb.getHostedPropertyByDomain(domain);
+        if (!hosted || !hosted.is_public) {
+          return res.status(404).json({ error: 'No AAO-hosted adagents.json for this domain', domain });
+        }
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Cache-Control', 'public, max-age=300');
+        return res.json(hosted.adagents_json);
+      } catch (error) {
+        logger.error({ error }, 'Failed to serve hosted adagents.json');
+        return res.status(500).json({ error: 'Failed to serve adagents.json' });
+      }
+    });
+
+    // GET /publisher/:domain/embed - Partner-storefront embed widget.
+    // Same data as /publisher/<domain> but stripped of nav, breadcrumb,
+    // contextual line, and cross-link footer so partner sites can iframe
+    // it into their own UI without sending users away to AAO. CSP
+    // `frame-ancestors *` opts INTO being framed (the route opts out of
+    // any default deny that might come from helmet defaults later); a
+    // simple "Powered by AAO" footer link lives in the embed itself.
+    // Must register before the wildcard /publisher/*domain catch-all
+    // below so Express matches /embed first.
+    this.app.get('/publisher/:domain/embed', async (req, res) => {
+      res.setHeader('Content-Security-Policy', "frame-ancestors *");
+      // Allow brief CDN / browser caching — partner pages rendering the
+      // widget on every page-load benefit from a small cache; data is
+      // ultimately fetched async via /api/registry/publisher anyway.
+      res.setHeader('Cache-Control', 'public, max-age=300');
+      await this.serveHtmlWithConfig(req, res, 'publisher-embed.html');
+    });
+
+    // GET /publisher/:domain - Unified publisher self-service page. Wildcard
+    // captures dots; the page reads the domain from the path and calls
+    // /api/registry/publisher to render properties + per-agent authorization
+    // rollup.
+    this.app.get('/publisher/*domain', async (req, res) => {
+      await this.serveHtmlWithConfig(req, res, 'publisher-home.html');
+    });
+
     // GET /brand/:id/brand.json - Serve hosted brand.json
     this.app.get('/brand/:id/brand.json', async (req, res) => {
       try {
@@ -3576,6 +3743,23 @@ export class HTTPServer {
               orgDb,
               subscription,
             });
+
+            // For `.updated`/`.deleted`, a null org means a billing state
+            // transition will NOT be reflected in the DB. Surface immediately
+            // so ops can investigate and manually reconcile if needed.
+            // `.created` is exempt — missing org is normal pre-checkout flow.
+            if (!org && event.type !== 'customer.subscription.created') {
+              logger.warn({
+                eventType: event.type,
+                eventId: event.id,
+                customerId,
+                subscriptionId: subscription.id,
+              }, 'Stripe subscription lifecycle event could not be linked to any org — DB may be stale');
+              notifySystemError({
+                source: 'stripe-webhook-org-resolution',
+                errorMessage: `Stripe ${event.type} (${event.id}) for cus ${customerId} / sub ${subscription.id} could not be resolved to any org. Subscription status in DB may be stale.`,
+              });
+            }
 
             // Captured inside the fresh-activation block for use in the
             // post-UPDATE autopublish + notification dispatch below. Kept
@@ -4608,6 +4792,50 @@ export class HTTPServer {
             break;
           }
 
+          case 'checkout.session.expired': {
+            // 24h passed with no completion. The user clicked our link, started
+            // a Stripe Checkout, didn't finish, and now (if they bookmarked it
+            // or were emailed the URL by sales) sees Stripe's "session expired"
+            // page. We can't intercept that — the URL is on Stripe's domain —
+            // but we can record the abandonment so Addie's relationship loop
+            // can offer to send a fresh link via email/Slack.
+            const session = event.data.object as Stripe.Checkout.Session;
+            const workosUserId = session.metadata?.workos_user_id;
+            const workosOrgId = session.metadata?.workos_organization_id;
+            const sessionId = session.id;
+
+            logger.info(
+              {
+                event: 'checkout_session_expired',
+                sessionId,
+                workosUserId,
+                workosOrgId,
+                customerId: typeof session.customer === 'string' ? session.customer : null,
+                amountTotal: session.amount_total,
+                expiresAt: session.expires_at,
+              },
+              'Stripe Checkout Session expired before completion',
+            );
+
+            if (workosUserId) {
+              try {
+                const relationship = await relationshipDb.getRelationshipByWorkosId(workosUserId);
+                if (relationship) {
+                  await personEvents.recordEvent(relationship.id, 'checkout_session_expired', {
+                    data: {
+                      session_id: sessionId,
+                      workos_organization_id: workosOrgId ?? null,
+                      amount_total: session.amount_total,
+                    },
+                  });
+                }
+              } catch (err) {
+                logger.warn({ err, workosUserId, sessionId }, 'Failed to record checkout_session_expired person event');
+              }
+            }
+            break;
+          }
+
           default:
             logger.debug({ eventType: event.type }, 'Unhandled webhook event type');
         }
@@ -5195,31 +5423,41 @@ export class HTTPServer {
         let subscriptionsFailed = 0;
         let customersSkipped = 0; // Deleted or missing customers
         if (stripe) {
+          const stripeClient = stripe;
           for (const [customerId, workosOrgId] of customerOrgMap) {
             try {
-              // Get customer with subscriptions and expanded price/product data in single API call
-              const customer = await stripe.customers.retrieve(customerId, {
-                expand: ['subscriptions.data.items.data.price.product'],
-              });
+              // Confirm the customer still exists / isn't deleted. Don't
+              // expand subscriptions here — `subscriptions.data.items.data.price.product`
+              // is 6 levels and exceeds Stripe's 4-level expand limit, which
+              // crashed every customer in this loop.
+              const customer = await stripeClient.customers.retrieve(customerId);
 
               if ('deleted' in customer && customer.deleted) {
                 customersSkipped++;
                 continue;
               }
 
-              const subscriptions = (customer as Stripe.Customer).subscriptions;
-              if (!subscriptions || subscriptions.data.length === 0) {
+              // List subs separately. Price comes back inline (lookup_key,
+              // unit_amount, etc.); founding-era prices that need product
+              // metadata are resolved by per-sub `products.retrieve` inside
+              // pickMembershipSubWithProductFetch. limit: 100 matches the
+              // dedup helper — a customer with more lifetime subs than the
+              // cap could have its membership sub silently truncated out.
+              const subsResult = await stripeClient.subscriptions.list({
+                customer: customerId,
+                status: 'all',
+                limit: 100,
+              });
+
+              const picked = await pickMembershipSubWithProductFetch(
+                subsResult.data,
+                (productId) => stripeClient.products.retrieve(productId),
+              );
+              if (!picked || !(TIER_PRESERVING_STATUSES as readonly string[]).includes(picked.sub.status)) {
                 continue;
               }
 
-              // Get the first active subscription (already has expanded items)
-              const subscription = subscriptions.data[0];
-              if (!subscription || !(TIER_PRESERVING_STATUSES as readonly string[]).includes(subscription.status)) {
-                continue;
-              }
-
-              // Get primary subscription item directly from expanded data
-              const primaryItem = subscription.items.data[0];
+              const primaryItem = picked.sub.items.data[0];
               if (!primaryItem) {
                 continue;
               }
@@ -5231,7 +5469,11 @@ export class HTTPServer {
               );
               const isPersonal = orgRow.rows[0]?.is_personal ?? true;
 
-              const subUpdate = buildSubscriptionUpdate(subscription as any, isPersonal);
+              const subUpdate = buildSubscriptionUpdate(
+                picked.sub as any,
+                isPersonal,
+                picked.product?.metadata ?? null,
+              );
 
               // Update organization with subscription details and tier
               await pool.query(
@@ -6475,8 +6717,9 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
         if (memberships.data.length > 0) {
           const primaryOrgId = memberships.data[0].organizationId;
           const userName = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email;
-          // Ensure the org exists locally first — startup sync can miss orgs
-          // created in WorkOS after boot, and org_activities FKs to organizations.
+          // Ensure the org row exists locally before recording — orgs are
+          // created lazily on first login (and via webhook), and
+          // org_activities FKs to organizations.
           orgDb.ensureOrganizationExists(workos!, primaryOrgId)
             .then(() => orgDb.recordUserLogin({
               workos_user_id: user.id,
@@ -6695,8 +6938,32 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
         // Redirect to dashboard or onboarding
         logger.debug({ returnTo, membershipCount: memberships.data.length }, 'Final redirect decision');
         if (memberships.data.length === 0) {
-          logger.debug('No organizations found, redirecting to onboarding');
-          res.redirect('/onboarding.html');
+          // Before sending the user to fresh-onboarding, check whether a
+          // sales-touched prospect org exists for their email domain that
+          // they could claim. Without this, @voisetech.com employees land
+          // on personal workspaces and the prospect org sits orphaned.
+          let onboardingPath = '/onboarding.html';
+          try {
+            const emailDomain = user.email.split('@')[1]?.toLowerCase();
+            if (emailDomain) {
+              const claimable = await findClaimableProspectOrgForDomain(emailDomain);
+              if (claimable) {
+                const params = new URLSearchParams({
+                  claim_org: claimable.organization_id,
+                  claim_org_name: claimable.organization_name,
+                });
+                onboardingPath = `/onboarding.html?${params.toString()}`;
+                logger.info(
+                  { workosUserId: user.id, email: user.email, claimOrg: claimable.organization_id },
+                  'Surfacing claimable prospect org at signup',
+                );
+              }
+            }
+          } catch (claimErr) {
+            logger.warn({ err: claimErr, email: user.email }, 'findClaimableProspectOrgForDomain failed; continuing without claim hint');
+          }
+          logger.debug({ onboardingPath }, 'No organizations found, redirecting to onboarding');
+          res.redirect(onboardingPath);
         } else {
           // If returnTo is an AdCP URL, bridge the session via auto-submitting form POST
           // so the user lands on AdCP already authenticated (session stays out of URL)
@@ -6746,6 +7013,37 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
         return res.redirect('/');
       }
 
+      const clearAdcpCookies = () => {
+        res.clearCookie('wos-session', {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production' && !ALLOW_INSECURE_COOKIES,
+          sameSite: 'lax',
+          path: '/',
+        });
+        res.clearCookie('bridge-checked', {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production' && !ALLOW_INSECURE_COOKIES,
+          sameSite: 'lax',
+          path: '/',
+        });
+      };
+
+      // If on AdCP domain, the canonical session lives on AAO. Clearing AdCP-side
+      // cookies isn't enough — the bridge would re-pull a still-valid AAO session
+      // and the user would appear logged in again. Clear AdCP cookies, then bounce
+      // to AAO's logout so the AAO session is revoked too.
+      if (this.isAdcpDomain(req)) {
+        clearAdcpCookies();
+        const aaoReturnTo = `https://${req.get('host')}/`;
+        return res.redirect(`https://agenticadvertising.org/auth/logout?return_to=${encodeURIComponent(aaoReturnTo)}`);
+      }
+
+      // Validate return_to: only allow AdCP URLs (so AdCP can chain logout through AAO)
+      const requestedReturnTo = req.query.return_to as string | undefined;
+      const safeReturnTo = requestedReturnTo && HTTPServer.isAllowedAdcpUrl(requestedReturnTo)
+        ? requestedReturnTo
+        : '/';
+
       try {
         const sessionCookie = req.cookies['wos-session'];
 
@@ -6774,36 +7072,15 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           }
         }
 
-        // Clear the session and bridge-checked cookies
-        res.clearCookie('wos-session', {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === 'production' && !ALLOW_INSECURE_COOKIES,
-          sameSite: 'lax',
-          path: '/',
-        });
-        res.clearCookie('bridge-checked', {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === 'production' && !ALLOW_INSECURE_COOKIES,
-          sameSite: 'lax',
-          path: '/',
-        });
-        res.redirect('/');
+        clearAdcpCookies();
+        // CodeQL: safeReturnTo validated by isAllowedAdcpUrl (or defaulted to '/')
+        res.redirect(safeReturnTo); // lgtm[js/server-side-unvalidated-url-redirection]
       } catch (error) {
         logger.error({ err: error }, 'Error during logout');
         // Still clear cookies and redirect even if revocation failed
-        res.clearCookie('wos-session', {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === 'production' && !ALLOW_INSECURE_COOKIES,
-          sameSite: 'lax',
-          path: '/',
-        });
-        res.clearCookie('bridge-checked', {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === 'production' && !ALLOW_INSECURE_COOKIES,
-          sameSite: 'lax',
-          path: '/',
-        });
-        res.redirect('/');
+        clearAdcpCookies();
+        // CodeQL: safeReturnTo validated by isAllowedAdcpUrl (or defaulted to '/')
+        res.redirect(safeReturnTo); // lgtm[js/server-side-unvalidated-url-redirection]
       }
     });
 
@@ -7193,8 +7470,8 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
     this.app.post('/api/me/connected-accounts/github/authorize', requireAuth, async (req, res) => {
       try {
         const returnTo = buildPipesReturnTo(req.get('host') || '', req.protocol, req.body?.return_to);
-        const url = await getGitHubAuthorizeUrl(req.user!.id, returnTo);
-        res.json({ url });
+        const result = await resolveGitHubConnectUrl(req.user!.id, returnTo);
+        res.json({ url: result.url, already_connected: result.status === 'already_connected' });
       } catch (error) {
         logger.error({ err: error }, 'Failed to mint GitHub authorize URL');
         res.status(502).json({ error: 'Failed to start GitHub connection' });
@@ -7219,12 +7496,24 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
     // Used by Addie/Slack messages so a stale or session-less click can't land on
     // WorkOS' generic "couldn't complete the connection" error page.
     this.app.get('/connect/github', requireAuth, async (req, res) => {
+      const reqHost = req.get('host') || '';
+      const reqProto = req.protocol;
+      const requestedReturnTo = typeof req.query.return_to === 'string' ? req.query.return_to : null;
       try {
-        const returnTo = buildPipesReturnTo(req.get('host') || '', req.protocol, req.query.return_to);
-        const url = await getGitHubAuthorizeUrl(req.user!.id, returnTo);
-        return res.redirect(302, url);
+        const returnTo = buildPipesReturnTo(reqHost, reqProto, req.query.return_to);
+        const result = await resolveGitHubConnectUrl(req.user!.id, returnTo);
+        return res.redirect(302, result.url);
       } catch (error) {
-        logger.error({ err: error }, 'Failed to start GitHub connect via /connect/github');
+        logger.error(
+          {
+            err: error,
+            reqHost,
+            reqProto,
+            requestedReturnTo,
+            workosUserId: req.user?.id,
+          },
+          'Failed to start GitHub connect via /connect/github',
+        );
         return res.status(502).send('Could not start GitHub connection. Please try again in a moment, or visit /member-hub to connect from there.');
       }
     });
@@ -8044,11 +8333,13 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           offset: offset ? parseInt(offset as string, 10) : 0,
         });
 
-        // Batch-fetch all brand data and credentials in two queries instead of N+1
-        const brandDomains = profiles
-          .map(p => p.primary_brand_domain)
-          .filter((d): d is string => !!d);
+        // Batch-fetch brand data and credentials in a constant number of queries
+        // (resolver + brandsMap + credentialsMap) instead of N+1. Brand-primary
+        // domains come from the Stage 1 resolver (org_domains.is_primary first,
+        // member_profiles fallback), keyed by org_id rather than a per-row column.
         const orgIds = profiles.map(p => p.workos_organization_id);
+        const brandPrimaryByOrg = await getBrandPrimaryDomainsForOrgs(orgIds);
+        const brandDomains = Array.from(brandPrimaryByOrg.values());
 
         const [brandsMap, credentialsMap] = await Promise.all([
           this.brandDb.getDiscoveredBrandsByDomains(brandDomains),
@@ -8058,11 +8349,12 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
         ]);
 
         for (const profile of profiles) {
-          if (profile.primary_brand_domain) {
-            const brand = brandsMap.get(profile.primary_brand_domain.toLowerCase());
+          const brandPrimaryDomain = brandPrimaryByOrg.get(profile.workos_organization_id);
+          if (brandPrimaryDomain) {
+            const brand = brandsMap.get(brandPrimaryDomain.toLowerCase());
             if (brand?.brand_manifest) {
               profile.resolved_brand = resolveBrandFromJson(
-                profile.primary_brand_domain,
+                brandPrimaryDomain,
                 brand.brand_manifest as Record<string, unknown>,
                 brand.domain_verified ?? false
               );
@@ -8088,19 +8380,22 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
       try {
         const profiles = await memberDb.getCarouselProfiles();
 
-        // Batch-fetch all brand data in a single query to avoid pool exhaustion
+        // Batch-fetch all brand data in two queries to avoid pool exhaustion.
+        // Brand-primary domains come from the Stage 1 resolver (org_domains.is_primary
+        // first, member_profiles fallback), keyed by org_id.
         // codeql[js/user-controlled-bypass] - brand domains come from server-side DB, not user input
-        const brandDomains = profiles
-          .map(p => p.primary_brand_domain)
-          .filter((d): d is string => !!d);
+        const orgIds = profiles.map(p => p.workos_organization_id);
+        const brandPrimaryByOrg = await getBrandPrimaryDomainsForOrgs(orgIds);
+        const brandDomains = Array.from(brandPrimaryByOrg.values());
         const brandsMap = await this.brandDb.getDiscoveredBrandsByDomains(brandDomains);
 
         for (const profile of profiles) {
-          if (profile.primary_brand_domain) {
-            const brand = brandsMap.get(profile.primary_brand_domain.toLowerCase());
+          const brandPrimaryDomain = brandPrimaryByOrg.get(profile.workos_organization_id);
+          if (brandPrimaryDomain) {
+            const brand = brandsMap.get(brandPrimaryDomain.toLowerCase());
             if (brand?.brand_manifest) {
               profile.resolved_brand = resolveBrandFromJson(
-                profile.primary_brand_domain,
+                brandPrimaryDomain,
                 brand.brand_manifest as Record<string, unknown>,
                 brand.domain_verified ?? false
               );
@@ -8206,11 +8501,12 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
         // Resolve brand data from registry if linked. Skip orphaned brands —
         // the manifest is preserved server-side for adoption-at-claim-time
         // but must not surface on the public member-profile endpoint.
-        if (profile.primary_brand_domain) {
-          const brand = await this.brandDb.getDiscoveredBrandByDomain(profile.primary_brand_domain);
+        const brandPrimaryDomain = await getBrandPrimaryDomain(profile.workos_organization_id);
+        if (brandPrimaryDomain) {
+          const brand = await this.brandDb.getDiscoveredBrandByDomain(brandPrimaryDomain);
           if (brand?.brand_manifest && !brand.manifest_orphaned) {
             profile.resolved_brand = resolveBrandFromJson(
-              profile.primary_brand_domain,
+              brandPrimaryDomain,
               brand.brand_manifest as Record<string, unknown>,
               brand.domain_verified ?? false
             );
@@ -8435,17 +8731,13 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
         const agentInfo = await client.getAgentInfo();
         const tools = agentInfo.tools || [];
 
-        // Detect agent type from tools
-        // Check for buying first since buying agents may also expose creative tools
-        let agentType = 'unknown';
-        const toolNames = tools.map((t: { name: string }) => t.name.toLowerCase());
-        if (toolNames.some((n: string) => n.includes('get_product') || n.includes('media_buy') || n.includes('create_media'))) {
-          agentType = 'buying';
-        } else if (toolNames.some((n: string) => n.includes('signal') || n.includes('audience'))) {
-          agentType = 'signals';
-        } else if (toolNames.some((n: string) => n.includes('creative') || n.includes('format') || n.includes('preview'))) {
-          agentType = 'creative';
-        }
+        // Diagnostic agent-type inference. Shared helper between this
+        // endpoint and the equivalent in registry-api.ts so polarity stays
+        // in sync across both. Pre-#3540 returned 'buying' for sales-tool
+        // exposure; #3774 corrected polarity and consolidated.
+        const agentType = inferDiagnosticAgentType(
+          tools.map((t: { name: string }) => t.name),
+        );
 
         // The library returns our config name, so extract real name from URL or use hostname
         const hostname = new URL(url).hostname;
@@ -8487,8 +8779,9 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
             logger.debug({ err: statsError, url }, 'Failed to fetch creative formats');
             stats.format_count = 0;
           }
-        } else if (agentType === 'buying') {
-          // Always show product and publisher counts for buying agents
+        } else if (agentType === 'sales') {
+          // Always show product and publisher counts for sales agents
+          // (they expose get_products / list_authorized_properties).
           stats.product_count = 0;
           stats.publisher_count = 0;
           try {
@@ -8509,15 +8802,65 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           stats,
         });
       } catch (error) {
-        logger.error({ err: error, url }, 'Agent discovery error');
+        // Auth-required is an expected agent state, not a system error. Log
+        // at warn so it doesn't page #aao-errors via the pino → posthog hook.
+        if (error instanceof AuthenticationRequiredError) {
+          logger.warn({ url, hasOAuth: error.hasOAuth }, 'Agent requires authentication');
+
+          let oauth_authorize_url: string | undefined;
+          if (error.hasOAuth) {
+            const userId = req.user?.id;
+            if (userId) {
+              try {
+                const memberContext = await getWebMemberContext(userId);
+                const orgId = memberContext?.organization?.workos_organization_id;
+                if (orgId) {
+                  const authorizeUrl = await buildAgentOAuthAuthorizeUrl(
+                    url,
+                    orgId,
+                    new AgentContextDatabase(),
+                    { returnTo: '/profile/edit' },
+                  );
+                  if (authorizeUrl) oauth_authorize_url = authorizeUrl;
+                }
+              } catch (memberCtxErr) {
+                logger.debug({ err: memberCtxErr, url }, 'Failed to build OAuth authorize URL');
+              }
+            }
+          }
+
+          return res.status(401).json({
+            error: 'authentication_required',
+            message: error.hasOAuth
+              ? 'This agent requires OAuth authorization.'
+              : 'This agent requires authentication. Save an auth token to continue.',
+            needs_oauth: error.hasOAuth,
+            ...(oauth_authorize_url && { oauth_authorize_url }),
+          });
+        }
 
         if (error instanceof Error && error.name === 'TimeoutError') {
+          logger.warn({ url }, 'Agent discovery timed out');
           return res.status(504).json({
             error: 'Connection timeout',
             message: 'Agent did not respond within 10 seconds',
           });
         }
 
+        // Classify so user-data failures (stale tunnel URLs, wrong path,
+        // unreachable hosts) don't page #admin-errors via logger.error.
+        // Only unknown kinds escalate.
+        const classified = classifyMCPError(error);
+        if (classified.kind === 'unreachable' || classified.kind === 'wrong_path') {
+          logger.warn({ url, kind: classified.kind, raw: classified.raw }, 'Agent discovery failed');
+          return res.status(502).json({
+            error: 'Agent discovery failed',
+            kind: classified.kind,
+            message: classified.message,
+          });
+        }
+
+        logger.error({ err: error, url }, 'Agent discovery error');
         return res.status(500).json({
           error: 'Agent discovery failed',
         });
@@ -8528,7 +8871,11 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
     this.app.get('/api/public/publishers', async (req, res) => {
       try {
         const memberDb = new MemberDatabase();
-        const members = await memberDb.getPublicProfiles({});
+        // Walk every member profile. `member_profiles.is_public` is the
+        // member-directory gate; per-publisher `is_public` is what gates
+        // the public publisher surface. Matches `FederatedIndexService.
+        // listAllPublishers`.
+        const members = await memberDb.listProfiles({});
 
         // Collect all public publishers from members
         const publishers = members.flatMap((m) =>
@@ -8573,6 +8920,8 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
           valid: result.valid,
           domain: result.domain,
           url: result.url,
+          discovery_method: result.discovery_method,
+          manager_domain: result.manager_domain ?? undefined,
           agent_count: stats.agentCount,
           property_count: stats.propertyCount,
           property_type_counts: stats.propertyTypeCounts,
@@ -8674,21 +9023,14 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
       ]);
     }
 
-    // Sync organizations from WorkOS and Stripe to local database (dev environment support)
+    // Sync Stripe customer IDs and seed dev data. Organizations are created
+    // lazily via ensureOrganizationExists at first login and via the
+    // organization.created WorkOS webhook — no boot-time WorkOS list sync is
+    // needed (and listOrganizations requires a workspace-level API scope our
+    // production key doesn't carry, so it always failed on cold start; #3954).
     if (AUTH_ENABLED && workos) {
       const orgDb = new OrganizationDatabase();
 
-      // Sync WorkOS organizations first
-      try {
-        const result = await orgDb.syncFromWorkOS(workos);
-        if (result.synced > 0) {
-          logger.info({ synced: result.synced, existing: result.existing }, 'Synced organizations from WorkOS');
-        }
-      } catch (error) {
-        logger.warn({ error }, 'Failed to sync organizations from WorkOS (non-fatal)');
-      }
-
-      // Then sync Stripe customer IDs (method handles errors gracefully)
       try {
         await orgDb.syncStripeCustomers();
       } catch (error) {
@@ -8725,15 +9067,24 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
     logger.info({ isWorker }, 'Process role resolved');
 
     if (isWorker) {
-      // Start periodic property crawler for buying agents
-      const buyingAgents = await this.agentService.listAgents("buying");
-      if (buyingAgents.length > 0) {
-        logger.debug({ buyingAgentCount: buyingAgents.length }, 'Starting property crawler');
-        this.crawler.startPeriodicCrawl(buyingAgents, 360); // Crawl every 6 hours
-      }
+      // Start periodic registry crawler for all registered agents. Re-fetches
+      // the agent list on every tick so newly registered agents are picked up
+      // without a restart. Sales agents drive publisher adagents.json
+      // discovery; signals/buying/creative agents still need health +
+      // capability snapshots on the same cycle. `viewerHasApiAccess` defaults
+      // to false — members_only agents are intentionally excluded from the
+      // periodic crawl (the public-facing registry surface is the target);
+      // owner-triggered probes for members_only agents go through
+      // POST /api/registry/agents/:encodedUrl/refresh. Fixes #4213.
+      logger.debug('Starting registry crawler');
+      this.crawler.startPeriodicCrawl(() => this.agentService.listAgents(), 360); // Crawl every 6 hours
 
       // Crawl catalog domains for adagents.json (demand-driven queue)
       this.crawler.startPeriodicCatalogCrawl(30); // Process queue every 30 minutes
+
+      // Drain manager_revalidation_queue (#4200 item 2) — fan-out
+      // re-validation when a manager rotates its adagents.json.
+      this.crawler.startPeriodicManagerRevalidation(5); // 5-minute tick
 
       // Register and start all scheduled jobs
       registerAllJobs();
@@ -8751,9 +9102,15 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
       logger.info('Worker process: scheduled jobs and crawlers started');
     } else {
       logger.info('Web process: skipping scheduled jobs and crawlers');
+      // Watchdog so silent worker death (firecracker-stage crashloop, OOM,
+      // failed deploy) reaches #admin-errors instead of being noticed days
+      // later via a user escalation. See escalation #329, May 2026.
+      const { startWorkerWatchdog } = await import('./services/worker-watchdog.js');
+      startWorkerWatchdog();
     }
 
     this.server = this.app.listen(port, () => {
+      attachConformanceWS(this.server!);
       logger.info({
         port,
         webUi: `http://localhost:${port}`,
@@ -8841,6 +9198,13 @@ ${p.category ? `<category>${p.category}</category>\n` : ''}<url>${publishedUrl}<
     logger.info('Draining background work');
     await drainBackgroundWork();
     logger.info('Background work drained');
+
+    // Close any live conformance sockets so adopters get a clean
+    // close frame rather than a TCP reset on shutdown.
+    if (conformanceSessions.size() > 0) {
+      logger.info({ count: conformanceSessions.size() }, 'Closing conformance sockets');
+      await conformanceSessions.closeAll();
+    }
 
     // Close HTTP server
     if (this.server) {

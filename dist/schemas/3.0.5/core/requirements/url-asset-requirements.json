@@ -1,0 +1,40 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.5/core/requirements/url-asset-requirements.json",
+  "title": "URL Asset Requirements",
+  "description": "Requirements for URL assets such as click-through URLs, tracking pixels, and landing pages.",
+  "type": "object",
+  "properties": {
+    "role": {
+      "type": "string",
+      "enum": ["clickthrough", "landing_page", "impression_tracker", "click_tracker", "viewability_tracker", "third_party_tracker"],
+      "description": "Purpose this URL slot serves in the format — distinct from `url_type` on the manifest-side asset (which declares the receiver's invocation mechanism). A slot can be `click_tracker` (purpose) and accept a `tracker_pixel` (mechanism) URL, or `clickthrough` (purpose) and accept a `clickthrough` (mechanism) URL. Complements `asset_role` (human-readable label) by providing a machine-readable enum and serves as the receiver's fallback signal when a manifest URL asset omits `url_type`."
+    },
+    "protocols": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["https", "http"]
+      },
+      "description": "Allowed URL protocols. HTTPS is recommended for all ad URLs."
+    },
+    "allowed_domains": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "format": "hostname"
+      },
+      "description": "List of allowed domains for the URL"
+    },
+    "max_length": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum URL length in characters"
+    },
+    "macro_support": {
+      "type": "boolean",
+      "description": "Whether the URL supports macro substitution (e.g., ${CACHEBUSTER})"
+    }
+  },
+  "additionalProperties": true
+}

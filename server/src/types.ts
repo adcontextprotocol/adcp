@@ -1,3 +1,5 @@
+import type { BrandJson } from '@adcp/sdk';
+
 export type AgentType = "brand" | "rights" | "measurement" | "governance" | "creative" | "sales" | "buying" | "signals" | "unknown";
 
 /**
@@ -33,8 +35,27 @@ export interface Agent {
     email: string;
     website: string;
   };
-  added_date: string;
+  added_date?: string;
+  /**
+   * Optional liveness URL used as a fallback by the health probe when the
+   * MCP/A2A handshake fails. Any 2xx is treated as "online" — type and tools
+   * still come from the protocol probe, which means a fallback hit cannot
+   * synthesize capabilities. This is a workaround for sellers blocked on
+   * other discovery issues; not a documented seller-side contract.
+   */
+  health_check_url?: string;
 }
+
+/**
+ * Discriminator on probe failures, set by `classifyMCPError`. The dashboard
+ * uses this to render kind-specific affordances (e.g. an "Add auth token"
+ * button for `auth_required`); humans get the prose `error` string.
+ */
+export type ProbeErrorKind =
+  | 'auth_required'
+  | 'wrong_path'
+  | 'unreachable'
+  | 'unknown';
 
 export interface AgentHealth {
   online: boolean;
@@ -43,6 +64,9 @@ export interface AgentHealth {
   tools_count?: number;
   resources_count?: number;
   error?: string;
+  error_kind?: ProbeErrorKind;
+  /** Raw underlying error string, kept separate from the actionable hint */
+  error_detail?: string;
 }
 
 export interface AgentStats {
@@ -140,7 +164,8 @@ export interface CollectionSelector {
 }
 
 export interface PublisherPropertySelector {
-  publisher_domain: string;
+  publisher_domain?: string;
+  publisher_domains?: string[];
   selection_type: "all" | "by_id" | "by_tag";
   property_ids?: string[];
   property_tags?: string[];
@@ -420,6 +445,12 @@ export interface AgentConfig {
   // Cached info from discovery (optional, refreshed periodically)
   name?: string;
   type?: AgentType;
+  /**
+   * Optional fallback liveness URL. See {@link Agent.health_check_url}.
+   * The probe tries the protocol handshake first; on failure it GETs this
+   * URL and treats any 2xx as "online" without populating type/tools.
+   */
+  health_check_url?: string;
 }
 
 /**
@@ -461,28 +492,21 @@ export interface LocalizedName {
 }
 
 /**
- * Brand property (digital touchpoint owned by a brand)
+ * Brand definition within a house portfolio.
+ *
+ * Derived from the canonical `BrandJson` zod schema in `@adcp/sdk` so flat
+ * brand fields (logos, colors, fonts, tone, description, properties, etc.)
+ * stay in sync with the brand.json spec. Adding fields to the schema
+ * regenerates the SDK type; consumers here pick them up automatically.
  */
-export interface BrandProperty {
-  type: 'website' | 'mobile_app' | 'ctv_app' | 'desktop_app' | 'dooh' | 'podcast' | 'radio' | 'streaming_audio';
-  identifier: string;
-  store?: 'apple' | 'google' | 'amazon' | 'roku' | 'samsung' | 'lg' | 'other';
-  region?: string;
-  primary?: boolean;
-}
+type BrandJsonHousePortfolio = Extract<BrandJson, { brands: unknown[] }>;
+export type BrandDefinition = BrandJsonHousePortfolio['brands'][number];
 
 /**
- * Brand definition within a house portfolio
+ * Brand property (digital touchpoint owned by a brand). Derived from
+ * `BrandDefinition` so it tracks the schema.
  */
-export interface BrandDefinition {
-  id: string;
-  names: LocalizedName[];
-  keller_type?: KellerType;
-  parent_brand?: string;
-  properties?: BrandProperty[];
-  brand_standards?: string;
-  brand_manifest?: Record<string, unknown> | string;
-}
+export type BrandProperty = NonNullable<BrandDefinition['properties']>[number];
 
 /**
  * House definition (corporate entity that owns brands)
@@ -591,6 +615,20 @@ export interface HostedProperty {
   is_public: boolean;
   source_type: 'community' | 'enriched';
   review_status?: 'pending' | 'approved';
+  /**
+   * Last successful origin verification — the publisher's own
+   * /.well-known/adagents.json pointed at AAO via the spec's
+   * `authoritative_location` field. NULL when never verified or last
+   * attempt failed. When set, the corresponding
+   * agent_publisher_authorizations rows are promoted to
+   * source='adagents_json' (origin-attested) by the verifier.
+   */
+  origin_verified_at?: Date | null;
+  /**
+   * Last verification attempt timestamp regardless of result. Lets the
+   * UI render "checked recently, not yet verified" vs "never checked."
+   */
+  origin_last_checked_at?: Date | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -696,7 +734,6 @@ export interface MemberProfile {
   slug: string;
   tagline?: string;
   description?: string;
-  primary_brand_domain?: string;
   resolved_brand?: MemberBrandInfo;
   contact_email?: string;
   contact_website?: string;
@@ -716,6 +753,9 @@ export interface MemberProfile {
   show_in_carousel: boolean;
   featured: boolean;
   is_founding_member: boolean;
+  founding_member_source: 'auto_pre_cutoff' | 'manual_grandfather' | null;
+  founding_member_granted_at: Date | null;
+  founding_member_granted_reason: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -726,7 +766,6 @@ export interface CreateMemberProfileInput {
   slug: string;
   tagline?: string;
   description?: string;
-  primary_brand_domain?: string;
   contact_email?: string;
   contact_website?: string;
   contact_phone?: string;
@@ -749,7 +788,6 @@ export interface UpdateMemberProfileInput {
   display_name?: string;
   tagline?: string;
   description?: string;
-  primary_brand_domain?: string;
   contact_email?: string;
   contact_website?: string;
   contact_phone?: string;
@@ -767,6 +805,14 @@ export interface UpdateMemberProfileInput {
   is_public?: boolean;
   show_in_carousel?: boolean;
   is_founding_member?: boolean;
+  founding_member_source?: 'auto_pre_cutoff' | 'manual_grandfather' | null;
+  founding_member_granted_reason?: string | null;
+  /**
+   * Server-set on grant; not accepted from API callers (would let an admin
+   * backdate provenance). The helper writes NOW() on grant and NULL on revoke.
+   * Migrations bypass this by writing the column directly.
+   */
+  founding_member_granted_at?: Date | null;
 }
 
 export interface ListMemberProfilesOptions {
@@ -1056,73 +1102,53 @@ export interface AgentCompliance {
 // Federated Discovery Types
 
 /**
- * An agent in the federated view (registered or discovered)
+ * An agent in the federated registry view.
+ *
+ * The registry contains only agents that members have explicitly enrolled
+ * on their member profile. Agents found by the crawler in adagents.json
+ * but not enrolled by their owner are not surfaced here.
  */
 export interface FederatedAgent {
   url: string;
   name?: string;
   type?: AgentType;
   protocol?: 'mcp' | 'a2a';
-  source: 'registered' | 'discovered';
-  // For registered agents
   member?: {
     slug: string;
     display_name: string;
   };
-  // For discovered agents
-  discovered_from?: {
-    publisher_domain: string;
-    authorized_for?: string;
-  };
-  // Publisher-side endorsement: set when source='discovered' AND the
-  // publisher_domain in discovered_from is claimed by an AAO member.
-  // Mutually exclusive with `member`. See registering-an-agent docs and
-  // option C from issue #3547 (Problem 6 of #3538).
-  endorsed_by_publisher_member?: {
-    slug?: string;
-    display_name?: string;
-    publisher_domain: string;
-  };
-  discovered_at?: string;
 }
 
 /**
- * A publisher in the federated view (registered or discovered)
+ * A publisher in the federated view.
  */
 export interface FederatedPublisher {
   domain: string;
-  source: 'registered' | 'discovered';
-  // For registered publishers
   member?: {
     slug: string;
     display_name: string;
   };
   agent_count?: number;
   last_validated?: string;
-  // For discovered publishers
-  discovered_from?: {
-    agent_url: string;
-  };
   has_valid_adagents?: boolean;
-  discovered_at?: string;
 }
 
 /**
- * Result of a domain lookup showing all agents authorized for that domain
+ * Result of a domain lookup showing all agents authorized for that domain.
+ *
+ * `member` is populated when the agent_url corresponds to an AAO member's
+ * registered agent. It is left unset when the agent_url is referenced
+ * by adagents.json but not enrolled with AAO.
  */
 export interface DomainLookupResult {
   domain: string;
-  // Agents authorized via adagents.json (verified)
   authorized_agents: Array<{
     url: string;
     authorized_for?: string;
-    source: 'registered' | 'discovered';
     member?: { slug: string; display_name: string };
   }>;
-  // Sales agents that claim to sell this domain (may not be verified)
   sales_agents_claiming: Array<{
     url: string;
-    source: 'registered' | 'discovered';
     member?: { slug: string; display_name: string };
   }>;
 }

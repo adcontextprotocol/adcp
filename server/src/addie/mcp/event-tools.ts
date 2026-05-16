@@ -310,6 +310,55 @@ export async function canCreateEvents(slackUserId: string): Promise<boolean> {
   return false;
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Resolve an event from any user-facing identifier: internal slug, internal
+ * UUID, Luma api_id, Luma URL (or its trailing slug), or a fuzzy title match
+ * of last resort. Tools should accept whatever form a caller naturally has —
+ * `the-foundry-2026-05`, `https://luma.com/0zarmldc`, `0zarmldc`, or
+ * `"foundry"` should all resolve to the same row.
+ *
+ * The UUID branch is shape-gated so non-UUID input doesn't trip postgres'
+ * uuid type check. Title fuzzy match only fires when nothing more precise
+ * worked, only on public published/completed events, and only when there's
+ * exactly one match — ambiguous queries fall through to "not found" so the
+ * caller can ask the user to disambiguate.
+ */
+async function resolveEvent(slugOrId: string): Promise<Event | null> {
+  // If a Luma URL was passed, try its trailing slug first.
+  const fromLumaUrl = extractLumaSlugSafe(slugOrId);
+  const candidates = fromLumaUrl && fromLumaUrl !== slugOrId
+    ? [slugOrId, fromLumaUrl]
+    : [slugOrId];
+
+  for (const candidate of candidates) {
+    const direct = await eventsDb.getEventBySlug(candidate);
+    if (direct) return direct;
+    if (UUID_RE.test(candidate)) {
+      const byId = await eventsDb.getEventById(candidate);
+      if (byId) return byId;
+    }
+    const byLumaId = await eventsDb.getEventByLumaId(candidate);
+    if (byLumaId) return byLumaId;
+    const byLumaUrl = await eventsDb.getEventByLumaUrlSlug(candidate);
+    if (byLumaUrl) return byLumaUrl;
+  }
+
+  return eventsDb.findEventByTitleFuzzy(slugOrId);
+}
+
+function extractLumaSlugSafe(input: string): string | null {
+  try {
+    const url = new URL(input.trim());
+    if (!/(^|\.)lu\.ma$|(^|\.)luma\.com$/i.test(url.hostname)) return null;
+    const path = url.pathname.replace(/^\//, '').split('/')[0];
+    return path || null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Generate a URL-friendly slug from a title
  */
@@ -397,7 +446,7 @@ the response will suggest they share their location or join industry gathering g
       properties: {
         event_slug: {
           type: 'string',
-          description: 'Event slug (URL identifier) or event ID',
+          description: 'Event identifier — internal slug, UUID, Luma api_id, full Luma URL, Luma URL slug, or unique title fragment',
         },
       },
       required: ['event_slug'],
@@ -411,7 +460,7 @@ the response will suggest they share their location or join industry gathering g
       properties: {
         event_slug: {
           type: 'string',
-          description: 'Event slug or ID',
+          description: 'Event identifier — internal slug, UUID, Luma api_id, full Luma URL, Luma URL slug, or unique title fragment',
         },
       },
       required: ['event_slug'],
@@ -425,7 +474,7 @@ the response will suggest they share their location or join industry gathering g
       properties: {
         event_slug: {
           type: 'string',
-          description: 'Event slug (URL identifier) or event ID',
+          description: 'Event identifier — internal slug, UUID, Luma api_id, full Luma URL, Luma URL slug, or unique title fragment',
         },
       },
       required: ['event_slug'],
@@ -527,7 +576,7 @@ Optional: description, end_time, timezone, location details, virtual_url, max_at
       properties: {
         event_slug: {
           type: 'string',
-          description: 'Event slug or ID',
+          description: 'Event identifier — internal slug, UUID, Luma api_id, full Luma URL, Luma URL slug, or unique title fragment',
         },
         action: {
           type: 'string',
@@ -550,7 +599,7 @@ Optional: description, end_time, timezone, location details, virtual_url, max_at
       properties: {
         event_slug: {
           type: 'string',
-          description: 'Event slug or ID',
+          description: 'Event identifier — internal slug, UUID, Luma api_id, full Luma URL, Luma URL slug, or unique title fragment',
         },
         title: {
           type: 'string',
@@ -600,7 +649,7 @@ Returns their invite status, registration status, and whether they attended.`,
       properties: {
         event_slug: {
           type: 'string',
-          description: 'Event slug or ID',
+          description: 'Event identifier — internal slug, UUID, Luma api_id, full Luma URL, Luma URL slug, or unique title fragment',
         },
         person_query: {
           type: 'string',
@@ -623,7 +672,7 @@ The invitation is recorded immediately; the outreach message is a draft for the 
       properties: {
         event_slug: {
           type: 'string',
-          description: 'Event slug or ID',
+          description: 'Event identifier — internal slug, UUID, Luma api_id, full Luma URL, Luma URL slug, or unique title fragment',
         },
         email: {
           type: 'string',
@@ -924,12 +973,7 @@ export function createEventToolHandlers(
   handlers.set('get_event_details', async (input) => {
     const eventSlug = input.event_slug as string;
 
-    // Try to find by slug first, then by ID
-    let event = await eventsDb.getEventBySlug(eventSlug);
-    if (!event) {
-      event = await eventsDb.getEventById(eventSlug);
-    }
-
+    const event = await resolveEvent(eventSlug);
     if (!event) {
       return `❌ Event not found: "${eventSlug}"`;
     }
@@ -991,11 +1035,7 @@ export function createEventToolHandlers(
     const eventSlug = input.event_slug as string;
     const action = input.action as string;
 
-    let event = await eventsDb.getEventBySlug(eventSlug);
-    if (!event) {
-      event = await eventsDb.getEventById(eventSlug);
-    }
-
+    const event = await resolveEvent(eventSlug);
     if (!event) {
       return `❌ Event not found: "${eventSlug}"`;
     }
@@ -1105,11 +1145,7 @@ export function createEventToolHandlers(
 
     const eventSlug = input.event_slug as string;
 
-    let event = await eventsDb.getEventBySlug(eventSlug);
-    if (!event) {
-      event = await eventsDb.getEventById(eventSlug);
-    }
-
+    const event = await resolveEvent(eventSlug);
     if (!event) {
       return `❌ Event not found: "${eventSlug}"`;
     }
@@ -1193,10 +1229,7 @@ export function createEventToolHandlers(
   handlers.set('register_event_interest', async (input) => {
     const eventSlug = input.event_slug as string;
 
-    let event = await eventsDb.getEventBySlug(eventSlug);
-    if (!event) {
-      event = await eventsDb.getEventById(eventSlug);
-    }
+    const event = await resolveEvent(eventSlug);
     if (!event) {
       return `❌ Event not found: "${eventSlug}"`;
     }
@@ -1253,10 +1286,7 @@ export function createEventToolHandlers(
   handlers.set('list_event_attendees', async (input) => {
     const eventSlug = input.event_slug as string;
 
-    let event = await eventsDb.getEventBySlug(eventSlug);
-    if (!event) {
-      event = await eventsDb.getEventById(eventSlug);
-    }
+    const event = await resolveEvent(eventSlug);
     if (!event) {
       return `❌ Event not found: "${eventSlug}"`;
     }
@@ -1320,8 +1350,7 @@ export function createEventToolHandlers(
     const eventSlug = input.event_slug as string;
     const personQuery = (input.person_query as string).toLowerCase().trim();
 
-    let event = await eventsDb.getEventBySlug(eventSlug);
-    if (!event) event = await eventsDb.getEventById(eventSlug);
+    const event = await resolveEvent(eventSlug);
     if (!event) return `❌ Event not found: "${eventSlug}"`;
 
     const isEmail = personQuery.includes('@');
@@ -1398,8 +1427,7 @@ export function createEventToolHandlers(
       return `❌ Invalid email address: "${email}"`;
     }
 
-    let event = await eventsDb.getEventBySlug(eventSlug);
-    if (!event) event = await eventsDb.getEventById(eventSlug);
+    const event = await resolveEvent(eventSlug);
     if (!event) return `❌ Event not found: "${eventSlug}"`;
 
     // Check if already registered

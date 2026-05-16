@@ -149,6 +149,54 @@ export class EventsDatabase {
   }
 
   /**
+   * Get event by Luma URL slug (the path segment from luma.com/<slug> or
+   * lu.ma/<slug>). Distinct from Luma's internal api_id stored in
+   * luma_event_id — URL slugs aren't stored in their own column, so we match
+   * on luma_url's trailing path.
+   */
+  async getEventByLumaUrlSlug(slug: string): Promise<Event | null> {
+    const escaped = escapeLikePattern(slug);
+    // Match the slug as the trailing path segment regardless of optional
+    // trailing slash, query string, or fragment — luma.com/<slug>,
+    // luma.com/<slug>/, luma.com/<slug>?foo, luma.com/<slug>#bar.
+    const result = await query<Event>(
+      `SELECT * FROM events
+       WHERE luma_url LIKE '%/' || $1 ESCAPE '\\'
+          OR luma_url LIKE '%/' || $1 || '/%' ESCAPE '\\'
+          OR luma_url LIKE '%/' || $1 || '?%' ESCAPE '\\'
+          OR luma_url LIKE '%/' || $1 || '#%' ESCAPE '\\'
+       LIMIT 1`,
+      [escaped]
+    );
+
+    return result.rows[0] ? this.deserializeEvent(result.rows[0]) : null;
+  }
+
+  /**
+   * Find an event by a fuzzy title match. Last-resort fallback for callers
+   * (Addie tools) that pass user-typed strings like "foundry". Only matches
+   * published/completed events to avoid leaking drafts. Ambiguous matches
+   * return null so the caller can ask the user to disambiguate.
+   */
+  async findEventByTitleFuzzy(query_text: string): Promise<Event | null> {
+    const escaped = escapeLikePattern(query_text);
+    const result = await query<Event>(
+      `SELECT * FROM events
+       WHERE status IN ('published', 'completed')
+         AND visibility = 'public'
+         AND title ILIKE '%' || $1 || '%' ESCAPE '\\'
+       ORDER BY ABS(EXTRACT(EPOCH FROM (start_time - NOW()))) ASC
+       LIMIT 2`,
+      [escaped]
+    );
+
+    if (result.rows.length === 1) {
+      return this.deserializeEvent(result.rows[0]);
+    }
+    return null;
+  }
+
+  /**
    * Update an event
    */
   async updateEvent(id: string, updates: UpdateEventInput): Promise<Event | null> {

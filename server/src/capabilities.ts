@@ -4,6 +4,7 @@ import { createLogger } from "./logger.js";
 import { is401Error, AuthenticationRequiredError } from "@adcp/sdk";
 import { AAO_UA_DISCOVERY } from "./config/user-agents.js";
 import { logOutboundRequest } from "./db/outbound-log-db.js";
+import { agentConfigAuthFields, type SdkAuth } from "./services/sdk-auth-adapter.js";
 
 const logger = createLogger('capabilities');
 
@@ -265,16 +266,21 @@ export class CapabilityDiscovery {
     this.formatsService = new FormatsService();
   }
 
-  async discoverCapabilities(agent: Agent): Promise<AgentCapabilityProfile> {
-    const cached = this.cache.get(agent.url);
-    if (cached && Date.now() - new Date(cached.last_discovered).getTime() < this.CACHE_TTL_MS) {
-      return cached;
+  async discoverCapabilities(agent: Agent, auth?: SdkAuth): Promise<AgentCapabilityProfile> {
+    // Skip cache when auth is provided — manual owner-triggered refresh
+    // wants fresh data and may previously have cached an unauthed
+    // discovery_error result. Periodic crawls (no auth) keep the cache.
+    if (!auth) {
+      const cached = this.cache.get(agent.url);
+      if (cached && Date.now() - new Date(cached.last_discovered).getTime() < this.CACHE_TTL_MS) {
+        return cached;
+      }
     }
 
     const startTime = Date.now();
     try {
       const protocol = agent.protocol || "mcp";
-      const tools = await this.discoverTools(agent.url, protocol);
+      const tools = await this.discoverTools(agent.url, protocol, auth);
 
       logOutboundRequest({
         agent_url: agent.url,
@@ -298,7 +304,7 @@ export class CapabilityDiscovery {
         profile.standard_operations = this.analyzeSalesCapabilities(tools);
       }
       if (CapabilityDiscovery.CREATIVE_TOOLS.some(t => toolNames.has(t))) {
-        profile.creative_capabilities = await this.analyzeCreativeCapabilities(agent, tools);
+        profile.creative_capabilities = await this.analyzeCreativeCapabilities(agent, tools, auth);
       }
       if (CapabilityDiscovery.SIGNALS_TOOLS.some(t => toolNames.has(t))) {
         profile.signals_capabilities = this.analyzeSignalsCapabilities(tools);
@@ -307,11 +313,15 @@ export class CapabilityDiscovery {
       // tool names — only fetch when the agent actually exposes the tool, so
       // sales/creative/signals agents don't incur an extra round-trip.
       if (toolNames.has('get_adcp_capabilities')) {
-        const measurement = await this.fetchMeasurementCapabilities(agent);
+        const measurement = await this.fetchMeasurementCapabilities(agent, auth);
         if (measurement) profile.measurement_capabilities = measurement;
       }
 
-      this.cache.set(agent.url, profile);
+      // Don't cache authed-discovery results in the shared cache — the
+      // tool list an agent advertises behind auth may differ from the
+      // public-facing one, and the cache is read by unauthed periodic
+      // crawls + the public registry render.
+      if (!auth) this.cache.set(agent.url, profile);
       return profile;
     } catch (error: any) {
       logOutboundRequest({
@@ -332,23 +342,24 @@ export class CapabilityDiscovery {
         discovery_error: error.message,
         oauth_required: isOAuthError,
       };
-      // Don't cache OAuth errors - user may authorize and retry
-      if (!isOAuthError) {
+      // Don't cache OAuth errors - user may authorize and retry.
+      // Don't cache authed probes (see successful-path comment above).
+      if (!isOAuthError && !auth) {
         this.cache.set(agent.url, errorProfile);
       }
       return errorProfile;
     }
   }
 
-  private async discoverTools(url: string, protocol: "mcp" | "a2a"): Promise<ToolCapability[]> {
+  private async discoverTools(url: string, protocol: "mcp" | "a2a", auth?: SdkAuth): Promise<ToolCapability[]> {
     if (protocol === "a2a") {
-      return this.discoverA2ATools(url);
+      return this.discoverA2ATools(url, auth);
     } else {
-      return this.discoverMCPTools(url);
+      return this.discoverMCPTools(url, auth);
     }
   }
 
-  private async discoverMCPTools(url: string): Promise<ToolCapability[]> {
+  private async discoverMCPTools(url: string, auth?: SdkAuth): Promise<ToolCapability[]> {
     try {
       // Use AdCPClient to connect to agent
       const { AdCPClient } = await import("@adcp/sdk");
@@ -357,6 +368,7 @@ export class CapabilityDiscovery {
         name: "Discovery Client",
         agent_uri: url,
         protocol: "mcp",
+        ...agentConfigAuthFields(auth),
       }], { userAgent: AAO_UA_DISCOVERY });
       const client = multiClient.agent("discovery");
 
@@ -385,7 +397,7 @@ export class CapabilityDiscovery {
     }
   }
 
-  private async discoverA2ATools(url: string): Promise<ToolCapability[]> {
+  private async discoverA2ATools(url: string, auth?: SdkAuth): Promise<ToolCapability[]> {
     try {
       // Use AdCPClient to connect to agent
       const { AdCPClient } = await import("@adcp/sdk");
@@ -394,6 +406,7 @@ export class CapabilityDiscovery {
         name: "Discovery Client",
         agent_uri: url,
         protocol: "a2a",
+        ...agentConfigAuthFields(auth),
       }], { userAgent: AAO_UA_DISCOVERY });
       const client = multiClient.agent("discovery");
 
@@ -430,8 +443,14 @@ export class CapabilityDiscovery {
    * properties for buyers to call; buy-side agents typically do NOT
    * advertise those (they call them). So advertising SALES_TOOLS maps to
    * type 'sales'. Buy-side agents are not reliably typed from this signal
-   * and return 'unknown' until a stronger source (e.g. member self-
-   * registration) sets the type.
+   * and return 'unknown' here.
+   *
+   * The `'buying'` value in `AgentType` is preserved exclusively through
+   * member self-declaration. `resolveAgentTypes` in `routes/member-profiles.ts`
+   * carries member-set `'buying'` through the null-inferred-snapshot
+   * override (closes #3549). Inference here intentionally never returns
+   * `'buying'` because no passive probe signal can distinguish a buy-side
+   * agent from a broken/empty MCP server.
    */
   private inferAgentType(tools: ToolCapability[]): 'sales' | 'creative' | 'signals' | 'unknown' {
     const toolNames = new Set(tools.map((t) => t.name.toLowerCase()));
@@ -460,14 +479,14 @@ export class CapabilityDiscovery {
     };
   }
 
-  private async analyzeCreativeCapabilities(agent: Agent, tools: ToolCapability[]): Promise<CreativeCapabilities> {
+  private async analyzeCreativeCapabilities(agent: Agent, tools: ToolCapability[], auth?: SdkAuth): Promise<CreativeCapabilities> {
     const toolNames = new Set(tools.map((t) => t.name.toLowerCase()));
     const hasFormatTool = toolNames.has("list_creative_formats");
 
     let formats: string[] = [];
     if (hasFormatTool) {
       try {
-        const formatsProfile = await this.formatsService.getFormatsForAgent(agent);
+        const formatsProfile = await this.formatsService.getFormatsForAgent(agent, auth);
         formats = formatsProfile.formats.map(f => f.name);
       } catch (error: any) {
         logger.debug({ url: agent.url, error: error.message }, 'Format discovery failed');
@@ -504,7 +523,7 @@ export class CapabilityDiscovery {
    * caller (the catch block in discoverCapabilities) records the error in
    * `discovery_error` so the registry panel surfaces it.
    */
-  private async fetchMeasurementCapabilities(agent: Agent): Promise<MeasurementCapabilities | undefined> {
+  private async fetchMeasurementCapabilities(agent: Agent, auth?: SdkAuth): Promise<MeasurementCapabilities | undefined> {
     try {
       const { AdCPClient } = await import("@adcp/sdk");
       const multiClient = new AdCPClient([{
@@ -512,6 +531,7 @@ export class CapabilityDiscovery {
         name: "Discovery Client",
         agent_uri: agent.url,
         protocol: agent.protocol || "mcp",
+        ...agentConfigAuthFields(auth),
       }], { userAgent: AAO_UA_DISCOVERY });
       const client = multiClient.agent("discovery");
 

@@ -562,20 +562,27 @@
           const primaryBadge = c.is_primary
             ? '<span class="stage-badge" style="background:var(--color-success-100);color:var(--color-success-700);">primary</span>'
             : '';
-          const removeBtn = c.is_primary
+          const rowActions = c.is_primary
             ? ''
-            : `<button class="btn btn-secondary unbind-cred-btn" style="font-size: var(--text-xs); padding: var(--space-1) var(--space-2);"
-                       data-cred-id="${escapeHtml(c.workos_user_id)}"
-                       data-cred-email="${escapeHtml(c.email || '')}"
-                       data-host-id="${escapeHtml(r.workos_user_id)}"
-                       data-target-label="${escapeHtml(targetLabel)}">Remove</button>`;
+            : `<div style="display: flex; gap: var(--space-1);">
+                 <button class="btn btn-secondary promote-cred-btn" style="font-size: var(--text-xs); padding: var(--space-1) var(--space-2);"
+                         data-cred-id="${escapeHtml(c.workos_user_id)}"
+                         data-cred-email="${escapeHtml(c.email || '')}"
+                         data-host-id="${escapeHtml(r.workos_user_id)}"
+                         data-target-label="${escapeHtml(targetLabel)}">Make primary</button>
+                 <button class="btn btn-secondary unbind-cred-btn" style="font-size: var(--text-xs); padding: var(--space-1) var(--space-2);"
+                         data-cred-id="${escapeHtml(c.workos_user_id)}"
+                         data-cred-email="${escapeHtml(c.email || '')}"
+                         data-host-id="${escapeHtml(r.workos_user_id)}"
+                         data-target-label="${escapeHtml(targetLabel)}">Remove</button>
+               </div>`;
           return `
             <div style="display: flex; justify-content: space-between; align-items: center; padding: var(--space-2) 0; border-bottom: 1px solid var(--color-gray-200);">
               <div>
                 <div style="font-size: var(--text-sm);">${escapeHtml(label)} ${primaryBadge}</div>
                 <div style="font-size: var(--text-xs); color: var(--color-text-secondary); font-family: monospace;">${escapeHtml(c.workos_user_id)}${subtitle ? ' · ' + escapeHtml(subtitle) : ''}</div>
               </div>
-              ${removeBtn}
+              ${rowActions}
             </div>
           `;
         }).join('');
@@ -616,8 +623,38 @@
             unbindCredential(b.dataset.hostId, b.dataset.credId, b.dataset.credEmail, b.dataset.targetLabel);
           });
         });
+        container.querySelectorAll('.promote-cred-btn').forEach(btn => {
+          btn.addEventListener('click', (ev) => {
+            const b = ev.currentTarget;
+            promoteCredential(b.dataset.hostId, b.dataset.credId, b.dataset.credEmail, b.dataset.targetLabel);
+          });
+        });
       } catch (e) {
         container.innerHTML = `<p class="empty-state">Failed to load credentials: ${escapeHtml(e.message || String(e))}</p>`;
+      }
+    }
+
+    async function promoteCredential(hostId, credId, credEmail, targetLabel) {
+      const credLabel = credEmail || credId;
+      const typed = prompt(`Make ${credLabel} the primary credential for ${targetLabel}?\n\nAll of the current primary's app-state (org memberships, points, certifications, etc.) will be moved forward onto ${credLabel}, and sign-ins via either credential will route here.\n\nTo confirm, type the credential's email exactly:\n  ${credEmail || '(no email — type the workos id)'}`);
+      if (typed === null) return;
+      const expected = (credEmail || credId).trim().toLowerCase();
+      if (typed.trim().toLowerCase() !== expected) {
+        alert('Confirmation did not match. Cancelled.');
+        return;
+      }
+      try {
+        const res = await AdminSidebar.fetch(`/api/admin/users/${encodeURIComponent(hostId)}/credentials/${encodeURIComponent(credId)}/promote`, {
+          method: 'POST',
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          alert(data.message || data.error || `Promote failed (${res.status})`);
+          return;
+        }
+        alert(data.message || 'Credential promoted to primary.');
+      } catch (e) {
+        alert('Network error: ' + (e && e.message ? e.message : String(e)));
       }
     }
 

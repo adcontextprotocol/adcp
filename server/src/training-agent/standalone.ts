@@ -32,10 +32,27 @@ app.get('/health', (_req, res) => {
   res.json({ status: 'healthy', service: 'training-agent-standalone' });
 });
 
+// Mirror server/src/training-agent/index.ts:68 — any bearer matching
+// `demo-<a-z0-9-+>-v\d+` is accepted and stamped as `static:demo:<token>`.
+// Lets standalone exercise the per-buyer-agent billing gate locally
+// without booting the full server's auth chain.
+const DEMO_TEST_KIT_KEY_PATTERN = /^demo-[a-z0-9]+(?:-[a-z0-9]+)*-v\d+$/;
+
+function extractPrincipalFromBearer(req: Request): string | undefined {
+  const authHeader = req.headers.authorization;
+  if (typeof authHeader !== 'string' || !authHeader.toLowerCase().startsWith('bearer ')) {
+    return undefined;
+  }
+  const token = authHeader.slice(7).trim();
+  if (!DEMO_TEST_KIT_KEY_PATTERN.test(token)) return undefined;
+  return `static:demo:${token}`;
+}
+
 async function handleMcpRequest(req: Request, res: Response) {
   let server: ReturnType<typeof createTrainingAgentServer> | null = null;
   try {
-    const ctx: TrainingContext = { mode: 'open' };
+    const principal = extractPrincipalFromBearer(req);
+    const ctx: TrainingContext = principal ? { mode: 'open', principal } : { mode: 'open' };
     server = createTrainingAgentServer(ctx);
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined,

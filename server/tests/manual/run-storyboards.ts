@@ -35,6 +35,9 @@ import type { AdcpJsonWebKey } from '@adcp/sdk/signing';
 // below.
 const AUTH_TOKEN = process.env.PUBLIC_TEST_AGENT_TOKEN ?? 'storyboard-runner-test-token';
 process.env.PUBLIC_TEST_AGENT_TOKEN = AUTH_TOKEN;
+// SDK refuses the in-memory task registry outside dev/test. The runner is a
+// local dev convenience; opt in explicitly so the SDK accepts the default.
+if (!process.env.NODE_ENV) process.env.NODE_ENV = 'test';
 // Silence pino logger noise so the progress table stays readable. Set
 // LOG_STORYBOARDS=1 to get full log output for diagnosis.
 if (!process.env.LOG_STORYBOARDS) process.env.LOG_LEVEL = 'silent';
@@ -88,8 +91,17 @@ async function startLocalAgent(): Promise<{ url: string; close: () => Promise<vo
         reject(new Error('listen returned no address'));
         return;
       }
+      // TENANT_PATH selects the per-specialism tenant endpoint
+      // (/api/training-agent/<tenant>/mcp). Required — there's no
+      // single-URL fallback after the v5 monolith was retired.
+      // Common values: signals, sales, governance, creative,
+      // creative-builder, brand.
+      const tenantPath = process.env.TENANT_PATH;
+      if (!tenantPath) {
+        throw new Error('TENANT_PATH env required (one of: signals, sales, governance, creative, creative-builder, brand)');
+      }
       resolve({
-        url: `http://127.0.0.1:${addr.port}/api/training-agent/mcp`,
+        url: `http://127.0.0.1:${addr.port}/api/training-agent/${tenantPath}/mcp`,
         close: () => new Promise<void>(res => {
           stopSessionCleanup();
           srv.close(() => res());
@@ -162,11 +174,31 @@ function brandFromKit(kit: LoadedTestKit | undefined): StoryboardRunOptions['bra
 }
 
 /**
+ * Per-tenant probe-task override for security_baseline's auth probes.
+ *
+ * The shared test-kit (`acme-outdoor.yaml`) declares
+ * `auth.probe_task: list_creatives`. Tenants that serve `list_creatives`
+ * (sales, creative, creative-builder) work with the default. /signals
+ * doesn't serve it but does serve `get_signals` — both are on the SDK
+ * runner's allowlist of probe-safe tasks (auth-required, read-only,
+ * accept empty body). /governance and /brand have no allowlisted tool
+ * they actually serve, so security_baseline continues to fail there
+ * until the runner's allowlist widens or those tenants gain one of
+ * the allowlisted tools.
+ */
+const PROBE_TASK_BY_TENANT: Record<string, string> = {
+  signals: 'get_signals',
+};
+
+/**
  * Thread the test-kit's `auth.api_key` / `auth.probe_task` through to the
  * runner so `api_key_path` in security_baseline (and any future kit-gated
  * phase) executes instead of being skipped by `skip_if: "!test_kit.auth.api_key"`.
  * `probe_task` is required by the runner whenever `auth` is declared — surface
  * missing values as a hard failure rather than silently defaulting.
+ *
+ * When `TENANT_PATH` matches a known tenant, override `probe_task` with a
+ * tool that tenant actually serves (see `PROBE_TASK_BY_TENANT`).
  */
 function testKitOptionsFromKit(kit: LoadedTestKit | undefined): StoryboardRunOptions['test_kit'] | undefined {
   const auth = kit?.auth;
@@ -174,10 +206,12 @@ function testKitOptionsFromKit(kit: LoadedTestKit | undefined): StoryboardRunOpt
   if (!auth.probe_task) {
     throw new Error('test kit declares auth.api_key without auth.probe_task — required by runner');
   }
+  const tenantPath = process.env.TENANT_PATH;
+  const probeTask = (tenantPath && PROBE_TASK_BY_TENANT[tenantPath]) ?? auth.probe_task;
   return {
     auth: {
       ...(auth.api_key !== undefined && { api_key: auth.api_key }),
-      probe_task: auth.probe_task,
+      probe_task: probeTask,
     },
   };
 }
@@ -205,7 +239,11 @@ function applyStepSkipList(storyboardId: string, result: StoryboardResult): void
   }
 }
 
-function stepStatus(s: { passed?: boolean; skipped?: boolean; not_applicable?: boolean; validations?: Array<{ passed: boolean }>; error?: string }): 'passed' | 'failed' | 'skipped' | 'not_applicable' {
+function stepStatus(s: { passed?: boolean; skipped?: boolean; not_applicable?: boolean; skip_reason?: string; skip?: { detail?: string }; validations?: Array<{ passed: boolean }>; error?: string }): 'passed' | 'failed' | 'skipped' | 'not_applicable' {
+  if (verbose && s.skipped) {
+    // eslint-disable-next-line no-console
+    console.log(`    [skip] ${(s as { id?: string }).id ?? '?'} — ${s.skip_reason ?? '(no reason)'} :: ${s.skip?.detail ?? '(no detail)'}`);
+  }
   if (s.not_applicable) return 'not_applicable';
   if (s.skipped) return 'skipped';
   if (s.passed === false || s.error) return 'failed';
@@ -318,65 +356,111 @@ async function main() {
     clearSeededCreativeFormats();
     clearForcedTaskCompletions();
     clearCatalogEventStores();
-    process.stdout.write(`  ${sb.id.padEnd(40)} `);
-    try {
-      const kit = loadTestKit(sb);
-      const brand = brandFromKit(kit);
-      const testKit = testKitOptionsFromKit(kit);
-      // The default `/mcp` route is the public sandbox (bearer OR signed,
-      // no `required_for` enforcement). The `/mcp-strict` route is the
-      // grader target with presence-gated signing + required_for. Point
-      // the signed_requests conformance storyboard at the strict route
-      // so vector 001 (`request_signature_required`) fires against a
-      // cap that actually advertises `required_for: [create_media_buy]`;
-      // every other storyboard stays on `/mcp` so bearer-authed unsigned
-      // calls keep working.
-      const targetUrl = sb.id === 'signed_requests'
-        ? agentUrl.replace(/\/mcp$/, '/mcp-strict')
-        : agentUrl;
-      const result = await runStoryboard(targetUrl, sb, {
-        auth: { type: 'bearer', token: AUTH_TOKEN },
-        allow_http: true,
-        contracts: ['webhook_receiver_runner'],
-        webhook_receiver: { mode: 'loopback_mock' },
-        webhook_signing: {
-          jwks: jwksResolver,
-          replayStore: new InMemoryReplayStore(),
-          revocationStore: new InMemoryRevocationStore(),
+    const kit = loadTestKit(sb);
+    const brand = brandFromKit(kit);
+    const testKit = testKitOptionsFromKit(kit);
+
+    if (sb.id === 'signed_requests') {
+      // Run the signed_requests storyboard once per strict route variant.
+      // Each route advertises a different covers_content_digest profile so
+      // the grader runs vectors that were previously skipped as
+      // capability-incompatible against the matching route.
+      //
+      // `/mcp-strict` (either): baseline run — skip 007/018 which target
+      //   specific digest profiles, skip 025 (SDK-internal JWK test).
+      // `/mcp-strict-required` (required): 007 fires here; skip 018/025.
+      // `/mcp-strict-forbidden` (forbidden): 018 fires here; skip 007/025.
+      const strictVariants: Array<{ routeSuffix: string; skipVectors: string[] }> = [
+        {
+          routeSuffix: '/mcp-strict',
+          skipVectors: ['007-missing-content-digest', '018-digest-covered-when-forbidden', '025-jwk-alg-crv-mismatch'],
         },
-        request_signing: {
-          transport: 'mcp',
-          // Our declared capability is `covers_content_digest: 'either'`;
-          // vectors 007 and 018 assert specific mismatching policies
-          // (`required` / `forbidden`) — the grader skip-list per
-          // capability-profile mismatch. Vector 020 (rate-abuse) sends
-          // cap+1 requests per run and is opt-in anyway. Vector 025
-          // grades the SDK's library verifier against an inline malformed
-          // JWK (`jwks_override`) — it exercises SDK internals, not our
-          // agent, so we skip it here and rely on upstream SDK tests.
-          skipVectors: [
-            '007-missing-content-digest',
-            '018-digest-covered-when-forbidden',
-            '025-jwk-alg-crv-mismatch',
-          ],
-          skipRateAbuse: true,
+        {
+          routeSuffix: '/mcp-strict-required',
+          skipVectors: ['018-digest-covered-when-forbidden', '025-jwk-alg-crv-mismatch'],
         },
-        ...(brand && { brand }),
-        ...(testKit && { test_kit: testKit }),
-      });
-      applyStepSkipList(sb.id, result);
-      const summary = summarize(sb, result);
-      results.push(summary);
-      const pill = summary.failed === 0
-        ? `✓ ${summary.passed}P / ${summary.skipped}S / ${summary.not_applicable}N/A`
-        : `✗ ${summary.passed}P / ${summary.failed}F / ${summary.skipped}S / ${summary.not_applicable}N/A`;
-      // eslint-disable-next-line no-console
-      console.log(pill);
-    } catch (err) {
-      const summary = summarize(sb, { error: err instanceof Error ? err.message : String(err) });
-      results.push(summary);
-      // eslint-disable-next-line no-console
-      console.log(`⚠ ${summary.error}`);
+        {
+          routeSuffix: '/mcp-strict-forbidden',
+          skipVectors: ['007-missing-content-digest', '025-jwk-alg-crv-mismatch'],
+        },
+      ];
+      for (const variant of strictVariants) {
+        const variantLabel = `${sb.id}${variant.routeSuffix.replace('/mcp', '')}`;
+        process.stdout.write(`  ${variantLabel.padEnd(40)} `);
+        try {
+          const targetUrl = agentUrl.replace(/\/mcp$/, variant.routeSuffix);
+          const result = await runStoryboard(targetUrl, sb, {
+            auth: { type: 'bearer', token: AUTH_TOKEN },
+            allow_http: true,
+            contracts: ['webhook_receiver_runner'],
+            webhook_receiver: { mode: 'loopback_mock' },
+            webhook_signing: {
+              jwks: jwksResolver,
+              replayStore: new InMemoryReplayStore(),
+              revocationStore: new InMemoryRevocationStore(),
+            },
+            request_signing: {
+              transport: 'mcp',
+              // Vector 020 (rate-abuse) sends cap+1 requests per run and is
+              // opt-in anyway. Vector 025 grades SDK internals (inline
+              // malformed JWK), not our agent — skipped on all three routes.
+              // Vectors 007/018 are digest-profile-specific and run only on
+              // the route whose advertised profile matches (see comments above).
+              skipVectors: variant.skipVectors,
+              skipRateAbuse: true,
+            },
+            ...(brand && { brand }),
+            ...(testKit && { test_kit: testKit }),
+          });
+          applyStepSkipList(sb.id, result);
+          const summary = { ...summarize(sb, result), id: variantLabel };
+          results.push(summary);
+          const pill = summary.failed === 0
+            ? `✓ ${summary.passed}P / ${summary.skipped}S / ${summary.not_applicable}N/A`
+            : `✗ ${summary.passed}P / ${summary.failed}F / ${summary.skipped}S / ${summary.not_applicable}N/A`;
+          // eslint-disable-next-line no-console
+          console.log(pill);
+        } catch (err) {
+          const summary = { ...summarize(sb, { error: err instanceof Error ? err.message : String(err) }), id: variantLabel };
+          results.push(summary);
+          // eslint-disable-next-line no-console
+          console.log(`⚠ ${summary.error}`);
+        }
+      }
+    } else {
+      process.stdout.write(`  ${sb.id.padEnd(40)} `);
+      try {
+        // The default `/mcp` route is the public sandbox (bearer OR signed,
+        // no `required_for` enforcement). Every storyboard other than
+        // `signed_requests` stays on `/mcp` so bearer-authed unsigned calls
+        // keep working.
+        const result = await runStoryboard(agentUrl, sb, {
+          auth: { type: 'bearer', token: AUTH_TOKEN },
+          allow_http: true,
+          contracts: ['webhook_receiver_runner'],
+          webhook_receiver: { mode: 'loopback_mock' },
+          webhook_signing: {
+            jwks: jwksResolver,
+            replayStore: new InMemoryReplayStore(),
+            revocationStore: new InMemoryRevocationStore(),
+          },
+          ...(brand && { brand }),
+          ...(testKit && { test_kit: testKit }),
+        });
+        applyStepSkipList(sb.id, result);
+        const summary = summarize(sb, result);
+        results.push(summary);
+        const pill = summary.failed === 0
+          ? `✓ ${summary.passed}P / ${summary.skipped}S / ${summary.not_applicable}N/A`
+          : `✗ ${summary.passed}P / ${summary.failed}F / ${summary.skipped}S / ${summary.not_applicable}N/A`;
+        // eslint-disable-next-line no-console
+        console.log(pill);
+      } catch (err) {
+        const summary = summarize(sb, { error: err instanceof Error ? err.message : String(err) });
+        results.push(summary);
+        // eslint-disable-next-line no-console
+        console.log(`⚠ ${summary.error}`);
+      }
     }
   }
 

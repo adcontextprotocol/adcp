@@ -19,7 +19,7 @@ narrative: |
   agent is a media-buy seller, a signals agent, a governance agent, a creative agent, or
   a brand agent. This universal storyboard certifies that an agent correctly implements
   the AdCP RFC 9421 request-signing verifier per
-  [`docs/building/implementation/security.mdx#signed-requests-transport-layer`](/docs/building/implementation/security#signed-requests-transport-layer).
+  [`docs/building/by-layer/L1/security.mdx#signed-requests-transport-layer`](/docs/building/by-layer/L1/security#signed-requests-transport-layer).
 
   **Gating.** This storyboard runs for any agent advertising `request_signing.supported: true`
   in `get_adcp_capabilities`. Agents that do not advertise support are not tested against
@@ -181,6 +181,16 @@ phases:
         018 content-digest when forbidden     → request_signature_components_unexpected
         019 Signature without Signature-Input → request_signature_header_malformed
         020 per-keyid replay cache cap        → request_signature_rate_abuse
+        028 unsigned tasks/cancel + protocol_methods_required_for → request_signature_required
+
+      Vector 028 is gated on `request_signing.protocol_methods_required_for`
+      being non-empty: the runner skips when the agent does not declare the
+      bucket, and FAILs (not SKIPs) when it declares it but doesn't enforce.
+      It's the only vector that targets a JSON-RPC protocol method rather
+      than a `tools/call` AdCP envelope. Vectors 021-027 (enumerated in the
+      negative/ directory but not in the summary above) cover later
+      additions to the checklist that share the `tools/call` envelope shape
+      with vectors 001-020.
 
       Vectors live at `/compliance/{version}/test-vectors/request-signing/negative/`.
       Grading requires byte-for-byte match on the error code; the failed_step value is

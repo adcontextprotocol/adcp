@@ -171,6 +171,23 @@
   </header>
 
   <div class="tools-container">
+    <!-- Publisher lookup -->
+    <div class="standard-section">
+      <div class="standard-section__label">Publisher lookup</div>
+      <div class="standard-card">
+        <div class="standard-card__body">
+          <h3>Look up a publisher</h3>
+          <p>See which AI sales agents are authorized for a publisher's inventory, what properties they expose, and how their <code>adagents.json</code> is hosted. If you publish here, this is also where you manage your record.</p>
+          <form id="publisher-lookup-form" style="display: flex; gap: var(--space-3); margin-top: var(--space-4); flex-wrap: wrap;">
+            <input id="publisher-lookup-input" type="text" placeholder="example.com" required pattern="[a-zA-Z0-9.\-]+" autocomplete="off"
+              style="flex: 1 1 240px; padding: var(--space-2) var(--space-3); border: var(--border-1) solid var(--color-border); border-radius: var(--radius-md); font-family: var(--font-mono); font-size: var(--text-sm);" />
+            <button type="submit" class="action-primary" style="border: none; cursor: pointer;">Open publisher page</button>
+            <a href="/publishers" class="action-secondary">Browse all publishers</a>
+          </form>
+        </div>
+      </div>
+    </div>
+
     <!-- brand.json -->
     <div class="standard-section">
       <div class="standard-section__label">Well-known file standard</div>
@@ -225,5 +242,13 @@
   </div>
 
   <div id="adcp-footer"></div>
+  <script>
+    document.getElementById('publisher-lookup-form')?.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const raw = document.getElementById('publisher-lookup-input').value.trim().toLowerCase();
+      const stripped = raw.replace(/^https?:\/\//, '').replace(/\/$/, '').split('/')[0];
+      if (stripped) window.location.href = `/publisher/${encodeURIComponent(stripped)}`;
+    });
+  </script>
 </body>
 </html>

@@ -182,41 +182,19 @@ export const PropertySummarySchema = z
 const MemberRefSchema = z.object({
   slug: z.string().optional(),
   display_name: z.string().optional(),
+  membership_tier: z.string().optional().openapi({
+    description:
+      "Raw AAO membership tier enum (e.g. `individual_professional`, `company_leader`). Present only when the profile owner has set their member card to public (`is_public=true`) AND the org has a resolvable tier. Absent for private profiles and for orgs without an active tier-bearing subscription.",
+  }),
+  membership_tier_label: z.string().optional().openapi({
+    description:
+      "Human-readable label for `membership_tier` (e.g. `Professional`, `Partner`, `Leader`). Matches the AAO pricing page. Use this for UI display; the raw enum is for programmatic gating. Presence rules match `membership_tier`.",
+  }),
+  is_founding_member: z.boolean().optional().openapi({
+    description:
+      "True when the profile owner carries the Founding Member badge (joined before the founding-cohort cutoff). Surfaced when the profile owner has set their member card to public (`is_public=true`). Absent for private profiles. Founding Member is orthogonal to tier — founding orgs typically display both (e.g. Scope3 shows `Partner` + `Founding Member`).",
+  }),
 });
-
-const DiscoveredFromSchema = z.object({
-  publisher_domain: z.string().optional(),
-  authorized_for: z.string().optional(),
-});
-
-/**
- * Publisher-side endorsement signal for a discovered agent.
- *
- * Populated only when an agent's `source = 'discovered'` AND its
- * `discovered_from.publisher_domain` is claimed by an AAO member
- * (member_profiles row whose `publishers[]` contains that domain with
- * `is_public = true`). Mutually exclusive with `member` — a registered
- * agent never carries this field.
- *
- * The agent itself did not opt in; the publisher endorsed it via
- * `adagents.json`. Surfaces option C from issue #3547 / Problem 6 of
- * issue #3538: discovered agents like `agent.mamamia.com.au` whose
- * publisher is a member previously rendered `member: null` and dropped
- * that trust signal on the floor.
- */
-const EndorsedByPublisherMemberSchema = z
-  .object({
-    slug: z
-      .string()
-      .openapi({ description: "Member organization slug — stable URL-safe identifier for the publisher member." }),
-    display_name: z
-      .string()
-      .openapi({ description: "Member organization display name — render-ready label for the publisher member." }),
-    publisher_domain: z
-      .string()
-      .openapi({ description: "Publisher domain whose adagents.json endorsed this agent (the linkage that produced this signal)." }),
-  })
-  .openapi("EndorsedByPublisherMember");
 
 export const ResolvedBrandSchema = z
   .object({
@@ -375,6 +353,8 @@ export const AgentComplianceDetailSchema = z
     membership_tier_label: z.string().nullable().optional().openapi({ description: "Owner-scoped: human-readable label for membership_tier (e.g. 'Builder'). Null for non-owners." }),
     subscription_status: z.string().nullable().optional().openapi({ description: "Owner-scoped: the agent owner's subscription status (active, past_due, trialing, etc.). Null for non-owners." }),
     is_api_access_tier: z.boolean().optional().openapi({ description: "Owner-scoped: true when the owner's tier and subscription status grant badge eligibility. False for non-owners. Single source of truth — UI should not re-derive." }),
+    verdict_source: z.enum(["heartbeat", "owner_test", "manual", "webhook"]).nullable().optional()
+      .openapi({ description: "Owner-scoped: triggered_by value of the most recent non-dry-run compliance check. Null for non-owners and when no run has been recorded. Operators use this as a UX cue ('did this verdict come from my recent test or the system heartbeat?')." }),
     verified: z.boolean().optional(),
     verified_badges: z.array(VerificationBadgeSchema).optional(),
   })
@@ -429,28 +409,10 @@ export const FederatedAgentWithDetailsSchema = z
       })
       .optional(),
     added_date: z.string().optional(),
-    source: z
-      .enum(["registered", "discovered"])
-      .optional()
-      .openapi({
-        description:
-          "Provenance of this agent in the registry. " +
-          "`registered` = an AAO member has explicitly enrolled this agent on their member profile (canonical, attested). " +
-          "`discovered` = the crawler found this agent listed in some publisher's adagents.json file; the agent itself has not opted in to the registry. " +
-          "These are different trust levels — `registered` ≠ `discovered`. Filter by source if your use case depends on attestation.",
-      }),
     member: MemberRefSchema.optional().openapi({
       description:
-        "AAO member that owns this agent record, if any. Populated when `source` is `registered`. " +
-        "For `discovered` agents this is `null`; see `endorsed_by_publisher_member` for the publisher-side endorsement signal added in #3547 / Problem 6 of #3538.",
+        "AAO member that owns this agent record. The registry contains only agents that members have explicitly enrolled on their member profile.",
     }),
-    discovered_from: DiscoveredFromSchema.optional().openapi({
-      description:
-        "Set when `source = 'discovered'`. Identifies the publisher_domain whose adagents.json listed this agent, and the `authorized_for` string from that listing. " +
-        "Mutually exclusive with the `member` field on the registered path.",
-    }),
-    endorsed_by_publisher_member: EndorsedByPublisherMemberSchema.optional()
-      .openapi({ description: "Set on discovered agents when discovered_from.publisher_domain is claimed by an AAO member (publishers[] entry with is_public=true). Mutually exclusive with member — registered agents never carry this. Option C from #3547 (Problem 6 / #3538)." }),
     health: AgentHealthSchema.optional(),
     stats: AgentStatsSchema.optional(),
     capabilities: AgentCapabilitiesSchema.optional(),
@@ -463,22 +425,16 @@ export const FederatedAgentWithDetailsSchema = z
 export const FederatedPublisherSchema = z
   .object({
     domain: z.string(),
-    source: z.enum(["registered", "discovered"]).optional(),
     member: MemberRefSchema.optional(),
     agent_count: z.number().int().optional(),
     last_validated: z.string().optional(),
-    discovered_from: z
-      .object({ agent_url: z.string().optional() })
-      .optional(),
     has_valid_adagents: z.boolean().optional(),
-    discovered_at: z.string().optional(),
   })
   .openapi("FederatedPublisher");
 
 const DomainAgentRefSchema = z.object({
   url: z.string(),
   authorized_for: z.string().optional(),
-  source: z.enum(["registered", "discovered"]).optional(),
   member: MemberRefSchema.optional(),
 });
 
@@ -489,7 +445,6 @@ export const DomainLookupResultSchema = z
     sales_agents_claiming: z.array(
       z.object({
         url: z.string(),
-        source: z.enum(["registered", "discovered"]).optional(),
         member: MemberRefSchema.optional(),
       })
     ),
@@ -623,13 +578,86 @@ const PublisherPropertySchema = z.object({
   type: z.string().optional(),
   name: z.string().optional(),
   identifiers: z.array(PropertyIdentifierSchema).optional(),
-  tags: z.array(z.string()).optional(),
+  tags: z.array(z.string()).optional().openapi({
+    description:
+      "Arbitrary string tags on this property. The `relationship:` prefix tag (e.g. `relationship:owned`) is deprecated in favour of the `delegation_type` field and will be removed in a future release.",
+  }),
+  source: z.enum(["adagents_json", "discovered", "brand_json"]).optional().openapi({
+    description:
+      "Where this property came from. `adagents_json`/`discovered` come from the federated index (publisher's own adagents.json or crawler discovery). `brand_json` is hydrated from the publisher's brand.json when no federated-index data exists yet.",
+  }),
+  delegation_type: z.enum(["direct", "delegated", "ad_network"]).optional().openapi({
+    description:
+      "Delegation relationship declared in brand.json. Populated only when `source` is `brand_json` — for `adagents_json` and `discovered` sources the authoritative value is on the matching `authorized_agents` entry. Mirrors adagents.json `delegation_type` for bilateral verification: `direct` = publisher treats this as a direct buying path, even if a third party operates the software; `delegated` = a rep firm or manager is authorized to sell on the publisher's behalf (operator-declared, unilateral until corroborated by the publisher's adagents.json); `ad_network` = sold as part of a network/exchange package. `owned` properties have no `delegation_type` — ownership is implicit and has no adagents.json counterpart.",
+  }),
 });
 
 const PublisherAuthorizedAgentSchema = z.object({
   url: z.string(),
   authorized_for: z.string().optional(),
-  source: z.enum(["adagents_json", "agent_claim"]),
+  source: z.enum(["adagents_json", "aao_hosted", "agent_claim"]).openapi({
+    description:
+      "How strongly this authorization is attested. `adagents_json`: the publisher's origin actually serves a valid adagents.json (origin-verified). `aao_hosted`: AAO is hosting the canonical document on the publisher's behalf — represents publisher intent but origin has NOT been verified to redirect to AAO. `agent_claim`: the agent claimed it; publisher has not confirmed.",
+  }),
+  properties_authorized: z.number().int().nonnegative().optional().openapi({
+    description:
+      "Count of this publisher's properties the agent is authorized to sell. Absent when `rollup_truncated` is set (call `/api/registry/publisher/authorization` for the per-agent count) or when properties are entirely brand.json-hydrated (no adagents.json claim has actually been made about them).",
+  }),
+  properties_total: z.number().int().nonnegative().optional().openapi({
+    description: "Total number of properties this publisher exposes through the registry. Same value across all agents in the response. Absent when `properties_authorized` is absent.",
+  }),
+  publisher_wide: z.boolean().optional().openapi({
+    description:
+      "True when the agent has only a publisher-wide authorization row and `properties_authorized` was synthesized as `properties_total`. False when the agent has property-level authorization rows. Absent when the rollup is absent.",
+  }),
+});
+
+const PublisherHostingSchema = z.object({
+  mode: z.enum(["self", "self_invalid", "aao_hosted", "self_redirected", "none"]).openapi({
+    description:
+      "Where this publisher's adagents.json lives. `self` = publisher hosts a valid file at their own /.well-known. `self_invalid` = publisher's /.well-known returns a file that fails validation (fixable misconfiguration, not absence). `aao_hosted` = the publisher hosts a stub at their own /.well-known whose `authoritative_location` points at AAO's canonical document. `self_redirected` = the publisher's stub `authoritative_location` resolves to a third-party HTTPS origin (a CDN, partner CMS, or sibling host) — verifiers should audit the TLS chain at `resolved_url`, not at the publisher's own origin. `none` = no adagents.json configured yet.",
+  }),
+  hosted_url: z.string().optional().openapi({
+    description: "Canonical AAO-hosted adagents.json URL. Present iff `mode === 'aao_hosted'`. Publishers reference this URL from their own /.well-known stub via the `authoritative_location` field (see https://docs.adcontextprotocol.org/docs/governance/property/adagents).",
+  }),
+  expected_url: z.string().openapi({
+    description: "Where adagents.json *should* live for this domain — the publisher's own /.well-known path. Always populated, regardless of `mode`.",
+  }),
+  resolved_url: z.string().nullable().optional().openapi({
+    description: "Where the canonical adagents.json document actually lives after following the publisher's `authoritative_location` stub or any HTTP-layer redirects. Populated when `mode === 'self_redirected'` (the third-party HTTPS origin verifiers should audit) and when `mode === 'aao_hosted'` AND the publisher has actively set up the redirect (`authoritative_location` in the manifest body or a network-layer redirect to AAO's hosted URL). NULL when there's no resolved-URL evidence to report.",
+  }),
+  last_validated: z.string().nullable().optional().openapi({
+    description: "ISO timestamp of the last successful validation crawl. Lets verifiers sanity-check freshness. NULL when never crawled.",
+  }),
+  last_http_status: z.number().int().min(100).max(599).nullable().optional().openapi({
+    description: "HTTP status code returned by AAO's most recent fetch attempt of the publisher's `/.well-known/adagents.json`. Verifier-grade chrome — lets a buy-side scraper confirm they see the same response AAO does. NULL until the first crawl records or for transient errors that never produced an HTTP response.",
+  }),
+  last_bytes: z.number().int().nonnegative().nullable().optional().openapi({
+    description: "Response body byte length from the most recent fetch (post-decompression). When `authoritative_location` was followed, measures the canonical document body, not the stub. NULL until the first crawl records.",
+  }),
+  origin_verified_at: z.string().nullable().optional().openapi({
+    description: "ISO timestamp of the last successful origin verification — AAO fetched the publisher's own /.well-known/adagents.json and confirmed `authoritative_location` points at our hosted URL. When set, the publisher's authorization rows have been promoted to `source='adagents_json'` (origin-attested). NULL when never verified or last attempt failed. Only populated when `mode === 'aao_hosted'`.",
+  }),
+  origin_last_checked_at: z.string().nullable().optional().openapi({
+    description: "ISO timestamp of the last verification attempt regardless of result. Lets a caller render \"checked X minutes ago, not yet verified\" vs \"never checked.\" Only populated when `mode === 'aao_hosted'`.",
+  }),
+});
+
+const PublisherFilesSchema = z.object({
+  adagents_json: z.object({
+    status: z.enum(["valid", "invalid", "unknown", "checking"]).openapi({
+      description:
+        "What we know about the publisher's adagents.json right now. `valid` = crawler fetched a parsing-and-shape-valid file. `invalid` = crawler fetched a file that failed validation. `unknown` = never crawled or last result is stale. `checking` = an auto-crawl was kicked off by this request; the page should poll for fresh data shortly.",
+    }),
+    expected_url: z.string().openapi({ description: "Where adagents.json should live on the publisher's own origin." }),
+  }),
+  brand_json: z.object({
+    status: z.enum(["present", "unknown", "checking"]).openapi({
+      description:
+        "What we know about the publisher's brand.json. `present` = a brand record with manifest data exists. `unknown` = no record yet. `checking` = an auto-crawl was kicked off.",
+    }),
+    name: z.string().optional(),
+  }),
 });
 
 export const PublisherLookupResultSchema = z
@@ -637,8 +665,32 @@ export const PublisherLookupResultSchema = z
     domain: z.string().openapi({ example: "voxmedia.com" }),
     member: MemberRefSchema.nullable(),
     adagents_valid: z.boolean().nullable(),
+    discovery_method: z.enum(["direct", "authoritative_location", "ads_txt_managerdomain"]).nullable().optional().openapi({
+      description:
+        "How the publisher's adagents.json was discovered on the most recent successful crawl. `direct`: publisher's own /.well-known/ served the document. `authoritative_location`: publisher's stub redirected to a canonical URL. `ads_txt_managerdomain`: manifest was discovered via ads.txt MANAGERDOMAIN delegation — see `manager_domain` for which manager served it. Null until first crawl after migration 470.",
+    }),
+    manager_domain: z.string().nullable().optional().openapi({
+      description:
+        "The manager domain whose adagents.json was used to authorize this publisher's agents. Non-null only when `discovery_method` is `ads_txt_managerdomain`. Matches the MANAGERDOMAIN value from the publisher's ads.txt.",
+    }),
+    hosting: PublisherHostingSchema,
+    files: PublisherFilesSchema.optional().openapi({
+      description:
+        "Plain-English summary of what AAO has found at the publisher's origin. The publisher page leads with this — `you have a valid adagents.json` is the primary signal, not `mode === self`. Optional in the schema for backwards compatibility; the handler always populates it.",
+    }),
     properties: z.array(PublisherPropertySchema),
     authorized_agents: z.array(PublisherAuthorizedAgentSchema),
+    rollup_truncated: z.object({
+      cap: z.number().int().positive().openapi({ description: "Maximum number of agents for which the rollup is computed in a single response." }),
+      total_agents: z.number().int().nonnegative().openapi({ description: "Total authorized-agent count for this publisher (the full population the cap was applied to)." }),
+    }).optional().openapi({
+      description:
+        "Set when the publisher has more authorized agents than the per-agent rollup cap. Above the cap, agents beyond `cap` are returned without `properties_authorized` / `properties_total` / `publisher_wide`; call `/api/registry/publisher/authorization?domain=X&agent=Y` for the per-agent count. Lets a caller decide whether to fan out individual calls or stop reading.",
+    }),
+    auto_crawl_triggered: z.boolean().optional().openapi({
+      description:
+        "Set to `true` when this request triggered a background crawl of the publisher's origin (we hadn't crawled before). The client should refetch in ~3-5s to pick up fresh data. Debounced per-domain so a tight refresh loop won't keep firing crawls.",
+    }),
   })
   .openapi("PublisherLookupResult");
 

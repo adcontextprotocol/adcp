@@ -1,0 +1,304 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.4/compliance/comply-test-controller-request.json",
+  "title": "Comply Test Controller Request",
+  "description": "Request payload for the comply_test_controller tool. Triggers seller-side state transitions for compliance testing. Sandbox only — sellers MUST NOT expose this tool in production. Naturally idempotent: the `scenario` enum is either a lookup (`list_scenarios`) or a state-forcing operation whose target state is carried in the payload (`force_*_status`, `simulate_*`), so replays converge to the same observable state without needing an idempotency_key. The compliance harness drives this tool deterministically and does not rely on the seller's at-most-once replay cache.",
+  "x-mutates-state": true,
+  "type": "object",
+  "properties": {
+    "scenario": {
+      "type": "string",
+      "enum": [
+        "list_scenarios",
+        "force_creative_status",
+        "force_account_status",
+        "force_media_buy_status",
+        "force_create_media_buy_arm",
+        "force_task_completion",
+        "force_session_status",
+        "simulate_delivery",
+        "simulate_budget_spend",
+        "seed_product",
+        "seed_pricing_option",
+        "seed_creative",
+        "seed_plan",
+        "seed_media_buy",
+        "seed_creative_format"
+      ],
+      "description": "Test scenario to execute. 'list_scenarios' discovers supported scenarios. 'force_*' and 'simulate_*' trigger state transitions. 'seed_*' scenarios pre-populate fixtures (product, pricing option, creative, plan, media buy, creative format) so storyboards can reference them by stable ID without the implementer having to guess which IDs the conformance suite expects."
+    },
+    "params": {
+      "type": "object",
+      "description": "Scenario-specific parameters. Required for all scenarios except list_scenarios.",
+      "properties": {
+        "creative_id": { "type": "string", "description": "Creative to transition (force_creative_status) or seed (seed_creative)." },
+        "account_id": { "type": "string", "description": "Account to transition. Used by force_account_status and simulate_budget_spend." },
+        "media_buy_id": { "type": "string", "description": "Media buy to transition (force_media_buy_status, simulate_delivery, simulate_budget_spend) or seed (seed_media_buy)." },
+        "session_id": { "type": "string", "description": "Session to transition. Used by force_session_status." },
+        "product_id": { "type": "string", "description": "Product to seed. Used by seed_product and seed_pricing_option." },
+        "pricing_option_id": { "type": "string", "description": "Pricing option to seed, scoped to a product. Used by seed_pricing_option." },
+        "plan_id": { "type": "string", "description": "Plan to seed. Used by seed_plan." },
+        "fixture": {
+          "type": "object",
+          "description": "Arbitrary fixture payload carried by seed_* scenarios. Shape matches the domain object the seed scenario creates (product, creative, plan, media buy, pricing option). Seller MAY reject malformed fixtures with INVALID_PARAMS. Kept permissive so storyboard authors can declare the minimum shape each test needs without the spec locking down every field.",
+          "additionalProperties": true
+        },
+        "status": {
+          "type": "string",
+          "description": "Target status for the resource. Type depends on scenario: creative-status for force_creative_status, account-status for force_account_status, media-buy-status for force_media_buy_status. For force_session_status, must be 'complete' or 'terminated'."
+        },
+        "rejection_reason": { "type": "string", "description": "Reason for rejection. Used by force_creative_status and force_media_buy_status when status = rejected." },
+        "termination_reason": { "type": "string", "description": "Reason for termination (e.g., session_timeout, host_terminated, policy_violation). Used by force_session_status when status = terminated." },
+        "impressions": { "type": "integer", "minimum": 0, "description": "Impressions to simulate. Used by simulate_delivery." },
+        "clicks": { "type": "integer", "minimum": 0, "description": "Clicks to simulate. Used by simulate_delivery." },
+        "conversions": { "type": "integer", "minimum": 0, "description": "Conversions to simulate. Used by simulate_delivery." },
+        "reported_spend": {
+          "type": "object",
+          "description": "Spend as reported in delivery data. Does not affect budget. Used by simulate_delivery.",
+          "properties": {
+            "amount": { "type": "number", "minimum": 0 },
+            "currency": { "type": "string", "pattern": "^[A-Z]{3}$" }
+          },
+          "required": ["amount", "currency"]
+        },
+        "spend_percentage": { "type": "number", "minimum": 0, "maximum": 100, "description": "Spend to this percentage of budget (0–100). Used by simulate_budget_spend." },
+        "arm": {
+          "type": "string",
+          "enum": ["submitted", "input-required"],
+          "description": "Response arm for the next create_media_buy call. Used by force_create_media_buy_arm. v1 supports the two arms a buyer-supplied directive can shape without fabricating server state: 'submitted' (async task envelope) and 'input-required' (errors-branch). 'completed' is covered by seed_media_buy + a normal flow; 'working' is an out-of-band progress signal, not an initial response arm."
+        },
+        "task_id": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "Deterministic task handle the seller MUST emit verbatim on the next create_media_buy response when arm is 'submitted'. The seller MUST accept this exact value on subsequent tasks/get calls within the same authenticated sandbox account. Sandbox task_ids are caller-opaque strings — the seller's production task-id format rules do not apply.",
+          "x-entity": "task"
+        },
+        "message": {
+          "type": "string",
+          "maxLength": 2000,
+          "description": "Optional human-readable explanation surfaced on the next create_media_buy response. Used by force_create_media_buy_arm for the 'submitted' and 'working' arms. Plain text only."
+        },
+        "format_id": {
+          "type": "string",
+          "description": "Creative format ID to seed. Used by seed_creative_format. The seller MUST expose this format ID in list_creative_formats responses for the duration of the compliance session."
+        },
+        "result": {
+          "$ref": "/schemas/3.0.4/core/async-response-data.json",
+          "description": "Completion payload to record against the task. Used by force_task_completion. Validates against the async-response-data union — for create_media_buy this is a CreateMediaBuyResponse with media_buy_id and packages. The seller MUST deliver this verbatim to the buyer's push_notification_config.url (the canonical 3.0 path for completion payload delivery), with all caller-supplied fields preserved (sellers MAY augment with seller-controlled fields like created_at or dsp_* IDs but MUST NOT overwrite caller-supplied values). A typed projection on the polling response is tracked for 3.1 (#3123). Sellers MUST emit INVALID_PARAMS if the payload does not validate against the response branch for the task's original method, and MAY reject payloads exceeding 256 KB with INVALID_PARAMS."
+        }
+      },
+      "additionalProperties": true
+    },
+    "context": { "$ref": "/schemas/3.0.4/core/context.json" },
+    "ext": { "$ref": "/schemas/3.0.4/core/ext.json" }
+  },
+  "required": ["scenario"],
+  "allOf": [
+    {
+      "if": { "properties": { "scenario": { "const": "force_creative_status" } } },
+      "then": { "required": ["params"], "properties": { "params": { "required": ["creative_id", "status"], "properties": { "status": { "$ref": "/schemas/3.0.4/enums/creative-status.json" } } } } }
+    },
+    {
+      "if": { "properties": { "scenario": { "const": "force_account_status" } } },
+      "then": { "required": ["params"], "properties": { "params": { "required": ["account_id", "status"], "properties": { "status": { "$ref": "/schemas/3.0.4/enums/account-status.json" } } } } }
+    },
+    {
+      "if": { "properties": { "scenario": { "const": "force_media_buy_status" } } },
+      "then": { "required": ["params"], "properties": { "params": { "required": ["media_buy_id", "status"], "properties": { "status": { "$ref": "/schemas/3.0.4/enums/media-buy-status.json" } } } } }
+    },
+    {
+      "if": { "properties": { "scenario": { "const": "force_create_media_buy_arm" } } },
+      "then": {
+        "required": ["params"],
+        "properties": {
+          "params": {
+            "required": ["arm"],
+            "allOf": [
+              {
+                "if": { "properties": { "arm": { "const": "submitted" } } },
+                "then": { "required": ["task_id"] }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "scenario": { "const": "force_task_completion" } } },
+      "then": {
+        "required": ["params"],
+        "properties": {
+          "params": {
+            "required": ["task_id", "result"]
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "scenario": { "const": "force_session_status" } } },
+      "then": { "required": ["params"], "properties": { "params": { "required": ["session_id", "status"], "properties": { "status": { "type": "string", "enum": ["complete", "terminated"] } } } } }
+    },
+    {
+      "if": { "properties": { "scenario": { "const": "simulate_delivery" } } },
+      "then": { "required": ["params"], "properties": { "params": { "required": ["media_buy_id"] } } }
+    },
+    {
+      "if": { "properties": { "scenario": { "const": "simulate_budget_spend" } } },
+      "then": {
+        "required": ["params"],
+        "properties": {
+          "params": {
+            "required": ["spend_percentage"],
+            "anyOf": [
+              { "required": ["account_id"] },
+              { "required": ["media_buy_id"] }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "scenario": { "const": "seed_product" } } },
+      "then": { "required": ["params"], "properties": { "params": { "required": ["product_id"] } } }
+    },
+    {
+      "if": { "properties": { "scenario": { "const": "seed_pricing_option" } } },
+      "then": { "required": ["params"], "properties": { "params": { "required": ["product_id", "pricing_option_id"] } } }
+    },
+    {
+      "if": { "properties": { "scenario": { "const": "seed_creative" } } },
+      "then": { "required": ["params"], "properties": { "params": { "required": ["creative_id"] } } }
+    },
+    {
+      "if": { "properties": { "scenario": { "const": "seed_plan" } } },
+      "then": { "required": ["params"], "properties": { "params": { "required": ["plan_id"] } } }
+    },
+    {
+      "if": { "properties": { "scenario": { "const": "seed_media_buy" } } },
+      "then": { "required": ["params"], "properties": { "params": { "required": ["media_buy_id"] } } }
+    },
+    {
+      "if": { "properties": { "scenario": { "const": "seed_creative_format" } } },
+      "then": { "required": ["params"], "properties": { "params": { "required": ["format_id"] } } }
+    }
+  ],
+  "additionalProperties": true,
+  "examples": [
+    {
+      "description": "List supported scenarios",
+      "data": {
+        "scenario": "list_scenarios"
+      }
+    },
+    {
+      "description": "Force a creative to rejected status",
+      "data": {
+        "scenario": "force_creative_status",
+        "params": {
+          "creative_id": "cr-123",
+          "status": "rejected",
+          "rejection_reason": "Brand safety policy violation"
+        }
+      }
+    },
+    {
+      "description": "Force account suspension",
+      "data": {
+        "scenario": "force_account_status",
+        "params": {
+          "account_id": "acct-456",
+          "status": "suspended"
+        }
+      }
+    },
+    {
+      "description": "Force the next create_media_buy call into the submitted arm with a deterministic task_id",
+      "data": {
+        "scenario": "force_create_media_buy_arm",
+        "params": {
+          "arm": "submitted",
+          "task_id": "task_async_signed_io_q2",
+          "message": "Awaiting IO signature from sales team; typical turnaround 2–4 hours"
+        }
+      }
+    },
+    {
+      "description": "Force a previously-submitted create_media_buy task to completion with a result payload",
+      "data": {
+        "scenario": "force_task_completion",
+        "params": {
+          "task_id": "task_async_signed_io_q2",
+          "result": {
+            "media_buy_id": "mb_async_signed_io_q2",
+            "status": "active",
+            "packages": [
+              { "package_id": "pkg-0", "product_id": "async_signed_io_q2", "budget": 30000 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "description": "Simulate session timeout",
+      "data": {
+        "scenario": "force_session_status",
+        "params": {
+          "session_id": "sess-abc",
+          "status": "terminated",
+          "termination_reason": "session_timeout"
+        }
+      }
+    },
+    {
+      "description": "Simulate delivery data",
+      "data": {
+        "scenario": "simulate_delivery",
+        "params": {
+          "media_buy_id": "mb-789",
+          "impressions": 10000,
+          "clicks": 150,
+          "reported_spend": { "amount": 150.00, "currency": "USD" }
+        }
+      }
+    },
+    {
+      "description": "Simulate budget consumption to 95%",
+      "data": {
+        "scenario": "simulate_budget_spend",
+        "params": {
+          "media_buy_id": "mb-789",
+          "spend_percentage": 95
+        }
+      }
+    },
+    {
+      "description": "Seed a product fixture so subsequent storyboard steps can reference it by ID",
+      "data": {
+        "scenario": "seed_product",
+        "params": {
+          "product_id": "test-product",
+          "fixture": {
+            "delivery_type": "non_guaranteed",
+            "channels": ["display"],
+            "pricing_options": [
+              { "pricing_option_id": "test-pricing", "pricing_model": "cpm", "currency": "USD", "floor_price": 1.0 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "description": "Seed an approved creative fixture",
+      "data": {
+        "scenario": "seed_creative",
+        "params": {
+          "creative_id": "campaign_hero_video",
+          "fixture": {
+            "status": "approved",
+            "format_id": { "id": "video_30s" }
+          }
+        }
+      }
+    }
+  ]
+}

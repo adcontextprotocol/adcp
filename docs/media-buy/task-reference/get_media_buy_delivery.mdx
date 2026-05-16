@@ -50,7 +50,7 @@ Returns delivery report with aggregated totals and per-media-buy breakdowns:
 | `reporting_period` | Date range for report (start/end timestamps) |
 | `currency` | ISO 4217 currency code (USD, EUR, GBP, etc.) |
 | `attribution_window` | Attribution methodology: `post_click` and `post_view` (duration objects), and `model` (last_touch, first_touch, linear, time_decay, data_driven) |
-| `aggregated_totals` | Combined metrics across all media buys (impressions, spend, clicks, views, completed_views, conversions, conversion_value, roas, new_to_brand_rate, cost_per_acquisition, completion_rate, reach, reach_unit, frequency, media_buy_count) |
+| `aggregated_totals` | Combined metrics across all media buys (impressions, spend, clicks, views, completed_views, conversions, conversion_value, roas, new_to_brand_rate, cost_per_acquisition, completion_rate, reach, reach_unit, frequency, media_buy_count, metric_aggregates) |
 | `media_buy_deliveries` | Array of delivery data per media buy |
 
 ### Media Buy Delivery Object
@@ -73,6 +73,64 @@ Sellers **MAY** declare a finalization window in their capabilities (e.g., `deli
 
 When a buyer's independent measurement disagrees with these numbers, reconciliation happens out-of-band through the commercial relationship between counterparties, backed by the audit trail on both sides. AdCP 3.0 does not specify a structured dispute task.
 
+### Aggregated metric partitions (`metric_aggregates`)
+
+Cross-buy delivery values that vary by **qualifier** (measurement standard, transparency disclosure) are reported as a partitioned array on `aggregated_totals.metric_aggregates` rather than as flat scalars. This solves the apples-to-oranges sum problem at the aggregate layer: MRC and GroupM viewability define materially different thresholds and must never be combined into a single rate.
+
+Each row carries the same atomic unit as `package.committed_metrics` and `by_package[].missing_metrics`:
+
+```
+committed_metrics row : { scope, metric_id, qualifier, committed_at }
+missing_metrics row   : { scope, metric_id, qualifier }
+metric_aggregates row : { scope, metric_id, qualifier, value, ...components }
+```
+
+**Reconciliation is a row-level join on `(scope, metric_id, qualifier)`.** For each `committed_metrics` row, find the matching `metric_aggregates` row; absent matches surface as `missing_metrics`. No per-metric reconciliation logic, no traversal asymmetry between contract and delivery.
+
+**Granularity rule.** One row per `(metric_id, full-qualifier-set)`, reported at the finest available granularity. Buyers re-aggregate up if they want a coarser view. This eliminates rollup ambiguity and prevents accidental double-counting.
+
+**Unqualified metrics stay top-level.** `impressions`, `spend`, `media_buy_count`, and other metrics with no qualifier remain at the top of `aggregated_totals`. `metric_aggregates` is only used for metrics with non-empty qualifier sets.
+
+**Mutual exclusion (MUST).** For any `metric_id` appearing in `metric_aggregates`, the corresponding top-level scalar in `aggregated_totals` MUST be omitted — not zeroed. Sellers MUST NOT emit both. Avoids duplicate sources of truth.
+
+**Qualifier vocabulary** is closed today on both `committed_metrics` and `metric_aggregates` (`additionalProperties: false`). Five keys exist: `viewability_standard` (MRC vs GroupM viewability), `completion_source` (seller- vs vendor-attested completion), `attribution_methodology` (deterministic_purchase / probabilistic / panel_based / modeled — for outcome metrics), `attribution_window` (structured duration — for outcome metrics), and `lift_dimension` (awareness / consideration / favorability / purchase_intent / ad_recall — for `brand_lift`). The delivery vocabulary is **expected to diverge from contract** in future minors as transparency disclosures buyers don't commit to ship delivery-only (e.g., `tracker_firing` pending #3832). New qualifier keys ship explicitly in subsequent minors on either surface. **Heterogeneous value types**: qualifier values are mostly string enums but `attribution_window` is an object-valued duration; consumers MUST dispatch on key name to know value shape, and structured-value qualifiers join on canonical (key-sorted) deep equality.
+
+**Qualifier-set drift across reports.** When a campaign gains a new qualifier mid-flight (e.g., adds `tracker_firing` partitioning in week 2 after only client-side firing in week 1), prior periods' rows remain valid at their original granularity. Buyers SHOULD NOT retroactively repartition; report supersession via `supersedes_window` is the documented path for window-level revisions.
+
+**Per-buy `totals` shape stays flat.** Each individual buy is single-qualifier by definition; only the cross-buy aggregate spans qualifiers and needs the partitioned shape. Per-buy `totals.viewability` continues to be a flat object with its own `standard` field.
+
+Example:
+
+```json
+{
+  "aggregated_totals": {
+    "impressions": 1000000,
+    "spend": 5000.00,
+    "media_buy_count": 3,
+    "metric_aggregates": [
+      {
+        "scope": "standard",
+        "metric_id": "viewable_rate",
+        "qualifier": { "viewability_standard": "mrc" },
+        "value": 0.7286,
+        "measurable_impressions": 700000,
+        "viewable_impressions": 510000
+      },
+      {
+        "scope": "standard",
+        "metric_id": "viewable_rate",
+        "qualifier": { "viewability_standard": "groupm" },
+        "value": 0.55,
+        "measurable_impressions": 180000,
+        "viewable_impressions": 99000
+      }
+    ]
+  }
+}
+```
+
+**Value typing dispatch.** Buyer agents MUST inspect `metric_id` before doing arithmetic. Rate metrics (`viewable_rate`, `completion_rate`) are 0.0–1.0; cost-per metrics are currency; count metrics are non-negative numbers; ROAS is a ratio. Same dispatch convention as `committed_metrics` — `metric_id` is the type tag.
+
 ## Common Scenarios
 
 ### Single Media Buy
@@ -80,8 +138,8 @@ When a buyer's independent measurement disagrees with these numbers, reconciliat
 <CodeGroup>
 
 ```javascript JavaScript test=false
-import { testAgent } from '@adcp/client/testing';
-import { GetMediaBuyDeliveryResponseSchema } from '@adcp/client';
+import { testAgent } from '@adcp/sdk/testing';
+import { GetMediaBuyDeliveryResponseSchema } from '@adcp/sdk';
 
 // Get single media buy delivery report
 const result = await testAgent.getMediaBuyDelivery({
@@ -142,8 +200,8 @@ asyncio.run(main())
 <CodeGroup>
 
 ```javascript JavaScript test=false
-import { testAgent } from '@adcp/client/testing';
-import { GetMediaBuyDeliveryResponseSchema } from '@adcp/client';
+import { testAgent } from '@adcp/sdk/testing';
+import { GetMediaBuyDeliveryResponseSchema } from '@adcp/sdk';
 
 // Get all active media buys from context
 const result = await testAgent.getMediaBuyDelivery({
@@ -208,8 +266,8 @@ asyncio.run(main())
 <CodeGroup>
 
 ```javascript JavaScript test=false
-import { testAgent } from '@adcp/client/testing';
-import { GetMediaBuyDeliveryResponseSchema } from '@adcp/client';
+import { testAgent } from '@adcp/sdk/testing';
+import { GetMediaBuyDeliveryResponseSchema } from '@adcp/sdk';
 
 // Get month-to-date performance
 const now = new Date();
@@ -290,8 +348,8 @@ asyncio.run(main())
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from '@adcp/client/testing';
-import { GetMediaBuyDeliveryResponseSchema } from '@adcp/client';
+import { testAgent } from '@adcp/sdk/testing';
+import { GetMediaBuyDeliveryResponseSchema } from '@adcp/sdk';
 
 // Get both active and paused campaigns
 const result = await testAgent.getMediaBuyDelivery({
@@ -372,8 +430,8 @@ asyncio.run(main())
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from '@adcp/client/testing';
-import { GetMediaBuyDeliveryResponseSchema } from '@adcp/client';
+import { testAgent } from '@adcp/sdk/testing';
+import { GetMediaBuyDeliveryResponseSchema } from '@adcp/sdk';
 
 // Query by buyer reference instead of media buy ID
 const result = await testAgent.getMediaBuyDelivery({
@@ -439,8 +497,8 @@ asyncio.run(main())
 <CodeGroup>
 
 ```javascript JavaScript test=false
-import { testAgent } from '@adcp/client/testing';
-import { GetMediaBuyDeliveryResponseSchema } from '@adcp/client';
+import { testAgent } from '@adcp/sdk/testing';
+import { GetMediaBuyDeliveryResponseSchema } from '@adcp/sdk';
 
 // Get delivery for a specific advertiser account
 const result = await testAgent.getMediaBuyDelivery({
@@ -558,7 +616,8 @@ asyncio.run(main())
 
 | Error Code | Description | Resolution |
 |------------|-------------|------------|
-| `AUTH_REQUIRED` | Authentication needed | Provide credentials |
+| `AUTH_MISSING` | No credentials presented | Provide credentials via auth header |
+| `AUTH_INVALID` | Credentials rejected (expired / revoked) | Human credential rotation required; do not auto-retry |
 | `MEDIA_BUY_NOT_FOUND` | Media buy doesn't exist | Verify media_buy_id |
 | `INVALID_DATE_RANGE` | Invalid start/end dates | Use YYYY-MM-DD format, ensure start < end |
 | `DATE_RANGE_NOT_SUPPORTED` | Product only supports lifetime reporting | Omit `start_date` and `end_date`. Check `reporting_capabilities.date_range_support` on the product. |
@@ -586,7 +645,7 @@ The `by_package` array provides per-package delivery details with these key fiel
 - **`pricing_model`**: How the package is billed (cpm, cpcv, cpp, etc.)
 
 **Accountability**:
-- **`missing_metrics`**: Metrics the binding reporting contract advertised but that are not populated in this report. Reconciled against `package.committed_metrics` (the frozen snapshot stamped at `create_media_buy`) when present; falls back to the product's current `reporting_capabilities.available_metrics` when absent. Empty array (or absent) indicates clean delivery against the contract; non-empty signals an accountability breach. Sellers MUST exclude metrics that are not yet measurable for the current `measurement_window` (e.g., post-IVT counts during the live window) — those will appear (or not) when a wider window supersedes this report via `supersedes_window`.
+- **`missing_metrics`**: Metrics the binding reporting contract advertised but that are not populated in this report. Each entry uses an explicit `scope` discriminator: `{ "scope": "standard", "metric_id": "completed_views" }` for entries from the closed `available-metric.json` enum, `{ "scope": "vendor", "vendor": { "domain": "..." }, "metric_id": "attention_units" }` for vendor-defined metrics. Standard entries MAY carry a `qualifier` mirroring the `committed_metrics` qualifier (e.g., `{ "scope": "standard", "metric_id": "viewable_rate", "qualifier": { "viewability_standard": "mrc" } }` flags a missing MRC commitment even when GroupM viewability was reported, or `{ "scope": "standard", "metric_id": "completion_rate", "qualifier": { "completion_source": "vendor_attested" } }` flags a missing vendor-attested commitment even when seller-attested completion was reported — the paths are not interchangeable). Reconciled against `package.committed_metrics` (filtered to entries where `committed_at < reporting_period.end`) when present; falls back to the product's current `reporting_capabilities.available_metrics` and `vendor_metrics` when absent. Empty array (or absent) indicates clean delivery against the contract; non-empty signals an accountability breach. Sellers MUST exclude metrics that are not yet measurable for the current `measurement_window` (e.g., post-IVT counts during the live window) — those will appear (or not) when a wider window supersedes this report via `supersedes_window`.
 - **`vendor_metric_values`**: Reported values for vendor-defined metrics that the product's `reporting_capabilities.vendor_metrics` declared (proprietary attention, emissions, panel demographics, brand-lift surveys, etc.). Each entry carries `{ vendor, metric_id, value, unit?, measurable_impressions?, breakdown? }`. The `measurable_impressions` field is the coverage denominator — vendor measurement is rarely 100% of delivery, since vendors only score impressions where their SDK fires or their panel matches. Buyers compute coverage as `measurable_impressions / impressions`. When `measurable_impressions` is absent, coverage is unspecified — buyers MUST NOT compute a coverage rate or assume full coverage. When a declared vendor metric is omitted entirely from this array, infer no measurement happened (no integration).
 
 **Key Distinction**: `paused` reflects buyer control, while `delivery_status` reflects system reality. A package can be not paused but have `delivery_status: "budget_exhausted"`.

@@ -12,7 +12,7 @@ describe('TMP coverage in docs and training', () => {
     const urls = results.map((result) => result.sourceUrl);
 
     expect(urls).toContain('https://docs.adcontextprotocol.org/docs/trusted-match');
-    expect(urls).toContain('https://docs.adcontextprotocol.org/docs/building/understanding/adcp-vs-openrtb');
+    expect(urls).toContain('https://docs.adcontextprotocol.org/docs/building/concepts/adcp-vs-openrtb');
   });
 
   it('includes TMP in all relevant training modules', () => {

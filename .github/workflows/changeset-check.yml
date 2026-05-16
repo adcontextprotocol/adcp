@@ -2,14 +2,23 @@ name: Changeset Check
 
 on:
   pull_request:
-    branches: [main, '2.6.x']
+    branches: [main, '3.0.x', '2.6.x']
 
 jobs:
   check:
     name: Check for changeset
     runs-on: ubuntu-latest
-    # Skip changeset check on Version Packages PR (created by changesets/action)
-    if: github.head_ref != 'changeset-release/main'
+    # Skip changeset check on:
+    # - Version Packages PRs (`changeset-release/<branch>`) — changesets/action consumes
+    #   .changeset files into a CHANGELOG bump, so by the time CI runs there are no
+    #   pending changesets to find.
+    # - Forward-merge PRs (`forward-merge/*`) — they merge a release branch (3.0.x)
+    #   whose changesets were already consumed by its own Version Packages cut.
+    #   From main's perspective, the merge brings package-changing commits with no
+    #   .changeset/*.md files to explain them; the changes are explained by the
+    #   3.0.x branch's CHANGELOG, not by a new changeset on main. Without this skip
+    #   every forward-merge PR fails this check (see #4306, #4310).
+    if: ${{ !startsWith(github.head_ref, 'changeset-release/') && !startsWith(github.head_ref, 'forward-merge/') }}
     steps:
       - uses: actions/checkout@v6
         with:

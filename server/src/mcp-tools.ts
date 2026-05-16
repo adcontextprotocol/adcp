@@ -827,8 +827,10 @@ export class MCPToolHandler {
         const propertyType = args?.property_type as string;
         const propertyValue = args?.property_value as string;
 
-        // Find agents that can sell this property
-        const allAgents = await this.agentService.listAgents("buying");
+        // Find agents that can sell this property — sales-typed agents are
+        // the ones with publisher authorizations. Pre-#3540 this filtered
+        // on 'buying' (inverted-but-aligned bug); see #3774.
+        const allAgents = await this.agentService.listAgents("sales");
         const matchingAgents = [];
 
         for (const agent of allAgents) {
@@ -863,12 +865,7 @@ export class MCPToolHandler {
 
       // Publisher tools
       case "list_publishers": {
-        // Use federated index to include both registered and discovered publishers
         const publishers = await this.federatedIndex.listAllPublishers();
-        const bySource = {
-          registered: publishers.filter(p => p.source === 'registered').length,
-          discovered: publishers.filter(p => p.source === 'discovered').length,
-        };
 
         return {
           content: [
@@ -877,7 +874,7 @@ export class MCPToolHandler {
               resource: {
                 uri: "publishers://all",
                 mimeType: "application/json",
-                text: JSON.stringify({ publishers, count: publishers.length, sources: bySource }, null, 2),
+                text: JSON.stringify({ publishers, count: publishers.length }, null, 2),
               },
             },
           ],
@@ -2053,7 +2050,11 @@ export class MCPToolHandler {
 
     if (type === "all") {
       agents = await this.agentService.listAgents();
-    } else if (["creative", "signals", "buying"].includes(type)) {
+    } else if (["sales", "creative", "signals", "buying"].includes(type)) {
+      // 'sales' added per #3774 — pre-#3540 the only sell-side type was
+      // (incorrectly) 'buying', so this list never included 'sales'.
+      // Now that #3540 corrected the polarity, the resource handler
+      // needs to accept 'sales' or callers get "Unknown resource type".
       agents = await this.agentService.listAgents(type as AgentType);
     } else {
       throw new Error("Unknown resource type");

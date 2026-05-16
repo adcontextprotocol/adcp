@@ -1,0 +1,279 @@
+---
+title: "A2B: Testing your first agent call"
+sidebarTitle: "A2B: Testing your first agent call"
+description: "Module A2B: Hands-on lab — initialize an MCP session, call get_products, place a media buy, attach creatives, and handle real response shapes with copy-paste curl examples."
+"og:title": "AdCP — A2B: Testing your first agent call"
+---
+
+# A2B: Testing your first agent call
+
+<Info>
+**Free module** — No account required. ~20 minutes with Addie. Prerequisite: [A2](/docs/learning/foundations/a2-protocol-architecture).
+</Info>
+
+## Learning objectives
+
+- Initialize a stateful MCP session against the AdCP test agent
+- Call `get_products` with a natural-language brief and read the product response
+- Place a media buy with `create_media_buy` and handle all three response shapes
+- Attach creatives with `sync_creatives` and check buy status via `get_media_buys`
+- Diagnose and resolve auth failures, schema mismatches, and async polling delays
+
+## Reading list
+
+<CardGroup cols={2}>
+  <Card title="AdCP quickstart" icon="rocket" href="/docs/quickstart">
+    End-to-end buyer workflow from setup to delivery.
+  </Card>
+  <Card title="Media buy lifecycle" icon="circle-nodes" href="/docs/media-buy/media-buys">
+    Media buy status states — pending_creatives, pending_start, active, paused, completed — and what each means for the buyer.
+  </Card>
+  <Card title="Create media buy task" icon="cart-shopping" href="/docs/media-buy/task-reference/create_media_buy">
+    Full field reference, required fields, and all three response shapes.
+  </Card>
+  <Card title="Sync creatives task" icon="paintbrush" href="/docs/creative/task-reference/sync_creatives">
+    How to attach assets to a buy, dry-run validation, and assignment patterns.
+  </Card>
+  <Card title="Error handling" icon="triangle-exclamation" href="/docs/building/implementation/error-handling">
+    Error codes, retry behavior, and how to read the `errors[]` array.
+  </Card>
+  <Card title="MCP integration guide" icon="plug" href="/docs/building/integration/mcp-guide">
+    Session initialization, the `mcp-session-id` header, and tool call format.
+  </Card>
+</CardGroup>
+
+## Test agent
+
+All curl examples below target the AdCP training agent:
+
+```
+https://test-agent.adcontextprotocol.org/mcp
+```
+
+You'll need an API key from your [AgenticAdvertising.org dashboard](https://agenticadvertising.org/dashboard). Replace `<your-api-key>` in every example.
+
+## What you'll do with Addie
+
+Walk through five calls in sequence. Addie demonstrates each call, shows the raw response, then guides you through reproducing it yourself.
+
+1. **Initialize** — open a stateful MCP session; save the `mcp-session-id` header
+2. **Discover** — `get_products` with a brief; read proposals
+3. **Buy** — `create_media_buy`; handle all three response shapes
+4. **Attach creatives** — `sync_creatives`; validate with dry-run first
+5. **Poll status** — `get_media_buys` until `valid_actions` shows the buy is serving
+
+## Step-by-step curl reference
+
+Use these as a quick reference while working through the module with Addie, or to reproduce any step independently.
+
+### Step 1 — Initialize a session
+
+Every sequence starts with an `initialize` call. The response sets the protocol version and returns an `mcp-session-id` header — save it.
+
+```bash
+curl -X POST https://test-agent.adcontextprotocol.org/mcp \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <your-api-key>" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "initialize",
+    "params": {
+      "protocolVersion": "2024-11-05",
+      "capabilities": {},
+      "clientInfo": { "name": "my-buyer-agent", "version": "1.0" }
+    },
+    "id": 1
+  }'
+```
+
+The response includes an `mcp-session-id` in the response headers. Every subsequent call must include it:
+
+```
+mcp-session-id: <value-from-response-header>
+```
+
+### Step 2 — Discover products
+
+Call `get_products` with `buying_mode: "brief"` and a plain-English description of your campaign goals. The agent returns curated `products[]` and ready-to-execute `proposals[]`.
+
+```bash
+curl -X POST https://test-agent.adcontextprotocol.org/mcp \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <your-api-key>" \
+  -H "mcp-session-id: <session-id>" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "tools/call",
+    "params": {
+      "name": "get_products",
+      "arguments": {
+        "adcp_major_version": 3,
+        "buying_mode": "brief",
+        "brief": "CTV campaign, adults 25-54 in the US, $50K budget, brand safety required"
+      }
+    },
+    "id": 2
+  }'
+```
+
+The result is in `content[0].text` as JSON. Look for `proposals[0].proposal_id` — you'll pass it to `create_media_buy`.
+
+### Step 3 — Place a media buy
+
+Pass the `proposal_id` from Step 2 and a `total_budget`. The `idempotency_key` lets you safely retry if the network drops — use a fresh UUID v4 per request.
+
+```bash
+curl -X POST https://test-agent.adcontextprotocol.org/mcp \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <your-api-key>" \
+  -H "mcp-session-id: <session-id>" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "tools/call",
+    "params": {
+      "name": "create_media_buy",
+      "arguments": {
+        "adcp_major_version": 3,
+        "idempotency_key": "mb-lab-20260428-001",
+        "account": {
+          "brand": { "domain": "nova-motors.com" },
+          "operator": "pinnacle-media.com"
+        },
+        "proposal_id": "<proposal-id-from-step-2>",
+        "total_budget": { "amount": 50000, "currency": "USD" }
+      }
+    },
+    "id": 3
+  }'
+```
+
+**Three response shapes — you'll see one of these:**
+
+| Shape | What it means | Next step |
+|---|---|---|
+| `media_buy_id` + `status: "pending_creatives"` | Buy confirmed; attach creatives | Go to Step 4 |
+| `media_buy_id` + `status: "pending_start"` or `"active"` | Buy confirmed and ready | Creatives already attached or not required |
+| `status: "submitted"` + `task_id` | Buy queued for async processing | Poll `tasks/get` with `task_id` (see [Async polling](#async-polling) below) |
+| `errors[]` present, no `media_buy_id` | Rejected — read `errors[0].code` | Fix the request and retry with a new `idempotency_key` |
+
+### Step 4 — Attach creatives
+
+A buy in `pending_creatives` state can't serve until you call `sync_creatives`. Use `dry_run: true` first to validate your creative shapes without writing anything.
+
+```bash
+curl -X POST https://test-agent.adcontextprotocol.org/mcp \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <your-api-key>" \
+  -H "mcp-session-id: <session-id>" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "tools/call",
+    "params": {
+      "name": "sync_creatives",
+      "arguments": {
+        "adcp_major_version": 3,
+        "idempotency_key": "sc-lab-20260428-001",
+        "account": {
+          "brand": { "domain": "nova-motors.com" },
+          "operator": "pinnacle-media.com"
+        },
+        "creatives": [
+          {
+            "creative_id": "nova-ctv-30s-v1",
+            "format_id": {
+              "agent_url": "https://test-agent.adcontextprotocol.org",
+              "id": "ctv_1920x1080_30s"
+            },
+            "assets": [
+              {
+                "asset_id": "video_url",
+                "url": "https://cdn.example.com/nova-ctv-30s.mp4"
+              }
+            ]
+          }
+        ],
+        "dry_run": true
+      }
+    },
+    "id": 4
+  }'
+```
+
+Remove `"dry_run": true` to apply. The response includes `creatives[].status` — `approved`, `pending_review`, or `rejected`.
+
+### Step 5 — Check status
+
+Poll `get_media_buys` with the `media_buy_id` from Step 3 to see lifecycle state and `valid_actions`.
+
+```bash
+curl -X POST https://test-agent.adcontextprotocol.org/mcp \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <your-api-key>" \
+  -H "mcp-session-id: <session-id>" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "tools/call",
+    "params": {
+      "name": "get_media_buys",
+      "arguments": {
+        "adcp_major_version": 3,
+        "media_buy_ids": ["<media-buy-id-from-step-3>"]
+      }
+    },
+    "id": 5
+  }'
+```
+
+The `media_buys[0].status` field is one of `pending_creatives`, `pending_start`, `active`, `paused`, `completed`, `rejected`, or `canceled`. The `valid_actions` array tells you what the buyer can do next.
+
+## Async polling
+
+When `create_media_buy` returns `status: "submitted"` and a `task_id`, the buy is queued. Poll until the task completes:
+
+```bash
+curl -X POST https://test-agent.adcontextprotocol.org/mcp \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <your-api-key>" \
+  -H "mcp-session-id: <session-id>" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "tasks/get",
+    "params": { "task_id": "<task-id-from-create>", "include_result": true },
+    "id": 6
+  }'
+```
+
+<Note>
+`tasks/get` is an MCP protocol-level method, not an AdCP tool — it uses `"method": "tasks/get"` directly rather than the `"method": "tools/call"` + `"name": "..."` pattern used for AdCP tasks. It is auto-registered by the MCP SDK alongside `tasks/result`, `tasks/list`, and `tasks/cancel`.
+</Note>
+
+Poll every 2–5 seconds. When `task.status` is `completed`, the `result` field contains the full `create_media_buy` response with `media_buy_id`. See the [Task lifecycle](/docs/building/implementation/task-lifecycle) doc for all MCP task status values.
+
+## Common errors
+
+| Symptom | Likely cause | Fix |
+|---|---|---|
+| HTTP 401 / `error: "invalid_token"` | Expired or wrong API key | Reissue the token from your dashboard; confirm the `Bearer` prefix |
+| HTTP 401 / `error: "invalid_request"` | `Authorization` header missing | Add `-H "Authorization: Bearer <token>"` to every call |
+| `errors[]` in body, no `media_buy_id` | Schema validation failure | Read `errors[0].field` and `errors[0].code`; fix the field and retry with a **new** `idempotency_key` |
+| `status: "submitted"` stays indefinitely | Async task stalled | Check `task.status` via `tasks/get`; if `failed`, read `task.error.message` for the rejection reason |
+| `mcp-session-id: invalid` error | Session expired or header missing | Re-run Step 1 to get a fresh session ID |
+
+## Assessment
+
+| Dimension | Weight | What Addie looks for |
+|-----------|--------|---------------------|
+| Conceptual understanding | 10% | Can you describe the MCP session lifecycle and why `mcp-session-id` is required? |
+| Practical knowledge | 40% | Can you trace through all five calls in order with correct task names and request shapes? |
+| Problem solving | 30% | Can you reason through what happens when each step fails or returns an unexpected response? |
+| Error recovery | 20% | Can you identify the correct fix for auth failures, schema errors, and async polling delays? |
+
+Passing threshold: 70%.
+
+## Start this module
+
+<Card title="Start A2B with Addie" icon="play" href="https://agenticadvertising.org/chat">
+  Open Addie and say "I'd like to start certification module A2B."
+</Card>
+
+**Next:** [A3: The AdCP landscape](/docs/learning/foundations/a3-ecosystem-governance)

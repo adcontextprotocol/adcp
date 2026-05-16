@@ -17,6 +17,7 @@ import { createLogger } from '../logger.js';
 import { query } from '../db/client.js';
 import { BrandDatabase } from '../db/brand-db.js';
 import { resolvePrimaryOrganization } from '../db/users-db.js';
+import { getBrandPrimaryDomain } from './brand-domain-resolver.js';
 import { validateFetchUrl, safeFetch, sanitizeUrl } from '../utils/url-security.js';
 import { ModelConfig } from '../config/models.js';
 
@@ -101,19 +102,18 @@ export async function getBrandForEdit(
     return { ok: false, status: 403, error: 'No organization associated with your account' };
   }
 
+  // Same TODO(#4159) trust gap as brand-feeds.ts: orgDomains walk doesn't
+  // filter on verified=true, and the resolver fallback path uses
+  // member_profiles for orgs Stage 0 missed. Stage 2 should add the
+  // verified gate when the column drops.
   const orgDomains = await query<{ domain: string }>(
     'SELECT domain FROM organization_domains WHERE workos_organization_id = $1',
     [orgId],
   );
-  const memberProfile = await query<{ primary_brand_domain: string | null }>(
-    'SELECT primary_brand_domain FROM member_profiles WHERE workos_organization_id = $1',
-    [orgId],
-  );
+  const brandPrimary = await getBrandPrimaryDomain(orgId);
   const ownedDomains = new Set([
     ...orgDomains.rows.map((r) => r.domain.toLowerCase()),
-    ...(memberProfile.rows[0]?.primary_brand_domain
-      ? [memberProfile.rows[0].primary_brand_domain.toLowerCase()]
-      : []),
+    ...(brandPrimary ? [brandPrimary.toLowerCase()] : []),
   ]);
   if (!ownedDomains.has(domain.toLowerCase())) {
     return { ok: false, status: 403, error: 'You do not own this brand domain' };

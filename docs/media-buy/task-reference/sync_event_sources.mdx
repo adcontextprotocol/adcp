@@ -20,8 +20,8 @@ Configure an event source for purchase tracking:
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from "@adcp/client/testing";
-import { SyncEventSourcesResponseSchema } from "@adcp/client";
+import { testAgent } from "@adcp/sdk/testing";
+import { SyncEventSourcesResponseSchema } from "@adcp/sdk";
 
 const result = await testAgent.syncEventSources({
   account: { account_id: "acct_12345" },
@@ -184,8 +184,8 @@ Discover all event sources on an account (including seller-managed sources) with
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from "@adcp/client/testing";
-import { SyncEventSourcesResponseSchema } from "@adcp/client";
+import { testAgent } from "@adcp/sdk/testing";
+import { SyncEventSourcesResponseSchema } from "@adcp/sdk";
 
 const result = await testAgent.syncEventSources({
   account: { account_id: "acct_12345" },
@@ -235,8 +235,8 @@ Configure separate sources for website and app:
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from "@adcp/client/testing";
-import { SyncEventSourcesResponseSchema } from "@adcp/client";
+import { testAgent } from "@adcp/sdk/testing";
+import { SyncEventSourcesResponseSchema } from "@adcp/sdk";
 
 const result = await testAgent.syncEventSources({
   account: { account_id: "acct_12345" },
@@ -345,8 +345,8 @@ Replace all buyer-managed event sources on the account:
 <CodeGroup>
 
 ```javascript JavaScript
-import { testAgent } from "@adcp/client/testing";
-import { SyncEventSourcesResponseSchema } from "@adcp/client";
+import { testAgent } from "@adcp/sdk/testing";
+import { SyncEventSourcesResponseSchema } from "@adcp/sdk";
 
 const result = await testAgent.syncEventSources({
   account: { account_id: "acct_12345" },

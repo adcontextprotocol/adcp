@@ -1,0 +1,4 @@
+{
+  "$comment": "Per-storyboard exceptions for lint-storyboard-validations-paths.cjs. Each entry MUST carry a `reason` explaining why the lint can't statically verify the path against the response schema or envelope. Re-review during spec changes.",
+  "allowlist": []
+}

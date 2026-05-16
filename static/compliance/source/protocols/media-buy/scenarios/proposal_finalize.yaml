@@ -8,6 +8,10 @@ required_tools:
   - get_products
   - create_media_buy
 
+requires_capability:
+  path: media_buy.supports_proposals
+  equals: true
+
 narrative: |
   Proposals are curated media plans that the seller generates alongside products. The buyer
   reviews proposals, refines them (adjust budget splits, swap products, add constraints),
@@ -98,6 +102,10 @@ phases:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
 
+        context_outputs:
+          - path: "proposals[0].proposal_id"
+            key: "proposal_id"
+
         validations:
           - check: response_schema
             description: "Response matches get-products-response.json schema"
@@ -137,7 +145,7 @@ phases:
           buying_mode: "refine"
           refine:
             - scope: "proposal"
-              proposal_id: "balanced_reach_q2"
+              proposal_id: "$context.proposal_id"
               ask: "Shift 60% of budget to CTV. Drop the display product and redistribute that budget to video."
             - scope: "request"
               ask: "All products must support frequency capping at 3 per day."
@@ -184,12 +192,16 @@ phases:
           buying_mode: "refine"
           refine:
             - scope: "proposal"
-              proposal_id: "balanced_reach_q2"
+              proposal_id: "$context.proposal_id"
               action: "finalize"
           account:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
+
+        context_outputs:
+          - path: "proposals[0].insertion_order.io_id"
+            key: "io_id"
 
         validations:
           - check: response_schema
@@ -230,12 +242,16 @@ phases:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
             sandbox: true
-          proposal_id: "balanced_reach_q2"
+          proposal_id: "$context.proposal_id"
           total_budget:
             amount: 50000
             currency: "USD"
           start_time: "2026-04-01T00:00:00Z"
           end_time: "2026-06-30T23:59:59Z"
+          io_acceptance:
+            io_id: "$context.io_id"
+            accepted_at: "2026-03-15T14:30:00Z"
+            signatory: "ops@acmeoutdoor.example"
 
           idempotency_key: "$generate:uuid_v4#media_buy_seller_proposal_finalize_accept_proposal_create_media_buy"
         validations:

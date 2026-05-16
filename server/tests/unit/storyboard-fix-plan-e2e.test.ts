@@ -15,7 +15,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { runAgainstLocalAgent } from '@adcp/sdk/testing';
-import { createAdcpServer } from '@adcp/sdk/server';
+import { createAdcpServer } from '@adcp/sdk/server/legacy/v5';
 import type { Storyboard } from '@adcp/sdk/testing';
 import { renderAllHintFixPlans } from '../../src/addie/services/storyboard-fix-plan.js';
 

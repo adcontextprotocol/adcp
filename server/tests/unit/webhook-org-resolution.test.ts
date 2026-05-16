@@ -29,6 +29,7 @@ const TEST_ORG = {
 function createMockOrgDb(overrides?: Record<string, any>) {
   return {
     getOrganizationByStripeCustomerId: vi.fn().mockResolvedValue(null),
+    getOrganizationByStripeSubscriptionId: vi.fn().mockResolvedValue(null),
     getOrganization: vi.fn().mockResolvedValue(null),
     setStripeCustomerId: vi.fn().mockResolvedValue(undefined),
     ...overrides,
@@ -225,6 +226,81 @@ describe('resolveOrgForStripeCustomer', () => {
     });
 
     expect(result).toBeNull();
+  });
+
+  it('customer-drift: resolves org via stripe_subscription_id DB lookup when drift customer has no metadata', async () => {
+    // Regression for #4170: the event's customer is a drift customer (belongs to a
+    // different Stripe customer than the one linked in the org row's stripe_customer_id).
+    // The drift customer has no metadata; the subscription has no metadata either.
+    // The org row DOES have stripe_subscription_id pointing at this sub — so the
+    // 3.5 fallback must find it and return the org, or the cancellation is silently dropped.
+    const DRIFT_CUSTOMER = 'cus_drift_old';
+    const CURRENT_CUSTOMER = 'cus_current_linked';
+    const SUB_ID = 'sub_tracked_by_org';
+
+    const orgWithTrackedSub = {
+      ...TEST_ORG,
+      stripe_customer_id: CURRENT_CUSTOMER,
+      stripe_subscription_id: SUB_ID,
+    };
+
+    const orgDb = createMockOrgDb({
+      // Fast path: drift customer not linked to any org
+      getOrganizationByStripeCustomerId: vi.fn().mockResolvedValue(null),
+      // Sub-ID fallback: finds the org
+      getOrganizationByStripeSubscriptionId: vi.fn().mockResolvedValue(orgWithTrackedSub),
+      // Re-link attempt conflicts (org already has a different customer) — must not throw
+      setStripeCustomerId: vi.fn().mockRejectedValue(
+        new StripeCustomerConflictError(DRIFT_CUSTOMER, TEST_ORG_ID, orgWithTrackedSub.workos_organization_id, orgWithTrackedSub.name)
+      ),
+    });
+    const stripe = createMockStripe(); // drift customer: no workos_organization_id metadata
+
+    const subscription = {
+      id: SUB_ID,
+      metadata: {}, // no workos_organization_id
+    } as any;
+
+    const result = await resolveOrgForStripeCustomer({
+      customerId: DRIFT_CUSTOMER,
+      stripe,
+      orgDb,
+      subscription,
+    });
+
+    expect(result).toEqual(orgWithTrackedSub);
+    expect(orgDb.getOrganizationByStripeSubscriptionId).toHaveBeenCalledWith(SUB_ID);
+    // Must not throw despite conflict on re-link
+    expect(orgDb.setStripeCustomerId).toHaveBeenCalledWith(orgWithTrackedSub.workos_organization_id, DRIFT_CUSTOMER);
+  });
+
+  it('customer-drift: links drift customer to org when no conflict exists', async () => {
+    const DRIFT_CUSTOMER = 'cus_drift_no_conflict';
+    const SUB_ID = 'sub_tracked_no_conflict';
+
+    const orgWithTrackedSub = {
+      ...TEST_ORG,
+      stripe_subscription_id: SUB_ID,
+    };
+
+    const orgDb = createMockOrgDb({
+      getOrganizationByStripeCustomerId: vi.fn().mockResolvedValue(null),
+      getOrganizationByStripeSubscriptionId: vi.fn().mockResolvedValue(orgWithTrackedSub),
+      setStripeCustomerId: vi.fn().mockResolvedValue(undefined), // no conflict
+    });
+    const stripe = createMockStripe();
+
+    const subscription = { id: SUB_ID, metadata: {} } as any;
+
+    const result = await resolveOrgForStripeCustomer({
+      customerId: DRIFT_CUSTOMER,
+      stripe,
+      orgDb,
+      subscription,
+    });
+
+    expect(result).toEqual(orgWithTrackedSub);
+    expect(orgDb.setStripeCustomerId).toHaveBeenCalledWith(orgWithTrackedSub.workos_organization_id, DRIFT_CUSTOMER);
   });
 
   it('prefers subscription metadata over invoice subscription lookup', async () => {

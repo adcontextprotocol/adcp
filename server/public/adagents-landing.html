@@ -388,26 +388,28 @@
           <span class="filename">/.well-known/adagents.json</span>
         </div>
         <div class="code-block"><code><span class="code-bracket">{</span>
-  <span class="code-key">"$schema"</span>: <span class="code-string">"https://adcontextprotocol.org/schemas/latest/adagents.json"</span>,
-  <span class="code-key">"publisher_domain"</span>: <span class="code-string">"publisher.com"</span>,
+  <span class="code-key">"$schema"</span>: <span class="code-string">"https://adcontextprotocol.org/schemas/v3/adagents.json"</span>,
   <span class="code-key">"properties"</span>: <span class="code-bracket">[</span>
     <span class="code-bracket">{</span>
+      <span class="code-key">"property_id"</span>: <span class="code-string">"main_site"</span>,
+      <span class="code-key">"property_type"</span>: <span class="code-string">"website"</span>,
       <span class="code-key">"name"</span>: <span class="code-string">"Publisher News"</span>,
-      <span class="code-key">"domain"</span>: <span class="code-string">"news.publisher.com"</span>,
-      <span class="code-key">"categories"</span>: <span class="code-bracket">[</span><span class="code-string">"news"</span>, <span class="code-string">"technology"</span><span class="code-bracket">]</span>
+      <span class="code-key">"identifiers"</span>: <span class="code-bracket">[</span><span class="code-bracket">{</span><span class="code-key">"type"</span>: <span class="code-string">"domain"</span>, <span class="code-key">"value"</span>: <span class="code-string">"news.publisher.com"</span><span class="code-bracket">}</span><span class="code-bracket">]</span>
     <span class="code-bracket">}</span>
   <span class="code-bracket">]</span>,
   <span class="code-key">"authorized_agents"</span>: <span class="code-bracket">[</span>
     <span class="code-bracket">{</span>
       <span class="code-key">"url"</span>: <span class="code-string">"https://agent.example.com"</span>,
-      <span class="code-key">"authorized_for"</span>: <span class="code-bracket">[</span><span class="code-string">"display"</span>, <span class="code-string">"video"</span><span class="code-bracket">]</span>
+      <span class="code-key">"authorized_for"</span>: <span class="code-string">"Display and video inventory across the main site"</span>,
+      <span class="code-key">"authorization_type"</span>: <span class="code-string">"property_ids"</span>,
+      <span class="code-key">"property_ids"</span>: <span class="code-bracket">[</span><span class="code-string">"main_site"</span><span class="code-bracket">]</span>
     <span class="code-bracket">}</span>
   <span class="code-bracket">]</span>
 <span class="code-bracket">}</span></code></div>
       </div>
 
       <p class="quickstart-note">
-        Place this file at <code>https://yourdomain.com/.well-known/adagents.json</code> and AI sales agents will discover your properties and authorization rules.
+        Place this file at <code>https://yourdomain.com/.well-known/adagents.json</code> and AI sales agents will discover your properties and authorization rules. Every <code>authorized_agents</code> entry must declare an <code>authorization_type</code> plus the matching selector (e.g. <code>property_ids</code>) — otherwise resolvers won't be able to decide what the agent is authorized for.
       </p>
     </div>
   </section>

@@ -69,8 +69,8 @@ fixtures:
         id: "vast_30s"
       pricing_options:
         - pricing_option_id: "po_vast_30s_cpm"
-          pricing_model: "cpm"
-          rate: 0.50
+          model: "cpm"
+          cpm: 0.50
           currency: "USD"
 
 phases:
@@ -147,7 +147,7 @@ phases:
           - format_id referencing the creative's format
           - name and status (approved, pending_review, rejected)
           - concept_id grouping related creatives across sizes
-          - pricing_options array with pricing_option_id, model, rate, currency —
+          - pricing_options array with pricing_option_id, model, cpm, currency —
             only when your agent bills through AdCP and include_pricing=true with
             an account provided. Agents that bill out of band omit this field.
 
@@ -257,6 +257,18 @@ phases:
             path: "context.correlation_id"
             value: "creative_ad_server--build_tag"
             description: "Context correlation_id returned unchanged"
+          # Anti-façade: a real ad-server adapter calls its upstream tag-build /
+          # creative-trafficking API. An adapter that fabricates a serving tag
+          # locally without touching the ad server fails this check. Permissive
+          # endpoint pattern because ad-server vendors differ widely (Google
+          # Ad Manager, Kevel, Equativ, FreeWheel) — the storyboard asserts
+          # "an upstream call happened" rather than naming a platform.
+          - check: upstream_traffic
+            description: "build_creative caused upstream traffic to the ad server carrying the creative_id"
+            min_count: 1
+            endpoint_pattern: "POST *"
+            identifier_paths:
+              - "creative_id"
   - id: track_delivery
     title: "Track creative delivery"
     narrative: |
@@ -331,12 +343,14 @@ phases:
 
           Agents that bill through AdCP verify the rate and return accepted: 1
           with empty errors. Agents that bill out of band return accepted: 0 and
-          populate errors with a field pointing at the offending record (e.g.
-          `usage[0].pricing_option_id`) and a human-readable message. Don't
-          fake-accept records you won't bill on — silent acceptance breaks
-          reconciliation for buyers who trust the response. A standard error
-          code for "billing is handled out of band" is not yet defined in the
-          spec; vendor codes are fine today.
+          populate errors with code `BILLING_OUT_OF_BAND`, a `field` pointing at
+          the offending record (e.g. `usage[0]` or `usage[0].pricing_option_id`),
+          and a human-readable message. Don't fake-accept records you won't bill
+          on — silent acceptance breaks reconciliation for buyers who trust the
+          response. Buyers SHOULD pre-filter by reading
+          `capabilities.creative.bills_through_adcp` from `get_adcp_capabilities`
+          before calling `report_usage`; agents that have not yet declared the
+          capability stay in the probe-to-discover mode.
         task: report_usage
         schema_ref: "account/report-usage-request.json"
         response_schema_ref: "account/report-usage-response.json"
@@ -355,7 +369,7 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
-          idempotency_key: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+          idempotency_key: "$generate:uuid_v4#creative-ad-server-report-usage"
           reporting_period:
             start: "2026-03-01T00:00:00Z"
             end: "2026-03-31T23:59:59Z"

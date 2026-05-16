@@ -2,7 +2,7 @@
 
 Test vectors for the AdCP RFC 9421 webhook-signing profile. These fixtures drive cross-implementation conformance testing so a signer written in one SDK and a verifier written in another agree on the wire format of outbound push-notification webhooks.
 
-Specification: [Webhook callbacks](https://adcontextprotocol.org/docs/building/implementation/security#webhook-callbacks) in `docs/building/implementation/security.mdx`.
+Specification: [Webhook callbacks](https://adcontextprotocol.org/docs/building/by-layer/L1/security#webhook-callbacks) in `docs/building/by-layer/L1/security.mdx`.
 
 **Canonical URLs.** These vectors are served at `https://adcontextprotocol.org/compliance/{version}/test-vectors/webhook-signing/`, with `{version}` being either a specific release (e.g. `3.0.0`) or `latest` (tracks the most recent GA). Tree preserved — `keys.json`, `negative/*.json`, `positive/*.json` all resolvable. SDKs SHOULD fetch from the versioned CDN path and record the version under test rather than requiring a checkout of the spec repo. Example: `https://adcontextprotocol.org/compliance/latest/test-vectors/webhook-signing/positive/001-basic-post.json`.
 
@@ -12,7 +12,7 @@ Specification: [Webhook callbacks](https://adcontextprotocol.org/docs/building/i
 
 ## Scope
 
-These vectors exercise the [webhook verifier checklist](https://adcontextprotocol.org/docs/building/implementation/security#verifier-checklist-for-webhooks) and the RFC 9421 profile constraints specific to webhooks: required covered components (content-digest is REQUIRED, no policy branch), the distinct `tag="adcp/webhook-signing/v1"`, the `adcp_use: "webhook-signing"` key-purpose discriminator, and the `webhook_signature_*` error taxonomy. They do not exercise live JWKS fetch, brand.json discovery, or revocation-list polling — those require live endpoints and belong in integration suites.
+These vectors exercise the [webhook verifier checklist](https://adcontextprotocol.org/docs/building/by-layer/L1/security#verifier-checklist-for-webhooks) and the RFC 9421 profile constraints specific to webhooks: required covered components (content-digest is REQUIRED, no policy branch), the distinct `tag="adcp/webhook-signing/v1"`, the `adcp_use: "webhook-signing"` key-purpose discriminator, and the `webhook_signature_*` error taxonomy. They do not exercise live JWKS fetch, brand.json discovery, or revocation-list polling — those require live endpoints and belong in integration suites.
 
 Vectors cover the receiver side (buyer verifying inbound webhooks). Sender-side grading — does the agent-under-test emit conformant signatures on live traffic — is handled by the [`webhook-emission` universal](https://adcontextprotocol.org/compliance/latest/universal/webhook-emission) via a runner that hosts a receiver during storyboard execution.
 
@@ -140,7 +140,7 @@ Vector 020 tests that the verifier rejects JWKs whose `key_ops` lacks `"verify"`
 
 ### `jwks_ref` semantics (positive vector 003)
 
-Vector 003 includes two `Signature-Input` labels: the vector's own `sig1` and a decorative `relay` label. Verifiers MUST process the label named `sig1` specifically — not "the first label in the header," not "any label." The spec at [`#adcp-rfc-9421-profile`](https://adcontextprotocol.org/docs/building/implementation/security#adcp-rfc-9421-profile) says signers name the label `sig1` by convention, and verifiers key off the name rather than position. If an implementation picks a different label, the vector will fail even if that label's signature is individually valid.
+Vector 003 includes two `Signature-Input` labels: the vector's own `sig1` and a decorative `relay` label. Verifiers MUST process the label named `sig1` specifically — not "the first label in the header," not "any label." The spec at [`#adcp-rfc-9421-profile`](https://adcontextprotocol.org/docs/building/by-layer/L1/security#adcp-rfc-9421-profile) says signers name the label `sig1` by convention, and verifiers key off the name rather than position. If an implementation picks a different label, the vector will fail even if that label's signature is individually valid.
 
 ### Signature validity vs. payload schema validation (positive vector 007)
 
@@ -204,7 +204,7 @@ A verification script at `.context/verify-webhook-vectors.mjs` checks that all p
 
 ## Specification cross-reference
 
-- Webhook callbacks profile: `docs/building/implementation/security.mdx#webhook-callbacks`
+- Webhook callbacks profile: `docs/building/by-layer/L1/security.mdx#webhook-callbacks`
 - Verifier checklist: `#verifier-checklist-for-webhooks`
 - Error taxonomy: `#webhook-error-taxonomy`
 - Replay dedup and sizing: `#webhook-replay-dedup-sizing`

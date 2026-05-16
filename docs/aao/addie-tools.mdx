@@ -68,7 +68,7 @@ Download and read a file that was shared in Slack. PROACTIVELY use this whenever
 
 ### `list_github_issues`
 
-Search or list GitHub issues and PRs to find open items on a topic, check RFC/epic status, or answer "what is being worked on for X" questions. Pass `query` for keyword search (GitHub search syntax, but `repo:`/`org:`/`user:`/`is:` qualifiers are rejected — use the `repo` param instead). Returns title, number, state, labels, author, last-updated. Do NOT use when the user has a specific issue number — use get_github_issue. Allowed repos: any `adcontextprotocol/*` or `prebid/*`.
+Search or list GitHub issues and PRs to find open items on a topic, check RFC/epic status, or answer "what is being worked on for X" questions. Pass `query` for keyword search (GitHub search syntax, but `repo:`/`org:`/`user:`/`is:` qualifiers are rejected — use the `repo` param instead). Returns title, number, state, labels, author, last-updated. Works on any public GitHub repo. Do NOT use when the user has a specific issue number — use get_github_issue.
 
 *Source: `server/src/addie/mcp/member-tools.ts`*
 
@@ -410,13 +410,29 @@ List the most-requested publisher domains that are not yet in the registry. Show
 
 *Source: `server/src/addie/mcp/property-tools.ts`*
 
+## agent_conformance
+
+Run AdCP compliance storyboards against the user's own dev/staging MCP server via Addie's Socket Mode channel — outbound WebSocket from the adopter to Addie, no public DNS or ngrok needed. Use when the user wants to test their own AdCP agent during development. Requires the user to be mapped to a WorkOS organization. Tools issue a session-bound token and then run a storyboard against the connected adopter agent.
+
+### `issue_conformance_token`
+
+Issue a short-lived JWT (1h TTL) the adopter pastes into their `@adcp/sdk/server` ConformanceClient config to connect their dev/staging MCP server outbound to Addie's conformance channel. The token is bound to the caller's WorkOS organization. Use this when the user is building an AdCP agent and wants Addie to run conformance/compliance tests against their dev environment without exposing it publicly. Returns the token, the WebSocket URL, and the expiry time.
+
+*Source: `server/src/addie/mcp/conformance-tools.ts`*
+
+### `run_conformance_against_my_agent`
+
+Run a compliance storyboard against the adopter MCP server connected to this Addie session via Socket Mode. The adopter must have started `@adcp/sdk/server` ConformanceClient with a token issued in this same chat session — the channel routes by WorkOS organization id. Returns a markdown report with phase/step pass/fail/skipped status and trimmed error text on failures. Use this after the user confirms their conformance client shows `status=connected`.
+
+*Source: `server/src/addie/mcp/conformance-tools.ts`*
+
 ## adcp_operations
 
 Execute AdCP protocol operations - discover documentation, execute tasks against agents, check agent capabilities. Covers media buy, creative, signals, governance, SI, and brand protocol.
 
 ### `save_agent`
 
-Save an agent URL to the organization's context and add it to the dashboard for compliance monitoring. New agents land in the dashboard with `members_only` visibility — discoverable to fellow Professional-tier (or higher) members, but not publicly listed in the directory or brand.json. To list publicly, the caller promotes the agent via the dashboard publish flow; that flow gates on an API-access subscription tier. Optionally store credentials securely (encrypted, never shown in conversations). Three auth modes, any of which may be combined with a new or existing save: (1) static bearer/basic via `auth_token`, (2) OAuth 2.0 client credentials (RFC 6749 §4.4, machine-to-machine) via `oauth_client_credentials`. Use this when users want to connect their agent, set up compliance monitoring, save their agent for testing, or provide credentials.
+Register an agent in the AAO registry on behalf of the current organization. Adds the agent to the org's member profile; surfaces in `/dashboard/agents`. New agents land with `members_only` visibility (discoverable to other paying AAO members — Professional, Builder, Member, or Leader; not publicly listed in the directory or brand.json). To list publicly, the caller promotes the agent via the dashboard; public visibility requires a paid AAO tier (Professional, Builder, Member, or Leader) and a primary brand domain. Auth modes: (1) none — public agent, no credentials; (2) static `auth_token` + `auth_type` (`bearer` or `basic`, stored encrypted); (3) `oauth_client_credentials` for machine-to-machine (RFC 6749 §4.4). For interactive OAuth user authorization, save with no auth fields and have the user complete the dashboard's **Authorize** flow afterward — `save_agent` does not collect end-user OAuth state. The caller MUST declare the agent's `type` (`brand`, `rights`, `measurement`, `governance`, `creative`, `sales`, `buying`, `signals`); ask the owner — do not guess. Server-side smuggle protection still validates the declared type against the capability snapshot when one is available. If the user mentions their MCP endpoint requires auth, lives at a non-root path (e.g. /adcp/mcp), or shows up as offline after saving, suggest setting `health_check_url` for a liveness fallback while they fix the underlying URL. See the "Registering an Agent in the AAO Registry" section of the rules for the intake script.
 
 *Source: `server/src/addie/mcp/member-tools.ts`*
 
@@ -1383,7 +1399,7 @@ File a GitHub issue on adcontextprotocol/adcp authored by the logged-in user via
 
 ### `get_github_issue`
 
-Read a GitHub issue or PR by number. Use when the user pastes a GitHub link, references "issue #1234", or asks about the status of a specific RFC, epic, or PR. Returns title, body, state, labels, author, and optionally recent comments. Works on any `adcontextprotocol/*` or `prebid/*` repo. PR review-thread comments (on specific diff lines) are NOT included — only issue-style comments. Do NOT use for keyword search — use list_github_issues. Do NOT use fetch_url on github.com/.../issues URLs; this tool returns structured fields and labels.
+Read a GitHub issue or PR by number. Use when the user pastes a GitHub link, references "issue #1234", or asks about the status / contents of a specific RFC, epic, or PR. Returns title, body, state, labels, author, and optionally recent comments and the PR diff. Works on any public GitHub repo (forks included). PR review-thread comments (on specific diff lines) are NOT returned — only issue-style top-level comments. When the user pastes a PR link or asks for a code review, set `include_diff: true`. Do NOT use for keyword search — use list_github_issues. Do NOT use fetch_url on github.com/.../issues|pull URLs; this tool returns structured fields.
 
 *Source: `server/src/addie/mcp/member-tools.ts`*
 

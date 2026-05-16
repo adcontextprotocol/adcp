@@ -3732,9 +3732,11 @@
 
     let selectedInvoiceProduct = null;
     let invoiceProductsData = [];
+    let invoiceOrgDiscount = null;
 
     function openInvoiceModal() {
       selectedInvoiceProduct = null;
+      invoiceOrgDiscount = null;
 
       document.getElementById('invoiceOrgName').textContent = `For: ${accountData?.name || 'Unknown'}`;
       document.getElementById('invoiceProducts').innerHTML = 'Loading products...';
@@ -3755,11 +3757,12 @@
 
     async function loadInvoiceProducts() {
       try {
-        const response = await fetch('/api/admin/products');
+        const response = await fetch(`/api/admin/orgs/${encodeURIComponent(accountId)}/invite-products`);
         if (!response.ok) throw new Error('Failed to load products');
 
         const data = await response.json();
-        invoiceProductsData = data.products.filter(p => p.is_invoiceable);
+        invoiceProductsData = (data.products || []).filter(p => p.is_invoiceable);
+        invoiceOrgDiscount = data.orgDiscount || null;
 
         renderInvoiceProducts(invoiceProductsData);
       } catch (error) {
@@ -3767,6 +3770,17 @@
         document.getElementById('invoiceProducts').innerHTML =
           '<p style="color: var(--color-error-600);">Failed to load products. Please try again.</p>';
       }
+    }
+
+    function applyOrgDiscount(amountCents) {
+      if (!invoiceOrgDiscount) return amountCents;
+      if (invoiceOrgDiscount.discount_percent != null) {
+        return Math.round(amountCents * (1 - invoiceOrgDiscount.discount_percent / 100));
+      }
+      if (invoiceOrgDiscount.discount_amount_cents != null) {
+        return Math.max(0, amountCents - invoiceOrgDiscount.discount_amount_cents);
+      }
+      return amountCents;
     }
 
     function renderInvoiceProducts(products) {
@@ -3777,9 +3791,40 @@
         return;
       }
 
-      container.innerHTML = products.map((product, index) => {
-        const fmt = (cents) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100);
-        const price = fmt(product.amount_cents);
+      const fmt = (cents) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100);
+
+      // When the org has a discount on file but no Stripe coupon was created
+      // (e.g., coupon-creation failed), the displayed net price won't match
+      // what Stripe actually charges. Surface that mismatch up front so the
+      // admin can fix the coupon before sending — banner shifts to a warning
+      // palette in that case so the visual matches the message.
+      const discountBanner = invoiceOrgDiscount
+        ? (() => {
+            const couponMissing = !invoiceOrgDiscount.has_stripe_coupon;
+            const bg = couponMissing ? 'var(--color-warning-50)' : 'var(--color-success-50)';
+            const border = couponMissing ? 'var(--color-warning-200)' : 'var(--color-success-200)';
+            const reason = invoiceOrgDiscount.reason ? ` (${escapeHtml(invoiceOrgDiscount.reason)})` : '';
+            const warning = couponMissing
+              ? '<br><span style="color: var(--color-error-600);">⚠ No Stripe coupon attached — invoice will charge the sticker price unless a coupon is created first.</span>'
+              : '';
+            return `
+              <div style="padding: var(--space-2); margin-bottom: var(--space-3); background: ${bg}; border: 1px solid ${border}; border-radius: var(--radius-md); font-size: var(--text-xs);">
+                Org discount on file: <strong>${escapeHtml(invoiceOrgDiscount.label)}</strong>${reason}.
+                ${warning}
+              </div>
+            `;
+          })()
+        : '';
+
+      container.innerHTML = discountBanner + products.map((product, index) => {
+        const sticker = fmt(product.amount_cents);
+        const net = applyOrgDiscount(product.amount_cents);
+        const showNet = invoiceOrgDiscount && net !== product.amount_cents;
+        const priceLine = showNet
+          ? `<span style="text-decoration: line-through; color: var(--color-text-muted);">${sticker}</span>
+             <span style="color: var(--color-brand); font-weight: var(--font-semibold); margin-left: var(--space-1);">${fmt(net)}</span>
+             <span style="font-size: var(--text-xs); color: var(--color-text-muted); margin-left: var(--space-1);">(${escapeHtml(invoiceOrgDiscount.label)})</span>`
+          : `<span style="color: var(--color-brand); font-weight: var(--font-semibold);">${sticker}</span>`;
         const interval = product.billing_interval ? `/${product.billing_interval}` : '';
         const displayName = escapeHtml(product.display_name || product.product_name);
         const description = product.description ? escapeHtml(product.description) : '';
@@ -3799,7 +3844,7 @@
           " onmouseover="this.style.borderColor='var(--color-brand)'" onmouseout="this.style.borderColor='var(--color-border)'">
             <strong>${displayName}</strong>
             <br>
-            <span style="color: var(--color-brand); font-weight: var(--font-semibold);">${price}${interval}</span>
+            ${priceLine}${interval ? `<span style="color: var(--color-text-muted);">${interval}</span>` : ''}
             ${description ? `<br><span style="font-size: var(--text-xs); color: var(--color-text-muted);">${description}</span>` : ''}
           </button>
         `;
@@ -3818,15 +3863,21 @@
 
     function selectInvoiceProduct(product) {
       const displayName = product.display_name || product.product_name;
+      const netCents = applyOrgDiscount(product.amount_cents);
       selectedInvoiceProduct = {
         lookupKey: product.lookup_key,
         productName: displayName,
-        amountCents: product.amount_cents
+        amountCents: netCents,
+        stickerCents: product.amount_cents,
       };
 
       const fmt = (cents) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100);
-      const price = fmt(product.amount_cents);
-      const priceHtml = `<span style="color: var(--color-brand);">${price}</span>`;
+      const showNet = invoiceOrgDiscount && netCents !== product.amount_cents;
+      const priceHtml = showNet
+        ? `<span style="text-decoration: line-through; color: var(--color-text-muted);">${fmt(product.amount_cents)}</span>
+           <span style="color: var(--color-brand); margin-left: var(--space-1);">${fmt(netCents)}</span>
+           <span style="font-size: var(--text-xs); color: var(--color-text-muted); margin-left: var(--space-1);">(${escapeHtml(invoiceOrgDiscount.label)})</span>`
+        : `<span style="color: var(--color-brand);">${fmt(product.amount_cents)}</span>`;
 
       document.getElementById('selectedProductDisplay').innerHTML = `
         <strong>${escapeHtml(displayName)}</strong> - ${priceHtml}

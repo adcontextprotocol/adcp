@@ -72,12 +72,22 @@ const TRANSIENT_CONNECTION_ERRORS = new Set([
   "08003", // connection_does_not_exist
 ]);
 
-function isTransientConnectionError(err: unknown): boolean {
+// pg-pool throws plain Errors with these messages and no `code` when the
+// other side closes a pooled connection between checkout and use. Matched
+// as substrings rather than exact set hits.
+const TRANSIENT_CONNECTION_MESSAGES = [
+  "Connection terminated unexpectedly",
+  "Connection terminated due to connection timeout",
+];
+
+export function isTransientConnectionError(err: unknown): boolean {
   if (!(err instanceof Error)) return false;
   const code = (err as any).code || "";
   const message = err.message || "";
-  return TRANSIENT_CONNECTION_ERRORS.has(code)
-    || TRANSIENT_CONNECTION_ERRORS.has(message);
+  if (TRANSIENT_CONNECTION_ERRORS.has(code) || TRANSIENT_CONNECTION_ERRORS.has(message)) {
+    return true;
+  }
+  return TRANSIENT_CONNECTION_MESSAGES.some((m) => message.includes(m));
 }
 
 /**

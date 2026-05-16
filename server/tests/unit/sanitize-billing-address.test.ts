@@ -94,4 +94,53 @@ describe('sanitizeBillingAddress', () => {
     expect(sanitizeBillingAddress('string')).toBeNull();
     expect(sanitizeBillingAddress(42)).toBeNull();
   });
+
+  it('strips C0/C1 control bytes (CRLF, NUL, BEL) from address fields', () => {
+    const result = sanitizeBillingAddress({
+      line1: '123 Main\r\nSuite 5',
+      line2: 'Apt\x002',
+      city: 'Amster\x07dam',
+      state: 'NH',
+      postal_code: '1011',
+      country: 'NL',
+    });
+    expect(result?.line1).toBe('123 MainSuite 5');
+    expect(result?.line2).toBe('Apt2');
+    expect(result?.city).toBe('Amsterdam');
+  });
+
+  it('strips Unicode bidi-override and zero-width formatting chars', () => {
+    // U+202E (RLO), U+200B (ZWSP), U+2066 (LRI), U+FEFF (ZWNBSP/BOM)
+    const result = sanitizeBillingAddress({
+      line1: 'Acme‮​ Corp⁦ LLC﻿',
+      city: 'New‮York',
+      state: 'NY',
+      postal_code: '10001',
+      country: 'US',
+    });
+    expect(result?.line1).toBe('Acme Corp LLC');
+    expect(result?.city).toBe('NewYork');
+  });
+
+  it('uppercases country and rejects non ISO-3166-1 alpha-2 values', () => {
+    expect(sanitizeBillingAddress({
+      line1: '1', city: 'x', state: 'x', postal_code: '1', country: 'us',
+    })?.country).toBe('US');
+    expect(sanitizeBillingAddress({
+      line1: '1', city: 'x', state: 'x', postal_code: '1', country: 'United States',
+    })).toBeNull();
+    expect(sanitizeBillingAddress({
+      line1: '1', city: 'x', state: 'x', postal_code: '1', country: 'USA',
+    })).toBeNull();
+    expect(sanitizeBillingAddress({
+      line1: '1', city: 'x', state: 'x', postal_code: '1', country: 'U1',
+    })).toBeNull();
+  });
+
+  it('drops null bytes embedded in country', () => {
+    // Country with a null byte should not bypass the alpha-2 check after stripping.
+    expect(sanitizeBillingAddress({
+      line1: '1', city: 'x', state: 'x', postal_code: '1', country: 'U\x00S',
+    })?.country).toBe('US');
+  });
 });

@@ -9,6 +9,13 @@ dist
 dist/schemas/latest
 dist/schemas/v*
 dist/schemas/registry.*
+# Include committed versioned compliance bundles from git — the builder only
+# regenerates dist/compliance/latest/, but the Express server serves
+# /compliance/{version}/ from the committed tree. Without this un-exclude,
+# versioned URLs (/compliance/3.0.3/, /compliance/3.0.4/, etc.) 404 even
+# though the files are in the repo.
+!dist/compliance
+dist/compliance/latest
 # Include cosign-signed versioned tarballs from git — the builder only
 # regenerates latest.tgz, and re-signing requires OIDC creds we don't
 # have inside the Fly.io image build.

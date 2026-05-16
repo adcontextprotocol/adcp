@@ -5,6 +5,8 @@
  * the navigation bar with proper auth state.
  */
 
+import crypto from "crypto";
+import { readFileSync } from "fs";
 import type { Request, Response } from "express";
 import { promises as fs } from "fs";
 import path from "path";
@@ -99,6 +101,23 @@ const EARLY_ERROR_BUFFER_SCRIPT = `<script>
 </script>`;
 
 /**
+ * Compute a content hash for csrf.js so the script URL changes when the file
+ * changes. Cached at module-load time — rebuild/redeploy gets a new hash.
+ */
+let _csrfScriptVersion: string | null = null;
+function getCsrfScriptVersion(): string {
+  if (_csrfScriptVersion) return _csrfScriptVersion;
+  try {
+    const csrfPath = getPublicFilePath("csrf.js");
+    const buf = readFileSync(csrfPath);
+    _csrfScriptVersion = crypto.createHash("sha256").update(buf).digest("hex").slice(0, 8);
+  } catch {
+    _csrfScriptVersion = String(Date.now());
+  }
+  return _csrfScriptVersion;
+}
+
+/**
  * Inject app config into HTML string.
  * Inserts before </head> or before <body if no </head> found.
  * Also injects PostHog script if configured.
@@ -111,8 +130,10 @@ export function injectConfigIntoHtml(html: string, user?: AppUser | null): strin
     ? `${EARLY_ERROR_BUFFER_SCRIPT}\n<script src="/posthog-init.js" defer></script>`
     : '';
 
-  // csrf.js patches fetch() to include X-CSRF-Token on state-changing requests
-  const csrfScript = `<script src="/csrf.js"></script>`;
+  // csrf.js patches fetch() to include X-CSRF-Token on state-changing requests.
+  // Cache-bust the URL with a content hash so we never serve a stale
+  // patched fetch wrapper to a returning visitor.
+  const csrfScript = `<script src="/csrf.js?v=${getCsrfScriptVersion()}"></script>`;
 
   const injectedScripts = `${configScript}\n${csrfScript}\n${posthogScripts}`;
 

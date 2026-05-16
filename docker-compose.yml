@@ -39,9 +39,12 @@ services:
       - WORKOS_API_KEY=sk_test_dummy_local_dev_00000000000
       - WORKOS_CLIENT_ID=client_dummy_local_dev_00000000
       - WORKOS_COOKIE_PASSWORD=local-dev-cookie-password-that-is-at-least-32-chars-long
-      # Disable Stripe to avoid sync hanging on startup
-      - STRIPE_SECRET_KEY=
-      - STRIPE_PUBLISHABLE_KEY=
+      # Stripe: pass through whatever's in .env.local (a test key enables the
+      # full billing flow in dev). Override to empty in your shell env if a
+      # specific session is hanging on a sync — the prior empty hard-overrides
+      # killed the discount/invoice modal everywhere.
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
+      - STRIPE_PUBLISHABLE_KEY=${STRIPE_PUBLISHABLE_KEY:-}
       # Disable Slack/Addie Bolt to avoid sync (override both naming conventions)
       - SLACK_BOT_TOKEN=
       - SLACK_SIGNING_SECRET=

@@ -124,6 +124,8 @@ phases:
           - forced.task_id: deterministic task handle the next create_media_buy will return
 
         sample_request:
+          account:
+            sandbox: true
           scenario: "force_create_media_buy_arm"
           params:
             arm: "submitted"

@@ -32,6 +32,10 @@
       "description": "Set to true when this response is a cached replay returned for an idempotency_key that was already processed. Set to false (or omitted) when the request was executed fresh. Buyers use this to distinguish cached replays from new executions — matters for billing reconciliation, audit logs, and any downstream system that assumes exactly-once event semantics. Only present on responses to mutating requests that carry idempotency_key.",
       "default": false
     },
+    "adcp_error": {
+      "$ref": "/schemas/core/error.json",
+      "description": "Transport-envelope error signal for fatal task failures. Per the two-layer model in `error-handling.mdx#envelope-vs-payload-errors-the-two-layer-model`, a fatal task failure SHOULD populate both this envelope-level field AND the payload's `errors[]` array — the envelope carries a typed, extractable error so MCP/A2A clients can dispatch without re-parsing the payload, while the payload's structured `errors[]` remains the canonical normative shape. Non-fatal warnings populate ONLY `payload.errors[]` with `severity: warning` — the envelope MUST NOT carry `adcp_error` for non-failures."
+    },
     "push_notification_config": {
       "$ref": "/schemas/core/push-notification-config.json",
       "description": "Push notification configuration for async task updates (A2A and REST protocols). Echoed from the request to confirm webhook settings. Specifies URL, authentication scheme (Bearer or HMAC-SHA256), and credentials. MCP uses progress notifications instead of webhooks."

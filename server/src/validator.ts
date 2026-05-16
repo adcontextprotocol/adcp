@@ -1,5 +1,6 @@
 import dns from "node:dns/promises";
 import net from "node:net";
+import { canonicalizePublisherDomain } from "./services/publisher-domain.js";
 import type {
   AdAgentsJson,
   AuthorizationResult,
@@ -45,6 +46,18 @@ export class AgentValidator {
     const normalizedDomain = this.normalizeDomain(domain);
     const normalizedAgentUrl = this.normalizeUrl(agentUrl);
     const normalizedScope = this.normalizeScope(scope);
+    // SSRF reject (localhost / IP / empty) collapsed normalizedDomain to "".
+    // Fail closed here so downstream comparisons can't match a selector
+    // whose canonical form is also "" (e.g., "/", ".", "https://").
+    if (normalizedDomain === "") {
+      return {
+        authorized: false,
+        domain,
+        agent_url: agentUrl,
+        checked_at: new Date().toISOString(),
+        error: "Invalid publisher domain (resolves to local/private address or empty)",
+      };
+    }
     const cacheKey = JSON.stringify({
       domain: normalizedDomain,
       agent_url: normalizedAgentUrl,
@@ -276,7 +289,7 @@ export class AgentValidator {
     }
 
     return selectors.some((selector) =>
-      this.normalizeDomain(selector.publisher_domain) === normalizedDomain &&
+      canonicalizePublisherDomain(selector.publisher_domain) === normalizedDomain &&
       this.hasIntersection(selector.collection_ids, collectionIds)
     );
   }
@@ -334,7 +347,7 @@ export class AgentValidator {
     const matchedProperties = this.resolveScopedTopLevelProperties(normalizedDomain, scope, properties);
     return matchedProperties.filter((property) =>
       selectors.some((selector) => {
-        if (this.normalizeDomain(selector.publisher_domain) !== normalizedDomain) {
+        if (!this.selectorTargetsDomain(selector, normalizedDomain)) {
           return false;
         }
 
@@ -350,6 +363,28 @@ export class AgentValidator {
         }
       })
     );
+  }
+
+  // A PublisherPropertySelector targets normalizedDomain if either the singular
+  // publisher_domain matches, or normalizedDomain appears in the compact
+  // publisher_domains[] array (managed-network fan-out — exactly equivalent to
+  // repeating the selector once per listed domain).
+  private selectorTargetsDomain(selector: PublisherPropertySelector, normalizedDomain: string): boolean {
+    // Empty normalized source means SSRF reject fired upstream (localhost,
+    // IP literal, empty input). Never let any selector match — comparing
+    // against an empty canonical form would otherwise authorize a manifest
+    // whose own selector canonicalizes to "" (e.g., "/", ".", "https://").
+    if (normalizedDomain === "") return false;
+    if (typeof selector.publisher_domain === "string"
+      && canonicalizePublisherDomain(selector.publisher_domain) === normalizedDomain) {
+      return true;
+    }
+    if (Array.isArray(selector.publisher_domains)) {
+      return selector.publisher_domains.some((d) =>
+        typeof d === "string" && canonicalizePublisherDomain(d) === normalizedDomain
+      );
+    }
+    return false;
   }
 
   private matchesPlacements(
@@ -472,7 +507,8 @@ export class AgentValidator {
   }
 
   private propertyMatchesDomain(property: PropertyDefinition, normalizedDomain: string): boolean {
-    if (property.publisher_domain && this.normalizeDomain(property.publisher_domain) === normalizedDomain) {
+    if (normalizedDomain === "") return false;
+    if (property.publisher_domain && canonicalizePublisherDomain(property.publisher_domain) === normalizedDomain) {
       return true;
     }
 
@@ -518,8 +554,13 @@ export class AgentValidator {
       normalized = normalized.slice("http://".length);
     }
 
-    // Remove trailing slashes.
-    while (normalized.endsWith("/")) {
+    // Remove trailing slashes and trailing dots. Trailing dot is the
+    // DNS-canonical form for FQDNs and is round-trip equivalent to the
+    // dotless form for `publisher_domain` comparison. Stripping here
+    // keeps the validator in agreement with the shared
+    // canonicalizePublisherDomain helper used by the writer and the
+    // adagents-manager safety gate.
+    while (normalized.endsWith("/") || normalized.endsWith(".")) {
       normalized = normalized.slice(0, -1);
     }
 
@@ -696,7 +737,7 @@ export class AgentValidator {
     return [
       ...new Set(
         selectors
-          .filter((selector) => this.normalizeDomain(selector.publisher_domain) === normalizedDomain)
+          .filter((selector) => canonicalizePublisherDomain(selector.publisher_domain) === normalizedDomain)
           .flatMap((selector) => selector.collection_ids)
       ),
     ];
@@ -724,7 +765,7 @@ export class AgentValidator {
     }
 
     return placements.filter((placement) => {
-      if (placement.publisher_domain && this.normalizeDomain(placement.publisher_domain) !== normalizedDomain) {
+      if (placement.publisher_domain && canonicalizePublisherDomain(placement.publisher_domain) !== normalizedDomain) {
         return false;
       }
       if (placementIds && !placementIds.has(placement.placement_id)) {

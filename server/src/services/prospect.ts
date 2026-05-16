@@ -10,6 +10,7 @@ import { createLogger } from '../logger.js';
 import { WorkOS, DomainDataState } from '@workos-inc/node';
 import { resolveOrgByDomain } from '../db/domain-resolution-db.js';
 import { researchDomain, trackBackground } from './brand-enrichment.js';
+import { linkDomain } from '../db/organization-domains-db.js';
 import { enrichOrganization } from './enrichment.js';
 import { isLushaConfigured } from './lusha.js';
 import { COMPANY_TYPE_VALUES } from '../config/company-types.js';
@@ -186,17 +187,14 @@ export async function createProspect(
 
     const org = result.rows[0];
 
-    // Also insert into organization_domains if domain provided
     if (normalizedDomain) {
-      await pool.query(
-        `INSERT INTO organization_domains (workos_organization_id, domain, is_primary, verified, source)
-         VALUES ($1, $2, true, true, 'import')
-         ON CONFLICT (domain) DO UPDATE SET
-           workos_organization_id = EXCLUDED.workos_organization_id,
-           is_primary = true,
-           updated_at = NOW()`,
-        [workosOrg.id, normalizedDomain]
-      );
+      await linkDomain({
+        orgId: workosOrg.id,
+        domain: normalizedDomain,
+        source: 'import',
+        verified: true,
+        isPrimary: true,
+      });
 
       const bgPromise = researchDomain(normalizedDomain, { org_id: workosOrg.id }).catch((err) => {
         logger.warn(

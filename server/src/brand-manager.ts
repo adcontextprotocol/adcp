@@ -1,5 +1,5 @@
-import axios from 'axios';
 import { Cache } from './cache.js';
+import { safeFetchAxiosLike, classifySafeFetchError } from './utils/url-security.js';
 import type {
   LocalizedName,
   BrandProperty,
@@ -164,15 +164,16 @@ export class BrandManager {
     };
 
     try {
-      // CodeQL: URL is constructed as https://{domain}/.well-known/brand.json
-      const response = await axios.get(url, { // lgtm[js/request-forgery]
-        timeout: 10000,
+      // safeFetch: SSRF-defended fetch (private-IP / DNS-rebind / per-hop
+      // redirect validation). Replaces a previously `lgtm`-suppressed
+      // axios.get that became unauthenticated-reachable via the
+      // /api/registry/publisher auto-crawl path (PR #4128 / issue #4129).
+      const response = await safeFetchAxiosLike(url, {
+        timeoutMs: 10000,
         headers: {
           Accept: 'application/json',
           'User-Agent': AAO_UA_VALIDATOR,
         },
-        validateStatus: () => true,
-        responseType: 'arraybuffer',
       });
 
       result.status_code = response.status;
@@ -194,7 +195,7 @@ export class BrandManager {
 
       let brandData: unknown;
       try {
-        const text = Buffer.from(response.data as Buffer).toString('utf-8');
+        const text = response.data.toString('utf-8');
         brandData = JSON.parse(text);
       } catch {
         result.errors.push({
@@ -234,33 +235,8 @@ export class BrandManager {
 
       result.valid = result.errors.length === 0;
     } catch (error) {
-      if (axios.isAxiosError(error)) {
-        if (error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED') {
-          result.errors.push({
-            field: 'connection',
-            message: `Cannot connect to ${normalizedDomain}`,
-            severity: 'error',
-          });
-        } else if (error.code === 'ECONNABORTED') {
-          result.errors.push({
-            field: 'timeout',
-            message: 'Request timed out after 10 seconds',
-            severity: 'error',
-          });
-        } else {
-          result.errors.push({
-            field: 'network',
-            message: error.message,
-            severity: 'error',
-          });
-        }
-      } else {
-        result.errors.push({
-          field: 'unknown',
-          message: 'Unknown error occurred',
-          severity: 'error',
-        });
-      }
+      const classified = classifySafeFetchError(error, normalizedDomain);
+      result.errors.push({ ...classified, severity: 'error' });
     }
 
     // Cache the result
@@ -568,7 +544,7 @@ export class BrandManager {
 
     // Validate properties if present
     if (brand.properties) {
-      brand.properties.forEach((prop, propIndex) => {
+      brand.properties.forEach((prop: BrandProperty, propIndex: number) => {
         this.validateProperty(prop, `${prefix}.properties[${propIndex}]`, result);
       });
     }
@@ -703,7 +679,7 @@ export class BrandManager {
               parent_brand: brand.parent_brand,
               house_domain: portfolioData.house.domain,
               house_name: portfolioData.house.name,
-              brand_manifest: brand.brand_manifest as Record<string, unknown> | undefined,
+              brand_manifest: this.buildBrandManifest(brand),
               source: 'brand_json',
             };
             this.resolutionCache.set(cacheKey, result);
@@ -724,6 +700,7 @@ export class BrandManager {
                 keller_type: masterBrand.keller_type,
                 house_domain: portfolioData.house.domain,
                 house_name: portfolioData.house.name,
+                brand_manifest: this.buildBrandManifest(masterBrand),
                 source: 'brand_json',
               };
               this.resolutionCache.set(cacheKey, result);
@@ -781,13 +758,43 @@ export class BrandManager {
           parent_brand: brand.parent_brand,
           house_domain: portfolio.house.domain,
           house_name: portfolio.house.name,
-          brand_manifest: brand.brand_manifest as Record<string, unknown> | undefined,
+          brand_manifest: this.buildBrandManifest(brand),
           source: 'brand_json',
         };
       }
     }
 
     return null;
+  }
+
+  /**
+   * Build the brand_manifest payload (creative asset data) from a brand by
+   * stripping identity (`id`, `names`, `keller_type`, `parent_brand`) and
+   * ownership (`properties`) fields that have separate semantic meaning.
+   * Returns undefined when no manifest data remains.
+   *
+   * Brand fields are flat on the brand object per the unified brand.json
+   * schema. A legacy nested `brand_manifest` sub-key, if present, is merged
+   * in for backwards compatibility; flat fields take precedence.
+   */
+  private buildBrandManifest(brand: BrandDefinition): Record<string, unknown> | undefined {
+    const {
+      id: _id,
+      names: _names,
+      keller_type: _kellerType,
+      parent_brand: _parentBrand,
+      properties: _properties,
+      brand_manifest: brandManifest,
+      ...rest
+    } = brand;
+
+    const legacy =
+      brandManifest && typeof brandManifest === 'object'
+        ? (brandManifest as Record<string, unknown>)
+        : undefined;
+
+    const merged: Record<string, unknown> = { ...(legacy ?? {}), ...rest };
+    return Object.keys(merged).length > 0 ? merged : undefined;
   }
 
   /**

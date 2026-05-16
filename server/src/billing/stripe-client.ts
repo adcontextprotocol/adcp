@@ -2,6 +2,7 @@ import Stripe from 'stripe';
 import { createLogger } from '../logger.js';
 import { notifySystemError } from '../addie/error-notifier.js';
 import { getPool } from '../db/client.js';
+import { isStripeNotFound } from '../audit/integrity/stripe-helpers.js';
 
 const logger = createLogger('stripe-client');
 
@@ -349,7 +350,12 @@ export async function getPriceByLookupKey(lookupKey: string): Promise<string | n
   }
 
   const availableLookupKeys = cachedProducts.map(p => p.lookup_key).filter(Boolean);
-  logger.error({ lookupKey, availableLookupKeys },
+  // Caller-supplied (Addie LLM, admin tool) — a missing key is a tool-shape
+  // issue, not a server failure. The caller already returns a structured
+  // error to the user; logging at `warn` keeps the pino → posthog hook
+  // from paging #aao-errors. See TODO(#2550) for the upstream fix
+  // (validate against this list before calling).
+  logger.warn({ lookupKey, availableLookupKeys },
     'getPriceByLookupKey: No price found for lookup key. Available: see structured fields');
   return null;
 }
@@ -598,7 +604,11 @@ export async function createCustomerPortalSession(
 }
 
 /**
- * Create a customer session for the Stripe Pricing Table
+ * Create a customer session for the Stripe Pricing Table.
+ *
+ * Re-throws `resource_missing` (deleted/non-existent customer) so the caller
+ * can recover by unlinking and recreating. Other errors are logged and return
+ * null — the global logger.error hook posts those to the error channel.
  */
 export async function createCustomerSession(
   stripeCustomerId: string
@@ -620,6 +630,9 @@ export async function createCustomerSession(
 
     return session.client_secret;
   } catch (error) {
+    if (isStripeNotFound(error)) {
+      throw error;
+    }
     logger.error({ err: error }, 'Error creating customer session');
     return null;
   }
@@ -989,7 +1002,9 @@ export async function createAndSendInvoice(
   const priceId = await getPriceByLookupKey(data.lookupKey);
 
   if (!priceId) {
-    logger.error({
+    // Caller-supplied (Addie LLM tool) — getPriceByLookupKey already
+    // logged the available keys at warn. Don't double-page #aao-errors.
+    logger.warn({
       lookupKey: data.lookupKey,
     }, 'No price found for lookup key');
     return null;
@@ -1312,7 +1327,9 @@ export async function validateInvoiceDetails(data: {
 
   const priceId = await getPriceByLookupKey(data.lookupKey);
   if (!priceId) {
-    logger.error({ lookupKey: data.lookupKey }, 'validateInvoiceDetails: No price found');
+    // Caller-supplied (Addie LLM tool) — getPriceByLookupKey already
+    // logged the available keys at warn. Don't double-page #aao-errors.
+    logger.warn({ lookupKey: data.lookupKey }, 'validateInvoiceDetails: No price found');
     return null;
   }
 
@@ -1776,19 +1793,25 @@ export async function getPendingInvoices(customerId: string): Promise<PendingInv
       limit: 10,
     });
 
-    // Fetch draft invoices (not yet sent)
+    // Fetch draft invoices (not yet sent). Drop empties — abandoned
+    // subscription attempts can leave $0 / no-line-item drafts on the
+    // customer that aren't actionable but light up "invoice pending" UX
+    // and confuse users (see issue #4564).
     const draftInvoices = await stripe.invoices.list({
       customer: customerId,
       status: 'draft',
       limit: 10,
     });
+    const actionableDrafts = draftInvoices.data.filter(
+      (inv) => (inv.amount_due ?? 0) > 0 && (inv.lines?.data?.length ?? 0) > 0,
+    );
 
     // Combine and deduplicate invoices by ID (in case an invoice appears in both lists)
     const invoiceMap = new Map<string, typeof openInvoices.data[0]>();
     for (const inv of openInvoices.data) {
       invoiceMap.set(inv.id, inv);
     }
-    for (const inv of draftInvoices.data) {
+    for (const inv of actionableDrafts) {
       if (!invoiceMap.has(inv.id)) {
         invoiceMap.set(inv.id, inv);
       }
@@ -1840,6 +1863,9 @@ export async function getPendingInvoices(customerId: string): Promise<PendingInv
     logger.debug({ customerId, count: pendingInvoices.length }, 'Fetched pending invoices');
     return pendingInvoices;
   } catch (error) {
+    if (isStripeNotFound(error)) {
+      throw error;
+    }
     logger.error({ err: error, customerId }, 'Error fetching pending invoices');
     return [];
   }
@@ -1894,9 +1920,46 @@ export interface OpenInvoiceWithCustomer {
 }
 
 /**
- * Convert a Stripe invoice to OpenInvoiceWithCustomer format
+ * Resolve the first-line product name for an invoice, fetching the product
+ * separately when it isn't expanded. Stripe caps `expand` at 4 levels, so
+ * `data.lines.data.price.product` (5 levels) can't be inlined on `invoices.list`.
  */
-function parseStripeInvoice(invoice: Stripe.Invoice): OpenInvoiceWithCustomer | null {
+async function resolveInvoiceProductName(
+  invoice: Stripe.Invoice,
+  productCache: Map<string, string | null>,
+): Promise<string | null> {
+  const firstLine = invoice.lines?.data[0];
+  const product = firstLine?.price?.product;
+  if (!product) return null;
+  if (typeof product === 'object' && 'name' in product) {
+    return product.name ?? null;
+  }
+  if (typeof product !== 'string') return null;
+  if (productCache.has(product)) return productCache.get(product) ?? null;
+  if (!stripe) return null;
+  try {
+    const productObj = await stripe.products.retrieve(product);
+    const name = productObj.name ?? null;
+    productCache.set(product, name);
+    return name;
+  } catch (err) {
+    logger.warn(
+      { productId: product, invoiceId: invoice.id, err },
+      'Failed to fetch product for invoice',
+    );
+    return null;
+  }
+}
+
+/**
+ * Convert a Stripe invoice to OpenInvoiceWithCustomer format. The caller must
+ * resolve `productName` (via resolveInvoiceProductName) because Stripe's
+ * 4-level expand limit prevents inlining the product on `invoices.list`.
+ */
+function parseStripeInvoice(
+  invoice: Stripe.Invoice,
+  productName: string | null,
+): OpenInvoiceWithCustomer | null {
   const customer = invoice.customer;
   let customerId: string;
   let customerName: string | null = null;
@@ -1918,16 +1981,6 @@ function parseStripeInvoice(invoice: Stripe.Invoice): OpenInvoiceWithCustomer | 
     customerId = customer.id;
   } else {
     return null; // Skip invoices without customer
-  }
-
-  // Get product name from first line item
-  let productName: string | null = null;
-  const firstLine = invoice.lines?.data[0];
-  if (firstLine?.price?.product) {
-    const product = firstLine.price.product;
-    if (typeof product === 'object' && 'name' in product) {
-      productName = product.name;
-    }
   }
 
   const dueDate = invoice.due_date ? new Date(invoice.due_date * 1000) : null;
@@ -1960,45 +2013,49 @@ export async function getAllOpenInvoices(limit: number = 50): Promise<OpenInvoic
     return [];
   }
 
-  try {
-    // Use a Map to deduplicate invoices by ID
-    const invoiceMap = new Map<string, OpenInvoiceWithCustomer>();
+  // Errors propagate to the caller. Returning [] on failure previously hid a
+  // 4-level-expand regression as "No pending invoices found"; the sole caller
+  // (`list_pending_invoices` admin tool) already wraps this in its own
+  // try/catch and surfaces a structured failure to the operator.
+  const invoiceMap = new Map<string, OpenInvoiceWithCustomer>();
+  // Cache product lookups across both list passes; products are referenced
+  // by id on the line item but cannot be expanded inline (5 levels deep).
+  const productCache = new Map<string, string | null>();
 
-    // Query Stripe directly for all open invoices (sent, waiting for payment)
+  // Query Stripe directly for all open invoices (sent, waiting for payment)
+  for await (const invoice of stripe.invoices.list({
+    status: 'open',
+    limit: 100,
+    expand: ['data.customer'],
+  })) {
+    const productName = await resolveInvoiceProductName(invoice, productCache);
+    const parsed = parseStripeInvoice(invoice, productName);
+    if (parsed && !invoiceMap.has(parsed.id)) {
+      invoiceMap.set(parsed.id, parsed);
+      if (invoiceMap.size >= limit) break;
+    }
+  }
+
+  // Also get draft invoices (not yet sent). Skip empties — see issue #4564.
+  if (invoiceMap.size < limit) {
     for await (const invoice of stripe.invoices.list({
-      status: 'open',
+      status: 'draft',
       limit: 100,
-      expand: ['data.customer', 'data.lines.data.price.product'],
+      expand: ['data.customer'],
     })) {
-      const parsed = parseStripeInvoice(invoice);
+      if ((invoice.amount_due ?? 0) <= 0 || (invoice.lines?.data?.length ?? 0) === 0) continue;
+      const productName = await resolveInvoiceProductName(invoice, productCache);
+      const parsed = parseStripeInvoice(invoice, productName);
       if (parsed && !invoiceMap.has(parsed.id)) {
         invoiceMap.set(parsed.id, parsed);
         if (invoiceMap.size >= limit) break;
       }
     }
-
-    // Also get draft invoices (not yet sent)
-    if (invoiceMap.size < limit) {
-      for await (const invoice of stripe.invoices.list({
-        status: 'draft',
-        limit: 100,
-        expand: ['data.customer', 'data.lines.data.price.product'],
-      })) {
-        const parsed = parseStripeInvoice(invoice);
-        if (parsed && !invoiceMap.has(parsed.id)) {
-          invoiceMap.set(parsed.id, parsed);
-          if (invoiceMap.size >= limit) break;
-        }
-      }
-    }
-
-    const allInvoices = Array.from(invoiceMap.values());
-    logger.info({ count: allInvoices.length }, 'Fetched all open invoices from Stripe');
-    return allInvoices;
-  } catch (error) {
-    logger.error({ err: error }, 'Error fetching all open invoices');
-    return [];
   }
+
+  const allInvoices = Array.from(invoiceMap.values());
+  logger.info({ count: allInvoices.length }, 'Fetched all open invoices from Stripe');
+  return allInvoices;
 }
 
 /**
@@ -2275,6 +2332,30 @@ export async function createPromotionCode(input: CreatePromotionCodeInput): Prom
   }
 }
 
+// Stripe enforces a 40-character cap on coupon.name (counted in UTF-16 code
+// units). Build the name by stripping unsafe control/format chars (RTL marks,
+// ZWJ, etc.), collapsing whitespace, then walking the org name code-point by
+// code-point until adding another would push the composite over the cap —
+// avoids landing mid-surrogate on emoji/CJK names.
+const STRIPE_COUPON_NAME_MAX = 40;
+export function buildOrgCouponName(orgName: string, discountDescription: string): string {
+  const normalizedOrg = orgName
+    .replace(/[\p{Cc}\p{Cf}]/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!normalizedOrg) {
+    return discountDescription.slice(0, STRIPE_COUPON_NAME_MAX);
+  }
+  const suffix = ` - ${discountDescription}`;
+  const orgBudget = Math.max(0, STRIPE_COUPON_NAME_MAX - suffix.length);
+  let shortOrg = '';
+  for (const ch of normalizedOrg) {
+    if (shortOrg.length + ch.length > orgBudget) break;
+    shortOrg += ch;
+  }
+  return `${shortOrg.trim()}${suffix}`;
+}
+
 /**
  * Create a coupon and promotion code for a specific organization
  * Generates a unique code based on org name
@@ -2310,7 +2391,7 @@ export async function createOrgDiscount(
 
   // Create the coupon
   const coupon = await createCoupon({
-    name: `${orgName} - ${discountDescription}`,
+    name: buildOrgCouponName(orgName, discountDescription),
     percent_off: options.percent_off,
     amount_off_cents: options.amount_off_cents,
     duration: options.duration || 'forever',

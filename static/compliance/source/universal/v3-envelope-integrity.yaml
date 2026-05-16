@@ -62,6 +62,18 @@ phases:
           The protocol-envelope.json schema's top-level `not: { anyOf: [...] }`
           constraint forbids either field, making this constraint detectable by
           any schema-aware validator without runner-specific primitives.
+
+          MCP transport note: the `status` field must appear at the top level of
+          `structuredContent` (or the first parseable `content[].text` JSON object
+          for older MCP servers) — it is NOT a JSON-RPC result-level field. The extracted AdCP
+          response IS the protocol envelope: `status` lives alongside task-specific
+          payload fields in the same flat object. The `get-adcp-capabilities-response.json`
+          schema validates only the task-specific fields (capabilities, context echo,
+          etc.) and does not cover protocol envelope fields like `status` — an agent
+          whose MCP response passes response_schema validation but omits `status` is
+          still non-conformant. See docs/building/implementation/mcp-response-extraction
+          for the normative MCP extraction algorithm and the expected structuredContent
+          shape, including the required `status` field at the top level.
         task: get_adcp_capabilities
         schema_ref: "protocol/get-adcp-capabilities-request.json"
         response_schema_ref: "protocol/get-adcp-capabilities-response.json"
@@ -69,13 +81,20 @@ phases:
         comply_scenario: envelope_integrity
         stateful: false
         expected: |
-          Response envelope:
+          Response envelope (all transports):
           - MUST contain status (the v3 canonical field)
           - MUST NOT contain task_status (v2 legacy, no v3 semantics)
           - MUST NOT contain response_status (v2 legacy, no v3 semantics)
           Both forbidden fields are blocked by the top-level `not: { anyOf: [...] }`
           constraint in protocol-envelope.json, so any schema-aware validator that
           validates the full protocol envelope will detect violations.
+
+          For MCP agents specifically: `status` MUST be present at the top level of
+          structuredContent (or the first parseable content[].text JSON object). It is not a JSON-RPC sibling
+          field — it lives inside the content payload, at the same level as the
+          task-specific response fields. An agent returning only the task payload
+          without `status` fails this check regardless of whether the payload itself
+          validates against the task response schema.
 
         sample_request:
           context:

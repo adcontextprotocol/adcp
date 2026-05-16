@@ -1,4 +1,5 @@
 import { query } from './client.js';
+import { canonicalizePublisherDomain } from '../services/publisher-domain.js';
 
 /**
  * Discovered agent from adagents.json or list_authorized_properties
@@ -30,7 +31,21 @@ export interface DiscoveredPublisher {
 }
 
 /**
- * Agent-publisher authorization (from adagents.json or agent claims)
+ * Agent-publisher authorization.
+ *
+ * `source` distinguishes how strongly the row is attested:
+ *  - `adagents_json`: the publisher's origin actually serves a valid
+ *    adagents.json (either directly at /.well-known or via a stub with
+ *    `authoritative_location`). Origin-verified.
+ *  - `aao_hosted`: AAO is hosting the canonical document on the
+ *    publisher's behalf, but the publisher's origin has NOT been
+ *    verified to point at us yet. The hosted document represents the
+ *    publisher's intent; it does not yet carry the same trust weight as
+ *    an origin-verified row. Promotion to `adagents_json` requires a
+ *    successful round-trip fetch of the publisher's /.well-known.
+ *  - `agent_claim`: the agent claimed authorization via a
+ *    list_authorized_properties response; the publisher has not
+ *    confirmed it.
  */
 export interface AgentPublisherAuthorization {
   id?: string;
@@ -38,7 +53,7 @@ export interface AgentPublisherAuthorization {
   publisher_domain: string;
   authorized_for?: string;
   property_ids?: string[];
-  source: 'adagents_json' | 'agent_claim';
+  source: 'adagents_json' | 'aao_hosted' | 'agent_claim';
   discovered_at?: Date;
   last_validated?: Date;
 }
@@ -62,6 +77,7 @@ export interface DiscoveredProperty {
   name: string;
   identifiers: PropertyIdentifier[];
   tags?: string[];
+  source_type?: 'adagents_json' | 'aao_hosted';
   discovered_at?: Date;
   last_validated?: Date;
   expires_at?: Date;
@@ -418,6 +434,52 @@ export class FederatedIndexDatabase {
   // ============================================
 
   /**
+   * Hard-delete legacy adagents_json authorization rows for a
+   * publisher whose canonical agent_url is no longer in the latest
+   * crawled manifest. Called once per domain after the per-agent
+   * upsert loop. agent_claim rows are untouched (they belong to a
+   * different publisher's discovery flow).
+   *
+   * `currentAgentUrls` is the canonical-form list — already trimmed,
+   * lowercased, and stripped of trailing slashes. The DELETE
+   * canonicalizes the stored agent_url with the same shape so a
+   * historical non-canonical row still matches.
+   */
+  async reconcileAdagentsAuthorizations(
+    publisherDomain: string,
+    currentAgentUrls: string[],
+  ): Promise<void> {
+    // Canonicalize both sides in SQL so a caller that forgets to
+    // canonicalize doesn't silently nuke every adagents_json row for
+    // the publisher. The stored side mirrors the writer's canonical
+    // form (lowercase, no trailing slash, '*' literal preserved); the
+    // input side runs the same shape.
+    //
+    // Cross-publisher safety: the DELETE is scoped by `publisher_domain`
+    // and `source='adagents_json'`. A NULL agent_url in any row would
+    // make the CASE expression NULL, the IN comparison NULL, and
+    // `NOT NULL` NULL — Postgres treats NULL as not-true so the row
+    // is preserved (fail-safe). The agent_url column is NOT NULL by
+    // schema (migration 025) so this is theoretical, but the canonical
+    // SQL pattern doesn't rely on the schema invariant.
+    await query(
+      `DELETE FROM agent_publisher_authorizations
+        WHERE publisher_domain = $1
+          AND source = 'adagents_json'
+          AND NOT (
+            CASE WHEN agent_url = '*' THEN '*'
+                 ELSE LOWER(RTRIM(BTRIM(agent_url), '/')) END
+            IN (
+              SELECT CASE WHEN u = '*' THEN '*'
+                          ELSE LOWER(RTRIM(BTRIM(u), '/')) END
+                FROM unnest($2::text[]) AS u
+            )
+          )`,
+      [publisherDomain, currentAgentUrls],
+    );
+  }
+
+  /**
    * Upsert a discovered agent
    */
   async upsertAgent(agent: DiscoveredAgent): Promise<DiscoveredAgent> {
@@ -534,8 +596,8 @@ export class FederatedIndexDatabase {
   async upsertProperty(property: DiscoveredProperty): Promise<DiscoveredProperty> {
     const result = await query<DiscoveredProperty>(
       `INSERT INTO discovered_properties (
-         property_id, publisher_domain, property_type, name, identifiers, tags, expires_at
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+         property_id, publisher_domain, property_type, name, identifiers, tags, source_type, expires_at
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        ON CONFLICT (publisher_domain, name, property_type) DO UPDATE SET
          property_id = COALESCE(EXCLUDED.property_id, discovered_properties.property_id),
          identifiers = EXCLUDED.identifiers,
@@ -550,6 +612,7 @@ export class FederatedIndexDatabase {
         property.name,
         JSON.stringify(property.identifiers),
         property.tags || [],
+        property.source_type || 'adagents_json',
         property.expires_at || null,
       ]
     );
@@ -665,10 +728,12 @@ export class FederatedIndexDatabase {
    * removed and the query collapses to catalog-only.
    */
   async getPropertiesForDomain(domain: string): Promise<DiscoveredProperty[]> {
+    const canonicalDomain = canonicalizePublisherDomain(domain);
     const result = await query<DiscoveredProperty>(
       `WITH unioned AS (
          SELECT id, property_id, publisher_domain, property_type, name,
                 identifiers, tags, discovered_at, last_validated, expires_at,
+                source_type,
                 0 AS src_priority
            FROM discovered_properties
           WHERE publisher_domain = $1
@@ -693,6 +758,10 @@ export class FederatedIndexDatabase {
            cp.created_at AS discovered_at,
            p.last_validated AS last_validated,
            p.expires_at AS expires_at,
+           -- Catalog rows here come from publishers.adagents_json JSONB
+           -- (see WHERE p.source_type = 'adagents_json' below). They are
+           -- by construction adagents_json-sourced.
+           'adagents_json'::text AS source_type,
            1 AS src_priority
            FROM publishers p
           CROSS JOIN LATERAL jsonb_array_elements(
@@ -710,12 +779,13 @@ export class FederatedIndexDatabase {
        ), deduped AS (
          SELECT DISTINCT ON (publisher_domain, name, property_type)
                 id, property_id, publisher_domain, property_type, name,
-                identifiers, tags, discovered_at, last_validated, expires_at
+                identifiers, tags, discovered_at, last_validated, expires_at,
+                source_type
            FROM unioned
           ORDER BY publisher_domain, name, property_type, src_priority
        )
        SELECT * FROM deduped ORDER BY property_type, name`,
-      [domain]
+      [canonicalDomain]
     );
     return result.rows.map(row => this.deserializeProperty(row));
   }
@@ -1041,6 +1111,7 @@ export class FederatedIndexDatabase {
     agentUrl: string,
     publisherDomain: string
   ): Promise<'adagents_json' | 'agent_claim' | 'none'> {
+    const canonicalDomain = canonicalizePublisherDomain(publisherDomain);
     const authResult = await query<{ source: string }>(
       `WITH unioned AS (
          SELECT source, 0 AS src_priority
@@ -1065,7 +1136,7 @@ export class FederatedIndexDatabase {
         ORDER BY src_priority,
                  CASE source WHEN 'adagents_json' THEN 0 ELSE 1 END
         LIMIT 1`,
-      [agentUrl, publisherDomain]
+      [agentUrl, canonicalDomain]
     );
 
     if (authResult.rows.length === 0) return 'none';
@@ -1142,8 +1213,13 @@ export class FederatedIndexDatabase {
     publisherDomain: string
   ): Promise<DiscoveredProperty[]> {
     const all = await this.getPropertiesForAgent(agentUrl);
+    // Canonicalize both sides so a runtime query for `"https://cnn.com"` or
+    // `"cnn.com."` resolves a stored property whose `publisher_domain` was
+    // written as `"cnn.com"`. Read-side of the writer's canonicalization
+    // boundary; legacy rows may also carry non-canonical forms.
+    const target = canonicalizePublisherDomain(publisherDomain);
     return all
-      .filter((p) => p.publisher_domain === publisherDomain)
+      .filter((p) => canonicalizePublisherDomain(p.publisher_domain) === target)
       .sort((a, b) => a.property_type.localeCompare(b.property_type) || a.name.localeCompare(b.name));
   }
 

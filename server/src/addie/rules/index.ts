@@ -209,7 +209,9 @@ function loadExpertPanelSummary(): string | null {
 
   let files: string[];
   try {
-    files = readdirSync(agentsDir).filter(f => f.endsWith('.md')).sort();
+    files = readdirSync(agentsDir)
+      .filter(f => f.endsWith('.md') && !f.endsWith('-deep.md'))
+      .sort();
   } catch (error) {
     logger.warn({ path: agentsDir, error }, 'Addie rules: failed to read .claude/agents; skipping');
     return null;

@@ -814,6 +814,30 @@
       color: white;
     }
 
+    .copy-btn {
+      background: none;
+      border: 1px solid var(--color-border);
+      border-radius: 4px;
+      padding: 4px 8px;
+      cursor: pointer;
+      font-size: 12px;
+      color: var(--color-text-muted);
+      transition: all 0.2s;
+      margin-left: auto;
+      flex-shrink: 0;
+    }
+
+    .copy-btn:hover {
+      background: var(--color-bg-subtle);
+      color: var(--color-brand);
+      border-color: var(--color-brand);
+    }
+
+    .copy-btn.copied {
+      color: var(--color-success-600);
+      border-color: var(--color-success-500);
+    }
+
     .feedback-expand {
       background: none;
       border: none;
@@ -3597,20 +3621,50 @@
         return `<div class="member-cards-container">${cards}</div>`;
       }
 
-      // Render markdown using marked library
-      function renderMessage(text) {
-        // Configure marked for security and compatibility
-        marked.setOptions({
-          breaks: true, // Convert \n to <br>
-          gfm: true, // GitHub flavored markdown
-        });
-
-        // Helper to escape HTML attribute values
+      // Shared renderer factory — opens external links in a new tab (chat is an SPA;
+      // navigating away loses context). Used by both the main chat and SI modal paths.
+      function createAdcpMarkdownRenderer() {
         const escapeAttr = (str) => str
           .replace(/&/g, '&amp;')
           .replace(/"/g, '&quot;')
           .replace(/</g, '&lt;')
           .replace(/>/g, '&gt;');
+
+        const renderer = new marked.Renderer();
+        renderer.link = function(href, title, text) {
+          // Handle marked v17+ which passes an object
+          if (href !== null && typeof href === 'object') {
+            const link = href;
+            href = link.href;
+            title = link.title;
+            text = link.text;
+          }
+          const safeHref = /^(https?:\/\/|mailto:|#|\/)/i.test(href) ? href : '#';
+          const titleAttr = title ? ` title="${escapeAttr(title)}"` : '';
+          const isAnchor = /^#/.test(href);
+          const targetAttr = !isAnchor ? ' target="_blank" rel="noopener noreferrer"' : '';
+          return `<a href="${escapeAttr(safeHref)}"${titleAttr}${targetAttr}>${text}</a>`;
+        };
+        renderer.image = function(href, title, text) {
+          // Handle marked v17+ which passes an object
+          if (href !== null && typeof href === 'object') {
+            const img = href;
+            href = img.href;
+            title = img.title;
+            text = img.text;
+          }
+          const safeHref = /^(https?:\/\/|data:image\/)/i.test(href) ? escapeAttr(href) : '';
+          if (!safeHref) return '';
+          const titleAttr = title ? ` title="${escapeAttr(title)}"` : '';
+          const altAttr = text ? ` alt="${escapeAttr(text)}"` : ' alt="Image"';
+          return `<a href="${safeHref}" target="_blank" rel="noopener noreferrer" class="chat-image-wrap"><img src="${safeHref}"${altAttr}${titleAttr} loading="lazy"></a>`;
+        };
+        return renderer;
+      }
+
+      // Render markdown using marked library
+      function renderMessage(text) {
+        marked.setOptions({ breaks: true, gfm: true });
 
         // Check for embedded ADDIE_DATA blocks and extract them
         const dataBlockRegex = /<!--ADDIE_DATA:([\s\S]*?):ADDIE_DATA-->/g;
@@ -3627,44 +3681,7 @@
           }
         });
 
-        // Use marked's built-in renderer with custom link and image handling
-        const renderer = new marked.Renderer();
-        renderer.link = function(href, title, text) {
-          // Handle marked v17+ which passes an object
-          if (typeof href === 'object') {
-            const link = href;
-            href = link.href;
-            title = link.title;
-            text = link.text;
-          }
-          // Validate URL scheme - only allow safe protocols
-          const safeHref = /^(https?:\/\/|mailto:|#|\/)/i.test(href) ? href : '#';
-          const titleAttr = title ? ` title="${escapeAttr(title)}"` : '';
-          // Open all navigable links in new tab — chat is an SPA, navigating away loses context
-          const isAnchor = /^#/.test(href);
-          const targetAttr = !isAnchor ? ' target="_blank" rel="noopener noreferrer"' : '';
-          return `<a href="${escapeAttr(safeHref)}"${titleAttr}${targetAttr}>${text}</a>`;
-        };
-
-        // Custom image renderer
-        renderer.image = function(href, title, text) {
-          // Handle marked v17+ which passes an object
-          if (typeof href === 'object') {
-            const img = href;
-            href = img.href;
-            title = img.title;
-            text = img.text;
-          }
-          // Validate URL scheme - only allow safe protocols
-          const safeHref = /^(https?:\/\/|data:image\/)/i.test(href) ? escapeAttr(href) : '';
-          if (!safeHref) return '';
-          const titleAttr = title ? ` title="${escapeAttr(title)}"` : '';
-          const altAttr = text ? ` alt="${escapeAttr(text)}"` : ' alt="Image"';
-          // Wrap in container to reserve space and prevent layout shift while loading
-          return `<a href="${safeHref}" target="_blank" rel="noopener noreferrer" class="chat-image-wrap"><img src="${safeHref}"${altAttr}${titleAttr} loading="lazy"></a>`;
-        };
-
-        let html = DOMPurify.sanitize(marked.parse(processedText, { renderer }));
+        let html = DOMPurify.sanitize(marked.parse(processedText, { renderer: createAdcpMarkdownRenderer() }));
 
         // Replace placeholders with rendered components
         dataBlocks.forEach((data, index) => {
@@ -3759,7 +3776,7 @@
 
         // Add feedback controls for assistant messages
         if (role === 'assistant' && messageId) {
-          const feedbackDiv = createFeedbackUI(messageId);
+          const feedbackDiv = createFeedbackUI(messageId, content);
           contentDiv.appendChild(feedbackDiv);
         }
 
@@ -3773,8 +3790,30 @@
         return messageDiv;
       }
 
+      function fallbackCopy(text, btn) {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        try {
+          document.execCommand('copy');
+          btn.textContent = 'Copied!';
+          btn.classList.add('copied');
+          setTimeout(() => {
+            btn.textContent = 'Copy';
+            btn.classList.remove('copied');
+          }, 1500);
+        } catch (e) {
+          console.error('Copy to clipboard failed:', e);
+        } finally {
+          document.body.removeChild(textarea);
+        }
+      }
+
       // Create feedback UI for a message
-      function createFeedbackUI(messageId) {
+      function createFeedbackUI(messageId, rawContent) {
         const container = document.createElement('div');
         container.className = 'message-feedback';
         container.innerHTML = `
@@ -3856,6 +3895,28 @@
           await submitFeedback(messageId, selectedRating || 3, category, Array.from(selectedTags), suggestion);
           showFeedbackSuccess(container);
         });
+
+        if (rawContent) {
+          const copyBtn = document.createElement('button');
+          copyBtn.className = 'copy-btn';
+          copyBtn.textContent = 'Copy';
+          copyBtn.title = 'Copy response';
+          copyBtn.addEventListener('click', () => {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              navigator.clipboard.writeText(rawContent).then(() => {
+                copyBtn.textContent = 'Copied!';
+                copyBtn.classList.add('copied');
+                setTimeout(() => {
+                  copyBtn.textContent = 'Copy';
+                  copyBtn.classList.remove('copied');
+                }, 1500);
+              }).catch(() => fallbackCopy(rawContent, copyBtn));
+            } else {
+              fallbackCopy(rawContent, copyBtn);
+            }
+          });
+          container.appendChild(copyBtn);
+        }
 
         return container;
       }
@@ -4134,7 +4195,7 @@
 
         // Add feedback controls
         if (messageId) {
-          const feedbackDiv = createFeedbackUI(messageId);
+          const feedbackDiv = createFeedbackUI(messageId, fullContent);
           contentDiv.appendChild(feedbackDiv);
         }
 
@@ -4738,7 +4799,7 @@
 
         // Parse markdown for assistant messages
         if (role === 'assistant' && window.marked) {
-          contentDiv.innerHTML = DOMPurify.sanitize(marked.parse(content || ''));
+          contentDiv.innerHTML = DOMPurify.sanitize(marked.parse(content || '', { breaks: true, gfm: true, renderer: createAdcpMarkdownRenderer() }));
         } else {
           contentDiv.textContent = content || '';
         }
@@ -5446,6 +5507,7 @@
           const reader = response.body.getReader();
           const decoder = new TextDecoder();
           let buffer = '';
+          const siStreamRenderer = window.marked ? createAdcpMarkdownRenderer() : null;
 
           while (true) {
             const { done, value } = await reader.read();
@@ -5465,8 +5527,8 @@
                   if (event.type === 'text') {
                     streamedText += event.text;
                     // Update content with markdown parsing
-                    if (window.marked) {
-                      contentDiv.innerHTML = DOMPurify.sanitize(marked.parse(streamedText));
+                    if (siStreamRenderer) {
+                      contentDiv.innerHTML = DOMPurify.sanitize(marked.parse(streamedText, { breaks: true, gfm: true, renderer: siStreamRenderer }));
                     } else {
                       contentDiv.textContent = streamedText;
                     }
@@ -5604,6 +5666,14 @@
       }
 
       function endVideoCall() {
+        // Best-effort: tell Tavus to release the session immediately so it
+        // doesn't hold a concurrent slot until the ~25min idle timeout.
+        if (videoConversationId) {
+          authFetch(`/api/addie/video/session/${encodeURIComponent(videoConversationId)}/end`, {
+            method: 'POST',
+          }).catch(() => {});
+        }
+
         videoCallActive = false;
         videoCallFrame.src = 'about:blank';
         videoPanel.classList.remove('active');

@@ -41,6 +41,9 @@
       "description": "Artifact assets in document flow order - text blocks, images, video, audio",
       "maxItems": 200,
       "items": {
+        "discriminator": {
+          "propertyName": "type"
+        },
         "oneOf": [
           {
             "type": "object",
@@ -281,6 +284,9 @@
     "asset_access": {
       "type": "object",
       "description": "Authentication for accessing secured asset URLs",
+      "discriminator": {
+        "propertyName": "method"
+      },
       "oneOf": [
         {
           "type": "object",

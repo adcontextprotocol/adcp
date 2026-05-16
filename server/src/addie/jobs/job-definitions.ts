@@ -44,6 +44,7 @@ import { runAddieCorrectedCaptureJob } from './shadow-corrected-capture.js';
 import { runKnowledgeGapCloserJob } from './knowledge-gap-closer.js';
 import { runEscalationTriageJob } from './escalation-triage.js';
 import { runInviteExpirySweep } from './invite-expiry-sweep.js';
+import { runIntegrityInvariantsJob } from './integrity-invariants.js';
 import { generateNetworkConsistencyReports } from '../../services/network-consistency-reporter.js';
 import { eventsDb } from '../../db/events-db.js';
 import { runEventRecapNudgeJob } from './event-recap-nudge.js';
@@ -55,6 +56,7 @@ import {
 } from './announcement-trigger.js';
 import { runSpecInsightPostJob } from './spec-insight-post.js';
 import { runChannelPrivacyAudit, type ChannelPrivacyAuditResult } from './channel-privacy-audit.js';
+import { runOrphanOrgAudit, type OrphanOrgAuditResult } from './orphan-org-audit.js';
 import { NotificationDatabase } from '../../db/notification-db.js';
 import { notifyUser } from '../../notifications/notification-service.js';
 import { createLogger } from '../../logger.js';
@@ -181,6 +183,19 @@ export function registerAllJobs(): void {
     runner: runChannelPrivacyAudit,
     shouldLogResult: (r: ChannelPrivacyAuditResult) =>
       r.drifted.length > 0 || r.unknown.length > 0,
+  });
+
+  // Orphan org audit — daily backstop for the at-INSERT hardening
+  // (admin/domains.ts + createOrganization). Surfaces non-personal orgs
+  // missing email_domain so a future regression in those write paths is
+  // caught in a day instead of months.
+  jobScheduler.register({
+    name: 'orphan-org-audit',
+    description: 'Orphan org audit',
+    interval: { value: 24, unit: 'hours' },
+    initialDelay: { value: 15, unit: 'minutes' },
+    runner: runOrphanOrgAudit,
+    shouldLogResult: (r: OrphanOrgAuditResult) => r.total > 0,
   });
 
   // Relationship orchestrator - continues member relationships across channels
@@ -826,6 +841,21 @@ export function registerAllJobs(): void {
     runner: runEscalationTriageJob,
     options: { minAgeDays: 7, limit: 25, staleOpsDays: 21 },
     shouldLogResult: (r) => r.suggested > 0 || r.errors > 0,
+  });
+
+  // Integrity invariants - scheduled run of the framework that previously
+  // only existed at GET /api/admin/integrity/check. Without this, classes
+  // of drift like "org references a non-existent Stripe customer" only
+  // surface when a user happens to load the affected page. The job posts
+  // one Slack alert per run when critical violations are found; the
+  // error-notifier's 5-minute per-source throttle prevents spam.
+  jobScheduler.register({
+    name: 'integrity-invariants',
+    description: 'Integrity invariants framework run',
+    interval: { value: 6, unit: 'hours' },
+    initialDelay: { value: 30, unit: 'minutes' },
+    runner: runIntegrityInvariantsJob,
+    shouldLogResult: (r) => r.totalViolations > 0 || !r.ran,
   });
 }
 

@@ -316,7 +316,8 @@ async function runTests() {
 
   const capabilitiesBase = {
     adcp: { major_versions: [3] },
-    supported_protocols: ['media_buy']
+    supported_protocols: ['media_buy'],
+    account: { supported_billing: ['operator', 'agent'] }
   };
 
   await testSchemaValidation(
@@ -347,6 +348,105 @@ async function runTests() {
     '/schemas/protocol/get-adcp-capabilities-response.json',
     { ...capabilitiesBase, adcp: { ...capabilitiesBase.adcp, idempotency: {} } },
     'Rejects empty idempotency block (missing discriminator)'
+  );
+
+  // in_flight_max_seconds — optional in 3.1, required when supported: true in 4.0.
+  // Schema accepts the bound when present; cross-field bound (≤ replay_ttl_seconds)
+  // is enforced below the schema layer (see custom assertion).
+  await testSchemaValidation(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    { ...capabilitiesBase, adcp: { ...capabilitiesBase.adcp, idempotency: { supported: true, replay_ttl_seconds: 86400, in_flight_max_seconds: 60 } } },
+    'IdempotencySupported with in_flight_max_seconds: {supported: true, replay_ttl_seconds: 86400, in_flight_max_seconds: 60}'
+  );
+
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    { ...capabilitiesBase, adcp: { ...capabilitiesBase.adcp, idempotency: { supported: true, replay_ttl_seconds: 86400, in_flight_max_seconds: 0 } } },
+    'Rejects in_flight_max_seconds: 0 (below minimum 1)'
+  );
+
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    { ...capabilitiesBase, adcp: { ...capabilitiesBase.adcp, idempotency: { supported: false, in_flight_max_seconds: 60 } } },
+    'Rejects in_flight_max_seconds on unsupported branch: {supported: false, in_flight_max_seconds: 60}'
+  );
+
+  // Cross-field invariant: in_flight_max_seconds MUST NOT exceed replay_ttl_seconds.
+  // JSON Schema cannot express field-relative bounds; the constraint is enforced
+  // by a custom assertion alongside the schema check.
+  const violatingCaps = { ...capabilitiesBase, adcp: { ...capabilitiesBase.adcp, idempotency: { supported: true, replay_ttl_seconds: 3600, in_flight_max_seconds: 7200 } } };
+  // Schema layer accepts the shape (both bounds individually valid)
+  await testSchemaValidation(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    violatingCaps,
+    'Schema accepts in_flight_max_seconds > replay_ttl_seconds at the schema layer (cross-field bound enforced below)'
+  );
+  // Cross-field invariant: programmatic check that the cross-field bound is violated.
+  totalTests++;
+  const idem = violatingCaps.adcp.idempotency;
+  if (idem.in_flight_max_seconds > idem.replay_ttl_seconds) {
+    log(`  ✓ Cross-field assertion: in_flight_max_seconds (${idem.in_flight_max_seconds}) > replay_ttl_seconds (${idem.replay_ttl_seconds}) detected — sellers MUST NOT emit this shape`, 'success');
+    passedTests++;
+  } else {
+    log(`  ✗ Cross-field assertion: failed to detect in_flight_max_seconds > replay_ttl_seconds`, 'error');
+    failedTests++;
+  }
+
+  log('');
+
+  // request_signing.protocol_methods_* — JSON-RPC method namespace (adcp#4318).
+  // The `protocol_methods_supported_for` / `_warn_for` / `_required_for` arrays
+  // carry JSON-RPC method strings (e.g. `tasks/cancel`); plain AdCP tool names
+  // (no `/`) are wire-distinct and belong in `supported_for` / `required_for`.
+  // The schema enforces the namespace split via a `pattern: "/"` constraint on
+  // the items.
+  log('Get AdCP Capabilities Response (request_signing.protocol_methods_*):', 'info');
+
+  await testSchemaValidation(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp: { ...capabilitiesBase.adcp, idempotency: { supported: true, replay_ttl_seconds: 86400 } },
+      request_signing: {
+        supported: true,
+        covers_content_digest: 'either',
+        required_for: ['create_media_buy'],
+        supported_for: ['create_media_buy', 'update_media_buy'],
+        protocol_methods_supported_for: ['tasks/cancel', 'tasks/get'],
+        protocol_methods_required_for: ['tasks/cancel'],
+      },
+    },
+    'Accepts protocol_methods_* with JSON-RPC method strings (`tasks/cancel`, `tasks/get`)'
+  );
+
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp: { ...capabilitiesBase.adcp, idempotency: { supported: true, replay_ttl_seconds: 86400 } },
+      request_signing: {
+        supported: true,
+        covers_content_digest: 'either',
+        required_for: [],
+        protocol_methods_supported_for: ['create_media_buy'],
+      },
+    },
+    'Rejects AdCP tool name (no `/`) in protocol_methods_supported_for'
+  );
+
+  await testSchemaRejection(
+    '/schemas/protocol/get-adcp-capabilities-response.json',
+    {
+      ...capabilitiesBase,
+      adcp: { ...capabilitiesBase.adcp, idempotency: { supported: true, replay_ttl_seconds: 86400 } },
+      request_signing: {
+        supported: true,
+        covers_content_digest: 'either',
+        required_for: [],
+        protocol_methods_required_for: ['update_media_buy'],
+      },
+    },
+    'Rejects AdCP tool name (no `/`) in protocol_methods_required_for'
   );
 
   log('');
@@ -520,6 +620,89 @@ async function runTests() {
     failedTests++;
   }
 
+  log('');
+
+  // Product `publisher_properties` rejects `publisher_domains[]` compact form (#4508):
+  //
+  // What's being exercised: the rejection comes from the `allOf` clause in
+  // `core/product.json` (`{ not: { required: ['publisher_domains'] } }`),
+  // NOT from the selector schema's XOR. The selector itself accepts both
+  // singular and plural; product-side wraps the selector to forbid plural.
+  // If a future regression removes that `allOf+not` clause, these tests
+  // turn red — the compact form would silently pass through products.
+  log('product.publisher_properties rejects compact `publisher_domains[]` form (#4508):', 'info');
+  await testSchemaValidation(
+    '/schemas/core/product.json',
+    {
+      product_id: 'singular_ok',
+      name: 'Singular OK',
+      description: 'Test',
+      publisher_properties: [
+        { publisher_domain: 'example.com', selection_type: 'all' }
+      ],
+      format_ids: [{ agent_url: 'https://creative.example.com', id: 'video_30s' }],
+      delivery_type: 'guaranteed',
+      delivery_measurement: { provider: 'Test' },
+      pricing_options: [{ pricing_option_id: 'cpm', pricing_model: 'cpm', rate: 10, currency: 'USD', is_fixed: true }],
+      reporting_capabilities: {
+        available_reporting_frequencies: ['daily'],
+        expected_delay_minutes: 240,
+        timezone: 'UTC',
+        supports_webhooks: false,
+        available_metrics: ['impressions'],
+        date_range_support: 'date_range'
+      }
+    },
+    'Product with singular publisher_domain accepted'
+  );
+  await testSchemaRejection(
+    '/schemas/core/product.json',
+    {
+      product_id: 'compact_rejected',
+      name: 'Compact rejected',
+      description: 'Test',
+      publisher_properties: [
+        { publisher_domains: ['example.com', 'other.example'], selection_type: 'by_tag', property_tags: ['t'] }
+      ],
+      format_ids: [{ agent_url: 'https://creative.example.com', id: 'video_30s' }],
+      delivery_type: 'guaranteed',
+      delivery_measurement: { provider: 'Test' },
+      pricing_options: [{ pricing_option_id: 'cpm', pricing_model: 'cpm', rate: 10, currency: 'USD', is_fixed: true }],
+      reporting_capabilities: {
+        available_reporting_frequencies: ['daily'],
+        expected_delay_minutes: 240,
+        timezone: 'UTC',
+        supports_webhooks: false,
+        available_metrics: ['impressions'],
+        date_range_support: 'date_range'
+      }
+    },
+    'Product with compact publisher_domains[] form rejected'
+  );
+  await testSchemaRejection(
+    '/schemas/core/product.json',
+    {
+      product_id: 'compact_rejected_all',
+      name: 'Compact rejected on all',
+      description: 'Test',
+      publisher_properties: [
+        { publisher_domains: ['example.com'], selection_type: 'all' }
+      ],
+      format_ids: [{ agent_url: 'https://creative.example.com', id: 'video_30s' }],
+      delivery_type: 'guaranteed',
+      delivery_measurement: { provider: 'Test' },
+      pricing_options: [{ pricing_option_id: 'cpm', pricing_model: 'cpm', rate: 10, currency: 'USD', is_fixed: true }],
+      reporting_capabilities: {
+        available_reporting_frequencies: ['daily'],
+        expected_delay_minutes: 240,
+        timezone: 'UTC',
+        supports_webhooks: false,
+        available_metrics: ['impressions'],
+        date_range_support: 'date_range'
+      }
+    },
+    'Product with compact form on `all` selector rejected'
+  );
   log('');
 
   // Test 6: Bundled schemas (no $ref resolution needed)

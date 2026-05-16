@@ -313,6 +313,36 @@ describe('createMemberToolHandlers', () => {
       expect(result).toContain('creative-agent');
       expect(result).toContain('Original body');
     });
+
+    it('coerces a string labels value into an array (LLM schema drift)', async () => {
+      const handlers = createMemberToolHandlers(null);
+      const handler = handlers.get('draft_github_issue')!;
+
+      const result = await handler({
+        title: 'T',
+        body: 'B',
+        labels: 'bug,needs-triage',
+      });
+
+      expect(result).toContain('Labels:');
+      expect(result).toContain('bug');
+      expect(result).toContain('needs-triage');
+      expect(result).toContain('labels=bug%2Cneeds-triage');
+    });
+
+    it('treats a non-string, non-array labels value as empty', async () => {
+      const handlers = createMemberToolHandlers(null);
+      const handler = handlers.get('draft_github_issue')!;
+
+      const result = await handler({
+        title: 'T',
+        body: 'B',
+        labels: 42 as unknown as string[],
+      });
+
+      expect(result).toContain('GitHub Issue Draft');
+      expect(result).not.toContain('Labels:');
+    });
   });
 
   describe('create_github_issue handler', () => {

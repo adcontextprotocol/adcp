@@ -31,24 +31,24 @@ AdCP supports two transport mechanisms:
 
 - Introduction: https://adcontextprotocol.org/docs/intro
 - Getting started: https://adcontextprotocol.org/docs/building
-- MCP integration guide: https://adcontextprotocol.org/docs/building/integration/mcp-guide
-- A2A integration guide: https://adcontextprotocol.org/docs/building/integration/a2a-guide
+- MCP integration guide: https://adcontextprotocol.org/docs/building/by-layer/L0/mcp-guide
+- A2A integration guide: https://adcontextprotocol.org/docs/building/by-layer/L0/a2a-guide
 - Media buy domain: https://adcontextprotocol.org/docs/media-buy
 - Creative domain: https://adcontextprotocol.org/docs/creative
 - Signals domain: https://adcontextprotocol.org/docs/signals/overview
 - Governance domain: https://adcontextprotocol.org/docs/governance/overview
 - Sponsored intelligence: https://adcontextprotocol.org/docs/sponsored-intelligence/overview
 - Brand protocol: https://adcontextprotocol.org/docs/brand-protocol
-- Schemas and SDKs: https://adcontextprotocol.org/docs/building/schemas-and-sdks
+- Schemas and SDKs: https://adcontextprotocol.org/docs/building/by-layer/L4/choose-your-sdk
 - Release notes: https://adcontextprotocol.org/docs/reference/release-notes
 
 ## Adoption path
 
 Build in this order:
 1. Quickstart (5-minute curl example): https://adcontextprotocol.org/docs/quickstart
-2. Build an agent: https://adcontextprotocol.org/docs/building/build-an-agent
-3. Validate an agent: https://adcontextprotocol.org/docs/building/validate-your-agent
-4. Operate an agent: https://adcontextprotocol.org/docs/building/operating-an-agent
+2. Build an agent: https://adcontextprotocol.org/docs/building/by-layer/L4/build-an-agent
+3. Validate an agent: https://adcontextprotocol.org/docs/building/verification/validate-your-agent
+4. Operate an agent: https://adcontextprotocol.org/docs/building/operating/operating-an-agent
 
 Coding-agent shortcut — skip (2) and load a seller skill directly: https://github.com/adcontextprotocol/adcp-client/blob/main/skills/build-seller-agent/SKILL.md
 

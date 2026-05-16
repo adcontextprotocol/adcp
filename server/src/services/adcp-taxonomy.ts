@@ -108,7 +108,8 @@ export type AdcpSpecialism =
   | 'sales-social'
   | 'signal-marketplace'
   | 'signal-owned'
-  | 'signed-requests';
+  | 'signed-requests'
+  | 'sponsored-intelligence';
 
 export const ADCP_SPECIALISMS: readonly AdcpSpecialism[] = [
   'audience-sync',
@@ -131,6 +132,7 @@ export const ADCP_SPECIALISMS: readonly AdcpSpecialism[] = [
   'signal-marketplace',
   'signal-owned',
   'signed-requests',
+  'sponsored-intelligence',
 ];
 
 /** Per-specialism status derived from compliance catalog frontmatter. */

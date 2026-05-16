@@ -75,6 +75,12 @@
                   "minimum": 3600,
                   "maximum": 604800
                 },
+                "in_flight_max_seconds": {
+                  "type": "integer",
+                  "description": "Maximum lifetime in seconds of an in-flight idempotency row before the seller releases it per L1/security.mdx rule 9 (treat the in-flight attempt as failed if the handler does not complete within this bound). Buyer SDKs use this value to compute a retry budget when they see `IDEMPOTENCY_IN_FLIGHT` — cap individual retry waits at this value rather than the much-wider `replay_ttl_seconds` ceiling. Optional in 3.1 (additive declaration); SDKs that don't see the field fall back to rule 9's order-of-magnitude SHOULD heuristic. Required when `supported: true` in 4.0. MUST be no greater than `replay_ttl_seconds` (a bound larger than the replay window is vacuous — any retry past the TTL hits IDEMPOTENCY_EXPIRED regardless of in-flight state); validators MUST enforce this cross-field constraint at the test layer since JSON Schema cannot express field-relative bounds. A buyer that observes `error.details.retry_after` exceeding this value MAY treat that as a seller bug — the in-flight row cannot legitimately outlive the bound the seller declared.",
+                  "minimum": 1,
+                  "maximum": 604800
+                },
                 "account_id_is_opaque": {
                   "type": "boolean",
                   "description": "When true, the seller derives `account_id` via an HKDF-based one-way transform of the buyer's natural account key rather than echoing the natural key on the wire. Buyers MUST NOT attempt to invert the opaque id and MUST treat it as a blind handle scoped to this seller. Absent or false, callers should assume `account_id` is the natural key (or a server-assigned but non-opaque id). This flag does not change the wire shape, but it DOES change buyer behavior — buyers MUST NOT cache, log, or treat `account_id` as a natural-key analog when this flag is true. Migration note for sellers already returning an opaque id without this flag: set it to true at the next capabilities refresh so buyers stop inferring natural-key semantics; until set, new-buyer replay/retry logic will misclassify these ids as natural keys.",
@@ -88,7 +94,7 @@
             },
             {
               "title": "IdempotencyUnsupported",
-              "description": "Seller does NOT honor idempotency_key replay protection — sending a key is a no-op, the seller will NOT return IDEMPOTENCY_CONFLICT or IDEMPOTENCY_EXPIRED, and a naive retry WILL double-process. Buyers MUST use natural-key checks (e.g., get_media_buys by buyer_ref) before retrying spend-committing operations against this seller. replay_ttl_seconds MUST be absent — it has no meaning without replay support.",
+              "description": "Seller does NOT honor idempotency_key replay protection — sending a key is a no-op, the seller will NOT return IDEMPOTENCY_CONFLICT or IDEMPOTENCY_EXPIRED, and a naive retry WILL double-process. Buyers MUST use natural-key checks (e.g., get_media_buys by buyer_ref) before retrying spend-committing operations against this seller. replay_ttl_seconds and in_flight_max_seconds MUST be absent — they have no meaning without replay support.",
               "properties": {
                 "supported": {
                   "const": false,
@@ -99,8 +105,9 @@
                 "supported"
               ],
               "not": {
-                "required": [
-                  "replay_ttl_seconds"
+                "anyOf": [
+                  { "required": ["replay_ttl_seconds"] },
+                  { "required": ["in_flight_max_seconds"] }
                 ]
               }
             }
@@ -205,6 +212,11 @@
           },
           "minItems": 1,
           "uniqueItems": true
+        },
+        "supports_proposals": {
+          "type": "boolean",
+          "description": "Whether this seller commits to the proposal lifecycle on get_products: when called with buying_mode: 'brief' the seller will return at least one entry in proposals[]; when called with buying_mode: 'refine' + action: 'finalize' the seller will transition a proposal from draft to committed. A declaration of true is a commitment the seller will be graded against, not just a feature flag — sellers that decline a brief on policy grounds still owe a structured proposal-shaped rejection rather than an empty proposals[]. Most guaranteed-deal sellers (premium pubs, broadcast, CTV) declare true; auction-based PG, retail SKU, and quoted-rate direct-buy flows declare false. When false or absent, the seller serves products directly without proposal abstraction; conformance runners skip proposal-lifecycle storyboards.",
+          "default": false
         },
         "features": {
           "$ref": "/schemas/core/media-buy-features.json"
@@ -926,7 +938,7 @@
         },
         "supported_formats": {
           "type": "array",
-          "description": "v2 path: format declarations describing which canonical formats this creative agent can produce via `build_creative`. Each entry uses the same `ProductFormatDeclaration` shape as a product's inline `format_options[i]` — `format_kind` discriminator + `params` (canonical's parameter schema including `slots`, dimensions, durations, codecs, character limits, platform_extensions, tracking_extensions). Replaces the v1 `list_creative_formats` discovery surface for creative agents.",
+          "description": "Canonical-formats path: format declarations describing which canonical formats this creative agent can produce via `build_creative`. Each entry uses the same `ProductFormatDeclaration` shape as a product's inline `format_options[i]` — `format_kind` discriminator + `params` (canonical's parameter schema including `slots`, dimensions, durations, codecs, character limits, platform_extensions, tracking_extensions). Replaces the v1 `list_creative_formats` discovery surface for creative agents.",
           "items": {
             "type": "object",
             "properties": {
@@ -942,6 +954,11 @@
             "required": ["format"],
             "additionalProperties": true
           }
+        },
+        "bills_through_adcp": {
+          "type": "boolean",
+          "description": "When true, this creative agent bills through the AdCP rate-card surface: list_creatives returns pricing_options when include_pricing=true with an authenticated account, build_creative populates pricing_option_id and vendor_cost on the response, and report_usage accepts records against the rate card. When false or absent, the agent bills out of band (flat license, SaaS contract, bundled enterprise agreement) and buyers should skip pricing fields and tolerate report_usage returning accepted: 0 with errors carrying BILLING_OUT_OF_BAND. A pre-call discriminator so buyer agents can route across many creative agents without first establishing an account to probe pricing.",
+          "default": false
         }
       },
       "additionalProperties": true
@@ -966,25 +983,73 @@
         },
         "required_for": {
           "type": "array",
-          "description": "AdCP protocol operation names (e.g., 'create_media_buy') for which this agent rejects unsigned requests with request_signature_required. Not MCP tool names, A2A skill names, or any transport-specific rename — verifiers MUST NOT accept operation names that are not defined by the AdCP protocol spec. Empty in 3.0 by default; sellers populate selectively during per-counterparty pilots. In 4.0 this list MUST include all spend-committing operations the agent supports (create_media_buy, acquire_*, etc.). Counterparties MUST sign any listed operation.",
+          "description": "AdCP protocol operation names (e.g., 'create_media_buy') for which this agent rejects unsigned requests with request_signature_required. Not MCP tool names, A2A skill names, or any transport-specific rename — verifiers MUST NOT accept operation names that are not defined by the AdCP protocol spec. JSON-RPC protocol method names like `tasks/cancel` belong in `protocol_methods_required_for`, not here. Empty in 3.0 by default; sellers populate selectively during per-counterparty pilots. In 4.0 this list MUST include all spend-committing operations the agent supports (create_media_buy, acquire_*, etc.). Counterparties MUST sign any listed operation. Every operation listed MUST also appear in `supported_for` (an operation can't be required without being supported); see `x-adcp-validation`.",
           "items": {
             "type": "string"
           },
-          "default": []
+          "default": [],
+          "x-adcp-validation": {
+            "subset_of": "request_signing.supported_for",
+            "spec": "docs/building/implementation/security.mdx#signed-requests-transport-layer"
+          }
         },
         "warn_for": {
           "type": "array",
-          "description": "AdCP protocol operation names for which this agent verifies signatures when present and logs failures but does NOT reject the request. Used as a shadow-mode bridge between supported_for and required_for: the verifier surfaces failure rates in monitoring before flipping an operation to required. Precedence: required_for > warn_for > supported_for. An operation in required_for ignores warn_for. Counterparties SHOULD sign operations in warn_for; verifiers MUST NOT reject if the signature is missing or invalid.",
+          "description": "AdCP protocol operation names for which this agent verifies signatures when present and logs failures but does NOT reject the request. Used as a shadow-mode bridge between supported_for and required_for: the verifier surfaces failure rates in monitoring before flipping an operation to required. Precedence: required_for > warn_for > supported_for. An operation in required_for ignores warn_for. Counterparties SHOULD sign operations in warn_for; verifiers MUST NOT reject if the signature is missing or invalid. An operation MUST NOT appear in both `warn_for` and `required_for`; see `x-adcp-validation`.",
           "items": {
             "type": "string"
           },
-          "default": []
+          "default": [],
+          "x-adcp-validation": {
+            "disjoint_with": "request_signing.required_for",
+            "subset_of": "request_signing.supported_for",
+            "spec": "docs/building/implementation/security.mdx#signed-requests-transport-layer"
+          }
         },
         "supported_for": {
           "type": "array",
           "description": "AdCP protocol operation names for which this agent verifies signatures when present but does not require them. Counterparties SHOULD sign operations in this list. Typically a superset of required_for and warn_for.",
           "items": {
             "type": "string"
+          }
+        },
+        "protocol_methods_supported_for": {
+          "type": "array",
+          "description": "JSON-RPC protocol method names (e.g., 'tasks/cancel', 'tasks/get') for which this agent verifies signatures when present. Disjoint from `supported_for`, which carries AdCP tool names only. Counterparties SHOULD sign listed methods. The `tasks/*` family enumerated here matches the A2A 0.3.0 task-lifecycle methods (§7.x); future protocol additions extend this list, not `supported_for`. Items MUST be wire-format JSON-RPC method strings (containing `/`); plain AdCP tool names belong in `supported_for`.",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*/[a-z][a-z0-9_]*$"
+          },
+          "default": [],
+          "x-adcp-validation": {
+            "spec": "docs/building/by-layer/L1/security.mdx#signed-requests-transport-layer"
+          }
+        },
+        "protocol_methods_warn_for": {
+          "type": "array",
+          "description": "Protocol method names for which this agent verifies signatures when present and logs failures but does NOT reject. Shadow-mode bridge between `protocol_methods_supported_for` and `protocol_methods_required_for`, mirroring `warn_for` semantics in the AdCP-tool namespace. An item MUST NOT appear in both `protocol_methods_warn_for` and `protocol_methods_required_for`; see `x-adcp-validation`.",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*/[a-z][a-z0-9_]*$"
+          },
+          "default": [],
+          "x-adcp-validation": {
+            "disjoint_with": "request_signing.protocol_methods_required_for",
+            "subset_of": "request_signing.protocol_methods_supported_for",
+            "spec": "docs/building/by-layer/L1/security.mdx#signed-requests-transport-layer"
+          }
+        },
+        "protocol_methods_required_for": {
+          "type": "array",
+          "description": "JSON-RPC protocol method names for which this agent rejects unsigned requests with `request_signature_required`. Separate namespace from `required_for` (which carries AdCP tool names) so verifiers and storyboard runners don't conflate the two — an AdCP tool name and an A2A method name could in principle collide as bare strings, but the protocol_methods_* bucket binds the match against the JSON-RPC `method` field, not the `tools/call` `params.name`. Every method listed MUST also appear in `protocol_methods_supported_for`; see `x-adcp-validation`.",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*/[a-z][a-z0-9_]*$"
+          },
+          "default": [],
+          "x-adcp-validation": {
+            "subset_of": "request_signing.protocol_methods_supported_for",
+            "spec": "docs/building/by-layer/L1/security.mdx#signed-requests-transport-layer"
           }
         }
       },
@@ -998,7 +1063,19 @@
       "properties": {
         "supported": {
           "type": "boolean",
-          "description": "Whether this agent signs outbound webhooks with the AdCP RFC 9421 webhook profile. When false or absent, webhooks are delivered with legacy Bearer or HMAC-SHA256 auth only and receivers MUST NOT expect a Signature header."
+          "description": "Whether this agent signs outbound webhooks with the AdCP RFC 9421 webhook profile. When false or absent, webhooks are delivered with legacy Bearer or HMAC-SHA256 auth only and receivers MUST NOT expect a Signature header. When the seller advertises mutating-webhook emission (i.e., `media_buy.reporting_delivery_methods` includes `webhook` OR `media_buy.content_standards.supports_webhook_delivery` is true), this MUST be `true` — emitting state-changing webhooks unsigned is a downgrade vector that lets an on-path attacker forge delivery callbacks. See `x-adcp-validation`.",
+          "x-adcp-validation": {
+            "verifier_constraints": {
+              "must_equal_when": {
+                "value": true,
+                "any_of": [
+                  { "field": "media_buy.reporting_delivery_methods", "contains_item": "webhook" },
+                  { "field": "media_buy.content_standards.supports_webhook_delivery", "equals": true }
+                ]
+              }
+            },
+            "spec": "docs/building/implementation/webhooks.mdx"
+          }
         },
         "profile": {
           "type": "string",
@@ -1032,8 +1109,38 @@
     },
     "identity": {
       "type": "object",
-      "description": "Operator identity posture — key-scoping and compromise-response controls the agent operates. Fields are independent, all advisory in 3.x; receivers use them to reason about blast radius and revocation latency at onboarding rather than discovering the posture after an incident. Semantics of an empty object: `identity: {}` means \"posture block present but no posture claimed\" — schema-valid but advisory-neutral; receivers MUST treat it as equivalent to omitting the block (no capability claim inferred). Operators SHOULD populate at least one field to make a declaration meaningful.",
+      "description": "Operator identity posture — trust-root pointer (`brand_json_url`) plus key-scoping and compromise-response controls the agent operates. `brand_json_url` is **load-bearing** for signature verification: when the agent declares any signing posture (`request_signing.supported_for`/`required_for` non-empty, `webhook_signing.supported === true`, or any `key_origins` subfield), `brand_json_url` MUST be present (storyboard-enforced in 3.x; schema-required in 4.0). Verifiers use it to bootstrap from the agent URL to the operator's brand.json (and from there to signing keys); see [security.mdx §Discovering an agent's signing keys](https://adcontextprotocol.org/docs/building/by-layer/L1/security#discovering-an-agents-signing-keys-via-brand_json_url). The remaining fields (`per_principal_key_isolation`, `key_origins`, `compromise_notification`) are advisory and receivers use them to reason about blast radius and revocation latency at onboarding. Empty-object semantics: `identity: {}` means \"posture block present but no posture claimed\" — schema-valid but advisory-neutral and receivers MUST treat it as equivalent to omitting the block, **except** that an agent declaring a signing posture elsewhere in the response with an empty `identity` MUST be rejected by storyboard runners as missing `brand_json_url`.",
       "properties": {
+        "brand_json_url": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://",
+          "description": "HTTPS URL of the operator's brand.json (typically `https://{operator-domain}/.well-known/brand.json`). Trust-root pointer for this agent's signing keys. See [security.mdx §Discovering an agent's signing keys via `brand_json_url`](https://adcontextprotocol.org/docs/building/by-layer/L1/security#discovering-an-agents-signing-keys-via-brand_json_url) for the verifier algorithm and `x-adcp-validation` for structured constraints. Distinct from `sponsored_intelligence.brand_url`, which is a rendering pointer for SI agent visuals — verifiers MUST use this field for key discovery and MUST NOT fall back to `sponsored_intelligence.brand_url` as a trust-root pointer.",
+          "x-adcp-validation": {
+            "trust_root": true,
+            "required_when": {
+              "any_of": [
+                { "field": "request_signing.supported_for", "non_empty": true },
+                { "field": "request_signing.required_for", "non_empty": true },
+                { "field": "request_signing.protocol_methods_supported_for", "non_empty": true },
+                { "field": "request_signing.protocol_methods_required_for", "non_empty": true },
+                { "field": "webhook_signing.supported", "equals": true },
+                { "field": "identity.key_origins", "any_subfield_present": true }
+              ]
+            },
+            "schema_required_when": {
+              "field": "adcp.supported_versions",
+              "any_item_matches_pattern": "^4\\."
+            },
+            "verifier_constraints": {
+              "agent_url_match": "byte_equal",
+              "origin_binding": "etld1_or_authorized_operators",
+              "key_origins_consistency": "mandatory_when_signing"
+            },
+            "distinct_from": "sponsored_intelligence.brand_url",
+            "spec": "docs/building/implementation/security.mdx#discovering-an-agents-signing-keys-via-brand_json_url"
+          }
+        },
         "per_principal_key_isolation": {
           "type": "boolean",
           "description": "When true, this multi-principal operator scopes signing keys per-principal so a single principal's key compromise does not silently re-scope across principals served by the same operator. `kid` values remain opaque to verifiers per RFC 7517; any operator-side naming convention (e.g., `{operator}:{principal}:{key_version}`) is internal bookkeeping and MUST NOT be parsed by verifiers. See docs/building/understanding/security-model.mdx.",
@@ -1041,7 +1148,7 @@
         },
         "key_origins": {
           "type": "object",
-          "description": "Map of signing-key purpose → publishing origin, so counterparties can verify origin separation (e.g., governance keys served from a separate origin than transport/webhook keys) at onboarding. Absent means the operator has not declared a separation scheme; receivers SHOULD assume shared-origin. See docs/building/implementation/security.mdx §Origin separation.",
+          "description": "Map of signing-key purpose → publishing origin, so counterparties can verify origin separation (e.g., governance keys served from a separate origin than transport/webhook keys) at onboarding. Absent means the operator has not declared a separation scheme; receivers SHOULD assume shared-origin. Every purpose listed MUST have a corresponding signing posture declared elsewhere — `request_signing` requires non-empty `request_signing.supported_for`/`required_for`/`protocol_methods_supported_for`/`protocol_methods_required_for`; `webhook_signing` requires `webhook_signing.supported === true` — otherwise the consistency check at signature-verification time has nothing to anchor against. See `x-adcp-validation` and docs/building/implementation/security.mdx §Origin separation.",
           "properties": {
             "governance_signing": {
               "type": "string",
@@ -1064,7 +1171,18 @@
               "description": "Origin (scheme + host) serving the TMP-signing JWKS, when this operator participates in TMP."
             }
           },
-          "additionalProperties": false
+          "additionalProperties": false,
+          "x-adcp-validation": {
+            "verifier_constraints": {
+              "purpose_anchoring": {
+                "request_signing": "request_signing.supported_for | request_signing.required_for | request_signing.protocol_methods_supported_for | request_signing.protocol_methods_required_for non-empty",
+                "webhook_signing": "webhook_signing.supported === true",
+                "governance_signing": "governance protocol declared in supported_protocols",
+                "tmp_signing": "trusted_match.surfaces non-empty (TMP participation)"
+              }
+            },
+            "spec": "docs/building/implementation/security.mdx#origin-separation"
+          }
         },
         "compromise_notification": {
           "type": "object",
@@ -1084,7 +1202,7 @@
           "additionalProperties": false
         }
       },
-      "additionalProperties": false
+      "additionalProperties": true
     },
     "measurement": {
       "type": "object",

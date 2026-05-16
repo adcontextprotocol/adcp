@@ -162,11 +162,33 @@ describe('isPrivateHostname (regression coverage for the surfaces ssrfSafeLookup
     expect(isPrivateHostname(host)).toBe(true);
   });
 
+  // IPv6 shorthands that previously bypassed because the literal-string check
+  // (`hostname === '::1'`) didn't match expanded / zero-padded forms, and
+  // because the `startsWith('fc00:')` / `startsWith('fe80:')` prefixes only
+  // covered one address out of each /7 or /10 block.
+  it.each([
+    ['0:0:0:0:0:0:0:1'],          // expanded ::1
+    ['0000:0000:0000:0000:0000:0000:0000:0001'], // fully zero-padded ::1
+    ['0:0:0:0:0:0:0:0'],          // expanded ::
+    ['0:0:0:0:0:ffff:7f00:1'],    // expanded ::ffff:127.0.0.1
+    ['fe81::1'],                  // fe80::/10 — second address in block
+    ['febf::1'],                  // fe80::/10 — last address in block
+    ['fc12::1'],                  // fc00::/7 ULA — middle of block
+    ['fdff::1'],                  // fc00::/7 ULA — last address in block
+    ['fec0::1'],                  // fec0::/10 deprecated site-local
+    ['feff::1'],                  // fec0::/10 last address
+    ['fe80::1%eth0'],             // zone-id stripped before classification
+  ])('flags %s as private (IPv6 canonicalization)', (host) => {
+    expect(isPrivateHostname(host)).toBe(true);
+  });
+
   it.each([
     ['93.184.216.34'],
     ['172.66.147.243'], // outside 172.16/12, public
     ['8.8.8.8'],
     ['example.com'],
+    ['2001:4860:4860::8888'],     // public IPv6 (Google DNS) — must not match private blocks
+    ['ff00::1'],                  // multicast — not private, separate concern
   ])('does not flag %s as private', (host) => {
     expect(isPrivateHostname(host)).toBe(false);
   });

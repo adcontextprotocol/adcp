@@ -154,7 +154,7 @@ ship with a major bump.
 ## Docs
 
 - https://adcontextprotocol.org/docs/building/schemas-and-sdks
-- https://adcontextprotocol.org/docs/building/validate-your-agent
+- https://adcontextprotocol.org/docs/building/verification/validate-your-agent
 `;
   fs.writeFileSync(path.join(bundleDir, 'README.md'), readme);
 }

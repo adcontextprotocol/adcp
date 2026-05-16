@@ -9,6 +9,43 @@
 
 import { isValidAgentVisibility, isValidAgentType } from '../types.js';
 import type { AgentConfig, AgentVisibility } from '../types.js';
+import { validateExternalUrl } from '../utils/url-security.js';
+
+/**
+ * Server-authoritative answer to "can this caller publish an agent publicly?"
+ * Two independent preconditions:
+ *  - `tier_required`: caller's org lacks an API-access membership tier
+ *  - `brand_domain_required`: caller's org has no `organization_domains.is_primary=true`
+ *
+ * The same two preconditions are enforced at write time by the
+ * `/agents/:index/publish` and `/agents/:index/visibility` route handlers
+ * (`tier_required` via `requireApiAccessTier`, `brand_domain_required` via
+ * the `brandPrimaryDomain` null-check inside `applyAgentVisibility`). This
+ * helper exists so the UI affordance and the write-time enforcement read
+ * from one place — the dashboard previously reverse-engineered the gate
+ * by checking whether a domain field was present on the profile response,
+ * which silently broke when the field shape changed.
+ *
+ * Shares the same `tier_required` reason code with the per-agent downgrade
+ * warnings emitted by {@link gateAgentVisibilityForCaller} below — keep the
+ * vocabulary aligned when adding new reasons.
+ */
+export type AgentVisibilityGateReason = 'tier_required' | 'brand_domain_required';
+
+export interface AgentVisibilityGate {
+  can_publish_publicly: boolean;
+  reasons: AgentVisibilityGateReason[];
+}
+
+export function computeAgentVisibilityGate(opts: {
+  hasApiAccess: boolean;
+  brandPrimaryDomain: string | null | undefined;
+}): AgentVisibilityGate {
+  const reasons: AgentVisibilityGateReason[] = [];
+  if (!opts.hasApiAccess) reasons.push('tier_required');
+  if (!opts.brandPrimaryDomain) reasons.push('brand_domain_required');
+  return { can_publish_publicly: reasons.length === 0, reasons };
+}
 
 export interface VisibilityWarning {
   code: 'visibility_downgraded';
@@ -50,7 +87,7 @@ export function gateAgentVisibilityForCaller(
         requested: 'public',
         applied: 'members_only',
         reason: 'tier_required',
-        message: 'Publicly listing an agent requires Professional tier or higher; stored as members_only instead.',
+        message: 'Publicly listing an agent requires a paid AAO tier (Professional, Builder, Member, or Leader); stored as members_only instead.',
       });
       visibility = 'members_only';
     }
@@ -58,11 +95,24 @@ export function gateAgentVisibilityForCaller(
     // into brand.json (`agentEntry.type`) so an arbitrary tenant string
     // would become a durable artifact in other members' manifests.
     const typeValue = typeof a.type === 'string' && isValidAgentType(a.type) ? a.type : undefined;
+    // Validate health_check_url through the same SSRF guard the OAuth
+    // token-endpoint path uses. Cloud-metadata hosts are always blocked;
+    // production also rejects loopback / RFC1918. The dial-time guard in
+    // `safeFetch` re-validates at TCP connect to close the rebind window.
+    // Invalid values are dropped silently — this is an optional probe hint,
+    // not a privileged credential, and a malformed value would otherwise
+    // just fail the fallback fetch.
+    let healthCheckUrl: string | undefined;
+    if (typeof a.health_check_url === 'string' && a.health_check_url.length > 0) {
+      const validated = validateExternalUrl(a.health_check_url);
+      if (validated) healthCheckUrl = validated;
+    }
     const cleaned: AgentConfig = {
       url,
       visibility,
       ...(typeof a.name === 'string' ? { name: a.name } : {}),
       ...(typeValue ? { type: typeValue } : {}),
+      ...(healthCheckUrl ? { health_check_url: healthCheckUrl } : {}),
     };
     return cleaned;
   });

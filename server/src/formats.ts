@@ -1,6 +1,7 @@
 import { AdCPClient } from "@adcp/sdk";
 import type { Agent, FormatInfo } from "./types.js";
 import { AAO_UA_DISCOVERY } from "./config/user-agents.js";
+import { agentConfigAuthFields, type SdkAuth } from "./services/sdk-auth-adapter.js";
 
 export interface AgentFormatsProfile {
   agent_url: string;
@@ -14,10 +15,12 @@ export class FormatsService {
   private cache: Map<string, AgentFormatsProfile> = new Map();
   private readonly CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
 
-  async getFormatsForAgent(agent: Agent): Promise<AgentFormatsProfile> {
-    const cached = this.cache.get(agent.url);
-    if (cached && Date.now() - new Date(cached.last_fetched).getTime() < this.CACHE_TTL_MS) {
-      return cached;
+  async getFormatsForAgent(agent: Agent, auth?: SdkAuth): Promise<AgentFormatsProfile> {
+    if (!auth) {
+      const cached = this.cache.get(agent.url);
+      if (cached && Date.now() - new Date(cached.last_fetched).getTime() < this.CACHE_TTL_MS) {
+        return cached;
+      }
     }
 
     let formats: FormatInfo[] = [];
@@ -29,6 +32,7 @@ export class FormatsService {
         name: agent.name,
         agent_uri: agent.url,
         protocol: (agent.protocol || "mcp") as "mcp" | "a2a",
+        ...agentConfigAuthFields(auth),
       };
       const multiClient = new AdCPClient([agentConfig], { userAgent: AAO_UA_DISCOVERY });
       const client = multiClient.agent(agent.name);
@@ -65,7 +69,10 @@ export class FormatsService {
       error,
     };
 
-    this.cache.set(agent.url, profile);
+    // Don't cache authed-discovery results — the format list returned
+    // with credentials may differ from the public-facing one, and this
+    // cache feeds unauthed callers.
+    if (!auth) this.cache.set(agent.url, profile);
     return profile;
   }
 

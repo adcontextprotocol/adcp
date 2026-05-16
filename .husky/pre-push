@@ -13,6 +13,15 @@ DOC_PATHS='^(docs/|dist/docs/|mintlify-docs/|mint\.json|README\.md|server/src/ad
 
 CHANGED=$(git diff --name-only "$RANGE" 2>/dev/null || echo "")
 
+STORYBOARD_PATHS='^(server/src/training-agent/|server/tests/manual/run-storyboards\.ts|static/compliance/source/|scripts/run-storyboards-matrix\.sh)'
+
+if echo "$CHANGED" | grep -Eq "$STORYBOARD_PATHS"; then
+  echo "🔍 Training-agent or compliance source changed — running storyboard matrix (~3min)..."
+  bash scripts/run-storyboards-matrix.sh || exit 1
+else
+  echo "⏭  No training-agent or compliance changes — skipping storyboard matrix"
+fi
+
 if echo "$CHANGED" | grep -Eq "$DOC_PATHS"; then
   echo "🔍 Docs changed — checking schema link convention..."
   npm run lint:schema-links --silent || exit 1

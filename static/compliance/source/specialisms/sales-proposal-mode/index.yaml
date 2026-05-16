@@ -10,6 +10,7 @@ required_tools:
   - create_media_buy
 requires_scenarios:
   - media_buy_seller/proposal_finalize
+  - media_buy_seller/proposal_finalize_asap_timing
   - media_buy_seller/delivery_reporting
   - media_buy_seller/measurement_terms_rejected
   - media_buy_seller/pending_creatives_to_start
@@ -25,6 +26,14 @@ invariants:
   - status.monotonic
 
 narrative: |
+  **DEPRECATED in 3.1 — see https://github.com/adcontextprotocol/adcp/issues/3823**
+  Proposal-driven flows now grade under `sales-guaranteed`, capability-gated on
+  `media_buy.supports_proposals` (see #3844). Sellers that currently declare
+  `sales-proposal-mode` should drop it and declare `sales-guaranteed` plus
+  `media_buy.supports_proposals: true` instead. This storyboard is retained for
+  backward compat through 3.x and removed at 4.0. The `media_buy_seller/proposal_finalize`
+  scenario lives under `sales-guaranteed.requires_scenarios`.
+
   Your seller generates curated media plan proposals. The buyer sends a brief, your platform
   returns products alongside proposals — curated bundles with budget allocations and rationale
   for each recommendation. The buyer reviews, optionally refines, and then accepts a proposal
@@ -251,7 +260,7 @@ phases:
           buying_mode: "refine"
           refine:
             - scope: "proposal"
-              proposal_id: "balanced_reach_q2"
+              proposal_id: "$context.proposal_id"
               ask: "Shift 60% of budget to CTV. Drop the display product and redistribute that budget to video."
             - scope: "request"
               ask: "All products must support frequency capping at 3 per day."
@@ -285,6 +294,58 @@ phases:
           - check: field_present
             path: "products[0].format_ids[0].id"
             description: "Format IDs include id — must be accepted back in sync_creatives"
+  - id: finalize_proposal
+    title: "Finalize the proposal"
+    narrative: |
+      Before accepting, the buyer requests finalization. This transitions the proposal from
+      draft (indicative pricing) to committed (firm pricing with inventory hold). For
+      guaranteed inventory, finalization also produces an insertion order the buyer
+      countersigns when calling create_media_buy.
+
+    steps:
+      - id: get_products_finalize
+        title: "Finalize the refined proposal"
+        narrative: |
+          The buyer requests finalization on the refined proposal. The seller commits
+          firm pricing and (for guaranteed inventory) returns an insertion order with
+          a signature requirement.
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: full_sales_flow
+        stateful: true
+        expected: |
+          Return the finalized proposal with committed status:
+          - proposals[0].proposal_status: committed
+          - proposals[0].expires_at: timestamp for the inventory hold window
+          - For guaranteed inventory, proposals[0].insertion_order with io_id
+          - The proposal is ready to accept via create_media_buy
+
+        sample_request:
+          buying_mode: "refine"
+          refine:
+            - scope: "proposal"
+              proposal_id: "$context.proposal_id"
+              action: "finalize"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+
+          context:
+            correlation_id: "sales_proposal_mode--get_products_finalize"
+
+        context_outputs:
+          - path: "proposals[0].insertion_order.io_id"
+            key: "io_id"
+
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_present
+            path: "proposals"
+            description: "Response contains the finalized proposal"
   - id: accept_proposal
     title: "Accept the proposal"
     narrative: |
@@ -326,12 +387,16 @@ phases:
             brand:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
-          proposal_id: "balanced_reach_q2"
+          proposal_id: "$context.proposal_id"
           total_budget:
             amount: 50000
             currency: "USD"
           start_time: "2026-04-01T00:00:00Z"
           end_time: "2026-06-30T23:59:59Z"
+          io_acceptance:
+            io_id: "$context.io_id"
+            accepted_at: "2026-03-15T14:30:00Z"
+            signatory: "ops@acmeoutdoor.example"
 
           idempotency_key: "$generate:uuid_v4#sales_proposal_mode_accept_proposal_create_media_buy"
           context:

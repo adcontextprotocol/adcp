@@ -5,7 +5,7 @@ import { FederatedIndexService } from "./federated-index.js";
 import { AdAgentsManager } from "./adagents-manager.js";
 import { BrandManager } from "./brand-manager.js";
 import { BrandDatabase } from "./db/brand-db.js";
-import { PublisherDatabase, type AdagentsManifest } from "./db/publisher-db.js";
+import { PublisherDatabase, canonicalizeAgentUrl, type AdagentsManifest } from "./db/publisher-db.js";
 import { MemberDatabase } from "./db/member-db.js";
 import { CapabilityDiscovery } from "./capabilities.js";
 import { HealthChecker } from "./health.js";
@@ -17,8 +17,39 @@ import type { CatalogEventsDatabase, WriteEventInput } from "./db/catalog-events
 import type { AgentInventoryProfilesDatabase, ProfileUpsertInput } from "./db/agent-inventory-profiles-db.js";
 import { query } from "./db/client.js";
 import { insertTypeReclassification } from "./db/type-reclassification-log-db.js";
+import type { SdkAuth } from "./services/sdk-auth-adapter.js";
 
 const log = createLogger('crawler');
+
+/**
+ * Compare a freshly-fetched adagents.json against the previously-cached
+ * body for the same domain. Returns true when the contributory fields
+ * differ — `authorized_agents` and `properties` — so manager fan-out
+ * is gated on actual change rather than firing on every routine
+ * 60-minute crawl. Top-level keys outside that subset (`$schema`,
+ * `last_updated`, comments) are intentionally ignored. Arrays compare
+ * positionally; nested object keys are sorted so two semantically
+ * identical manifests with different key insertion order match.
+ */
+export function manifestContentChanged(
+  previous: AdagentsManifest | null,
+  next: AdagentsManifest,
+): boolean {
+  if (!previous) return true;
+  const subset = (m: AdagentsManifest) => ({
+    authorized_agents: Array.isArray(m.authorized_agents) ? m.authorized_agents : [],
+    properties: Array.isArray(m.properties) ? m.properties : [],
+  });
+  return stableStringify(subset(previous)) !== stableStringify(subset(next));
+}
+
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null';
+  if (Array.isArray(value)) return '[' + value.map(stableStringify).join(',') + ']';
+  const obj = value as Record<string, unknown>;
+  const keys = Object.keys(obj).sort();
+  return '{' + keys.map(k => JSON.stringify(k) + ':' + stableStringify(obj[k])).join(',') + '}';
+}
 
 export class CrawlerService {
   private crawler: PropertyCrawler;
@@ -131,14 +162,14 @@ export class CrawlerService {
     }
   }
 
-  startPeriodicCrawl(agents: Agent[], intervalMinutes: number = 60) {
-    // Initial crawl
-    this.crawlAllAgents(agents);
+  startPeriodicCrawl(getAgents: () => Promise<Agent[]>, intervalMinutes: number = 60) {
+    const run = () =>
+      getAgents()
+        .then(agents => this.crawlAllAgents(agents))
+        .catch(err => log.error({ err }, 'Periodic crawl failed'));
 
-    // Periodic crawl
-    this.intervalId = setInterval(() => {
-      this.crawlAllAgents(agents);
-    }, intervalMinutes * 60 * 1000);
+    run();
+    this.intervalId = setInterval(run, intervalMinutes * 60 * 1000);
 
     log.info({ intervalMinutes }, 'Periodic crawl started');
   }
@@ -357,8 +388,11 @@ export class CrawlerService {
     // Track domains we've already processed to avoid duplicates
     const processedDomains = new Set<string>();
 
-    // 1. Crawl registered publishers' adagents.json files
-    const profiles = await this.memberDb.listProfiles({ is_public: true });
+    // 1. Crawl registered publishers' adagents.json files. Walk every
+    // profile — the publisher-level `pubConfig.is_public` flag below is
+    // the gate; `member_profiles.is_public` is the member-directory
+    // listing flag and shouldn't gate publisher discovery.
+    const profiles = await this.memberDb.listProfiles({});
     const registeredPublisherDomains: string[] = [];
     for (const profile of profiles) {
       for (const pubConfig of profile.publishers || []) {
@@ -383,7 +417,17 @@ export class CrawlerService {
             const propCount = validation.raw_data.properties?.length || 0;
             log.debug({ domain: pubConfig.domain, agentCount, propCount }, 'Domain crawled');
 
-            await this.cacheAdagentsManifest(pubConfig.domain, validation.raw_data as AdagentsManifest);
+            await this.cacheAdagentsManifest(
+              pubConfig.domain,
+              validation.raw_data as AdagentsManifest,
+              {
+                statusCode: validation.status_code,
+                responseBytes: validation.response_bytes,
+                resolvedUrl: validation.resolved_url,
+                discoveryMethod: validation.discovery_method,
+                managerDomain: validation.manager_domain,
+              },
+            );
 
             // Record agents
             for (const authorizedAgent of validation.raw_data.authorized_agents) {
@@ -405,8 +449,20 @@ export class CrawlerService {
                 authorizedAgent.property_ids
               );
             }
+            await this.reconcileLegacyAdagentsAgents(pubConfig.domain, validation.raw_data as AdagentsManifest);
           } else {
             log.debug({ domain: pubConfig.domain }, 'No valid adagents.json');
+            // Record failed-fetch metadata so the verifier UI can show
+            // "Last attempted at <ts> · HTTP <code>" even when no
+            // manifest was cached. validation.status_code is set even
+            // for non-200 responses; missing only when a network error
+            // prevented any HTTP response (recordFailedAdagentsFetch
+            // accepts undefined and writes NULL).
+            await this.recordFailedAdagentsFetch(pubConfig.domain, {
+              statusCode: validation.status_code,
+              responseBytes: validation.response_bytes,
+              resolvedUrl: validation.resolved_url,
+            });
           }
         } catch (err) {
           log.warn({ domain: pubConfig.domain, err: err instanceof Error ? err.message : err }, 'Publisher crawl failed');
@@ -437,7 +493,17 @@ export class CrawlerService {
             await this.federatedIndex.markPublisherHasValidAdagents(domain);
             processedDomains.add(domain);
 
-            await this.cacheAdagentsManifest(domain, validation.raw_data as AdagentsManifest);
+            await this.cacheAdagentsManifest(
+              domain,
+              validation.raw_data as AdagentsManifest,
+              {
+                statusCode: validation.status_code,
+                responseBytes: validation.response_bytes,
+                resolvedUrl: validation.resolved_url,
+                discoveryMethod: validation.discovery_method,
+                managerDomain: validation.manager_domain,
+              },
+            );
 
             for (const authorizedAgent of validation.raw_data.authorized_agents) {
               if (!authorizedAgent.url) continue;
@@ -458,6 +524,7 @@ export class CrawlerService {
                 authorizedAgent.property_ids
               );
             }
+            await this.reconcileLegacyAdagentsAgents(domain, validation.raw_data as AdagentsManifest);
           }
         } catch (err) {
           log.error({ domain, err }, 'Failed to process domain');
@@ -641,6 +708,134 @@ export class CrawlerService {
   }
 
   /**
+   * Probe one agent and refresh both snapshot tables (health + capabilities)
+   * for it. Used by `POST /api/registry/agents/{encodedUrl}/refresh` so an
+   * owner can pull a fresh online/tools/type readout without waiting for the
+   * 60-min periodic crawl.
+   *
+   * Mirrors the per-agent block of `refreshAgentSnapshots`: same 10s probe
+   * timeout, same type-promotion policy (only promote when stored is unknown
+   * — disagreement is logged, not auto-flipped, see #3538).
+   *
+   * Returns the resulting snapshot fields the caller needs to render the
+   * registry row. Throws on probe failure with a descriptive message — the
+   * route handler maps that to a 502 so the user sees why the refresh
+   * couldn't happen (timeout, DNS, OAuth wall, etc).
+   */
+  async refreshSingleAgent(agentUrl: string, options: { auth?: SdkAuth } = {}): Promise<{
+    online: boolean;
+    tools_count: number | null;
+    response_time_ms: number | null;
+    inferred_type: string;
+    type_promoted: boolean;
+    oauth_required: boolean;
+    checked_at: string;
+    error?: string;
+  }> {
+    const PROBE_TIMEOUT_MS = 10000;
+    const { auth } = options;
+
+    const pausedUrls = await this.getPausedAgentUrls();
+    if (pausedUrls.has(agentUrl)) {
+      throw new Error('Monitoring paused for this agent');
+    }
+
+    // `includeMembersOnly: true` — owners can refresh their own private /
+    // members-only agents (the route-level ownership check already gated
+    // who got here). `refreshAgentSnapshots` uses public-only because the
+    // periodic crawl probes everything in the federated index regardless.
+    const allAgents = await this.federatedIndex.listAllAgents(undefined, { includeMembersOnly: true });
+    const known = allAgents.find(a => a.url === agentUrl);
+    const knownType = known?.type && known.type !== 'unknown' ? known.type : undefined;
+
+    const agent: Agent = {
+      name: known?.name || agentUrl,
+      url: agentUrl,
+      type: (known?.type as Agent['type']) || 'unknown',
+      protocol: (known?.protocol as 'mcp' | 'a2a') || 'mcp',
+      description: '',
+      mcp_endpoint: agentUrl,
+      contact: { name: '', email: '', website: '' },
+      added_date: new Date().toISOString().split('T')[0],
+    };
+
+    const profile = await Promise.race([
+      this.capabilityDiscovery.discoverCapabilities(agent, auth),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Probe timeout')), PROBE_TIMEOUT_MS)
+      ),
+    ]);
+
+    const inferredType = this.capabilityDiscovery.inferTypeFromProfile(profile);
+    const effectiveType = knownType || inferredType;
+    const agentForHealth: Agent = { ...agent, type: effectiveType as Agent['type'], protocol: profile.protocol };
+
+    const [health, stats] = await Promise.all([
+      Promise.race([
+        this.healthChecker.checkHealth(agentForHealth, auth),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Health timeout')), PROBE_TIMEOUT_MS)
+        ),
+      ]).catch((err): import('./types.js').AgentHealth => ({
+        online: false,
+        checked_at: new Date().toISOString(),
+        error: err instanceof Error ? err.message : 'health check failed',
+      })),
+      Promise.race([
+        this.healthChecker.getStats(agentForHealth, auth),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Stats timeout')), PROBE_TIMEOUT_MS)
+        ),
+      ]).catch((): import('./types.js').AgentStats => ({})),
+    ]);
+
+    await Promise.all([
+      this.snapshotDb.upsertCapabilities(profile, inferredType === 'unknown' ? null : inferredType),
+      this.snapshotDb.upsertHealth(agentUrl, health, stats),
+    ]);
+
+    // Same type-promotion policy as refreshAgentSnapshots: promote when
+    // stored is unknown; log disagreement without auto-flipping (see #3538).
+    const canPromote = inferredType !== 'unknown' && !knownType;
+    const isDisagreement =
+      !!knownType && inferredType !== 'unknown' && knownType !== inferredType;
+
+    if (isDisagreement) {
+      log.warn(
+        { url: agentUrl, knownType, inferredType },
+        'Agent type disagreement: stored vs probed. Run backfill to reconcile.'
+      );
+      await insertTypeReclassification({
+        agentUrl,
+        oldType: knownType ?? null,
+        newType: inferredType,
+        source: 'crawler_promote',
+        notes: { decision: 'logged_only_no_promote', triggered_by: 'manual_refresh' },
+      });
+    }
+
+    let typePromoted = false;
+    if (canPromote) {
+      await this.federatedIndex.updateAgentMetadata(agentUrl, {
+        agent_type: inferredType,
+        protocol: profile.protocol,
+      });
+      typePromoted = true;
+    }
+
+    return {
+      online: health.online,
+      tools_count: health.tools_count ?? null,
+      response_time_ms: health.response_time_ms ?? null,
+      inferred_type: inferredType,
+      type_promoted: typePromoted,
+      oauth_required: profile.oauth_required ?? false,
+      checked_at: health.checked_at,
+      error: health.error,
+    };
+  }
+
+  /**
    * Cache a validated adagents.json manifest into the publishers overlay and
    * project its properties into the property catalog. The writer runs as one
    * transaction with per-property savepoints, so a malformed property is
@@ -651,11 +846,93 @@ export class CrawlerService {
    * happen separately via recordPropertiesForAgent and remain authoritative
    * until catalog readers take over.
    */
-  private async cacheAdagentsManifest(domain: string, manifest: AdagentsManifest): Promise<void> {
+  private async cacheAdagentsManifest(
+    domain: string,
+    manifest: AdagentsManifest,
+    meta?: { statusCode?: number; responseBytes?: number; resolvedUrl?: string; discoveryMethod?: string; managerDomain?: string },
+  ): Promise<void> {
     try {
-      await this.publisherDb.upsertAdagentsCache({ domain, manifest });
+      // Read the existing cached body before the upsert so we can
+      // compute whether content actually changed. Used to gate
+      // manager → publishers fan-out: re-validation only fans out when
+      // the manager's authorized_agents or properties shape moved, not
+      // on every routine 60-minute crawl.
+      const previous = await this.publisherDb.getCachedAdagentsJson(domain);
+
+      await this.publisherDb.upsertAdagentsCache({
+        domain,
+        manifest,
+        statusCode: meta?.statusCode,
+        responseBytes: meta?.responseBytes,
+        resolvedUrl: meta?.resolvedUrl,
+        discoveryMethod: meta?.discoveryMethod,
+        managerDomain: meta?.managerDomain,
+      });
+
+      // Manager fan-out: when the just-written manifest belongs to a
+      // domain that other publishers delegate to via ads.txt
+      // MANAGERDOMAIN, queue those publishers for re-validation. The
+      // worker (processManagerRevalidationQueue) drains the queue at a
+      // bounded rate so a Raptive-scale rotation doesn't saturate
+      // crawler concurrency. Intentionally outside upsertAdagentsCache's
+      // transaction: if the enqueue fails the cache write has already
+      // committed, but the next routine 60-min crawl re-detects drift
+      // and re-enqueues, so silent fan-out loss self-heals.
+      if (manifestContentChanged(previous, manifest)) {
+        try {
+          const enqueued = await this.publisherDb.enqueueManagerRevalidation(domain);
+          if (enqueued > 0) {
+            log.info(
+              { managerDomain: domain, enqueued },
+              'Manager adagents.json changed; enqueued delegating publishers for re-validation',
+            );
+          }
+        } catch (err) {
+          log.warn(
+            { domain, err: err instanceof Error ? err.message : err },
+            'Failed to enqueue manager revalidation fan-out',
+          );
+        }
+      }
     } catch (err) {
       log.warn({ domain, err: err instanceof Error ? err.message : err }, 'Publisher cache write failed');
+    }
+  }
+
+  /**
+   * Record a failed fetch on the publishers row so the verifier UI can
+   * show "Last attempted: <ts> · HTTP <code>" even when no manifest
+   * was cached. Best-effort — a failure to record metadata must not
+   * abort the rest of the crawl.
+   */
+  private async recordFailedAdagentsFetch(
+    domain: string,
+    meta: { statusCode?: number; responseBytes?: number; resolvedUrl?: string },
+  ): Promise<void> {
+    try {
+      await this.publisherDb.recordFailedAdagentsFetch({ domain, ...meta });
+    } catch (err) {
+      log.warn({ domain, err: err instanceof Error ? err.message : err }, 'Publisher failed-fetch record failed');
+    }
+  }
+
+  /**
+   * Reconcile legacy adagents_json authorization rows for a publisher
+   * after a successful crawl: agents that were in a prior manifest but
+   * are no longer in the freshly-fetched one get hard-deleted from the
+   * legacy table. The catalog-side reconcile happens inside
+   * upsertAdagentsCache. agent_claim rows are untouched. Best-effort —
+   * a reconcile failure must not abort the rest of the crawl.
+   */
+  private async reconcileLegacyAdagentsAgents(domain: string, manifest: AdagentsManifest): Promise<void> {
+    const entries = Array.isArray(manifest.authorized_agents) ? manifest.authorized_agents : [];
+    const canonical = entries
+      .map(e => (e?.url && typeof e.url === 'string' ? canonicalizeAgentUrl(e.url) : null))
+      .filter((c): c is string => !!c);
+    try {
+      await this.federatedIndex.reconcileAdagentsAuthorizations(domain, canonical);
+    } catch (err) {
+      log.warn({ domain, err: err instanceof Error ? err.message : err }, 'Adagents legacy reconcile failed');
     }
   }
 
@@ -883,10 +1160,25 @@ export class CrawlerService {
 
       if (!validation.valid || !validation.raw_data?.authorized_agents) {
         log.warn({ domain }, 'No valid adagents.json for domain');
+        await this.recordFailedAdagentsFetch(domain, {
+          statusCode: validation.status_code,
+          responseBytes: validation.response_bytes,
+          resolvedUrl: validation.resolved_url,
+        });
         return;
       }
 
-      await this.cacheAdagentsManifest(domain, validation.raw_data as AdagentsManifest);
+      await this.cacheAdagentsManifest(
+        domain,
+        validation.raw_data as AdagentsManifest,
+        {
+          statusCode: validation.status_code,
+          responseBytes: validation.response_bytes,
+          resolvedUrl: validation.resolved_url,
+          discoveryMethod: validation.discovery_method,
+          managerDomain: validation.manager_domain,
+        },
+      );
 
       // Record agents and properties
       for (const authorizedAgent of validation.raw_data.authorized_agents) {
@@ -907,6 +1199,7 @@ export class CrawlerService {
           authorizedAgent.property_ids
         );
       }
+      await this.reconcileLegacyAdagentsAgents(domain, validation.raw_data as AdagentsManifest);
 
       // Produce per-domain events
       if (this.eventsDb) {
@@ -918,6 +1211,8 @@ export class CrawlerService {
             publisher_domain: domain,
             agent_count: validation.raw_data.authorized_agents.length,
             property_count: validation.raw_data.properties?.length ?? 0,
+            discovery_method: validation.discovery_method,
+            manager_domain: validation.manager_domain,
           },
           actor: 'api:crawl-request',
         });
@@ -1051,11 +1346,115 @@ export class CrawlerService {
     }
   }
 
+  // ── Manager Re-validation Queue ───────────────────────────────
+  //
+  // When a manager domain rotates its adagents.json, every publisher
+  // delegating via ads.txt MANAGERDOMAIN needs to be re-validated so
+  // their authorized_agents view stays in sync. Inline fan-out from
+  // cacheAdagentsManifest() would saturate crawler concurrency at
+  // managed-network scale (Raptive ≈ 6K publishers), so we persist
+  // the work in manager_revalidation_queue (migration 471) and drain
+  // it at a bounded rate per tick here.
+
+  private managerRevalidationIntervalId: NodeJS.Timeout | null = null;
+  private managerRevalidationProcessing = false;
+
+  startPeriodicManagerRevalidation(intervalMinutes: number = 5) {
+    this.managerRevalidationIntervalId = setInterval(() => {
+      this.processManagerRevalidationQueue().catch((err) => {
+        log.error({ err }, 'Manager revalidation tick failed');
+      });
+    }, intervalMinutes * 60 * 1000);
+
+    log.info({ intervalMinutes }, 'Periodic manager revalidation queue started');
+  }
+
+  async processManagerRevalidationQueue(): Promise<{ processed: number; succeeded: number; failed: number }> {
+    if (this.managerRevalidationProcessing) {
+      log.debug('Manager revalidation already in progress, skipping tick');
+      return { processed: 0, succeeded: 0, failed: 0 };
+    }
+
+    this.managerRevalidationProcessing = true;
+    // Bounded per-tick batch — caps concurrency budget regardless of
+    // queue depth. At a 5-minute tick and BATCH_SIZE=50, a 6K-publisher
+    // manager rotation propagates within ~10 hours, comfortably ahead
+    // of the 60-minute organic re-crawl cadence for any single row.
+    const BATCH_SIZE = 50;
+    const CONCURRENCY = 10;
+
+    try {
+      const rows = await this.publisherDb.dequeueRevalidationBatch(BATCH_SIZE);
+      if (rows.length === 0) {
+        return { processed: 0, succeeded: 0, failed: 0 };
+      }
+
+      log.info({ count: rows.length }, 'Manager revalidation batch');
+
+      const results = await this.processWithConcurrency(
+        rows,
+        CONCURRENCY,
+        async (row) => {
+          try {
+            // Full single-domain crawl re-runs adagents validation
+            // (which will hit the managerdomain fallback again) and
+            // refreshes the publisher's catalog projection.
+            await this.crawlSingleDomain(row.publisher_domain);
+            return { row, ok: true as const };
+          } catch (err) {
+            return {
+              row,
+              ok: false as const,
+              error: err instanceof Error ? err.message : String(err),
+            };
+          }
+        },
+      );
+
+      let succeeded = 0;
+      let failed = 0;
+      for (const result of results) {
+        if (result.ok) {
+          await this.publisherDb.markRevalidationSucceeded(result.row.publisher_domain);
+          succeeded++;
+        } else {
+          await this.publisherDb.markRevalidationFailed(result.row.publisher_domain, result.error);
+          failed++;
+        }
+      }
+
+      log.info(
+        { processed: rows.length, succeeded, failed },
+        'Manager revalidation batch complete',
+      );
+      return { processed: rows.length, succeeded, failed };
+    } finally {
+      this.managerRevalidationProcessing = false;
+    }
+  }
+
   private async crawlSingleDomainForCatalog(domain: string): Promise<void> {
     const validation = await this.adAgentsManager.validateDomain(domain);
-    if (!validation.valid || !validation.raw_data?.authorized_agents) return;
+    if (!validation.valid || !validation.raw_data?.authorized_agents) {
+      await this.recordFailedAdagentsFetch(domain, {
+        statusCode: validation.status_code,
+        responseBytes: validation.response_bytes,
+        resolvedUrl: validation.resolved_url,
+      });
+      return;
+    }
 
-    await this.cacheAdagentsManifest(domain, validation.raw_data as AdagentsManifest);
+    await this.cacheAdagentsManifest(
+      domain,
+      validation.raw_data as AdagentsManifest,
+      {
+        statusCode: validation.status_code,
+        responseBytes: validation.response_bytes,
+        resolvedUrl: validation.resolved_url,
+        discoveryMethod: validation.discovery_method,
+        managerDomain: validation.manager_domain,
+      },
+    );
 
     for (const authorizedAgent of validation.raw_data.authorized_agents) {
       if (!authorizedAgent.url) continue;
@@ -1075,6 +1474,7 @@ export class CrawlerService {
         authorizedAgent.property_ids
       );
     }
+    await this.reconcileLegacyAdagentsAgents(domain, validation.raw_data as AdagentsManifest);
 
     if (this.eventsDb) {
       await this.eventsDb.writeEvent({
@@ -1086,6 +1486,8 @@ export class CrawlerService {
           agent_count: validation.raw_data.authorized_agents.length,
           property_count: validation.raw_data.properties?.length ?? 0,
           source: 'catalog_crawl',
+          discovery_method: validation.discovery_method,
+          manager_domain: validation.manager_domain,
         },
         actor: 'pipeline:catalog_crawl',
       });

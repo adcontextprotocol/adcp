@@ -15,6 +15,8 @@ import { fileURLToPath } from "url";
 
 // Import triggers route & schema registration
 import "../server/src/routes/registry-api.js";
+import "../server/src/schemas/member-agents-openapi.js";
+import "../server/src/schemas/onboarding-openapi.js";
 import { registry } from "../server/src/schemas/registry.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -83,8 +85,13 @@ const doc = generator.generateDocument({
   security: [],
 });
 
-// Tag descriptions for the generated spec
+// Tag descriptions for the generated spec.
+// Mintlify renders nav groups in the order of this map, so "Member Agents"
+// is intentionally first — it sits directly under the prose
+// `Registering an agent` page in the side nav.
 const TAG_DESCRIPTIONS: Record<string, string> = {
+  "Onboarding": "Explicitly bootstrap a third-party integration into the AAO registry. Most callers don't need this tag — `POST /api/me/agents` auto-creates the org (for fresh users) and the member profile (for first-time agent registration) without a separate round trip. Use `POST /api/organizations` only when you need to override the auto-derived org name / company_type / revenue_tier. Tier transitions happen via the billing flow only; the Stripe webhook is the sole writer of `organizations.membership_tier`.",
+  "Member Agents": "Register, list, update, and remove agents on the caller's organization member profile. Authenticated programmatic surface for CI / scripts that don't want to round-trip the full member profile.",
   "Brand Resolution": "Resolve advertiser domains to canonical brand identities.",
   "Property Resolution": "Resolve publisher domains to their property configurations and authorized agents.",
   "Agent Discovery": "Browse the federated agent network, search agent inventory profiles, publisher index, and registry statistics.",
@@ -121,3 +128,10 @@ const yamlStr = YAML.stringify(doc, {
 const outPath = path.join(__dirname, "..", "static", "openapi", "registry.yaml");
 fs.writeFileSync(outPath, yamlStr, "utf-8");
 console.log(`OpenAPI spec written to ${outPath}`);
+
+// Importing `server/src/routes/registry-api.js` pulls in auth middleware
+// and the pg rate-limit store, both of which arm module-level
+// `setInterval` timers for session-cache cleanup and rate-limit flushes.
+// Those keep the event loop alive after the yaml is written, so Node
+// will sit until the CI job timeout fires. Exit explicitly — we're done.
+process.exit(0);

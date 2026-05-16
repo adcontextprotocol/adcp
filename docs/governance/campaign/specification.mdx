@@ -995,6 +995,8 @@ This is deliberate. A governance plan is unitary — budget authority, delivery 
 
 Buyers that need internal specialist review (legal, brand safety, category) compose those reviewers inside the governance agent they configure — the protocol does not surface the split.
 
+Internal decomposition is auditable through `check-governance-response.findings[]`. Each finding carries `category_id` (the agent-internal taxonomy — pharma MLR, brand safety, legal compliance, whichever specialism flagged it) and `policy_id` (the specific policy that triggered the finding). Buyers and sellers see one consolidated decision; per-finding attribution lets readers trace which specialist within the governance agent contributed to a denial or condition without surfacing the split as separate protocol-level agents.
+
 Related specialist reviews that sit adjacent to (not inside) campaign governance — brand-safety pre-screen of creatives, property-list policy, content-standards evaluation — are separate governance surfaces with their own agents and their own lifecycle (see [`build_creative`](/docs/creative/task-reference/build_creative), property governance, content-standards governance). Campaign governance speaks only for the plan.
 
 ### Governance checks and the governance loop

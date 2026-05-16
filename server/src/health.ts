@@ -1,9 +1,150 @@
-import type { Agent, AgentHealth, AgentStats } from "./types.js";
+import type { Agent, AgentHealth, AgentStats, ProbeErrorKind } from "./types.js";
 import { Cache } from "./cache.js";
 import { getPropertyIndex } from "@adcp/sdk";
 import { FormatsService } from "./formats.js";
 import { AAO_UA_HEALTH_CHECK } from "./config/user-agents.js";
 import { logOutboundRequest } from "./db/outbound-log-db.js";
+import { safeFetch } from "./utils/url-security.js";
+import { logger } from "./logger.js";
+import { promises as dnsPromises } from "node:dns";
+import { agentConfigAuthFields, type SdkAuth } from "./services/sdk-auth-adapter.js";
+
+export interface ClassifiedProbeError {
+  kind: ProbeErrorKind;
+  /** Actionable hint for humans — what to fix, not what failed */
+  message: string;
+  /** Raw underlying error string for debugging / detail expansion */
+  raw: string;
+}
+
+/**
+ * Walk an Error's `cause` chain and collect codes / messages so the SDK's
+ * wrapped errors (e.g. "Failed to discover MCP endpoint" wrapping a real
+ * ENOTFOUND) can still be classified by the original cause.
+ */
+function collectErrorChain(error: unknown): { codes: Set<string | number>; messages: string[]; names: Set<string> } {
+  const codes = new Set<string | number>();
+  const messages: string[] = [];
+  const names = new Set<string>();
+  let current: unknown = error;
+  let depth = 0;
+  while (current && depth < 8) {
+    if (current instanceof Error) {
+      if (current.name) names.add(current.name);
+      if (current.message) messages.push(current.message);
+      const code = (current as { code?: string | number }).code;
+      if (code !== undefined) codes.add(code);
+      current = (current as { cause?: unknown }).cause;
+    } else if (typeof current === 'string') {
+      messages.push(current);
+      break;
+    } else {
+      break;
+    }
+    depth++;
+  }
+  return { codes, messages, names };
+}
+
+/**
+ * Translate an MCP probe failure into a structured classification with an
+ * actionable hint for humans. Registration mismatches (wrong path, missing
+ * auth, A2A advertised at the host root) and network failures all surface
+ * as opaque "MCP connection failed" errors today; this classifier puts the
+ * likely cause up front so dashboard users notice. See adcp#3066.
+ */
+export function classifyMCPError(error: unknown): ClassifiedProbeError {
+  const { codes, messages, names } = collectErrorChain(error);
+  const joined = messages.join(' | ');
+  const raw = messages[0] || String(error ?? '');
+
+  // Network reachability — checked first because the SDK wraps DNS errors
+  // into a generic "Failed to discover MCP endpoint" string. The cause
+  // chain still surfaces ENOTFOUND / ECONNREFUSED / ETIMEDOUT codes.
+  const NETWORK_CODES = new Set(['ENOTFOUND', 'ECONNREFUSED', 'ETIMEDOUT', 'EAI_AGAIN', 'ECONNRESET']);
+  for (const c of codes) if (typeof c === 'string' && NETWORK_CODES.has(c)) {
+    return {
+      kind: 'unreachable',
+      message: 'Agent host is unreachable. Check that the URL is correct and the host is running.',
+      raw,
+    };
+  }
+  // Some SDK paths surface DNS failures as a literal `getaddrinfo ENOTFOUND` line.
+  if (/getaddrinfo|enotfound|econnrefused|etimedout|fetch failed.*timeout|host.*unreachable/i.test(joined)) {
+    return {
+      kind: 'unreachable',
+      message: 'Agent host is unreachable. Check that the URL is correct and the host is running.',
+      raw,
+    };
+  }
+
+  // SDK auth errors — endpoint exists but requires credentials. Anchor on
+  // typed error names and explicit phrasing; avoid bare "401" matches that
+  // would false-positive on stack traces or response bodies that mention
+  // status codes incidentally.
+  if (
+    names.has('AuthenticationRequiredError') ||
+    names.has('NeedsAuthorizationError') ||
+    /\brequires?\b.*\b(auth|authoriz)/i.test(joined) ||
+    /\bauthentication\s+required\b/i.test(joined) ||
+    /\bwww-authenticate\b/i.test(joined) ||
+    /\bunauthorized\b/i.test(joined) ||
+    /\bforbidden\b/i.test(joined)
+  ) {
+    return {
+      kind: 'auth_required',
+      message: 'MCP endpoint requires authentication. Save an auth token or OAuth client credentials, then re-probe.',
+      raw,
+    };
+  }
+
+  // SDK couldn't find an MCP endpoint at any of the candidate paths.
+  // Anchor on the SDK's explicit phrasing — bare "404" matches were too
+  // loose (a successful handshake whose tool call later 404s would have
+  // been mis-classified).
+  if (/\b(failed\s+to\s+)?discover\s+mcp\s+endpoint\b/i.test(joined) ||
+      /\bno\s+mcp\s+endpoint\b/i.test(joined)) {
+    return {
+      kind: 'wrong_path',
+      message: 'No MCP endpoint at this URL. The agent may live at a sub-path (e.g. /mcp, /adcp/mcp) or be advertised as A2A in /.well-known/agent.json — check the registered URL.',
+      raw,
+    };
+  }
+
+  return { kind: 'unknown', message: `MCP connection failed: ${raw}`, raw };
+}
+
+/**
+ * The SDK sometimes wraps DNS / connection failures into a generic outer
+ * message ("Failed to discover MCP endpoint" listing the candidate paths
+ * it tried) without exposing the underlying cause. The cause-chain walk in
+ * `classifyMCPError` cannot recover the original `ENOTFOUND` in that case,
+ * so a registered host that doesn't resolve mis-classifies as `wrong_path`.
+ *
+ * Disambiguate with a quick DNS lookup. Run only when the classifier already
+ * said `wrong_path` so successful probes pay no extra cost. Returns true if
+ * the hostname genuinely doesn't resolve, in which case the caller upgrades
+ * the classification to `unreachable`.
+ */
+async function isHostUnreachableDns(url: string, timeoutMs = 1500): Promise<boolean> {
+  let hostname: string;
+  try {
+    hostname = new URL(url).hostname;
+  } catch {
+    return false;
+  }
+  try {
+    await Promise.race([
+      dnsPromises.lookup(hostname),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('dns_lookup_timeout')), timeoutMs),
+      ),
+    ]);
+    return false;
+  } catch (err: any) {
+    return err?.code === 'ENOTFOUND' || err?.code === 'EAI_NONAME' || err?.code === 'EAI_AGAIN';
+  }
+}
 
 export class HealthChecker {
   private healthCache: Cache<AgentHealth>;
@@ -16,23 +157,30 @@ export class HealthChecker {
     this.formatsService = new FormatsService();
   }
 
-  async checkHealth(agent: Agent): Promise<AgentHealth> {
-    const cached = this.healthCache.get(agent.url);
-    if (cached) return cached;
+  async checkHealth(agent: Agent, auth?: SdkAuth): Promise<AgentHealth> {
+    // Skip cache when auth is provided — manual owner-triggered refresh
+    // wants fresh data. Periodic crawls (no auth) keep the cache.
+    if (!auth) {
+      const cached = this.healthCache.get(agent.url);
+      if (cached) return cached;
+    }
 
-    const health = await this.performHealthCheck(agent);
-    this.healthCache.set(agent.url, health);
+    const health = await this.performHealthCheck(agent, auth);
+    // Don't write authed probe results back to the shared cache —
+    // tools_count discovered with credentials may differ from what
+    // the agent exposes publicly, and the cache feeds unauthed reads.
+    if (!auth) this.healthCache.set(agent.url, health);
     return health;
   }
 
-  private async performHealthCheck(agent: Agent): Promise<AgentHealth> {
+  private async performHealthCheck(agent: Agent, auth?: SdkAuth): Promise<AgentHealth> {
     const startTime = Date.now();
     const protocol = agent.protocol || "mcp";
 
     // Only try the protocol the agent declares
     const health = protocol === "a2a"
-      ? await this.tryA2A(agent, startTime)
-      : await this.tryMCP(agent, startTime);
+      ? await this.tryA2A(agent, startTime, auth)
+      : await this.tryMCP(agent, startTime, auth);
 
     logOutboundRequest({
       agent_url: agent.url,
@@ -46,7 +194,7 @@ export class HealthChecker {
     return health;
   }
 
-  private async tryMCP(agent: Agent, startTime: number): Promise<AgentHealth> {
+  private async tryMCP(agent: Agent, startTime: number, auth?: SdkAuth): Promise<AgentHealth> {
     try {
       // Use AdCPClient to handle MCP protocol complexity (sessions, SSE, etc.)
       const { AdCPClient } = await import("@adcp/sdk");
@@ -55,6 +203,7 @@ export class HealthChecker {
         name: "Health Checker",
         agent_uri: agent.url,
         protocol: "mcp",
+        ...agentConfigAuthFields(auth),
       }], { userAgent: AAO_UA_HEALTH_CHECK });
       const client = multiClient.agent("health-check");
 
@@ -69,21 +218,93 @@ export class HealthChecker {
         resources_count: (agentInfo as any).resources?.length || 0,
       };
     } catch (error: any) {
+      let classified = classifyMCPError(error);
+      // Disambiguate `wrong_path` vs unreachable: when the SDK swallows
+      // the DNS cause, a non-resolving host looks identical to a host
+      // that's up but missing the MCP endpoint. A targeted DNS probe is
+      // the only signal left.
+      if (classified.kind === 'wrong_path' && await isHostUnreachableDns(agent.url)) {
+        classified = {
+          kind: 'unreachable',
+          message: 'Agent host is unreachable. Check that the URL is correct and the host is running.',
+          raw: classified.raw,
+        };
+      }
+      const fallback = await this.tryHealthCheckFallback(agent, startTime, classified);
+      if (fallback) return fallback;
       return {
         online: false,
         checked_at: new Date().toISOString(),
-        error: `MCP connection failed: ${error.message}`,
+        error: classified.message,
+        error_kind: classified.kind,
+        error_detail: classified.raw,
       };
     }
   }
 
-  private async tryA2A(agent: Agent, startTime: number): Promise<AgentHealth> {
+  /**
+   * Liveness-only fallback for MCP probe failures. Sellers blocked by other
+   * discovery issues (path-prefixed MCP endpoints, auth-required handshakes,
+   * etc.) can register a health_check_url; we GET it and treat any 2xx as
+   * "online." The fallback never populates type or tools — protocol probe
+   * is still the source of truth for capabilities. See adcp#3066.
+   *
+   * Routed through `safeFetch` so the validated URL can't be redirected to
+   * cloud metadata or RFC1918 ranges between save time and dial time.
+   */
+  private async tryHealthCheckFallback(
+    agent: Agent,
+    startTime: number,
+    classified: ClassifiedProbeError,
+  ): Promise<AgentHealth | null> {
+    if (!agent.health_check_url) return null;
+    try {
+      const response = await safeFetch(agent.health_check_url, {
+        method: "GET",
+        headers: { 'User-Agent': AAO_UA_HEALTH_CHECK },
+        signal: AbortSignal.timeout(5000),
+        maxRedirects: 0,
+      });
+      if (!response.ok) return null;
+      return {
+        online: true,
+        checked_at: new Date().toISOString(),
+        response_time_ms: Date.now() - startTime,
+        // tools_count / resources_count intentionally absent — fallback
+        // is liveness-only; the surfaced error preserves the underlying
+        // MCP failure so dashboards can still flag the discovery gap.
+        error: `Liveness via health_check_url; protocol probe failed: ${classified.message}`,
+        error_kind: classified.kind,
+        error_detail: classified.raw,
+      };
+    } catch (err) {
+      // Don't surface fallback fetch failures to the dashboard — the MCP
+      // error is the load-bearing signal. Log for debuggability.
+      logger.debug({ err, agentUrl: agent.url, healthUrl: agent.health_check_url }, 'health_check_url fallback failed');
+      return null;
+    }
+  }
+
+  private async tryA2A(agent: Agent, startTime: number, auth?: SdkAuth): Promise<AgentHealth> {
     try {
       // Check for A2A agent card at /.well-known/agent.json
       const agentCardUrl = `${agent.url.replace(/\/$/, "")}/.well-known/agent.json`;
+      const headers: Record<string, string> = { 'User-Agent': AAO_UA_HEALTH_CHECK };
+      const authFields = agentConfigAuthFields(auth);
+      if (authFields.auth_token) {
+        headers['Authorization'] = `Bearer ${authFields.auth_token}`;
+      } else if (authFields.headers?.Authorization) {
+        headers['Authorization'] = authFields.headers.Authorization;
+      } else if (authFields.oauth_tokens?.access_token) {
+        headers['Authorization'] = `Bearer ${authFields.oauth_tokens.access_token}`;
+      }
       const response = await fetch(agentCardUrl, {
-        headers: { 'User-Agent': AAO_UA_HEALTH_CHECK },
+        headers,
         signal: AbortSignal.timeout(5000),
+        // Don't let the saved Authorization header travel to a different
+        // origin via a 302 — if the agent host gets compromised that's a
+        // credential exfil vector.
+        redirect: 'error',
       });
 
       if (!response.ok) {
@@ -115,33 +336,35 @@ export class HealthChecker {
     }
   }
 
-  async getStats(agent: Agent): Promise<AgentStats> {
-    const cached = this.statsCache.get(agent.url);
-    if (cached) return cached;
+  async getStats(agent: Agent, auth?: SdkAuth): Promise<AgentStats> {
+    if (!auth) {
+      const cached = this.statsCache.get(agent.url);
+      if (cached) return cached;
+    }
 
-    const stats = await this.fetchStats(agent);
-    this.statsCache.set(agent.url, stats);
+    const stats = await this.fetchStats(agent, auth);
+    if (!auth) this.statsCache.set(agent.url, stats);
     return stats;
   }
 
-  private async fetchStats(agent: Agent): Promise<AgentStats> {
+  private async fetchStats(agent: Agent, auth?: SdkAuth): Promise<AgentStats> {
     const stats: AgentStats = {};
 
     try {
       if (agent.type === "sales") {
         // Use PropertyIndex if available (populated by crawler)
         const index = getPropertyIndex();
-        const auth = index.getAgentAuthorizations(agent.url);
+        const authorizations = index.getAgentAuthorizations(agent.url);
 
-        if (auth && auth.properties.length > 0) {
-          stats.property_count = auth.properties.length;
-          stats.publishers = auth.publisher_domains;
-          stats.publisher_count = auth.publisher_domains.length;
+        if (authorizations && authorizations.properties.length > 0) {
+          stats.property_count = authorizations.properties.length;
+          stats.publishers = authorizations.publisher_domains;
+          stats.publisher_count = authorizations.publisher_domains.length;
         }
       } else if (agent.type === "creative") {
         // For creative agents, get format count from FormatsService
         try {
-          const formatsProfile = await this.formatsService.getFormatsForAgent(agent);
+          const formatsProfile = await this.formatsService.getFormatsForAgent(agent, auth);
           if (formatsProfile.formats && formatsProfile.formats.length > 0) {
             stats.creative_formats = formatsProfile.formats.length;
           }

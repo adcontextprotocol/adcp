@@ -10,7 +10,7 @@
  * double-newline paragraph style that pastes cleanly.
  *
  * Member-supplied fields (tagline, description, agent descriptions,
- * primary_brand_domain) come from third-party-authored brand.json and
+ * brand domain) come from third-party-authored brand.json and
  * profile content — they are treated as untrusted data, length-capped,
  * and enclosed in explicit markers the system prompt tells the model to
  * treat as data, not instructions.
@@ -89,9 +89,18 @@ Rules:
 - Slack copy: Slack mrkdwn only. Use <url|label> for links.
   Use "•" for bullets if needed. No ** or ##. Keep to 60-90 words.
 - LinkedIn copy: plain text, double newlines between paragraphs.
-  Up to 3 short paragraphs. End with 2-4 relevant hashtags on their
-  own line. 80-120 words. No emoji unless it's the AAO wave 👋
-  opener — optional, used at most once.
+  Up to 3 short paragraphs. 80-120 words. No emoji unless it's the
+  AAO wave 👋 opener — optional, used at most once.
+  Opening sentence: welcome the member using the Display name field (fall
+  back to the Member field if Display name is absent). Address them by name
+  directly; do not say "has joined" or characterize the nature of their
+  membership.
+  Always end with these hashtags on their own line (the hashtag line does
+  not count toward the 80-120 word limit):
+  #AgenticAdvertising #AgenticAI #AdCP
+  You may add 1-2 additional hashtags specific to the member's industry
+  or capability. Never add hashtags not grounded in the member's actual
+  offerings or sector.
 
 Return JSON only, with exactly these keys:
 { "slack_text": "...", "linkedin_text": "..." }

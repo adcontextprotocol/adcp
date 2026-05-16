@@ -1,0 +1,4 @@
+---
+---
+
+Regenerate `static/openapi/registry.yaml` from the Zod source. The published yaml had drifted ~340 lines behind `server/src/schemas/registry.ts` because `npm run test:openapi` (the freshness gate in `package.json`) is not wired into `build-check.yml`, so Zod-schema PRs land without triggering a regen. This catches the yaml up to current source — no schema-shape changes, no new endpoints, no behavior change. Drift swept in: `publisher.discovery_method`/`manager_domain`, `publisher.hosting.{self_redirected,resolved_url,last_validated,last_http_status,last_bytes}`, `verdict_source` on the compliance response, `MemberAgentTypeInput` schema split, required `type` on member-agent read/write surfaces, removal of `tracks_silent`, `tools_count`/`tools[]` on the agent probe response, and the `/refresh`, `/monitoring/requeue`, `/manager-revalidation-request` endpoints.

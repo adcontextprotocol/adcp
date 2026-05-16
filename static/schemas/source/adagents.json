@@ -16,7 +16,7 @@
           "type": "string",
           "format": "uri",
           "pattern": "^https://",
-          "description": "HTTPS URL of the authoritative adagents.json file. When present, this file is a reference and the authoritative location contains the actual agent authorization data. Because one deploy can change authorization across every publisher in the network, validators MUST cap response size, refuse redirects on the fetch, enforce short timeouts, and serve the previously cached file on transient 5xx. See docs/governance/property/managed-networks#security-considerations."
+          "description": "HTTPS URL of the authoritative adagents.json file. When present, this file is a reference and the authoritative location contains the actual agent authorization data. Because one deploy can change authorization across every publisher in the network, validators MUST cap response size, refuse redirects on the fetch, enforce short timeouts, and serve the previously cached file on transient 5xx. Two-tier size cap: pointer files served at `/.well-known/adagents.json` use the general 5 MB SSRF cap; dereferenced authoritative files (this URL's response, after the indirection) use a recommended 20 MB cap because the origin has explicitly opted in to fanning out across a publisher network. See docs/governance/property/managed-networks#security-considerations."
         },
         "last_updated": {
           "type": "string",
@@ -90,6 +90,32 @@
           },
           "minItems": 1
         },
+        "revoked_publisher_domains": {
+          "type": "array",
+          "description": "Publisher domains explicitly removed from this managed network. Validators MUST treat any publisher domain listed here as no-longer-authorized, taking precedence over any appearance of the same domain in `authorized_agents[].publisher_properties[].publisher_domain` / `.publisher_domains[]` or in top-level `properties[].publisher_domain`. Lets a network propagate per-publisher revocations on the next refresh instead of waiting for the file-level 7-day cache cap. Validators MUST hold previously-observed `(publisher_domain, revoked_at)` tuples for 7 days from the validator's first observation, even if the entry vanishes from a subsequent fetch — this closes the rollback gap where an attacker re-serves a stale file with the revocation removed. Networks SHOULD retain entries for at least 7 days after `revoked_at` so validators that didn't observe the original entry still pick it up on refresh.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "publisher_domain": {
+                "type": "string",
+                "description": "Publisher domain being revoked. Matches against the same canonicalized form used in `publisher_properties[].publisher_domain`.",
+                "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+              },
+              "revoked_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "ISO 8601 timestamp when this publisher was revoked. Validators MAY use this to order revocations against their own cached state."
+              },
+              "reason": {
+                "type": "string",
+                "enum": ["relationship_ended", "compliance_violation", "publisher_request", "other"],
+                "description": "Reason for revocation. **Operator-internal self-classification for review routing — not a public accusation.** `relationship_ended` is the routine commercial case. `compliance_violation` SHOULD be used only when the network has itself determined the publisher is out of policy; for un-adjudicated third-party allegations (regulator inquiries, advertiser complaints, ongoing investigations), use `other` to avoid making a discoverable adverse statement. `publisher_request` is for publisher-initiated exits. Compare to sellers.json, which deliberately carries no reason field for the same exposure concern."
+              }
+            },
+            "required": ["publisher_domain", "revoked_at"],
+            "additionalProperties": true
+          }
+        },
         "collections": {
           "type": "array",
           "description": "Collections produced or distributed by this publisher. Declares the content programs whose inventory is sold through authorized agents. Products in get_products responses reference these collections by collection_id.",
@@ -153,6 +179,9 @@
           "type": "array",
           "description": "Array of sales agents authorized to make inventory from this file available to buyers. Authorization can be scoped to specific properties, collections, countries, and time windows, with optional delegation metadata indicating whether the path is direct, delegated, or network-mediated.",
           "items": {
+            "discriminator": {
+              "propertyName": "authorization_type"
+            },
             "oneOf": [
               {
                 "type": "object",
@@ -250,6 +279,11 @@
                       "$ref": "/schemas/core/agent-encryption-key.json"
                     },
                     "minItems": 1
+                  },
+                  "last_updated": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "Optional ISO 8601 timestamp indicating when this `authorized_agents[]` entry last changed. Independent of the file-level `last_updated`. Lets validators perform a partial walk by skipping entries whose `last_updated` is older than their indexed value. Advisory — consumers MAY ignore and re-index the full file."
                   }
                 },
                 "required": [
@@ -356,6 +390,11 @@
                       "$ref": "/schemas/core/agent-encryption-key.json"
                     },
                     "minItems": 1
+                  },
+                  "last_updated": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "Optional ISO 8601 timestamp indicating when this `authorized_agents[]` entry last changed. Independent of the file-level `last_updated`. Lets validators perform a partial walk by skipping entries whose `last_updated` is older than their indexed value. Advisory — consumers MAY ignore and re-index the full file."
                   }
                 },
                 "required": [
@@ -462,6 +501,11 @@
                       "$ref": "/schemas/core/agent-encryption-key.json"
                     },
                     "minItems": 1
+                  },
+                  "last_updated": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "Optional ISO 8601 timestamp indicating when this `authorized_agents[]` entry last changed. Independent of the file-level `last_updated`. Lets validators perform a partial walk by skipping entries whose `last_updated` is older than their indexed value. Advisory — consumers MAY ignore and re-index the full file."
                   }
                 },
                 "required": [
@@ -568,6 +612,11 @@
                       "$ref": "/schemas/core/agent-encryption-key.json"
                     },
                     "minItems": 1
+                  },
+                  "last_updated": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "Optional ISO 8601 timestamp indicating when this `authorized_agents[]` entry last changed. Independent of the file-level `last_updated`. Lets validators perform a partial walk by skipping entries whose `last_updated` is older than their indexed value. Advisory — consumers MAY ignore and re-index the full file."
                   }
                 },
                 "required": [
@@ -622,6 +671,11 @@
                       "$ref": "/schemas/core/agent-encryption-key.json"
                     },
                     "minItems": 1
+                  },
+                  "last_updated": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "Optional ISO 8601 timestamp indicating when this `authorized_agents[]` entry last changed. Independent of the file-level `last_updated`. Lets validators perform a partial walk by skipping entries whose `last_updated` is older than their indexed value. Advisory — consumers MAY ignore and re-index the full file."
                   }
                 },
                 "required": [
@@ -676,6 +730,11 @@
                       "$ref": "/schemas/core/agent-encryption-key.json"
                     },
                     "minItems": 1
+                  },
+                  "last_updated": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "Optional ISO 8601 timestamp indicating when this `authorized_agents[]` entry last changed. Independent of the file-level `last_updated`. Lets validators perform a partial walk by skipping entries whose `last_updated` is older than their indexed value. Advisory — consumers MAY ignore and re-index the full file."
                   }
                 },
                 "required": [
@@ -1014,6 +1073,25 @@
               ]
             }
           ]
+        },
+        {
+          "url": "https://agent.example/api",
+          "authorized_for": "Managed-network display inventory across represented publishers (compact form)",
+          "authorization_type": "publisher_properties",
+          "publisher_properties": [
+            {
+              "publisher_domains": [
+                "site1.example",
+                "site2.example",
+                "site3.example"
+              ],
+              "selection_type": "by_tag",
+              "property_tags": [
+                "managed_network"
+              ]
+            }
+          ],
+          "delegation_type": "ad_network"
         }
       ],
       "last_updated": "2025-01-10T17:00:00Z"

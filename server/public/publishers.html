@@ -272,7 +272,12 @@
 <header class="page-header">
   <h1>Properties</h1>
   <p>Search for your property or add it to get discovered by buying agents</p>
-  <div style="margin-top: var(--space-4);">
+  <form id="publisher-quick-lookup" style="margin-top: var(--space-4); display: flex; gap: var(--space-2); justify-content: center; flex-wrap: wrap; max-width: 520px; margin-left: auto; margin-right: auto;">
+    <input id="publisher-quick-lookup-input" type="text" placeholder="your-domain.com" required pattern="[a-zA-Z0-9.\-]+" autocomplete="off"
+      style="flex: 1 1 240px; padding: var(--space-2) var(--space-3); border: var(--border-1) solid var(--color-border); border-radius: var(--radius-md); font-family: var(--font-mono); font-size: var(--text-sm);" />
+    <button type="submit" style="padding: var(--space-2) var(--space-4); border: none; border-radius: var(--radius-md); background: var(--color-brand); color: white; font-weight: var(--font-semibold); cursor: pointer;">Open my publisher page</button>
+  </form>
+  <div style="margin-top: var(--space-3);">
     <a href="/adagents/builder" style="font-size: var(--text-sm); font-weight: var(--font-semibold); color: var(--color-brand); text-decoration: none;">Build an adagents.json &rarr;</a>
   </div>
 </header>
@@ -480,7 +485,7 @@
       const isAuthoritative = pub.source === 'adagents_json';
       const primary = getPrimaryIdentifier(pub);
       const linkDomain = pub.identifiers?.find(i => i.type === 'domain')?.value;
-      const href = linkDomain ? `/property/view/${encodeURIComponent(linkDomain)}` : null;
+      const href = linkDomain ? `/publisher/${encodeURIComponent(linkDomain)}` : null;
       const showTypeLabel = primary.type !== 'domain';
 
       // Additional identifiers as pills (skip duplicates of primary, max 3)
@@ -588,6 +593,13 @@
     if (!str) return '';
     return str.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
   }
+
+  document.getElementById('publisher-quick-lookup')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const raw = document.getElementById('publisher-quick-lookup-input').value.trim().toLowerCase();
+    const stripped = raw.replace(/^https?:\/\//, '').replace(/\/$/, '').split('/')[0];
+    if (stripped) window.location.href = `/publisher/${encodeURIComponent(stripped)}`;
+  });
 </script>
 </body>
 </html>

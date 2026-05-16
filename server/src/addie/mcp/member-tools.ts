@@ -17,13 +17,14 @@ const logger = createLogger('addie-member-tools');
 import { classifyProbeError, probeReasonLabel } from '../../utils/probe-error.js';
 import { validateExternalUrl } from '../../utils/url-security.js';
 import { parseOAuthClientCredentialsInput } from '../../routes/helpers/oauth-client-credentials-input.js';
-import { PUBLIC_TEST_AGENT, INTERNAL_PATH_AGENT_URL } from '../../config/test-agent.js';
+import { PUBLIC_TEST_AGENT, PUBLIC_TEST_AGENT_URLS, INTERNAL_PATH_AGENT_URL } from '../../config/test-agent.js';
 import type { AddieTool } from '../types.js';
 import type { MemberContext } from '../member-context.js';
 import { ToolError } from '../tool-error.js';
 import { checkToolRateLimit } from './tool-rate-limiter.js';
 import { isUuid } from '../../utils/uuid.js';
 import { neutralizeAndTruncate } from './untrusted-input.js';
+import { coerceStringArray } from './input-coercion.js';
 import { createEscalation } from '../../db/escalation-db.js';
 import { SlackDatabase } from '../../db/slack-db.js';
 import {
@@ -33,6 +34,7 @@ import {
   SAMPLE_BRIEFS,
   classifyCapabilityResolutionError,
   presentCapabilityResolutionError,
+  complianceResultToDbInput,
   type ComplyOptions,
   type ComplianceTrack,
 } from '../services/compliance-testing.js';
@@ -50,17 +52,24 @@ import {
   type StoryboardContext,
   type StoryboardStepResult,
 } from '@adcp/sdk/testing';
+import { AuthenticationRequiredError } from '@adcp/sdk';
 import { renderAllHintFixPlans } from '../services/storyboard-fix-plan.js';
-import { AgentContextDatabase, type OAuthClientCredentials } from '../../db/agent-context-db.js';
+import { AgentContextDatabase, validateAuthTokenChars, type OAuthClientCredentials } from '../../db/agent-context-db.js';
+import { buildAgentOAuthAuthorizeUrl, isOAuthRequiredError } from '../../routes/helpers/agent-oauth-prompt.js';
+import { isOAuthRequiredErrorMessage } from '../../routes/helpers/oauth-error-detection.js';
 import {
   findExistingProposalOrFeed,
   createFeedProposal,
   getPendingProposals,
 } from '../../db/industry-feeds-db.js';
 import { MemberDatabase } from '../../db/member-db.js';
+import { ensureMemberProfileExists } from '../../services/member-profile-autopublish.js';
 import { updateBrandIdentity, BrandIdentityError } from '../../services/brand-identity.js';
 import { canonicalizeBrandDomain } from '../../services/identifier-normalization.js';
+import { isOrgOwnerOfAgent } from '../../services/agent-ownership.js';
+import { getBrandPrimaryDomain } from '../../services/brand-domain-resolver.js';
 import { ComplianceDatabase } from '../../db/compliance-db.js';
+import { runBadgeFanOut } from '../../services/badge-issuance.js';
 import { AgentSnapshotDatabase } from '../../db/agent-snapshot-db.js';
 import { AgentValidator } from '../../validator.js';
 import {
@@ -79,7 +88,8 @@ import {
   deleteCommitteeDocument as deleteCommitteeDocumentService,
   WorkingGroupContentError,
 } from '../../services/working-group-content-service.js';
-import type { CommitteeDocumentType } from '../../types.js';
+import type { AgentType, CommitteeDocumentType } from '../../types.js';
+import { isValidAgentType } from '../../types.js';
 import { getPool, query } from '../../db/client.js';
 import { MemberSearchAnalyticsDatabase } from '../../db/member-search-analytics-db.js';
 import { OrganizationDatabase } from '../../db/organization-db.js';
@@ -98,6 +108,7 @@ import { issueDomainChallenge, verifyDomainChallenge } from '../../services/bran
 import { getWorkos } from '../../auth/workos-client.js';
 import { resolveUserRole } from '../../utils/resolve-user-role.js';
 import { recordAgentTestRun } from '../../db/agent-test-db.js';
+import { canonicalizeAgentUrl } from '../../db/publisher-db.js';
 
 const memberDb = new MemberDatabase();
 const agentContextDb = new AgentContextDatabase();
@@ -221,15 +232,41 @@ async function resolveAgentAuth(
 ): Promise<ResolvedAgentAuth> {
   let resolvedUrl = agentUrl;
 
-  // Redirect internal path URL to canonical hostname
-  if (resolvedUrl.toLowerCase() === INTERNAL_PATH_AGENT_URL.toLowerCase()) {
-    resolvedUrl = PUBLIC_TEST_AGENT.url;
+  // Canonicalize for comparison: strip trailing slash, query string, and
+  // fragment so saved `agent_contexts` rows with cosmetic variations
+  // ("…/sales/mcp/", "…/sales/mcp?retry=1") still resolve to the public
+  // token path.
+  const canonicalize = (u: string): string => {
+    try {
+      const parsed = new URL(u);
+      // Drop fragment and query — they don't change which agent is being addressed.
+      parsed.hash = '';
+      parsed.search = '';
+      let pathname = parsed.pathname;
+      if (pathname.length > 1 && pathname.endsWith('/')) pathname = pathname.slice(0, -1);
+      return `${parsed.protocol}//${parsed.host}${pathname}`.toLowerCase();
+    } catch {
+      // Not a parseable URL — fall back to lowercased input so the
+      // includes-check still has stable semantics.
+      return u.toLowerCase();
+    }
+  };
+
+  // Redirect internal path URL to the legacy back-compat alias on the
+  // canonical hostname. Callers using INTERNAL_PATH_AGENT_URL are referencing
+  // the single-URL multi-tool agent — preserve that semantics by routing to
+  // the legacy alias (v5 monolith), not a per-specialism tenant.
+  if (canonicalize(resolvedUrl) === canonicalize(INTERNAL_PATH_AGENT_URL)) {
+    resolvedUrl = PUBLIC_TEST_AGENT_URLS.legacy;
   }
 
   // Public test agent always uses the known public token — saved or explicit tokens
   // for this URL are ignored because they're likely incorrect (the public token is
-  // intentionally published and doesn't need per-user credentials).
-  if (resolvedUrl.toLowerCase() === PUBLIC_TEST_AGENT.url.toLowerCase()) {
+  // intentionally published and doesn't need per-user credentials). Match against
+  // any per-specialism URL or the legacy alias — they all hit the same Fly app.
+  const canonicalResolved = canonicalize(resolvedUrl);
+  const publicTestAgentUrls: string[] = Object.values(PUBLIC_TEST_AGENT_URLS).map(canonicalize);
+  if (publicTestAgentUrls.includes(canonicalResolved)) {
     return { authToken: PUBLIC_TEST_AGENT.token, authType: 'bearer', source: 'public', resolvedUrl };
   }
 
@@ -328,12 +365,6 @@ function buildAuthOption(resolved: ResolvedAgentAuth): { type: 'bearer'; token: 
   return { type: 'bearer', token: resolved.authToken };
 }
 
-function isAuthError(error: unknown): boolean {
-  if (!(error instanceof Error)) return false;
-  const msg = error.message;
-  return msg.includes('401') || msg.includes('Unauthorized') || msg.includes('authentication');
-}
-
 /**
  * Sanitize a string that came from an untrusted remote agent before it flows
  * into markdown that reaches the LLM. The agent is adversarial by assumption —
@@ -398,11 +429,11 @@ function normalizeChannel(ch: string): string {
   return CHANNEL_ALIASES[key] ?? key;
 }
 
-const GITHUB_READ_ALLOWED_ORGS = new Set(['adcontextprotocol', 'prebid']);
 const GITHUB_SEARCH_BANNED_QUALIFIERS = /(^|\s)(repo|org|user|is)\s*:/i;
 const GITHUB_BODY_MAX_CHARS = 4000;
 const GITHUB_COMMENT_MAX_CHARS = 1000;
 const GITHUB_MAX_COMMENTS = 10;
+const GITHUB_DIFF_MAX_CHARS = 12000;
 
 type ParsedRepo =
   | { ok: true; org: string; repo: string }
@@ -416,12 +447,6 @@ function parseAllowedRepo(input: string | undefined): ParsedRepo {
     return { ok: false, error: `Invalid repo "${raw}". Use "owner/name" format (e.g. "adcontextprotocol/adcp").` };
   }
   const [, org, repo] = match;
-  if (!GITHUB_READ_ALLOWED_ORGS.has(org)) {
-    return {
-      ok: false,
-      error: `Repo owner "${org}" is not allowed. Allowed orgs: ${[...GITHUB_READ_ALLOWED_ORGS].join(', ')}.`,
-    };
-  }
   return { ok: true, org, repo };
 }
 
@@ -1176,13 +1201,18 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'save_agent',
     description:
-      'Save an agent URL to the organization\'s context and add it to the dashboard for compliance monitoring. New agents land in the dashboard with `members_only` visibility — discoverable to fellow Professional-tier (or higher) members, but not publicly listed in the directory or brand.json. To list publicly, the caller promotes the agent via the dashboard publish flow; that flow gates on an API-access subscription tier. Optionally store credentials securely (encrypted, never shown in conversations). Three auth modes, any of which may be combined with a new or existing save: (1) static bearer/basic via `auth_token`, (2) OAuth 2.0 client credentials (RFC 6749 §4.4, machine-to-machine) via `oauth_client_credentials`. Use this when users want to connect their agent, set up compliance monitoring, save their agent for testing, or provide credentials.',
-    usage_hints: 'use for "connect my agent", "add agent for compliance monitoring", "save my agent", "remember this agent URL", "store my auth token", "configure client credentials", "save OAuth client credentials"',
+      'Register an agent in the AAO registry on behalf of the current organization. Adds the agent to the org\'s member profile; surfaces in `/dashboard/agents`. New agents land with `members_only` visibility (discoverable to other paying AAO members — Professional, Builder, Member, or Leader; not publicly listed in the directory or brand.json). To list publicly, the caller promotes the agent via the dashboard; public visibility requires a paid AAO tier (Professional, Builder, Member, or Leader) and a primary brand domain. Auth modes: (1) none — public agent, no credentials; (2) static `auth_token` + `auth_type` (`bearer` or `basic`, stored encrypted); (3) `oauth_client_credentials` for machine-to-machine (RFC 6749 §4.4). For interactive OAuth user authorization, save with no auth fields and have the user complete the dashboard\'s **Authorize** flow afterward — `save_agent` does not collect end-user OAuth state. The caller MUST declare the agent\'s `type` (`brand`, `rights`, `measurement`, `governance`, `creative`, `sales`, `buying`, `signals`); ask the owner — do not guess. Server-side smuggle protection still validates the declared type against the capability snapshot when one is available. If the user mentions their MCP endpoint requires auth, lives at a non-root path (e.g. /adcp/mcp), or shows up as offline after saving, suggest setting `health_check_url` for a liveness fallback while they fix the underlying URL. See the "Registering an Agent in the AAO Registry" section of the rules for the intake script.',
+    usage_hints: 'use for "register my agent", "add an agent", "save my agent", "store my auth token", "configure client credentials". When the user opens the conversation with a registration intent and no details, follow the intake script in the rules — do not call save_agent until you have `agent_url`, `type`, and an explicit auth-mode choice.',
     input_schema: {
       type: 'object',
       properties: {
         agent_url: { type: 'string', description: 'Agent URL' },
         agent_name: { type: 'string', description: 'Agent name' },
+        type: {
+          type: 'string',
+          enum: ['brand', 'rights', 'measurement', 'governance', 'creative', 'sales', 'buying', 'signals'],
+          description: 'What kind of agent this is. Required — ask the owner; do not guess. `brand` (brand-side intent), `rights` (rights/clearance), `measurement` (verification/attribution), `governance` (policy/compliance), `creative` (creative production/format), `sales` (publisher/sell-side inventory), `buying` (DSP/buy-side execution), `signals` (audience/signal provider).',
+        },
         auth_token: { type: 'string', description: 'Static auth token (stored encrypted). Mutually exclusive with oauth_client_credentials on any given save call.' },
         auth_type: { type: 'string', enum: ['bearer', 'basic'], description: 'How the auth_token is sent. "bearer" (default): sends Authorization: Bearer <token>. "basic": auth_token must be the base64-encoded "user:password" string, sent as Authorization: Basic <token>' },
         oauth_client_credentials: {
@@ -1200,8 +1230,9 @@ export const MEMBER_TOOLS: AddieTool[] = [
           required: ['token_endpoint', 'client_id', 'client_secret'],
         },
         protocol: { type: 'string', enum: ['mcp', 'a2a'], description: 'Protocol (default: mcp)' },
+        health_check_url: { type: 'string', description: 'Optional fallback liveness URL. The dashboard probe tries the protocol handshake first; if it fails and this URL is set, the probe GETs it and treats any 2xx as "online." Used by sellers whose protocol endpoint requires auth or is path-prefixed (e.g. /adcp/mcp). Liveness only — does not populate type or tools. Pass an empty string to clear a previously-set value.' },
       },
-      required: ['agent_url'],
+      required: ['agent_url', 'type'],
     },
   },
   {
@@ -1263,7 +1294,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
     name: 'create_github_issue',
     description:
       'File a GitHub issue on adcontextprotocol/adcp authored by the logged-in user via their WorkOS Pipes GitHub connection. Use after showing the user a draft and getting their confirmation. If the user has not yet connected GitHub, the tool returns a message with a one-time Connect link AND reminds them they can ask for `draft_github_issue` instead — include that full message in your reply.',
-    usage_hints: 'use after draft_github_issue when the user confirms they want the issue created. If the tool result asks the user to connect GitHub, show the full Connect link — do not silently fall back.',
+    usage_hints: 'use after draft_github_issue when the user confirms they want the issue created. If the tool result asks the user to connect GitHub, show the full Connect link — do not silently fall back. Exception: if the user\'s message was a direct completion reply immediately after you sent them a Connect link (e.g. "connected", "just connected", "all set", "done connecting") and the tool still returns not-connected, tell them the connection may still be propagating and ask them to send the same filing request again — do not show the Connect link a second time.',
     input_schema: {
       type: 'object',
       properties: {
@@ -1276,14 +1307,15 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'get_github_issue',
     description:
-      'Read a GitHub issue or PR by number. Use when the user pastes a GitHub link, references "issue #1234", or asks about the status of a specific RFC, epic, or PR. Returns title, body, state, labels, author, and optionally recent comments. Works on any `adcontextprotocol/*` or `prebid/*` repo. PR review-thread comments (on specific diff lines) are NOT included — only issue-style comments. Do NOT use for keyword search — use list_github_issues. Do NOT use fetch_url on github.com/.../issues URLs; this tool returns structured fields and labels.',
-    usage_hints: 'use when user references a specific GitHub issue or PR by number or URL',
+      'Read a GitHub issue or PR by number. Use when the user pastes a GitHub link, references "issue #1234", or asks about the status / contents of a specific RFC, epic, or PR. Returns title, body, state, labels, author, and optionally recent comments and the PR diff. Works on any public GitHub repo (forks included). PR review-thread comments (on specific diff lines) are NOT returned — only issue-style top-level comments. When the user pastes a PR link or asks for a code review, set `include_diff: true`. Do NOT use for keyword search — use list_github_issues. Do NOT use fetch_url on github.com/.../issues|pull URLs; this tool returns structured fields.',
+    usage_hints: 'use when user references a specific GitHub issue or PR by number or URL; set include_diff=true when reviewing PR code',
     input_schema: {
       type: 'object',
       properties: {
         issue_number: { type: 'integer', description: 'Issue or PR number' },
-        repo: { type: 'string', description: 'Repo in "owner/name" format (e.g. "adcontextprotocol/adcp", "prebid/Prebid.js"). Default: "adcontextprotocol/adcp". Owner must be "adcontextprotocol" or "prebid".' },
-        include_comments: { type: 'boolean', description: 'Include recent comments (default: false)' },
+        repo: { type: 'string', description: 'Repo in "owner/name" format (e.g. "adcontextprotocol/adcp", "patmmccann/adcp"). Default: "adcontextprotocol/adcp". Any public repo accepted.' },
+        include_comments: { type: 'boolean', description: 'Include recent top-level comments (default: false)' },
+        include_diff: { type: 'boolean', description: 'For PRs, include the unified diff (default: false). Ignored for non-PR issues.' },
       },
       required: ['issue_number'],
     },
@@ -1291,7 +1323,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
   {
     name: 'list_github_issues',
     description:
-      'Search or list GitHub issues and PRs to find open items on a topic, check RFC/epic status, or answer "what is being worked on for X" questions. Pass `query` for keyword search (GitHub search syntax, but `repo:`/`org:`/`user:`/`is:` qualifiers are rejected — use the `repo` param instead). Returns title, number, state, labels, author, last-updated. Do NOT use when the user has a specific issue number — use get_github_issue. Allowed repos: any `adcontextprotocol/*` or `prebid/*`.',
+      'Search or list GitHub issues and PRs to find open items on a topic, check RFC/epic status, or answer "what is being worked on for X" questions. Pass `query` for keyword search (GitHub search syntax, but `repo:`/`org:`/`user:`/`is:` qualifiers are rejected — use the `repo` param instead). Returns title, number, state, labels, author, last-updated. Works on any public GitHub repo. Do NOT use when the user has a specific issue number — use get_github_issue.',
     usage_hints: 'use to find issues on a topic when the user has no direct link or issue number',
     input_schema: {
       type: 'object',
@@ -1299,7 +1331,7 @@ export const MEMBER_TOOLS: AddieTool[] = [
         query: { type: 'string', description: 'Keyword search (optional; GitHub issue search syntax). Do not include repo:/org:/user:/is: qualifiers.' },
         state: { type: 'string', enum: ['open', 'closed', 'all'], description: 'Issue state (default: "open")' },
         labels: { type: 'array', items: { type: 'string' }, description: 'Filter by label names (no quotes or newlines)' },
-        repo: { type: 'string', description: 'Repo in "owner/name" format (e.g. "adcontextprotocol/adcp", "prebid/Prebid.js"). Default: "adcontextprotocol/adcp". Owner must be "adcontextprotocol" or "prebid".' },
+        repo: { type: 'string', description: 'Repo in "owner/name" format (e.g. "adcontextprotocol/adcp", "patmmccann/adcp"). Default: "adcontextprotocol/adcp". Any public repo accepted.' },
         limit: { type: 'integer', description: 'Max results (default: 20, max: 50)' },
       },
       required: [],
@@ -2163,7 +2195,8 @@ export function createMemberToolHandlers(
     }
 
     let fallbackDomainHint: string | undefined;
-    if (!profile.primary_brand_domain && !profile.contact_website && logoUrl) {
+    const existingBrandPrimary = await getBrandPrimaryDomain(orgId);
+    if (!existingBrandPrimary && !profile.contact_website && logoUrl) {
       try {
         fallbackDomainHint = canonicalizeBrandDomain(new URL(logoUrl).hostname);
       } catch { /* validated below */ }
@@ -2286,6 +2319,11 @@ export function createMemberToolHandlers(
       if (result.code === 'invalid_domain') {
         return `<!-- STATUS: invalid_domain -->\n\nI can't claim that — ${result.message} Try a clean apex domain (e.g., "acme.com" rather than "acme.com/", "vercel.app", or "co.uk").`;
       }
+      if (result.code === 'workos_misconfigured') {
+        // Anti-loop: don't have the model offer to retry. The fix lives in
+        // the WorkOS dashboard, not in the user's flow.
+        return `<!-- STATUS: workos_misconfigured -->\n\nI can't issue a DNS challenge for ${rawDomain} right now — our identity provider isn't returning a DNS record prefix, which means I have nowhere to tell you to publish the TXT record. This is an operator-side issue (WorkOS DNS verification template), not something you can fix. **Stop here.** The AAO team has been alerted; ask them to set this up manually if you need to move forward today.`;
+      }
       return `<!-- STATUS: workos_error -->\n\nCouldn't issue the domain challenge: ${result.message}`;
     }
 
@@ -2293,8 +2331,12 @@ export function createMemberToolHandlers(
       return `<!-- STATUS: already_verified -->\n\n${result.domain} is already verified for your organization in WorkOS. The brand registry should already reflect that — call \`verify_brand_domain_challenge\` if you want to force a sync.`;
     }
 
+    // Defensive: the service should have returned workos_misconfigured before
+    // reaching here, but if WorkOS returns a token without a prefix and the
+    // service guard ever regresses, surface the same failure mode rather than
+    // handing the model a half-broken record to render.
     if (!result.verification_token || !result.verification_prefix) {
-      return `<!-- STATUS: workos_error -->\n\nIssued a challenge for ${result.domain} but WorkOS didn't return a DNS record to publish — that's unusual. Check the WorkOS dashboard or contact support.`;
+      return `<!-- STATUS: workos_misconfigured -->\n\nIssued a challenge for ${result.domain} but WorkOS didn't return a complete DNS record (missing prefix or token). This is an operator-side issue — ask the AAO team to verify ${result.domain} manually for you.`;
     }
 
     const recordName = `${result.verification_prefix}.${result.domain}`;
@@ -3483,6 +3525,18 @@ export function createMemberToolHandlers(
     const urlError = validateAgentUrl(agentUrl);
     if (urlError) return `**Error:** ${urlError}`;
 
+    // Rate limit. Owner-paced usage hits this nowhere near the default cap,
+    // but a runaway loop (or a script that races the heartbeat to keep the
+    // canonical verdict in a preferred state) is bounded here. comply() takes
+    // 10-60s per run so the natural-rate ceiling is already ~1-2/min; this
+    // adds the hard wall so even in-process retries / a hot debug loop stop.
+    const workosUserId = memberContext?.workos_user?.workos_user_id;
+    const rateCheck = await checkToolRateLimit('evaluate_agent_quality', workosUserId ?? null);
+    if (!rateCheck.ok) {
+      const retrySeconds = Math.max(1, Math.ceil((rateCheck.retryAfterMs ?? 60_000) / 1000));
+      return `Rate limit exceeded on evaluate_agent_quality. Try again in ~${retrySeconds} seconds.`;
+    }
+
     const organizationId = memberContext?.organization?.workos_organization_id;
     const resolved = await resolveAgentAuth(agentUrl, organizationId);
 
@@ -3495,8 +3549,120 @@ export function createMemberToolHandlers(
     try {
       const result = await comply(resolved.resolvedUrl, complyOptions);
 
-      // Record result if the user has an org with this agent saved
+      // Surface OAuth-required short-circuit. comply() doesn't throw on auth
+      // failures — it pushes a `category: 'auth'` observation and runs a
+      // degraded profile (no discovered tools, every track skipped or
+      // failed). Without a click-to-authorize affordance, Addie tells the
+      // user "all tracks failed" instead of "click here to authorize".
+      // Anchor the regex on the SDK's exact phrasing
+      // (`@adcp/sdk/dist/lib/testing/compliance/comply.js:966`) so a hostile
+      // observation can't trigger a misdirected authorize prompt.
+      const oauthObs = result.observations.find(o =>
+        o.category === 'auth' && /^Agent requires OAuth/i.test(o.message),
+      );
+      if (oauthObs) {
+        logger.warn(
+          { agentUrl: resolved.resolvedUrl },
+          'evaluate_agent_quality: agent requires authentication',
+        );
+        const authorizeUrl = await buildAgentOAuthAuthorizeUrl(
+          resolved.resolvedUrl,
+          organizationId,
+          agentContextDb,
+        );
+        if (authorizeUrl) {
+          return (
+            `**OAuth authorization required**\n\n` +
+            `The agent at \`${resolved.resolvedUrl}\` requires OAuth authentication ` +
+            `before quality evaluation can run.\n\n` +
+            `**[Click here to authorize this agent](${authorizeUrl})**\n\n` +
+            `After you authorize, ask me to evaluate it again.`
+          );
+        }
+        return (
+          `**OAuth authorization required**\n\n` +
+          `The agent at \`${resolved.resolvedUrl}\` requires OAuth authentication. ` +
+          `An organization is needed to start the OAuth flow — sign in or create one, then retry.`
+        );
+      }
+
+      // Record result when the user has an org context for this agent.
       if (organizationId) {
+        // Write to canonical compliance tables when the calling org owns this agent.
+        // isOrgOwnerOfAgent verifies the resolved member-context org IS the
+        // owning org (tighter than findOwnerOrgForUser, which would accept any
+        // org the user is a member of). Non-owner runs skip the canonical
+        // write and fall through to the legacy agent_test_history path below.
+        const workosUserId = memberContext?.workos_user?.workos_user_id;
+        let isAgentOwner = false;
+        if (workosUserId) {
+          isAgentOwner = await isOrgOwnerOfAgent(
+            organizationId,
+            workosUserId,
+            resolved.resolvedUrl,
+          );
+        }
+
+        if (isAgentOwner) {
+          try {
+            const metadata = await complianceDb.getRegistryMetadata(resolved.resolvedUrl);
+            // Skip canonical write if the owner has opted out of compliance monitoring.
+            if (!metadata?.compliance_opt_out) {
+              const dbInput = {
+                ...complianceResultToDbInput(
+                  result,
+                  resolved.resolvedUrl,
+                  metadata?.lifecycle_stage ?? 'production',
+                  'owner_test',
+                ),
+                // Owner test runs are not dry runs — they update the live public record.
+                // (complianceResultToDbInput hard-codes dry_run: true; override here.)
+                dry_run: false,
+                // Known gap (deferred to follow-up): the canonical write doesn't
+                // carry the triggering org id. If two orgs both own the same
+                // agent URL (rare — staging vs prod orgs of one publisher), an
+                // owner_test from Org A surfaces in Org B's dashboard without
+                // attribution. Acceptable for the unblock; full fix adds
+                // `triggered_org_id` to agent_compliance_runs (#4247 PR 4).
+              };
+              await complianceDb.recordComplianceRun(dbInput);
+              // notifyComplianceChange intentionally omitted: owner test runs are
+              // exploratory; compliance-change notifications fire on heartbeat
+              // transitions only to prevent iteration-loop spam.
+
+              // Fire badge issuance off the canonical write so an owner who
+              // just fixed a compliance issue sees their badge update on the
+              // next page load instead of waiting up to a heartbeat cycle.
+              // Verification-change notifications are intentionally skipped —
+              // the owner already received the result in their chat response.
+              const declaredSpecialisms = result.agent_profile?.specialisms ?? [];
+              if (declaredSpecialisms.length > 0) {
+                try {
+                  await runBadgeFanOut({
+                    complianceDb,
+                    agentUrl: resolved.resolvedUrl,
+                    declaredSpecialisms,
+                  });
+                } catch (badgeError) {
+                  logger.warn({ badgeError, agentUrl: resolved.resolvedUrl }, 'Badge fan-out failed after owner_test run');
+                }
+              }
+            }
+          } catch (error) {
+            logger.warn({ error, agentUrl: resolved.resolvedUrl }, 'Could not write owner test result to canonical compliance state');
+          }
+        }
+
+        // Legacy session-scoped audit trail. Retained until Emma's #4247 PR 3
+        // backfills + drops `agent_test_history`. NOT a public-state write —
+        // the previous dual-write to `recordComplianceRun(..., 'manual')` was
+        // dropped because (a) it was gated only on `agent_contexts` row
+        // existence (which `save_agent` lets any org create for any URL — no
+        // ownership check), so any user could publish a `manual` verdict on
+        // someone else's agent; and (b) the owner-test branch above already
+        // updates canonical state with proper ownership checking, so the
+        // legacy write has no remaining function for owners. Non-owner runs
+        // continue to land here in `agent_test_history` only.
         try {
           const context = await agentContextDb.getByOrgAndUrl(organizationId, resolved.resolvedUrl);
           if (context) {
@@ -3632,10 +3798,33 @@ export function createMemberToolHandlers(
         );
       }
 
-      logger.error({ error, agentUrl: resolved.resolvedUrl }, 'Addie: evaluate_agent_quality failed');
-      if (msg.includes('401') || msg.includes('Unauthorized') || msg.includes('authentication')) {
+      // Auth-required is an expected agent state, not a system error — don't
+      // page #aao-errors via the pino → posthog hook. Surface a click-to-
+      // authorize prompt when the agent advertises OAuth.
+      if (isOAuthRequiredError(error)) {
+        logger.warn(
+          { agentUrl: resolved.resolvedUrl, hasOAuth: error instanceof AuthenticationRequiredError && error.hasOAuth },
+          'evaluate_agent_quality: agent requires authentication',
+        );
+        if (error instanceof AuthenticationRequiredError && error.hasOAuth) {
+          const authorizeUrl = await buildAgentOAuthAuthorizeUrl(
+            resolved.resolvedUrl,
+            organizationId,
+            agentContextDb,
+          );
+          if (authorizeUrl) {
+            return (
+              `**OAuth authorization required**\n\n` +
+              `The agent at \`${resolved.resolvedUrl}\` requires OAuth authentication.\n\n` +
+              `**[Click here to authorize this agent](${authorizeUrl})**\n\n` +
+              `After you authorize, ask me to evaluate it again.`
+            );
+          }
+        }
         return `Agent at ${resolved.resolvedUrl} requires authentication. Use \`save_agent\` to store credentials first, then try again.`;
       }
+
+      logger.error({ error, agentUrl: resolved.resolvedUrl }, 'Addie: evaluate_agent_quality failed');
       throw new ToolError(`Failed to evaluate agent quality for ${resolved.resolvedUrl}: ${msg}`);
     }
   });
@@ -3661,10 +3850,36 @@ export function createMemberToolHandlers(
         ...(authOption && { auth: authOption }),
       });
       profile = caps.profile;
-    } catch (error) {
-      if (isAuthError(error)) {
+
+      // testCapabilityDiscovery catches its own throws and surfaces them as
+      // step errors / capabilities_probe_error strings — the catch below
+      // only sees programmer errors. Detect OAuth here.
+      const probeOAuth =
+        isOAuthRequiredErrorMessage(profile?.capabilities_probe_error)
+          ? profile?.capabilities_probe_error
+          : caps.steps?.find(s => isOAuthRequiredErrorMessage(s.error))?.error;
+      if (probeOAuth) {
+        logger.warn(
+          { agentUrl: resolved.resolvedUrl },
+          'recommend_storyboards: agent requires authentication',
+        );
+        const authorizeUrl = await buildAgentOAuthAuthorizeUrl(
+          resolved.resolvedUrl,
+          organizationId,
+          agentContextDb,
+        );
+        if (authorizeUrl) {
+          return (
+            `**OAuth authorization required**\n\n` +
+            `The agent at \`${resolved.resolvedUrl}\` requires OAuth authentication ` +
+            `before I can recommend storyboards.\n\n` +
+            `**[Click here to authorize this agent](${authorizeUrl})**\n\n` +
+            `After you authorize, ask me again.`
+          );
+        }
         return `Agent at ${resolved.resolvedUrl} requires authentication. Use \`save_agent\` to store credentials first, then try again.`;
       }
+    } catch (error) {
       logger.warn({ err: error, agentUrl: resolved.resolvedUrl }, 'recommend_storyboards: capability probe failed');
       const reason = classifyProbeError(error);
       throw new ToolError(`Could not reach agent at ${resolved.resolvedUrl} (${probeReasonLabel(reason)}).`);
@@ -3913,6 +4128,34 @@ export function createMemberToolHandlers(
         ...(authOption && { auth: authOption }),
       });
 
+      // runStoryboard catches its own throws and surfaces them as step
+      // errors. Detect OAuth on the first failing step before rendering a
+      // long failure report the user can't act on.
+      const oauthStepError = result.phases
+        .flatMap(p => p.steps)
+        .find(s => isOAuthRequiredErrorMessage(s.error))?.error;
+      if (oauthStepError) {
+        logger.warn(
+          { agentUrl: resolved.resolvedUrl, storyboardId },
+          'run_storyboard: agent requires authentication',
+        );
+        const authorizeUrl = await buildAgentOAuthAuthorizeUrl(
+          resolved.resolvedUrl,
+          organizationId,
+          agentContextDb,
+        );
+        if (authorizeUrl) {
+          return (
+            `**OAuth authorization required**\n\n` +
+            `The agent at \`${resolved.resolvedUrl}\` requires OAuth authentication ` +
+            `before I can run storyboard \`${storyboardId}\`.\n\n` +
+            `**[Click here to authorize this agent](${authorizeUrl})**\n\n` +
+            `After you authorize, ask me to run it again.`
+          );
+        }
+        return `Agent at ${resolved.resolvedUrl} requires authentication. Use \`save_agent\` to store credentials first, then try again.`;
+      }
+
       // Record the run in agent_test_history when we have a saved
       // agent_context for this org+url. Mirrors evaluate_agent_quality's
       // pattern; powers the "agent not tested in 14d" prompt rule.
@@ -4014,9 +4257,6 @@ export function createMemberToolHandlers(
       return output;
     } catch (error) {
       logger.error({ error, agentUrl: resolved.resolvedUrl, storyboardId }, 'Addie: run_storyboard failed');
-      if (isAuthError(error)) {
-        return `Agent at ${resolved.resolvedUrl} requires authentication. Use \`save_agent\` to store credentials first, then try again.`;
-      }
       const msg = error instanceof Error ? error.message : 'Unknown error';
       throw new ToolError(`Failed to run storyboard ${storyboardId}: ${msg}`);
     }
@@ -4072,6 +4312,29 @@ export function createMemberToolHandlers(
         context,
         ...(authOption && { auth: authOption }),
       });
+
+      // runStoryboardStep catches its own throws and surfaces them as
+      // result.error strings. Detect OAuth before rendering.
+      if (isOAuthRequiredErrorMessage(result.error)) {
+        logger.warn(
+          { agentUrl: resolved.resolvedUrl, storyboardId, stepId },
+          'run_storyboard_step: agent requires authentication',
+        );
+        const authorizeUrl = await buildAgentOAuthAuthorizeUrl(
+          resolved.resolvedUrl,
+          organizationId,
+          agentContextDb,
+        );
+        if (authorizeUrl) {
+          return (
+            `**OAuth authorization required**\n\n` +
+            `The agent at \`${resolved.resolvedUrl}\` requires OAuth authentication.\n\n` +
+            `**[Click here to authorize this agent](${authorizeUrl})**\n\n` +
+            `After you authorize, ask me to run the step again.`
+          );
+        }
+        return `Agent at ${resolved.resolvedUrl} requires authentication. Use \`save_agent\` to store credentials first, then try again.`;
+      }
 
       let output = '';
       if (resolved.source === 'saved') output += '_Using saved credentials._\n\n';
@@ -4137,9 +4400,6 @@ export function createMemberToolHandlers(
       return output;
     } catch (error) {
       logger.error({ error, agentUrl: resolved.resolvedUrl, storyboardId, stepId }, 'Addie: run_storyboard_step failed');
-      if (isAuthError(error)) {
-        return `Agent at ${resolved.resolvedUrl} requires authentication. Use \`save_agent\` to store credentials first, then try again.`;
-      }
       const msg = error instanceof Error ? error.message : 'Unknown error';
       // Return step-not-found as a message so the AI can self-correct with valid step IDs
       if (msg.includes('not found in storyboard')) {
@@ -4289,6 +4549,32 @@ export function createMemberToolHandlers(
         }
       }));
 
+      // OAuth on the agent makes every brief fail identically. Short-circuit
+      // before rendering an N-brief failure report the user can't act on.
+      // Inner per-brief catch swallows the throw and stashes err.message —
+      // string detection is how we recognize it post-Promise.all.
+      if (briefResults.length > 0 && briefResults.every(r => isOAuthRequiredErrorMessage(r.error))) {
+        logger.warn(
+          { agentUrl: resolved.resolvedUrl },
+          'compare_media_kit: agent requires authentication',
+        );
+        const authorizeUrl = await buildAgentOAuthAuthorizeUrl(
+          resolved.resolvedUrl,
+          organizationId,
+          agentContextDb,
+        );
+        if (authorizeUrl) {
+          return (
+            `**OAuth authorization required**\n\n` +
+            `The agent at \`${resolved.resolvedUrl}\` requires OAuth authentication ` +
+            `before I can compare its products against the media kit.\n\n` +
+            `**[Click here to authorize this agent](${authorizeUrl})**\n\n` +
+            `After you authorize, ask me to try again.`
+          );
+        }
+        return `Agent at ${resolved.resolvedUrl} requires authentication. Use \`save_agent\` to store credentials first, then try again.`;
+      }
+
       // Aggregate across all briefs
       const allChannelsFound = new Set<string>();
       const allFormatsFound = new Set<string>();
@@ -4363,11 +4649,31 @@ export function createMemberToolHandlers(
 
       return output;
     } catch (error) {
-      logger.error({ error, agentUrl: resolved.resolvedUrl }, 'Addie: compare_media_kit failed');
-      const msg = error instanceof Error ? error.message : 'Unknown error';
-      if (msg.includes('401') || msg.includes('Unauthorized') || msg.includes('authentication')) {
+      if (isOAuthRequiredError(error)) {
+        logger.warn(
+          { agentUrl: resolved.resolvedUrl, hasOAuth: error instanceof AuthenticationRequiredError && error.hasOAuth },
+          'compare_media_kit: agent requires authentication',
+        );
+        if (error instanceof AuthenticationRequiredError && error.hasOAuth) {
+          const authorizeUrl = await buildAgentOAuthAuthorizeUrl(
+            resolved.resolvedUrl,
+            organizationId,
+            agentContextDb,
+          );
+          if (authorizeUrl) {
+            return (
+              `**OAuth authorization required**\n\n` +
+              `The agent at \`${resolved.resolvedUrl}\` requires OAuth authentication ` +
+              `before I can compare its products against the media kit.\n\n` +
+              `**[Click here to authorize this agent](${authorizeUrl})**\n\n` +
+              `After you authorize, ask me to try again.`
+            );
+          }
+        }
         return `Agent at ${resolved.resolvedUrl} requires authentication. Use \`save_agent\` to store credentials first, then try again.`;
       }
+      logger.error({ error, agentUrl: resolved.resolvedUrl }, 'Addie: compare_media_kit failed');
+      const msg = error instanceof Error ? error.message : 'Unknown error';
       throw new ToolError(`Failed to compare media kit for ${resolved.resolvedUrl}: ${msg}`);
     }
   });
@@ -4591,11 +4897,31 @@ export function createMemberToolHandlers(
 
       return output;
     } catch (error) {
-      logger.error({ error, agentUrl }, 'Addie: test_rfp_response failed');
-      const msg = (error instanceof Error ? error.message : 'Unknown error').slice(0, 500);
-      if (msg.includes('401') || msg.includes('Unauthorized') || msg.includes('authentication')) {
+      if (isOAuthRequiredError(error)) {
+        logger.warn(
+          { agentUrl, hasOAuth: error instanceof AuthenticationRequiredError && error.hasOAuth },
+          'test_rfp_response: agent requires authentication',
+        );
+        if (error instanceof AuthenticationRequiredError && error.hasOAuth) {
+          const authorizeUrl = await buildAgentOAuthAuthorizeUrl(
+            resolved.resolvedUrl,
+            organizationId,
+            agentContextDb,
+          );
+          if (authorizeUrl) {
+            return (
+              `**OAuth authorization required**\n\n` +
+              `The agent at \`${resolved.resolvedUrl}\` requires OAuth authentication ` +
+              `before I can test the RFP response.\n\n` +
+              `**[Click here to authorize this agent](${authorizeUrl})**\n\n` +
+              `After you authorize, ask me to try again.`
+            );
+          }
+        }
         return `Agent at ${agentUrl} requires authentication. Use \`save_agent\` to store credentials first, then try again.`;
       }
+      logger.error({ error, agentUrl }, 'Addie: test_rfp_response failed');
+      const msg = (error instanceof Error ? error.message : 'Unknown error').slice(0, 500);
       throw new ToolError(`Failed to test RFP response for ${agentUrl}: <external_error>${msg}</external_error>`);
     }
   });
@@ -4970,11 +5296,31 @@ export function createMemberToolHandlers(
 
       return output;
     } catch (error) {
-      logger.error({ error, agentUrl }, 'Addie: test_io_execution failed');
-      const msg = (error instanceof Error ? error.message : 'Unknown error').slice(0, 500);
-      if (msg.includes('401') || msg.includes('Unauthorized') || msg.includes('authentication')) {
+      if (isOAuthRequiredError(error)) {
+        logger.warn(
+          { agentUrl, hasOAuth: error instanceof AuthenticationRequiredError && error.hasOAuth },
+          'test_io_execution: agent requires authentication',
+        );
+        if (error instanceof AuthenticationRequiredError && error.hasOAuth) {
+          const authorizeUrl = await buildAgentOAuthAuthorizeUrl(
+            resolved.resolvedUrl,
+            organizationId,
+            agentContextDb,
+          );
+          if (authorizeUrl) {
+            return (
+              `**OAuth authorization required**\n\n` +
+              `The agent at \`${resolved.resolvedUrl}\` requires OAuth authentication ` +
+              `before I can test the IO execution.\n\n` +
+              `**[Click here to authorize this agent](${authorizeUrl})**\n\n` +
+              `After you authorize, ask me to try again.`
+            );
+          }
+        }
         return `Agent at ${agentUrl} requires authentication. Use \`save_agent\` to store credentials first, then try again.`;
       }
+      logger.error({ error, agentUrl }, 'Addie: test_io_execution failed');
+      const msg = (error instanceof Error ? error.message : 'Unknown error').slice(0, 500);
       throw new ToolError(`Failed to test IO execution for ${agentUrl}: <external_error>${msg}</external_error>`);
     }
   });
@@ -4985,7 +5331,7 @@ export function createMemberToolHandlers(
   handlers.set('draft_github_issue', async (input) => {
     const title = input.title as string;
     let body = input.body as string;
-    const labels = (input.labels as string[]) || [];
+    const labels = coerceStringArray(input.labels);
 
     // GitHub organization
     const org = 'adcontextprotocol';
@@ -5100,6 +5446,8 @@ export function createMemberToolHandlers(
         `**[Connect GitHub](${connectUrl})** — one click and I'll file this under your GitHub account.`,
         '',
         `Or ask me to use \`draft_github_issue\` and I'll give you a pre-filled link instead.`,
+        '',
+        `_(If you just completed the GitHub connect flow, the connection may still be propagating — wait a moment and ask me to try again.)_`,
       ].join('\n');
     }
 
@@ -5156,6 +5504,7 @@ export function createMemberToolHandlers(
     if (!parsed.ok) return parsed.error;
     const { org, repo } = parsed;
     const includeComments = Boolean(input.include_comments);
+    const includeDiff = Boolean(input.include_diff);
     const headers = githubHeaders();
 
     try {
@@ -5227,6 +5576,22 @@ export function createMemberToolHandlers(
           logger.warn({ status: commentsResponse.status, repo, issueNumber }, 'get_github_issue: Failed to fetch comments');
         }
       }
+
+      if (includeDiff && issue.pull_request) {
+        const diffResponse = await fetch(
+          `https://api.github.com/repos/${org}/${repo}/pulls/${issueNumber}`,
+          { headers: { ...headers, Accept: 'application/vnd.github.v3.diff' } },
+        );
+        if (diffResponse.ok) {
+          const diffText = await diffResponse.text();
+          const truncatedDiff = truncate(diffText, GITHUB_DIFF_MAX_CHARS);
+          out += `\n---\n\n${wrapUntrusted(`${issue.html_url}/files`, `### Diff\n\n${truncatedDiff}`)}\n`;
+        } else {
+          logger.warn({ status: diffResponse.status, org, repo, issueNumber }, 'get_github_issue: Failed to fetch diff');
+          out += `\n---\n\n_Diff unavailable (${diffResponse.status})._\n`;
+        }
+      }
+
       return out;
     } catch (error) {
       logger.error({ error, repo, issueNumber }, 'get_github_issue: Failed to read issue');
@@ -5239,7 +5604,7 @@ export function createMemberToolHandlers(
     if (!parsed.ok) return parsed.error;
     const { org, repo } = parsed;
     const state = (input.state as string) || 'open';
-    const labels = (input.labels as string[]) || [];
+    const labels = coerceStringArray(input.labels);
     const query = input.query as string | undefined;
     const limit = Math.min((input.limit as number) || 20, 50);
 
@@ -5317,20 +5682,66 @@ export function createMemberToolHandlers(
       return 'This feature requires an organization. Visit https://agenticadvertising.org/onboarding to create one (free, takes 2 minutes). You can still use the public test agent directly via `evaluate_agent_quality` without an organization.';
     }
 
-    const agentUrl = input.agent_url as string;
+    const rawAgentUrl = input.agent_url as string;
     try {
-      const parsed = new URL(agentUrl);
+      const parsed = new URL(rawAgentUrl);
       if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
         return 'Agent URL must use https:// or http:// protocol.';
       }
     } catch {
       return 'Invalid agent URL format. Please provide a full URL like https://your-agent.example.com';
     }
+    // Canonicalize so this writes the same row as the REST POST /api/me/agents
+    // path (issue #3573). Query strings and fragments are rejected at the
+    // boundary; canonicalizeAgentUrl itself preserves them.
+    if (rawAgentUrl.includes('?') || rawAgentUrl.includes('#')) {
+      return 'Agent URL must not contain query strings or fragments.';
+    }
+    const canonical = canonicalizeAgentUrl(rawAgentUrl);
+    if (!canonical) {
+      return 'Invalid agent URL format. Please provide a full URL like https://your-agent.example.com';
+    }
+    // Bind to a typed local so closures (ensureAgentInProfile) see `string`
+    // rather than `string | null` — TS can't carry the narrowing across the
+    // function boundary.
+    const agentUrl: string = canonical;
     const agentName = input.agent_name as string | undefined;
     const authToken = input.auth_token as string | undefined;
+    if (authToken !== undefined) {
+      const tokenErr = validateAuthTokenChars(authToken);
+      if (tokenErr) return tokenErr;
+    }
     const rawAuthType = input.auth_type as string | undefined;
     const authType: 'bearer' | 'basic' = rawAuthType === 'basic' ? 'basic' : 'bearer';
     const protocol = (input.protocol as 'mcp' | 'a2a') || 'mcp';
+
+    // Caller-declared agent type. Required at the schema level — the JSON-RPC
+    // layer has already enforced presence via input_schema.required, so this
+    // check is the runtime belt to the schema's suspenders. We only accept the
+    // 8 real values; 'unknown' is reserved for server-side smuggle protection
+    // when a snapshot exists but couldn't classify (resolveAgentTypes), never
+    // for client input.
+    const declaredType = input.type;
+    if (typeof declaredType !== 'string' || !isValidAgentType(declaredType) || declaredType === 'unknown') {
+      return 'Agent type is required. Please specify one of: brand, rights, measurement, governance, creative, sales, buying, signals.';
+    }
+    const agentType = declaredType as Exclude<AgentType, 'unknown'>;
+
+    // null sentinel and explicit empty string both clear a previously-set
+    // value; a present non-empty string is validated through the same SSRF
+    // guard the OAuth token-endpoint path uses (cloud-metadata blocked
+    // always; loopback / RFC1918 blocked in production).
+    let healthCheckUrl: string | undefined;
+    let clearHealthCheckUrl = false;
+    if (input.health_check_url === null || input.health_check_url === '') {
+      clearHealthCheckUrl = true;
+    } else if (typeof input.health_check_url === 'string') {
+      const validated = validateExternalUrl(input.health_check_url);
+      if (!validated) {
+        return 'health_check_url is invalid or points to a blocked address. Use an https:// URL on a public host.';
+      }
+      healthCheckUrl = validated;
+    }
 
     // Route oauth_client_credentials through the shared parser so the Addie
     // tool applies identical SSRF + $ENV-prefix rules as the REST endpoint.
@@ -5345,26 +5756,91 @@ export function createMemberToolHandlers(
       clientCredentials = parsed.creds;
     }
 
-    async function ensureAgentInProfile(displayName: string): Promise<void> {
-      if (!saveOrgId) return;
+    type ProfileWriteStatus =
+      | { ok: true; createdProfile: boolean }
+      | { ok: false; reason: string };
+
+    async function ensureAgentInProfile(displayName: string): Promise<ProfileWriteStatus> {
+      if (!saveOrgId) return { ok: false, reason: 'no-org-id' };
       try {
-        const profile = await memberDb.getProfileByOrgId(saveOrgId);
-        if (profile) {
-          const agents = profile.agents || [];
-          if (!agents.some((a: any) => a.url === agentUrl)) {
-            // Default to members_only, not public. The public directory
-            // requires an API-access tier (Professional+); defaulting to
-            // 'public' here lets Addie implicitly publish an agent for an
-            // Explorer-tier caller who hasn't been tier-gated. Members_only
-            // keeps the agent discoverable to peer members with API access
-            // and lets the owner promote to public through the explicit,
-            // tier-checked /publish route when eligible.
-            agents.push({ url: agentUrl, name: displayName, visibility: 'members_only' });
-            await memberDb.updateProfile(profile.id, { agents });
+        let profile = await memberDb.getProfileByOrgId(saveOrgId);
+        let createdProfile = false;
+        if (!profile) {
+          const orgName = memberContext?.organization?.name;
+          if (!orgName) {
+            return { ok: false, reason: 'no-org-name' };
           }
+          const result = await ensureMemberProfileExists({
+            orgId: saveOrgId,
+            orgName,
+            source: 'addie:save_agent',
+          });
+          profile = result.profile;
+          createdProfile = result.created;
         }
+
+        const agents = profile.agents || [];
+        // Match in canonical form so a legacy non-canonical row gets
+        // updated in place rather than duplicated (issue #3573).
+        const existing = agents.find((a: any) => (canonicalizeAgentUrl(a.url) ?? a.url) === agentUrl);
+        if (!existing) {
+          // Default to members_only, not public. The public directory
+          // requires an API-access tier (Professional+); defaulting to
+          // 'public' here lets Addie implicitly publish an agent for an
+          // Explorer-tier caller who hasn't been tier-gated. Members_only
+          // keeps the agent discoverable to peer members with API access
+          // and lets the owner promote to public through the explicit,
+          // tier-checked /publish route when eligible.
+          agents.push({
+            url: agentUrl,
+            name: displayName,
+            type: agentType,
+            visibility: 'members_only',
+            ...(healthCheckUrl ? { health_check_url: healthCheckUrl } : {}),
+          });
+          await memberDb.updateProfile(profile.id, { agents });
+        } else {
+          let dirty = false;
+          if ((existing as any).type !== agentType) {
+            (existing as any).type = agentType;
+            dirty = true;
+          }
+          if (clearHealthCheckUrl && (existing as any).health_check_url) {
+            delete (existing as any).health_check_url;
+            dirty = true;
+          } else if (healthCheckUrl && (existing as any).health_check_url !== healthCheckUrl) {
+            (existing as any).health_check_url = healthCheckUrl;
+            dirty = true;
+          }
+          if (dirty) await memberDb.updateProfile(profile.id, { agents });
+        }
+
+        // Seed an `agent_registry_metadata` row so the compliance heartbeat
+        // picks this agent up. Without this, an agent registered via
+        // save_agent lives only in `member_profiles.agents` JSONB and never
+        // enters the heartbeat's `known_agents` CTE — the dashboard's
+        // compliance tile stays `unknown` indefinitely. ON CONFLICT DO
+        // NOTHING preserves any owner-customized lifecycle / opt-out /
+        // check-interval the heartbeat or dashboard wrote earlier.
+        try {
+          await query(
+            `INSERT INTO agent_registry_metadata (agent_url)
+             VALUES ($1)
+             ON CONFLICT (agent_url) DO NOTHING`,
+            [agentUrl],
+          );
+        } catch (err) {
+          // Non-fatal: the read-side CTE widening (member_profiles.agents
+          // unioned into known_agents) catches this case as a fallback.
+          // We log so a real metadata-table outage is visible without
+          // failing the user's registration.
+          logger.warn({ err, agentUrl }, 'Addie: failed to seed agent_registry_metadata row');
+        }
+
+        return { ok: true, createdProfile };
       } catch (err) {
-        logger.warn({ err, agentUrl }, 'Addie: failed to add agent to member profile');
+        logger.warn({ err, agentUrl, orgId: saveOrgId }, 'Addie: failed to add agent to member profile');
+        return { ok: false, reason: err instanceof Error ? err.message : 'unknown error' };
       }
     }
 
@@ -5385,7 +5861,7 @@ export function createMemberToolHandlers(
         }
         context = await agentContextDb.getById(context.id);
 
-        await ensureAgentInProfile(agentName || context?.agent_name || new URL(agentUrl).hostname);
+        const profileStatus = await ensureAgentInProfile(agentName || context?.agent_name || new URL(agentUrl).hostname);
 
         let response = `✅ Updated saved agent: **${context?.agent_name || agentUrl}**\n\n`;
         if (authToken) {
@@ -5396,6 +5872,9 @@ export function createMemberToolHandlers(
         if (clientCredentials) {
           response += `🔐 OAuth client-credentials saved securely for token endpoint ${clientCredentials.token_endpoint}\n`;
           response += `_The client secret is encrypted and will never be shown again. The SDK exchanges and refreshes at test time._\n`;
+        }
+        if (!profileStatus.ok) {
+          response += `\n⚠️ Credentials are saved, but I couldn't update your dashboard listing right now (${profileStatus.reason}). The team has been notified.`;
         }
         return response;
       }
@@ -5419,7 +5898,7 @@ export function createMemberToolHandlers(
         context = await agentContextDb.getById(context.id);
       }
 
-      await ensureAgentInProfile(agentName || new URL(agentUrl).hostname);
+      const profileStatus = await ensureAgentInProfile(agentName || new URL(agentUrl).hostname);
 
       let response = `✅ Saved agent: **${context?.agent_name || agentUrl}**\n\n`;
       response += `**URL:** ${agentUrl}\n`;
@@ -5433,7 +5912,11 @@ export function createMemberToolHandlers(
         response += `\n🔐 OAuth client-credentials saved securely for token endpoint ${clientCredentials.token_endpoint}\n`;
         response += `_The client secret is encrypted and will never be shown again. The SDK exchanges and refreshes at test time._\n`;
       }
-      response += `\nThe agent has been added to your dashboard with **members_only** visibility — other Professional-tier members can discover it, but it won't appear in the public directory. To publish publicly, use the dashboard publish flow (requires a Professional or higher subscription). When you test this agent, I'll automatically use the saved credentials.`;
+      if (profileStatus.ok) {
+        response += `\nThe agent has been added to your dashboard with **members_only** visibility — other paying AAO members (Professional, Builder, Member, or Leader) can discover it, but it won't appear in the public directory. To publish publicly, use the dashboard publish flow (requires a paid AAO tier). When you test this agent, I'll automatically use the saved credentials.`;
+      } else {
+        response += `\n⚠️ The credentials are saved on the backend, but I couldn't add this agent to your dashboard listing right now (${profileStatus.reason}). The team has been notified — please check back shortly, or use the dashboard's manual register flow at https://agenticadvertising.org/dashboard/agents.`;
+      }
 
       return response;
     } catch (error) {
@@ -5509,26 +5992,84 @@ export function createMemberToolHandlers(
       return 'This feature requires an organization. Visit https://agenticadvertising.org/onboarding to create one (free, takes 2 minutes). You can still use the public test agent directly via `evaluate_agent_quality` without an organization.';
     }
 
-    const agentUrl = input.agent_url as string;
+    const rawAgentUrl = input.agent_url as string;
+    // Canonicalize so this matches whatever shape save_agent / POST
+    // /api/me/agents wrote (issue #3573). A fallback to the raw URL keeps
+    // legacy non-canonical rows reachable for removal.
+    const agentUrl = canonicalizeAgentUrl(rawAgentUrl) ?? rawAgentUrl;
+
+    type ProfileRemoveStatus =
+      | { ok: true; removedFromProfile: boolean; agentName: string | null }
+      | { ok: false; reason: 'public' | 'error' };
+
+    // Mirrors ensureAgentInProfile (used by save_agent): remove_saved_agent
+    // must clear the entry from member_profiles.agents too, otherwise the
+    // dashboard at /dashboard/agents keeps showing a phantom row after
+    // agent_contexts is gone. Refuses to drop a `public` entry — that would
+    // desync brand.json (same rule as DELETE /api/me/agents/:url).
+    async function removeAgentFromProfile(): Promise<ProfileRemoveStatus> {
+      if (!removeOrgId) return { ok: false, reason: 'error' };
+      try {
+        const profile = await memberDb.getProfileByOrgId(removeOrgId);
+        if (!profile) return { ok: true, removedFromProfile: false, agentName: null };
+        const agents = profile.agents || [];
+        // Match existing rows in canonical form so a legacy non-canonical
+        // entry is reachable for removal (issue #3573).
+        const existing = agents.find((a: any) => (canonicalizeAgentUrl(a.url) ?? a.url) === agentUrl);
+        if (!existing) return { ok: true, removedFromProfile: false, agentName: null };
+        if ((existing as any).visibility === 'public') {
+          return { ok: false, reason: 'public' };
+        }
+        const next = agents.filter((a: any) => (canonicalizeAgentUrl(a.url) ?? a.url) !== agentUrl);
+        await memberDb.updateProfile(profile.id, { agents: next });
+        return { ok: true, removedFromProfile: true, agentName: (existing as any).name ?? null };
+      } catch (err) {
+        logger.warn({ err, agentUrl, orgId: removeOrgId }, 'Addie: failed to remove agent from member profile');
+        return { ok: false, reason: 'error' };
+      }
+    }
 
     try {
-      // Find the agent
       const context = await agentContextDb.getByOrgAndUrl(removeOrgId, agentUrl);
 
-      if (!context) {
+      // Credentials before listing: if the second step throws, a stale dashboard
+      // row is cosmetic; a stale credential row means a token we said was gone
+      // is still callable. Pre-check the public-visibility guard before either
+      // write so we don't drop credentials and then refuse the listing change.
+      if (context) {
+        const profile = await memberDb.getProfileByOrgId(removeOrgId);
+        const entry = profile?.agents?.find((a: any) => a.url === agentUrl);
+        if (entry && (entry as any).visibility === 'public') {
+          return `Can't remove **${context.agent_name || agentUrl}** — it's listed publicly. Make it private first, then remove.`;
+        }
+        await agentContextDb.delete(context.id);
+      }
+
+      const profileResult = await removeAgentFromProfile();
+
+      if (!context && profileResult.ok && !profileResult.removedFromProfile) {
         return `No saved agent found with URL: ${agentUrl}\n\nUse \`list_saved_agents\` to see your saved agents.`;
       }
 
-      const agentName = context.agent_name || agentUrl;
+      if (!profileResult.ok) {
+        if (profileResult.reason === 'public') {
+          return `Can't remove **${context?.agent_name || agentUrl}** — it's listed publicly. Make it private first, then remove.`;
+        }
+        // Credentials are gone (if context existed); the listing didn't update.
+        return `⚠️ Removed credentials for **${context?.agent_name || agentUrl}**, but couldn't update your dashboard listing. Try again in a moment, or refresh https://agenticadvertising.org/dashboard/agents to see whether the entry cleared.`;
+      }
 
-      // Delete it
-      await agentContextDb.delete(context.id);
+      const agentName = context?.agent_name || profileResult.agentName || agentUrl;
 
       let response = `✅ Removed saved agent: **${agentName}**\n\n`;
-      if (context.has_auth_token) {
+      if (context?.has_auth_token) {
         response += `🔐 The stored auth token has been permanently deleted.\n`;
       }
-      response += `All test history for this agent has also been removed.`;
+      if (context) {
+        response += `All test history for this agent has also been removed.`;
+      } else if (profileResult.removedFromProfile) {
+        response += `Looks like the credentials were already cleared earlier.`;
+      }
 
       return response;
     } catch (error) {

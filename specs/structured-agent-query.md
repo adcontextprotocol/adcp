@@ -118,7 +118,6 @@ All filters use AND logic. Multiple values within a filter use OR (e.g., `channe
       "name": "StreamHaus Ad Sales",
       "type": "sales",
       "protocol": "mcp",
-      "source": "registered",
       "member": {
         "slug": "streamhaus",
         "display_name": "StreamHaus"

@@ -151,5 +151,5 @@ scope:
 references:
   universal_storyboard: static/compliance/source/universal/signed-requests.yaml
   test_vectors: /compliance/{version}/test-vectors/request-signing/
-  verifier_checklist: /docs/building/implementation/security.mdx#verifier-checklist-requests
+  verifier_checklist: /docs/building/by-layer/L1/security.mdx#verifier-checklist-requests
   runner_implementation: https://github.com/adcontextprotocol/adcp-client/issues/585

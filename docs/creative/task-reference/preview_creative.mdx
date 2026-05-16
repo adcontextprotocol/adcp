@@ -1,11 +1,11 @@
 ---
 title: preview_creative
-description: "preview_creative generates visual previews of ad creative manifests in AdCP in single or batch mode returning URL, image, or HTML output."
+description: "preview_creative renders an existing creative manifest into viewable output in AdCP, in single or batch mode, returning URL, image, or HTML output."
 "og:title": "AdCP — preview_creative"
 ---
 
 
-Generate preview renderings of creative manifests. Supports both single creative preview and batch preview (5-10x faster for multiple creatives).
+`preview_creative` renders an existing creative manifest into viewable output. It does not generate or modify the input manifest — use [`build_creative`](/docs/creative/task-reference/build_creative) for that. Supports both single creative preview and batch preview (5-10x faster for multiple creatives).
 
 **Request Schema**: [`/schemas/v3/creative/preview-creative-request.json`](https://adcontextprotocol.org/schemas/v3/creative/preview-creative-request.json)
 **Response Schema**: [`/schemas/v3/creative/preview-creative-response.json`](https://adcontextprotocol.org/schemas/v3/creative/preview-creative-response.json)

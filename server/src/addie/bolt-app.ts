@@ -38,6 +38,7 @@ import { AddieDatabase } from '../db/addie-db.js';
 import { SlackDatabase } from '../db/slack-db.js';
 import { EmailPreferencesDatabase } from '../db/email-preferences-db.js';
 import { getPool } from '../db/client.js';
+import { linkDomain } from '../db/organization-domains-db.js';
 import {
   isKnowledgeReady,
   createKnowledgeToolHandlers,
@@ -79,6 +80,10 @@ import {
   AUTH_GRADER_TOOLS,
   createAuthGraderToolHandlers,
 } from './mcp/auth-grader-tools.js';
+import {
+  CONFORMANCE_TOOLS,
+  createConformanceToolHandlers,
+} from './mcp/conformance-tools.js';
 import {
   MEETING_TOOLS,
   createMeetingToolHandlers,
@@ -980,6 +985,20 @@ async function createUserScopedTools(
     allHandlers.set(name, handler);
   }
   logger.debug('Addie Bolt: Auth grader tools enabled');
+
+  // Conformance Socket Mode — issue tokens + run storyboards against an
+  // adopter dev/staging MCP server connected outbound to Addie. Gated
+  // behind CONFORMANCE_SOCKET_ENABLED so the chat surface stays dark
+  // until ops opts in. Server-side WS plumbing is always wired (see
+  // server/src/conformance/) — this flag only controls Addie's offer.
+  if (process.env.CONFORMANCE_SOCKET_ENABLED === '1' && memberContext) {
+    const conformanceHandlers = createConformanceToolHandlers(memberContext);
+    allTools.push(...CONFORMANCE_TOOLS);
+    for (const [name, handler] of conformanceHandlers) {
+      allHandlers.set(name, handler);
+    }
+    logger.debug('Addie Bolt: Conformance Socket Mode tools enabled');
+  }
 
   // Check if user is AAO admin (based on aao-admin working group membership)
   const userIsAdmin = slackUserId ? await isSlackUserAAOAdmin(slackUserId) : false;
@@ -2449,18 +2468,24 @@ async function handleProspectClaim({ ack, body, client }: any): Promise<void> {
   try {
     const pool = getPool();
 
-    // Look up the Slack user's WorkOS identity and verify they're an admin
+    // Look up the Slack user's WorkOS identity (via slack_user_mappings) and
+    // verify they're an admin. `users` has no slack_user_id column — Slack ↔
+    // WorkOS linkage lives in slack_user_mappings.
     const userResult = await pool.query<{ workos_user_id: string; first_name: string; email: string; is_admin: boolean }>(
       `SELECT u.workos_user_id, u.first_name, u.email,
               EXISTS(
-                SELECT 1 FROM org_memberships om
+                SELECT 1 FROM organization_memberships om
                 WHERE om.workos_user_id = u.workos_user_id
                   AND om.workos_organization_id = (
                     SELECT workos_organization_id FROM organizations WHERE slug = 'agenticadvertising-org' LIMIT 1
                   )
                   AND om.role IN ('admin')
               ) as is_admin
-       FROM users u WHERE u.slack_user_id = $1`,
+       FROM slack_user_mappings sm
+       JOIN users u ON u.workos_user_id = sm.workos_user_id
+       WHERE sm.slack_user_id = $1
+         AND sm.mapping_status = 'mapped'
+         AND sm.workos_user_id IS NOT NULL`,
       [userId]
     );
 
@@ -2474,6 +2499,16 @@ async function handleProspectClaim({ ack, body, client }: any): Promise<void> {
     }
 
     const user = userResult.rows[0];
+
+    if (!user.is_admin) {
+      await client.chat.postEphemeral({
+        channel: channelId,
+        user: userId,
+        text: 'Only AgenticAdvertising.org admins can claim prospects.',
+      });
+      logger.warn({ userId, workosUserId: user.workos_user_id, orgId }, 'Addie Bolt: Non-admin attempted prospect claim');
+      return;
+    }
 
     // Verify the org is still an active prospect
     const orgCheck = await pool.query<{ name: string; subscription_status: string | null; prospect_owner: string | null }>(
@@ -2680,13 +2715,13 @@ async function handleAliasConfirm({ ack, body, client }: any): Promise<void> {
       return;
     }
 
-    // Add domain to organization_domains
-    await pool.query(
-      `INSERT INTO organization_domains (workos_organization_id, domain)
-       VALUES ($1, $2)
-       ON CONFLICT DO NOTHING`,
-      [orgId, domain]
-    );
+    await linkDomain({
+      orgId,
+      domain,
+      source: 'manual',
+      verified: false,
+      isPrimary: false,
+    });
     const orgRow = orgResult.rows[0];
 
     if (orgRow?.email_domain) {

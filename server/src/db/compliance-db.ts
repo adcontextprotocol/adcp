@@ -11,8 +11,8 @@ const logger = baseLogger.child({ module: 'compliance-db' });
 export type LifecycleStage = 'development' | 'testing' | 'production' | 'deprecated';
 export type ComplianceStatus = 'passing' | 'degraded' | 'failing' | 'unknown';
 export type OverallRunStatus = 'passing' | 'failing' | 'partial';
-export type TriggeredBy = 'heartbeat' | 'manual' | 'webhook';
-export type TrackStatus = 'pass' | 'fail' | 'partial' | 'skip';
+export type TriggeredBy = 'heartbeat' | 'manual' | 'webhook' | 'owner_test';
+export type TrackStatus = 'pass' | 'fail' | 'partial' | 'skip' | 'silent';
 
 /**
  * Auth shape resolved from an agent_context for outbound compliance/test
@@ -118,6 +118,8 @@ export interface AgentComplianceStatus {
   previous_status: string | null;
   status_changed_at: Date | null;
   updated_at: Date;
+  /** triggered_by of the most recent non-dry-run in agent_compliance_runs */
+  last_triggered_by: TriggeredBy | null;
 }
 
 export type StoryboardStatus = 'passing' | 'failing' | 'partial' | 'untested';
@@ -427,9 +429,15 @@ export class ComplianceDatabase {
 
   async getComplianceStatus(agentUrl: string): Promise<AgentComplianceStatus | null> {
     const result = await query(
-      `SELECT s.*, COALESCE(m.lifecycle_stage, 'production') AS lifecycle_stage
+      `SELECT s.*, COALESCE(m.lifecycle_stage, 'production') AS lifecycle_stage,
+              r.triggered_by AS last_triggered_by
        FROM agent_compliance_status s
        LEFT JOIN agent_registry_metadata m ON m.agent_url = s.agent_url
+       LEFT JOIN LATERAL (
+         SELECT triggered_by FROM agent_compliance_runs
+         WHERE agent_url = s.agent_url AND dry_run = false
+         ORDER BY tested_at DESC LIMIT 1
+       ) r ON true
        WHERE s.agent_url = $1`,
       [agentUrl],
     );
@@ -455,9 +463,15 @@ export class ComplianceDatabase {
     if (agentUrls.length === 0) return new Map();
 
     const result = await query(
-      `SELECT s.*, COALESCE(m.lifecycle_stage, 'production') AS lifecycle_stage
+      `SELECT s.*, COALESCE(m.lifecycle_stage, 'production') AS lifecycle_stage,
+              r.triggered_by AS last_triggered_by
        FROM agent_compliance_status s
        LEFT JOIN agent_registry_metadata m ON m.agent_url = s.agent_url
+       LEFT JOIN LATERAL (
+         SELECT triggered_by FROM agent_compliance_runs
+         WHERE agent_url = s.agent_url AND dry_run = false
+         ORDER BY tested_at DESC LIMIT 1
+       ) r ON true
        WHERE s.agent_url = ANY($1)`,
       [agentUrls],
     );
@@ -511,11 +525,31 @@ export class ComplianceDatabase {
     lifecycle_stage: LifecycleStage;
     last_checked_at: Date | null;
   }>> {
+    // `known_agents` unions every source the heartbeat is allowed to test:
+    //
+    // - `discovered_agents` — crawler-discovered via adagents.json on a
+    //   publisher domain.
+    // - `agent_registry_metadata` — explicit registration / lifecycle-stage
+    //   write. Most member-registered agents land a row here via the
+    //   write-side seed in member-agents.ts and the save_agent MCP handler.
+    // - `member_profiles.agents` (JSONB) — defense-in-depth: any agent the
+    //   owner registered through Addie or the REST surface, even if the
+    //   metadata-row seed failed (the seed is best-effort with a warn-log
+    //   on failure). Without this third leg of the union, an agent that
+    //   slipped past the seed would stay `unknown` forever — the same
+    //   class of bug as the operator-endpoint visibility miss.
+    //
+    // ORDER BY adds `agent_url` as a deterministic tiebreaker so two
+    // never-checked agents land in a stable order across heartbeat runs.
     const result = await query(
       `WITH known_agents AS (
         SELECT agent_url FROM discovered_agents
         UNION
         SELECT agent_url FROM agent_registry_metadata
+        UNION
+        SELECT (a->>'url') AS agent_url
+        FROM member_profiles, jsonb_array_elements(agents) a
+        WHERE a->>'url' IS NOT NULL
       )
       SELECT
         ka.agent_url,
@@ -534,7 +568,7 @@ export class ComplianceDatabase {
             CASE WHEN COALESCE(m.lifecycle_stage, 'production') = 'testing' THEN 24 ELSE 12 END
           ))
         )
-      ORDER BY s.last_checked_at ASC NULLS FIRST
+      ORDER BY s.last_checked_at ASC NULLS FIRST, ka.agent_url ASC
       LIMIT $1`,
       [limit],
     );
@@ -579,6 +613,15 @@ export class ComplianceDatabase {
          check_interval_hours = $2,
          updated_at = NOW()`,
       [agentUrl, intervalHours],
+    );
+  }
+
+  async requeueForHeartbeat(agentUrl: string): Promise<void> {
+    await query(
+      `INSERT INTO agent_compliance_status (agent_url, status, last_checked_at)
+       VALUES ($1, 'unknown', NULL)
+       ON CONFLICT (agent_url) DO UPDATE SET last_checked_at = NULL`,
+      [agentUrl],
     );
   }
 

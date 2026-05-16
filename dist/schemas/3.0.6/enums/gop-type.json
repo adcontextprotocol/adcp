@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.6/enums/gop-type.json",
+  "title": "GOP Type",
+  "description": "Group of Pictures structure. SSAI and broadcast require closed GOPs for clean splice points; open GOPs may produce artifacts at ad boundaries.",
+  "type": "string",
+  "enum": ["closed", "open"],
+  "enumDescriptions": {
+    "closed": "Each GOP is independently decodable — required for SSAI and broadcast splicing",
+    "open": "GOPs may reference frames from adjacent GOPs — not suitable for splicing"
+  }
+}

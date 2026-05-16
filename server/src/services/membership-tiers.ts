@@ -55,7 +55,7 @@ const TIER_LABELS: Record<string, string> = {
   explorer: 'Explorer',
   individual_professional: 'Professional',
   company_standard: 'Builder',
-  company_icl: 'Member',
+  company_icl: 'Partner',
   company_leader: 'Leader',
 };
 
@@ -65,6 +65,15 @@ export function tierLabel(tier: string | null | undefined): string | null {
 }
 
 export interface OwnerMembership {
+  /**
+   * True only when the caller actually owns the agent (the resolver found
+   * a matching member_profiles row + organization_memberships row for them).
+   * Use this for owner-only feature gates that don't need a specific tier —
+   * `is_api_access_tier` is narrower (only premium tiers + active subs).
+   * Not surfaced in API responses; internal struct only. Response shape
+   * stays owner-detect-resistant via constant keys + null values.
+   */
+  is_owner: boolean;
   membership_tier: string | null;
   membership_tier_label: string | null;
   subscription_status: string | null;
@@ -72,6 +81,7 @@ export interface OwnerMembership {
 }
 
 const EMPTY_OWNER_MEMBERSHIP: OwnerMembership = {
+  is_owner: false,
   membership_tier: null,
   membership_tier_label: null,
   subscription_status: null,
@@ -114,6 +124,7 @@ export async function resolveOwnerMembership(
   const tier = orgRow.membership_tier ?? null;
   const subStatus = orgRow.subscription_status ?? null;
   return {
+    is_owner: true,
     membership_tier: tier,
     membership_tier_label: tierLabel(tier),
     subscription_status: subStatus,

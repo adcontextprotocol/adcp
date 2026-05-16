@@ -108,6 +108,9 @@ v3 products declare an array of channels, so a single product can span multiple 
     "idempotency": { "supported": true, "replay_ttl_seconds": 86400 }
   },
   "supported_protocols": ["media_buy"],
+  "account": {
+    "supported_billing": ["operator", "agent"]
+  },
   "media_buy": {
     "portfolio": {
       "primary_channels": ["display", "olv", "ctv"],

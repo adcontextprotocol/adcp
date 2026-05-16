@@ -395,6 +395,9 @@
                 "type": "array",
                 "description": "Assets within each repetition of this group",
                 "items": {
+                  "discriminator": {
+                    "propertyName": "asset_type"
+                  },
                   "oneOf": [
                     {
                       "title": "GroupImageAsset",
@@ -403,7 +406,8 @@
                       "properties": {
                         "asset_type": { "const": "image" },
                         "requirements": { "$ref": "/schemas/core/requirements/image-asset-requirements.json" }
-                      }
+                      },
+                      "required": ["asset_type"]
                     },
                     {
                       "title": "GroupVideoAsset",
@@ -412,7 +416,8 @@
                       "properties": {
                         "asset_type": { "const": "video" },
                         "requirements": { "$ref": "/schemas/core/requirements/video-asset-requirements.json" }
-                      }
+                      },
+                      "required": ["asset_type"]
                     },
                     {
                       "title": "GroupAudioAsset",
@@ -421,7 +426,8 @@
                       "properties": {
                         "asset_type": { "const": "audio" },
                         "requirements": { "$ref": "/schemas/core/requirements/audio-asset-requirements.json" }
-                      }
+                      },
+                      "required": ["asset_type"]
                     },
                     {
                       "title": "GroupTextAsset",
@@ -430,7 +436,8 @@
                       "properties": {
                         "asset_type": { "const": "text" },
                         "requirements": { "$ref": "/schemas/core/requirements/text-asset-requirements.json" }
-                      }
+                      },
+                      "required": ["asset_type"]
                     },
                     {
                       "title": "GroupMarkdownAsset",
@@ -439,7 +446,8 @@
                       "properties": {
                         "asset_type": { "const": "markdown" },
                         "requirements": { "$ref": "/schemas/core/requirements/markdown-asset-requirements.json" }
-                      }
+                      },
+                      "required": ["asset_type"]
                     },
                     {
                       "title": "GroupHtmlAsset",
@@ -448,7 +456,8 @@
                       "properties": {
                         "asset_type": { "const": "html" },
                         "requirements": { "$ref": "/schemas/core/requirements/html-asset-requirements.json" }
-                      }
+                      },
+                      "required": ["asset_type"]
                     },
                     {
                       "title": "GroupCssAsset",
@@ -457,7 +466,8 @@
                       "properties": {
                         "asset_type": { "const": "css" },
                         "requirements": { "$ref": "/schemas/core/requirements/css-asset-requirements.json" }
-                      }
+                      },
+                      "required": ["asset_type"]
                     },
                     {
                       "title": "GroupJavaScriptAsset",
@@ -466,7 +476,8 @@
                       "properties": {
                         "asset_type": { "const": "javascript" },
                         "requirements": { "$ref": "/schemas/core/requirements/javascript-asset-requirements.json" }
-                      }
+                      },
+                      "required": ["asset_type"]
                     },
                     {
                       "title": "GroupZipAsset",
@@ -474,7 +485,8 @@
                       "allOf": [{ "$ref": "#/$defs/baseGroupAsset" }],
                       "properties": {
                         "asset_type": { "const": "zip" }
-                      }
+                      },
+                      "required": ["asset_type"]
                     },
                     {
                       "title": "GroupVastAsset",
@@ -483,7 +495,8 @@
                       "properties": {
                         "asset_type": { "const": "vast" },
                         "requirements": { "$ref": "/schemas/core/requirements/vast-asset-requirements.json" }
-                      }
+                      },
+                      "required": ["asset_type"]
                     },
                     {
                       "title": "GroupDaastAsset",
@@ -492,7 +505,8 @@
                       "properties": {
                         "asset_type": { "const": "daast" },
                         "requirements": { "$ref": "/schemas/core/requirements/daast-asset-requirements.json" }
-                      }
+                      },
+                      "required": ["asset_type"]
                     },
                     {
                       "title": "GroupUrlAsset",
@@ -501,7 +515,8 @@
                       "properties": {
                         "asset_type": { "const": "url" },
                         "requirements": { "$ref": "/schemas/core/requirements/url-asset-requirements.json" }
-                      }
+                      },
+                      "required": ["asset_type"]
                     },
                     {
                       "title": "GroupWebhookAsset",
@@ -510,7 +525,8 @@
                       "properties": {
                         "asset_type": { "const": "webhook" },
                         "requirements": { "$ref": "/schemas/core/requirements/webhook-asset-requirements.json" }
-                      }
+                      },
+                      "required": ["asset_type"]
                     }
                   ]
                 }

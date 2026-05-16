@@ -134,6 +134,60 @@ export const orgCreationRateLimiter = rateLimit({
 });
 
 /**
+ * True when the request body matches the public REST bootstrap shape on
+ * `POST /api/me/member-profile`: `organization_name` + `corporate_domain`
+ * present, `display_name` + `slug` absent. The bootstrap rate limiter keys
+ * off this so the legacy dashboard profile-edit body (which carries
+ * `display_name` + `slug` and full profile fields) bypasses the limiter
+ * and keeps its prior unmetered behavior.
+ *
+ * Exported so the rule can be unit-tested directly — bypassing the test
+ * suite's standard `vi.mock` of the limiter — and so any new caller that
+ * needs the same dispatch decision uses the same predicate.
+ */
+export function isMemberProfileBootstrapBody(body: unknown): boolean {
+  if (!body || typeof body !== 'object') return false;
+  const b = body as Record<string, unknown>;
+  return (
+    typeof b.organization_name === 'string'
+    && typeof b.corporate_domain === 'string'
+    && typeof b.display_name !== 'string'
+    && typeof b.slug !== 'string'
+  );
+}
+
+/**
+ * Rate limiter for the public REST bootstrap path on `POST /api/me/member-profile`.
+ * Same envelope as `orgCreationRateLimiter` — 15 failed attempts per hour per
+ * user, successful calls don't count — but `skip`s requests whose body does
+ * not match the bootstrap shape so the legacy dashboard profile-create path
+ * (`display_name` + `slug`) keeps its prior unmetered behavior.
+ */
+export const memberProfileBootstrapRateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 15,
+  skipSuccessfulRequests: true,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: new CachedPostgresStore('mp-bootstrap:'),
+  keyGenerator: generateKey,
+  validate: { keyGeneratorIpFallback: false },
+  skip: (req) => !isMemberProfileBootstrapBody((req as any).body),
+  handler: (req: Request, res: Response) => {
+    logger.warn({
+      userId: (req as any).user?.id,
+      ip: req.ip,
+      path: req.path,
+    }, 'Rate limit exceeded for member-profile bootstrap');
+    res.status(429).json({
+      error: 'Too many requests',
+      message: 'Too many member-profile bootstrap attempts. Please wait an hour and try again.',
+      retryAfter: Math.ceil(60 * 60),
+    });
+  },
+});
+
+/**
  * Rate limiter for brand creation (community submissions)
  * Limits: 60 submissions per hour per user/IP
  */
@@ -194,12 +248,12 @@ export const notificationRateLimiter = rateLimit({
 
 /**
  * Rate limiter for storyboard evaluation endpoints.
- * Limits: 5 evaluations per hour per user (each eval makes real HTTP calls to external agents).
+ * Limits: 10 evaluations per hour per user (each eval makes real HTTP calls to external agents).
  * AAO platform admins bypass this limit so they can debug and curate without hitting it.
  */
 export const storyboardEvalRateLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
-  max: 5,
+  max: 10,
   skipFailedRequests: true,
   skip: skipForAdmins,
   standardHeaders: true,
@@ -214,21 +268,22 @@ export const storyboardEvalRateLimiter = rateLimit({
       path: req.path,
     }, 'Rate limit exceeded for storyboard evaluation');
 
+    const retryAfter = parseRetryAfterSeconds(res.getHeader('Retry-After'));
     res.status(429).json({
       error: 'Too many requests',
-      message: 'Storyboard evaluation limit exceeded (5 per hour). Please try again later.',
-      retryAfter: Math.ceil(60 * 60),
+      message: 'Storyboard evaluation limit exceeded (10 per hour). Please try again later.',
+      ...(retryAfter !== undefined ? { retryAfter } : {}),
     });
   },
 });
 
 /**
  * Rate limiter for step-by-step storyboard execution.
- * More generous than full evaluation (30/hour vs 5/hour) since each step is one MCP call.
+ * More generous than full evaluation (60/hour vs 10/hour) since each step is one MCP call.
  */
 export const storyboardStepRateLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
-  max: 30,
+  max: 60,
   skipFailedRequests: true,
   skip: skipForAdmins,
   standardHeaders: true,
@@ -243,10 +298,11 @@ export const storyboardStepRateLimiter = rateLimit({
       path: req.path,
     }, 'Rate limit exceeded for storyboard step execution');
 
+    const retryAfter = parseRetryAfterSeconds(res.getHeader('Retry-After'));
     res.status(429).json({
       error: 'Too many requests',
-      message: 'Step execution limit exceeded (30 per hour). Please try again later.',
-      retryAfter: Math.ceil(60 * 60),
+      message: 'Step execution limit exceeded (60 per hour). Please try again later.',
+      ...(retryAfter !== undefined ? { retryAfter } : {}),
     });
   },
 });
@@ -489,6 +545,67 @@ export const contentFetchUrlRateLimiter = rateLimit({
       error: 'Too many requests',
       message: 'URL fetch rate limit exceeded. Please try again later.',
       retryAfter: Math.ceil(15 * 60),
+    });
+  },
+});
+
+/**
+ * Rate limiter for the unauthenticated /api/registry/publisher endpoint.
+ * Tighter than the generic registry read limit because each request fans out
+ * to up to 50 DB queries (per-agent rollup cap from PR #4106). At 20 req/min
+ * the worst-case load per IP is ~1,000 DB queries/min — comparable to
+ * bulkResolveRateLimiter (20 × 100 domains).
+ */
+export const registryPublisherRateLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: new CachedPostgresStore('reg-pub:'),
+  keyGenerator: generateKey,
+  validate: { keyGeneratorIpFallback: false },
+  handler: (req: Request, res: Response) => {
+    logger.warn({
+      ip: req.ip,
+      path: req.path,
+    }, 'Rate limit exceeded for registry publisher lookup');
+
+    // Static retryAfter is intentional here — callers are external scripts,
+    // not a UI countdown, so the full window ceiling is a sufficient hint.
+    res.status(429).json({
+      error: 'Too many requests',
+      message: 'Registry publisher rate limit exceeded. Please try again later.',
+      retryAfter: 60,
+    });
+  },
+});
+
+/**
+ * Rate limiter for unauthenticated registry read endpoints other than
+ * /api/registry/publisher: /api/registry/publishers, /api/registry/operator,
+ * /api/registry/publisher/authorization, and /api/registry/lookup/*. These
+ * issue a small fixed number of DB queries per call, so a more generous
+ * ceiling is appropriate: 60 req/min while still bounding anonymous
+ * enumeration.
+ */
+export const registryReadRateLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: new CachedPostgresStore('reg-read:'),
+  keyGenerator: generateKey,
+  validate: { keyGeneratorIpFallback: false },
+  handler: (req: Request, res: Response) => {
+    logger.warn({
+      ip: req.ip,
+      path: req.path,
+    }, 'Rate limit exceeded for registry read');
+
+    res.status(429).json({
+      error: 'Too many requests',
+      message: 'Registry lookup rate limit exceeded. Please try again later.',
+      retryAfter: 60,
     });
   },
 });

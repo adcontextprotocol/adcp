@@ -1,6 +1,7 @@
-import axios from 'axios';
 import { PropertyDefinition, PlacementDefinition } from './types.js';
 import { AAO_UA_VALIDATOR } from './config/user-agents.js';
+import { safeFetchAxiosLike, classifySafeFetchError } from './utils/url-security.js';
+import { canonicalizePublisherDomain } from './services/publisher-domain.js';
 
 export interface ValidationError {
   field: string;
@@ -14,6 +15,8 @@ export interface ValidationWarning {
   suggestion?: string;
 }
 
+export type DiscoveryMethod = 'direct' | 'authoritative_location' | 'ads_txt_managerdomain';
+
 export interface AdAgentsValidationResult {
   valid: boolean;
   errors: ValidationError[];
@@ -21,7 +24,23 @@ export interface AdAgentsValidationResult {
   domain: string;
   url: string;
   status_code?: number;
+  /**
+   * Response body byte length from the most recent fetch
+   * (post-decompression). When `authoritative_location` is followed,
+   * measures the canonical document body, not the stub. Set even on
+   * non-200 responses for `self_invalid` triage.
+   */
+  response_bytes?: number;
+  /**
+   * Final URL after following both HTTP-layer redirects and
+   * `authoritative_location`. Differs from the input URL when the
+   * publisher's stub redirects elsewhere; lets verifiers audit the
+   * TLS chain at the actual canonical origin.
+   */
+  resolved_url?: string;
   raw_data?: any;
+  discovery_method: DiscoveryMethod;
+  manager_domain?: string;
 }
 
 export interface AuthorizedAgent {
@@ -32,7 +51,8 @@ export interface AuthorizedAgent {
   property_tags?: string[];
   properties?: PropertyDefinition[];
   publisher_properties?: Array<{
-    publisher_domain: string;
+    publisher_domain?: string;
+    publisher_domains?: string[];
     selection_type: 'all' | 'by_id' | 'by_tag';
     property_ids?: string[];
     property_tags?: string[];
@@ -157,6 +177,14 @@ export class AdAgentsManager {
    * Validates a domain's adagents.json file
    */
   async validateDomain(domain: string): Promise<AdAgentsValidationResult> {
+    return this.validateDomainInternal(domain, 0, new Set<string>());
+  }
+
+  private async validateDomainInternal(
+    domain: string,
+    managerFallbackDepth: number,
+    visitedDomains: Set<string>
+  ): Promise<AdAgentsValidationResult> {
     // Normalize domain - remove protocol and trailing slash
     const normalizedDomain = domain.replace(/^https?:\/\//, '').replace(/\/$/, '');
     const url = `https://${normalizedDomain}/.well-known/adagents.json`;
@@ -166,26 +194,94 @@ export class AdAgentsManager {
       errors: [],
       warnings: [],
       domain: normalizedDomain,
-      url
+      url,
+      discovery_method: 'direct',
     };
 
     try {
-      // Fetch the adagents.json file
-      // CodeQL: URL is constructed from domain input, validated to https protocol above
-      const response = await axios.get(url, { // lgtm[js/request-forgery]
-        timeout: 10000,
+      // Fetch the adagents.json file via safeFetch — connect-time DNS-
+      // rebind defense + private-IP / loopback / link-local block via
+      // the SSRF-safe dispatcher in utils/url-security.ts. The previous
+      // axios call was suppressed with `lgtm[js/request-forgery]` but
+      // had none of those guarantees once the publisher endpoint became
+      // unauthenticated and reachable on view (see PR #4128 / issue #4129).
+      const response = await safeFetchAxiosLike(url, {
+        timeoutMs: 10000,
         headers: {
           'Accept': 'application/json',
-          'User-Agent': AAO_UA_VALIDATOR
+          'User-Agent': AAO_UA_VALIDATOR,
         },
-        validateStatus: () => true, // Don't throw on non-2xx status codes
-        responseType: 'arraybuffer',
       });
 
       result.status_code = response.status;
+      result.response_bytes = response.data.byteLength;
+      // Final URL after HTTP-layer redirects (Response.url). May
+      // equal `url` when no redirects fired, or a third-party origin
+      // when the publisher returned a 301/302. Captured even on
+      // non-200 responses for downstream `self_invalid` triage.
+      result.resolved_url = response.url;
 
       // Check HTTP status
       if (response.status !== 200) {
+        // Fallback for publisher-manager patterns: if the publisher does not
+        // serve /.well-known/adagents.json but does serve ads.txt with a
+        // managerdomain declaration, attempt discovery on the manager domain.
+        if (response.status === 404) {
+          const managerDomains = await this.tryResolveManagerDomains(normalizedDomain);
+          const isHopAllowed = managerFallbackDepth < 1;
+          if (managerDomains.length > 0 && isHopAllowed) {
+            const managerDomain = managerDomains[managerDomains.length - 1];
+            const nextVisited = new Set(visitedDomains);
+            nextVisited.add(normalizedDomain);
+            const isCycle = nextVisited.has(managerDomain);
+            if (isCycle) {
+              result.warnings.push({
+                field: 'managerdomain',
+                message: `Ignoring ads.txt managerdomain ${managerDomain} due to cycle detection`,
+              });
+            } else {
+              const managerResult = await this.validateDomainInternal(
+                managerDomain,
+                managerFallbackDepth + 1,
+                nextVisited
+              );
+              if (managerResult.valid) {
+                if (!this.hasExplicitPublisherScope(managerResult.raw_data, normalizedDomain)) {
+                  result.errors.push({
+                    field: 'managerdomain_scope',
+                    message: `Manager domain ${managerDomain} must explicitly scope authorization to publisher ${normalizedDomain}`,
+                    severity: 'error',
+                  });
+                  return result;
+                }
+                return {
+                  ...managerResult,
+                  domain: normalizedDomain,
+                  url,
+                  discovery_method: 'ads_txt_managerdomain',
+                  manager_domain: managerDomain,
+                  warnings: [
+                    ...managerResult.warnings,
+                    {
+                      field: 'managerdomain',
+                      message: `No adagents.json at ${url}; used ads.txt managerdomain ${managerDomain}`,
+                    },
+                  ],
+                };
+              }
+              // Surface manager-side warnings (e.g. nested depth/cycle) on the
+              // outer result so callers can see why the fallback didn't validate.
+              for (const w of managerResult.warnings) {
+                result.warnings.push(w);
+              }
+            }
+          } else if (managerDomains.length > 0 && !isHopAllowed) {
+            result.warnings.push({
+              field: 'managerdomain',
+              message: `Ignoring ads.txt managerdomain entries: max fallback depth reached`,
+            });
+          }
+        }
         const statusMessage = response.status === 404
           ? `File not found at ${url}`
           : `HTTP ${response.status} error fetching ${url}`;
@@ -201,7 +297,7 @@ export class AdAgentsManager {
       // Decode as UTF-8 regardless of Content-Type charset declaration
       let adagentsData: unknown;
       try {
-        const text = Buffer.from(response.data as Buffer).toString('utf-8');
+        const text = response.data.toString('utf-8');
         adagentsData = JSON.parse(text);
       } catch {
         result.errors.push({
@@ -216,7 +312,9 @@ export class AdAgentsManager {
       result.raw_data = adagentsData;
 
       // Check if this is a URL reference
+      let wasUrlReference = false;
       if (this.isUrlReference(adagentsData)) {
+        wasUrlReference = true;
         // Follow the reference to get the authoritative file
         const authoritativeData = await this.fetchAuthoritativeFile(
           adagentsData.authoritative_location,
@@ -234,40 +332,130 @@ export class AdAgentsManager {
       this.validateStructure(adagentsData, result);
       this.validateContent(adagentsData, result);
 
+      if (wasUrlReference) result.discovery_method = 'authoritative_location';
       // If no errors, mark as valid
       result.valid = result.errors.length === 0;
 
     } catch (error) {
-      if (axios.isAxiosError(error)) {
-        if (error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED') {
-          result.errors.push({
-            field: 'connection',
-            message: `Cannot connect to ${normalizedDomain}`,
-            severity: 'error'
-          });
-        } else if (error.code === 'ECONNABORTED') {
-          result.errors.push({
-            field: 'timeout',
-            message: 'Request timed out after 10 seconds',
-            severity: 'error'
-          });
-        } else {
-          result.errors.push({
-            field: 'network',
-            message: error.message,
-            severity: 'error'
-          });
-        }
-      } else {
-        result.errors.push({
-          field: 'unknown',
-          message: 'Unknown error occurred',
-          severity: 'error'
-        });
-      }
+      const classified = classifySafeFetchError(error, normalizedDomain);
+      result.errors.push({ ...classified, severity: 'error' });
     }
 
     return result;
+  }
+
+  private async tryResolveManagerDomains(domain: string): Promise<string[]> {
+    const adsTxtUrl = `https://${domain}/ads.txt`;
+    try {
+      const response = await safeFetchAxiosLike(adsTxtUrl, {
+        timeoutMs: 10000,
+        maxRedirects: 1,
+        headers: {
+          'Accept': 'text/plain',
+          'User-Agent': AAO_UA_VALIDATOR,
+        },
+      });
+      if (response.status !== 200) return [];
+      return this.parseManagerDomains(response.data.toString('utf-8'));
+    } catch {
+      return [];
+    }
+  }
+
+  private parseManagerDomains(adsTxtContent: string): string[] {
+    const managers: string[] = [];
+    const lines = adsTxtContent.split(/\r?\n/);
+    for (const line of lines) {
+      const trimmed = line.trim();
+      const match = trimmed.match(/^managerdomain\s*=\s*([A-Za-z0-9.-]+)(?:\s+#\s*(.*))?$/i);
+      if (match?.[1]) {
+        const trailingComment = (match[2] || '').toLowerCase();
+        if (/\bnoagents\b/.test(trailingComment)) {
+          continue;
+        }
+        managers.push(match[1].toLowerCase());
+      }
+    }
+    return managers;
+  }
+
+  /**
+   * Verify that a manager-served adagents.json explicitly authorizes the
+   * source publisher domain. Required by the ads.txt MANAGERDOMAIN
+   * fallback (#4173) so a manager-side compromise can't auto-implicate
+   * publishers that merely point at the manager via ads.txt.
+   *
+   * Two ways the manifest can express that scope:
+   *
+   * 1. **Per-agent paths.** An authorized_agents[] entry directly names
+   *    the publisher under publisher_properties[].publisher_domain
+   *    (singular) or publisher_properties[].publisher_domains[] (compact
+   *    managed-network form — exactly equivalent to repeating the entry
+   *    once per listed domain) or collections[].publisher_domain.
+   *
+   * 2. **Property-level paths.** A top-level properties[] entry carries
+   *    publisher_domain matching the source, AND at least one
+   *    authorized_agents[] entry references that property indirectly via
+   *    property_ids or property_tags. This is the shape Mediavine and
+   *    other managed networks use in production: the property declares
+   *    its publisher_domain once, and many agents reference it through
+   *    a tag without re-spelling the publisher.
+   *
+   * Both shapes establish the same invariant: the manager has
+   * positively named the publisher in its own manifest. Inline or
+   * implicit references that don't tie back to a publisher_domain
+   * field do not satisfy the gate — fail closed.
+   */
+  private hasExplicitPublisherScope(rawData: unknown, publisherDomain: string): boolean {
+    if (!rawData || typeof rawData !== 'object') return false;
+    const data = rawData as AdAgentsJsonInline;
+    const agents = Array.isArray(data.authorized_agents) ? data.authorized_agents : [];
+    const properties = Array.isArray(data.properties) ? data.properties : [];
+    const normalizedPublisher = canonicalizePublisherDomain(publisherDomain);
+
+    // Index properties by id and by tag for the per-agent reference lookup.
+    // Both indexes filter to properties whose publisher_domain matches the
+    // source — properties belonging to other publishers can't satisfy the
+    // gate even if an agent references them.
+    const matchingPropertyIds = new Set<string>();
+    const matchingPropertyTags = new Set<string>();
+    for (const prop of properties) {
+      if (typeof prop?.publisher_domain !== 'string') continue;
+      if (canonicalizePublisherDomain(prop.publisher_domain) !== normalizedPublisher) continue;
+      if (typeof prop.property_id === 'string' && prop.property_id.length > 0) {
+        matchingPropertyIds.add(prop.property_id);
+      }
+      if (Array.isArray(prop.tags)) {
+        for (const tag of prop.tags) {
+          if (typeof tag === 'string' && tag.length > 0) matchingPropertyTags.add(tag);
+        }
+      }
+    }
+
+    return agents.some((agent) => {
+      const hasPublisherProperties = Array.isArray(agent.publisher_properties)
+        && agent.publisher_properties.some((p) => {
+          if (typeof p.publisher_domain === 'string' && canonicalizePublisherDomain(p.publisher_domain) === normalizedPublisher) {
+            return true;
+          }
+          if (Array.isArray(p.publisher_domains)) {
+            return p.publisher_domains.some((d) => typeof d === 'string' && canonicalizePublisherDomain(d) === normalizedPublisher);
+          }
+          return false;
+        });
+      const hasCollections = Array.isArray(agent.collections)
+        && agent.collections.some((c) => canonicalizePublisherDomain(c.publisher_domain) === normalizedPublisher);
+
+      // Property-level scoping: the agent reaches a property whose
+      // publisher_domain matches the source. by_id walks property_ids;
+      // by_tag walks property_tags.
+      const hasPropertyIdLink = Array.isArray(agent.property_ids)
+        && agent.property_ids.some((id) => typeof id === 'string' && matchingPropertyIds.has(id));
+      const hasPropertyTagLink = Array.isArray(agent.property_tags)
+        && agent.property_tags.some((tag) => typeof tag === 'string' && matchingPropertyTags.has(tag));
+
+      return hasPublisherProperties || hasCollections || hasPropertyIdLink || hasPropertyTagLink;
+    });
   }
 
   /**
@@ -310,16 +498,25 @@ export class AdAgentsManager {
         return null;
       }
 
-      // Fetch the authoritative file
-      const response = await axios.get(url, {
-        timeout: 10000,
+      // Fetch the authoritative file. safeFetch follows redirects with
+      // per-hop SSRF validation, which matters more here than on the
+      // /.well-known fetch — the authoritative_location URL was named
+      // by the publisher and could redirect anywhere.
+      const response = await safeFetchAxiosLike(url, {
+        timeoutMs: 10000,
         headers: {
           'Accept': 'application/json',
-          'User-Agent': AAO_UA_VALIDATOR
+          'User-Agent': AAO_UA_VALIDATOR,
         },
-        validateStatus: () => true,
-        responseType: 'arraybuffer',
       });
+
+      // Overwrite the resolved URL — when authoritative_location is
+      // followed, the canonical document body came from THIS fetch,
+      // not the original /.well-known. Verifiers should pin trust to
+      // the authoritative location's TLS chain, not the publisher's.
+      // Bytes likewise reflect the canonical body, not the stub.
+      result.response_bytes = response.data.byteLength;
+      result.resolved_url = response.url;
 
       if (response.status !== 200) {
         const statusMessage = response.status === 404
@@ -336,7 +533,7 @@ export class AdAgentsManager {
       // Decode as UTF-8 regardless of Content-Type charset declaration
       let authData: unknown;
       try {
-        const text = Buffer.from(response.data as Buffer).toString('utf-8');
+        const text = response.data.toString('utf-8');
         authData = JSON.parse(text);
       } catch {
         result.errors.push({
@@ -359,19 +556,12 @@ export class AdAgentsManager {
 
       return authData as AdAgentsJsonInline;
     } catch (error) {
-      if (axios.isAxiosError(error)) {
-        result.errors.push({
-          field: 'authoritative_location',
-          message: `Failed to fetch authoritative file: ${error.message}`,
-          severity: 'error'
-        });
-      } else {
-        result.errors.push({
-          field: 'authoritative_location',
-          message: 'Unknown error fetching authoritative file',
-          severity: 'error'
-        });
-      }
+      const msg = (error as Error)?.message;
+      result.errors.push({
+        field: 'authoritative_location',
+        message: msg ? `Failed to fetch authoritative file: ${msg}` : 'Unknown error fetching authoritative file',
+        severity: 'error',
+      });
       return null;
     }
   }
@@ -520,7 +710,7 @@ export class AdAgentsManager {
       result.warnings.push({
         field: '$schema',
         message: 'Consider adding $schema field for validation',
-        suggestion: 'Add "$schema": "https://adcontextprotocol.org/schemas/v2/adagents.json"'
+        suggestion: 'Add "$schema": "https://adcontextprotocol.org/schemas/v3/adagents.json"'
       });
     }
 
@@ -779,30 +969,43 @@ export class AdAgentsManager {
       }
     }
 
-    // Validate authorization_type consistency
-    if (agent.authorization_type) {
-      const validTypes = ['property_ids', 'property_tags', 'inline_properties', 'publisher_properties', 'signal_ids', 'signal_tags'];
-      if (!validTypes.includes(agent.authorization_type)) {
-        result.errors.push({
-          field: `${prefix}.authorization_type`,
-          message: `authorization_type must be one of: ${validTypes.join(', ')}`,
-          severity: 'error'
-        });
-      }
+    // Validate authorization_type per v3 schema. Every authorized_agents[]
+    // entry must declare an authorization_type and ship the matching
+    // non-empty selector — that's the schema's oneOf invariant, and it's
+    // what downstream resolvers (Python/TS SDKs) rely on to decide whether
+    // an agent is actually authorized for a given property/signal. Without
+    // it, publishers see valid:true while consumers see "agent not
+    // authorized" — issue #4476.
+    const validAuthTypes = ['property_ids', 'property_tags', 'inline_properties', 'publisher_properties', 'signal_ids', 'signal_tags'] as const;
+    const selectorByType: Record<typeof validAuthTypes[number], string> = {
+      property_ids: 'property_ids',
+      property_tags: 'property_tags',
+      inline_properties: 'properties',
+      publisher_properties: 'publisher_properties',
+      signal_ids: 'signal_ids',
+      signal_tags: 'signal_tags',
+    };
 
-      // Check that the corresponding array exists for the authorization_type
-      if (agent.authorization_type === 'signal_ids' && (!agent.signal_ids || agent.signal_ids.length === 0)) {
-        result.warnings.push({
-          field: `${prefix}.signal_ids`,
-          message: 'authorization_type is "signal_ids" but no signal_ids provided',
-          suggestion: 'Add signal_ids array with the authorized signal IDs'
-        });
-      }
-      if (agent.authorization_type === 'signal_tags' && (!agent.signal_tags || agent.signal_tags.length === 0)) {
-        result.warnings.push({
-          field: `${prefix}.signal_tags`,
-          message: 'authorization_type is "signal_tags" but no signal_tags provided',
-          suggestion: 'Add signal_tags array with the authorized signal tags'
+    if (!agent.authorization_type) {
+      result.errors.push({
+        field: `${prefix}.authorization_type`,
+        message: `missing required field \`authorization_type\` (one of ${validAuthTypes.map((t) => `\`${t}\``).join(', ')})`,
+        severity: 'error',
+      });
+    } else if (!validAuthTypes.includes(agent.authorization_type)) {
+      result.errors.push({
+        field: `${prefix}.authorization_type`,
+        message: `authorization_type must be one of: ${validAuthTypes.join(', ')}`,
+        severity: 'error',
+      });
+    } else {
+      const selectorField = selectorByType[agent.authorization_type as typeof validAuthTypes[number]];
+      const selectorValue = (agent as Record<string, unknown>)[selectorField];
+      if (!Array.isArray(selectorValue) || selectorValue.length === 0) {
+        result.errors.push({
+          field: `${prefix}.${selectorField}`,
+          message: `authorization_type is "${agent.authorization_type}" but \`${selectorField}\` is missing or empty`,
+          severity: 'error',
         });
       }
     }
@@ -1225,29 +1428,38 @@ export class AdAgentsManager {
 
     for (const endpoint of cardEndpoints) {
       try {
-        // CodeQL: agentUrl is from DB registry, used for protocol validation
-        const response = await axios.get(endpoint, { // lgtm[js/request-forgery]
-          timeout: 3000, // Keep short for responsive UX
+        // Agent URL comes from the DB registry but agent operators
+        // control DNS for their hostname; safeFetch's connect-time
+        // dispatcher closes the rebind window.
+        const response = await safeFetchAxiosLike(endpoint, {
+          timeoutMs: 3000, // Keep short for responsive UX
           headers: {
             'Accept': 'application/json',
-            'User-Agent': AAO_UA_VALIDATOR
+            'User-Agent': AAO_UA_VALIDATOR,
           },
-          validateStatus: () => true
         });
 
         result.response_time_ms = Date.now() - startTime;
         result.status_code = response.status;
 
         if (response.status === 200) {
-          result.card_data = response.data;
+          // Decode the buffer as UTF-8 and parse as JSON. axios used
+          // to do this for us via content-type sniffing; safeFetch
+          // returns raw bytes so the parse + content-type check are
+          // explicit.
+          const contentType = response.headers['content-type'] ?? '';
+          const isJsonContentType = contentType.includes('application/json');
+          let parsed: unknown = null;
+          try {
+            parsed = JSON.parse(Buffer.from(response.data).toString('utf-8'));
+          } catch {
+            // parsed stays null; falls through to the "not JSON" branch
+          }
+          result.card_data = parsed;
           result.card_endpoint = endpoint;
 
-          // Check content-type header
-          const contentType = String(response.headers['content-type'] ?? '');
-          const isJsonContentType = contentType.includes('application/json');
-
           // Basic validation of card structure
-          if (typeof response.data === 'object' && response.data !== null) {
+          if (typeof parsed === 'object' && parsed !== null) {
             if (!isJsonContentType) {
               result.errors.push(`Endpoint returned JSON data but with content-type: ${contentType}. Should be application/json`);
               result.valid = false;
@@ -1288,15 +1500,15 @@ export class AdAgentsManager {
     // First, do a preflight HTTP check to detect 401 errors
     // The @adcp/sdk library wraps 401s in generic errors, so we need to detect them directly
     try {
-      // CodeQL: agentUrl is from DB registry, used for protocol validation
-      const preflightResponse = await axios.post(agentUrl, // lgtm[js/request-forgery]
-        { jsonrpc: '2.0', method: 'initialize', params: {}, id: 1 },
-        {
-          timeout: 3000,
-          headers: { 'Content-Type': 'application/json' },
-          validateStatus: () => true // Accept all status codes
-        }
-      );
+      // safeFetch with method=POST + body — same SSRF defenses as the
+      // GET path, plus method/body rewriting on redirect (POST→GET on
+      // 301/302/303 with body dropped, preserved on 307/308).
+      const preflightResponse = await safeFetchAxiosLike(agentUrl, {
+        method: 'POST',
+        timeoutMs: 3000,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', method: 'initialize', params: {}, id: 1 }),
+      });
 
       if (preflightResponse.status === 401) {
         result.response_time_ms = Date.now() - startTime;
@@ -1415,7 +1627,7 @@ export class AdAgentsManager {
     }
 
     if (opts.includeSchema !== false) {
-      adagents.$schema = 'https://adcontextprotocol.org/schemas/v2/adagents.json';
+      adagents.$schema = 'https://adcontextprotocol.org/schemas/v3/adagents.json';
     }
 
     if (opts.includeTimestamp !== false) {
@@ -1430,7 +1642,7 @@ export class AdAgentsManager {
    */
   validateProposed(agents: AuthorizedAgent[]): AdAgentsValidationResult {
     const mockData = {
-      $schema: 'https://adcontextprotocol.org/schemas/v2/adagents.json',
+      $schema: 'https://adcontextprotocol.org/schemas/v3/adagents.json',
       authorized_agents: agents,
       last_updated: new Date().toISOString()
     };
@@ -1440,7 +1652,8 @@ export class AdAgentsManager {
       errors: [],
       warnings: [],
       domain: 'proposed',
-      url: 'proposed'
+      url: 'proposed',
+      discovery_method: 'direct',
     };
 
     this.validateStructure(mockData, result);

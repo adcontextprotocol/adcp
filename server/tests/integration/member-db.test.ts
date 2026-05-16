@@ -444,4 +444,94 @@ describe('MemberDatabase Integration Tests', () => {
       expect(notAvailable).toBe(false);
     });
   });
+
+  describe('founding member audit columns', () => {
+    it('round-trips source / granted_at / granted_reason via updateProfile', async () => {
+      const orgId = createTestOrgId('founding_audit');
+      await createTestOrg(orgId);
+
+      const created = await memberDb.createProfile({
+        workos_organization_id: orgId,
+        display_name: 'Founding Audit Co',
+        slug: 'founding-audit-co',
+      });
+
+      expect(created.is_founding_member).toBe(false);
+      expect(created.founding_member_source).toBeNull();
+      expect(created.founding_member_granted_at).toBeNull();
+      expect(created.founding_member_granted_reason).toBeNull();
+
+      const grantedAt = new Date('2026-05-03T18:22:35Z');
+      const updated = await memberDb.updateProfile(created.id, {
+        is_founding_member: true,
+        founding_member_source: 'manual_grandfather',
+        founding_member_granted_at: grantedAt,
+        founding_member_granted_reason: 'site issues blocked enrollment',
+      });
+
+      expect(updated).not.toBeNull();
+      expect(updated!.is_founding_member).toBe(true);
+      expect(updated!.founding_member_source).toBe('manual_grandfather');
+      expect(updated!.founding_member_granted_reason).toBe('site issues blocked enrollment');
+      // updateProfile is the raw db layer (no normalization helper here),
+      // so the timestamp the caller passed lands as-is. Server-set NOW()
+      // semantics live in normalizeFoundingMemberGrant; the route/MCP
+      // tests cover that path.
+      expect(new Date(updated!.founding_member_granted_at!).toISOString()).toBe(grantedAt.toISOString());
+    });
+
+    it('CHECK constraint rejects an unknown source', async () => {
+      const orgId = createTestOrgId('founding_check');
+      await createTestOrg(orgId);
+      const created = await memberDb.createProfile({
+        workos_organization_id: orgId,
+        display_name: 'Check Co',
+        slug: 'check-co',
+      });
+
+      await expect(
+        pool.query(
+          `UPDATE member_profiles SET founding_member_source = 'bogus' WHERE id = $1`,
+          [created.id]
+        )
+      ).rejects.toThrow();
+    });
+
+    it('migration backfill predicates classify a synthetic auto-grant correctly', async () => {
+      const orgId = createTestOrgId('backfill_auto');
+      await createTestOrg(orgId);
+
+      // Insert a row that mimics a pre-cutoff founding member with the
+      // audit columns left null (the state migration 465 expects to find
+      // when it runs against a DB that was already past migration 180).
+      const inserted = await pool.query<{ id: string }>(
+        `INSERT INTO member_profiles
+           (workos_organization_id, display_name, slug,
+            is_founding_member, created_at,
+            founding_member_source, founding_member_granted_at, founding_member_granted_reason)
+         VALUES ($1, $2, $3, TRUE, '2026-03-15T00:00:00Z'::timestamptz, NULL, NULL, NULL)
+         RETURNING id`,
+        [orgId, 'Backfill Auto Co', 'backfill-auto-co']
+      );
+      const id = inserted.rows[0].id;
+
+      // Re-run the same predicate the migration uses for auto_pre_cutoff.
+      await pool.query(
+        `UPDATE member_profiles
+         SET founding_member_source = 'auto_pre_cutoff',
+             founding_member_granted_at = created_at
+         WHERE id = $1
+           AND is_founding_member = TRUE
+           AND created_at < '2026-04-01'::timestamptz
+           AND founding_member_source IS NULL`,
+        [id]
+      );
+
+      const after = await memberDb.getProfileById(id);
+      expect(after!.founding_member_source).toBe('auto_pre_cutoff');
+      expect(new Date(after!.founding_member_granted_at!).toISOString()).toBe(
+        '2026-03-15T00:00:00.000Z'
+      );
+    });
+  });
 });

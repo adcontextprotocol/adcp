@@ -40,12 +40,10 @@ interface LookupDomainResult {
   authorized_agents: Array<{
     url: string;
     authorized_for?: string;
-    source: 'registered' | 'discovered';
     member?: { slug: string; display_name: string };
   }>;
   sales_agents_claiming: Array<{
     url: string;
-    source: 'registered' | 'discovered';
     member?: { slug: string; display_name: string };
   }>;
 }
@@ -53,9 +51,7 @@ interface LookupDomainResult {
 interface ListPublishersResult {
   publishers: Array<{
     domain: string;
-    source: 'registered' | 'discovered';
     has_valid_adagents?: boolean;
-    discovered_from?: { agent_url: string };
   }>;
   count: number;
 }
@@ -161,21 +157,21 @@ describe('Registry reader baseline — MCP directory tools', () => {
       const raw = await lookup({ domain: PUB_A });
       const result = JSON.parse(raw) as LookupDomainResult;
 
-      // authorized_agents: only the adagents_json row. Source is 'discovered'
-      // because no member profile registers AGENT_X.
+      // authorized_agents: only the adagents_json row. The agent has no
+      // registered-member record so `member` is unset.
       expect(result.authorized_agents.length).toBe(1);
       expect(result.authorized_agents[0]).toMatchObject({
         url: AGENT_X,
         authorized_for: 'all',
-        source: 'discovered',
       });
+      expect(result.authorized_agents[0].member).toBeUndefined();
 
       // sales_agents_claiming: from the discovered_publishers row.
       expect(result.sales_agents_claiming.length).toBe(1);
       expect(result.sales_agents_claiming[0]).toMatchObject({
         url: AGENT_Y,
-        source: 'discovered',
       });
+      expect(result.sales_agents_claiming[0].member).toBeUndefined();
     });
   });
 
@@ -193,7 +189,7 @@ describe('Registry reader baseline — MCP directory tools', () => {
       expect(result.count).toBe(result.publishers.length);
     });
 
-    it('includes our seeded publisher with source=discovered', async () => {
+    it('does not surface crawler-only publishers', async () => {
       await fedDb.upsertPublisher({
         domain: PUB_A,
         discovered_by_agent: AGENT_X,
@@ -205,31 +201,7 @@ describe('Registry reader baseline — MCP directory tools', () => {
       const result = JSON.parse(raw) as ListPublishersResult;
 
       const ours = result.publishers.find((p) => p.domain === PUB_A);
-      expect(ours).toBeTruthy();
-      expect(ours!.source).toBe('discovered');
-      expect(ours!.has_valid_adagents).toBe(true);
-      expect(ours!.discovered_from?.agent_url).toBe(AGENT_X);
-    });
-
-    it('deduplicates by domain across multiple discovering agents', async () => {
-      // Two sales agents both claim PUB_B. listAllPublishers de-dupes
-      // on domain, so the publisher should appear exactly once.
-      await fedDb.upsertPublisher({
-        domain: PUB_B,
-        discovered_by_agent: AGENT_X,
-        has_valid_adagents: true,
-      });
-      await fedDb.upsertPublisher({
-        domain: PUB_B,
-        discovered_by_agent: AGENT_Y,
-        has_valid_adagents: false,
-      });
-
-      const list = handlers.get('list_publishers')!;
-      const raw = await list({});
-      const result = JSON.parse(raw) as ListPublishersResult;
-      const matching = result.publishers.filter((p) => p.domain === PUB_B);
-      expect(matching.length).toBe(1);
+      expect(ours).toBeUndefined();
     });
   });
 });

@@ -314,8 +314,8 @@ phases:
           pricing_option_id: "$context.first_signal_pricing_option_id"
           destinations:
             - type: "platform"
-              platform: "the-trade-desk"
-              account: "agency-123-ttd"
+              platform: "pinnacle-dsp"
+              account: "agency-123-pd"
           idempotency_key: "$generate:uuid_v4#signal_marketplace_activate_platform"
           context:
             correlation_id: "signal_marketplace--activate_on_platform"
@@ -343,6 +343,19 @@ phases:
           - check: field_present
             path: "deployments[0].activation_key"
             description: "Deployment includes activation_key for targeting"
+          # Anti-façade: a real activation calls the DSP's segment-deployment
+          # endpoint with the captured signal_agent_segment_id. An adapter
+          # returning a fabricated activation_key without touching the DSP
+          # fails this check. The since: search_by_spec window scopes the
+          # assertion to traffic caused after this storyboard captured the
+          # signal IDs, ignoring earlier discovery traffic.
+          - check: upstream_traffic
+            description: "activate_on_platform caused upstream traffic to a DSP carrying the signal_agent_segment_id"
+            min_count: 1
+            endpoint_pattern: "POST *"
+            since: search_by_spec
+            identifier_paths:
+              - "signal_agent_segment_id"
   - id: agent_activation
     title: "Activate on a sales agent"
     narrative: |
