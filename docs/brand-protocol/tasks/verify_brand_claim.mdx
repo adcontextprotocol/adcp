@@ -5,10 +5,6 @@ description: "verify_brand_claim is the unified AdCP brand-protocol task for ask
 testable: true
 ---
 
-<Warning>
-**Proposed (RFC).** This task is part of the [brand verification RFC](/docs/brand-protocol/proposals/brand-verification-rfc) and not yet normative.
-</Warning>
-
 Ask a brand-agent a verification question about a facet of its identity. **This is a prerequisite gate — check before you proceed, not a signal you consume after a decision is locked in.** One tool with four claim types covers the verification dimensions:
 
 | `claim_type` | The question | Used at |
@@ -48,7 +44,7 @@ When `supported_claim_types` is omitted, the agent advertises support for all fo
 
 ## Authorization tiers
 
-The authoritative tier table lives in [the RFC](/docs/brand-protocol/proposals/brand-verification-rfc#authorization-tiers). Short version per claim type:
+The public/authorized split per claim type:
 
 | Tier | What the agent returns |
 |---|---|
@@ -92,7 +88,7 @@ Applicable statuses: `owned`, `pending_review`, `transferring`, `disputed`, `not
 |---|---|---|
 | `brand_id` | Public | The house's brand_id for this subsidiary. Returned when status is `owned`, `pending_review`, or `transferring`. |
 | `first_observed_by_house_at` | Authorized | When the house first became aware of the claim. |
-| `expected_resolution_window_days` | Authorized when status is terminal; **REQUIRED** when status is `pending_review`. | The aging window. See [RFC § pending_review aging](/docs/brand-protocol/proposals/brand-verification-rfc#pending_review-aging-and-the-crawl-safety-net). |
+| `expected_resolution_window_days` | Authorized when status is terminal; **REQUIRED** when status is `pending_review`. | The aging window. Enforcement is agent-side: the agent MUST transition the claim to a terminal status or `unknown` once the window elapses. When a `pending_review` response is older than its declared window, consumers SHOULD treat it as `unknown` and fall back to crawl. |
 
 ### `claim_type: "parent"` (leaf-side mirror)
 
@@ -242,7 +238,7 @@ The agent's response is signed under the brand's `adcp_use: "response-signing"` 
 
 When both the house-side and leaf-side agents speak (via `claim_type: "subsidiary"` and `claim_type: "parent"` respectively), **mutual assertion is established at the agent layer**. When only one side has an agent, fall back to crawl-based mutual-assertion inference per [`brand.json` § Mutual-assertion trust model](/docs/brand-protocol/brand-json#mutual-assertion-trust-model).
 
-See [RFC § Trust model](/docs/brand-protocol/proposals/brand-verification-rfc#trust-model) for the full normative table.
+See [`brand.json` § Agent-augmented verification](/docs/brand-protocol/brand-json#agent-augmented-verification) for the full trust table and the malicious-house walkthrough.
 
 ## Caching
 
