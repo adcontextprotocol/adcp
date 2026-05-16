@@ -2,12 +2,12 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/impairment.json",
   "title": "Impairment",
-  "description": "A single upstream dependency state change that affects delivery for one or more packages within a media buy. An impairment is open until the underlying resource returns to a serviceable state. Materiality rule: an impairment MUST list at least one package whose ability to serve is degraded; cosmetic-only effects (e.g., one rejected creative when peers remain serviceable in the same package) MUST NOT be reported as impairments.",
+  "description": "A single upstream dependency state change that affects delivery for one or more packages within a media buy. An impairment is open until the underlying resource returns to a serviceable state. Materiality: an impairment MUST list at least one package whose ability to serve is degraded; cosmetic-only effects (e.g., one rejected creative when peers remain serviceable in the same package) MUST NOT be reported as impairments. Sellers MAY report conservatively when uncertain (list a package when the materiality join is expensive to compute); sellers MUST NOT report when serving is provably unaffected. Materiality is required (MUST) for resource types where the resource→buy join is cheap and 1:N — audience, event_source, property; SHOULD-strength for creative and catalog_item, where the resource is shared across a larger pool and the join cost is higher.",
   "type": "object",
   "properties": {
     "impairment_id": {
       "type": "string",
-      "description": "Stable identifier for this impairment. Used as the notification_id when the impairment fires via webhook. Buyer agents dedupe by this value across at-least-once delivery. Remains stable for the lifetime of the open impairment (re-emission on snapshot reads carries the same id).",
+      "description": "Stable identifier for this impairment. Used as the notification_id when the impairment fires via webhook. Buyer agents dedupe by this value across at-least-once delivery. Remains stable for the lifetime of the open impairment (re-emission on snapshot reads carries the same id). When an impairment clears, the closing webhook fire (if any) MUST reuse this same impairment_id as its notification_id — receivers reconcile open-vs-closed state via the snapshot, not via a separate id. A new impairment for the same resource_id after closure receives a new impairment_id.",
       "x-entity": "impairment"
     },
     "resource_type": {
@@ -28,11 +28,11 @@
     "transition": {
       "type": "object",
       "description": "The resource-level status transition that triggered this impairment.",
-      "required": ["from", "to"],
+      "required": ["to"],
       "properties": {
         "from": {
           "type": "string",
-          "description": "Prior status of the resource (e.g., 'ready', 'approved', 'good')."
+          "description": "Prior status of the resource (e.g., 'ready', 'approved', 'good'). Optional — sellers SHOULD include when known, MAY omit when the resource was discovered already in an offline state (e.g., a property depublished via brand.json crawl with no prior snapshot)."
         },
         "to": {
           "type": "string",
@@ -70,5 +70,5 @@
     "reason_code",
     "observed_at"
   ],
-  "additionalProperties": false
+  "additionalProperties": true
 }

@@ -23,7 +23,7 @@
     },
     "impairments": {
       "type": "array",
-      "description": "Open impairments — upstream dependency state changes that affect delivery for at least one package on this buy. Empty when health is 'ok'. Sellers MUST add an entry on next sync/poll response after a referenced resource transitions to an offline state, and MUST remove the entry (flipping health to 'ok' when the array empties) when the resource returns to a serviceable state. See impairment.coherence assertion for the cross-resource invariant.",
+      "description": "Open impairments — upstream dependency state changes that affect delivery for at least one package on this buy. Empty when health is 'ok'. Sellers MUST add an entry on next sync/poll response after a referenced resource transitions to an offline state, and MUST remove the entry (flipping health to 'ok' when the array empties) when the resource returns to a serviceable state. Staleness budget: the snapshot MUST reflect the impairment within 5 minutes of impairment.observed_at regardless of buyer poll cadence — sellers cannot rely on rare buyer polls to defer write propagation. See impairment.coherence assertion for the cross-resource invariant.",
       "items": {
         "$ref": "/schemas/core/impairment.json"
       }

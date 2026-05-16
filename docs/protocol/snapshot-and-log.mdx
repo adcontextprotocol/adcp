@@ -59,7 +59,7 @@ This is why receivers MUST verify against the snapshot before taking irreversibl
 
 There is no event-replay primitive in v1. If a buyer's webhook receiver was offline and missed a fire, the recovery path is to call the relevant `get_*` task and pick up current state.
 
-This works for any state surface — impairments, statuses, delivery aggregates — because rule 2 guarantees the snapshot reflects every push. It does not work for purely point-in-time events that drain from the log (e.g., individual delivery report fires after retention expires). For those, the [webhook delivery visibility surface](/docs/media-buy/task-reference/get_media_buys) (`webhook_activity[]`) provides a bounded recent-fire window — that's the closest AdCP gets to a replay primitive.
+This works for any state surface — impairments, statuses, delivery aggregates — because rule 2 guarantees the snapshot reflects every push. It does not work for purely point-in-time events that drain from the log (e.g., individual delivery report fires after retention expires). For those, the webhook delivery visibility surface (`webhook_activity[]` on `get_media_buys`) exposes recent fires within a retention window for debugging. It is not a guaranteed catch-up channel — buyers MUST NOT rely on it for state reconciliation; that's what the snapshot is for.
 
 ### 5. Push events and log entries share an id space
 
@@ -72,14 +72,18 @@ A webhook delivery surfaced via `webhook_activity[]` references the same `notifi
 - **Per-event subscription filtering.** Subscription is per-resource (or per-account, for resources that outlive a buy). A buyer who registers `push_notification_config` on a media buy receives every event type fired against that buy. Filtering at the receiver is fine; filtering at the protocol surface is out of scope.
 - **A "did you receive my webhook?" confirmation step.** Receivers acknowledge via HTTP 2xx; senders retry on non-2xx per the [persistent webhook contract](/docs/building/by-layer/L3/webhooks#persistent-channel-contract). Sellers do not poll buyers for receipt.
 
-## When you'd be right to push back
-
-When a use case genuinely needs an event with no snapshot half — a high-frequency signal where polling cost dominates and recovery isn't critical (e.g., a metrics stream). AdCP doesn't have one of these today. If you're proposing one, name it explicitly and argue why pull-via-snapshot doesn't fit; reviewers will weigh that against the contract this page commits to.
-
 ## Where the surface doesn't yet follow this
 
-- **Delivery reports** (`scheduled` / `final` / `delayed` / `adjusted`) predate this contract. Their `notification_id` shape is defined per delivery; the snapshot half is `get_media_buy_delivery`, which returns the current state of aggregates but does not surface every past fire as a discrete row. The [webhook delivery visibility surface (#4278)](https://github.com/adcontextprotocol/adcp/issues/4278) closes this gap by exposing recent fires via `webhook_activity[]`.
-- **Resource lifecycle webhooks beyond media-buy scope** (creative state changes, audience suspensions outside a buy's scope) are in progress under the [creative-lifecycle webhooks RFC (#2261)](https://github.com/adcontextprotocol/adcp/issues/2261). Until those land, the snapshot half (a fresh `list_creatives` or `sync_audiences` call) is the only reliable signal for changes to resources not currently referenced by an active buy.
+- **Delivery reports** (`scheduled` / `final` / `delayed` / `adjusted`) predate this contract. Their `notification_id` shape is defined per delivery; the snapshot half is `get_media_buy_delivery`, which returns the current state of aggregates but does not surface every past fire as a discrete row. The webhook delivery visibility surface (proposed in [#4278](https://github.com/adcontextprotocol/adcp/issues/4278)) closes this gap by exposing recent fires via `webhook_activity[]`.
+- **Resource lifecycle webhooks beyond media-buy scope** (creative state changes, audience suspensions outside a buy's scope) are in progress under the creative-lifecycle webhooks RFC ([#2261](https://github.com/adcontextprotocol/adcp/issues/2261)). Until those land, the snapshot half (a fresh `list_creatives` or `sync_audiences` call) is the only reliable signal for changes to resources not currently referenced by an active buy.
+
+## When you'd be right to push back
+
+<Note>
+This section is non-normative. It describes when raising an exception is reasonable, not when one is sanctioned.
+</Note>
+
+When a use case genuinely needs an event with no snapshot half — a high-frequency signal where polling cost dominates and recovery isn't critical (e.g., a metrics stream). AdCP doesn't have one of these today. If you're proposing one, name it explicitly and argue why pull-via-snapshot doesn't fit; reviewers will weigh that against the contract this page commits to.
 
 ## Related
 

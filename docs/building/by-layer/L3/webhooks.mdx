@@ -533,7 +533,7 @@ If a buyer's receiver was offline and missed a fire, recovery is **read the snap
 - Missed delivery report fire → call `get_media_buy_delivery` and read aggregates.
 - Missed any other state-shaped event → call the corresponding `get_*` task.
 
-AdCP does not commit to an event-replay primitive in v1. The [webhook delivery visibility surface (`webhook_activity[]` on `get_media_buys`)](https://github.com/adcontextprotocol/adcp/issues/4278) exposes recent fires within a retention window for debugging; it is not a guaranteed catch-up channel.
+AdCP does not commit to an event-replay primitive in v1. The webhook delivery visibility surface (`webhook_activity[]` on `get_media_buys`, proposed in [#4278](https://github.com/adcontextprotocol/adcp/issues/4278)) exposes recent fires within a retention window for debugging; buyers MUST NOT rely on it for state reconciliation. That's what the snapshot is for.
 
 ### Mutability and rotation
 

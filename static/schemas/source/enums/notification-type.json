@@ -12,10 +12,6 @@
     "impairment"
   ],
   "enumDescriptions": {
-    "scheduled": "Scheduled delivery report fire at a regular interval (e.g., hourly, daily).",
-    "final": "Final delivery report fire after the buy reaches a terminal lifecycle state.",
-    "delayed": "Delivery report fire signaling a deviation from expected pacing.",
-    "adjusted": "Delivery report fire signaling a seller-side adjustment (e.g., reforecast, makegood).",
     "impairment": "Dependency state change fire. Sent when a resource referenced by the buy enters an offline state that affects delivery for at least one package. Payload carries the impairment object and the buy's updated health. See impairment.json and the impairment.coherence assertion."
   }
 }
