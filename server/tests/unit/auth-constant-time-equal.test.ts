@@ -1,4 +1,13 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+
+// auth.ts constructs `new WorkOS(process.env.WORKOS_API_KEY!)` at module
+// load. Stub the module so CI runs against the repo-root vitest config
+// (which has no setup file) don't trip on the missing env var. The
+// pattern matches dev-session-signing.test.ts.
+vi.mock('@workos-inc/node', () => ({
+  WorkOS: class { userManagement = {}; organizations = {}; },
+}));
+
 import { constantTimeEqual } from '../../src/middleware/auth.js';
 
 describe('constantTimeEqual', () => {
