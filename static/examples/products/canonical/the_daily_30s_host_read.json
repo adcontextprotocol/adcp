@@ -53,8 +53,8 @@
           "stereo"
         ],
         "loudness_lufs": -16,
-        "audio_source": "publisher_host_recorded",
-        "buyer_audio_acceptance": "rejected",
+        "asset_source": "publisher_host_recorded",
+        "buyer_asset_acceptance": "rejected",
         "composition_model": "deterministic",
         "slots": [
           {

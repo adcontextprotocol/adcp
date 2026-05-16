@@ -5,10 +5,6 @@
   "description": "VAST-tag-delivered video creative. Slot: `vast_tag` (vast asset, URL or inline XML, VAST 2.x-4.x). Tracking model: VAST events inherent to the spec — `impression`, `firstQuartile`, `midpoint`, `thirdQuartile`, `complete`, `start`, `pause`, `resume`, `mute`, `unmute`, `expand`, `collapse`, `fullscreen`, `creativeView`, `clickTracking`, `error`. VPAID interactivity via `vpaid_enabled: true` flag. SIMID extensions for interactive video supported as VAST extensions. Orientation is a parameter (vertical / horizontal / square). Distinct from `video_hosted` (direct file with external tracking).",
   "allOf": [{ "$ref": "/schemas/formats/canonical/_base.json" }],
   "properties": {
-    "status": {
-      "default": "stable",
-      "description": "Track A (v1-translatable): default `stable` at 3.1 GA. VAST is an IAB standard since 2008; canonical re-encodes the established spec and is locked at GA. See `_base.json#status` for the rubric."
-    },
     "slots": {
       "default": [
         { "asset_group_id": "vast_tag", "asset_type": "vast", "required": true },

@@ -5,10 +5,6 @@
   "description": "Static image creative format. Slots: `image_main` (image asset, file or hosted URL), optional `headline` (text), `body_text` (text), `cta` (text/enum), `landing_page_url` (url). Tracking model: impression pixel + click URL via universal_macros, with optional viewability pixel. Distinct from `html5` (interactive bundles) and `display_tag` (third-party served). AR/dimensions narrow to specific sizes via product parameters — covers IAB display sizes (300x250, 728x90, 970x250, etc.) without a separate iab_size enum.",
   "allOf": [{ "$ref": "/schemas/formats/canonical/_base.json" }],
   "properties": {
-    "status": {
-      "default": "stable",
-      "description": "Track A (v1-translatable): default `stable` at 3.1 GA. This canonical re-encodes IAB display sizes that have been the same for 20 years; the parameter shape is locked at GA. See `_base.json#status` for the rubric."
-    },
     "slots": {
       "default": [
         { "asset_group_id": "image_main", "asset_type": "image", "required": true },
@@ -60,17 +56,17 @@
       "items": { "type": "string" },
       "description": "Permitted CTA values for this product (e.g., ['LEARN_MORE', 'SHOP_NOW'])."
     },
-    "image_source": {
+    "asset_source": {
       "type": "string",
-      "enum": ["buyer_uploaded", "seller_pre_rendered_from_brief", "seller_human_designed", "agent_synthesized"],
+      "enum": ["buyer_uploaded", "publisher_host_recorded", "seller_pre_rendered_from_brief", "seller_human_designed", "agent_synthesized"],
       "default": "buyer_uploaded",
-      "description": "Where the rendered image comes from. Parallels `audio_source` on `audio_hosted`. `buyer_uploaded` (default): buyer ships a pre-rendered image asset; product narrows file format / dimensions / size. `seller_pre_rendered_from_brief`: buyer ships a brief plus structured copy (headline, landing_page_url); seller renders ONE image at sync_creatives or build_creative time and serves it like any deterministic creative (generative-DSP pattern: universalads, Pencil, AdCreative.ai). `seller_human_designed`: seller's design team renders manually from a brief (human-in-the-loop services). `agent_synthesized`: AI synthesis pipeline; pair with `synthesis_nondeterministic: true` when the platform cannot guarantee in-spec output (Veo/Sora/Imagen-class). The `slots` declaration is the binding contract for what the buyer ships; `image_source` is informational and lets buyers understand the production model when picking products."
+      "description": "Where the rendered asset bytes come from. Single shared enum across all canonicals (`image`, `video_hosted`, `audio_hosted` — replaces the earlier per-canonical `image_source` / `video_source` / `audio_source` fields). `buyer_uploaded` (default): buyer ships a pre-rendered asset. `publisher_host_recorded`: publisher's host records the asset (audio-specific; podcast host-read pattern). `seller_pre_rendered_from_brief`: buyer ships a brief plus structured copy; seller renders ONE asset at sync_creatives or build_creative time (generative-DSP pattern). `seller_human_designed`: seller's design team renders manually from a brief. `agent_synthesized`: AI synthesis pipeline; pair with `synthesis_nondeterministic: true` when the platform cannot guarantee in-spec output (Veo/Sora/Imagen-class).\n\nNot every value is meaningful on every canonical — `publisher_host_recorded` is audio-specific; on `image` or `video_hosted` it has no defined behavior. Adopters MUST select a value appropriate to the canonical's asset type. The `slots` declaration is the binding contract for what the buyer ships; `asset_source` is informational and lets buyers understand the production model when picking products."
     },
-    "buyer_image_acceptance": {
+    "buyer_asset_acceptance": {
       "type": "string",
       "enum": ["accepted", "rejected"],
       "default": "accepted",
-      "description": "Whether the product accepts buyer-uploaded images. When `rejected`, the buyer cannot ship an image asset directly — they must use build_creative (or sync_creatives with brief inputs) so the seller produces the image. Combined with `image_source`, lets a product declare 'I produce images from briefs and refuse buyer uploads' (image_source=`seller_pre_rendered_from_brief`, buyer_image_acceptance=`rejected`)."
+      "description": "Whether the product accepts buyer-uploaded assets. When `rejected`, the buyer cannot ship pre-rendered bytes directly — they must use build_creative (or sync_creatives with brief inputs) so the seller produces the asset. Combined with `asset_source`, lets a product declare 'I produce assets from briefs and refuse buyer uploads' (asset_source=`seller_pre_rendered_from_brief`, buyer_asset_acceptance=`rejected`)."
     }
   },
   "additionalProperties": true

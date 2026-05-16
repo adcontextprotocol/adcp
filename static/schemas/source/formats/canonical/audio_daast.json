@@ -5,10 +5,6 @@
   "description": "DAAST-tag-delivered audio creative (audio analog of VAST). Slot: `daast_tag` (daast asset, URL or inline XML). Tracking model: DAAST events inherent to the spec — `impression`, `firstQuartile`, `midpoint`, `thirdQuartile`, `complete`, `start`, `pause`, `resume`, `mute`, `unmute`, `clickTracking`, `error`. Distinct from `audio_hosted` (direct file with external tracking).",
   "allOf": [{ "$ref": "/schemas/formats/canonical/_base.json" }],
   "properties": {
-    "status": {
-      "default": "stable",
-      "description": "Track A (v1-translatable): default `stable` at 3.1 GA. DAAST is an IAB standard (the audio analog of VAST); canonical re-encodes the established spec and is locked at GA. See `_base.json#status` for the rubric."
-    },
     "slots": {
       "default": [
         { "asset_group_id": "daast_tag", "asset_type": "daast", "required": true },
