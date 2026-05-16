@@ -32,6 +32,35 @@
         { "required": ["email"] }
       ],
       "additionalProperties": false
+    },
+    "brand_kit_override": {
+      "type": "object",
+      "description": "Inline override for brand-kit fields normally resolved from `/.well-known/brand.json` on `domain` (logo, colors, voice, tagline). Use when brand.json is missing, stale, or inappropriate for this specific call — e.g., a campaign-scoped tagline, a co-branded creative, a freshly-rebranded color palette the brand.json hasn't shipped yet. Fields present here take precedence over brand.json for the call carrying this BrandRef; absent fields fall back to brand.json. Same inline-override pattern as `industries` and `data_subject_contestation` above: brand.json is canonical, the override is per-call. Adopters needing to override fields outside this subset (`voice_attributes`, `prohibited_terms`, etc.) MUST publish a different brand.json and reference it via a different `domain` — the inline override is intentionally narrow to a small high-traffic subset.",
+      "properties": {
+        "logo": {
+          "$ref": "/schemas/core/assets/image-asset.json",
+          "description": "Override logo asset."
+        },
+        "colors": {
+          "type": "object",
+          "description": "Override brand colors (hex strings).",
+          "properties": {
+            "primary": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
+            "secondary": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
+            "accent": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" }
+          },
+          "additionalProperties": true
+        },
+        "voice": {
+          "type": "string",
+          "description": "Override brand-voice description for surface-composed text/audio output."
+        },
+        "tagline": {
+          "type": "string",
+          "description": "Override tagline."
+        }
+      },
+      "additionalProperties": true
     }
   },
   "required": ["domain"],

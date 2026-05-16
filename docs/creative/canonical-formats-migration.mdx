@@ -261,22 +261,24 @@ Note the v2 manifest has no separate `inputs` map — the buyer ships the brief 
 
 v1 formats sometimes redeclared `brand_logo`, `brand_colors`, `brand_voice`, `brand_tagline` as explicit slots. v2 formats don't. When the manifest carries a [`BrandRef`](https://adcontextprotocol.org/schemas/v3/core/brand-ref.json) (`brand: { domain: "acme.com" }`, optionally with `brand_id` for house-of-brands), the seller fetches `brand.json` for context automatically.
 
-For the case where `brand.json` is missing or stale, the manifest carries `brand_kit_override`:
+For the case where `brand.json` is missing or stale, the BrandRef itself carries an inline `brand_kit_override` (same inline-override pattern BrandRef already uses for `industries` and `data_subject_contestation`):
 
 ```json test=false
 {
   "format_id": { "agent_url": "...", "id": "..." },
   "assets": { ... },
-  "brand": { "domain": "acme.example" },
-  "brand_kit_override": {
-    "logo": { "asset_type": "image", "url": "https://cdn.acme.example/logo-2026.png", "width": 200, "height": 100 },
-    "colors": { "primary": "#0066CC", "accent": "#FF6600" },
-    "tagline": "Spring savings, all season"
+  "brand": {
+    "domain": "acme.example",
+    "brand_kit_override": {
+      "logo": { "asset_type": "image", "url": "https://cdn.acme.example/logo-2026.png", "width": 200, "height": 100 },
+      "colors": { "primary": "#0066CC", "accent": "#FF6600" },
+      "tagline": "Spring savings, all season"
+    }
   }
 }
 ```
 
-Override fields take precedence over `brand.json` for that creative.
+Override fields take precedence over `brand.json` for the call carrying this BrandRef.
 
 ## Tools — what's new vs unchanged
 

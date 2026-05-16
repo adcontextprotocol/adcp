@@ -36,35 +36,7 @@
     },
     "brand": {
       "$ref": "/schemas/core/brand-ref.json",
-      "description": "Brand identity reference (BrandRef — `domain` plus optional `brand_id` for house-of-brands). When present, the seller pulls brand context (logos, colors, voice, taglines) from the brand's brand.json automatically. v2 formats no longer redeclare brand_logo / brand_colors / brand_voice as explicit slots — brand identity is implicit context."
-    },
-    "brand_kit_override": {
-      "type": "object",
-      "description": "Explicit brand-kit override for the case where brand.json is missing, stale, or inappropriate for this specific creative. When present, takes precedence over brand.json lookups for the supplied fields. Sellers use brand.json as the default and the override as the per-creative authoritative source.",
-      "properties": {
-        "logo": {
-          "$ref": "/schemas/core/assets/image-asset.json",
-          "description": "Override logo asset for this creative."
-        },
-        "colors": {
-          "type": "object",
-          "description": "Override brand colors (hex strings).",
-          "properties": {
-            "primary": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
-            "secondary": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
-            "accent": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" }
-          },
-          "additionalProperties": true
-        },
-        "voice": {
-          "type": "string",
-          "description": "Override brand-voice description for surface-composed text/audio output."
-        },
-        "tagline": {
-          "type": "string"
-        }
-      },
-      "additionalProperties": true
+      "description": "Brand identity reference (BrandRef — `domain` plus optional `brand_id` for house-of-brands; plus optional inline `brand_kit_override` for per-creative tweaks where brand.json is missing/stale). When present, the seller pulls brand context (logos, colors, voice, taglines) from the brand's brand.json automatically; any `brand_kit_override` fields on the BrandRef take precedence. v2 formats no longer redeclare brand_logo / brand_colors / brand_voice as explicit slots — brand identity is implicit context."
     },
     "rights": {
       "type": "array",
