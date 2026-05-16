@@ -78,12 +78,12 @@
           "max_chars": {
             "type": "integer",
             "minimum": 1,
-            "description": "Per-slot character limit for text / markdown / brief assets."
+            "description": "Per-slot character limit. Valid only when `asset_type` is `text`, `markdown`, or `brief`. Mutually exclusive with `max_size_kb` (which applies to binary asset types). Schema enforces via if/then so a producer can't set both on the same slot."
           },
           "max_size_kb": {
             "type": "integer",
             "minimum": 1,
-            "description": "Per-slot file size limit in kilobytes for image / video / audio / zip assets."
+            "description": "Per-slot file size limit in kilobytes. Valid only when `asset_type` is `image`, `video`, `audio`, or `zip`. Mutually exclusive with `max_chars` (which applies to text asset types). Schema enforces via if/then so a producer can't set both on the same slot."
           },
           "description": {
             "type": "string",
@@ -95,7 +95,37 @@
             "description": "Dispatch hint for `build_creative` and v1↔v2 wire translators: when `true`, the slot's value is consumed as INPUT to a production step (host-read script, brief copy fed to generative synthesis, catalog feed driving per-SKU rendering) and is not rendered verbatim. When `false` (default), the slot's value is rendered verbatim on the placement (image bytes, video file, display tag).\n\nMotivates the v1↔v2 dispatch table: pre-v2 buyers shipped production-consumed inputs separately in a `inputs` map on the build_creative request; v2 collapses inputs and rendered assets into a single `assets` map keyed by `asset_group_id`. SDK translators between v1 and v2 use this flag per canonical to know which assets in the v2 manifest map back to v1 `inputs` vs v1 `assets`. Without the per-slot flag the dispatch table lives in adopter code and every SDK gets it slightly different.\n\nProducers SHOULD set this explicitly on slots whose consumption pattern isn't obvious (host-read scripts on `audio_hosted`, briefs on generative `video_hosted`, catalog feeds on `sponsored_placement`). For canonicals where every slot is render-verbatim (`image`, `display_tag`, `video_vast`), the default `false` is sufficient and the flag MAY be omitted."
           }
         },
-        "additionalProperties": true
+        "additionalProperties": true,
+        "allOf": [
+          {
+            "$comment": "max_chars is valid only for text-shaped asset types; max_size_kb is valid only for binary asset types. A slot MUST NOT carry both; the type-appropriate one is enforced via if/then.",
+            "if": {
+              "properties": { "asset_type": { "enum": ["text", "markdown", "brief"] } },
+              "required": ["asset_type"]
+            },
+            "then": { "not": { "required": ["max_size_kb"] } }
+          },
+          {
+            "if": {
+              "properties": { "asset_type": { "enum": ["image", "video", "audio", "zip"] } },
+              "required": ["asset_type"]
+            },
+            "then": { "not": { "required": ["max_chars"] } }
+          },
+          {
+            "$comment": "Non-size asset types (url, catalog, html, css, javascript, webhook, daast, vast, card, object) reject both — there's no defined per-slot size semantics on those.",
+            "if": {
+              "properties": { "asset_type": { "enum": ["url", "catalog", "html", "css", "javascript", "webhook", "daast", "vast", "card", "object"] } },
+              "required": ["asset_type"]
+            },
+            "then": {
+              "not": { "anyOf": [
+                { "required": ["max_chars"] },
+                { "required": ["max_size_kb"] }
+              ] }
+            }
+          }
+        ]
       }
     },
     "production_window_business_days": {

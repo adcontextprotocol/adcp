@@ -55,7 +55,13 @@
     },
     "card_headline_max_chars": {
       "type": "integer",
-      "minimum": 1
+      "minimum": 1,
+      "description": "Per-card headline character limit. Governs the `headline` field on each card-asset in the `cards` slot."
+    },
+    "card_description_max_chars": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Per-card description character limit. Governs the `description` field on each card-asset in the `cards` slot. Distinct from `card_headline_max_chars`: description is longer body copy (typically 100-500 chars); headline is the short label (typically 25-40 chars)."
     },
     "ssl_required": {
       "type": "boolean"
