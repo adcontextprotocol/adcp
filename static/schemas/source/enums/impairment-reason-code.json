@@ -15,13 +15,13 @@
     "property_depublished"
   ],
   "enumDescriptions": {
-    "policy_violation": "Seller policy enforcement removed the resource from active use. Applies to: audience, creative, catalog_item, property.",
-    "consent_expired": "Consent basis for using the resource has lapsed (e.g., hashed identifier consent expiry on a synced audience). Applies to: audience.",
-    "ttl_expired": "Resource exceeded its time-to-live and was retired by the seller. Applies to: audience.",
-    "pii_audit_failed": "Resource failed a privacy / PII audit. Applies to: audience.",
-    "seller_removed": "Seller withdrew the resource from active use for operational reasons not covered by other codes (e.g., inventory withdrawal). Applies to: catalog_item, audience, creative, property.",
-    "content_rejected": "Previously-approved creative content was re-reviewed and rejected. Applies to: creative.",
-    "source_offline": "Underlying event/signal source stopped firing (zero events received over the seller's evaluation window). Applies to: event_source.",
-    "property_depublished": "Property was depublished or removed from the seller's catalog via brand.json / adagents.json. Verification is via the publisher's brand.json / adagents.json files. Applies to: property."
+    "policy_violation": "Seller policy enforcement removed the resource from active use. Applies to: audience, creative, catalog_item, property. Typical remediation: seller-side enforcement — buyer-side resubmit unlikely to clear; await resolution or escalate per the seller's standard contact path.",
+    "consent_expired": "Consent basis for using the resource has lapsed (e.g., hashed identifier consent expiry on a synced audience). Applies to: audience. Typical remediation: refresh upstream consent and re-sync the audience via sync_audiences.",
+    "ttl_expired": "Resource exceeded its time-to-live and was retired by the seller. Applies to: audience. Typical remediation: re-sync the audience via sync_audiences to renew.",
+    "pii_audit_failed": "Resource failed a privacy / PII audit. Applies to: audience. Typical remediation: fix the underlying audit findings (e.g., hashing, identifier hygiene) and re-sync the audience via sync_audiences.",
+    "seller_removed": "Seller withdrew the resource from active use for operational reasons not covered by other codes (e.g., inventory withdrawal). Applies to: catalog_item, audience, creative, property. Typical remediation: no buyer-side resubmit path — find a replacement via the same discovery tool used at campaign setup (get_products / get_signals / list_creative_formats), or contact the seller.",
+    "content_rejected": "Previously-approved creative content was re-reviewed and rejected. Applies to: creative. Typical remediation: same path as initial creative approval — fix the issue and resubmit via sync_creatives. Buyer's campaign-level decision (replace with an alternate creative vs. wait for resubmit approval) depends on creative pool composition and is left to the buyer.",
+    "source_offline": "Underlying event/signal source stopped firing (zero events received over the seller's evaluation window). Applies to: event_source. Typical remediation: verify the tag is firing on the publisher's properties and re-sync the source via sync_event_sources.",
+    "property_depublished": "Property was depublished or removed from the seller's catalog via brand.json / adagents.json. Verification is via the publisher's brand.json / adagents.json files. Applies to: property. Typical remediation: no buyer-side fix — find a replacement property via get_products, or remove from targeting."
   }
 }
