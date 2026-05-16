@@ -517,6 +517,31 @@
 #             storyboard run)
 #       path: string (JSON path against this step's response body, e.g.
 #             "media_buy_id", "accounts[0].account_id", "plans[0].plan_id")
+#       generate: string (alternative to `path`: mint a value at run start
+#             rather than capture from a response. Supported generator names:
+#               - uuid_v4   — RFC 4122 v4 UUID
+#               - opaque_id — RFC 4122 v4 UUID (alias; the two names exist for
+#                             spec-vs-implementation framing — use uuid_v4 when
+#                             the threaded value will appear as a UUID on the
+#                             wire, opaque_id when callers treat it as an
+#                             opaque correlation token).
+#             Exactly one of `path` or `generate` MUST be set on each entry.
+#             Setting both is a storyboard-load failure. Generated values are
+#             materialized once per storyboard run and stored under
+#             `context.<name>` so later steps' `$context.<name>` substitutions
+#             resolve to the same value. Use for deterministic correlation
+#             IDs (e.g. threading task_id through force_create_media_buy_arm
+#             register → create_media_buy → force_task_completion → tasks/get
+#             poll) without authors copy-pasting magic strings. Requires
+#             runner >= adcp-client v6.x with `generate` support (see
+#             adcp-client#1006); older runners reject the field at load.
+#
+#             Example — deterministic task_id threading:
+#               context_outputs:
+#                 - name: forced_task_id
+#                   generate: uuid_v4
+#               # Subsequent steps reference $context.forced_task_id
+#               # in sample_request / context_inputs.
 #
 #   Special path prefix `task_completion.<inner>`: when the immediate response
 #   is a non-terminal task envelope (status `submitted` / `working` /
