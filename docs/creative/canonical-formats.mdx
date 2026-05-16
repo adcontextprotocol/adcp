@@ -849,6 +849,19 @@ SDK authors implementing the narrowing check SHOULD apply parameter-by-parameter
 
 A buyer reading a product on the v1 wire path sees `format_options` entries with `canonical_formats_only: true` absent from `format_ids`. This is intentional and not a producer error. v2-aware buyers reading `format_options` see them. v1-only buyers see fewer options on `format_ids` than a v2-aware buyer sees on `format_options` for the same product — the v1 surface is a strict subset on these products until v1 sunset (5.0).
 
+### v2-native sellers emitting to v1 buyers
+
+For v2-native sellers whose products do NOT carry preexisting v1 named formats (e.g., a seller that came up after canonical-formats stabilized and authored only `format_options`), the question of what to put in `format_ids` for v1-only buyers has two acceptable answers:
+
+1. **Default — set `canonical_formats_only: true`, omit from `format_ids`.** v1 buyers see no `format_ids` entry for these declarations. The product is functionally invisible to v1-only buyers, but the v1 surface stays clean (no synthetic identifiers polluting buyer-side allowlists).
+2. **Synthesize seller-scoped IDs.** When a seller wants v1-only buyer reach, they MAY mint `format_ids` like `<seller_domain>/canonical_<format_kind>_<param_summary>` (e.g., `acme.adcp/canonical_image_300x250`). When synthesizing:
+   - The IDs MUST be seller-scoped (under the seller's own `agent_url`), never under `aao-synth/*` or any cross-seller namespace — the AAO-mirror-style synthetic namespace was considered and rejected because adopters would index on identifiers with no stable identity.
+   - The IDs MUST be declared in the seller's published format catalog (the static format file referenced by their adcp-resource manifest, the same place `list_creative_formats` reads from) so v1 buyers see consistent identifiers between `Product.format_ids` and the seller's format directory.
+   - The `format_kind_<param_summary>` convention is a recommendation, not a normative requirement — sellers MAY use any naming convention scoped to their own `agent_url` namespace. Buyers MUST NOT pattern-match on the convention for routing (the seller's catalog is authoritative).
+   - The synthetic `format_ids` entry and the corresponding `format_options` entry MUST satisfy the same dual-emission narrowing contract as any other dual-emitted product (see the projection rules above).
+
+Sellers SHOULD pick option (1) as the default and only opt into (2) when they have a concrete v1-buyer relationship to preserve. Option (2) carries the catalog-sync burden indefinitely; option (1) accepts thinner v1 reach as the cost of a cleaner surface.
+
 ## What's NOT in v2
 
 By design, v2 doesn't introduce new vocabulary for things AdCP already handles or that belong elsewhere:
