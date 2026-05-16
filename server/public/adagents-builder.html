@@ -1881,28 +1881,28 @@
         const resultsDiv = document.getElementById('validation-results');
         const { domain, found, validation, agent_cards } = data;
 
-        let html = `<h4>Validation Results for ${domain}</h4>`;
+        let html = `<h4>Validation Results for ${escapeHtml(domain)}</h4>`;
 
         // Overall status
         if (found && validation.valid) {
           html += `
                     <div class="validation-result result-success">
                         <strong>✅ Valid AdAgents.json Found</strong><br>
-                        Found at: <code>${validation.url}</code>
+                        Found at: <code>${escapeHtml(validation.url)}</code>
                     </div>
                 `;
         } else if (found && !validation.valid) {
           html += `
                     <div class="validation-result result-warning">
                         <strong>⚠️ AdAgents.json Found but Invalid</strong><br>
-                        Found at: <code>${validation.url}</code>
+                        Found at: <code>${escapeHtml(validation.url)}</code>
                     </div>
                 `;
         } else {
           html += `
                     <div class="validation-result result-error">
                         <strong>❌ No AdAgents.json Found</strong><br>
-                        Expected at: <code>https://${domain}/.well-known/adagents.json</code>
+                        Expected at: <code>https://${escapeHtml(domain)}/.well-known/adagents.json</code>
                     </div>
                 `;
         }
@@ -1914,7 +1914,7 @@
           if (validation.errors.length > 0) {
             html += '<h5>❌ Errors:</h5><ul style="margin-bottom: 10px;">';
             validation.errors.forEach(error => {
-              html += `<li style="color: var(--color-error-600);"><strong>${error.field}:</strong> ${error.message}</li>`;
+              html += `<li style="color: var(--color-error-600);"><strong>${escapeHtml(error.field)}:</strong> ${escapeHtml(error.message)}</li>`;
             });
             html += '</ul>';
           }
@@ -1922,9 +1922,9 @@
           if (validation.warnings.length > 0) {
             html += '<h5>⚠️ Warnings:</h5><ul>';
             validation.warnings.forEach(warning => {
-              html += `<li style="color: #92400e;"><strong>${warning.field}:</strong> ${warning.message}`;
+              html += `<li style="color: #92400e;"><strong>${escapeHtml(warning.field)}:</strong> ${escapeHtml(warning.message)}`;
               if (warning.suggestion) {
-                html += `<br><em>Suggestion: ${warning.suggestion}</em>`;
+                html += `<br><em>Suggestion: ${escapeHtml(warning.suggestion)}</em>`;
               }
               html += '</li>';
             });
@@ -1945,7 +1945,7 @@
             // Extract agent name from card data if available
             let agentName = '';
             if (card.valid && card.card_data && card.card_data.name) {
-              agentName = ` - ${card.card_data.name}`;
+              agentName = ` - ${escapeHtml(card.card_data.name)}`;
             }
 
             // Show which endpoint was used for successful validations
@@ -1957,22 +1957,28 @@
               } else if (endpointPath === '') {
                 endpointInfo = ' <span style="color: #7c3aed; font-size: 11px;">[Root]</span>';
               } else {
-                endpointInfo = ` <span style="color: #7c3aed; font-size: 11px;">[${endpointPath}]</span>`;
+                endpointInfo = ` <span style="color: #7c3aed; font-size: 11px;">[${escapeHtml(endpointPath)}]</span>`;
               }
             }
 
+            const safeStatusCode = card.status_code != null ? escapeHtml(String(card.status_code)) : '';
+            const safeResponseTime = card.response_time_ms != null ? escapeHtml(String(card.response_time_ms)) : '';
+            const safeErrors = Array.isArray(card.errors)
+              ? card.errors.map(e => escapeHtml(String(e))).join(', ')
+              : '';
+
             html += `
                         <div style="margin-bottom: 10px; padding: 12px; border-left: 4px solid ${statusColor}; background: var(--color-bg-card); border-radius: 4px;">
-                            <strong>${status} ${card.agent_url}${agentName}</strong>${endpointInfo}
+                            <strong>${status} ${escapeHtml(card.agent_url)}${agentName}</strong>${endpointInfo}
                             ${
-                              card.response_time_ms
-                                ? `<span style="color: #666; font-size: 12px;"> (${card.response_time_ms}ms)</span>`
+                              safeResponseTime
+                                ? `<span style="color: #666; font-size: 12px;"> (${safeResponseTime}ms)</span>`
                                 : ''
                             }
-                            ${card.status_code ? `<br><em>HTTP ${card.status_code}</em>` : ''}
+                            ${safeStatusCode ? `<br><em>HTTP ${safeStatusCode}</em>` : ''}
                             ${
-                              card.errors.length > 0
-                                ? `<br><span style="color: var(--color-error-600);">Errors: ${card.errors.join(', ')}</span>`
+                              safeErrors
+                                ? `<br><span style="color: var(--color-error-600);">Errors: ${safeErrors}</span>`
                                 : ''
                             }
                         </div>
@@ -1986,10 +1992,8 @@
           html += `
                     <details style="margin-top: 20px;">
                         <summary style="cursor: pointer; font-weight: bold; color: var(--text-secondary);">📄 Raw AdAgents.json Data</summary>
-                        <pre style="background: #1a202c; color: #f7fafc; padding: 16px; border-radius: 8px; margin-top: 12px; font-size: 12px; overflow-x: auto;">${JSON.stringify(
-                          validation.raw_data,
-                          null,
-                          2
+                        <pre style="background: #1a202c; color: #f7fafc; padding: 16px; border-radius: 8px; margin-top: 12px; font-size: 12px; overflow-x: auto;">${escapeHtml(
+                          JSON.stringify(validation.raw_data, null, 2)
                         )}</pre>
                     </details>
                 `;
@@ -4718,10 +4722,6 @@
       }
 
       // ============================================================================
-      // Initialize Dashboard (Update startCreating function)
-      // ============================================================================
-
-      // ============================================================================
       // Unified Entry Point
       // ============================================================================
 
@@ -5262,19 +5262,24 @@
         agentCards.forEach(card => {
           const status = card.valid ? '✅' : '❌';
           const statusColor = card.valid ? '#166534' : '#dc2626';
+          const safeStatusCode = card.status_code != null ? escapeHtml(String(card.status_code)) : '';
+          const safeResponseTime = card.response_time_ms != null ? escapeHtml(String(card.response_time_ms)) : '';
+          const safeErrors = Array.isArray(card.errors)
+            ? card.errors.map(e => escapeHtml(String(e))).join(', ')
+            : '';
 
           html += `
                     <div style="margin-bottom: 10px; padding: 12px; border-left: 4px solid ${statusColor}; background: var(--color-bg-card); border-radius: 4px;">
-                        <strong>${status} ${card.agent_url}</strong>
+                        <strong>${status} ${escapeHtml(card.agent_url)}</strong>
                         ${
-                          card.response_time_ms
-                            ? `<span style="color: #666; font-size: 12px;"> (${card.response_time_ms}ms)</span>`
+                          safeResponseTime
+                            ? `<span style="color: #666; font-size: 12px;"> (${safeResponseTime}ms)</span>`
                             : ''
                         }
-                        ${card.status_code ? `<br><em>HTTP ${card.status_code}</em>` : ''}
+                        ${safeStatusCode ? `<br><em>HTTP ${safeStatusCode}</em>` : ''}
                         ${
-                          card.errors.length > 0
-                            ? `<br><span style="color: var(--color-error-600);">Issues: ${card.errors.join(', ')}</span>`
+                          safeErrors
+                            ? `<br><span style="color: var(--color-error-600);">Issues: ${safeErrors}</span>`
                             : ''
                         }
                         ${
@@ -5342,137 +5347,6 @@
         document.getElementById('json-output').value = '';
       }
 
-      async function startCreating() {
-        const domain = document.getElementById('creator-domain-input').value.trim();
-        const startBtn = document.getElementById('start-creating-btn');
-
-        if (!domain) {
-          alert('Please enter a domain name');
-          return;
-        }
-
-        // Normalize domain (remove protocol, www, trailing slash)
-        const normalizedDomain = domain
-          .replace(/^https?:\/\//, '')
-          .replace(/^www\./, '')
-          .replace(/\/$/, '');
-
-        startBtn.disabled = true;
-        startBtn.textContent = '🔄 Checking domain...';
-
-        try {
-          // First validate domain to see if adagents.json exists
-          console.log(`Checking existing adagents.json for domain: ${normalizedDomain}`);
-
-          const response = await fetch('/api/adagents/validate', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ domain: normalizedDomain }),
-          });
-
-          const result = await response.json();
-          let isUpdate = false;
-          let existingAgents = [];
-
-          if (result.success && result.data.found && result.data.validation.valid) {
-            // Valid adagents.json exists - this is an update
-            isUpdate = true;
-            if (result.data.validation.raw_data && result.data.validation.raw_data.authorized_agents) {
-              existingAgents = result.data.validation.raw_data.authorized_agents;
-            }
-            console.log(`Found existing valid adagents.json with ${existingAgents.length} agents`);
-          } else {
-            console.log(`No valid adagents.json found - will create new file`);
-          }
-
-          // Update UI based on create vs update mode
-          updateUIForCreateOrUpdate(normalizedDomain, isUpdate, existingAgents);
-
-          // Hide domain step, show creation form
-          document.getElementById('creator-domain-step').style.display = 'none';
-          document.getElementById('creator-form').style.display = 'block';
-
-          startBtn.disabled = false;
-          startBtn.textContent = '▶️ Start Creating';
-        } catch (error) {
-          console.error(`Error checking domain: ${error.message}`);
-          // On error, default to create mode
-          updateUIForCreateOrUpdate(normalizedDomain, false, []);
-
-          // Hide domain step, show creation form
-          document.getElementById('creator-domain-step').style.display = 'none';
-          document.getElementById('creator-form').style.display = 'block';
-
-          startBtn.disabled = false;
-          startBtn.textContent = '▶️ Start Creating';
-        }
-      }
-
-      function updateUIForCreateOrUpdate(normalizedDomain, isUpdate, existingAgents) {
-        // Update section title and description
-        const sectionTitle = document.getElementById('creator-section-title');
-        const sectionDescription = document.getElementById('creator-section-description');
-
-        if (isUpdate) {
-          sectionTitle.innerHTML = '📝 Update AdAgents.json';
-          sectionDescription.textContent =
-            'Update the existing adagents.json file for your domain. Modify authorized sales agents and generate an updated compliant file ready for deployment.';
-        } else {
-          sectionTitle.innerHTML = '📝 Create AdAgents.json';
-          sectionDescription.textContent =
-            'Create a properly formatted adagents.json file for your domain. Add authorized sales agents and generate a compliant file ready for deployment.';
-        }
-
-        // Update personalized instructions
-        document.getElementById('user-domain-display').textContent = normalizedDomain;
-        document.getElementById('user-file-path').textContent = `https://${normalizedDomain}/.well-known/adagents.json`;
-        document.getElementById('generated-domain-display').textContent = normalizedDomain;
-        document.getElementById('reminder-file-path').textContent =
-          `https://${normalizedDomain}/.well-known/adagents.json`;
-
-        // Pre-populate agents if updating
-        if (isUpdate && existingAgents.length > 0) {
-          const agentsList = document.getElementById('agents-list');
-          agentsList.innerHTML = '';
-
-          existingAgents.forEach(agent => {
-            const newEntry = document.createElement('div');
-            newEntry.className = 'agent-entry';
-            const propertyIds = agent.property_ids ? agent.property_ids.join(', ') : '';
-
-            const delegationType = agent.delegation_type || 'direct';
-            newEntry.innerHTML = `
-                        <input type="url" placeholder="https://agent.example.com" style="flex: 2;" class="agent-url" value="${agent.url}">
-                        <input type="text" placeholder="Authorized for all products and services" style="flex: 3;" class="agent-auth" value="${agent.authorized_for}">
-                        <select class="agent-delegation-type" style="flex: 1; padding: 8px; border-radius: 8px; border: 2px solid var(--color-border);" title="Commercial relationship: direct (your sales path), delegated (agent manages your monetization), ad_network (sold through network/package)">
-                          <option value="direct" ${delegationType === 'direct' ? 'selected' : ''}>direct</option>
-                          <option value="delegated" ${delegationType === 'delegated' ? 'selected' : ''}>delegated</option>
-                          <option value="ad_network" ${delegationType === 'ad_network' ? 'selected' : ''}>ad_network</option>
-                        </select>
-                        <input type="text" placeholder="property_id1, property_id2 (optional)" style="flex: 2;" class="agent-property-ids" value="${propertyIds}" title="Comma-separated list of property IDs this agent can sell">
-                        <button class="btn" onclick="removeAgentEntry(this)" style="background: var(--color-error-500);">✖️</button>
-                    `;
-
-            agentsList.appendChild(newEntry);
-          });
-
-          console.log(`Pre-populated ${existingAgents.length} existing agents for update`);
-        }
-
-        // Update personalized instructions based on create/update mode
-        const instructionsHeading = document.querySelector('#personalized-instructions h4');
-        const step2Title = document.getElementById('step-2-title');
-        if (isUpdate) {
-          instructionsHeading.innerHTML = `📍 File Update Instructions for <span id="user-domain-display">${escapeHtml(normalizedDomain)}</span>`;
-          step2Title.textContent = 'Step 2: Update Authorized Agents';
-        } else {
-          instructionsHeading.innerHTML = `📍 File Placement Instructions for <span id="user-domain-display">${escapeHtml(normalizedDomain)}</span>`;
-          step2Title.textContent = 'Step 2: Add Authorized Agents';
-        }
-      }
-
       function resetCreator() {
         // Clear state
         state.domain = '';
@@ -5481,16 +5355,26 @@
         state.fileFound = false;
 
         // Clear form data
-        document.getElementById('creator-domain-input').value = '';
-        document.getElementById('json-output').value = '';
+        const domainInput = document.getElementById('domain-input');
+        if (domainInput) domainInput.value = '';
+        const jsonOutput = document.getElementById('json-output');
+        if (jsonOutput) jsonOutput.value = '';
 
-        // Hide dashboard, show domain entry
+        // Hide dashboard
         document.getElementById('creator-form').style.display = 'none';
-        document.getElementById('creator-domain-step').style.display = 'block';
+
+        // Hide validation results from prior run
+        const validationResults = document.getElementById('validation-results');
+        if (validationResults) {
+          validationResults.style.display = 'none';
+          validationResults.innerHTML = '';
+        }
 
         // Reset JSON preview
-        document.getElementById('json-preview-panel').style.display = 'none';
-        document.getElementById('json-preview-toggle').textContent = '📄 View JSON ▼';
+        const previewPanel = document.getElementById('json-preview-panel');
+        if (previewPanel) previewPanel.style.display = 'none';
+        const previewToggle = document.getElementById('json-preview-toggle');
+        if (previewToggle) previewToggle.textContent = '📄 View JSON ▼';
 
         console.log('Reset adagents.json creator to domain entry step');
       }
