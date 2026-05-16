@@ -36,7 +36,7 @@ import { Resend } from 'resend';
 
 import type { AddieTool } from '../types.js';
 import { createLogger } from '../../logger.js';
-import { safeFetch } from '../../utils/url-security.js';
+import { safeFetchAxiosLike } from '../../utils/url-security.js';
 import { AAO_UA_VALIDATOR } from '../../config/user-agents.js';
 import { query } from '../../db/client.js';
 
@@ -217,7 +217,10 @@ interface PublishCanonicalArgs {
   extra?: Record<string, unknown>;
 }
 
-function buildCanonicalDocument(args: PublishCanonicalArgs): Record<string, unknown> {
+function buildCanonicalDocument(args: PublishCanonicalArgs): {
+  doc: Record<string, unknown>;
+  droppedExtraKeys: string[];
+} {
   const doc: Record<string, unknown> = {
     $schema: 'https://adcontextprotocol.org/schemas/latest/brand.json',
     version: args.version ?? '1.0',
@@ -244,16 +247,22 @@ function buildCanonicalDocument(args: PublishCanonicalArgs): Record<string, unkn
   if (args.last_updated) doc.last_updated = args.last_updated;
 
   // Allow advanced callers to slip in additional canonical-doc fields via
-  // `extra`, but ignore keys that don't belong on this variant.
+  // `extra`. Keys that don't belong on this variant (e.g. `house`,
+  // `brand_refs`) are not silently dropped — the caller gets a `warnings`
+  // list back so the agent can observe what was rejected and either fix
+  // the call or pick a different tool.
+  const droppedExtraKeys: string[] = [];
   if (args.extra && typeof args.extra === 'object') {
     for (const [key, value] of Object.entries(args.extra)) {
       if (CANONICAL_DOC_TOP_LEVEL_KEYS.has(key)) {
         doc[key] = value;
+      } else {
+        droppedExtraKeys.push(key);
       }
     }
   }
 
-  return doc;
+  return { doc, droppedExtraKeys };
 }
 
 export interface PublishCanonicalResult {
@@ -261,6 +270,14 @@ export interface PublishCanonicalResult {
   document?: Record<string, unknown>;
   hosting_path?: string;
   errors?: string[];
+  /**
+   * Non-fatal observations the caller should surface. Currently populated
+   * when `extra` contained keys that don't belong on a Brand Canonical
+   * Document (variant 5) — those keys were dropped from the output but the
+   * agent should know so it can either correct the call or pick a different
+   * tool (e.g. add_to_brand_refs for `house` / `brand_refs`).
+   */
+  warnings?: string[];
 }
 
 export function publishBrandCanonicalDocument(
@@ -289,18 +306,24 @@ export function publishBrandCanonicalDocument(
     house_domain: args.house_domain ? normalizeDomain(args.house_domain) : undefined,
   };
 
-  const document = buildCanonicalDocument(normalizedArgs);
+  const { doc: document, droppedExtraKeys } = buildCanonicalDocument(normalizedArgs);
+  const warnings = droppedExtraKeys.length
+    ? [
+        `extra: dropped keys not allowed on a Brand Canonical Document: ${droppedExtraKeys.join(', ')}. Use add_to_brand_refs for house/brand_refs fields.`,
+      ]
+    : undefined;
 
   const validate = getValidator();
   const valid = validate(document);
   if (!valid) {
-    return { ok: false, document, errors: formatAjvErrors(validate) };
+    return { ok: false, document, errors: formatAjvErrors(validate), warnings };
   }
 
   return {
     ok: true,
     document,
     hosting_path: `https://${domain}/.well-known/brand.json`,
+    warnings,
   };
 }
 
@@ -321,22 +344,33 @@ export interface AddBrandRefResult {
   errors?: string[];
 }
 
+/**
+ * Bound on a single brand.json response body. brand.json files are well
+ * under 100KB in practice; 256KB gives headroom for richly-annotated
+ * portfolios without letting a hostile host stream gigabytes into the
+ * worker.
+ */
+const BRAND_JSON_MAX_BYTES = 256 * 1024;
+const BRAND_JSON_TIMEOUT_MS = 10_000;
+
 async function fetchBrandJson(
   domain: string,
 ): Promise<{ ok: true; data: Record<string, unknown> } | { ok: false; error: string }> {
   const url = `https://${domain}/.well-known/brand.json`;
   try {
-    const response = await safeFetch(url, {
+    const response = await safeFetchAxiosLike(url, {
       headers: {
         Accept: 'application/json',
         'User-Agent': AAO_UA_VALIDATOR,
       },
       maxRedirects: 3,
+      timeoutMs: BRAND_JSON_TIMEOUT_MS,
+      maxResponseBytes: BRAND_JSON_MAX_BYTES,
     });
-    if (!response.ok) {
+    if (response.status < 200 || response.status >= 300) {
       return { ok: false, error: `HTTP ${response.status} fetching ${url}` };
     }
-    const text = await response.text();
+    const text = response.data.toString('utf-8');
     let parsed: unknown;
     try {
       parsed = JSON.parse(text);
@@ -485,13 +519,20 @@ export interface CheckMutualAssertionResult {
   errors?: string[];
 }
 
-const MAX_REDIRECT_HOPS = 3;
+/**
+ * Spec cap on House Redirect chain length. A chain of N redirects fetches
+ * N+1 documents — the cap counts redirect *hops*, not document fetches.
+ *
+ *   a → b → c → d (portfolio)    = 3 hops, accepted.
+ *   a → b → c → d → e (portfolio) = 4 hops, rejected.
+ */
+const MAX_REDIRECTS = 3;
 
 /**
  * Resolve a House Portfolio document by following House Redirects on the
- * house side. Returns the terminal House Portfolio plus the redirect chain
- * traversed (always includes the starting domain). Caps at MAX_REDIRECT_HOPS
- * per the spec.
+ * house side. Returns the terminal House Portfolio plus the chain of
+ * domains visited (always includes the starting domain; final element is
+ * the terminating portfolio domain).
  */
 async function resolveHousePortfolio(
   startingDomain: string,
@@ -501,8 +542,13 @@ async function resolveHousePortfolio(
 > {
   const chain: string[] = [];
   let current = startingDomain;
+  let hops = 0;
 
-  for (let hop = 0; hop <= MAX_REDIRECT_HOPS; hop++) {
+  // Loop fetches one document per iteration. `hops` counts how many
+  // redirects we've already followed; we may follow up to MAX_REDIRECTS
+  // before the *next* fetch becomes the (MAX_REDIRECTS+1)-th hop and we
+  // must reject.
+  while (true) {
     chain.push(current);
     const fetched = await fetchBrandJson(current);
     if (!fetched.ok) {
@@ -510,42 +556,36 @@ async function resolveHousePortfolio(
     }
     const data = fetched.data;
 
-    // Authoritative location redirect — rare on the house side; treat as a redirect.
-    if (typeof data.authoritative_location === 'string') {
-      if (hop === MAX_REDIRECT_HOPS) {
-        return { ok: false, chain, error: 'Exceeded 3-hop redirect limit' };
-      }
-      try {
-        const url = new URL(data.authoritative_location);
-        current = url.hostname.toLowerCase();
-        continue;
-      } catch {
-        return { ok: false, chain, error: 'authoritative_location is not a valid URL' };
-      }
-    }
-
-    // House Redirect — variant 2 with `house` as a string pointing to the canonical house.
-    if (typeof data.house === 'string') {
-      if (hop === MAX_REDIRECT_HOPS) {
-        return { ok: false, chain, error: 'Exceeded 3-hop redirect limit' };
-      }
-      current = normalizeDomain(data.house);
-      continue;
-    }
-
-    // House Portfolio — `house` is an object.
+    // House Portfolio — `house` is an object. Terminal document; the
+    // hop count never includes this fetch.
     if (data.house && typeof data.house === 'object' && !Array.isArray(data.house)) {
       return { ok: true, portfolio: data, chain, finalDomain: current };
     }
 
-    return {
-      ok: false,
-      chain,
-      error: `Document at ${current} is not a House Portfolio or House Redirect`,
-    };
-  }
+    // Determine the next hop (authoritative_location or House Redirect).
+    let next: string | null = null;
+    if (typeof data.authoritative_location === 'string') {
+      try {
+        next = new URL(data.authoritative_location).hostname.toLowerCase();
+      } catch {
+        return { ok: false, chain, error: 'authoritative_location is not a valid URL' };
+      }
+    } else if (typeof data.house === 'string') {
+      next = normalizeDomain(data.house);
+    } else {
+      return {
+        ok: false,
+        chain,
+        error: `Document at ${current} is not a House Portfolio or House Redirect`,
+      };
+    }
 
-  return { ok: false, chain, error: 'Exceeded 3-hop redirect limit' };
+    if (hops >= MAX_REDIRECTS) {
+      return { ok: false, chain, error: 'Exceeded 3-hop redirect limit' };
+    }
+    hops += 1;
+    current = next;
+  }
 }
 
 export async function checkMutualAssertion(
@@ -715,11 +755,33 @@ async function claimNotificationSlot(
   return { allowed: true };
 }
 
-function buildNotificationEmail(args: NotifyPendingVerificationArgs): {
+/**
+ * HTML-escape a value before interpolating into an email body. Callers
+ * upstream pattern-validate `leaf_domain` and `leaf_brand_id`, but this
+ * function is exported and reachable from any future caller — escape at
+ * the layer that emits HTML so the precondition doesn't have to travel
+ * with the function.
+ */
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+export function buildNotificationEmail(args: NotifyPendingVerificationArgs): {
   subject: string;
   text: string;
   html: string;
 } {
+  // Plain-text fields use the raw values; HTML fields use the escaped
+  // versions. Subjects are headers, not HTML, so they stay raw.
+  const leafHtml = escapeHtml(args.leaf_domain);
+  const houseHtml = escapeHtml(args.house_domain);
+  const brandIdHtml = args.leaf_brand_id ? escapeHtml(args.leaf_brand_id) : undefined;
+
   const subject = `[AdCP] ${args.leaf_domain} is claiming reciprocation in your brand portfolio`;
   const brandIdLine = args.leaf_brand_id
     ? `Claimed brand_id: ${args.leaf_brand_id}\n`
@@ -751,20 +813,20 @@ https://adcontextprotocol.org/docs/brand-protocol/brand-json#mutual-assertion-tr
 — AgenticAdvertising.org
 `;
 
-  const html = `<p>Hello ${args.house_domain} brand team,</p>
-<p>The brand at <code>${args.leaf_domain}</code> has published a
-<code>brand.json</code> declaring <code>house_domain: "${args.house_domain}"</code>.
+  const html = `<p>Hello ${houseHtml} brand team,</p>
+<p>The brand at <code>${leafHtml}</code> has published a
+<code>brand.json</code> declaring <code>house_domain: &quot;${houseHtml}&quot;</code>.
 For mutual-assertion trust under AdCP's distributed <code>brand.json</code>
 spec, your <code>brand_refs[]</code> must include a reciprocal entry.</p>
-${args.leaf_brand_id ? `<p>Claimed brand_id: <code>${args.leaf_brand_id}</code></p>` : ''}
+${brandIdHtml ? `<p>Claimed brand_id: <code>${brandIdHtml}</code></p>` : ''}
 <p>Until you add the entry, the leaf's identity (logos, colors, tone) is
 still trusted on its own TLS, but governance, member-feature inheritance,
 and billable inclusion are blocked.</p>
 <p>To complete reciprocation, add an entry to your House Portfolio
 (<code>/.well-known/brand.json</code>) under <code>brand_refs[]</code>:</p>
 <pre>{
-  "domain": "${args.leaf_domain}",
-  "brand_id": "${args.leaf_brand_id ?? '&lt;your-brand-id-for-this-leaf&gt;'}",
+  "domain": "${leafHtml}",
+  "brand_id": "${brandIdHtml ?? '&lt;your-brand-id-for-this-leaf&gt;'}",
   "effective_at": "${new Date().toISOString()}"
 }</pre>
 <p>This is a one-time notification per leaf+house pair (rate-limited at
@@ -796,6 +858,21 @@ export async function notifyPendingVerification(
       sent: false,
       reason: 'invalid_email',
       errors: [`house_contact_email invalid: ${args.house_contact_email}`],
+    };
+  }
+
+  // Resend misconfiguration check runs *before* the rate-limit slot claim:
+  // otherwise an operator who flips BRAND_ASSERTION_EMAIL_ENABLED without
+  // setting RESEND_API_KEY would burn the 24h cooldown on every retry. The
+  // invalid_email branch above is structurally similar — it also exits
+  // before consuming the slot.
+  if (EMAIL_ENABLED && !resend) {
+    logger.warn({ leafDomain, houseDomain }, 'brand-assertion notify: Resend not configured');
+    return {
+      ok: false,
+      sent: false,
+      reason: 'no_resend',
+      errors: ['BRAND_ASSERTION_EMAIL_ENABLED=true but RESEND_API_KEY is not set'],
     };
   }
 
@@ -837,18 +914,10 @@ export async function notifyPendingVerification(
     };
   }
 
-  if (!resend) {
-    logger.warn({ leafDomain, houseDomain }, 'brand-assertion notify: Resend not configured');
-    return {
-      ok: false,
-      sent: false,
-      reason: 'no_resend',
-      errors: ['BRAND_ASSERTION_EMAIL_ENABLED=true but RESEND_API_KEY is not set'],
-    };
-  }
-
+  // EMAIL_ENABLED && !resend is unreachable here: the precondition check
+  // above returns before the slot claim. The non-null assertion is safe.
   try {
-    const { error } = await resend.emails.send({
+    const { error } = await resend!.emails.send({
       from: FROM_EMAIL,
       to: email,
       subject: email_body.subject,
@@ -1083,6 +1152,7 @@ export function createBrandCanonicalToolHandlers(): Map<
         {
           error: 'validation_failed',
           errors: result.errors,
+          warnings: result.warnings,
           document: result.document,
           hint: 'Fix the listed errors and call publish_brand_canonical_document again.',
         },
@@ -1095,6 +1165,7 @@ export function createBrandCanonicalToolHandlers(): Map<
       {
         ok: true,
         hosting_path: result.hosting_path,
+        warnings: result.warnings,
         next_step:
           'Host the returned document at hosting_path. If house_domain is set, also call add_to_brand_refs on the house portfolio so the mutual-assertion edge resolves.',
         document: result.document,

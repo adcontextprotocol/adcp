@@ -15,13 +15,15 @@
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-// Mock safeFetch before importing the SUT so the import-time module graph
-// picks up the mock for any network calls.
+// Mock safeFetchAxiosLike before importing the SUT so the import-time module
+// graph picks up the mock for any network calls. The SUT uses
+// safeFetchAxiosLike (not bare safeFetch) so timeout + body-size cap are
+// enforced by the wrapper.
 vi.mock('../../../src/utils/url-security.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../../src/utils/url-security.js')>();
   return {
     ...actual,
-    safeFetch: vi.fn(),
+    safeFetchAxiosLike: vi.fn(),
   };
 });
 
@@ -29,8 +31,14 @@ vi.mock('../../../src/utils/url-security.js', async (importOriginal) => {
 // for rate-limit state; rebuild that surface in memory for the tests.
 const dbState = new Map<string, { last_notified_at: Date; notification_count: number }>();
 
+// Tracks the SQL the SUT actually issued, so tests can assert the
+// atomic `ON CONFLICT` shape is preserved (regression guard against
+// splitting the prod SQL into SELECT+UPDATE).
+const observedSql: string[] = [];
+
 vi.mock('../../../src/db/client.js', () => ({
   query: vi.fn(async (sql: string, params: unknown[]) => {
+    observedSql.push(sql);
     // Parse the two statements the SUT issues. This is a thin behavioural
     // stub — we only need it to round-trip the cooldown logic. The test
     // file is the only caller of this mock so we don't need to handle
@@ -63,29 +71,32 @@ vi.mock('../../../src/db/client.js', () => ({
   }),
 }));
 
-import { safeFetch } from '../../../src/utils/url-security.js';
+import { safeFetchAxiosLike } from '../../../src/utils/url-security.js';
 import {
   publishBrandCanonicalDocument,
   addToBrandRefs,
   checkMutualAssertion,
   notifyPendingVerification,
+  buildNotificationEmail,
   BRAND_CANONICAL_TOOLS,
   createBrandCanonicalToolHandlers,
 } from '../../../src/addie/mcp/brand-canonical-tools.js';
 
-const mockedSafeFetch = vi.mocked(safeFetch);
+const mockedSafeFetch = vi.mocked(safeFetchAxiosLike);
 
-function mockJsonResponse(body: unknown, status = 200): Response {
+function mockJsonResponse(body: unknown, status = 200) {
   return {
-    ok: status >= 200 && status < 300,
     status,
-    text: async () => JSON.stringify(body),
-  } as unknown as Response;
+    data: Buffer.from(JSON.stringify(body), 'utf-8'),
+    headers: { 'content-type': 'application/json' },
+    url: 'https://example.com/.well-known/brand.json',
+  };
 }
 
 beforeEach(() => {
   mockedSafeFetch.mockReset();
   dbState.clear();
+  observedSql.length = 0;
 });
 
 describe('publish_brand_canonical_document', () => {
@@ -146,7 +157,7 @@ describe('publish_brand_canonical_document', () => {
     expect(result.errors?.[0]).toMatch(/names/);
   });
 
-  it('strips disallowed top-level fields from `extra`', () => {
+  it('strips disallowed top-level fields from `extra` AND surfaces them in warnings', () => {
     const result = publishBrandCanonicalDocument({
       domain: 'example.com',
       brand_id: 'example',
@@ -162,6 +173,22 @@ describe('publish_brand_canonical_document', () => {
     expect(result.document?.house).toBeUndefined();
     expect(result.document?.brand_refs).toBeUndefined();
     expect(result.document?.tagline).toBe('From extra');
+    // The agent must observe what was dropped — silent stripping hides
+    // tool-selection mistakes (caller probably wanted add_to_brand_refs).
+    expect(result.warnings).toBeDefined();
+    expect(result.warnings?.join(' ')).toMatch(/house/);
+    expect(result.warnings?.join(' ')).toMatch(/brand_refs/);
+  });
+
+  it('omits warnings when extra is empty or only contains allowed keys', () => {
+    const result = publishBrandCanonicalDocument({
+      domain: 'example.com',
+      brand_id: 'example',
+      names: [{ en: 'Example' }],
+      extra: { tagline: 'fine' },
+    });
+    expect(result.ok).toBe(true);
+    expect(result.warnings).toBeUndefined();
   });
 
   it('normalizes domain inputs (strips protocol/path)', () => {
@@ -286,7 +313,13 @@ describe('add_to_brand_refs', () => {
     expect(result.ok).toBe(true);
     expect(mockedSafeFetch).toHaveBeenCalledWith(
       'https://nikeinc.com/.well-known/brand.json',
-      expect.objectContaining({ maxRedirects: 3 }),
+      expect.objectContaining({
+        maxRedirects: 3,
+        // Body cap + timeout: a hostile counterparty-controlled brand.json
+        // must not be able to hang the worker or stream gigabytes through.
+        timeoutMs: expect.any(Number),
+        maxResponseBytes: expect.any(Number),
+      }),
     );
   });
 });
@@ -363,7 +396,51 @@ describe('check_mutual_assertion (trust-tier resolution)', () => {
     expect(result.redirect_chain).toEqual(['dentsu.com', 'wpp.com']);
   });
 
-  it('returns unverifiable when the redirect chain exceeds 3 hops', async () => {
+  it('accepts a chain of exactly 3 redirect hops (a→b→c→d portfolio)', async () => {
+    // 3 redirects, then a portfolio. The cap counts redirect hops, not
+    // document fetches — 3 hops is the maximum allowed.
+    mockedSafeFetch
+      .mockResolvedValueOnce(mockJsonResponse(canonicalDoc({ house_domain: 'a.com' })))
+      .mockResolvedValueOnce(mockJsonResponse({ house: 'b.com' })) // hop 1: a→b
+      .mockResolvedValueOnce(mockJsonResponse({ house: 'c.com' })) // hop 2: b→c
+      .mockResolvedValueOnce(mockJsonResponse({ house: 'd.com' })) // hop 3: c→d
+      .mockResolvedValueOnce(
+        mockJsonResponse(housePortfolio({
+          house: { domain: 'd.com', name: 'D Inc.' },
+          brand_refs: [{ domain: 'converse.com', brand_id: 'converse' }],
+        })),
+      );
+
+    const result = await checkMutualAssertion('converse.com');
+    expect(result.tier).toBe('mutual');
+    expect(result.redirect_chain).toEqual(['a.com', 'b.com', 'c.com', 'd.com']);
+  });
+
+  it('rejects a chain of 4 redirect hops even when the 4th doc is a portfolio', async () => {
+    // 4 redirects, then a portfolio. Even though the terminal document is
+    // a valid portfolio, the chain exceeded the 3-hop cap and must be
+    // refused.
+    mockedSafeFetch
+      .mockResolvedValueOnce(mockJsonResponse(canonicalDoc({ house_domain: 'a.com' })))
+      .mockResolvedValueOnce(mockJsonResponse({ house: 'b.com' })) // hop 1
+      .mockResolvedValueOnce(mockJsonResponse({ house: 'c.com' })) // hop 2
+      .mockResolvedValueOnce(mockJsonResponse({ house: 'd.com' })) // hop 3
+      .mockResolvedValueOnce(mockJsonResponse({ house: 'e.com' })) // hop 4 — must reject
+      .mockResolvedValueOnce(
+        mockJsonResponse(housePortfolio({
+          house: { domain: 'e.com', name: 'E Inc.' },
+        })),
+      );
+
+    const result = await checkMutualAssertion('converse.com');
+    expect(result.tier).toBe('unverifiable');
+    expect(result.errors?.[0]).toMatch(/3-hop redirect limit/);
+  });
+
+  it('returns unverifiable when the chain is all redirects up to and past the cap', async () => {
+    // All-redirects chain (no terminal portfolio). Same outcome — cap is
+    // enforced once we've followed 3 hops and the next document is still
+    // a redirect.
     mockedSafeFetch
       .mockResolvedValueOnce(mockJsonResponse(canonicalDoc({ house_domain: 'a.com' })))
       .mockResolvedValueOnce(mockJsonResponse({ house: 'b.com' }))
@@ -378,10 +455,11 @@ describe('check_mutual_assertion (trust-tier resolution)', () => {
 
   it('returns unverifiable when the leaf fetch fails', async () => {
     mockedSafeFetch.mockResolvedValueOnce({
-      ok: false,
       status: 404,
-      text: async () => 'not found',
-    } as unknown as Response);
+      data: Buffer.from('not found', 'utf-8'),
+      headers: {},
+      url: 'https://converse.com/.well-known/brand.json',
+    });
 
     const result = await checkMutualAssertion('converse.com');
     expect(result.tier).toBe('unverifiable');
@@ -454,6 +532,66 @@ describe('notify_pending_verification (rate-limit + log-only default)', () => {
 
     expect(result.ok).toBe(false);
     expect(result.reason).toBe('invalid_email');
+    // Invalid_email must not consume the rate-limit slot — the SQL was
+    // never issued.
+    expect(observedSql).toHaveLength(0);
+  });
+
+  it('issues a single atomic INSERT … ON CONFLICT … WHERE cooldown statement', async () => {
+    // Regression guard for the race condition the SQL guards against:
+    // two concurrent notifies must not both clear the cooldown. The prod
+    // statement does check + reservation in one shot; if a future change
+    // splits this into SELECT-then-UPDATE the race reopens. Assert the
+    // statement shape directly rather than relying on a real DB.
+    await notifyPendingVerification({
+      leaf_domain: 'converse.com',
+      house_domain: 'nikeinc.com',
+      house_contact_email: 'brand@nike.com',
+    });
+
+    const insertSql = observedSql.find((s) =>
+      s.includes('INSERT INTO brand_assertion_notifications'),
+    );
+    expect(insertSql).toBeDefined();
+    expect(insertSql).toMatch(/ON CONFLICT \(leaf_domain, house_domain\)/);
+    // The WHERE clause is what makes the UPDATE no-op when the cooldown
+    // is still active — drop it and concurrent callers both reset
+    // last_notified_at.
+    expect(insertSql).toMatch(/WHERE[^;]*last_notified_at\s*<\s*\$\d+/);
+  });
+});
+
+describe('buildNotificationEmail (HTML escaping)', () => {
+  it('HTML-escapes leaf_domain and leaf_brand_id in the HTML body', () => {
+    // Inputs are normally pattern-validated upstream, but the function is
+    // exported and any future caller could forget the precondition.
+    // Escape at this layer so the contract doesn't travel with the call.
+    const email = buildNotificationEmail({
+      leaf_domain: 'evil<script>x</script>.com',
+      house_domain: 'house"injected".com',
+      house_contact_email: 'brand@example.com',
+      leaf_brand_id: 'evil"\'<x>',
+    });
+
+    // Raw injected sequences MUST NOT appear unescaped in the HTML body.
+    expect(email.html).not.toMatch(/<script>/);
+    expect(email.html).not.toContain('house"injected".com');
+    expect(email.html).not.toContain('evil"\'<x>');
+    // Escaped versions MUST be present.
+    expect(email.html).toContain('&lt;script&gt;');
+    expect(email.html).toContain('&quot;');
+  });
+
+  it('does not double-escape ampersands already present in input', () => {
+    const email = buildNotificationEmail({
+      leaf_domain: 'a&b.com',
+      house_domain: 'c.com',
+      house_contact_email: 'brand@example.com',
+    });
+    expect(email.html).toContain('a&amp;b.com');
+    // The fixed text already-encoded entities must still be present
+    // (i.e. escapeHtml didn't double-encode the static HTML).
+    expect(email.html).toContain('<code>brand.json</code>');
   });
 });
 
