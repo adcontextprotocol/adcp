@@ -698,4 +698,185 @@ describe('Per-agent REST API (/api/me/agents)', () => {
     expect(profile!.agents).toHaveLength(1);
     expect(profile!.agents[0].url).toBe('https://pub.example/mcp');
   });
+
+  // ===== URL canonicalization (issue #3573) =====
+  //
+  // The registered side now applies `canonicalizeAgentUrl` at every write
+  // boundary so the JSONB / `agent_registry_metadata` rows collapse with
+  // the canonical form the discovered (crawler) path already uses.
+  // Pins: lowercase + trailing-slash collapse; query/fragment rejected.
+
+  it('POST canonicalizes the url before persisting (lowercase + strip trailing slash)', async () => {
+    const orgId = `${TEST_PREFIX}_canon_post`;
+    const userId = `${TEST_PREFIX}_canon_post_user`;
+    await seedOrg(pool, orgId, 'individual_professional');
+    await provisionUser(userId, orgId);
+    await createProfile(orgId, 'canonpost');
+
+    (app as any).setCurrentUser(userId);
+    const res = await request(app)
+      .post('/api/me/agents')
+      .send({ url: 'HTTPS://Canon.Example/Agent/', name: 'C', type: 'sales', visibility: 'private' });
+    expect(res.status).toBe(201);
+    expect(res.body.agent.url).toBe('https://canon.example/agent');
+
+    const profile = await memberDb.getProfileByOrgId(orgId);
+    const match = profile!.agents.find((a) => a.url === 'https://canon.example/agent');
+    expect(match).toBeDefined();
+
+    const meta = await pool.query<{ agent_url: string }>(
+      `SELECT agent_url FROM agent_registry_metadata WHERE agent_url = $1`,
+      ['https://canon.example/agent'],
+    );
+    expect(meta.rowCount).toBe(1);
+
+    await pool.query('DELETE FROM agent_registry_metadata WHERE agent_url = $1', [
+      'https://canon.example/agent',
+    ]);
+  });
+
+  it('POST is idempotent across non-canonical and canonical forms (no duplicate JSONB or metadata rows)', async () => {
+    const orgId = `${TEST_PREFIX}_canon_idem`;
+    const userId = `${TEST_PREFIX}_canon_idem_user`;
+    await seedOrg(pool, orgId, 'individual_professional');
+    await provisionUser(userId, orgId);
+    await createProfile(orgId, 'canonidem');
+
+    (app as any).setCurrentUser(userId);
+    const first = await request(app)
+      .post('/api/me/agents')
+      .send({ url: 'HTTPS://Idem.Example/MCP/', name: 'First', type: 'sales', visibility: 'private' });
+    expect(first.status).toBe(201);
+    expect(first.body.agent.url).toBe('https://idem.example/mcp');
+
+    const second = await request(app)
+      .post('/api/me/agents')
+      .send({ url: 'https://idem.example/mcp', name: 'Second', type: 'sales', visibility: 'private' });
+    expect(second.status).toBe(200);
+    expect(second.body.agent.name).toBe('Second');
+
+    const profile = await memberDb.getProfileByOrgId(orgId);
+    const matching = profile!.agents.filter((a) => a.url === 'https://idem.example/mcp');
+    expect(matching).toHaveLength(1);
+
+    const meta = await pool.query<{ agent_url: string }>(
+      `SELECT agent_url FROM agent_registry_metadata WHERE agent_url IN ($1, $2)`,
+      ['https://idem.example/mcp', 'HTTPS://Idem.Example/MCP/'],
+    );
+    expect(meta.rowCount).toBe(1);
+    expect(meta.rows[0].agent_url).toBe('https://idem.example/mcp');
+
+    await pool.query('DELETE FROM agent_registry_metadata WHERE agent_url = $1', [
+      'https://idem.example/mcp',
+    ]);
+  });
+
+  it('PATCH matches the canonical row when the path is non-canonical', async () => {
+    const orgId = `${TEST_PREFIX}_canon_patch`;
+    const userId = `${TEST_PREFIX}_canon_patch_user`;
+    await seedOrg(pool, orgId, 'individual_professional');
+    await provisionUser(userId, orgId);
+    await createProfile(orgId, 'canonpatch');
+
+    (app as any).setCurrentUser(userId);
+    // Seed a canonical row first via POST.
+    await request(app)
+      .post('/api/me/agents')
+      .send({ url: 'https://patch.example/mcp', name: 'P', type: 'sales', visibility: 'private' });
+
+    // PATCH with a non-canonical url-encoded path — must collapse onto the canonical row.
+    const noncanonical = encodeURIComponent('HTTPS://Patch.Example/MCP/');
+    const res = await request(app)
+      .patch(`/api/me/agents/${noncanonical}`)
+      .send({ name: 'Renamed' });
+    expect(res.status).toBe(200);
+    expect(res.body.agent.name).toBe('Renamed');
+    expect(res.body.agent.url).toBe('https://patch.example/mcp');
+
+    await pool.query('DELETE FROM agent_registry_metadata WHERE agent_url = $1', [
+      'https://patch.example/mcp',
+    ]);
+  });
+
+  it('PATCH allows body.url to differ from the path only in case/trailing slash', async () => {
+    const orgId = `${TEST_PREFIX}_canon_patch_body`;
+    const userId = `${TEST_PREFIX}_canon_patch_body_user`;
+    await seedOrg(pool, orgId, 'individual_professional');
+    await provisionUser(userId, orgId);
+    await createProfile(orgId, 'canonpatchbody');
+
+    (app as any).setCurrentUser(userId);
+    await request(app)
+      .post('/api/me/agents')
+      .send({ url: 'https://patchbody.example/mcp', name: 'P', type: 'sales', visibility: 'private' });
+
+    const path = encodeURIComponent('https://patchbody.example/mcp');
+    const res = await request(app)
+      .patch(`/api/me/agents/${path}`)
+      .send({ name: 'OK', url: 'HTTPS://PatchBody.Example/MCP/' });
+    expect(res.status).toBe(200);
+
+    await pool.query('DELETE FROM agent_registry_metadata WHERE agent_url = $1', [
+      'https://patchbody.example/mcp',
+    ]);
+  });
+
+  it('DELETE matches the canonical row when the path is non-canonical', async () => {
+    const orgId = `${TEST_PREFIX}_canon_delete`;
+    const userId = `${TEST_PREFIX}_canon_delete_user`;
+    await seedOrg(pool, orgId, 'individual_professional');
+    await provisionUser(userId, orgId);
+    await createProfile(orgId, 'canondelete');
+
+    (app as any).setCurrentUser(userId);
+    await request(app)
+      .post('/api/me/agents')
+      .send({ url: 'https://del.example/mcp', name: 'D', type: 'sales', visibility: 'private' });
+
+    const noncanonical = encodeURIComponent('HTTPS://Del.Example/MCP/');
+    const res = await request(app).delete(`/api/me/agents/${noncanonical}`);
+    expect(res.status).toBe(204);
+
+    const profile = await memberDb.getProfileByOrgId(orgId);
+    expect(profile!.agents.find((a) => a.url === 'https://del.example/mcp')).toBeUndefined();
+
+    await pool.query('DELETE FROM agent_registry_metadata WHERE agent_url = $1', [
+      'https://del.example/mcp',
+    ]);
+  });
+
+  it('POST returns 400 when url contains a query string or fragment', async () => {
+    const orgId = `${TEST_PREFIX}_canon_qf`;
+    const userId = `${TEST_PREFIX}_canon_qf_user`;
+    await seedOrg(pool, orgId, 'individual_professional');
+    await provisionUser(userId, orgId);
+    await createProfile(orgId, 'canonqf');
+
+    (app as any).setCurrentUser(userId);
+    const withQuery = await request(app)
+      .post('/api/me/agents')
+      .send({ url: 'https://q.example/mcp?v=1', type: 'sales' });
+    expect(withQuery.status).toBe(400);
+
+    const withFrag = await request(app)
+      .post('/api/me/agents')
+      .send({ url: 'https://q.example/mcp#frag', type: 'sales' });
+    expect(withFrag.status).toBe(400);
+  });
+
+  it('POST returns 400 when url contains an embedded wildcard', async () => {
+    const orgId = `${TEST_PREFIX}_canon_wild`;
+    const userId = `${TEST_PREFIX}_canon_wild_user`;
+    await seedOrg(pool, orgId, 'individual_professional');
+    await provisionUser(userId, orgId);
+    await createProfile(orgId, 'canonwild');
+
+    (app as any).setCurrentUser(userId);
+    // `*` in the path parses cleanly via `new URL` but is rejected by
+    // canonicalizeAgentUrl per migration 440's CHECK constraint.
+    const res = await request(app)
+      .post('/api/me/agents')
+      .send({ url: 'https://wild.example/*/mcp', type: 'sales' });
+    expect(res.status).toBe(400);
+  });
 });

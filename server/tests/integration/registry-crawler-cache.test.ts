@@ -820,4 +820,107 @@ describe('Registry crawler cache (PR 2 of #3177)', () => {
       expect(remaining.rows[0].source).toBe('agent_claim');
     });
   });
+
+  // ===== Cross-seam canonicalization pins (issue #3573) =====
+  //
+  // The registered side (member_profiles.agents) and the discovered side
+  // (agent_publisher_authorizations) must agree on canonical form so a
+  // member badge enriches a discovered authorization that differs only in
+  // case / trailing slash. Scheme mismatch intentionally does NOT collapse.
+  describe('cross-seam canonicalization (issue #3573)', () => {
+    const XSEAM_DOMAIN = 'xseam.crawler-cache.example.com';
+    const XSEAM_ORG = 'org_xseam_3573';
+    const XSEAM_SLUG = 'xseam-3573';
+
+    beforeEach(async () => {
+      await pool.query(
+        `DELETE FROM agent_publisher_authorizations WHERE publisher_domain = $1`,
+        [XSEAM_DOMAIN],
+      );
+      await pool.query(
+        `DELETE FROM member_profiles WHERE workos_organization_id = $1`,
+        [XSEAM_ORG],
+      );
+      await pool.query(
+        `DELETE FROM organizations WHERE workos_organization_id = $1`,
+        [XSEAM_ORG],
+      );
+      await pool.query(
+        `INSERT INTO organizations (workos_organization_id, name, is_personal, created_at, updated_at)
+         VALUES ($1, $2, true, NOW(), NOW())`,
+        [XSEAM_ORG, 'XSeam Test Org'],
+      );
+    });
+
+    afterAll(async () => {
+      await pool.query(
+        `DELETE FROM agent_publisher_authorizations WHERE publisher_domain = $1`,
+        [XSEAM_DOMAIN],
+      );
+      await pool.query(
+        `DELETE FROM member_profiles WHERE workos_organization_id = $1`,
+        [XSEAM_ORG],
+      );
+      await pool.query(
+        `DELETE FROM organizations WHERE workos_organization_id = $1`,
+        [XSEAM_ORG],
+      );
+    });
+
+    it('Pin 1: registered https://agent.example/ collapses with discovered https://agent.example (member badge enriches)', async () => {
+      // Member registered the URL with a trailing slash; pretend a legacy
+      // row landed in JSONB before the write-side canonicalization.
+      await pool.query(
+        `INSERT INTO member_profiles (workos_organization_id, display_name, slug, is_public, agents)
+         VALUES ($1, $2, $3, false, $4::jsonb)`,
+        [
+          XSEAM_ORG,
+          'XSeam Display',
+          XSEAM_SLUG,
+          JSON.stringify([{ url: 'https://agent.example/', visibility: 'public', type: 'sales' }]),
+        ],
+      );
+      // Crawler discovered the URL without a trailing slash.
+      await pool.query(
+        `INSERT INTO agent_publisher_authorizations (agent_url, publisher_domain, source)
+         VALUES ($1, $2, 'adagents_json')`,
+        ['https://agent.example', XSEAM_DOMAIN],
+      );
+
+      const result = await federatedIndex.lookupDomain(XSEAM_DOMAIN);
+      expect(result.authorized_agents).toHaveLength(1);
+      expect(result.authorized_agents[0].url).toBe('https://agent.example');
+      // Member enrichment must collapse onto the discovered authorization
+      // despite the trailing-slash mismatch.
+      expect(result.authorized_agents[0].member).toBeDefined();
+      expect(result.authorized_agents[0].member?.slug).toBe(XSEAM_SLUG);
+    });
+
+    it('Pin 2: scheme mismatch (http vs https) intentionally does NOT collapse', async () => {
+      // Registered as http; discovered as https. Different security
+      // posture — the issue explicitly calls this out as non-collapse.
+      await pool.query(
+        `INSERT INTO member_profiles (workos_organization_id, display_name, slug, is_public, agents)
+         VALUES ($1, $2, $3, false, $4::jsonb)`,
+        [
+          XSEAM_ORG,
+          'XSeam Display',
+          XSEAM_SLUG,
+          JSON.stringify([{ url: 'http://agent.example', visibility: 'public', type: 'sales' }]),
+        ],
+      );
+      await pool.query(
+        `INSERT INTO agent_publisher_authorizations (agent_url, publisher_domain, source)
+         VALUES ($1, $2, 'adagents_json')`,
+        ['https://agent.example', XSEAM_DOMAIN],
+      );
+
+      const result = await federatedIndex.lookupDomain(XSEAM_DOMAIN);
+      expect(result.authorized_agents).toHaveLength(1);
+      expect(result.authorized_agents[0].url).toBe('https://agent.example');
+      // Member badge MUST NOT enrich — the registered http and discovered
+      // https are different agents per the issue.
+      expect(result.authorized_agents[0].member).toBeUndefined();
+    });
+  });
 });

@@ -108,6 +108,7 @@ import { issueDomainChallenge, verifyDomainChallenge } from '../../services/bran
 import { getWorkos } from '../../auth/workos-client.js';
 import { resolveUserRole } from '../../utils/resolve-user-role.js';
 import { recordAgentTestRun } from '../../db/agent-test-db.js';
+import { canonicalizeAgentUrl } from '../../db/publisher-db.js';
 
 const memberDb = new MemberDatabase();
 const agentContextDb = new AgentContextDatabase();
@@ -5681,15 +5682,29 @@ export function createMemberToolHandlers(
       return 'This feature requires an organization. Visit https://agenticadvertising.org/onboarding to create one (free, takes 2 minutes). You can still use the public test agent directly via `evaluate_agent_quality` without an organization.';
     }
 
-    const agentUrl = input.agent_url as string;
+    const rawAgentUrl = input.agent_url as string;
     try {
-      const parsed = new URL(agentUrl);
+      const parsed = new URL(rawAgentUrl);
       if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
         return 'Agent URL must use https:// or http:// protocol.';
       }
     } catch {
       return 'Invalid agent URL format. Please provide a full URL like https://your-agent.example.com';
     }
+    // Canonicalize so this writes the same row as the REST POST /api/me/agents
+    // path (issue #3573). Query strings and fragments are rejected at the
+    // boundary; canonicalizeAgentUrl itself preserves them.
+    if (rawAgentUrl.includes('?') || rawAgentUrl.includes('#')) {
+      return 'Agent URL must not contain query strings or fragments.';
+    }
+    const canonical = canonicalizeAgentUrl(rawAgentUrl);
+    if (!canonical) {
+      return 'Invalid agent URL format. Please provide a full URL like https://your-agent.example.com';
+    }
+    // Bind to a typed local so closures (ensureAgentInProfile) see `string`
+    // rather than `string | null` — TS can't carry the narrowing across the
+    // function boundary.
+    const agentUrl: string = canonical;
     const agentName = input.agent_name as string | undefined;
     const authToken = input.auth_token as string | undefined;
     if (authToken !== undefined) {
@@ -5765,7 +5780,9 @@ export function createMemberToolHandlers(
         }
 
         const agents = profile.agents || [];
-        const existing = agents.find((a: any) => a.url === agentUrl);
+        // Match in canonical form so a legacy non-canonical row gets
+        // updated in place rather than duplicated (issue #3573).
+        const existing = agents.find((a: any) => (canonicalizeAgentUrl(a.url) ?? a.url) === agentUrl);
         if (!existing) {
           // Default to members_only, not public. The public directory
           // requires an API-access tier (Professional+); defaulting to
@@ -5975,7 +5992,11 @@ export function createMemberToolHandlers(
       return 'This feature requires an organization. Visit https://agenticadvertising.org/onboarding to create one (free, takes 2 minutes). You can still use the public test agent directly via `evaluate_agent_quality` without an organization.';
     }
 
-    const agentUrl = input.agent_url as string;
+    const rawAgentUrl = input.agent_url as string;
+    // Canonicalize so this matches whatever shape save_agent / POST
+    // /api/me/agents wrote (issue #3573). A fallback to the raw URL keeps
+    // legacy non-canonical rows reachable for removal.
+    const agentUrl = canonicalizeAgentUrl(rawAgentUrl) ?? rawAgentUrl;
 
     type ProfileRemoveStatus =
       | { ok: true; removedFromProfile: boolean; agentName: string | null }
@@ -5992,12 +6013,14 @@ export function createMemberToolHandlers(
         const profile = await memberDb.getProfileByOrgId(removeOrgId);
         if (!profile) return { ok: true, removedFromProfile: false, agentName: null };
         const agents = profile.agents || [];
-        const existing = agents.find((a: any) => a.url === agentUrl);
+        // Match existing rows in canonical form so a legacy non-canonical
+        // entry is reachable for removal (issue #3573).
+        const existing = agents.find((a: any) => (canonicalizeAgentUrl(a.url) ?? a.url) === agentUrl);
         if (!existing) return { ok: true, removedFromProfile: false, agentName: null };
         if ((existing as any).visibility === 'public') {
           return { ok: false, reason: 'public' };
         }
-        const next = agents.filter((a: any) => a.url !== agentUrl);
+        const next = agents.filter((a: any) => (canonicalizeAgentUrl(a.url) ?? a.url) !== agentUrl);
         await memberDb.updateProfile(profile.id, { agents: next });
         return { ok: true, removedFromProfile: true, agentName: (existing as any).name ?? null };
       } catch (err) {

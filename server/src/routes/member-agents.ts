@@ -33,6 +33,7 @@ import {
 import { resolvePrimaryOrganization } from '../db/users-db.js';
 import { resolveUserOrgMembership } from '../utils/resolve-user-org-membership.js';
 import { getPool } from '../db/client.js';
+import { canonicalizeAgentUrl } from '../db/publisher-db.js';
 import type { AgentConfig } from '../types.js';
 import { isValidAgentType } from '../types.js';
 import { resolveAgentTypes, logResolvedTypeChanges } from './member-profiles.js';
@@ -319,8 +320,12 @@ export function createMemberAgentsRouter(config: MemberAgentsRouterConfig): Rout
       // lifecycle_stage / check_interval_hours / opt-out the heartbeat or
       // dashboard wrote earlier; we only seed the row when it doesn't
       // exist. Defaults inherit from the column DDL.
+      // Canonicalize before seeding the metadata table. Handlers above
+      // already canonicalize, but this keeps any future write site honest
+      // and matches the canonical-form invariant the rest of the registry
+      // relies on (issue #3573).
       const urls = typed
-        .map(a => (a && typeof a.url === 'string' ? a.url : null))
+        .map(a => (a && typeof a.url === 'string' ? canonicalizeAgentUrl(a.url) : null))
         .filter((u): u is string => u !== null);
       if (urls.length > 0) {
         await client.query(
@@ -405,6 +410,16 @@ export function createMemberAgentsRouter(config: MemberAgentsRouterConfig): Rout
       if (!isParseableUrl(body.url)) {
         return res.status(400).json({ error: 'url must be a valid URL' });
       }
+      // Query strings and fragments have no place in agent identity (issue
+      // #3573). Reject at the boundary — `canonicalizeAgentUrl` itself
+      // preserves them verbatim, so the check belongs here.
+      if (body.url.includes('?') || body.url.includes('#')) {
+        return res.status(400).json({ error: 'url must not contain query strings or fragments' });
+      }
+      const canonicalUrl = canonicalizeAgentUrl(body.url);
+      if (!canonicalUrl) {
+        return res.status(400).json({ error: 'url is not a valid agent URL' });
+      }
       // `type` is required from the caller — never inferred. 'unknown' is
       // reserved for server-side smuggle protection (resolveAgentTypes), not
       // for client input. The caller MUST declare what kind of agent this is.
@@ -414,7 +429,10 @@ export function createMemberAgentsRouter(config: MemberAgentsRouterConfig): Rout
           message: 'Specify one of: brand, rights, measurement, governance, creative, sales, buying, signals.',
         });
       }
-      const targetUrl = body.url;
+      // Persist and compare in canonical form so the registered side
+      // collapses with the discovered side (issue #3573).
+      body.url = canonicalUrl;
+      const targetUrl = canonicalUrl;
 
       // Auto-bootstrap a private member profile if the caller's org doesn't
       // have one yet. Reuses `ensureMemberProfileExists` (the same helper
@@ -440,7 +458,9 @@ export function createMemberAgentsRouter(config: MemberAgentsRouterConfig): Rout
       }
 
       const result = await applyMemberAgentMutation(orgId, (existing) => {
-        const idx = existing.findIndex((a) => a.url === targetUrl);
+        // Match existing rows in canonical form so a legacy non-canonical
+        // entry (pre-#3573) gets upgraded in place rather than duplicated.
+        const idx = existing.findIndex((a) => (canonicalizeAgentUrl(a.url) ?? a.url) === targetUrl);
         const isUpdate = idx !== -1;
         const next = isUpdate
           ? existing.map((a, i) => (i === idx ? { ...a, ...body } : a))
@@ -470,16 +490,26 @@ export function createMemberAgentsRouter(config: MemberAgentsRouterConfig): Rout
       if (!orgId) return;
 
       // Express already URL-decodes path params; do not double-decode.
-      const targetUrl = req.params.url;
+      // Canonicalize so a member submitting `HTTPS://Example.com/` matches
+      // the row stored canonically (issue #3573).
+      const targetUrl = canonicalizeAgentUrl(req.params.url);
+      if (!targetUrl) {
+        return res.status(400).json({ error: 'url is not a valid agent URL' });
+      }
       const patch = (req.body ?? {}) as Partial<AgentConfig>;
 
       // Refuse to silently drop a `url` rename. Tell the caller; never guess.
-      if (typeof patch.url === 'string' && patch.url !== targetUrl) {
-        return res.status(400).json({
-          error: 'url_immutable',
-          message:
-            'url cannot be changed via PATCH. DELETE the old entry and POST the new url.',
-        });
+      // Compare in canonical form so `https://Example.com/` in the path and
+      // `https://example.com` in the body aren't flagged as a rename.
+      if (typeof patch.url === 'string') {
+        const patchCanonical = canonicalizeAgentUrl(patch.url);
+        if (patchCanonical !== targetUrl) {
+          return res.status(400).json({
+            error: 'url_immutable',
+            message:
+              'url cannot be changed via PATCH. DELETE the old entry and POST the new url.',
+          });
+        }
       }
       // If `type` is being patched, it must be a valid declared type. 'unknown'
       // is server-side-only. Omitting `type` from the patch is fine — the
@@ -494,7 +524,8 @@ export function createMemberAgentsRouter(config: MemberAgentsRouterConfig): Rout
       }
 
       const result = await applyMemberAgentMutation(orgId, (existing) => {
-        const idx = existing.findIndex((a) => a.url === targetUrl);
+        // Canonical-form match so a legacy non-canonical row is still found.
+        const idx = existing.findIndex((a) => (canonicalizeAgentUrl(a.url) ?? a.url) === targetUrl);
         if (idx === -1) {
           return {
             kind: 'reject' as const,
@@ -521,10 +552,15 @@ export function createMemberAgentsRouter(config: MemberAgentsRouterConfig): Rout
       if (!orgId) return;
 
       // Express already URL-decodes path params; do not double-decode.
-      const targetUrl = req.params.url;
+      // Canonicalize so non-canonical url-encoded paths still match the
+      // canonical row stored on disk (issue #3573).
+      const targetUrl = canonicalizeAgentUrl(req.params.url);
+      if (!targetUrl) {
+        return res.status(400).json({ error: 'url is not a valid agent URL' });
+      }
 
       const result = await applyMemberAgentMutation(orgId, (existing) => {
-        const idx = existing.findIndex((a) => a.url === targetUrl);
+        const idx = existing.findIndex((a) => (canonicalizeAgentUrl(a.url) ?? a.url) === targetUrl);
         if (idx === -1) {
           return {
             kind: 'reject' as const,
@@ -551,7 +587,7 @@ export function createMemberAgentsRouter(config: MemberAgentsRouterConfig): Rout
         }
         return {
           kind: 'commit' as const,
-          next: existing.filter((a) => a.url !== targetUrl),
+          next: existing.filter((a) => (canonicalizeAgentUrl(a.url) ?? a.url) !== targetUrl),
           status: 204,
         };
       });
