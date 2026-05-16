@@ -60,13 +60,18 @@ When push and snapshot disagree, the snapshot wins. A duplicate webhook fire (sa
 
 This is why receivers MUST verify against the snapshot before taking irreversible action on a push.
 
-### 4. Replay = re-read the snapshot (for state events)
+### 4. Either path is complete
 
-For **state-shaped events** (impairment, lifecycle, status changes), if a buyer's webhook receiver was offline and missed a fire, the recovery path is to call the relevant `get_*` task and read current state. The snapshot fully reconstructs.
+A buyer using webhooks reliably gets all the data. A buyer using only GET (no webhooks) gets the same data. The two paths are at parity in content and granularity; the buyer chooses based on latency, ergonomics, and receiver infrastructure.
 
-For **data-bearing events** (delivery report fires, individual log events), this rule is **weaker today**. The snapshot reflects the cumulative integral (`get_media_buy_delivery` aggregates) but may not reconstruct the per-fire differential. Buyers SHOULD treat data-bearing webhook channels as primary delivery and SHOULD NOT assume snapshot recovery is lossless for them. The bounded event-history surface (`webhook_activity[]`, proposed in [#4278](https://github.com/adcontextprotocol/adcp/issues/4278)) is the path to making this rule hold universally — when it lands, the snapshot subsumes the log for data events too.
+This rule has two halves:
 
-This honesty matters. Pretending Rule 4 holds for every push channel today would invite buyers to build recovery paths that silently lose data. The rule is the **destination**, not a uniform present-day claim.
+- **For state events** (impairment, lifecycle, status changes): GET returns current state. A buyer who missed a webhook calls `get_*` and reads the snapshot — recovery is lossless. ✅ Holds today.
+- **For data-bearing events** (delivery report fires, individual log events): GET MUST support the same windowing and granularity the webhook delivers. A seller that emits hourly `reporting_webhook` fires MUST support hourly windowed pulls on `get_media_buy_delivery` so a buyer can reconstruct identical data by polling. ⚠️ Partial today — `get_media_buy_delivery` supports date-range pulls and daily breakdowns, but not arbitrary per-window granularity matching webhook frequency. [#4590](https://github.com/adcontextprotocol/adcp/issues/4590) closes this for delivery reporting in 3.1.
+
+Until #4590 lands, sellers offering high-frequency reporting webhooks (hourly) are the one channel where missing a webhook can mean losing per-window detail until the next aggregate window closes. Buyers on those sellers SHOULD treat the webhook as primary; buyers polling daily-or-coarser are unaffected.
+
+This rule is **load-bearing for the protocol**. Without it, AdCP becomes pub/sub for some channels and REST for others, and buyers building against the contract have to know which model applies where. With it, both paths are equivalent — a buyer chooses webhooks for latency or polling for simplicity, and gets the same data either way.
 
 ### 5. Push events and log entries share an id space
 
@@ -81,7 +86,9 @@ A webhook delivery surfaced via `webhook_activity[]` references the same `notifi
 
 ## Where the surface doesn't yet follow this
 
-- **Delivery reports** (`scheduled` / `final` / `delayed` / `adjusted`) predate this contract. Their `notification_id` shape is defined per delivery; the snapshot half is `get_media_buy_delivery`, which returns the current state of aggregates but does not surface every past fire as a discrete row. The webhook delivery visibility surface (proposed in [#4278](https://github.com/adcontextprotocol/adcp/issues/4278)) closes this gap by exposing recent fires via `webhook_activity[]`.
+- **Delivery reports** (`scheduled` / `final` / `delayed` / `adjusted`) predate this contract. Two related gaps close in 3.1:
+  - **Per-window data parity** — `get_media_buy_delivery` today returns aggregates and daily breakdowns but cannot reconstruct the per-window slices (hourly, monthly) that `reporting_webhook` delivers. [#4590](https://github.com/adcontextprotocol/adcp/issues/4590) adds windowed pulls so the GET path matches the webhook payload at the same granularity.
+  - **Per-fire transport log** — even with per-window parity, buyers debugging webhook delivery want to see which fires hit their endpoint and when. The `webhook_activity[]` surface on `get_media_buys` ([#4278](https://github.com/adcontextprotocol/adcp/issues/4278)) closes this for transport-layer observability.
 - **Resource lifecycle webhooks beyond media-buy scope** (creative state changes, audience suspensions outside a buy's scope) are in progress under the creative-lifecycle webhooks RFC ([#2261](https://github.com/adcontextprotocol/adcp/issues/2261)). Until those land, the snapshot half (a fresh `list_creatives` or `sync_audiences` call) is the only reliable signal for changes to resources not currently referenced by an active buy.
 
 ## When you'd be right to push back

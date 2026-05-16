@@ -532,13 +532,13 @@ Sellers MAY declare a shorter coalescence window via `get_agent_capabilities` fo
 
 ### Replay and recovery
 
-If a buyer's receiver was offline and missed a fire, recovery is **read the snapshot**:
+If a buyer's receiver was offline and missed a fire, recovery is **read the snapshot**. Two paths exist for every persistent channel and they're at parity in content:
 
-- Missed `impairment` event → call `get_media_buys` and read `impairments[]`.
-- Missed delivery report fire → call `get_media_buy_delivery` and read aggregates.
+- Missed `impairment` event → call `get_media_buys` and read `impairments[]` (full state recovery).
+- Missed delivery report fire → call `get_media_buy_delivery` for the window in question. Once [#4590](https://github.com/adcontextprotocol/adcp/issues/4590) lands, the pull returns the same per-window slices the webhook delivered; until then, the pull returns date-range aggregates and daily breakdowns but cannot reconstruct hourly fires.
 - Missed any other state-shaped event → call the corresponding `get_*` task.
 
-AdCP does not commit to an event-replay primitive in v1. The webhook delivery visibility surface (`webhook_activity[]` on `get_media_buys`, proposed in [#4278](https://github.com/adcontextprotocol/adcp/issues/4278)) exposes recent fires within a retention window for debugging; buyers MUST NOT rely on it for state reconciliation. That's what the snapshot is for.
+AdCP does not commit to an event-replay primitive at the transport layer. The webhook delivery visibility surface (`webhook_activity[]` on `get_media_buys`, proposed in [#4278](https://github.com/adcontextprotocol/adcp/issues/4278)) exposes recent fires within a retention window for **debugging** — buyers use it to verify that the seller fired and what HTTP status the receiver returned. It is not a data recovery channel; that's what the snapshot's per-window pull (#4590) is for.
 
 ### Mutability and rotation
 
