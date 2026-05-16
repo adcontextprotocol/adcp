@@ -198,22 +198,51 @@ Queue position, internal ticket state, and team routing are NEVER exposed — no
 
 ## Trust model
 
-The agent's response is **authoritative**: signed under the brand's `adcp_use: "response-signing"` JWK (matching the AdCP webhook-signing convention — distinct from `request-signing` per the [keys-per-purpose](https://datatracker.ietf.org/doc/html/rfc9421) requirement). Consumers verify the signature against the brand's published JWKS before extending trust.
+The agent's response is signed under the brand's `adcp_use: "response-signing"` JWK (matching the AdCP webhook-signing convention — distinct from `request-signing` per the [keys-per-purpose](https://datatracker.ietf.org/doc/html/rfc9421) requirement). Consumers verify the signature against the brand's published JWKS before consuming the answer.
 
-**Normative conflict resolution.** When agent and crawl disagree:
+**The trust model is asymmetric by direction.** A unilateral signed answer is authoritative on the rejection side but not on the assertion side, because unilateral assertion is exactly the problem mutual assertion exists to solve. Without this asymmetry, a malicious or mistaken house could claim subsidiaries (or properties, or trademarks) it doesn't own and have consumers extend trust on the strength of the signature alone.
 
-| Agent says | Crawl observes | Consumer treats as |
+### Rejection direction: agent wins unilaterally
+
+When the agent signs `disputed` or `not_ours`, the brand has standing to refuse association regardless of what any other party publishes. The worst case is a brand denying a relationship it actually has — that's the brand's prerogative.
+
+| Agent says | Consumer treats as |
+|---|---|
+| `disputed` | The brand has spoken. Treat the underlying claim (leaf's `house_domain`, third party's `brand_refs[]`, etc.) as rejected. UI: "Brand X says this is not theirs." |
+| `not_ours` | The brand affirms no relationship. Treat any countervailing claim as one-sided unverified metadata. UI surfaces the rejection. |
+
+These responses override any leaf-side `house_domain` declaration. A leaf publisher whose claim is rejected has **no protocol-level recourse** beyond updating or removing its own `house_domain`.
+
+### Assertion direction: mutual assertion still required
+
+When the agent signs `owned`, `pending_review`, or `transferring`, the answer is informative but NOT trust-extending on its own. Consumers MUST still verify the leaf reciprocates via crawl (or via the leaf's own brand-agent, if one is published) before extending relationship trust. The agent's value here is:
+
+- **Real-time confirmation** that a known mutual edge is still current (faster than crawl TTL).
+- **Richer state surface** (`pending_review` and `transferring` express states that crawl can't).
+- **Confirmation of agent identity** for the consumer (signed by the named house's JWK).
+
+| Agent says | Crawl reciprocation (leaf's `house_domain` points back at this house) | Consumer treats as |
 |---|---|---|
-| `owned` | Mutual or leaf-only | Trusted edge. Governance propagation: yes. |
-| `pending_review` | Leaf-only (parent silent) | Trusted leaf identity; relationship trust withheld. When the response's `expected_resolution_window_days` is exceeded without transition, consumer SHOULD treat as if `unknown` returned and fall back to crawl-based inference. |
-| `transferring` | Any | Trusted but in-flight; consumers MAY treat as `owned` for stability and SHOULD surface the transition in UI. |
-| `disputed` | Leaf-only or mutual | The brand has spoken. **Leaf is treated as having a rejected parent claim.** UI: "Brand X says this is not theirs." |
-| `not_ours` | Leaf-only or mutual | The brand affirms no relationship. **Leaf treated as standalone with a disputed parent claim, regardless of leaf's `house_domain` declaration.** UI surfaces the rejection. |
+| `owned` | Yes (mutual) | **Trusted edge.** Governance propagation: yes. |
+| `owned` | No (leaf silent or claims a different house) | **Unilateral assertion — not trusted.** UI: "Brand X claims this; the brand itself does not (yet) reciprocate." Equivalent to a crawled `brand_refs[]` entry with no leaf reciprocation. |
+| `pending_review` | No (parent → leaf claim acknowledged; leaf may or may not reciprocate yet) | Trusted leaf identity (TLS); relationship trust withheld. When `expected_resolution_window_days` elapses without transition, treat as `unknown` and fall back to crawl. |
+| `transferring` | Yes or in-flight | Trusted but in-flight; consumers MAY treat as `owned` for stability and SHOULD surface the transition in UI. |
 | `unknown` | Any | Fall back to crawl-based mutual-assertion inference. |
 
-**When the agent answers, the agent wins.** This is normative, not advisory. The crawl path remains the fallback only when the agent is unreachable, returns `unknown`, or doesn't implement the task.
+For `verify_property` and `verify_trademark`, the same direction-asymmetric rule applies. A brand-agent's `owned` claim over a property or trademark is informational unless backed by mutual assertion in the appropriate surface: for properties, the property's own brand.json (via reverse lookup of the registered domain) or `properties[]` listing on the claimed-owning brand's brand.json plus the property's own publishing; for trademarks, the public registry record. The agent surfaces nuanced licensing state (`licensed_in` / `licensed_out`) and rejection that crawls can't, but the underlying "does the brand actually own this" check is unchanged.
 
-A leaf publisher whose `house_domain` claim is rejected by the named house's agent (`disputed` or `not_ours`) has **no protocol-level recourse** to override the rejection. The leaf MAY update its `house_domain` (or remove it for standalone status) and re-publish; the brand-side response will update on the agent's next refresh. UI guidance for rendering this state on consumer surfaces is a [follow-up](https://github.com/adcontextprotocol/adcp/issues) (tracked separately).
+### The malicious-house scenario
+
+Concretely: if Nike's brand-agent answers `owned` for `adidas.com`, the consumer:
+
+1. Verifies Nike's signature.
+2. Crawls `adidas.com/.well-known/brand.json` and reads its `house_domain` (or its own brand-agent's `verify_subsidiary_claim` response, with role-swap).
+3. If Adidas reciprocates Nike → trusted edge. (This won't happen.)
+4. If Adidas claims a different house, or no house, or rejects via its own agent → Nike's claim is unilateral, NOT trusted.
+
+The same logic protects against the reverse: a third party can't unilaterally claim Nike as their parent without Nike's agent (or brand_refs[]) reciprocating.
+
+**Mutual assertion remains the trust floor for positive trust extension.** The agent path is a richer, faster overlay — it doesn't replace the floor.
 
 ## Caching (normative)
 
@@ -328,7 +357,7 @@ The following were open during draft and are now resolved as the spec contract:
 
 1. **`verify_property.use_case` field.** Kept. Mirrors the `get_brand_identity` `use_case` precedent.
 2. **`pending_review` queue position vs aggregate window.** Aggregate only (`expected_resolution_window_days`). Queue position leaks operational state. Additionally: `pending_review` MUST come with the window AND the agent MUST transition or flip to `unknown` past the window. Enforcement is agent-side, not spec-level; the safety net is consumer-side fallback to crawl on stale `pending_review` responses. See [`pending_review` aging and the crawl safety net](#pending_review-aging-and-the-crawl-safety-net).
-3. **Agent says `not_ours` while leaf publishes `house_domain` claim.** Normative: agent wins. See [Trust model § conflict resolution](#trust-model). UI guidance for leaf's recourse is a follow-up issue.
+3. **Agent says `not_ours` while leaf publishes `house_domain` claim.** Normative: agent wins on the **rejection direction** — a brand has standing to refuse association unilaterally. On the **assertion direction**, the agent's `owned` does NOT override the absence of leaf reciprocation; mutual assertion remains required for positive trust extension. This asymmetry prevents a malicious or mistaken house from claiming subsidiaries it doesn't own. See [Trust model](#trust-model) for the full table. UI guidance for the rejected leaf's recourse is a follow-up issue.
 4. **Rate-limiting.** Agent's call; spec sets the expectation of per-`{caller, tool, target}`. Agents SHOULD return `Retry-After` on limit and SHOULD prefer cached-prior-answer over `RATE_LIMITED` error.
 5. **Bulk variants** (`verify_subsidiary_claims`, plural). Deferred. Filed as follow-up — crawlers will demand it within 6 months; v1 ships single-target shape.
 

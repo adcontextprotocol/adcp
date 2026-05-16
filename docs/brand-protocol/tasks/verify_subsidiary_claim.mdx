@@ -123,20 +123,24 @@ Queue position, internal ticket state, and team routing are never exposed.
 
 ## Trust model
 
-The agent's response is **authoritative** when signed under the brand's `adcp_use: "response-signing"` JWK (the AdCP webhook-signing convention applies to response-side signing too; the key purpose is distinct from `request-signing`). Consumers SHOULD prefer the agent's response over crawl-based mutual-assertion inference when the brand-agent advertises `verify_subsidiary_claim` in its `supported_tasks`.
+The agent's response is signed under the brand's `adcp_use: "response-signing"` JWK. Consumers verify the signature, then apply **direction-asymmetric trust rules**:
 
-Conflict resolution between agent response and crawl observation (normative — see [RFC § Trust model](/docs/brand-protocol/proposals/brand-verification-rfc#trust-model)):
+- **Rejection direction** — agent's `disputed` / `not_ours` is authoritative. A brand can refuse association unilaterally; no mutual reciprocation required.
+- **Assertion direction** — agent's `owned` / `pending_review` / `transferring` is informative but NOT trust-extending on its own. The leaf must still reciprocate (via its own `house_domain` claim, or its own brand-agent) before relationship trust extends. Otherwise a malicious or mistaken house could claim subsidiaries it doesn't own.
 
-| Agent says | Crawl says | Consumer treats as |
+See [RFC § Trust model](/docs/brand-protocol/proposals/brand-verification-rfc#trust-model) for the full normative table.
+
+| Agent says | Leaf reciprocation observed | Consumer treats as |
 |---|---|---|
-| `owned` | Mutual or leaf-only | Trusted edge. Governance propagation: yes. |
-| `pending_review` | Leaf-only (parent silent) | Trusted leaf identity; relationship trust withheld. When the response's `expected_resolution_window_days` is exceeded without transition, consumer SHOULD treat as if `unknown` returned and fall back to crawl. UI: "Pending parent confirmation, expected within N days." |
-| `transferring` | Any | Trusted but in-flight; consumers MAY treat as `owned` for stability and SHOULD surface the transition in UI. |
-| `disputed` | Leaf-only or mutual | The brand has spoken. Treat leaf as having a rejected parent claim. UI: "Brand X says this is not theirs." |
-| `not_ours` | Leaf-only | Leaf treated as standalone with disputed parent claim. |
+| `owned` | Yes (leaf's `house_domain` points back at this house) | **Trusted edge.** Governance propagation: yes. |
+| `owned` | No (leaf silent or claims a different house) | **Unilateral assertion — not trusted.** UI: "Brand X claims this; the brand itself does not (yet) reciprocate." Equivalent to a crawled `brand_refs[]` entry with no leaf reciprocation. |
+| `pending_review` | No (parent has acknowledged; leaf may not yet reciprocate) | Trusted leaf identity (TLS); relationship trust withheld. When `expected_resolution_window_days` elapses without transition, treat as `unknown` and fall back to crawl. UI: "Pending parent confirmation, expected within N days." |
+| `transferring` | Yes or in-flight | Trusted but in-flight; consumers MAY treat as `owned` for stability and SHOULD surface the transition in UI. |
+| `disputed` | Any | The brand has spoken. Treat the underlying claim as rejected. UI: "Brand X says this is not theirs." |
+| `not_ours` | Any | The brand affirms no relationship. Treat any countervailing claim as one-sided unverified metadata. |
 | `unknown` | Any | Fall back to crawl-based mutual-assertion inference. |
 
-When the agent answers, the agent wins. The crawl path remains the fallback only when the agent is unreachable, returns `unknown`, or doesn't implement the task.
+The crawl path is required for `owned` and `pending_review` / `transferring` (to confirm reciprocation) and is the fallback when the agent is unreachable or returns `unknown`.
 
 `pending_review` requires the agent to set `expected_resolution_window_days` AND transition the claim to a terminal status (or `unknown`) once the window elapses. **Enforcement is agent-side, not spec-level** — most day-one brand deployments won't have the automation to auto-flip stale claims. The safety net is consumer-side: when a `pending_review` response is older than its declared window, consumers SHOULD treat the answer as effectively `unknown` and fall back to crawl-based inference (same fallback used when the agent is unreachable). The aging contract is a declared intent with a defined fallback, not an externally-enforced guarantee. See [RFC § pending_review aging](/docs/brand-protocol/proposals/brand-verification-rfc#pending_review-aging-and-the-crawl-safety-net).
 

@@ -141,17 +141,20 @@ The `use_case` request field — and the `use_case_authorization` response — h
 
 ## Trust model
 
-The agent's response is **authoritative** when signed under the brand's `adcp_use: "response-signing"` JWK. Consumers SHOULD prefer the agent's response over `brand.json` `properties[]` inference. Conflict resolution mirrors [`verify_subsidiary_claim` § Trust model](/docs/brand-protocol/tasks/verify_subsidiary_claim#trust-model):
+The agent's response is signed under the brand's `adcp_use: "response-signing"` JWK. The trust model is **direction-asymmetric**, mirroring [`verify_subsidiary_claim` § Trust model](/docs/brand-protocol/tasks/verify_subsidiary_claim#trust-model):
+
+- **Rejection direction** — agent's `disputed` / `not_ours` is authoritative. A brand can deny association with a property unilaterally.
+- **Assertion direction** — agent's `owned` / `transferring` is informative but should be backed by independent confirmation (the property's own brand.json, public registry, or DNS evidence the brand controls the identifier). Otherwise a malicious or mistaken brand could claim properties it doesn't operate.
 
 | Agent says | Consumer treats as |
 |---|---|
-| `owned` | Trusted; bid/curate against `properties[]` confirmation. |
-| `transferring` | Trusted; MAY treat as owned for stability; surface in UI. |
-| `disputed` | Brand rejects this property claim. Do not extend trust. |
+| `owned` | Informative; cross-check against `properties[]` in `brand.json` and (for domains) DNS/TLS evidence the brand controls the property. When both align, trusted. |
+| `transferring` | Same as `owned` plus surface the transition in UI; MAY treat as owned for stability. |
+| `disputed` | Brand rejects this property claim. Do not extend trust. UI: "Brand X says this property is not theirs." |
 | `not_ours` | Brand affirms no relationship. |
 | `unknown` | Fall back to `brand.json` `properties[]` inference. |
 
-When the agent answers, the agent wins.
+The crawl/registry path provides the assertion-side floor; the agent provides the rejection-side authority plus the richer state surface.
 
 ## Caching
 

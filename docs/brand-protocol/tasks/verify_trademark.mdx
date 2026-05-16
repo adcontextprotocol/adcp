@@ -157,7 +157,12 @@ Trademark facts are largely public-record. The authorized tier exposes brand-sid
 
 ## Trust model
 
-The agent's response is **authoritative** when signed under the brand's `adcp_use: "response-signing"` JWK. Conflict resolution mirrors [`verify_subsidiary_claim` § Trust model](/docs/brand-protocol/tasks/verify_subsidiary_claim#trust-model). When the agent and the registry disagree (rare — e.g., a mark recently transferred but not yet reflected in the registry's public records), the agent wins because the brand is the authority over its current licensing relationships.
+The agent's response is signed under the brand's `adcp_use: "response-signing"` JWK. The trust model is **direction-asymmetric**, mirroring [`verify_subsidiary_claim` § Trust model](/docs/brand-protocol/tasks/verify_subsidiary_claim#trust-model):
+
+- **Rejection direction** — agent's `disputed` / `not_ours` is authoritative. A brand can deny licensing or ownership of a mark unilaterally.
+- **Assertion direction** — agent's `owned` / `licensed_in` / `licensed_out` / `transferring` should be backed by the public registry record (USPTO, EUIPO, etc.). The public registry is the assertion-side floor; the agent provides the rejection authority, the licensee-side posture, and the per-use-case authorization that registries can't speak to.
+
+When the agent and the registry disagree on ownership (rare — e.g., a mark recently transferred but not yet reflected in the registry's public records), consumers SHOULD treat the agent's response as informative pending registry confirmation. The agent is the authority over its current licensing *relationships* (who licenses to whom, for what use cases); the registry is the authority over the *registration record*.
 
 ## Caching
 
