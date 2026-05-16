@@ -611,6 +611,44 @@ State transition scenarios (`force_*`) are idempotent: forcing a status that mat
 
 Simulation scenarios (`simulate_*`) are NOT idempotent — `simulate_delivery` adds to existing totals, while `simulate_budget_spend` replaces the current spend level.
 
+## Test surfaces and the verifiability gap
+
+Every seller faces the same compliance question: can a runner verify the seller's wire format separately from the seller's live behavior?
+
+- **Wire format** can be tested against fixtures. Storyboards exercise request and response shapes; pass/fail is mechanical.
+- **Live behavior** — does the seller's adapter actually reach the system that owns its state? — can only be tested against a real test surface (sandbox credentials, a wired adapter to upstream, real catalog data, real account state).
+
+These are independent reliability claims, and the AAO Verified mark surfaces both axes via [`(Spec)` and `(Sandbox)` qualifiers](/docs/building/verification/aao-verified). The verifiability gap — the second axis — is universal. Where a seller's state-of-record lives determines *how* they close it, not whether they have to:
+
+| Where state-of-record lives | How the test loop closes |
+|---|---|
+| Local DB only | `comply_test_controller.seed_*` writes to the seller's DB; the seller's read handlers consume the same store. The seed→read loop closes naturally. |
+| Upstream system the seller does not control | Seeded writes are dead to the read handler. The TypeScript SDK ships a `TestControllerBridge` that runs the real adapter call first (so a broken upstream call still fails the gate), then merges seeded fixtures into the response. |
+| Mixed (local DB for some tools, upstream for others) | Both, per tool. |
+
+The bridge is **one implementation** of the test-surface pattern, not a separate seller category. A state-local seller without wired seeds and an upstream-proxy seller without a wired bridge are in the same epistemic position: verifiable wire format, unverifiable live behavior. Naming the underlying gap matters; classifying sellers by where their state lives does not.
+
+### The `_bridge` marker
+
+When a response passes through the SDK's `TestControllerBridge`, the SDK stamps a non-normative `_bridge: { callback, tool, merged_count }` marker on the response so runners can distinguish wire conformance against fixture data from adapter health against upstream:
+
+- **Marker present on a step.** The response content was merged from a seeded fixture after the seller's handler returned. The storyboard still proves wire-format conformance for that step; it does not prove the seller's adapter reached its upstream system.
+- **Marker absent on every step of a storyboard.** Every response came from the seller's adapter end-to-end (or from a local DB the runner seeded directly). The storyboard proves both wire conformance and live behavior for the tools it exercises.
+
+The marker is **non-normative** — sellers MUST NOT depend on its presence or absence in production responses, and runners treat the marker as advisory metadata, not as a conformance signal in its own right. Its purpose is to let downstream leaderboards and the AAO compliance heartbeat distinguish "this pass exercised the adopter's adapter against upstream" from "this pass exercised wire conformance against fixture data the SDK merged." Marker design is tracked in [`adcp-client#1775`](https://github.com/adcontextprotocol/adcp-client/issues/1775); the marker itself shipped in [`adcp-client#1786`](https://github.com/adcontextprotocol/adcp-client/pull/1786); the leaderboard policy that consumes it lives in [`adcp-client#1782`](https://github.com/adcontextprotocol/adcp-client/issues/1782).
+
+### Three orthogonal axes
+
+The doc has three test-related controls that adopters often conflate. They answer different questions:
+
+| Axis | Question it answers |
+|---|---|
+| **Test mode** (`comply_test_controller`) | "Is a compliance runner driving this test?" |
+| **Sandbox flag** (`account.sandbox`) | "Is the targeted account a sandbox account, with no real-world side effects?" |
+| **Bridge participation** (`_bridge` marker on a response) | "Did this response come from the adapter's upstream call, or from a fixture the SDK merged in?" |
+
+A storyboard pass can have any combination of these signals. The first determines whether deterministic forces are allowed; the second guards real-world side effects on the seller's prod stack; the third disambiguates the source of response content within a passing storyboard.
+
 ## Compliance testing modes
 
 The presence of `comply_test_controller` in a seller's tool list determines which mode a compliance tester uses:
