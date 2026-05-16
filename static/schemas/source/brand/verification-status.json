@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/brand/verification-status.json",
   "title": "Verification Status",
-  "description": "Status returned by brand-agent verification tools (verify_subsidiary_claim, verify_property, verify_trademark). Captures the rich state surface crawl-based mutual-assertion cannot express: pending review, disputed, licensed in/out, and explicit not-ours / unknown answers. Not every tool returns every status — see each tool's response schema for the applicable subset.",
+  "description": "Status returned by `verify_brand_claim` for any claim_type (subsidiary, parent, property, trademark). Captures the rich state surface crawl-based mutual-assertion cannot express: pending review, in-flight transfers, disputed, licensed in/out, and explicit not-ours / unknown answers. Not every status applies to every claim_type — see the task page for the applicable subset per claim type.",
   "type": "string",
   "enum": [
     "owned",

@@ -320,6 +320,8 @@ When the brand publishes a brand-agent ([variant 3](#3-brand-agent) or a `type: 
 
 When both house and leaf publish brand-agents, mutual assertion can complete at the agent layer: partner calls `verify_brand_claim` with `claim_type: "subsidiary"` on the house AND with `claim_type: "parent"` on the leaf. Both `owned` → mutual assertion, real-time, signed by both parties, no crawl required. This is the cleanest path for trust extension.
 
+**Mutual assertion proves consistency between two parties, not standing.** Two reciprocally-asserting agents at attacker-controlled domains can sign matching `owned` responses; mutual assertion confirms only that they agree, not that either has legitimate authority over the underlying brand. The final trust gate is still domain control + TLS — verified on the consumer side, against the legal/operational entity the consumer expects to own the domain. Mutual assertion at the agent layer is the floor; consumer-side standing checks (domain registration, real-world identity) are still the caller's responsibility for high-trust decisions.
+
 Agent responses are signed under the brand's `adcp_use: "response-signing"` JWK. See the [task reference](/docs/brand-protocol/tasks/verify_brand_claim) for the full request/response shapes and per-claim-type details.
 
 ### Field resolution
@@ -935,6 +937,11 @@ Visual prohibitions and guardrails — the visual equivalent of `tone.donts`. Th
 ## Trademarks
 
 Registered trademarks may appear at the **house level** (corporate marks — e.g., NIKE owned by Nike, Inc.) or at the **brand level** (brand-specific marks — e.g., CONVERSE owned by Converse). Both arrays are valid claims; resolution between them is **union**.
+
+<Info>
+**Licensed-in / licensed-out relationships** (Marriott franchisees using the MARRIOTT mark, music catalogs licensed per territory, etc.) are queryable via the brand-agent today through [`verify_brand_claim`](/docs/brand-protocol/tasks/verify_brand_claim) with `claim_type: "trademark"`. A static `brand.json` publishing surface for standing licensed relationships (parallel to `brand_refs[]` for ownership) is a future RFC alongside the rights-protocol team. The static `trademarks[]` array below covers ownership only; licensing posture comes from the agent.
+</Info>
+
 
 ```json
 {
