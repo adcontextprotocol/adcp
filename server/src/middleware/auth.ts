@@ -648,7 +648,19 @@ function hasValidAdminApiKey(req: Request): boolean {
   const token = authHeader.slice(7);
   // Don't match WorkOS API keys - those are handled separately
   if (isWorkOSApiKeyFormat(token)) return false;
-  return token === ADMIN_API_KEY;
+  return constantTimeEqual(token, ADMIN_API_KEY);
+}
+
+// ADMIN_API_KEY is ASCII-only; latin1 makes that explicit and matches
+// timingSafeEqual's byte-for-byte comparison contract.
+export function constantTimeEqual(a: string, b: string): boolean {
+  const aBuf = Buffer.from(a, 'latin1');
+  const bBuf = Buffer.from(b, 'latin1');
+  if (aBuf.length !== bBuf.length) {
+    timingSafeEqual(aBuf, Buffer.alloc(aBuf.length));
+    return false;
+  }
+  return timingSafeEqual(aBuf, bBuf);
 }
 
 /**
