@@ -12,6 +12,7 @@ import { createLogger } from '../logger.js';
 import { CompanyTypeValue } from '../config/company-types.js';
 import type { Agreement } from '../types.js';
 import { OrgKnowledgeDatabase } from './org-knowledge-db.js';
+import { upsertWorkosDomain } from './organization-domains-db.js';
 
 // Re-export Agreement for backwards compatibility
 export type { Agreement };
@@ -1679,7 +1680,15 @@ export class OrganizationDatabase {
 
   /**
    * Ensure a local organizations row exists for a WorkOS organization.
-   * Fetches the org from WorkOS (for its name) and creates the local row if missing.
+   * Fetches the org from WorkOS (for its name + domains) and creates the
+   * local row if missing, mirroring the WorkOS domain list into
+   * `organization_domains` and seeding `email_domain` from the primary.
+   *
+   * Without the domain mirror, this path would produce orphans invisible to
+   * findPayingOrgForDomain / findClaimableProspectOrgForDomain /
+   * resolveOrgByDomain — same class of bug as the pre-#4132 admin/domains.ts
+   * INSERT paths and Migration 481's Spotify case.
+   *
    * Safe to call on every login — cheap no-op when the row already exists.
    */
   async ensureOrganizationExists(
@@ -1690,16 +1699,45 @@ export class OrganizationDatabase {
     if (existing) return existing;
 
     const workosOrg = await workos.organizations.getOrganization(workos_organization_id);
+    const name = workosOrg.name.slice(0, 255);
+    // Prefer the first verified WorkOS domain; fall back to the first listed
+    // domain (matches the precedence syncOrganizationDomains uses when no
+    // is_primary row exists yet).
+    const domains = workosOrg.domains ?? [];
+    const primaryDomain =
+      domains.find((d) => d.state === 'verified')?.domain ?? domains[0]?.domain;
+
     try {
-      const name = workosOrg.name.slice(0, 255);
       const created = await this.createOrganization({
         workos_organization_id,
         name,
+        email_domain: primaryDomain,
       });
       logger.info(
-        { orgId: workos_organization_id, name },
+        { orgId: workos_organization_id, name, primaryDomain },
         'Lazily created local organization row from WorkOS'
       );
+
+      // Mirror each WorkOS domain into organization_domains so the auto-link
+      // and claim lookups can find this org by domain. Best-effort: a domain
+      // sync failure should not block org creation (the row + email_domain
+      // are already enough for resolveOrgByDomain to find it).
+      for (const d of domains) {
+        try {
+          await upsertWorkosDomain({
+            orgId: workos_organization_id,
+            domain: d.domain,
+            verified: d.state === 'verified',
+            isPrimary: d.domain === primaryDomain,
+          });
+        } catch (domainErr) {
+          logger.warn(
+            { err: domainErr, orgId: workos_organization_id, domain: d.domain },
+            'Failed to mirror WorkOS domain during ensureOrganizationExists'
+          );
+        }
+      }
+
       return created;
     } catch (error) {
       // Race: another request may have created it between our check and insert.

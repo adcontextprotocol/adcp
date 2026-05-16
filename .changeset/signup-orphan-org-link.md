@@ -1,0 +1,4 @@
+---
+---
+
+Rescue orphaned prospect orgs missing both `email_domain` and an `organization_domains` row, and harden the on-demand-sync paths so the gap can't reopen. Migration 481 derives the missing domain from `prospect_contact_email` (skipping free-email providers and never stealing a domain another org already owns), then writes both an `organization_domains` row (`source='backfill_prospect_contact'`, `verified=false`) and the matching `email_domain`. `OrganizationDatabase.ensureOrganizationExists` now mirrors the WorkOS domain list into `organization_domains` and seeds `email_domain` from the first verified domain — `routes/organizations.ts` and `routes/billing-public.ts` both delegate to it instead of the previous half-populated inline shims. Closes the failure mode where a fresh `@spotify.com` signup couldn't see the existing Spotify orphan org (created Dec 2025) and posted a duplicate "Enterprise prospect needs an owner" alert.

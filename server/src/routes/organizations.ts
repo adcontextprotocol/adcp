@@ -18,7 +18,7 @@ import {
 import { invitationRateLimiter, orgCreationRateLimiter } from "../middleware/rate-limit.js";
 import { invalidateMembershipCache } from "../db/org-filters.js";
 import { validateOrganizationName, validateEmail } from "../middleware/validation.js";
-import { OrganizationDatabase, CompanyType, RevenueTier, VALID_REVENUE_TIERS, getSeatUsage, getSeatLimits, canAddSeat, getUserSeatType, resolveMembershipTier, checkAndUpdateSeatWarning, resetSeatWarningIfNeeded, createSeatUpgradeRequest, getSeatUpgradeRequest, listSeatUpgradeRequests, resolveSeatUpgradeRequest, hasPendingSeatRequest } from "../db/organization-db.js";
+import { OrganizationDatabase, CompanyType, RevenueTier, VALID_REVENUE_TIERS, getSeatUsage, getSeatLimits, canAddSeat, getUserSeatType, resolveMembershipTier, checkAndUpdateSeatWarning, resetSeatWarningIfNeeded, createSeatUpgradeRequest, getSeatUpgradeRequest, listSeatUpgradeRequests, resolveSeatUpgradeRequest, hasPendingSeatRequest, type Organization } from "../db/organization-db.js";
 import { COMPANY_TYPE_VALUES } from "../config/company-types.js";
 import { VALID_ORGANIZATION_ROLES, VALID_ASSIGNABLE_ROLES } from "../types.js";
 import { JoinRequestDatabase } from "../db/join-request-db.js";
@@ -1789,21 +1789,16 @@ export function createOrganizationsRouter(): Router {
         });
       }
 
-      // Ensure organization exists in local DB (on-demand sync from WorkOS)
-      let org = await orgDb.getOrganization(orgId);
-      if (!org) {
-        try {
-          const workosOrg = await workos!.organizations.getOrganization(orgId);
-          if (workosOrg) {
-            org = await orgDb.createOrganization({
-              workos_organization_id: workosOrg.id,
-              name: workosOrg.name,
-            });
-            logger.info({ orgId, name: workosOrg.name }, 'On-demand synced organization from WorkOS for pending agreement');
-          }
-        } catch (syncError) {
-          logger.warn({ orgId, err: syncError }, 'Failed to sync organization from WorkOS');
-        }
+      // Ensure organization exists in local DB (on-demand sync from WorkOS).
+      // ensureOrganizationExists mirrors the WorkOS domain list into
+      // organization_domains + email_domain so the row is reachable by
+      // findPayingOrgForDomain / resolveOrgByDomain — otherwise this path
+      // produces the same orphan class the orphan-org audit catches.
+      let org: Organization | null = null;
+      try {
+        org = await orgDb.ensureOrganizationExists(workos!, orgId);
+      } catch (syncError) {
+        logger.warn({ orgId, err: syncError }, 'Failed to sync organization from WorkOS');
       }
 
       if (!org) {
