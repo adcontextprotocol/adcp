@@ -32,7 +32,8 @@
       "properties": {
         "from": {
           "type": "string",
-          "description": "Prior status of the resource (e.g., 'ready', 'approved', 'good'). Optional — sellers SHOULD include when known, MAY omit when the resource was discovered already in an offline state (e.g., a property depublished via brand.json crawl with no prior snapshot). Open string at the schema layer because each resource_type has its own serviceable-state vocabulary; the impairment.coherence assertion validates that 'from' is a known serviceable value for the resource_type."
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "description": "Prior status of the resource (e.g., 'ready', 'approved', 'good'). Optional — sellers SHOULD include when known, MAY omit when the resource was discovered already in an offline state (e.g., a property depublished via brand.json crawl with no prior snapshot). Open string at the schema layer because each resource_type has its own serviceable-state vocabulary; the pattern constraint blocks free-form garbage, and the impairment.coherence assertion validates that 'from' is a known serviceable value for the resource_type."
         },
         "to": {
           "$ref": "/schemas/enums/impairment-offline-state.json",

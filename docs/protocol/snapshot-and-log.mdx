@@ -39,10 +39,10 @@ These rules apply across every snapshot/log pair in the protocol. If you're buil
 
 ### 1. Two distinct ids: per-fire and per-state
 
-Every persistent webhook carries **two** distinct ids. They serve different needs and receivers MUST track both:
+**Dedupe transport retries by `idempotency_key`. Correlate fires to state by `notification_id`.** These are different ids on the same fire — receivers MUST track both.
 
 - **`idempotency_key`** — transport-layer, **per delivery attempt**. Issued by the seller for each fire. Receivers dedupe on this to suppress retries of the same logical fire. Defined in the [webhooks transport contract](/docs/building/by-layer/L3/webhooks).
-- **`notification_id`** — event-layer, **per state event**. Stable across re-emissions of the same logical event. For state-shaped events this equals the resource's stable id (e.g., `impairment_id` is the `notification_id` for impairment events). Receivers use this to correlate webhook fires with current state on the snapshot.
+- **`notification_id`** — event-layer, **per state event**. Stable across re-emissions of the same logical event. For state-shaped events this equals the resource's stable id (e.g., `impairment_id` is the `notification_id` for impairment events). Typed as a first-class envelope field via [#4594](https://github.com/adcontextprotocol/adcp/issues/4594) in 3.1; until that lands, surfaced in webhook payloads but not in the envelope schema.
 
 The split is intentional. A receiver seeing the same `idempotency_key` twice is observing a transport retry — uninteresting, dedupe and move on. A receiver seeing the same `notification_id` twice under **different** `idempotency_key`s is observing a re-emission — signal. The seller is repeating itself, usually because the buyer's receiver was unreachable for long enough that the seller wants to make sure the state was delivered. That's a missed-events warning the receiver should not collapse.
 
@@ -67,11 +67,11 @@ A buyer using webhooks reliably gets all the data. A buyer using only GET (no we
 This rule has two halves:
 
 - **For state events** (impairment, lifecycle, status changes): GET returns current state. A buyer who missed a webhook calls `get_*` and reads the snapshot — recovery is lossless. ✅ Holds today.
-- **For data-bearing events** (delivery report fires, individual log events): GET MUST support the same windowing and granularity the webhook delivers. A seller that emits hourly `reporting_webhook` fires MUST support hourly windowed pulls on `get_media_buy_delivery` so a buyer can reconstruct identical data by polling. ⚠️ Partial today — `get_media_buy_delivery` supports date-range pulls and daily breakdowns, but not arbitrary per-window granularity matching webhook frequency. [#4590](https://github.com/adcontextprotocol/adcp/issues/4590) closes this for delivery reporting in 3.1.
+- **For data-bearing events** (delivery report fires, individual log events): GET SHOULD support the same windowing and granularity the webhook delivers. A seller that emits hourly `reporting_webhook` fires SHOULD support hourly windowed pulls on `get_media_buy_delivery` so a buyer can reconstruct identical data by polling. ⚠️ Partial today — `get_media_buy_delivery` supports date-range pulls and daily breakdowns, but not arbitrary per-window granularity matching webhook frequency. [#4590](https://github.com/adcontextprotocol/adcp/issues/4590) closes this for delivery reporting in 3.1; once it lands and is broadly adopted, SHOULD promotes to MUST for the granularities a seller declares in `windowed_pull_granularities`.
 
 Until #4590 lands, sellers offering high-frequency reporting webhooks (hourly) are the one channel where missing a webhook can mean losing per-window detail until the next aggregate window closes. Buyers on those sellers SHOULD treat the webhook as primary; buyers polling daily-or-coarser are unaffected.
 
-This rule is **load-bearing for the protocol**. Without it, AdCP becomes pub/sub for some channels and REST for others, and buyers building against the contract have to know which model applies where. With it, both paths are equivalent — a buyer chooses webhooks for latency or polling for simplicity, and gets the same data either way.
+Without two-paths-equal, AdCP becomes pub/sub for some channels and REST for others — buyers building against the contract have to know which model applies where. With it, both paths are equivalent: a buyer chooses webhooks for latency or polling for simplicity, and gets the same data either way.
 
 ### 5. Push events and log entries share an id space
 

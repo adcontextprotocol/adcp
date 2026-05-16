@@ -18,7 +18,8 @@
       "$ref": "/schemas/enums/media-buy-status.json"
     },
     "health": {
-      "$ref": "/schemas/enums/media-buy-health.json",
+      "allOf": [{ "$ref": "/schemas/enums/media-buy-health.json" }],
+      "default": "ok",
       "description": "Aggregate health based on open impairments[]. Orthogonal to status — a paused, pending, or active buy can each be impaired. Defaults to 'ok' when impairments[] is empty."
     },
     "impairments": {

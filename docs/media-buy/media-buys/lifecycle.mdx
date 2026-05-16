@@ -217,6 +217,21 @@ When a buy's `health` transitions or an impairment is added/removed, the seller 
 
 The MUST-strength materiality rule applies to resource types where the resource → buy join is cheap and 1:N — audience, event_source, property. For creative and catalog_item, materiality is SHOULD-strength: a creative in a large pool may not degrade serving when removed, and the join is more expensive for sellers to compute. Implementers SHOULD report conservatively when uncertain and MUST NOT report when serving is provably unaffected.
 
+### Remediation by `reason_code`
+
+Each `reason_code` has a typical buyer remediation path. Sellers don't fill this in per-impairment — buyer agents key remediation off `reason_code` directly. The table below is the protocol-level guidance; the per-impairment free-text `remediation` field carries seller-specific context that doesn't fit the typical path (e.g., "we restored this audience yesterday; sync now to pick up the refresh").
+
+| `reason_code` | Typical buyer remediation |
+|---|---|
+| `consent_expired` | Refresh upstream consent (e.g., hashed-id consent renewal on a clean-room flow), then re-sync the audience via `sync_audiences`. |
+| `ttl_expired` | Re-sync the audience via `sync_audiences` to renew. |
+| `pii_audit_failed` | Address audit findings upstream (hashing, identifier hygiene). Re-sync only **after** the seller signals the audit is cleared — a buyer agent that loops `sync_audiences` against an uncleared audit will not converge. |
+| `content_rejected` | Same path as initial creative approval — fix the issue and resubmit via `sync_creatives`. Campaign-level decision (replace vs. wait for resubmit) depends on creative pool composition and is left to the buyer. |
+| `source_offline` | Verify the tag is firing on the buyer's properties (this is often a buyer/publisher integration issue, not a seller-side outage), then re-sync via `sync_event_sources`. |
+| `seller_removed` | No buyer-side resubmit path. Find a replacement via the same discovery tool used at campaign setup (`get_products`, `get_signals`, `list_creative_formats`), or contact the seller for restoration ETA. |
+| `policy_violation` | Seller-side enforcement; buyer-side resubmit unlikely to clear. Await resolution or escalate per the seller's standard contact path. |
+| `property_depublished` | No buyer-side fix — property publication is controlled by the publisher's `brand.json` / `adagents.json`. Find a replacement property via `get_products` or remove from targeting. |
+
 ### Impairments are operational signals, not commercial events
 
 An `impairment` reports degraded delivery from upstream dependency change. It is **not** a billing event, makegood trigger, or credit dispute. Commercial remedies for under-delivery are governed by `accountability_terms` on guaranteed buys and remain out of scope for this surface. Integrators building dispute pipelines should drive them from delivery reports and accountability terms, not from `impairments[]`.
