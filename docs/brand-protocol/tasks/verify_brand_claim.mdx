@@ -16,6 +16,8 @@ Ask a brand-agent a verification question about a facet of its identity. **This 
 
 The brand-agent answers using its own data — which is brand.json plus the richer states (`pending_review`, `transferring`, `licensed_in`, etc.) that the static file can't express. The tool is one specific-question affordance on top of the same identity surface `get_brand_identity` reads.
 
+For high-volume verification (portfolio refresh, creative-clearance batches, crawler scans), use the bulk variant [`verify_brand_claims`](/docs/brand-protocol/tasks/verify_brand_claims) — same per-claim semantics, one round-trip and one rate-limit slot for the whole batch.
+
 ## The trust rule — two calls, not one
 
 **A single signed `owned` response is NOT trust-extending. Mutual assertion remains the floor for positive trust.** This is the load-bearing rule of the asymmetric trust model — assertion direction requires both sides to agree. Consumers MUST call both sides when extending relationship trust:
