@@ -416,7 +416,7 @@ Every webhook payload — MCP task envelope, governance list-change webhooks (`c
 ```javascript
 app.post('/webhooks/adcp', async (req, res) => {
   const payload = req.body;
-  const { idempotency_key, task_id, status, timestamp, result } = payload;
+  const { idempotency_key, notification_id, task_id, status, timestamp, result } = payload;
 
   // Scope dedup to the authenticated sender — never trust a payload field for identity.
   const sender = req.verifiedSenderId; // set by 9421 verifier (keyid → agent URL) or legacy HMAC/Bearer middleware
@@ -513,7 +513,7 @@ This section is the transport half of the [Snapshot and log contract](/docs/prot
 
 ### Delivery semantics
 
-- **At-least-once delivery.** Sellers MAY re-fire the same logical event under retry. Receivers MUST dedupe by `idempotency_key` (or the equivalent event-scoped id surfaced in the payload — e.g., `notification_id` for `notification-type` events).
+- **At-least-once delivery.** Sellers MAY re-fire the same logical event under retry. Receivers MUST dedupe by `idempotency_key` for transport-layer dedup. For state-shaped events (currently: `impairment`), the envelope also carries `notification_id` — receivers MUST use it for application-layer state correlation: the same `notification_id` under a distinct `idempotency_key` signals a re-emission of the same state change, not a new event. Point-in-time data events (delivery report fires: `scheduled`, `final`, `delayed`, `adjusted`) do not carry `notification_id`.
 - **No ordering guarantee.** Two events on the same resource within seconds MAY arrive out of order. Receivers MUST reconcile via the resource snapshot rather than treating webhook ordering as canonical.
 - **Idempotent application.** Apply the same payload twice and the resulting receiver state MUST be identical.
 

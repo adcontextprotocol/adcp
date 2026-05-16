@@ -16,6 +16,6 @@
     "final": "Terminal delivery report fire. Sent once after the media buy reaches a terminal lifecycle state (completed, canceled, rejected). Carries final delivery aggregates.",
     "delayed": "Off-cadence delivery report fire indicating that the seller has detected late-arriving data for a prior window. Buyers SHOULD reconcile the affected window against this fire.",
     "adjusted": "Off-cadence delivery report fire indicating that the seller has revised a prior window's metrics (e.g., IVT filtering applied, attribution model run, makegood adjustment). Buyers SHOULD replace prior values for the affected window.",
-    "impairment": "Dependency state change fire. Sent when a resource referenced by the buy enters an offline state that affects delivery for at least one package. Payload carries the impairment object and the buy's updated health. See impairment.json and the impairment.coherence assertion."
+    "impairment": "Dependency state change fire. Sent when a resource referenced by the buy enters an offline state that affects delivery for at least one package. Payload carries the impairment object and the buy's updated health. The envelope notification_id equals impairment_id for this type, enabling application-layer dedup distinct from transport-layer idempotency_key dedup. See impairment.json and the impairment.coherence assertion."
   }
 }

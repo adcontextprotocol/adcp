@@ -12,6 +12,12 @@
       "maxLength": 255,
       "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
     },
+    "notification_id": {
+      "type": "string",
+      "description": "Event-layer identifier, stable across re-emissions of the same logical event including the closing resolution fire. Present only for state-shaped notification types (currently: impairment); absent for point-in-time data events (delivery report fires: scheduled, final, delayed, adjusted). For impairment events this equals impairment_id. Receivers MUST use this field for application-layer state correlation when present — a repeated notification_id under a distinct idempotency_key signals a re-emission, not a new event. Use idempotency_key for transport-layer dedup. Defined by snapshot/log Rule 1 — see /docs/protocol/snapshot-and-log.",
+      "minLength": 1,
+      "maxLength": 255
+    },
     "operation_id": {
       "type": "string",
       "description": "Client-generated identifier that was embedded in the webhook URL by the buyer. Publishers echo this back in webhook payloads so clients can correlate notifications without parsing URL paths. Typically generated as a unique ID per task invocation."
