@@ -42,6 +42,21 @@
       "minimum": 0,
       "maximum": 1
     },
+    "viewed_seconds": {
+      "type": "number",
+      "description": "Average seconds in view per impression. Reporting-side counterpart to the `viewed_seconds` optimization metric in `optimization-goal.json`. Sellers reporting against a `viewed_seconds` optimization goal MUST populate this field; absent values indicate no seller-native measurement.",
+      "minimum": 0
+    },
+    "attention_seconds": {
+      "type": "number",
+      "description": "Average attention time per impression. Reporting-side counterpart to the `attention_seconds` optimization metric in `optimization-goal.json`. Definition is vendor-specific; the vendor identity flows through `committed_metrics.vendor` / `performance_standards.vendor` when committed, or through `vendor_metric_values` when the value is non-graduated. Sellers reporting against an `attention_seconds` optimization goal MUST populate this field.",
+      "minimum": 0
+    },
+    "attention_score": {
+      "type": "number",
+      "description": "Vendor-specific attention score per impression. Reporting-side counterpart to the `attention_score` optimization metric in `optimization-goal.json`. Score units and scale are vendor-defined; the vendor identity flows through `committed_metrics.vendor` / `performance_standards.vendor` when committed, or through `vendor_metric_values` when non-graduated. Sellers reporting against an `attention_score` optimization goal MUST populate this field.",
+      "minimum": 0
+    },
     "conversions": {
       "type": "number",
       "description": "Total conversions attributed to this delivery. When by_event_type is present, this equals the sum of all by_event_type[].count entries.",
@@ -142,16 +157,33 @@
     },
     "reach": {
       "type": "number",
-      "description": "Unique reach in the units specified by reach_unit. When reach_unit is omitted, units are unspecified — do not compare reach values across packages or media buys without a common reach_unit.",
+      "description": "Unique reach in the units specified by reach_unit. When reach_unit is omitted, units are unspecified — do not compare reach values across packages or media buys without a common reach_unit. The measurement window for this value is declared in `reach_window`; when `reach_window` is omitted, the window is unspecified and buyers MUST NOT sum reach across reports (the value MAY be a daily snapshot, a cumulative total, or something else).",
       "minimum": 0
     },
     "reach_unit": {
       "allOf": [{ "$ref": "/schemas/enums/reach-unit.json" }],
       "description": "Unit of measurement for the reach field. Aligns with the reach_unit declared on optimization goals and delivery forecasts. Required when reach is present to enable cross-platform comparison."
     },
+    "reach_window": {
+      "type": "object",
+      "description": "Measurement window for the reported `reach` and `frequency` values in this row. Resolves the ambiguity between daily-snapshot and cumulative reach reporting — without this declaration, buyers summing `reach` across rows (e.g., daily delivery reports) can silently double-count audiences. Sellers SHOULD populate this whenever `reach` is present.",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["cumulative", "period"],
+          "description": "Window semantics. `cumulative` — rolling uniques since campaign start; the value is the total unique count to date and MUST NOT be summed across rows (each later row supersedes the earlier value). `period` — uniques within the reporting period only (e.g., a daily snapshot); the value covers only this row's reporting window and MAY be summed across non-overlapping periods only if the seller also guarantees inter-period dedup (rare — most period reporting double-counts the same person across days)."
+        },
+        "period": {
+          "allOf": [{ "$ref": "/schemas/core/duration.json" }],
+          "description": "Duration of the measurement window. Only meaningful when `kind` is `period` (e.g., `{\"interval\": 1, \"unit\": \"days\"}` for a daily snapshot). When `kind` is `cumulative`, this field is implicit (campaign-to-date) and SHOULD be omitted."
+        }
+      },
+      "required": ["kind"],
+      "additionalProperties": true
+    },
     "frequency": {
       "type": "number",
-      "description": "Average frequency per reach unit (typically measured over campaign duration, but can vary by measurement provider). When reach_unit is 'households', this is average exposures per household; when 'accounts', per logged-in account; etc.",
+      "description": "Average frequency per reach unit, measured over the window declared in `reach_window`. When `reach_unit` is 'households', this is average exposures per household; when 'accounts', per logged-in account; etc. When `reach_window` is omitted, the window is unspecified — buyers MUST NOT compare or average frequency values across rows.",
       "minimum": 0
     },
     "quartile_data": {

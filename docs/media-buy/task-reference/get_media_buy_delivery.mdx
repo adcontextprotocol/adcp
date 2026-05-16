@@ -565,9 +565,13 @@ asyncio.run(main())
 | **ROAS** | Return on ad spend (conversion_value / spend) |
 | **New-to-Brand Rate** | Fraction of conversions from first-time brand buyers (0-1) |
 | **Cost per Acquisition** | Cost per conversion (spend / conversions) |
-| **Reach** | Unique users reached (see `reach_unit` for measurement unit: individuals, households, devices, accounts, cookies) |
+| **Reach** | Unique users reached (see `reach_unit` for measurement unit: individuals, households, devices, accounts, cookies). Measurement window declared via `reach_window`; without it, buyers must not sum reach across rows. |
 | **Reach Unit** | Unit of measurement for reach — required when reach is present |
-| **Frequency** | Average ad exposures per reach unit |
+| **Reach Window** | Window semantics for reported reach/frequency: `cumulative` (rolling since campaign start, do not sum) or `period` (uniques within reporting window only). Optional but strongly recommended when reach is present. |
+| **Frequency** | Average ad exposures per reach unit, measured over `reach_window` |
+| **Viewed Seconds** | Average seconds in view per impression — reporting-side counterpart to the `viewed_seconds` optimization goal |
+| **Attention Seconds** | Average vendor-attributed attention time per impression — reporting-side counterpart to the `attention_seconds` optimization goal |
+| **Attention Score** | Vendor-specific attention score per impression — reporting-side counterpart to the `attention_score` optimization goal |
 | **Follows** | New followers, subscribes, or page likes attributed to delivery |
 | **Pacing Index** | Actual vs. expected delivery rate (1.0 = on track, &lt;1.0 = behind, &gt;1.0 = ahead) |
 | **CPM** | Cost per thousand impressions (spend/impressions * 1000) |

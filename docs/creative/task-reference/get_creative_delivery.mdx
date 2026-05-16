@@ -66,9 +66,13 @@ Fields available on both `creative.totals` and each `variant` entry. Commonly-us
 | `completed_views` | Video/audio completions |
 | `completion_rate` | Completion rate (completed_views/impressions) |
 | `quartile_data` | Audio/video quartile completion data — object with `q1_views`, `q2_views`, `q3_views`, `q4_views` |
-| `reach` | Unique reach in units specified by `reach_unit` |
+| `reach` | Unique reach in units specified by `reach_unit`. Measurement window declared via `reach_window`; without it, do not sum across rows |
 | `reach_unit` | Unit of measurement for `reach`; required when `reach` is present |
-| `frequency` | Average frequency per `reach_unit` |
+| `reach_window` | Window semantics for reach/frequency — `{ kind: "cumulative" | "period", period?: Duration }`. Optional but strongly recommended whenever `reach` is present |
+| `frequency` | Average frequency per `reach_unit`, measured over `reach_window` |
+| `viewed_seconds` | Average seconds in view per impression — pairs with the `viewed_seconds` optimization goal |
+| `attention_seconds` | Average vendor-attributed attention time per impression — pairs with the `attention_seconds` optimization goal |
+| `attention_score` | Vendor-specific attention score per impression — pairs with the `attention_score` optimization goal |
 | `grps` | Gross Rating Points delivered (for CPP) |
 | `conversions` | Total attributed conversions; equals the sum of `by_event_type[].count` when present |
 | `conversion_value` | Total monetary value of attributed conversions |
