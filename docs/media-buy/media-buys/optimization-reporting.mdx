@@ -31,7 +31,7 @@ The typical optimization cycle follows this pattern:
 4. **Track Changes**: Monitor impact of optimizations
 5. **Iterate**: Continuous improvement through regular analysis
 
-## The metric lifecycle — from capability to reporting
+## Metric lifecycle
 
 Every optimization metric in AdCP — whether seller-native (clicks, views, reach), graduated vendor-attested (viewability), or vendor-defined (attention, brand lift, emissions) — flows through the same set of surfaces. Buyers reason about a metric by asking three questions in order:
 
@@ -78,7 +78,7 @@ Three rules connect the layers and prevent orphaned goals:
 
 1. **Optimization requires capability.** A package's `optimization_goals[]` entry MUST match a product capability — `metric_optimization.supported_metrics` for `kind: "metric"`, or `vendor_metric_optimization.supported_metrics` for `kind: "vendor_metric"`. Sellers reject mismatches with `TERMS_REJECTED`.
 
-2. **Optimization requires reporting commitment.** For `kind: "vendor_metric"` goals, the matching `(vendor, metric_id)` MUST also appear in the package's `committed_metrics[]`. Optimizing for a metric the seller isn't committed to reporting is unverifiable — the buyer has no way to grade the goal. Sellers reject uncommitted vendor_metric goals with `TERMS_REJECTED`. (This rule is normative for vendor metrics specifically; for seller-native `metric` goals, the metric is usually always reported by virtue of being seller-native, so the coherence is implicit.)
+2. **Optimization requires reporting commitment.** For `kind: "vendor_metric"` goals, the matching `(vendor, metric_id)` MUST also appear in the package's `committed_metrics[]`. Optimizing for a metric the seller isn't committed to reporting is unverifiable — the buyer has no way to grade the goal. Sellers reject uncommitted vendor_metric goals with `TERMS_REJECTED`. (This rule is normative for vendor metrics specifically; for seller-native `metric` goals, the metric is usually always reported by virtue of being seller-native, so the coherence is implicit.) A third precondition — discovery, that `metric_id` appears in the vendor's published `measurement.metrics[]` catalog — is SHOULD this minor and tightens to MUST at the next minor while measurement-vendor adoption of AdCP-conformant capability publication catches up.
 
 3. **Performance accountability is independent.** `performance_standards[]` lives in parallel — buyers MAY add a threshold commitment on any metric the seller commits to reporting, regardless of whether they also set an optimization goal on it. The three surfaces (goal / commitment / standard) compose:
    - Goal only — "push toward this," no accountability floor

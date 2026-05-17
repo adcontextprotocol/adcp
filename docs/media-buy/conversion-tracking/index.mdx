@@ -447,13 +447,14 @@ Optimize for a seller-tracked delivery metric. No event source needed — the se
 }
 ```
 
-**Minimum attention time**:
+**Minimum attention from a specific vendor** (the `attention_seconds` / `attention_score` enum values on `kind: "metric"` are deprecated — vendor-attested metrics use `kind: "vendor_metric"` instead, which binds the goal to a specific measurement vendor):
 
 ```json
 {
-  "kind": "metric",
-  "metric": "attention_seconds",
-  "target": { "kind": "threshold_rate", "value": 5.0 },
+  "kind": "vendor_metric",
+  "vendor": { "domain": "adelaidemetrics.com" },
+  "metric_id": "attention_score",
+  "target": { "kind": "threshold_rate", "value": 70 },
   "priority": 3
 }
 ```
@@ -530,19 +531,19 @@ For vendor-attested measurement where the metric has no industry-graduated defin
 | `target.value` | number | Yes (if target set) | Cost per metric unit (currency) or minimum per-impression value. Units are vendor-defined. |
 | `priority` | integer | No | 1 = highest priority. When omitted, sellers use array position. |
 
-**Three preconditions for goal acceptance.** Sellers MUST reject `vendor_metric` goals that fail any of:
+**Three preconditions for goal acceptance.** Sellers MUST reject `vendor_metric` goals that fail the capability or reporting-coherence preconditions; sellers SHOULD verify the discovery precondition:
 
-1. **Discovery** — `metric_id` is in the vendor's published `measurement.metrics[]` catalog (queried from the vendor's `brand.json` measurement agent).
+1. **Discovery** (SHOULD this minor; MUST at next minor) — `metric_id` is in the vendor's published `measurement.metrics[]` catalog (queried from the vendor's `brand.json` measurement agent). Softened to SHOULD while measurement-vendor adoption of AdCP-conformant capability publication catches up; tightens to MUST once two-plus vendors ship conformant agents.
 2. **Capability** — the `(vendor, metric_id)` pair is in the product's `vendor_metric_optimization.supported_metrics[]`, and the goal's `target.kind` is in the matching entry's `supported_targets`.
 3. **Reporting coherence** — the package's `committed_metrics[]` includes a matching `{ scope: "vendor", vendor, metric_id }` entry. **Optimization without committed reporting is unverifiable** — the buyer can't grade performance against a goal whose value the seller isn't contractually obligated to populate. This precondition is what makes the goal meaningful; the seller MUST reject (with `TERMS_REJECTED`) any goal whose metric isn't also committed for reporting on the same package.
 
 **Distinct from `metric` kind.** The `metric` kind is for seller-native measurement (clicks, views, completed_views, reach, engagements, etc.) where no vendor binding is needed — the seller measures the metric natively. The `vendor_metric` kind is for vendor-attested measurement where the same metric name means different things across vendors and must be reconciled to a specific source. The deprecated `attention_seconds` / `attention_score` values on the `metric` kind enum predate this split and route through `vendor_metric` going forward.
 
-**Full lifecycle reference.** See [The metric lifecycle](/docs/media-buy/media-buys/optimization-reporting#the-metric-lifecycle---from-capability-to-reporting) for the complete capability → commitment → optimization → delivery picture across both standard and vendor metric flows — same `(vendor, metric_id)` key on every surface.
+**Full lifecycle reference.** See [Metric lifecycle](/docs/media-buy/media-buys/optimization-reporting#metric-lifecycle) for the complete capability → commitment → optimization → delivery picture across both standard and vendor metric flows.
 
 ### Target kinds
 
-All target kinds across both goal types:
+All target kinds across the three goal kinds:
 
 | `target.kind` | Metric goals | Vendor metric goals | Event goals | Description |
 |---|---|---|---|---|
