@@ -559,8 +559,16 @@
                 ]
               },
               "docs/faq",
-              "docs/ai-disclosure",
-              "docs/trust",
+              {
+                "group": "Trust & Security",
+                "expanded": false,
+                "pages": [
+                  "docs/trust",
+                  "docs/ai-disclosure",
+                  "docs/reference/privacy-considerations",
+                  "docs/reference/known-limitations"
+                ]
+              },
               {
                 "group": "Reference",
                 "expanded": false,
@@ -589,8 +597,6 @@
                   "docs/reference/experimental-status",
                   "docs/reference/schema-extensions",
                   "docs/reference/v2-sunset",
-                  "docs/reference/known-limitations",
-                  "docs/reference/privacy-considerations",
                   "docs/reference/release-notes",
                   "docs/reference/changelog",
                   "docs/reference/implementor-faq",
@@ -1117,9 +1123,17 @@
           {
             "group": "FAQ",
             "pages": [
-              "docs/faq",
+              "docs/faq"
+            ]
+          },
+          {
+            "group": "Trust & Security",
+            "expanded": false,
+            "pages": [
+              "docs/trust",
               "docs/ai-disclosure",
-              "docs/trust"
+              "docs/reference/privacy-considerations",
+              "docs/reference/known-limitations"
             ]
           },
           {
@@ -1145,8 +1159,6 @@
               "docs/reference/versioning",
               "docs/reference/url-canonicalization",
               "docs/reference/verifying-protocol-tarballs",
-              "docs/reference/known-limitations",
-              "docs/reference/privacy-considerations",
               "docs/reference/experimental-status",
               "docs/reference/schema-extensions",
               "docs/reference/release-notes",
