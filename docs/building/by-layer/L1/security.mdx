@@ -653,11 +653,11 @@ The payload (JWS-flattened JSON serialization; compact form is also acceptable):
 
 **Polling cadence**:
 - Sellers MUST poll the list on the cadence declared in `next_update`.
-- Floor: 1 minute. Ceiling: 15 minutes for any seller accepting execution-phase tokens. Governance agents MUST NOT declare `next_update` more than 15 minutes in the future for issuers covered by execution-phase traffic. The `next_update` value is a JSON timestamp, not an HTTP cache header — standard HTTP caches will not respect it; sellers MUST parse and honor it themselves.
+- Floor: 1 minute. Ceiling: 30 minutes for any seller accepting execution-phase tokens. Governance agents MUST NOT declare `next_update` more than 30 minutes in the future for issuers covered by execution-phase traffic. The `next_update` value is a JSON timestamp, not an HTTP cache header — standard HTTP caches will not respect it; sellers MUST parse and honor it themselves. Sellers that prioritize fast key-compromise propagation over DoS tolerance SHOULD poll at or near the floor; the ceiling exists for sellers that accept slower `revoked_kids` propagation in exchange for tolerating longer revocation-endpoint outages.
 - Polling is optional for intent-phase tokens with ≤15 min `exp`.
 - Use HTTP conditional requests (`If-Modified-Since` / `ETag`) to avoid unnecessary body transfers.
 
-**Fetch failure safe-default**: if a seller has not successfully refreshed the revocation list within `next_update + grace` (recommend grace = 2× the previous polling interval), the seller MUST reject any new `purchase`, `modification`, or `delivery` phase token until the list is refreshed. This prevents an attacker who DoSes the revocation endpoint from extending the fraud window of a compromised key.
+**Fetch failure safe-default**: if a seller has not successfully refreshed the revocation list within `next_update + grace` (recommend grace = 4× the previous polling interval), the seller MUST reject any new `purchase`, `modification`, or `delivery` phase token until the list is refreshed. This prevents an attacker who DoSes the revocation endpoint from extending the fraud window of a compromised key. Sellers operating at the polling ceiling get ~2.5 h of endpoint-outage tolerance; sellers at the floor get ~5 min. Tune the polling cadence — not the grace constant — to your risk appetite.
 
 - Governance agents MUST retain revoked public keys as discoverable for the audit retention period (recommend 7 years) so auditors can verify historical tokens after the current rotation. Revoked keys SHOULD be served at `{origin}/.well-known/jwks-archive.json` (separate from the active JWKS).
 
@@ -1244,7 +1244,7 @@ Operators SHOULD serve a single combined revocation list at the brand.json origi
 - `revoked_kids` invalidates every request ever signed under that `kid` (before or after the revocation timestamp).
 - `revoked_jtis` is not used (request signatures don't have a `jti`; nonce uniqueness is per-key).
 
-Verifiers accepting request-signed mutations MUST poll the revocation list on the cadence declared in `next_update` (floor 1 min, ceiling 15 min). The fetch-failure safe-default applies: verifiers that have not refreshed within `next_update + grace` MUST reject new request-signed mutations with `request_signature_revocation_stale` until the list is refreshed.
+Verifiers accepting request-signed mutations MUST poll the revocation list on the cadence declared in `next_update` (floor 1 min, ceiling 30 min). The fetch-failure safe-default applies with grace = 4× the previous polling interval: verifiers that have not refreshed within `next_update + grace` MUST reject new request-signed mutations with `request_signature_revocation_stale` until the list is refreshed.
 
 #### Transport capability advertisement
 
@@ -1364,7 +1364,7 @@ Cross-purpose reuse is forbidden and locally enforceable: a request-signing key 
 
 1. Seller agent URL `A` → fetch `/.well-known/brand.json` at the operator domain of `A` with SSRF validation per [Webhook URL validation](#webhook-url-validation-ssrf). brand.json resolution follows one redirect (`authoritative_location` or `house` redirect variant) and stops.
 2. In the fetched brand.json, find the `agents[]` entry whose `url` byte-for-byte matches `A`.
-3. Fetch that entry's `jwks_uri` (or default to `/.well-known/jwks.json` at the origin of `A`) with SSRF validation. JWKS cache TTL bounded above by the revocation-list polling interval (floor 1 min, ceiling 15 min). Long-running task flows cross JWKS rotations; verifiers MUST NOT pin a single JWKS snapshot for the lifetime of a task.
+3. Fetch that entry's `jwks_uri` (or default to `/.well-known/jwks.json` at the origin of `A`) with SSRF validation. JWKS cache TTL bounded above by the revocation-list polling interval (floor 1 min, ceiling 30 min). Long-running task flows cross JWKS rotations; verifiers MUST NOT pin a single JWKS snapshot for the lifetime of a task.
 4. Resolve `keyid` on the incoming `Signature-Input` to a JWK in the fetched set. On `kid` miss, refetch once (subject to the 30-second cooldown between refetches) before rejecting with `webhook_signature_key_unknown`. The refetch-on-miss path is the load-bearing mechanism for handling mid-task key rotation — clients that skip it will reject legitimate post-rotation deliveries.
 
 Buyers MUST NOT derive signer identity from webhook payload fields (`task_id`, `operation_id`, etc.) or from `adagents.json` entries — those are publisher authorization, not signer identity. Identity is established solely via the signature → JWKS → seller `agents[]` entry chain.
