@@ -1332,16 +1332,23 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
   const apiKey = (req as Request & { apiKey?: ValidatedApiKey }).apiKey;
   if (apiKey) {
     // Cross-tenant defense for routes whose path resolves a specific
-    // target org. The `admin:*` permission is tenant-scoped by issuance:
-    // it grants admin access *within* the org that minted the key, not
-    // across orgs. Without this gate, any org holding an `admin:*` key
-    // could mutate any other org's `member_profiles` (or anything else
-    // a cross-org admin route exposes). Surfaced by security review on
-    // #4498; routes with cross-org reach previously had to opt in via
-    // per-route helpers. Pushing the check here catches every admin
-    // route that names its target org param `orgId` by default.
+    // target org via `:orgId`. The `admin:*` permission is tenant-scoped
+    // by issuance: it grants admin access *within* the org that minted
+    // the key, not across orgs. Without this gate, any org holding an
+    // `admin:*` key could mutate any other org's data exposed by a
+    // cross-org admin route. Surfaced by security review on #4498.
+    //
+    // KNOWN GAP: routes that target an org via a differently-named param
+    // (`:id`, `:userId`, profile UUIDs) silently skip this gate. The
+    // member-profile admin PUT/DELETE and admin/users routes carry their
+    // own per-route checks; cousin routes (`admin/feeds.ts`,
+    // `admin/notification-channels.ts`) are tracked in the follow-up
+    // audit issue and should either rename params to `:orgId` or add
+    // explicit per-route checks. Pushing this default catches every
+    // admin route that uses `:orgId` for free, while leaving the
+    // higher-risk routes explicit.
     const targetOrgId = req.params.orgId;
-    if (apiKey.organizationId && targetOrgId && apiKey.organizationId !== targetOrgId) {
+    if (targetOrgId && apiKey.organizationId !== targetOrgId) {
       logger.warn(
         { path: req.path, method: req.method, apiKeyId: apiKey.id, apiKeyOrgId: apiKey.organizationId, targetOrgId },
         'Refused cross-tenant admin API key',
@@ -1497,6 +1504,75 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
 
   logger.debug({ userId: req.user.id, email: req.user.email }, 'Admin access granted');
   next();
+}
+
+/**
+ * Reject the request when the caller is using a WorkOS API key whose
+ * `organizationId` does not match `targetOrgId`. Returns true if the
+ * request was refused (response sent), false if the caller may proceed.
+ *
+ * Use this on admin routes whose target org is NOT resolvable from
+ * `req.params.orgId` — e.g. routes keyed by a profile UUID (`:id`) or
+ * a global user id (`:userId`). The default cross-tenant gate in
+ * `requireAdmin` keys off `req.params.orgId` and silently skips on those
+ * routes; the security review on #4498 flagged this as a real bypass
+ * for `/api/admin/member-profiles/:id`. Resolve the target org from the
+ * resource (the profile's `workos_organization_id`, the user's primary
+ * org, etc.) and pass it here.
+ *
+ * Static `ADMIN_API_KEY` and SSO admin users do not set `req.apiKey`
+ * and pass through unchanged.
+ */
+export function refuseCrossTenantAdminApiKey(
+  req: Request,
+  res: Response,
+  targetOrgId: string,
+): boolean {
+  const apiKey = (req as Request & { apiKey?: ValidatedApiKey }).apiKey;
+  if (!apiKey) return false;
+  if (apiKey.organizationId === targetOrgId) return false;
+  logger.warn(
+    {
+      path: req.path,
+      method: req.method,
+      apiKeyId: apiKey.id,
+      apiKeyOrgId: apiKey.organizationId,
+      targetOrgId,
+    },
+    'Refused cross-tenant admin API key (per-route gate)',
+  );
+  res.status(403).json({
+    error: 'cross_tenant_api_key',
+    message: `API key issued by ${apiKey.organizationId} cannot operate on ${targetOrgId}`,
+  });
+  return true;
+}
+
+/**
+ * Reject the request when the caller is using a WorkOS API key,
+ * regardless of which org issued it. Use this on admin routes that
+ * operate on cross-org / global state (e.g. `/api/admin/users/:userId/*`
+ * routes that mutate the global `users` row and every membership for
+ * that user). Tenant-scoped keys have no principled "target org" claim
+ * on these routes, so the only safe answer is to require a higher-trust
+ * principal (static `ADMIN_API_KEY` or SSO admin).
+ */
+export function refuseAnyApiKeyOnGlobalAdmin(
+  req: Request,
+  res: Response,
+): boolean {
+  const apiKey = (req as Request & { apiKey?: ValidatedApiKey }).apiKey;
+  if (!apiKey) return false;
+  logger.warn(
+    { path: req.path, method: req.method, apiKeyId: apiKey.id, apiKeyOrgId: apiKey.organizationId },
+    'Refused tenant-scoped API key on global admin route',
+  );
+  res.status(403).json({
+    error: 'global_admin_required',
+    message:
+      'This admin route operates on cross-org / global state and is not reachable via tenant-scoped WorkOS API keys. Use a static ADMIN_API_KEY or an SSO admin session.',
+  });
+  return true;
 }
 
 

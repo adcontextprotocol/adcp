@@ -9,7 +9,12 @@
 
 import { Router } from 'express';
 import { createLogger } from '../../logger.js';
-import { requireAuth, requireAdmin, invalidateSessionsForUsers } from '../../middleware/auth.js';
+import {
+  requireAuth,
+  requireAdmin,
+  refuseAnyApiKeyOnGlobalAdmin,
+  invalidateSessionsForUsers,
+} from '../../middleware/auth.js';
 import { SlackDatabase } from '../../db/slack-db.js';
 import { WorkingGroupDatabase } from '../../db/working-group-db.js';
 import { getPool } from '../../db/client.js';
@@ -687,6 +692,13 @@ export function createAdminUsersRouter(): Router {
 
   // PUT /api/admin/users/:userId/name - Update a user's display name
   router.put('/:userId/name', requireAuth, requireAdmin, async (req, res) => {
+    // Users are global — a single `users` row plus every
+    // `organization_memberships` row keyed on `workos_user_id`. A
+    // tenant-scoped API key has no principled claim to mutate a global
+    // user record; only AAO-internal tooling (static ADMIN_API_KEY) or
+    // SSO admin sessions reach this route. Surfaced by security review
+    // on #4498.
+    if (refuseAnyApiKeyOnGlobalAdmin(req, res)) return;
     try {
       const { userId } = req.params;
       const firstName = (req.body.first_name as string)?.trim();
@@ -751,6 +763,7 @@ export function createAdminUsersRouter(): Router {
   // Trust model: admin is asserting the email belongs to the person. No
   // verification email is sent to the new address. Phase 3 may add one.
   router.post('/:userId/linked-emails', requireAuth, requireAdmin, async (req, res) => {
+    if (refuseAnyApiKeyOnGlobalAdmin(req, res)) return;
     const adminEmail = req.user!.email;
     const adminUserId = req.user!.id;
     const existingUserId = req.params.userId;
@@ -888,6 +901,7 @@ export function createAdminUsersRouter(): Router {
   // for the admin UI to render a "linked emails" section and decide which
   // operations are available.
   router.get('/:userId/credentials', requireAuth, requireAdmin, async (req, res) => {
+    if (refuseAnyApiKeyOnGlobalAdmin(req, res)) return;
     const userId = req.params.userId;
     const pool = getPool();
 
@@ -936,6 +950,7 @@ export function createAdminUsersRouter(): Router {
   // asserting the two represent the same person. The trust model and
   // confirmation UX live on the admin frontend.
   router.post('/:userId/credentials', requireAuth, requireAdmin, async (req, res) => {
+    if (refuseAnyApiKeyOnGlobalAdmin(req, res)) return;
     const adminEmail = req.user!.email;
     const adminUserId = req.user!.id;
     const existingUserId = req.params.userId;
@@ -1070,6 +1085,7 @@ export function createAdminUsersRouter(): Router {
   // leave the identity with no canonical credential. Promote another
   // credential to primary first (separate endpoint, not yet built).
   router.delete('/:userId/credentials/:credentialId', requireAuth, requireAdmin, async (req, res) => {
+    if (refuseAnyApiKeyOnGlobalAdmin(req, res)) return;
     const adminEmail = req.user!.email;
     const adminUserId = req.user!.id;
     // For non-singleton admin identities (today: nobody — admins are still
@@ -1204,6 +1220,7 @@ export function createAdminUsersRouter(): Router {
   // would persist that degraded state; the audit row records the intent
   // and the recovery is a one-line UPDATE.
   router.post('/:userId/credentials/:credentialId/promote', requireAuth, requireAdmin, async (req, res) => {
+    if (refuseAnyApiKeyOnGlobalAdmin(req, res)) return;
     const adminEmail = req.user!.email;
     const adminUserId = req.user!.id;
     const adminIdentityId = req.user!.identityId;

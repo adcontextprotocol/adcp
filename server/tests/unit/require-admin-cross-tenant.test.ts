@@ -151,3 +151,78 @@ describe('requireAdmin cross-tenant API key defense', () => {
     expect(res.body.error).toBe('cross_tenant_api_key');
   });
 });
+
+describe('refuseCrossTenantAdminApiKey + refuseAnyApiKeyOnGlobalAdmin helpers', () => {
+  let app: express.Application;
+
+  beforeAll(async () => {
+    const { refuseCrossTenantAdminApiKey, refuseAnyApiKeyOnGlobalAdmin } =
+      await import('../../src/middleware/auth.js');
+
+    app = express();
+
+    app.use((req, _res, next) => {
+      const apiKeyHeader = req.headers['x-test-api-key-org-id'];
+      if (typeof apiKeyHeader === 'string') {
+        (req as any).apiKey = {
+          id: 'apikey_test',
+          organizationId: apiKeyHeader,
+          permissions: ['admin:*'],
+        };
+      }
+      next();
+    });
+
+    // Route keyed on a UUID-style :id with the target org resolved
+    // dynamically (mimics /api/admin/member-profiles/:id PUT/DELETE).
+    // The handler invokes refuseCrossTenantAdminApiKey after the lookup.
+    app.put('/profiles/:id', (req, res) => {
+      const targetOrgId = req.headers['x-test-resolved-org'] as string;
+      if (refuseCrossTenantAdminApiKey(req, res, targetOrgId)) return;
+      res.json({ ok: true });
+    });
+
+    // Route operating on global state (mimics /api/admin/users/:userId/*).
+    app.put('/users/:userId/name', (req, res) => {
+      if (refuseAnyApiKeyOnGlobalAdmin(req, res)) return;
+      res.json({ ok: true });
+    });
+  });
+
+  it('refuses cross-tenant API key on a profile UUID route', async () => {
+    const res = await request(app)
+      .put('/profiles/profile-xyz')
+      .set('x-test-api-key-org-id', 'org_caller')
+      .set('x-test-resolved-org', 'org_target');
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe('cross_tenant_api_key');
+  });
+
+  it('allows same-tenant API key on a profile UUID route', async () => {
+    const res = await request(app)
+      .put('/profiles/profile-xyz')
+      .set('x-test-api-key-org-id', 'org_same')
+      .set('x-test-resolved-org', 'org_same');
+    expect(res.status).toBe(200);
+  });
+
+  it('allows the route when no api key is present (SSO admin / static admin)', async () => {
+    const res = await request(app)
+      .put('/profiles/profile-xyz')
+      .set('x-test-resolved-org', 'org_target');
+    expect(res.status).toBe(200);
+  });
+
+  it('refuses ANY tenant-scoped API key on a global-admin route', async () => {
+    const res = await request(app)
+      .put('/users/userid_abc/name')
+      .set('x-test-api-key-org-id', 'org_caller');
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe('global_admin_required');
+  });
+
+  it('allows the global-admin route when no api key is present', async () => {
+    const res = await request(app).put('/users/userid_abc/name');
+    expect(res.status).toBe(200);
+  });
+});

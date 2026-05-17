@@ -31,6 +31,11 @@ vi.mock('../../src/middleware/auth.js', async () => {
       };
       next();
     },
+    // The mocked requireAdmin only toggles admin/not-admin; the real
+    // middleware's cross-tenant API-key gate is exercised in the
+    // companion unit test (tests/unit/require-admin-cross-tenant.test.ts).
+    // Don't duplicate that here — these integration tests focus on the
+    // agents.ts route logic.
     requireAdmin: (_req: any, res: any, next: any) => {
       if (!isAdmin) {
         return res.status(403).json({ error: 'forbidden' });
