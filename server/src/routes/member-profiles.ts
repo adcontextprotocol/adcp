@@ -30,6 +30,11 @@ import { getCompanyDomain } from "../utils/email-domain.js";
 import { emailPrefsDb } from "../db/email-preferences-db.js";
 import { slugify } from "../services/collection-feed-sync.js";
 import {
+  verifyAgentHostname,
+  buildUnverifiedHostnameMessage,
+  isHostnameOwnershipRejection,
+} from "../services/agent-hostname-verification.js";
+import {
   isMemberProfileBootstrapBody,
   memberProfileBootstrapRateLimiter,
 } from "../middleware/rate-limit.js";
@@ -924,6 +929,30 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         }
       }
 
+      // Hostname ownership check (#4499 MVP). The POST create path is
+      // the second smuggle vector past the per-agent POST gate (after
+      // the bulk PUT). No grandfathering is needed here — this branch
+      // creates a fresh profile, so there are no existing entries to
+      // honor. All agents in the body are NEW writes.
+      if (Array.isArray(agents)) {
+        for (let i = 0; i < agents.length; i++) {
+          const a = agents[i];
+          if (!a || typeof a.url !== 'string') continue;
+          const verification = await verifyAgentHostname(targetOrgId, a.url);
+          if (isHostnameOwnershipRejection(verification)) {
+            return res.status(400).json({
+              error: 'unverified_hostname',
+              message: `agents[${i}]: ${buildUnverifiedHostnameMessage(verification)}`,
+              agent_index: i,
+              agent_url: a.url,
+              agent_hostname: verification.agent_hostname,
+              verified_domains: verification.verified_domains,
+              reason: verification.reason,
+            });
+          }
+        }
+      }
+
       // Gate agent visibility on create using the same helper the PUT
       // path uses. Without this, an Explorer-tier user creating their
       // first profile can land `visibility: 'public'` directly in the
@@ -1179,6 +1208,37 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
             a.url = canonical;
           }
         }
+
+        // Hostname ownership check (#4499 MVP). The bulk PUT had been a
+        // smuggle path past the per-agent POST gate — same JSONB column,
+        // same downstream consumers, no verification. Per-entry check
+        // here mirrors the POST handler; entries whose canonical URL is
+        // already in `existingProfile.agents` are grandfathered (a bulk
+        // PUT must remain idempotent for an unchanged caller). NEW URLs
+        // go through the gate.
+        const existingUrls = new Set(
+          (existingProfile.agents ?? [])
+            .map((a) => (a && typeof a.url === 'string' ? a.url : null))
+            .filter((u): u is string => u !== null),
+        );
+        for (let i = 0; i < updates.agents.length; i++) {
+          const a = updates.agents[i] as AgentConfig & { url?: unknown };
+          if (!a || typeof a.url !== 'string') continue;
+          if (existingUrls.has(a.url)) continue;
+          const verification = await verifyAgentHostname(targetOrgId, a.url);
+          if (isHostnameOwnershipRejection(verification)) {
+            return res.status(400).json({
+              error: 'unverified_hostname',
+              message: `agents[${i}]: ${buildUnverifiedHostnameMessage(verification)}`,
+              agent_index: i,
+              agent_url: a.url,
+              agent_hostname: verification.agent_hostname,
+              verified_domains: verification.verified_domains,
+              reason: verification.reason,
+            });
+          }
+        }
+
         const localOrgForTier = await orgDb.getOrganization(targetOrgId);
         const callerHasApi = hasApiAccess(resolveMembershipTier(localOrgForTier));
         const gated = gateAgentVisibilityForCaller(updates.agents, callerHasApi);
@@ -1422,6 +1482,27 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         return { status: 404, body: { error: 'Agent not found at index' } };
       }
       const agent = agents[index];
+
+      // Re-verify hostname ownership on any non-private flip (#4499 MVP).
+      // A grandfathered row registered before the gate landed should not
+      // be promotable to `members_only` or `public` without satisfying
+      // the same constraint a fresh POST has to satisfy — escalation
+      // #340 was specifically about a public claim, and members_only is
+      // still discoverable to every paying member (the attack audience).
+      // Demotion to `private` is exempt — privacy is always safe.
+      if (target !== 'private') {
+        const verification = await verifyAgentHostname(orgId, agent.url);
+        if (isHostnameOwnershipRejection(verification)) {
+          await client.query('ROLLBACK');
+          return {
+            status: 400,
+            body: {
+              error: 'unverified_hostname',
+              message: buildUnverifiedHostnameMessage(verification),
+            },
+          };
+        }
+      }
 
       // Only the public path needs to reach out to brand.json, so the
       // brand-domain requirement is scoped to `target === 'public'`.

@@ -48,6 +48,7 @@ import {
 import {
   verifyAgentHostname,
   buildUnverifiedHostnameMessage,
+  isHostnameOwnershipRejection,
 } from '../services/agent-hostname-verification.js';
 // Side-effect import: registers OpenAPI paths + component schemas for these
 // routes. Lives in schemas/ to keep the spec generator's import graph free of
@@ -449,7 +450,7 @@ export function createMemberAgentsRouter(config: MemberAgentsRouterConfig): Rout
       // for legitimate cross-domain registration come in later phases of
       // #4499.
       const verification = await verifyAgentHostname(orgId, targetUrl);
-      if (!verification.ok && verification.reason === 'hostname_not_in_verified_domains') {
+      if (isHostnameOwnershipRejection(verification)) {
         return res.status(400).json({
           error: 'unverified_hostname',
           message: buildUnverifiedHostnameMessage(verification),

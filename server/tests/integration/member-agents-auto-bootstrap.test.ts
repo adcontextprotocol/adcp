@@ -159,10 +159,17 @@ describe('POST /api/me/agents (auto-bootstrap)', () => {
   });
 
   async function seedOrgWithoutProfile(orgId: string, name = 'Acme Bootstrap Co') {
+    // `email_domain` is the signup-time domain claim that the hostname
+    // verification gate (#4499 MVP) falls back to when an org has no
+    // verified domains. Without this, the new gate would reject every
+    // POST in this test file as a "free email workspace" since these
+    // orgs are seeded raw (no `organization_domains` rows). The test
+    // agent URLs (`*.example.com/mcp`) match `example.com` as a parent
+    // — RFC 2606 reserves example.com, so safe.
     await pool.query(
-      `INSERT INTO organizations (workos_organization_id, name, is_personal, created_at, updated_at)
-       VALUES ($1, $2, false, NOW(), NOW())
-       ON CONFLICT (workos_organization_id) DO UPDATE SET name = EXCLUDED.name`,
+      `INSERT INTO organizations (workos_organization_id, name, is_personal, email_domain, created_at, updated_at)
+       VALUES ($1, $2, false, 'example.com', NOW(), NOW())
+       ON CONFLICT (workos_organization_id) DO UPDATE SET name = EXCLUDED.name, email_domain = EXCLUDED.email_domain`,
       [orgId, name],
     );
     await pool.query(
@@ -314,7 +321,16 @@ describe('POST /api/me/agents (auto-bootstrap)', () => {
       expect(domainRow.rows.find((r) => r.domain === 'boot-corp.test')!.verified).toBe(true);
     });
 
-    it('auto-creates a personal workspace for a fresh user with a free-email provider', async () => {
+    it('auto-bootstraps a personal workspace for a fresh free-email user but rejects the agent registration (no hostname claim)', async () => {
+      // Pre-#4499-MVP this auto-bootstrap succeeded silently with an
+      // unverified agent registered on whatever hostname the caller
+      // supplied. With the tightened soft-pass (security review on
+      // PR #4648), free-email-provider signups can't stake a claim
+      // on arbitrary hostnames — the org is still auto-bootstrapped
+      // (resolveOrAutoBootstrapOrg fires before the gate) but the
+      // agent registration returns 400 free_email_workspace. The user
+      // gets a personal workspace they can use for everything else;
+      // they just can't register agents on non-owned domains.
       userOverride.email = `solo+${Date.now()}@gmail.com`;
       userOverride.firstName = 'Solo';
       userOverride.lastName = 'Founder';
@@ -323,9 +339,12 @@ describe('POST /api/me/agents (auto-bootstrap)', () => {
         .post('/api/me/agents')
         .send({ url: 'https://agent.solo.test/mcp', type: 'sales', visibility: 'private' });
 
-      expect(res.status).toBe(201);
-      expect(res.body.org_auto_created).toBe(true);
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('unverified_hostname');
+      expect(res.body.reason).toBe('free_email_workspace');
 
+      // The org bootstrap still fired — failure was on the agent
+      // registration step, not on org creation.
       const orgRow = await pool.query<{ name: string; is_personal: boolean }>(
         `SELECT o.name, o.is_personal
          FROM organizations o
@@ -346,8 +365,8 @@ describe('POST /api/me/agents (auto-bootstrap)', () => {
       // fork.
       const existingOrgId = `${TEST_PREFIX}_existing`;
       await pool.query(
-        `INSERT INTO organizations (workos_organization_id, name, is_personal, created_at, updated_at)
-         VALUES ($1, $2, false, NOW(), NOW())
+        `INSERT INTO organizations (workos_organization_id, name, is_personal, email_domain, created_at, updated_at)
+         VALUES ($1, $2, false, 'no-fork.test', NOW(), NOW())
          ON CONFLICT (workos_organization_id) DO NOTHING`,
         [existingOrgId, 'Already Owned'],
       );

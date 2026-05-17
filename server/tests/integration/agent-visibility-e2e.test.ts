@@ -391,8 +391,8 @@ describe('Agent visibility E2E', () => {
       .put('/api/me/member-profile')
       .send({
         agents: [
-          { url: 'https://smuggled.example', visibility: 'public' },
-          { url: 'https://also.example', visibility: 'public', name: 'Evil' },
+          { url: 'https://smuggled.putbypass.example', visibility: 'public' },
+          { url: 'https://also.putbypass.example', visibility: 'public', name: 'Evil' },
         ],
       });
 
@@ -424,7 +424,7 @@ describe('Agent visibility E2E', () => {
       .put('/api/me/member-profile')
       .send({
         agents: [
-          { url: 'https://pro-pub.example', visibility: 'public' },
+          { url: 'https://pro-pub.putpro.example', visibility: 'public' },
         ],
       });
 
@@ -715,6 +715,103 @@ describe('Agent visibility E2E', () => {
         'tier_required',
         'brand_domain_required',
       ]);
+    });
+  });
+
+  // Hostname verification (#4499 MVP) wired into the bulk PUT and
+  // visibility-flip paths in addition to the per-agent POST. Closes the
+  // smuggle paths the security review on PR #4648 flagged:
+  // bulk PUT was rewriting the JSONB without hostname checks, and
+  // visibility-flip could promote a grandfathered (un-verified) row to
+  // public — the exact escalation #340 shape.
+  describe('Hostname verification on bulk PUT + visibility flip', () => {
+    it('PUT /api/me/member-profile: rejects NEW agent on an unverified hostname', async () => {
+      const orgId = `${TEST_PREFIX}_put_rogue`;
+      const userId = `${TEST_PREFIX}_put_rogue_user`;
+      await seedOrg(pool, orgId, 'individual_professional');
+      await provisionUser(userId, orgId);
+      await createProfile(orgId, 'putrogue');
+
+      (app as any).setCurrentUser(userId, orgId);
+      const res = await request(app)
+        .put('/api/me/member-profile')
+        .send({
+          agents: [
+            { url: 'https://existing.putrogue.example', visibility: 'private' },
+            { url: 'https://adcp-mcp.celtra.com/mcp', visibility: 'private' },
+          ],
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('unverified_hostname');
+      expect(res.body.agent_index).toBe(1);
+      expect(res.body.agent_hostname).toBe('adcp-mcp.celtra.com');
+    });
+
+    it('PUT /api/me/member-profile: grandfathers entries already in the JSONB', async () => {
+      const orgId = `${TEST_PREFIX}_put_grandfather`;
+      const userId = `${TEST_PREFIX}_put_grandfather_user`;
+      await seedOrg(pool, orgId, 'individual_professional');
+      await provisionUser(userId, orgId);
+      // Seed a profile with an agent on a hostname that does NOT match
+      // the verified domain. Real production case: an entry that
+      // pre-dates the hostname gate.
+      await memberDb.createProfile({
+        workos_organization_id: orgId,
+        display_name: 'Grandfathered',
+        slug: 'putgrandfather',
+        is_public: false,
+        agents: [{ url: 'https://legacy.unrelated.example', visibility: 'private' }],
+      });
+      await seedBrandPrimary(orgId, 'putgrandfather.example');
+
+      (app as any).setCurrentUser(userId, orgId);
+      // Same legacy URL — should pass the gate as a grandfather.
+      const res = await request(app)
+        .put('/api/me/member-profile')
+        .send({
+          agents: [{ url: 'https://legacy.unrelated.example', visibility: 'private', name: 'updated' }],
+        });
+
+      expect(res.status).toBe(200);
+    });
+
+    it('PATCH /agents/:index/visibility: rejects flipping a grandfathered row to members_only or public', async () => {
+      const orgId = `${TEST_PREFIX}_flip_gf`;
+      const userId = `${TEST_PREFIX}_flip_gf_user`;
+      await seedOrg(pool, orgId, 'individual_professional');
+      await provisionUser(userId, orgId);
+      // Grandfathered agent — hostname doesn't match the verified domain.
+      await memberDb.createProfile({
+        workos_organization_id: orgId,
+        display_name: 'Flip GF',
+        slug: 'flipgf',
+        is_public: false,
+        agents: [{ url: 'https://legacy.unrelated.example', visibility: 'private' }],
+      });
+      await seedBrandPrimary(orgId, 'flipgf.example');
+
+      (app as any).setCurrentUser(userId, orgId);
+
+      // members_only flip — should reject.
+      const membersRes = await request(app)
+        .patch('/api/me/member-profile/agents/0/visibility')
+        .send({ visibility: 'members_only' });
+      expect(membersRes.status).toBe(400);
+      expect(membersRes.body.error).toBe('unverified_hostname');
+
+      // public flip — should also reject.
+      const publicRes = await request(app)
+        .patch('/api/me/member-profile/agents/0/visibility')
+        .send({ visibility: 'public' });
+      expect(publicRes.status).toBe(400);
+      expect(publicRes.body.error).toBe('unverified_hostname');
+
+      // private (demotion) — always allowed.
+      const privateRes = await request(app)
+        .patch('/api/me/member-profile/agents/0/visibility')
+        .send({ visibility: 'private' });
+      expect(privateRes.status).toBe(200);
     });
   });
 });

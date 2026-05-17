@@ -185,7 +185,7 @@ describe('Per-agent REST API (/api/me/agents)', () => {
       display_name: `Test ${slug}`,
       slug,
       is_public: false,
-      agents: [{ url: 'https://existing.example/mcp', visibility: 'private' }],
+      agents: [{ url: 'https://existing.example.test/mcp', visibility: 'private' }],
     });
     await pool.query(
       `INSERT INTO organization_domains
@@ -198,15 +198,17 @@ describe('Per-agent REST API (/api/me/agents)', () => {
     );
     // Hostname verification (#4499 MVP) requires the agent URL's host to
     // be on a verified domain for the org. Pre-existing tests in this
-    // file use URLs like `https://new.example/mcp` that aren't subdomains
-    // of `${slug}.example`. Seed the bare `example` parent so those URLs
-    // match as subdomains. RFC 2606 reserves `.example` as a TLD that
-    // never resolves on the public internet, so this is safe even though
-    // it looks like a real domain.
+    // file use URLs like `https://new.example.test/mcp` that aren't
+    // subdomains of `${slug}.example.test`. Seed the bare `example.test`
+    // parent so those URLs match as subdomains. RFC 6761 reserves
+    // `.test` so this is safe and unlikely to collide with another
+    // test file's fixture (verified by grep of server/tests/ — only
+    // unit tests use `*.example.test` as URL literals, none seed it as
+    // a verified domain row).
     await pool.query(
       `INSERT INTO organization_domains
          (workos_organization_id, domain, verified, source, created_at, updated_at)
-       VALUES ($1, 'example', true, 'test', NOW(), NOW())
+       VALUES ($1, 'example.test', true, 'test', NOW(), NOW())
        ON CONFLICT (domain) DO NOTHING`,
       [orgId],
     );
@@ -217,11 +219,12 @@ describe('Per-agent REST API (/api/me/agents)', () => {
       `DELETE FROM organization_domains WHERE workos_organization_id LIKE $1`,
       [`${TEST_PREFIX}%`],
     );
-    // Drop the shared `example` row seeded by createProfile if a previous
-    // test's org still owns it (the per-test DELETE above can leave it
-    // when another file's run reassigned it). Bounded blast radius — no
-    // real org has the bare "example" TLD as a verified domain.
-    await pool.query(`DELETE FROM organization_domains WHERE domain = 'example'`);
+    // Drop the shared `example.test` row seeded by createProfile in case
+    // a previous test's org still owns it. Scoped to a single RFC-6761
+    // TLD that no other test file in this repo seeds as a verified
+    // domain row (confirmed by grep), keeping the cross-file blast
+    // radius zero in practice.
+    await pool.query(`DELETE FROM organization_domains WHERE domain = 'example.test'`);
     await pool.query(
       `DELETE FROM member_profiles WHERE workos_organization_id LIKE $1`,
       [`${TEST_PREFIX}%`],
@@ -267,7 +270,7 @@ describe('Per-agent REST API (/api/me/agents)', () => {
     const res = await request(app).get('/api/me/agents');
     expect(res.status).toBe(200);
     expect(res.body.agents).toHaveLength(1);
-    expect(res.body.agents[0].url).toBe('https://existing.example/mcp');
+    expect(res.body.agents[0].url).toBe('https://existing.example.test/mcp');
   });
 
   it('POST creates a new agent (201) and is idempotent on url (200 update)', async () => {
@@ -280,19 +283,19 @@ describe('Per-agent REST API (/api/me/agents)', () => {
     (app as any).setCurrentUser(userId);
     const created = await request(app)
       .post('/api/me/agents')
-      .send({ url: 'https://new.example/mcp', name: 'New', type: 'sales', visibility: 'private' });
+      .send({ url: 'https://new.example.test/mcp', name: 'New', type: 'sales', visibility: 'private' });
     expect(created.status).toBe(201);
-    expect(created.body.agent.url).toBe('https://new.example/mcp');
+    expect(created.body.agent.url).toBe('https://new.example.test/mcp');
     expect(created.body.agent.name).toBe('New');
 
     const updated = await request(app)
       .post('/api/me/agents')
-      .send({ url: 'https://new.example/mcp', name: 'Renamed', type: 'sales', visibility: 'private' });
+      .send({ url: 'https://new.example.test/mcp', name: 'Renamed', type: 'sales', visibility: 'private' });
     expect(updated.status).toBe(200);
     expect(updated.body.agent.name).toBe('Renamed');
 
     const profile = await memberDb.getProfileByOrgId(orgId);
-    const matching = profile!.agents.filter((a) => a.url === 'https://new.example/mcp');
+    const matching = profile!.agents.filter((a) => a.url === 'https://new.example.test/mcp');
     expect(matching).toHaveLength(1);
   });
 
@@ -328,7 +331,7 @@ describe('Per-agent REST API (/api/me/agents)', () => {
     (app as any).setCurrentUser(userId);
     const res = await request(app)
       .post('/api/me/agents')
-      .send({ url: 'https://upgrade.example/mcp', type: 'sales', visibility: 'public' });
+      .send({ url: 'https://upgrade.example.test/mcp', type: 'sales', visibility: 'public' });
     expect(res.status).toBe(201);
     expect(res.body.agent.visibility).toBe('members_only');
     expect(res.body.warnings).toBeDefined();
@@ -343,13 +346,13 @@ describe('Per-agent REST API (/api/me/agents)', () => {
     await createProfile(orgId, 'patch');
 
     (app as any).setCurrentUser(userId);
-    const target = encodeURIComponent('https://existing.example/mcp');
+    const target = encodeURIComponent('https://existing.example.test/mcp');
     const res = await request(app)
       .patch(`/api/me/agents/${target}`)
       .send({ name: 'Renamed' });
     expect(res.status).toBe(200);
     expect(res.body.agent.name).toBe('Renamed');
-    expect(res.body.agent.url).toBe('https://existing.example/mcp');
+    expect(res.body.agent.url).toBe('https://existing.example.test/mcp');
   });
 
   it('PATCH returns 400 url_immutable when body.url disagrees with the path', async () => {
@@ -360,10 +363,10 @@ describe('Per-agent REST API (/api/me/agents)', () => {
     await createProfile(orgId, 'patchurlimm');
 
     (app as any).setCurrentUser(userId);
-    const target = encodeURIComponent('https://existing.example/mcp');
+    const target = encodeURIComponent('https://existing.example.test/mcp');
     const res = await request(app)
       .patch(`/api/me/agents/${target}`)
-      .send({ name: 'Renamed', url: 'https://attempt-rename.example/mcp' });
+      .send({ name: 'Renamed', url: 'https://attempt-rename.example.test/mcp' });
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('url_immutable');
   });
@@ -376,7 +379,7 @@ describe('Per-agent REST API (/api/me/agents)', () => {
     await createProfile(orgId, 'patch404');
 
     (app as any).setCurrentUser(userId);
-    const target = encodeURIComponent('https://missing.example/mcp');
+    const target = encodeURIComponent('https://missing.example.test/mcp');
     const res = await request(app).patch(`/api/me/agents/${target}`).send({ name: 'X' });
     expect(res.status).toBe(404);
   });
@@ -389,7 +392,7 @@ describe('Per-agent REST API (/api/me/agents)', () => {
     await createProfile(orgId, 'delete');
 
     (app as any).setCurrentUser(userId);
-    const target = encodeURIComponent('https://existing.example/mcp');
+    const target = encodeURIComponent('https://existing.example.test/mcp');
     const res = await request(app).delete(`/api/me/agents/${target}`);
     expect(res.status).toBe(204);
 
@@ -405,7 +408,7 @@ describe('Per-agent REST API (/api/me/agents)', () => {
     await createProfile(orgId, 'delete404');
 
     (app as any).setCurrentUser(userId);
-    const target = encodeURIComponent('https://missing.example/mcp');
+    const target = encodeURIComponent('https://missing.example.test/mcp');
     const res = await request(app).delete(`/api/me/agents/${target}`);
     expect(res.status).toBe(404);
   });
@@ -423,16 +426,16 @@ describe('Per-agent REST API (/api/me/agents)', () => {
     (app as any).setCurrentUser(userId);
     const res = await request(app)
       .post(`/api/me/agents?org=${secondaryOrg}`)
-      .send({ url: 'https://multi.example/mcp', type: 'sales', visibility: 'private' });
+      .send({ url: 'https://multi.example.test/mcp', type: 'sales', visibility: 'private' });
     expect(res.status).toBe(201);
-    expect(res.body.agent.url).toBe('https://multi.example/mcp');
+    expect(res.body.agent.url).toBe('https://multi.example.test/mcp');
 
     // Primary org's profile must be untouched — `?org=` is the addressable
     // identifier.
     const primary = await memberDb.getProfileByOrgId(primaryOrg);
     expect(primary).toBeNull();
     const secondary = await memberDb.getProfileByOrgId(secondaryOrg);
-    expect(secondary!.agents.some((a) => a.url === 'https://multi.example/mcp')).toBe(true);
+    expect(secondary!.agents.some((a) => a.url === 'https://multi.example.test/mcp')).toBe(true);
   });
 
   it('?org=… returns 403 when the user is not a member', async () => {
@@ -461,7 +464,7 @@ describe('Per-agent REST API (/api/me/agents)', () => {
     // resolveAgentTypes() reads the most recent snapshot per URL via
     // bulkGetCapabilities; even if the client claims `buying`, the
     // snapshot wins.
-    const targetUrl = 'https://smuggle.example/mcp';
+    const targetUrl = 'https://smuggle.example.test/mcp';
     await pool.query(
       `INSERT INTO agent_capabilities_snapshot
          (agent_url, protocol, inferred_type, last_discovered)
@@ -498,7 +501,7 @@ describe('Per-agent REST API (/api/me/agents)', () => {
     (app as any).setCurrentUser(userId);
     const res = await request(app)
       .post('/api/me/agents')
-      .send({ url: 'https://no-type.example/mcp', visibility: 'private' });
+      .send({ url: 'https://no-type.example.test/mcp', visibility: 'private' });
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('type is required');
   });
@@ -513,7 +516,7 @@ describe('Per-agent REST API (/api/me/agents)', () => {
     (app as any).setCurrentUser(userId);
     const res = await request(app)
       .post('/api/me/agents')
-      .send({ url: 'https://unknown.example/mcp', type: 'unknown', visibility: 'private' });
+      .send({ url: 'https://unknown.example.test/mcp', type: 'unknown', visibility: 'private' });
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('type is required');
   });
@@ -528,7 +531,7 @@ describe('Per-agent REST API (/api/me/agents)', () => {
     (app as any).setCurrentUser(userId);
     const res = await request(app)
       .post('/api/me/agents')
-      .send({ url: 'https://garbage.example/mcp', type: 'seller', visibility: 'private' });
+      .send({ url: 'https://garbage.example.test/mcp', type: 'seller', visibility: 'private' });
     expect(res.status).toBe(400);
     expect(res.body.error).toBe('type is required');
   });
@@ -546,12 +549,12 @@ describe('Per-agent REST API (/api/me/agents)', () => {
       slug: 'patchtype',
       is_public: false,
       agents: [
-        { url: 'https://existing.example/mcp', type: 'sales', visibility: 'private' },
+        { url: 'https://existing.example.test/mcp', type: 'sales', visibility: 'private' },
       ],
     });
 
     (app as any).setCurrentUser(userId);
-    const target = encodeURIComponent('https://existing.example/mcp');
+    const target = encodeURIComponent('https://existing.example.test/mcp');
 
     // Invalid type → 400 invalid_type (caller-supplied 'unknown' rejected,
     // out-of-enum strings rejected).
@@ -596,7 +599,7 @@ describe('Per-agent REST API (/api/me/agents)', () => {
     await provisionUser(userId, orgId);
     await createProfile(orgId, 'metaseed');
 
-    const targetUrl = 'https://meta-seed.example/mcp';
+    const targetUrl = 'https://meta-seed.example.test/mcp';
     // Sanity: no metadata row before the POST.
     const before = await pool.query(
       'SELECT agent_url FROM agent_registry_metadata WHERE agent_url = $1',
@@ -633,7 +636,7 @@ describe('Per-agent REST API (/api/me/agents)', () => {
     // write-side seed.
     const orgId = `${TEST_PREFIX}_cte_only`;
     const userId = `${TEST_PREFIX}_cte_only_user`;
-    const targetUrl = 'https://cte-only.example/mcp';
+    const targetUrl = 'https://cte-only.example.test/mcp';
     await seedOrg(pool, orgId, 'individual_professional');
     await provisionUser(userId, orgId);
     await memberDb.createProfile({
@@ -665,7 +668,7 @@ describe('Per-agent REST API (/api/me/agents)', () => {
     await provisionUser(userId, orgId);
     await createProfile(orgId, 'metaexisting');
 
-    const targetUrl = 'https://meta-existing.example/mcp';
+    const targetUrl = 'https://meta-existing.example.test/mcp';
     // Seed metadata with non-default lifecycle and a custom interval — the
     // re-register MUST preserve these so an owner who tuned cadence /
     // lifecycle from the dashboard doesn't see it reset by the next save.
@@ -702,11 +705,11 @@ describe('Per-agent REST API (/api/me/agents)', () => {
       display_name: 'Test deletepublic',
       slug: 'deletepublic',
       is_public: false,
-      agents: [{ url: 'https://pub.example/mcp', visibility: 'public' }],
+      agents: [{ url: 'https://pub.example.test/mcp', visibility: 'public' }],
     });
 
     (app as any).setCurrentUser(userId);
-    const target = encodeURIComponent('https://pub.example/mcp');
+    const target = encodeURIComponent('https://pub.example.test/mcp');
     const res = await request(app).delete(`/api/me/agents/${target}`);
     expect(res.status).toBe(409);
     expect(res.body.error).toBe('unpublish_first');
@@ -715,7 +718,7 @@ describe('Per-agent REST API (/api/me/agents)', () => {
     // whole point.
     const profile = await memberDb.getProfileByOrgId(orgId);
     expect(profile!.agents).toHaveLength(1);
-    expect(profile!.agents[0].url).toBe('https://pub.example/mcp');
+    expect(profile!.agents[0].url).toBe('https://pub.example.test/mcp');
   });
 
   // ===== URL canonicalization (issue #3573) =====
@@ -735,22 +738,22 @@ describe('Per-agent REST API (/api/me/agents)', () => {
     (app as any).setCurrentUser(userId);
     const res = await request(app)
       .post('/api/me/agents')
-      .send({ url: 'HTTPS://Canon.Example/Agent/', name: 'C', type: 'sales', visibility: 'private' });
+      .send({ url: 'HTTPS://Canon.Example.test/Agent/', name: 'C', type: 'sales', visibility: 'private' });
     expect(res.status).toBe(201);
-    expect(res.body.agent.url).toBe('https://canon.example/agent');
+    expect(res.body.agent.url).toBe('https://canon.example.test/agent');
 
     const profile = await memberDb.getProfileByOrgId(orgId);
-    const match = profile!.agents.find((a) => a.url === 'https://canon.example/agent');
+    const match = profile!.agents.find((a) => a.url === 'https://canon.example.test/agent');
     expect(match).toBeDefined();
 
     const meta = await pool.query<{ agent_url: string }>(
       `SELECT agent_url FROM agent_registry_metadata WHERE agent_url = $1`,
-      ['https://canon.example/agent'],
+      ['https://canon.example.test/agent'],
     );
     expect(meta.rowCount).toBe(1);
 
     await pool.query('DELETE FROM agent_registry_metadata WHERE agent_url = $1', [
-      'https://canon.example/agent',
+      'https://canon.example.test/agent',
     ]);
   });
 
@@ -764,29 +767,29 @@ describe('Per-agent REST API (/api/me/agents)', () => {
     (app as any).setCurrentUser(userId);
     const first = await request(app)
       .post('/api/me/agents')
-      .send({ url: 'HTTPS://Idem.Example/MCP/', name: 'First', type: 'sales', visibility: 'private' });
+      .send({ url: 'HTTPS://Idem.Example.test/MCP/', name: 'First', type: 'sales', visibility: 'private' });
     expect(first.status).toBe(201);
-    expect(first.body.agent.url).toBe('https://idem.example/mcp');
+    expect(first.body.agent.url).toBe('https://idem.example.test/mcp');
 
     const second = await request(app)
       .post('/api/me/agents')
-      .send({ url: 'https://idem.example/mcp', name: 'Second', type: 'sales', visibility: 'private' });
+      .send({ url: 'https://idem.example.test/mcp', name: 'Second', type: 'sales', visibility: 'private' });
     expect(second.status).toBe(200);
     expect(second.body.agent.name).toBe('Second');
 
     const profile = await memberDb.getProfileByOrgId(orgId);
-    const matching = profile!.agents.filter((a) => a.url === 'https://idem.example/mcp');
+    const matching = profile!.agents.filter((a) => a.url === 'https://idem.example.test/mcp');
     expect(matching).toHaveLength(1);
 
     const meta = await pool.query<{ agent_url: string }>(
       `SELECT agent_url FROM agent_registry_metadata WHERE agent_url IN ($1, $2)`,
-      ['https://idem.example/mcp', 'HTTPS://Idem.Example/MCP/'],
+      ['https://idem.example.test/mcp', 'HTTPS://Idem.Example.test/MCP/'],
     );
     expect(meta.rowCount).toBe(1);
-    expect(meta.rows[0].agent_url).toBe('https://idem.example/mcp');
+    expect(meta.rows[0].agent_url).toBe('https://idem.example.test/mcp');
 
     await pool.query('DELETE FROM agent_registry_metadata WHERE agent_url = $1', [
-      'https://idem.example/mcp',
+      'https://idem.example.test/mcp',
     ]);
   });
 
@@ -801,19 +804,19 @@ describe('Per-agent REST API (/api/me/agents)', () => {
     // Seed a canonical row first via POST.
     await request(app)
       .post('/api/me/agents')
-      .send({ url: 'https://patch.example/mcp', name: 'P', type: 'sales', visibility: 'private' });
+      .send({ url: 'https://patch.example.test/mcp', name: 'P', type: 'sales', visibility: 'private' });
 
     // PATCH with a non-canonical url-encoded path — must collapse onto the canonical row.
-    const noncanonical = encodeURIComponent('HTTPS://Patch.Example/MCP/');
+    const noncanonical = encodeURIComponent('HTTPS://Patch.Example.test/MCP/');
     const res = await request(app)
       .patch(`/api/me/agents/${noncanonical}`)
       .send({ name: 'Renamed' });
     expect(res.status).toBe(200);
     expect(res.body.agent.name).toBe('Renamed');
-    expect(res.body.agent.url).toBe('https://patch.example/mcp');
+    expect(res.body.agent.url).toBe('https://patch.example.test/mcp');
 
     await pool.query('DELETE FROM agent_registry_metadata WHERE agent_url = $1', [
-      'https://patch.example/mcp',
+      'https://patch.example.test/mcp',
     ]);
   });
 
@@ -827,16 +830,16 @@ describe('Per-agent REST API (/api/me/agents)', () => {
     (app as any).setCurrentUser(userId);
     await request(app)
       .post('/api/me/agents')
-      .send({ url: 'https://patchbody.example/mcp', name: 'P', type: 'sales', visibility: 'private' });
+      .send({ url: 'https://patchbody.example.test/mcp', name: 'P', type: 'sales', visibility: 'private' });
 
-    const path = encodeURIComponent('https://patchbody.example/mcp');
+    const path = encodeURIComponent('https://patchbody.example.test/mcp');
     const res = await request(app)
       .patch(`/api/me/agents/${path}`)
-      .send({ name: 'OK', url: 'HTTPS://PatchBody.Example/MCP/' });
+      .send({ name: 'OK', url: 'HTTPS://PatchBody.Example.test/MCP/' });
     expect(res.status).toBe(200);
 
     await pool.query('DELETE FROM agent_registry_metadata WHERE agent_url = $1', [
-      'https://patchbody.example/mcp',
+      'https://patchbody.example.test/mcp',
     ]);
   });
 
@@ -850,17 +853,17 @@ describe('Per-agent REST API (/api/me/agents)', () => {
     (app as any).setCurrentUser(userId);
     await request(app)
       .post('/api/me/agents')
-      .send({ url: 'https://del.example/mcp', name: 'D', type: 'sales', visibility: 'private' });
+      .send({ url: 'https://del.example.test/mcp', name: 'D', type: 'sales', visibility: 'private' });
 
-    const noncanonical = encodeURIComponent('HTTPS://Del.Example/MCP/');
+    const noncanonical = encodeURIComponent('HTTPS://Del.Example.test/MCP/');
     const res = await request(app).delete(`/api/me/agents/${noncanonical}`);
     expect(res.status).toBe(204);
 
     const profile = await memberDb.getProfileByOrgId(orgId);
-    expect(profile!.agents.find((a) => a.url === 'https://del.example/mcp')).toBeUndefined();
+    expect(profile!.agents.find((a) => a.url === 'https://del.example.test/mcp')).toBeUndefined();
 
     await pool.query('DELETE FROM agent_registry_metadata WHERE agent_url = $1', [
-      'https://del.example/mcp',
+      'https://del.example.test/mcp',
     ]);
   });
 
@@ -874,12 +877,12 @@ describe('Per-agent REST API (/api/me/agents)', () => {
     (app as any).setCurrentUser(userId);
     const withQuery = await request(app)
       .post('/api/me/agents')
-      .send({ url: 'https://q.example/mcp?v=1', type: 'sales' });
+      .send({ url: 'https://q.example.test/mcp?v=1', type: 'sales' });
     expect(withQuery.status).toBe(400);
 
     const withFrag = await request(app)
       .post('/api/me/agents')
-      .send({ url: 'https://q.example/mcp#frag', type: 'sales' });
+      .send({ url: 'https://q.example.test/mcp#frag', type: 'sales' });
     expect(withFrag.status).toBe(400);
   });
 
@@ -895,16 +898,18 @@ describe('Per-agent REST API (/api/me/agents)', () => {
     // canonicalizeAgentUrl per migration 440's CHECK constraint.
     const res = await request(app)
       .post('/api/me/agents')
-      .send({ url: 'https://wild.example/*/mcp', type: 'sales' });
+      .send({ url: 'https://wild.example.test/*/mcp', type: 'sales' });
     expect(res.status).toBe(400);
   });
 
   // Hostname verification (#4499 MVP) — gate at registration time. The
-  // shared createProfile helper seeds `example` as a verified domain so
-  // pre-existing tests pass; these tests assert the gate rejects when
-  // the agent host doesn't match a verified domain, and allows
-  // unrestricted registration for orgs that haven't yet staked any
-  // verified-domain claim (no_verified_domains branch).
+  // shared createProfile helper seeds `example.test` as a verified
+  // domain so pre-existing tests pass. These tests assert the gate
+  // (a) rejects when the agent host doesn't match a verified domain,
+  // (b) accepts when it matches via exact or subdomain match,
+  // (c) falls back to organizations.email_domain when the org has no
+  //     verified domains — corporate email_domain works as a soft
+  //     claim, free-email-provider domains are rejected outright.
   it('POST returns 400 unverified_hostname when agent host is not on a verified domain', async () => {
     const orgId = `${TEST_PREFIX}_hostname_rogue`;
     const userId = `${TEST_PREFIX}_hostname_rogue_user`;
@@ -927,7 +932,7 @@ describe('Per-agent REST API (/api/me/agents)', () => {
     expect(res.body.error).toBe('unverified_hostname');
     expect(res.body.agent_hostname).toBe('adcp-mcp.celtra.com');
     expect(res.body.verified_domains).toEqual(
-      expect.arrayContaining(['rogue.example', 'example']),
+      expect.arrayContaining(['rogue.example', 'example.test']),
     );
   });
 
@@ -944,37 +949,77 @@ describe('Per-agent REST API (/api/me/agents)', () => {
     const res = await request(app)
       .post('/api/me/agents')
       .send({
-        url: 'https://api.matchhost.example/mcp',
+        url: 'https://api.matchhost.example.test/mcp',
         type: 'sales',
         visibility: 'private',
       });
     expect(res.status).toBe(201);
-    expect(res.body.agent.url).toBe('https://api.matchhost.example/mcp');
+    expect(res.body.agent.url).toBe('https://api.matchhost.example.test/mcp');
   });
 
-  it('POST allows registration for orgs with NO verified domains (no claim to enforce)', async () => {
-    const orgId = `${TEST_PREFIX}_hostname_noclaim`;
-    const userId = `${TEST_PREFIX}_hostname_noclaim_user`;
+  it('POST rejects free-email-workspace orgs registering on arbitrary hostnames', async () => {
+    // Soft-pass tightening from the security review on #4648:
+    // a fresh personal workspace (no verified domains, free-email
+    // provider as signup domain) used to silently pass through the
+    // gate. Now it gets a 400 free_email_workspace error — closes the
+    // attacker vector where someone signs up with attacker@gmail.com
+    // and registers a rogue agent on a brand's domain.
+    const orgId = `${TEST_PREFIX}_hostname_free_email`;
+    const userId = `${TEST_PREFIX}_hostname_free_email_user`;
     await seedOrg(pool, orgId, 'individual_professional');
     await provisionUser(userId, orgId);
-    // Create the profile WITHOUT the createProfile helper — that one
-    // seeds domains. Profile bare; no verified domains on this org.
     await memberDb.createProfile({
       workos_organization_id: orgId,
-      display_name: 'No claim org',
-      slug: 'noclaimhost',
+      display_name: 'Free-email workspace',
+      slug: 'freeemail',
       is_public: false,
       agents: [],
     });
+    await pool.query(
+      `UPDATE organizations SET email_domain = 'gmail.com' WHERE workos_organization_id = $1`,
+      [orgId],
+    );
 
     (app as any).setCurrentUser(userId);
-    // No verified domains → gate is soft → registration on any host
-    // succeeds. Catches the personal-workspace / free-email-provider
-    // case where there's nothing to enforce against.
     const res = await request(app)
       .post('/api/me/agents')
       .send({
-        url: 'https://anything.example.org/mcp',
+        url: 'https://rogue.celtra.com/mcp',
+        type: 'sales',
+        visibility: 'private',
+      });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('unverified_hostname');
+    expect(res.body.reason).toBe('free_email_workspace');
+  });
+
+  it('POST falls back to org email_domain when no verified domains exist (corporate signup)', async () => {
+    // The other side of the soft-pass tightening: a corporate org
+    // that hasn't yet WorkOS-verified any domain can still register
+    // agents on the signup-email domain. Catches the "new corporate
+    // signup that hasn't completed WorkOS domain verification yet"
+    // legitimate-user path.
+    const orgId = `${TEST_PREFIX}_hostname_corp_email`;
+    const userId = `${TEST_PREFIX}_hostname_corp_email_user`;
+    await seedOrg(pool, orgId, 'individual_professional');
+    await provisionUser(userId, orgId);
+    await memberDb.createProfile({
+      workos_organization_id: orgId,
+      display_name: 'Corp signup org',
+      slug: 'corpsignup',
+      is_public: false,
+      agents: [],
+    });
+    await pool.query(
+      `UPDATE organizations SET email_domain = 'acme.example.test' WHERE workos_organization_id = $1`,
+      [orgId],
+    );
+
+    (app as any).setCurrentUser(userId);
+    const res = await request(app)
+      .post('/api/me/agents')
+      .send({
+        url: 'https://mcp.acme.example.test/agent',
         type: 'sales',
         visibility: 'private',
       });

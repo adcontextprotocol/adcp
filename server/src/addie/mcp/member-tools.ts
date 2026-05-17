@@ -20,6 +20,7 @@ import { parseOAuthClientCredentialsInput } from '../../routes/helpers/oauth-cli
 import {
   verifyAgentHostname,
   buildUnverifiedHostnameMessage,
+  isHostnameOwnershipRejection,
 } from '../../services/agent-hostname-verification.js';
 import { PUBLIC_TEST_AGENT, PUBLIC_TEST_AGENT_URLS, INTERNAL_PATH_AGENT_URL } from '../../config/test-agent.js';
 import type { AddieTool } from '../types.js';
@@ -5716,10 +5717,7 @@ export function createMemberToolHandlers(
     // verified domain, the agent hostname must be on (or a subdomain
     // of) one of them. Orgs without verified domains pass through.
     const hostnameVerification = await verifyAgentHostname(saveOrgId, agentUrl);
-    if (
-      !hostnameVerification.ok &&
-      hostnameVerification.reason === 'hostname_not_in_verified_domains'
-    ) {
+    if (isHostnameOwnershipRejection(hostnameVerification)) {
       return buildUnverifiedHostnameMessage(hostnameVerification);
     }
 
