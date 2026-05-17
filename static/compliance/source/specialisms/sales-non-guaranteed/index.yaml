@@ -9,11 +9,13 @@ required_tools:
   - get_products
   - create_media_buy
 requires_scenarios:
+  - media_buy_seller/audience_buy_flow
   - media_buy_seller/delivery_reporting
-  - media_buy_seller/pending_creatives_to_start
-  - media_buy_seller/inventory_list_targeting
+  - media_buy_seller/event_dedup_flow
   - media_buy_seller/inventory_list_no_match
+  - media_buy_seller/inventory_list_targeting
   - media_buy_seller/invalid_transitions
+  - media_buy_seller/pending_creatives_to_start
   - media_buy_seller/performance_buy_flow
 
 # Cross-step assertion (adcp#2664). status.monotonic rejects resource

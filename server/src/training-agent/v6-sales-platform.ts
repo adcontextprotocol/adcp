@@ -16,6 +16,9 @@ import {
   type DecisioningPlatform,
   type SalesPlatform,
   type AccountStore,
+  type AudiencePlatform,
+  type SyncAudiencesRow,
+  type AudienceStatus,
 } from '@adcp/sdk/server';
 import {
   handleGetProducts,
@@ -28,6 +31,7 @@ import {
   handleListCreativeFormats,
 } from './task-handlers.js';
 import { handleProvidePerformanceFeedback } from './catalog-event-handlers.js';
+import { handleSyncAudiences } from './audience-handlers.js';
 import { syncAccountsUpsert } from './v6-account-helpers.js';
 import { trainingBuyerAgentRegistry } from './buyer-agent-registry.js';
 import type { ToolArgs, TrainingContext } from './types.js';
@@ -278,6 +282,35 @@ export class TrainingSalesPlatform
     providePerformanceFeedback: async (req, ctx) => {
       const result = await handleProvidePerformanceFeedback(req as ToolArgs, buildTrainingCtx(ctx.account));
       return translateV5Result(result);
+    },
+  };
+
+  // Audience-targeting capability is declared above; expose sync_audiences
+  // so audience_buy_flow can register audiences before referencing them in
+  // targeting_overlay. The training agent does not claim the audience-sync
+  // specialism — this is the buy-side sibling, gated on audience_targeting
+  // capability rather than on the audience-sync storyboard.
+  audiences: AudiencePlatform<TrainingSalesMeta> = {
+    syncAudiences: async (audienceList, ctx) => {
+      const brandDomain = brandDomainFromCtx(ctx.account);
+      // sync_audiences requires idempotency_key per schema. The framework
+      // strips it from per-row params; synthesise one so the v5 handler's
+      // shape validation passes. The v5 handler doesn't enforce uniqueness
+      // here — the framework already handled idempotency upstream.
+      const args = {
+        audiences: audienceList,
+        idempotency_key: `framework-projected-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+        ...(brandDomain && { account: { brand: { domain: brandDomain } }, brand: { domain: brandDomain } }),
+      };
+      const result = await handleSyncAudiences(args as unknown as ToolArgs, buildTrainingCtx(ctx.account));
+      const wrapped = translateV5Result<{ audiences?: SyncAudiencesRow[] }>(result);
+      return (wrapped.audiences ?? []) as SyncAudiencesRow[];
+    },
+    pollAudienceStatuses: async (_audienceIds, _ctx) => {
+      // The training agent doesn't model long-running matching — every
+      // audience resolves synchronously in syncAudiences. Return empty so
+      // callers treat ids as not-yet-resolved; never throw here.
+      return new Map<string, AudienceStatus>();
     },
   };
 }
