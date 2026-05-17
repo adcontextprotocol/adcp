@@ -9,6 +9,7 @@ const htmlContent = readFileSync(htmlPath, 'utf-8');
 interface BuilderWindow extends Window {
   displayValidationResults: (data: unknown) => void;
   displayAgentCardsResults: (cards: unknown[]) => void;
+  showValidationSummary: (data: unknown) => void;
   escapeHtml: (s: string) => string;
   state: Record<string, unknown>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -173,6 +174,93 @@ describe('adagents-builder: XSS hardening on imported markup', () => {
     // The <pre> block should not allow injected </pre><script>
     expect(results.querySelectorAll('script').length).toBe(0);
     expect((win as unknown as { __rawPwned?: boolean }).__rawPwned).toBeUndefined();
+  });
+});
+
+describe('adagents-builder: showValidationSummary live path (#4468)', () => {
+  let win: BuilderWindow;
+  let dom: JSDOM;
+
+  beforeEach(() => {
+    dom = createDOM();
+    win = (dom as JSDOM & { window: BuilderWindow }).window;
+  });
+
+  it('escapes hostile error message in showValidationSummary', () => {
+    win.showValidationSummary({
+      valid: false,
+      errors: [{ message: '<img src=x onerror="window.__pwned = true">' }],
+      warnings: [],
+    });
+
+    const results = win.document.getElementById('validation-results') as HTMLElement;
+    expect(results.querySelectorAll('img').length).toBe(0);
+    expect(results.querySelectorAll('script').length).toBe(0);
+    expect((win as unknown as { __pwned?: boolean }).__pwned).toBeUndefined();
+    // The hostile payload survives as text, not as DOM
+    expect(results.textContent).toContain('<img src=x onerror=');
+  });
+
+  it('escapes hostile warning message in showValidationSummary', () => {
+    win.showValidationSummary({
+      valid: true,
+      errors: [],
+      warnings: [{ message: '<img src=x onerror="window.__warnPwned = true">' }],
+    });
+
+    const results = win.document.getElementById('validation-results') as HTMLElement;
+    expect(results.querySelectorAll('img').length).toBe(0);
+    expect(results.querySelectorAll('script').length).toBe(0);
+    expect((win as unknown as { __warnPwned?: boolean }).__warnPwned).toBeUndefined();
+  });
+
+  it('escapes hostile script payload from real adagents-manager echoed fields', () => {
+    // Mirrors server/src/adagents-manager.ts:1007/1079/1157/1235/1275/1288/1319
+    // where signal IDs, agent fields, tag names, and property IDs from the
+    // attacker-hosted adagents.json get echoed into validator messages.
+    win.showValidationSummary({
+      valid: false,
+      errors: [
+        { message: 'Signal id "<script>window.__sigPwned = true;</script>" is invalid' },
+        { message: 'Property id "<script>window.__propPwned = true;</script>" not found' },
+      ],
+      warnings: [
+        { message: 'Tag "<script>window.__tagPwned = true;</script>" is unknown' },
+      ],
+    });
+
+    const results = win.document.getElementById('validation-results') as HTMLElement;
+    expect(results.querySelectorAll('script').length).toBe(0);
+    const w = win as unknown as {
+      __sigPwned?: boolean;
+      __propPwned?: boolean;
+      __tagPwned?: boolean;
+    };
+    expect(w.__sigPwned).toBeUndefined();
+    expect(w.__propPwned).toBeUndefined();
+    expect(w.__tagPwned).toBeUndefined();
+  });
+
+  it('skips error/warning entries that are not { message: string }', () => {
+    // Defensive shape gate: never call escapeHtml on something we haven't
+    // confirmed is a string-message entry.
+    win.showValidationSummary({
+      valid: false,
+      errors: [
+        null,
+        'just a bare string',
+        { message: 123 },
+        { notMessage: '<img src=x onerror="window.__shapePwned = true">' },
+        { message: 'real error' },
+      ],
+      warnings: 'not even an array',
+    });
+
+    const results = win.document.getElementById('validation-results') as HTMLElement;
+    expect(results.querySelectorAll('img').length).toBe(0);
+    expect((win as unknown as { __shapePwned?: boolean }).__shapePwned).toBeUndefined();
+    // The one well-formed entry still renders
+    expect(results.textContent).toContain('real error');
   });
 });
 

@@ -4896,8 +4896,10 @@
         }
 
         const { valid, errors = [], warnings = [] } = validationData;
+        const errorsArr = Array.isArray(errors) ? errors : [];
+        const warningsArr = Array.isArray(warnings) ? warnings : [];
 
-        if (errors.length === 0 && warnings.length === 0) {
+        if (errorsArr.length === 0 && warningsArr.length === 0) {
           resultsDiv.style.display = 'none';
           return;
         }
@@ -4910,19 +4912,28 @@
           html += '<h4 style="color: var(--color-error-600); margin: 0 0 12px 0;">❌ Invalid File</h4>';
         }
 
-        if (errors.length > 0) {
+        // Defensively gate: messages come from validator output that echoes
+        // attacker-controlled strings from a fetched adagents.json. Always
+        // escape, and skip entries that aren't `{ message: string }`.
+        const isMessageEntry = entry =>
+          entry && typeof entry === 'object' && typeof entry.message === 'string';
+
+        const safeErrors = errorsArr.filter(isMessageEntry);
+        const safeWarnings = warningsArr.filter(isMessageEntry);
+
+        if (safeErrors.length > 0) {
           html +=
             '<div style="margin-bottom: 12px;"><strong>Errors:</strong><ul style="margin: 4px 0; padding-left: 20px;">';
-          errors.forEach(err => {
-            html += `<li style="color: var(--color-error-600);">${err.message}</li>`;
+          safeErrors.forEach(err => {
+            html += `<li style="color: var(--color-error-600);">${escapeHtml(err.message)}</li>`;
           });
           html += '</ul></div>';
         }
 
-        if (warnings.length > 0) {
+        if (safeWarnings.length > 0) {
           html += '<div><strong>Warnings:</strong><ul style="margin: 4px 0; padding-left: 20px;">';
-          warnings.forEach(warn => {
-            html += `<li style="color: #f59e0b;">${warn.message}</li>`;
+          safeWarnings.forEach(warn => {
+            html += `<li style="color: #f59e0b;">${escapeHtml(warn.message)}</li>`;
           });
           html += '</ul></div>';
         }
