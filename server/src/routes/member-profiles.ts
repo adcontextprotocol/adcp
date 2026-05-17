@@ -33,6 +33,8 @@ import { slugify } from "../services/collection-feed-sync.js";
 import {
   verifyAgentHostname,
   buildUnverifiedHostnameMessage,
+  checkAgentHostnameAgainstDomains,
+  getVerifiedOrgDomains,
   isHostnameOwnershipRejection,
 } from "../services/agent-hostname-verification.js";
 import {
@@ -972,15 +974,20 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       // the bulk PUT). No grandfathering is needed here — this branch
       // creates a fresh profile, so there are no existing entries to
       // honor. All agents in the body are NEW writes.
-      if (Array.isArray(agents)) {
+      //
+      // Bulk shape (#4673): one query for the verified-domain list
+      // before the loop, pure check inside. Avoids N+1 queries when
+      // the caller submits many agents at once.
+      if (Array.isArray(agents) && agents.length > 0) {
+        const verifiedDomains = await getVerifiedOrgDomains(targetOrgId);
         for (let i = 0; i < agents.length; i++) {
           // Canonicalization loop above 400s on any entry without a
           // string `url`, so by here every `agents[i].url` is a
-          // canonical string. Use a non-null assertion to satisfy TS
+          // canonical string. Cast at the call site to satisfy TS
           // without a conditional that CodeQL classifies as a
           // user-controlled bypass.
           const agentUrl = (agents[i] as AgentConfig).url as string;
-          const verification = await verifyAgentHostname(targetOrgId, agentUrl);
+          const verification = checkAgentHostnameAgainstDomains(agentUrl, verifiedDomains, targetOrgId);
           if (isHostnameOwnershipRejection(verification)) {
             return res.status(400).json({
               error: 'unverified_hostname',
@@ -1281,6 +1288,10 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
             })
             .filter((u): u is string => u !== null),
         );
+        // Bulk shape (#4673): one query for the verified-domain list
+        // before the loop, pure check inside. Avoids N+1 queries when
+        // the bulk caller submits many agents at once.
+        const bulkVerifiedDomains = await getVerifiedOrgDomains(targetOrgId);
         for (let i = 0; i < updates.agents.length; i++) {
           // Canonicalization loop above 400s on any entry without a
           // string `url`, so by here every `updates.agents[i].url` is a
@@ -1289,7 +1300,7 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
           // user-controlled bypass.
           const agentUrl = (updates.agents[i] as AgentConfig).url as string;
           if (existingUrls.has(agentUrl)) continue;
-          const verification = await verifyAgentHostname(targetOrgId, agentUrl);
+          const verification = checkAgentHostnameAgainstDomains(agentUrl, bulkVerifiedDomains, targetOrgId);
           if (isHostnameOwnershipRejection(verification)) {
             return res.status(400).json({
               error: 'unverified_hostname',
