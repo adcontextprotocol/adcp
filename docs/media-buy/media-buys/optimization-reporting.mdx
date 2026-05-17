@@ -85,6 +85,94 @@ Three rules connect the layers and prevent orphaned goals:
    - Standard only — "you owe me ≥ X," seller decides how to hit it
    - Both — optimization steers; standard backstops
 
+### Worked example: Adelaide attention end-to-end
+
+A buyer wants to optimize against Adelaide's `attention_score` with a threshold of 70. Here's how the four surfaces line up:
+
+**1. Product capability** (discovered via `get_products`):
+
+```json
+{
+  "product_id": "premium_ctv_video",
+  "vendor_metric_optimization": {
+    "supported_metrics": [
+      {
+        "vendor": { "domain": "adelaidemetrics.com" },
+        "metric_id": "attention_score",
+        "supported_targets": ["cost_per", "threshold_rate"]
+      }
+    ]
+  },
+  "reporting_capabilities": {
+    "vendor_metrics": [
+      { "vendor": { "domain": "adelaidemetrics.com" }, "metric_id": "attention_score" }
+    ]
+  }
+}
+```
+
+**2. Package proposal on `create_media_buy`** — the buyer commits to reporting AND sets the optimization goal (both required by the reporting-coherence rule):
+
+```json
+{
+  "product_id": "premium_ctv_video",
+  "committed_metrics": [
+    {
+      "scope": "vendor",
+      "vendor": { "domain": "adelaidemetrics.com" },
+      "metric_id": "attention_score"
+    }
+  ],
+  "optimization_goals": [
+    {
+      "kind": "vendor_metric",
+      "vendor": { "domain": "adelaidemetrics.com" },
+      "metric_id": "attention_score",
+      "target": { "kind": "threshold_rate", "value": 70 },
+      "priority": 1
+    }
+  ]
+}
+```
+
+A `performance_standard` MAY be layered on top if the buyer wants a contractual floor — e.g., `{ "metric": "attention_score", "vendor": { "domain": "adelaidemetrics.com" }, "threshold": 65 }` — but it's independent of the goal.
+
+**3. Delivery** (`get_media_buy_delivery` response):
+
+```json
+{
+  "vendor_metric_values": [
+    {
+      "vendor": { "domain": "adelaidemetrics.com" },
+      "metric_id": "attention_score",
+      "value": 73.2,
+      "measurable_impressions": 845000
+    }
+  ]
+}
+```
+
+The seller's bidding stack steered toward higher Adelaide attention scores; the reported value `73.2` is above the threshold `70`, so the goal is met. The `measurable_impressions` denominator (`845000` out of total impressions on the buy) is the coverage figure for Adelaide's measurement — vendor SDKs rarely fire on 100% of delivered impressions.
+
+**4. Accountability gap reporting** (also in the `get_media_buy_delivery` response, when commitment isn't met):
+
+```json
+{
+  "by_package": [{
+    "package_id": "...",
+    "missing_metrics": [
+      {
+        "scope": "vendor",
+        "vendor": { "domain": "adelaidemetrics.com" },
+        "metric_id": "attention_score"
+      }
+    ]
+  }]
+}
+```
+
+If Adelaide's coverage on the inventory dropped below the seller's confidence threshold and they couldn't populate `vendor_metric_values` for this period, the same `(vendor, metric_id)` shows up in `missing_metrics` — same key across the entire lifecycle, so buyer reconciliation is a row-level join.
+
 ## Performance Monitoring
 
 ### Real-Time Metrics

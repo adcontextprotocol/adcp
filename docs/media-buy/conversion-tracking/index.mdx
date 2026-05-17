@@ -507,7 +507,9 @@ Optimize for a seller-tracked delivery metric. No event source needed — the se
 
 ### kind: vendor_metric
 
-For vendor-attested measurement where the metric has no industry-graduated definition — attention (DoubleVerify, IAS, Adelaide, TVision, Lumen), panel-based brand lift (Kantar, Upwave, Cint), emissions (Scope3, Good-Loop), retail-media partner metrics — the goal binds a specific vendor + `metric_id` end-to-end. The seller's bidding stack steers toward that vendor's measurement; delivery reports the value via `vendor_metric_values[]` with the same `(vendor, metric_id)` key.
+For vendor-attested measurement where the metric has no industry-graduated definition — attention (DoubleVerify, IAS, Adelaide, TVision, Lumen), panel-based brand lift (Kantar, Upwave, Cint), retail-media partner metrics — the goal binds a specific vendor + `metric_id` end-to-end. The seller's bidding stack steers toward that vendor's measurement; delivery reports the value via `vendor_metric_values[]` with the same `(vendor, metric_id)` key.
+
+**Direction polarity** (upward-pushing only this minor). `cost_per` and `threshold_rate` are upward-pushing targets — the seller steers delivery toward higher metric values, or toward meeting a minimum threshold. Metrics where the buyer wants to *minimize* (emissions, IVT, latency) currently rely on seller-side polarity interpretation per the vendor's published metric semantics in `measurement.metrics[]`. First-class minimize semantics (a `direction: "minimize"` field on the goal or a `target.kind: "ceiling_rate"`) are under WG discussion — see [#4644](https://github.com/adcontextprotocol/adcp/issues/4644).
 
 ```json
 {
@@ -565,7 +567,7 @@ All target kinds across the three goal kinds:
 | Target CTR | Minimum click-through rate | `kind: "metric"`, `metric: "clicks"` + `target: { kind: "threshold_rate", value: 0.001 }` |
 | Target viewability | Minimum viewability rate | `kind: "metric"`, `metric: "views"` + `target: { kind: "threshold_rate", value: 0.70 }` |
 | Target attention (vendor-bound) | Minimum attention from a specific vendor | `kind: "vendor_metric"`, `vendor: { domain: "adelaidemetrics.com" }`, `metric_id: "attention_score"` + `target: { kind: "threshold_rate", value: 70 }` |
-| Target emissions (vendor-bound) | Minimize carbon-per-impression from a specific provider | `kind: "vendor_metric"`, `vendor: { domain: "scope3.com" }`, `metric_id: "gco2e_per_impression"`, no target (maximize-inverse) or `target: { kind: "threshold_rate", value: 0.5 }` for a ceiling-style floor |
+| Target brand lift (vendor-bound) | Maximize awareness lift from a specific panel provider | `kind: "vendor_metric"`, `vendor: { domain: "kantar.com" }`, `metric_id: "awareness_lift"`, no target (maximize) |
 | Target VCR | Minimum video completion rate | `kind: "metric"`, `metric: "completed_views"` + `target: { kind: "threshold_rate", value: 0.85 }` |
 | Completed views with duration | Video views with specific duration threshold | `kind: "metric"`, `metric: "completed_views"` + `view_duration_seconds: 6` |
 | Max engagements | Maximize social interactions within budget | `kind: "metric"`, `metric: "engagements"`, no target |
