@@ -939,7 +939,16 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       if (Array.isArray(agents)) {
         for (let i = 0; i < agents.length; i++) {
           const a = agents[i];
-          if (!a || typeof a.url !== 'string') continue;
+          // Reject malformed entries outright — silently skipping past
+          // a missing/invalid `url` lets a caller smuggle an entry
+          // through the hostname gate below (CodeQL
+          // js/user-controlled-bypass).
+          if (!a || typeof a.url !== 'string') {
+            return res.status(400).json({
+              error: 'invalid_agent_url',
+              message: `agents[${i}] must be an object with a string url`,
+            });
+          }
           if (a.url.includes('?') || a.url.includes('#')) {
             return res.status(400).json({
               error: 'invalid_agent_url',
@@ -965,7 +974,13 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
       if (Array.isArray(agents)) {
         for (let i = 0; i < agents.length; i++) {
           const a = agents[i];
-          if (!a || typeof a.url !== 'string') continue;
+          // Unreachable by construction: the canonicalization loop
+          // above already 400s on any entry without a string `url`.
+          // The narrowing is here for the type checker; CodeQL flagged
+          // the earlier `continue` variant as a user-controlled bypass.
+          if (!a || typeof a.url !== 'string') {
+            return res.status(500).json({ error: 'internal_error' });
+          }
           const verification = await verifyAgentHostname(targetOrgId, a.url);
           if (isHostnameOwnershipRejection(verification)) {
             return res.status(400).json({
@@ -1219,22 +1234,30 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         // applied via two surfaces lands as the same row.
         for (let i = 0; i < updates.agents.length; i++) {
           const a = updates.agents[i] as AgentConfig & { url?: unknown };
-          if (a && typeof a.url === 'string') {
-            if (a.url.includes('?') || a.url.includes('#')) {
-              return res.status(400).json({
-                error: 'invalid_agent_url',
-                message: `agents[${i}].url must not contain query strings or fragments`,
-              });
-            }
-            const canonical = canonicalizeAgentUrl(a.url);
-            if (!canonical) {
-              return res.status(400).json({
-                error: 'invalid_agent_url',
-                message: `agents[${i}].url is not a valid agent URL`,
-              });
-            }
-            a.url = canonical;
+          // Reject malformed entries outright instead of skipping them
+          // — silently skipping past a missing/invalid `url` lets a
+          // caller smuggle an entry through the hostname gate below
+          // (CodeQL js/user-controlled-bypass).
+          if (!a || typeof a.url !== 'string') {
+            return res.status(400).json({
+              error: 'invalid_agent_url',
+              message: `agents[${i}] must be an object with a string url`,
+            });
           }
+          if (a.url.includes('?') || a.url.includes('#')) {
+            return res.status(400).json({
+              error: 'invalid_agent_url',
+              message: `agents[${i}].url must not contain query strings or fragments`,
+            });
+          }
+          const canonical = canonicalizeAgentUrl(a.url);
+          if (!canonical) {
+            return res.status(400).json({
+              error: 'invalid_agent_url',
+              message: `agents[${i}].url is not a valid agent URL`,
+            });
+          }
+          a.url = canonical;
         }
 
         // Hostname ownership check (#4499 MVP). The bulk PUT had been a
@@ -1261,7 +1284,13 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         );
         for (let i = 0; i < updates.agents.length; i++) {
           const a = updates.agents[i] as AgentConfig & { url?: unknown };
-          if (!a || typeof a.url !== 'string') continue;
+          // Unreachable by construction: the canonicalization loop above
+          // already 400s on any entry without a string `url`. The
+          // narrowing is here for the type checker; CodeQL flagged the
+          // earlier `continue` variant as a user-controlled bypass.
+          if (!a || typeof a.url !== 'string') {
+            return res.status(500).json({ error: 'internal_error' });
+          }
           if (existingUrls.has(a.url)) continue;
           const verification = await verifyAgentHostname(targetOrgId, a.url);
           if (isHostnameOwnershipRejection(verification)) {
