@@ -41,8 +41,9 @@
   "format_options": [
     {
       "format_kind": "video_hosted",
+      "capability_id": "meta_reels",
       "v1_format_ref": {
-        "agent_url": "https://meta.example",
+        "agent_url": "https://mirror.adcontextprotocol.org/translated/meta",
         "id": "meta_reels"
       },
       "params": {
@@ -64,23 +65,25 @@
         "containers": [
           "mp4"
         ],
-        "headline_max_chars": 25,
-        "primary_text_max_chars": 72,
+        "headline_max_chars": 40,
+        "primary_text_max_chars": 125,
         "captions": "recommended",
         "cta_values": [
           "LEARN_MORE",
           "SHOP_NOW",
           "DOWNLOAD",
-          "SIGN_UP"
+          "SIGN_UP",
+          "CONTACT_US",
+          "BOOK_NOW"
         ],
         "composition_model": "deterministic",
         "platform_extensions": [
           {
-            "uri": "https://meta.example/extensions/meta_pixel",
+            "uri": "https://mirror.adcontextprotocol.org/translated/meta/extensions/meta_pixel",
             "digest": "sha256:a3f5b7c9d8e2f1a4b6c8d0e2f4a6b8c0d2e4f6a8b0c2d4e6f8a0b2c4d6e8f0a2"
           },
           {
-            "uri": "https://meta.example/extensions/meta_placements_reels",
+            "uri": "https://mirror.adcontextprotocol.org/translated/meta/extensions/meta_placements_reels",
             "digest": "sha256:b8e1d4f6a9c2b5e8d1f4a7c0b3e6d9f2a5c8b1e4d7f0a3c6b9e2d5f8a1c4b7e0"
           }
         ]

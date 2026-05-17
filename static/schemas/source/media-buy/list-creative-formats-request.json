@@ -50,6 +50,15 @@
       "type": "string",
       "description": "Search for formats by name (case-insensitive partial match)"
     },
+    "publisher_domain": {
+      "type": "string",
+      "description": "Filter to formats supported by the named publisher. The agent SHOULD answer by reading the publisher's `adagents.json` `formats[]` (resolution order: `<publisher_domain>/.well-known/adagents.json` first; on 404 or absence-of-formats[], the AAO community-registry mirror at `https://mirror.adcontextprotocol.org/translated/<platform>/adagents.json`). Combine with `property_id` to scope further. When neither file declares `formats[]`, the agent MAY fall back to deriving format coverage from inventory the agent itself sells for the publisher (union of `Product.format_options[]` over matching products) and SHOULD label the result as agent-derived rather than publisher-authoritative.",
+      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+    },
+    "property_id": {
+      "$ref": "/schemas/core/property-id.json",
+      "description": "Filter to formats supported on the named property within the publisher's catalog. Resolves to a property in the publisher's `adagents.json` `properties[]`; the agent returns only `formats[]` entries whose `applies_to_property_ids` includes this property (or entries with no scope, which apply to all properties). Typically used in combination with `publisher_domain`."
+    },
     "wcag_level": {
       "$ref": "/schemas/enums/wcag-level.json",
       "description": "Filter to formats that meet at least this WCAG conformance level (A < AA < AAA)"

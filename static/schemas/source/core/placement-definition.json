@@ -51,9 +51,36 @@
     },
     "format_ids": {
       "type": "array",
-      "description": "Optional format IDs supported by this placement across the scoped properties and collections. Lets buyers answer which formats are available on which placements without relying on product-local definitions alone.",
+      "description": "Optional v1 format IDs supported by this placement across the scoped properties and collections. Lets buyers answer which formats are available on which placements without relying on product-local definitions alone. Parallel to `format_options[]` (canonical-formats v2 shape) — placements MAY carry either or both during the v1↔v2 migration window. When both are present, `format_options[]` is authoritative for buyers reading canonical-formats; `format_ids[]` is the v1 wire fallback.",
       "items": {
         "$ref": "/schemas/core/format-id.json"
+      },
+      "minItems": 1
+    },
+    "format_options": {
+      "type": "array",
+      "description": "Optional canonical-formats v2 declarations supported by this placement. Two ways to populate an entry: (1) reference an entry in the file's top-level `formats[]` by `capability_id` only — buyers resolve the full declaration from `formats[]` by matching `capability_id` (recommended; avoids duplication). (2) carry an inline `ProductFormatDeclaration` directly — for placement-specific narrowing that doesn't fit a reusable catalog entry. Same anyOf pattern as Product.\n\nWhen `format_options[]` references a `capability_id` not declared in the file's top-level `formats[]`, validators MUST surface this as a publisher-side error (broken reference). Buyers SHOULD fail closed for that placement rather than silently dropping the format.",
+      "items": {
+        "anyOf": [
+          {
+            "type": "object",
+            "title": "Capability reference",
+            "description": "Reference an entry in the file's top-level `formats[]` by `capability_id`. Resolved at validation time.",
+            "required": ["capability_id"],
+            "properties": {
+              "capability_id": {
+                "type": "string",
+                "description": "Matches a `capability_id` in the file's top-level `formats[]`."
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "$ref": "/schemas/core/product-format-declaration.json",
+            "title": "Inline declaration",
+            "description": "Inline canonical-formats v2 declaration. Use when the placement narrows a format in a way that's not worth a top-level catalog entry."
+          }
+        ]
       },
       "minItems": 1
     },
