@@ -197,6 +197,15 @@ A `format_shape` entry is promoted to a first-class `format_kind` when:
 
 Same governance pattern that produced the 11 canonicals from the v1 audit. The promotion queue lives at [adcp#3666](https://github.com/adcontextprotocol/adcp/issues/3666); current candidates are the 9 entries in the format-shape registry.
 
+**Promotion is a wire-shape change for consumer code.** Any client branching on `format_kind == "custom"` silently stops matching publishers that ship a promoted shape — the seller's product now arrives as `format_kind: "<promoted_name>"`. The normative migration contract (in `format-shape-vocabulary.json`'s description):
+
+1. **Transition window** (≥90 days): sellers MAY emit both shapes simultaneously — `format_options[]` carrying one `format_kind: "custom"` + `format_shape: "<name>"` declaration AND one `format_kind: "<promoted_name>"` declaration.
+2. **Consumer-SDK deprecation warning**: SDKs SHOULD emit a structured deprecation warning via their lint channel (same surface as `FORMAT_PROJECTION_FAILED`) when they see `format_kind: "custom"` with a `format_shape` that's been promoted. Payload: `{ format_shape, promoted_to, promotion_release, transition_end }`.
+3. **`promotion_status` lifecycle**: the registry entry's `promotion_status` updates from `tracking — see adcp#3666` to `promoted to <format_kind> in <version>; transition ends <date>` when the working group schedules promotion. SDKs MAY read this at codegen / runtime.
+4. **Post-transition**: sellers SHOULD drop the legacy `format_kind: "custom"` declaration. Buyers MAY then assume `format_kind == "custom"` is a long-tail / non-promoted shape.
+
+Without this contract, every promotion event silently breaks adopter code; with it, the deprecation warning is the early signal during the transition window.
+
 ## Asset group vocabulary
 
 Format `slots` reference canonical `asset_group_id` values from the [vocabulary registry](https://adcontextprotocol.org/schemas/v3/core/asset-group-vocabulary.json). The current canonical entries:
