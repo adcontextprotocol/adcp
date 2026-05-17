@@ -435,6 +435,14 @@ export interface GovernancePlanState {
     reallocationUnlimited: boolean;
     policyCategories?: string[];
     policyIds?: string[];
+    /**
+     * The wire-shaped plan as-supplied at this revision. Retained so a token
+     * signed against an earlier `plan_hash` can still be verified by an
+     * auditor after a subsequent `sync_plans` mutated state — delivers the
+     * "forever binding" property per governance spec §"Governance-agent
+     * obligations".
+     */
+    planAsSupplied: Record<string, unknown>;
   }>;
   channels?: {
     required?: string[];
@@ -458,6 +466,14 @@ export interface GovernancePlanState {
   committedBudget: number;
   committedByType?: Record<string, number>;
   syncedAt: string;
+  /**
+   * Verbatim wire-shaped plan as supplied on the most recent `sync_plans`
+   * call. The `plan_hash` claim emitted in `governance_context` is computed
+   * over this exact value so the hash matches what the buyer can recompute
+   * from its own `sync_plans` request. Spec: governance/specification.mdx
+   * §"Plan binding and audit".
+   */
+  planAsSupplied: Record<string, unknown>;
 }
 
 export interface GovernanceCheckState {
