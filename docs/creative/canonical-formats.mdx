@@ -826,14 +826,14 @@ When reading a product on the v1 path, SDKs project `format_ids` to `format_opti
 2. **Seller-asserted on the v1 file**: explicit `canonical` field on the v1 format declaration.
 3. **Registry glob**: `format_id_glob` match.
 4. **Structural match**: registry structural-shape match.
-5. **Fail closed**: SDK MUST NOT synthesize a `format_options` entry. SDKs MUST surface the failure in a structured channel reachable by the calling agent — either a separate lint-output channel OR augmenting the response's `errors[]` array with `code: FORMAT_PROJECTION_FAILED`. NOT logger-only — a buyer that silently sees N fewer products has no remediation path. The advisory is non-fatal: the response stays 200/success, the product is still valid on the v1 path, only the v2 `format_options` projection is absent.
+5. **Fail closed**: SDK MUST NOT synthesize a `format_options` entry. SDKs MUST augment the response's `errors[]` array with an entry carrying `source: "sdk"`, `sdk_id`, `code: FORMAT_PROJECTION_FAILED`, and the field+details (see error-code.json). Single mandated surface — lint-output channels are NOT acceptable; the multi-hop agent network needs warnings to propagate across SDK boundaries via the wire response. The advisory is non-fatal: the response stays 200/success, the product is still valid on the v1 path, only the v2 `format_options` projection is absent.
 
 ### Consumer rules (divergence detection)
 
 When a product carries BOTH `format_ids` and `format_options` and the two disagree (different canonical, different dimensions, different orientation, etc.):
 
 - SDKs MUST treat this as a producer contract violation.
-- SDKs SHOULD prefer `format_options` (canonical formats are the richer surface) and SHOULD surface the divergent product in a structured channel reachable by the calling agent (lint-output OR `errors[]` augmentation) with `code: FORMAT_DECLARATION_DIVERGENT`. NOT logger-only. Hard-failing the entire `get_products` response is discouraged — it punishes downstream buyers for a producer bug.
+- SDKs MUST prefer `format_options` (canonical formats are the richer surface) and MUST surface the divergent product via `errors[]` augmentation with `source: "sdk"`, `sdk_id`, and `code: FORMAT_DECLARATION_DIVERGENT`. Single mandated surface — lint-output channels are not acceptable. Hard-failing the entire `get_products` response is discouraged — it punishes downstream buyers for a producer bug.
 - SDKs MUST NOT silently pick one shape and discard the other without surfacing the divergence to the calling agent.
 
 The schema cannot enforce agreement (no cross-field constraint expresses "the v1 mapped form of `format_ids[i]` must equal `format_options[j]`"). Consumer-side detection is the only line of defense; SDK conformance suites SHOULD include divergence fixtures.
