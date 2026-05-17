@@ -47,9 +47,12 @@ narrative: |
      actually optimize against that source.
   4. log_event flows conversions back, scoped to the registered event_source_id.
   5. get_media_buy_delivery returns first-class conversion metrics —
-     conversions and cost_per_acquisition — and a per-creative breakdown that
-     carries conversion attribution, not just impressions. Without that, the
-     buyer can't tell which creatives drove the goal.
+     conversions and cost_per_acquisition — at the buy level. Per-creative
+     conversion attribution is deliberately deferred to a follow-up scenario
+     (gated on a separate sub-capability bit) because real adopters report
+     attribution at differing granularities (per-creative, per-line,
+     per-campaign, per-placement); requiring per-creative here would fail
+     honest retail-media / MMP-mediated / broadcast-CTV implementations.
 
   ROAS (target.kind = per_ad_spend) and value-max (target.kind = maximize_value)
   are deliberately NOT asserted here. Many sellers — broadcast TV, upper-funnel
@@ -292,8 +295,8 @@ phases:
             description: "Seller rejects the unbound event_source_id with INVALID_REQUEST"
           - check: field_value
             path: "errors[0].field"
-            matches: "packages\\[0\\]\\.optimization_goals\\[0\\]\\.event_sources\\[0\\]\\.event_source_id"
-            description: "Error.field points at the offending event_source_id path"
+            value: "packages[0].optimization_goals[0].event_sources[0].event_source_id"
+            description: "Error.field points at the offending event_source_id path (core/error.json defines field as deterministic JSONPath-lite — literal equality)"
 
   - id: conversion_event_logging
     title: "Log conversion events against the bound source"
@@ -389,8 +392,16 @@ phases:
           Delivery response includes:
           - conversions (>= simulated)
           - cost_per_acquisition (effective CPA — required for this scenario)
-          - by_package[0].by_creative[0].conversions when the seller supports
-            per-creative reporting (most performance sellers do)
+
+          Per-creative conversion attribution (by_package[].by_creative[].conversions)
+          is intentionally NOT asserted here. Honest implementations vary widely:
+          social platforms surface per-ad attribution natively, retail-media
+          networks (Criteo, Amazon Ads) often expose conversions at the line
+          level with creative rotation opaque, MMP-mediated mobile (post-iOS-14)
+          attributes at the campaign/ad-set level, and broadcast/CTV performance
+          products attribute at the placement. Per-creative attribution will
+          land as its own gated scenario behind a sub-capability bit in a
+          follow-up.
 
           Optional but validated-if-present (sellers that compute ROAS will
           carry these; sellers that don't simply omit them):
@@ -413,6 +424,3 @@ phases:
           - check: field_present
             path: "media_buy_deliveries[0].totals.cost_per_acquisition"
             description: "Effective CPA computed and returned"
-          - check: field_present
-            path: "media_buy_deliveries[0].by_package[0].by_creative[0].conversions"
-            description: "Per-creative breakdown carries conversion attribution, not just impressions"

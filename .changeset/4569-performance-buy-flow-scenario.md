@@ -12,7 +12,7 @@ The scenario verifies the dots actually connect when a seller claims conversion 
 - `create_media_buy` with an event-kind `optimization_goal` (CPA target) referencing the registered source is accepted.
 - `create_media_buy` with a goal referencing an unregistered `event_source_id` is rejected with `INVALID_REQUEST` and `error.field` set to the offending path — silent acceptance is a façade.
 - `log_event` against the bound source is forwarded upstream (anti-façade `upstream_traffic` assertion).
-- `get_media_buy_delivery` returns first-class conversion metrics: `conversions`, `cost_per_acquisition`, and `by_package[].by_creative[].conversions`. Buyers need per-creative attribution to know which creatives drove the goal.
+- `get_media_buy_delivery` returns first-class conversion metrics: `conversions` and `cost_per_acquisition` at the buy level. Per-creative attribution is intentionally deferred to a follow-up scenario because real adopters report at differing granularities (per-line for retail-media, per-campaign for MMP-mediated mobile, per-placement for CTV); requiring per-creative here would fail honest implementations.
 
 ROAS (`target.kind: per_ad_spend`) and value-max (`target.kind: maximize_value`) are deliberately out of scope here — many honest conversion-tracking sellers (broadcast TV, upper-funnel video, signal-only) don't compute return-on-ad-spend. ROAS gets its own scenario gated on a separate `supported_target_kinds` capability bit ([#4639](https://github.com/adcontextprotocol/adcp/issues/4639)).
 
