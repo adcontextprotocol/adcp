@@ -589,6 +589,29 @@
           },
           "additionalProperties": true
         },
+        "frequency_capping": {
+          "type": "object",
+          "description": "Frequency capping capabilities. Presence of this object indicates the seller honors targeting.frequency_cap on packages and MUST reject caps it cannot enforce rather than silently dropping them. Buyers SHOULD inspect supported_per_units and supported_window_units before submitting caps; sellers without these sub-fields populated MAY accept any reach-unit / duration-unit combination they can enforce. Per-product overrides (for sellers with mixed addressable/non-addressable inventory) are a likely follow-up — file a separate RFC if needed.",
+          "properties": {
+            "supported_per_units": {
+              "type": "array",
+              "description": "Entity granularities the seller can enforce caps against. Values from the reach-unit enum. Omit to indicate all reach-unit values are supported.",
+              "items": { "$ref": "/schemas/enums/reach-unit.json" },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "supported_window_units": {
+              "type": "array",
+              "description": "Duration units the seller supports for frequency cap windows. Values must match the duration.json unit enum (e.g., 'hours', 'days', 'campaign'). Omit to indicate all duration units are supported.",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1,
+              "uniqueItems": true
+            }
+          },
+          "additionalProperties": true
+        },
         "content_standards": {
           "type": "object",
           "description": "Content standards implementation details. Presence of this object indicates the seller supports content_standards configuration including sampling rates and category filtering. Gives buyers pre-buy visibility into local evaluation and artifact delivery capabilities.",
