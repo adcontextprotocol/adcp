@@ -34,15 +34,18 @@ narrative: |
   4. **verify_impaired** — read the buy again. `health` MUST be `impaired`, and
      `impairments[]` MUST contain an entry whose resource_type is `creative`,
      resource_id matches the rejected creative, package_ids contains the
-     creative's package, and transition.to is `rejected`. This closes the
-     forward rule (every entry references a currently-offline resource) and
-     the inverse rule (the offline resource referenced by a non-terminal buy
-     appears in impairments[]) for this transition.
+     creative's package, transition.to is `rejected`, and the required
+     fields (impairment_id, reason_code, observed_at) are populated. This
+     closes the forward rule (every entry references a currently-offline
+     resource) and the inverse rule (the offline resource referenced by a
+     non-terminal buy appears in impairments[]) for this transition, and
+     captures the health-iff rule in the `impaired` direction.
   5. **transition_online + verify_recovered** — flip the creative back to
      `approved` and re-read the buy. `health` MUST return to `ok` and
-     `impairments[]` MUST be empty/absent. This exercises the bidirectional
-     biconditional: clearing impairments[] requires the resource to be back
-     online; the seller is not free to leave stale impairments behind.
+     `impairments[]` MUST be empty/absent. This exercises the health-iff
+     rule in the `ok` direction: clearing impairments[] requires the
+     resource to be back online; the seller is not free to leave stale
+     impairments behind.
 
   A seller that transitions a creative without propagating to the buy fails
   phase 4. A seller that leaves stale impairments after the recovery fails
@@ -285,7 +288,11 @@ phases:
           - check: field_value
             path: "media_buys[0].health"
             allowed_values: ["ok"]
-            description: "Buy health is ok in the baseline snapshot"
+            description: "Buy health is ok in the baseline snapshot (health-iff rule, ok direction)"
+          - check: field_value_or_absent
+            path: "media_buys[0].impairments"
+            value: []
+            description: "impairments[] is empty (or absent) in the baseline — no resources are offline yet"
 
   - id: transition_offline
     title: "Force the creative to rejected"
@@ -367,10 +374,10 @@ phases:
           - check: field_value
             path: "media_buys[0].health"
             allowed_values: ["impaired"]
-            description: "Buy health flipped to impaired after the creative was rejected"
+            description: "Buy health flipped to impaired after the creative was rejected (health-iff rule, impaired direction)"
           - check: field_present
             path: "media_buys[0].impairments[0]"
-            description: "Buy reports at least one impairment entry"
+            description: "Buy reports at least one impairment entry (inverse rule)"
           - check: field_value
             path: "media_buys[0].impairments[0].resource_type"
             allowed_values: ["creative"]
@@ -378,11 +385,24 @@ phases:
           - check: field_value
             path: "media_buys[0].impairments[0].resource_id"
             value: "acme_dep_banner_001"
-            description: "Impairment entry's resource_id matches the rejected creative"
+            description: "Impairment entry's resource_id matches the rejected creative (forward rule)"
+          - check: field_value
+            path: "media_buys[0].impairments[0].package_ids[0]"
+            value: "$context.package_id"
+            description: "Impairment entry's package_ids[] contains the buy's package — without this, a seller could list a different package and still pass the impairment-present check"
           - check: field_value
             path: "media_buys[0].impairments[0].transition.to"
             allowed_values: ["rejected"]
             description: "Impairment entry's transition.to is rejected"
+          - check: field_present
+            path: "media_buys[0].impairments[0].impairment_id"
+            description: "Impairment carries the required impairment_id (notification_id for state-event webhooks; see snapshot-and-log Rule 1)"
+          - check: field_present
+            path: "media_buys[0].impairments[0].reason_code"
+            description: "Impairment carries a reason_code (required per impairment.json) — buyer needs this to route remediation"
+          - check: field_present
+            path: "media_buys[0].impairments[0].observed_at"
+            description: "Impairment carries observed_at (required per impairment.json) — buyer needs this to reconcile webhook ordering against the snapshot"
 
   - id: recover_and_verify
     title: "Recover the creative and verify the buy returns to healthy"
@@ -451,4 +471,8 @@ phases:
           - check: field_value
             path: "media_buys[0].health"
             allowed_values: ["ok"]
-            description: "Buy health returned to ok after the creative recovered to approved"
+            description: "Buy health returned to ok after the creative recovered to approved (health-iff rule, ok direction)"
+          - check: field_value_or_absent
+            path: "media_buys[0].impairments"
+            value: []
+            description: "impairments[] is empty (or absent) — seller cleared stale entry on recovery; health-iff biconditional would fail with health: ok and a non-empty impairments[]"
