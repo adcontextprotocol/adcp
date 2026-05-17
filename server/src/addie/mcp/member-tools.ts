@@ -17,6 +17,10 @@ const logger = createLogger('addie-member-tools');
 import { classifyProbeError, probeReasonLabel } from '../../utils/probe-error.js';
 import { validateExternalUrl } from '../../utils/url-security.js';
 import { parseOAuthClientCredentialsInput } from '../../routes/helpers/oauth-client-credentials-input.js';
+import {
+  verifyAgentHostname,
+  buildUnverifiedHostnameMessage,
+} from '../../services/agent-hostname-verification.js';
 import { PUBLIC_TEST_AGENT, PUBLIC_TEST_AGENT_URLS, INTERNAL_PATH_AGENT_URL } from '../../config/test-agent.js';
 import type { AddieTool } from '../types.js';
 import type { MemberContext } from '../member-context.js';
@@ -5705,6 +5709,20 @@ export function createMemberToolHandlers(
     // rather than `string | null` — TS can't carry the narrowing across the
     // function boundary.
     const agentUrl: string = canonical;
+
+    // Hostname ownership check (#4499 MVP). Mirrors the REST POST
+    // /api/me/agents gate. See `agent-hostname-verification.ts` for the
+    // full rationale — short version: if the org has at least one
+    // verified domain, the agent hostname must be on (or a subdomain
+    // of) one of them. Orgs without verified domains pass through.
+    const hostnameVerification = await verifyAgentHostname(saveOrgId, agentUrl);
+    if (
+      !hostnameVerification.ok &&
+      hostnameVerification.reason === 'hostname_not_in_verified_domains'
+    ) {
+      return buildUnverifiedHostnameMessage(hostnameVerification);
+    }
+
     const agentName = input.agent_name as string | undefined;
     const authToken = input.auth_token as string | undefined;
     if (authToken !== undefined) {

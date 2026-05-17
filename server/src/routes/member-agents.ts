@@ -45,6 +45,10 @@ import {
   gateAgentVisibilityForCaller,
   type VisibilityWarning,
 } from '../services/agent-visibility-gate.js';
+import {
+  verifyAgentHostname,
+  buildUnverifiedHostnameMessage,
+} from '../services/agent-hostname-verification.js';
 // Side-effect import: registers OpenAPI paths + component schemas for these
 // routes. Lives in schemas/ to keep the spec generator's import graph free of
 // auth middleware (WorkOS init at module load).
@@ -433,6 +437,27 @@ export function createMemberAgentsRouter(config: MemberAgentsRouterConfig): Rout
       // collapses with the discovered side (issue #3573).
       body.url = canonicalUrl;
       const targetUrl = canonicalUrl;
+
+      // Hostname ownership check (#4499 MVP). Catches the escalation-#340
+      // failure mode: org has staked a domain claim (`organization_domains`
+      // row with `verified = true`) but is now registering an agent on a
+      // DIFFERENT domain. Adzymic registering `celtra.com` is the canonical
+      // case. Orgs with zero verified domains (e.g. personal workspaces on
+      // free email providers) pass through — they have no claim to enforce
+      // against. Existing entries are grandfathered; only new POSTs go
+      // through this gate. Adagents.json delegation and DNS challenge paths
+      // for legitimate cross-domain registration come in later phases of
+      // #4499.
+      const verification = await verifyAgentHostname(orgId, targetUrl);
+      if (!verification.ok && verification.reason === 'hostname_not_in_verified_domains') {
+        return res.status(400).json({
+          error: 'unverified_hostname',
+          message: buildUnverifiedHostnameMessage(verification),
+          agent_hostname: verification.agent_hostname,
+          verified_domains: verification.verified_domains,
+          reason: verification.reason,
+        });
+      }
 
       // Auto-bootstrap a private member profile if the caller's org doesn't
       // have one yet. Reuses `ensureMemberProfileExists` (the same helper

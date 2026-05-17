@@ -196,6 +196,20 @@ describe('Per-agent REST API (/api/me/agents)', () => {
          verified = true, is_primary = true, source = 'workos'`,
       [orgId, `${slug}.example`],
     );
+    // Hostname verification (#4499 MVP) requires the agent URL's host to
+    // be on a verified domain for the org. Pre-existing tests in this
+    // file use URLs like `https://new.example/mcp` that aren't subdomains
+    // of `${slug}.example`. Seed the bare `example` parent so those URLs
+    // match as subdomains. RFC 2606 reserves `.example` as a TLD that
+    // never resolves on the public internet, so this is safe even though
+    // it looks like a real domain.
+    await pool.query(
+      `INSERT INTO organization_domains
+         (workos_organization_id, domain, verified, source, created_at, updated_at)
+       VALUES ($1, 'example', true, 'test', NOW(), NOW())
+       ON CONFLICT (domain) DO NOTHING`,
+      [orgId],
+    );
   }
 
   beforeEach(async () => {
@@ -203,6 +217,11 @@ describe('Per-agent REST API (/api/me/agents)', () => {
       `DELETE FROM organization_domains WHERE workos_organization_id LIKE $1`,
       [`${TEST_PREFIX}%`],
     );
+    // Drop the shared `example` row seeded by createProfile if a previous
+    // test's org still owns it (the per-test DELETE above can leave it
+    // when another file's run reassigned it). Bounded blast radius — no
+    // real org has the bare "example" TLD as a verified domain.
+    await pool.query(`DELETE FROM organization_domains WHERE domain = 'example'`);
     await pool.query(
       `DELETE FROM member_profiles WHERE workos_organization_id LIKE $1`,
       [`${TEST_PREFIX}%`],
@@ -878,5 +897,87 @@ describe('Per-agent REST API (/api/me/agents)', () => {
       .post('/api/me/agents')
       .send({ url: 'https://wild.example/*/mcp', type: 'sales' });
     expect(res.status).toBe(400);
+  });
+
+  // Hostname verification (#4499 MVP) — gate at registration time. The
+  // shared createProfile helper seeds `example` as a verified domain so
+  // pre-existing tests pass; these tests assert the gate rejects when
+  // the agent host doesn't match a verified domain, and allows
+  // unrestricted registration for orgs that haven't yet staked any
+  // verified-domain claim (no_verified_domains branch).
+  it('POST returns 400 unverified_hostname when agent host is not on a verified domain', async () => {
+    const orgId = `${TEST_PREFIX}_hostname_rogue`;
+    const userId = `${TEST_PREFIX}_hostname_rogue_user`;
+    await seedOrg(pool, orgId, 'individual_professional');
+    await provisionUser(userId, orgId);
+    await createProfile(orgId, 'rogue');
+
+    // The createProfile helper seeded `rogue.example` and `example` as
+    // verified for this org. Try to register on a totally unrelated
+    // domain — should be rejected.
+    (app as any).setCurrentUser(userId);
+    const res = await request(app)
+      .post('/api/me/agents')
+      .send({
+        url: 'https://adcp-mcp.celtra.com/mcp',
+        type: 'sales',
+        visibility: 'private',
+      });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('unverified_hostname');
+    expect(res.body.agent_hostname).toBe('adcp-mcp.celtra.com');
+    expect(res.body.verified_domains).toEqual(
+      expect.arrayContaining(['rogue.example', 'example']),
+    );
+  });
+
+  it('POST allows registration when the agent host matches a verified domain (subdomain)', async () => {
+    const orgId = `${TEST_PREFIX}_hostname_match`;
+    const userId = `${TEST_PREFIX}_hostname_match_user`;
+    await seedOrg(pool, orgId, 'individual_professional');
+    await provisionUser(userId, orgId);
+    await createProfile(orgId, 'matchhost');
+
+    (app as any).setCurrentUser(userId);
+    // matchhost.example is verified; api.matchhost.example is a subdomain
+    // and should pass the gate.
+    const res = await request(app)
+      .post('/api/me/agents')
+      .send({
+        url: 'https://api.matchhost.example/mcp',
+        type: 'sales',
+        visibility: 'private',
+      });
+    expect(res.status).toBe(201);
+    expect(res.body.agent.url).toBe('https://api.matchhost.example/mcp');
+  });
+
+  it('POST allows registration for orgs with NO verified domains (no claim to enforce)', async () => {
+    const orgId = `${TEST_PREFIX}_hostname_noclaim`;
+    const userId = `${TEST_PREFIX}_hostname_noclaim_user`;
+    await seedOrg(pool, orgId, 'individual_professional');
+    await provisionUser(userId, orgId);
+    // Create the profile WITHOUT the createProfile helper — that one
+    // seeds domains. Profile bare; no verified domains on this org.
+    await memberDb.createProfile({
+      workos_organization_id: orgId,
+      display_name: 'No claim org',
+      slug: 'noclaimhost',
+      is_public: false,
+      agents: [],
+    });
+
+    (app as any).setCurrentUser(userId);
+    // No verified domains → gate is soft → registration on any host
+    // succeeds. Catches the personal-workspace / free-email-provider
+    // case where there's nothing to enforce against.
+    const res = await request(app)
+      .post('/api/me/agents')
+      .send({
+        url: 'https://anything.example.org/mcp',
+        type: 'sales',
+        visibility: 'private',
+      });
+    expect(res.status).toBe(201);
   });
 });
