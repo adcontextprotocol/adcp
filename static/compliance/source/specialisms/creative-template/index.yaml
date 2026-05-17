@@ -14,9 +14,11 @@ required_tools:
 #
 # Cross-resource assertion (adcp#2859). impairment.coherence verifies that
 # creative.rejected transitions propagate to any non-terminal media buy
-# that references the creative (impairments[] non-empty iff health is
-# `impaired`). See snapshot-and-log Rule 1 and lifecycle.mdx Compliance.
-# Grades not_applicable until #2860 wires the cross-resource exercise.
+# that references the creative — the buy's impairments[] MUST list an
+# entry for the rejected creative, and `health` MUST track impairments[]
+# non-empty (impaired) ↔ empty (ok). See snapshot-and-log Rule 1 and
+# lifecycle.mdx Compliance for the full forward + inverse rule. Grades
+# not_applicable until #2860 wires the cross-resource exercise.
 invariants:
   - status.monotonic
   - impairment.coherence

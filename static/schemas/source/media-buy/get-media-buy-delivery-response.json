@@ -880,7 +880,7 @@
                 "window_start": {
                   "type": "string",
                   "format": "date-time",
-                  "description": "ISO 8601 start of the window slice (inclusive, UTC unless reporting_capabilities.timezone declares otherwise)."
+                  "description": "ISO 8601 start of the window slice (inclusive). UTC."
                 },
                 "window_end": {
                   "type": "string",
@@ -933,8 +933,7 @@
                 "window_start",
                 "window_end",
                 "totals"
-              ],
-              "additionalProperties": true
+              ]
             }
           },
           "daily_breakdown": {
