@@ -2,17 +2,17 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/authorized-agent-base.json",
   "title": "Authorized Agent Base Fields",
-  "description": "Fields shared by every variant of `authorized_agents[*]` in adagents.json, regardless of authorization_type. Variants `allOf` this base and add their discriminator-specific fields. Centralized to prevent drift across the six authorization-type variants (4 property + 2 signal).",
+  "description": "Fields shared by every variant of `authorized_agents[*]` in adagents.json, regardless of authorization_type. Variants `allOf` this base and add their discriminator-specific fields. Centralized to prevent drift across all authorization-type variants.",
   "type": "object",
   "properties": {
     "url": {
       "type": "string",
       "format": "uri",
-      "description": "The authorized agent's API endpoint URL. Callers looking up an agent against this list (e.g., TMP providers validating `seller_agent.agent_url`) MUST compare using the AdCP URL canonicalization rules, not byte-equality — two URLs that differ only in case, default port, or percent-encoding of unreserved characters are the same agent. See docs/reference/url-canonicalization."
+      "description": "The authorized agent's API endpoint URL. Callers comparing this URL against a registry (sales-agent list, signal-provider registry, TMP provider lookup, etc.) MUST canonicalize both sides per the AdCP URL canonicalization rules, not byte-equality — two URLs that differ only in case, default port, or percent-encoding of unreserved characters are the same agent. See docs/reference/url-canonicalization."
     },
     "authorized_for": {
       "type": "string",
-      "description": "Human-readable description of what this agent is authorized to sell",
+      "description": "Human-readable description of what this agent is authorized to do — what it sells (for sales/property agents) or what data it provides (for signal agents). The variant the entry uses (`property_ids`, `signal_tags`, etc.) tells consumers which inflection applies; this field carries the operator-supplied label.",
       "minLength": 1,
       "maxLength": 500
     },
