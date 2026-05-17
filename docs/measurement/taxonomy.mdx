@@ -21,7 +21,7 @@ The three layers — **metrics**, **verification**, and **attribution** — answ
 
 ### 1. Metrics — "did it happen?"
 
-Delivery facts: impressions, completes, quartiles, clicks, spend, reach, frequency.
+Delivery facts: impressions, completes, quartiles, clicks, spend, reach, frequency. Reach and frequency carry an explicit `reach_window` declaration (`cumulative` / `period` / `rolling`) so buyers know whether values can be summed across rows.
 
 The seller is the source of truth — the seller served the ad and counts the event. Industry counting conventions (MRC, IAB) define what qualifies as an impression, what completes a video view, how to deduplicate. AdCP standardizes how sellers expose these counts; it does not redefine what they count.
 

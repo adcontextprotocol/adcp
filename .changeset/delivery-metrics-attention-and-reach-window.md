@@ -10,7 +10,7 @@ Close two reporting gaps on `core/delivery-metrics.json`: a duration metric that
 
 **`reach_window` for reach/frequency disambiguation (#4580).** Add `reach_window` to declare the measurement window for reported `reach` and `frequency`. Before this minor, a buyer summing `reach` across daily delivery rows could silently double-count audiences — a seller could legitimately report daily uniques, cumulative-to-date uniques, or a custom window, with no way for the buyer to tell. With this minor:
 
-- `reach_window: { kind: "cumulative" | "period", period?: Duration }`. `cumulative` = rolling uniques since campaign start (do not sum across rows; each later row supersedes); `period` = uniques within the reporting window only (e.g., a daily snapshot).
+- `reach_window: { kind: "cumulative" | "period" | "rolling", period?: Duration }`. `cumulative` = uniques since campaign start (do not sum across rows; each later row supersedes). `period` = uniques within a single non-overlapping reporting period — e.g., a daily snapshot. `rolling` = uniques within a trailing window — e.g., trailing-7-day reach reported by Nielsen, iSpot, GAM, DV360. The `period: Duration` field is required when `kind` is `period` or `rolling` (enforced via `if/then` so a `kind: "period"` row without a `period` field is rejected at validation).
 - `reach` and `frequency` descriptions updated to reference `reach_window`. When `reach_window` is omitted, the window is unspecified — buyers MUST NOT sum reach across rows or compare/average frequency across rows.
 - Sellers SHOULD populate `reach_window` whenever `reach` is present. Not made hard-required for backwards compatibility, but the description language is prescriptive.
 

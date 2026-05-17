@@ -151,19 +151,30 @@
     },
     "reach_window": {
       "type": "object",
-      "description": "Measurement window for the reported `reach` and `frequency` values in this row. Resolves the ambiguity between daily-snapshot and cumulative reach reporting — without this declaration, buyers summing `reach` across rows (e.g., daily delivery reports) can silently double-count audiences. Sellers SHOULD populate this whenever `reach` is present.",
+      "description": "Measurement window for the reported `reach` and `frequency` values in this row. Declares whether the values are a per-period snapshot, a trailing rolling window, or cumulative-to-date — without this declaration, buyers summing `reach` across rows (e.g., daily delivery reports) can silently double-count audiences. Sellers SHOULD populate this whenever `reach` is present.",
       "properties": {
         "kind": {
           "type": "string",
-          "enum": ["cumulative", "period"],
-          "description": "Window semantics. `cumulative` — rolling uniques since campaign start; the value is the total unique count to date and MUST NOT be summed across rows (each later row supersedes the earlier value). `period` — uniques within the reporting period only (e.g., a daily snapshot); the value covers only this row's reporting window and MAY be summed across non-overlapping periods only if the seller also guarantees inter-period dedup (rare — most period reporting double-counts the same person across days)."
+          "enum": ["cumulative", "period", "rolling"],
+          "description": "Window semantics. `cumulative` — uniques since campaign start; the value is the total unique count to date and MUST NOT be summed across rows (each later row supersedes the earlier value). `period` — uniques within a single non-overlapping reporting period (e.g., a daily snapshot for a specific calendar day). Adjacent `period` rows do not share audiences by construction, but the same person MAY appear across multiple periods, so MUST NOT be summed across rows to compute campaign reach. `rolling` — uniques within a trailing window ending at the row's reporting timestamp (e.g., trailing-7-day reach). Adjacent rolling rows overlap and MUST NOT be summed; each row's value stands alone."
         },
         "period": {
           "allOf": [{ "$ref": "/schemas/core/duration.json" }],
-          "description": "Duration of the measurement window. Only meaningful when `kind` is `period` (e.g., `{\"interval\": 1, \"unit\": \"days\"}` for a daily snapshot). When `kind` is `cumulative`, this field is implicit (campaign-to-date) and SHOULD be omitted."
+          "description": "Duration of the measurement window. REQUIRED when `kind` is `period` or `rolling` — declares the snapshot length (e.g., `{\"interval\": 1, \"unit\": \"days\"}` for a daily snapshot) or the trailing-window length (e.g., `{\"interval\": 7, \"unit\": \"days\"}` for trailing-7-day rolling reach). When `kind` is `cumulative`, this field is implicit (campaign-to-date) and SHOULD be omitted."
         }
       },
       "required": ["kind"],
+      "allOf": [
+        {
+          "if": {
+            "properties": { "kind": { "enum": ["period", "rolling"] } },
+            "required": ["kind"]
+          },
+          "then": {
+            "required": ["period"]
+          }
+        }
+      ],
       "additionalProperties": true
     },
     "frequency": {
