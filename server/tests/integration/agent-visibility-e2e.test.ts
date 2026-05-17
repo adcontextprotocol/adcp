@@ -776,6 +776,48 @@ describe('Agent visibility E2E', () => {
       expect(res.status).toBe(200);
     });
 
+    it('PUT /api/me/member-profile: grandfathers non-canonical legacy URLs after canonicalization', async () => {
+      // A pre-#3573 row could be stored in non-canonical form (mixed case,
+      // trailing slash, etc.). When a legitimate caller re-PUTs the same
+      // entry, the incoming URL gets canonicalized and the grandfather
+      // set must also be built from canonical URLs — otherwise the gate
+      // rejects an unchanged entry with no escape hatch. Pins
+      // member-profiles.ts:1219-1230 canonicalization of `existingUrls`.
+      const orgId = `${TEST_PREFIX}_put_grandfather_noncanonical`;
+      const userId = `${TEST_PREFIX}_put_grandfather_noncanonical_user`;
+      await seedOrg(pool, orgId, 'individual_professional');
+      await provisionUser(userId, orgId);
+      // Seed in non-canonical form by writing directly to JSONB.
+      await pool.query(
+        `INSERT INTO member_profiles
+           (workos_organization_id, display_name, slug, is_public, agents, created_at, updated_at)
+         VALUES ($1, $2, $3, false, $4::jsonb, NOW(), NOW())`,
+        [
+          orgId,
+          'Grandfathered noncanonical',
+          'putgfnoncanonical',
+          JSON.stringify([
+            { url: 'https://Legacy.Unrelated.Example/', visibility: 'private' },
+          ]),
+        ],
+      );
+      await seedBrandPrimary(orgId, 'putgfnoncanonical.example');
+
+      (app as any).setCurrentUser(userId, orgId);
+      // Caller sends the same URL — canonicalization will lowercase + strip
+      // trailing slash. The grandfather check has to compare canonicalized
+      // values on both sides.
+      const res = await request(app)
+        .put('/api/me/member-profile')
+        .send({
+          agents: [
+            { url: 'https://Legacy.Unrelated.Example/', visibility: 'private', name: 'still here' },
+          ],
+        });
+
+      expect(res.status).toBe(200);
+    });
+
     it('PATCH /agents/:index/visibility: rejects flipping a grandfathered row to members_only or public', async () => {
       const orgId = `${TEST_PREFIX}_flip_gf`;
       const userId = `${TEST_PREFIX}_flip_gf_user`;

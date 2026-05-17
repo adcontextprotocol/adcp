@@ -957,59 +957,27 @@ describe('Per-agent REST API (/api/me/agents)', () => {
     expect(res.body.agent.url).toBe('https://api.matchhost.example.test/mcp');
   });
 
-  it('POST rejects free-email-workspace orgs registering on arbitrary hostnames', async () => {
-    // Soft-pass tightening from the security review on #4648:
-    // a fresh personal workspace (no verified domains, free-email
-    // provider as signup domain) used to silently pass through the
-    // gate. Now it gets a 400 free_email_workspace error — closes the
-    // attacker vector where someone signs up with attacker@gmail.com
-    // and registers a rogue agent on a brand's domain.
-    const orgId = `${TEST_PREFIX}_hostname_free_email`;
-    const userId = `${TEST_PREFIX}_hostname_free_email_user`;
+  it('POST rejects orgs with no verified domains regardless of email_domain', async () => {
+    // Second-round security review on #4648 surfaced that an earlier
+    // soft-pass fallback to `organizations.email_domain` was unsafe:
+    // `/api/me/brand-claim/issue` can write any unverified domain into
+    // that column via the WorkOS webhook, so an attacker could claim
+    // someone else's domain and pass the gate. Fallback was removed.
+    // Now: org with zero verified-domain rows hard-rejects, even when
+    // `email_domain` is set to a corporate-looking value.
+    const orgId = `${TEST_PREFIX}_hostname_no_claim`;
+    const userId = `${TEST_PREFIX}_hostname_no_claim_user`;
     await seedOrg(pool, orgId, 'individual_professional');
     await provisionUser(userId, orgId);
     await memberDb.createProfile({
       workos_organization_id: orgId,
-      display_name: 'Free-email workspace',
-      slug: 'freeemail',
+      display_name: 'No claim org',
+      slug: 'noclaim',
       is_public: false,
       agents: [],
     });
-    await pool.query(
-      `UPDATE organizations SET email_domain = 'gmail.com' WHERE workos_organization_id = $1`,
-      [orgId],
-    );
-
-    (app as any).setCurrentUser(userId);
-    const res = await request(app)
-      .post('/api/me/agents')
-      .send({
-        url: 'https://rogue.celtra.com/mcp',
-        type: 'sales',
-        visibility: 'private',
-      });
-    expect(res.status).toBe(400);
-    expect(res.body.error).toBe('unverified_hostname');
-    expect(res.body.reason).toBe('free_email_workspace');
-  });
-
-  it('POST falls back to org email_domain when no verified domains exist (corporate signup)', async () => {
-    // The other side of the soft-pass tightening: a corporate org
-    // that hasn't yet WorkOS-verified any domain can still register
-    // agents on the signup-email domain. Catches the "new corporate
-    // signup that hasn't completed WorkOS domain verification yet"
-    // legitimate-user path.
-    const orgId = `${TEST_PREFIX}_hostname_corp_email`;
-    const userId = `${TEST_PREFIX}_hostname_corp_email_user`;
-    await seedOrg(pool, orgId, 'individual_professional');
-    await provisionUser(userId, orgId);
-    await memberDb.createProfile({
-      workos_organization_id: orgId,
-      display_name: 'Corp signup org',
-      slug: 'corpsignup',
-      is_public: false,
-      agents: [],
-    });
+    // Set email_domain to look legitimate — the gate must STILL reject
+    // because email_domain isn't a trustworthy claim.
     await pool.query(
       `UPDATE organizations SET email_domain = 'acme.example.test' WHERE workos_organization_id = $1`,
       [orgId],
@@ -1023,6 +991,8 @@ describe('Per-agent REST API (/api/me/agents)', () => {
         type: 'sales',
         visibility: 'private',
       });
-    expect(res.status).toBe(201);
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('unverified_hostname');
+    expect(res.body.reason).toBe('no_verified_domains');
   });
 });

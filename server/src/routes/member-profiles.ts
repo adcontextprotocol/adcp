@@ -929,6 +929,34 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         }
       }
 
+      // Canonicalize agent URLs before any downstream processing so
+      // the POST-create write shape matches every other write path
+      // (#3573). Without this, POST-create wrote non-canonical URLs
+      // into JSONB while PUT and per-agent POST canonicalized — same
+      // column, two shapes. Reject query strings / fragments and
+      // unparseable URLs explicitly so the hostname gate below can
+      // trust the URLs it sees.
+      if (Array.isArray(agents)) {
+        for (let i = 0; i < agents.length; i++) {
+          const a = agents[i];
+          if (!a || typeof a.url !== 'string') continue;
+          if (a.url.includes('?') || a.url.includes('#')) {
+            return res.status(400).json({
+              error: 'invalid_agent_url',
+              message: `agents[${i}].url must not contain query strings or fragments`,
+            });
+          }
+          const canonical = canonicalizeAgentUrl(a.url);
+          if (!canonical) {
+            return res.status(400).json({
+              error: 'invalid_agent_url',
+              message: `agents[${i}].url is not a valid agent URL`,
+            });
+          }
+          a.url = canonical;
+        }
+      }
+
       // Hostname ownership check (#4499 MVP). The POST create path is
       // the second smuggle vector past the per-agent POST gate (after
       // the bulk PUT). No grandfathering is needed here — this branch
@@ -1216,9 +1244,19 @@ export function createMemberProfileRouter(config: MemberProfileRoutesConfig): Ro
         // already in `existingProfile.agents` are grandfathered (a bulk
         // PUT must remain idempotent for an unchanged caller). NEW URLs
         // go through the gate.
+        // Canonicalize the existing URLs the same way we canonicalize
+        // incoming ones (above) so a legacy pre-#3573 row stored in
+        // non-canonical form (mixed case, trailing slash, etc.) still
+        // matches the grandfather check when a legitimate caller
+        // re-PUTs it. Without this, the gate rejects a re-PUT of an
+        // un-changed entry and the caller has no way to send the
+        // original form because canonicalization strips it server-side.
         const existingUrls = new Set(
           (existingProfile.agents ?? [])
-            .map((a) => (a && typeof a.url === 'string' ? a.url : null))
+            .map((a) => {
+              if (!a || typeof a.url !== 'string') return null;
+              return canonicalizeAgentUrl(a.url) ?? a.url;
+            })
             .filter((u): u is string => u !== null),
         );
         for (let i = 0; i < updates.agents.length; i++) {

@@ -132,73 +132,40 @@ describe('verifyAgentHostname', () => {
     if (!res.ok) expect(res.reason).toBe('hostname_not_in_verified_domains');
   });
 
-  // No-verified-domains fallback (#4499 MVP soft-pass tightening).
-  // Falls back to `organizations.email_domain` so a personal workspace
-  // can't register rogue agents on arbitrary hostnames, and a corporate
-  // org without WorkOS-verified domains can still register agents on
-  // the domain it signed up with.
-  it('rejects when org has no verified domains AND no email_domain', async () => {
+  // Hard-reject when no verified domains exist. The earlier MVP fell
+  // back to `organizations.email_domain`, but the security review on
+  // #4648 surfaced that `email_domain` can be written from an
+  // unverified WorkOS domain (via `/api/me/brand-claim/issue` →
+  // `organization.updated` webhook) — an attacker could claim someone
+  // else's domain and pass the soft-pass. Fallback removed; only
+  // `organization_domains.verified = true` rows count.
+  it('rejects when org has no verified domains (even if email_domain is set)', async () => {
     const orgId = `${TEST_PREFIX}_no_claim`;
     await seedOrg(orgId, []);
-    // No email_domain → free_email_workspace (no claim possible).
-
-    const res = await verifyAgentHostname(orgId, 'https://anything.example/mcp');
-    expect(res.ok).toBe(false);
-    if (!res.ok) expect(res.reason).toBe('free_email_workspace');
-  });
-
-  it('rejects when email_domain is a free-email provider', async () => {
-    const orgId = `${TEST_PREFIX}_free_email`;
-    await seedOrg(orgId, []);
+    // Set email_domain to a corporate-looking domain — must STILL be
+    // rejected because email_domain isn't a trustworthy claim.
     await pool.query(
       `UPDATE organizations SET email_domain = $1 WHERE workos_organization_id = $2`,
-      ['gmail.com', orgId],
+      ['acme.example', orgId],
     );
 
-    const res = await verifyAgentHostname(orgId, 'https://anything.example/mcp');
-    expect(res.ok).toBe(false);
-    if (!res.ok) expect(res.reason).toBe('free_email_workspace');
-  });
-
-  it('accepts agent host on the org email_domain when no verified domains exist', async () => {
-    const orgId = `${TEST_PREFIX}_email_match`;
-    await seedOrg(orgId, []);
-    await pool.query(
-      `UPDATE organizations SET email_domain = $1 WHERE workos_organization_id = $2`,
-      ['acme.com', orgId],
-    );
-
-    const res = await verifyAgentHostname(orgId, 'https://mcp.acme.com/agent');
-    expect(res.ok).toBe(true);
-    if (res.ok) expect(res.verified_domain).toBe('acme.com');
-  });
-
-  it('rejects when email_domain exists but hostname is on a different domain', async () => {
-    const orgId = `${TEST_PREFIX}_email_mismatch`;
-    await seedOrg(orgId, []);
-    await pool.query(
-      `UPDATE organizations SET email_domain = $1 WHERE workos_organization_id = $2`,
-      ['acme.com', orgId],
-    );
-
-    const res = await verifyAgentHostname(orgId, 'https://rogue.example/mcp');
+    const res = await verifyAgentHostname(orgId, 'https://mcp.acme.example/agent');
     expect(res.ok).toBe(false);
     if (!res.ok) {
-      expect(res.reason).toBe('hostname_not_in_verified_domains');
-      expect(res.verified_domains).toEqual(['acme.com']);
+      expect(res.reason).toBe('no_verified_domains');
+      expect(res.verified_domains).toEqual([]);
     }
   });
 
   it('ignores unverified organization_domains rows', async () => {
     // Unverified domains are claims-in-progress, not yet trustworthy;
     // they must NOT match the agent hostname for verification purposes.
-    // Falls through to the email_domain check (which is null here).
     const orgId = `${TEST_PREFIX}_unverified`;
     await seedOrg(orgId, [{ domain: 'example.com', verified: false }]);
 
     const res = await verifyAgentHostname(orgId, 'https://x.example.com/mcp');
     expect(res.ok).toBe(false);
-    if (!res.ok) expect(res.reason).toBe('free_email_workspace');
+    if (!res.ok) expect(res.reason).toBe('no_verified_domains');
   });
 
   it('returns invalid_url for an unparseable URL', async () => {
@@ -216,6 +183,12 @@ describe('verifyAgentHostname', () => {
 
     const res = await verifyAgentHostname(orgId, 'https://API.example.com/mcp');
     expect(res.ok).toBe(true);
+    // Result must be lowercased — callers build user-facing copy from
+    // these fields, and mixed-case leaks the raw DB casing.
+    if (res.ok) {
+      expect(res.verified_domain).toBe('example.com');
+      expect(res.agent_hostname).toBe('api.example.com');
+    }
   });
 });
 
