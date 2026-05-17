@@ -5,7 +5,7 @@
 
 import { Router } from "express";
 import { createLogger } from "../../logger.js";
-import { requireAuth, requireAdmin } from "../../middleware/auth.js";
+import { requireAuth, requireAdmin, requireGlobalAdmin } from "../../middleware/auth.js";
 import {
   getCleanupService,
   isCleanupConfigured,
@@ -19,7 +19,7 @@ const logger = createLogger("admin-cleanup");
 
 export function setupCleanupRoutes(apiRouter: Router): void {
   // GET /api/admin/cleanup/status - Check if cleanup is configured
-  apiRouter.get("/cleanup/status", requireAuth, requireAdmin, async (_req, res) => {
+  apiRouter.get("/cleanup/status", ...requireGlobalAdmin, async (_req, res) => {
     res.json({
       configured: isCleanupConfigured(),
       enrichment_configured: isLushaConfigured(),
@@ -29,8 +29,7 @@ export function setupCleanupRoutes(apiRouter: Router): void {
   // POST /api/admin/cleanup/analyze - Analyze prospects for issues
   apiRouter.post(
     "/cleanup/analyze",
-    requireAuth,
-    requireAdmin,
+    ...requireGlobalAdmin,
     async (req, res) => {
       try {
         const cleanupService = getCleanupService();
@@ -63,8 +62,7 @@ export function setupCleanupRoutes(apiRouter: Router): void {
   // POST /api/admin/cleanup/auto-fix - Auto-fix issues that can be resolved automatically
   apiRouter.post(
     "/cleanup/auto-fix",
-    requireAuth,
-    requireAdmin,
+    ...requireGlobalAdmin,
     async (req, res) => {
       try {
         const cleanupService = getCleanupService();
@@ -136,8 +134,7 @@ export function setupCleanupRoutes(apiRouter: Router): void {
   // POST /api/admin/cleanup/batch-analyze-ai - Use Claude to analyze multiple prospects
   apiRouter.post(
     "/cleanup/batch-analyze-ai",
-    requireAuth,
-    requireAdmin,
+    ...requireGlobalAdmin,
     async (req, res) => {
       try {
         const cleanupService = getCleanupService();
@@ -181,8 +178,7 @@ export function setupCleanupRoutes(apiRouter: Router): void {
   // GET /api/admin/cleanup/preview-merge - Preview a merge operation
   apiRouter.get(
     "/cleanup/preview-merge",
-    requireAuth,
-    requireAdmin,
+    ...requireGlobalAdmin,
     async (req, res) => {
       try {
         const { primary, secondary } = req.query;
@@ -272,7 +268,7 @@ export function setupCleanupRoutes(apiRouter: Router): void {
   );
 
   // POST /api/admin/cleanup/merge - Execute organization merge
-  apiRouter.post("/cleanup/merge", requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.post("/cleanup/merge", ...requireGlobalAdmin, async (req, res) => {
     // Pull org ids out before the try-block so the 500 catch path can
     // log them. Without this, an error thrown inside the try (where the
     // destructure used to live) leaves the catch with no idea which
