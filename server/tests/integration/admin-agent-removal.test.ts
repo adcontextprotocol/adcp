@@ -20,7 +20,6 @@ vi.mock('../../src/middleware/auth.js', async () => {
     '../../src/middleware/auth.js',
   );
   let isAdmin = true;
-  let apiKeyOrgId: string | null = null;
   return {
     ...actual,
     requireAuth: (req: any, _res: any, next: any) => {
@@ -30,9 +29,6 @@ vi.mock('../../src/middleware/auth.js', async () => {
         firstName: 'Admin',
         lastName: 'API Key',
       };
-      if (apiKeyOrgId) {
-        req.apiKey = { organizationId: apiKeyOrgId, permissions: ['admin:*'] };
-      }
       next();
     },
     requireAdmin: (_req: any, res: any, next: any) => {
@@ -43,9 +39,6 @@ vi.mock('../../src/middleware/auth.js', async () => {
     },
     __setAdmin: (v: boolean) => {
       isAdmin = v;
-    },
-    __setApiKeyOrg: (orgId: string | null) => {
-      apiKeyOrgId = orgId;
     },
   };
 });
@@ -102,10 +95,8 @@ describe('Admin cross-org agent removal (DELETE /api/admin/accounts/:orgId/agent
   beforeEach(async () => {
     const mod = (await import('../../src/middleware/auth.js')) as unknown as {
       __setAdmin: (v: boolean) => void;
-      __setApiKeyOrg: (orgId: string | null) => void;
     };
     mod.__setAdmin(true);
-    mod.__setApiKeyOrg(null);
 
     await pool.query(
       `DELETE FROM registry_audit_log WHERE workos_organization_id LIKE $1`,
@@ -283,68 +274,9 @@ describe('Admin cross-org agent removal (DELETE /api/admin/accounts/:orgId/agent
     expect(audit.rows[0].details.bypassed_public_unpublish_guard).toBe(false);
   });
 
-  it('refuses cross-tenant WorkOS API keys (admin:* from one org cannot mutate another)', async () => {
-    const orgId = `${TEST_PREFIX}_xtenant_target`;
-    const otherOrgId = `${TEST_PREFIX}_xtenant_caller`;
-    const url = 'https://xtenant.example/mcp';
-    await seedOrgWithAgents(orgId, 'adzymic-xtenant', [
-      { url, type: 'sales', visibility: 'private' },
-    ]);
-
-    const mod = (await import('../../src/middleware/auth.js')) as unknown as {
-      __setApiKeyOrg: (orgId: string | null) => void;
-    };
-    mod.__setApiKeyOrg(otherOrgId);
-
-    const res = await request(app)
-      .delete(`/api/admin/accounts/${orgId}/agents/${encodeURIComponent(url)}`)
-      .query({ reason: 'attempted cross-tenant removal' });
-
-    expect(res.status).toBe(403);
-    expect(res.body.error).toBe('cross_tenant_api_key');
-
-    const profile = await memberDb.getProfileByOrgId(orgId);
-    expect(profile?.agents).toHaveLength(1);
-
-    const audit = await pool.query(
-      `SELECT count(*) FROM registry_audit_log WHERE workos_organization_id = $1`,
-      [orgId],
-    );
-    expect(Number(audit.rows[0].count)).toBe(0);
-  });
-
-  it('allows same-tenant WorkOS API keys and actually mutates + audits', async () => {
-    // The current mock unconditionally treats the caller as admin; this test
-    // exercises the negative branch of `refuseCrossTenantApiKey` (apiKey set,
-    // organizationId matches), and additionally asserts the request actually
-    // performed the mutation rather than short-circuiting to a no-op 200.
-    const orgId = `${TEST_PREFIX}_xtenant_same`;
-    const url = 'https://same-tenant.example/mcp';
-    await seedOrgWithAgents(orgId, 'adzymic-same-tenant', [
-      { url, type: 'sales', visibility: 'private' },
-    ]);
-
-    const mod = (await import('../../src/middleware/auth.js')) as unknown as {
-      __setApiKeyOrg: (orgId: string | null) => void;
-    };
-    mod.__setApiKeyOrg(orgId);
-
-    const res = await request(app)
-      .delete(`/api/admin/accounts/${orgId}/agents/${encodeURIComponent(url)}`)
-      .query({ reason: 'same-tenant cleanup via org-issued admin key' });
-
-    expect(res.status).toBe(200);
-
-    const profile = await memberDb.getProfileByOrgId(orgId);
-    expect(profile?.agents).toHaveLength(0);
-
-    const audit = await pool.query(
-      `SELECT count(*) FROM registry_audit_log
-       WHERE workos_organization_id = $1 AND action = 'admin_remove_agent'`,
-      [orgId],
-    );
-    expect(Number(audit.rows[0].count)).toBe(1);
-  });
+  // Cross-tenant WorkOS API-key refusal is enforced by `requireAdmin`
+  // itself (issue #4501) rather than by per-route checks. See
+  // tests/unit/require-admin-cross-tenant.test.ts for coverage.
 
   it('GET /api/admin/accounts/:orgId/agents lists agents (companion to DELETE)', async () => {
     const orgId = `${TEST_PREFIX}_list`;
@@ -424,21 +356,6 @@ describe('Admin cross-org agent removal (DELETE /api/admin/accounts/:orgId/agent
     expect(res.body.error).toBe('corrupt_agents_column');
   });
 
-  it('GET refuses cross-tenant API keys', async () => {
-    const orgId = `${TEST_PREFIX}_get_xtenant`;
-    await seedOrgWithAgents(orgId, 'adzymic-get-xtenant', [
-      { url: 'https://x.example/mcp', type: 'sales' },
-    ]);
-
-    const mod = (await import('../../src/middleware/auth.js')) as unknown as {
-      __setApiKeyOrg: (orgId: string | null) => void;
-    };
-    mod.__setApiKeyOrg(`${TEST_PREFIX}_other`);
-
-    const res = await request(app).get(`/api/admin/accounts/${orgId}/agents`);
-    expect(res.status).toBe(403);
-    expect(res.body.error).toBe('cross_tenant_api_key');
-  });
 
   it('removes a public-visibility agent (bypasses the unpublish-first guard)', async () => {
     const orgId = `${TEST_PREFIX}_public_bypass`;

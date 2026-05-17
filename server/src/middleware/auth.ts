@@ -1331,6 +1331,27 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
   // Check for WorkOS API key with admin permission
   const apiKey = (req as Request & { apiKey?: ValidatedApiKey }).apiKey;
   if (apiKey) {
+    // Cross-tenant defense for routes whose path resolves a specific
+    // target org. The `admin:*` permission is tenant-scoped by issuance:
+    // it grants admin access *within* the org that minted the key, not
+    // across orgs. Without this gate, any org holding an `admin:*` key
+    // could mutate any other org's `member_profiles` (or anything else
+    // a cross-org admin route exposes). Surfaced by security review on
+    // #4498; routes with cross-org reach previously had to opt in via
+    // per-route helpers. Pushing the check here catches every admin
+    // route that names its target org param `orgId` by default.
+    const targetOrgId = req.params.orgId;
+    if (apiKey.organizationId && targetOrgId && apiKey.organizationId !== targetOrgId) {
+      logger.warn(
+        { path: req.path, method: req.method, apiKeyId: apiKey.id, apiKeyOrgId: apiKey.organizationId, targetOrgId },
+        'Refused cross-tenant admin API key',
+      );
+      return res.status(403).json({
+        error: 'cross_tenant_api_key',
+        message: `API key issued by ${apiKey.organizationId} cannot operate on ${targetOrgId}`,
+      });
+    }
+
     const isReadOnlyRequest = req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS';
 
     // admin:* grants full access (read and write)
