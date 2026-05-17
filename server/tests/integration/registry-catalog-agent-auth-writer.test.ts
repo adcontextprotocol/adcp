@@ -951,6 +951,10 @@ describe('catalog_agent_authorizations writer projection', () => {
         (r) => r.agent_url === TEST_AGENT_CANON && r.publisher_domain === TEST_PUB
       );
       expect(pairAfter).toBeUndefined();
+      // Belt-and-suspenders against cross-test contamination: the test
+      // pair was the only delta we introduced, so the global snapshot
+      // size should drop by exactly one.
+      expect(beforeRevoke.length - afterRevoke.length).toBe(1);
     });
 
     it('matches publisher_domains[] case-insensitively', async () => {
