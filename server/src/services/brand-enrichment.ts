@@ -210,7 +210,12 @@ export async function enrichBrand(domain: string): Promise<BrandEnrichmentResult
   // Determine source_type: only mark as 'enriched' if Brandfetch returned meaningful data
   const sourceType = result.highQuality !== false ? 'enriched' : 'community';
 
-  // Map to discovered brand input
+  // Map to discovered brand input. `classification` flows through the
+  // dedicated typed field (UpsertDiscoveredBrandInput.classification), NOT
+  // inline in brand_manifest — the DB layer strips `classification` from
+  // caller-supplied manifests so community/MCP writers cannot inject
+  // confidence='high' (issue #3467). Only the classifier service path here
+  // is trusted to set it.
   const input: UpsertDiscoveredBrandInput = {
     domain,
     brand_name: brandName,
@@ -222,13 +227,6 @@ export async function enrichBrand(domain: string): Promise<BrandEnrichmentResult
       colors: result.manifest.colors,
       fonts: result.manifest.fonts,
       ...(result.company ? { company: result.company } : {}),
-      ...(classification ? {
-        classification: {
-          confidence: classification.confidence,
-          reasoning: classification.reasoning,
-          related_domains: classification.related_domains,
-        },
-      } : {}),
       ...(result.raw?.qualityScore !== undefined ? { quality_score: result.raw.qualityScore } : {}),
       ...(result.raw?.isNsfw ? { is_nsfw: true } : {}),
     },
@@ -240,6 +238,11 @@ export async function enrichBrand(domain: string): Promise<BrandEnrichmentResult
       house_domain: classification.house_domain || undefined,
       parent_brand: classification.parent_brand || undefined,
       canonical_domain: classification.canonical_domain,
+      classification: {
+        confidence: classification.confidence,
+        reasoning: classification.reasoning,
+        related_domains: classification.related_domains,
+      },
     } : {}),
   };
 
