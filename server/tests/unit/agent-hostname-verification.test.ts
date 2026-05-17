@@ -83,26 +83,26 @@ describe('verifyAgentHostname', () => {
 
   it('accepts when hostname exactly matches a verified domain', async () => {
     const orgId = `${TEST_PREFIX}_exact`;
-    await seedOrg(orgId, [{ domain: 'foo.example.com', verified: true }]);
+    await seedOrg(orgId, [{ domain: 'foo.unit-verify.example', verified: true }]);
 
-    const res = await verifyAgentHostname(orgId, 'https://foo.example.com/mcp');
+    const res = await verifyAgentHostname(orgId, 'https://foo.unit-verify.example/mcp');
     expect(res.ok).toBe(true);
     if (res.ok) {
-      expect(res.verified_domain).toBe('foo.example.com');
-      expect(res.agent_hostname).toBe('foo.example.com');
+      expect(res.verified_domain).toBe('foo.unit-verify.example');
+      expect(res.agent_hostname).toBe('foo.unit-verify.example');
     }
   });
 
   it('accepts when hostname is a subdomain of a verified domain', async () => {
     const orgId = `${TEST_PREFIX}_subdomain`;
-    await seedOrg(orgId, [{ domain: 'example.com', verified: true }]);
+    await seedOrg(orgId, [{ domain: 'unit-verify.example', verified: true }]);
 
     const res = await verifyAgentHostname(
       orgId,
-      'https://apx.sales-agent.example.com/mcp',
+      'https://apx.sales-agent.unit-verify.example/mcp',
     );
     expect(res.ok).toBe(true);
-    if (res.ok) expect(res.verified_domain).toBe('example.com');
+    if (res.ok) expect(res.verified_domain).toBe('unit-verify.example');
   });
 
   it('rejects when hostname is on a totally different domain', async () => {
@@ -121,13 +121,13 @@ describe('verifyAgentHostname', () => {
     }
   });
 
-  it('rejects sibling-domain attack (example.org vs example.com)', async () => {
+  it('rejects sibling-domain attack (example.org vs unit-verify.example)', async () => {
     // suffix-match defense: hostname.endsWith('.' + d) must use the dot
-    // prefix; without it, "evilexample.com" would match "example.com".
+    // prefix; without it, "evilunit-verify.example" would match "unit-verify.example".
     const orgId = `${TEST_PREFIX}_sibling`;
-    await seedOrg(orgId, [{ domain: 'example.com', verified: true }]);
+    await seedOrg(orgId, [{ domain: 'unit-verify.example', verified: true }]);
 
-    const res = await verifyAgentHostname(orgId, 'https://evilexample.com/mcp');
+    const res = await verifyAgentHostname(orgId, 'https://evilunit-verify.example/mcp');
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.reason).toBe('hostname_not_in_verified_domains');
   });
@@ -161,16 +161,16 @@ describe('verifyAgentHostname', () => {
     // Unverified domains are claims-in-progress, not yet trustworthy;
     // they must NOT match the agent hostname for verification purposes.
     const orgId = `${TEST_PREFIX}_unverified`;
-    await seedOrg(orgId, [{ domain: 'example.com', verified: false }]);
+    await seedOrg(orgId, [{ domain: 'unit-verify.example', verified: false }]);
 
-    const res = await verifyAgentHostname(orgId, 'https://x.example.com/mcp');
+    const res = await verifyAgentHostname(orgId, 'https://x.unit-verify.example/mcp');
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.reason).toBe('no_verified_domains');
   });
 
   it('returns invalid_url for an unparseable URL', async () => {
     const orgId = `${TEST_PREFIX}_bad_url`;
-    await seedOrg(orgId, [{ domain: 'example.com', verified: true }]);
+    await seedOrg(orgId, [{ domain: 'unit-verify.example', verified: true }]);
 
     const res = await verifyAgentHostname(orgId, 'not a url');
     expect(res.ok).toBe(false);
@@ -179,15 +179,15 @@ describe('verifyAgentHostname', () => {
 
   it('is case-insensitive on both hostname and verified domain', async () => {
     const orgId = `${TEST_PREFIX}_case`;
-    await seedOrg(orgId, [{ domain: 'Example.COM', verified: true }]);
+    await seedOrg(orgId, [{ domain: 'Unit-Verify.EXAMPLE', verified: true }]);
 
-    const res = await verifyAgentHostname(orgId, 'https://API.example.com/mcp');
+    const res = await verifyAgentHostname(orgId, 'https://API.unit-verify.example/mcp');
     expect(res.ok).toBe(true);
     // Result must be lowercased — callers build user-facing copy from
     // these fields, and mixed-case leaks the raw DB casing.
     if (res.ok) {
-      expect(res.verified_domain).toBe('example.com');
-      expect(res.agent_hostname).toBe('api.example.com');
+      expect(res.verified_domain).toBe('unit-verify.example');
+      expect(res.agent_hostname).toBe('api.unit-verify.example');
     }
   });
 });
@@ -197,10 +197,10 @@ describe('buildUnverifiedHostnameMessage', () => {
     const msg = buildUnverifiedHostnameMessage({
       ok: false,
       reason: 'hostname_not_in_verified_domains',
-      agent_hostname: 'rogue.example.com',
+      agent_hostname: 'rogue.unit-verify.example',
       verified_domains: ['foo.com', 'bar.com'],
     });
-    expect(msg).toContain('rogue.example.com');
+    expect(msg).toContain('rogue.unit-verify.example');
     expect(msg).toContain('foo.com, bar.com');
     expect(msg.toLowerCase()).toContain('linked domains');
   });
@@ -209,7 +209,7 @@ describe('buildUnverifiedHostnameMessage', () => {
     const msg = buildUnverifiedHostnameMessage({
       ok: false,
       reason: 'no_verified_domains',
-      agent_hostname: 'x.example.com',
+      agent_hostname: 'x.unit-verify.example',
       verified_domains: [],
     });
     expect(msg).toContain('no verified domains');

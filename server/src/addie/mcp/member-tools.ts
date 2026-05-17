@@ -5713,9 +5713,12 @@ export function createMemberToolHandlers(
 
     // Hostname ownership check (#4499 MVP). Mirrors the REST POST
     // /api/me/agents gate. See `agent-hostname-verification.ts` for the
-    // full rationale — short version: if the org has at least one
-    // verified domain, the agent hostname must be on (or a subdomain
-    // of) one of them. Orgs without verified domains pass through.
+    // full rationale — short version: the agent hostname must be on
+    // (or a subdomain of) an `organization_domains` row with
+    // `verified = true` for the registering org. Orgs without verified
+    // domains hard-reject (`no_verified_domains`) — `email_domain` is
+    // not consulted, since it can be written from an unverified WorkOS
+    // domain via the brand-claim issue flow.
     const hostnameVerification = await verifyAgentHostname(saveOrgId, agentUrl);
     if (isHostnameOwnershipRejection(hostnameVerification)) {
       return buildUnverifiedHostnameMessage(hostnameVerification);
