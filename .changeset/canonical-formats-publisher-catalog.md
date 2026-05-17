@@ -13,4 +13,7 @@ canonical-formats: publisher-scoped format catalog via `adagents.json` `formats[
 - **Registry shrink**: `v1-canonical-mapping.json` drops the last literal entry (`meta_reels`). The registry is now seven pure-structural fallbacks; platform-specific formats project via the platform's own (or community-mirror) `adagents.json` `formats[]` rather than enumerated registry literals. Honors the canonical-formats parametrization principle.
 - **`v1_format_ref.agent_url` convention extended**: IAB-standard → `https://creative.adcontextprotocol.org`; platform-adopted → platform's agent_url; platform-unadopted → `https://creative.adcontextprotocol.org/translated/<platform>`. Keeps v1 namespace converged regardless of which side hosts the catalog.
 
+- **Size flexibility on display canonicals**: `image`, `html5`, `display_tag` now support three size-declaration modes (mutually exclusive): fixed (`width`+`height`), multi-size (`sizes: [{width, height}]` mirroring OpenRTB `banner.format[]`), and responsive (`min_width`/`max_width` + `min_height`/`max_height` ranges). One product with N format_options × M sizes per slot — matches how flexible publisher inventory actually works. NYTimes homepage fixture rewritten as a multi-format/multi-size flexible-display product (image OR html5 OR 3p-tag at 300×250 OR 728×90 OR 970×250).
+- **Lint mutex enforcement**: `tests/canonical-format-conventions.test.cjs` rejects format declarations setting more than one size mode and rejects fixed mode declaring only one of width/height.
+
 Closes #4620, #4652.

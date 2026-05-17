@@ -378,14 +378,24 @@ The `capability_id: "meta_reels"` tag lets buyer agents recognize this as the sa
 
 This separation — canonical params + canonical slots + extensions only for net-new fields + BrandRef for brand context + event_log for tracking — is what keeps the 11 canonicals from accumulating per-platform fields. The lint at `tests/canonical-format-conventions.test.cjs` enforces the `v1_format_ref.agent_url` AAO-hosted convention and the slot/param consistency rule.
 
-## Worked example — IAB MREC (300×250)
+## Worked example — IAB display (flexible multi-format, multi-size)
 
-The canonical-as-contract value is clearest for IAB-standard formats. NYTimes and any other publisher selling MREC narrow `image` with the same IAB-standard parameters; buyers validate against canonical `image` *before* knowing which publisher wins.
+A real IAB display placement isn't a single 300×250 image slot — it's a flexible slot that accepts multiple **creative types** (image, HTML5, third-party tag, sometimes native or video-in-banner) at multiple **sizes** (300×250 MREC, 728×90 leaderboard, 970×250 billboard, responsive). The canonical-formats vocabulary models this with two orthogonal mechanisms:
+
+- **`format_kind`** is the creative TYPE — one of `image`, `html5`, `display_tag`, `native`, `video_hosted` — and never carries dimensional identity.
+- **Size lives in `params`** as one of three modes (mutually exclusive):
+  - **Fixed**: `width` + `height` integers — single accepted size (e.g., a 300×250-only legacy slot).
+  - **Multi-size**: `sizes: [{width, height}, ...]` — list of accepted sizes for a flexible slot. Mirrors OpenRTB `banner.format[]`.
+  - **Responsive**: `min_width`/`max_width` + `min_height`/`max_height` — accepted dimensional ranges for slots that adapt to viewport.
+
+A flexible publisher slot becomes **one product with N format_options** — one per creative type — each carrying the appropriate size declaration. Buyers pick the creative type they ship; the size matches one of the listed pairs (or falls within the responsive range).
+
+The example below is the NYTimes Homepage above-the-fold slot: accepts image, HTML5, or third-party tag at any of three IAB sizes. Three format_options, one product, one price.
 
 ```json test=false
 {
-  "product_id": "nytimes_homepage_mrec",
-  "name": "NYTimes.com Homepage MREC (300×250)",
+  "product_id": "nytimes_homepage_flex_display",
+  "name": "NYTimes.com Homepage Above-the-Fold Display",
   "publisher_properties": [
     { "publisher_domain": "nytimes.com", "selection_type": "all" }
   ],
@@ -393,20 +403,46 @@ The canonical-as-contract value is clearest for IAB-standard formats. NYTimes an
   "format_options": [
     {
       "format_kind": "image",
+      "capability_id": "nytimes_homepage_image",
       "params": {
-        "width": 300,
-        "height": 250,
+        "sizes": [
+          { "width": 300, "height": 250 },
+          { "width": 728, "height": 90 },
+          { "width": 970, "height": 250 }
+        ],
         "max_file_size_kb": 200,
         "image_formats": ["jpg", "png", "gif"],
         "ssl_required": true,
-        "cta_values": ["LEARN_MORE", "SHOP_NOW", "GET_OFFER"],
-        "composition_model": "deterministic",
-        "platform_extensions": [
-          {
-            "uri": "https://nytimes.example/extensions/nytimes_om_strict",
-            "digest": "sha256:c9d2f5b8e1a4c7b0e3d6f9a2c5b8e1d4f7a0c3b6e9d2f5a8c1b4e7d0f3a6c9b2"
-          }
-        ]
+        "cta_values": ["LEARN_MORE", "SHOP_NOW", "GET_OFFER"]
+      }
+    },
+    {
+      "format_kind": "html5",
+      "capability_id": "nytimes_homepage_html5",
+      "params": {
+        "sizes": [
+          { "width": 300, "height": 250 },
+          { "width": 728, "height": 90 },
+          { "width": 970, "height": 250 }
+        ],
+        "max_initial_load_kb": 200,
+        "max_polite_load_kb": 500,
+        "backup_image_required": true,
+        "om_sdk_required": true
+      }
+    },
+    {
+      "format_kind": "display_tag",
+      "capability_id": "nytimes_homepage_3p_tag",
+      "params": {
+        "sizes": [
+          { "width": 300, "height": 250 },
+          { "width": 728, "height": 90 },
+          { "width": 970, "height": 250 }
+        ],
+        "supported_tag_types": ["javascript", "iframe"],
+        "ssl_required": true,
+        "om_sdk_required": true
       }
     }
   ],
@@ -416,7 +452,11 @@ The canonical-as-contract value is clearest for IAB-standard formats. NYTimes an
 }
 ```
 
-For HTML5 banners on the same placement, NYTimes publishes a *separate* product narrowing `html5`:
+**What's happening:** one product, three `format_options` entries (one per creative type), each with `sizes[]` carrying the three accepted IAB sizes. Buyer agents read this as "the slot accepts `image` OR `html5` OR `display_tag` at any of `300×250` / `728×90` / `970×250`." The buyer ships ONE creative — they pick which type and which size — and validation checks the manifest's slot `width`/`height` against the appropriate `sizes[]` list for the chosen format_kind.
+
+**Responsive variant.** A modern responsive slot replaces `sizes[]` with min/max ranges — `min_width: 300, max_width: 970, min_height: 50, max_height: 250` — and accepts any dimensions within the box. Same multi-format pattern; different size declaration.
+
+Below is a single-format/single-size narrowing for comparison (older fixed-MREC-only HTML5 product):
 
 ```json test=false
 {

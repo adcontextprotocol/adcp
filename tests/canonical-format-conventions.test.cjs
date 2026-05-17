@@ -130,6 +130,24 @@ function checkDeclaration(decl, ctx, file) {
   if (params.primary_text_max_chars && !effectiveSlotIds.has('primary_text')) {
     warn(file, `${ctx} declares primary_text_max_chars but effective slots[] has no 'primary_text' slot (canonical=${decl.format_kind})`);
   }
+
+  // Size-mode mutex for canonicals that support sizes[] + responsive ranges (image, html5, display_tag).
+  // Exactly one of: (width AND height), sizes[], (min_width/max_width with optional min_height/max_height).
+  const SIZE_FLEX_CANONICALS = new Set(['image', 'html5', 'display_tag']);
+  if (SIZE_FLEX_CANONICALS.has(decl.format_kind)) {
+    const modes = [];
+    if (params.width !== undefined || params.height !== undefined) modes.push('fixed');
+    if (Array.isArray(params.sizes)) modes.push('sizes[]');
+    if (params.min_width !== undefined || params.max_width !== undefined ||
+        params.min_height !== undefined || params.max_height !== undefined) modes.push('min/max range');
+    if (modes.length > 1) {
+      fail(file, `${ctx} sets multiple size modes (${modes.join(' + ')}) — mutually exclusive; pick exactly one of (width,height) | sizes[] | min/max ranges`);
+    }
+    // fixed mode requires BOTH width and height
+    if (modes[0] === 'fixed' && (params.width === undefined || params.height === undefined)) {
+      fail(file, `${ctx} declares one of width/height but not both — fixed-size mode requires both`);
+    }
+  }
 }
 
 function walkProductFixtures() {
