@@ -1308,6 +1308,19 @@ export const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> 
 
 type ToolHandler = (input: Record<string, unknown>) => Promise<string>;
 
+/**
+ * Build the cert MCP handler set for a single user, single request.
+ *
+ * **MUST NOT be cached across users.** The returned handler set closes over a
+ * mutable `memberContext` so `ensureMembership()` can self-heal during the
+ * current turn. Reusing this handler set for a different user would serve
+ * their request under the original user's identity (`getUserId()` reads from
+ * the captured closure) and any DB write would land on the wrong account.
+ *
+ * The bound user is pinned at construction. Every `getUserId()` call asserts
+ * that the captured user is still the one we were built for — any in-closure
+ * mutation that swaps the user fails loud rather than silently leaking.
+ */
 export function createCertificationToolHandlers(
   initialMemberContext: MemberContext | null,
   options?: { threadId?: string },
@@ -1319,9 +1332,21 @@ export function createCertificationToolHandlers(
   // The next conversation turn rebuilds memberContext from the DB and
   // reflects any heals naturally.
   let memberContext = initialMemberContext;
+  // Pin the user this handler set was constructed for. If anything mutates
+  // `memberContext.workos_user` to a different id later (cross-tenant cache
+  // misuse, future ensureMembership refactor that swaps users), fail loud.
+  const boundUserId = initialMemberContext?.workos_user?.workos_user_id ?? null;
 
   const getUserId = (): string | null => {
-    return memberContext?.workos_user?.workos_user_id || null;
+    const currentUserId = memberContext?.workos_user?.workos_user_id || null;
+    if (boundUserId !== null && currentUserId !== null && currentUserId !== boundUserId) {
+      logger.error(
+        { boundUserId, currentUserId },
+        'createCertificationToolHandlers: bound user changed mid-lifetime — refusing to serve',
+      );
+      throw new ToolError('Internal error: certification handler user context inconsistent. Please retry.');
+    }
+    return currentUserId;
   };
 
   /**

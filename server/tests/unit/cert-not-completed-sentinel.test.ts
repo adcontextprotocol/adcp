@@ -98,12 +98,15 @@ describe('completion-gate static guard', () => {
   }
 
   function rejectionReturnsNotWrapped(body: string): string[] {
-    // Match any `return '...'` or `return \`...\`` line in the handler body.
+    // Match any `return '...'`, `return "..."`, or `return \`...\`` literal —
+    // including multi-line backtick template literals — in the handler body.
+    // `[\s\S]` matches across newlines so a future contributor cannot slip a
+    // multi-line rejection past the guard by spreading the string over lines.
     // Filter to plausible "rejection-shaped" strings (mentioning module,
     // checkpoint, score, scores, exam, attempt, threshold). If we find one
     // that does not go through notCompleted, fail.
     const matches: string[] = [];
-    const literalRegex = /return\s+(['"`])([^'"`\n]{20,})\1\s*;/g;
+    const literalRegex = /return\s+(['"`])([\s\S]{20,}?)\1\s*;/g;
     let m: RegExpExecArray | null;
     while ((m = literalRegex.exec(body)) !== null) {
       const text = m[2];
@@ -124,5 +127,48 @@ describe('completion-gate static guard', () => {
     const body = bodyBetween(/handlers\.set\('complete_certification_exam'/, /handlers\.set\(/);
     const offenders = rejectionReturnsNotWrapped(body);
     expect(offenders).toEqual([]);
+  });
+
+  it('only certification-tools.ts emits the success-line prefixes (#4660)', () => {
+    // Sage's rule treats two literal strings as the only signal that a
+    // module is recorded as complete. If any other handler in the MCP
+    // catalog can emit either prefix (e.g. a debug/inspect tool that
+    // echoes prior completions), Sage's rule provides no defense. Pin
+    // the contract: only `certification-tools.ts` may emit these strings.
+    const fs = require('node:fs') as typeof import('node:fs');
+    const path = require('node:path') as typeof import('node:path');
+    const mcpDir = path.resolve(__dirname, '../../src/addie/mcp');
+    const files = fs.readdirSync(mcpDir).filter((f: string) => f.endsWith('.ts'));
+    // `Module ${var} completed!` (template literal), `Module B1 completed!`
+    // (hardcoded), or the capstone line. Match the literal prefix patterns
+    // anywhere in the file — comments and consts inside certification-tools.ts
+    // are expected, so we allowlist that file entirely.
+    const prefixRegex = /Module \$\{[A-Za-z_][A-Za-z0-9_]*\} completed!|Module [A-Z][0-9]+[A-Z]? completed!|# Congratulations! The learner passed the capstone!/;
+    const offenders: Array<{ file: string; line: number; text: string }> = [];
+    for (const f of files) {
+      if (f === 'certification-tools.ts') continue;
+      const src = fs.readFileSync(path.join(mcpDir, f), 'utf8');
+      src.split('\n').forEach((line: string, i: number) => {
+        const m = line.match(prefixRegex);
+        if (m) offenders.push({ file: f, line: i + 1, text: m[0] });
+      });
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it('catches multi-line backtick rejections (regression for #4659)', () => {
+    // Synthesise a hypothetical handler body with a multi-line rejection
+    // return that the old [^'"`\n] regex would miss. The guard must catch it.
+    const synthetic = "handlers.set('complete_certification_module', async () => {\n" +
+      "  return `Module B2 is not completed yet —\n" +
+      "  the checkpoint is missing.`;\n" +
+      "});\nhandlers.set('next', async () => {});";
+    const startIdx = synthetic.search(/handlers\.set\('complete_certification_module'/);
+    const tail = synthetic.slice(startIdx);
+    const endRel = tail.slice(1).search(/handlers\.set\(/);
+    const body = tail.slice(0, endRel + 1);
+    const offenders = rejectionReturnsNotWrapped(body);
+    expect(offenders.length).toBe(1);
+    expect(offenders[0]).toContain('Module B2 is not completed yet');
   });
 });
