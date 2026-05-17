@@ -47,6 +47,10 @@
   "format_options": [
     {
       "format_kind": "video_vast",
+      "v1_format_ref": {
+        "agent_url": "https://creative.adcontextprotocol.org",
+        "id": "iab_vast_preroll_4x"
+      },
       "params": {
         "orientation": "horizontal",
         "aspect_ratio": "16:9",

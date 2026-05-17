@@ -41,6 +41,10 @@
   "format_options": [
     {
       "format_kind": "video_hosted",
+      "v1_format_ref": {
+        "agent_url": "https://meta.adcp",
+        "id": "meta_reels"
+      },
       "params": {
         "orientation": "vertical",
         "aspect_ratio": "9:16",

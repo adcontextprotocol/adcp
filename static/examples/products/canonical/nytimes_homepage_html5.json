@@ -44,6 +44,10 @@
   "format_options": [
     {
       "format_kind": "html5",
+      "v1_format_ref": {
+        "agent_url": "https://creative.adcontextprotocol.org",
+        "id": "iab_html5_300x250"
+      },
       "params": {
         "width": 300,
         "height": 250,

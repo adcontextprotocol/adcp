@@ -40,6 +40,10 @@
   "format_options": [
     {
       "format_kind": "display_tag",
+      "v1_format_ref": {
+        "agent_url": "https://creative.adcontextprotocol.org",
+        "id": "iab_3p_tag_300x250"
+      },
       "params": {
         "width": 300,
         "height": 250,

@@ -44,7 +44,7 @@
     {
       "format_kind": "image",
       "v1_format_ref": {
-        "agent_url": "https://nytimes.adcp",
+        "agent_url": "https://creative.adcontextprotocol.org",
         "id": "iab_mrec_300x250"
       },
       "params": {

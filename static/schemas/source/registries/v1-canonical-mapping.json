@@ -142,6 +142,31 @@
       "notes": "IAB Universal Ad Package — Large Rectangle."
     },
     {
+      "v1_pattern": { "format_id_glob": "iab_3p_tag_300x250" },
+      "v2": { "canonical": "display_tag", "parameters": { "width": 300, "height": 250 } },
+      "notes": "IAB Medium Rectangle delivered as third-party JS/iframe tag. Same dimensions as iab_mrec_300x250 but different canonical because the tracking model differs (opaque to seller vs impression-pixel-plus-click-URL)."
+    },
+    {
+      "v1_pattern": { "format_id_glob": "iab_html5_300x250" },
+      "v2": { "canonical": "html5", "parameters": { "width": 300, "height": 250 } },
+      "notes": "IAB Medium Rectangle delivered as HTML5 zip bundle. Sibling of iab_mrec_300x250 and iab_3p_tag_300x250; differs from both in tracking model (MRAID + OM-SDK + click-tag macro)."
+    },
+    {
+      "v1_pattern": { "format_id_glob": "iab_vast_preroll_4x" },
+      "v2": { "canonical": "video_vast", "parameters": { "vast_version": "4.x" } },
+      "notes": "Standard VAST 4.x preroll video. The most-deployed v1 video format; SDKs use this id (with the AAO-canonical agent_url) for any vast_version: 4.x product without seller-specific narrowing."
+    },
+    {
+      "v1_pattern": { "format_id_glob": "iab_daast_audio_30s" },
+      "v2": { "canonical": "audio_daast", "parameters": { "duration_ms_exact": 30000 } },
+      "notes": "Standard 30-second DAAST audio. AAO-hosted canonical id for the most common audio_daast shape."
+    },
+    {
+      "v1_pattern": { "format_id_glob": "meta_reels" },
+      "v2": { "canonical": "video_hosted", "parameters": { "orientation": "vertical", "aspect_ratio": "9:16" } },
+      "notes": "Meta Reels vertical short-form video. Platform-specific format (lives on meta.adcp's agent_url, not the AAO-hosted canonical) because Meta-specific parameters and extensions narrow the canonical."
+    },
+    {
       "v1_pattern": { "structural": { "asset_types": ["vast"], "vast_versions": [">=4.0"] } },
       "v2": { "canonical": "video_vast", "parameters": { "vast_version": "4.2" } },
       "notes": "Any v1 format whose primary asset is a VAST 4.x tag. SDKs should narrow the parameters.vast_version to the lowest common denominator they support."

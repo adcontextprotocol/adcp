@@ -42,8 +42,8 @@
     {
       "format_kind": "audio_daast",
       "v1_format_ref": {
-        "agent_url": "https://triton.adcp",
-        "id": "daast_audio_30s_v1_1"
+        "agent_url": "https://creative.adcontextprotocol.org",
+        "id": "iab_daast_audio_30s"
       },
       "params": {
         "daast_version": "1.1",
