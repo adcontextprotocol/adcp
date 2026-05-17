@@ -48,23 +48,28 @@ jobs:
           # 001 (request_signature_required) and 027 (webhook auth unsigned)
           # both fire correctly. Floors capture the +31 step lift per tenant
           # from the storyboard's positive + negative conformance vectors.
+          # @adcp/sdk 7.6.0 re-baseline: SDK ships two additional storyboards
+          # plus impairment.coherence assertion registration (adcp-client#1801),
+          # lifting clean counts by +2 to +3 across tenants. /governance loses
+          # 2 passing steps from skip-reclassification (151 vs prior 153) — the
+          # same SDK trade-off pattern as #4465; floor dropped accordingly.
           - tenant: signals
-            min_clean_storyboards: 67
+            min_clean_storyboards: 70
             min_passing_steps: 111
           - tenant: sales
-            min_clean_storyboards: 67
-            min_passing_steps: 314
+            min_clean_storyboards: 69
+            min_passing_steps: 315
           - tenant: governance
-            min_clean_storyboards: 65
-            min_passing_steps: 153
+            min_clean_storyboards: 69
+            min_passing_steps: 151
           - tenant: creative
-            min_clean_storyboards: 66
+            min_clean_storyboards: 69
             min_passing_steps: 169
           - tenant: creative-builder
-            min_clean_storyboards: 63
+            min_clean_storyboards: 66
             min_passing_steps: 146
           - tenant: brand
-            min_clean_storyboards: 66
+            min_clean_storyboards: 69
             min_passing_steps: 96
     steps:
       - uses: actions/checkout@v6

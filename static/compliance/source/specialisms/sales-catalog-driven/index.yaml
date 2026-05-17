@@ -19,15 +19,19 @@ requires_scenarios:
 # lifecycle graph — e.g. active → pending_creatives on a media_buy or
 # approved → pending on a catalog_item.
 #
-# Note: impairment.coherence (adcp#2859) is defined in
-# docs/media-buy/media-buys/lifecycle.mdx and
-# docs/building/verification/compliance-catalog.mdx as the cross-resource
-# join between catalog_item.withdrawn and media_buy.impairments[]. Wiring
-# on this specialism is deferred until the training-agent runner registers
-# the assertion id — mirrors the status.monotonic rollout in #2664 and the
-# creative-* deferral. The invariant itself is unchanged.
+# Cross-resource assertion (adcp#2859). impairment.coherence verifies that
+# catalog_item.withdrawn transitions propagate to any non-terminal media buy
+# that references the item: the buy's impairments[] MUST list an entry for
+# the withdrawn catalog item, and the buy's health MUST be `impaired`.
+# Inverse direction is also enforced — a buy reporting an impairment whose
+# referenced catalog_item is no longer offline fails the check. Out of
+# scope: terminal-status buys MAY remain unreported; materiality
+# (package_ids minItems:1) is enforced at the schema layer (#2855), not
+# here. Grades not_applicable until the storyboard exercises both a
+# catalog-item transition AND a media-buy snapshot read (#2860).
 invariants:
   - status.monotonic
+  - impairment.coherence
 
 narrative: |
   You run a platform that supports catalog-driven advertising — think Snap Dynamic Ads,

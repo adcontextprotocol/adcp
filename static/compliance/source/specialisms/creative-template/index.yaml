@@ -12,12 +12,14 @@ required_tools:
 # status transitions observed across steps that aren't on the spec
 # lifecycle graph — e.g. approved → processing on a creative asset.
 #
-# Note: impairment.coherence (adcp#2859) is wired on the buy-side
-# specialisms only (audience-sync, sales-catalog-driven). Wiring on the
-# creative-* specialisms is deferred until the training-agent runner
-# registers the assertion id — same rollout pattern as #2664.
+# Cross-resource assertion (adcp#2859). impairment.coherence verifies that
+# creative.rejected transitions propagate to any non-terminal media buy
+# that references the creative (impairments[] non-empty iff health is
+# `impaired`). See snapshot-and-log Rule 1 and lifecycle.mdx Compliance.
+# Grades not_applicable until #2860 wires the cross-resource exercise.
 invariants:
   - status.monotonic
+  - impairment.coherence
 
 narrative: |
   You build a creative management or rich media platform — think Celtra, a format
