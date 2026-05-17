@@ -565,9 +565,11 @@ asyncio.run(main())
 | **ROAS** | Return on ad spend (conversion_value / spend) |
 | **New-to-Brand Rate** | Fraction of conversions from first-time brand buyers (0-1) |
 | **Cost per Acquisition** | Cost per conversion (spend / conversions) |
-| **Reach** | Unique users reached (see `reach_unit` for measurement unit: individuals, households, devices, accounts, cookies) |
+| **Reach** | Unique users reached (see `reach_unit` for measurement unit: individuals, households, devices, accounts, cookies). Measurement window declared via `reach_window`; without it, buyers must not sum reach across rows. |
 | **Reach Unit** | Unit of measurement for reach — required when reach is present |
-| **Frequency** | Average ad exposures per reach unit |
+| **Reach Window** | Window semantics for reported reach/frequency: `cumulative` (uniques since campaign start), `period` (uniques within a single non-overlapping reporting period — e.g., daily snapshot), or `rolling` (uniques within a trailing window — e.g., trailing-7-day). Never sum across rows. Optional but strongly recommended when reach is present. |
+| **Frequency** | Average ad exposures per reach unit, measured over `reach_window` |
+| **Viewability** | Object with `vendor`, `measurable_impressions` (denominator), `viewable_impressions`, `viewable_rate`, `viewed_seconds` (average in-view duration per measurable impression — pairs with the `viewed_seconds` optimization goal), and `standard` |
 | **Follows** | New followers, subscribes, or page likes attributed to delivery |
 | **Pacing Index** | Actual vs. expected delivery rate (1.0 = on track, &lt;1.0 = behind, &gt;1.0 = ahead) |
 | **CPM** | Cost per thousand impressions (spend/impressions * 1000) |

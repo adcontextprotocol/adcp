@@ -142,16 +142,44 @@
     },
     "reach": {
       "type": "number",
-      "description": "Unique reach in the units specified by reach_unit. When reach_unit is omitted, units are unspecified — do not compare reach values across packages or media buys without a common reach_unit.",
+      "description": "Unique reach in the units specified by reach_unit. When reach_unit is omitted, units are unspecified — do not compare reach values across packages or media buys without a common reach_unit. The measurement window for this value is declared in `reach_window`; when `reach_window` is omitted, the window is unspecified and buyers MUST NOT sum reach across reports (the value MAY be a daily snapshot, a cumulative total, or something else).",
       "minimum": 0
     },
     "reach_unit": {
       "allOf": [{ "$ref": "/schemas/enums/reach-unit.json" }],
       "description": "Unit of measurement for the reach field. Aligns with the reach_unit declared on optimization goals and delivery forecasts. Required when reach is present to enable cross-platform comparison."
     },
+    "reach_window": {
+      "type": "object",
+      "description": "Measurement window for the reported `reach` and `frequency` values in this row. Declares whether the values are a per-period snapshot, a trailing rolling window, or cumulative-to-date — without this declaration, buyers summing `reach` across rows (e.g., daily delivery reports) can silently double-count audiences. Sellers SHOULD populate this whenever `reach` is present.",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["cumulative", "period", "rolling"],
+          "description": "Window semantics. `cumulative` — uniques since campaign start; the value is the total unique count to date and MUST NOT be summed across rows (each later row supersedes the earlier value). `period` — uniques within a single non-overlapping reporting period (e.g., a daily snapshot for a specific calendar day). Adjacent `period` rows do not share audiences by construction, but the same person MAY appear across multiple periods, so MUST NOT be summed across rows to compute campaign reach. `rolling` — uniques within a trailing window ending at the row's reporting timestamp (e.g., trailing-7-day reach). Adjacent rolling rows overlap and MUST NOT be summed; each row's value stands alone."
+        },
+        "period": {
+          "allOf": [{ "$ref": "/schemas/core/duration.json" }],
+          "description": "Duration of the measurement window. REQUIRED when `kind` is `period` or `rolling` — declares the snapshot length (e.g., `{\"interval\": 1, \"unit\": \"days\"}` for a daily snapshot) or the trailing-window length (e.g., `{\"interval\": 7, \"unit\": \"days\"}` for trailing-7-day rolling reach). When `kind` is `cumulative`, this field is implicit (campaign-to-date) and SHOULD be omitted."
+        }
+      },
+      "required": ["kind"],
+      "allOf": [
+        {
+          "if": {
+            "properties": { "kind": { "enum": ["period", "rolling"] } },
+            "required": ["kind"]
+          },
+          "then": {
+            "required": ["period"]
+          }
+        }
+      ],
+      "additionalProperties": true
+    },
     "frequency": {
       "type": "number",
-      "description": "Average frequency per reach unit (typically measured over campaign duration, but can vary by measurement provider). When reach_unit is 'households', this is average exposures per household; when 'accounts', per logged-in account; etc.",
+      "description": "Average frequency per reach unit, measured over the window declared in `reach_window`. When `reach_unit` is 'households', this is average exposures per household; when 'accounts', per logged-in account; etc. When `reach_window` is omitted, the window is unspecified — buyers MUST NOT compare or average frequency values across rows.",
       "minimum": 0
     },
     "quartile_data": {
@@ -255,7 +283,7 @@
     },
     "viewability": {
       "type": "object",
-      "description": "Viewability metrics. Viewable rate should be calculated as viewable_impressions / measurable_impressions (not total impressions), since some environments cannot measure viewability.",
+      "description": "Viewability metrics. Viewable rate should be calculated as viewable_impressions / measurable_impressions (not total impressions), since some environments cannot measure viewability. Includes `viewed_seconds` — average in-view duration — since duration is governed by the same viewability threshold (`standard`) and shares the same `measurable_impressions` denominator.",
       "properties": {
         "vendor": {
           "$ref": "/schemas/core/brand-ref.json",
@@ -263,7 +291,7 @@
         },
         "measurable_impressions": {
           "type": "number",
-          "description": "Impressions where viewability could be measured. Excludes environments without measurement capability (e.g., non-Intersection Observer browsers, certain app environments).",
+          "description": "Impressions where viewability could be measured. Excludes environments without measurement capability (e.g., non-Intersection Observer browsers, certain app environments). Coverage denominator for `viewable_rate` AND `viewed_seconds` — both metrics are computed over the same measurable population.",
           "minimum": 0
         },
         "viewable_impressions": {
@@ -277,9 +305,14 @@
           "minimum": 0,
           "maximum": 1
         },
+        "viewed_seconds": {
+          "type": "number",
+          "description": "Average in-view duration per measurable impression, in seconds. Reporting-side counterpart to the `viewed_seconds` optimization metric in `optimization-goal.json`. Computed over `measurable_impressions`, not total impressions — the same denominator as `viewable_rate`. The viewability `standard` governs the threshold (e.g., MRC's 50% pixels for 1s display / 2s video) that defines when an impression is in view and therefore when the clock is running. Sellers reporting against a `viewed_seconds` optimization goal MUST populate this field.",
+          "minimum": 0
+        },
         "standard": {
           "$ref": "/schemas/enums/viewability-standard.json",
-          "description": "Viewability measurement standard applied to these metrics."
+          "description": "Viewability measurement standard applied to these metrics. Governs the in-view threshold for both `viewable_rate` and `viewed_seconds`."
         }
       },
       "additionalProperties": true

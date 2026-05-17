@@ -56,6 +56,16 @@ Additive over 3.0 — every existing brand.json publisher continues to validate 
 
 See [`brand.json` § Distributed publishing](/docs/brand-protocol/brand-json) for the full normative spec including resolution algorithm, Conformance MUSTs, adoption path, and prior art.
 
+### Delivery reporting — `reach_window` and `viewability.viewed_seconds` (#4618, closes #4580, partial #4579)
+
+**`reach_window` on `delivery-metrics.json`.** Declares the measurement window for reported `reach` and `frequency`. Three kinds: `cumulative` (uniques since campaign start), `period` (uniques within a single non-overlapping reporting period, e.g., daily snapshot), `rolling` (uniques within a trailing window, e.g., trailing-7-day). When `kind` is `period` or `rolling`, the `period: Duration` field is required. When `reach_window` is omitted, the window is unspecified — buyers MUST NOT sum `reach` across rows or compare/average `frequency` across rows. Optional but strongly recommended whenever `reach` is present; the prior `dependencies` rule already requires `reach_unit` alongside `reach`.
+
+**`viewability.viewed_seconds`.** New field on the existing `viewability` block — average in-view duration per measurable impression. Reporting-side counterpart to the `viewed_seconds` optimization goal. Nested into the viewability block (not a top-level scalar) because the viewability `standard` governs the in-view threshold for both `viewable_rate` and `viewed_seconds`, and they share the same `measurable_impressions` denominator and vendor.
+
+**Attention metrics — vendor binding.** `attention_seconds` and `attention_score` are deliberately *not* added as graduated delivery scalars. The reporting path is `vendor_metric_values[]` keyed on `(vendor, metric_id)`. Optimization-side vendor binding is tracked in [#4644](https://github.com/adcontextprotocol/adcp/issues/4644) — proposes a `vendor_metric` optimization goal kind so buyers can declare *whose* attention model to optimize for, with end-to-end Adelaide→Adelaide reconciliation. See the [`#4579` close note](https://github.com/adcontextprotocol/adcp/issues/4579#issuecomment-4470761844) for the routing rationale and the [measurement taxonomy](/docs/measurement/taxonomy) for the Tier 0 / Tier 1 graduation policy that drove the split.
+
+Additive over 3.0. Existing sellers continue to validate; buyers ignoring the new fields keep working. Buyers SHOULD upgrade reach-summation logic to gate on `reach_window` semantics.
+
 ---
 
 ## Version 3.0.6
