@@ -38,6 +38,7 @@ import type { TrainingContext } from './types.js';
 import { PUBLISHERS } from './publishers.js';
 import { SIGNAL_PROVIDERS } from './signal-providers.js';
 import { getPublicJwks } from './webhooks.js';
+import { WALKTHROUGH_FIXTURES } from './fixtures/verification-walkthrough/index.js';
 import {
   buildRequestSigningAuthenticator,
   buildStrictRequestSigningAuthenticator,
@@ -619,6 +620,36 @@ export function createTrainingAgentRouter(): Router {
       last_updated: STARTUP_TIME,
     });
   });
+
+  // Verification-walkthrough fixtures — schema-conformant brand.json /
+  // adagents.json documents simulating the multi-tier chain from
+  // docs/verification/overview (Northwind / StreamHaus / Sportshaus Holdings).
+  // Mounted at /fixtures/walkthrough/<role>/.well-known/<doc> so a buyer
+  // agent can be pointed at the training agent's host and walk the chain
+  // end-to-end against simulated publisher / sub-brand / parent-house
+  // surfaces.
+  //
+  // `X-Robots-Tag: noindex` so search engines don't index these as if the
+  // fictional publishers were real. The fixtures' `description` fields and
+  // `*.example` domains carry the "test artifact" framing in-body — adding
+  // a top-level `x_test_fixture` flag would fail brand.json oneOf[3]'s
+  // `additionalProperties: false`.
+  for (const [role, docs] of Object.entries(WALKTHROUGH_FIXTURES)) {
+    for (const [filename, body] of Object.entries(docs)) {
+      const path = `/fixtures/walkthrough/${role}/.well-known/${filename}`;
+      router.options(path, (_req: Request, res: Response) => {
+        setLegacyCORS(res);
+        res.status(204).end();
+      });
+      router.get(path, (_req: Request, res: Response) => {
+        setLegacyCORS(res);
+        res.setHeader('X-Robots-Tag', 'noindex');
+        res.setHeader('Vary', 'X-Forwarded-Host, X-Forwarded-Proto, Host');
+        res.setHeader('Cache-Control', 'public, max-age=300');
+        res.json(body);
+      });
+    }
+  }
 
   // adagents.json discovery. Schema-conformant per
   // `static/schemas/source/adagents.json`:

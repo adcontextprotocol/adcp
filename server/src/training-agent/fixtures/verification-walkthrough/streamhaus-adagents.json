@@ -1,0 +1,40 @@
+{
+  "$schema": "/schemas/adagents.json",
+  "contact": {
+    "name": "StreamHaus Publishing",
+    "email": "adops@streamhaus.example",
+    "domain": "streamhaus.example"
+  },
+  "properties": [
+    {
+      "property_id": "streamhaus_ctv",
+      "property_type": "ctv_app",
+      "name": "StreamHaus CTV App",
+      "publisher_domain": "streamhaus.example",
+      "identifiers": [
+        { "type": "roku_store_id", "value": "12345" },
+        { "type": "domain", "value": "streamhaus.example" }
+      ]
+    }
+  ],
+  "authorized_agents": [
+    {
+      "url": "https://northwind.example/mcp",
+      "authorized_for": "StreamHaus CTV inventory via delegated authority",
+      "authorization_type": "property_ids",
+      "property_ids": ["streamhaus_ctv"],
+      "delegation_type": "delegated",
+      "signing_keys": [
+        {
+          "kid": "northwind-sell-prod-2026",
+          "kty": "OKP",
+          "alg": "EdDSA",
+          "crv": "Ed25519",
+          "x": "Xe2lAKRJR_zr3FQRdSNwp3zsrv_IXnVCWJXDcWXwkLI",
+          "use": "sig"
+        }
+      ]
+    }
+  ],
+  "last_updated": "2026-04-12T10:00:00Z"
+}
