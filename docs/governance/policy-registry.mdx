@@ -162,9 +162,15 @@ Filter by domain via the API: `GET /api/policies/registry?domain=creative`
 
 ## The `registry:` prefix
 
+<a id="feature-prefix-convention"></a>
+
 Governance agents declare standardized capabilities using `registry:` prefixed feature IDs. This creates a shared vocabulary so buyers searching for "EU AI Act compliance" find agents using the same terminology.
 
 **Convention:** `registry:{policy_id}` maps a feature ID to a registry policy. Unprefixed feature IDs are agent-defined.
+
+<Note>
+The `registry:` convention is the **delegated** form of policy reference — buyer asks the seller's governance agent to evaluate the policy as a binary feature. The complementary **attribution** pattern, where producers tag mechanism-level filters and measurements with `policy_id` to record buyer-chosen thresholds and motivated evaluations, lives at [Policy Attribution](/docs/governance/policy-attribution).
+</Note>
 
 **Property governance agent declares:**
 ```json

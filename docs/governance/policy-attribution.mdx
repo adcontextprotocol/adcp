@@ -9,14 +9,15 @@ When a buyer caps audience children-composition at 15%, the threshold itself doe
 
 Policy attribution closes that gap. Producers tag mechanism-level filters and measurements with `policy_id` to record the authorizing policy. Governance findings echo the same `policy_id` when emitting denials, so the trace runs end-to-end.
 
-## Two surfaces, one pattern
+## Three surfaces, one pattern
 
 | Surface | Producer | Use |
 |---|---|---|
 | [`core/feature-requirement.json`](https://adcontextprotocol.org/schemas/v3/core/feature-requirement.json) | Buyer (or buyer's compliance tooling) | Tag a buyer-authored threshold predicate with the policy that authorized it |
 | [`creative/creative-feature-result.json`](https://adcontextprotocol.org/schemas/v3/creative/creative-feature-result.json) | Creative agent / seller | Tag a measurement record with the policy that motivated the evaluation |
+| [`property/validation-result.json`](https://adcontextprotocol.org/schemas/v3/property/validation-result.json) `features[].policy_id` | Property-list agent | Tag a per-feature validation result with the policy that triggered the check |
 
-Both fields are optional. Both have been reserved in the 3.0 schemas since GA — populating them in 3.1 is non-breaking for strict 3.0 validators.
+All three fields are optional. The first two were reserved in 3.0 GA; populating them in 3.1 is non-breaking for strict 3.0 validators. The third has been present on validation-result since 3.0.
 
 ## When to populate `policy_id`
 
@@ -38,7 +39,7 @@ Only the third row carries filter-level `policy_id`. The first two rows already 
 
 ## Round-trip via governance findings
 
-The attribution loop runs filter → governance agent → finding → audit:
+The attribution loop runs filter → governance agent → finding → audit. The agent acting on the buyer's plan calls `check_governance`; depending on `phase`, this is either an **intent check** (orchestrator-side, before commitment) or an **execution check** (seller-side, before binding planned delivery). Both paths produce findings with the same shape.
 
 ```
 Buyer's property list (stored at the property-list agent)
@@ -47,11 +48,13 @@ Buyer's property list (stored at the property-list agent)
       max_value: 15
       policy_id: uk_hfss        ← authored here
                 │
-                │ Sales agent resolves the property list, sees policy_id as pass-through metadata
+                │ Acting agent resolves the property list, sees policy_id as pass-through metadata
                 ▼
-Sales agent's planned delivery violates the requirement
+Planned action would violate the requirement
                 │
-                │ check_governance(plan_id, planned_delivery, governance_context)
+                │ check_governance(plan_id, payload | planned_delivery, governance_context)
+                │   - orchestrator on intent check (tool + payload)
+                │   - seller on execution check (planned_delivery)
                 ▼
 Buyer's Governance agent emits a finding:
   findings:
@@ -64,7 +67,7 @@ Buyer's Governance agent emits a finding:
 Audit: "why was this denied?" → uk_hfss → grep buyer's filters → find the originating requirement.
 ```
 
-The sales agent is a transit point — it does not produce findings. The buyer's governance agent is the producer, and it has direct access to the buyer's filters (same trust boundary), so it can populate `policy_id` on findings by reading the underlying requirement.
+The acting agent (orchestrator or seller, depending on phase) is a transit point — it does not produce findings. The buyer's governance agent is the producer, and it has direct access to the buyer's filters (same trust boundary), so it can populate `policy_id` on findings by reading the underlying requirement.
 
 ## Contract for producers
 
@@ -103,7 +106,7 @@ If a different team later asks "why 15? why not 20?", the policy_id points at th
 
 ### COPPA — delegated to the seller's registry feature
 
-The buyer doesn't pick a threshold for COPPA — they delegate the evaluation entirely. The `registry:` feature convention does this without needing `policy_id`:
+The buyer doesn't pick a threshold for COPPA — they delegate the evaluation entirely. The `registry:` prefix is a feature-naming convention (see [`property-feature-definition`](https://adcontextprotocol.org/schemas/v3/property/property-feature-definition.json) and [Policy Registry](/docs/governance/policy-registry#feature-prefix-convention)) where the feature ID `registry:<policy_id>` references a standardized policy directly:
 
 ```json
 {
@@ -133,6 +136,19 @@ A creative agent evaluates a creative for HFSS compliance and records:
 ```
 
 The `policy_id` answers "why did this evaluation run?" Anyone reviewing the creative's measurement history can correlate this result with the originating policy.
+
+When this result fails the creative-level governance check, the governance agent's finding echoes the same `policy_id`:
+
+```json
+{
+  "category_id": "regulatory_compliance",
+  "policy_id": "uk_hfss",
+  "severity": "block",
+  "explanation": "Creative failed UK HFSS compliance evaluation."
+}
+```
+
+The buyer can correlate the finding back to the originating measurement by matching `policy_id` across both records.
 
 ## What attribution does not cover
 
