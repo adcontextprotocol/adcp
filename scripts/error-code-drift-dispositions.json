@@ -115,6 +115,11 @@
       "disposition": "held-for-next-minor",
       "target_version": "3.1",
       "note": "Part of agent-permission-denied scope codes (#3887). Held for 3.1."
+    },
+    "UNSUPPORTED_GRANULARITY": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.1",
+      "note": "From get_media_buy_delivery windowed-pull recovery (#4590). Returned when a buyer requests a time_granularity the seller did not declare in reporting_capabilities.windowed_pull_granularities. Wire change — held for 3.1."
     }
   }
 }
