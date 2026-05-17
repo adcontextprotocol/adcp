@@ -32,7 +32,18 @@ These lifecycles are tracked independently:
 - Rejecting, canceling, or completing a media buy releases its assignments. It does not change the creative's review state, remove the creative from the library, or affect the creative's use in other media buys.
 - When a creative's review state changes after assignments exist (e.g., a seller revokes an approval, or approves a previously rejected creative), sellers MAY continue or stop in-flight serving based on the new state. Buyers SHOULD re-fetch `approval_status` per package via [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys) after a creative-state change to detect assignment-level impact. See [creative review](/docs/creative/sales-agent-creative-capabilities#creative-review).
 
-Buyer agents reusing a library creative on a new media buy check **creative state** to know whether the asset is usable, and **assignment state** to know where it is currently in flight. Retention of unassigned creatives is seller-defined in 3.0 — buyers should not assume indefinite persistence and should confirm availability via [`list_creatives`](/docs/creative/task-reference/list_creatives) before reuse on a new buy.
+Buyer agents reusing a library creative on a new media buy check **creative state** to know whether the asset is usable, and **assignment state** to know where it is currently in flight.
+
+### Creatives outlast campaigns
+
+A creative MUST persist in the library independently of the buys that reference it. Buy rejection, cancellation, or completion releases assignments only — the creative remains in the library at its current `status` and may be reused on subsequent buys. This holds regardless of how the creative entered the library: explicit [`sync_creatives`](/docs/creative/task-reference/sync_creatives), inline creative on [`create_media_buy`](/docs/media-buy/task-reference/create_media_buy), or platform-native upload exposed through AdCP.
+
+Retention beyond active assignments is seller-defined. An agent MAY archive an unassigned creative due to inactivity, post-flight expiry, or storage policy, and MAY transition `approved` → `rejected` for policy revocation, takedown, or content drift. Whenever a creative's state changes after it has been synced by a buyer, the seller MUST signal the change so the buyer can resync, replace, or stop relying on the asset before reuse:
+
+- For state changes affecting an active media buy (e.g., `approved` → `rejected` on a creative with live assignments), sellers MUST surface a corresponding `impairment` on the buy. See [media buy health](/docs/media-buy/media-buys/lifecycle#health-and-dependency-impairment).
+- For state changes on creatives with no active assignments (e.g., seller archives an unassigned creative for inactivity), sellers MUST emit a creative state-change notification through the buyer's registered notification channel.
+
+Buyers SHOULD confirm availability via [`list_creatives`](/docs/creative/task-reference/list_creatives) before reuse on a new buy. A library creative is the bundle of inputs the buyer supplied — uploaded assets, a brief, brand and catalog pointers, or any combination. Retention applies to the bundle; whether the format's rendered outputs are individually addressable is a format-level concern and is independent of library retention.
 
 ## Connecting to a library
 
