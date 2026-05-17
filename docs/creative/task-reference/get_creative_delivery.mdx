@@ -70,9 +70,6 @@ Fields available on both `creative.totals` and each `variant` entry. Commonly-us
 | `reach_unit` | Unit of measurement for `reach`; required when `reach` is present |
 | `reach_window` | Window semantics for reach/frequency — object with `kind` (`cumulative` for rolling-since-campaign-start, `period` for snapshot-only) and optional `period` (Duration). Optional but strongly recommended whenever `reach` is present |
 | `frequency` | Average frequency per `reach_unit`, measured over `reach_window` |
-| `viewed_seconds` | Average seconds in view per impression — pairs with the `viewed_seconds` optimization goal |
-| `attention_seconds` | Average vendor-attributed attention time per impression — pairs with the `attention_seconds` optimization goal |
-| `attention_score` | Vendor-specific attention score per impression — pairs with the `attention_score` optimization goal |
 | `grps` | Gross Rating Points delivered (for CPP) |
 | `conversions` | Total attributed conversions; equals the sum of `by_event_type[].count` when present |
 | `conversion_value` | Total monetary value of attributed conversions |
@@ -83,7 +80,7 @@ Fields available on both `creative.totals` and each `variant` entry. Commonly-us
 | `by_event_type` | Conversions by event type — array of `{ event_type, count, value?, event_source_id? }` |
 | `by_action_source` | Conversions by action source (website, app, in_store) — array of `{ action_source, count, value?, event_source_id? }` |
 | `dooh_metrics` | DOOH-specific data — object with `loop_plays`, `screens_used`, `screen_time_seconds`, `sov_achieved`, `venue_breakdown` |
-| `viewability` | Viewability data — object with `measurable_impressions`, `viewable_impressions`, `viewable_rate`, `standard`, `vendor` |
+| `viewability` | Viewability data — object with `measurable_impressions`, `viewable_impressions`, `viewable_rate`, `viewed_seconds` (average in-view duration per measurable impression — pairs with the `viewed_seconds` optimization goal), `standard`, `vendor` |
 | `engagements` | Total ad engagements beyond viewing (platform-specific) |
 | `follows` | New followers or subscriptions attributed to delivery |
 | `saves` | Saves, bookmarks, or pins attributed to delivery |

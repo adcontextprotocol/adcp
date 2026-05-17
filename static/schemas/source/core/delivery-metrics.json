@@ -42,21 +42,6 @@
       "minimum": 0,
       "maximum": 1
     },
-    "viewed_seconds": {
-      "type": "number",
-      "description": "Average seconds in view per impression. Reporting-side counterpart to the `viewed_seconds` optimization metric in `optimization-goal.json`. Sellers reporting against a `viewed_seconds` optimization goal MUST populate this field; absent values indicate no seller-native measurement.",
-      "minimum": 0
-    },
-    "attention_seconds": {
-      "type": "number",
-      "description": "Average attention time per impression. Reporting-side counterpart to the `attention_seconds` optimization metric in `optimization-goal.json`. Definition is vendor-specific; the vendor identity flows through `committed_metrics.vendor` / `performance_standards.vendor` when committed, or through `vendor_metric_values` when the value is non-graduated. Sellers reporting against an `attention_seconds` optimization goal MUST populate this field.",
-      "minimum": 0
-    },
-    "attention_score": {
-      "type": "number",
-      "description": "Vendor-specific attention score per impression. Reporting-side counterpart to the `attention_score` optimization metric in `optimization-goal.json`. Score units and scale are vendor-defined; the vendor identity flows through `committed_metrics.vendor` / `performance_standards.vendor` when committed, or through `vendor_metric_values` when non-graduated. Sellers reporting against an `attention_score` optimization goal MUST populate this field.",
-      "minimum": 0
-    },
     "conversions": {
       "type": "number",
       "description": "Total conversions attributed to this delivery. When by_event_type is present, this equals the sum of all by_event_type[].count entries.",
@@ -287,7 +272,7 @@
     },
     "viewability": {
       "type": "object",
-      "description": "Viewability metrics. Viewable rate should be calculated as viewable_impressions / measurable_impressions (not total impressions), since some environments cannot measure viewability.",
+      "description": "Viewability metrics. Viewable rate should be calculated as viewable_impressions / measurable_impressions (not total impressions), since some environments cannot measure viewability. Includes `viewed_seconds` — average in-view duration — since duration is governed by the same viewability threshold (`standard`) and shares the same `measurable_impressions` denominator.",
       "properties": {
         "vendor": {
           "$ref": "/schemas/core/brand-ref.json",
@@ -295,7 +280,7 @@
         },
         "measurable_impressions": {
           "type": "number",
-          "description": "Impressions where viewability could be measured. Excludes environments without measurement capability (e.g., non-Intersection Observer browsers, certain app environments).",
+          "description": "Impressions where viewability could be measured. Excludes environments without measurement capability (e.g., non-Intersection Observer browsers, certain app environments). Coverage denominator for `viewable_rate` AND `viewed_seconds` — both metrics are computed over the same measurable population.",
           "minimum": 0
         },
         "viewable_impressions": {
@@ -309,9 +294,14 @@
           "minimum": 0,
           "maximum": 1
         },
+        "viewed_seconds": {
+          "type": "number",
+          "description": "Average in-view duration per measurable impression, in seconds. Reporting-side counterpart to the `viewed_seconds` optimization metric in `optimization-goal.json`. Computed over `measurable_impressions`, not total impressions — the same denominator as `viewable_rate`. The viewability `standard` governs the threshold (e.g., MRC's 50% pixels for 1s display / 2s video) that defines when an impression is in view and therefore when the clock is running. Sellers reporting against a `viewed_seconds` optimization goal MUST populate this field.",
+          "minimum": 0
+        },
         "standard": {
           "$ref": "/schemas/enums/viewability-standard.json",
-          "description": "Viewability measurement standard applied to these metrics."
+          "description": "Viewability measurement standard applied to these metrics. Governs the in-view threshold for both `viewable_rate` and `viewed_seconds`."
         }
       },
       "additionalProperties": true
