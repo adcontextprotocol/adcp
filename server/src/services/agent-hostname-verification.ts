@@ -52,10 +52,34 @@ export type AgentHostnameVerification =
       verified_domains: string[];
     };
 
-export async function verifyAgentHostname(
-  orgId: string,
+/**
+ * Fetch the verified-domain list for an org, lowercased. Used as the
+ * input to `checkAgentHostnameAgainstDomains` so bulk callers (bulk
+ * PUT, POST create) can issue ONE query for N agents instead of N
+ * queries. Single-agent paths should call `verifyAgentHostname`
+ * directly.
+ */
+export async function getVerifiedOrgDomains(orgId: string): Promise<string[]> {
+  const pool = getPool();
+  const r = await pool.query<{ domain: string }>(
+    `SELECT domain FROM organization_domains
+     WHERE workos_organization_id = $1 AND verified = true`,
+    [orgId],
+  );
+  return r.rows.map((row) => row.domain.toLowerCase());
+}
+
+/**
+ * Pure hostname-check against a pre-fetched verified-domain list.
+ * No I/O. `verifiedDomains` is expected lowercased (matches what
+ * `getVerifiedOrgDomains` returns). `orgId` is informational, only
+ * used in the rejection log.
+ */
+export function checkAgentHostnameAgainstDomains(
   agentUrl: string,
-): Promise<AgentHostnameVerification> {
+  verifiedDomains: string[],
+  orgId?: string,
+): AgentHostnameVerification {
   let hostname: string;
   try {
     hostname = new URL(agentUrl).hostname.toLowerCase();
@@ -75,14 +99,6 @@ export async function verifyAgentHostname(
       verified_domains: [],
     };
   }
-
-  const pool = getPool();
-  const r = await pool.query<{ domain: string }>(
-    `SELECT domain FROM organization_domains
-     WHERE workos_organization_id = $1 AND verified = true`,
-    [orgId],
-  );
-  const verifiedDomains = r.rows.map((row) => row.domain.toLowerCase());
 
   if (verifiedDomains.length === 0) {
     logger.warn(
@@ -113,6 +129,19 @@ export async function verifyAgentHostname(
     agent_hostname: hostname,
     verified_domains: verifiedDomains,
   };
+}
+
+/**
+ * Single-agent convenience wrapper. Bulk callers should prefer
+ * `getVerifiedOrgDomains` + `checkAgentHostnameAgainstDomains` to
+ * avoid N+1 queries.
+ */
+export async function verifyAgentHostname(
+  orgId: string,
+  agentUrl: string,
+): Promise<AgentHostnameVerification> {
+  const verifiedDomains = await getVerifiedOrgDomains(orgId);
+  return checkAgentHostnameAgainstDomains(agentUrl, verifiedDomains, orgId);
 }
 
 /**
