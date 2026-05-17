@@ -232,6 +232,11 @@ import {
   findEventSourceInSession,
 } from './catalog-event-handlers.js';
 import {
+  AUDIENCE_TOOLS,
+  handleSyncAudiences,
+  findAudienceInSession,
+} from './audience-handlers.js';
+import {
   COMPLY_TEST_CONTROLLER_TOOL,
   handleComplyTestController,
   getDeliverySimulation,
@@ -1327,6 +1332,7 @@ const TOOLS = [
   },
   ...ACCOUNT_TOOLS,
   ...CATALOG_EVENT_TOOLS,
+  ...AUDIENCE_TOOLS,
   ...GOVERNANCE_TOOLS,
   ...PROPERTY_TOOLS,
   ...COLLECTION_LIST_TOOLS,
@@ -1850,6 +1856,40 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
                 code: 'INVALID_REQUEST',
                 message: `event_source_id "${id}" was not registered via sync_event_sources`,
                 field: `packages[${i}].optimization_goals[${j}].event_sources[${k}].event_source_id`,
+              }] as TaskError[],
+            };
+          }
+        }
+      }
+    }
+  }
+
+  // Validate targeting_overlay.audience_include / audience_exclude entries
+  // reference an audience_id previously registered via sync_audiences. Silent
+  // acceptance of phantom ids is a façade — the seller cannot target an
+  // audience it doesn't know about. Sibling contract to the event_source_id
+  // check above. error.field is a literal JSONPath-lite per core/error.json
+  // so audience_buy_flow can assert equality, not regex.
+  const sessionKeyForAudiences = sessionKeyFromArgs(req, ctx.mode, ctx.userId, ctx.moduleId);
+  if (Array.isArray(req.packages)) {
+    for (let i = 0; i < req.packages.length; i++) {
+      const pkg = req.packages[i] as { targeting_overlay?: unknown; targeting?: unknown };
+      const overlay = (pkg?.targeting_overlay ?? pkg?.targeting) as
+        | { audience_include?: unknown; audience_exclude?: unknown }
+        | undefined;
+      if (!overlay || typeof overlay !== 'object') continue;
+      for (const field of ['audience_include', 'audience_exclude'] as const) {
+        const list = overlay[field];
+        if (!Array.isArray(list)) continue;
+        for (let k = 0; k < list.length; k++) {
+          const id = list[k];
+          if (typeof id !== 'string' || id.length === 0) continue;
+          if (!findAudienceInSession(sessionKeyForAudiences, id)) {
+            return {
+              errors: [{
+                code: 'INVALID_REQUEST',
+                message: `audience_id "${id}" was not registered via sync_audiences`,
+                field: `packages[${i}].targeting_overlay.${field}[${k}]`,
               }] as TaskError[],
             };
           }
@@ -4110,6 +4150,7 @@ const HANDLER_MAP: Record<string, ToolHandler> = {
   sync_governance: handleSyncGovernance,
   sync_catalogs: handleSyncCatalogs,
   sync_event_sources: handleSyncEventSources,
+  sync_audiences: handleSyncAudiences,
   log_event: handleLogEvent,
   provide_performance_feedback: handleProvidePerformanceFeedback,
   sync_plans: handleSyncPlans,
