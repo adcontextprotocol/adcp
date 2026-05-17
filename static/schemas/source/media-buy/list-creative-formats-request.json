@@ -52,7 +52,7 @@
     },
     "publisher_domain": {
       "type": "string",
-      "description": "Filter to formats supported by the named publisher. The agent SHOULD answer by reading the publisher's `adagents.json` `formats[]` (resolution order: `<publisher_domain>/.well-known/adagents.json` first; on 404 or absence-of-formats[], the AAO community-registry mirror at `https://creative.adcontextprotocol.org/translated/<platform>/adagents.json`). Combine with `property_id` to scope further. When neither file declares `formats[]`, the agent MAY fall back to deriving format coverage from inventory the agent itself sells for the publisher (union of `Product.format_options[]` over matching products) and SHOULD label the result as agent-derived rather than publisher-authoritative.",
+      "description": "Filter to formats supported by the named publisher. Agents resolve via the three-tier order documented in `docs/creative/canonical-formats.mdx#format-discovery` (publisher's hosted adagents.json → AAO community mirror → agent-derived from own products' format_options). All fetches in the chain MUST follow the same transport contract as `format_schema` (https-only, SSRF guards, ≤5s timeout, 1 MiB cap, no redirects — see `static/schemas/source/core/product-format-declaration.json#format_schema`). Response carries `source: \"publisher\" | \"aao_mirror\" | \"agent_derived\"` so buyers know which tier produced the list. The pattern below is a syntactic floor — NOT an SSRF guard; agents MUST resolve the hostname and reject private/loopback/link-local/metadata IPs before fetching.",
       "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
     },
     "property_id": {

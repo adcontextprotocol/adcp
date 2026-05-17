@@ -1,8 +1,8 @@
 {
   "$schema": "/schemas/core/product.json",
   "product_id": "meta_reels_us",
-  "name": "Meta Reels — United States",
-  "description": "9:16 vertical short-form video on Meta Reels (Facebook + Instagram). Buyers upload H.264 mp4 (3-90s) plus headline and primary text; Meta serves to Reels feeds with placement-native UI overlays and Meta-specific tracking via the meta_pixel extension.",
+  "name": "Meta Reels \u2014 United States",
+  "description": "9:16 vertical short-form video on Meta Reels (Facebook + Instagram). Buyers upload H.264 mp4 (3-90s) plus headline and primary text; Meta serves to Reels feeds with placement-native UI overlays. Conversion tracking is campaign-scoped and configured via `sync_event_sources` (event_log surface) — NOT via the creative format declaration.",
   "publisher_properties": [
     {
       "publisher_domain": "meta.com",
@@ -42,10 +42,12 @@
     {
       "format_kind": "video_hosted",
       "capability_id": "meta_reels",
-      "v1_format_ref": {
-        "agent_url": "https://creative.adcontextprotocol.org/translated/meta",
-        "id": "meta_reels"
-      },
+      "v1_format_ref": [
+        {
+          "agent_url": "https://creative.adcontextprotocol.org/translated/meta",
+          "id": "meta_reels"
+        }
+      ],
       "params": {
         "orientation": "vertical",
         "aspect_ratio": "9:16",

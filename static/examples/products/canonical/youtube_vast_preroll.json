@@ -2,7 +2,7 @@
   "$schema": "/schemas/core/product.json",
   "product_id": "youtube_vast_preroll_15s_skippable",
   "name": "YouTube VAST Pre-roll (15s skippable, In-Stream)",
-  "description": "VAST tag pre-roll on YouTube In-Stream inventory, 16:9 horizontal, 5-second skippable threshold. Buyer ships a VAST 4.x tag (URL or inline XML); YouTube fires VAST events (impression / quartiles / click / complete / error / skip) inherent to the spec. VPAID 2.0 supported but discouraged — Google deprecates VPAID in 2026.",
+  "description": "VAST tag pre-roll on YouTube In-Stream inventory, 16:9 horizontal, 5-second skippable threshold. Buyer ships a VAST 4.x tag (URL or inline XML); YouTube fires VAST events (impression / quartiles / click / complete / error / skip) inherent to the spec. VPAID 2.0 supported but discouraged \u2014 Google deprecates VPAID in 2026.",
   "publisher_properties": [
     {
       "publisher_domain": "youtube.com",
@@ -47,10 +47,12 @@
   "format_options": [
     {
       "format_kind": "video_vast",
-      "v1_format_ref": {
-        "agent_url": "https://creative.adcontextprotocol.org/",
-        "id": "video_vast_30s"
-      },
+      "v1_format_ref": [
+        {
+          "agent_url": "https://creative.adcontextprotocol.org/",
+          "id": "video_vast_30s"
+        }
+      ],
       "params": {
         "orientation": "horizontal",
         "aspect_ratio": "16:9",

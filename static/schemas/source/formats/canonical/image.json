@@ -3,7 +3,72 @@
   "$id": "/schemas/formats/canonical/image.json",
   "title": "Canonical Format: Image",
   "description": "Static image creative format. Slots: `image_main` (image asset, file or hosted URL), optional `headline` (text), `body_text` (text), `cta` (text/enum), `landing_page_url` (url). Tracking model: impression pixel + click URL via universal_macros, with optional viewability pixel. Distinct from `html5` (interactive bundles) and `display_tag` (third-party served). AR/dimensions narrow to specific sizes via product parameters — covers IAB display sizes (300x250, 728x90, 970x250, etc.) without a separate iab_size enum.",
-  "allOf": [{ "$ref": "/schemas/formats/canonical/_base.json" }],
+  "allOf": [
+    { "$ref": "/schemas/formats/canonical/_base.json" },
+    {
+      "title": "Size-mode mutex",
+      "description": "Exactly one of: (a) fixed (`width` + `height` both set), (b) multi-size (`sizes` set), (c) responsive (any of `min_width`/`max_width`/`min_height`/`max_height` set), (d) none (no size constraint declared — accepts any dimensions). Combining modes (e.g., `width` + `sizes`) is rejected at schema layer; same rule on `html5` and `display_tag` canonicals.",
+      "oneOf": [
+        {
+          "title": "fixed",
+          "required": ["width", "height"],
+          "not": {
+            "anyOf": [
+              { "required": ["sizes"] },
+              { "required": ["min_width"] },
+              { "required": ["max_width"] },
+              { "required": ["min_height"] },
+              { "required": ["max_height"] }
+            ]
+          }
+        },
+        {
+          "title": "multi-size",
+          "required": ["sizes"],
+          "not": {
+            "anyOf": [
+              { "required": ["width"] },
+              { "required": ["height"] },
+              { "required": ["min_width"] },
+              { "required": ["max_width"] },
+              { "required": ["min_height"] },
+              { "required": ["max_height"] }
+            ]
+          }
+        },
+        {
+          "title": "responsive",
+          "anyOf": [
+            { "required": ["min_width"] },
+            { "required": ["max_width"] },
+            { "required": ["min_height"] },
+            { "required": ["max_height"] }
+          ],
+          "not": {
+            "anyOf": [
+              { "required": ["width"] },
+              { "required": ["height"] },
+              { "required": ["sizes"] }
+            ]
+          }
+        },
+        {
+          "title": "none",
+          "not": {
+            "anyOf": [
+              { "required": ["width"] },
+              { "required": ["height"] },
+              { "required": ["sizes"] },
+              { "required": ["min_width"] },
+              { "required": ["max_width"] },
+              { "required": ["min_height"] },
+              { "required": ["max_height"] }
+            ]
+          }
+        }
+      ]
+    }
+  ],
   "properties": {
     "slots": {
       "default": [

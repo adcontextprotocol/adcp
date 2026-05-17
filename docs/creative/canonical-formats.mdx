@@ -263,12 +263,40 @@ Meta Reels is a useful test of canonical-formats coverage: a platform-specific f
 | Brand name overlay | NOT in the format. Auto-applied by Meta from the linked Page (auth context outside AdCP). | The inherited `brand_name` slot exists in the canonical; products that need explicit content (publisher-direct video, CTV) populate it. Meta doesn't consume it for Reels. |
 | Logo overlay | NOT in the format. Auto-applied by Meta from the linked Page. | `BrandRef.brand_kit_override.logo` exists for formats whose seller-side renderer overlays a logo (host-read podcasts, CTV bumpers, publisher direct). Meta doesn't use it. |
 | Music overlay (Reels music library) | NOT in this declaration. Would be a `platform_extension` on the format if added; **not present in 3.1** — too platform-specific to be worth a schema seat without 2+ adopters. | Sellers can layer it via `ext` on the manifest in the meantime. |
-| Pixel / conversion tracking | NOT on the format. Conversion tracking is `sync_event_sources` / `event_log` territory — campaign-scoped, not creative-scoped. | The same pixel fires for every ad in the campaign regardless of creative. Putting it on the format declaration was a category error in earlier drafts. |
+| Pixel / conversion tracking | NOT on the format. Conversion tracking is `sync_event_sources` / `event_log` territory — campaign-scoped, not creative-scoped. | The same pixel fires for every ad in the campaign regardless of creative; one declaration in `event_log` covers the campaign. |
 | Placement selection (Feed vs Reels vs Stories) | NOT on the format. Placement is selected at media-buy time (`Placement.format_options[].capability_id`) — pick `meta_reels` to buy Reels, `meta_stories_video` to buy Stories. | They're separate format declarations on the publisher catalog; not a runtime extension parameter. |
+
+### Where to declare a format
+
+Three places. Pick by who owns the assertion.
+
+| Surface | Authority | When to use |
+|---|---|---|
+| `adagents.json` top-level `formats[]` (publisher catalog) | Publisher (or AAO community mirror standing in) | Shared across all sellers of a publisher's inventory — declares the publisher-authoritative shape once. Use `applies_to_property_ids` / `applies_to_property_tags` to scope to a subset of the file's `properties[]`. |
+| `Product.format_options[]` (inline on a product) | Seller, on a specific product | Seller-specific narrowing, custom format, or one-off pricing variant. SHOULD reference a publisher catalog entry by `capability_id` when the publisher has one. |
+| `Placement.format_options[]` (capability_id reference OR inline) | Publisher (or seller publishing placements) | Ties a placement to one or more accepted formats. Reference by `capability_id` (recommended; resolves against the file's top-level `formats[]`) or inline for placement-local narrowing. Same-file scope — cross-file `capability_id` lookup is not supported. |
+
+`applies_to_property_ids` and `Placement.format_options[]` answer different questions: the first scopes a FORMAT to a subset of properties ("Reels applies to Instagram + Facebook but not WhatsApp"); the second binds a PLACEMENT to one or more formats ("Instagram Reels accepts the meta_reels capability"). Property-level format support → `applies_to_property_ids`. Placement-level binding → `placements[].format_options[]`.
+
+### Format discovery (resolution order)
+
+Buyer agents answer "what formats does this publisher accept?" via `list_creative_formats(publisher_domain="<domain>", property_id?="<id>")`. Three-tier resolution:
+
+1. **Publisher-hosted**: fetch `https://<publisher_domain>/.well-known/adagents.json`. If present and carries `formats[]`, return it. Response `source: "publisher"`.
+2. **AAO community mirror**: on 404 or absence-of-formats[], fall back to `https://creative.adcontextprotocol.org/translated/<platform>/adagents.json`. Return its `formats[]`. Response `source: "aao_mirror"`.
+3. **Agent-derived**: if neither tier returns a catalog, the agent synthesizes from the union of its own `Product.format_options[]` over products selling the publisher's inventory. Response `source: "agent_derived"`. Lowest authority — the agent's view of what it sells, not the publisher's catalog. Long-tail IAB publishers without a structured catalog will live here.
+
+**All fetches MUST follow the same transport contract as `format_schema`** — https-only, SSRF guards (RFC 1918 / loopback / link-local / metadata-endpoint denylist; resolve hostname and pin connection to defeat DNS rebinding), ≤5s timeout, 1 MiB cap, no redirects. See `static/schemas/source/core/product-format-declaration.json#format_schema` for the full normative contract. Adagents.json files carry authorization claims + signing keys; SSRF leakage is higher-value to an attacker than format_schema leakage.
+
+**Community-mirror governance** (3.1 status). The AAO publishes adagents.json files for unadopted platforms at `creative.adcontextprotocol.org/translated/<platform>/`. **Maintenance is unowned today** — entries are best-effort, derived from publicly documented platform specs. The community-mirror namespace inherits the same single-trust-anchor concern as the `format_schema` mirror: compromise of `creative.adcontextprotocol.org` or its CA compromises every buyer agent reading the mirror. Signed-body + transparency-log hardening is tracked as a 3.2 follow-up. Until then, buyer SDKs SHOULD treat mirror-served content as advisory (label via `source: "aao_mirror"`), prefer publisher-hosted tier 1 when available, and apply freshness checks (per-platform `OWNERS` + staleness threshold are tracked separately — when a mirror entry hasn't been refreshed within the threshold, the SDK MAY demote its authority to `agent_derived`).
+
+**Identity-confusion note (normative).** A mirror URL in `v1_format_ref[].agent_url` declares *format-shape provenance*, NOT seller identity. Buyer allowlists matching on `v1_format_ref[].agent_url` are matching shape namespace; inventory authorization always flows from `authorized_agents[]` + publisher signing keys. A seller pointing `v1_format_ref` at `creative.adcontextprotocol.org/translated/meta` is asserting "this format follows the AAO-mirrored Meta Reels shape," not "I am Meta."
+
+**Platform-adoption cutover.** When a platform adopts AdCP and publishes its own `adagents.json`, the AAO mirror file SHOULD set `superseded_by: "<platform-domain>/.well-known/adagents.json"`. Buyer SDKs encountering `superseded_by` MUST short-circuit and re-fetch from the named URL rather than serving stale mirror content. The mirror SHOULD continue serving for ≥1 minor release with `superseded_by` set so caches keyed on the mirror URL get an explicit migration signal rather than a silent break. Sellers also update `v1_format_ref[].agent_url` to the platform's adopted agent_url in the same minor release.
 
 ### Community-registry hosting
 
-Meta hasn't adopted AdCP, so its `adagents.json` lives at the AAO community-registry mirror, `https://creative.adcontextprotocol.org/translated/meta/adagents.json`. The mirror file declares `formats[]` at the publisher catalog level — one declaration of Meta Reels, scoped to Instagram + Facebook (not WhatsApp), reused across every seller's products. When Meta later publishes its own `adagents.json` at `meta.com/.well-known/adagents.json`, the platform-hosted file takes precedence and the mirror entry deprecates.
+Meta hasn't adopted AdCP, so its `adagents.json` lives at the AAO community-registry mirror, `https://creative.adcontextprotocol.org/translated/meta/adagents.json`. The mirror file declares `formats[]` at the publisher catalog level — one declaration of Meta Reels, scoped to Instagram + Facebook (not WhatsApp), reused across every seller's products. When Meta later publishes its own `adagents.json` at `meta.com/.well-known/adagents.json`, the platform-hosted file takes precedence and the mirror entry deprecates (via the `superseded_by` signal documented above).
 
 ```json test=false
 // https://creative.adcontextprotocol.org/translated/meta/adagents.json (excerpt)
@@ -373,7 +401,7 @@ The `capability_id: "meta_reels"` tag lets buyer agents recognize this as the sa
 - **Canonical slots** — content the manifest carries. `video_hosted` inherits `video_main`, `headline`, `primary_text`, `cta`, `brand_name`, `companion_banner`, `landing_page_url`. Products can override (remove slots the surface doesn't use; mark required; narrow values).
 - **`platform_extensions`** — net-new fields the canonical doesn't recognize, scoped to one platform's renderer (e.g., a hypothetical Reels music overlay carrying track_id + licensing flags). Bundled by URI+digest in `get_products` so buyers fetch once and cache.
 - **`BrandRef` + `brand_kit_override`** — brand context (logo, colors, voice, tagline) consumed by formats whose **seller-side renderer** overlays brand. Host-read podcasts, CTV bumpers, publisher-direct display do consume it. Meta auto-overlays from the linked Page (auth context outside AdCP), so brand_kit_override has no effect for Meta Reels — it's still the right schema location for the cases that DO consume it.
-- **Campaign / event-log surfaces** — conversion tracking (Meta Pixel, GA4, server-side events). These are `sync_event_sources` / `event_log` concerns, NOT creative format concerns. Earlier drafts of this example put `meta_pixel` on the format declaration; that was a category error and is gone now.
+- **Campaign / event-log surfaces** — conversion tracking (Meta Pixel, GA4, server-side events). These belong on `sync_event_sources` / `event_log` (campaign-scoped, fires per impression regardless of creative). Format declarations carry creative shape; event-log declarations carry tracking configuration. Don't put `pixel_id` in `platform_extensions` on a creative format.
 - **Media-buy surfaces** — placement selection (Feed vs Reels vs Stories). Pick the right format on the publisher catalog (`meta_reels` vs `meta_stories_video` vs `meta_feed_image`); not a per-creative extension knob.
 
 This separation — canonical params + canonical slots + extensions only for net-new fields + BrandRef for brand context + event_log for tracking — is what keeps the 11 canonicals from accumulating per-platform fields. The lint at `tests/canonical-format-conventions.test.cjs` enforces the `v1_format_ref.agent_url` AAO-hosted convention and the slot/param consistency rule.
@@ -454,45 +482,9 @@ The example below is the NYTimes Homepage above-the-fold slot: accepts image, HT
 
 **What's happening:** one product, three `format_options` entries (one per creative type), each with `sizes[]` carrying the three accepted IAB sizes. Buyer agents read this as "the slot accepts `image` OR `html5` OR `display_tag` at any of `300×250` / `728×90` / `970×250`." The buyer ships ONE creative — they pick which type and which size — and validation checks the manifest's slot `width`/`height` against the appropriate `sizes[]` list for the chosen format_kind.
 
-**Responsive variant.** A modern responsive slot replaces `sizes[]` with min/max ranges — `min_width: 300, max_width: 970, min_height: 50, max_height: 250` — and accepts any dimensions within the box. Same multi-format pattern; different size declaration.
+**Responsive variant.** A responsive slot replaces `sizes[]` with min/max ranges — `min_width: 300, max_width: 970, min_height: 50, max_height: 250` — and accepts any dimensions within the box. Same multi-format pattern; different size declaration. Exactly one size mode (fixed `width`+`height` / multi-size `sizes[]` / responsive ranges) per format_options entry, enforced at the schema layer.
 
-Below is a single-format/single-size narrowing for comparison (older fixed-MREC-only HTML5 product):
-
-```json test=false
-{
-  "product_id": "nytimes_homepage_html5",
-  "name": "NYTimes.com Homepage HTML5 Banner (300×250)",
-  "publisher_properties": [
-    { "publisher_domain": "nytimes.com", "selection_type": "all" }
-  ],
-  "channels": ["display"],
-  "format_options": [
-    {
-      "format_kind": "html5",
-      "params": {
-        "width": 300,
-        "height": 250,
-        "max_initial_load_kb": 200,
-        "max_polite_load_kb": 500,
-        "host_initiated_subload": true,
-        "max_animation_duration_ms": 30000,
-        "max_cpu_load_percent": 30,
-        "om_sdk_required": true,
-        "clicktag_macro": "clickTag",
-        "backup_image_required": true,
-        "backup_image_max_size_kb": 50,
-        "ssl_required": true,
-        "composition_model": "deterministic"
-      }
-    }
-  ],
-  "pricing_options": [
-    { "pricing_option_id": "cpm_homepage_html5", "pricing_model": "cpm", "currency": "USD", "fixed_price": 28.00 }
-  ]
-}
-```
-
-Different canonical (`html5`, not `image`) because the tracking model is fundamentally different — MRAID + OM-SDK + click-tag rather than impression pixel + click URL. Adopters that want to express "this placement accepts either image or HTML5" publish two products.
+**Seller preference.** When a multi-format product has several `format_options` at the same price, sellers MAY set `seller_preference: "preferred" | "accepted" | "discouraged"` on each entry to hint which the seller would prefer the buyer ship (often because of viewability / measurement / render-quality differences). Soft routing signal — buyer agents respect it when their own constraints don't override.
 
 ## Worked example — Podcast 30s host-read
 

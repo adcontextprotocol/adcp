@@ -1,8 +1,8 @@
 {
   "$schema": "/schemas/core/product.json",
   "product_id": "nytimes_homepage_html5",
-  "name": "NYTimes.com Homepage HTML5 Banner (300×250)",
-  "description": "IAB Medium Rectangle (300×250) interactive HTML5 banner placement on the NYTimes.com homepage. Buyers upload an HTML5 zip bundle (≤200KB initial load, ≤500KB polite-load with host_initiated_subload, max 30s animation, OM-SDK + clickTag macro). Different canonical from the static image MREC because the tracking model is fundamentally different (MRAID + OM-SDK vs impression pixel + click URL).",
+  "name": "NYTimes.com Homepage HTML5 Banner (300\u00d7250)",
+  "description": "IAB Medium Rectangle (300\u00d7250) interactive HTML5 banner placement on the NYTimes.com homepage. Buyers upload an HTML5 zip bundle (\u2264200KB initial load, \u2264500KB polite-load with host_initiated_subload, max 30s animation, OM-SDK + clickTag macro). Different canonical from the static image MREC because the tracking model is fundamentally different (MRAID + OM-SDK vs impression pixel + click URL).",
   "publisher_properties": [
     {
       "publisher_domain": "nytimes.com",
@@ -44,10 +44,12 @@
   "format_options": [
     {
       "format_kind": "html5",
-      "v1_format_ref": {
-        "agent_url": "https://creative.adcontextprotocol.org/",
-        "id": "display_300x250_html"
-      },
+      "v1_format_ref": [
+        {
+          "agent_url": "https://creative.adcontextprotocol.org/",
+          "id": "display_300x250_html"
+        }
+      ],
       "params": {
         "width": 300,
         "height": 250,

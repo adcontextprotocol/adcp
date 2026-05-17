@@ -1,8 +1,8 @@
 {
   "$schema": "/schemas/core/product.json",
   "product_id": "gam_publisher_3p_display_tag_300x250",
-  "name": "GAM Publisher — 3P Display Tag (300×250)",
-  "description": "Third-party-served display tag (JS or iframe) on a GAM-managed publisher placement. Buyer's adserver hosts the creative; the publisher calls the tag URL at impression time. 200KB max-snippet-size and a runtime allowlist (no eval, no document.write, no setTimeout, no javascript: / data: URLs in click trackers) apply at the GAM level — these are publisher-policy constraints, not protocol-level.",
+  "name": "GAM Publisher \u2014 3P Display Tag (300\u00d7250)",
+  "description": "Third-party-served display tag (JS or iframe) on a GAM-managed publisher placement. Buyer's adserver hosts the creative; the publisher calls the tag URL at impression time. 200KB max-snippet-size and a runtime allowlist (no eval, no document.write, no setTimeout, no javascript: / data: URLs in click trackers) apply at the GAM level \u2014 these are publisher-policy constraints, not protocol-level.",
   "publisher_properties": [
     {
       "publisher_domain": "examplepublisher.example",
@@ -40,10 +40,12 @@
   "format_options": [
     {
       "format_kind": "display_tag",
-      "v1_format_ref": {
-        "agent_url": "https://creative.adcontextprotocol.org/",
-        "id": "display_js"
-      },
+      "v1_format_ref": [
+        {
+          "agent_url": "https://creative.adcontextprotocol.org/",
+          "id": "display_js"
+        }
+      ],
       "params": {
         "width": 300,
         "height": 250,

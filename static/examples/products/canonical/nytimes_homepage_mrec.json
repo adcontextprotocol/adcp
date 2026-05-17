@@ -2,7 +2,7 @@
   "$schema": "/schemas/core/product.json",
   "product_id": "nytimes_homepage_flex_display",
   "name": "NYTimes.com Homepage Above-the-Fold Display",
-  "description": "Flexible above-the-fold display slot on the NYTimes.com homepage. Slot accepts IAB display sizes (300×250 MREC, 728×90 leaderboard, 970×250 billboard) as image, HTML5 zip, or third-party tag — the three creative shapes the same physical placement consumes. Single product, three format_options (one per creative type), each declaring `sizes[]` for the multi-size acceptance. Buyer picks the creative type they ship; size matches one of the listed pairs. Standard impression pixel + click URL tracking via universal_macros plus IAB Open Measurement viewability via the nytimes_om_strict extension.",
+  "description": "Flexible above-the-fold display slot on the NYTimes.com homepage. Slot accepts IAB display sizes (300\u00d7250 MREC, 728\u00d790 leaderboard, 970\u00d7250 billboard) as image, HTML5 zip, or third-party tag \u2014 the three creative shapes the same physical placement consumes. Single product, three format_options (one per creative type), each declaring `sizes[]` for the multi-size acceptance. Buyer picks the creative type they ship; size matches one of the listed pairs. Standard impression pixel + click URL tracking via universal_macros plus IAB Open Measurement viewability via the nytimes_om_strict extension.",
   "publisher_properties": [
     {
       "publisher_domain": "nytimes.com",
@@ -44,16 +44,35 @@
     {
       "format_kind": "image",
       "capability_id": "nytimes_homepage_image",
-      "display_name": "NYTimes Homepage — Image (multi-size)",
-      "v1_format_ref": {
-        "agent_url": "https://creative.adcontextprotocol.org/",
-        "id": "display_300x250_image"
-      },
+      "display_name": "NYTimes Homepage \u2014 Image (multi-size)",
+      "v1_format_ref": [
+        {
+          "agent_url": "https://creative.adcontextprotocol.org/",
+          "id": "display_300x250_image"
+        },
+        {
+          "agent_url": "https://creative.adcontextprotocol.org/",
+          "id": "display_728x90_image"
+        },
+        {
+          "agent_url": "https://creative.adcontextprotocol.org/",
+          "id": "display_970x250_image"
+        }
+      ],
       "params": {
         "sizes": [
-          { "width": 300, "height": 250 },
-          { "width": 728, "height": 90 },
-          { "width": 970, "height": 250 }
+          {
+            "width": 300,
+            "height": 250
+          },
+          {
+            "width": 728,
+            "height": 90
+          },
+          {
+            "width": 970,
+            "height": 250
+          }
         ],
         "max_file_size_kb": 200,
         "image_formats": [
@@ -79,16 +98,35 @@
     {
       "format_kind": "html5",
       "capability_id": "nytimes_homepage_html5",
-      "display_name": "NYTimes Homepage — HTML5 (multi-size)",
-      "v1_format_ref": {
-        "agent_url": "https://creative.adcontextprotocol.org/",
-        "id": "display_300x250_html"
-      },
+      "display_name": "NYTimes Homepage \u2014 HTML5 (multi-size)",
+      "v1_format_ref": [
+        {
+          "agent_url": "https://creative.adcontextprotocol.org/",
+          "id": "display_300x250_html"
+        },
+        {
+          "agent_url": "https://creative.adcontextprotocol.org/",
+          "id": "display_728x90_html"
+        },
+        {
+          "agent_url": "https://creative.adcontextprotocol.org/",
+          "id": "display_970x250_html"
+        }
+      ],
       "params": {
         "sizes": [
-          { "width": 300, "height": 250 },
-          { "width": 728, "height": 90 },
-          { "width": 970, "height": 250 }
+          {
+            "width": 300,
+            "height": 250
+          },
+          {
+            "width": 728,
+            "height": 90
+          },
+          {
+            "width": 970,
+            "height": 250
+          }
         ],
         "max_initial_load_kb": 200,
         "max_polite_load_kb": 500,
@@ -108,16 +146,35 @@
     {
       "format_kind": "display_tag",
       "capability_id": "nytimes_homepage_3p_tag",
-      "display_name": "NYTimes Homepage — Third-party tag (multi-size)",
-      "v1_format_ref": {
-        "agent_url": "https://creative.adcontextprotocol.org/",
-        "id": "display_js"
-      },
+      "display_name": "NYTimes Homepage \u2014 Third-party tag (multi-size)",
+      "v1_format_ref": [
+        {
+          "agent_url": "https://creative.adcontextprotocol.org/",
+          "id": "display_300x250_js"
+        },
+        {
+          "agent_url": "https://creative.adcontextprotocol.org/",
+          "id": "display_728x90_js"
+        },
+        {
+          "agent_url": "https://creative.adcontextprotocol.org/",
+          "id": "display_970x250_js"
+        }
+      ],
       "params": {
         "sizes": [
-          { "width": 300, "height": 250 },
-          { "width": 728, "height": 90 },
-          { "width": 970, "height": 250 }
+          {
+            "width": 300,
+            "height": 250
+          },
+          {
+            "width": 728,
+            "height": 90
+          },
+          {
+            "width": 970,
+            "height": 250
+          }
         ],
         "supported_tag_types": [
           "javascript",

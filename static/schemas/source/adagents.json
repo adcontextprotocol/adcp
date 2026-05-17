@@ -158,6 +158,12 @@
           },
           "minItems": 1
         },
+        "superseded_by": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://",
+          "description": "Optional pointer indicating this adagents.json file has been superseded by another adagents.json at a different URL. Used by the AAO community-mirror lifecycle: when a platform (e.g., Meta) adopts AdCP and publishes its own adagents.json at `<platform-domain>/.well-known/adagents.json`, the AAO mirror file at `creative.adcontextprotocol.org/translated/<platform>/adagents.json` sets `superseded_by` to the platform-hosted URL. Buyer SDKs encountering a file with `superseded_by` SHOULD short-circuit and re-fetch from the named URL rather than serving stale content from the mirror. The mirror SHOULD continue serving with `superseded_by` set for ≥1 minor release after platform adoption so buyer caches keyed on the mirror URL get an explicit migration signal rather than a silent break."
+        },
         "tags": {
           "type": "object",
           "description": "Metadata for each tag referenced by properties. Provides human-readable context for property tag values.",

@@ -156,7 +156,7 @@ const NEGATIVE_CASES = {
       expected: true,
       doc: {
         format_kind: 'image',
-        v1_format_ref: { agent_url: 'https://nytimes.adcp', id: 'mrec_300x250' },
+        v1_format_ref: [{ agent_url: 'https://nytimes.example', id: 'mrec_300x250' }],
         params: { width: 300, height: 250 },
       },
     },
@@ -165,7 +165,7 @@ const NEGATIVE_CASES = {
       expected: true,
       doc: {
         format_kind: 'custom',
-        v1_format_ref: { agent_url: 'https://nytimes.adcp', id: 'homepage_takeover' },
+        v1_format_ref: [{ agent_url: 'https://nytimes.example', id: 'homepage_takeover' }],
         format_shape: 'multi_placement_takeover',
         format_schema: { uri: 'https://x.example/s', digest: SHA },
         params: { foo: 'bar' },
@@ -177,7 +177,7 @@ const NEGATIVE_CASES = {
       doc: {
         format_kind: 'image',
         canonical_formats_only: true,
-        v1_format_ref: { agent_url: 'https://nytimes.adcp', id: 'mrec_300x250' },
+        v1_format_ref: [{ agent_url: 'https://nytimes.example', id: 'mrec_300x250' }],
         params: { width: 300, height: 250 },
       },
     },

@@ -216,6 +216,21 @@
       "variants": 3,
       "note": "0:[creatives] | 1:[errors] | 2:[status,task_id]"
     },
+    "formats/canonical/display_tag.json##/allOf/1/oneOf": {
+      "kind": "dangerous",
+      "variants": 4,
+      "note": "shared-required=[∅]; 0:req=[width,height] | 1:req=[sizes] | 2:req=[∅] | 3:req=[∅]"
+    },
+    "formats/canonical/html5.json##/allOf/1/oneOf": {
+      "kind": "dangerous",
+      "variants": 4,
+      "note": "shared-required=[∅]; 0:req=[width,height] | 1:req=[sizes] | 2:req=[∅] | 3:req=[∅]"
+    },
+    "formats/canonical/image.json##/allOf/0/oneOf": {
+      "kind": "dangerous",
+      "variants": 4,
+      "note": "shared-required=[∅]; 0:req=[width,height] | 1:req=[sizes] | 2:req=[∅] | 3:req=[∅]"
+    },
     "governance/sync-plans-request.json##/properties/plans/items/properties/budget/oneOf": {
       "kind": "narrowable",
       "variants": 2,

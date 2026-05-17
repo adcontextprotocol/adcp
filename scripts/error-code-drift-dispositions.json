@@ -130,6 +130,16 @@
       "disposition": "held-for-next-minor",
       "target_version": "3.1",
       "note": "Canonical-formats v1-ambiguity advisory (#3307; adcp-client #1815). Non-fatal; surfaces when registry has only family-level structural entries for a canonical (no invertible literal) so SDK can't pick a specific v1 format_id mechanically. SDKs MUST NOT synthesize — seller MUST author v1_format_ref on the v2 declaration. Wire change — held for 3.1."
+    },
+    "FORMAT_CAPABILITY_UNRESOLVED": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.1",
+      "note": "Canonical-formats capability-resolution advisory (#3307; #4620). Non-fatal; surfaces when a placement's `format_options[].capability_id` references a capability not declared in the file's top-level `formats[]`. Same-file scope only (cross-file lookup not supported by design). Wire change — held for 3.1."
+    },
+    "FORMAT_DECLARATION_V1_LOSSY_MULTI_SIZE": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.1",
+      "note": "Canonical-formats multi-size v1 emission advisory (#3307; adopter feedback from SDK implementor). Non-fatal; surfaces when a v2 declaration's `params.sizes[]` count exceeds its `v1_format_ref[]` count — v1 buyers see partial size coverage. Emitted alongside the partial v1 emit, not in place of it. SDK MAY (non-normative) fan out automatically via catalog lookup. Wire change — held for 3.1."
     }
   }
 }

@@ -3,20 +3,204 @@
   "$id": "/schemas/formats/canonical/html5.json",
   "title": "Canonical Format: HTML5 Banner",
   "description": "Interactive HTML5 banner delivered as a zip archive. Slot: `html5_bundle` (zip asset). Tracking model: MRAID + IAB Open Measurement (OM-SDK) + click-tag macro substitution + backup image fallback. Receivers unpack the zip, validate internal structure, and serve from CDN. Distinct from `image` (static, non-interactive) and `display_tag` (third-party served). The zip's entry point is typically `index.html`; click handling uses `clickTag` (or `clickTAG`) macro substitution.",
-  "allOf": [{ "$ref": "/schemas/formats/canonical/_base.json" }],
+  "allOf": [
+    {
+      "$ref": "/schemas/formats/canonical/_base.json"
+    },
+    {
+      "title": "Size-mode mutex",
+      "description": "Exactly one of: (a) fixed (`width` + `height` both set), (b) multi-size (`sizes` set), (c) responsive (any of `min_width`/`max_width`/`min_height`/`max_height` set), (d) none (no size constraint declared \u2014 accepts any dimensions). Combining modes is rejected at schema layer.",
+      "oneOf": [
+        {
+          "title": "fixed",
+          "required": [
+            "width",
+            "height"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "sizes"
+                ]
+              },
+              {
+                "required": [
+                  "min_width"
+                ]
+              },
+              {
+                "required": [
+                  "max_width"
+                ]
+              },
+              {
+                "required": [
+                  "min_height"
+                ]
+              },
+              {
+                "required": [
+                  "max_height"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "title": "multi-size",
+          "required": [
+            "sizes"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "width"
+                ]
+              },
+              {
+                "required": [
+                  "height"
+                ]
+              },
+              {
+                "required": [
+                  "min_width"
+                ]
+              },
+              {
+                "required": [
+                  "max_width"
+                ]
+              },
+              {
+                "required": [
+                  "min_height"
+                ]
+              },
+              {
+                "required": [
+                  "max_height"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "title": "responsive",
+          "anyOf": [
+            {
+              "required": [
+                "min_width"
+              ]
+            },
+            {
+              "required": [
+                "max_width"
+              ]
+            },
+            {
+              "required": [
+                "min_height"
+              ]
+            },
+            {
+              "required": [
+                "max_height"
+              ]
+            }
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "width"
+                ]
+              },
+              {
+                "required": [
+                  "height"
+                ]
+              },
+              {
+                "required": [
+                  "sizes"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "title": "none",
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "width"
+                ]
+              },
+              {
+                "required": [
+                  "height"
+                ]
+              },
+              {
+                "required": [
+                  "sizes"
+                ]
+              },
+              {
+                "required": [
+                  "min_width"
+                ]
+              },
+              {
+                "required": [
+                  "max_width"
+                ]
+              },
+              {
+                "required": [
+                  "min_height"
+                ]
+              },
+              {
+                "required": [
+                  "max_height"
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ],
   "properties": {
     "slots": {
       "default": [
-        { "asset_group_id": "html5_bundle", "asset_type": "zip", "required": true },
-        { "asset_group_id": "backup_image", "asset_type": "image", "required": false },
-        { "asset_group_id": "landing_page_url", "asset_type": "url", "required": false }
+        {
+          "asset_group_id": "html5_bundle",
+          "asset_type": "zip",
+          "required": true
+        },
+        {
+          "asset_group_id": "backup_image",
+          "asset_type": "image",
+          "required": false
+        },
+        {
+          "asset_group_id": "landing_page_url",
+          "asset_type": "url",
+          "required": false
+        }
       ],
       "description": "Default slots for html5 canonical. Buyer ships a zip bundle plus optional backup image (required when `backup_image_required: true`) and clickthrough URL. The zip's entry point is typically `index.html`; click handling uses the `clickTag` (or `clickTAG`) macro substituted by the seller at serve time."
     },
     "width": {
       "type": "integer",
       "minimum": 1,
-      "description": "Required banner width in pixels — use for fixed-size slots. For multi-size flexible slots use `sizes[]`; for responsive use `min_width`/`max_width`/`min_height`/`max_height`. Exactly one of `(width, height)`, `sizes[]`, or `min/max_width` + `min/max_height` ranges MUST be set."
+      "description": "Required banner width in pixels \u2014 use for fixed-size slots. For multi-size flexible slots use `sizes[]`; for responsive use `min_width`/`max_width`/`min_height`/`max_height`. Exactly one of `(width, height)`, `sizes[]`, or `min/max_width` + `min/max_height` ranges MUST be set."
     },
     "height": {
       "type": "integer",
@@ -28,14 +212,23 @@
       "minItems": 1,
       "items": {
         "type": "object",
-        "required": ["width", "height"],
+        "required": [
+          "width",
+          "height"
+        ],
         "properties": {
-          "width": { "type": "integer", "minimum": 1 },
-          "height": { "type": "integer", "minimum": 1 }
+          "width": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "height": {
+            "type": "integer",
+            "minimum": 1
+          }
         },
         "additionalProperties": false
       },
-      "description": "List of accepted (width, height) pairs for a multi-size flexible slot (publisher banner that accepts 300×250 OR 728×90 OR 970×250). Mirrors OpenRTB `banner.format[]`. Mutually exclusive with `(width, height)` and with responsive ranges."
+      "description": "List of accepted (width, height) pairs for a multi-size flexible slot (publisher banner that accepts 300\u00d7250 OR 728\u00d790 OR 970\u00d7250). Mirrors OpenRTB `banner.format[]`. Mutually exclusive with `(width, height)` and with responsive ranges."
     },
     "min_width": {
       "type": "integer",
@@ -88,7 +281,10 @@
     },
     "mraid_version": {
       "type": "string",
-      "enum": ["2.0", "3.0"],
+      "enum": [
+        "2.0",
+        "3.0"
+      ],
       "description": "Required MRAID version when mraid_required is true."
     },
     "om_sdk_required": {
@@ -97,7 +293,10 @@
     },
     "clicktag_macro": {
       "type": "string",
-      "enum": ["clickTag", "clickTAG"],
+      "enum": [
+        "clickTag",
+        "clickTAG"
+      ],
       "description": "Name of the click-tag macro the bundle must use."
     },
     "backup_image_required": {

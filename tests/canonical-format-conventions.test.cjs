@@ -41,9 +41,20 @@ const YELLOW = '\x1b[33m';
 const GREEN = '\x1b[32m';
 const RESET = '\x1b[0m';
 
-const UNADOPTED_PLATFORMS = ['meta', 'google', 'openai', 'tiktok', 'snap', 'pinterest', 'youtube'];
 const AAO_CATALOG = 'creative.adcontextprotocol.org';
 const CANONICAL_DIR = path.resolve(__dirname, '../static/schemas/source/formats/canonical');
+const COMMUNITY_DIR = path.resolve(__dirname, '../static/examples/adagents/community');
+
+// Derive the unadopted-platform list from the community-mirror fixture filenames so
+// adding a new community/<platform>.json doesn't require also editing this test.
+// Plus a small seed list for platforms we haven't yet fixtured but know are unadopted.
+const UNADOPTED_PLATFORMS = (() => {
+  const fromFixtures = fs.existsSync(COMMUNITY_DIR)
+    ? fs.readdirSync(COMMUNITY_DIR).filter(f => f.endsWith('.json')).map(f => f.replace(/\.json$/, ''))
+    : [];
+  const seed = ['meta', 'google', 'openai', 'tiktok', 'snap', 'pinterest', 'youtube'];
+  return Array.from(new Set([...fromFixtures, ...seed]));
+})();
 
 // Load default slot ids per canonical format_kind from the canonical schemas.
 const CANONICAL_DEFAULT_SLOTS = (() => {
@@ -76,13 +87,14 @@ function pass(file, msg) {
 }
 
 function isUnadoptedPlatformDotExample(url) {
-  const m = url.match(/^https?:\/\/([a-z0-9-]+)\.example(\/|$)/);
-  return m && UNADOPTED_PLATFORMS.includes(m[1]);
+  const m = url.match(/^https:\/\/([a-z0-9-]+)\.example(\/|$)/);
+  if (!m) return false;
+  return UNADOPTED_PLATFORMS.includes(m[1]);
 }
 
 function checkAgentUrlConvention(url, ctx, file) {
   if (isUnadoptedPlatformDotExample(url)) {
-    const platform = url.match(/^https?:\/\/([a-z0-9-]+)\.example/)[1];
+    const platform = url.match(/^https:\/\/([a-z0-9-]+)\.example/)[1];
     fail(file, `${ctx} uses unadopted-platform placeholder ${url} — use the community mirror at https://${AAO_CATALOG}/translated/${platform}/ instead`);
     return false;
   }
@@ -156,9 +168,10 @@ function walkProductFixtures() {
     if (!f.endsWith('.json')) continue;
     const data = JSON.parse(fs.readFileSync(path.join(FIXTURES_DIR, f), 'utf8'));
     const opts = data.format_options || [];
-    const localBefore = errors;
+    const errBefore = errors;
+    const warnBefore = warnings;
     opts.forEach((opt, i) => checkDeclaration(opt, `format_options[${i}]`, f));
-    if (errors === localBefore) pass(f);
+    if (errors === errBefore && warnings === warnBefore) pass(f);
   }
 }
 
@@ -172,9 +185,10 @@ function walkAdagentsFixtures() {
       if (!e.name.endsWith('.json')) continue;
       const data = JSON.parse(fs.readFileSync(p, 'utf8'));
       const formats = data.formats || [];
-      const localBefore = errors;
+      const errBefore = errors;
+      const warnBefore = warnings;
       formats.forEach((decl, i) => checkDeclaration(decl, `formats[${i}]`, path.relative(ADAGENTS_FIXTURES, p)));
-      if (errors === localBefore) pass(path.relative(ADAGENTS_FIXTURES, p));
+      if (errors === errBefore && warnings === warnBefore) pass(path.relative(ADAGENTS_FIXTURES, p));
     }
   }
   walk(ADAGENTS_FIXTURES);
