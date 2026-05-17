@@ -1332,21 +1332,25 @@ function hoistDuplicateInlineEnums(schema) {
 }
 
 /**
- * Hoist complex schemas explicitly marked with `x-hoist: true` into root
- * `$defs` and replace every inline occurrence with a `$ref` pointer.
+ * Hoist complex schemas explicitly marked with `x-adcp-hoist: true` into
+ * root `$defs` and replace every inline occurrence with a `$ref` pointer.
  *
  * Companion to `hoistDuplicateInlineEnums`. Pure enums hoist automatically
  * because the merge is semantics-preserving. Complex objects do not:
  * structural identity ≠ semantic identity (e.g. BriefAsset and VASTAsset
  * happen to share fields today but represent different lifecycle concepts).
- * Spec authors opt in per-schema by setting `x-hoist: true` on the source
- * schema's root. The marker is a build-time directive, not a contract — it
- * is stripped from the bundled output.
+ * Spec authors opt in per-schema by setting `x-adcp-hoist: true` on the
+ * source schema's root. The marker is a build-time directive, not a wire
+ * contract — it is stripped from the bundled output (both at canonical
+ * `$defs` entries and anywhere a stray marker survived a pre-existing
+ * `$defs` block).
  *
  * Name derivation: uses `title`, sanitized to PascalCase, suffixed with an
- * integer when colliding with an existing `$defs` key. A schema marked
- * `x-hoist: true` without a usable `title` is a hard error — the directive
- * is meant to be deliberate.
+ * integer ONLY when colliding with a pre-existing `$defs` key. Two marked
+ * schemas with the same title but distinct shapes is a hard error — the
+ * suffix path would silently rename one of them, defeating the directive's
+ * purpose. A schema marked `x-adcp-hoist: true` without a usable `title`
+ * is also a hard error — the directive is meant to be deliberate.
  *
  * Hoists at any occurrence count (≥1). The directive declares intent
  * ("this is a canonical named type"); the bundler honors it even when the
@@ -1355,13 +1359,15 @@ function hoistDuplicateInlineEnums(schema) {
  *
  * See issue #4557.
  */
+const HOIST_MARKER = 'x-adcp-hoist';
+
 function hoistMarkedSchemas(schema) {
   if (!schema || typeof schema !== 'object' || Array.isArray(schema)) {
     return schema;
   }
 
   function isMarked(s) {
-    return s && typeof s === 'object' && !Array.isArray(s) && s['x-hoist'] === true;
+    return s && typeof s === 'object' && !Array.isArray(s) && s[HOIST_MARKER] === true;
   }
 
   function canonicalize(value) {
@@ -1373,8 +1379,13 @@ function hoistMarkedSchemas(schema) {
   }
 
   function fingerprint(s) {
-    const { 'x-hoist': _omit, ...rest } = s;
+    const { [HOIST_MARKER]: _omit, ...rest } = s;
     return JSON.stringify(canonicalize(rest));
+  }
+
+  function sanitizeName(title) {
+    let name = title.replace(/[^a-zA-Z0-9]+(.)/g, (_, c) => c.toUpperCase()).replace(/[^a-zA-Z0-9]/g, '');
+    return name.charAt(0).toUpperCase() + name.slice(1);
   }
 
   // Pass 1: collect every marked schema, excluding existing $defs blocks
@@ -1406,45 +1417,69 @@ function hoistMarkedSchemas(schema) {
 
   collect(schema);
 
-  if (seen.size === 0) return schema;
+  if (seen.size === 0) {
+    // No markers found at hoist-eligible sites. Still strip any stray
+    // markers that may live inside pre-existing $defs entries — the
+    // directive must not leak into the bundled output regardless of
+    // where it was authored.
+    stripStrayMarkers(schema);
+    return schema;
+  }
 
   // Map each fingerprint to a $defs name derived from title.
+  // Two distinct fingerprints producing the same sanitized base name is
+  // a spec-author bug — the directive promises "this title is canonical".
+  // Reject loudly rather than silently suffixing one of them.
   const hoistMap = new Map();
-  const usedNames = new Set(Object.keys(schema.$defs || {}));
+  const basenameToFingerprint = new Map();
+  const existingDefs = new Set(Object.keys(schema.$defs || {}));
+  const usedNames = new Set(existingDefs);
 
   for (const [fp, { schema: s, title }] of seen) {
     if (!title || typeof title !== 'string') {
       throw new Error(
-        `x-hoist: true requires a non-empty \`title\` on the source schema. ` +
+        `${HOIST_MARKER}: true requires a non-empty \`title\` on the source schema. ` +
         `Got: ${JSON.stringify(s).slice(0, 200)}`
       );
     }
-    let name = title.replace(/[^a-zA-Z0-9]+(.)/g, (_, c) => c.toUpperCase()).replace(/[^a-zA-Z0-9]/g, '');
-    name = name.charAt(0).toUpperCase() + name.slice(1);
-    if (!name) {
-      throw new Error(`x-hoist: title '${title}' sanitizes to an empty name.`);
+    const base = sanitizeName(title);
+    if (!base) {
+      throw new Error(`${HOIST_MARKER}: title '${title}' sanitizes to an empty name.`);
     }
-    let safeName = name;
+    const priorFp = basenameToFingerprint.get(base);
+    if (priorFp && priorFp !== fp) {
+      throw new Error(
+        `${HOIST_MARKER}: two distinct schemas marked with title '${title}' ` +
+        `would both derive the $defs name '${base}'. Pick distinct titles — ` +
+        `the directive promises a canonical name and silently suffixing one ` +
+        `would defeat the purpose.`
+      );
+    }
+    basenameToFingerprint.set(base, fp);
+    // Suffix only against pre-existing $defs (legitimate name collision
+    // with non-marker definitions). Same-title-across-marked-sites was
+    // rejected above.
+    let safeName = base;
     let idx = 2;
-    while (usedNames.has(safeName)) { safeName = name + idx++; }
+    while (usedNames.has(safeName)) { safeName = base + idx++; }
     usedNames.add(safeName);
     hoistMap.set(fp, safeName);
   }
 
-  // Build canonical $defs entries with x-hoist stripped from the outer
-  // schema (it's a directive, not a contract).
+  // Build canonical $defs entries with the directive stripped (it is a
+  // build-time annotation, not a wire contract).
   const rootDefs = { ...(schema.$defs || {}) };
   for (const [fp, defName] of hoistMap) {
-    const { 'x-hoist': _omit, ...canonical } = seen.get(fp).schema;
+    const { [HOIST_MARKER]: _omit, ...canonical } = seen.get(fp).schema;
     rootDefs[defName] = canonical;
   }
   schema.$defs = rootDefs;
 
   // Pass 2: replace marked occurrences with $ref. Walks the entire schema
   // (including inside $defs) so nested markers — a marked schema reached
-  // through another marked schema — also collapse to $refs. The replace
-  // check uses `isMarked`, so the canonical entries we just placed in
-  // rootDefs (x-hoist already stripped) are not themselves replaced.
+  // through another marked schema — also collapse to $refs. The `isMarked`
+  // check guards against re-replacing the canonical entries we just
+  // placed in rootDefs (their outer marker is already stripped).
   function replace(node) {
     if (!node || typeof node !== 'object') return;
     if (Array.isArray(node)) {
@@ -1468,7 +1503,23 @@ function hoistMarkedSchemas(schema) {
   }
 
   replace(schema);
+
+  // Final sweep: delete any stray `x-adcp-hoist` keys that survived (e.g.
+  // markers authored inside a pre-existing $defs entry that Pass 1
+  // skipped). The directive must never appear in bundled output.
+  stripStrayMarkers(schema);
+
   return schema;
+}
+
+function stripStrayMarkers(node) {
+  if (!node || typeof node !== 'object') return;
+  if (Array.isArray(node)) {
+    for (const item of node) stripStrayMarkers(item);
+    return;
+  }
+  if (HOIST_MARKER in node) delete node[HOIST_MARKER];
+  for (const val of Object.values(node)) stripStrayMarkers(val);
 }
 
 /**
@@ -1646,8 +1697,8 @@ async function generateBundledSchemas(sourceDir, bundledDir, version) {
       // numbered-suffix codegen artifact. See #3145.
       hoistDuplicateInlineEnums(dereferenced);
 
-      // Hoist complex schemas explicitly marked with `x-hoist: true` to
-      // $defs and replace inline occurrences with $ref. Opt-in companion
+      // Hoist complex schemas explicitly marked with `x-adcp-hoist: true`
+      // to $defs and replace inline occurrences with $ref. Opt-in companion
       // to the pure-enum auto-hoist for spec-author-declared canonical
       // shared types. See #4557.
       hoistMarkedSchemas(dereferenced);
