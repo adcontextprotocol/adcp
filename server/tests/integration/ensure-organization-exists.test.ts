@@ -13,7 +13,7 @@
  * verified domain (falling back to the first listed).
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
-import { initializeDatabase, closeDatabase, getPool } from '../../src/db/client.js';
+import { initializeDatabase, closeDatabase } from '../../src/db/client.js';
 import { runMigrations } from '../../src/db/migrate.js';
 import { OrganizationDatabase } from '../../src/db/organization-db.js';
 import type { Pool } from 'pg';
