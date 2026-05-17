@@ -10,7 +10,7 @@
 
 import { Router } from 'express';
 import { createLogger } from '../../logger.js';
-import { requireAuth, requireAdmin } from '../../middleware/auth.js';
+import { requireGlobalAdmin } from '../../middleware/auth.js';
 import {
   getAllChannels,
   getChannelById,
@@ -53,7 +53,7 @@ export function createAdminNotificationChannelsRouter(): Router {
   const router = Router();
 
   // GET /api/admin/notification-channels - List all channels with stats
-  router.get('/', requireAuth, requireAdmin, async (_req, res) => {
+  router.get('/', ...requireGlobalAdmin, async (_req, res) => {
     try {
       const channels = await getAllChannels();
       const stats = await getChannelStats();
@@ -67,7 +67,7 @@ export function createAdminNotificationChannelsRouter(): Router {
   });
 
   // GET /api/admin/notification-channels/:id - Get single channel
-  router.get('/:id', requireAuth, requireAdmin, async (req, res) => {
+  router.get('/:id', ...requireGlobalAdmin, async (req, res) => {
     try {
       const channelId = parseInt(req.params.id, 10);
       if (isNaN(channelId)) {
@@ -89,7 +89,7 @@ export function createAdminNotificationChannelsRouter(): Router {
   });
 
   // POST /api/admin/notification-channels - Create new channel
-  router.post('/', requireAuth, requireAdmin, async (req, res) => {
+  router.post('/', ...requireGlobalAdmin, async (req, res) => {
     try {
       const { name, slack_channel_id, description, fallback_rules } = req.body;
 
@@ -133,7 +133,7 @@ export function createAdminNotificationChannelsRouter(): Router {
   });
 
   // PUT /api/admin/notification-channels/:id - Update channel
-  router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
+  router.put('/:id', ...requireGlobalAdmin, async (req, res) => {
     try {
       const channelId = parseInt(req.params.id, 10);
       if (isNaN(channelId)) {
@@ -178,7 +178,7 @@ export function createAdminNotificationChannelsRouter(): Router {
   });
 
   // POST /api/admin/notification-channels/:id/toggle - Enable/disable channel
-  router.post('/:id/toggle', requireAuth, requireAdmin, async (req, res) => {
+  router.post('/:id/toggle', ...requireGlobalAdmin, async (req, res) => {
     try {
       const channelId = parseInt(req.params.id, 10);
       if (isNaN(channelId)) {
@@ -203,7 +203,7 @@ export function createAdminNotificationChannelsRouter(): Router {
   });
 
   // DELETE /api/admin/notification-channels/:id - Delete channel
-  router.delete('/:id', requireAuth, requireAdmin, async (req, res) => {
+  router.delete('/:id', ...requireGlobalAdmin, async (req, res) => {
     try {
       const channelId = parseInt(req.params.id, 10);
       if (isNaN(channelId)) {
@@ -226,7 +226,7 @@ export function createAdminNotificationChannelsRouter(): Router {
   });
 
   // POST /api/admin/notification-channels/:id/test - Send test message
-  router.post('/:id/test', requireAuth, requireAdmin, async (req, res) => {
+  router.post('/:id/test', ...requireGlobalAdmin, async (req, res) => {
     try {
       const channelId = parseInt(req.params.id, 10);
       if (isNaN(channelId)) {
