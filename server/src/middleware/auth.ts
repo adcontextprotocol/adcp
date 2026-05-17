@@ -651,8 +651,17 @@ function hasValidAdminApiKey(req: Request): boolean {
   return constantTimeEqual(token, ADMIN_API_KEY);
 }
 
-// ADMIN_API_KEY is ASCII-only; latin1 makes that explicit and matches
-// timingSafeEqual's byte-for-byte comparison contract.
+/**
+ * Constant-time string compare for ASCII secrets. Intended for comparing
+ * attacker-supplied input against a fixed server-side secret (e.g. ADMIN_API_KEY).
+ * On length mismatch, runs a same-length dummy compare so total work is
+ * O(len(input)), not O(len(secret)) — this leaks the attacker's chosen
+ * input length (already public) but never the secret's length.
+ *
+ * Do NOT reuse this to compare two attacker-controlled inputs against each
+ * other — the timing model assumes one side is a known-to-server fixed value.
+ * `latin1` encoding makes the ASCII-only assumption on the secret explicit.
+ */
 export function constantTimeEqual(a: string, b: string): boolean {
   const aBuf = Buffer.from(a, 'latin1');
   const bBuf = Buffer.from(b, 'latin1');
