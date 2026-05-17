@@ -538,6 +538,8 @@ For vendor-attested measurement where the metric has no industry-graduated defin
 
 **Distinct from `metric` kind.** The `metric` kind is for seller-native measurement (clicks, views, completed_views, reach, engagements, etc.) where no vendor binding is needed — the seller measures the metric natively. The `vendor_metric` kind is for vendor-attested measurement where the same metric name means different things across vendors and must be reconciled to a specific source. The deprecated `attention_seconds` / `attention_score` values on the `metric` kind enum predate this split and route through `vendor_metric` going forward.
 
+**Full lifecycle reference.** See [The metric lifecycle](/docs/media-buy/media-buys/optimization-reporting#the-metric-lifecycle---from-capability-to-reporting) for the complete capability → commitment → optimization → delivery picture across both standard and vendor metric flows — same `(vendor, metric_id)` key on every surface.
+
 ### Target kinds
 
 All target kinds across both goal types:

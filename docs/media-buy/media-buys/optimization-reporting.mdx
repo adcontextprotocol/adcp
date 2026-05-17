@@ -31,6 +31,60 @@ The typical optimization cycle follows this pattern:
 4. **Track Changes**: Monitor impact of optimizations
 5. **Iterate**: Continuous improvement through regular analysis
 
+## The metric lifecycle — from capability to reporting
+
+Every optimization metric in AdCP — whether seller-native (clicks, views, reach), graduated vendor-attested (viewability), or vendor-defined (attention, brand lift, emissions) — flows through the same set of surfaces. Buyers reason about a metric by asking three questions in order:
+
+- **Can you?** — Is the product capable of optimizing for this metric? *(Discovery)*
+- **Will you?** — For this package, are you committing to optimize and report it? *(Commitment)*
+- **Did you?** — In delivery, what was the value, and did you meet the commitment? *(Reporting)*
+
+Each question maps to a specific protocol surface. The same `metric_id` (or `(vendor, metric_id)` tuple for vendor-attested metrics) flows through every layer — discovery, capability declarations, package commitments, and delivery — so buyers reconciling delivery against a goal never need a translation table.
+
+### Standard metric flow (e.g., `clicks`, `viewable_rate`)
+
+| Question | Surface | Field |
+|---|---|---|
+| Can the product report it? | Product capability | `reporting_capabilities.available_metrics` |
+| Can the product optimize for it? | Product capability | `metric_optimization.supported_metrics` |
+| Will the seller commit to reporting it? | Package | `committed_metrics[]` (scope: `standard`) |
+| Does the buyer want it optimized? | Package | `optimization_goals[]` (kind: `metric`) |
+| Does the buyer want accountability? | Package | `performance_standards[]` |
+| What was the value? | Delivery | Standard scalar (e.g., `clicks`, `viewability.viewable_rate`) |
+| Did the seller fail to deliver a committed metric? | Delivery | `missing_metrics[]` (scope: `standard`) |
+
+### Vendor-attested metric flow (e.g., Adelaide attention, Scope3 emissions, Kantar brand lift)
+
+Same lifecycle, with the `(vendor, metric_id)` tuple replacing the plain `metric_id` everywhere:
+
+| Question | Surface | Field |
+|---|---|---|
+| Does the vendor define this metric? | Vendor's capabilities | `get_adcp_capabilities.measurement.metrics[]` |
+| Can the product report this vendor metric? | Product capability | `reporting_capabilities.vendor_metrics[]` |
+| Can the product optimize for this vendor metric? | Product capability | `vendor_metric_optimization.supported_metrics[]` |
+| Will the seller commit to reporting it? | Package | `committed_metrics[]` (scope: `vendor`) |
+| Does the buyer want it optimized? | Package | `optimization_goals[]` (kind: `vendor_metric`) |
+| Does the buyer want accountability? | Package | `performance_standards[]` (with `vendor` field) |
+| What was the value? | Delivery | `vendor_metric_values[]` |
+| Did the seller fail to deliver a committed metric? | Delivery | `missing_metrics[]` (scope: `vendor`) |
+
+### Why both flows matter
+
+The two flows aren't a duplication — they encode the difference between *standardized* and *vendor-specific* measurement. Clicks mean the same thing across every seller; attention does not. Vendor binding is the wire-level evidence that the buyer and seller agreed on *which* attention model is being optimized and reported. See [`measurement/taxonomy.mdx`](/docs/measurement/taxonomy) for the Tier 0 → Tier 1 graduation policy that decides which flow a given metric uses.
+
+### Required coherence between layers
+
+Three rules connect the layers and prevent orphaned goals:
+
+1. **Optimization requires capability.** A package's `optimization_goals[]` entry MUST match a product capability — `metric_optimization.supported_metrics` for `kind: "metric"`, or `vendor_metric_optimization.supported_metrics` for `kind: "vendor_metric"`. Sellers reject mismatches with `TERMS_REJECTED`.
+
+2. **Optimization requires reporting commitment.** For `kind: "vendor_metric"` goals, the matching `(vendor, metric_id)` MUST also appear in the package's `committed_metrics[]`. Optimizing for a metric the seller isn't committed to reporting is unverifiable — the buyer has no way to grade the goal. Sellers reject uncommitted vendor_metric goals with `TERMS_REJECTED`. (This rule is normative for vendor metrics specifically; for seller-native `metric` goals, the metric is usually always reported by virtue of being seller-native, so the coherence is implicit.)
+
+3. **Performance accountability is independent.** `performance_standards[]` lives in parallel — buyers MAY add a threshold commitment on any metric the seller commits to reporting, regardless of whether they also set an optimization goal on it. The three surfaces (goal / commitment / standard) compose:
+   - Goal only — "push toward this," no accountability floor
+   - Standard only — "you owe me ≥ X," seller decides how to hit it
+   - Both — optimization steers; standard backstops
+
 ## Performance Monitoring
 
 ### Real-Time Metrics
