@@ -181,6 +181,11 @@
       "variants": 3,
       "note": "0:[travel_time,transport_mode] | 1:[radius] | 2:[geometry]"
     },
+    "core/publisher-property-selector.json##/oneOf": {
+      "kind": "narrowable",
+      "variants": 2,
+      "note": "0:[publisher_domain] | 1:[publisher_domains]"
+    },
     "core/requirements/image-asset-requirements.json##/properties/bleed/oneOf": {
       "kind": "narrowable",
       "variants": 2,

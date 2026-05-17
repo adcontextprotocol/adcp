@@ -2,23 +2,80 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/publisher-property-selector.json",
   "title": "Publisher Property Selector",
-  "description": "Selects properties from a publisher's adagents.json. Used for both product definitions and agent authorization. Supports three selection patterns: all properties, specific IDs, or by tags. Each selector targets one publisher via `publisher_domain` (string) or a fan-out across many publishers that share the same selector via `publisher_domains` (array). Exactly one of `publisher_domain` or `publisher_domains` MUST be present. When `publisher_domains` is used, the selector is logically equivalent to repeating the same entry once per listed domain.",
-  "discriminator": {
-    "propertyName": "selection_type"
-  },
+  "description": "Selects properties from a publisher's adagents.json. Used for both product definitions and agent authorization. Supports three selection patterns: all properties, specific IDs, or by tags. Each selector targets either a single publisher via `publisher_domain` (string) or fans out across many publishers that share the same selector via `publisher_domains` (array). The single-vs-fanout split is structural: a selector is either a Single-publisher shape (carrying `publisher_domain`) or a Fanout shape (carrying `publisher_domains`). The `by_id` selection_type is only available on the Single shape — property IDs are publisher-scoped, so fanning a fixed ID set across publishers would silently authorize wrong inventory. When `publisher_domains` is used, the selector is logically equivalent to repeating the same entry once per listed domain.",
   "oneOf": [
     {
       "type": "object",
-      "description": "Select all properties from one publisher domain, or from each publisher domain when `publisher_domains` is used.",
+      "title": "Single-publisher selector",
+      "description": "Selector that targets exactly one publisher via `publisher_domain`. Supports all three `selection_type` variants: `all`, `by_id`, `by_tag`.",
+      "required": ["publisher_domain", "selection_type"],
       "properties": {
         "publisher_domain": {
           "type": "string",
-          "description": "Domain where publisher's adagents.json is hosted (e.g., 'cnn.com'). XOR with `publisher_domains` — exactly one MUST be present on each `publisher_properties[]` entry; both-present and neither-present both fail validation.",
+          "description": "Domain where the publisher's adagents.json is hosted (e.g., 'cnn.com').",
           "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
         },
+        "selection_type": {
+          "type": "string",
+          "enum": ["all", "by_id", "by_tag"],
+          "description": "Which subset of the publisher's properties this selector covers."
+        }
+      },
+      "discriminator": {
+        "propertyName": "selection_type"
+      },
+      "oneOf": [
+        {
+          "type": "object",
+          "title": "Single — all properties",
+          "description": "Select all properties from the named publisher.",
+          "properties": {
+            "selection_type": { "type": "string", "const": "all" }
+          },
+          "required": ["selection_type"]
+        },
+        {
+          "type": "object",
+          "title": "Single — by property IDs",
+          "description": "Select specific properties by ID from the named publisher. Property IDs are publisher-scoped — this variant is only available on the Single shape.",
+          "properties": {
+            "selection_type": { "type": "string", "const": "by_id" },
+            "property_ids": {
+              "type": "array",
+              "description": "Specific property IDs from the publisher's adagents.json.",
+              "items": { "$ref": "/schemas/core/property-id.json" },
+              "minItems": 1
+            }
+          },
+          "required": ["selection_type", "property_ids"]
+        },
+        {
+          "type": "object",
+          "title": "Single — by tags",
+          "description": "Select properties by tag membership from the named publisher.",
+          "properties": {
+            "selection_type": { "type": "string", "const": "by_tag" },
+            "property_tags": {
+              "type": "array",
+              "description": "Property tags resolved against the named publisher's adagents.json. Selector covers all properties carrying any of these tags.",
+              "items": { "$ref": "/schemas/core/property-tag.json" },
+              "minItems": 1
+            }
+          },
+          "required": ["selection_type", "property_tags"]
+        }
+      ],
+      "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "title": "Fanout selector",
+      "description": "Compact form for fanning the same selector across many publishers (the managed-network case). Each listed domain is the host of that publisher's adagents.json. Logically equivalent to repeating the same entry once per listed domain. Only `all` and `by_tag` are available on the fanout shape — `by_id` requires a single, publisher-scoped ID set and is intentionally not fanout-eligible.",
+      "required": ["publisher_domains", "selection_type"],
+      "properties": {
         "publisher_domains": {
           "type": "array",
-          "description": "Compact form for fanning the same selector across many publishers (e.g., a managed network listing every publisher it represents). Each entry is the domain where that publisher's adagents.json is hosted. Each listed domain MUST be canonicalized to lowercase (the `pattern` already rejects uppercase). Mutually exclusive with `publisher_domain`. Each listed domain counts as explicitly scoped for the `managerdomain` fallback safety rule.",
+          "description": "Domains where each publisher's adagents.json is hosted. Each listed domain MUST be canonicalized to lowercase (the `pattern` already rejects uppercase). Each listed domain counts as explicitly scoped for the `managerdomain` fallback safety rule.",
           "items": {
             "type": "string",
             "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
@@ -28,95 +85,38 @@
         },
         "selection_type": {
           "type": "string",
-          "const": "all",
-          "description": "Discriminator indicating all properties from each addressed publisher are included"
+          "enum": ["all", "by_tag"],
+          "description": "Which subset of each addressed publisher's properties this selector covers. `by_id` is not available on the fanout shape."
         }
       },
-      "required": [
-        "selection_type"
-      ],
-      "allOf": [
-        { "not": { "required": ["publisher_domain", "publisher_domains"] } },
-        { "anyOf": [
-          { "required": ["publisher_domain"] },
-          { "required": ["publisher_domains"] }
-        ]}
-      ],
-      "additionalProperties": true
-    },
-    {
-      "type": "object",
-      "description": "Select specific properties by ID. Single-publisher only — property IDs are publisher-scoped, so the compact `publisher_domains[]` form is intentionally NOT available for this selector. Use multiple `publisher_properties[]` entries (one per publisher) when each publisher's ID set differs.",
-      "properties": {
-        "publisher_domain": {
-          "type": "string",
-          "description": "Domain where publisher's adagents.json is hosted (e.g., 'cnn.com').",
-          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
-        },
-        "selection_type": {
-          "type": "string",
-          "const": "by_id",
-          "description": "Discriminator indicating selection by specific property IDs"
-        },
-        "property_ids": {
-          "type": "array",
-          "description": "Specific property IDs from the publisher's adagents.json",
-          "items": {
-            "$ref": "/schemas/core/property-id.json"
-          },
-          "minItems": 1
-        }
+      "discriminator": {
+        "propertyName": "selection_type"
       },
-      "required": [
-        "publisher_domain",
-        "selection_type",
-        "property_ids"
-      ],
-      "additionalProperties": true
-    },
-    {
-      "type": "object",
-      "description": "Select properties by tag membership. With `publisher_domains`, the same `property_tags` predicate is resolved against each listed publisher's adagents.json — the common managed-network case where every represented site tags inventory with a shared label.",
-      "properties": {
-        "publisher_domain": {
-          "type": "string",
-          "description": "Domain where publisher's adagents.json is hosted (e.g., 'cnn.com'). XOR with `publisher_domains` — exactly one MUST be present on each `publisher_properties[]` entry; both-present and neither-present both fail validation.",
-          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
-        },
-        "publisher_domains": {
-          "type": "array",
-          "description": "Compact form for fanning the same tag predicate across many publishers (canonical managed-network shape). Each entry is the domain where that publisher's adagents.json is hosted. Each listed domain MUST be canonicalized to lowercase (the `pattern` already rejects uppercase). Mutually exclusive with `publisher_domain`. Each listed domain counts as explicitly scoped for the `managerdomain` fallback safety rule.",
-          "items": {
-            "type": "string",
-            "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+      "oneOf": [
+        {
+          "type": "object",
+          "title": "Fanout — all properties",
+          "description": "Select all properties from each listed publisher.",
+          "properties": {
+            "selection_type": { "type": "string", "const": "all" }
           },
-          "minItems": 1,
-          "uniqueItems": true
+          "required": ["selection_type"]
         },
-        "selection_type": {
-          "type": "string",
-          "const": "by_tag",
-          "description": "Discriminator indicating selection by property tags"
-        },
-        "property_tags": {
-          "type": "array",
-          "description": "Property tags resolved against each addressed publisher's adagents.json. Selector covers all properties carrying any of these tags.",
-          "items": {
-            "$ref": "/schemas/core/property-tag.json"
+        {
+          "type": "object",
+          "title": "Fanout — by tags",
+          "description": "Select properties by tag membership from each listed publisher. The same `property_tags` predicate is resolved against each listed publisher's adagents.json — the canonical managed-network shape where every represented site tags inventory with a shared label.",
+          "properties": {
+            "selection_type": { "type": "string", "const": "by_tag" },
+            "property_tags": {
+              "type": "array",
+              "description": "Property tags resolved against each listed publisher's adagents.json. Selector covers all properties carrying any of these tags.",
+              "items": { "$ref": "/schemas/core/property-tag.json" },
+              "minItems": 1
+            }
           },
-          "minItems": 1
+          "required": ["selection_type", "property_tags"]
         }
-      },
-      "required": [
-        "selection_type",
-        "property_tags"
-      ],
-      "allOf": [
-        { "not": { "required": ["publisher_domain", "publisher_domains"] } },
-        { "anyOf": [
-          { "required": ["publisher_domain"] },
-          { "required": ["publisher_domains"] }
-        ]}
       ],
       "additionalProperties": true
     }
