@@ -9,7 +9,10 @@
 
 import { Router } from 'express';
 import { createLogger } from '../../logger.js';
-import { requireAuth, requireAdmin, invalidateSessionsForUsers } from '../../middleware/auth.js';
+import {
+  requireGlobalAdmin,
+  invalidateSessionsForUsers,
+} from '../../middleware/auth.js';
 import { SlackDatabase } from '../../db/slack-db.js';
 import { WorkingGroupDatabase } from '../../db/working-group-db.js';
 import { getPool } from '../../db/client.js';
@@ -45,7 +48,7 @@ export function createAdminUsersRouter(): Router {
   // GET /api/admin/users - Unified view of AAO members and Slack users with engagement
   // Uses local organization_memberships table (synced from WorkOS via webhooks) for fast queries
   // Also joins users table for engagement scores and goal selection
-  router.get('/', requireAuth, requireAdmin, async (req, res) => {
+  router.get('/', ...requireGlobalAdmin, async (req, res) => {
     const startTime = Date.now();
     try {
       const pool = getPool();
@@ -409,7 +412,7 @@ export function createAdminUsersRouter(): Router {
   });
 
   // GET /api/admin/users/memberships - Get all working group memberships (for export)
-  router.get('/memberships', requireAuth, requireAdmin, async (req, res) => {
+  router.get('/memberships', ...requireGlobalAdmin, async (req, res) => {
     try {
       const wgDb = new WorkingGroupDatabase();
       const memberships = await wgDb.getAllMemberships();
@@ -440,7 +443,7 @@ export function createAdminUsersRouter(): Router {
 
   // POST /api/admin/users/sync-workos - Backfill organization_memberships table from WorkOS
   // Upserts active memberships and removes stale local rows not found in WorkOS
-  router.post('/sync-workos', requireAuth, requireAdmin, async (_req, res) => {
+  router.post('/sync-workos', ...requireGlobalAdmin, async (_req, res) => {
     try {
       const result = await backfillOrganizationMemberships();
 
@@ -461,7 +464,7 @@ export function createAdminUsersRouter(): Router {
 
   // POST /api/admin/users/sync-users - Backfill users table from WorkOS
   // Upserts users and removes stale local rows not found in any WorkOS org
-  router.post('/sync-users', requireAuth, requireAdmin, async (_req, res) => {
+  router.post('/sync-users', ...requireGlobalAdmin, async (_req, res) => {
     try {
       const result = await backfillUsers();
 
@@ -483,7 +486,7 @@ export function createAdminUsersRouter(): Router {
 
   // POST /api/admin/users/sync-domains - Backfill organization_domains table from WorkOS
   // Fetches each org's domains from WorkOS and syncs to local table
-  router.post('/sync-domains', requireAuth, requireAdmin, async (_req, res) => {
+  router.post('/sync-domains', ...requireGlobalAdmin, async (_req, res) => {
     try {
       const result = await backfillOrganizationDomains();
 
@@ -503,7 +506,7 @@ export function createAdminUsersRouter(): Router {
 
   // GET /api/admin/users/website-only - Get users who have website accounts but not Slack
   // These are candidates for Slack invite emails
-  router.get('/website-only', requireAuth, requireAdmin, async (_req, res) => {
+  router.get('/website-only', ...requireGlobalAdmin, async (_req, res) => {
     try {
       const pool = getPool();
 
@@ -567,7 +570,7 @@ export function createAdminUsersRouter(): Router {
 
   // POST /api/admin/users/send-slack-invites - Send Slack invite emails to website-only users
   // Can send to all uninvited users or specific user IDs
-  router.post('/send-slack-invites', requireAuth, requireAdmin, async (req, res) => {
+  router.post('/send-slack-invites', ...requireGlobalAdmin, async (req, res) => {
     try {
       const { user_ids, send_to_all } = req.body;
       const pool = getPool();
@@ -686,7 +689,13 @@ export function createAdminUsersRouter(): Router {
   });
 
   // PUT /api/admin/users/:userId/name - Update a user's display name
-  router.put('/:userId/name', requireAuth, requireAdmin, async (req, res) => {
+  router.put('/:userId/name', ...requireGlobalAdmin, async (req, res) => {
+    // Users are global — a single `users` row plus every
+    // `organization_memberships` row keyed on `workos_user_id`. A
+    // tenant-scoped API key has no principled claim to mutate a global
+    // user record; only AAO-internal tooling (static ADMIN_API_KEY) or
+    // SSO admin sessions reach this route. Surfaced by security review
+    // on #4498.
     try {
       const { userId } = req.params;
       const firstName = (req.body.first_name as string)?.trim();
@@ -750,7 +759,7 @@ export function createAdminUsersRouter(): Router {
   //
   // Trust model: admin is asserting the email belongs to the person. No
   // verification email is sent to the new address. Phase 3 may add one.
-  router.post('/:userId/linked-emails', requireAuth, requireAdmin, async (req, res) => {
+  router.post('/:userId/linked-emails', ...requireGlobalAdmin, async (req, res) => {
     const adminEmail = req.user!.email;
     const adminUserId = req.user!.id;
     const existingUserId = req.params.userId;
@@ -887,7 +896,7 @@ export function createAdminUsersRouter(): Router {
   // List the WorkOS-user credentials bound to this user's identity. Useful
   // for the admin UI to render a "linked emails" section and decide which
   // operations are available.
-  router.get('/:userId/credentials', requireAuth, requireAdmin, async (req, res) => {
+  router.get('/:userId/credentials', ...requireGlobalAdmin, async (req, res) => {
     const userId = req.params.userId;
     const pool = getPool();
 
@@ -935,7 +944,7 @@ export function createAdminUsersRouter(): Router {
   // its own app-state, mergeUsers moves that data to this user — admin is
   // asserting the two represent the same person. The trust model and
   // confirmation UX live on the admin frontend.
-  router.post('/:userId/credentials', requireAuth, requireAdmin, async (req, res) => {
+  router.post('/:userId/credentials', ...requireGlobalAdmin, async (req, res) => {
     const adminEmail = req.user!.email;
     const adminUserId = req.user!.id;
     const existingUserId = req.params.userId;
@@ -1069,7 +1078,7 @@ export function createAdminUsersRouter(): Router {
   // Refuses if the credential is the primary — removing the primary would
   // leave the identity with no canonical credential. Promote another
   // credential to primary first (separate endpoint, not yet built).
-  router.delete('/:userId/credentials/:credentialId', requireAuth, requireAdmin, async (req, res) => {
+  router.delete('/:userId/credentials/:credentialId', ...requireGlobalAdmin, async (req, res) => {
     const adminEmail = req.user!.email;
     const adminUserId = req.user!.id;
     // For non-singleton admin identities (today: nobody — admins are still
@@ -1203,7 +1212,7 @@ export function createAdminUsersRouter(): Router {
   // data — degraded but not broken. A failure of the follow-up UPDATE
   // would persist that degraded state; the audit row records the intent
   // and the recovery is a one-line UPDATE.
-  router.post('/:userId/credentials/:credentialId/promote', requireAuth, requireAdmin, async (req, res) => {
+  router.post('/:userId/credentials/:credentialId/promote', ...requireGlobalAdmin, async (req, res) => {
     const adminEmail = req.user!.email;
     const adminUserId = req.user!.id;
     const adminIdentityId = req.user!.identityId;
