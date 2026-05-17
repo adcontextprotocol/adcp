@@ -160,7 +160,7 @@ These shapes are real ad-industry product types — but they're either multi-can
 Three required pieces when `format_kind: "custom"`:
 
 1. **`format_shape`** — recognized global pattern from the [format-shape vocabulary registry](https://adcontextprotocol.org/schemas/v3/core/format-shape-vocabulary.json). Tells buyer agents what kind of pattern they're looking at (`multi_placement_takeover`, `branded_content`, `ar_lens`, etc.). The registry currently lists 9 shapes; non-canonical values are valid (validators MAY soft-warn) so adopters CAN ship a shape that isn't yet in the registry — adding entries is a vocabulary PR, not a major-version bump.
-2. **`format_schema`** — URI+digest reference to a fetchable schema describing the shape's actual `params` and `slots`. **Same hosting model as `platform_extensions`**: open-ecosystem publishers host the artifact at the canonical URI on their subdomain; closed-platform / walled-garden shapes resolve through the AAO mirror at `https://mirror.adcontextprotocol.org/translated/...`. Buyer agents fetch by `uri@digest` (immutable per digest, aggressive caching), validate `params` and `slots` against the fetched schema, and reason about manifests structurally.
+2. **`format_schema`** — URI+digest reference to a fetchable schema describing the shape's actual `params` and `slots`. **Same hosting model as `platform_extensions`**: open-ecosystem publishers host the artifact at the canonical URI on their subdomain; closed-platform / walled-garden shapes resolve through the AAO mirror at `https://creative.adcontextprotocol.org/translated/...`. Buyer agents fetch by `uri@digest` (immutable per digest, aggressive caching), validate `params` and `slots` against the fetched schema, and reason about manifests structurally.
 3. **`params`** — the actual structure, governed by the schema fetched from `format_schema.uri`. AdCP doesn't bake the params shape; the seller's schema does.
 
 ### `format_schema` fetch contract (normative)
@@ -250,28 +250,28 @@ Non-canonical `asset_group_id` values remain valid for platform-specific extensi
 
 ## Worked example — Meta Reels
 
-Meta Reels is a useful test of canonical-formats coverage: it's a platform-specific format from a vendor that hasn't adopted AdCP, with several rendering bells (CTA enum, primary text, headline limits, logo overlay, music) on top of a vertical video. Each Reels feature lands somewhere — canonical `params`, slot-level narrowing, `platform_extensions`, or `brand_kit_override` — and the canonical doesn't need to grow.
+Meta Reels is a useful test of canonical-formats coverage: a platform-specific format from a vendor that hasn't adopted AdCP, with rendering details (CTA enum, primary text, headline limits, brand name overlay) on top of a vertical video. Each Reels feature lands somewhere — canonical `params`, an inherited or overridden slot, the brand layer, the campaign layer — and the canonical doesn't need to grow.
 
 ### Where each Reels feature lives
 
 | Reels feature | Where it lives | Notes |
 | --- | --- | --- |
 | Vertical 9:16, 3-90s, 1080×1920, h264/aac, mp4 | `params` on `video_hosted` | Standard canonical parameters. |
-| Headline (40ch), Primary text (125ch) | `params.headline_max_chars`, `params.primary_text_max_chars` | Built-in slot narrowing on `video_hosted`. |
-| CTA from a fixed enum | `params.cta_values[]` | Meta's CTA list as an enum narrowing on the slot. |
-| Landing page URL | Built-in `video_hosted` slot | No special handling. |
-| Logo overlay | `BrandRef.brand_kit_override.logo` on the manifest | Logo is brand context, not a per-format slot — Meta pulls from the brand kit. |
-| Brand name | `BrandRef.display_name` (preferred) or `brand_name` slot | Meta auto-fills from the advertiser's Page. |
-| Music overlay (Reels music library) | `platform_extensions/meta_placements_reels` | Not in current `video_hosted` canonical. Platform-specific. |
-| Pixel / conversion tracking | `platform_extensions/meta_pixel` | Carries pixel_id, event mappings, deduplication keys. |
-| Placement selection (Feed vs Reels vs Stories) | `platform_extensions/meta_placements_reels` | Sibling extensions exist for other Meta placements. |
+| Headline (40ch), Primary text (125ch) | `params.headline_max_chars`, `params.primary_text_max_chars` + inherited `headline` / `primary_text` slots | Buyer ships text content via the slots; the param narrows the constraint. |
+| CTA from a fixed enum | `params.cta_values[]` + inherited `cta` slot | Buyer ships `assets.cta.text`; validator checks against the enum. |
+| Landing page URL | Inherited `landing_page_url` slot on `video_hosted` | No special handling. |
+| Brand name overlay | NOT in the format. Auto-applied by Meta from the linked Page (auth context outside AdCP). | The inherited `brand_name` slot exists in the canonical; products that need explicit content (publisher-direct video, CTV) populate it. Meta doesn't consume it for Reels. |
+| Logo overlay | NOT in the format. Auto-applied by Meta from the linked Page. | `BrandRef.brand_kit_override.logo` exists for formats whose seller-side renderer overlays a logo (host-read podcasts, CTV bumpers, publisher direct). Meta doesn't use it. |
+| Music overlay (Reels music library) | NOT in this declaration. Would be a `platform_extension` on the format if added; **not present in 3.1** — too platform-specific to be worth a schema seat without 2+ adopters. | Sellers can layer it via `ext` on the manifest in the meantime. |
+| Pixel / conversion tracking | NOT on the format. Conversion tracking is `sync_event_sources` / `event_log` territory — campaign-scoped, not creative-scoped. | The same pixel fires for every ad in the campaign regardless of creative. Putting it on the format declaration was a category error in earlier drafts. |
+| Placement selection (Feed vs Reels vs Stories) | NOT on the format. Placement is selected at media-buy time (`Placement.format_options[].capability_id`) — pick `meta_reels` to buy Reels, `meta_stories_video` to buy Stories. | They're separate format declarations on the publisher catalog; not a runtime extension parameter. |
 
 ### Community-registry hosting
 
-Meta hasn't adopted AdCP, so its `adagents.json` lives at the AAO community-registry mirror, `https://mirror.adcontextprotocol.org/translated/meta/adagents.json`. The mirror file declares `formats[]` at the publisher catalog level — one declaration of Meta Reels, scoped to Instagram + Facebook (not WhatsApp), reused across every seller's products. When Meta later publishes its own `adagents.json` at `meta.com/.well-known/adagents.json`, the platform-hosted file takes precedence and the mirror entry deprecates.
+Meta hasn't adopted AdCP, so its `adagents.json` lives at the AAO community-registry mirror, `https://creative.adcontextprotocol.org/translated/meta/adagents.json`. The mirror file declares `formats[]` at the publisher catalog level — one declaration of Meta Reels, scoped to Instagram + Facebook (not WhatsApp), reused across every seller's products. When Meta later publishes its own `adagents.json` at `meta.com/.well-known/adagents.json`, the platform-hosted file takes precedence and the mirror entry deprecates.
 
 ```json test=false
-// https://mirror.adcontextprotocol.org/translated/meta/adagents.json (excerpt)
+// https://creative.adcontextprotocol.org/translated/meta/adagents.json (excerpt)
 {
   "contact": { "name": "AdCP Community Registry — Meta translation", "domain": "adcontextprotocol.org" },
   "properties": [
@@ -286,7 +286,7 @@ Meta hasn't adopted AdCP, so its `adagents.json` lives at the AAO community-regi
       "format_kind": "video_hosted",
       "applies_to_property_ids": ["instagram", "facebook"],
       "v1_format_ref": {
-        "agent_url": "https://mirror.adcontextprotocol.org/translated/meta",
+        "agent_url": "https://creative.adcontextprotocol.org/translated/meta",
         "id": "meta_reels"
       },
       "params": {
@@ -301,11 +301,7 @@ Meta hasn't adopted AdCP, so its `adagents.json` lives at the AAO community-regi
         "headline_max_chars": 40,
         "primary_text_max_chars": 125,
         "cta_values": ["LEARN_MORE", "SHOP_NOW", "DOWNLOAD", "SIGN_UP", "CONTACT_US", "BOOK_NOW"],
-        "composition_model": "deterministic",
-        "platform_extensions": [
-          { "uri": "https://mirror.adcontextprotocol.org/translated/meta/extensions/meta_pixel",            "digest": "sha256:a3f5..." },
-          { "uri": "https://mirror.adcontextprotocol.org/translated/meta/extensions/meta_placements_reels", "digest": "sha256:b8e1..." }
-        ]
+        "composition_model": "deterministic"
       }
     }
   ],
@@ -330,7 +326,7 @@ Buyer SDKs answer `list_creative_formats(publisher_domain="meta.com")` by fetchi
 
 ### Product reuses the catalog declaration
 
-A seller's `meta_reels_us` product references the publisher-catalog declaration by `capability_id`, narrowing only the parts specific to that product (geography, pricing). The format shape itself is inherited from `mirror.adcontextprotocol.org/translated/meta`:
+A seller's `meta_reels_us` product references the publisher-catalog declaration by `capability_id`, narrowing only the parts specific to that product (geography, pricing). The format shape itself is inherited from `creative.adcontextprotocol.org/translated/meta`:
 
 ```json test=false
 {
@@ -345,7 +341,7 @@ A seller's `meta_reels_us` product references the publisher-catalog declaration 
       "format_kind": "video_hosted",
       "capability_id": "meta_reels",
       "v1_format_ref": {
-        "agent_url": "https://mirror.adcontextprotocol.org/translated/meta",
+        "agent_url": "https://creative.adcontextprotocol.org/translated/meta",
         "id": "meta_reels"
       },
       "params": {
@@ -359,11 +355,7 @@ A seller's `meta_reels_us` product references the publisher-catalog declaration 
         "headline_max_chars": 40,
         "primary_text_max_chars": 125,
         "cta_values": ["LEARN_MORE", "SHOP_NOW", "DOWNLOAD", "SIGN_UP", "CONTACT_US", "BOOK_NOW"],
-        "composition_model": "deterministic",
-        "platform_extensions": [
-          { "uri": "https://mirror.adcontextprotocol.org/translated/meta/extensions/meta_pixel",            "digest": "sha256:a3f5..." },
-          { "uri": "https://mirror.adcontextprotocol.org/translated/meta/extensions/meta_placements_reels", "digest": "sha256:b8e1..." }
-        ]
+        "composition_model": "deterministic"
       }
     }
   ],
@@ -373,17 +365,18 @@ A seller's `meta_reels_us` product references the publisher-catalog declaration 
 }
 ```
 
-The `capability_id: "meta_reels"` tag lets buyer agents recognize this as the same Meta Reels they read from the publisher catalog — the seller didn't reinvent the format, they're selling inventory against the canonical declaration. Buyer's manifest validates against canonical `video_hosted` first (does it satisfy the contract any seller speaking that canonical accepts?), then narrows against this product's specific parameters. Platform extensions (pixel, placements) are bundled in the `get_products` response under an `extensions` map keyed by `uri@digest` — buyers fetch them once and cache by digest.
+The `capability_id: "meta_reels"` tag lets buyer agents recognize this as the same Meta Reels they read from the publisher catalog — the seller didn't reinvent the format, they're selling inventory against the catalog declaration. The buyer's manifest validates against canonical `video_hosted` first (does it satisfy the contract any seller speaking that canonical accepts?), then narrows against this product's specific parameters.
 
-### What's NOT a canonical change
+### What lives where (and why)
 
-Three Reels features that look like they want canonical-level support, but don't:
+- **Canonical params** — fields the canonical already defines (dimensions, durations, codecs, CTA enum, char limits). Sellers narrow values; SDKs validate. Tight, codegen-clean.
+- **Canonical slots** — content the manifest carries. `video_hosted` inherits `video_main`, `headline`, `primary_text`, `cta`, `brand_name`, `companion_banner`, `landing_page_url`. Products can override (remove slots the surface doesn't use; mark required; narrow values).
+- **`platform_extensions`** — net-new fields the canonical doesn't recognize, scoped to one platform's renderer (e.g., a hypothetical Reels music overlay carrying track_id + licensing flags). Bundled by URI+digest in `get_products` so buyers fetch once and cache.
+- **`BrandRef` + `brand_kit_override`** — brand context (logo, colors, voice, tagline) consumed by formats whose **seller-side renderer** overlays brand. Host-read podcasts, CTV bumpers, publisher-direct display do consume it. Meta auto-overlays from the linked Page (auth context outside AdCP), so brand_kit_override has no effect for Meta Reels — it's still the right schema location for the cases that DO consume it.
+- **Campaign / event-log surfaces** — conversion tracking (Meta Pixel, GA4, server-side events). These are `sync_event_sources` / `event_log` concerns, NOT creative format concerns. Earlier drafts of this example put `meta_pixel` on the format declaration; that was a category error and is gone now.
+- **Media-buy surfaces** — placement selection (Feed vs Reels vs Stories). Pick the right format on the publisher catalog (`meta_reels` vs `meta_stories_video` vs `meta_feed_image`); not a per-creative extension knob.
 
-- **Logo overlay**: belongs on `BrandRef.brand_kit_override.logo`. A logo isn't a Reels-specific input; every brand-aware format consumes brand context the same way.
-- **Music overlay**: lives in `platform_extensions/meta_placements_reels`. Genuinely platform-specific (Meta's music library, licensing flags, regional availability). Not worth promoting to canonical until 2+ platforms have substantively similar audio-overlay semantics.
-- **Placement selection** (Feed vs Reels vs Stories vs Marketplace): also platform-specific extension. A sibling Stories declaration would use `meta_placements_stories`; same canonical, different extension.
-
-This pattern — deeply-narrowed platform format expressed through `params` + slot narrowing + `platform_extensions` + `BrandRef` — is what keeps the 11 canonicals from accumulating per-platform fields.
+This separation — canonical params + canonical slots + extensions only for net-new fields + BrandRef for brand context + event_log for tracking — is what keeps the 11 canonicals from accumulating per-platform fields. The lint at `tests/canonical-format-conventions.test.cjs` enforces the `v1_format_ref.agent_url` AAO-hosted convention and the slot/param consistency rule.
 
 ## Worked example — IAB MREC (300×250)
 
@@ -859,7 +852,7 @@ Override fields take precedence over `brand.json` for the call carrying this Bra
 Platform extensions are narrow, truly platform-specific additions (pixel ID shapes, conversion event taxonomies, platform-specific CTAs/destinations). They live at well-known paths on the owning agent:
 
 ```
-https://meta.example/extensions/meta_pixel
+https://creative.adcontextprotocol.org/translated/meta/extensions/meta_pixel
 https://tiktok.example/extensions/tiktok_pixel
 https://nytimes.example/extensions/nytimes_om_strict
 ```
@@ -870,7 +863,7 @@ Each extension's response carries the schema, the canonical pattern or slot it e
 
 *Open-ecosystem path (publisher-hosted)*. Used when the publisher owning the URI subdomain participates directly in AdCP — independent publishers, SSPs, retail-media networks running their own canonical extensions. The publisher hosts the artifact at the canonical URI on their subdomain. Because URIs are digest-pinned (`uri@sha256:…`), responses are immutable per digest — publishers SHOULD serve them with `Cache-Control: public, max-age=31536000, immutable` and target ≥99.9% / 30-day availability. SDKs cache aggressively by `uri@digest`; a hit is always correct. On 404 or resolution failure, buyers MUST degrade gracefully (treat as unavailable, skip platform-specific narrowing, don't fail the buy).
 
-*Closed-platform path (AAO-translated)*. Used for walled gardens (Meta, Google, Amazon, TikTok, Snap, Pinterest). These platforms are unlikely to host AdCP-shaped extension artifacts on their own subdomains (they have native SDKs and APIs that protect their revenue model; serving an immutable extension CDN gives them no benefit). Instead, AAO runs a translator that maps closed-platform format documentation into AdCP extension artifacts and hosts them under an AAO mirror namespace (e.g., `https://mirror.adcontextprotocol.org/translated/<platform>/<artifact>@<digest>`). Worked-example fixtures in this repo that reference `https://meta.example/extensions/...` are illustrative — production usage of those extensions should resolve through the AAO mirror until/unless Meta participates directly. AAO commits to the same digest-pinning + immutability contract; refresh cadence and translation methodology are documented at `https://adcontextprotocol.org/registry/translated-extensions`. Buyers cache and resolve identically across both paths — `uri@digest` is the cache key, regardless of who hosts.
+*Closed-platform path (AAO-translated)*. Used for walled gardens (Meta, Google, Amazon, TikTok, Snap, Pinterest). These platforms are unlikely to host AdCP-shaped extension artifacts on their own subdomains (they have native SDKs and APIs that protect their revenue model; serving an immutable extension CDN gives them no benefit). Instead, AAO runs a translator that maps closed-platform format documentation into AdCP extension artifacts and hosts them under an AAO mirror namespace (e.g., `https://creative.adcontextprotocol.org/translated/<platform>/<artifact>@<digest>`). Worked-example fixtures in this repo that reference `https://creative.adcontextprotocol.org/translated/meta/extensions/...` are illustrative — production usage of those extensions should resolve through the AAO mirror until/unless Meta participates directly. AAO commits to the same digest-pinning + immutability contract; refresh cadence and translation methodology are documented at `https://adcontextprotocol.org/registry/translated-extensions`. Buyers cache and resolve identically across both paths — `uri@digest` is the cache key, regardless of who hosts.
 
 The two paths share the digest-pinned cache and graceful-degradation semantics. They differ only in the resolution authority. The mirror is normative for closed-platform extensions (not "best effort") because there is no other path; for open-ecosystem extensions, the mirror is opt-in fallback.
 
@@ -880,7 +873,7 @@ The two paths share the digest-pinned cache and graceful-degradation semantics. 
 {
   "products": [ { "...": "..." } ],
   "extensions": {
-    "https://meta.example/extensions/meta_pixel@sha256:a3f5...": {
+    "https://creative.adcontextprotocol.org/translated/meta/extensions/meta_pixel@sha256:a3f5...": {
       "extends": "tracking",
       "fields": {
         "pixel_id": { "type": "string", "required": true },

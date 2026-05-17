@@ -9,11 +9,13 @@
       "default": [
         { "asset_group_id": "video_main", "asset_type": "video", "required": true },
         { "asset_group_id": "headline", "asset_type": "text", "required": false },
+        { "asset_group_id": "primary_text", "asset_type": "text", "required": false },
+        { "asset_group_id": "cta", "asset_type": "text", "required": false },
         { "asset_group_id": "brand_name", "asset_type": "text", "required": false },
         { "asset_group_id": "companion_banner", "asset_type": "image", "required": false },
         { "asset_group_id": "landing_page_url", "asset_type": "url", "required": false }
       ],
-      "description": "Default slots for video_hosted canonical. Buyer ships a video asset (file or hosted URL); optional headline, brand_name (typical for vertical short-form), companion_banner (typical for horizontal instream), and clickthrough URL. Products MAY override or extend the default."
+      "description": "Default slots for video_hosted canonical. Buyer ships a video asset (file or hosted URL); optional headline, primary text (long-form caption), CTA (typically constrained via `cta_values`), brand_name (typical for vertical short-form), companion_banner (typical for horizontal instream), and clickthrough URL. Products MAY override or extend the default — e.g., remove `companion_banner` for short-form vertical, narrow `cta` to a value enum, mark `landing_page_url` as required."
     },
     "orientation": {
       "type": "string",

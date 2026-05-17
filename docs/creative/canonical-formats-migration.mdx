@@ -88,7 +88,7 @@ Most of AdCP doesn't change. v2 builds on the existing primitives:
         "cta_values": ["LEARN_MORE", "SHOP_NOW", "DOWNLOAD", "SIGN_UP"],
         "composition_model": "deterministic",
         "platform_extensions": [
-          { "uri": "https://meta.example/extensions/meta_pixel", "digest": "sha256:..." }
+          { "uri": "https://creative.adcontextprotocol.org/translated/meta/extensions/meta_pixel", "digest": "sha256:..." }
         ]
       }
     }
@@ -317,7 +317,7 @@ Sellers with creative structures that don't fit the 11 canonicals (multi-placeme
 
 1. **Pick a `format_shape`** from the [vocabulary registry](https://adcontextprotocol.org/schemas/v3/core/format-shape-vocabulary.json). If your shape isn't there, file a vocabulary PR — adding entries is governance-light, doesn't require a major version bump, and helps the working group track adoption velocity per shape.
 2. **Author a JSON Schema** describing your format's `params` and `slots`. The schema's job is to give buyer agents enough structure to validate manifests and reason about what assets you accept, how you track, what the impression contract is. Treat it like authoring a v1 named format file — same level of rigor, just hosted at your URI rather than under AdCP's roof. Industry-shared schemas (e.g., a shared `multi_placement_takeover_v1` schema several publishers converge on) are encouraged and accelerate canonical promotion.
-3. **Host the schema at a stable URI** with `Cache-Control: public, max-age=31536000, immutable` and a digest. Open-ecosystem publishers host on their own subdomain (`https://yourpub.example/schemas/formats/your_shape_v1`); walled-garden sellers route through the AAO mirror at `https://mirror.adcontextprotocol.org/translated/<vendor>/<shape>` (AAO accepts translation submissions; same hosting / immutability contract). Reference the schema from `format_schema: { uri, digest }` on your `ProductFormatDeclaration`.
+3. **Host the schema at a stable URI** with `Cache-Control: public, max-age=31536000, immutable` and a digest. Open-ecosystem publishers host on their own subdomain (`https://yourpub.example/schemas/formats/your_shape_v1`); walled-garden sellers route through the AAO mirror at `https://creative.adcontextprotocol.org/translated/<vendor>/<shape>` (AAO accepts translation submissions; same hosting / immutability contract). Reference the schema from `format_schema: { uri, digest }` on your `ProductFormatDeclaration`.
 
 Buyer agents fetch the schema by `uri@digest`, cache it (immutable), and validate manifests structurally. **No human-in-the-loop is required for buyer agents to interpret your format** — that's the load-bearing claim and the reason custom + format_schema isn't `ext`. Ext remains for genuinely experimental shapes that don't even fit a `format_shape` entry yet, but that's the rare case.
 

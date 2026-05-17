@@ -67,7 +67,7 @@
         ],
         "platform_extensions": [
           {
-            "uri": "https://openai.example/extensions/chatgpt_response_card",
+            "uri": "https://creative.adcontextprotocol.org/translated/openai/extensions/chatgpt_response_card",
             "digest": "sha256:f3a6c9b2e5d8f1a4c7b0e3d6f9a2c5b8e1d4f7a0c3b6e9d2f5a8c1b4e7d0f3a6"
           }
         ]

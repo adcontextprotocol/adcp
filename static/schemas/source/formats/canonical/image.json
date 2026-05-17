@@ -10,9 +10,11 @@
         { "asset_group_id": "image_main", "asset_type": "image", "required": true },
         { "asset_group_id": "headline", "asset_type": "text", "required": false },
         { "asset_group_id": "body_text", "asset_type": "text", "required": false },
+        { "asset_group_id": "primary_text", "asset_type": "text", "required": false },
+        { "asset_group_id": "cta", "asset_type": "text", "required": false },
         { "asset_group_id": "landing_page_url", "asset_type": "url", "required": false }
       ],
-      "description": "Default slots for image canonical. Buyer ships an image asset (file or hosted URL) plus optional headline, body text, and clickthrough URL. Products MAY override the default with narrowing (e.g., make `headline` required, or add a `cta` slot)."
+      "description": "Default slots for image canonical. Buyer ships an image asset (file or hosted URL) plus optional headline, body text, primary text (long-form caption), CTA (typically constrained to an enum via `cta_values`), and clickthrough URL. Products MAY override the default — make `headline` required, narrow `cta` to a value enum, or remove slots the surface doesn't consume."
     },
     "width": {
       "type": "integer",

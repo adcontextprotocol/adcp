@@ -65,7 +65,7 @@
       "display_name": "Meta Reels (Instagram + Facebook)",
       "format_kind": "video_hosted",
       "v1_format_ref": {
-        "agent_url": "https://mirror.adcontextprotocol.org/translated/meta",
+        "agent_url": "https://creative.adcontextprotocol.org/translated/meta",
         "id": "meta_reels"
       },
       "applies_to_property_ids": ["instagram", "facebook"],
@@ -90,17 +90,7 @@
           "CONTACT_US",
           "BOOK_NOW"
         ],
-        "composition_model": "deterministic",
-        "platform_extensions": [
-          {
-            "uri": "https://mirror.adcontextprotocol.org/translated/meta/extensions/meta_pixel",
-            "digest": "sha256:a3f5b7c9d8e2f1a4b6c8d0e2f4a6b8c0d2e4f6a8b0c2d4e6f8a0b2c4d6e8f0a2"
-          },
-          {
-            "uri": "https://mirror.adcontextprotocol.org/translated/meta/extensions/meta_placements_reels",
-            "digest": "sha256:b8e1d4f6a9c2b5e8d1f4a7c0b3e6d9f2a5c8b1e4d7f0a3c6b9e2d5f8a1c4b7e0"
-          }
-        ]
+        "composition_model": "deterministic"
       }
     },
     {
@@ -108,7 +98,7 @@
       "display_name": "Meta Feed Image (Instagram + Facebook)",
       "format_kind": "image",
       "v1_format_ref": {
-        "agent_url": "https://mirror.adcontextprotocol.org/translated/meta",
+        "agent_url": "https://creative.adcontextprotocol.org/translated/meta",
         "id": "meta_feed_image"
       },
       "applies_to_property_ids": ["instagram", "facebook"],
@@ -128,7 +118,7 @@
       "display_name": "Meta Stories Video (Instagram + Facebook)",
       "format_kind": "video_hosted",
       "v1_format_ref": {
-        "agent_url": "https://mirror.adcontextprotocol.org/translated/meta",
+        "agent_url": "https://creative.adcontextprotocol.org/translated/meta",
         "id": "meta_stories_video"
       },
       "applies_to_property_ids": ["instagram", "facebook"],
@@ -151,7 +141,7 @@
       "display_name": "Meta Feed Carousel (Instagram + Facebook)",
       "format_kind": "image_carousel",
       "v1_format_ref": {
-        "agent_url": "https://mirror.adcontextprotocol.org/translated/meta",
+        "agent_url": "https://creative.adcontextprotocol.org/translated/meta",
         "id": "meta_feed_carousel"
       },
       "applies_to_property_ids": ["instagram", "facebook"],
@@ -215,7 +205,7 @@
   },
   "authorized_agents": [
     {
-      "url": "https://mirror.adcontextprotocol.org/translated/meta/agent",
+      "url": "https://creative.adcontextprotocol.org/translated/meta/agent",
       "authorized_for": "Community-registry advisory only — not a Meta-authorized sales path. Routes buyers to the Meta-direct API. Once Meta publishes their own adagents.json at facebook.com/.well-known/adagents.json with real authorized_agents[], this file deprecates.",
       "authorization_type": "property_tags",
       "property_tags": ["meta_network"],

@@ -82,7 +82,7 @@
         ],
         "platform_extensions": [
           {
-            "uri": "https://google.example/extensions/google_universal_ad_id",
+            "uri": "https://creative.adcontextprotocol.org/translated/google/extensions/google_universal_ad_id",
             "digest": "sha256:b3c5e7f9a1c3e5b7d9f1a3c5e7b9d1f3a5c7e9b1d3f5a7c9e1b3d5f7a9c1e3b5"
           }
         ]
