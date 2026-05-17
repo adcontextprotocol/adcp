@@ -29,7 +29,11 @@ export type DomainSource =
   | 'email_verification'
   | 'import'
   | 'admin_discovery'
-  | 'manual';
+  | 'manual'
+  // Migration 481: domain inferred from prospect_contact_email; verified=false.
+  // Not DNS-verified — surfaces orphan prospect orgs to claim prompts /
+  // resolveOrgByDomain but not to auto-link (which gates on verified=true).
+  | 'backfill_prospect_contact';
 
 export interface LinkDomainArgs {
   orgId: string;
