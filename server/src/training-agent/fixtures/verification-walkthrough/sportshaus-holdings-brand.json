@@ -4,7 +4,7 @@
   "house": {
     "domain": "sportshaus-holdings.example",
     "name": "Sportshaus Holdings",
-    "architecture": "branded_house"
+    "architecture": "house_of_brands"
   },
   "brand_refs": [
     { "domain": "streamhaus.example", "brand_id": "streamhaus", "effective_at": "2025-01-01T00:00:00Z" },

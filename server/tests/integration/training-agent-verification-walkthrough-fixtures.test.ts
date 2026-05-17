@@ -129,7 +129,7 @@ describe('Verification-walkthrough fixtures', () => {
     if (!ok) throw new Error(`streamhaus adagents.json invalid: ${explainErrors(validateAdagents.errors)}`);
 
     const agents = body.authorized_agents as Array<Record<string, unknown>>;
-    const northwindEntry = agents.find(a => (a.url as string).startsWith('https://northwind.example'));
+    const northwindEntry = agents.find(a => new URL(a.url as string).hostname === 'northwind.example');
     expect(northwindEntry).toBeDefined();
     expect(northwindEntry?.delegation_type).toBe('delegated');
     expect(northwindEntry?.authorization_type).toBe('property_ids');

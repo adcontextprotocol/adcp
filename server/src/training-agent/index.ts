@@ -628,9 +628,22 @@ export function createTrainingAgentRouter(): Router {
   // agent can be pointed at the training agent's host and walk the chain
   // end-to-end against simulated publisher / sub-brand / parent-house
   // surfaces.
+  //
+  // `X-Robots-Tag: noindex` so search engines don't index these as if the
+  // fictional publishers were real. The fixtures' `description` fields and
+  // `*.example` domains carry the "test artifact" framing in-body — adding
+  // a top-level `x_test_fixture` flag would fail brand.json oneOf[3]'s
+  // `additionalProperties: false`.
   for (const [role, docs] of Object.entries(WALKTHROUGH_FIXTURES)) {
     for (const [filename, body] of Object.entries(docs)) {
-      router.get(`/fixtures/walkthrough/${role}/.well-known/${filename}`, (_req: Request, res: Response) => {
+      const path = `/fixtures/walkthrough/${role}/.well-known/${filename}`;
+      router.options(path, (_req: Request, res: Response) => {
+        setLegacyCORS(res);
+        res.status(204).end();
+      });
+      router.get(path, (_req: Request, res: Response) => {
+        setLegacyCORS(res);
+        res.setHeader('X-Robots-Tag', 'noindex');
         res.setHeader('Vary', 'X-Forwarded-Host, X-Forwarded-Proto, Host');
         res.setHeader('Cache-Control', 'public, max-age=300');
         res.json(body);

@@ -10,26 +10,20 @@
  *   - Sportshaus Holdings (parent house, brand_refs[] points back at
  *     StreamHaus — completes the bilateral parent/sub-brand assertion)
  *
- * Schema-conformant per `static/schemas/source/{brand,adagents}.json`. The
- * fixture lives in code (TypeScript module) and on disk (sibling `.json`
- * files) — `.json` shape is what gets served at the HTTP endpoints; the
- * module export gives in-process consumers (storyboards, conformance tests)
- * a typed surface.
+ * Schema-conformant per `static/schemas/source/{brand,adagents}.json`. JSON
+ * documents are statically imported so the build emits the data inline and
+ * no filesystem reads happen at runtime — Fly's dist/ layout doesn't copy
+ * sibling JSON, so a `readFileSync` here would crash the route handler.
  */
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
+import northwindBrand from './northwind-brand.json';
+import streamhausBrand from './streamhaus-brand.json';
+import streamhausAdagents from './streamhaus-adagents.json';
+import sportshausHoldingsBrand from './sportshaus-holdings-brand.json';
 
-const FIXTURE_DIR = dirname(fileURLToPath(import.meta.url));
-
-function load(filename: string): Record<string, unknown> {
-  return JSON.parse(readFileSync(join(FIXTURE_DIR, filename), 'utf8'));
-}
-
-export const NORTHWIND_BRAND_JSON = load('northwind-brand.json');
-export const STREAMHAUS_BRAND_JSON = load('streamhaus-brand.json');
-export const STREAMHAUS_ADAGENTS_JSON = load('streamhaus-adagents.json');
-export const SPORTSHAUS_HOLDINGS_BRAND_JSON = load('sportshaus-holdings-brand.json');
+export const NORTHWIND_BRAND_JSON = northwindBrand;
+export const STREAMHAUS_BRAND_JSON = streamhausBrand;
+export const STREAMHAUS_ADAGENTS_JSON = streamhausAdagents;
+export const SPORTSHAUS_HOLDINGS_BRAND_JSON = sportshausHoldingsBrand;
 
 /** Map of fixture-walkthrough role → served documents. Used by the HTTP
  *  mount in `index.ts` to expose each role's documents under
