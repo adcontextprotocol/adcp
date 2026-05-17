@@ -81,7 +81,7 @@
         "expires_at": {
           "type": "string",
           "format": "date-time",
-          "description": "ISO 8601 timestamp when preview links expire"
+          "description": "Optional ISO 8601 timestamp when preview links expire. When omitted, preview links do not expire."
         },
         "context": {
           "$ref": "/schemas/core/context.json"
@@ -92,8 +92,7 @@
       },
       "required": [
         "response_type",
-        "previews",
-        "expires_at"
+        "previews"
       ],
       "additionalProperties": true
     },
@@ -178,12 +177,11 @@
                   "expires_at": {
                     "type": "string",
                     "format": "date-time",
-                    "description": "When the preview URLs expire"
+                    "description": "Optional ISO 8601 timestamp when preview URLs expire. When omitted, preview URLs do not expire."
                   }
                 },
                 "required": [
-                  "previews",
-                  "expires_at"
+                  "previews"
                 ]
               },
               "errors": {
@@ -295,7 +293,7 @@
         "expires_at": {
           "type": "string",
           "format": "date-time",
-          "description": "ISO 8601 timestamp when preview links expire"
+          "description": "Optional ISO 8601 timestamp when preview links expire. When omitted, preview links do not expire."
         },
         "context": {
           "$ref": "/schemas/core/context.json"
