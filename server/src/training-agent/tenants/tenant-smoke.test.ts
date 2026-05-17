@@ -54,13 +54,19 @@ describe('tenant routing smoke', () => {
       // Body content irrelevant — we just need the init handshake to settle
       // before discovery so the JWKS is populated.
       await initR.text();
+      // brand.json is the brand-protocol portfolio document. Each tenant has
+      // an `agents[]` entry under house.agents with type, id, url, jwks_uri.
+      // The signals tenant must appear by id.
       const r = await fetch(`${baseUrl}/.well-known/brand.json`);
       expect(r.status).toBe(200);
-      const body = await r.json() as { jwks: { keys: Array<{ kid: string; alg: string }> } };
-      expect(Array.isArray(body.jwks?.keys)).toBe(true);
-      expect(body.jwks.keys.length).toBeGreaterThan(0);
-      const signalsKid = body.jwks.keys.find(k => k.kid?.includes('signals'));
-      expect(signalsKid).toBeDefined();
+      const body = await r.json() as { house: { agents: Array<{ id: string; type: string; url: string; jwks_uri: string }> } };
+      expect(Array.isArray(body.house?.agents)).toBe(true);
+      expect(body.house.agents.length).toBeGreaterThan(0);
+      const signalsAgent = body.house.agents.find(a => a.id === 'aao_training_agent_signals');
+      expect(signalsAgent).toBeDefined();
+      expect(signalsAgent?.type).toBe('signals');
+      expect(signalsAgent?.url).toMatch(/\/signals\/mcp$/);
+      expect(signalsAgent?.jwks_uri).toMatch(/\/\.well-known\/jwks\.json$/);
     } finally {
       await close();
     }

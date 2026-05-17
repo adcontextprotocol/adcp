@@ -14,7 +14,6 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { createLogger } from '../../logger.js';
 import { runWithSessionContext, flushDirtySessions } from '../state.js';
 import { createRegistryHolder, getCanonicalBase, resolveTenantHost, type RegistryHolder } from './registry.js';
-import { getAggregatedPublicJwks } from './signing.js';
 import { buildSignedRevocationList } from '../governance-revocations.js';
 
 const logger = createLogger('training-agent-tenant-router');
@@ -279,16 +278,12 @@ export function mountTenantRoutes(
     });
   }
 
-  // Aggregated brand.json — lists every tenant's public key with its kid.
-  // SDK validator calls `new URL('/.well-known/brand.json', agentUrl)` which
-  // resolves to host root. For our mount under `/api/training-agent`, the
-  // SDK's validator hits the host root path which is OUTSIDE our router —
-  // so the spike runs with `autoValidate: false` and we only serve this for
-  // discovery / debug introspection.
-  parent.get('/.well-known/brand.json', (_req, res) => {
-    res.setHeader('Cache-Control', 'public, max-age=300');
-    res.json({ jwks: getAggregatedPublicJwks() });
-  });
+  // brand.json discovery is mounted at the parent training-agent router in
+  // `../index.ts` (schema-conformant per `static/schemas/source/brand.json`
+  // oneOf[3]). `getAggregatedPublicJwks()` remains exported for direct
+  // callers (governance-signing tests) — buyer-side fetchers walk the
+  // chain via brand.json `agents[].jwks_uri` pointers instead of an
+  // aggregated top-level JWKS.
 
   // Signed governance revocation list. Spec requires governance agents to
   // publish this at `{origin of iss}/.well-known/governance-revocations.json`;
