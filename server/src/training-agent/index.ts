@@ -38,6 +38,7 @@ import type { TrainingContext } from './types.js';
 import { PUBLISHERS } from './publishers.js';
 import { SIGNAL_PROVIDERS } from './signal-providers.js';
 import { getPublicJwks } from './webhooks.js';
+import { WALKTHROUGH_FIXTURES } from './fixtures/verification-walkthrough/index.js';
 import {
   buildRequestSigningAuthenticator,
   buildStrictRequestSigningAuthenticator,
@@ -619,6 +620,23 @@ export function createTrainingAgentRouter(): Router {
       last_updated: STARTUP_TIME,
     });
   });
+
+  // Verification-walkthrough fixtures — schema-conformant brand.json /
+  // adagents.json documents simulating the multi-tier chain from
+  // docs/verification/overview (Northwind / StreamHaus / Sportshaus Holdings).
+  // Mounted at /fixtures/walkthrough/<role>/.well-known/<doc> so a buyer
+  // agent can be pointed at the training agent's host and walk the chain
+  // end-to-end against simulated publisher / sub-brand / parent-house
+  // surfaces.
+  for (const [role, docs] of Object.entries(WALKTHROUGH_FIXTURES)) {
+    for (const [filename, body] of Object.entries(docs)) {
+      router.get(`/fixtures/walkthrough/${role}/.well-known/${filename}`, (_req: Request, res: Response) => {
+        res.setHeader('Vary', 'X-Forwarded-Host, X-Forwarded-Proto, Host');
+        res.setHeader('Cache-Control', 'public, max-age=300');
+        res.json(body);
+      });
+    }
+  }
 
   // adagents.json discovery. Schema-conformant per
   // `static/schemas/source/adagents.json`:

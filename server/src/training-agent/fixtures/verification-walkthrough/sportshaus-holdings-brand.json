@@ -1,0 +1,18 @@
+{
+  "$schema": "/schemas/brand.json",
+  "version": "1.0",
+  "house": {
+    "domain": "sportshaus-holdings.example",
+    "name": "Sportshaus Holdings",
+    "architecture": "branded_house"
+  },
+  "brand_refs": [
+    { "domain": "streamhaus.example", "brand_id": "streamhaus", "effective_at": "2025-01-01T00:00:00Z" },
+    { "domain": "courtsidehq.example", "brand_id": "courtsidehq" }
+  ],
+  "contact": {
+    "name": "Sportshaus Brand Operations",
+    "email": "brands@sportshaus-holdings.example"
+  },
+  "last_updated": "2026-04-12T10:00:00Z"
+}
