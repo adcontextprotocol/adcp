@@ -44,10 +44,14 @@ candidate AS (
   SELECT workos_organization_id, domain
   FROM inferred
   WHERE domain ~ '^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$'
-    -- Exclude free-email providers (mirrors FREE_EMAIL_PROVIDER_DOMAINS in
-    -- server/src/services/identifier-normalization.ts; a contact at gmail.com
-    -- says nothing about the prospect's brand domain).
+    -- Exclude free-email providers AND shared-platform domains. Mirrors
+    -- FREE_EMAIL_PROVIDER_DOMAINS + the most relevant entries of
+    -- SHARED_PLATFORM_DOMAINS in server/src/services/identifier-normalization.ts.
+    -- A contact at gmail.com / substack.com / a Vercel subdomain says nothing
+    -- about the prospect's brand domain, and planting one in
+    -- organization_domains would block the legitimate platform tenant.
     AND domain NOT IN (
+      -- Free-email providers
       'gmail.com','googlemail.com',
       'outlook.com','hotmail.com','live.com','msn.com',
       'yahoo.com','yahoo.co.uk','ymail.com','rocketmail.com',
@@ -56,7 +60,20 @@ candidate AS (
       'proton.me','protonmail.com','pm.me',
       'zoho.com','fastmail.com','gmx.com','gmx.net','mail.com',
       'yandex.com','yandex.ru','qq.com','163.com','126.com',
-      'duck.com','hey.com','tutanota.com','tutanota.de'
+      'duck.com','hey.com','tutanota.com','tutanota.de',
+      -- Shared platform / content host domains (apex matches only — subdomain
+      -- variants like brand.vercel.app are blocked by the UNIQUE(domain)
+      -- constraint via a legit owner if one ever claims them, and the
+      -- backfill writes verified=false so they can't trigger auto-link).
+      'vercel.app','vercel.com','netlify.app','netlify.com',
+      'fly.dev','fly.io','render.com','herokuapp.com',
+      'github.io','gitlab.io','readthedocs.io',
+      'medium.com','substack.com','wordpress.com','blogspot.com',
+      'tumblr.com','wixsite.com','squarespace.com',
+      'linkedin.com','twitter.com','x.com','facebook.com','fb.com',
+      'instagram.com','youtube.com','tiktok.com','reddit.com',
+      'pinterest.com','discord.com','snapchat.com','threads.net',
+      'whatsapp.com','wa.me'
     )
     -- Don't steal a domain another org already owns
     AND NOT EXISTS (

@@ -182,6 +182,35 @@ describe('migration 481: backfill orphan org from prospect_contact_email', () =>
     expect(await readDomains(pool, ORG_FREE_EMAIL)).toHaveLength(0);
   });
 
+  it('skips shared-platform contact domains (substack.com, vercel.app etc)', async () => {
+    // Planting one of these as a brand domain would block legitimate
+    // platform tenants from claiming it later via the UNIQUE(domain)
+    // constraint. The migration mirrors SHARED_PLATFORM_DOMAINS exclusions
+    // from identifier-normalization.ts.
+    const sharedPlatforms = ['substack.com', 'vercel.app', 'medium.com', 'linkedin.com'];
+    for (const domain of sharedPlatforms) {
+      const orgId = `${ORG_FREE_EMAIL}_${domain.replace(/\W/g, '_')}`;
+      await pool.query('DELETE FROM organizations WHERE workos_organization_id = $1', [orgId]);
+      await pool.query(
+        `INSERT INTO organizations (workos_organization_id, name, is_personal, prospect_contact_email, created_at, updated_at)
+         VALUES ($1, $2, false, $3, NOW(), NOW())`,
+        [orgId, `Org ${orgId}`, `someone@${domain}`],
+      );
+
+      await pool.query(MIGRATION_SQL);
+
+      const r = await pool.query<{ email_domain: string | null }>(
+        'SELECT email_domain FROM organizations WHERE workos_organization_id = $1',
+        [orgId],
+      );
+      expect(r.rows[0]?.email_domain, `should not backfill ${domain}`).toBeNull();
+
+      // Cleanup so the next iteration starts clean
+      await pool.query('DELETE FROM organization_domains WHERE workos_organization_id = $1', [orgId]);
+      await pool.query('DELETE FROM organizations WHERE workos_organization_id = $1', [orgId]);
+    }
+  });
+
   it('leaves orgs with an existing organization_domains row alone', async () => {
     await seedOrg(pool, ORG_ALREADY_HAS_DOMAIN_ROW, {
       is_personal: false,
@@ -212,7 +241,7 @@ describe('migration 481: backfill orphan org from prospect_contact_email', () =>
     expect((await readOrg(pool, ORG_ALREADY_HAS_EMAIL_DOMAIN))?.email_domain).toBe('existing.test');
   });
 
-  it('does not steal a domain another org already owns in organization_domains', async () => {
+  it('does not steal a domain another org already owns, while still backfilling unrelated orphans in the same run', async () => {
     await seedOrg(pool, ORG_DOMAIN_OWNER, {
       is_personal: false,
       email_domain: 'taken.test',
@@ -220,20 +249,41 @@ describe('migration 481: backfill orphan org from prospect_contact_email', () =>
     });
     await seedDomain(pool, ORG_DOMAIN_OWNER, 'taken.test');
 
+    // Will collide on `taken.test` — must NOT be backfilled.
     await seedOrg(pool, ORG_DOMAIN_OWNED_BY_OTHER, {
       is_personal: false,
       email_domain: null,
       prospect_contact_email: 'newperson@taken.test',
     });
 
+    // Unrelated orphan in the same migration run — proves the migration
+    // actually executed rather than silently no-op'd on a different bug.
+    await seedOrg(pool, ORG_ORPHAN, {
+      is_personal: false,
+      email_domain: null,
+      prospect_contact_email: 'chelseag@spotify.test',
+    });
+
     await pool.query(MIGRATION_SQL);
 
+    // Conflict org is not backfilled
     expect((await readOrg(pool, ORG_DOMAIN_OWNED_BY_OTHER))?.email_domain).toBeNull();
     expect(await readDomains(pool, ORG_DOMAIN_OWNED_BY_OTHER)).toHaveLength(0);
+
     // Owner row stays intact
     const ownerDomains = await readDomains(pool, ORG_DOMAIN_OWNER);
     expect(ownerDomains).toHaveLength(1);
     expect(ownerDomains[0].domain).toBe('taken.test');
+
+    // Unrelated orphan IS backfilled
+    expect((await readOrg(pool, ORG_ORPHAN))?.email_domain).toBe('spotify.test');
+    const orphanDomains = await readDomains(pool, ORG_ORPHAN);
+    expect(orphanDomains).toHaveLength(1);
+    expect(orphanDomains[0]).toMatchObject({
+      domain: 'spotify.test',
+      verified: false,
+      source: 'backfill_prospect_contact',
+    });
   });
 
   it('skips malformed contact emails (no domain after @)', async () => {

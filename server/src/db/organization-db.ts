@@ -1700,12 +1700,15 @@ export class OrganizationDatabase {
 
     const workosOrg = await workos.organizations.getOrganization(workos_organization_id);
     const name = workosOrg.name.slice(0, 255);
-    // Prefer the first verified WorkOS domain; fall back to the first listed
-    // domain (matches the precedence syncOrganizationDomains uses when no
-    // is_primary row exists yet).
-    const domains = workosOrg.domains ?? [];
-    const primaryDomain =
-      domains.find((d) => d.state === 'verified')?.domain ?? domains[0]?.domain;
+    // Only mirror DNS-verified WorkOS domains. Pending/failed domains carry no
+    // proof-of-control — a user can submit `gmail.com` as a pending domain on
+    // their own org and we'd otherwise plant a `gmail.com` row in
+    // organization_domains, stealing it from any later legit owner via
+    // upsertWorkosDomain's WorkOS-authoritative conflict semantics. The
+    // webhook-driven syncOrganizationDomains path will pick the pending
+    // domain up once WorkOS verifies it.
+    const verifiedDomains = (workosOrg.domains ?? []).filter((d) => d.state === 'verified');
+    const primaryDomain = verifiedDomains[0]?.domain;
 
     try {
       const created = await this.createOrganization({
@@ -1714,26 +1717,27 @@ export class OrganizationDatabase {
         email_domain: primaryDomain,
       });
       logger.info(
-        { orgId: workos_organization_id, name, primaryDomain },
+        { orgId: workos_organization_id, name, primaryDomain, verifiedDomainCount: verifiedDomains.length },
         'Lazily created local organization row from WorkOS'
       );
 
-      // Mirror each WorkOS domain into organization_domains so the auto-link
-      // and claim lookups can find this org by domain. Best-effort: a domain
-      // sync failure should not block org creation (the row + email_domain
-      // are already enough for resolveOrgByDomain to find it).
-      for (const d of domains) {
+      // Mirror each verified WorkOS domain into organization_domains so the
+      // auto-link and claim lookups can find this org by domain. A mirror
+      // failure here re-opens the orphan class this PR fixes, so emit
+      // `logger.error` (auto-routed to #admin-errors) rather than .warn —
+      // we want immediate visibility, not a silent re-orphan.
+      for (const d of verifiedDomains) {
         try {
           await upsertWorkosDomain({
             orgId: workos_organization_id,
             domain: d.domain,
-            verified: d.state === 'verified',
+            verified: true,
             isPrimary: d.domain === primaryDomain,
           });
         } catch (domainErr) {
-          logger.warn(
+          logger.error(
             { err: domainErr, orgId: workos_organization_id, domain: d.domain },
-            'Failed to mirror WorkOS domain during ensureOrganizationExists'
+            'Failed to mirror WorkOS domain during ensureOrganizationExists — org may be partially orphaned'
           );
         }
       }
