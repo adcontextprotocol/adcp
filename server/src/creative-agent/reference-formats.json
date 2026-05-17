@@ -61,7 +61,8 @@
           "description": "Text prompt describing the desired creative"
         }
       }
-    ]
+    ],
+    "canonical": "image"
   },
   {
     "format_id": {
@@ -141,7 +142,8 @@
           "description": "Text prompt describing the desired creative"
         }
       }
-    ]
+    ],
+    "canonical": "image"
   },
   {
     "format_id": {
@@ -221,7 +223,8 @@
           "description": "Text prompt describing the desired creative"
         }
       }
-    ]
+    ],
+    "canonical": "image"
   },
   {
     "format_id": {
@@ -301,7 +304,8 @@
           "description": "Text prompt describing the desired creative"
         }
       }
-    ]
+    ],
+    "canonical": "image"
   },
   {
     "format_id": {
@@ -381,7 +385,8 @@
           "description": "Text prompt describing the desired creative"
         }
       }
-    ]
+    ],
+    "canonical": "image"
   },
   {
     "format_id": {
@@ -461,7 +466,8 @@
           "description": "Text prompt describing the desired creative"
         }
       }
-    ]
+    ],
+    "canonical": "image"
   },
   {
     "format_id": {
@@ -541,7 +547,8 @@
           "description": "Text prompt describing the desired creative"
         }
       }
-    ]
+    ],
+    "canonical": "image"
   },
   {
     "format_id": {
@@ -621,7 +628,8 @@
           "description": "Text prompt describing the desired creative"
         }
       }
-    ]
+    ],
+    "canonical": "image"
   },
   {
     "format_id": {
@@ -4866,6 +4874,7 @@
       "CREATIVE_ID",
       "CACHEBUSTER",
       "CLICK_URL"
-    ]
+    ],
+    "canonical": "agent_placement"
   }
 ]

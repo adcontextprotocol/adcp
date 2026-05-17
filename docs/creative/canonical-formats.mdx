@@ -958,6 +958,19 @@ This is a doc concern, not a schema concern. The schema is more strict than the 
 | Phase 4 | ⚠️ MUST ship alongside 3.1.0 beta | Reference SDK codegen (TypeScript first, then Python), server-side flatten wrapper reference implementation, platform_extensions URI+digest fetch+cache helper, first-class typed accessors for `production_window_business_days` and other slot-level scheduling hints (otherwise adopters dig them out of the format blob and lose the v1↔v2 ergonomic win). Without Phase 4, adopters cannot consume canonical-formats cleanly — the typed-tagged-union ergonomics this PR's design earns require codegen to deliver. Without the flatten wrapper, walled gardens stay v1-only and `list_creative_formats` reality skews; with it, `format_ids` is auto-derived from `format_options` and migration is invisible to v1 consumers. **The schemas are shippable today; the SDK work is the gating dependency for adopter consumption and MUST land alongside the 3.1.0 beta, not after.** |
 | Native canonical | TBD | Deferred to 3.2 after TemplateCreative + OpenRTB Native 1.2 audit |
 
+## Empirical projection coverage
+
+The AAO catalog at `creative.adcontextprotocol.org` (the published v1 format library in `server/src/creative-agent/reference-formats.json`) has **41 of 57 entries** (72%) annotated with `canonical: <format_kind>` — direct v1→v2 projection, no SDK guesswork. The remaining 16 fall into deliberate gaps the spec is explicit about rather than coverage shortfalls:
+
+- **2 entries** (`native_standard`, `native_content`) — deferred to 3.2 pending the native canonical decision (above).
+- **3 entries** (`broadcast_spot_15s/30s/60s`) — broadcast TV's GRP/spot transaction model differs from web impressions; canonical decision deferred to 3.2.
+- **4 entries** (`dooh_billboard_*`, `dooh_transit_screen`) — DOOH's location-keyed measurement (Geopath, COMMB) doesn't reduce to web pixels; canonical decision deferred.
+- **7 entries** (`product_card_*`, `format_card_*`, `proposal_card_*`, `native_product_card`) — UI scaffolding for browsing catalogs in agent interfaces, not ad formats. To be moved out of `reference-formats.json` into a separate UI-scaffolding registry.
+
+The SDK side's v1→v2 projection (validated in [adcp-client #1815](https://github.com/adcontextprotocol/adcp-client/pull/1815)) reports **41/57 clean projection + 16/57 honest fail-closed** (`catalog_lacks_canonical_annotation`). Same architecture symmetry on v2→v1 — clean projection on the annotated subset, honest fail-closed via `v1_translatable: false` / `canonical_formats_only: true` for canonicals the spec is explicit about not having v1 forms.
+
+The honesty principle: SDKs don't shoehorn un-annotated catalog entries into wrong canonicals (`display_*_generative` → `image`, not `display_tag`; `native_mention` → `agent_placement` because the description literally matches; broadcast/DOOH stay un-annotated because the transaction model differs). Empirical coverage rises as the working group makes specific canonical decisions; it doesn't rise by guessing.
+
 ## Related
 
 - [v1 → canonical-formats migration guide](/docs/creative/canonical-formats-migration) — concrete migration paths for sellers, creative agents, buyers, and publisher-direct integrations
