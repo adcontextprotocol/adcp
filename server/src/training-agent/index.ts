@@ -306,6 +306,28 @@ const TENANT_SPECIALISMS: Record<typeof TENANT_IDS[number], readonly string[]> =
   brand: ['brand-rights'],
 };
 
+/** Maps each tenant to its brand-agent type for brand.json `agents[]`.
+ *  Values must be valid per `static/schemas/source/enums/brand-agent-type.json`.
+ *  `creative-builder` collapses to `creative` — the enum has no separate
+ *  template/generative type and the description distinguishes them. */
+const TENANT_BRAND_AGENT_TYPE: Record<typeof TENANT_IDS[number], 'sales' | 'signals' | 'governance' | 'creative' | 'brand'> = {
+  sales: 'sales',
+  signals: 'signals',
+  governance: 'governance',
+  creative: 'creative',
+  'creative-builder': 'creative',
+  brand: 'brand',
+};
+
+const TENANT_BRAND_AGENT_DESCRIPTION: Record<typeof TENANT_IDS[number], string> = {
+  sales: 'Training-agent sales tenant — non-guaranteed + guaranteed inventory across simulated publishers',
+  signals: 'Training-agent signals tenant — signal marketplace + owned signals across simulated providers',
+  governance: 'Training-agent governance tenant — spend authority, delivery monitoring, property/collection lists, content standards',
+  creative: 'Training-agent creative tenant — creative ad server',
+  'creative-builder': 'Training-agent creative-builder tenant — creative template + generative',
+  brand: 'Training-agent brand tenant — brand rights and discovery',
+};
+
 export function createTrainingAgentRouter(): Router {
   const router = Router();
 
@@ -558,24 +580,12 @@ export function createTrainingAgentRouter(): Router {
     const agentBase = `${baseUrl}${req.baseUrl}`;
     const jwksUri = `${agentBase}/.well-known/jwks.json`;
 
-    const tenantAgentType: Record<typeof TENANT_IDS[number], string> = {
-      sales: 'sales',
-      signals: 'signals',
-      governance: 'governance',
-      creative: 'creative',
-      'creative-builder': 'creative',
-      brand: 'brand',
-    };
-
-    const tenantAgentDescription: Record<typeof TENANT_IDS[number], string> = {
-      sales: 'Training-agent sales tenant — non-guaranteed + guaranteed inventory across simulated publishers',
-      signals: 'Training-agent signals tenant — signal marketplace + owned signals across simulated providers',
-      governance: 'Training-agent governance tenant — spend authority, delivery monitoring, property/collection lists, content standards',
-      creative: 'Training-agent creative tenant — creative ad server',
-      'creative-builder': 'Training-agent creative-builder tenant — creative template + generative',
-      brand: 'Training-agent brand tenant — brand rights and discovery',
-    };
-
+    // Vary on the forwarding headers `getBaseUrl(req)` reads — a shared cache
+    // that keyed only on path would otherwise serve a poisoned host back to
+    // every subsequent caller (every agents[].url, jwks_uri, brands[0].url is
+    // derived from these headers). Same defense applies to `adagents.json`
+    // below.
+    res.setHeader('Vary', 'X-Forwarded-Host, X-Forwarded-Proto, Host');
     res.setHeader('Cache-Control', 'public, max-age=300');
     res.json({
       $schema: '/schemas/brand.json',
@@ -585,11 +595,11 @@ export function createTrainingAgentRouter(): Router {
         name: 'Ad Context Protocol',
         architecture: 'branded_house',
         agents: TENANT_IDS.map(tenantId => ({
-          type: tenantAgentType[tenantId],
+          type: TENANT_BRAND_AGENT_TYPE[tenantId],
           id: `aao_training_agent_${tenantId.replace(/-/g, '_')}`,
           url: `${agentBase}/${tenantId}/mcp`,
           jwks_uri: jwksUri,
-          description: tenantAgentDescription[tenantId],
+          description: TENANT_BRAND_AGENT_DESCRIPTION[tenantId],
         })),
       },
       brands: [
