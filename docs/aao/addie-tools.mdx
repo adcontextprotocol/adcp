@@ -1578,6 +1578,30 @@ The member must be signed in.
 
 *Source: `server/src/addie/mcp/billing-tools.ts`*
 
+### `publish_brand_canonical_document`
+
+Generate a Brand Canonical Document (brand.json variant 5) for a sub-brand team. Builds a JSON document with the brand's identity fields (logos/colors/tone/etc.), validates it against the brand.json schema, and returns the document plus the path where it should be hosted (https://{domain}/.well-known/brand.json). Returns validation errors instead of an invalid document. Does NOT upload — the operator hosts the returned JSON themselves.
+
+*Source: `server/src/addie/mcp/brand-canonical-tools.ts`*
+
+### `add_to_brand_refs`
+
+Append a portfolio_entry pointer to a House Portfolio's brand_refs[]. Either pass the house's brand.json directly (house_brand_json) or have the tool fetch it (house_domain). Enforces the cross-array uniqueness invariants from the spec: a brand_id MUST NOT appear in both brands[] and brand_refs[], and each brand_id/domain MUST be unique within brand_refs[]. Returns the updated brand.json or a clear validation error.
+
+*Source: `server/src/addie/mcp/brand-canonical-tools.ts`*
+
+### `check_mutual_assertion`
+
+Given a leaf brand's domain, fetch its canonical document and its claimed house's portfolio (following House Redirects on the house side, up to 3 hops, per the Conformance section). Classify the relationship trust into: mutual (both sides reciprocate), leaf_only (leaf claims house, house silent), house_only (house claims leaf, leaf silent — returned by checking the house if a different caller already has it), standalone (no house_domain), or unverifiable (one or both fetches failed). Returns the house's contact.email when present so the caller can pass it into notify_pending_verification on leaf_only edges.
+
+*Source: `server/src/addie/mcp/brand-canonical-tools.ts`*
+
+### `notify_pending_verification`
+
+Send the SHOULD-level notification email to the house's contact.email when a leaf_only edge is detected. Rate-limited to one notification per {leaf, house} pair per 24 hours, persisted in the brand_assertion_notifications table so concurrent callers can't double-send. Behind a feature flag (BRAND_ASSERTION_EMAIL_ENABLED) — defaults to log-only so operators can review the would-have-sent payload before enabling the live send path.
+
+*Source: `server/src/addie/mcp/brand-canonical-tools.ts`*
+
 ### `parse_brand_properties`
 
 Preview a smart-paste import for a brand the operator owns. Takes pasted text (a list of domains and app bundles) or a URL whose body should be fetched, and returns the structured property list that would be imported. The user MUST confirm before you call import_brand_properties — show them the parsed list first. Caller's organization must own the brand domain.

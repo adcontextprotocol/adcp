@@ -13,8 +13,9 @@ import { Router, type Request, type Response, type RequestHandler } from 'expres
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { createLogger } from '../../logger.js';
 import { runWithSessionContext, flushDirtySessions } from '../state.js';
-import { createRegistryHolder, resolveTenantHost, type RegistryHolder } from './registry.js';
+import { createRegistryHolder, getCanonicalBase, resolveTenantHost, type RegistryHolder } from './registry.js';
 import { getAggregatedPublicJwks } from './signing.js';
+import { buildSignedRevocationList } from '../governance-revocations.js';
 
 const logger = createLogger('training-agent-tenant-router');
 
@@ -287,5 +288,22 @@ export function mountTenantRoutes(
   parent.get('/.well-known/brand.json', (_req, res) => {
     res.setHeader('Cache-Control', 'public, max-age=300');
     res.json({ jwks: getAggregatedPublicJwks() });
+  });
+
+  // Signed governance revocation list. Spec requires governance agents to
+  // publish this at `{origin of iss}/.well-known/governance-revocations.json`;
+  // sellers and auditors poll on the cadence declared in `next_update` and
+  // reject any token whose jti or kid appears in the list. The training
+  // agent's list is signed-empty by design — the sandbox does not exercise
+  // revocation but the endpoint must exist for the JWS profile's fetch-and-
+  // parse conformance tests to pass.
+  parent.get('/.well-known/governance-revocations.json', async (_req, res, next) => {
+    try {
+      const signed = await buildSignedRevocationList(`${getCanonicalBase()}/governance`);
+      res.setHeader('Cache-Control', 'public, max-age=60');
+      res.json(signed);
+    } catch (err) {
+      next(err);
+    }
   });
 }

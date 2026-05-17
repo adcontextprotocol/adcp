@@ -30,6 +30,36 @@ A second axis — **AAO Verified (Sandbox)** — verifies the seller's real prod
 
 The two qualifiers share one brand mark — **AAO Verified** — and an agent can earn either or both. **(Spec) and (Sandbox) are independent**: each independently demonstrates conformance through different evidence. (Spec) attests wire-format conformance against any registered endpoint; (Sandbox) attests the production code path correctly tolerates sandbox-flagged traffic. See [AAO Verified](/docs/building/verification/aao-verified) for the qualifier model and the [Sandbox framing verdict](https://github.com/adcontextprotocol/adcp/issues/4379); the rest of this page indexes the storyboards that back both qualifiers.
 
+## Test surfaces and the storyboard loop
+
+Every seller exposes a *test surface* — the mechanism that lets a storyboard runner exercise the seller's tools deterministically without triggering real-world side effects. The test surface is what (Spec) is graded against. How a seller stands up that surface depends on where their state-of-record lives; the implementation differs, the goal does not:
+
+| Where state-of-record lives | How the test loop closes |
+|---|---|
+| Local DB only (typically SSPs, creative agents) | The storyboard runner writes fixtures via `comply_test_controller.seed_*`; the seller's read handlers consume the same store. The seed → read loop closes naturally. |
+| Upstream system the seller does not control (DSPs proxying to platforms, retail-media networks reading retailer catalogs, signals brokers) | Seeded writes are dead to the read handler. The TypeScript SDK ships a `TestControllerBridge` that runs the real adapter call first (so a broken upstream call still fails the gate), then merges seeded fixtures into the response. |
+| Mixed (some tools local, some upstream) | Both, per tool. |
+
+Both paths earn `(Spec)` — both prove the seller's wire format matches the storyboards. The bridge is **one implementation** of the test-surface pattern, not a separate seller category. A state-local seller without wired seeds and an upstream-proxy seller without a wired bridge are in the same position: storyboards cannot run end-to-end against them. Neither category is what `(Sandbox)` attests; `(Sandbox)` is the separate axis covering whether the seller's production stack honors `account.sandbox: true` without real-world side effects.
+
+### Distinguishing fixture-merged from upstream-derived responses
+
+When a response passes through the SDK's `TestControllerBridge`, the SDK stamps a `_bridge: { callback, tool, merged_count }` marker on the response. Marker presence on a step means the response content was merged from a seeded fixture after the seller's handler returned; marker absence means the response came from the seller's adapter end-to-end (or from a local DB the runner seeded directly). The marker is advisory metadata for runners and downstream leaderboards — it is **not** part of the wire contract. Sellers MUST NOT emit it, and conformance checks ignore it. The leading underscore marks the field as SDK/runner-stamped metadata reserved for testing tooling; future fields with the same prefix follow the same rule.
+
+Marker design: [`adcp-client#1775`](https://github.com/adcontextprotocol/adcp-client/issues/1775). Shipped: [`adcp-client#1786`](https://github.com/adcontextprotocol/adcp-client/pull/1786). Leaderboard policy that consumes the marker: [`adcp-client#1782`](https://github.com/adcontextprotocol/adcp-client/issues/1782).
+
+### Three signals — don't conflate them
+
+Adopters often read these three controls as the same thing. They answer different questions:
+
+| Signal | Question it answers |
+|---|---|
+| Test controller availability (`comply_test_controller` in `tools/list`) | "Has the seller exposed deterministic-mode forces?" |
+| Sandbox flag (`account.sandbox` on requests) | "Is the targeted account a sandbox account, with no real-world side effects?" |
+| Bridge participation (`_bridge` marker on a response) | "Did this response come from the adapter's upstream call, or from a fixture the SDK merged in?" |
+
+These are **runtime controls** on individual storyboard steps — distinct from the `(Spec)` and `(Sandbox)` verification qualifiers, which describe what a storyboard pass *attests* over time. A storyboard pass can carry any combination of the three signals.
+
 ## Storyboards are the truth
 
 Rather than restate every MUST in prose — which would inevitably drift from the executable suite — **the storyboards ARE the conformance specification.** This document is a navigational index to them, grouped by the declaration that obligates the storyboard to run.

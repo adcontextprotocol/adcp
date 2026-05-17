@@ -104,7 +104,7 @@
           },
           "policy_id": {
             "type": "string",
-            "description": "ID of the policy that triggered this finding. May reference a registry policy (with source: registry) or a bespoke inline policy (with source: inline). Bespoke policy_ids are unique within their authoring container; use source_plan_id when findings aggregate across multiple plans (e.g., portfolio evaluations).",
+            "description": "ID of the policy that triggered this finding. May reference a registry policy (with source: registry) or a bespoke inline policy (with source: inline). Bespoke policy_ids are unique within their authoring container; use source_plan_id when findings aggregate across multiple plans (e.g., portfolio evaluations). When the violation traces to a producer-tagged surface (feature-requirement, creative-feature-result, or validation-result feature) carrying policy_id, governance agents SHOULD echo that policy_id here for end-to-end traceability, and MUST NOT invent a policy_id that wasn't present on the originating surface. See /docs/governance/policy-attribution.",
             "$comment": "x-entity deliberately omitted — a finding's policy_id can reference EITHER a governance_registry_policy or a governance_inline_policy depending on which policy matched. Resolution requires a sibling source discriminator the lint can't see from this leaf. Storyboards that capture from findings must re-annotate at the consume site (see #2685 for the registry/inline split)."
           },
           "source_plan_id": {

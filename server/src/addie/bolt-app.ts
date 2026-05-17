@@ -121,6 +121,7 @@ import { ILLUSTRATION_TOOLS, createIllustrationToolHandlers } from './mcp/illust
 // DIRECTORY_TOOLS registered via registerBaselineTools()
 import { SI_HOST_TOOLS, createSiHostToolHandlers } from './mcp/si-host-tools.js';
 import { BRAND_TOOLS, createBrandToolHandlers } from './mcp/brand-tools.js';
+import { BRAND_CANONICAL_TOOLS, createBrandCanonicalToolHandlers } from './mcp/brand-canonical-tools.js';
 import { BRAND_PROPERTY_TOOLS, createBrandPropertyToolHandlers } from './mcp/brand-property-tools.js';
 import { COLLABORATION_TOOLS, createCollaborationToolHandlers } from './mcp/collaboration-tools.js';
 import { SOCIAL_DRAFT_TOOLS, createSocialDraftToolHandlers } from './mcp/social-draft-tools.js';
@@ -1051,6 +1052,15 @@ async function createUserScopedTools(
   const brandHandlers = createBrandToolHandlers();
   allTools.push(...BRAND_TOOLS);
   for (const [name, handler] of brandHandlers) {
+    allHandlers.set(name, handler);
+  }
+
+  // Add brand-canonical-document tools (#4527 — distributed brand.json
+  // authoring: publish canonical docs, add brand_refs pointers, check
+  // mutual assertion, notify houses on leaf-only edges).
+  const brandCanonicalHandlers = createBrandCanonicalToolHandlers();
+  allTools.push(...BRAND_CANONICAL_TOOLS);
+  for (const [name, handler] of brandCanonicalHandlers) {
     allHandlers.set(name, handler);
   }
 
