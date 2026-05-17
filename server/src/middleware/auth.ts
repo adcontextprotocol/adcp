@@ -1339,14 +1339,16 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
     // cross-org admin route. Surfaced by security review on #4498.
     //
     // KNOWN GAP: routes that target an org via a differently-named param
-    // (`:id`, `:userId`, profile UUIDs) silently skip this gate. The
-    // member-profile admin PUT/DELETE and admin/users routes carry their
-    // own per-route checks; cousin routes (`admin/feeds.ts`,
-    // `admin/notification-channels.ts`) are tracked in the follow-up
-    // audit issue and should either rename params to `:orgId` or add
-    // explicit per-route checks. Pushing this default catches every
-    // admin route that uses `:orgId` for free, while leaving the
-    // higher-risk routes explicit.
+    // (`:id`, `:userId`, profile UUIDs) silently skip this default gate.
+    // Member-profile admin PUT/DELETE uses `refuseCrossTenantAdminApiKey`
+    // after a profile-id → org lookup; `/api/admin/users/*` uses the
+    // `requireGlobalAdmin` chain (which composes a global-state refusal).
+    // Cousin routes that operate on global state via `:id` (notably
+    // `admin/feeds.ts` and `admin/notification-channels.ts`) are tracked
+    // in #4501 and should adopt `requireGlobalAdmin` once cross-tenant
+    // exposure is escalated. Pushing this default catches every admin
+    // route that uses `:orgId` for free, while leaving the higher-risk
+    // routes explicit.
     const targetOrgId = req.params.orgId;
     if (targetOrgId && apiKey.organizationId !== targetOrgId) {
       logger.warn(
@@ -1574,6 +1576,29 @@ export function refuseAnyApiKeyOnGlobalAdmin(
   });
   return true;
 }
+
+/**
+ * Composite middleware chain for admin routes that operate on cross-
+ * org / global state. Wraps `requireAuth` + a global-admin gate +
+ * `requireAdmin` so every route mounted under it inherits the cross-
+ * tenant-API-key refusal by default — preventing the regression class
+ * where a new admin route is added but the per-handler call is
+ * forgotten. Use as `router.<verb>('/path', ...requireGlobalAdmin, handler)`.
+ *
+ * Surfaced by both code-review and security-review on PR #4646: 7 of
+ * the 13 routes on `/api/admin/users` originally relied on
+ * `requireAdmin` alone and were exposed to cross-tenant `admin:*` keys
+ * despite operating on global state.
+ */
+const refuseAnyApiKeyMiddleware: import('express').RequestHandler = (req, res, next) => {
+  if (refuseAnyApiKeyOnGlobalAdmin(req, res)) return;
+  next();
+};
+export const requireGlobalAdmin: import('express').RequestHandler[] = [
+  requireAuth,
+  refuseAnyApiKeyMiddleware,
+  requireAdmin,
+];
 
 
 /**

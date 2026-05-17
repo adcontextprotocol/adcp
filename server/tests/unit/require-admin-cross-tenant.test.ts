@@ -226,3 +226,69 @@ describe('refuseCrossTenantAdminApiKey + refuseAnyApiKeyOnGlobalAdmin helpers', 
     expect(res.status).toBe(200);
   });
 });
+
+describe('requireGlobalAdmin composite middleware', () => {
+  // The composite chain wraps `requireAuth` + the cross-tenant refusal
+  // + `requireAdmin` so a router can opt into "this whole surface is
+  // global-state admin only" via `...requireGlobalAdmin` instead of
+  // remembering to add a per-handler gate. The 7 originally-unprotected
+  // `/api/admin/users` routes are the motivating case (security review
+  // on #4646: per-handler enforcement risked silent regression every
+  // time a new route was added). Full end-to-end coverage of the
+  // chain belongs in the admin-users integration tests where real
+  // requireAuth has a real session to validate; here we pin the
+  // composition shape so a future refactor doesn't silently re-order
+  // or drop a middleware from the chain.
+  it('is a 3-element middleware array in the documented order', async () => {
+    const { requireGlobalAdmin, requireAuth, requireAdmin } = await import(
+      '../../src/middleware/auth.js'
+    );
+    expect(requireGlobalAdmin).toHaveLength(3);
+    // First and last are the existing requireAuth / requireAdmin
+    // exports; the middle is the chain's new contribution. Pinning
+    // identities here means a future "I'll just swap in a different
+    // requireAuth" refactor has to update the test, surfacing the
+    // change explicitly.
+    expect(requireGlobalAdmin[0]).toBe(requireAuth);
+    expect(requireGlobalAdmin[2]).toBe(requireAdmin);
+    expect(typeof requireGlobalAdmin[1]).toBe('function');
+  });
+
+  it('the middle middleware refuses an apiKey-bearing request and short-circuits next()', async () => {
+    const { requireGlobalAdmin } = await import('../../src/middleware/auth.js');
+    const middle = requireGlobalAdmin[1];
+
+    let nextCalled = false;
+    const calls: { status?: number; body?: unknown } = {};
+    const req = { apiKey: { id: 'k', organizationId: 'org_caller', permissions: ['admin:*'] }, path: '/x', method: 'GET' } as any;
+    const res = {
+      status(code: number) {
+        calls.status = code;
+        return this;
+      },
+      json(body: unknown) {
+        calls.body = body;
+        return this;
+      },
+    } as any;
+    await middle(req, res, () => {
+      nextCalled = true;
+    });
+    expect(nextCalled).toBe(false);
+    expect(calls.status).toBe(403);
+    expect((calls.body as { error?: string })?.error).toBe('global_admin_required');
+  });
+
+  it('the middle middleware calls next() when no apiKey is present', async () => {
+    const { requireGlobalAdmin } = await import('../../src/middleware/auth.js');
+    const middle = requireGlobalAdmin[1];
+
+    let nextCalled = false;
+    const req = { path: '/x', method: 'GET' } as any;
+    const res = {} as any;
+    await middle(req, res, () => {
+      nextCalled = true;
+    });
+    expect(nextCalled).toBe(true);
+  });
+});
