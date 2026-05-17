@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/registries/v1-canonical-mapping.json",
   "title": "v1 → v2 Canonical Format Mapping Registry",
-  "description": "Authoritative AAO-published mapping from v1 named formats to v2 canonical declarations. Used by SDKs to project the v1 wire shape into v2 canonical declarations during the migration window.\n\n**Direction of truth (normative).** This registry is authoritative for **v1 → v2 projection only**. v2 → v1 projection MUST rely on `v1_format_ref` on the v2 `ProductFormatDeclaration` — sellers assert the v1 pairing explicitly. SDKs MUST NOT synthesize a v1 `format_id` from the registry by inverting structural matches: the registry's `id` slugs lack the `agent_url` half of a `FormatId`, and registry entries with `format_id_glob: '*'` or pure-structural matches have no single literal to invert to. SDKs that synthesize unilaterally produce inter-SDK divergence on structurally-equal values (different SDKs pick different `agent_url` and `id` patterns for the same v2 declaration). When a v2 declaration carries no `v1_format_ref` and a v1-only buyer queries the product, the SDK reports the canonical as v1-unreachable via `FORMAT_DECLARATION_V1_AMBIGUOUS` and lets the buyer surface it to the seller; the seller's path is to add `v1_format_ref` to disambiguate.\n\nSDKs MAY do best-effort inversion ONLY when a registry entry is literally invertible (a `format_id_glob` with no `*` wildcard, e.g., `iab_mrec_300x250`) AND the seller hasn't authored a contradicting `v1_format_ref` — but the projection is non-normative; downstream consumers MUST NOT depend on it.\n\n**Resolution order** (per RFC #3305 amendment #3767, normative):\n1. **Authoritative v2→v1 link**: if any v2 `ProductFormatDeclaration` on the same product carries `v1_format_ref` pointing at this v1 format_id, use that v2 declaration. Highest priority — seller asserts the link directly. SDKs SHOULD run the *narrows* check (canonical-formats.mdx 'Narrows — formal definition') between the v2 declaration's `params` and the referenced v1 format's `requirements`; on conflict, surface `FORMAT_DECLARATION_DIVERGENT` on the `get_products` response `errors[]`. Without the narrowing check, `v1_format_ref` is a hint rather than a contract.\n2. **Seller-asserted on the v1 file**: if the v1 format declaration carries an explicit `canonical` field, use it. (Note: `canonical_parameters` on the v1 file is deprecated for 3.1; SDKs reading 3.1 catalogs MUST still honor it when present, but `v1_format_ref` is the path forward.)\n3. **Registry glob**: look up `format_id` in this registry's `format_id_glob` entries.\n4. **Structural match**: attempt structural match against this registry's `structural` entries. A successful structural match yields a *family-level* identification only (e.g., 'this is a `video_vast`') — it does NOT yield a specific v1 `format_id`. SDKs use structural match for v1 → v2 projection (the inbound direction) but MUST NOT invert it to a v1 `format_id` on the outbound path.\n5. **Ambiguous family**: if step 4 succeeded but the matched entries are family-only (pure structural, no invertible literal), the canonical is **v1-unreachable for THIS specific product** unless the seller authors `v1_format_ref`. SDKs MUST surface `FORMAT_DECLARATION_V1_AMBIGUOUS` via `errors[]` augmentation rather than synthesize a plausible-but-arbitrary v1 `format_id`. Distinct from canonical-level v1-unreachability (a canonical with `v1_translatable: false` — `agent_placement`, `sponsored_placement`, `responsive_creative`, `image_carousel` — never has any v1 form regardless of registry coverage).\n6. **Fail closed**: SDK MUST NOT emit `format_options` for products carrying this format. SDKs MUST augment the response's `errors[]` array with an entry carrying `source: \"sdk\"`, `sdk_id: \"<package>@<version>\"`, `code: \"FORMAT_PROJECTION_FAILED\"`, `field: \"products[N].format_ids[K]\"`, and `error.details: { format_id, product_id, resolution_failure: \"no_explicit_canonical\" | \"no_registry_match\" | \"no_structural_match\" }`. Single mandated surface (`errors[]` augmentation) — lint-output channels are NOT acceptable; the multi-hop agent network needs warnings to propagate across SDK boundaries via the wire response. Logger-only warnings die in DEBUG. The advisory is non-fatal: the response stays 200/success, the product is still valid on the v1 path, only the v2 `format_options` projection is absent. Consumer-side counterpart to the producer SHOULD (sellers should add a v2 declaration with `v1_format_ref`, an explicit `canonical` field, or file a registry PR).\n\n**Match modes:**\n- `format_id_glob` — exact / glob match against the v1 `format_id.id` (the named-format identifier). Covers IAB-conventional sizes, named platform formats, common publisher conventions. Glob syntax: `*` matches any segment. **Namespace convention**: prefix with the source organization separated by underscore (e.g., `iab_mrec_300x250`, `meta_reels`, `daast_audio_30s`) — the format_id wire pattern (`format-id.json#id: ^[a-zA-Z0-9_-]+$`) does NOT permit forward slashes, so namespaces use underscore separators rather than path-style.\n- `structural` — match against the format's slot shape, asset types, and version constraints. Catches custom v1 formats that are structurally a standard format under a different name (e.g., `acme_homepage_300x250` is structurally an IAB MREC).\n\n**Alias collision precedence (normative).** When a v1 format's `assets[i]` carries multiple `asset_group_id` aliases that resolve to the same canonical asset_group (e.g., two slots both aliasing to `landing_page_url`), the SDK MUST resolve deterministically: the v1 format's `assets[*]` array order is authoritative — the first slot in declaration order wins, subsequent collisions are dropped from the projected v2 manifest and surfaced via `FORMAT_PROJECTION_FAILED` with `error.details: { collision_kind: \"asset_group_id_alias\", asset_group_id, winning_slot_id, dropped_slot_ids }`. SDKs MUST NOT silently pick one and discard the other without surfacing — silent picking creates inter-SDK divergence. Producers SHOULD avoid the collision by deduplicating aliased slots or using distinct `asset_group_id` values when both slots are semantically meaningful.\n\n**Governance**: same vocabulary-governance rules as `asset-group-vocabulary.json` and `format-shape-vocabulary.json` — additions land via PR with rationale + ≥1 reference adopter; AAO maintainer review; versioned + content-digested. Entries are additive; once published they are not removed (they may be marked `deprecated: true` if superseded).\n\n**Initial scope (3.1)**: ~15 unambiguous entries covering IAB display sizes, VAST 4.x, DAAST 1.x. Subsequent PRs expand coverage as adopter feedback surfaces patterns. The full v1-format audit dataset (~76% of formats from the 12-platform / 86-format audit in #3305) seeds the long-term roadmap.\n\nDigest the file content (sha256) when emitting in capabilities responses or referencing from SDK output. Buyers cache by `version` + `digest`.",
+  "description": "Authoritative AAO-published mapping from v1 named formats to v2 canonical declarations. Used by SDKs to project the v1 wire shape into v2 canonical declarations during the migration window.\n\n**Direction of truth (normative).** This registry is authoritative for **v1 → v2 projection only**. v2 → v1 projection MUST rely on `v1_format_ref` on the v2 `ProductFormatDeclaration` — sellers assert the v1 pairing explicitly. SDKs MUST NOT synthesize a v1 `format_id` from the registry by inverting structural matches: the registry's `id` slugs lack the `agent_url` half of a `FormatId`, and registry entries with `format_id_glob: '*'` or pure-structural matches have no single literal to invert to. SDKs that synthesize unilaterally produce inter-SDK divergence on structurally-equal values (different SDKs pick different `agent_url` and `id` patterns for the same v2 declaration). When a v2 declaration carries no `v1_format_ref` and a v1-only buyer queries the product, the SDK reports the canonical as v1-unreachable via `FORMAT_DECLARATION_V1_AMBIGUOUS` and lets the buyer surface it to the seller; the seller's path is to add `v1_format_ref` to disambiguate.\n\nSDKs MAY do best-effort inversion ONLY when a registry entry is literally invertible (a `format_id_glob` with no `*` wildcard, e.g., `iab_mrec_300x250`) AND the seller hasn't authored a contradicting `v1_format_ref` — but the projection is non-normative; downstream consumers MUST NOT depend on it.\n\n**Resolution order** (per RFC #3305 amendment #3767, normative):\n1. **Authoritative v2→v1 link**: if any v2 `ProductFormatDeclaration` on the same product carries `v1_format_ref` pointing at this v1 format_id, use that v2 declaration. Highest priority — seller asserts the link directly. SDKs SHOULD run the *narrows* check (canonical-formats.mdx 'Narrows — formal definition') between the v2 declaration's `params` and the referenced v1 format's `requirements`; on conflict, surface `FORMAT_DECLARATION_DIVERGENT` on the `get_products` response `errors[]`. Without the narrowing check, `v1_format_ref` is a hint rather than a contract.\n2. **Seller-asserted on the v1 file**: if the v1 format declaration carries an explicit `canonical` field, use it. (Note: `canonical_parameters` on the v1 file is deprecated for 3.1; SDKs reading 3.1 catalogs MUST still honor it when present, but `v1_format_ref` is the path forward.)\n3. **Registry glob**: look up `format_id` in this registry's `format_id_glob` entries.\n4. **Structural match**: attempt structural match against this registry's `structural` entries. A successful structural match yields a *family-level* identification only (e.g., 'this is a `video_vast`') — it does NOT yield a specific v1 `format_id`. SDKs use structural match for v1 → v2 projection (the inbound direction) but MUST NOT invert it to a v1 `format_id` on the outbound path.\n5. **Ambiguous family**: if step 4 succeeded but the matched entries are family-only (pure structural, no invertible literal), the canonical is **v1-unreachable for THIS specific product** unless the seller authors `v1_format_ref`. SDKs MUST surface `FORMAT_DECLARATION_V1_AMBIGUOUS` via `errors[]` augmentation rather than synthesize a plausible-but-arbitrary v1 `format_id`. Distinct from canonical-level v1-unreachability (a canonical with `v1_translatable: false` — `agent_placement`, `sponsored_placement`, `responsive_creative`, `image_carousel` — never has any v1 form regardless of registry coverage).\n6. **Fail closed**: SDK MUST NOT emit `format_options` for products carrying this format. SDKs MUST augment the response's `errors[]` array with an entry carrying `source: \"sdk\"`, `sdk_id: \"<package>@<version>\"`, `code: \"FORMAT_PROJECTION_FAILED\"`, `field: \"products[N].format_ids[K]\"`, and `error.details: { format_id, product_id, resolution_failure: \"no_explicit_canonical\" | \"no_registry_match\" | \"no_structural_match\" }`. Single mandated surface (`errors[]` augmentation) — lint-output channels are NOT acceptable; the multi-hop agent network needs warnings to propagate across SDK boundaries via the wire response. Logger-only warnings die in DEBUG. The advisory is non-fatal: the response stays 200/success, the product is still valid on the v1 path, only the v2 `format_options` projection is absent. Consumer-side counterpart to the producer SHOULD (sellers should add a v2 declaration with `v1_format_ref`, an explicit `canonical` field, or file a registry PR).\n\n**Match modes:**\n- `format_id_glob` — exact / glob match against the v1 `format_id.id`. **Reserved for v1 conventions that aren't published in the AAO catalog** (platform-specific names like `meta_reels` where the platform hasn't adopted AdCP and no catalog file exists). For AAO-catalog-published formats (display_300x250_image, video_vast_30s, audio_standard_30s, etc.), the catalog entry's own `canonical:` annotation handles projection directly via resolution-order step 2 — adding redundant literal registry entries for those would just duplicate the catalog. The whole point of canonical-formats is parametrization: ONE `image` canonical with width/height params, not 8 per-size variants. Glob syntax: `*` matches any segment.\n- `structural` — match against the format's slot shape, asset types, and version constraints. The PRIMARY fallback for v1 wire traffic — catches custom v1 formats (a publisher's `acme_homepage_300x250` is structurally an IAB MREC) without enumerating every possible v1 name. v1 sellers in the wild naming things their own way are handled here, not by literal globs.\n\n**Alias collision precedence (normative).** When a v1 format's `assets[i]` carries multiple `asset_group_id` aliases that resolve to the same canonical asset_group (e.g., two slots both aliasing to `landing_page_url`), the SDK MUST resolve deterministically: the v1 format's `assets[*]` array order is authoritative — the first slot in declaration order wins, subsequent collisions are dropped from the projected v2 manifest and surfaced via `FORMAT_PROJECTION_FAILED` with `error.details: { collision_kind: \"asset_group_id_alias\", asset_group_id, winning_slot_id, dropped_slot_ids }`. SDKs MUST NOT silently pick one and discard the other without surfacing — silent picking creates inter-SDK divergence. Producers SHOULD avoid the collision by deduplicating aliased slots or using distinct `asset_group_id` values when both slots are semantically meaningful.\n\n**Governance**: same vocabulary-governance rules as `asset-group-vocabulary.json` and `format-shape-vocabulary.json` — additions land via PR with rationale + ≥1 reference adopter; AAO maintainer review; versioned + content-digested. Entries are additive; once published they are not removed (they may be marked `deprecated: true` if superseded).\n\n**Initial scope (3.1)**: ~15 unambiguous entries covering IAB display sizes, VAST 4.x, DAAST 1.x. Subsequent PRs expand coverage as adopter feedback surfaces patterns. The full v1-format audit dataset (~76% of formats from the 12-platform / 86-format audit in #3305) seeds the long-term roadmap.\n\nDigest the file content (sha256) when emitting in capabilities responses or referencing from SDK output. Buyers cache by `version` + `digest`.",
   "version": "1.0.0",
   "last_updated": "2026-05-01",
   "type": "object",
@@ -102,94 +102,9 @@
   },
   "mappings": [
     {
-      "v1_pattern": { "format_id_glob": "display_300x250_image" },
-      "v2": { "canonical": "image", "parameters": { "width": 300, "height": 250 } },
-      "notes": "IAB Universal Ad Package — Medium Rectangle (300×250). Industry standard since 2005. Published by the AAO catalog at https://creative.adcontextprotocol.org/."
-    },
-    {
-      "v1_pattern": { "format_id_glob": "display_728x90_image" },
-      "v2": { "canonical": "image", "parameters": { "width": 728, "height": 90 } },
-      "notes": "IAB Universal Ad Package — Leaderboard (728×90). Published by the AAO catalog."
-    },
-    {
-      "v1_pattern": { "format_id_glob": "display_160x600_image" },
-      "v2": { "canonical": "image", "parameters": { "width": 160, "height": 600 } },
-      "notes": "IAB Universal Ad Package — Wide Skyscraper (160×600). Published by the AAO catalog."
-    },
-    {
-      "v1_pattern": { "format_id_glob": "display_970x250_image" },
-      "v2": { "canonical": "image", "parameters": { "width": 970, "height": 250 } },
-      "notes": "IAB Rising Star — Billboard (970×250). Often used for premium homepage units. Published by the AAO catalog."
-    },
-    {
-      "v1_pattern": { "format_id_glob": "display_300x600_image" },
-      "v2": { "canonical": "image", "parameters": { "width": 300, "height": 600 } },
-      "notes": "IAB Universal Ad Package — Half Page (300×600). Published by the AAO catalog."
-    },
-    {
-      "v1_pattern": { "format_id_glob": "display_320x50_image" },
-      "v2": { "canonical": "image", "parameters": { "width": 320, "height": 50 } },
-      "notes": "IAB mobile portrait banner (320×50). Published by the AAO catalog."
-    },
-    {
-      "v1_pattern": { "format_id_glob": "display_336x280_image" },
-      "v2": { "canonical": "image", "parameters": { "width": 336, "height": 280 } },
-      "notes": "IAB Universal Ad Package — Large Rectangle (336×280). Published by the AAO catalog."
-    },
-    {
-      "v1_pattern": { "format_id_glob": "display_300x250_html" },
-      "v2": { "canonical": "html5", "parameters": { "width": 300, "height": 250 } },
-      "notes": "IAB Medium Rectangle delivered as HTML5 zip bundle. Sibling of display_300x250_image; differs in tracking model (MRAID + OM-SDK + click-tag macro). Published by the AAO catalog."
-    },
-    {
-      "v1_pattern": { "format_id_glob": "display_728x90_html" },
-      "v2": { "canonical": "html5", "parameters": { "width": 728, "height": 90 } },
-      "notes": "IAB Leaderboard delivered as HTML5 zip bundle. Published by the AAO catalog."
-    },
-    {
-      "v1_pattern": { "format_id_glob": "display_js" },
-      "v2": { "canonical": "display_tag" },
-      "notes": "Generic third-party display tag (JS / iframe). Published by the AAO catalog as a non-dimensioned format; products narrow dimensions via parameters."
-    },
-    {
-      "v1_pattern": { "format_id_glob": "video_vast" },
-      "v2": { "canonical": "video_vast" },
-      "notes": "Generic VAST video. Published by the AAO catalog; products narrow vast_version / duration / dimensions via parameters."
-    },
-    {
-      "v1_pattern": { "format_id_glob": "video_vast_30s" },
-      "v2": { "canonical": "video_vast", "parameters": { "duration_ms_exact": 30000 } },
-      "notes": "Standard 30-second VAST. The most-deployed v1 video format. Published by the AAO catalog."
-    },
-    {
-      "v1_pattern": { "format_id_glob": "audio_standard_15s" },
-      "v2": { "canonical": "audio_hosted", "parameters": { "duration_ms_exact": 15000 } },
-      "notes": "Standard 15-second hosted audio. Published by the AAO catalog."
-    },
-    {
-      "v1_pattern": { "format_id_glob": "audio_standard_30s" },
-      "v2": { "canonical": "audio_hosted", "parameters": { "duration_ms_exact": 30000 } },
-      "notes": "Standard 30-second hosted audio. Published by the AAO catalog."
-    },
-    {
-      "v1_pattern": { "format_id_glob": "audio_standard_60s" },
-      "v2": { "canonical": "audio_hosted", "parameters": { "duration_ms_exact": 60000 } },
-      "notes": "Standard 60-second hosted audio. Published by the AAO catalog."
-    },
-    {
-      "v1_pattern": { "format_id_glob": "video_standard_15s" },
-      "v2": { "canonical": "video_hosted", "parameters": { "duration_ms_exact": 15000 } },
-      "notes": "Standard 15-second hosted video. Published by the AAO catalog."
-    },
-    {
-      "v1_pattern": { "format_id_glob": "video_standard_30s" },
-      "v2": { "canonical": "video_hosted", "parameters": { "duration_ms_exact": 30000 } },
-      "notes": "Standard 30-second hosted video. Published by the AAO catalog."
-    },
-    {
       "v1_pattern": { "format_id_glob": "meta_reels" },
       "v2": { "canonical": "video_hosted", "parameters": { "orientation": "vertical", "aspect_ratio": "9:16" } },
-      "notes": "Meta Reels vertical short-form video. Platform-specific format (lives on meta.example's agent_url, NOT the AAO catalog at creative.adcontextprotocol.org) because Meta-specific parameters and extensions narrow the canonical."
+      "notes": "Meta Reels vertical short-form video. Platform-specific format with no v1 catalog file (Meta hasn't adopted AdCP), so the registry is the only projection route. AAO-catalog-published formats use resolution-order step 2 (catalog entry's `canonical:` annotation) instead of registry literal entries; this entry is the platform-specific exception."
     },
     {
       "v1_pattern": { "structural": { "asset_types": ["vast"], "vast_versions": [">=4.0"] } },
