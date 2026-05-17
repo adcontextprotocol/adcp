@@ -495,25 +495,59 @@ Optimize for a seller-tracked delivery metric. No event source needed — the se
 | `clicks` | count/impression | 0.001 (0.1% CTR) | Link clicks, swipe-throughs, CTA taps that navigate away |
 | `views` | count/impression | 0.70 (70% viewability) | Viewable impressions |
 | `completed_views` | count/impression | 0.85 (85% VCR) | Video or audio completions. Use `view_duration_seconds` to control the qualifying threshold (e.g., 2s, 6s, 15s). |
-| `viewed_seconds` | seconds/impression | 3.0 (3s in view) | Time in view per impression |
-| `attention_seconds` | seconds/impression | 5.0 (5s attention) | Attention time per impression |
-| `attention_score` | score/impression | 40.0 (vendor-specific) | Attention score per impression |
+| `viewed_seconds` | seconds/impression | 3.0 (3s in view) | Time in view per impression. Reported via `viewability.viewed_seconds`; governed by the viewability `standard` (MRC threshold). |
+| `attention_seconds` | seconds/impression | — | **Deprecated** — has no industry-graduated definition. Use `kind: "vendor_metric"` with `vendor` + `metric_id: "attention_seconds"` instead. |
+| `attention_score` | score/impression | — | **Deprecated** — has no industry-graduated definition. Use `kind: "vendor_metric"` with `vendor` + `metric_id: "attention_score"` instead. |
 | `engagements` | count/impression | — | Direct interaction beyond viewing — social reactions/comments/shares, story/unit opens, interactive overlay taps on CTV, companion banner interactions on audio |
 | `follows` | count/impression | — | New followers, page likes, artist/podcast/channel subscribes |
 | `saves` | count/impression | — | Saves, bookmarks, playlist adds, pins — signals of intent to return |
 | `profile_visits` | count/impression | — | Visits to the brand's in-platform page — profile, artist page, channel, or storefront. Does not include external website clicks (use `clicks` for that). |
 | `reach` | unique entities/window | — | Unique audience reach within a frequency window. Requires `reach_unit` (e.g., `households`, `individuals`). Use `target_frequency` to set the frequency band for optimization. |
 
+### kind: vendor_metric
+
+For vendor-attested measurement where the metric has no industry-graduated definition — attention (DoubleVerify, IAS, Adelaide, TVision, Lumen), panel-based brand lift (Kantar, Upwave, Cint), emissions (Scope3, Good-Loop), retail-media partner metrics — the goal binds a specific vendor + `metric_id` end-to-end. The seller's bidding stack steers toward that vendor's measurement; delivery reports the value via `vendor_metric_values[]` with the same `(vendor, metric_id)` key.
+
+```json
+{
+  "kind": "vendor_metric",
+  "vendor": { "domain": "adelaidemetrics.com" },
+  "metric_id": "attention_score",
+  "target": {
+    "kind": "threshold_rate",
+    "value": 70
+  },
+  "priority": 1
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `kind` | `"vendor_metric"` | Yes | Discriminator |
+| `vendor` | BrandRef | Yes | Vendor that defines and computes this metric. Anchored on the vendor's `brand.json` `agents[type='measurement']`. Same shape used across `vendor_metric_values`, `reporting_capabilities.vendor_metrics`, `committed_metrics` (vendor-scope entries), and `performance_standards.vendor`. |
+| `metric_id` | string | Yes | Identifier in the vendor's vocabulary (e.g., `attention_score`, `awareness_lift`, `gco2e_per_impression`). MUST be in the vendor's published `measurement.metrics[]` catalog. |
+| `target.kind` | `"cost_per"` \| `"threshold_rate"` | No | Target type. When omitted, the seller maximizes metric value within budget. |
+| `target.value` | number | Yes (if target set) | Cost per metric unit (currency) or minimum per-impression value. Units are vendor-defined. |
+| `priority` | integer | No | 1 = highest priority. When omitted, sellers use array position. |
+
+**Three preconditions for goal acceptance.** Sellers MUST reject `vendor_metric` goals that fail any of:
+
+1. **Discovery** — `metric_id` is in the vendor's published `measurement.metrics[]` catalog (queried from the vendor's `brand.json` measurement agent).
+2. **Capability** — the `(vendor, metric_id)` pair is in the product's `vendor_metric_optimization.supported_metrics[]`, and the goal's `target.kind` is in the matching entry's `supported_targets`.
+3. **Reporting coherence** — the package's `committed_metrics[]` includes a matching `{ scope: "vendor", vendor, metric_id }` entry. **Optimization without committed reporting is unverifiable** — the buyer can't grade performance against a goal whose value the seller isn't contractually obligated to populate. This precondition is what makes the goal meaningful; the seller MUST reject (with `TERMS_REJECTED`) any goal whose metric isn't also committed for reporting on the same package.
+
+**Distinct from `metric` kind.** The `metric` kind is for seller-native measurement (clicks, views, completed_views, reach, engagements, etc.) where no vendor binding is needed — the seller measures the metric natively. The `vendor_metric` kind is for vendor-attested measurement where the same metric name means different things across vendors and must be reconciled to a specific source. The deprecated `attention_seconds` / `attention_score` values on the `metric` kind enum predate this split and route through `vendor_metric` going forward.
+
 ### Target kinds
 
 All target kinds across both goal types:
 
-| `target.kind` | Metric goals | Event goals | Description |
-|---|---|---|---|
-| `cost_per` | Cost per click/view/etc. | Cost per conversion event | `spend / count` |
-| `threshold_rate` | Minimum per-impression value | — | `at least X per impression` |
-| `per_ad_spend` | — | Target return on ad spend | `sum(value_field * value_factor) / spend` |
-| `maximize_value` | — | Maximize total conversion value | Steers spend toward higher-value conversions. Requires `value_field`. |
+| `target.kind` | Metric goals | Vendor metric goals | Event goals | Description |
+|---|---|---|---|---|
+| `cost_per` | Cost per click/view/etc. | Cost per vendor metric unit | Cost per conversion event | `spend / count` |
+| `threshold_rate` | Minimum per-impression value | Minimum per-impression vendor metric value | — | `at least X per impression` |
+| `per_ad_spend` | — | — | Target return on ad spend | `sum(value_field * value_factor) / spend` |
+| `maximize_value` | — | — | Maximize total conversion value | Steers spend toward higher-value conversions. Requires `value_field`. |
 
 ### Choosing a strategy
 
@@ -527,7 +561,8 @@ All target kinds across both goal types:
 | Target cost per click | Specific cost per click | `kind: "metric"`, `metric: "clicks"` + `target: { kind: "cost_per", value: 2.0 }` |
 | Target CTR | Minimum click-through rate | `kind: "metric"`, `metric: "clicks"` + `target: { kind: "threshold_rate", value: 0.001 }` |
 | Target viewability | Minimum viewability rate | `kind: "metric"`, `metric: "views"` + `target: { kind: "threshold_rate", value: 0.70 }` |
-| Target attention | Minimum attention time | `kind: "metric"`, `metric: "attention_seconds"` + `target: { kind: "threshold_rate", value: 5.0 }` |
+| Target attention (vendor-bound) | Minimum attention from a specific vendor | `kind: "vendor_metric"`, `vendor: { domain: "adelaidemetrics.com" }`, `metric_id: "attention_score"` + `target: { kind: "threshold_rate", value: 70 }` |
+| Target emissions (vendor-bound) | Minimize carbon-per-impression from a specific provider | `kind: "vendor_metric"`, `vendor: { domain: "scope3.com" }`, `metric_id: "gco2e_per_impression"`, no target (maximize-inverse) or `target: { kind: "threshold_rate", value: 0.5 }` for a ceiling-style floor |
 | Target VCR | Minimum video completion rate | `kind: "metric"`, `metric: "completed_views"` + `target: { kind: "threshold_rate", value: 0.85 }` |
 | Completed views with duration | Video views with specific duration threshold | `kind: "metric"`, `metric: "completed_views"` + `view_duration_seconds: 6` |
 | Max engagements | Maximize social interactions within budget | `kind: "metric"`, `metric: "engagements"`, no target |

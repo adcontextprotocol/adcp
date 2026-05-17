@@ -378,6 +378,10 @@
           "$ref": "/schemas/core/optimization-goal.json",
           "description": "Conversion optimization goal for a package - event source, event type, target ROAS/CPA, and attribution window"
         },
+        "vendor-metric-optimization": {
+          "$ref": "/schemas/core/vendor-metric-optimization.json",
+          "description": "Product-level capability declaration for vendor-attested metric optimization (attention, brand lift, emissions, retail-media partner metrics)"
+        },
         "audience-member": {
           "$ref": "/schemas/core/audience-member.json",
           "description": "Hashed identifiers for a CRM audience member (hashed email, phone, or universal IDs)"

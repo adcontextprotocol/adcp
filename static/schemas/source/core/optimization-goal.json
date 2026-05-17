@@ -15,7 +15,7 @@
         "metric": {
           "type": "string",
           "enum": ["clicks", "views", "completed_views", "viewed_seconds", "attention_seconds", "attention_score", "engagements", "follows", "saves", "profile_visits", "reach"],
-          "description": "Seller-native metric to optimize for. Delivery metrics: clicks (link clicks, swipe-throughs, CTA taps that navigate away), views (viewable impressions), completed_views (video/audio completions — see view_duration_seconds), reach (unique audience reach — see reach_unit and target_frequency). Duration/score metrics: viewed_seconds (time in view per impression — reported back via `delivery-metrics.viewability.viewed_seconds`, governed by the viewability `standard`), attention_seconds (attention time per impression — vendor-defined, reported back via `delivery-metrics.vendor_metric_values` with `metric_id: 'attention_seconds'`), attention_score (vendor-specific attention score — vendor-defined, reported back via `delivery-metrics.vendor_metric_values` with `metric_id: 'attention_score'`). Audience action metrics: engagements (any direct interaction with the ad unit beyond viewing — social reactions/comments/shares, story/unit opens, interactive overlay taps, companion banner interactions on audio and CTV), follows (new followers, page likes, artist/podcast/channel subscribes), saves (saves, bookmarks, playlist adds, pins — signals of intent to return), profile_visits (visits to the brand's in-platform page — profile, artist page, channel, or storefront. Does not include external website clicks, which are covered by 'clicks')."
+          "description": "Seller-native metric to optimize for. Delivery metrics: clicks (link clicks, swipe-throughs, CTA taps that navigate away), views (viewable impressions), completed_views (video/audio completions — see view_duration_seconds), reach (unique audience reach — see reach_unit and target_frequency). Duration/score metrics: viewed_seconds (time in view per impression — reported back via `delivery-metrics.viewability.viewed_seconds`, governed by the viewability `standard`). Audience action metrics: engagements (any direct interaction with the ad unit beyond viewing — social reactions/comments/shares, story/unit opens, interactive overlay taps, companion banner interactions on audio and CTV), follows (new followers, page likes, artist/podcast/channel subscribes), saves (saves, bookmarks, playlist adds, pins — signals of intent to return), profile_visits (visits to the brand's in-platform page — profile, artist page, channel, or storefront. Does not include external website clicks, which are covered by 'clicks'). **DEPRECATED values** (slated for removal at next major): `attention_seconds` and `attention_score` — these have no industry-graduated definition (DoubleVerify, IAS, Adelaide, TVision, Lumen each define them differently) and cannot be meaningfully optimized for without a vendor binding. Use `kind: 'vendor_metric'` with an explicit `vendor` and `metric_id` instead — that path binds the goal to a specific measurement vendor and reconciles to the same `(vendor, metric_id)` key in delivery's `vendor_metric_values[]`. Sellers MAY reject the deprecated values with `TERMS_REJECTED` and a suggestion to use the `vendor_metric` kind."
         },
         "reach_unit": {
           "allOf": [{ "$ref": "/schemas/enums/reach-unit.json" }],
@@ -176,6 +176,56 @@
         }
       },
       "required": ["kind", "event_sources"],
+      "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "description": "Optimize for a vendor-attested measurement metric. Use when the metric has no graduated industry-standard definition and must be reconciled to a specific vendor — e.g., attention (DoubleVerify, IAS, Adelaide, TVision, Lumen), panel-based brand lift (Kantar, Upwave, Cint), emissions (Scope3, Good-Loop), retail-media partner metrics. The vendor + metric_id pair binds buyer→seller→vendor end-to-end: the seller's bidding stack steers toward this specific vendor's measurement, and delivery reports the value via `vendor_metric_values[]` with the same `(vendor, metric_id)` key. Three preconditions for goal acceptance: (1) Discovery — the `metric_id` MUST appear in the vendor's published `measurement.metrics[]` catalog (queried from the vendor's `brand.json` `agents[type='measurement']`). (2) Capability — the `(vendor, metric_id)` pair MUST appear in the product's `vendor_metric_optimization.supported_metrics[]`, and the goal's `target.kind` MUST appear in that entry's `supported_targets`. (3) Reporting coherence — the package's `committed_metrics[]` MUST include a matching `{ scope: 'vendor', vendor, metric_id }` entry. Sellers MUST reject goals failing any of these preconditions. Optimization without committed reporting is unverifiable and is therefore disallowed at the wire level.",
+      "properties": {
+        "kind": { "type": "string", "const": "vendor_metric" },
+        "vendor": {
+          "$ref": "/schemas/core/brand-ref.json",
+          "description": "Vendor that defines and computes this metric. Same shape as `vendor_metric_values.vendor`, `reporting_capabilities.vendor_metrics[].vendor`, and `vendor_metric_optimization.supported_metrics[].vendor` — symmetric across discovery, capability, commitment, optimization, and reporting surfaces."
+        },
+        "metric_id": {
+          "$ref": "/schemas/core/vendor-metric-id.json",
+          "description": "Identifier for the metric within the vendor's vocabulary (e.g., `attention_score`, `attention_seconds`, `gco2e_per_impression`, `awareness_lift`). MUST be present in the vendor's published `measurement.metrics[]` catalog and in the product's `vendor_metric_optimization.supported_metrics[]`."
+        },
+        "target": {
+          "description": "Target for this vendor metric. When omitted, the seller optimizes for maximum metric volume / score within budget. `cost_per` and `threshold_rate` semantics mirror the same target kinds on the `metric` kind — units are vendor-defined and depend on the vendor's `measurement.metrics[]` declaration for this `metric_id`.",
+          "discriminator": {
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "type": "object",
+              "description": "Target cost per unit of the vendor metric (e.g., cost per attention-second).",
+              "properties": {
+                "kind": { "type": "string", "const": "cost_per" },
+                "value": { "type": "number", "exclusiveMinimum": 0, "description": "Target cost per metric unit in the buy currency. Units of the metric are vendor-defined." }
+              },
+              "required": ["kind", "value"],
+              "additionalProperties": true
+            },
+            {
+              "type": "object",
+              "description": "Minimum per-impression value for this vendor metric (e.g., attention_score ≥ 70).",
+              "properties": {
+                "kind": { "type": "string", "const": "threshold_rate" },
+                "value": { "type": "number", "exclusiveMinimum": 0, "description": "Minimum per-impression value. Units of the metric are vendor-defined." }
+              },
+              "required": ["kind", "value"],
+              "additionalProperties": true
+            }
+          ]
+        },
+        "priority": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Relative priority among all optimization goals on this package. 1 = highest priority (primary goal); higher numbers are lower priority (secondary signals). When omitted, sellers may use array position as priority."
+        }
+      },
+      "required": ["kind", "vendor", "metric_id"],
       "additionalProperties": true
     }
   ]
