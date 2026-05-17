@@ -9,6 +9,10 @@
       "default": true,
       "description": "Marked experimental at 3.1 GA: composition is algorithmic (the surface picks combinations and reports per-asset breakdowns), and there's no clean v1-translatable equivalent. Buyers ship asset pools rather than rendered creatives; the surface's per-impression composition cannot be predicted by `validate_input`. Adopters SHOULD validate behavior per surface (Google PMax vs Meta Advantage+ creative differ meaningfully)."
     },
+    "v1_translatable": {
+      "default": false,
+      "description": "Inherently new in v2 — algorithmic asset-pool composition (Google PMax / Meta Advantage+ creative) wasn't expressible as v1 named formats. SDKs MUST NOT emit `FORMAT_PROJECTION_FAILED` for products using this canonical; the v1-unreachability is structural."
+    },
     "slots": {
       "default": [
         { "asset_group_id": "headlines", "asset_type": "text", "required": true, "min": 3, "max": 15 },

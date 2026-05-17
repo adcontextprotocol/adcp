@@ -9,6 +9,10 @@
       "default": true,
       "description": "Marked experimental at 3.1 GA: the canonical's tracking model (mention-level impression + attribution, postback shape, cross-surface dedup) is intentionally underspecified for 3.1. Adopters claiming `agent_placement` ship private tracking integrations; buyer agents MUST treat attribution as adapter-defined until the 3.2 tracking-macro spec lands. Promotion to non-experimental gated on the 3.2 tracking-contract spec."
     },
+    "v1_translatable": {
+      "default": false,
+      "description": "Inherently new in v2 — AI-surface sponsored mentions weren't expressible as v1 named formats. SDKs MUST NOT emit `FORMAT_PROJECTION_FAILED` for products using this canonical; the v1-unreachability is structural."
+    },
     "slots": {
       "default": [
         { "asset_group_id": "offering_ref", "asset_type": "text", "required": false },

@@ -125,6 +125,11 @@
       "disposition": "held-for-next-minor",
       "target_version": "3.1",
       "note": "Canonical-formats dual-emission divergence advisory (#3307). Non-fatal; surfaces when a product carries both format_ids (v1) and format_options (v2) that disagree after projection. Wire change — held for 3.1."
+    },
+    "FORMAT_DECLARATION_V1_AMBIGUOUS": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.1",
+      "note": "Canonical-formats v1-ambiguity advisory (#3307; adcp-client #1815). Non-fatal; surfaces when registry has only family-level structural entries for a canonical (no invertible literal) so SDK can't pick a specific v1 format_id mechanically. SDKs MUST NOT synthesize — seller MUST author v1_format_ref on the v2 declaration. Wire change — held for 3.1."
     }
   }
 }

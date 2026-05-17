@@ -43,6 +43,10 @@
   "format_options": [
     {
       "format_kind": "image",
+      "v1_format_ref": {
+        "agent_url": "https://nytimes.adcp",
+        "id": "iab_mrec_300x250"
+      },
       "params": {
         "width": 300,
         "height": 250,

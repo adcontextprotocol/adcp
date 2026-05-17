@@ -9,6 +9,10 @@
       "default": true,
       "description": "Marked experimental at 3.1 GA: the canonical covers 4 meaningfully different retail-media adapter contracts (Amazon SP, Criteo SP / CitrusAd SP, Pinterest Collection, generative-per-SKU). Adopter contracts vary; buyers MUST validate per-adapter behavior before routing budget. Promotion to non-experimental gated on the #4592 adapter-contract docs work."
     },
+    "v1_translatable": {
+      "default": false,
+      "description": "Inherently new in v2 — retail-media catalog placements weren't expressible as v1 named formats. SDKs MUST NOT emit `FORMAT_PROJECTION_FAILED` for products using this canonical; the v1-unreachability is structural, not a registry-coverage gap."
+    },
     "slots": {
       "default": [
         { "asset_group_id": "source_catalog", "required": true, "asset_type": "catalog" },
