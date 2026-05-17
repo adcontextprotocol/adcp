@@ -543,6 +543,73 @@ export function createTrainingAgentRouter(): Router {
     res.json(getPublicJwks());
   });
 
+  // brand.json discovery — house portfolio variant per
+  // `static/schemas/source/brand.json` oneOf[3]. Declares AAO as the house
+  // operating the training agent and lists each tenant's MCP endpoint as a
+  // typed brand_agent_entry. Buyer-side verifiers fetching brand.json from
+  // a deployment of this agent get a schema-conformant single-tier document
+  // suitable for end-to-end verification storyboards.
+  //
+  // Single-tier (no `brand_refs[]`, no `house_domain`). Per-publisher /
+  // multi-tier fixtures (Sportshaus / StreamHaus / Northwind from the
+  // verification walkthrough) come in a follow-up PR.
+  router.get('/.well-known/brand.json', (req: Request, res: Response) => {
+    const baseUrl = getBaseUrl(req);
+    const agentBase = `${baseUrl}${req.baseUrl}`;
+    const jwksUri = `${agentBase}/.well-known/jwks.json`;
+
+    const tenantAgentType: Record<typeof TENANT_IDS[number], string> = {
+      sales: 'sales',
+      signals: 'signals',
+      governance: 'governance',
+      creative: 'creative',
+      'creative-builder': 'creative',
+      brand: 'brand',
+    };
+
+    const tenantAgentDescription: Record<typeof TENANT_IDS[number], string> = {
+      sales: 'Training-agent sales tenant — non-guaranteed + guaranteed inventory across simulated publishers',
+      signals: 'Training-agent signals tenant — signal marketplace + owned signals across simulated providers',
+      governance: 'Training-agent governance tenant — spend authority, delivery monitoring, property/collection lists, content standards',
+      creative: 'Training-agent creative tenant — creative ad server',
+      'creative-builder': 'Training-agent creative-builder tenant — creative template + generative',
+      brand: 'Training-agent brand tenant — brand rights and discovery',
+    };
+
+    res.setHeader('Cache-Control', 'public, max-age=300');
+    res.json({
+      $schema: '/schemas/brand.json',
+      version: '1.0',
+      house: {
+        domain: 'adcontextprotocol.org',
+        name: 'Ad Context Protocol',
+        architecture: 'branded_house',
+        agents: TENANT_IDS.map(tenantId => ({
+          type: tenantAgentType[tenantId],
+          id: `aao_training_agent_${tenantId.replace(/-/g, '_')}`,
+          url: `${agentBase}/${tenantId}/mcp`,
+          jwks_uri: jwksUri,
+          description: tenantAgentDescription[tenantId],
+        })),
+      },
+      brands: [
+        {
+          id: 'adcp_training_agent',
+          names: [{ en_US: 'AdCP Training Agent' }],
+          url: agentBase,
+          keller_type: 'master',
+          industries: ['advertising'],
+          description: 'Reference sandbox for AdCP — multi-tenant agent simulating sales, signals, governance, creative, and brand specialisms for conformance testing and education.',
+        },
+      ],
+      contact: {
+        name: 'AdCP Training Agent',
+        email: 'hello@agenticadvertising.org',
+      },
+      last_updated: STARTUP_TIME,
+    });
+  });
+
   // adagents.json discovery. Schema-conformant per
   // `static/schemas/source/adagents.json`:
   //   - `authorized_agents[]` is a discriminated union — sales agents use
