@@ -48,8 +48,8 @@
     {
       "format_kind": "video_vast",
       "v1_format_ref": {
-        "agent_url": "https://creative.adcontextprotocol.org",
-        "id": "iab_vast_preroll_4x"
+        "agent_url": "https://creative.adcontextprotocol.org/",
+        "id": "video_vast_30s"
       },
       "params": {
         "orientation": "horizontal",

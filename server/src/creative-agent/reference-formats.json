@@ -687,7 +687,8 @@
           ]
         }
       }
-    ]
+    ],
+    "canonical": "video_hosted"
   },
   {
     "format_id": {
@@ -753,7 +754,8 @@
           ]
         }
       }
-    ]
+    ],
+    "canonical": "video_hosted"
   },
   {
     "format_id": {
@@ -795,7 +797,8 @@
         "required": true,
         "asset_type": "vast"
       }
-    ]
+    ],
+    "canonical": "video_vast"
   },
   {
     "format_id": {
@@ -864,7 +867,8 @@
           "description": "30-second video file"
         }
       }
-    ]
+    ],
+    "canonical": "video_hosted"
   },
   {
     "format_id": {
@@ -933,7 +937,8 @@
           "description": "15-second video file"
         }
       }
-    ]
+    ],
+    "canonical": "video_hosted"
   },
   {
     "format_id": {
@@ -978,7 +983,8 @@
           "description": "VAST 4.x compatible tag"
         }
       }
-    ]
+    ],
+    "canonical": "video_vast"
   },
   {
     "format_id": {
@@ -1060,7 +1066,8 @@
           "description": "1920x1080 video file"
         }
       }
-    ]
+    ],
+    "canonical": "video_hosted"
   },
   {
     "format_id": {
@@ -1142,7 +1149,8 @@
           "description": "1280x720 video file"
         }
       }
-    ]
+    ],
+    "canonical": "video_hosted"
   },
   {
     "format_id": {
@@ -1224,7 +1232,8 @@
           "description": "1080x1920 vertical video file"
         }
       }
-    ]
+    ],
+    "canonical": "video_hosted"
   },
   {
     "format_id": {
@@ -1306,7 +1315,8 @@
           "description": "1080x1080 square video file"
         }
       }
-    ]
+    ],
+    "canonical": "video_hosted"
   },
   {
     "format_id": {
@@ -1374,7 +1384,8 @@
           "description": "30-second CTV-optimized video file (1920x1080 recommended)"
         }
       }
-    ]
+    ],
+    "canonical": "video_hosted"
   },
   {
     "format_id": {
@@ -1442,7 +1453,8 @@
           "description": "30-second CTV-optimized video file (1920x1080 recommended)"
         }
       }
-    ]
+    ],
+    "canonical": "video_hosted"
   },
   {
     "format_id": {
@@ -1785,7 +1797,8 @@
           "description": "Clickthrough destination URL"
         }
       }
-    ]
+    ],
+    "canonical": "image"
   },
   {
     "format_id": {
@@ -1886,7 +1899,8 @@
           "description": "Clickthrough destination URL"
         }
       }
-    ]
+    ],
+    "canonical": "image"
   },
   {
     "format_id": {
@@ -1987,7 +2001,8 @@
           "description": "Clickthrough destination URL"
         }
       }
-    ]
+    ],
+    "canonical": "image"
   },
   {
     "format_id": {
@@ -2088,7 +2103,8 @@
           "description": "Clickthrough destination URL"
         }
       }
-    ]
+    ],
+    "canonical": "image"
   },
   {
     "format_id": {
@@ -2189,7 +2205,8 @@
           "description": "Clickthrough destination URL"
         }
       }
-    ]
+    ],
+    "canonical": "image"
   },
   {
     "format_id": {
@@ -2290,7 +2307,8 @@
           "description": "Clickthrough destination URL"
         }
       }
-    ]
+    ],
+    "canonical": "image"
   },
   {
     "format_id": {
@@ -2391,7 +2409,8 @@
           "description": "Clickthrough destination URL"
         }
       }
-    ]
+    ],
+    "canonical": "image"
   },
   {
     "format_id": {
@@ -2492,7 +2511,8 @@
           "description": "Clickthrough destination URL"
         }
       }
-    ]
+    ],
+    "canonical": "image"
   },
   {
     "format_id": {
@@ -2549,7 +2569,8 @@
           "max_file_size_mb": 0.5
         }
       }
-    ]
+    ],
+    "canonical": "html5"
   },
   {
     "format_id": {
@@ -2622,7 +2643,8 @@
           "description": "HTML5 creative code"
         }
       }
-    ]
+    ],
+    "canonical": "html5"
   },
   {
     "format_id": {
@@ -2693,7 +2715,8 @@
           "max_file_size_mb": 0.5
         }
       }
-    ]
+    ],
+    "canonical": "html5"
   },
   {
     "format_id": {
@@ -2764,7 +2787,8 @@
           "max_file_size_mb": 0.5
         }
       }
-    ]
+    ],
+    "canonical": "html5"
   },
   {
     "format_id": {
@@ -2835,7 +2859,8 @@
           "max_file_size_mb": 0.5
         }
       }
-    ]
+    ],
+    "canonical": "html5"
   },
   {
     "format_id": {
@@ -2906,7 +2931,8 @@
           "max_file_size_mb": 0.5
         }
       }
-    ]
+    ],
+    "canonical": "html5"
   },
   {
     "format_id": {
@@ -2977,7 +3003,8 @@
           "max_file_size_mb": 0.5
         }
       }
-    ]
+    ],
+    "canonical": "html5"
   },
   {
     "format_id": {
@@ -3026,7 +3053,8 @@
         "required": true,
         "asset_type": "javascript"
       }
-    ]
+    ],
+    "canonical": "display_tag"
   },
   {
     "format_id": {
@@ -3359,7 +3387,8 @@
           ]
         }
       }
-    ]
+    ],
+    "canonical": "audio_hosted"
   },
   {
     "format_id": {
@@ -3424,7 +3453,8 @@
           ]
         }
       }
-    ]
+    ],
+    "canonical": "audio_hosted"
   },
   {
     "format_id": {
@@ -3489,7 +3519,8 @@
           ]
         }
       }
-    ]
+    ],
+    "canonical": "audio_hosted"
   },
   {
     "format_id": {
@@ -4670,7 +4701,8 @@
       "CREATIVE_ID",
       "CACHEBUSTER",
       "CLICK_URL"
-    ]
+    ],
+    "canonical": "sponsored_placement"
   },
   {
     "format_id": {

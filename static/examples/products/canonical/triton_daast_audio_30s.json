@@ -41,10 +41,7 @@
   "format_options": [
     {
       "format_kind": "audio_daast",
-      "v1_format_ref": {
-        "agent_url": "https://creative.adcontextprotocol.org",
-        "id": "iab_daast_audio_30s"
-      },
+      "canonical_formats_only": true,
       "params": {
         "daast_version": "1.1",
         "duration_ms_exact": 30000,

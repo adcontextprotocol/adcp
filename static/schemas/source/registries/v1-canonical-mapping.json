@@ -102,69 +102,94 @@
   },
   "mappings": [
     {
-      "v1_pattern": { "format_id_glob": "iab_mrec_300x250" },
+      "v1_pattern": { "format_id_glob": "display_300x250_image" },
       "v2": { "canonical": "image", "parameters": { "width": 300, "height": 250 } },
-      "notes": "IAB Universal Ad Package — Medium Rectangle. Industry standard since 2005."
+      "notes": "IAB Universal Ad Package — Medium Rectangle (300×250). Industry standard since 2005. Published by the AAO catalog at https://creative.adcontextprotocol.org/."
     },
     {
-      "v1_pattern": { "format_id_glob": "iab_leaderboard_728x90" },
+      "v1_pattern": { "format_id_glob": "display_728x90_image" },
       "v2": { "canonical": "image", "parameters": { "width": 728, "height": 90 } },
-      "notes": "IAB Universal Ad Package — Leaderboard."
+      "notes": "IAB Universal Ad Package — Leaderboard (728×90). Published by the AAO catalog."
     },
     {
-      "v1_pattern": { "format_id_glob": "iab_wide_skyscraper_160x600" },
+      "v1_pattern": { "format_id_glob": "display_160x600_image" },
       "v2": { "canonical": "image", "parameters": { "width": 160, "height": 600 } },
-      "notes": "IAB Universal Ad Package — Wide Skyscraper."
+      "notes": "IAB Universal Ad Package — Wide Skyscraper (160×600). Published by the AAO catalog."
     },
     {
-      "v1_pattern": { "format_id_glob": "iab_billboard_970x250" },
+      "v1_pattern": { "format_id_glob": "display_970x250_image" },
       "v2": { "canonical": "image", "parameters": { "width": 970, "height": 250 } },
-      "notes": "IAB Rising Star — Billboard. Often used for premium homepage units."
+      "notes": "IAB Rising Star — Billboard (970×250). Often used for premium homepage units. Published by the AAO catalog."
     },
     {
-      "v1_pattern": { "format_id_glob": "iab_half_page_300x600" },
+      "v1_pattern": { "format_id_glob": "display_300x600_image" },
       "v2": { "canonical": "image", "parameters": { "width": 300, "height": 600 } },
-      "notes": "IAB Universal Ad Package — Half Page."
+      "notes": "IAB Universal Ad Package — Half Page (300×600). Published by the AAO catalog."
     },
     {
-      "v1_pattern": { "format_id_glob": "iab_mobile_banner_320x50" },
+      "v1_pattern": { "format_id_glob": "display_320x50_image" },
       "v2": { "canonical": "image", "parameters": { "width": 320, "height": 50 } },
-      "notes": "IAB mobile portrait banner."
+      "notes": "IAB mobile portrait banner (320×50). Published by the AAO catalog."
     },
     {
-      "v1_pattern": { "format_id_glob": "iab_mobile_interstitial_320x480" },
-      "v2": { "canonical": "image", "parameters": { "width": 320, "height": 480 } },
-      "notes": "IAB mobile portrait interstitial."
-    },
-    {
-      "v1_pattern": { "format_id_glob": "iab_large_rectangle_336x280" },
+      "v1_pattern": { "format_id_glob": "display_336x280_image" },
       "v2": { "canonical": "image", "parameters": { "width": 336, "height": 280 } },
-      "notes": "IAB Universal Ad Package — Large Rectangle."
+      "notes": "IAB Universal Ad Package — Large Rectangle (336×280). Published by the AAO catalog."
     },
     {
-      "v1_pattern": { "format_id_glob": "iab_3p_tag_300x250" },
-      "v2": { "canonical": "display_tag", "parameters": { "width": 300, "height": 250 } },
-      "notes": "IAB Medium Rectangle delivered as third-party JS/iframe tag. Same dimensions as iab_mrec_300x250 but different canonical because the tracking model differs (opaque to seller vs impression-pixel-plus-click-URL)."
-    },
-    {
-      "v1_pattern": { "format_id_glob": "iab_html5_300x250" },
+      "v1_pattern": { "format_id_glob": "display_300x250_html" },
       "v2": { "canonical": "html5", "parameters": { "width": 300, "height": 250 } },
-      "notes": "IAB Medium Rectangle delivered as HTML5 zip bundle. Sibling of iab_mrec_300x250 and iab_3p_tag_300x250; differs from both in tracking model (MRAID + OM-SDK + click-tag macro)."
+      "notes": "IAB Medium Rectangle delivered as HTML5 zip bundle. Sibling of display_300x250_image; differs in tracking model (MRAID + OM-SDK + click-tag macro). Published by the AAO catalog."
     },
     {
-      "v1_pattern": { "format_id_glob": "iab_vast_preroll_4x" },
-      "v2": { "canonical": "video_vast", "parameters": { "vast_version": "4.x" } },
-      "notes": "Standard VAST 4.x preroll video. The most-deployed v1 video format; SDKs use this id (with the AAO-canonical agent_url) for any vast_version: 4.x product without seller-specific narrowing."
+      "v1_pattern": { "format_id_glob": "display_728x90_html" },
+      "v2": { "canonical": "html5", "parameters": { "width": 728, "height": 90 } },
+      "notes": "IAB Leaderboard delivered as HTML5 zip bundle. Published by the AAO catalog."
     },
     {
-      "v1_pattern": { "format_id_glob": "iab_daast_audio_30s" },
-      "v2": { "canonical": "audio_daast", "parameters": { "duration_ms_exact": 30000 } },
-      "notes": "Standard 30-second DAAST audio. AAO-hosted canonical id for the most common audio_daast shape."
+      "v1_pattern": { "format_id_glob": "display_js" },
+      "v2": { "canonical": "display_tag" },
+      "notes": "Generic third-party display tag (JS / iframe). Published by the AAO catalog as a non-dimensioned format; products narrow dimensions via parameters."
+    },
+    {
+      "v1_pattern": { "format_id_glob": "video_vast" },
+      "v2": { "canonical": "video_vast" },
+      "notes": "Generic VAST video. Published by the AAO catalog; products narrow vast_version / duration / dimensions via parameters."
+    },
+    {
+      "v1_pattern": { "format_id_glob": "video_vast_30s" },
+      "v2": { "canonical": "video_vast", "parameters": { "duration_ms_exact": 30000 } },
+      "notes": "Standard 30-second VAST. The most-deployed v1 video format. Published by the AAO catalog."
+    },
+    {
+      "v1_pattern": { "format_id_glob": "audio_standard_15s" },
+      "v2": { "canonical": "audio_hosted", "parameters": { "duration_ms_exact": 15000 } },
+      "notes": "Standard 15-second hosted audio. Published by the AAO catalog."
+    },
+    {
+      "v1_pattern": { "format_id_glob": "audio_standard_30s" },
+      "v2": { "canonical": "audio_hosted", "parameters": { "duration_ms_exact": 30000 } },
+      "notes": "Standard 30-second hosted audio. Published by the AAO catalog."
+    },
+    {
+      "v1_pattern": { "format_id_glob": "audio_standard_60s" },
+      "v2": { "canonical": "audio_hosted", "parameters": { "duration_ms_exact": 60000 } },
+      "notes": "Standard 60-second hosted audio. Published by the AAO catalog."
+    },
+    {
+      "v1_pattern": { "format_id_glob": "video_standard_15s" },
+      "v2": { "canonical": "video_hosted", "parameters": { "duration_ms_exact": 15000 } },
+      "notes": "Standard 15-second hosted video. Published by the AAO catalog."
+    },
+    {
+      "v1_pattern": { "format_id_glob": "video_standard_30s" },
+      "v2": { "canonical": "video_hosted", "parameters": { "duration_ms_exact": 30000 } },
+      "notes": "Standard 30-second hosted video. Published by the AAO catalog."
     },
     {
       "v1_pattern": { "format_id_glob": "meta_reels" },
       "v2": { "canonical": "video_hosted", "parameters": { "orientation": "vertical", "aspect_ratio": "9:16" } },
-      "notes": "Meta Reels vertical short-form video. Platform-specific format (lives on meta.adcp's agent_url, not the AAO-hosted canonical) because Meta-specific parameters and extensions narrow the canonical."
+      "notes": "Meta Reels vertical short-form video. Platform-specific format (lives on meta.adcp's agent_url, NOT the AAO catalog at creative.adcontextprotocol.org) because Meta-specific parameters and extensions narrow the canonical."
     },
     {
       "v1_pattern": { "structural": { "asset_types": ["vast"], "vast_versions": [">=4.0"] } },

@@ -44,8 +44,8 @@
     {
       "format_kind": "image",
       "v1_format_ref": {
-        "agent_url": "https://creative.adcontextprotocol.org",
-        "id": "iab_mrec_300x250"
+        "agent_url": "https://creative.adcontextprotocol.org/",
+        "id": "display_300x250_image"
       },
       "params": {
         "width": 300,
