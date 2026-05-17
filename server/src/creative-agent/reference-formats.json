@@ -61,8 +61,7 @@
           "description": "Text prompt describing the desired creative"
         }
       }
-    ],
-    "canonical": "image"
+    ]
   },
   {
     "format_id": {
@@ -142,8 +141,7 @@
           "description": "Text prompt describing the desired creative"
         }
       }
-    ],
-    "canonical": "image"
+    ]
   },
   {
     "format_id": {
@@ -223,8 +221,7 @@
           "description": "Text prompt describing the desired creative"
         }
       }
-    ],
-    "canonical": "image"
+    ]
   },
   {
     "format_id": {
@@ -304,8 +301,7 @@
           "description": "Text prompt describing the desired creative"
         }
       }
-    ],
-    "canonical": "image"
+    ]
   },
   {
     "format_id": {
@@ -385,8 +381,7 @@
           "description": "Text prompt describing the desired creative"
         }
       }
-    ],
-    "canonical": "image"
+    ]
   },
   {
     "format_id": {
@@ -466,8 +461,7 @@
           "description": "Text prompt describing the desired creative"
         }
       }
-    ],
-    "canonical": "image"
+    ]
   },
   {
     "format_id": {
@@ -547,8 +541,7 @@
           "description": "Text prompt describing the desired creative"
         }
       }
-    ],
-    "canonical": "image"
+    ]
   },
   {
     "format_id": {
@@ -628,8 +621,7 @@
           "description": "Text prompt describing the desired creative"
         }
       }
-    ],
-    "canonical": "image"
+    ]
   },
   {
     "format_id": {
@@ -1470,7 +1462,7 @@
       "id": "broadcast_spot_15s"
     },
     "name": "Broadcast TV Spot - 15 seconds",
-    "description": "15-second broadcast television spot. H.264 HD video file delivered directly to station — no VAST, no impression tracking, no clickthrough.",
+    "description": "15-second broadcast television spot. H.264 HD video file delivered directly to station \u2014 no VAST, no impression tracking, no clickthrough.",
     "type": "video",
     "assets": [
       {
@@ -1556,7 +1548,7 @@
       "id": "broadcast_spot_30s"
     },
     "name": "Broadcast TV Spot - 30 seconds",
-    "description": "30-second broadcast television spot. H.264 HD video file delivered directly to station — no VAST, no impression tracking, no clickthrough.",
+    "description": "30-second broadcast television spot. H.264 HD video file delivered directly to station \u2014 no VAST, no impression tracking, no clickthrough.",
     "type": "video",
     "assets": [
       {
@@ -1642,7 +1634,7 @@
       "id": "broadcast_spot_60s"
     },
     "name": "Broadcast TV Spot - 60 seconds",
-    "description": "60-second broadcast television spot. H.264 HD video file delivered directly to station — no VAST, no impression tracking, no clickthrough.",
+    "description": "60-second broadcast television spot. H.264 HD video file delivered directly to station \u2014 no VAST, no impression tracking, no clickthrough.",
     "type": "video",
     "assets": [
       {
