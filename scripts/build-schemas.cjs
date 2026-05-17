@@ -1332,6 +1332,146 @@ function hoistDuplicateInlineEnums(schema) {
 }
 
 /**
+ * Hoist complex schemas explicitly marked with `x-hoist: true` into root
+ * `$defs` and replace every inline occurrence with a `$ref` pointer.
+ *
+ * Companion to `hoistDuplicateInlineEnums`. Pure enums hoist automatically
+ * because the merge is semantics-preserving. Complex objects do not:
+ * structural identity ≠ semantic identity (e.g. BriefAsset and VASTAsset
+ * happen to share fields today but represent different lifecycle concepts).
+ * Spec authors opt in per-schema by setting `x-hoist: true` on the source
+ * schema's root. The marker is a build-time directive, not a contract — it
+ * is stripped from the bundled output.
+ *
+ * Name derivation: uses `title`, sanitized to PascalCase, suffixed with an
+ * integer when colliding with an existing `$defs` key. A schema marked
+ * `x-hoist: true` without a usable `title` is a hard error — the directive
+ * is meant to be deliberate.
+ *
+ * Hoists at any occurrence count (≥1). The directive declares intent
+ * ("this is a canonical named type"); the bundler honors it even when the
+ * schema appears only once, so adding a second use later does not change
+ * the codegen surface.
+ *
+ * See issue #4557.
+ */
+function hoistMarkedSchemas(schema) {
+  if (!schema || typeof schema !== 'object' || Array.isArray(schema)) {
+    return schema;
+  }
+
+  function isMarked(s) {
+    return s && typeof s === 'object' && !Array.isArray(s) && s['x-hoist'] === true;
+  }
+
+  function canonicalize(value) {
+    if (value === null || typeof value !== 'object') return value;
+    if (Array.isArray(value)) return value.map(canonicalize);
+    return Object.keys(value)
+      .sort()
+      .reduce((acc, k) => { acc[k] = canonicalize(value[k]); return acc; }, {});
+  }
+
+  function fingerprint(s) {
+    const { 'x-hoist': _omit, ...rest } = s;
+    return JSON.stringify(canonicalize(rest));
+  }
+
+  // Pass 1: collect every marked schema, excluding existing $defs blocks
+  // (those are already canonical). Recurse into marked nodes too so nested
+  // markers (a marked schema referenced inside another marked schema) are
+  // also tracked.
+  const seen = new Map(); // fingerprint -> { schema, title }
+
+  function track(s) {
+    const fp = fingerprint(s);
+    if (!seen.has(fp)) seen.set(fp, { schema: s, title: s.title });
+  }
+
+  function collect(node) {
+    if (!node || typeof node !== 'object') return;
+    if (Array.isArray(node)) {
+      for (const item of node) {
+        if (isMarked(item)) track(item);
+        collect(item);
+      }
+      return;
+    }
+    for (const [key, val] of Object.entries(node)) {
+      if (key === '$defs' || key === 'definitions') continue;
+      if (isMarked(val)) track(val);
+      collect(val);
+    }
+  }
+
+  collect(schema);
+
+  if (seen.size === 0) return schema;
+
+  // Map each fingerprint to a $defs name derived from title.
+  const hoistMap = new Map();
+  const usedNames = new Set(Object.keys(schema.$defs || {}));
+
+  for (const [fp, { schema: s, title }] of seen) {
+    if (!title || typeof title !== 'string') {
+      throw new Error(
+        `x-hoist: true requires a non-empty \`title\` on the source schema. ` +
+        `Got: ${JSON.stringify(s).slice(0, 200)}`
+      );
+    }
+    let name = title.replace(/[^a-zA-Z0-9]+(.)/g, (_, c) => c.toUpperCase()).replace(/[^a-zA-Z0-9]/g, '');
+    name = name.charAt(0).toUpperCase() + name.slice(1);
+    if (!name) {
+      throw new Error(`x-hoist: title '${title}' sanitizes to an empty name.`);
+    }
+    let safeName = name;
+    let idx = 2;
+    while (usedNames.has(safeName)) { safeName = name + idx++; }
+    usedNames.add(safeName);
+    hoistMap.set(fp, safeName);
+  }
+
+  // Build canonical $defs entries with x-hoist stripped from the outer
+  // schema (it's a directive, not a contract).
+  const rootDefs = { ...(schema.$defs || {}) };
+  for (const [fp, defName] of hoistMap) {
+    const { 'x-hoist': _omit, ...canonical } = seen.get(fp).schema;
+    rootDefs[defName] = canonical;
+  }
+  schema.$defs = rootDefs;
+
+  // Pass 2: replace marked occurrences with $ref. Walks the entire schema
+  // (including inside $defs) so nested markers — a marked schema reached
+  // through another marked schema — also collapse to $refs. The replace
+  // check uses `isMarked`, so the canonical entries we just placed in
+  // rootDefs (x-hoist already stripped) are not themselves replaced.
+  function replace(node) {
+    if (!node || typeof node !== 'object') return;
+    if (Array.isArray(node)) {
+      for (let i = 0; i < node.length; i++) {
+        if (isMarked(node[i])) {
+          const fp = fingerprint(node[i]);
+          if (hoistMap.has(fp)) { node[i] = { $ref: `#/$defs/${hoistMap.get(fp)}` }; continue; }
+        }
+        replace(node[i]);
+      }
+      return;
+    }
+    for (const key of Object.keys(node)) {
+      const val = node[key];
+      if (isMarked(val)) {
+        const fp = fingerprint(val);
+        if (hoistMap.has(fp)) { node[key] = { $ref: `#/$defs/${hoistMap.get(fp)}` }; continue; }
+      }
+      replace(val);
+    }
+  }
+
+  replace(schema);
+  return schema;
+}
+
+/**
  * Walk a bundled schema and rewrite every nested `$id` from the
  * source-form (`/schemas/core/foo.json`) to the versioned flat-tree
  * URI (`/schemas/{version}/core/foo.json`). The root `$id` is left
@@ -1505,6 +1645,12 @@ async function generateBundledSchemas(sourceDir, bundledDir, version) {
       // replace duplicates with $ref pointers. Eliminates the Foo / Foo1
       // numbered-suffix codegen artifact. See #3145.
       hoistDuplicateInlineEnums(dereferenced);
+
+      // Hoist complex schemas explicitly marked with `x-hoist: true` to
+      // $defs and replace inline occurrences with $ref. Opt-in companion
+      // to the pure-enum auto-hoist for spec-author-declared canonical
+      // shared types. See #4557.
+      hoistMarkedSchemas(dereferenced);
 
       // Stamp inlined sub-schema `$id`s with the version (#3868). Source
       // schemas declare `$id` as `/schemas/core/foo.json` (unversioned);
@@ -1819,7 +1965,7 @@ async function main() {
   console.log('📖 See docs/reference/versioning.mdx for guidance on which to use.');
 }
 
-module.exports = { hoistDuplicateInlineEnums, resolveRefs, versionInlineSchemaIds, dedupBundledSchemaIds, stripIdsFromSubtreesWithLocalRefs };
+module.exports = { hoistDuplicateInlineEnums, hoistMarkedSchemas, resolveRefs, versionInlineSchemaIds, dedupBundledSchemaIds, stripIdsFromSubtreesWithLocalRefs };
 
 if (require.main === module) {
   main().catch(err => {
