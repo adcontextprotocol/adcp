@@ -564,6 +564,7 @@
                 "expanded": false,
                 "pages": [
                   "docs/trust",
+                  "docs/verification/overview",
                   "docs/ai-disclosure",
                   "docs/reference/privacy-considerations",
                   "docs/reference/known-limitations"
@@ -1131,6 +1132,7 @@
             "expanded": false,
             "pages": [
               "docs/trust",
+              "docs/verification/overview",
               "docs/ai-disclosure",
               "docs/reference/privacy-considerations",
               "docs/reference/known-limitations"
