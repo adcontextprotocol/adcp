@@ -278,20 +278,46 @@ export async function testOutModule(
 }
 
 /**
- * Check if a user has completed all prerequisites for a module.
+ * Status of a missing prerequisite module from the learner's perspective.
+ * `not_started` covers both "no learner_progress row" and any non-terminal
+ * status the learner could resume from.
  */
-export async function checkPrerequisites(userId: string, moduleId: string): Promise<{ met: boolean; missing: string[] }> {
+export type MissingPrereqStatus = 'not_started' | 'in_progress' | 'failed' | 'expired';
+
+export interface MissingPrereq {
+  moduleId: string;
+  status: MissingPrereqStatus;
+}
+
+/**
+ * Check if a user has completed all prerequisites for a module.
+ * `missing` entries carry the learner's current status on that prereq so
+ * callers can distinguish "never started — offer placement assessment" from
+ * "already in progress — finish it first."
+ */
+export async function checkPrerequisites(userId: string, moduleId: string): Promise<{ met: boolean; missing: MissingPrereq[] }> {
   const mod = await getModule(moduleId);
   if (!mod) throw new Error(`Module ${moduleId} not found`);
   if (!mod.prerequisites || mod.prerequisites.length === 0) return { met: true, missing: [] };
 
-  const result = await query<{ module_id: string }>(
-    `SELECT module_id FROM learner_progress
-     WHERE workos_user_id = $1 AND module_id = ANY($2) AND status IN ('completed', 'tested_out')`,
+  const result = await query<{ module_id: string; status: string }>(
+    `SELECT module_id, status FROM learner_progress
+     WHERE workos_user_id = $1 AND module_id = ANY($2)`,
     [userId, mod.prerequisites]
   );
-  const completed = new Set(result.rows.map(r => r.module_id));
-  const missing = mod.prerequisites.filter(p => !completed.has(p));
+  const statusByModule = new Map(result.rows.map(r => [r.module_id, r.status]));
+
+  const missing: MissingPrereq[] = [];
+  for (const prereqId of mod.prerequisites) {
+    const status = statusByModule.get(prereqId);
+    if (status === 'completed' || status === 'tested_out') continue;
+    const normalized: MissingPrereqStatus =
+      status === 'in_progress' ? 'in_progress'
+      : status === 'failed' ? 'failed'
+      : status === 'expired' ? 'expired'
+      : 'not_started';
+    missing.push({ moduleId: prereqId, status: normalized });
+  }
   return { met: missing.length === 0, missing };
 }
 
