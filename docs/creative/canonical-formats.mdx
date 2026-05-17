@@ -817,14 +817,14 @@ When reading a product on the v1 path, SDKs project `format_ids` to `format_opti
 2. **Seller-asserted on the v1 file**: explicit `canonical` field on the v1 format declaration.
 3. **Registry glob**: `format_id_glob` match.
 4. **Structural match**: registry structural-shape match.
-5. **Fail closed**: SDK MUST NOT synthesize a `format_options` entry. SDKs MUST surface the failure via the `errors[]` array on the `get_products` response envelope with `code: FORMAT_PROJECTION_FAILED` (NOT logger-only — a buyer that silently sees N fewer products has no remediation path; the warning needs to reach the response, not just the log file). The advisory is non-fatal: the response stays 200/success, the product is still valid on the v1 path, only the v2 `format_options` projection is absent.
+5. **Fail closed**: SDK MUST NOT synthesize a `format_options` entry. SDKs MUST surface the failure in a structured channel reachable by the calling agent — either a separate lint-output channel OR augmenting the response's `errors[]` array with `code: FORMAT_PROJECTION_FAILED`. NOT logger-only — a buyer that silently sees N fewer products has no remediation path. The advisory is non-fatal: the response stays 200/success, the product is still valid on the v1 path, only the v2 `format_options` projection is absent.
 
 ### Consumer rules (divergence detection)
 
 When a product carries BOTH `format_ids` and `format_options` and the two disagree (different canonical, different dimensions, different orientation, etc.):
 
 - SDKs MUST treat this as a producer contract violation.
-- SDKs SHOULD prefer `format_options` (canonical formats are the richer surface) and SHOULD surface the divergent product via the response's `errors[]` array with `code: FORMAT_DECLARATION_DIVERGENT` (NOT logger-only — operators need wire-visible signal). Hard-failing the entire `get_products` response is discouraged — it punishes downstream buyers for a producer bug.
+- SDKs SHOULD prefer `format_options` (canonical formats are the richer surface) and SHOULD surface the divergent product in a structured channel reachable by the calling agent (lint-output OR `errors[]` augmentation) with `code: FORMAT_DECLARATION_DIVERGENT`. NOT logger-only. Hard-failing the entire `get_products` response is discouraged — it punishes downstream buyers for a producer bug.
 - SDKs MUST NOT silently pick one shape and discard the other without surfacing the divergence to the calling agent.
 
 The schema cannot enforce agreement (no cross-field constraint expresses "the v1 mapped form of `format_ids[i]` must equal `format_options[j]`"). Consumer-side detection is the only line of defense; SDK conformance suites SHOULD include divergence fixtures.
@@ -946,7 +946,7 @@ This is a doc concern, not a schema concern. The schema is more strict than the 
 | Phase 1 | ✅ in #3307 | `asset_group_id` vocabulary registry (canonical entries + audit-grounded aliases), `scenes` schema, `zip` asset type, video/audio doc fixes |
 | Phase 2 | ✅ in #3307 | 11 canonical format definitions with structured `slots` declaration, `ProductFormatDeclaration` (format_kind discriminator + params), `validate_input` primitive, `creative.supported_formats` on get_adcp_capabilities, `brand_kit_override` inline on `BrandRef`, `platform-extension-ref`, typed inline `product_card` / `product_card_detailed`, `format_ids` + `format_options` `anyOf` on Product (dual emission legal during migration per #3765) |
 | Phase 3 | ✅ in #3307 | v1↔canonical-formats migration guide, 12 fully-validated reference Product fixtures + 1 get_products response fixture with bundled extensions, fixture-validation test suite (`npm run test:canonical-fixtures`) |
-| Phase 4 | ⚠️ blocking adoption | Reference SDK codegen (TypeScript first, then Python), server-side flatten wrapper reference implementation. Without Phase 4, adopters cannot consume v2 cleanly — the typed-tagged-union ergonomics this PR's design earns require codegen to deliver. v2 is opt-in and additive at the schema layer today; Phase 4 makes it usable. |
+| Phase 4 | ⚠️ MUST ship alongside 3.1.0 beta | Reference SDK codegen (TypeScript first, then Python), server-side flatten wrapper reference implementation, platform_extensions URI+digest fetch+cache helper, first-class typed accessors for `production_window_business_days` and other slot-level scheduling hints (otherwise adopters dig them out of the format blob and lose the v1↔v2 ergonomic win). Without Phase 4, adopters cannot consume canonical-formats cleanly — the typed-tagged-union ergonomics this PR's design earns require codegen to deliver. Without the flatten wrapper, walled gardens stay v1-only and `list_creative_formats` reality skews; with it, `format_ids` is auto-derived from `format_options` and migration is invisible to v1 consumers. **The schemas are shippable today; the SDK work is the gating dependency for adopter consumption and MUST land alongside the 3.1.0 beta, not after.** |
 | Native canonical | TBD | Deferred to 3.2 after TemplateCreative + OpenRTB Native 1.2 audit |
 
 ## Related
