@@ -2,12 +2,12 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/system-reference.json",
   "title": "System Reference",
-  "description": "Reference to a value within a named identity, taxonomy, geographic, or measurement system — e.g., a Nielsen DMA market, an IAB Audience Taxonomy node, a UID2 identity, a Comscore audience. Provides a single canonical shape `{system, value, version?, name?}` reused across signals, deployments, buy-terms, and delivery reporting wherever a value is defined against an external reference frame. The `system` axis is intentionally an open string at the primitive level; per-use constraints (closed enums, vendor allowlists) belong in the consuming schema's `oneOf` or `enum`, not here. Decision D1 from the signal epistemic-model umbrella (see issue #4616).",
+  "description": "Reference to a value within a named external system. Four primary axes of use: (1) **identity** — UID2, ID5, RampID, hashed-email, MAID; (2) **taxonomy** — IAB Audience Taxonomy, IAB Content Taxonomy, vendor-specific category trees; (3) **geographic** — Nielsen DMA, Comscore Market, OMB MSA, postcode aggregates; (4) **measurement** — measurement currencies (Nielsen P18-49), methodology sources (panel / set_top_box / ACR / census / server_logs / SDK per the construction-methodology row in #4616), vendor measurement schemes. Provides a single canonical shape `{system, value, version?, name?}` reused across signals, deployments, buy-terms, delivery reporting, and measurement attribution wherever a value is defined against an external reference frame. The `system` axis is intentionally an open string at the primitive level; per-use constraints (closed enums, vendor allowlists) belong in the consuming schema's `oneOf` or `enum`, not here. Decision D1 from the signal-and-measurement epistemic-model umbrella (see issue #4616).",
   "type": "object",
   "properties": {
     "system": {
       "type": "string",
-      "description": "Identifier for the reference system. Open string — consumers SHOULD use kebab_case or snake_case stable identifiers (e.g. `nielsen_dma`, `iab_audience`, `uid2`, `ramp_id`, `comscore_market`, `omb_msa`). Custom or vendor-specific values are permitted but interoperate only with parties that recognize the same `system` string.",
+      "description": "Identifier for the reference system. Open string — consumers SHOULD use kebab_case or snake_case stable identifiers (e.g. `nielsen_dma`, `iab_audience`, `uid2`, `ramp_id`, `comscore_market`, `omb_msa`, `nielsen_p_18_49`, `measurement_source`). Custom or vendor-specific values are permitted but interoperate only with parties that recognize the same `system` string.",
       "minLength": 1,
       "examples": [
         "nielsen_dma",
@@ -15,7 +15,9 @@
         "uid2",
         "ramp_id",
         "comscore_market",
-        "omb_msa"
+        "omb_msa",
+        "nielsen_p_18_49",
+        "measurement_source"
       ]
     },
     "value": {
@@ -67,6 +69,17 @@
       "system": "comscore_market",
       "value": "NYC-100",
       "version": "2025-Q1"
+    },
+    {
+      "system": "nielsen_p_18_49",
+      "value": "P18-49",
+      "version": "2025",
+      "name": "Persons 18-49"
+    },
+    {
+      "system": "measurement_source",
+      "value": "set_top_box",
+      "name": "Set-top box"
     }
   ]
 }

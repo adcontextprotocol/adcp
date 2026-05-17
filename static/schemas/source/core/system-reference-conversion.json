@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/system-reference-conversion.json",
   "title": "System Reference Conversion",
-  "description": "Describes the conversion from a signal's reference system to the destination's native system. REQUIRED when the deployment's fidelity is `converted`; OPTIONAL surfacing when fidelity is `approximated` (lets buyers see WHY a deployment is approximated, not just that it is). Lets buyer agents reason about source, destination, and conversion method without parsing free-text descriptions. The conversion claim itself (`from` system → `to` system, by `method`) is self-reported by the seller; third-party verification of the claim is a future attestation concern (decision D3 in #4616).",
+  "description": "Describes the conversion from a source reference system to the destination's native system. Used by two surfaces: (1) signal deployments — when a destination remaps a signal's market / identity / taxonomy / measurement reference; (2) delivery measurement — when a measurement vendor projects, infers, or upscales from one methodology source to another (e.g. set-top-box panel → P18-49 currency). REQUIRED when the surrounding fidelity is `converted`; OPTIONAL surfacing when fidelity is `approximated` (lets consumers see WHY a deployment or report is approximated, not just that it is). Lets buyer agents and measurement consumers reason about source, destination, and conversion method without parsing free-text. The conversion claim itself (`from` system → `to` system, by `method`) is self-reported by the seller / measurement vendor; third-party verification of the claim is a future attestation concern (decision D3 in #4616; see #3877 `completion_source` for shipped prior art on the seller-attested vs vendor-attested split).",
   "type": "object",
   "properties": {
     "from": {
@@ -97,6 +97,13 @@
       "method": "projected",
       "method_provider": "Nielsen",
       "method_details": "Publisher's panel reweighted to Nielsen P18-49 distribution via post-stratification. Sample n=4,800, design effect 1.3."
+    },
+    {
+      "from": { "system": "measurement_source", "value": "set_top_box", "name": "Samba STB universe" },
+      "to":   { "system": "nielsen_p_18_49", "value": "P18-49", "version": "2025" },
+      "method": "projected",
+      "method_provider": "Samba TV",
+      "method_details": "STB tuning data projected to Nielsen P18-49 currency via Nielsen-licensed reweighting; methodology blend with census-level demos. Measurement-side analog of the signal-side panel projection — #2041 row use case."
     }
   ]
 }

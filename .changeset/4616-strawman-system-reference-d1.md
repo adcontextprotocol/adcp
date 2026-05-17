@@ -2,9 +2,9 @@
 "adcontextprotocol": minor
 ---
 
-Add `system-reference` primitive + `system-reference-fidelity` enum + `system-reference-conversion` schema — strawman for decision D1 of the signal epistemic-model umbrella (#4616).
+Add `system-reference` primitive + `system-reference-fidelity` enum + `system-reference-conversion` schema — strawman for decision D1 of the signal-AND-measurement epistemic-model umbrella (#4616).
 
-Adds three reusable schema primitives that future row-level RFCs (#4472 PBA audience_model, #4475 structured market identifiers, @lszczesiak's pending ID-graph RFC) can adopt without re-litigating the shape per-RFC:
+Adds three reusable schema primitives that future row-level RFCs can adopt without re-litigating the shape per-RFC. After @bokelley's 2026-05-17 third-sibling framing (#4616 issuecomment-4470049814), D1 covers BOTH the signals track (#4472 PBA audience_model, #4475 structured market identifiers, @lszczesiak's pending ID-graph RFC) AND the measurement track (#2041 measurement source attribution, with #3885 / #3652 / #3877 as already-shipped publishing/authorization-half prior art).
 
 - `core/system-reference.json` — the canonical `{system, value, version?, name?}` shape for a value defined against an external identity, taxonomy, geographic, or measurement system. `system` is intentionally an open string at the primitive level; per-use constraints live in consuming schemas. Field named `value` (not `id`) because the primitive is cross-axis: identity systems issue IDs, taxonomies issue values/terms, measurement systems issue methodology labels.
 - `enums/system-reference-fidelity.json` — `exact | converted | approximated | unsupported` for deployment-side fidelity. `converted` covers the case where the destination uses a different system but the conversion is deterministic and lossless (e.g. Nielsen DMA → Comscore Market via crosswalk, UID2 → ID5 via identity graph). Generalizes #4475's `market_fidelity` mechanism to all reference-system axes.
