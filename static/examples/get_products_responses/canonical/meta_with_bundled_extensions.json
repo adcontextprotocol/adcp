@@ -74,11 +74,11 @@
             "composition_model": "deterministic",
             "platform_extensions": [
               {
-                "uri": "https://meta.adcp/extensions/meta_pixel",
+                "uri": "https://meta.example/extensions/meta_pixel",
                 "digest": "sha256:a3f5b7c9d8e2f1a4b6c8d0e2f4a6b8c0d2e4f6a8b0c2d4e6f8a0b2c4d6e8f0a2"
               },
               {
-                "uri": "https://meta.adcp/extensions/meta_placements_reels",
+                "uri": "https://meta.example/extensions/meta_placements_reels",
                 "digest": "sha256:b8e1d4f6a9c2b5e8d1f4a7c0b3e6d9f2a5c8b1e4d7f0a3c6b9e2d5f8a1c4b7e0"
               }
             ]
@@ -148,11 +148,11 @@
             "composition_model": "deterministic",
             "platform_extensions": [
               {
-                "uri": "https://meta.adcp/extensions/meta_pixel",
+                "uri": "https://meta.example/extensions/meta_pixel",
                 "digest": "sha256:a3f5b7c9d8e2f1a4b6c8d0e2f4a6b8c0d2e4f6a8b0c2d4e6f8a0b2c4d6e8f0a2"
               },
               {
-                "uri": "https://meta.adcp/extensions/meta_placements_feed",
+                "uri": "https://meta.example/extensions/meta_placements_feed",
                 "digest": "sha256:c2d4e6f8a0b2c4d6e8f0a2c4d6e8f0a2c4d6e8f0a2c4d6e8f0a2c4d6e8f0a2c4"
               }
             ]
@@ -162,7 +162,7 @@
     }
   ],
   "extensions": {
-    "https://meta.adcp/extensions/meta_pixel@sha256:a3f5b7c9d8e2f1a4b6c8d0e2f4a6b8c0d2e4f6a8b0c2d4e6f8a0b2c4d6e8f0a2": {
+    "https://meta.example/extensions/meta_pixel@sha256:a3f5b7c9d8e2f1a4b6c8d0e2f4a6b8c0d2e4f6a8b0c2d4e6f8a0b2c4d6e8f0a2": {
       "extends": "tracking",
       "version": "2.1.0",
       "description": "Meta Pixel + Conversions API integration. Required for conversion-event optimization on Meta products.",
@@ -201,7 +201,7 @@
         }
       }
     },
-    "https://meta.adcp/extensions/meta_placements_reels@sha256:b8e1d4f6a9c2b5e8d1f4a7c0b3e6d9f2a5c8b1e4d7f0a3c6b9e2d5f8a1c4b7e0": {
+    "https://meta.example/extensions/meta_placements_reels@sha256:b8e1d4f6a9c2b5e8d1f4a7c0b3e6d9f2a5c8b1e4d7f0a3c6b9e2d5f8a1c4b7e0": {
       "extends": "placement",
       "version": "1.0.0",
       "description": "Meta-specific placement enum scoped to Reels surfaces (Facebook Reels + Instagram Reels).",
@@ -226,7 +226,7 @@
         }
       }
     },
-    "https://meta.adcp/extensions/meta_placements_feed@sha256:c2d4e6f8a0b2c4d6e8f0a2c4d6e8f0a2c4d6e8f0a2c4d6e8f0a2c4d6e8f0a2c4": {
+    "https://meta.example/extensions/meta_placements_feed@sha256:c2d4e6f8a0b2c4d6e8f0a2c4d6e8f0a2c4d6e8f0a2c4d6e8f0a2c4d6e8f0a2c4": {
       "extends": "placement",
       "version": "1.0.0",
       "description": "Meta-specific placement enum scoped to feed surfaces (Facebook Feed + Instagram Feed).",

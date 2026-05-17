@@ -79,11 +79,11 @@
         "composition_model": "algorithmic",
         "platform_extensions": [
           {
-            "uri": "https://google.adcp/extensions/google_conversion_actions",
+            "uri": "https://google.example/extensions/google_conversion_actions",
             "digest": "sha256:d8f1a4c7b0e3d6f9a2c5b8e1d4f7a0c3b6e9d2f5a8c1b4e7d0f3a6c9b2e5d8f1"
           },
           {
-            "uri": "https://google.adcp/extensions/google_audience_signals",
+            "uri": "https://google.example/extensions/google_audience_signals",
             "digest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
           }
         ]

@@ -189,7 +189,7 @@
     {
       "v1_pattern": { "format_id_glob": "meta_reels" },
       "v2": { "canonical": "video_hosted", "parameters": { "orientation": "vertical", "aspect_ratio": "9:16" } },
-      "notes": "Meta Reels vertical short-form video. Platform-specific format (lives on meta.adcp's agent_url, NOT the AAO catalog at creative.adcontextprotocol.org) because Meta-specific parameters and extensions narrow the canonical."
+      "notes": "Meta Reels vertical short-form video. Platform-specific format (lives on meta.example's agent_url, NOT the AAO catalog at creative.adcontextprotocol.org) because Meta-specific parameters and extensions narrow the canonical."
     },
     {
       "v1_pattern": { "structural": { "asset_types": ["vast"], "vast_versions": [">=4.0"] } },

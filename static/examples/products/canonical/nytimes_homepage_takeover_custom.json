@@ -47,7 +47,7 @@
       "canonical_formats_only": true,
       "format_shape": "multi_placement_takeover",
       "format_schema": {
-        "uri": "https://nytimes.adcp/schemas/formats/homepage_takeover_v3",
+        "uri": "https://nytimes.example/schemas/formats/homepage_takeover_v3",
         "digest": "sha256:e1d4f6a9c2b5e8d1f4a7c0b3e6d9f2a5c8b1e4d7f0a3c6b9e2d5f8a1c4b7e0a3"
       },
       "capability_id": "nytimes_homepage_takeover_premium",

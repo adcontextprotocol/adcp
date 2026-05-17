@@ -65,7 +65,7 @@
         "composition_model": "deterministic",
         "platform_extensions": [
           {
-            "uri": "https://nytimes.adcp/extensions/nytimes_om_strict",
+            "uri": "https://nytimes.example/extensions/nytimes_om_strict",
             "digest": "sha256:c9d2f5b8e1a4c7b0e3d6f9a2c5b8e1d4f7a0c3b6e9d2f5a8c1b4e7d0f3a6c9b2"
           }
         ]

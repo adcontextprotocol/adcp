@@ -139,7 +139,7 @@ These shapes are real ad-industry product types — but they're either multi-can
       "canonical_formats_only": true,
       "format_shape": "multi_placement_takeover",
       "format_schema": {
-        "uri": "https://nytimes.adcp/schemas/formats/homepage_takeover_v3",
+        "uri": "https://nytimes.example/schemas/formats/homepage_takeover_v3",
         "digest": "sha256:e1d4f6a9c2b5e8d1f4a7c0b3e6d9f2a5c8b1e4d7f0a3c6b9e2d5f8a1c4b7e0a3"
       },
       "capability_id": "nytimes_homepage_takeover_premium",
@@ -279,11 +279,11 @@ Meta Reels narrows `video_hosted` (vertical orientation) with Meta-specific para
         "composition_model": "deterministic",
         "platform_extensions": [
           {
-            "uri": "https://meta.adcp/extensions/meta_pixel",
+            "uri": "https://meta.example/extensions/meta_pixel",
             "digest": "sha256:a3f5b7c9d8e2f1a4b6c8d0e2f4a6b8c0d2e4f6a8b0c2d4e6f8a0b2c4d6e8f0a2"
           },
           {
-            "uri": "https://meta.adcp/extensions/meta_placements_reels",
+            "uri": "https://meta.example/extensions/meta_placements_reels",
             "digest": "sha256:b8e1d4f6a9c2b5e8d1f4a7c0b3e6d9f2a5c8b1e4d7f0a3c6b9e2d5f8a1c4b7e0"
           }
         ]
@@ -323,7 +323,7 @@ The canonical-as-contract value is clearest for IAB-standard formats. NYTimes an
         "composition_model": "deterministic",
         "platform_extensions": [
           {
-            "uri": "https://nytimes.adcp/extensions/nytimes_om_strict",
+            "uri": "https://nytimes.example/extensions/nytimes_om_strict",
             "digest": "sha256:c9d2f5b8e1a4c7b0e3d6f9a2c5b8e1d4f7a0c3b6e9d2f5a8c1b4e7d0f3a6c9b2"
           }
         ]
@@ -479,7 +479,7 @@ The product narrows the canonical; the canonical is what NYTimes commits to vali
 ### 2. Buyer calls Flashtalking's `build_creative`
 
 ```json test=false
-// POST https://flashtalking.adcp/build_creative
+// POST https://flashtalking.example/build_creative
 {
   "format": {
     "format_kind": "image",
@@ -499,7 +499,7 @@ Flashtalking renders an MREC PNG, returns a manifest with the produced asset:
 {
   "creative_id": "ft_mrec_88299",
   "manifest": {
-    "format_id": { "agent_url": "https://flashtalking.adcp", "id": "image_300x250" },
+    "format_id": { "agent_url": "https://flashtalking.example", "id": "image_300x250" },
     "assets": {
       "image": { "asset_type": "image", "url": "https://cdn.flashtalking.com/ft_mrec_88299.png", "width": 300, "height": 250 }
     }
@@ -772,9 +772,9 @@ Override fields take precedence over `brand.json` for the call carrying this Bra
 Platform extensions are narrow, truly platform-specific additions (pixel ID shapes, conversion event taxonomies, platform-specific CTAs/destinations). They live at well-known paths on the owning agent:
 
 ```
-https://meta.adcp/extensions/meta_pixel
-https://tiktok.adcp/extensions/tiktok_pixel
-https://nytimes.adcp/extensions/nytimes_om_strict
+https://meta.example/extensions/meta_pixel
+https://tiktok.example/extensions/tiktok_pixel
+https://nytimes.example/extensions/nytimes_om_strict
 ```
 
 Each extension's response carries the schema, the canonical pattern or slot it extends, a version, and a content digest.
@@ -783,7 +783,7 @@ Each extension's response carries the schema, the canonical pattern or slot it e
 
 *Open-ecosystem path (publisher-hosted)*. Used when the publisher owning the URI subdomain participates directly in AdCP — independent publishers, SSPs, retail-media networks running their own canonical extensions. The publisher hosts the artifact at the canonical URI on their subdomain. Because URIs are digest-pinned (`uri@sha256:…`), responses are immutable per digest — publishers SHOULD serve them with `Cache-Control: public, max-age=31536000, immutable` and target ≥99.9% / 30-day availability. SDKs cache aggressively by `uri@digest`; a hit is always correct. On 404 or resolution failure, buyers MUST degrade gracefully (treat as unavailable, skip platform-specific narrowing, don't fail the buy).
 
-*Closed-platform path (AAO-translated)*. Used for walled gardens (Meta, Google, Amazon, TikTok, Snap, Pinterest). These platforms are unlikely to host AdCP-shaped extension artifacts on their own subdomains (they have native SDKs and APIs that protect their revenue model; serving an immutable extension CDN gives them no benefit). Instead, AAO runs a translator that maps closed-platform format documentation into AdCP extension artifacts and hosts them under an AAO mirror namespace (e.g., `https://mirror.adcontextprotocol.org/translated/<platform>/<artifact>@<digest>`). Worked-example fixtures in this repo that reference `https://meta.adcp/extensions/...` are illustrative — production usage of those extensions should resolve through the AAO mirror until/unless Meta participates directly. AAO commits to the same digest-pinning + immutability contract; refresh cadence and translation methodology are documented at `https://adcontextprotocol.org/registry/translated-extensions`. Buyers cache and resolve identically across both paths — `uri@digest` is the cache key, regardless of who hosts.
+*Closed-platform path (AAO-translated)*. Used for walled gardens (Meta, Google, Amazon, TikTok, Snap, Pinterest). These platforms are unlikely to host AdCP-shaped extension artifacts on their own subdomains (they have native SDKs and APIs that protect their revenue model; serving an immutable extension CDN gives them no benefit). Instead, AAO runs a translator that maps closed-platform format documentation into AdCP extension artifacts and hosts them under an AAO mirror namespace (e.g., `https://mirror.adcontextprotocol.org/translated/<platform>/<artifact>@<digest>`). Worked-example fixtures in this repo that reference `https://meta.example/extensions/...` are illustrative — production usage of those extensions should resolve through the AAO mirror until/unless Meta participates directly. AAO commits to the same digest-pinning + immutability contract; refresh cadence and translation methodology are documented at `https://adcontextprotocol.org/registry/translated-extensions`. Buyers cache and resolve identically across both paths — `uri@digest` is the cache key, regardless of who hosts.
 
 The two paths share the digest-pinned cache and graceful-degradation semantics. They differ only in the resolution authority. The mirror is normative for closed-platform extensions (not "best effort") because there is no other path; for open-ecosystem extensions, the mirror is opt-in fallback.
 
@@ -793,7 +793,7 @@ The two paths share the digest-pinned cache and graceful-degradation semantics. 
 {
   "products": [ { "...": "..." } ],
   "extensions": {
-    "https://meta.adcp/extensions/meta_pixel@sha256:a3f5...": {
+    "https://meta.example/extensions/meta_pixel@sha256:a3f5...": {
       "extends": "tracking",
       "fields": {
         "pixel_id": { "type": "string", "required": true },
@@ -863,8 +863,8 @@ When a seller has both a published v1 named format AND a v2 declaration for the 
 {
   "format_kind": "custom",
   "format_shape": "multi_placement_takeover",
-  "format_schema": { "uri": "https://nytimes.adcp/schemas/formats/homepage_takeover_v3", "digest": "sha256:..." },
-  "v1_format_ref": { "agent_url": "https://nytimes.adcp", "id": "homepage_takeover" },
+  "format_schema": { "uri": "https://nytimes.example/schemas/formats/homepage_takeover_v3", "digest": "sha256:..." },
+  "v1_format_ref": { "agent_url": "https://nytimes.example", "id": "homepage_takeover" },
   "params": { ... }
 }
 ```
@@ -882,7 +882,7 @@ A buyer reading a product on the v1 wire path sees `format_options` entries with
 For v2-native sellers whose products do NOT carry preexisting v1 named formats (e.g., a seller that came up after canonical-formats stabilized and authored only `format_options`), the question of what to put in `format_ids` for v1-only buyers has two acceptable answers:
 
 1. **Default — set `canonical_formats_only: true`, omit from `format_ids`.** v1 buyers see no `format_ids` entry for these declarations. The product is functionally invisible to v1-only buyers, but the v1 surface stays clean (no synthetic identifiers polluting buyer-side allowlists).
-2. **Synthesize seller-scoped IDs.** When a seller wants v1-only buyer reach, they MAY mint `format_ids` like `<seller_domain>/canonical_<format_kind>_<param_summary>` (e.g., `acme.adcp/canonical_image_300x250`). When synthesizing:
+2. **Synthesize seller-scoped IDs.** When a seller wants v1-only buyer reach, they MAY mint `format_ids` like `<seller_domain>/canonical_<format_kind>_<param_summary>` (e.g., `acme.example/canonical_image_300x250`). When synthesizing:
    - The IDs MUST be seller-scoped (under the seller's own `agent_url`), never under `aao-synth/*` or any cross-seller namespace — the AAO-mirror-style synthetic namespace was considered and rejected because adopters would index on identifiers with no stable identity.
    - The IDs MUST be declared in the seller's published format catalog (the static format file referenced by their adcp-resource manifest, the same place `list_creative_formats` reads from) so v1 buyers see consistent identifiers between `Product.format_ids` and the seller's format directory.
    - The `format_kind_<param_summary>` convention is a recommendation, not a normative requirement — sellers MAY use any naming convention scoped to their own `agent_url` namespace. Buyers MUST NOT pattern-match on the convention for routing (the seller's catalog is authoritative).

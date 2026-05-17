@@ -1583,7 +1583,7 @@ export async function verifyAdcpRequestSignature(req: Request, ctx: {
   const { jwk } = await ctx.resolveJwk(parsed.keyid!); // throws _key_unknown
   // 8: key purpose
   const j = jwk as any;
-  if (j.use !== "sig" || !Array.isArray(j.key_ops) || !j.key_ops.includes("verify") || j.adcp_use !== "request-signing") {
+  if (j.use !== "sig" || !Array.isArray(j.key_ops) || !j.key_ops.includes("verify") || j.example_use !== "request-signing") {
     throw new RequestSignatureError("request_signature_key_purpose_invalid");
   }
   // 9: revocation (BEFORE crypto verify)

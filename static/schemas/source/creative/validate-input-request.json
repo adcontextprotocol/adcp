@@ -48,7 +48,7 @@
               "id": {
                 "type": "string",
                 "format": "uri",
-                "description": "URI-form format identifier referencing a third-party format definition (e.g., `https://flashtalking.adcp/formats/image_300x250@sha256:...`). Validators fetch the definition (digest-pinned, cached) and validate the manifest against it."
+                "description": "URI-form format identifier referencing a third-party format definition (e.g., `https://flashtalking.example/formats/image_300x250@sha256:...`). Validators fetch the definition (digest-pinned, cached) and validate the manifest against it."
               }
             },
             "required": ["kind", "id"]
