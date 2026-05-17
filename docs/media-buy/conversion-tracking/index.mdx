@@ -507,9 +507,9 @@ Optimize for a seller-tracked delivery metric. No event source needed — the se
 
 ### kind: vendor_metric
 
-For vendor-attested measurement where the metric has no industry-graduated definition — attention (DoubleVerify, IAS, Adelaide, TVision, Lumen), panel-based brand lift (Kantar, Upwave, Cint), retail-media partner metrics — the goal binds a specific vendor + `metric_id` end-to-end. The seller's bidding stack steers toward that vendor's measurement; delivery reports the value via `vendor_metric_values[]` with the same `(vendor, metric_id)` key.
+For vendor-attested measurement where the metric has no industry-graduated definition — attention (DoubleVerify, IAS, Adelaide, TVision, Lumen), panel-based brand lift (Kantar, Upwave, Cint), emissions (Scope3, Good-Loop — see polarity caveat below), retail-media partner metrics — the goal binds a specific vendor + `metric_id` end-to-end. The seller's bidding stack steers toward that vendor's measurement; delivery reports the value via `vendor_metric_values[]` with the same `(vendor, metric_id)` key.
 
-**Direction polarity** (upward-pushing only this minor). `cost_per` and `threshold_rate` are upward-pushing targets — the seller steers delivery toward higher metric values, or toward meeting a minimum threshold. Metrics where the buyer wants to *minimize* (emissions, IVT, latency) currently rely on seller-side polarity interpretation per the vendor's published metric semantics in `measurement.metrics[]`. First-class minimize semantics (a `direction: "minimize"` field on the goal or a `target.kind: "ceiling_rate"`) are under WG discussion — see [#4644](https://github.com/adcontextprotocol/adcp/issues/4644).
+**Direction polarity** (upward-pushing only this minor). `cost_per` and `threshold_rate` are upward-pushing targets — the seller steers delivery toward higher metric values, or toward meeting a minimum threshold. Metrics where the buyer wants to *minimize* (emissions, IVT, latency) currently rely on seller-side polarity interpretation per the vendor's metric definition. First-class minimize semantics (a `direction: "minimize"` field on the goal or a `target.kind: "ceiling_rate"`) are under WG discussion — see [#4644](https://github.com/adcontextprotocol/adcp/issues/4644).
 
 ```json
 {

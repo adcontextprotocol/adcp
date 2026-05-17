@@ -146,13 +146,13 @@ A `performance_standard` MAY be layered on top if the buyer wants a contractual 
       "vendor": { "domain": "adelaidemetrics.com" },
       "metric_id": "attention_score",
       "value": 73.2,
-      "measurable_impressions": 845000
+      "measurable_impressions": 420000
     }
   ]
 }
 ```
 
-The seller's bidding stack steered toward higher Adelaide attention scores; the reported value `73.2` is above the threshold `70`, so the goal is met. The `measurable_impressions` denominator (`845000` out of total impressions on the buy) is the coverage figure for Adelaide's measurement — vendor SDKs rarely fire on 100% of delivered impressions.
+The seller's bidding stack steered toward higher Adelaide attention scores; the reported value `73.2` is above the threshold `70`, so the goal is met. The `measurable_impressions` denominator (`420000` out of, say, 1M delivered impressions) is the coverage figure for Adelaide's measurement — vendor SDKs rarely fire on 100% of delivered impressions, and attention-vendor coverage on CTV today is typically 30–60% depending on app-SDK presence. Always compute coverage from `measurable_impressions / impressions` before reasoning about the reported value.
 
 **4. Accountability gap reporting** (also in the `get_media_buy_delivery` response, when commitment isn't met):
 
