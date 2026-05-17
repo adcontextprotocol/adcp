@@ -21,17 +21,39 @@
  * old soft-pass fallback consulted `email_domain`; they now hard-fail
  * on agent registration.
  *
- * Trust signal for auto-seed: an org has at least one
- * `organization_memberships` row whose email's domain matches the
- * org's `email_domain`. If a real human at that domain is a member of
- * the org, the email_domain represents an actual corporate signup —
- * not a brand-claim-issue webhook writeback. Free-email-provider
- * email_domain values are excluded outright.
+ * Auto-seed predicate (tightened per round-1 security review):
+ *   - All active org memberships have email addresses at the org's
+ *     `email_domain`. ANY-match was too loose — a consultant from
+ *     another company in an unrelated org would have triggered an
+ *     unintended brand-displacement (seed verified=true for THEIR
+ *     domain on an org that isn't theirs). ALL-match means the org's
+ *     entire human roster is at that domain, which is the strongest
+ *     "this org represents this domain" signal we can read without
+ *     DNS proof.
+ *   - email_domain is not on the free-email-provider or shared-platform
+ *     block list (gmail.com, vercel.app, substack.com, etc.). Mirrors
+ *     migration 481's expanded exclusion via `SHARED_PLATFORM_DOMAINS`
+ *     from identifier-normalization.ts.
  *
- * Orgs that don't pass auto-seed (no member at the email_domain, OR
- * free-email-provider email_domain) are flagged for manual review.
- * The intended manual path is the cross-org admin agent-removal /
+ * Orgs that don't pass auto-seed are flagged for manual review. The
+ * intended manual path is the cross-org admin agent-removal /
  * registration endpoint added in #4498.
+ *
+ * On auto-seed:
+ *   - INSERT organization_domains with verified=true, is_primary=true,
+ *     source='reconcile_4648'. is_primary=true matches the
+ *     bootstrap-path shape (linkDomain isPrimary: true) so the
+ *     documented `organizations.email_domain` ↔
+ *     `organization_domains.is_primary=true` invariant from migration
+ *     066 holds.
+ *   - Audit-log the seed via OrganizationDatabase.recordAuditLog so the
+ *     source='reconcile_4648' writes are traceable in incident review.
+ *
+ * Note on the membership trust signal: organization_memberships.email
+ * is a denormalized copy of users.email (migration 476). Source of
+ * truth is users.email, but the denorm is what WorkOS webhooks write
+ * at invite time and what the auto-link paths key off. Stale rows can
+ * still legitimately attest "real human at this domain joined."
  *
  * Usage (dev):
  *   DATABASE_URL=… npx tsx server/src/scripts/reconcile-legacy-org-domains.ts            # dry-run
@@ -47,34 +69,50 @@
 import { initializeDatabase, getPool, closeDatabase } from '../db/client.js';
 import { getDatabaseConfig } from '../config.js';
 import { isFreeEmailDomain } from '../utils/email-domain.js';
+import { SHARED_PLATFORM_DOMAINS } from '../services/identifier-normalization.js';
+import { OrganizationDatabase } from '../db/organization-db.js';
 
 interface LegacyOrgRow {
   workos_organization_id: string;
   name: string;
   email_domain: string;
-  member_at_email_domain_count: number;
+  active_member_count: number;
+  matching_member_count: number;
   created_at: Date;
 }
 
 interface Categorized {
   auto_seed: LegacyOrgRow[];
-  free_email_skip: LegacyOrgRow[];
-  no_member_match_skip: LegacyOrgRow[];
+  excluded_provider_skip: LegacyOrgRow[];
+  not_all_members_match_skip: LegacyOrgRow[];
+  no_members_skip: LegacyOrgRow[];
+}
+
+function isExcludedDomain(domain: string): boolean {
+  const lc = domain.toLowerCase();
+  if (isFreeEmailDomain(lc)) return true;
+  if (SHARED_PLATFORM_DOMAINS.has(lc)) return true;
+  return false;
 }
 
 function categorize(rows: LegacyOrgRow[]): Categorized {
   const result: Categorized = {
     auto_seed: [],
-    free_email_skip: [],
-    no_member_match_skip: [],
+    excluded_provider_skip: [],
+    not_all_members_match_skip: [],
+    no_members_skip: [],
   };
   for (const row of rows) {
-    if (isFreeEmailDomain(row.email_domain)) {
-      result.free_email_skip.push(row);
+    if (isExcludedDomain(row.email_domain)) {
+      result.excluded_provider_skip.push(row);
       continue;
     }
-    if (row.member_at_email_domain_count === 0) {
-      result.no_member_match_skip.push(row);
+    if (row.active_member_count === 0) {
+      result.no_members_skip.push(row);
+      continue;
+    }
+    if (row.matching_member_count !== row.active_member_count) {
+      result.not_all_members_match_skip.push(row);
       continue;
     }
     result.auto_seed.push(row);
@@ -91,35 +129,51 @@ async function main(): Promise<void> {
   }
   initializeDatabase(dbConfig);
   const pool = getPool();
+  const orgDb = new OrganizationDatabase();
 
-  console.log(apply ? '🟢 Mode: APPLY' : '🔵 Mode: DRY-RUN');
+  console.log(`=== legacy-org domain reconciliation (${apply ? 'APPLY' : 'DRY-RUN'}) ===\n`);
 
   const result = await pool.query<LegacyOrgRow>(`
+    WITH legacy_orgs AS (
+      SELECT
+        o.workos_organization_id,
+        o.name,
+        LOWER(o.email_domain) AS email_domain,
+        o.created_at
+      FROM organizations o
+      WHERE o.email_domain IS NOT NULL
+        AND o.email_domain != ''
+        AND o.is_personal IS NOT TRUE
+        AND NOT EXISTS (
+          SELECT 1 FROM organization_domains od
+          WHERE od.workos_organization_id = o.workos_organization_id
+            AND od.verified = true
+        )
+    )
     SELECT
-      o.workos_organization_id,
-      o.name,
-      LOWER(o.email_domain) AS email_domain,
-      COALESCE((
-        SELECT COUNT(*)::int
-        FROM organization_memberships om
-        WHERE om.workos_organization_id = o.workos_organization_id
-          AND LOWER(SPLIT_PART(om.email, '@', 2)) = LOWER(o.email_domain)
-      ), 0) AS member_at_email_domain_count,
-      o.created_at
-    FROM organizations o
-    WHERE o.email_domain IS NOT NULL
-      AND o.email_domain != ''
-      AND o.is_personal IS NOT TRUE
-      AND NOT EXISTS (
-        SELECT 1 FROM organization_domains od
-        WHERE od.workos_organization_id = o.workos_organization_id
-          AND od.verified = true
-      )
-    ORDER BY o.created_at
+      lo.workos_organization_id,
+      lo.name,
+      lo.email_domain,
+      COALESCE(membership_counts.active_member_count, 0)::int AS active_member_count,
+      COALESCE(membership_counts.matching_member_count, 0)::int AS matching_member_count,
+      lo.created_at
+    FROM legacy_orgs lo
+    LEFT JOIN LATERAL (
+      SELECT
+        COUNT(*)::int AS active_member_count,
+        COUNT(*) FILTER (
+          WHERE LOWER(SPLIT_PART(om.email, '@', 2)) = lo.email_domain
+        )::int AS matching_member_count
+      FROM organization_memberships om
+      WHERE om.workos_organization_id = lo.workos_organization_id
+        AND om.email IS NOT NULL
+        AND om.email != ''
+    ) membership_counts ON true
+    ORDER BY lo.created_at
   `);
 
   const rows = result.rows;
-  console.log(`\nLegacy orgs (no verified-domain row, email_domain set, not personal): ${rows.length}`);
+  console.log(`Legacy orgs (no verified-domain row, email_domain set, not personal): ${rows.length}`);
   if (rows.length === 0) {
     console.log('Nothing to reconcile.');
     await closeDatabase();
@@ -127,31 +181,42 @@ async function main(): Promise<void> {
   }
 
   const cat = categorize(rows);
-  console.log(`  auto_seed candidates:     ${cat.auto_seed.length}`);
-  console.log(`  free_email skip:          ${cat.free_email_skip.length}`);
-  console.log(`  no member match skip:     ${cat.no_member_match_skip.length}`);
+  console.log(`  auto_seed candidates (ALL members at email_domain): ${cat.auto_seed.length}`);
+  console.log(`  not-all-members-match (mixed-domain rosters):       ${cat.not_all_members_match_skip.length}`);
+  console.log(`  no-members on the org row:                          ${cat.no_members_skip.length}`);
+  console.log(`  excluded-provider skip (free email / shared host):  ${cat.excluded_provider_skip.length}`);
 
   if (cat.auto_seed.length > 0) {
-    console.log('\nAuto-seed candidates (have a member at email_domain, corporate):');
+    console.log('\nAuto-seed candidates:');
     for (const r of cat.auto_seed) {
+      console.log(
+        `  ${r.workos_organization_id}  ${r.email_domain.padEnd(40)} ${r.matching_member_count}/${r.active_member_count}  "${r.name}"`
+      );
+    }
+  }
+  if (cat.not_all_members_match_skip.length > 0) {
+    console.log('\nMixed-domain roster (FLAG FOR OPS REVIEW — only some members at email_domain):');
+    for (const r of cat.not_all_members_match_skip) {
+      console.log(
+        `  ${r.workos_organization_id}  ${r.email_domain.padEnd(40)} ${r.matching_member_count}/${r.active_member_count}  "${r.name}"`
+      );
+    }
+  }
+  if (cat.no_members_skip.length > 0) {
+    console.log('\nNo-members orgs (FLAG FOR OPS REVIEW — empty roster, cannot validate claim):');
+    for (const r of cat.no_members_skip) {
       console.log(`  ${r.workos_organization_id}  ${r.email_domain.padEnd(40)} "${r.name}"`);
     }
   }
-  if (cat.no_member_match_skip.length > 0) {
-    console.log('\nNo-member-match (FLAG FOR OPS REVIEW — possible brand-claim writeback):');
-    for (const r of cat.no_member_match_skip) {
-      console.log(`  ${r.workos_organization_id}  ${r.email_domain.padEnd(40)} "${r.name}"`);
-    }
-  }
-  if (cat.free_email_skip.length > 0) {
-    console.log('\nFree-email-provider skip (cannot stake a domain claim):');
-    for (const r of cat.free_email_skip) {
+  if (cat.excluded_provider_skip.length > 0) {
+    console.log('\nFree-email / shared-platform skip (cannot stake a domain claim):');
+    for (const r of cat.excluded_provider_skip) {
       console.log(`  ${r.workos_organization_id}  ${r.email_domain.padEnd(40)} "${r.name}"`);
     }
   }
 
   if (!apply) {
-    console.log('\nDRY-RUN — pass --apply to seed verified-domain rows for the auto-seed group.');
+    console.log('\nDRY-RUN -- pass --apply to seed verified-domain rows for the auto-seed group.');
     await closeDatabase();
     return;
   }
@@ -167,26 +232,54 @@ async function main(): Promise<void> {
   let conflicted = 0;
   for (const r of cat.auto_seed) {
     // ON CONFLICT (domain) DO NOTHING — if another org already owns
-    // this domain in organization_domains, we leave it alone and skip.
-    // The org will still hard-reject on agent registration, but ops
-    // can resolve the conflict manually.
+    // this domain in organization_domains, we leave it alone. The
+    // legacy org will still hard-reject on agent registration, but ops
+    // can resolve the conflict manually. is_primary=true matches the
+    // bootstrap-path shape (linkDomain isPrimary: true) so
+    // `organizations.email_domain` and
+    // `organization_domains.is_primary=true` stay in sync (migration
+    // 066's documented invariant).
     const insert = await pool.query<{ workos_organization_id: string }>(
       `INSERT INTO organization_domains
-         (workos_organization_id, domain, verified, source, created_at, updated_at)
-       VALUES ($1, $2, true, 'reconcile_4648', NOW(), NOW())
+         (workos_organization_id, domain, verified, is_primary, source, created_at, updated_at)
+       VALUES ($1, $2, true, true, 'reconcile_4648', NOW(), NOW())
        ON CONFLICT (domain) DO NOTHING
        RETURNING workos_organization_id`,
       [r.workos_organization_id, r.email_domain],
     );
     if (insert.rowCount && insert.rowCount > 0) {
       seeded++;
-      console.log(`  ✓ seeded ${r.workos_organization_id} ← ${r.email_domain}`);
+      console.log(`  + seeded ${r.workos_organization_id} <- ${r.email_domain}`);
+      // Audit-log so the source='reconcile_4648' write is traceable
+      // in incident review. Best-effort; never block on audit-log
+      // failure (the source-column tag is the load-bearing trace).
+      try {
+        await orgDb.recordAuditLog({
+          workos_organization_id: r.workos_organization_id,
+          workos_user_id: 'reconcile_4648_script',
+          action: 'organization_domain_seeded',
+          resource_type: 'organization_domain',
+          resource_id: r.email_domain,
+          details: {
+            source: 'reconcile_4648',
+            verified: true,
+            is_primary: true,
+            matching_member_count: r.matching_member_count,
+            active_member_count: r.active_member_count,
+            issue: 'https://github.com/adcontextprotocol/adcp/issues/4672',
+          },
+        });
+      } catch (err) {
+        console.log(`    ! audit-log write failed (non-fatal): ${(err as Error).message}`);
+      }
     } else {
       conflicted++;
-      console.log(`  ✗ skipped ${r.workos_organization_id} ← ${r.email_domain} (domain already owned by another org)`);
+      console.log(`  - skipped ${r.workos_organization_id} <- ${r.email_domain} (domain already owned by another org)`);
     }
   }
-  console.log(`\nDone. seeded=${seeded}, conflicted=${conflicted}, flagged_for_review=${cat.no_member_match_skip.length}`);
+  const totalFlagged =
+    cat.not_all_members_match_skip.length + cat.no_members_skip.length;
+  console.log(`\nDone. seeded=${seeded}, conflicted=${conflicted}, flagged_for_review=${totalFlagged}`);
   await closeDatabase();
 }
 
