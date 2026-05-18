@@ -16,28 +16,28 @@
  * - Consistency between prod/dev environments
  */
 
-import Anthropic from '@anthropic-ai/sdk';
-import { createLogger } from '../logger.js';
+import Anthropic from "@anthropic-ai/sdk";
+import { createLogger } from "../logger.js";
 
-const logger = createLogger('addie-router');
-import { ModelConfig } from '../config/models.js';
-import type { MemberContext } from './member-context.js';
-import type { AddieTool } from './types.js';
-import { KNOWLEDGE_TOOLS } from './mcp/knowledge-search.js';
-import { MEMBER_TOOLS } from './mcp/member-tools.js';
-import { trackApiCall, ApiPurpose } from './services/api-tracker.js';
+const logger = createLogger("addie-router");
+import { ModelConfig } from "../config/models.js";
+import type { MemberContext } from "./member-context.js";
+import type { AddieTool } from "./types.js";
+import { KNOWLEDGE_TOOLS } from "./mcp/knowledge-search.js";
+import { MEMBER_TOOLS } from "./mcp/member-tools.js";
+import { trackApiCall, ApiPurpose } from "./services/api-tracker.js";
 import {
   getToolSetDescriptionsForRouter,
   getValidToolSetNames,
   requiresPrecision as checkPrecision,
-} from './tool-sets.js';
+} from "./tool-sets.js";
 
 /**
  * Execution plan types
  */
 export type ExecutionPlanBase = {
   /** How the decision was made: 'quick_match' (pattern) or 'llm' (Claude Haiku) */
-  decision_method: 'quick_match' | 'llm';
+  decision_method: "quick_match" | "llm";
   /** Time spent making the routing decision (ms) */
   latency_ms?: number;
   /** Tokens used (only for LLM decisions) */
@@ -52,13 +52,19 @@ export type ExecutionPlanBase = {
 };
 
 /** Response confidence tier — how sure Addie is that she can add value */
-export type ConfidenceTier = 'high' | 'suggest' | 'low';
+export type ConfidenceTier = "high" | "suggest" | "low";
 
-export type ExecutionPlan = ExecutionPlanBase & (
-  | { action: 'ignore'; reason: string }
-  | { action: 'react'; emoji: string; reason: string }
-  | { action: 'respond'; tool_sets: string[]; reason: string; confidence: ConfidenceTier }
-);
+export type ExecutionPlan = ExecutionPlanBase &
+  (
+    | { action: "ignore"; reason: string }
+    | { action: "react"; emoji: string; reason: string }
+    | {
+        action: "respond";
+        tool_sets: string[];
+        reason: string;
+        confidence: ConfidenceTier;
+      }
+  );
 
 /**
  * Context for routing decisions
@@ -67,7 +73,7 @@ export interface RoutingContext {
   /** The message text to route */
   message: string;
   /** Source of the message */
-  source: 'dm' | 'mention' | 'channel';
+  source: "dm" | "mention" | "channel";
   /** User's member context (if available) */
   memberContext?: MemberContext | null;
   /** Whether this is in a thread */
@@ -108,13 +114,14 @@ function buildToolDescriptions(): Record<string, string> {
       descriptions[tool.name] = tool.usage_hints;
     } else {
       // Extract first sentence as fallback
-      const firstSentence = tool.description.split('.')[0];
+      const firstSentence = tool.description.split(".")[0];
       descriptions[tool.name] = firstSentence;
     }
   }
 
   // Add web_search which is a built-in Claude tool not in our tool arrays
-  descriptions['web_search'] = 'search the web for external protocols (MCP, A2A), current events, things not in our docs';
+  descriptions["web_search"] =
+    "search the web for external protocols (MCP, A2A), current events, things not in our docs";
 
   return descriptions;
 }
@@ -133,126 +140,277 @@ export const ROUTING_RULES = {
    */
   expertise: {
     capabilities: {
-      patterns: ['what can you do', 'what can you help with', 'how can you help me', 'what do you do', 'what are you capable of', 'what are you', 'what kinds of things', 'your capabilities'],
+      patterns: [
+        "what can you do",
+        "what can you help with",
+        "how can you help me",
+        "what do you do",
+        "what are you capable of",
+        "what are you",
+        "what kinds of things",
+        "your capabilities",
+      ],
       tools: [], // No tools needed - respond from system prompt knowledge
-      description: 'Questions about what Addie can help with - respond with capability overview',
+      description:
+        "Questions about what Addie can help with - respond with capability overview",
     },
     adcp_protocol: {
-      patterns: ['adcp', 'protocol', 'schema', 'specification', 'signals', 'media buy', 'creative', 'targeting', 'brief', 'sponsored intelligence', 'si chat', 'ai platform', 'ai ad network', 'ai assistant', 'sponsored response', 'ad network', 'aggregator', 'migration', 'upgrade', 'breaking change', 'v2 to v3', 'deprecated', 'what changed', 'reversed data flow', 'catalog sync', 'buy ads', 'buying ads', 'advertise on', 'advertising on', 'brand safety', 'content standards', 'product feed', 'shopify', 'agency buying', 'agency integration', 'brand identity'],
-      tools: ['search_docs'],
-      description: 'AdCP protocol questions - understanding how things work, migration, Sponsored Intelligence',
+      patterns: [
+        "adcp",
+        "protocol",
+        "schema",
+        "specification",
+        "signals",
+        "media buy",
+        "creative",
+        "targeting",
+        "brief",
+        "sponsored intelligence",
+        "si chat",
+        "ai platform",
+        "ai ad network",
+        "ai assistant",
+        "sponsored response",
+        "ad network",
+        "aggregator",
+        "migration",
+        "upgrade",
+        "breaking change",
+        "v2 to v3",
+        "deprecated",
+        "what changed",
+        "reversed data flow",
+        "catalog sync",
+        "buy ads",
+        "buying ads",
+        "advertise on",
+        "advertising on",
+        "brand safety",
+        "content standards",
+        "product feed",
+        "shopify",
+        "agency buying",
+        "agency integration",
+        "brand identity",
+      ],
+      tools: ["search_docs"],
+      description:
+        "AdCP protocol questions - understanding how things work, migration, Sponsored Intelligence",
     },
     salesagent: {
-      patterns: ['salesagent', 'sales agent', 'open source agent', 'reference implementation'],
-      tools: ['search_repos', 'search_docs'],
-      description: 'Salesagent setup and usage',
+      patterns: [
+        "salesagent",
+        "sales agent",
+        "open source agent",
+        "reference implementation",
+      ],
+      tools: ["search_repos", "search_docs"],
+      description: "Salesagent setup and usage",
     },
     client_libraries: {
-      patterns: ['client', 'sdk', 'npm', 'pip', 'javascript', 'python', 'typescript'],
-      tools: ['search_repos', 'search_docs'],
-      description: 'Client library usage',
+      patterns: [
+        "client",
+        "sdk",
+        "npm",
+        "pip",
+        "javascript",
+        "python",
+        "typescript",
+      ],
+      tools: ["search_repos", "search_docs"],
+      description: "Client library usage",
     },
     adagents_validation: {
-      patterns: ['validate', 'check my', 'debug', 'test my', 'verify'],
-      tools: ['validate_adagents', 'get_agent_status', 'check_publisher_authorization'],
-      description: 'Validation and debugging requests - checking setups, testing configs',
+      patterns: ["validate", "check my", "debug", "test my", "verify"],
+      tools: [
+        "validate_adagents",
+        "get_agent_status",
+        "check_publisher_authorization",
+      ],
+      description:
+        "Validation and debugging requests - checking setups, testing configs",
     },
     adagents_json: {
-      patterns: ['adagents.json', 'agent manifest', 'agent configuration', 'well-known'],
-      tools: ['search_docs', 'validate_adagents'],
-      description: 'Learning about adagents.json format and setup',
+      patterns: [
+        "adagents.json",
+        "agent manifest",
+        "agent configuration",
+        "well-known",
+      ],
+      tools: ["search_docs", "validate_adagents"],
+      description: "Learning about adagents.json format and setup",
     },
     membership: {
-      patterns: ['member', 'join', 'signup', 'account', 'profile', 'working group', 'api key', 'api keys', 'api token'],
-      tools: ['get_my_profile', 'update_my_profile', 'get_company_listing', 'update_company_listing', 'list_working_groups', 'join_working_group'],
-      description: 'AgenticAdvertising.org membership and API key management',
+      patterns: [
+        "member",
+        "join",
+        "signup",
+        "account",
+        "profile",
+        "working group",
+        "api key",
+        "api keys",
+        "api token",
+      ],
+      tools: [
+        "get_my_profile",
+        "update_my_profile",
+        "get_company_listing",
+        "update_company_listing",
+        "list_working_groups",
+        "join_working_group",
+      ],
+      description: "AgenticAdvertising.org membership and API key management",
     },
     find_help: {
       patterns: [
-        'find someone',
-        'looking for',
-        'who can help',
-        'need help with',
-        'vendor',
-        'consultant',
-        'partner',
-        'service provider',
-        'implementation',
-        'managed service',
-        'run a',
-        'operate a',
-        'introduce me',
-        'connect me',
-        'dsp',
-        'ssp',
-        'programmatic',
-        'ctv',
-        'measurement',
-        'attribution',
-        'creative optimization',
+        "find someone",
+        "looking for",
+        "who can help",
+        "need help with",
+        "vendor",
+        "consultant",
+        "partner",
+        "service provider",
+        "implementation",
+        "managed service",
+        "run a",
+        "operate a",
+        "introduce me",
+        "connect me",
+        "dsp",
+        "ssp",
+        "programmatic",
+        "ctv",
+        "measurement",
+        "attribution",
+        "creative optimization",
       ],
-      tools: ['search_members', 'request_introduction'],
-      description: 'Find member organizations who can help with specific needs - searching for vendors, partners, consultants',
+      tools: ["search_members", "request_introduction"],
+      description:
+        "Find member organizations who can help with specific needs - searching for vendors, partners, consultants",
     },
     community_directory: {
-      patterns: ['community directory', 'community profile', 'people directory', 'community hub', 'coffee chat', 'connection request', 'connect with'],
-      tools: ['get_my_profile', 'update_my_profile'],
-      description: 'Community directory, personal profiles, connections, and coffee chats',
+      patterns: [
+        "community directory",
+        "community profile",
+        "people directory",
+        "community hub",
+        "coffee chat",
+        "connection request",
+        "connect with",
+      ],
+      tools: ["get_my_profile", "update_my_profile"],
+      description:
+        "Community directory, personal profiles, connections, and coffee chats",
     },
     company_listing: {
-      patterns: ['company listing', 'company tagline', 'company profile', 'directory listing', 'our tagline', 'company description', 'company offerings'],
-      tools: ['get_company_listing', 'update_company_listing'],
-      description: 'Company directory listing — tagline, description, offerings, contact info',
+      patterns: [
+        "company listing",
+        "company tagline",
+        "company profile",
+        "directory listing",
+        "our tagline",
+        "company description",
+        "company offerings",
+      ],
+      tools: ["get_company_listing", "update_company_listing"],
+      description:
+        "Company directory listing — tagline, description, offerings, contact info",
     },
     community: {
-      patterns: ['community', 'discussion', 'slack', 'chat history', 'what did', 'who said'],
-      tools: ['search_slack'],
-      description: 'Community discussions',
+      patterns: [
+        "community",
+        "discussion",
+        "slack",
+        "chat history",
+        "what did",
+        "who said",
+      ],
+      tools: ["search_slack"],
+      description: "Community discussions",
     },
     ad_tech_protocols: {
       patterns: [
-        'openrtb',
-        'open rtb',
-        'adcom',
-        'vast',
-        'opendirect',
-        'prebid',
-        'header bidding',
-        'rtb',
-        'real-time bidding',
-        'iab',
-        'tcf',
-        'transparency consent',
-        'gpp',
-        'global privacy',
-        'ccpa',
-        'us privacy',
-        'uid2',
-        'unified id',
-        'ads.cert',
-        'adscert',
-        'artf',
-        'agentic rtb',
-        'ucp',
-        'user context protocol',
+        "openrtb",
+        "open rtb",
+        "adcom",
+        "vast",
+        "opendirect",
+        "prebid",
+        "header bidding",
+        "rtb",
+        "real-time bidding",
+        "iab",
+        "tcf",
+        "transparency consent",
+        "gpp",
+        "global privacy",
+        "ccpa",
+        "us privacy",
+        "uid2",
+        "unified id",
+        "ads.cert",
+        "adscert",
+        "artf",
+        "agentic rtb",
+        "ucp",
+        "user context protocol",
       ],
-      tools: ['search_repos', 'search_docs'],
-      description: 'IAB Tech Lab specs and ad tech protocols - we have these indexed!',
+      tools: ["search_repos", "search_docs"],
+      description:
+        "IAB Tech Lab specs and ad tech protocols - we have these indexed!",
     },
     agent_protocols: {
-      patterns: ['mcp', 'model context protocol', 'a2a', 'agent to agent', 'langgraph', 'langchain'],
-      tools: ['search_repos'],
-      description: 'Agent protocols (MCP, A2A, LangGraph) - we have these indexed!',
+      patterns: [
+        "mcp",
+        "model context protocol",
+        "a2a",
+        "agent to agent",
+        "langgraph",
+        "langchain",
+      ],
+      tools: ["search_repos"],
+      description:
+        "Agent protocols (MCP, A2A, LangGraph) - we have these indexed!",
     },
     industry_news: {
-      patterns: ['news', 'industry', 'announcement', 'latest', 'trend'],
-      tools: ['search_resources', 'web_search'],
-      description: 'Industry news and trends',
+      patterns: ["news", "industry", "announcement", "latest", "trend"],
+      tools: ["search_resources", "web_search"],
+      description: "Industry news and trends",
     },
     certification: {
-      patterns: ['certification', 'certify', 'certified', 'certificate', 'academy', 'training', 'course', 'module', 'lesson', 'exam', 'learn adcp', 'get certified', 'capstone', 'badge', 'assess my level', 'placement test', 'test out'],
-      tools: ['list_certification_tracks', 'get_certification_module', 'start_certification_module', 'complete_certification_module', 'get_learner_progress', 'test_out_modules', 'start_certification_exam', 'complete_certification_exam'],
-      description: 'AdCP Academy — learning modules, exercises, placement assessment, and exams',
+      patterns: [
+        "certification",
+        "certify",
+        "certified",
+        "certificate",
+        "academy",
+        "training",
+        "course",
+        "module",
+        "lesson",
+        "exam",
+        "learn adcp",
+        "get certified",
+        "capstone",
+        "badge",
+        "assess my level",
+        "placement test",
+        "test out",
+      ],
+      tools: [
+        "list_certification_tracks",
+        "get_certification_module",
+        "start_certification_module",
+        "complete_certification_module",
+        "get_learner_progress",
+        "test_out_modules",
+        "start_certification_exam",
+        "complete_certification_exam",
+      ],
+      description:
+        "AdCP Academy — learning modules, exercises, placement assessment, and exams",
     },
   },
 
@@ -261,16 +419,29 @@ export const ROUTING_RULES = {
    */
   reactWith: {
     greeting: {
-      patterns: ['hi', 'hello', 'hey', 'good morning', 'good afternoon', 'howdy'],
-      emoji: 'wave',
+      patterns: [
+        "hi",
+        "hello",
+        "hey",
+        "good morning",
+        "good afternoon",
+        "howdy",
+      ],
+      emoji: "wave",
     },
     welcome: {
-      patterns: ['welcome', 'glad to have', 'excited to join', 'new here', 'just joined'],
-      emoji: 'tada',
+      patterns: [
+        "welcome",
+        "glad to have",
+        "excited to join",
+        "new here",
+        "just joined",
+      ],
+      emoji: "tada",
     },
     thanks: {
-      patterns: ['thanks', 'thank you', 'appreciate', 'helpful'],
-      emoji: 'heart',
+      patterns: ["thanks", "thank you", "appreciate", "helpful"],
+      emoji: "heart",
     },
   },
 
@@ -279,14 +450,25 @@ export const ROUTING_RULES = {
    */
   ignore: {
     patterns: [
-      'ok', 'okay', 'k', 'got it', 'cool', 'nice', 'lol', 'haha',
-      'sounds good', 'will do', 'on it', 'done', 'working on it',
+      "ok",
+      "okay",
+      "k",
+      "got it",
+      "cool",
+      "nice",
+      "lol",
+      "haha",
+      "sounds good",
+      "will do",
+      "on it",
+      "done",
+      "working on it",
     ],
     reasons: [
-      'simple acknowledgment',
-      'casual conversation not needing response',
-      'message directed at specific person',
-      'sufficient responses already provided',
+      "simple acknowledgment",
+      "casual conversation not needing response",
+      "message directed at specific person",
+      "sufficient responses already provided",
     ],
   },
 } as const;
@@ -305,10 +487,10 @@ function buildRoutingPrompt(ctx: RoutingContext): string {
   // Build react patterns
   const reactList = Object.entries(ROUTING_RULES.reactWith)
     .map(([key, rule]) => `- ${key}: emoji=${rule.emoji}`)
-    .join('\n');
+    .join("\n");
 
   // Conditional rules based on user context
-  let conditionalRules = '';
+  let conditionalRules = "";
   if (!isLinked) {
     conditionalRules += `
 The user has NOT linked their Slack account to AgenticAdvertising.org.
@@ -326,29 +508,35 @@ The user is NOT an admin.
 - Billing questions (invoices, payments, membership fees, pricing) → respond with [] (no tools). Use escalate_to_admin (always available regardless of tool set) to create a support ticket on their behalf. Do NOT route to the "billing" tool set.`;
   }
 
-  const channelLine = ctx.channelName ? `- Channel: #${ctx.channelName}` : '';
+  const channelLine = ctx.channelName ? `- Channel: #${ctx.channelName}` : "";
   // Community/social channels by name pattern (city chapters, general, introductions, etc.)
   const isCommunityChannel = ctx.channelName
-    ? /\b(collective|general|introductions|announcements|random|social|london|nyc|sf|chicago|boston|austin|seattle|la)\b/i.test(ctx.channelName)
+    ? /\b(collective|general|introductions|announcements|random|social|london|nyc|sf|chicago|boston|austin|seattle|la)\b/i.test(
+        ctx.channelName,
+      )
     : false;
   const communityChannelGuidance = isCommunityChannel
     ? `\n## Channel Context\nThis message is in #${ctx.channelName}, a community social channel. Apply an even higher threshold — community introductions, event mentions, and social updates should be reacted to with an emoji.`
-    : '';
+    : "";
 
   // Detect whether "addie" in the message is a direct address (talking TO Addie)
   // vs a third-person reference (talking ABOUT Addie, e.g. "addie could redirect").
   // Third-person patterns: "addie could redirect" but NOT "addie could you help"
   const mentionsAddie = /\baddie\b/i.test(ctx.message);
-  const thirdPersonAddie = /\baddie\s+(could|would|should|is|was|will|can|has|does|might)\s+(?!you\b)/i.test(ctx.message)
-    || /\b(let|have|make|get)\s+addie\b/i.test(ctx.message);
+  const thirdPersonAddie =
+    /\baddie\s+(could|would|should|is|was|will|can|has|does|might)\s+(?!you\b)/i.test(
+      ctx.message,
+    ) || /\b(let|have|make|get)\s+addie\b/i.test(ctx.message);
   const explicitlyNamedAddie = mentionsAddie && !thirdPersonAddie;
-  const channelNameOverride = explicitlyNamedAddie && ctx.source === 'channel'
-    ? `\n## Direct Request\nThe user named "Addie" in their message. Treat this as a direct request — respond if you can help, regardless of channel policy.\n`
-    : '';
+  const channelNameOverride =
+    explicitlyNamedAddie && ctx.source === "channel"
+      ? `\n## Direct Request\nThe user named "Addie" in their message. Treat this as a direct request — respond if you can help, regardless of channel policy.\n`
+      : "";
 
   // Channel messages require a much higher bar for responding
-  const channelResponseGuidance = ctx.source === 'channel' && !explicitlyNamedAddie
-    ? `
+  const channelResponseGuidance =
+    ctx.source === "channel" && !explicitlyNamedAddie
+      ? `
 ## Channel Response Policy
 You are reading a message in a channel. Addie should NOT respond to most channel messages. Default to "ignore" or "react" unless ALL of these are true:
 1. **High-confidence expertise**: Addie has a specific, authoritative answer (not a vague "here's what I found"). If the question is outside Addie's core expertise (AdCP protocol, membership, certification, member directory), ignore it.
@@ -363,7 +551,7 @@ Examples of when to IGNORE:
 - Legal/compliance questions — Addie is not qualified
 - Questions where a human expert is likely in the channel
 - Conversational messages, opinions, debates`
-    : '';
+      : "";
 
   return `You are Addie's router. Analyze this message and select the appropriate tool SETS.
 
@@ -383,7 +571,11 @@ Select which CATEGORIES of tools will be needed. Each set contains multiple rela
 ${toolSetsSection}
 
 ## Tool Set Selection Guidelines
-${ctx.source === 'channel' && !explicitlyNamedAddie ? 'These guidelines apply ONLY when you have already decided to "respond" (not for channel messages where the default is "ignore").\n' : ''}IMPORTANT: Select tool SETS based on the user's INTENT:
+${
+  ctx.source === "channel" && !explicitlyNamedAddie
+    ? 'These guidelines apply ONLY when you have already decided to "respond" (not for channel messages where the default is "ignore").\n'
+    : ""
+}IMPORTANT: Select tool SETS based on the user's INTENT:
 - Questions about AdCP, protocols, implementation → ["knowledge"]
 - Questions about member profile, working groups, account → ["member"]
 - Looking for companies/vendors/service providers/implementation partners → ["directory"]
@@ -420,27 +612,41 @@ ${reactList}
 - Questions outside Addie's core expertise (legal, HR, scheduling, general business) — even if tangentially related to ad tech
 - Questions where a knowledgeable human in the workspace is likely better positioned to answer
 
-${ctx.threadMessages && ctx.threadMessages.length > 0 ? `## Thread Context
+${
+  ctx.threadMessages && ctx.threadMessages.length > 0
+    ? `## Thread Context
 Recent messages in this thread (oldest first):
-${ctx.threadMessages.join('\n')}
+${ctx.threadMessages.join("\n")}
 
-` : ''}## Message
+`
+    : ""
+}## Message
 "${ctx.message}"
 
 ## Instructions
 Respond with a JSON object for the execution plan. Choose ONE action:
-${ctx.source === 'channel' && !explicitlyNamedAddie ? `
-**CRITICAL — CHANNEL SOURCE**: This message was posted in a channel, NOT sent to Addie directly. You MUST default to "ignore" unless the question is squarely within Addie's unique expertise (AdCP protocol details, membership tools, certification). Most channel messages should be "ignore" — let humans talk to each other. Meeting scheduling, logistics, legal questions, general industry discussion (including opinions about IAB or other standards, "what do you all think about X" — except when X is a specific AdCP protocol or schema question only Addie can answer), and anything humans can answer themselves must be "ignore". When in doubt, ignore.` : ''}
+${
+  ctx.source === "channel" && !explicitlyNamedAddie
+    ? `
+**CRITICAL — CHANNEL SOURCE**: This message was posted in a channel, NOT sent to Addie directly. You MUST default to "ignore" unless the question is squarely within Addie's unique expertise (AdCP protocol details, membership tools, certification). Most channel messages should be "ignore" — let humans talk to each other. Meeting scheduling, logistics, legal questions, general industry discussion (including opinions about IAB or other standards, "what do you all think about X" — except when X is a specific AdCP protocol or schema question only Addie can answer), and anything humans can answer themselves must be "ignore". When in doubt, ignore.`
+    : ""
+}
 
 1. {"action": "ignore", "reason": "brief reason"}
-   - For messages that don't need Addie's response${ctx.source === 'channel' && !explicitlyNamedAddie ? ' — THIS IS THE DEFAULT FOR CHANNEL MESSAGES' : ''}
+   - For messages that don't need Addie's response${
+     ctx.source === "channel" && !explicitlyNamedAddie
+       ? " — THIS IS THE DEFAULT FOR CHANNEL MESSAGES"
+       : ""
+   }
 
 2. {"action": "react", "emoji": "emoji_name", "reason": "brief reason"}
    - For greetings, welcomes, thanks (use emoji name like "wave", "tada", "heart")
 
 3. {"action": "respond", "tool_sets": ["set1", "set2"], "confidence": "high", "requires_depth": false, "reason": "brief reason"}
    - When you can help - select the tool SET(S) that will be needed
-   - Valid sets: knowledge, member, directory, agent_testing, adcp_operations, content, billing, events, meetings${isAAOAdmin ? ', admin' : ''}
+   - Valid sets: knowledge, member, directory, agent_testing, adcp_operations, content, billing, events, meetings${
+     isAAOAdmin ? ", admin" : ""
+   }
    - Empty array [] means respond without tools (general knowledge)
    - **confidence** (required): How sure you are that Addie's tools will return a DEFINITIVE answer:
      - "high": Addie's docs/tools contain the answer. Schema questions, documented protocol flows, membership actions, directory lookups — things where the answer EXISTS in our systems.
@@ -455,9 +661,15 @@ Respond with ONLY the JSON object, no other text.`;
  * Partial execution plan without metadata (used during parsing)
  */
 type ParsedPlan =
-  | { action: 'ignore'; reason: string }
-  | { action: 'react'; emoji: string; reason: string }
-  | { action: 'respond'; tool_sets: string[]; reason: string; requires_depth?: boolean; confidence: ConfidenceTier };
+  | { action: "ignore"; reason: string }
+  | { action: "react"; emoji: string; reason: string }
+  | {
+      action: "respond";
+      tool_sets: string[];
+      reason: string;
+      requires_depth?: boolean;
+      confidence: ConfidenceTier;
+    };
 
 /**
  * Parse the router response into a partial ExecutionPlan
@@ -466,56 +678,67 @@ export function parseRouterResponse(response: string): ParsedPlan {
   try {
     // Extract JSON from response (handle markdown code blocks)
     let jsonStr = response.trim();
-    if (jsonStr.startsWith('```')) {
-      jsonStr = jsonStr.replace(/^```json?\n?/, '').replace(/\n?```$/, '');
+    if (jsonStr.startsWith("```")) {
+      jsonStr = jsonStr.replace(/^```json?\n?/, "").replace(/\n?```$/, "");
     }
 
     const parsed = JSON.parse(jsonStr);
 
     // Validate and normalize the response
-    if (parsed.action === 'ignore') {
-      return { action: 'ignore', reason: parsed.reason || 'No reason provided' };
-    }
-    if (parsed.action === 'react') {
+    if (parsed.action === "ignore") {
       return {
-        action: 'react',
-        emoji: parsed.emoji || 'wave',
-        reason: parsed.reason || 'Greeting or acknowledgment',
+        action: "ignore",
+        reason: parsed.reason || "No reason provided",
       };
     }
-    if (parsed.action === 'clarify') {
+    if (parsed.action === "react") {
+      return {
+        action: "react",
+        emoji: parsed.emoji || "wave",
+        reason: parsed.reason || "Greeting or acknowledgment",
+      };
+    }
+    if (parsed.action === "clarify") {
       // Clarify is no longer a router action — route to the main handler
       // which can ask for clarification with full context and tools
       return {
-        action: 'respond',
-        tool_sets: ['knowledge'],
-        confidence: 'suggest' as ConfidenceTier,
-        reason: parsed.reason || 'Needs clarification',
+        action: "respond",
+        tool_sets: ["knowledge"],
+        confidence: "suggest" as ConfidenceTier,
+        reason: parsed.reason || "Needs clarification",
       };
     }
-    if (parsed.action === 'respond') {
+    if (parsed.action === "respond") {
       // Accept tool set names as-is
       const toolSets = Array.isArray(parsed.tool_sets) ? parsed.tool_sets : [];
       const confidence: ConfidenceTier =
-        parsed.confidence === 'suggest' || parsed.confidence === 'low'
+        parsed.confidence === "suggest" || parsed.confidence === "low"
           ? parsed.confidence
-          : 'high'; // default to high for backward compatibility
+          : "high"; // default to high for backward compatibility
       return {
-        action: 'respond',
+        action: "respond",
         tool_sets: toolSets,
-        reason: parsed.reason || 'Can help with this topic',
+        reason: parsed.reason || "Can help with this topic",
         confidence,
         ...(parsed.requires_depth && { requires_depth: true }),
       };
     }
 
     // Default to ignore if unknown action
-    logger.warn({ parsed }, 'Router: Unknown action, defaulting to ignore');
-    return { action: 'ignore', reason: 'Unknown action type' };
+    logger.warn({ parsed }, "Router: Unknown action, defaulting to ignore");
+    return { action: "ignore", reason: "Unknown action type" };
   } catch (error) {
-    logger.warn({ error, response }, 'Router: Failed to parse response, using knowledge fallback');
+    logger.warn(
+      { error, response },
+      "Router: Failed to parse response, using knowledge fallback",
+    );
     // On parse error, default to respond with knowledge tools (safe fallback)
-    return { action: 'respond', tool_sets: ['knowledge'], confidence: 'high', reason: 'Parse error - defaulting to knowledge tools' };
+    return {
+      action: "respond",
+      tool_sets: ["knowledge"],
+      confidence: "high",
+      reason: "Parse error - defaulting to knowledge tools",
+    };
   }
 }
 
@@ -546,25 +769,27 @@ export class AddieRouter {
       const response = await this.client.messages.create({
         model: ModelConfig.fast, // Haiku for speed
         max_tokens: 300,
-        messages: [{ role: 'user', content: prompt }],
+        messages: [{ role: "user", content: prompt }],
       });
 
-      const text = response.content[0].type === 'text'
-        ? response.content[0].text
-        : '';
+      const text =
+        response.content[0].type === "text" ? response.content[0].text : "";
 
       const parsedPlan = parseRouterResponse(text);
       const latencyMs = Date.now() - startTime;
 
       // Filter tool sets to only valid/permitted sets for this user
-      if (parsedPlan.action === 'respond') {
+      if (parsedPlan.action === "respond") {
         const validSets = getValidToolSetNames(ctx.isAAOAdmin ?? false);
-        const filtered = parsedPlan.tool_sets.filter(s => validSets.has(s));
+        const filtered = parsedPlan.tool_sets.filter((s) => validSets.has(s));
         if (filtered.length !== parsedPlan.tool_sets.length) {
-          logger.warn({
-            requested: parsedPlan.tool_sets,
-            allowed: filtered,
-          }, 'Router: stripped invalid tool sets from LLM response');
+          logger.warn(
+            {
+              requested: parsedPlan.tool_sets,
+              allowed: filtered,
+            },
+            "Router: stripped invalid tool sets from LLM response",
+          );
         }
         parsedPlan.tool_sets = filtered;
       }
@@ -572,14 +797,14 @@ export class AddieRouter {
       // Check if any selected tool sets require precision mode (billing, financial)
       let requiresPrecisionMode = false;
       let requiresDepthMode = false;
-      if (parsedPlan.action === 'respond') {
+      if (parsedPlan.action === "respond") {
         requiresPrecisionMode = checkPrecision(parsedPlan.tool_sets);
         requiresDepthMode = !!parsedPlan.requires_depth;
       }
 
       const plan: ExecutionPlan = {
         ...parsedPlan,
-        decision_method: 'llm',
+        decision_method: "llm",
         latency_ms: latencyMs,
         tokens_input: response.usage?.input_tokens,
         tokens_output: response.usage?.output_tokens,
@@ -588,18 +813,23 @@ export class AddieRouter {
         requires_depth: requiresDepthMode,
       };
 
-      logger.debug({
-        source: ctx.source,
-        action: plan.action,
-        reason: plan.reason,
-        toolSets: parsedPlan.action === 'respond' ? parsedPlan.tool_sets : undefined,
-        confidence: parsedPlan.action === 'respond' ? parsedPlan.confidence : undefined,
-        durationMs: latencyMs,
-        inputTokens: response.usage?.input_tokens,
-        outputTokens: response.usage?.output_tokens,
-        requiresPrecision: requiresPrecisionMode,
-        requiresDepth: requiresDepthMode,
-      }, 'Router: Execution plan generated');
+      logger.debug(
+        {
+          source: ctx.source,
+          action: plan.action,
+          reason: plan.reason,
+          toolSets:
+            parsedPlan.action === "respond" ? parsedPlan.tool_sets : undefined,
+          confidence:
+            parsedPlan.action === "respond" ? parsedPlan.confidence : undefined,
+          durationMs: latencyMs,
+          inputTokens: response.usage?.input_tokens,
+          outputTokens: response.usage?.output_tokens,
+          requiresPrecision: requiresPrecisionMode,
+          requiresDepth: requiresDepthMode,
+        },
+        "Router: Execution plan generated",
+      );
 
       // Track for performance metrics (fire-and-forget, errors handled internally)
       void trackApiCall({
@@ -612,14 +842,14 @@ export class AddieRouter {
 
       return plan;
     } catch (error) {
-      logger.error({ error }, 'Router: Failed to generate execution plan');
+      logger.error({ error }, "Router: Failed to generate execution plan");
       // On error, default to respond with knowledge tools (safe fallback - don't miss important messages)
       return {
-        action: 'respond',
-        tool_sets: ['knowledge'],
-        confidence: 'high',
-        reason: 'Router error - defaulting to knowledge tools',
-        decision_method: 'llm',
+        action: "respond",
+        tool_sets: ["knowledge"],
+        confidence: "high",
+        reason: "Router error - defaulting to knowledge tools",
+        decision_method: "llm",
         latency_ms: Date.now() - startTime,
       };
     }
@@ -634,7 +864,9 @@ export class AddieRouter {
   quickMatch(ctx: RoutingContext): ExecutionPlan | null {
     const startTime = Date.now();
     // Normalize smart quotes (Slack converts ' to \u2018/\u2019 and " to \u201C/\u201D)
-    const text = ctx.message.toLowerCase().trim()
+    const text = ctx.message
+      .toLowerCase()
+      .trim()
       .replace(/[\u2018\u2019]/g, "'")
       .replace(/[\u201C\u201D]/g, '"');
 
@@ -644,11 +876,11 @@ export class AddieRouter {
     const isInThread = ctx.isThread === true;
     if (!isInThread) {
       for (const pattern of ROUTING_RULES.ignore.patterns) {
-        if (text === pattern || text === pattern + '.') {
+        if (text === pattern || text === pattern + ".") {
           return {
-            action: 'ignore',
-            reason: 'Simple acknowledgment',
-            decision_method: 'quick_match',
+            action: "ignore",
+            reason: "Simple acknowledgment",
+            decision_method: "quick_match",
             latency_ms: Date.now() - startTime,
           };
         }
@@ -659,13 +891,13 @@ export class AddieRouter {
     const eventAttendeePattern =
       /who(?:'s|\s+is)\s+(coming\s+to|going\s+to\s+(?:the|cannes|ces|dmexco)|registered\s+for|attending|signed\s+up\s+for)|attendee\s+list|guest\s+list|who\s+will\s+be\s+(?:at\s+the|there\s+(?:at|for)|coming\s+to)/i;
     if (eventAttendeePattern.test(text)) {
-      const toolSets = ctx.isAAOAdmin ? ['events', 'admin'] : ['events'];
+      const toolSets = ctx.isAAOAdmin ? ["events", "admin"] : ["events"];
       return {
-        action: 'respond',
+        action: "respond",
         tool_sets: toolSets,
-        confidence: 'high',
-        reason: 'Event attendee query',
-        decision_method: 'quick_match',
+        confidence: "high",
+        reason: "Event attendee query",
+        decision_method: "quick_match",
         latency_ms: Date.now() - startTime,
       };
     }
@@ -676,11 +908,11 @@ export class AddieRouter {
         /engagement\s+(score|users|members|ranking|top|analytics|stats)|most\s+engaged|top\s+contributors|lifecycle\s+stage|who\s+to\s+invite|engagement\s+analytics|outreach\s+stats|action\s+items/i;
       if (adminAnalyticsPattern.test(text)) {
         return {
-          action: 'respond',
-          tool_sets: ['admin'],
-          confidence: 'high',
-          reason: 'Admin engagement/analytics query',
-          decision_method: 'quick_match',
+          action: "respond",
+          tool_sets: ["admin"],
+          confidence: "high",
+          reason: "Admin engagement/analytics query",
+          decision_method: "quick_match",
           latency_ms: Date.now() - startTime,
         };
       }
@@ -690,11 +922,25 @@ export class AddieRouter {
         /\bmy\s+tasks\b|what'?s\s+on\s+my\s+plate|(?:that|this)\s+(?:\S+\s+){0,3}(?:task|reminder|follow.?up)\s+(?:is\s+)?done\b|mark\s+\S.{0,40}?(?:complete|done)|(?:complete|done\s+with)\s+(?:the\s+)?(?:task|reminder)|set\s+(?:a\s+)?reminder/i;
       if (adminTaskPattern.test(text)) {
         return {
-          action: 'respond',
-          tool_sets: ['admin'],
-          confidence: 'high',
-          reason: 'Admin task management',
-          decision_method: 'quick_match',
+          action: "respond",
+          tool_sets: ["admin"],
+          confidence: "high",
+          reason: "Admin task management",
+          decision_method: "quick_match",
+          latency_ms: Date.now() - startTime,
+        };
+      }
+
+      // Admin outreach logging - "I emailed X", "spoke with X", "had a call with X", etc.
+      const outreachLogPattern =
+        /\b(?:emailed|contacted|called|dm[\u2018\u2019']?d|dmed|messaged)\s+\w|(?:spoke|talked|caught\s+up|met)\s+with\s+\w|had\s+a?\s*(?:call|meeting|conversation|chat)\s+with\s+\w|(?:reached\s+out|followed\s+up)\s+(?:with|to)\s+\w/i;
+      if (outreachLogPattern.test(text)) {
+        return {
+          action: "respond",
+          tool_sets: ["admin"],
+          confidence: "high",
+          reason: "Admin outreach logging",
+          decision_method: "quick_match",
           latency_ms: Date.now() - startTime,
         };
       }
@@ -702,16 +948,16 @@ export class AddieRouter {
 
     // Check for greeting/thanks patterns to react (standalone channel messages only —
     // in DMs these should fall through to the LLM for a real response)
-    const isStandaloneChannelMessage = ctx.source === 'channel' && !isInThread;
+    const isStandaloneChannelMessage = ctx.source === "channel" && !isInThread;
     if (isStandaloneChannelMessage) {
       for (const [key, rule] of Object.entries(ROUTING_RULES.reactWith)) {
         for (const pattern of rule.patterns) {
           if (text.length < 20 && text.includes(pattern.toLowerCase())) {
             return {
-              action: 'react',
+              action: "react",
               emoji: rule.emoji,
               reason: `Matched ${key} pattern`,
-              decision_method: 'quick_match',
+              decision_method: "quick_match",
               latency_ms: Date.now() - startTime,
             };
           }
