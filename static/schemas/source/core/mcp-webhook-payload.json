@@ -21,7 +21,7 @@
     },
     "operation_id": {
       "type": "string",
-      "description": "Client-generated identifier that was embedded in the webhook URL by the buyer. Publishers echo this back in webhook payloads so clients can correlate notifications without parsing URL paths. Typically generated as a unique ID per task invocation."
+      "description": "Client-generated correlation identifier for the operation that produced this webhook. Buyers supply this value at webhook registration time via `push_notification_config.operation_id`; sellers MUST echo it verbatim in every webhook payload. Sellers MUST NOT derive `operation_id` by parsing `push_notification_config.url` — the URL is opaque to the seller. Receivers MUST correlate webhooks using this payload field, never URL-path inspection. See [Webhooks — Operation IDs and URL templates](/docs/building/by-layer/L3/webhooks#operation-ids-and-url-templates) for the full normative wire contract."
     },
     "task_id": {
       "type": "string",
@@ -60,6 +60,7 @@
   },
   "required": [
     "idempotency_key",
+    "operation_id",
     "task_id",
     "task_type",
     "status",

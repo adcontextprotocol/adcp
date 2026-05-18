@@ -107,16 +107,27 @@ For A2A, skill parameters stay in `message.parts[].data.parameters`. The push no
 
 ## Operation IDs and URL templates
 
-Operation IDs let you route incoming webhooks to the right handler. The typical pattern:
+Operation IDs let you route incoming webhooks to the right handler. The pattern:
 
-1. Generate a unique ID per task call
-2. Embed it in the webhook URL path
-3. The seller echoes `operation_id` in the payload — no URL parsing needed
+1. Buyer generates a unique ID per task call
+2. Buyer threads it through to the seller as `operation_id` (typically by embedding in the webhook URL path, but the URL structure is the buyer's choice and is **opaque to the seller**)
+3. Seller echoes `operation_id` verbatim in every webhook payload — no URL parsing needed
 
-**URL template pattern:**
+**Normative wire contract:**
+
+- **Buyers MUST** supply `operation_id` to the seller for every webhook registration and SHOULD generate it as a unique value per task invocation (UUID recommended).
+- **Sellers MUST** echo the buyer-supplied `operation_id` value in every webhook payload exactly as received. The payload field is the **only** source of truth for correlation.
+- **Sellers MUST NOT** derive `operation_id` by parsing `push_notification_config.url` — the URL structure (path template, query parameters, opaque token, etc.) is implementation-defined from the seller's point of view and cannot be reliably reversed across implementations. A buyer's URL convention is not part of the protocol.
+- **Receivers MUST NOT** correlate webhooks by URL-path inspection in production code. The URL is for buyer-side server routing convenience only; the wire-level correlation identifier is the payload field.
+
+This matches the precedent set by every comparable async-notification protocol in ad tech (OpenRTB `nurl`/`burl`, VAST tracking pixels, A2A `PushNotificationConfig`): the entity firing the HTTP call never parses the receiver's URL for correlation data.
+
+**URL template pattern (buyer-side convention only):**
 ```
 https://you.com/webhooks/{task_type}/{agent_id}/{operation_id}
 ```
+
+The template above is a useful **server-side routing aid for the buyer** — it lets a buyer's HTTP server dispatch on path segments without first parsing the body — but it is not normative and sellers cannot rely on it. A buyer who prefers `?op=…`, a flat path, or an entirely opaque token is fully conformant as long as the seller-side `operation_id` is supplied through the SDK's send-side API.
 
 **Example (client library handles this automatically):**
 ```typescript
@@ -128,7 +139,9 @@ const webhookUrl = `https://you.com/adcp/webhook/create_media_buy/${agentId}/${o
 // pass webhookUrl in push_notification_config.url
 ```
 
-The seller's webhook payload will include `"operation_id": "cd51e063-2b79-4a6d-afac-ed7789c3a443"`, so your handler can route to the right pending operation without parsing the URL.
+The seller's webhook payload will include `"operation_id": "cd51e063-2b79-4a6d-afac-ed7789c3a443"`, so your handler can route to the right pending operation by reading the payload field directly — never by parsing the URL it arrived on.
+
+**Seller-SDK implementations** surface `operation_id` as an explicit parameter on the send-side webhook API (e.g., Python `WebhookSender.send_mcp(url=…, operation_id=…)`). The seller's application code threads the value through from the original task request to the webhook fire; the SDK never attempts to recover it from the URL.
 
 ### Echoing the caller's `context` object
 
