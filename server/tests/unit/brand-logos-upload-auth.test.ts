@@ -72,7 +72,6 @@ import { createBrandLogoRouter } from '../../src/routes/brand-logos.js';
 import type { BrandDatabase } from '../../src/db/brand-db.js';
 import type { BansDatabase } from '../../src/db/bans-db.js';
 
-const PNG_HEADER = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 // Minimum-viable PNG: 8-byte signature + IHDR (1×1) + IDAT + IEND. Enough for
 // detectContentType (magic-bytes) and extractDimensions to read width/height.
 const MINIMAL_PNG = Buffer.from(
