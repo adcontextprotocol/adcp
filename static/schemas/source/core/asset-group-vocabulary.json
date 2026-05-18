@@ -175,7 +175,7 @@
     "viewability_tracker": {
       "description": "Renderer-fired viewability tracker URL (MRC viewable, video-viewable). One per viewability event the buyer's measurement vendor wants to track.",
       "asset_type": "pixel_tracker",
-      "typical_use": "MRC viewable measurement on any web-rendered format; the `pixel_tracker` event field carries the specific viewability variant (viewable_mrc_50, viewable_mrc_100, viewable_video_50)."
+      "typical_use": "MRC viewable measurement on any web-rendered format; the `pixel_tracker` event field carries the specific viewability variant (viewable_mrc_50, viewable_mrc_100, viewable_video_50, audible_video_complete)."
     },
     "youtube_video_id": {
       "description": "Externally-hosted YouTube video reference.",

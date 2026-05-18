@@ -295,6 +295,16 @@ const NEGATIVE_CASES = {
       },
     },
     {
+      label: 'valid pixel_tracker for audible_video_complete (IAB event 500)',
+      expected: true,
+      doc: {
+        asset_type: 'pixel_tracker',
+        event: 'audible_video_complete',
+        method: 'img',
+        url: 'https://measurement.example.com/audible_complete?cid={CREATIVE_ID}',
+      },
+    },
+    {
       label: 'valid pixel_tracker for custom event with custom_event_name',
       expected: true,
       doc: {

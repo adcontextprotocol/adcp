@@ -17,10 +17,11 @@
         "viewable_mrc_50",
         "viewable_mrc_100",
         "viewable_video_50",
+        "audible_video_complete",
         "click",
         "custom"
       ],
-      "description": "Which event this tracker fires on. Event enum mirrors IAB OpenRTB Native 1.2 event-tracker (formalized there; the events themselves are generic web-pixel measurement events that apply to any renderer):\n- `impression` — fires when the ad is served (covers both `imptrackers[]` and `jstracker` from the IAB shape — distinguished by `method`)\n- `viewable_mrc_50` — IAB MRC viewable, 50% pixels for ≥1 second\n- `viewable_mrc_100` — IAB MRC viewable, 100% pixels for ≥1 second\n- `viewable_video_50` — video-specific viewable, 50% pixels for ≥2 seconds with audio on (on video_hosted; ignored on image/html5)\n- `click` — fires when the user clicks the creative (`link.clicktrackers[]`)\n- `custom` — adopter-defined event; MUST also set `custom_event_name`"
+      "description": "Which event this tracker fires on. Event enum mirrors IAB OpenRTB Native 1.2 event-tracker registry (event types 1, 2, 3, 4, 500); the events themselves are generic web-pixel measurement events that apply to any renderer:\n- `impression` (IAB type 1) — fires when the ad is served. Covers both `imptrackers[]` and `jstracker` from the IAB shape, distinguished by `method`.\n- `viewable_mrc_50` (IAB type 2) — IAB MRC viewable, 50% pixels for ≥1 second.\n- `viewable_mrc_100` (IAB type 3) — IAB MRC viewable, 100% pixels for ≥1 second.\n- `viewable_video_50` (IAB type 4) — video-specific viewable, 50% pixels for ≥2 seconds with audio on. On video_hosted; ignored on image/html5.\n- `audible_video_complete` (IAB type 500) — video reached 100% completion with audio on. Distinct from `viewable_video_50` (50% pixels + 2s threshold) — this is the full-completion audible-view event. Meaningful on non-VAST video formats (Meta Reels, YouTube Shorts, TikTok Spark) where audible-complete is a measured event but VAST `<TrackingEvents>` isn't the wire format; VAST formats use `vast_tracker` with `vast_event: complete` plus a separate audible tracker instead.\n- `click` — fires when the user clicks the creative (`link.clicktrackers[]`).\n- `custom` — adopter-defined event for anything not in the standardized enum. MUST also set `custom_event_name`. Reserved for IAB Native event types 555+ (exchange-specific) and any vendor-defined event not yet promoted to a first-class enum value."
     },
     "method": {
       "type": "string",
@@ -86,6 +87,12 @@
       "event": "click",
       "method": "img",
       "url": "https://measurement.example.com/click?cid={CREATIVE_ID}&cb={CACHEBUSTER}"
+    },
+    {
+      "asset_type": "pixel_tracker",
+      "event": "audible_video_complete",
+      "method": "img",
+      "url": "https://measurement.example.com/audible_complete?cid={CREATIVE_ID}"
     },
     {
       "asset_type": "pixel_tracker",
