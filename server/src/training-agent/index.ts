@@ -579,12 +579,22 @@ export function createTrainingAgentRouter(): Router {
   router.get('/.well-known/jwks.json', (_req: Request, res: Response) => {
     res.setHeader('Cache-Control', 'public, max-age=300');
     const aggregated = getAggregatedPublicJwks();
-    res.json({
-      keys: [
-        ...getPublicJwks().keys,
-        ...aggregated.keys,
-      ],
+    // Dedupe by kid — the shared webhook key and per-tenant keys are
+    // minted with disjoint kid namespaces, but a future config that
+    // collides them would otherwise publish two entries with the same
+    // kid and different keys (verifiers pick at random).
+    const seen = new Set<string>();
+    const keys = [...getPublicJwks().keys, ...aggregated.keys].filter(k => {
+      const kid = typeof k.kid === 'string' ? k.kid : undefined;
+      if (!kid) return true; // un-kid'd keys can't dedupe; pass through
+      if (seen.has(kid)) {
+        logger.warn({ kid }, 'duplicate kid in aggregated JWKS; dropping later occurrence');
+        return false;
+      }
+      seen.add(kid);
+      return true;
     });
+    res.json({ keys });
   });
 
   // brand.json discovery — house portfolio variant per

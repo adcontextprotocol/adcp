@@ -13,11 +13,11 @@
  * test — round-trips the bytes without depending on a verifier helper that
  * hasn't shipped yet.
  */
-import { createPublicKey, createVerify, verify as cryptoVerify, type KeyObject } from 'node:crypto';
+import { createPublicKey, verify as cryptoVerify, type KeyObject } from 'node:crypto';
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import express from 'express';
 import request from 'supertest';
-import { buildResponseSignatureBase, type ResponseLike } from '@adcp/sdk/signing';
+import { buildResponseSignatureBase, signResponse, type ResponseLike, type SignerKey } from '@adcp/sdk/signing';
 
 vi.hoisted(() => {
   process.env.PUBLIC_TEST_AGENT_TOKEN = 'test-token-for-response-signing';
@@ -174,5 +174,103 @@ describe('Training Agent response signing', () => {
     const res = await request(app).get('/api/training-agent/health');
     expect(res.headers['signature']).toBeUndefined();
     expect(res.headers['signature-input']).toBeUndefined();
+  });
+
+  it('signature is freshness-bound (created within 5s of now)', async () => {
+    const res = await request(app)
+      .post('/api/training-agent/sales/mcp')
+      .set('Host', 'test-agent.example.org')
+      .set('X-Forwarded-Proto', 'https')
+      .set('Authorization', 'Bearer test-token-for-response-signing')
+      .set('Accept', 'application/json, text/event-stream')
+      .set('Content-Type', 'application/json')
+      .send({
+        jsonrpc: '2.0',
+        id: 2,
+        method: 'initialize',
+        params: { protocolVersion: '2025-03-26', clientInfo: { name: 'x', version: '1' }, capabilities: {} },
+      });
+    expect(res.status).toBe(200);
+    const parsed = parseSignatureInput(res.headers['signature-input']);
+    const created = parsed.params.created as number;
+    const now = Math.floor(Date.now() / 1000);
+    expect(Math.abs(now - created)).toBeLessThan(5);
+  });
+
+  it('signature fails to verify when signature bytes are tampered', async () => {
+    const res = await request(app)
+      .post('/api/training-agent/sales/mcp')
+      .set('Host', 'test-agent.example.org')
+      .set('X-Forwarded-Proto', 'https')
+      .set('Authorization', 'Bearer test-token-for-response-signing')
+      .set('Accept', 'application/json, text/event-stream')
+      .set('Content-Type', 'application/json')
+      .send({
+        jsonrpc: '2.0',
+        id: 3,
+        method: 'initialize',
+        params: { protocolVersion: '2025-03-26', clientInfo: { name: 'x', version: '1' }, capabilities: {} },
+      });
+    expect(res.status).toBe(200);
+    const parsed = parseSignatureInput(res.headers['signature-input']);
+    const kid = parsed.params.keyid as string;
+
+    const jwksRes = await request(app)
+      .get('/api/training-agent/.well-known/jwks.json')
+      .set('Host', 'test-agent.example.org')
+      .set('X-Forwarded-Proto', 'https');
+    const jwk = (jwksRes.body.keys as Array<Record<string, unknown>>).find(k => k.kid === kid);
+
+    const responseLike: ResponseLike = {
+      status: res.status,
+      headers: {
+        'content-type': res.headers['content-type'],
+        'content-digest': res.headers['content-digest'],
+      },
+      body: res.text,
+      request: {
+        method: 'POST',
+        url: 'https://test-agent.example.org/api/training-agent/sales/mcp',
+      },
+    };
+    const sigInputHeader = res.headers['signature-input'] as string;
+    const sigParamsValue = sigInputHeader.slice(sigInputHeader.indexOf('=') + 1);
+    const base = buildResponseSignatureBase(parsed.components, responseLike, parsed.params as Parameters<typeof buildResponseSignatureBase>[2], sigParamsValue);
+
+    // Flip the first byte of the signature — verification must reject.
+    const signatureBytes = decodeSignatureBytes(res.headers['signature'] as string);
+    const tampered = Buffer.from(signatureBytes);
+    tampered[0] ^= 0xff;
+
+    const publicKey: KeyObject = createPublicKey({ format: 'jwk', key: jwk as Parameters<typeof createPublicKey>[0]['key'] });
+    const ok = cryptoVerify(null, Buffer.from(base, 'utf8'), publicKey, tampered);
+    expect(ok).toBe(false);
+  });
+
+  it('signResponse throws when handed a key with the wrong adcp_use', () => {
+    // Mint a key with adcp_use: 'webhook-signing' and try to use it for
+    // signResponse — SDK MUST reject (closing the gap flagged on adcp-client#1823).
+    const wrongPurposeKey: SignerKey = {
+      keyid: 'wrong-purpose-test',
+      alg: 'ed25519',
+      privateKey: {
+        kty: 'OKP',
+        crv: 'Ed25519',
+        x: 'Xe2lAKRJR_zr3FQRdSNwp3zsrv_IXnVCWJXDcWXwkLI',
+        d: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaQ',
+        alg: 'EdDSA',
+        adcp_use: 'webhook-signing', // wrong purpose
+        key_ops: ['sign'],
+        use: 'sig',
+        kid: 'wrong-purpose-test',
+      } as Parameters<typeof signResponse>[1]['privateKey'],
+    };
+    const responseLike: ResponseLike = {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+      body: '{"ok":true}',
+      request: { method: 'POST', url: 'https://test-agent.example.org/sales/mcp' },
+    };
+    expect(() => signResponse(responseLike, wrongPurposeKey)).toThrow(/purpose|adcp_use/i);
   });
 });
