@@ -128,6 +128,7 @@ import { createAccountLinkingRouter, handleEmailLinkVerification } from "./route
 import { createNetworkHealthApiRouter } from "./routes/network-health.js";
 import { createBrandLogoRouter } from "./routes/brand-logos.js";
 import { createBrandFeedsRouter } from "./routes/brand-feeds.js";
+import { createBrandOwnershipRouter } from "./routes/brand-ownership.js";
 import { createTrainingAgentRouter } from "./training-agent/index.js";
 import { TRAINING_AGENT_HOSTNAMES, TRAINING_AGENT_HOSTNAME_DEPRECATED, TRAINING_AGENT_URL } from "./training-agent/config.js";
 import { createCreativeAgentRouter } from "./creative-agent/index.js";
@@ -1226,6 +1227,9 @@ export class HTTPServer {
 
     // Mount brand feed import routes (RSS, YouTube, Spotify + bulk property/collection merge)
     this.app.use('/api', createBrandFeedsRouter({ brandDb: this.brandDb }));
+
+    // Mount brand ownership status route (drives Claim/Manage CTAs on /brand/view)
+    this.app.use('/api', createBrandOwnershipRouter({ brandDb: this.brandDb }));
 
     // Mount member profile routes
     const memberDb = new MemberDatabase();
