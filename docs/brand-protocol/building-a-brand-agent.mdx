@@ -397,6 +397,8 @@ Event-driven implementations work too — schedule a deferred job at `first_obse
 
 Responses are signed under the brand's `adcp_use: "response-signing"` JWK. **This is a distinct key from the `request-signing` key the agent uses for its own outbound calls** — per the keys-per-purpose convention, receivers enforce purpose at the JWK `adcp_use` level. Reusing a key across purposes is forbidden by the spec.
 
+The signature is a **JWS payload envelope** carried inside the response body (not RFC 9421 §2.2.9 transport response signing — that primitive is undefined in 3.x). `verify_brand_claim` and `verify_brand_claims` are the only tasks on the spec's [designated-task response-signing list](/docs/building/by-layer/L1/security#designated-task-response-signing) — the closed-list rule and admission criterion live there.
+
 Publish the JWK in the agent's JWKS, referenced from the relevant `agents[]` entry in `brand.json`:
 
 ```json
@@ -452,6 +454,8 @@ function signedResponse(body: Record<string, unknown>) {
 ```
 
 See [request-signing](/docs/building/by-layer/L1/request-signing) for the keypair-generation and JWKS-publication pattern; the response-signing key follows the same shape with a different `adcp_use` tag.
+
+**Response-body middleware caveat.** Payload-envelope JWS verifies against the exact bytes the receiver parses. Middleware that re-serializes the JSON response — pretty-printing, key reordering, whitespace normalization, alternate Unicode escaping — silently breaks verification at the receiver. Transport-layer transforms that preserve the body bytes (HTTP gzip / brotli compression and decompression, chunked transfer encoding) are safe; body-mutating proxies and CDN response rewriters are not. The defensible pattern is to compute the JWS over a stable sub-object (or a `b64: false` detached payload of the canonical bytes) that the agent emits verbatim in the response, rather than relying on the full response JSON staying byte-identical end-to-end.
 
 ### Rate limiting
 
