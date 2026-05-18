@@ -58,9 +58,10 @@ primary_region = 'iad'
 # directly over 6PN, so its traffic also bypasses fly-proxy and cannot
 # trigger autostart.
 #
-# Consequence: if a rolling deploy leaves the worker `stopped` (flyctl
-# does not always issue MachineStart after MachineUpdate), nothing
-# automatic brings it back. See issue #4723 for the recovery-gap fix.
+# Rolling deploys can leave the worker `stopped` (flyctl does not always
+# issue MachineStart after MachineUpdate). Active recovery now lives in
+# the watchdog: when a probe fails, it calls the Fly Machines API to
+# start any stopped worker machines. Requires `FLY_API_TOKEN` secret.
 [[services]]
   internal_port = 8080
   protocol = "tcp"
