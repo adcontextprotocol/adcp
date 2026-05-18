@@ -50,22 +50,24 @@ primary_region = 'iad'
 
 # Worker process group config.
 #
-# `[[services]]` (rather than a bare `[[checks]]`) opts the worker process
-# group into Fly's auto_start_machines + min_machines_running lifecycle —
-# the same mechanism `[http_service]` uses for web. Without this, workers
-# created by a rolling deploy stay in `stopped` state forever (no
-# auto_start path) and the periodic crawler / scheduled jobs don't run.
+# The `[[services]]` block here exists only to attach an http_check to the
+# worker process group. `auto_start_machines` and `min_machines_running`
+# are SET but INERT — Fly only enforces them via fly-proxy, and without a
+# `[[services.ports]]` block fly-proxy doesn't route to this service. The
+# watchdog at server/src/services/worker-watchdog.ts polls the worker
+# directly over 6PN, so its traffic also bypasses fly-proxy and cannot
+# trigger autostart.
 #
-# No `[[services.ports]]` block: no external traffic. The internal_port
-# is only used by the health check below.
+# Rolling deploys can leave the worker `stopped` (flyctl does not always
+# issue MachineStart after MachineUpdate). Active recovery now lives in
+# the watchdog: when a probe fails, it calls the Fly Machines API to
+# start any stopped worker machines. Requires `FLY_API_TOKEN` secret.
 [[services]]
   internal_port = 8080
   protocol = "tcp"
   processes = ["worker"]
   auto_start_machines = true
   auto_stop_machines = "off"
-  # Workers run scheduled jobs only — no external traffic, no HA story.
-  # One worker is plenty; brief gaps during deploys are invisible.
   min_machines_running = 1
 
   [[services.http_checks]]
