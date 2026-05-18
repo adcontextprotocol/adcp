@@ -221,8 +221,8 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
             content_type: contentType,
             tags,
             uploader_email: user.email,
-            uploader_name: (user as { firstName?: string; lastName?: string }).firstName
-              ? `${(user as { firstName?: string }).firstName} ${(user as { lastName?: string }).lastName ?? ''}`.trim()
+            uploader_name: user.firstName
+              ? `${user.firstName} ${user.lastName ?? ''}`.trim()
               : undefined,
             upload_note: note,
             source: 'community',
