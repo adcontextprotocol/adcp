@@ -26,7 +26,10 @@ Canonical formats collapse today's separate format registry into product-bound d
 | **Canonical format** | One of 11 AdCP-defined format archetypes that products narrow (e.g., `image`, `video_vast`, `audio_hosted`). The buyer's stable validation target. |
 | **`format_kind`** | Discriminator value naming a canonical format (e.g., `"image"`). Selects which canonical's parameter schema applies. |
 | **`format_options`** | Array of `ProductFormatDeclaration`s on a v2 product. The 90% case is single-element; multi-element declares "accepts any of." |
-| **`ProductFormatDeclaration`** | Inline format declaration: `format_kind` + `params` + optional `capability_id` + optional `applies_to_channels` + optional `experimental` + optional `v1_format_ref`. |
+| **`ProductFormatDeclaration`** | Inline format declaration: `format_kind` + `params` + optional `capability_id` + optional `applies_to_channels` + optional `experimental` + optional `v1_format_ref[]` (always array — see below). |
+| **`v1_format_ref`** | Array of `{agent_url, id}` references linking a v2 declaration to one or more v1 named formats. Always array; single-ref is `[{...}]`. Multi-size declarations carry one ref per size (see "Multi-size fan-out" below). |
+| **`canonical:` annotation** | The v1 catalog entry's projection annotation. Always object form — `{ kind: "image" }` minimum, `{ kind, asset_source, slots_override }` rich form for entries whose v1 shape doesn't follow the canonical's defaults (generative, brief-driven). Never bare-string. |
+| **Sibling refinement principle** | Before reaching for a new canonical, check whether `asset_source` + `slots_override` + `applies_to_channels` + event_log surface covers the case. Applied to: generative (image + asset_source: agent_synthesized), broadcast TV (video_hosted + applies_to_channels: ["tv"]), DOOH (image + applies_to_channels: ["dooh"]), native (image + slots_override). No new canonical for any of them. |
 | **`capability_id`** | Stable identifier for a format declaration, used to disambiguate when `format_options` carries multiple declarations sharing the same `format_kind`. |
 | **`applies_to_channels`** | Subset of the product's declared channels this format declaration applies to. Lets multi-channel products carry per-channel format options. |
 | **`experimental`** | Boolean on canonical (`_base.json`) and on `ProductFormatDeclaration`. `true` = may not work as declared; have a v1 fallback ready. Replaces the earlier `status` + `runtime_status` enums (single binary flag rather than two stability axes). |
@@ -313,10 +316,9 @@ Meta hasn't adopted AdCP, so its `adagents.json` lives at the AAO community-regi
       "display_name": "Meta Reels (Instagram + Facebook)",
       "format_kind": "video_hosted",
       "applies_to_property_ids": ["instagram", "facebook"],
-      "v1_format_ref": {
-        "agent_url": "https://creative.adcontextprotocol.org/translated/meta",
-        "id": "meta_reels"
-      },
+      "v1_format_ref": [
+        { "agent_url": "https://creative.adcontextprotocol.org/translated/meta", "id": "meta_reels" }
+      ],
       "params": {
         "orientation": "vertical",
         "aspect_ratio": "9:16",
@@ -368,10 +370,9 @@ A seller's `meta_reels_us` product references the publisher-catalog declaration 
     {
       "format_kind": "video_hosted",
       "capability_id": "meta_reels",
-      "v1_format_ref": {
-        "agent_url": "https://creative.adcontextprotocol.org/translated/meta",
-        "id": "meta_reels"
-      },
+      "v1_format_ref": [
+        { "agent_url": "https://creative.adcontextprotocol.org/translated/meta", "id": "meta_reels" }
+      ],
       "params": {
         "orientation": "vertical",
         "aspect_ratio": "9:16",
@@ -1012,7 +1013,7 @@ When a seller has both a published v1 named format AND a v2 declaration for the 
   "format_kind": "custom",
   "format_shape": "multi_placement_takeover",
   "format_schema": { "uri": "https://nytimes.example/schemas/formats/homepage_takeover_v3", "digest": "sha256:..." },
-  "v1_format_ref": { "agent_url": "https://nytimes.example", "id": "homepage_takeover" },
+  "v1_format_ref": [{ "agent_url": "https://nytimes.example", "id": "homepage_takeover" }],
   "params": { ... }
 }
 ```
@@ -1049,18 +1050,22 @@ By design, v2 doesn't introduce new vocabulary for things AdCP already handles o
 - **`list_build_capabilities` as a separate tool** — folded into `get_adcp_capabilities` under `creative.supported_formats`.
 - **`build_capability`, `build_capability_ref`, and a separate `inputs` map** — collapsed into the canonical `slots` model on the format declaration. The format declares slots (canonical `asset_group_id` + `asset_type` + constraints); the manifest has a single `assets` map keyed by slot name; the seller dispatches per the format (render assets verbatim or consume them for production). The format itself tells the buyer what it requires; how production happens is implementation detail.
 
-### Channels not yet canonicalized
+### Channels covered by sibling refinement (no new canonical)
 
-The 11 canonicals cover display, video, audio, retail-media, AI-surface, and responsive-creative archetypes. Several channels have no canonical home yet and stay on the v1 path until 3.2 or later:
+The 11 canonicals cover display, video, audio, retail-media, AI-surface, and responsive-creative archetypes. Several channels look like they want their own canonical but don't — they're covered by **sibling refinement**: the same canonical's `asset_source`, `slots_override`, or `applies_to_channels` axis handles the difference.
 
-- **Native** — deferred to 3.2 pending TemplateCreative + OpenRTB Native 1.2 audit. The `image_carousel` canonical covers carousel-shaped native today; richer native templates are out of scope for 3.1.
-- **Linear / addressable TV** — broadcast-shaped buys (national spot, addressable household targeting) need their own tracking + measurement model that doesn't reduce to `video_vast` or `video_hosted`. Likely a `video_linear_tv` or `video_addressable` canonical in a later release.
-- **OOH / DOOH** — out-of-home and digital-out-of-home placements have impression models tied to physical-location-keyed measurement (Geopath, COMMB) that don't map to web/CTV impression pixels. Deferred until adopter demand surfaces.
-- **Audio dynamic ad insertion (DAI)** — ad-stitched audio with mid-stream insertion has a different tracking shape than `audio_hosted` or `audio_daast`. Likely covered by a specialized canonical or by `audio_daast` extension parameters when the pattern stabilizes.
+- **Linear / addressable TV** — `video_hosted` + `applies_to_channels: ["tv"]`. Asset is still a video file with size/codec/duration constraints. The GRP/spot transaction model and addressable household targeting are media-buy + measurement concerns, not creative-format concerns.
+- **OOH / DOOH** — `image` (or `video_hosted`) + `applies_to_channels: ["dooh"]`. Asset is still a still image (or short video) with size constraints. Location-keyed measurement (Geopath, COMMB) belongs on `sync_event_sources` / `event_log`, not on the format.
+- **Generative-from-prompt** — same `format_kind` as the buyer-uploaded equivalent (image, video_hosted, audio_hosted) + `asset_source: agent_synthesized` + `slots_override` declaring the input shape (`generation_prompt: text`, `creative_brief: brief`). v2-aware buyers see "this format wants a text prompt, not image bytes."
+- **Native** — `image` + `slots_override` covering native-specific slots (icon, disclosure, author, sponsored-by). `native_standard` and `native_content` catalog entries use this pattern. Richer native templates (TemplateCreative shape) deferred to 3.2 if they prove not to fit.
+
+Channels that DO need their own canonical (genuinely different shape, deferred):
+
+- **Audio dynamic ad insertion (DAI)** — ad-stitched audio with mid-stream insertion has a different tracking shape than `audio_hosted` or `audio_daast`. Likely a specialized canonical or `audio_daast` extension parameters when the pattern stabilizes.
 - **In-game** — playable / in-game ads have a SDK-specific composition model. Out of scope until cross-engine standards land.
 - **Live streaming** — live linear video (Twitch / YouTube Live / sports streaming with mid-roll) needs concurrent-impression and stream-state tracking. The `video_vast` canonical handles VAST-tag-driven live insertion today; richer live patterns deferred.
 
-For these channels, sellers continue to use v1 `format_ids` and adopt v2 incrementally per canonical as each one stabilizes.
+**Rule of thumb (the "sibling refinement before canonical multiplication" principle).** Before reaching for a new canonical, check whether the difference is in (a) production model — covered by `asset_source`, (b) slot shape — covered by `slots_override`, (c) channel — covered by `applies_to_channels`, or (d) measurement / tracking — covered by `sync_event_sources` / `event_log`. New canonical only when the CREATIVE ASSET itself is structurally different (e.g., DAI's ad-stitched continuous audio stream is structurally different from `audio_hosted`'s file-per-impression). 50/50 ad formats in the v1 catalog now project to canonicals via this pattern; zero new canonicals were added for broadcast / DOOH / native / generative.
 
 ### Generative-DSP and multi-output patterns are forward-looking
 
@@ -1110,17 +1115,18 @@ This is a doc concern, not a schema concern. The schema is more strict than the 
 
 The AAO catalog at `creative.adcontextprotocol.org` (the published v1 format library in `server/src/creative-agent/reference-formats.json`) has **33 of 57 entries** (58%) annotated with `canonical: <format_kind>` — direct v1→v2 projection, no SDK guesswork. The remaining 24 fall into deliberate gaps the spec is explicit about rather than coverage shortfalls:
 
-- **8 entries** (`display_generative`, `display_300x250_generative`, `display_728x90_generative`, `display_320x50_generative`, `display_160x600_generative`, `display_336x280_generative`, `display_300x600_generative`, `display_970x250_generative`) — AI-generated display creatives. The v1 entries carry `generation_prompt: text` (no image asset), which cannot satisfy `format_kind: image`'s required `image_main: image` slot. A bare `canonical: image` annotation would project to a v2 declaration that wrongly demands image upload. Deferred to 3.2 pending a decision between (A) enriching the catalog `canonical` field shape to carry `asset_source` + `slots[]` override, or (B) adding an `image_generative` canonical (with parallel future `video_generative`, `audio_generative`). Tracked in [adcp#4689](https://github.com/adcontextprotocol/adcp/issues/4689).
-- **2 entries** (`native_standard`, `native_content`) — deferred to 3.2 pending the native canonical decision (above).
-- **3 entries** (`broadcast_spot_15s/30s/60s`) — broadcast TV's GRP/spot transaction model differs from web impressions; canonical decision deferred to 3.2.
-- **4 entries** (`dooh_billboard_*`, `dooh_transit_screen`) — DOOH's location-keyed measurement (Geopath, COMMB) doesn't reduce to web pixels; canonical decision deferred.
-- **7 entries** (`product_card_*`, `format_card_*`, `proposal_card_*`, `native_product_card`) — UI scaffolding for browsing catalogs in agent interfaces, not ad formats. To be moved out of `reference-formats.json` into a separate UI-scaffolding registry.
+**Final 3.1 coverage: 50/50 ad formats in the v1 catalog are annotated**, via the projection-ref object form (`canonical: { kind, asset_source?, slots_override? }`). Plus 7 UI-scaffolding card entries (`product_card_*`, `format_card_*`, `proposal_card_*`, `native_product_card`) split into `server/src/creative-agent/ui-element-formats.json` since they're not ad formats — they're agent-interface display widgets that never project to ad canonicals.
 
-The SDK side's v1→v2 projection (validated in [adcp-client #1815](https://github.com/adcontextprotocol/adcp-client/pull/1815)) reports **33/57 clean projection + 24/57 honest fail-closed** (`catalog_lacks_canonical_annotation`). Same architecture symmetry on v2→v1 — clean projection on the annotated subset, honest fail-closed via `v1_translatable: false` / `canonical_formats_only: true` for canonicals the spec is explicit about not having v1 forms.
+How each previously-unannotated group landed:
 
-**Generative-image deannotation note (3.1).** Earlier 3.1 drafts annotated the 8 `display_*_generative` catalog entries as `canonical: image`. SDK implementor review surfaced the contradiction: the bare annotation projects to a v2 declaration that requires image upload, which generative buyers cannot satisfy. **Sellers expressing "I don't do generative" is automatic** — the default `asset_source: buyer_uploaded` on `format_kind: image` already excludes generative submission. To opt INTO generative, a seller declares `asset_source: agent_synthesized` AND overrides `slots[]` to swap `image_main: image` for `creative_brief: brief` (or similar) — see the Veo worked example.
+- **8 generative entries** (`display_generative`, `display_300x250_generative`, `display_728x90_generative`, `display_320x50_generative`, `display_160x600_generative`, `display_336x280_generative`, `display_300x600_generative`, `display_970x250_generative`) — annotated as `{ kind: "image", asset_source: "agent_synthesized", slots_override: [{ generation_prompt: text, required }] }`. v2-aware buyers projecting see "this format wants a text prompt, not image bytes." Sibling refinement on `asset_source` + `slots_override`; no `image_generative` canonical needed.
+- **3 broadcast** (`broadcast_spot_15s/30s/60s`) — `{ kind: "video_hosted" }`. Sellers narrow via `applies_to_channels: ["tv"]` on the v2 product. Same asset shape (video file + duration + codec).
+- **4 DOOH** (`dooh_billboard_*`, `dooh_transit_screen`) — `{ kind: "image" }`. Sellers narrow via `applies_to_channels: ["dooh"]`. Location-keyed measurement differences live on `sync_event_sources`, not on the format.
+- **2 native** (`native_standard`, `native_content`) — `{ kind: "image", asset_source: "buyer_uploaded", slots_override: [...] }` with native-specific slots (icon, disclosure, sponsored_by).
 
-The honesty principle: SDKs don't shoehorn un-annotated catalog entries into wrong canonicals. `display_*_generative` cannot satisfy `image`'s required slot contract — leaving them un-annotated until the spec provides the right shape is more correct than a lossy projection. Empirical coverage rises as the working group makes specific canonical decisions; it doesn't rise by guessing.
+The SDK side's v1→v2 projection (validated in [adcp-client #1815](https://github.com/adcontextprotocol/adcp-client/pull/1815)) projects cleanly across all 50. Same architecture symmetry on v2→v1: clean projection plus honest fail-closed via `v1_translatable: false` / `canonical_formats_only: true` for canonicals the spec is explicit about not having v1 forms.
+
+**The "no new canonical" pattern (normative for future contributions).** Generative, broadcast, DOOH, and native all looked like they wanted new canonicals. None of them got one. The pattern: refine an existing canonical via `asset_source` + `slots_override` + `applies_to_channels`, route measurement/tracking differences to `sync_event_sources` / `event_log`, and only mint a new canonical when the CREATIVE ASSET itself is structurally different (which is rare). The "How does a seller say 'I don't do generative'?" question is settled by this principle — automatic, via the default `asset_source: buyer_uploaded` and required `image_main: image` slot.
 
 ## Related
 

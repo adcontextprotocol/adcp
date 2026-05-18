@@ -191,6 +191,67 @@ const NEGATIVE_CASES = {
         params: { foo: 'bar' },
       },
     },
+    {
+      label: 'v1_format_ref multi-entry array accepted (multi-size fan-out)',
+      expected: true,
+      doc: {
+        format_kind: 'image',
+        v1_format_ref: [
+          { agent_url: 'https://creative.adcontextprotocol.org/', id: 'display_300x250_image' },
+          { agent_url: 'https://creative.adcontextprotocol.org/', id: 'display_728x90_image' },
+          { agent_url: 'https://creative.adcontextprotocol.org/', id: 'display_970x250_image' },
+        ],
+        params: {
+          sizes: [
+            { width: 300, height: 250 },
+            { width: 728, height: 90 },
+            { width: 970, height: 250 },
+          ],
+        },
+      },
+    },
+  ],
+  '/schemas/formats/canonical/image.json': [
+    {
+      label: 'size-mode mutex: width+height AND sizes[] rejected',
+      expected: false,
+      doc: { width: 300, height: 250, sizes: [{ width: 728, height: 90 }] },
+    },
+    {
+      label: 'size-mode mutex: width+height AND min_width rejected',
+      expected: false,
+      doc: { width: 300, height: 250, min_width: 100 },
+    },
+    {
+      label: 'size-mode mutex: sizes[] AND min_height rejected',
+      expected: false,
+      doc: { sizes: [{ width: 300, height: 250 }], min_height: 200 },
+    },
+    {
+      label: 'fixed mode: width without height rejected',
+      expected: false,
+      doc: { width: 300 },
+    },
+    {
+      label: 'fixed mode: width+height alone accepted',
+      expected: true,
+      doc: { width: 300, height: 250 },
+    },
+    {
+      label: 'multi-size mode: sizes[] alone accepted',
+      expected: true,
+      doc: { sizes: [{ width: 300, height: 250 }, { width: 728, height: 90 }] },
+    },
+    {
+      label: 'responsive mode: min/max range alone accepted',
+      expected: true,
+      doc: { min_width: 300, max_width: 970, min_height: 50, max_height: 250 },
+    },
+    {
+      label: 'none mode: no size declared accepted (e.g., format-shape carrier)',
+      expected: true,
+      doc: {},
+    },
   ],
   '/schemas/creative/validate-input-result.json': [
     {

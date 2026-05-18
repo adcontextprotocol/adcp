@@ -115,9 +115,15 @@ function checkDeclaration(decl, ctx, file) {
     }
   }
 
-  // v1_format_ref.agent_url convention
-  if (decl.v1_format_ref && decl.v1_format_ref.agent_url) {
-    checkAgentUrlConvention(decl.v1_format_ref.agent_url, `${ctx}.v1_format_ref.agent_url`, file);
+  // v1_format_ref is always an array — iterate
+  if (Array.isArray(decl.v1_format_ref)) {
+    decl.v1_format_ref.forEach((ref, i) => {
+      if (ref && ref.agent_url) {
+        checkAgentUrlConvention(ref.agent_url, `${ctx}.v1_format_ref[${i}].agent_url`, file);
+      }
+    });
+  } else if (decl.v1_format_ref) {
+    fail(file, `${ctx}.v1_format_ref must be an array (always-array shape); got ${typeof decl.v1_format_ref}`);
   }
 
   // platform_extensions[].uri convention
