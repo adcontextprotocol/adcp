@@ -7,7 +7,7 @@
  * this file pins the response logic.
  */
 
-import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import express from 'express';
 import request from 'supertest';
 
