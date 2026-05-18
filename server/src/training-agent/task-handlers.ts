@@ -2271,6 +2271,7 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext) {
     media_buys: pageBuys.map(mb => {
       const status = deriveStatus(mb);
       const totalBudget = mb.packages.reduce((sum, pkg) => sum + (pkg.budget || 0), 0);
+      const openImpairments = mb.impairments ?? [];
       const buy = {
         media_buy_id: mb.mediaBuyId,
         status,
@@ -2283,6 +2284,18 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext) {
         total_budget: totalBudget,
         start_time: mb.startTime,
         end_time: mb.endTime,
+        health: (openImpairments.length > 0 ? 'impaired' : 'ok') as 'ok' | 'impaired',
+        impairments: openImpairments.map(i => ({
+          impairment_id: i.impairmentId,
+          resource_type: i.resourceType,
+          resource_id: i.resourceId,
+          package_ids: i.packageIds,
+          transition: i.transition,
+          reason_code: i.reasonCode,
+          observed_at: i.observedAt,
+          ...(i.reason !== undefined && { reason: i.reason }),
+          ...(i.remediation !== undefined && { remediation: i.remediation }),
+        })),
         ...(mb.creativeDeadline && { creative_deadline: mb.creativeDeadline }),
         ...(mb.governanceContext && { governance_context: mb.governanceContext }),
         ...(mb.canceledAt && {
@@ -2948,6 +2961,25 @@ export async function handleUpdateMediaBuy(args: ToolArgs, ctx: TrainingContext)
         const creativeIds = creativeAssignments.map(a => a.creative_id);
         pkg.creativeAssignments = creativeIds;
         mb.history.push({ revision: mb.revision, timestamp: now, actor: 'buyer', action: 'creative_assignments_updated', summary: `Package ${pkgId} creative assignments replaced (${creativeIds.length} creatives)`, packageId: pkgId });
+      }
+    }
+
+    // Recompute open impairments: a creative-impairment is cleared when no
+    // package on the buy still references it. Recovery via assignment swap
+    // is the canonical clearing path (the buyer replaces a rejected creative
+    // with an approved sibling), so the same-buy union of all package
+    // creativeAssignments is the authoritative dependency set.
+    if (mb.impairments?.length) {
+      const stillReferenced = new Set<string>();
+      for (const pkg of mb.packages) {
+        for (const cid of pkg.creativeAssignments) stillReferenced.add(cid);
+      }
+      const before = mb.impairments.length;
+      mb.impairments = mb.impairments.filter(
+        i => i.resourceType !== 'creative' || stillReferenced.has(i.resourceId),
+      );
+      if (mb.impairments.length !== before) {
+        mb.updatedAt = now;
       }
     }
   }
