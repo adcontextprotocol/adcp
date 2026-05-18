@@ -151,9 +151,11 @@ phases:
             - product_id: "$context.product_id"
               budget: 3000
               pricing_option_id: "$context.pricing_option_id"
+              bid_price: 10.0
             - product_id: "$context.product_id"
               budget: 3000
               pricing_option_id: "$context.pricing_option_id"
+              bid_price: 10.0
           context:
             correlation_id: "dependency_impairment_cardinality--create_buy"
         context_outputs:
@@ -177,7 +179,7 @@ phases:
             description: "Second package_id returned (multi-package buy is supported)"
 
       - id: sync_two_creatives
-        title: "Sync creatives A → package_a, B → package_b"
+        title: "Sync creatives A and B into the library"
         task: sync_creatives
         schema_ref: "creative/sync-creatives-request.json"
         response_schema_ref: "creative/sync-creatives-response.json"
@@ -185,8 +187,8 @@ phases:
         comply_scenario: creative_sync
         stateful: true
         expected: |
-          Both creatives accepted (action: created). Each bound to its own
-          package via the assignments array.
+          Both creatives accepted (action: created). Assignments are done in
+          the next step via update_media_buy.
 
         sample_request:
           account:
@@ -218,11 +220,6 @@ phases:
                   width: 300
                   height: 250
                   mime_type: "image/png"
-          assignments:
-            - creative_id: "acme_card_banner_a"
-              package_id: "$context.package_a_id"
-            - creative_id: "acme_card_banner_b"
-              package_id: "$context.package_b_id"
           idempotency_key: "$generate:uuid_v4#dependency_impairment_cardinality_sync_creatives"
           context:
             correlation_id: "dependency_impairment_cardinality--sync_creatives"
@@ -235,6 +232,44 @@ phases:
           - check: field_present
             path: "creatives[1].creative_id"
             description: "Creative B returned"
+
+      - id: assign_creatives_to_packages
+        title: "Bind creative A → package_a and creative B → package_b"
+        narrative: |
+          The spec defines two equal canonical surfaces for the creative ↔
+          package binding: inline `sync_creatives.assignments[]` and
+          `update_media_buy.packages[].creative_assignments` (replacement
+          semantics). This scenario uses the update_media_buy surface; the
+          per-package impairment cardinality contract is identical regardless
+          of which path the buyer chose.
+        task: update_media_buy
+        schema_ref: "media-buy/update-media-buy-request.json"
+        response_schema_ref: "media-buy/update-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/update_media_buy"
+        stateful: true
+        expected: |
+          Update accepted. Each package's creative_assignments now contains
+          its respective creative.
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_id: "$context.media_buy_id"
+          packages:
+            - package_id: "$context.package_a_id"
+              creative_assignments:
+                - creative_id: "acme_card_banner_a"
+            - package_id: "$context.package_b_id"
+              creative_assignments:
+                - creative_id: "acme_card_banner_b"
+          idempotency_key: "$generate:uuid_v4#dependency_impairment_cardinality_assign_creatives"
+          context:
+            correlation_id: "dependency_impairment_cardinality--assign_creatives"
+        validations:
+          - check: response_schema
+            description: "Response matches update-media-buy-response.json schema"
 
       - id: force_both_approved
         title: "Baseline: force both creatives to approved"

@@ -32,6 +32,7 @@ import type {
 } from './types.js';
 import { getSession, sessionKeyFromArgs } from './state.js';
 import { getAgentUrl } from './config.js';
+import { randomUUID } from 'node:crypto';
 
 // ── State machine transition tables ───────────────────────────────
 
@@ -98,6 +99,63 @@ function findMediaBuy(session: SessionState, mediaBuyId: string): MediaBuyState 
   return session.mediaBuys.get(mediaBuyId);
 }
 
+/**
+ * Propagate a creative status transition to any media buys whose packages
+ * reference the creative. approved→rejected appends an impairment entry;
+ * rejected→approved removes any matching open impairment. Idempotent on
+ * re-emission of the same direction.
+ *
+ * Sibling resource types (audience, event_source, …) will get their own
+ * propagators when their force_*_status scenarios land.
+ */
+function propagateCreativeImpairment(
+  session: SessionState,
+  creativeId: string,
+  prev: string,
+  next: string,
+  reason?: string,
+): void {
+  const isOfflineTransition = next === 'rejected' && prev !== 'rejected';
+  const isOnlineTransition = next !== 'rejected' && prev === 'rejected';
+  if (!isOfflineTransition && !isOnlineTransition) return;
+
+  for (const mb of session.mediaBuys.values()) {
+    const dependentPackages = mb.packages
+      .filter(pkg => pkg.creativeAssignments.includes(creativeId))
+      .map(pkg => pkg.packageId);
+    if (dependentPackages.length === 0) continue;
+
+    if (isOfflineTransition) {
+      const existing = (mb.impairments ?? []).find(
+        i => i.resourceType === 'creative' && i.resourceId === creativeId,
+      );
+      if (existing) continue; // idempotent
+      mb.impairments = [
+        ...(mb.impairments ?? []),
+        {
+          impairmentId: `imp_${randomUUID().replace(/-/g, '')}`,
+          resourceType: 'creative',
+          resourceId: creativeId,
+          packageIds: dependentPackages,
+          transition: { from: prev, to: 'rejected' },
+          reasonCode: 'content_rejected',
+          ...(reason && { reason }),
+          observedAt: new Date().toISOString(),
+        },
+      ];
+      mb.updatedAt = new Date().toISOString();
+    } else if (isOnlineTransition) {
+      const before = mb.impairments?.length ?? 0;
+      mb.impairments = (mb.impairments ?? []).filter(
+        i => !(i.resourceType === 'creative' && i.resourceId === creativeId),
+      );
+      if (mb.impairments.length !== before) {
+        mb.updatedAt = new Date().toISOString();
+      }
+    }
+  }
+}
+
 function validateTransition(
   transitions: Record<string, string[]>,
   terminalSet: Set<string>,
@@ -136,6 +194,7 @@ function createStore(session: SessionState): TestControllerStore {
       }
 
       creative.status = status;
+      propagateCreativeImpairment(session, creativeId, prev, status, rejectionReason);
       return { success: true, previous_state: prev, current_state: status, message: `Creative ${creativeId} transitioned from ${prev} to ${status}` };
     },
 

@@ -1944,6 +1944,11 @@
 
         if (!response.ok) {
           const error = await response.json();
+          if (response.status === 409 && error.customer_portal_url) {
+            btn.textContent = 'Opening billing portal...';
+            window.location.href = error.customer_portal_url;
+            return;
+          }
           throw new Error(error.message || 'Failed to create checkout session');
         }
 
@@ -2414,6 +2419,10 @@
 
         if (!response.ok) {
           const error = await response.json();
+          if (response.status === 409 && error.customer_portal_url) {
+            window.location.href = error.customer_portal_url;
+            return;
+          }
           throw new Error(error.message || 'Failed to create checkout session');
         }
 

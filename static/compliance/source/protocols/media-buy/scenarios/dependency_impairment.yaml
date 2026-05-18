@@ -188,13 +188,12 @@ phases:
             path: "packages[0].package_id"
             description: "Seller returns package_id"
 
-      - id: sync_creative_with_assignment
-        title: "Sync a creative and assign to the package"
+      - id: sync_creative
+        title: "Sync a creative into the library"
         narrative: |
-          Sync one creative and bind it to the package. The creative enters the
-          library through the seller's review flow; the assignment is what
-          makes the creative a dependency of the media buy and is what
-          impairment.coherence ties the propagation rule to.
+          Sync one creative into the seller's library. The creative enters
+          through the seller's review flow but is not yet bound to a package —
+          the next step does the assignment via update_media_buy.
         task: sync_creatives
         schema_ref: "creative/sync-creatives-request.json"
         response_schema_ref: "creative/sync-creatives-response.json"
@@ -202,8 +201,8 @@ phases:
         comply_scenario: creative_sync
         stateful: true
         expected: |
-          Creative accepted (action: created), assignment acknowledged. Status is
-          processing, pending_review, or approved.
+          Creative accepted (action: created). Status is processing,
+          pending_review, or approved.
 
         sample_request:
           account:
@@ -223,9 +222,6 @@ phases:
                   width: 300
                   height: 250
                   mime_type: "image/png"
-          assignments:
-            - creative_id: "acme_dep_banner_001"
-              package_id: "$context.package_id"
           idempotency_key: "$generate:uuid_v4#dependency_impairment_sync_creative"
           context:
             correlation_id: "dependency_impairment--sync_creative"
@@ -238,6 +234,43 @@ phases:
           - check: field_present
             path: "creatives[0].creative_id"
             description: "Response echoes back the buyer-supplied creative_id"
+
+      - id: assign_creative_to_package
+        title: "Bind the creative to the package via update_media_buy"
+        narrative: |
+          The assignment is what makes the creative a dependency of the media
+          buy — impairment.coherence ties the propagation rule to the creative
+          ↔ package binding. The spec defines two equal canonical surfaces for
+          the binding: inline `sync_creatives.assignments[]` and
+          `update_media_buy.packages[].creative_assignments` (replacement
+          semantics). This scenario uses the update_media_buy surface; the
+          impairment contract is identical regardless of which path the buyer
+          chose to establish the binding.
+        task: update_media_buy
+        schema_ref: "media-buy/update-media-buy-request.json"
+        response_schema_ref: "media-buy/update-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/update_media_buy"
+        stateful: true
+        expected: |
+          Update accepted. The package's creative_assignments now contains
+          the synced creative.
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_id: "$context.media_buy_id"
+          packages:
+            - package_id: "$context.package_id"
+              creative_assignments:
+                - creative_id: "acme_dep_banner_001"
+          idempotency_key: "$generate:uuid_v4#dependency_impairment_assign_creative"
+          context:
+            correlation_id: "dependency_impairment--assign_creative"
+        validations:
+          - check: response_schema
+            description: "Response matches update-media-buy-response.json schema"
 
       - id: force_creative_approved
         title: "Force the creative to approved baseline"
