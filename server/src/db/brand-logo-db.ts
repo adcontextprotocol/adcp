@@ -84,6 +84,19 @@ export class BrandLogoDatabase {
     return result.rows[0] ?? null;
   }
 
+  /**
+   * Load a logo by id alone, regardless of review_status. Used by the
+   * moderator-preview endpoint where the caller doesn't know the domain
+   * up-front — they're walking the cross-brand pending queue.
+   */
+  async getBrandLogoById(id: string): Promise<BrandLogoRow | null> {
+    const result = await query<BrandLogoRow>(
+      `SELECT * FROM brand_logos WHERE id = $1`,
+      [id]
+    );
+    return result.rows[0] ?? null;
+  }
+
   async getBrandLogo(
     id: string,
     domain: string,

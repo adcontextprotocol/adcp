@@ -4862,6 +4862,12 @@ export class HTTPServer {
       this.serveHtmlWithConfig(req, res, 'admin-geo.html'));
     this.app.get('/admin/brands', requireAuth, requireAdmin, (req, res) =>
       this.serveHtmlWithConfig(req, res, 'admin-brands.html'));
+    // Brand-logo moderation queue: gated to authenticated users at the
+    // page layer; the underlying API enforces brand-registry-moderator
+    // membership so a non-moderator who navigates here sees an empty
+    // queue with a "not authorized" message rather than a hard 404.
+    this.app.get('/admin/brand-logos', requireAuth, (req, res) =>
+      this.serveHtmlWithConfig(req, res, 'admin-brand-logos.html'));
 
     // Redirects from old /manage paths (preserve query strings)
     const manageRedirect = (target: string) => (req: express.Request, res: express.Response) => {

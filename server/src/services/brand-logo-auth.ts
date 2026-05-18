@@ -21,7 +21,17 @@ const moderatorCache = new Map<string, { isModerator: boolean; expiresAt: number
 
 const wgDb = new WorkingGroupDatabase();
 
-async function isRegistryModerator(userId: string): Promise<boolean> {
+/**
+ * True when the user belongs to the brand-registry-moderators working
+ * group. Used by surfaces that need a domain-agnostic moderator check —
+ * e.g. the cross-brand pending-review queue, where there's no single
+ * domain to gate against.
+ */
+export async function isRegistryModerator(userId: string): Promise<boolean> {
+  return isRegistryModeratorInternal(userId);
+}
+
+async function isRegistryModeratorInternal(userId: string): Promise<boolean> {
   const cached = moderatorCache.get(userId);
   if (cached && cached.expiresAt > Date.now()) {
     return cached.isModerator;
@@ -77,7 +87,7 @@ export async function canReviewBrandLogos(
   brandDb: BrandDatabase,
 ): Promise<boolean> {
   if (userId === 'admin_api_key') return true;
-  if (await isRegistryModerator(userId)) return true;
+  if (await isRegistryModeratorInternal(userId)) return true;
   return isVerifiedBrandOwner(userId, domain, brandDb);
 }
 

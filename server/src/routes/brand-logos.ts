@@ -9,7 +9,7 @@ import { logoUploadRateLimiter } from '../middleware/rate-limit.js';
 import { BrandLogoDatabase } from '../db/brand-logo-db.js';
 import { BrandDatabase } from '../db/brand-db.js';
 import { BansDatabase } from '../db/bans-db.js';
-import { canReviewBrandLogos, isVerifiedBrandOwner } from '../services/brand-logo-auth.js';
+import { canReviewBrandLogos, isRegistryModerator, isVerifiedBrandOwner } from '../services/brand-logo-auth.js';
 import { enrichUserWithMembership } from '../utils/html-config.js';
 import {
   validateLogoTags,
@@ -358,6 +358,92 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
       } catch (error) {
         logger.error({ err: error, domain: req.params.domain, id: req.params.id }, 'Logo review failed');
         return res.status(500).json({ error: 'Logo review failed' });
+      }
+    },
+  );
+
+  // GET /api/brand-logos/pending — cross-brand moderator queue.
+  // Returns the global list of pending logo uploads so moderators can
+  // drain them from one page rather than walking each brand individually.
+  router.get(
+    '/brand-logos/pending',
+    requireAuth,
+    async (req: Request, res: Response) => {
+      try {
+        const user = (req as any).user;
+        const moderator = await isRegistryModerator(user.id);
+        if (!moderator) {
+          return res.status(403).json({ error: 'Brand-registry moderators only' });
+        }
+
+        const rawLimit = parseInt(String(req.query.limit ?? ''), 10);
+        const rawOffset = parseInt(String(req.query.offset ?? ''), 10);
+        const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(rawLimit, 1), 200) : 50;
+        const offset = Number.isFinite(rawOffset) ? Math.max(rawOffset, 0) : 0;
+
+        const rows = await brandLogoDb.getPendingLogos(limit, offset);
+        const logos = rows.map((l) => ({
+          id: l.id,
+          domain: l.domain,
+          brand_name: (l as { brand_name?: string }).brand_name ?? null,
+          content_type: l.content_type,
+          source: l.source,
+          tags: l.tags,
+          width: l.width,
+          height: l.height,
+          uploaded_by_email: l.uploaded_by_email,
+          uploaded_by_user_id: l.uploaded_by_user_id,
+          upload_note: l.upload_note,
+          original_filename: l.original_filename,
+          created_at: l.created_at,
+          preview_url: `/api/brand-logos/${l.id}/preview`,
+          review_url: `/api/brands/${encodeURIComponent(l.domain)}/logos/${l.id}/review`,
+          brand_view_url: `/brand/view/${encodeURIComponent(l.domain)}`,
+        }));
+        return res.json({ logos, limit, offset });
+      } catch (error) {
+        logger.error({ err: error }, 'Failed to list pending logos');
+        return res.status(500).json({ error: 'Failed to list pending logos' });
+      }
+    },
+  );
+
+  // GET /api/brand-logos/:id/preview — moderator-only image bytes for any
+  // review_status. The public CDN path (/logos/brands/:domain/:id) is
+  // strictly approved-only by design (#3393 follow-ups); this is the
+  // moderator escape hatch so they can actually see what they're reviewing.
+  router.get(
+    '/brand-logos/:id/preview',
+    requireAuth,
+    async (req: Request, res: Response) => {
+      try {
+        const user = (req as any).user;
+        const logoId = req.params.id;
+        if (!isUuid(logoId)) {
+          return res.status(400).json({ error: 'Invalid logo ID' });
+        }
+        const moderator = await isRegistryModerator(user.id);
+        if (!moderator) {
+          // Owners of the brand are also allowed — they may want to
+          // preview an unapproved upload submitted against their brand.
+          const row = await brandLogoDb.getBrandLogoById(logoId);
+          if (!row) return res.status(404).json({ error: 'Logo not found' });
+          const ownerCheck = await isVerifiedBrandOwner(user.id, row.domain, brandDb);
+          if (!ownerCheck) {
+            return res.status(403).json({ error: 'Not authorized to preview this logo' });
+          }
+          res.setHeader('Content-Type', row.content_type);
+          res.setHeader('Cache-Control', 'private, max-age=60');
+          return res.send(row.data);
+        }
+        const row = await brandLogoDb.getBrandLogoById(logoId);
+        if (!row) return res.status(404).json({ error: 'Logo not found' });
+        res.setHeader('Content-Type', row.content_type);
+        res.setHeader('Cache-Control', 'private, max-age=60');
+        return res.send(row.data);
+      } catch (error) {
+        logger.error({ err: error, id: req.params.id }, 'Failed to serve logo preview');
+        return res.status(500).json({ error: 'Failed to serve preview' });
       }
     },
   );
