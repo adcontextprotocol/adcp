@@ -15,6 +15,8 @@ import { createLogger } from '../../logger.js';
 import { runWithSessionContext, flushDirtySessions } from '../state.js';
 import { createRegistryHolder, getCanonicalBase, resolveTenantHost, type RegistryHolder } from './registry.js';
 import { buildSignedRevocationList } from '../governance-revocations.js';
+import { getTenantResponseSigningMaterial } from './signing.js';
+import { wrapResponseForSigning } from '../response-signing.js';
 
 const logger = createLogger('training-agent-tenant-router');
 
@@ -87,6 +89,14 @@ function setCORSHeaders(res: Response): void {
 function tenantMcpHandler(holder: RegistryHolder, tenantId: string) {
   return async (req: Request, res: Response): Promise<void> => {
     setCORSHeaders(res);
+
+    // Wrap res with the response-signing middleware. Buffers writes from
+    // the MCP transport, signs the buffered body with the tenant's
+    // response-signing key, and writes back with RFC 9421 Signature /
+    // Signature-Input / Content-Digest headers. Non-2xx and non-JSON
+    // responses pass through unsigned.
+    const responseSigner = getTenantResponseSigningMaterial(tenantId);
+    wrapResponseForSigning(req, res, responseSigner.signerKey, tenantId);
 
     // Bridge `res.locals.trainingPrincipal` (set by the upstream
     // `requireAuth` middleware) onto `req.auth` so the framework's MCP
