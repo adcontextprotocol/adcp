@@ -28,7 +28,15 @@ Walks back the community half of #3393's auto-approval. Moderation queue through
 
 **Tests**
 
-24 unit tests across 3 new files: gate behavior on the brand.json endpoint, `editDiscoveredBrand` source_type promotion (enriched promotes, community doesn't churn, brand_json stays rejected), and the full upload auth matrix.
+**Defense in depth (post expert review)**
+
+- Addie's `upload_brand_logo` MCP tool was a parallel door past the HTTP gate (it hardcoded `review_status='approved'` and never checked owner state). Same gate applied: refuses on verified-owned brands, queues as `pending` otherwise.
+- Promotion in `editDiscoveredBrand` now requires both (a) a real brand-content field change (not an audit-only revision) and (b) a non-system editor. Logo-upload audit revisions and `system:logo-service` manifest rebuilds no longer stealth-promote enriched rows.
+- Migration 483 mirrors the rule: only promotes enriched rows that have at least one revision written by a non-system editor.
+- 403 response on `verified_owner_required` now includes a `claim_url` pointing at the brand-claim flow and explains the next step.
+- Community uploads get a `message` field on the 201 response: "Logo queued for moderator review."
+
+41 unit tests across 4 new files: brand.json endpoint gate, `editDiscoveredBrand` promotion (content edits promote; system callers don't; audit-only revisions don't; community doesn't churn; brand_json stays rejected), HTTP upload auth matrix, and the Addie MCP tool gate.
 
 **KYC follow-up**
 

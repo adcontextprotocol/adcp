@@ -138,7 +138,7 @@ export const BRAND_TOOLS: AddieTool[] = [
   },
   {
     name: 'upload_brand_logo',
-    description: 'Upload a logo file for a brand in the registry. The logo is auto-approved and immediately visible.',
+    description: 'Upload a logo file for a brand in the registry. The upload queues for moderator review (community contribution). Blocked when a brand has a verified DNS owner — only that org can change its logo, and the human must use the brand-builder UI for owner-attested uploads.',
     usage_hints: 'Use when a user shares a logo URL (press kit, brand portal) and wants to upload it for a brand.',
     input_schema: {
       type: 'object',
@@ -592,6 +592,19 @@ export function createBrandToolHandlers(): Map<string, (args: Record<string, unk
     const sha256 = computeSha256(buffer);
     const { width, height } = await extractDimensions(buffer, contentType);
 
+    // Write-authority gate: refuse uploads when a verified DNS owner exists.
+    // Addie acts as a system caller and cannot prove org membership in the
+    // owning org — the HTTP route reserves verified-owner uploads for actual
+    // org members (#4743). Without this check, the chat surface is a bypass
+    // for the route-level gate.
+    const hostedBrand = await brandDb.getHostedBrandByDomain(domain);
+    if (hostedBrand?.domain_verified && hostedBrand.workos_organization_id) {
+      return JSON.stringify({
+        error: 'This brand is verified-owned. Addie cannot change logos on owner-verified brands — only members of the owning organization can, via the brand-builder UI.',
+        code: 'verified_owner_required',
+      });
+    }
+
     // Check logo count cap
     const count = await brandLogoDb.countBrandLogos(domain);
     if (count >= 10) {
@@ -607,7 +620,10 @@ export function createBrandToolHandlers(): Map<string, (args: Record<string, unk
       width,
       height,
       source: 'community',
-      review_status: 'approved',
+      // Always queue Addie uploads as pending — she's a system caller without
+      // org-membership context, so the auto-approval path (reserved for
+      // verified owners in #4743) doesn't apply.
+      review_status: 'pending',
       uploaded_by_user_id: 'system:addie',
       upload_note: note,
     });
@@ -640,7 +656,8 @@ export function createBrandToolHandlers(): Map<string, (args: Record<string, unk
       success: true,
       domain,
       logo_id: logo.id,
-      review_status: 'approved',
+      review_status: 'pending',
+      message: 'Logo queued for moderator review. It will not appear on the brand viewer until approved.',
       url: `/logos/brands/${domain}/${logo.id}`,
       content_type: contentType,
       tags,

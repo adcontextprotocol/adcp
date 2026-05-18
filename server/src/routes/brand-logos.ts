@@ -84,8 +84,9 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
           const hosted = await brandDb.getHostedBrandByDomain(domain);
           if (hosted?.domain_verified && hosted.workos_organization_id) {
             return res.status(403).json({
-              error: 'This brand is verified-owned. Only members of the owning organization can upload logos.',
+              error: `This brand is verified-owned. Only members of the owning organization can change its logo. If you believe you own ${domain}, start a brand-claim challenge to prove DNS control.`,
               code: 'verified_owner_required',
+              claim_url: `/brand/builder?domain=${encodeURIComponent(domain)}`,
             });
           }
         }
@@ -201,8 +202,11 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
             editor_user_id: user.id,
             editor_email: user.email,
           });
-        } catch {
-          // Non-critical — the logo is saved regardless
+        } catch (err) {
+          // Audit-revision write failed — the logo is saved regardless, but
+          // log so we can spot drift between brand_revisions and the logo
+          // table (e.g. a brand that's pending review can't take revisions).
+          logger.debug({ err, domain, userId: user.id }, 'Logo upload audit revision skipped');
         }
 
         return res.status(201).json({
@@ -210,6 +214,9 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
           domain,
           logo_id: logo.id,
           review_status: reviewStatus,
+          ...(reviewStatus === 'pending' && {
+            message: 'Logo queued for moderator review. It will appear on the brand viewer once approved.',
+          }),
           url: `/logos/brands/${domain}/${logo.id}`,
         });
       } catch (error) {

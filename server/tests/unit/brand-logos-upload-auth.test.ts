@@ -124,6 +124,8 @@ describe('POST /api/brands/:domain/logos write authority', () => {
       .attach('file', MINIMAL_PNG, { filename: 'logo.png', contentType: 'image/png' });
     expect(res.status).toBe(403);
     expect(res.body.code).toBe('verified_owner_required');
+    expect(res.body.claim_url).toBe('/brand/builder?domain=example.com');
+    expect(res.body.error).toMatch(/start a brand-claim challenge/i);
     expect(mocks.insertLogo).not.toHaveBeenCalled();
   });
 
@@ -151,6 +153,7 @@ describe('POST /api/brands/:domain/logos write authority', () => {
       .attach('file', MINIMAL_PNG, { filename: 'logo.png', contentType: 'image/png' });
     expect(res.status).toBe(201);
     expect(res.body.review_status).toBe('pending');
+    expect(res.body.message).toMatch(/queued for moderator review/i);
     expect(mocks.insertLogo).toHaveBeenCalledWith(
       expect.objectContaining({ source: 'community', review_status: 'pending' }),
     );

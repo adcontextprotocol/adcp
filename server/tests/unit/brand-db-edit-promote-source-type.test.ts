@@ -9,9 +9,15 @@
  * silently started 404ing post-#3529 (broke scope3.com, fandom.com).
  *
  * Pin:
- *   1. enriched row + a human edit → UPDATE includes source_type='community'.
+ *   1. enriched row + a human edit that changes content → UPDATE includes
+ *      source_type='community'.
  *   2. community/brand_json rows → source_type column is NOT in the UPDATE
  *      (no churn, no spurious revisions).
+ *   3. System callers (system:logo-service, system:addie) never promote —
+ *      they're provenance bookkeeping, not curation, and a logo upload to
+ *      an enriched brand must not flip it to community-attested.
+ *   4. Audit-only revisions (edit_summary with no manifest input) don't
+ *      promote even from a human caller — no content was curated.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -126,5 +132,58 @@ describe('editDiscoveredBrand source_type promotion', () => {
         editor_user_id: 'user_1',
       }),
     ).rejects.toThrow(/Cannot edit authoritative/i);
+  });
+
+  it('does NOT promote enriched → community when system:logo-service rebuilds the manifest', async () => {
+    // The logo service writes a manifest update whenever a logo is approved
+    // (logos array refresh). The brand content fields are still raw
+    // Brandfetch — promotion would silently start serving them under the
+    // community label.
+    const client = makeClient({
+      domain: 'enriched.example',
+      source_type: 'enriched',
+      review_status: 'approved',
+      brand_manifest: { name: 'Brandfetch Data', description: 'Raw Brandfetch' },
+      brand_names: '[]',
+      discovered_at: new Date(),
+    });
+    mocks.getClient.mockResolvedValueOnce(client);
+
+    await db.editDiscoveredBrand('enriched.example', {
+      brand_manifest: { logos: [{ url: 'https://example/logo.png' }] },
+      has_brand_manifest: true,
+      edit_summary: 'Logo manifest rebuilt after review',
+      editor_user_id: 'system:logo-service',
+    });
+
+    const updateCall = findUpdateCall(client.query.mock.calls);
+    expect(updateCall).toBeDefined();
+    const sql = updateCall![0] as string;
+    expect(sql).not.toMatch(/source_type = \$/);
+  });
+
+  it('does NOT promote enriched → community on an audit-only revision (no manifest change)', async () => {
+    const client = makeClient({
+      domain: 'enriched.example',
+      source_type: 'enriched',
+      review_status: 'approved',
+      brand_manifest: { name: 'Brandfetch Data' },
+      brand_names: '[]',
+      discovered_at: new Date(),
+    });
+    mocks.getClient.mockResolvedValueOnce(client);
+
+    // The route-level logo upload writes this kind of audit-only revision
+    // to record provenance — no brand content fields change.
+    await db.editDiscoveredBrand('enriched.example', {
+      edit_summary: 'Logo uploaded by alice@example.com (community — pending review)',
+      editor_user_id: 'user_alice',
+      editor_email: 'alice@example.com',
+    });
+
+    const updateCall = findUpdateCall(client.query.mock.calls);
+    // No content changed and source_type wasn't promoted → early-return path
+    // means no UPDATE at all.
+    expect(updateCall).toBeUndefined();
   });
 });
