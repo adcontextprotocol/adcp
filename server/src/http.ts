@@ -1092,7 +1092,8 @@ export class HTTPServer {
 
         // Only serve brand_json and community source types. Enriched (Brandfetch) entries are
         // not brand-attested — serving them under this URL would misrepresent third-party data
-        // as brand-authoritative. Community entries are served only when structurally valid.
+        // as brand-authoritative. editDiscoveredBrand promotes enriched→community on first
+        // human edit, so curated rows land here under the community type.
         if (brand.source_type !== 'brand_json' && brand.source_type !== 'community') {
           return res.status(404).json({ error: 'Brand not found' });
         }
@@ -1100,16 +1101,8 @@ export class HTTPServer {
         const manifest = brand.brand_manifest as Record<string, unknown> | undefined;
         if (!manifest) return res.status(404).json({ error: 'Brand not found' });
 
-        if (brand.source_type === 'community') {
-          // Community entries must be approved and have a recognizable brand.json root shape.
-          if (brand.review_status === 'pending') return res.status(404).json({ error: 'Brand not found' });
-          const hasValidShape =
-            (typeof manifest.house === 'object' && Array.isArray(manifest.brands)) ||
-            typeof manifest.house === 'string' ||
-            Array.isArray(manifest.agents) ||
-            Boolean(manifest.brand_agent) ||
-            typeof manifest.authoritative_location === 'string';
-          if (!hasValidShape) return res.status(404).json({ error: 'Brand not found' });
+        if (brand.source_type === 'community' && brand.review_status === 'pending') {
+          return res.status(404).json({ error: 'Brand not found' });
         }
 
         const schemaUrl = 'https://adcontextprotocol.org/schemas/v3/brand.json';

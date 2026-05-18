@@ -73,6 +73,23 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
           return res.status(403).json({ error: 'You are banned from this brand registry' });
         }
 
+        // Write authority: when a brand has a verified owner, only members of
+        // that org can mutate its logos. Community contributors lose write
+        // access the moment ownership is proven — anything else would let a
+        // bad actor swap the storefront logo on a brand someone has actually
+        // claimed. When no owner has verified yet, community uploads stay
+        // allowed but queue for moderation (see review_status below).
+        const isOwner = await isVerifiedBrandOwner(user.id, domain, brandDb);
+        if (!isOwner) {
+          const hosted = await brandDb.getHostedBrandByDomain(domain);
+          if (hosted?.domain_verified && hosted.workos_organization_id) {
+            return res.status(403).json({
+              error: 'This brand is verified-owned. Only members of the owning organization can upload logos.',
+              code: 'verified_owner_required',
+            });
+          }
+        }
+
         if (!req.file) {
           return res.status(400).json({ error: 'File is required' });
         }
@@ -119,13 +136,13 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
         // Original filename
         const originalFilename = req.file.originalname?.slice(0, 255);
 
-        // Auto-approve all uploads that pass format/size/safety validation. The
-        // membership + ban gate already restricts who can upload; verified owners and
-        // community members are both trusted enough that holding logos in a manual queue
-        // stalls onboarding without providing meaningful safety benefit (#2568).
-        const isOwner = await isVerifiedBrandOwner(user.id, domain, brandDb);
+        // Verified owners are auto-approved — domain control is the attestation.
+        // Community uploads (only allowed when no owner has verified yet) queue
+        // for moderator review so a bad actor can't instantly swap a brand's
+        // storefront logo. Walks back the community half of #3393 per Brian's
+        // direction; ops tunes the moderation cadence.
         const source = isOwner ? 'brand_owner' : 'community';
-        const reviewStatus = 'approved';
+        const reviewStatus = isOwner ? 'approved' : 'pending';
 
         // Insert
         const logo = await brandLogoDb.insertBrandLogo({
@@ -178,8 +195,9 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
 
         // Create a brand revision noting the upload
         try {
+          const reviewNote = isOwner ? 'verified owner — auto-approved' : 'community — pending review';
           await brandDb.editDiscoveredBrand(domain, {
-            edit_summary: `Logo uploaded by ${user.email} (${isOwner ? 'verified owner' : 'community'} — auto-approved)`,
+            edit_summary: `Logo uploaded by ${user.email} (${reviewNote})`,
             editor_user_id: user.id,
             editor_email: user.email,
           });

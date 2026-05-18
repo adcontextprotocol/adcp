@@ -1330,6 +1330,15 @@ export class BrandDatabase {
         values.push(input.has_brand_manifest);
       }
 
+      // Promote enriched→community on first human edit. A Brandfetch-seeded
+      // row that's been hand-curated is no longer third-party-attested — it's
+      // community-attested. Without this, /brands/:domain/brand.json keeps
+      // 404ing the row because the source_type gate excludes enriched (#3529).
+      if (current.source_type === 'enriched') {
+        updates.push(`source_type = $${paramIndex++}`);
+        values.push('community');
+      }
+
       if (updates.length === 0) {
         await client.query('COMMIT');
         return { brand: this.deserializeDiscoveredBrand(current), revision_number: revisionNumber };
