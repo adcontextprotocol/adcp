@@ -21,6 +21,8 @@
 import { Router, Request, Response } from 'express';
 import { createLogger } from '../logger.js';
 import { getPool } from '../db/client.js';
+import { invalidateSessionsForUsers } from '../middleware/auth.js';
+import { promoteSecondaryIfPrimaryDeleted } from '../db/identity-db.js';
 import {
   upsertWorkosDomain,
   autoPromotePrimaryIfNone,
@@ -1044,8 +1046,21 @@ export function createWorkOSWebhooksRouter(): Router {
 
           case 'user.deleted': {
             const user = event.data as unknown as UserData;
+            // Promote a surviving secondary BEFORE the CASCADE on
+            // identity_workos_users.workos_user_id fires (via deleteUser).
+            // Without this, the identity is left with zero primaries and the
+            // surviving secondary signs in to an empty workspace — a DoS
+            // vector reachable via GDPR/CCPA-driven WorkOS deletions.
+            const promoted = await promoteSecondaryIfPrimaryDeleted(user.id);
             await deleteUser(user.id);
             await deleteUserMemberships(user.id);
+            // Close the 60-second session/JWT cache window where a cached
+            // pre-deletion swap would still route reads to the dead binding.
+            // Invalidate both the deleted user and the promoted successor so
+            // the next request re-resolves identity from the DB.
+            const sessionsToInvalidate = [user.id];
+            if (promoted) sessionsToInvalidate.push(promoted.promotedUserId);
+            invalidateSessionsForUsers(sessionsToInvalidate);
             invalidateUnifiedUsersCache();
             break;
           }

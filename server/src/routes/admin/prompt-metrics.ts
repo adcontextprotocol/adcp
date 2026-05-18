@@ -16,7 +16,7 @@
 
 import { Router } from 'express';
 import { createLogger } from '../../logger.js';
-import { requireAuth, requireAdmin } from '../../middleware/auth.js';
+import { requireGlobalAdmin } from '../../middleware/auth.js';
 import { getRuleMetrics } from '../../db/addie-prompt-telemetry-db.js';
 import { ALL_RULES } from '../../addie/home/builders/rules/prompt-rules.js';
 
@@ -28,7 +28,7 @@ export function setupPromptMetricsRoutes(apiRouter: Router): void {
   // Rules that have never been shown still appear (as zero rows) so the
   // dashboard surfaces dormant rules — a prompt no one sees is as
   // important to know about as one no one clicks.
-  apiRouter.get('/prompt-metrics', requireAuth, requireAdmin, async (_req, res) => {
+  apiRouter.get('/prompt-metrics', ...requireGlobalAdmin, async (_req, res) => {
     try {
       const metrics = await getRuleMetrics();
       const seen = new Set(metrics.map((m) => m.rule_id));

@@ -110,6 +110,16 @@ function buildHostBaseUrl(): string {
 }
 
 /**
+ * Canonical base URL the training agent registers tenants under. Exported so
+ * the governance tenant can construct stable JWS `iss` claims pointing at the
+ * `/governance` tenant root — the same URL value a buyer's brand.json points
+ * at for this agent.
+ */
+export function getCanonicalBase(): string {
+  return CANONICAL_BASE;
+}
+
+/**
  * Host the registry should match against. Always the canonical host
  * (matching what tenants register with) regardless of the actual Host
  * header on the request — supertest, storyboard runner, and production

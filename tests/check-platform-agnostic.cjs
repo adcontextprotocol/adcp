@@ -77,6 +77,22 @@ const ENUM_VALUE_ALLOWLIST = [
   { value: 'amazon', pathContains: 'brand.json' },
   { value: 'roku',   pathContains: 'brand.json' },
 
+  // brand/verify-brand-claim-request.json — store enum mirrors brand.json's
+  // properties[].store (when claim_type=property). Factoring into a shared
+  // enums/property-store.json is tracked as cleanup; same canonical-identifier
+  // justification applies.
+  { value: 'apple',  pathContains: 'brand/verify-brand-claim-request.json' },
+  { value: 'google', pathContains: 'brand/verify-brand-claim-request.json' },
+  { value: 'amazon', pathContains: 'brand/verify-brand-claim-request.json' },
+  { value: 'roku',   pathContains: 'brand/verify-brand-claim-request.json' },
+
+  // brand/verify-brand-claims-request.json — bulk variant mirrors the same
+  // store enum; same canonical-identifier justification applies.
+  { value: 'apple',  pathContains: 'brand/verify-brand-claims-request.json' },
+  { value: 'google', pathContains: 'brand/verify-brand-claims-request.json' },
+  { value: 'amazon', pathContains: 'brand/verify-brand-claims-request.json' },
+  { value: 'roku',   pathContains: 'brand/verify-brand-claims-request.json' },
+
   // brand.json — feed_format: google_merchant_center and facebook_catalog are
   // widely-adopted open interchange formats implemented by many third parties.
   { value: 'google_merchant_center', pathContains: 'brand.json' },

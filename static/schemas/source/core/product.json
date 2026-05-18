@@ -172,7 +172,7 @@
       "properties": {
         "supported_metrics": {
           "type": "array",
-          "description": "Metric kinds this product can optimize for. Buyers should only request metric goals for kinds listed here.",
+          "description": "Metric kinds this product can optimize for. Buyers should only request metric goals for kinds listed here. **DEPRECATED values** (slated for removal at next major): `attention_seconds` and `attention_score` — declare vendor-attested attention/quality metrics via `vendor_metric_optimization.supported_metrics[]` with an explicit vendor binding instead. Sellers MAY reject the deprecated values with `TERMS_REJECTED` and a suggestion to use the `vendor_metric` kind.",
           "items": {
             "type": "string",
             "enum": ["clicks", "views", "completed_views", "viewed_seconds", "attention_seconds", "attention_score", "engagements", "follows", "saves", "profile_visits", "reach"]
@@ -206,6 +206,10 @@
       },
       "required": ["supported_metrics"],
       "additionalProperties": true
+    },
+    "vendor_metric_optimization": {
+      "$ref": "/schemas/core/vendor-metric-optimization.json",
+      "description": "Vendor-attested metric optimization capabilities for this product. Presence indicates the product supports `optimization_goals` with `kind: 'vendor_metric'` — the seller's bidding stack can steer delivery toward a specific vendor's measurement (e.g., DV/IAS/Adelaide attention, Scope3 emissions, Kantar brand lift, retail-media partner metrics). Distinct from `metric_optimization` (seller-native metrics with no vendor binding) and from `reporting_capabilities.vendor_metrics` (which declares what the product can *report* rather than what it can *optimize against*). A product may report a vendor metric without being able to optimize for it. Buyers MUST verify the goal's `(vendor, metric_id)` is in `supported_metrics` AND that the package's `committed_metrics[]` includes a matching `{ scope: 'vendor', vendor, metric_id }` entry — optimization without committed reporting is unverifiable and is rejected at the wire level."
     },
     "max_optimization_goals": {
       "type": "integer",

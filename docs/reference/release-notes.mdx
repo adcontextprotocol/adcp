@@ -56,6 +56,42 @@ Additive over 3.0 — every existing brand.json publisher continues to validate 
 
 See [`brand.json` § Distributed publishing](/docs/brand-protocol/brand-json) for the full normative spec including resolution algorithm, Conformance MUSTs, adoption path, and prior art.
 
+### Delivery reporting — `reach_window` and `viewability.viewed_seconds` (#4618, closes #4580, partial #4579)
+
+**`reach_window` on `delivery-metrics.json`.** Declares the measurement window for reported `reach` and `frequency`. Three kinds: `cumulative` (uniques since campaign start), `period` (uniques within a single non-overlapping reporting period, e.g., daily snapshot), `rolling` (uniques within a trailing window, e.g., trailing-7-day). When `kind` is `period` or `rolling`, the `period: Duration` field is required. When `reach_window` is omitted, the window is unspecified — buyers MUST NOT sum `reach` across rows or compare/average `frequency` across rows. Optional but strongly recommended whenever `reach` is present; the prior `dependencies` rule already requires `reach_unit` alongside `reach`.
+
+**`viewability.viewed_seconds`.** New field on the existing `viewability` block — average in-view duration per measurable impression. Reporting-side counterpart to the `viewed_seconds` optimization goal. Nested into the viewability block (not a top-level scalar) because the viewability `standard` governs the in-view threshold for both `viewable_rate` and `viewed_seconds`, and they share the same `measurable_impressions` denominator and vendor.
+
+**Attention metrics — vendor binding.** `attention_seconds` and `attention_score` are deliberately *not* added as graduated delivery scalars. The reporting path is `vendor_metric_values[]` keyed on `(vendor, metric_id)`. See the [`#4579` close note](https://github.com/adcontextprotocol/adcp/issues/4579#issuecomment-4470761844) for the routing rationale and the [measurement taxonomy](/docs/measurement/taxonomy) for the Tier 0 / Tier 1 graduation policy that drove the split.
+
+Additive over 3.0. Existing sellers continue to validate; buyers ignoring the new fields keep working. Buyers SHOULD upgrade reach-summation logic to gate on `reach_window` semantics.
+
+### Optimization goals — `kind: "vendor_metric"` (#4668, closes #4644)
+
+End-to-end vendor binding for optimization goals against vendor-attested measurement — attention (DV, IAS, Adelaide, TVision, Lumen), panel-based brand lift (Kantar, Upwave, Cint), emissions (Scope3, Good-Loop), retail-media partner metrics. Closes the goal-side gap that the #4618 release notes flagged: today's vendor-agnostic `attention_seconds` / `attention_score` enum values are meaningless without a vendor binding, since each measurement vendor defines them differently.
+
+**New `kind: "vendor_metric"` goal shape.** Third `oneOf` branch on `optimization-goal.json`, structurally parallel to the existing `event` kind:
+
+```json
+{
+  "kind": "vendor_metric",
+  "vendor": { "domain": "adelaidemetrics.com" },
+  "metric_id": "attention_score",
+  "target": { "kind": "threshold_rate", "value": 70 },
+  "priority": 1
+}
+```
+
+`vendor` is the same BrandRef shape used everywhere a vendor-attested metric appears (`vendor_metric_values.vendor`, `reporting_capabilities.vendor_metrics`, `committed_metrics` vendor scope, `performance_standards.vendor`). `metric_id` is the canonical `vendor-metric-id` reference, sourced from the vendor's published `measurement.metrics[]` catalog.
+
+**New `vendor_metric_optimization` capability on the product.** Per-product declaration of which `(vendor, metric_id)` pairs the product's bidding stack can steer toward, with `supported_targets` per pair. Distinct from `reporting_capabilities.vendor_metrics` — a product may be able to report a vendor metric without being able to optimize against it (Scope3 emissions is the canonical case: many sellers report carbon-per-impression but can't yet steer bidding to minimize it).
+
+**Three-precondition rejection rule on goal acceptance.** Sellers MUST reject `vendor_metric` goals failing any of: (1) discovery — `metric_id` is in the vendor's published `measurement.metrics[]` (SHOULD this minor while vendor adoption catches up; MUST at next minor); (2) capability — `(vendor, metric_id)` is in the product's `vendor_metric_optimization.supported_metrics[]`; (3) reporting coherence — the package's `committed_metrics[]` includes a matching `{ scope: "vendor", vendor, metric_id }` entry. Optimization without committed reporting is unverifiable and is rejected at the wire level.
+
+**Deprecation.** `attention_seconds` and `attention_score` remain in the `metric` enum on `optimization-goal.json` and on `product.json` `metric_optimization.supported_metrics` for backwards compatibility this minor, marked **deprecated** in their descriptions. Slated for removal at next major. Sellers MAY reject the deprecated values with `TERMS_REJECTED` and a pointer to the `vendor_metric` kind. Same deprecation pattern used for `delivery_measurement.provider` → `vendors[]`.
+
+See [Metric lifecycle](/docs/media-buy/media-buys/optimization-reporting#metric-lifecycle) for the full capability → commitment → optimization → delivery picture and [`kind: vendor_metric`](/docs/media-buy/conversion-tracking/#kind-vendor_metric) for the goal-shape reference.
+
 ---
 
 ## Version 3.0.6

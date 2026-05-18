@@ -5,7 +5,7 @@
 
 import { Router } from 'express';
 import { createLogger } from '../../logger.js';
-import { requireAuth, requireAdmin } from '../../middleware/auth.js';
+import { requireAuth, requireAdmin, requireGlobalAdmin } from '../../middleware/auth.js';
 import { OrganizationDatabase } from '../../db/organization-db.js';
 import { createOrgDiscount, createCoupon, createPromotionCode } from '../../billing/stripe-client.js';
 
@@ -171,7 +171,7 @@ export function setupDiscountRoutes(apiRouter: Router): void {
   );
 
   // GET /api/admin/discounts - List all organizations with active discounts
-  apiRouter.get('/discounts', requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.get('/discounts', ...requireGlobalAdmin, async (req, res) => {
     try {
       const orgsWithDiscounts = await orgDb.listOrganizationsWithDiscounts();
 
@@ -186,7 +186,7 @@ export function setupDiscountRoutes(apiRouter: Router): void {
   });
 
   // POST /api/admin/coupons - Create a standalone Stripe coupon/promotion code
-  apiRouter.post('/coupons', requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.post('/coupons', ...requireGlobalAdmin, async (req, res) => {
     try {
       const {
         name,

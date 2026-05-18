@@ -268,6 +268,59 @@ async function countUserTurns(threadId: string | undefined, since?: Date): Promi
  * Validate scores against a module's assessment criteria.
  * Returns an error string if validation fails, or { weightedAvg } on success.
  */
+/**
+ * Sentinel prefix returned by every completion-gate rejection so Sage's
+ * prompt-level rule can distinguish "module recorded" from "tool rejected
+ * the call." See `addie/rules/constraints.md` — "Never Claim Unexecuted
+ * Actions: module completion." Both prefixes are pinned by the test at
+ * `server/tests/unit/cert-not-completed-sentinel.test.ts` — if you rename
+ * either one, update the constraints rule in the same PR.
+ */
+export const NOT_COMPLETED_SENTINEL = 'NOT COMPLETED';
+
+/** Success-line prefix for `complete_certification_module`. */
+export const MODULE_COMPLETED_PREFIX = 'Module {ID} completed!';
+
+/** Success-line prefix for `complete_certification_exam`. */
+export const CAPSTONE_COMPLETED_PREFIX = '# Congratulations! The learner passed the capstone!';
+
+/**
+ * Classification of why completion was rejected. Drives the learner-facing
+ * reframe Sage uses so a gate failure surfaces as formative feedback
+ * ("a little more practice and I can mark this") rather than a flat
+ * "system says no."
+ */
+export type CompletionGateClass = 'time' | 'evidence' | 'state' | 'score';
+
+const LEARNER_FRAMING_BY_GATE: Record<CompletionGateClass, string> = {
+  time: `Frame this to the learner as "we're close — a little more practice and I can mark this," not as a system rejection.`,
+  evidence: `Frame this to the learner as "before I close this out, I want to see [the missing demonstration / checkpoint material] one more time," not as a system rejection.`,
+  state: `Re-orient the learner — "let me check where we are with this module first" — then call the appropriate tool to recover the state.`,
+  score: `Frame this to the learner as "before I record final scores, let's revisit [the relevant dimension] once more," not as a system rejection.`,
+};
+
+export function notCompleted(moduleId: string, gate: CompletionGateClass, reason: string): string {
+  return `${NOT_COMPLETED_SENTINEL} — module ${moduleId} is not recorded as complete.
+
+${reason}
+
+Do not tell the learner the module is complete or use synonyms ("mastered", "locked in", "in the books", "you're through"). ${LEARNER_FRAMING_BY_GATE[gate]} Address the blocker above and retry when the gate is satisfied.`;
+}
+
+/**
+ * Shared directive used by both standard and capstone `start_certification_module`
+ * branches when one or more prerequisites are mid-flight. Routes Sage to
+ * surface the *reason* the prereq stalled and offer learner agency, rather
+ * than treating the in-progress module as a checkbox to clear.
+ */
+function inProgressPrereqDirective(inProgress: string[], targetModuleId: string): { directive: string; templateLine: string } {
+  const list = inProgress.join(' and ');
+  return {
+    directive: `The learner has ${list} in progress — they need to finish it before starting ${targetModuleId}. Do NOT offer a placement assessment; surface the reason the open module stalled (confusion, stuck on a concept) and offer to wrap or work through it.`,
+    templateLine: `You've got open work in ${list} — want to wrap that, or talk through where you're stuck? Once that's closed, ${targetModuleId} is next.`,
+  };
+}
+
 async function validateCompletionScores(
   scores: Record<string, number>,
   ac: certDb.AssessmentCriteria | null | undefined,
@@ -1255,6 +1308,19 @@ export const MODULE_RESOURCES: Record<string, { label: string; url: string }[]> 
 
 type ToolHandler = (input: Record<string, unknown>) => Promise<string>;
 
+/**
+ * Build the cert MCP handler set for a single user, single request.
+ *
+ * **MUST NOT be cached across users.** The returned handler set closes over a
+ * mutable `memberContext` so `ensureMembership()` can self-heal during the
+ * current turn. Reusing this handler set for a different user would serve
+ * their request under the original user's identity (`getUserId()` reads from
+ * the captured closure) and any DB write would land on the wrong account.
+ *
+ * The bound user is pinned at construction. Every `getUserId()` call asserts
+ * that the captured user is still the one we were built for — any in-closure
+ * mutation that swaps the user fails loud rather than silently leaking.
+ */
 export function createCertificationToolHandlers(
   initialMemberContext: MemberContext | null,
   options?: { threadId?: string },
@@ -1266,9 +1332,21 @@ export function createCertificationToolHandlers(
   // The next conversation turn rebuilds memberContext from the DB and
   // reflects any heals naturally.
   let memberContext = initialMemberContext;
+  // Pin the user this handler set was constructed for. If anything mutates
+  // `memberContext.workos_user` to a different id later (cross-tenant cache
+  // misuse, future ensureMembership refactor that swaps users), fail loud.
+  const boundUserId = initialMemberContext?.workos_user?.workos_user_id ?? null;
 
   const getUserId = (): string | null => {
-    return memberContext?.workos_user?.workos_user_id || null;
+    const currentUserId = memberContext?.workos_user?.workos_user_id || null;
+    if (boundUserId !== null && currentUserId !== null && currentUserId !== boundUserId) {
+      logger.error(
+        { boundUserId, currentUserId },
+        'createCertificationToolHandlers: bound user changed mid-lifetime — refusing to serve',
+      );
+      throw new ToolError('Internal error: certification handler user context inconsistent. Please retry.');
+    }
+    return currentUserId;
   };
 
   /**
@@ -1506,16 +1584,27 @@ export function createCertificationToolHandlers(
         // Extract key concept topics so Sage knows what mechanisms to reference
         const keyConcepts = (lp?.key_concepts as Array<{ topic: string; teaching_notes: string }> | undefined) || [];
         const conceptSummary = keyConcepts.map(c => `- **${c.topic}**: ${c.teaching_notes.substring(0, 200)}`).join('\n');
-        // Frame as destination-first, not as a gate
+        const missingIds = prereqs.missing.map(m => m.moduleId).join(', ');
+        const inProgress = prereqs.missing.filter(m => m.status === 'in_progress').map(m => m.moduleId);
+        // Branch the directive: if any prereq is mid-flight, point Sage at finishing
+        // it (with learner agency over the reason it stalled) rather than offering
+        // a placement assessment to skip it.
+        const inProgressTemplate = inProgress.length > 0 ? inProgressPrereqDirective(inProgress, mod.id) : null;
+        const directive = inProgressTemplate
+          ? inProgressTemplate.directive
+          : `The learner needs ${missingIds} first. Offer placement assessment to skip.`;
+        const template = inProgressTemplate
+          ? `"[Answer the learner's question in 1-2 sentences using task names from key mechanisms above.] ${inProgressTemplate.templateLine} [Socratic question that resumes the open module]."`
+          : `"[Answer the learner's question in 1-2 sentences using task names from key mechanisms above.] ${missingIds} is assumed — want a placement assessment to skip it? [Socratic question about their domain]."`;
         const prereqLines = [
           `${mod.id} (${mod.title}) teaches:`,
           mod.description || '',
           conceptSummary ? `\nKey mechanisms:\n${conceptSummary}` : '',
           '',
-          `The learner needs ${prereqs.missing.join(', ')} first. Offer placement assessment to skip.`,
+          directive,
           '',
           `Your response MUST follow this template:`,
-          `"[Answer the learner's question in 1-2 sentences using task names from key mechanisms above.] ${prereqs.missing.join(', ')} is assumed — want a placement assessment to skip it? [Socratic question about their domain]."`,
+          template,
           `Under 100 words. No docs alternative.`,
         ];
         return prereqLines.join('\n');
@@ -1652,14 +1741,14 @@ export function createCertificationToolHandlers(
 
       // Validate scores against assessment criteria (range, dimensions, floor, threshold)
       const scoreResult = await validateCompletionScores(scores, ac);
-      if (typeof scoreResult === 'string') return scoreResult;
+      if (typeof scoreResult === 'string') return notCompleted(moduleId, 'score', scoreResult);
 
       // Verify module is in-progress before allowing completion
       const progress = await certDb.getProgress(userId);
       const moduleProgress = progress.find(p => p.module_id === moduleId);
       if (!moduleProgress || moduleProgress.status !== 'in_progress') {
         const status = moduleProgress?.status || 'not started';
-        return `Module ${moduleId} is ${status}. Only in-progress modules can be completed.`;
+        return notCompleted(moduleId, 'state', `Module is ${status}. Only in-progress modules can be completed. Start the module first via start_certification_module.`);
       }
 
       // Server-side minimum time check: module must have been started at least 5 minutes ago
@@ -1667,7 +1756,8 @@ export function createCertificationToolHandlers(
         const startedAt = new Date(moduleProgress.started_at);
         const elapsed = Date.now() - startedAt.getTime();
         if (elapsed < MIN_MODULE_TIME_MS) {
-          return `Module was started less than 5 minutes ago. A proper teaching session requires more time. Continue teaching and try again.`;
+          const remaining = Math.ceil((MIN_MODULE_TIME_MS - elapsed) / 1000);
+          return notCompleted(moduleId, 'time', `Module was started less than 5 minutes ago (${remaining}s remaining). A proper teaching session requires more time. Continue teaching and retry after the minimum has elapsed.`);
         }
       }
 
@@ -1675,18 +1765,18 @@ export function createCertificationToolHandlers(
       const moduleStartDate = moduleProgress?.started_at ? new Date(moduleProgress.started_at) : undefined;
       const serverTurns = await countUserTurns(options?.threadId, moduleStartDate);
       if (serverTurns < MIN_MODULE_TURNS) {
-        return `A teaching session requires at least 4 conversation exchanges since starting this module. Only ${serverTurns} detected. Continue teaching and assessing before completing.`;
+        return notCompleted(moduleId, 'time', `A teaching session requires at least ${MIN_MODULE_TURNS} conversation exchanges since starting this module. Only ${serverTurns} detected. Continue teaching and assessing before completing.`);
       }
 
       // Require at least one teaching checkpoint before completion
       const checkpoint = await certDb.getLatestCheckpoint(userId, moduleId);
       if (!checkpoint) {
-        return 'You must save at least one teaching checkpoint (checkpoint_teaching_progress) before completing a module. This ensures teaching progress is recorded. Save a checkpoint summarizing concepts covered and learner performance, then call complete_certification_module again.';
+        return notCompleted(moduleId, 'evidence', 'You must save at least one teaching checkpoint (checkpoint_teaching_progress) before completing a module. Save a checkpoint summarizing concepts covered and learner performance, then call complete_certification_module again.');
       }
 
       // Score consistency check: require preliminary_scores and reject >20pt jumps
       if (!checkpoint.preliminary_scores) {
-        return 'The latest checkpoint has no preliminary scores. Save a new checkpoint with preliminary_scores reflecting your current assessment of the learner, then try again.';
+        return notCompleted(moduleId, 'evidence', 'The latest checkpoint has no preliminary_scores. Save a new checkpoint with preliminary_scores reflecting your current assessment of the learner, then try again.');
       }
       const jumps = Object.entries(scores)
         .filter(([dim, score]) => {
@@ -1695,15 +1785,18 @@ export function createCertificationToolHandlers(
         })
         .map(([dim]) => dim.replace(/_/g, ' '));
       if (jumps.length > 0) {
-        return `Score inconsistency detected in: ${jumps.join(', ')}. These dimensions changed significantly from the last checkpoint. Save a new checkpoint with updated preliminary scores reflecting current assessment, then try again.`;
+        return notCompleted(moduleId, 'score', `Score inconsistency detected in: ${jumps.join(', ')}. These dimensions changed >20 points from the last checkpoint. Save a new checkpoint with updated preliminary_scores reflecting current assessment, then try again.`);
       }
 
       // Verify all required demonstrations from exercise success_criteria
       const demoError = checkDemonstrations(mod, checkpoint);
-      if (demoError) return demoError;
+      if (demoError) return notCompleted(moduleId, 'evidence', demoError);
 
       await certDb.completeModule(userId, moduleId, scores);
 
+      // SUCCESS LINE — pinned by `addie/rules/constraints.md` and by
+      // `cert-not-completed-sentinel.test.ts`. If you change the leading
+      // "Module {id} completed!" prefix here, update both.
       const lines = [
         `Module ${moduleId} completed! The learner has demonstrated mastery of all learning objectives.`,
         '',
@@ -1913,16 +2006,24 @@ export function createCertificationToolHandlers(
         const objectives = lp?.objectives?.slice(0, 3).map(o => `- ${o}`).join('\n') || '';
         const keyConcepts = (lp?.key_concepts as Array<{ topic: string; teaching_notes: string }> | undefined) || [];
         const conceptSummary = keyConcepts.map(c => `- **${c.topic}**: ${c.teaching_notes.substring(0, 200)}`).join('\n');
-        // Frame as destination-first with path, not as a gate
+        const missingIds = prereqs.missing.map(m => m.moduleId);
+        const inProgress = prereqs.missing.filter(m => m.status === 'in_progress').map(m => m.moduleId);
+        const inProgressTemplate = inProgress.length > 0 ? inProgressPrereqDirective(inProgress, mod.id) : null;
+        const directive = inProgressTemplate
+          ? inProgressTemplate.directive
+          : `The learner needs to complete ${missingIds.join(', ')} first. With their experience, placement assessments can fast-track this.`;
+        const template = inProgressTemplate
+          ? `"${mod.id} covers [2-3 mechanisms from key concepts above]. [One sentence connecting to their stated goal]. ${inProgressTemplate.templateLine} [Socratic question that resumes the open module]."`
+          : `"${mod.id} covers [2-3 mechanisms from key concepts above, using task names like check_governance, sync_plans]. [One sentence connecting to their stated goal]. The path there goes through ${missingIds.join(' → ')}, but placement assessments can fast-track based on what you already know. [Socratic question about their domain experience]."`;
         const prereqLines = [
           `${mod.id} (${mod.title}) teaches:`,
           mod.description || '',
           conceptSummary ? `\nKey mechanisms:\n${conceptSummary}` : '',
           '',
-          `The learner needs to complete ${prereqs.missing.join(', ')} first. With their experience, placement assessments can fast-track this.`,
+          directive,
           '',
           `Your response MUST follow this template:`,
-          `"${mod.id} covers [2-3 mechanisms from key concepts above, using task names like check_governance, sync_plans]. [One sentence connecting to their stated goal]. The path there goes through ${prereqs.missing.join(' → ')}, but placement assessments can fast-track based on what you already know. [Socratic question about their domain experience]."`,
+          template,
         ];
         return prereqLines.join('\n');
       }
@@ -2093,48 +2194,48 @@ export function createCertificationToolHandlers(
       }
       const examAc = capstoneMod.assessment_criteria as certDb.AssessmentCriteria | undefined;
 
+      const capstoneId = capstoneMod.id;
+
       // Validate scores against assessment criteria (range, dimensions, floor, threshold)
       const scoreResult = await validateCompletionScores(scores, examAc);
-      if (typeof scoreResult === 'string') return scoreResult;
+      if (typeof scoreResult === 'string') return notCompleted(capstoneId, 'score', scoreResult);
 
       // Server-side minimum time check: exam must have been started at least 10 minutes ago
       const startedAt = new Date(attempt.started_at);
       const elapsed = Date.now() - startedAt.getTime();
       if (elapsed < MIN_CAPSTONE_TIME_MS) {
-        return `Exam was started less than 10 minutes ago. A proper capstone assessment requires more time. Continue the lab and exam phases and try again.`;
+        const remaining = Math.ceil((MIN_CAPSTONE_TIME_MS - elapsed) / 1000);
+        return notCompleted(capstoneId, 'time', `Exam was started less than 10 minutes ago (${remaining}s remaining). A proper capstone assessment requires more time. Continue the lab and exam phases and retry after the minimum has elapsed.`);
       }
 
       // Server-side minimum conversation turn count for capstones (scoped to exam start)
       const examServerTurns = await countUserTurns(options?.threadId, startedAt);
       if (examServerTurns < MIN_CAPSTONE_TURNS) {
-        return `A capstone assessment requires at least 6 conversation exchanges since starting this exam. Only ${examServerTurns} detected. Continue the assessment and try again.`;
+        return notCompleted(capstoneId, 'time', `A capstone assessment requires at least ${MIN_CAPSTONE_TURNS} conversation exchanges since starting this exam. Only ${examServerTurns} detected. Continue the assessment and try again.`);
       }
 
       // Require at least one teaching checkpoint with preliminary scores before completion
-      let examCheckpoint: Awaited<ReturnType<typeof certDb.getLatestCheckpoint>> = null;
-      if (capstoneMod) {
-        examCheckpoint = await certDb.getLatestCheckpoint(userId, capstoneMod.id);
-        if (!examCheckpoint) {
-          return 'You must save at least one teaching checkpoint (checkpoint_teaching_progress) before completing the capstone. Save a checkpoint after the lab phase summarizing observations, then call complete_certification_exam again.';
-        }
-        if (!examCheckpoint.preliminary_scores) {
-          return 'The latest checkpoint has no preliminary scores. Save a new checkpoint with preliminary_scores reflecting your current assessment, then try again.';
-        }
-        // Score consistency check: reject >20pt jumps from checkpoint
-        const examJumps = Object.entries(scores)
-          .filter(([dim, score]) => {
-            const prelim = examCheckpoint!.preliminary_scores![dim];
-            return prelim !== undefined && score - prelim > 20;
-          })
-          .map(([dim]) => dim.replace(/_/g, ' '));
-        if (examJumps.length > 0) {
-          return `Score inconsistency detected in: ${examJumps.join(', ')}. These dimensions changed significantly from the last checkpoint. Save a new checkpoint with updated preliminary scores, then try again.`;
-        }
-
-        // Verify all required demonstrations from exercise success_criteria
-        const demoError = checkDemonstrations(capstoneMod, examCheckpoint);
-        if (demoError) return demoError;
+      const examCheckpoint = await certDb.getLatestCheckpoint(userId, capstoneId);
+      if (!examCheckpoint) {
+        return notCompleted(capstoneId, 'evidence', 'You must save at least one teaching checkpoint (checkpoint_teaching_progress) before completing the capstone. Save a checkpoint after the lab phase summarizing observations, then call complete_certification_exam again.');
       }
+      if (!examCheckpoint.preliminary_scores) {
+        return notCompleted(capstoneId, 'evidence', 'The latest checkpoint has no preliminary_scores. Save a new checkpoint with preliminary_scores reflecting your current assessment, then try again.');
+      }
+      // Score consistency check: reject >20pt jumps from checkpoint
+      const examJumps = Object.entries(scores)
+        .filter(([dim, score]) => {
+          const prelim = examCheckpoint.preliminary_scores![dim];
+          return prelim !== undefined && score - prelim > 20;
+        })
+        .map(([dim]) => dim.replace(/_/g, ' '));
+      if (examJumps.length > 0) {
+        return notCompleted(capstoneId, 'score', `Score inconsistency detected in: ${examJumps.join(', ')}. These dimensions changed >20 points from the last checkpoint. Save a new checkpoint with updated preliminary_scores, then try again.`);
+      }
+
+      // Verify all required demonstrations from exercise success_criteria
+      const demoError = checkDemonstrations(capstoneMod, examCheckpoint);
+      if (demoError) return notCompleted(capstoneId, 'evidence', demoError);
 
       const overallScore = Math.round(scoreResult.weightedAvg);
       const allAboveThreshold = Object.values(scores).every(s => s >= 70);
@@ -2148,6 +2249,10 @@ export function createCertificationToolHandlers(
       const lines: string[] = [];
 
       if (passing) {
+        // SUCCESS LINE — pinned by `addie/rules/constraints.md` and by
+        // `cert-not-completed-sentinel.test.ts`. If you change the
+        // "# Congratulations! The learner passed the capstone!" prefix,
+        // update both.
         lines.push('# Congratulations! The learner passed the capstone!');
         lines.push('');
         lines.push('Congratulate them warmly — they earned this. Do NOT share any scores or percentages.');

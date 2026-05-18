@@ -26,9 +26,8 @@ vi.mock('../../src/auth/workos-client.js', () => {
   return { workos: mockWorkos, getWorkos: () => mockWorkos };
 });
 
-vi.mock('../../src/middleware/auth.js', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../../src/middleware/auth.js')>()),
-  requireAuth: (req: any, _res: any, next: any) => {
+vi.mock('../../src/middleware/auth.js', async (importOriginal) => {
+  const mockedRequireAuth = (req: any, _res: any, next: any) => {
     req.user = {
       id: 'user_test_admin_link',
       email: 'admin@test.local',
@@ -37,10 +36,20 @@ vi.mock('../../src/middleware/auth.js', async (importOriginal) => ({
       updatedAt: new Date().toISOString(),
     };
     next();
-  },
-  requireAdmin: (_req: any, _res: any, next: any) => next(),
-  optionalAuth: (_req: any, _res: any, next: any) => next(),
-}));
+  };
+  const passThrough = (_req: any, _res: any, next: any) => next();
+  return {
+    ...(await importOriginal<typeof import('../../src/middleware/auth.js')>()),
+    requireAuth: mockedRequireAuth,
+    requireAdmin: passThrough,
+    optionalAuth: passThrough,
+    // The exported `requireGlobalAdmin` array snapshots its element
+    // references at module-load time, so the per-export mocks above
+    // don't propagate. Re-build the array here so admin/users routes
+    // (`...requireGlobalAdmin`) reach the mocked handlers.
+    requireGlobalAdmin: [mockedRequireAuth, passThrough, passThrough],
+  };
+});
 
 vi.mock('../../src/middleware/csrf.js', () => ({
   csrfProtection: (_req: any, _res: any, next: any) => next(),

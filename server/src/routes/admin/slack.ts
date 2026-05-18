@@ -10,7 +10,7 @@
 
 import { Router } from 'express';
 import { createLogger } from '../../logger.js';
-import { requireAuth, requireAdmin } from '../../middleware/auth.js';
+import { requireGlobalAdmin } from '../../middleware/auth.js';
 import { SlackDatabase } from '../../db/slack-db.js';
 import { isSlackConfigured, testSlackConnection } from '../../slack/client.js';
 import { syncSlackUsers, getSyncStatus, syncUserToChaptersFromSlackChannels, buildAaoEmailToUserIdMap, checkAndAssignOrganizationByDomain, autoLinkUnmappedSlackUsers } from '../../slack/sync.js';
@@ -30,7 +30,7 @@ export function createAdminSlackRouter(): Router {
   const router = Router();
 
   // GET /api/admin/slack/status - Get Slack integration status
-  router.get('/status', requireAuth, requireAdmin, async (req, res) => {
+  router.get('/status', ...requireGlobalAdmin, async (req, res) => {
     try {
       const configured = isSlackConfigured();
       let connection = null;
@@ -56,7 +56,7 @@ export function createAdminSlackRouter(): Router {
   });
 
   // GET /api/admin/slack/stats - Get Slack mapping statistics
-  router.get('/stats', requireAuth, requireAdmin, async (req, res) => {
+  router.get('/stats', ...requireGlobalAdmin, async (req, res) => {
     try {
       const stats = await slackDb.getStats();
       res.json(stats);
@@ -69,7 +69,7 @@ export function createAdminSlackRouter(): Router {
   });
 
   // POST /api/admin/slack/sync - Trigger user sync from Slack
-  router.post('/sync', requireAuth, requireAdmin, async (req, res) => {
+  router.post('/sync', ...requireGlobalAdmin, async (req, res) => {
     try {
       const result = await syncSlackUsers();
       logger.info(result, 'Slack user sync completed');
@@ -86,7 +86,7 @@ export function createAdminSlackRouter(): Router {
   });
 
   // GET /api/admin/slack/users - List all Slack users with mapping status
-  router.get('/users', requireAuth, requireAdmin, async (req, res) => {
+  router.get('/users', ...requireGlobalAdmin, async (req, res) => {
     try {
       const { status, search, limit, offset } = req.query;
 
@@ -112,7 +112,7 @@ export function createAdminSlackRouter(): Router {
   });
 
   // POST /api/admin/slack/users/:slackUserId/link - Manually link Slack user to WorkOS user
-  router.post('/users/:slackUserId/link', requireAuth, requireAdmin, async (req, res) => {
+  router.post('/users/:slackUserId/link', ...requireGlobalAdmin, async (req, res) => {
     try {
       const { slackUserId } = req.params;
       const { workos_user_id } = req.body;
@@ -186,7 +186,7 @@ export function createAdminSlackRouter(): Router {
   });
 
   // POST /api/admin/slack/users/:slackUserId/unlink - Unlink Slack user from WorkOS user
-  router.post('/users/:slackUserId/unlink', requireAuth, requireAdmin, async (req, res) => {
+  router.post('/users/:slackUserId/unlink', ...requireGlobalAdmin, async (req, res) => {
     try {
       const { slackUserId } = req.params;
       const adminUser = (req as any).user;
@@ -226,7 +226,7 @@ export function createAdminSlackRouter(): Router {
   });
 
   // GET /api/admin/slack/unmapped - Get unmapped users eligible for nudges
-  router.get('/unmapped', requireAuth, requireAdmin, async (req, res) => {
+  router.get('/unmapped', ...requireGlobalAdmin, async (req, res) => {
     try {
       const { limit } = req.query;
 
@@ -246,7 +246,7 @@ export function createAdminSlackRouter(): Router {
   });
 
   // GET /api/admin/slack/auto-link-suggested - Get suggested email matches
-  router.get('/auto-link-suggested', requireAuth, requireAdmin, async (_req, res) => {
+  router.get('/auto-link-suggested', ...requireGlobalAdmin, async (_req, res) => {
     try {
       const unmappedSlack = await slackDb.getUnmappedUsers({
         excludeOptedOut: false,
@@ -291,7 +291,7 @@ export function createAdminSlackRouter(): Router {
   // POST /api/admin/slack/auto-link-suggested - Auto-link all suggested email matches
   // Note: this internally calls syncSlackUsers() first, which fetches all workspace members
   // from the Slack API before running the link pass.
-  router.post('/auto-link-suggested', requireAuth, requireAdmin, async (_req, res) => {
+  router.post('/auto-link-suggested', ...requireGlobalAdmin, async (_req, res) => {
     try {
       const result = await autoLinkUnmappedSlackUsers();
       res.json({ ...result, errors: result.errors > 0 ? [`${result.errors} users failed to link`] : [] });

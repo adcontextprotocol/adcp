@@ -1,0 +1,595 @@
+id: media_buy_seller/dependency_impairment
+version: "2.0.0"
+title: "Dependency impairment end-to-end — resource transition propagates to media buy health"
+category: media_buy_seller
+summary: "Forces a creative from approved → rejected on a non-terminal media buy, verifies the buy reflects health: impaired with a matching impairments[] entry, and recovers via assignment swap to a different creative (canonical recovery vector — re-approval of the same creative_id is uncommon in production)."
+track: media_buy
+required_tools:
+  - get_products
+  - create_media_buy
+  - get_media_buys
+  - sync_creatives
+  - update_media_buy
+  - comply_test_controller
+
+narrative: |
+  Per the dependency-impairment surface ([adcp#2855](https://github.com/adcontextprotocol/adcp/issues/2855)
+  and `core/impairment.json`), sellers MUST propagate resource-state transitions
+  into the affected media buys. The compliance contract is `impairment.coherence`
+  (adcp#2859) — a cross-resource invariant tying `media_buy.impairments[]` to the
+  underlying resource state. The runner registers and grades this invariant via
+  adcp-client#1801; this storyboard is what makes it run end-to-end instead of
+  grading not_applicable.
+
+  Five phases, exercised entirely against the comply test controller's sandbox:
+
+  1. **setup** — discover a product, create an active media buy, sync a creative
+     and assign it to the buy's package. Capture media_buy_id, package_id, and
+     creative_id for the rest of the run.
+  2. **baseline_healthy** — read the buy via get_media_buys. `health` MUST be
+     `ok`, and `impairments[]` MUST be empty or absent. This establishes the
+     pre-transition snapshot the impairment.coherence runner ledgers against.
+  3. **transition_offline** — call comply_test_controller force_creative_status
+     to flip the creative to `rejected` with a rejection_reason. This is the
+     resource-state transition the runner observes.
+  4. **verify_impaired** — read the buy again. `health` MUST be `impaired`, and
+     `impairments[]` MUST contain an entry whose resource_type is `creative`,
+     resource_id matches the rejected creative, package_ids contains the
+     creative's package, transition.to is `rejected`, and the required
+     fields (impairment_id, reason_code, observed_at) are populated. This
+     closes the forward rule (every entry references a currently-offline
+     resource) and the inverse rule (the offline resource referenced by a
+     non-terminal buy appears in impairments[]) for this transition, and
+     captures the health-iff rule in the `impaired` direction.
+  5. **swap_recovery** — sync a second creative (B, approved) and use
+     `update_media_buy` with `packages[].creative_assignments` (replacement
+     semantics — the new list fully replaces the old) to swap the package's
+     binding from creative A (still rejected in the library) to creative B
+     (approved). Read the buy and assert `health: ok` with `impairments[]`
+     empty/absent. This is the canonical recovery vector in production —
+     buyers rarely re-approve a rejected creative on the same ID; they swap
+     to a replacement asset. Creative A's library status stays `rejected`,
+     but it is no longer a dependency of any package on this buy, so the
+     impairment clears.
+
+  A seller that transitions a creative without propagating to the buy fails
+  phase 4. A seller that holds stale `impairments[]` after the swap (where
+  creative A is no longer referenced) fails phase 5. A seller that
+  maintains a stale `health: impaired` with empty `impairments[]` (or vice
+  versa) on a non-terminal buy fails the impairment.coherence runner
+  invariant alongside the per-step assertions.
+
+  **Same-ID re-approval as recovery vector.** Some sellers' review flows do
+  support `rejected → approved` on the same creative_id (post-policy review
+  reinstatement, takedown reversed). That's covered by the opt-in sibling
+  scenario `media_buy_seller/dependency_impairment_reapprove_recovery`
+  (filed at adcp#4682 as a secondary variant). Sellers without same-ID
+  re-approval grade that sibling not_applicable; this scenario (swap) is
+  the universal recovery path.
+
+  **Capability gating.** Sellers whose
+  `capabilities.media_buy.propagation_surfaces` does NOT include
+  `"snapshot"` (e.g., `["webhook"]` or `["out_of_band"]`) grade this
+  whole scenario not_applicable — their compliance contract is the
+  webhook channel or the offline agreement, not the snapshot. Sellers
+  declaring `["snapshot", "webhook"]` are graded on the snapshot surface
+  here and on the webhook contract separately. See lifecycle.mdx §
+  Compliance for the surface declaration.
+
+  Audience-track and catalog-track variants are out of scope here — the
+  comply test controller only ships force_creative_status today; the
+  force_audience_status / force_catalog_item_status surface lands in a
+  follow-up.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - has_creative_library
+  examples:
+    - "Any media buy seller that exposes comply_test_controller and propagates creative state to buy.impairments[]"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    Seller MUST expose comply_test_controller with force_creative_status support.
+    Sellers without the controller (or without force_creative_status) grade this
+    scenario not_applicable — the cross-resource exercise requires deterministic
+    resource transitions the buyer can drive directly.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: setup
+    title: "Create an active buy with a creative assignment"
+    narrative: |
+      Discover a product, create a media buy, sync one creative into the library
+      with an inline assignment to the buy's first package. The buy's `health`
+      starts as `ok` (default) and `impairments[]` is empty.
+
+    steps:
+      - id: get_products_brief
+        title: "Discover a product"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        comply_scenario: full_sales_flow
+        stateful: false
+        expected: |
+          Return at least one product with a pricing option and at least one format_id.
+        sample_request:
+          buying_mode: "brief"
+          brief: "Display inventory on outdoor lifestyle content for dependency-impairment testing."
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          context:
+            correlation_id: "dependency_impairment--get_products"
+        context_outputs:
+          - path: "products[0].product_id"
+            key: "product_id"
+          - path: "products[0].pricing_options[0].pricing_option_id"
+            key: "pricing_option_id"
+          - path: "products[0].format_ids[0].agent_url"
+            key: "format_agent_url"
+          - path: "products[0].format_ids[0].id"
+            key: "format_id"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_present
+            path: "products[0].format_ids[0].id"
+            description: "Product exposes at least one format_id for creative sync"
+
+      - id: create_buy
+        title: "Create an active media buy"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        comply_scenario: create_media_buy
+        stateful: true
+        expected: |
+          Media buy created with media_buy_id and at least one package. Flight is
+          forward-dated; status is pending_creatives or pending_start.
+
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          idempotency_key: "$generate:uuid_v4#dependency_impairment_create_buy"
+          start_time: "2026-11-01T00:00:00Z"
+          end_time: "2026-11-30T23:59:59Z"
+          packages:
+            - product_id: "$context.product_id"
+              budget: 5000
+              pricing_option_id: "$context.pricing_option_id"
+          context:
+            correlation_id: "dependency_impairment--create_buy"
+        context_outputs:
+          - path: "media_buy_id"
+            key: "media_buy_id"
+          - path: "packages[0].package_id"
+            key: "package_id"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Seller returns media_buy_id"
+          - check: field_present
+            path: "packages[0].package_id"
+            description: "Seller returns package_id"
+
+      - id: sync_creative_with_assignment
+        title: "Sync a creative and assign to the package"
+        narrative: |
+          Sync one creative and bind it to the package. The creative enters the
+          library through the seller's review flow; the assignment is what
+          makes the creative a dependency of the media buy and is what
+          impairment.coherence ties the propagation rule to.
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
+        doc_ref: "/creative/task-reference/sync_creatives"
+        comply_scenario: creative_sync
+        stateful: true
+        expected: |
+          Creative accepted (action: created), assignment acknowledged. Status is
+          processing, pending_review, or approved.
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          creatives:
+            - creative_id: "acme_dep_banner_001"
+              name: "Acme Outdoor dependency-test banner"
+              format_id:
+                agent_url: "$context.format_agent_url"
+                id: "$context.format_id"
+              assets:
+                image:
+                  asset_type: "image"
+                  url: "https://cdn.pinnacle-agency.example/acme-dep-banner.png"
+                  width: 300
+                  height: 250
+                  mime_type: "image/png"
+          assignments:
+            - creative_id: "acme_dep_banner_001"
+              package_id: "$context.package_id"
+          idempotency_key: "$generate:uuid_v4#dependency_impairment_sync_creative"
+          context:
+            correlation_id: "dependency_impairment--sync_creative"
+        context_outputs:
+          - path: "creatives[0].creative_id"
+            key: "creative_id"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-creatives-response.json schema"
+          - check: field_present
+            path: "creatives[0].creative_id"
+            description: "Response echoes back the buyer-supplied creative_id"
+
+      - id: force_creative_approved
+        title: "Force the creative to approved baseline"
+        narrative: |
+          Use comply_test_controller force_creative_status to seed the creative
+          at `approved` so the next phase observes a clean approved → rejected
+          transition. Sellers with their own deterministic review flow may
+          already land at approved; this call is the safe baseline that lets
+          the rest of the storyboard depend on a known starting state.
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        doc_ref: "/building/implementation/comply-test-controller"
+        comply_scenario: full_sales_flow
+        stateful: true
+        expected: |
+          success: true. Creative is now at status: approved on the seller side.
+
+        sample_request:
+          account:
+            sandbox: true
+          scenario: "force_creative_status"
+          params:
+            creative_id: "acme_dep_banner_001"
+            status: "approved"
+          context:
+            correlation_id: "dependency_impairment--force_creative_approved"
+        validations:
+          - check: response_schema
+            description: "Response matches comply-test-controller-response.json schema"
+          - check: field_value
+            path: "success"
+            allowed_values: [true]
+            description: "Controller acknowledged the directive"
+
+  - id: baseline_healthy
+    title: "Baseline: buy reads as healthy, no impairments"
+    narrative: |
+      With the creative at approved and assigned, the buy MUST report
+      `health: ok` and an empty (or absent) `impairments[]`. This is the
+      pre-transition snapshot impairment.coherence ledgers against.
+
+    steps:
+      - id: get_buy_baseline
+        title: "Read the buy — health: ok, impairments[] empty"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        comply_scenario: media_buy_lifecycle
+        stateful: true
+        expected: |
+          The buy is returned with health: ok and impairments[] empty or absent.
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_ids:
+            - "$context.media_buy_id"
+          context:
+            correlation_id: "dependency_impairment--get_buy_baseline"
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buys-response.json schema"
+          - check: field_value
+            path: "media_buys[0].media_buy_id"
+            value: "$context.media_buy_id"
+            description: "Seller returns the buy by media_buy_id"
+          - check: field_value
+            path: "media_buys[0].health"
+            allowed_values: ["ok"]
+            description: "Buy health is ok in the baseline snapshot (health-iff rule, ok direction)"
+          - check: field_value_or_absent
+            path: "media_buys[0].impairments"
+            value: []
+            description: "impairments[] is empty (or absent) in the baseline — no resources are offline yet"
+
+  - id: transition_offline
+    title: "Force the creative to rejected"
+    narrative: |
+      The seller transitions the creative from approved → rejected via
+      comply_test_controller. This is the resource-state transition that the
+      seller MUST propagate to every non-terminal buy referencing the creative.
+
+    steps:
+      - id: force_creative_rejected
+        title: "comply_test_controller force_creative_status → rejected"
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        doc_ref: "/building/implementation/comply-test-controller"
+        comply_scenario: creative_lifecycle
+        stateful: true
+        expected: |
+          success: true. Creative is now at status: rejected. The seller has
+          observed the transition; the next get_media_buys read MUST reflect
+          the impairment on the affected buy.
+
+        sample_request:
+          account:
+            sandbox: true
+          scenario: "force_creative_status"
+          params:
+            creative_id: "acme_dep_banner_001"
+            status: "rejected"
+            rejection_reason: "Dependency-impairment scenario: forcing approved → rejected to exercise impairment.coherence."
+          context:
+            correlation_id: "dependency_impairment--force_creative_rejected"
+        validations:
+          - check: response_schema
+            description: "Response matches comply-test-controller-response.json schema"
+          - check: field_value
+            path: "success"
+            allowed_values: [true]
+            description: "Controller acknowledged the rejection directive"
+
+  - id: verify_impaired
+    title: "Buy reads as impaired with a matching impairments[] entry"
+    narrative: |
+      After the rejection, the buy MUST report `health: impaired` and
+      `impairments[]` MUST contain an entry whose resource_type is `creative`,
+      resource_id matches the rejected creative, package_ids contains the
+      creative's package, and transition.to is `rejected`. This closes the
+      forward + inverse rules for this transition; the impairment.coherence
+      invariant grades the cross-resource match.
+
+    steps:
+      - id: get_buy_impaired
+        title: "Read the buy — health: impaired, impairment entry present"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        comply_scenario: media_buy_lifecycle
+        stateful: true
+        expected: |
+          The buy is returned with:
+          - health: impaired
+          - impairments[] containing at least one entry where
+            resource_type: creative, resource_id: acme_dep_banner_001,
+            package_ids includes the buy's package, transition.to: rejected.
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_ids:
+            - "$context.media_buy_id"
+          context:
+            correlation_id: "dependency_impairment--get_buy_impaired"
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buys-response.json schema"
+          - check: field_value
+            path: "media_buys[0].health"
+            allowed_values: ["impaired"]
+            description: "Buy health flipped to impaired after the creative was rejected (health-iff rule, impaired direction)"
+          - check: field_present
+            path: "media_buys[0].impairments[0]"
+            description: "Buy reports at least one impairment entry (inverse rule)"
+          - check: field_value
+            path: "media_buys[0].impairments[0].resource_type"
+            allowed_values: ["creative"]
+            description: "Impairment entry's resource_type is creative"
+          - check: field_value
+            path: "media_buys[0].impairments[0].resource_id"
+            value: "acme_dep_banner_001"
+            description: "Impairment entry's resource_id matches the rejected creative (forward rule)"
+          - check: field_value
+            path: "media_buys[0].impairments[0].package_ids[0]"
+            value: "$context.package_id"
+            description: "Impairment entry's package_ids[] contains the buy's package — without this, a seller could list a different package and still pass the impairment-present check"
+          - check: field_value
+            path: "media_buys[0].impairments[0].transition.to"
+            allowed_values: ["rejected"]
+            description: "Impairment entry's transition.to is rejected"
+          - check: field_present
+            path: "media_buys[0].impairments[0].impairment_id"
+            description: "Impairment carries the required impairment_id (notification_id for state-event webhooks; see snapshot-and-log Rule 1)"
+          - check: field_present
+            path: "media_buys[0].impairments[0].reason_code"
+            description: "Impairment carries a reason_code (required per impairment.json) — buyer needs this to route remediation"
+          - check: field_present
+            path: "media_buys[0].impairments[0].observed_at"
+            description: "Impairment carries observed_at (required per impairment.json) — buyer needs this to reconcile webhook ordering against the snapshot"
+
+  - id: swap_recovery
+    title: "Recover via assignment swap — different creative replaces the rejected one"
+    narrative: |
+      Sync a second creative (B) into the library as approved, then use
+      update_media_buy to swap the package's creative_assignments from
+      creative A (still rejected) to creative B. Re-read the buy and verify
+      health returns to ok with impairments[] cleared. Creative A's library
+      status stays rejected — the seller is NOT required to re-approve it
+      — but A is no longer a dependency of any package on this buy, so the
+      impairment clears.
+
+      This is the production-canonical recovery path. Buyers rarely re-approve
+      a rejected creative on the same ID; they ship a corrected asset under
+      a new ID and update assignments. The same-ID re-approval path is
+      covered separately by an opt-in sibling scenario (#4682 secondary
+      variant) for sellers whose review flow supports it.
+
+    steps:
+      - id: sync_replacement_creative
+        title: "Sync replacement creative B (approved baseline)"
+        narrative: |
+          Add a second creative to the library WITHOUT assigning it to the
+          package yet. The package's current binding is still to creative A
+          (rejected). The next step uses update_media_buy to do the swap.
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
+        doc_ref: "/creative/task-reference/sync_creatives"
+        comply_scenario: creative_sync
+        stateful: true
+        expected: |
+          Replacement creative accepted (action: created). No assignment yet
+          — the package's binding remains on creative A until the next step.
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          creatives:
+            - creative_id: "acme_dep_banner_002"
+              name: "Acme Outdoor dependency-test replacement banner"
+              format_id:
+                agent_url: "$context.format_agent_url"
+                id: "$context.format_id"
+              assets:
+                image:
+                  asset_type: "image"
+                  url: "https://cdn.pinnacle-agency.example/acme-dep-banner-replacement.png"
+                  width: 300
+                  height: 250
+                  mime_type: "image/png"
+          idempotency_key: "$generate:uuid_v4#dependency_impairment_sync_replacement"
+          context:
+            correlation_id: "dependency_impairment--sync_replacement_creative"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-creatives-response.json schema"
+          - check: field_present
+            path: "creatives[0].creative_id"
+            description: "Replacement creative_id returned"
+
+      - id: force_replacement_approved
+        title: "Force replacement creative B to approved"
+        narrative: |
+          Baseline creative B at approved via comply_test_controller so the
+          swap binds the package to an in-policy creative. Sellers whose
+          deterministic flow already lands B at approved on sync grade this
+          step a no-op; the call is the safe seed.
+        task: comply_test_controller
+        schema_ref: "compliance/comply-test-controller-request.json"
+        response_schema_ref: "compliance/comply-test-controller-response.json"
+        doc_ref: "/building/implementation/comply-test-controller"
+        comply_scenario: creative_lifecycle
+        stateful: true
+        expected: |
+          success: true. Replacement creative is now at status: approved.
+
+        sample_request:
+          account:
+            sandbox: true
+          scenario: "force_creative_status"
+          params:
+            creative_id: "acme_dep_banner_002"
+            status: "approved"
+          context:
+            correlation_id: "dependency_impairment--force_replacement_approved"
+        validations:
+          - check: response_schema
+            description: "Response matches comply-test-controller-response.json schema"
+          - check: field_value
+            path: "success"
+            allowed_values: [true]
+            description: "Controller acknowledged the directive"
+
+      - id: swap_assignment
+        title: "Swap the package's creative_assignments — replacement semantics"
+        narrative: |
+          update_media_buy with packages[].creative_assignments uses
+          replacement semantics (per package-update.json) — the new list
+          fully replaces the old. Provide ONLY creative B; creative A is
+          unbound from the package and is no longer a dependency of this
+          buy. The library's reject status on A is preserved.
+        task: update_media_buy
+        schema_ref: "media-buy/update-media-buy-request.json"
+        response_schema_ref: "media-buy/update-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/update_media_buy"
+        comply_scenario: media_buy_lifecycle
+        stateful: true
+        expected: |
+          The seller accepts the package update and the next get_media_buys
+          reflects the new assignment with the impairment cleared.
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_id: "$context.media_buy_id"
+          packages:
+            - package_id: "$context.package_id"
+              creative_assignments:
+                - creative_id: "acme_dep_banner_002"
+          idempotency_key: "$generate:uuid_v4#dependency_impairment_swap_assignment"
+          context:
+            correlation_id: "dependency_impairment--swap_assignment"
+        validations:
+          - check: response_schema
+            description: "Response matches update-media-buy-response.json schema"
+
+      - id: get_buy_recovered
+        title: "Read the buy — health: ok, impairments[] cleared via swap"
+        task: get_media_buys
+        schema_ref: "media-buy/get-media-buys-request.json"
+        response_schema_ref: "media-buy/get-media-buys-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buys"
+        comply_scenario: media_buy_lifecycle
+        stateful: true
+        expected: |
+          health: ok, impairments[] empty/absent. Creative A is still
+          rejected in the library (verifiable separately via list_creatives)
+          but is no longer assigned to the package, so the impairment
+          clears. A non-empty impairments[] here indicates the seller is
+          holding stale state — the assignment swap should have removed
+          creative A as a buy dependency.
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_ids:
+            - "$context.media_buy_id"
+          context:
+            correlation_id: "dependency_impairment--get_buy_recovered"
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buys-response.json schema"
+          - check: field_value
+            path: "media_buys[0].health"
+            allowed_values: ["ok"]
+            description: "Buy health returned to ok after assignment swap (health-iff rule, ok direction)"
+          - check: field_value_or_absent
+            path: "media_buys[0].impairments"
+            value: []
+            description: "impairments[] is empty (or absent) — seller cleared the stale A-entry when A stopped being a dependency. health-iff biconditional would fail with health: ok and a non-empty impairments[]."

@@ -221,7 +221,7 @@ export function createCertificationRouters() {
         return res.status(400).json({
           error: 'Prerequisites not met',
           missing: prereqs.missing,
-          message: `Complete these modules first: ${prereqs.missing.join(', ')}`,
+          message: `Complete these modules first: ${prereqs.missing.map(m => m.moduleId).join(', ')}`,
         });
       }
 

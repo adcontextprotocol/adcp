@@ -30,9 +30,8 @@ import type { Pool } from 'pg';
 // helpers like createRequireWorkingGroupLeader (used by other mounted
 // routers) are still available — env vars are set via vi.hoisted above
 // so the WorkOS constructor at module load doesn't blow up.
-vi.mock('../../src/middleware/auth.js', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../../src/middleware/auth.js')>()),
-  requireAuth: (req: any, _res: any, next: any) => {
+vi.mock('../../src/middleware/auth.js', async (importOriginal) => {
+  const mockedRequireAuth = (req: any, _res: any, next: any) => {
     req.user = {
       id: 'user_test_admin_bind',
       email: 'admin@test.local',
@@ -41,10 +40,21 @@ vi.mock('../../src/middleware/auth.js', async (importOriginal) => ({
       updatedAt: new Date().toISOString(),
     };
     next();
-  },
-  requireAdmin: (_req: any, _res: any, next: any) => next(),
-  optionalAuth: (_req: any, _res: any, next: any) => next(),
-}));
+  };
+  const passThrough = (_req: any, _res: any, next: any) => next();
+  return {
+    ...(await importOriginal<typeof import('../../src/middleware/auth.js')>()),
+    requireAuth: mockedRequireAuth,
+    requireAdmin: passThrough,
+    optionalAuth: passThrough,
+    // `requireGlobalAdmin` is an exported array that captures its
+    // member references at module-load time, so the per-export mocks
+    // above don't propagate into it. Re-build the array here with the
+    // mocked entries so admin/users routes (which use
+    // `...requireGlobalAdmin`) get the test-friendly chain.
+    requireGlobalAdmin: [mockedRequireAuth, passThrough, passThrough],
+  };
+});
 
 vi.mock('../../src/middleware/csrf.js', () => ({
   csrfProtection: (_req: any, _res: any, next: any) => next(),

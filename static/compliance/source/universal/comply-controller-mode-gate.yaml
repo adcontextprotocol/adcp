@@ -108,7 +108,13 @@ phases:
           params:
             creative_id: 'comply-live-mode-probe-000'
             status: 'approved'
-
+          # account.sandbox is a caller-side declaration of intent (schema const: true).
+          # The denial here comes from the seller resolving the auth principal to a
+          # live-mode account in its persisted records — not from the payload claim.
+          # The payload still MUST be schema-valid, otherwise it never reaches the
+          # per-account gate (schema rejection happens first as defense-in-depth).
+          account:
+            sandbox: true
           context:
             correlation_id: "comply_controller_mode_gate--deny_live_caller"
 

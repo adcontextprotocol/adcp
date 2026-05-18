@@ -1,0 +1,4 @@
+---
+---
+
+Apply the `requireGlobalAdmin` chain to the remaining admin routers operating on cross-org / global state, closing #4684. Migrates 10 files (`admin/prompt-metrics.ts`, `admin/integrity.ts`, `admin/addie-costs.ts`, `admin/simulations.ts`, `admin/settings.ts`, `admin/illustrations.ts`, `admin/bans.ts`, `admin/discounts.ts`, `admin/cleanup.ts`, `admin/slack.ts`). All migrated routes are confirmed global state (no `organization_id` on their target tables, no `:orgId` path param). Per-org routes that DO live in these files (`/organizations/:orgId/discount` POST routes in discounts.ts, `/cleanup/analyze-with-ai/:orgId`) stay on `requireAuth, requireAdmin` — they're correctly gated by the default cross-tenant check that #4646 put into `requireAdmin`. `admin/relationships.ts` is deliberately deferred to a separate audit (read-side info-leak surface needs its own threat-model pass).

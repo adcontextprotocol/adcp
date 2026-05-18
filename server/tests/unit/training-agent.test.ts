@@ -1081,6 +1081,7 @@ describe('createTrainingAgentServer', () => {
     expect(toolNames).toContain('sync_governance');
     expect(toolNames).toContain('sync_catalogs');
     expect(toolNames).toContain('sync_event_sources');
+    expect(toolNames).toContain('sync_audiences');
     expect(toolNames).toContain('log_event');
     expect(toolNames).toContain('provide_performance_feedback');
     expect(toolNames).toContain('create_collection_list');
@@ -1088,7 +1089,7 @@ describe('createTrainingAgentServer', () => {
     expect(toolNames).toContain('update_collection_list');
     expect(toolNames).toContain('list_collection_lists');
     expect(toolNames).toContain('delete_collection_list');
-    expect(toolNames).toHaveLength(49);
+    expect(toolNames).toHaveLength(50);
   });
 
   it('get_adcp_capabilities response uses 3.0 capability model', async () => {
@@ -1676,6 +1677,198 @@ describe('create_media_buy handler', () => {
     });
     // No creatives synced → pending_creatives regardless of dates
     expect(result.status).toBe('pending_creatives');
+  });
+
+  it('rejects event-kind optimization_goal with unregistered event_source_id', async () => {
+    const { productId, pricingOptionId } = getFirstProductAndPricing();
+    const account = { brand: { domain: 'phantom-source.example' }, operator: 'phantom-source.example' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+
+    const { result } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'phantom-source.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: productId,
+        pricing_option_id: pricingOptionId,
+        budget: 5000,
+        optimization_goals: [{
+          kind: 'event',
+          event_sources: [{
+            event_source_id: 'does_not_exist_phantom_source',
+            event_type: 'purchase',
+          }],
+          target: { kind: 'cost_per', value: 35 },
+        }],
+      }],
+    });
+
+    // simulateCallTool unwraps the first errors[] entry to the top level.
+    expect(result.code).toBe('INVALID_REQUEST');
+    expect(result.field).toBe('packages[0].optimization_goals[0].event_sources[0].event_source_id');
+    expect((result.message as string).includes('does_not_exist_phantom_source')).toBe(true);
+  });
+
+  it('accepts event-kind optimization_goal whose event_source_id was registered via sync_event_sources', async () => {
+    const { productId, pricingOptionId } = getFirstProductAndPricing();
+    const account = { brand: { domain: 'bound-source.example' }, operator: 'bound-source.example' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+
+    // Register the event source first
+    await simulateCallTool(server, 'sync_event_sources', {
+      account,
+      event_sources: [{
+        event_source_id: 'bound_website',
+        name: 'Bound Source',
+        event_types: ['purchase'],
+      }],
+    });
+
+    const { result } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'bound-source.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: productId,
+        pricing_option_id: pricingOptionId,
+        budget: 5000,
+        optimization_goals: [{
+          kind: 'event',
+          event_sources: [{
+            event_source_id: 'bound_website',
+            event_type: 'purchase',
+          }],
+          target: { kind: 'cost_per', value: 35 },
+        }],
+      }],
+    });
+
+    expect(result.errors).toBeUndefined();
+    expect(typeof result.media_buy_id).toBe('string');
+  });
+
+  it('rejects targeting_overlay.audience_include referencing an unregistered audience_id', async () => {
+    const { productId, pricingOptionId } = getFirstProductAndPricing();
+    const account = { brand: { domain: 'phantom-audience.example' }, operator: 'phantom-audience.example' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+
+    const { result } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'phantom-audience.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: productId,
+        pricing_option_id: pricingOptionId,
+        budget: 5000,
+        targeting_overlay: {
+          audience_include: ['does_not_exist_phantom_audience'],
+        },
+      }],
+    });
+
+    expect(result.code).toBe('INVALID_REQUEST');
+    expect(result.field).toBe('packages[0].targeting_overlay.audience_include[0]');
+    expect((result.message as string).includes('does_not_exist_phantom_audience')).toBe(true);
+  });
+
+  it('accepts targeting_overlay.audience_include after the audience was registered via sync_audiences', async () => {
+    const { productId, pricingOptionId } = getFirstProductAndPricing();
+    const account = { brand: { domain: 'bound-audience.example' }, operator: 'bound-audience.example' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+
+    await simulateCallTool(server, 'sync_audiences', {
+      account,
+      audiences: [{
+        audience_id: 'bound_loyalty',
+        name: 'Bound Loyalty',
+        audience_type: 'crm',
+        add: [
+          { external_id: 'u1', hashed_email: 'a000000000000000000000000000000000000000000000000000000000000010' },
+        ],
+      }],
+    });
+
+    const { result } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'bound-audience.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: productId,
+        pricing_option_id: pricingOptionId,
+        budget: 5000,
+        targeting_overlay: {
+          audience_include: ['bound_loyalty'],
+        },
+      }],
+    });
+
+    expect(result.errors).toBeUndefined();
+    expect(typeof result.media_buy_id).toBe('string');
+  });
+
+  it('rejects targeting_overlay.audience_exclude referencing an unregistered audience_id', async () => {
+    const { productId, pricingOptionId } = getFirstProductAndPricing();
+    const account = { brand: { domain: 'phantom-exclude.example' }, operator: 'phantom-exclude.example' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+
+    const { result } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'phantom-exclude.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: productId,
+        pricing_option_id: pricingOptionId,
+        budget: 5000,
+        targeting_overlay: {
+          audience_exclude: ['phantom_suppression_list'],
+        },
+      }],
+    });
+
+    expect(result.code).toBe('INVALID_REQUEST');
+    expect(result.field).toBe('packages[0].targeting_overlay.audience_exclude[0]');
+    expect((result.message as string).includes('phantom_suppression_list')).toBe(true);
+  });
+
+  it('accepts targeting_overlay.audience_exclude after the audience was registered via sync_audiences', async () => {
+    const { productId, pricingOptionId } = getFirstProductAndPricing();
+    const account = { brand: { domain: 'bound-exclude.example' }, operator: 'bound-exclude.example' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+
+    await simulateCallTool(server, 'sync_audiences', {
+      account,
+      audiences: [{
+        audience_id: 'bound_suppression',
+        name: 'Bound Suppression',
+        audience_type: 'suppression',
+        add: [
+          { external_id: 's1', hashed_email: 'a000000000000000000000000000000000000000000000000000000000000020' },
+        ],
+      }],
+    });
+
+    const { result } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'bound-exclude.example' },
+      start_time: '2027-06-01T00:00:00Z',
+      end_time: '2027-07-01T00:00:00Z',
+      packages: [{
+        product_id: productId,
+        pricing_option_id: pricingOptionId,
+        budget: 5000,
+        targeting_overlay: {
+          audience_exclude: ['bound_suppression'],
+        },
+      }],
+    });
+
+    expect(result.errors).toBeUndefined();
+    expect(typeof result.media_buy_id).toBe('string');
   });
 });
 
@@ -3629,6 +3822,82 @@ describe('get_media_buy_delivery handler', () => {
 
     expect(result.errors).toBeUndefined();
     expect(result.media_buy_deliveries).toBeDefined();
+  });
+
+  it('computes cost_per_acquisition when simulate_delivery injects conversions and spend', async () => {
+    const catalog = buildCatalog();
+    const product = catalog[0].product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'cpa-delivery.example' }, operator: 'cpa-delivery.example', sandbox: true };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+
+    const { result: createResult } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'cpa-delivery.example' },
+      start_time: '2025-01-01T00:00:00Z',
+      end_time: '2025-12-31T00:00:00Z',
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricingOptions[0].pricing_option_id,
+        budget: 50000,
+      }],
+    });
+    const mediaBuyId = createResult.media_buy_id as string;
+
+    // Inject impressions + conversions + reported_spend via the test controller.
+    await simulateCallTool(server, 'comply_test_controller', {
+      scenario: 'simulate_delivery',
+      params: {
+        media_buy_id: mediaBuyId,
+        impressions: 200000,
+        clicks: 4500,
+        conversions: 90,
+        reported_spend: { amount: 3000, currency: 'USD' },
+      },
+      account,
+      brand: { domain: 'cpa-delivery.example' },
+    });
+
+    const { result } = await simulateCallTool(server, 'get_media_buy_delivery', {
+      account,
+      media_buy_id: mediaBuyId,
+    });
+    const deliveries = result.media_buy_deliveries as Array<Record<string, unknown>>;
+    const totals = deliveries[0].totals as Record<string, number>;
+    expect(totals.conversions).toBe(90);
+    // spend includes scheduled spend (impressions × CPM rate ÷ 1000) plus the
+    // injected $3000; we assert CPA equals spend / conversions to that exact
+    // ratio rather than a fixed number.
+    expect(totals.cost_per_acquisition).toBeGreaterThan(0);
+    expect(totals.cost_per_acquisition).toBeCloseTo(totals.spend / totals.conversions, 2);
+  });
+
+  it('omits cost_per_acquisition when no conversions were injected', async () => {
+    const catalog = buildCatalog();
+    const product = catalog[0].product;
+    const pricingOptions = product.pricing_options as Array<Record<string, unknown>>;
+    const account = { brand: { domain: 'no-conversions.example' }, operator: 'no-conversions.example' };
+    const server = createTrainingAgentServer(DEFAULT_CTX);
+
+    const { result: createResult } = await simulateCallTool(server, 'create_media_buy', {
+      account,
+      brand: { domain: 'no-conversions.example' },
+      start_time: '2025-01-01T00:00:00Z',
+      end_time: '2025-12-31T00:00:00Z',
+      packages: [{
+        product_id: product.product_id,
+        pricing_option_id: pricingOptions[0].pricing_option_id,
+        budget: 50000,
+      }],
+    });
+
+    const { result } = await simulateCallTool(server, 'get_media_buy_delivery', {
+      account,
+      media_buy_id: createResult.media_buy_id,
+    });
+    const totals = ((result.media_buy_deliveries as Array<Record<string, unknown>>)[0].totals) as Record<string, unknown>;
+    expect(totals.cost_per_acquisition).toBeUndefined();
+    expect(totals.conversions).toBeUndefined();
   });
 
   it('returns delivery metrics for multi-package buy', async () => {

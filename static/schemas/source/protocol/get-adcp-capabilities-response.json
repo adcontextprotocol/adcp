@@ -218,6 +218,17 @@
           "description": "Whether this seller commits to the proposal lifecycle on get_products: when called with buying_mode: 'brief' the seller will return at least one entry in proposals[]; when called with buying_mode: 'refine' + action: 'finalize' the seller will transition a proposal from draft to committed. A declaration of true is a commitment the seller will be graded against, not just a feature flag — sellers that decline a brief on policy grounds still owe a structured proposal-shaped rejection rather than an empty proposals[]. Most guaranteed-deal sellers (premium pubs, broadcast, CTV) declare true; auction-based PG, retail SKU, and quoted-rate direct-buy flows declare false. When false or absent, the seller serves products directly without proposal abstraction; conformance runners skip proposal-lifecycle storyboards.",
           "default": false
         },
+        "propagation_surfaces": {
+          "type": "array",
+          "description": "Where this seller surfaces dependency-resource impairments (creative rejected post-approval, audience suspended, catalog item withdrawn, event source insufficient, property depublished) to buyers. Non-exclusive: a seller mirroring impairments on both the buy snapshot AND firing webhooks declares `[\"snapshot\", \"webhook\"]` (the common case for premium guaranteed sellers). Each value names one surface where buyers can observe an impairment:\n\n- **`snapshot`** — seller propagates resource transitions into `media_buy.health` and `media_buy.impairments[]` on the next `get_media_buys` read. The `impairment.coherence` compliance assertion grades this surface; storyboards that exercise it (`media_buy_seller/dependency_impairment`, `media_buy_seller/dependency_impairment_cardinality`) require `\"snapshot\"` to be declared, else they grade `not_applicable`.\n- **`webhook`** — seller fires `notification-type: impairment` webhooks (configured via `push_notification_config`). Sellers declaring `\"webhook\"` MUST satisfy the persistent-channel webhook contract for the impairment event type. A seller declaring `[\"webhook\"]` without `\"snapshot\"` is webhook-only — buyers reconcile state from the push channel alone, and snapshot-coherence storyboards grade `not_applicable`.\n- **`out_of_band`** — seller propagates via channels outside the AdCP protocol surface entirely (email to trafficker, separate dashboard, partner-specific notification feed). Long-tail and enterprise-bundled platforms commonly use this when impairment workflows are managed in human channels. Sellers declaring only `[\"out_of_band\"]` are not graded by snapshot or webhook compliance — their bar is the offline agreement, not a protocol assertion. If a seller has impairment data in their API under a non-AdCP field name (a mapping gap, not truly out-of-band), they SHOULD document the mapping rather than declare `out_of_band` — the spec's gap, not the seller's posture, is what `out_of_band` legitimately covers.\n\nDefault: `[\"snapshot\"]` when absent (preserves the existing snapshot-coherence contract for sellers that don't declare). Empty array `[]` is invalid (`minItems: 1`) — omit the field to inherit the default rather than declaring no surfaces. Pick the surfaces that honestly describe where buyers will see impairments on this agent. Mixing is normative — `[\"snapshot\", \"webhook\"]` is the documented common case; `[\"snapshot\", \"webhook\", \"out_of_band\"]` is valid for sellers that ship all three surfaces (rare but legal). See lifecycle.mdx § Compliance for the per-surface contract.",
+          "items": {
+            "type": "string",
+            "enum": ["snapshot", "webhook", "out_of_band"]
+          },
+          "uniqueItems": true,
+          "minItems": 1,
+          "default": ["snapshot"]
+        },
         "features": {
           "$ref": "/schemas/core/media-buy-features.json"
         },
@@ -499,6 +510,16 @@
           ],
           "additionalProperties": true
         },
+        "supported_optimization_metrics": {
+          "type": "array",
+          "description": "Optimization metrics this seller can support on at least one of their products. Seller-level rollup of product-level metric_optimization.supported_metrics declarations (core/product.json). Buyers SHOULD filter their requested optimization goals against this list before submitting briefs. Sellers MUST keep this in sync with their product catalog — if no products support a metric, it must not appear here. Omitting this field means the seller declares no specific guarantees about which metrics they support; buyers should fall back to per-product inspection of metric_optimization.supported_metrics.",
+          "items": {
+            "type": "string",
+            "enum": ["clicks", "views", "completed_views", "viewed_seconds", "attention_seconds", "attention_score", "engagements", "follows", "saves", "profile_visits", "reach"]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
         "conversion_tracking": {
           "type": "object",
           "description": "Seller-level conversion tracking capabilities. Presence of this object indicates the seller supports sync_event_sources and log_event for conversion event tracking.",
@@ -514,6 +535,16 @@
                 "$ref": "/schemas/enums/event-type.json"
               },
               "minItems": 1
+            },
+            "supported_targets": {
+              "type": "array",
+              "description": "Event-goal target kinds this seller can compute against. Buyers should only submit event-kind optimization goals whose target.kind is listed here — sellers MUST reject goals with unlisted target kinds. When omitted, only target-less event goals (maximize conversion count within budget) are guaranteed; sellers MAY accept specific target kinds but buyers should not rely on it. Named to parallel `metric_optimization.supported_targets` at the product level — same concept (which target kinds are supported), one at seller-capability granularity and one at product granularity.",
+              "items": {
+                "type": "string",
+                "enum": ["cost_per", "per_ad_spend", "maximize_value"]
+              },
+              "minItems": 1,
+              "uniqueItems": true
             },
             "supported_uid_types": {
               "type": "array",
@@ -575,6 +606,29 @@
                 ],
                 "additionalProperties": true
               }
+            }
+          },
+          "additionalProperties": true
+        },
+        "frequency_capping": {
+          "type": "object",
+          "description": "Frequency capping capabilities. Presence of this object indicates the seller honors targeting.frequency_cap on packages and MUST reject caps it cannot enforce rather than silently dropping them. Buyers SHOULD inspect supported_per_units and supported_window_units before submitting caps; sellers without these sub-fields populated MAY accept any reach-unit / duration-unit combination they can enforce. Per-product overrides (for sellers with mixed addressable/non-addressable inventory) are a likely follow-up — file a separate RFC if needed.",
+          "properties": {
+            "supported_per_units": {
+              "type": "array",
+              "description": "Entity granularities the seller can enforce caps against. Values from the reach-unit enum. Omit to indicate all reach-unit values are supported.",
+              "items": { "$ref": "/schemas/enums/reach-unit.json" },
+              "minItems": 1,
+              "uniqueItems": true
+            },
+            "supported_window_units": {
+              "type": "array",
+              "description": "Duration units the seller supports for frequency cap windows. Values must match the duration.json unit enum (e.g., 'hours', 'days', 'campaign'). Omit to indicate all duration units are supported.",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1,
+              "uniqueItems": true
             }
           },
           "additionalProperties": true

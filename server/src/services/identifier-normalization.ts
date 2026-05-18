@@ -69,7 +69,7 @@ export const FREE_EMAIL_PROVIDER_DOMAINS: readonly string[] = [
  * Not exhaustive — for full coverage we'd need the public-suffix list
  * from publicsuffix.org. This blocks the highest-volume offenders.
  */
-const SHARED_PLATFORM_DOMAINS = new Set<string>([
+export const SHARED_PLATFORM_DOMAINS = new Set<string>([
   // Hosting / serverless
   'vercel.app', 'vercel.com', 'netlify.app', 'netlify.com', 'fly.dev',
   'fly.io', 'render.com', 'pages.dev', 'workers.dev', 'web.app',

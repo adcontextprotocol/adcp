@@ -12,6 +12,13 @@
       "maxLength": 255,
       "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
     },
+    "notification_id": {
+      "type": "string",
+      "description": "Event-layer, per-state-event identifier. Stable across re-emissions of the same logical event — distinct from the per-fire `idempotency_key` issued at the transport layer. Receivers MUST track both: `idempotency_key` suppresses transport retries; `notification_id` correlates fires to current snapshot state. Seeing the same `notification_id` under two different `idempotency_key` values is a re-emission signal (e.g., the seller is re-firing because a prior fire was unreachable), not a transport retry — receivers SHOULD treat that as a missed-events warning rather than collapsing it. Population is event-shape-dependent (see notification-type.json enumDescriptions for per-type values): for state-shaped events (e.g., `impairment`), this equals the resource's stable id (e.g., `impairment_id`); for point-in-time data events with no persistent state id (e.g., `scheduled`/`final`/`delayed`/`adjusted` delivery report fires per snapshot-and-log Rule 1), this field is absent — the per-fire `idempotency_key` is all there is. Future notification types declare their per-type population in notification-type.json enumDescriptions. Charset is constrained to `[A-Za-z0-9_.:-]` — the same safe-to-log/safe-to-concat character class as `idempotency_key` — so receivers can write this value into log lines, dashboard URLs, and LLM prompts without escaping.",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{1,255}$"
+    },
     "operation_id": {
       "type": "string",
       "description": "Client-generated identifier that was embedded in the webhook URL by the buyer. Publishers echo this back in webhook payloads so clients can correlate notifications without parsing URL paths. Typically generated as a unique ID per task invocation."

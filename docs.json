@@ -107,6 +107,7 @@
                   "docs/protocol/required-tasks",
                   "docs/protocol/calling-an-agent",
                   "docs/protocol/format-references",
+                  "docs/protocol/snapshot-and-log",
                   {
                     "group": "Concepts",
                     "expanded": false,
@@ -371,6 +372,7 @@
                       "docs/governance/embedded-human-judgment",
                       "docs/governance/policy-registry",
                       "docs/governance/policy-registry-sync",
+                      "docs/governance/policy-attribution",
                       "docs/governance/annex-iii-obligations",
                       "docs/governance/working-group-charter",
                       {
@@ -495,10 +497,13 @@
                       "docs/brand-protocol/for-rights-holders",
                       "docs/brand-protocol/brand-json",
                       "docs/brand-protocol/building-a-brand-agent",
+                      "docs/brand-protocol/ui-guidance",
                       {
                         "group": "Tasks",
                         "pages": [
                           "docs/brand-protocol/tasks/get_brand_identity",
+                          "docs/brand-protocol/tasks/verify_brand_claim",
+                          "docs/brand-protocol/tasks/verify_brand_claims",
                           "docs/brand-protocol/tasks/get_rights",
                           "docs/brand-protocol/tasks/acquire_rights",
                           "docs/brand-protocol/tasks/update_rights"
@@ -554,8 +559,16 @@
                 ]
               },
               "docs/faq",
-              "docs/ai-disclosure",
-              "docs/trust",
+              {
+                "group": "Trust & Security",
+                "expanded": false,
+                "pages": [
+                  "docs/trust",
+                  "docs/ai-disclosure",
+                  "docs/reference/privacy-considerations",
+                  "docs/reference/known-limitations"
+                ]
+              },
               {
                 "group": "Reference",
                 "expanded": false,
@@ -584,8 +597,6 @@
                   "docs/reference/experimental-status",
                   "docs/reference/schema-extensions",
                   "docs/reference/v2-sunset",
-                  "docs/reference/known-limitations",
-                  "docs/reference/privacy-considerations",
                   "docs/reference/release-notes",
                   "docs/reference/changelog",
                   "docs/reference/implementor-faq",
@@ -948,6 +959,7 @@
                   "docs/governance/embedded-human-judgment",
                   "docs/governance/policy-registry",
                   "docs/governance/policy-registry-sync",
+                  "docs/governance/policy-attribution",
                   "docs/governance/working-group-charter",
                   {
                     "group": "Property Governance",
@@ -1064,10 +1076,13 @@
                   "docs/brand-protocol/for-rights-holders",
                   "docs/brand-protocol/brand-json",
                   "docs/brand-protocol/building-a-brand-agent",
+                  "docs/brand-protocol/ui-guidance",
                   {
                     "group": "Tasks",
                     "pages": [
                       "docs/brand-protocol/tasks/get_brand_identity",
+                      "docs/brand-protocol/tasks/verify_brand_claim",
+                      "docs/brand-protocol/tasks/verify_brand_claims",
                       "docs/brand-protocol/tasks/get_rights",
                       "docs/brand-protocol/tasks/acquire_rights",
                       "docs/brand-protocol/tasks/update_rights"
@@ -1108,9 +1123,17 @@
           {
             "group": "FAQ",
             "pages": [
-              "docs/faq",
+              "docs/faq"
+            ]
+          },
+          {
+            "group": "Trust & Security",
+            "expanded": false,
+            "pages": [
+              "docs/trust",
               "docs/ai-disclosure",
-              "docs/trust"
+              "docs/reference/privacy-considerations",
+              "docs/reference/known-limitations"
             ]
           },
           {
@@ -1136,8 +1159,6 @@
               "docs/reference/versioning",
               "docs/reference/url-canonicalization",
               "docs/reference/verifying-protocol-tarballs",
-              "docs/reference/known-limitations",
-              "docs/reference/privacy-considerations",
               "docs/reference/experimental-status",
               "docs/reference/schema-extensions",
               "docs/reference/release-notes",

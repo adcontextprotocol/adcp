@@ -140,6 +140,11 @@
       "disposition": "held-for-next-minor",
       "target_version": "3.1",
       "note": "Canonical-formats multi-size v1 emission advisory (#3307; adopter feedback from SDK implementor). Non-fatal; surfaces when a v2 declaration's `params.sizes[]` count exceeds its `v1_format_ref[]` count — v1 buyers see partial size coverage. Emitted alongside the partial v1 emit, not in place of it. SDK MAY (non-normative) fan out automatically via catalog lookup. Wire change — held for 3.1."
+    },
+    "UNSUPPORTED_GRANULARITY": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.1",
+      "note": "From get_media_buy_delivery windowed-pull recovery (#4590). Returned when a buyer requests a time_granularity the seller did not declare in reporting_capabilities.windowed_pull_granularities. Wire change — held for 3.1."
     }
   }
 }

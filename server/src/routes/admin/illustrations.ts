@@ -7,7 +7,7 @@
 
 import { Router } from 'express';
 import { createLogger } from '../../logger.js';
-import { requireAuth, requireAdmin } from '../../middleware/auth.js';
+import { requireGlobalAdmin } from '../../middleware/auth.js';
 import { getPool } from '../../db/client.js';
 import * as illustrationDb from '../../db/illustration-db.js';
 import { generateIllustration } from '../../services/illustration-generator.js';
@@ -20,7 +20,7 @@ const MAX_BATCH = 5;
 export function setupIllustrationRoutes(apiRouter: Router): void {
 
   // GET /api/admin/illustrations/pending - List perspectives missing illustrations
-  apiRouter.get('/illustrations/pending', requireAuth, requireAdmin, async (_req, res) => {
+  apiRouter.get('/illustrations/pending', ...requireGlobalAdmin, async (_req, res) => {
     try {
       const pool = getPool();
       const { rows } = await pool.query<{
@@ -46,7 +46,7 @@ export function setupIllustrationRoutes(apiRouter: Router): void {
   // POST /api/admin/illustrations/generate - Generate illustrations for perspectives missing one
   // Optional body: { slugs: string[] } to limit to specific perspectives
   // Processes at most MAX_BATCH per request to avoid HTTP timeouts
-  apiRouter.post('/illustrations/generate', requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.post('/illustrations/generate', ...requireGlobalAdmin, async (req, res) => {
     try {
       if (!process.env.GEMINI_API_KEY) {
         return res.status(503).json({ error: 'GEMINI_API_KEY is not configured' });
@@ -133,7 +133,7 @@ export function setupIllustrationRoutes(apiRouter: Router): void {
   });
 
   // POST /api/admin/illustrations/regenerate/:slug - Regenerate illustration for a specific perspective
-  apiRouter.post('/illustrations/regenerate/:slug', requireAuth, requireAdmin, async (req, res) => {
+  apiRouter.post('/illustrations/regenerate/:slug', ...requireGlobalAdmin, async (req, res) => {
     try {
       if (!process.env.GEMINI_API_KEY) {
         return res.status(503).json({ error: 'GEMINI_API_KEY is not configured' });

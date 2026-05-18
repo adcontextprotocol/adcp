@@ -2,12 +2,20 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/enums/notification-type.json",
   "title": "Notification Type",
-  "description": "Type of delivery notification for media buy reporting",
+  "description": "Type of push notification fired against a media buy's push_notification_config. Delivery notifications (scheduled/final/delayed/adjusted) carry reporting payloads; health notifications (impairment) carry dependency state changes that affect serving.",
   "type": "string",
   "enum": [
     "scheduled",
     "final",
     "delayed",
-    "adjusted"
-  ]
+    "adjusted",
+    "impairment"
+  ],
+  "enumDescriptions": {
+    "scheduled": "Scheduled delivery report fire. Fired at the cadence the buyer registered on reporting_webhook (e.g., hourly, daily). Carries the window's delivery metrics. **notification_id**: absent — point-in-time data event with no persistent state id (snapshot-and-log Rule 1). Dedupe by `idempotency_key` only.",
+    "final": "Terminal delivery report fire. Sent once after the media buy reaches a terminal lifecycle state (completed, canceled, rejected). Carries final delivery aggregates. **notification_id**: absent — point-in-time data event with no persistent state id (snapshot-and-log Rule 1). Dedupe by `idempotency_key` only.",
+    "delayed": "Off-cadence delivery report fire indicating that the seller has detected late-arriving data for a prior window. Buyers SHOULD reconcile the affected window against this fire. **notification_id**: absent — point-in-time data event with no persistent state id (snapshot-and-log Rule 1). Dedupe by `idempotency_key` only.",
+    "adjusted": "Off-cadence delivery report fire indicating that the seller has revised a prior window's metrics (e.g., IVT filtering applied, attribution model run, makegood adjustment). Buyers SHOULD replace prior values for the affected window. **notification_id**: absent — point-in-time data event with no persistent state id (snapshot-and-log Rule 1). Dedupe by `idempotency_key` only.",
+    "impairment": "Dependency state change fire. Sent when a resource referenced by the buy enters an offline state that affects delivery for at least one package. Payload carries the impairment object and the buy's updated health. See impairment.json and the impairment.coherence assertion. **notification_id**: equals `impairment.impairment_id`. Stable across re-emissions of the same open impairment and across the closing fire that signals resolution; a new impairment for the same resource after closure receives a new id."
+  }
 }

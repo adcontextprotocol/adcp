@@ -18,6 +18,35 @@ import type {
 } from './types.js';
 import type { BrandReference } from '@adcp/sdk';
 import { getSession, sessionKeyFromArgs, findGovernancePlanAcrossSessions } from './state.js';
+import { signGovernanceContext, type GovernancePhase, type PolicyDecision } from './governance-context.js';
+import { getCanonicalBase } from './tenants/registry.js';
+
+const GOVERNANCE_PHASES = new Set<GovernancePhase>(['intent', 'purchase', 'modification', 'delivery']);
+
+/**
+ * Map plan-level policy_ids + current check status to per-policy outcomes
+ * for the JWS `policy_decisions` claim. The training agent doesn't track
+ * per-policy evaluation results separately, so derived outcomes mirror the
+ * check status — `denied`/`conditions`/`allowed`. Production governance
+ * agents that score each policy independently SHOULD emit the real per-
+ * policy outcome here (or `policy_decision_hash` instead — see spec
+ * §"Privacy considerations").
+ */
+function buildPolicyDecisions(
+  policyIds: string[],
+  status: 'approved' | 'denied' | 'conditions',
+  conditions: GovernanceCondition[],
+): PolicyDecision[] {
+  const outcome: 'allowed' | 'conditions' | 'denied' =
+    status === 'approved' ? 'allowed' : status === 'conditions' ? 'conditions' : 'denied';
+  const conditionedPolicies = new Set(
+    conditions.map(c => (c as { policyId?: string }).policyId).filter((x): x is string => !!x),
+  );
+  return policyIds.map(id => ({
+    policy_id: id,
+    outcome: conditionedPolicies.has(id) ? 'conditions' : outcome,
+  }));
+}
 
 const VALID_PURCHASE_TYPES = new Set(['media_buy', 'rights_license', 'signal_activation', 'creative_services']);
 
@@ -117,6 +146,7 @@ function snapshotRevision(state: GovernancePlanState): GovernancePlanState['revi
     reallocationUnlimited: state.budget.reallocationUnlimited,
     policyCategories: state.policyCategories,
     policyIds: state.policyIds,
+    planAsSupplied: state.planAsSupplied,
   };
 }
 
@@ -186,6 +216,14 @@ interface CheckPayload {
   flight?: { start?: string; end?: string; start_time?: string; end_time?: string };
   // Brand rights payload fields
   campaign?: { countries?: string[]; start_date?: string; end_date?: string };
+  // Echoed on modification / delivery phase checks so the JWS audience binding
+  // matches the seller-side media buy.
+  media_buy_id?: string;
+  // Target seller URL for `aud` binding. Buyers MUST supply this so the GA
+  // can bind the JWS to a specific seller — without it, intent-phase tokens
+  // can't be issued (no defensible audience). Until the request schema
+  // formalizes the field upstream, accept it via the open-shape payload.
+  target_seller?: string;
 }
 
 interface PlannedDeliveryInput {
@@ -596,6 +634,12 @@ export async function handleSyncPlans(args: ToolArgs, ctx: TrainingContext) {
       revisionHistory: existing
         ? [...existing.revisionHistory, snapshotRevision(existing)]
         : [],
+      // Persist the wire-shaped plan verbatim so the `plan_hash` claim in
+      // every later `governance_context` JWS is bit-exact to what the buyer
+      // sent — buyers can recompute and byte-match without round-tripping
+      // through the camelCase internal representation. Deep-clone so
+      // downstream code can't accidentally mutate the hash preimage.
+      planAsSupplied: structuredClone(plan as unknown) as Record<string, unknown>,
     };
 
     session.governancePlans.set(plan.plan_id, planState);
@@ -1100,10 +1144,59 @@ export async function handleCheckGovernance(args: ToolArgs, ctx: TrainingContext
   const explanation = buildExplanation(status, findings, conditions, humanReviewRequired);
 
   const checkId = `chk_${randomUUID().slice(0, 8)}`;
-  // Generate or reuse governance_context for lifecycle correlation
-  const effectiveContext = (status === 'approved' || status === 'conditions')
-    ? (governanceContext || randomUUID())
-    : governanceContext;
+
+  // Emit a compact JWS `governance_context` per the AdCP JWS profile on
+  // approved/conditions outcomes; the spec requires a fresh signature on
+  // every check (new jti, iat, exp, plan_hash) — never re-emit a cached
+  // string across plan revisions. Denied checks carry no token; downstream
+  // sellers reject a request that has no signed authorization.
+  //
+  // Emit a compact JWS `governance_context` per the AdCP JWS profile on
+  // approved/conditions outcomes; the spec requires a fresh signature on
+  // every check (new jti, iat, exp, plan_hash) — never re-emit a cached
+  // string across plan revisions. Denied checks carry no token; downstream
+  // sellers reject a request that has no signed authorization.
+  //
+  // `aud` resolution: spec requires the seller URL from `adagents.json`,
+  // byte-exact. We accept `payload.target_seller` for buyers that name
+  // their seller explicitly. The sandbox default is the training agent's
+  // own sales tenant — every storyboard's downstream `create_media_buy`
+  // call targets that URL, so the binding is honest for the test loop.
+  // Production governance agents MUST require buyer-supplied target_seller
+  // and refuse to issue without one; copying this fallback is the bug the
+  // training reference exists to surface.
+  //
+  // `phase` downgrade: non-intent phases require `media_buy_id` per spec
+  // §"AdCP JWS profile". When the buyer omits it, downgrade phase to
+  // `intent` rather than emit a structurally-valid-but-step-12-rejected
+  // token.
+  let effectiveContext: string | undefined;
+  if (status === 'approved' || status === 'conditions') {
+    const requestedPhase: GovernancePhase = GOVERNANCE_PHASES.has(phase as GovernancePhase)
+      ? (phase as GovernancePhase)
+      : 'purchase';
+    const requestMediaBuyId = req.payload?.media_buy_id ? String(req.payload.media_buy_id) : undefined;
+    const jwsPhase: GovernancePhase = requestedPhase !== 'intent' && !requestMediaBuyId
+      ? 'intent'
+      : requestedPhase;
+
+    const targetSeller = req.payload?.target_seller ?? `${getCanonicalBase()}/sales`;
+    effectiveContext = await signGovernanceContext({
+      issuer: `${getCanonicalBase()}/governance`,
+      audience: targetSeller,
+      planId,
+      phase: jwsPhase,
+      caller,
+      checkId,
+      ...(jwsPhase !== 'intent' && requestMediaBuyId ? { mediaBuyId: requestMediaBuyId } : {}),
+      plan: plan.planAsSupplied,
+      ...(plan.policyIds?.length
+        ? { policyDecisions: buildPolicyDecisions(plan.policyIds, status, conditions) }
+        : {}),
+    });
+  } else {
+    effectiveContext = governanceContext;
+  }
   const check: GovernanceCheckState = {
     checkId,
     planId,

@@ -415,6 +415,7 @@ function createStore(session: SessionState): TestControllerStore {
         committedBudget: existing?.committedBudget ?? 0,
         committedByType: existing?.committedByType ?? {},
         syncedAt: existing?.syncedAt ?? now,
+        planAsSupplied: existing?.planAsSupplied ?? (fx as Record<string, unknown>),
       });
     },
 

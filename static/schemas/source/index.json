@@ -8,7 +8,7 @@
   "versioning": {
     "note": "AdCP uses path-based versioning. The schema URL path (/schemas/) indicates the version. Individual request/response schemas do NOT include adcp_version fields. Compatibility follows semantic versioning rules."
   },
-  "lastUpdated": "2026-03-30",
+  "lastUpdated": "2026-05-16",
   "baseUrl": "/schemas/latest",
   "schemas": {
     "core": {
@@ -389,6 +389,10 @@
         "optimization-goal": {
           "$ref": "/schemas/core/optimization-goal.json",
           "description": "Conversion optimization goal for a package - event source, event type, target ROAS/CPA, and attribution window"
+        },
+        "vendor-metric-optimization": {
+          "$ref": "/schemas/core/vendor-metric-optimization.json",
+          "description": "Product-level capability declaration for vendor-attested metric optimization (attention, brand lift, emissions, retail-media partner metrics)"
         },
         "audience-member": {
           "$ref": "/schemas/core/audience-member.json",
@@ -1607,6 +1611,10 @@
         "revocation-notification": {
           "$ref": "/schemas/brand/revocation-notification.json",
           "description": "Notification sent to the buyer's revocation_webhook when an acquired rights grant is revoked"
+        },
+        "verification-status": {
+          "$ref": "/schemas/brand/verification-status.json",
+          "description": "Shared status enum returned by verify_brand_claim — owned, pending_review, transferring, disputed, not_ours, archived, licensed_in, licensed_out, unknown"
         }
       },
       "tasks": {
@@ -1618,6 +1626,26 @@
           "response": {
             "$ref": "/schemas/brand/get-brand-identity-response.json",
             "description": "Response payload for get_brand_identity task"
+          }
+        },
+        "verify-brand-claim": {
+          "request": {
+            "$ref": "/schemas/brand/verify-brand-claim-request.json",
+            "description": "Request parameters for verifying a single brand claim (subsidiary / parent / property / trademark, discriminated by claim_type)"
+          },
+          "response": {
+            "$ref": "/schemas/brand/verify-brand-claim-response.json",
+            "description": "Response payload for verify_brand_claim task — claim_type echoed, status from the shared VerificationStatus enum, per-claim-type details"
+          }
+        },
+        "verify-brand-claims": {
+          "request": {
+            "$ref": "/schemas/brand/verify-brand-claims-request.json",
+            "description": "Request parameters for bulk verification — claims[] array (max 100), each entry shaped like a single verify_brand_claim request"
+          },
+          "response": {
+            "$ref": "/schemas/brand/verify-brand-claims-response.json",
+            "description": "Response payload for verify_brand_claims task — results[] positionally aligned with the request's claims[], per-result success or error inline"
           }
         },
         "get-rights": {
