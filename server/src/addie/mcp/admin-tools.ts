@@ -1136,7 +1136,7 @@ Roles: member (default), admin (can manage team), owner (full control)`,
   {
     name: 'log_conversation',
     description: 'Log a conversation or interaction with a prospect/member. Analyzes and extracts learnings.',
-    usage_hints: 'Use when admin reports an interaction.',
+    usage_hints: 'Use when admin reports an email, call, meeting, Slack DM, or any outreach — e.g. "I emailed X at Y about Z", "spoke with [person] today", "had a call with [org]". Only summary is required; infer channel, contact_name, and company_name from context.',
     input_schema: {
       type: 'object' as const,
       properties: {

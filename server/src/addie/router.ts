@@ -698,6 +698,22 @@ export class AddieRouter {
           latency_ms: Date.now() - startTime,
         };
       }
+
+      // Admin outreach logging - "I emailed X", "spoke with Y", "had a call with Z"
+      // log_conversation exists in the admin tool set but the LLM router sometimes
+      // misses informal past-tense outreach reports. Quick-match ensures reliable routing.
+      const outreachLogPattern =
+        /\b(?:emailed|contacted|dm['']?d|direct\s+message[d]?|spoke\s+(?:with|to)|reached\s+out(?:\s+to)?|had\s+a\s+(?:call|meeting|chat|conversation)\s+with|logged\s+a\s+(?:call|conversation|meeting))\b/i;
+      if (outreachLogPattern.test(text)) {
+        return {
+          action: 'respond',
+          tool_sets: ['admin'],
+          confidence: 'high',
+          reason: 'Admin outreach logging',
+          decision_method: 'quick_match',
+          latency_ms: Date.now() - startTime,
+        };
+      }
     }
 
     // Check for greeting/thanks patterns to react (standalone channel messages only —
