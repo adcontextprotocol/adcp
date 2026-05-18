@@ -19,6 +19,7 @@ requires_scenarios:
   - media_buy_seller/inventory_list_targeting
   - media_buy_seller/invalid_transitions
   - media_buy_seller/pending_creatives_to_start
+  - media_buy_seller/per_creative_conversion_attribution
   - media_buy_seller/performance_buy_flow
   - media_buy_seller/performance_buy_flow_roas
   - media_buy_seller/reach_buy_flow
