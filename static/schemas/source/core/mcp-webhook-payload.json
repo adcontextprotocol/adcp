@@ -21,7 +21,7 @@
     },
     "operation_id": {
       "type": "string",
-      "description": "Client-generated correlation identifier for the operation that produced this webhook. Buyers supply it at webhook registration time — typically by embedding it in the `push_notification_config.url` path or query, but the URL structure is implementation-defined from the seller's point of view. Sellers MUST echo the value exactly as supplied by the buyer; sellers MUST NOT derive `operation_id` by parsing the URL (the URL is opaque to the seller, and any parsing convention is a buyer-side choice that the seller cannot reliably reverse). Buyer SDKs that build webhook URLs MUST surface `operation_id` as an explicit parameter and thread it through to the seller via the SDK's send-side API (e.g., `WebhookSender.send_mcp(operation_id=…)`); they MUST NOT extract it from the URL on the seller side. Receivers use this field — never the URL path — to route incoming notifications to the originating task. Typically generated as a unique ID per task invocation."
+      "description": "Client-generated correlation identifier for the operation that produced this webhook. Buyers supply this value at webhook registration time via `push_notification_config.operation_id`; sellers MUST echo it verbatim in every webhook payload. Sellers MUST NOT derive `operation_id` by parsing `push_notification_config.url` — the URL is opaque to the seller. Receivers MUST correlate webhooks using this payload field, never URL-path inspection. See [Webhooks — Operation IDs and URL templates](/docs/building/by-layer/L3/webhooks#operation-ids-and-url-templates) for the full normative wire contract."
     },
     "task_id": {
       "type": "string",

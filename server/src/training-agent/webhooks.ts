@@ -103,10 +103,22 @@ function extractWebhookUrl(args: Record<string, unknown>): string | undefined {
   return typeof pnc.url === 'string' && pnc.url.length > 0 ? pnc.url : undefined;
 }
 
-/** Derive a stable logical event id for webhook idempotency. Two emissions
- *  with the same operation_id reuse the same `idempotency_key` across retries.
- *  Prefers a buyer-facing entity id from the response so retries from the same
- *  buyer collapse; falls back to the request's idempotency_key.
+/** Extract the buyer-supplied `operation_id` from `push_notification_config`.
+ *  Per the MCP webhook payload contract, this value MUST be echoed verbatim
+ *  on the wire — sellers MUST NOT derive it from the URL or from seller-side
+ *  state. See [`push-notification-config.json`](/schemas/core/push-notification-config.json)
+ *  and `docs/building/by-layer/L3/webhooks.mdx#operation-ids-and-url-templates`. */
+function extractBuyerOperationId(args: Record<string, unknown>): string | undefined {
+  const pnc = args.push_notification_config as { operation_id?: unknown } | undefined;
+  if (!pnc || typeof pnc !== 'object') return undefined;
+  return typeof pnc.operation_id === 'string' && pnc.operation_id.length > 0 ? pnc.operation_id : undefined;
+}
+
+/** Derive a stable scope key for the **webhook idempotency-key store** —
+ *  NOT the wire-level `operation_id`. Two emissions with the same scope key
+ *  reuse the same `idempotency_key` across retries. Prefers a buyer-facing
+ *  entity id from the response so retries from the same buyer collapse;
+ *  falls back to the request's idempotency_key.
  *
  *  Scoped by the caller's principal so two buyers sharing the public sandbox
  *  token who happen to land on the same deterministic response entity id
@@ -115,8 +127,13 @@ function extractWebhookUrl(args: Record<string, unknown>): string | undefined {
  *  `idempotency_key` would drop the second buyer's event as a duplicate of
  *  the first. The principal is the same scoped string the request-side
  *  idempotency cache uses (`scopedPrincipal(auth, accountScope)`), so both
- *  caches partition identically. */
-export function deriveWebhookOperationId(
+ *  caches partition identically.
+ *
+ *  This value is **never** placed on the wire — it embeds the seller-side
+ *  principal token and is used only to key the idempotency-key store. The
+ *  wire `operation_id` field comes from the buyer-supplied
+ *  `push_notification_config.operation_id` (see `extractBuyerOperationId`). */
+export function deriveWebhookIdempotencyScope(
   toolName: string,
   response: Record<string, unknown>,
   requestIdempotencyKey: string | undefined,
@@ -165,11 +182,18 @@ export function maybeEmitCompletionWebhook(opts: {
   const tool = opts.toolName as WebhookEmittingTool;
 
   const emitter = getWebhookEmitter();
-  const operationId = deriveWebhookOperationId(opts.toolName, opts.response, opts.requestIdempotencyKey, opts.principal);
+  const idempotencyScope = deriveWebhookIdempotencyScope(opts.toolName, opts.response, opts.requestIdempotencyKey, opts.principal);
   const webhookTaskId = (opts.response.task_id as string | undefined)
-    ?? `tsk_${operationId.slice(0, 32).replace(/[^A-Za-z0-9_.:-]/g, '_')}`;
+    ?? `tsk_${idempotencyScope.slice(0, 32).replace(/[^A-Za-z0-9_.:-]/g, '_')}`;
+  // Wire `operation_id` MUST be the buyer-supplied value. When the buyer
+  // registers without one (non-conformant per push-notification-config.json,
+  // but tolerated for sandbox testing), fall back to `task_id` — a buyer-
+  // visible identifier that's part of the response either way. Never emit
+  // the principal-scoped `idempotencyScope` on the wire: it embeds the
+  // seller-side auth token.
+  const wireOperationId = extractBuyerOperationId(opts.args) ?? webhookTaskId;
   const payload: Record<string, unknown> = {
-    operation_id: operationId,
+    operation_id: wireOperationId,
     task_id: webhookTaskId,
     task_type: TOOL_TO_TASK_TYPE[tool],
     protocol: TOOL_TO_PROTOCOL[tool],
@@ -177,7 +201,7 @@ export function maybeEmitCompletionWebhook(opts: {
     timestamp: new Date().toISOString(),
     result: opts.response,
   };
-  void emitter.emit({ url: webhookUrl, payload, operation_id: operationId })
+  void emitter.emit({ url: webhookUrl, payload, operation_id: idempotencyScope })
     .catch(err => logger.warn({ err, tool: opts.toolName, url: webhookUrl }, 'Webhook emission failed'));
 }
 
