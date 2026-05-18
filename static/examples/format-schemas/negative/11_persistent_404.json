@@ -1,0 +1,14 @@
+{
+  "test_id": "fetch-contract-neg-11-persistent-404",
+  "category": "graceful_degradation",
+  "description": "SDK has no cached body for this URI@digest. Origin returns persistent 404. SDK MUST degrade gracefully \u2014 treat the declaration as unresolved, skip from format_options, surface via errors[] (NOT fail the whole get_products response).",
+  "setup": {
+    "request_uri": "https://example.invalid/extensions/missing",
+    "declared_digest": "sha256:<irrelevant>",
+    "cache_state": "no_prior_fetch",
+    "response_status": 404
+  },
+  "expected_outcome": "fail:transport",
+  "expected_error_code": "FORMAT_PROJECTION_FAILED",
+  "rationale": "Graceful degradation: 404 / network partition / persistent fetch failure MUST surface via errors[] (the declaration is unresolved for this session) without failing the entire get_products response. The buy stays viable on the v1 path; only this v2 format declaration is absent."
+}

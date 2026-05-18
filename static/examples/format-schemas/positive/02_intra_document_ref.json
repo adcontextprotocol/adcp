@@ -1,0 +1,38 @@
+{
+  "test_id": "fetch-contract-pos-02-intra-document-ref",
+  "category": "ref_sandbox",
+  "description": "Body uses $ref: '#/definitions/foo' intra-document JSON Pointer; SDK MUST resolve to the parent document's parsed tree.",
+  "setup": {
+    "request_uri": "https://creative.adcontextprotocol.org/extensions/test_with_intra_ref",
+    "declared_digest": "sha256:<computed_from_response_body>",
+    "response_status": 200,
+    "response_body": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "$id": "/schemas/test/format-shape-with-ref.json",
+      "type": "object",
+      "definitions": {
+        "size_constraint": {
+          "type": "object",
+          "properties": {
+            "width": {
+              "type": "integer"
+            },
+            "height": {
+              "type": "integer"
+            }
+          }
+        }
+      },
+      "properties": {
+        "size": {
+          "$ref": "#/definitions/size_constraint"
+        }
+      }
+    },
+    "response_headers": {
+      "Content-Type": "application/json"
+    }
+  },
+  "expected_outcome": "pass",
+  "rationale": "Intra-document $ref (JSON Pointer) is bounded to the parent document's parsed tree per the contract. No external fetch triggered."
+}

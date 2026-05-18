@@ -1,0 +1,13 @@
+{
+  "test_id": "fetch-contract-neg-06-ssrf-metadata",
+  "category": "ssrf",
+  "description": "Request URI targets a cloud metadata endpoint (AWS 169.254.169.254, GCP metadata.google.internal, K8s kubernetes.default.svc, etc.). These are credential-leak primitives \u2014 MUST reject regardless of declared digest.",
+  "setup": {
+    "request_uri": "https://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token",
+    "declared_digest": "sha256:<irrelevant>",
+    "fetch_attempted": false
+  },
+  "expected_outcome": "fail:transport",
+  "expected_error_code": "FORMAT_PROJECTION_FAILED",
+  "rationale": "Cloud metadata endpoints are explicitly forbidden by the contract. A schema-fetch primitive used to leak instance credentials would be a critical multi-tenant compromise. Reject by both hostname denylist AND resolved-IP denylist (defense in depth)."
+}

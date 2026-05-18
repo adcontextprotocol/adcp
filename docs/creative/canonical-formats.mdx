@@ -126,6 +126,43 @@ When `asset_source` is `buyer_uploaded`, the buyer ships rendered assets and any
 
 `vast_tracker` and `daast_tracker` decomposed tracker assets work for both `buyer_uploaded` and seller-rendered sources — when the seller renders, those tracker assets are inputs to the rendered tag, attached to the appropriate VAST/DAAST `<TrackingEvents>` block at production time. When the buyer ships a complete `vast` or `daast` tag, the trackers travel inside the tag.
 
+## What `format_kind` is NOT for
+
+`format_kind` names the creative ASSET shape — what the buyer ships, what the surface accepts. It's not for delivery medium, measurement model, or targeting context. Conflating these is the most common architectural mistake a 3.2 contributor will be tempted to make. Three concrete examples:
+
+| Tempting (wrong) | Right answer | Why |
+|---|---|---|
+| `format_kind: "broadcast_video"` | `format_kind: "video_hosted"` + `applies_to_channels: ["tv"]` | The video asset is the same shape. Broadcast vs streaming is a delivery / measurement difference, not a creative-shape difference. |
+| `format_kind: "dooh_image"` | `format_kind: "image"` + `applies_to_channels: ["dooh"]` | The image asset is the same shape. DOOH's location-keyed measurement and no-click model live on `sync_event_sources` / `event_log`, not on the format. |
+| `format_kind: "image_generative"` | `format_kind: "image"` + `asset_source: "agent_synthesized"` + `slots_override: [{ generation_prompt: text }]` | Same canonical TYPE; different production SOURCE. The two-axis model already separates them. |
+
+**Rule of thumb.** Before reaching for a new `format_kind`, check whether the difference is:
+1. **Creative type** (image vs video vs audio vs html5 vs 3p-tag) → `format_kind`, the only knob it controls.
+2. **Production model** (who renders, when) → `asset_source` on the format declaration.
+3. **Slot shape** (what assets the buyer ships) → `slots_override` on the projection ref (catalog side) or on the v2 product's `format_options[]` declaration.
+4. **Delivery medium / channel** (TV vs streaming vs DOOH vs social) → `applies_to_channels` on the v2 product.
+5. **Measurement / tracking / event model** (clicks vs impressions vs viewability vs conversion pixels) → `sync_event_sources` / `event_log` / `platform_extensions` (informational extension data).
+6. **Targeting context** (audience vs geo vs daypart) → media-buy targeting overlay, not the format.
+
+New `format_kind` only when the CREATIVE ASSET itself is structurally different (e.g., DAI's ad-stitched continuous audio stream is structurally different from `audio_hosted`'s file-per-impression). All 50 ad formats in the v1 catalog at GA project to canonicals via this rule; zero new canonicals were added for broadcast / DOOH / native / generative.
+
+## When to use `slots_override` (and when to leave it off)
+
+`slots_override` (on the catalog's `canonical:` projection ref OR on a v2 product's `format_options[]` declaration) replaces the canonical's default slot set with a custom list. Use it sparingly — most formats inherit defaults cleanly.
+
+**Decision rule.** Would a buyer composing a creative manifest list **different assets** in this case vs the canonical's default? If yes, `slots_override`. If no, leave it off.
+
+| Case | Default vs Override |
+|---|---|
+| 300×250 IAB MREC | **Default.** Canonical `image` defaults already carry `image_main: image, required` + headline/body/cta/landing — the buyer's manifest assets are the canonical's defaults. |
+| Native standard (title + description + image + icon + sponsored_by) | **Override.** Adds `brand_name` (`sponsored_by` alias) as required, makes `headline` required, narrows `cta` to enum values. Manifest assets diverge from canonical defaults. |
+| DOOH billboard (image only, no click) | **Default.** Canonical `image` defaults cover it (image_main required, no other required slots). No-click model lives on event_log, not on slots. |
+| Broadcast TV spot (video file + captions URL) | **Default.** Canonical `video_hosted` defaults cover it (video_main required, captions optional). Broadcast trafficking lives on `applies_to_channels: ["tv"]`. |
+| Generative image (text prompt instead of image) | **Override.** Replaces `image_main: image, required` with `generation_prompt: text, required`. Manifest assets are structurally different from canonical defaults. |
+| Podcast host-read (script text instead of audio) | **Override.** Replaces `audio_main: audio, required` with `script: text, required` + `asset_source: publisher_host_recorded`. |
+
+The rule applies symmetrically: if you're tempted to add `slots_override` only to declare measurement pixels, delivery-medium flags, or targeting context, you're using it wrong — those don't belong in slots at all (see "What `format_kind` is NOT for" above).
+
 ## Custom formats — shapes the 11 canonicals don't cover
 
 The 11 canonicals cover atomic creative shapes (one image, one video, one display tag, one carousel, one catalog placement, one AI-surface mention). They don't cover composed / coordinated / sponsorship shapes that high-end publishers and broadcast networks sell as headline products: multi-placement takeover, roadblock, branded content, cross-screen sponsorship, sponsorship lockup, newsletter sponsorship, AR lens, playable, live event sponsorship.
@@ -296,6 +333,70 @@ Buyer agents answer "what formats does this publisher accept?" via `list_creativ
 **Identity-confusion note (normative).** A mirror URL in `v1_format_ref[].agent_url` declares *format-shape provenance*, NOT seller identity. Buyer allowlists matching on `v1_format_ref[].agent_url` are matching shape namespace; inventory authorization always flows from `authorized_agents[]` + publisher signing keys. A seller pointing `v1_format_ref` at `creative.adcontextprotocol.org/translated/meta` is asserting "this format follows the AAO-mirrored Meta Reels shape," not "I am Meta."
 
 **Platform-adoption cutover.** When a platform adopts AdCP and publishes its own `adagents.json`, the AAO mirror file SHOULD set `superseded_by: "<platform-domain>/.well-known/adagents.json"`. Buyer SDKs encountering `superseded_by` MUST short-circuit and re-fetch from the named URL rather than serving stale mirror content. The mirror SHOULD continue serving for ≥1 minor release with `superseded_by` set so caches keyed on the mirror URL get an explicit migration signal rather than a silent break. Sellers also update `v1_format_ref[].agent_url` to the platform's adopted agent_url in the same minor release.
+
+### End-to-end fetch flow — buyer's perspective
+
+A buyer agent seeing a `Product` with `publisher_properties[].publisher_domain = "instagram.com"` and needing to know "what formats does this publisher accept, scoped to this property?" walks the following resolution. The pieces are documented separately above; this section walks them in order so adopters don't have to assemble the journey from fragments.
+
+```
+buyer holds: Product { publisher_properties: [{publisher_domain: "instagram.com"}],
+                       format_options: [{capability_id: "meta_reels", ...}, ...] }
+buyer wants: full ProductFormatDeclaration for each format_options entry,
+             scoped to instagram.com's instagram property
+```
+
+**Step 1 — Resolve the publisher catalog.** Buyer SDK fetches `https://instagram.com/.well-known/adagents.json`. Apply the `format_schema` transport contract (https-only, SSRF guards, ≤5s timeout, 1 MiB cap, no redirects — see `product-format-declaration.json#format_schema`). Instagram hasn't adopted AdCP today — fetch returns 404.
+
+**Step 2 — Fall back to AAO community mirror.** On Step 1's 404 (or 200-with-no-`formats[]`), buyer fetches `https://creative.adcontextprotocol.org/translated/meta/adagents.json`. Same transport contract. Response carries `formats[]` with publisher-authoritative declarations. The buyer SDK labels the result `source: "aao_mirror"` for telemetry.
+
+**Step 3 — Check for supersession.** If the response carries `superseded_by`, short-circuit: re-fetch from the named URL (typically the platform's adopted adagents.json) and use that response instead. Today the mirror's `superseded_by` is unset; in the future when Meta adopts, it would point at `https://meta.com/.well-known/adagents.json`.
+
+**Step 4 — Scope by property_id.** From the file's `formats[]`, filter to entries whose `applies_to_property_ids` includes `"instagram"` (the property ID; not the same as `publisher_domain`). Property IDs are declared in the file's top-level `properties[]` block. A `formats[]` entry with no `applies_to_property_ids` / `applies_to_property_tags` scoping applies to ALL properties in the file. For Meta:
+
+- `meta_reels` → applies_to_property_ids: ["instagram", "facebook"] → matches
+- `meta_feed_image` → applies_to_property_ids: ["instagram", "facebook"] → matches
+- `meta_stories_video` → applies_to_property_ids: ["instagram", "facebook"] → matches
+- `meta_feed_carousel` → applies_to_property_ids: ["instagram", "facebook"] → matches
+
+The Product on hand carries `format_options: [{ capability_id: "meta_reels" }]`. The buyer agent now knows the FULL declaration: `format_kind: video_hosted`, vertical 9:16, 3-90s duration, the full Meta CTA enum, plus the `v1_format_ref[]` array for v1-wire dual emission.
+
+**Step 5 — Resolve placement references (if any).** If the publisher catalog includes `placements[]` and a placement carries `format_options: [{ capability_id: "meta_reels" }]`, the buyer resolves the capability_id against the SAME file's top-level `formats[]` (same-file scope; cross-file lookup is not supported by design). When the reference is broken — capability_id not present in `formats[]` — the SDK MUST surface `FORMAT_CAPABILITY_UNRESOLVED` on the response `errors[]` and fail closed for that placement.
+
+**Step 6 — Multi-tier discovery cache.** Buyer SDK caches the file by `<resolved URL>@<sha256>` for the duration the publisher honors (typically `Cache-Control: max-age`, capped at 24h). Subsequent products from the same publisher reuse the cached file without re-fetching.
+
+**Concrete payload sequence** (Meta Reels, scoped to Instagram):
+
+```
+GET https://instagram.com/.well-known/adagents.json
+→ 404
+
+GET https://creative.adcontextprotocol.org/translated/meta/adagents.json
+→ 200 application/json
+{
+  "properties": [{"property_id": "instagram", ...}, ...],
+  "formats": [
+    { "capability_id": "meta_reels", "format_kind": "video_hosted",
+      "applies_to_property_ids": ["instagram", "facebook"],
+      "params": { ... } },
+    ...
+  ],
+  "placements": [...]
+}
+
+(no superseded_by present — use as authoritative for unadopted platform)
+
+filter formats[] by applies_to_property_ids ∋ "instagram":
+→ 4 declarations match
+
+product's format_options carries: [{ capability_id: "meta_reels" }]
+→ resolve capability_id "meta_reels" against formats[] → full declaration
+
+result: SDK knows the full ProductFormatDeclaration for the product,
+        scoped to the right property, with the right v1 dual-emission
+        format_ids[] from v1_format_ref[].
+```
+
+**Response `source` field reports tier**: `"publisher"` if Step 1 returned formats[], `"aao_mirror"` if Step 2 did, `"agent_derived"` if neither and the SDK synthesized from products' own `format_options[]`. Two SDKs hitting the same agent for the same publisher get consistent labeling regardless of which tier produced the list.
 
 ### Community-registry hosting
 
@@ -1006,7 +1107,20 @@ Override case (generative entries, brief-driven host-reads, anything whose v1 as
 
 ### v2 → v1 linking via `v1_format_ref`
 
-When a seller has both a published v1 named format AND a v2 declaration for the same underlying product/inventory, the v2 declaration carries `v1_format_ref: { agent_url, id }` linking back to the v1 identifier. The v2 declaration is the source of truth for shape; the v1 format file stays a pure v1 shape — no mirrored declaration.
+When a seller has both a published v1 named format AND a v2 declaration for the same underlying product/inventory, the v2 declaration carries `v1_format_ref: [{ agent_url, id }]` (always an array) linking back to one or more v1 identifiers. The v2 declaration is the source of truth for shape; the v1 format file stays a pure v1 shape — no mirrored declaration.
+
+#### Multi-size fan-out (normative)
+
+A multi-size v2 declaration with `params.sizes: [{w,h}, ...]` of N entries SHOULD carry one `v1_format_ref[]` entry per size — N v1 named formats covering the N sizes. v1-only buyers then see the product on all sizes via the dual-emitted `format_ids[]`.
+
+When the seller asserts fewer refs than sizes (`v1_format_ref[].length < sizes[].length`), two cases:
+
+- **SDK does NOT fan out (default normative behavior).** Emit `format_ids[]` carrying only the seller-asserted refs (size loss is real but bounded). MUST also emit `FORMAT_DECLARATION_V1_LOSSY_MULTI_SIZE` on the response `errors[]` with `error.details: { product_id, declared_sizes, covered_sizes, dropped_sizes }` so v1-aware downstream agents see what coverage was lost. The lossy emit is the **conservative wire shape** — exactly what the seller asserted, no synthesis.
+- **SDK DOES fan out (MAY-do, non-normative).** For each entry in `sizes[]` lacking a corresponding `v1_format_ref`, the SDK MAY consult the AAO catalog and look up the per-size v1 named format (e.g., for `{width: 728, height: 90}` → `display_728x90_image`). When the lookup succeeds, the SDK MAY emit the catalog-resolved ref under `format_ids[]` alongside the seller-asserted refs. SDKs that fan out MUST still emit `FORMAT_DECLARATION_V1_LOSSY_MULTI_SIZE` as a transparency advisory so downstream consumers know which `format_ids[]` entries were seller-asserted vs catalog-resolved. The advisory's `error.details` SHOULD include `synthesized_refs: [<list of catalog-resolved ids>]`.
+
+**Why MAY-do, not MUST-do or MUST-NOT-do.** SDKs without catalog access can't fan out; making it MUST creates an SDK-feature dependency. Making it MUST-NOT discards real value (a catalog with all three IAB sizes can losslessly expand a multi-size declaration). MAY-do with mandatory advisory preserves SDK choice while keeping the wire shape transparent — downstream consumers can always distinguish synthesized refs from seller-asserted ones via the advisory's `synthesized_refs`.
+
+**Inter-SDK convergence rule.** Two SDKs processing the same input MAY produce different `format_ids[]` (one fans out, one doesn't), but both MUST emit `FORMAT_DECLARATION_V1_LOSSY_MULTI_SIZE` with consistent `declared_sizes` / `covered_sizes` / `dropped_sizes`. Buyer agents reading the response stream can reconcile divergent `format_ids[]` against the advisory.
 
 ```json test=false
 {
