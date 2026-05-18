@@ -141,7 +141,9 @@ When `asset_source` is `buyer_uploaded`, the buyer ships rendered assets and any
 2. **Production model** (who renders, when) → `asset_source` on the format declaration.
 3. **Slot shape** (what assets the buyer ships) → `slots_override` on the projection ref (catalog side) or on the v2 product's `format_options[]` declaration.
 4. **Delivery medium / channel** (TV vs streaming vs DOOH vs social) → `applies_to_channels` on the v2 product.
-5. **Measurement / tracking / event model** (clicks vs impressions vs viewability vs conversion pixels) → `sync_event_sources` / `event_log` / `platform_extensions` (informational extension data).
+5. **Measurement / tracking / event model.** Splits two ways:
+   - **Renderer-fired trackers** (the renderer hits a URL when serving / viewing / clicking) → `pixel_tracker` asset (or `vast_tracker` / `daast_tracker` on those formats). Lives on the creative manifest as a typed slot. Buyer's measurement vendor URLs the seller's renderer fires at serve time. See `docs/creative/asset-types.mdx#pixel-tracker-asset`.
+   - **Conversion pixels** (fire on the advertiser's site post-click — Meta Pixel, GA4 server-side, custom postbacks) → `sync_event_sources` / `event_log`. Campaign-scoped, NOT creative-asset-scoped. The same pixel fires for every ad in the campaign.
 6. **Targeting context** (audience vs geo vs daypart) → media-buy targeting overlay, not the format.
 
 New `format_kind` only when the CREATIVE ASSET itself is structurally different (e.g., DAI's ad-stitched continuous audio stream is structurally different from `audio_hosted`'s file-per-impression). All 50 ad formats in the v1 catalog at GA project to canonicals via this rule; zero new canonicals were added for broadcast / DOOH / native / generative.

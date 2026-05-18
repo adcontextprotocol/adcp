@@ -30,6 +30,28 @@
         },
         "event": "impression",
         "method": "img"
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "viewability_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "viewable_mrc_50",
+        "method": "img",
+        "requirements": {
+          "description": "MRC 50% viewable tracker pixel (1-second viewability for display, 2-seconds with audio for video). Optional \u2014 measurement vendor URLs the seller's renderer fires when the viewable threshold is met."
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "click_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "click",
+        "method": "img",
+        "requirements": {
+          "description": "Click measurement tracker pixel (distinct from landing_page_url, the destination). Optional \u2014 measurement vendor URL fired when the user clicks the creative, in addition to navigating to landing_page_url."
+        }
       }
     ],
     "supported_macros": [
@@ -116,6 +138,28 @@
         },
         "event": "impression",
         "method": "img"
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "viewability_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "viewable_mrc_50",
+        "method": "img",
+        "requirements": {
+          "description": "MRC 50% viewable tracker pixel (1-second viewability for display, 2-seconds with audio for video). Optional \u2014 measurement vendor URLs the seller's renderer fires when the viewable threshold is met."
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "click_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "click",
+        "method": "img",
+        "requirements": {
+          "description": "Click measurement tracker pixel (distinct from landing_page_url, the destination). Optional \u2014 measurement vendor URL fired when the user clicks the creative, in addition to navigating to landing_page_url."
+        }
       }
     ],
     "supported_macros": [
@@ -208,6 +252,28 @@
         },
         "event": "impression",
         "method": "img"
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "viewability_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "viewable_mrc_50",
+        "method": "img",
+        "requirements": {
+          "description": "MRC 50% viewable tracker pixel (1-second viewability for display, 2-seconds with audio for video). Optional \u2014 measurement vendor URLs the seller's renderer fires when the viewable threshold is met."
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "click_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "click",
+        "method": "img",
+        "requirements": {
+          "description": "Click measurement tracker pixel (distinct from landing_page_url, the destination). Optional \u2014 measurement vendor URL fired when the user clicks the creative, in addition to navigating to landing_page_url."
+        }
       }
     ],
     "supported_macros": [
@@ -300,6 +366,28 @@
         },
         "event": "impression",
         "method": "img"
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "viewability_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "viewable_mrc_50",
+        "method": "img",
+        "requirements": {
+          "description": "MRC 50% viewable tracker pixel (1-second viewability for display, 2-seconds with audio for video). Optional \u2014 measurement vendor URLs the seller's renderer fires when the viewable threshold is met."
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "click_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "click",
+        "method": "img",
+        "requirements": {
+          "description": "Click measurement tracker pixel (distinct from landing_page_url, the destination). Optional \u2014 measurement vendor URL fired when the user clicks the creative, in addition to navigating to landing_page_url."
+        }
       }
     ],
     "supported_macros": [
@@ -392,6 +480,28 @@
         },
         "event": "impression",
         "method": "img"
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "viewability_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "viewable_mrc_50",
+        "method": "img",
+        "requirements": {
+          "description": "MRC 50% viewable tracker pixel (1-second viewability for display, 2-seconds with audio for video). Optional \u2014 measurement vendor URLs the seller's renderer fires when the viewable threshold is met."
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "click_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "click",
+        "method": "img",
+        "requirements": {
+          "description": "Click measurement tracker pixel (distinct from landing_page_url, the destination). Optional \u2014 measurement vendor URL fired when the user clicks the creative, in addition to navigating to landing_page_url."
+        }
       }
     ],
     "supported_macros": [
@@ -484,6 +594,28 @@
         },
         "event": "impression",
         "method": "img"
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "viewability_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "viewable_mrc_50",
+        "method": "img",
+        "requirements": {
+          "description": "MRC 50% viewable tracker pixel (1-second viewability for display, 2-seconds with audio for video). Optional \u2014 measurement vendor URLs the seller's renderer fires when the viewable threshold is met."
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "click_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "click",
+        "method": "img",
+        "requirements": {
+          "description": "Click measurement tracker pixel (distinct from landing_page_url, the destination). Optional \u2014 measurement vendor URL fired when the user clicks the creative, in addition to navigating to landing_page_url."
+        }
       }
     ],
     "supported_macros": [
@@ -576,6 +708,28 @@
         },
         "event": "impression",
         "method": "img"
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "viewability_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "viewable_mrc_50",
+        "method": "img",
+        "requirements": {
+          "description": "MRC 50% viewable tracker pixel (1-second viewability for display, 2-seconds with audio for video). Optional \u2014 measurement vendor URLs the seller's renderer fires when the viewable threshold is met."
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "click_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "click",
+        "method": "img",
+        "requirements": {
+          "description": "Click measurement tracker pixel (distinct from landing_page_url, the destination). Optional \u2014 measurement vendor URL fired when the user clicks the creative, in addition to navigating to landing_page_url."
+        }
       }
     ],
     "supported_macros": [
@@ -668,6 +822,28 @@
         },
         "event": "impression",
         "method": "img"
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "viewability_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "viewable_mrc_50",
+        "method": "img",
+        "requirements": {
+          "description": "MRC 50% viewable tracker pixel (1-second viewability for display, 2-seconds with audio for video). Optional \u2014 measurement vendor URLs the seller's renderer fires when the viewable threshold is met."
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "click_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "click",
+        "method": "img",
+        "requirements": {
+          "description": "Click measurement tracker pixel (distinct from landing_page_url, the destination). Optional \u2014 measurement vendor URL fired when the user clicks the creative, in addition to navigating to landing_page_url."
+        }
       }
     ],
     "supported_macros": [
@@ -754,6 +930,28 @@
         },
         "event": "impression",
         "method": "img"
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "viewability_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "viewable_mrc_50",
+        "method": "img",
+        "requirements": {
+          "description": "MRC 50% viewable tracker pixel (1-second viewability for display, 2-seconds with audio for video). Optional \u2014 measurement vendor URLs the seller's renderer fires when the viewable threshold is met."
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "click_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "click",
+        "method": "img",
+        "requirements": {
+          "description": "Click measurement tracker pixel (distinct from landing_page_url, the destination). Optional \u2014 measurement vendor URL fired when the user clicks the creative, in addition to navigating to landing_page_url."
+        }
       }
     ],
     "supported_macros": [
@@ -824,6 +1022,28 @@
         },
         "event": "impression",
         "method": "img"
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "viewability_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "viewable_mrc_50",
+        "method": "img",
+        "requirements": {
+          "description": "MRC 50% viewable tracker pixel (1-second viewability for display, 2-seconds with audio for video). Optional \u2014 measurement vendor URLs the seller's renderer fires when the viewable threshold is met."
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "click_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "click",
+        "method": "img",
+        "requirements": {
+          "description": "Click measurement tracker pixel (distinct from landing_page_url, the destination). Optional \u2014 measurement vendor URL fired when the user clicks the creative, in addition to navigating to landing_page_url."
+        }
       }
     ],
     "supported_macros": [
@@ -939,6 +1159,28 @@
         },
         "event": "impression",
         "method": "img"
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "viewability_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "viewable_mrc_50",
+        "method": "img",
+        "requirements": {
+          "description": "MRC 50% viewable tracker pixel (1-second viewability for display, 2-seconds with audio for video). Optional \u2014 measurement vendor URLs the seller's renderer fires when the viewable threshold is met."
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "click_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "click",
+        "method": "img",
+        "requirements": {
+          "description": "Click measurement tracker pixel (distinct from landing_page_url, the destination). Optional \u2014 measurement vendor URL fired when the user clicks the creative, in addition to navigating to landing_page_url."
+        }
       }
     ],
     "supported_macros": [
@@ -1012,6 +1254,28 @@
         },
         "event": "impression",
         "method": "img"
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "viewability_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "viewable_mrc_50",
+        "method": "img",
+        "requirements": {
+          "description": "MRC 50% viewable tracker pixel (1-second viewability for display, 2-seconds with audio for video). Optional \u2014 measurement vendor URLs the seller's renderer fires when the viewable threshold is met."
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "click_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "click",
+        "method": "img",
+        "requirements": {
+          "description": "Click measurement tracker pixel (distinct from landing_page_url, the destination). Optional \u2014 measurement vendor URL fired when the user clicks the creative, in addition to navigating to landing_page_url."
+        }
       }
     ],
     "supported_macros": [
@@ -1146,6 +1410,28 @@
         },
         "event": "impression",
         "method": "img"
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "viewability_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "viewable_mrc_50",
+        "method": "img",
+        "requirements": {
+          "description": "MRC 50% viewable tracker pixel (1-second viewability for display, 2-seconds with audio for video). Optional \u2014 measurement vendor URLs the seller's renderer fires when the viewable threshold is met."
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "click_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "click",
+        "method": "img",
+        "requirements": {
+          "description": "Click measurement tracker pixel (distinct from landing_page_url, the destination). Optional \u2014 measurement vendor URL fired when the user clicks the creative, in addition to navigating to landing_page_url."
+        }
       }
     ],
     "supported_macros": [
@@ -1232,6 +1518,28 @@
         },
         "event": "impression",
         "method": "img"
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "viewability_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "viewable_mrc_50",
+        "method": "img",
+        "requirements": {
+          "description": "MRC 50% viewable tracker pixel (1-second viewability for display, 2-seconds with audio for video). Optional \u2014 measurement vendor URLs the seller's renderer fires when the viewable threshold is met."
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "click_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "click",
+        "method": "img",
+        "requirements": {
+          "description": "Click measurement tracker pixel (distinct from landing_page_url, the destination). Optional \u2014 measurement vendor URL fired when the user clicks the creative, in addition to navigating to landing_page_url."
+        }
       }
     ],
     "supported_macros": [
@@ -1318,6 +1626,28 @@
         },
         "event": "impression",
         "method": "img"
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "viewability_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "viewable_mrc_50",
+        "method": "img",
+        "requirements": {
+          "description": "MRC 50% viewable tracker pixel (1-second viewability for display, 2-seconds with audio for video). Optional \u2014 measurement vendor URLs the seller's renderer fires when the viewable threshold is met."
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "click_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "click",
+        "method": "img",
+        "requirements": {
+          "description": "Click measurement tracker pixel (distinct from landing_page_url, the destination). Optional \u2014 measurement vendor URL fired when the user clicks the creative, in addition to navigating to landing_page_url."
+        }
       }
     ],
     "supported_macros": [
@@ -1404,6 +1734,28 @@
         },
         "event": "impression",
         "method": "img"
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "viewability_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "viewable_mrc_50",
+        "method": "img",
+        "requirements": {
+          "description": "MRC 50% viewable tracker pixel (1-second viewability for display, 2-seconds with audio for video). Optional \u2014 measurement vendor URLs the seller's renderer fires when the viewable threshold is met."
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "click_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "click",
+        "method": "img",
+        "requirements": {
+          "description": "Click measurement tracker pixel (distinct from landing_page_url, the destination). Optional \u2014 measurement vendor URL fired when the user clicks the creative, in addition to navigating to landing_page_url."
+        }
       }
     ],
     "supported_macros": [
@@ -1476,6 +1828,28 @@
         },
         "event": "impression",
         "method": "img"
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "viewability_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "viewable_mrc_50",
+        "method": "img",
+        "requirements": {
+          "description": "MRC 50% viewable tracker pixel (1-second viewability for display, 2-seconds with audio for video). Optional \u2014 measurement vendor URLs the seller's renderer fires when the viewable threshold is met."
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "click_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "click",
+        "method": "img",
+        "requirements": {
+          "description": "Click measurement tracker pixel (distinct from landing_page_url, the destination). Optional \u2014 measurement vendor URL fired when the user clicks the creative, in addition to navigating to landing_page_url."
+        }
       }
     ],
     "supported_macros": [
@@ -1548,6 +1922,28 @@
         },
         "event": "impression",
         "method": "img"
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "viewability_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "viewable_mrc_50",
+        "method": "img",
+        "requirements": {
+          "description": "MRC 50% viewable tracker pixel (1-second viewability for display, 2-seconds with audio for video). Optional \u2014 measurement vendor URLs the seller's renderer fires when the viewable threshold is met."
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "click_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "click",
+        "method": "img",
+        "requirements": {
+          "description": "Click measurement tracker pixel (distinct from landing_page_url, the destination). Optional \u2014 measurement vendor URL fired when the user clicks the creative, in addition to navigating to landing_page_url."
+        }
       }
     ],
     "supported_macros": [
@@ -1899,6 +2295,28 @@
         },
         "event": "impression",
         "method": "img"
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "viewability_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "viewable_mrc_50",
+        "method": "img",
+        "requirements": {
+          "description": "MRC 50% viewable tracker pixel (1-second viewability for display, 2-seconds with audio for video). Optional \u2014 measurement vendor URLs the seller's renderer fires when the viewable threshold is met."
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "click_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "click",
+        "method": "img",
+        "requirements": {
+          "description": "Click measurement tracker pixel (distinct from landing_page_url, the destination). Optional \u2014 measurement vendor URL fired when the user clicks the creative, in addition to navigating to landing_page_url."
+        }
       }
     ],
     "supported_macros": [
@@ -2001,6 +2419,28 @@
         },
         "event": "impression",
         "method": "img"
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "viewability_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "viewable_mrc_50",
+        "method": "img",
+        "requirements": {
+          "description": "MRC 50% viewable tracker pixel (1-second viewability for display, 2-seconds with audio for video). Optional \u2014 measurement vendor URLs the seller's renderer fires when the viewable threshold is met."
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "click_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "click",
+        "method": "img",
+        "requirements": {
+          "description": "Click measurement tracker pixel (distinct from landing_page_url, the destination). Optional \u2014 measurement vendor URL fired when the user clicks the creative, in addition to navigating to landing_page_url."
+        }
       }
     ],
     "supported_macros": [
@@ -2106,6 +2546,28 @@
         },
         "event": "impression",
         "method": "img"
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "viewability_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "viewable_mrc_50",
+        "method": "img",
+        "requirements": {
+          "description": "MRC 50% viewable tracker pixel (1-second viewability for display, 2-seconds with audio for video). Optional \u2014 measurement vendor URLs the seller's renderer fires when the viewable threshold is met."
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "click_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "click",
+        "method": "img",
+        "requirements": {
+          "description": "Click measurement tracker pixel (distinct from landing_page_url, the destination). Optional \u2014 measurement vendor URL fired when the user clicks the creative, in addition to navigating to landing_page_url."
+        }
       }
     ],
     "supported_macros": [
@@ -2211,6 +2673,28 @@
         },
         "event": "impression",
         "method": "img"
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "viewability_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "viewable_mrc_50",
+        "method": "img",
+        "requirements": {
+          "description": "MRC 50% viewable tracker pixel (1-second viewability for display, 2-seconds with audio for video). Optional \u2014 measurement vendor URLs the seller's renderer fires when the viewable threshold is met."
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "click_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "click",
+        "method": "img",
+        "requirements": {
+          "description": "Click measurement tracker pixel (distinct from landing_page_url, the destination). Optional \u2014 measurement vendor URL fired when the user clicks the creative, in addition to navigating to landing_page_url."
+        }
       }
     ],
     "supported_macros": [
@@ -2316,6 +2800,28 @@
         },
         "event": "impression",
         "method": "img"
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "viewability_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "viewable_mrc_50",
+        "method": "img",
+        "requirements": {
+          "description": "MRC 50% viewable tracker pixel (1-second viewability for display, 2-seconds with audio for video). Optional \u2014 measurement vendor URLs the seller's renderer fires when the viewable threshold is met."
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "click_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "click",
+        "method": "img",
+        "requirements": {
+          "description": "Click measurement tracker pixel (distinct from landing_page_url, the destination). Optional \u2014 measurement vendor URL fired when the user clicks the creative, in addition to navigating to landing_page_url."
+        }
       }
     ],
     "supported_macros": [
@@ -2421,6 +2927,28 @@
         },
         "event": "impression",
         "method": "img"
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "viewability_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "viewable_mrc_50",
+        "method": "img",
+        "requirements": {
+          "description": "MRC 50% viewable tracker pixel (1-second viewability for display, 2-seconds with audio for video). Optional \u2014 measurement vendor URLs the seller's renderer fires when the viewable threshold is met."
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "click_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "click",
+        "method": "img",
+        "requirements": {
+          "description": "Click measurement tracker pixel (distinct from landing_page_url, the destination). Optional \u2014 measurement vendor URL fired when the user clicks the creative, in addition to navigating to landing_page_url."
+        }
       }
     ],
     "supported_macros": [
@@ -2526,6 +3054,28 @@
         },
         "event": "impression",
         "method": "img"
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "viewability_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "viewable_mrc_50",
+        "method": "img",
+        "requirements": {
+          "description": "MRC 50% viewable tracker pixel (1-second viewability for display, 2-seconds with audio for video). Optional \u2014 measurement vendor URLs the seller's renderer fires when the viewable threshold is met."
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "click_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "click",
+        "method": "img",
+        "requirements": {
+          "description": "Click measurement tracker pixel (distinct from landing_page_url, the destination). Optional \u2014 measurement vendor URL fired when the user clicks the creative, in addition to navigating to landing_page_url."
+        }
       }
     ],
     "supported_macros": [
@@ -2631,6 +3181,28 @@
         },
         "event": "impression",
         "method": "img"
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "viewability_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "viewable_mrc_50",
+        "method": "img",
+        "requirements": {
+          "description": "MRC 50% viewable tracker pixel (1-second viewability for display, 2-seconds with audio for video). Optional \u2014 measurement vendor URLs the seller's renderer fires when the viewable threshold is met."
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "click_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "click",
+        "method": "img",
+        "requirements": {
+          "description": "Click measurement tracker pixel (distinct from landing_page_url, the destination). Optional \u2014 measurement vendor URL fired when the user clicks the creative, in addition to navigating to landing_page_url."
+        }
       }
     ],
     "supported_macros": [
@@ -2709,6 +3281,28 @@
         },
         "event": "impression",
         "method": "img"
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "viewability_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "viewable_mrc_50",
+        "method": "img",
+        "requirements": {
+          "description": "MRC 50% viewable tracker pixel (1-second viewability for display, 2-seconds with audio for video). Optional \u2014 measurement vendor URLs the seller's renderer fires when the viewable threshold is met."
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "click_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "click",
+        "method": "img",
+        "requirements": {
+          "description": "Click measurement tracker pixel (distinct from landing_page_url, the destination). Optional \u2014 measurement vendor URL fired when the user clicks the creative, in addition to navigating to landing_page_url."
+        }
       }
     ],
     "supported_macros": [
@@ -2783,6 +3377,28 @@
         },
         "event": "impression",
         "method": "img"
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "viewability_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "viewable_mrc_50",
+        "method": "img",
+        "requirements": {
+          "description": "MRC 50% viewable tracker pixel (1-second viewability for display, 2-seconds with audio for video). Optional \u2014 measurement vendor URLs the seller's renderer fires when the viewable threshold is met."
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "click_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "click",
+        "method": "img",
+        "requirements": {
+          "description": "Click measurement tracker pixel (distinct from landing_page_url, the destination). Optional \u2014 measurement vendor URL fired when the user clicks the creative, in addition to navigating to landing_page_url."
+        }
       }
     ],
     "supported_macros": [
@@ -2859,6 +3475,28 @@
         },
         "event": "impression",
         "method": "img"
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "viewability_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "viewable_mrc_50",
+        "method": "img",
+        "requirements": {
+          "description": "MRC 50% viewable tracker pixel (1-second viewability for display, 2-seconds with audio for video). Optional \u2014 measurement vendor URLs the seller's renderer fires when the viewable threshold is met."
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "click_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "click",
+        "method": "img",
+        "requirements": {
+          "description": "Click measurement tracker pixel (distinct from landing_page_url, the destination). Optional \u2014 measurement vendor URL fired when the user clicks the creative, in addition to navigating to landing_page_url."
+        }
       }
     ],
     "supported_macros": [
@@ -2934,6 +3572,28 @@
         },
         "event": "impression",
         "method": "img"
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "viewability_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "viewable_mrc_50",
+        "method": "img",
+        "requirements": {
+          "description": "MRC 50% viewable tracker pixel (1-second viewability for display, 2-seconds with audio for video). Optional \u2014 measurement vendor URLs the seller's renderer fires when the viewable threshold is met."
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "click_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "click",
+        "method": "img",
+        "requirements": {
+          "description": "Click measurement tracker pixel (distinct from landing_page_url, the destination). Optional \u2014 measurement vendor URL fired when the user clicks the creative, in addition to navigating to landing_page_url."
+        }
       }
     ],
     "supported_macros": [
@@ -3009,6 +3669,28 @@
         },
         "event": "impression",
         "method": "img"
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "viewability_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "viewable_mrc_50",
+        "method": "img",
+        "requirements": {
+          "description": "MRC 50% viewable tracker pixel (1-second viewability for display, 2-seconds with audio for video). Optional \u2014 measurement vendor URLs the seller's renderer fires when the viewable threshold is met."
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "click_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "click",
+        "method": "img",
+        "requirements": {
+          "description": "Click measurement tracker pixel (distinct from landing_page_url, the destination). Optional \u2014 measurement vendor URL fired when the user clicks the creative, in addition to navigating to landing_page_url."
+        }
       }
     ],
     "supported_macros": [
@@ -3084,6 +3766,28 @@
         },
         "event": "impression",
         "method": "img"
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "viewability_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "viewable_mrc_50",
+        "method": "img",
+        "requirements": {
+          "description": "MRC 50% viewable tracker pixel (1-second viewability for display, 2-seconds with audio for video). Optional \u2014 measurement vendor URLs the seller's renderer fires when the viewable threshold is met."
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "click_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "click",
+        "method": "img",
+        "requirements": {
+          "description": "Click measurement tracker pixel (distinct from landing_page_url, the destination). Optional \u2014 measurement vendor URL fired when the user clicks the creative, in addition to navigating to landing_page_url."
+        }
       }
     ],
     "supported_macros": [
@@ -3159,6 +3863,28 @@
         },
         "event": "impression",
         "method": "img"
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "viewability_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "viewable_mrc_50",
+        "method": "img",
+        "requirements": {
+          "description": "MRC 50% viewable tracker pixel (1-second viewability for display, 2-seconds with audio for video). Optional \u2014 measurement vendor URLs the seller's renderer fires when the viewable threshold is met."
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "click_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "click",
+        "method": "img",
+        "requirements": {
+          "description": "Click measurement tracker pixel (distinct from landing_page_url, the destination). Optional \u2014 measurement vendor URL fired when the user clicks the creative, in addition to navigating to landing_page_url."
+        }
       }
     ],
     "supported_macros": [
@@ -3218,6 +3944,28 @@
         },
         "event": "impression",
         "method": "img"
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "viewability_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "viewable_mrc_50",
+        "method": "img",
+        "requirements": {
+          "description": "MRC 50% viewable tracker pixel (1-second viewability for display, 2-seconds with audio for video). Optional \u2014 measurement vendor URLs the seller's renderer fires when the viewable threshold is met."
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "click_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "click",
+        "method": "img",
+        "requirements": {
+          "description": "Click measurement tracker pixel (distinct from landing_page_url, the destination). Optional \u2014 measurement vendor URL fired when the user clicks the creative, in addition to navigating to landing_page_url."
+        }
       }
     ],
     "supported_macros": [
@@ -3316,6 +4064,28 @@
         },
         "event": "impression",
         "method": "img"
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "viewability_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "viewable_mrc_50",
+        "method": "img",
+        "requirements": {
+          "description": "MRC 50% viewable tracker pixel (1-second viewability for display, 2-seconds with audio for video). Optional \u2014 measurement vendor URLs the seller's renderer fires when the viewable threshold is met."
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "click_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "click",
+        "method": "img",
+        "requirements": {
+          "description": "Click measurement tracker pixel (distinct from landing_page_url, the destination). Optional \u2014 measurement vendor URL fired when the user clicks the creative, in addition to navigating to landing_page_url."
+        }
       }
     ],
     "supported_macros": [
@@ -3492,6 +4262,28 @@
         },
         "event": "impression",
         "method": "img"
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "viewability_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "viewable_mrc_50",
+        "method": "img",
+        "requirements": {
+          "description": "MRC 50% viewable tracker pixel (1-second viewability for display, 2-seconds with audio for video). Optional \u2014 measurement vendor URLs the seller's renderer fires when the viewable threshold is met."
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "click_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "click",
+        "method": "img",
+        "requirements": {
+          "description": "Click measurement tracker pixel (distinct from landing_page_url, the destination). Optional \u2014 measurement vendor URL fired when the user clicks the creative, in addition to navigating to landing_page_url."
+        }
       }
     ],
     "supported_macros": [
@@ -3629,6 +4421,28 @@
         },
         "event": "impression",
         "method": "img"
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "viewability_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "viewable_mrc_50",
+        "method": "img",
+        "requirements": {
+          "description": "MRC 50% viewable tracker pixel (1-second viewability for display, 2-seconds with audio for video). Optional \u2014 measurement vendor URLs the seller's renderer fires when the viewable threshold is met."
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "click_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "click",
+        "method": "img",
+        "requirements": {
+          "description": "Click measurement tracker pixel (distinct from landing_page_url, the destination). Optional \u2014 measurement vendor URL fired when the user clicks the creative, in addition to navigating to landing_page_url."
+        }
       }
     ],
     "supported_macros": [
@@ -3698,6 +4512,28 @@
         },
         "event": "impression",
         "method": "img"
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "viewability_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "viewable_mrc_50",
+        "method": "img",
+        "requirements": {
+          "description": "MRC 50% viewable tracker pixel (1-second viewability for display, 2-seconds with audio for video). Optional \u2014 measurement vendor URLs the seller's renderer fires when the viewable threshold is met."
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "click_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "click",
+        "method": "img",
+        "requirements": {
+          "description": "Click measurement tracker pixel (distinct from landing_page_url, the destination). Optional \u2014 measurement vendor URL fired when the user clicks the creative, in addition to navigating to landing_page_url."
+        }
       }
     ],
     "supported_macros": [
@@ -3767,6 +4603,28 @@
         },
         "event": "impression",
         "method": "img"
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "viewability_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "viewable_mrc_50",
+        "method": "img",
+        "requirements": {
+          "description": "MRC 50% viewable tracker pixel (1-second viewability for display, 2-seconds with audio for video). Optional \u2014 measurement vendor URLs the seller's renderer fires when the viewable threshold is met."
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "click_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "click",
+        "method": "img",
+        "requirements": {
+          "description": "Click measurement tracker pixel (distinct from landing_page_url, the destination). Optional \u2014 measurement vendor URL fired when the user clicks the creative, in addition to navigating to landing_page_url."
+        }
       }
     ],
     "supported_macros": [
@@ -3848,6 +4706,28 @@
         },
         "event": "impression",
         "method": "img"
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "viewability_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "viewable_mrc_50",
+        "method": "img",
+        "requirements": {
+          "description": "MRC 50% viewable tracker pixel (1-second viewability for display, 2-seconds with audio for video). Optional \u2014 measurement vendor URLs the seller's renderer fires when the viewable threshold is met."
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "click_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "click",
+        "method": "img",
+        "requirements": {
+          "description": "Click measurement tracker pixel (distinct from landing_page_url, the destination). Optional \u2014 measurement vendor URL fired when the user clicks the creative, in addition to navigating to landing_page_url."
+        }
       }
     ],
     "supported_macros": [
@@ -3917,6 +4797,28 @@
         },
         "event": "impression",
         "method": "img"
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "viewability_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "viewable_mrc_50",
+        "method": "img",
+        "requirements": {
+          "description": "MRC 50% viewable tracker pixel (1-second viewability for display, 2-seconds with audio for video). Optional \u2014 measurement vendor URLs the seller's renderer fires when the viewable threshold is met."
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "click_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "click",
+        "method": "img",
+        "requirements": {
+          "description": "Click measurement tracker pixel (distinct from landing_page_url, the destination). Optional \u2014 measurement vendor URL fired when the user clicks the creative, in addition to navigating to landing_page_url."
+        }
       }
     ],
     "supported_macros": [
@@ -3985,6 +4887,28 @@
         },
         "event": "impression",
         "method": "img"
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "viewability_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "viewable_mrc_50",
+        "method": "img",
+        "requirements": {
+          "description": "MRC 50% viewable tracker pixel (1-second viewability for display, 2-seconds with audio for video). Optional \u2014 measurement vendor URLs the seller's renderer fires when the viewable threshold is met."
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "click_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "click",
+        "method": "img",
+        "requirements": {
+          "description": "Click measurement tracker pixel (distinct from landing_page_url, the destination). Optional \u2014 measurement vendor URL fired when the user clicks the creative, in addition to navigating to landing_page_url."
+        }
       }
     ],
     "supported_macros": [
@@ -4068,6 +4992,28 @@
         },
         "event": "impression",
         "method": "img"
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "viewability_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "viewable_mrc_50",
+        "method": "img",
+        "requirements": {
+          "description": "MRC 50% viewable tracker pixel (1-second viewability for display, 2-seconds with audio for video). Optional \u2014 measurement vendor URLs the seller's renderer fires when the viewable threshold is met."
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "click_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "click",
+        "method": "img",
+        "requirements": {
+          "description": "Click measurement tracker pixel (distinct from landing_page_url, the destination). Optional \u2014 measurement vendor URL fired when the user clicks the creative, in addition to navigating to landing_page_url."
+        }
       }
     ],
     "supported_macros": [
@@ -4181,6 +5127,28 @@
         },
         "event": "impression",
         "method": "img"
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "viewability_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "viewable_mrc_50",
+        "method": "img",
+        "requirements": {
+          "description": "MRC 50% viewable tracker pixel (1-second viewability for display, 2-seconds with audio for video). Optional \u2014 measurement vendor URLs the seller's renderer fires when the viewable threshold is met."
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "click_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "click",
+        "method": "img",
+        "requirements": {
+          "description": "Click measurement tracker pixel (distinct from landing_page_url, the destination). Optional \u2014 measurement vendor URL fired when the user clicks the creative, in addition to navigating to landing_page_url."
+        }
       }
     ],
     "supported_macros": [
@@ -4240,6 +5208,28 @@
         },
         "event": "impression",
         "method": "img"
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "viewability_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "viewable_mrc_50",
+        "method": "img",
+        "requirements": {
+          "description": "MRC 50% viewable tracker pixel (1-second viewability for display, 2-seconds with audio for video). Optional \u2014 measurement vendor URLs the seller's renderer fires when the viewable threshold is met."
+        }
+      },
+      {
+        "item_type": "individual",
+        "asset_id": "click_tracker",
+        "required": false,
+        "asset_type": "pixel_tracker",
+        "event": "click",
+        "method": "img",
+        "requirements": {
+          "description": "Click measurement tracker pixel (distinct from landing_page_url, the destination). Optional \u2014 measurement vendor URL fired when the user clicks the creative, in addition to navigating to landing_page_url."
+        }
       }
     ],
     "supported_macros": [

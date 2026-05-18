@@ -253,6 +253,100 @@ const NEGATIVE_CASES = {
       doc: {},
     },
   ],
+  '/schemas/core/assets/pixel-tracker-asset.json': [
+    {
+      label: 'minimal valid pixel_tracker (impression / img)',
+      expected: true,
+      doc: {
+        asset_type: 'pixel_tracker',
+        event: 'impression',
+        method: 'img',
+        url: 'https://measurement.example.com/imp?cb={CACHEBUSTER}',
+      },
+    },
+    {
+      label: 'valid pixel_tracker with method:js (impression jstracker)',
+      expected: true,
+      doc: {
+        asset_type: 'pixel_tracker',
+        event: 'impression',
+        method: 'js',
+        url: 'https://measurement.example.com/jstracker.js?cid={CREATIVE_ID}',
+      },
+    },
+    {
+      label: 'valid pixel_tracker for viewable_mrc_50',
+      expected: true,
+      doc: {
+        asset_type: 'pixel_tracker',
+        event: 'viewable_mrc_50',
+        method: 'img',
+        url: 'https://measurement.example.com/mrc50?cid={CREATIVE_ID}',
+      },
+    },
+    {
+      label: 'valid pixel_tracker for click',
+      expected: true,
+      doc: {
+        asset_type: 'pixel_tracker',
+        event: 'click',
+        method: 'img',
+        url: 'https://measurement.example.com/click?cid={CREATIVE_ID}',
+      },
+    },
+    {
+      label: 'valid pixel_tracker for custom event with custom_event_name',
+      expected: true,
+      doc: {
+        asset_type: 'pixel_tracker',
+        event: 'custom',
+        custom_event_name: 'engagement_3s',
+        method: 'img',
+        url: 'https://measurement.example.com/engagement?cid={CREATIVE_ID}',
+      },
+    },
+    {
+      label: 'event=custom WITHOUT custom_event_name rejected',
+      expected: false,
+      doc: {
+        asset_type: 'pixel_tracker',
+        event: 'custom',
+        method: 'img',
+        url: 'https://measurement.example.com/custom_no_name',
+      },
+    },
+    {
+      label: 'event=impression WITH custom_event_name rejected (only valid when event=custom)',
+      expected: false,
+      doc: {
+        asset_type: 'pixel_tracker',
+        event: 'impression',
+        custom_event_name: 'should_not_be_here',
+        method: 'img',
+        url: 'https://measurement.example.com/imp',
+      },
+    },
+    {
+      label: 'invalid event enum value rejected',
+      expected: false,
+      doc: {
+        asset_type: 'pixel_tracker',
+        event: 'totally_made_up_event',
+        method: 'img',
+        url: 'https://measurement.example.com/x',
+      },
+    },
+    {
+      label: 'invalid method enum value rejected',
+      expected: false,
+      doc: {
+        asset_type: 'pixel_tracker',
+        event: 'impression',
+        method: 'server',
+        url: 'https://measurement.example.com/x',
+      },
+    },
+  ],
   '/schemas/creative/validate-input-result.json': [
     {
       label: 'validated_pass rejects violations',
