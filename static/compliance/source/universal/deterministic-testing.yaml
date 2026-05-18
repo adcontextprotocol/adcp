@@ -284,6 +284,12 @@ phases:
       list_accounts. Tests suspension gating (operations blocked when suspended),
       payment_required state, and reactivation.
 
+    # Phase creates its own sandbox account via sync_accounts and only consumes
+    # context produced within the phase. Explicit empty depends_on prevents the
+    # runner's default "depend on all prior phases" from cascade-skipping when
+    # an unrelated upstream phase trips on missing_tool.
+    depends_on: []
+
     steps:
       - id: sync_accounts_for_state
         title: 'Create sandbox account for state machine test'
@@ -516,6 +522,12 @@ phases:
       it through status transitions: active, completed (terminal). Verifies that
       terminal states reject further transitions.
 
+    # Phase creates its own media buy via create_media_buy and only consumes
+    # context produced within the phase. Explicit empty depends_on prevents the
+    # runner's default "depend on all prior phases" from cascade-skipping when
+    # an unrelated upstream phase trips on missing_tool.
+    depends_on: []
+
     steps:
       - id: create_media_buy
         title: 'Create media buy for state machine test'
@@ -740,6 +752,12 @@ phases:
       Syncs a creative, then uses the controller to force it through status
       transitions: approved, archived (terminal). Verifies terminal state rejection
       and rejection with reason.
+
+    # Phase syncs its own creative via sync_creatives and only consumes context
+    # produced within the phase. Explicit empty depends_on prevents the runner's
+    # default "depend on all prior phases" from cascade-skipping when an
+    # unrelated upstream phase trips on missing_tool.
+    depends_on: []
 
     steps:
       - id: sync_creative_for_state
