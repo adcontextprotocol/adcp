@@ -394,6 +394,51 @@
 # title: string (human-readable phase title)
 # narrative: string (paragraph explaining this phase from the caller's perspective)
 #
+# depends_on: string[] (optional — overrides the cross-phase cascade default)
+#   Default semantics (field absent or undefined): "all prior phases." Every
+#   phase implicitly depends on every prior phase, so when ANY prior phase
+#   trips its stateful cascade (a stateful step fails or skips for a
+#   missing-state reason — see `runner-output-contract.yaml > cascade_rules.
+#   default_cascade`), every stateful step in this phase cascade-skips with
+#   `prerequisite_failed`. This default preserves the F6 round-2 pattern
+#   where setup phases establish state consumed by a later phase.
+#
+#   Two override forms:
+#
+#     - Independent phase: `depends_on: []` — explicitly declares the phase
+#       has no upstream dependencies and runs even if every prior phase
+#       tripped. Use for phases whose state derives entirely from in-phase
+#       steps (e.g., the phase creates its own media buy / session / account
+#       via a `comply_test_controller`-gated step) and that consume no
+#       `$context.*` value produced by an earlier phase. The
+#       `sole_stateful_step_exemption` in `runner-output-contract.yaml`
+#       addresses a related-but-narrower case at the step level; `depends_on:
+#       []` is the phase-level escape hatch and applies regardless of how
+#       many stateful steps the phase contains.
+#
+#     - Targeted dependency: `depends_on: ['phase_id', ...]` — only the
+#       named phases gate this phase's cascade. Other phases tripping is
+#       irrelevant. Listed phase IDs MUST exist in the same storyboard and
+#       MUST be declared earlier in the `phases[]` array.
+#
+#   Validation rules (enforced at storyboard load; fail at parse time):
+#     - Value MUST be an array of non-empty strings (or absent).
+#     - Self-references are rejected.
+#     - Forward references and unknown phase IDs are rejected.
+#     - Empty list is legal and means "no upstream dependencies."
+#
+#   Authoring guidance: prefer the default. Use `[]` only when the phase
+#   verifiably builds its own state in-phase — read the phase's
+#   `context_inputs` and `$context.*` references to confirm no cross-phase
+#   coupling exists. Use the targeted form when a phase depends on a
+#   specific subset of prior phases (e.g., consumption phase depends only
+#   on setup phases, not on sibling consumption phases that may legitimately
+#   skip on different adopters).
+#
+#   References: adcp-client#1161 (field introduction); adcp-client#1711
+#   follow-up + adcp#4750 (deterministic_testing scope tightening that
+#   surfaced the documentation gap).
+#
 # steps: array of Step objects
 #
 # --- Step ---
