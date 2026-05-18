@@ -82,10 +82,10 @@ Callers using rows where `is_final` is false (or absent) for pacing and reportin
 Whose number invoices the buy is a **contract term**, declared in the buy's [`measurement_terms.billing_measurement`](/docs/media-buy/advanced-topics/billing-authority):
 
 - **Seller-attested** (the default when `billing_measurement` is absent or names the seller's own ad server): invoice off final rows on `get_media_buy_delivery`.
-- **Vendor-attested** (third-party measurement vendor named in the buy — e.g., Nielsen, IAS, DV, MOAT): invoice off the named vendor's authoritative numbers, pushed via [`report_usage`](/docs/accounts/tasks/report_usage) with `final: true` and `finalized_at` set.
+- **Vendor-attested** (third-party measurement vendor named in the buy — e.g., Nielsen, IAS, DV, MOAT): invoice off the named vendor's authoritative numbers. Operationally this is most often the seller pulling from the vendor and publishing on `get_media_buy_delivery` with `is_final: true`; when the buyer holds the vendor relationship instead, the buyer pushes via [`report_usage`](/docs/accounts/tasks/report_usage) with `final: true` and `finalized_at` set.
 - **Buyer-attested** (buyer's 3PAS or MMP named in the buy — e.g., CM360, Flashtalking): invoice off the buyer's final records pushed via `report_usage`.
 
-When the authoritative party doesn't publish final numbers within `measurement_terms.billing_measurement.finalization_deadline_hours`, the seller MAY fall back to its own seller-attested numbers; the breach is handled under `makegood_policy`. When variance between parties exceeds `max_variance_percent`, parties resolve via the buy's [`makegood_policy.available_remedies`](/docs/media-buy/advanced-topics/accountability) and out-of-band negotiation.
+When the authoritative party doesn't publish final numbers within `measurement_terms.billing_measurement.finalization_deadline_hours`, the counterparty MAY fall back to its own attestation; the breach is handled under `makegood_policy`. The deadline applies symmetrically to whichever party is named in `vendor`. When variance between parties exceeds `max_variance_percent`, parties resolve via the buy's [`makegood_policy.available_remedies`](/docs/media-buy/advanced-topics/accountability) and out-of-band negotiation.
 
 See [Billing authority](/docs/media-buy/advanced-topics/billing-authority) for the end-to-end flow. A structured dispute task — opening, transitioning, and resolving a delivery dispute on the wire — is targeted for AdCP 3.2.
 

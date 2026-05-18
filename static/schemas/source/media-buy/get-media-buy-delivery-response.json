@@ -377,12 +377,12 @@
           },
           "is_final": {
             "type": "boolean",
-            "description": "Whether this row's delivery data is final for the reporting period — equivalent to all entries in `by_package` having `is_final: true` for the same `measurement_window`. When true, the seller considers these numbers closed and is willing to invoice on them (subject to the buy's `measurement_terms.billing_measurement`). When false, numbers may still move as measurement matures (broadcast C3 → C7) or processing completes (IVT scrubbing, dedup). When absent, the seller does not distinguish provisional from final at the row level — consult per-package `is_final`. Reconciliation against the buy's `measurement_terms.billing_measurement.measurement_window` happens at the row level when this flag is present."
+            "description": "Whether this row's delivery data is final for the reporting period. The row does not carry its own `measurement_window` — that lives on each `by_package[*]` entry. Reconciliation joins on per-package `measurement_window`; this row-level flag is a convenience roll-up. Sellers MUST NOT emit `is_final: true` at the row level unless every entry in `by_package` has `is_final: true` for the same `measurement_window` as the buy's `measurement_terms.billing_measurement.measurement_window` (or for the row's natural window when no `billing_measurement.measurement_window` is set). On any disagreement between row-level and package-level finality, package-level is authoritative. When true, the seller considers these numbers closed and is willing to invoice on them subject to `measurement_terms.billing_measurement`. When false, numbers may still move as measurement matures (broadcast C3 → C7) or processing completes (IVT scrubbing, dedup). When absent, the seller does not distinguish provisional from final at the row level — consult per-package `is_final`."
           },
           "finalized_at": {
             "type": "string",
             "format": "date-time",
-            "description": "ISO 8601 timestamp at which this row became final. Present only when `is_final: true`. Anchors the buyer's reconciliation and (when later defined) dispute-window clocks against the buy's `measurement_terms.billing_measurement`. Computed as the latest `finalized_at` across the row's packages for the same measurement window."
+            "description": "ISO 8601 timestamp at which this row became final. Present only when `is_final: true`. Anchors the buyer's reconciliation and (when later defined) dispute-window clocks against the buy's `measurement_terms.billing_measurement`. Computed as the latest `finalized_at` across the row's packages for the reconciliation window."
           },
           "pricing_model": {
             "$ref": "/schemas/enums/pricing-model.json",
