@@ -1,0 +1,98 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/core/assets/pixel-tracker-asset.json",
+  "title": "Pixel Tracker Asset",
+  "description": "A single renderer-fired HTTP tracker URL — image pixel or JavaScript include — bound to a measurement event (impression, viewability, click, custom). Generic web-pixel tracker primitive applicable to any web-rendered canonical format (image, html5, image_carousel, responsive_creative, sponsored_placement, native_*, plus the non-VAST/DAAST events of video_hosted and audio_hosted). The buyer's measurement vendor declares the tracker URL; the seller's renderer fires it at serve time without buyer-side involvement.\n\nNamed `pixel_tracker` (not `native_tracker` or `web_tracker`) because the primitive captures the IAB \"tracker pixel\" semantic the industry already uses for measurement-pixel URLs, regardless of whether they're served as `<img>` pixels or `<script>` includes. The discriminated-union shape and event/method enums are formalized in IAB OpenRTB Native 1.2 (`imptrackers[]` / `jstracker` / `eventtrackers[]` / `link.clicktrackers[]`); the same shape applies cleanly to image banners, html5, carousels, and any other format whose renderer fires HTTP pixels for measurement.\n\n**Scope boundary (normative).** `pixel_tracker` covers RENDERER-FIRED trackers — measurement events that the ad's serving template invokes when the user sees, views, or clicks the creative. Conversion pixels that fire on the advertiser's site after the click (Meta Pixel, GA4 server-side, custom postbacks) MUST be modeled via `sync_event_sources` / `event_log` — they are campaign-scoped, not creative-asset-scoped. See `docs/creative/canonical-formats.mdx#what-format_kind-is-not-for`.\n\n**Format-specific tracker primitives.** Formats whose wire shape embeds tracker URLs in a format-specific structure use dedicated asset types instead:\n- `video_vast` → `vast_tracker` (VAST `<TrackingEvents>`: start, quartiles, complete, pause, mute)\n- `audio_daast` → `daast_tracker` (DAAST `<TrackingEvents>` parity)\n- `display_tag` → opaque (third-party server fires its own trackers)\n\nAll other web-rendered canonicals use `pixel_tracker`.\n\nMaps to IAB OpenRTB Native 1.2 / Dynamic Native Ads API tracker objects:\n- `imptrackers[]` → one `pixel_tracker` per entry with `event: impression`, `method: img`\n- `jstracker` → one `pixel_tracker` with `event: impression`, `method: js`\n- `eventtrackers[]` → one `pixel_tracker` per entry, `event` mapped from the IAB event enum\n- `link.clicktrackers[]` → one `pixel_tracker` per entry with `event: click`, `method: img` (click destinations live on `landing_page_url` slot)",
+  "type": "object",
+  "properties": {
+    "asset_type": {
+      "type": "string",
+      "const": "pixel_tracker",
+      "description": "Discriminator identifying this as a renderer-fired pixel tracker asset. See /schemas/creative/asset-types for the registry."
+    },
+    "event": {
+      "type": "string",
+      "enum": [
+        "impression",
+        "viewable_mrc_50",
+        "viewable_mrc_100",
+        "viewable_video_50",
+        "click",
+        "custom"
+      ],
+      "description": "Which event this tracker fires on. Event enum mirrors IAB OpenRTB Native 1.2 event-tracker (formalized there; the events themselves are generic web-pixel measurement events that apply to any renderer):\n- `impression` — fires when the ad is served (covers both `imptrackers[]` and `jstracker` from the IAB shape — distinguished by `method`)\n- `viewable_mrc_50` — IAB MRC viewable, 50% pixels for ≥1 second\n- `viewable_mrc_100` — IAB MRC viewable, 100% pixels for ≥1 second\n- `viewable_video_50` — video-specific viewable, 50% pixels for ≥2 seconds with audio on (on video_hosted; ignored on image/html5)\n- `click` — fires when the user clicks the creative (`link.clicktrackers[]`)\n- `custom` — adopter-defined event; MUST also set `custom_event_name`"
+    },
+    "method": {
+      "type": "string",
+      "enum": ["img", "js"],
+      "default": "img",
+      "description": "How the tracker URL is invoked at serve time:\n- `img` — fired as an image pixel (HTTP GET with `<img>`-like semantics; no JS execution)\n- `js` — fired as a script include (renderer evaluates the URL's response as JavaScript)\n\nMatches IAB OpenRTB Native 1.2 method enum (1=img, 2=js). `js` MUST only be used by sellers whose renderer supports JavaScript trackers; sellers without JS-tracker support MUST reject `method: js` declarations at sync_creatives time with `CREATIVE_REJECTED` carrying the reason."
+    },
+    "url": {
+      "type": "string",
+      "format": "uri-template",
+      "description": "Tracker URL fired when `event` occurs. May carry AdCP universal macros (e.g., `{MEDIA_BUY_ID}`, `{CREATIVE_ID}`, `{CACHEBUSTER}`); the seller's renderer URL-encodes substituted values at serve time. See docs/creative/universal-macros.mdx."
+    },
+    "custom_event_name": {
+      "type": "string",
+      "description": "REQUIRED when `event` is `custom`; otherwise MUST be absent. Adopter-defined event name. Sellers without registered handling for a given custom_event_name MUST silently no-op (do not fire) rather than reject — custom events are forward-compatible probes."
+    },
+    "provenance": {
+      "$ref": "/schemas/core/provenance.json",
+      "description": "Provenance metadata for this asset, overrides manifest-level provenance."
+    }
+  },
+  "required": [
+    "asset_type",
+    "event",
+    "url"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": { "event": { "const": "custom" } },
+        "required": ["event"]
+      },
+      "then": {
+        "required": ["custom_event_name"]
+      },
+      "else": {
+        "not": { "required": ["custom_event_name"] }
+      }
+    }
+  ],
+  "additionalProperties": true,
+  "examples": [
+    {
+      "asset_type": "pixel_tracker",
+      "event": "impression",
+      "method": "img",
+      "url": "https://measurement.example.com/imp?cb={CACHEBUSTER}&cid={CREATIVE_ID}"
+    },
+    {
+      "asset_type": "pixel_tracker",
+      "event": "impression",
+      "method": "js",
+      "url": "https://measurement.example.com/jstracker.js?cid={CREATIVE_ID}"
+    },
+    {
+      "asset_type": "pixel_tracker",
+      "event": "viewable_mrc_50",
+      "method": "img",
+      "url": "https://measurement.example.com/mrc50?cid={CREATIVE_ID}"
+    },
+    {
+      "asset_type": "pixel_tracker",
+      "event": "click",
+      "method": "img",
+      "url": "https://measurement.example.com/click?cid={CREATIVE_ID}&cb={CACHEBUSTER}"
+    },
+    {
+      "asset_type": "pixel_tracker",
+      "event": "custom",
+      "custom_event_name": "engagement_3s",
+      "method": "img",
+      "url": "https://measurement.example.com/engagement?cid={CREATIVE_ID}&duration=3s"
+    }
+  ]
+}

@@ -41,10 +41,10 @@
       "schema": "/schemas/core/assets/daast-tracker-asset.json",
       "typical_use": "Decomposed DAAST event trackers on audio formats"
     },
-    "native_tracker": {
-      "description": "Native parity to vast_tracker: a single renderer-fired tracker URL bound to a native creative event (impression, viewability, click, custom). Maps to IAB OpenRTB Native 1.2 `imptrackers[]` / `jstracker` / `eventtrackers[]` / `link.clicktrackers[]`. Scope is RENDERER-FIRED trackers only — conversion pixels that fire on the advertiser's site post-click belong on `sync_event_sources` / `event_log`.",
-      "schema": "/schemas/core/assets/native-tracker-asset.json",
-      "typical_use": "Decomposed measurement trackers on native-shaped formats (native_standard, native_content); buyer's measurement vendor URLs the seller's native renderer fires at serve time"
+    "pixel_tracker": {
+      "description": "Generic renderer-fired HTTP tracker URL — image pixel or JavaScript include — bound to a measurement event (impression, viewability, click, custom). Applies to any web-rendered canonical (image, html5, image_carousel, responsive_creative, sponsored_placement, native_*, plus non-VAST events on video_hosted/audio_hosted). Discriminated union shape with event/method enums formalized in IAB OpenRTB Native 1.2 (`imptrackers[]` / `jstracker` / `eventtrackers[]` / `link.clicktrackers[]`). Scope is RENDERER-FIRED trackers only — conversion pixels that fire on the advertiser's site post-click belong on `sync_event_sources` / `event_log`. Formats with format-specific tracker structures use `vast_tracker` (VAST `<TrackingEvents>`) or `daast_tracker` (DAAST parity) instead.",
+      "schema": "/schemas/core/assets/pixel-tracker-asset.json",
+      "typical_use": "Measurement vendor trackers on web-rendered formats — impression/viewability/click pixels the seller's renderer fires at serve time; replaces bare `url` asset with `url_type: \"tracker_pixel\"` for the canonical-formats v2 era"
     },
     "text": {
       "description": "Plain text content asset",

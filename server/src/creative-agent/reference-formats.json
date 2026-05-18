@@ -24,11 +24,12 @@
         "item_type": "individual",
         "asset_id": "impression_tracker",
         "required": false,
-        "asset_type": "url",
+        "asset_type": "pixel_tracker",
         "requirements": {
-          "url_type": "tracker_pixel",
           "description": "3rd party impression tracking pixel URL"
-        }
+        },
+        "event": "impression",
+        "method": "img"
       }
     ],
     "supported_macros": [
@@ -109,11 +110,12 @@
         "item_type": "individual",
         "asset_id": "impression_tracker",
         "required": false,
-        "asset_type": "url",
+        "asset_type": "pixel_tracker",
         "requirements": {
-          "url_type": "tracker_pixel",
           "description": "3rd party impression tracking pixel URL"
-        }
+        },
+        "event": "impression",
+        "method": "img"
       }
     ],
     "supported_macros": [
@@ -200,11 +202,12 @@
         "item_type": "individual",
         "asset_id": "impression_tracker",
         "required": false,
-        "asset_type": "url",
+        "asset_type": "pixel_tracker",
         "requirements": {
-          "url_type": "tracker_pixel",
           "description": "3rd party impression tracking pixel URL"
-        }
+        },
+        "event": "impression",
+        "method": "img"
       }
     ],
     "supported_macros": [
@@ -291,11 +294,12 @@
         "item_type": "individual",
         "asset_id": "impression_tracker",
         "required": false,
-        "asset_type": "url",
+        "asset_type": "pixel_tracker",
         "requirements": {
-          "url_type": "tracker_pixel",
           "description": "3rd party impression tracking pixel URL"
-        }
+        },
+        "event": "impression",
+        "method": "img"
       }
     ],
     "supported_macros": [
@@ -382,11 +386,12 @@
         "item_type": "individual",
         "asset_id": "impression_tracker",
         "required": false,
-        "asset_type": "url",
+        "asset_type": "pixel_tracker",
         "requirements": {
-          "url_type": "tracker_pixel",
           "description": "3rd party impression tracking pixel URL"
-        }
+        },
+        "event": "impression",
+        "method": "img"
       }
     ],
     "supported_macros": [
@@ -473,11 +478,12 @@
         "item_type": "individual",
         "asset_id": "impression_tracker",
         "required": false,
-        "asset_type": "url",
+        "asset_type": "pixel_tracker",
         "requirements": {
-          "url_type": "tracker_pixel",
           "description": "3rd party impression tracking pixel URL"
-        }
+        },
+        "event": "impression",
+        "method": "img"
       }
     ],
     "supported_macros": [
@@ -564,11 +570,12 @@
         "item_type": "individual",
         "asset_id": "impression_tracker",
         "required": false,
-        "asset_type": "url",
+        "asset_type": "pixel_tracker",
         "requirements": {
-          "url_type": "tracker_pixel",
           "description": "3rd party impression tracking pixel URL"
-        }
+        },
+        "event": "impression",
+        "method": "img"
       }
     ],
     "supported_macros": [
@@ -655,11 +662,12 @@
         "item_type": "individual",
         "asset_id": "impression_tracker",
         "required": false,
-        "asset_type": "url",
+        "asset_type": "pixel_tracker",
         "requirements": {
-          "url_type": "tracker_pixel",
           "description": "3rd party impression tracking pixel URL"
-        }
+        },
+        "event": "impression",
+        "method": "img"
       }
     ],
     "supported_macros": [
@@ -740,11 +748,12 @@
         "item_type": "individual",
         "asset_id": "impression_tracker",
         "required": false,
-        "asset_type": "url",
+        "asset_type": "pixel_tracker",
         "requirements": {
-          "url_type": "tracker_pixel",
           "description": "3rd party impression tracking pixel URL"
-        }
+        },
+        "event": "impression",
+        "method": "img"
       }
     ],
     "supported_macros": [
@@ -809,11 +818,12 @@
         "item_type": "individual",
         "asset_id": "impression_tracker",
         "required": false,
-        "asset_type": "url",
+        "asset_type": "pixel_tracker",
         "requirements": {
-          "url_type": "tracker_pixel",
           "description": "3rd party impression tracking pixel URL"
-        }
+        },
+        "event": "impression",
+        "method": "img"
       }
     ],
     "supported_macros": [
@@ -923,11 +933,12 @@
         "item_type": "individual",
         "asset_id": "impression_tracker",
         "required": false,
-        "asset_type": "url",
+        "asset_type": "pixel_tracker",
         "requirements": {
-          "url_type": "tracker_pixel",
           "description": "3rd party impression tracking pixel URL"
-        }
+        },
+        "event": "impression",
+        "method": "img"
       }
     ],
     "supported_macros": [
@@ -995,11 +1006,12 @@
         "item_type": "individual",
         "asset_id": "impression_tracker",
         "required": false,
-        "asset_type": "url",
+        "asset_type": "pixel_tracker",
         "requirements": {
-          "url_type": "tracker_pixel",
           "description": "3rd party impression tracking pixel URL"
-        }
+        },
+        "event": "impression",
+        "method": "img"
       }
     ],
     "supported_macros": [
@@ -1128,11 +1140,12 @@
         "item_type": "individual",
         "asset_id": "impression_tracker",
         "required": false,
-        "asset_type": "url",
+        "asset_type": "pixel_tracker",
         "requirements": {
-          "url_type": "tracker_pixel",
           "description": "3rd party impression tracking pixel URL"
-        }
+        },
+        "event": "impression",
+        "method": "img"
       }
     ],
     "supported_macros": [
@@ -1213,11 +1226,12 @@
         "item_type": "individual",
         "asset_id": "impression_tracker",
         "required": false,
-        "asset_type": "url",
+        "asset_type": "pixel_tracker",
         "requirements": {
-          "url_type": "tracker_pixel",
           "description": "3rd party impression tracking pixel URL"
-        }
+        },
+        "event": "impression",
+        "method": "img"
       }
     ],
     "supported_macros": [
@@ -1298,11 +1312,12 @@
         "item_type": "individual",
         "asset_id": "impression_tracker",
         "required": false,
-        "asset_type": "url",
+        "asset_type": "pixel_tracker",
         "requirements": {
-          "url_type": "tracker_pixel",
           "description": "3rd party impression tracking pixel URL"
-        }
+        },
+        "event": "impression",
+        "method": "img"
       }
     ],
     "supported_macros": [
@@ -1383,11 +1398,12 @@
         "item_type": "individual",
         "asset_id": "impression_tracker",
         "required": false,
-        "asset_type": "url",
+        "asset_type": "pixel_tracker",
         "requirements": {
-          "url_type": "tracker_pixel",
           "description": "3rd party impression tracking pixel URL"
-        }
+        },
+        "event": "impression",
+        "method": "img"
       }
     ],
     "supported_macros": [
@@ -1454,11 +1470,12 @@
         "item_type": "individual",
         "asset_id": "impression_tracker",
         "required": false,
-        "asset_type": "url",
+        "asset_type": "pixel_tracker",
         "requirements": {
-          "url_type": "tracker_pixel",
           "description": "3rd party impression tracking pixel URL"
-        }
+        },
+        "event": "impression",
+        "method": "img"
       }
     ],
     "supported_macros": [
@@ -1525,11 +1542,12 @@
         "item_type": "individual",
         "asset_id": "impression_tracker",
         "required": false,
-        "asset_type": "url",
+        "asset_type": "pixel_tracker",
         "requirements": {
-          "url_type": "tracker_pixel",
           "description": "3rd party impression tracking pixel URL"
-        }
+        },
+        "event": "impression",
+        "method": "img"
       }
     ],
     "supported_macros": [
@@ -1875,11 +1893,12 @@
         "item_type": "individual",
         "asset_id": "impression_tracker",
         "required": false,
-        "asset_type": "url",
+        "asset_type": "pixel_tracker",
         "requirements": {
-          "url_type": "tracker_pixel",
           "description": "3rd party impression tracking pixel URL"
-        }
+        },
+        "event": "impression",
+        "method": "img"
       }
     ],
     "supported_macros": [
@@ -1976,11 +1995,12 @@
         "item_type": "individual",
         "asset_id": "impression_tracker",
         "required": false,
-        "asset_type": "url",
+        "asset_type": "pixel_tracker",
         "requirements": {
-          "url_type": "tracker_pixel",
           "description": "3rd party impression tracking pixel URL"
-        }
+        },
+        "event": "impression",
+        "method": "img"
       }
     ],
     "supported_macros": [
@@ -2080,11 +2100,12 @@
         "item_type": "individual",
         "asset_id": "impression_tracker",
         "required": false,
-        "asset_type": "url",
+        "asset_type": "pixel_tracker",
         "requirements": {
-          "url_type": "tracker_pixel",
           "description": "3rd party impression tracking pixel URL"
-        }
+        },
+        "event": "impression",
+        "method": "img"
       }
     ],
     "supported_macros": [
@@ -2184,11 +2205,12 @@
         "item_type": "individual",
         "asset_id": "impression_tracker",
         "required": false,
-        "asset_type": "url",
+        "asset_type": "pixel_tracker",
         "requirements": {
-          "url_type": "tracker_pixel",
           "description": "3rd party impression tracking pixel URL"
-        }
+        },
+        "event": "impression",
+        "method": "img"
       }
     ],
     "supported_macros": [
@@ -2288,11 +2310,12 @@
         "item_type": "individual",
         "asset_id": "impression_tracker",
         "required": false,
-        "asset_type": "url",
+        "asset_type": "pixel_tracker",
         "requirements": {
-          "url_type": "tracker_pixel",
           "description": "3rd party impression tracking pixel URL"
-        }
+        },
+        "event": "impression",
+        "method": "img"
       }
     ],
     "supported_macros": [
@@ -2392,11 +2415,12 @@
         "item_type": "individual",
         "asset_id": "impression_tracker",
         "required": false,
-        "asset_type": "url",
+        "asset_type": "pixel_tracker",
         "requirements": {
-          "url_type": "tracker_pixel",
           "description": "3rd party impression tracking pixel URL"
-        }
+        },
+        "event": "impression",
+        "method": "img"
       }
     ],
     "supported_macros": [
@@ -2496,11 +2520,12 @@
         "item_type": "individual",
         "asset_id": "impression_tracker",
         "required": false,
-        "asset_type": "url",
+        "asset_type": "pixel_tracker",
         "requirements": {
-          "url_type": "tracker_pixel",
           "description": "3rd party impression tracking pixel URL"
-        }
+        },
+        "event": "impression",
+        "method": "img"
       }
     ],
     "supported_macros": [
@@ -2600,11 +2625,12 @@
         "item_type": "individual",
         "asset_id": "impression_tracker",
         "required": false,
-        "asset_type": "url",
+        "asset_type": "pixel_tracker",
         "requirements": {
-          "url_type": "tracker_pixel",
           "description": "3rd party impression tracking pixel URL"
-        }
+        },
+        "event": "impression",
+        "method": "img"
       }
     ],
     "supported_macros": [
@@ -2677,11 +2703,12 @@
         "item_type": "individual",
         "asset_id": "impression_tracker",
         "required": false,
-        "asset_type": "url",
+        "asset_type": "pixel_tracker",
         "requirements": {
-          "url_type": "tracker_pixel",
           "description": "3rd party impression tracking pixel URL"
-        }
+        },
+        "event": "impression",
+        "method": "img"
       }
     ],
     "supported_macros": [
@@ -2750,11 +2777,12 @@
         "item_type": "individual",
         "asset_id": "impression_tracker",
         "required": false,
-        "asset_type": "url",
+        "asset_type": "pixel_tracker",
         "requirements": {
-          "url_type": "tracker_pixel",
           "description": "3rd party impression tracking pixel URL"
-        }
+        },
+        "event": "impression",
+        "method": "img"
       }
     ],
     "supported_macros": [
@@ -2825,11 +2853,12 @@
         "item_type": "individual",
         "asset_id": "impression_tracker",
         "required": false,
-        "asset_type": "url",
+        "asset_type": "pixel_tracker",
         "requirements": {
-          "url_type": "tracker_pixel",
           "description": "3rd party impression tracking pixel URL"
-        }
+        },
+        "event": "impression",
+        "method": "img"
       }
     ],
     "supported_macros": [
@@ -2899,11 +2928,12 @@
         "item_type": "individual",
         "asset_id": "impression_tracker",
         "required": false,
-        "asset_type": "url",
+        "asset_type": "pixel_tracker",
         "requirements": {
-          "url_type": "tracker_pixel",
           "description": "3rd party impression tracking pixel URL"
-        }
+        },
+        "event": "impression",
+        "method": "img"
       }
     ],
     "supported_macros": [
@@ -2973,11 +3003,12 @@
         "item_type": "individual",
         "asset_id": "impression_tracker",
         "required": false,
-        "asset_type": "url",
+        "asset_type": "pixel_tracker",
         "requirements": {
-          "url_type": "tracker_pixel",
           "description": "3rd party impression tracking pixel URL"
-        }
+        },
+        "event": "impression",
+        "method": "img"
       }
     ],
     "supported_macros": [
@@ -3047,11 +3078,12 @@
         "item_type": "individual",
         "asset_id": "impression_tracker",
         "required": false,
-        "asset_type": "url",
+        "asset_type": "pixel_tracker",
         "requirements": {
-          "url_type": "tracker_pixel",
           "description": "3rd party impression tracking pixel URL"
-        }
+        },
+        "event": "impression",
+        "method": "img"
       }
     ],
     "supported_macros": [
@@ -3121,11 +3153,12 @@
         "item_type": "individual",
         "asset_id": "impression_tracker",
         "required": false,
-        "asset_type": "url",
+        "asset_type": "pixel_tracker",
         "requirements": {
-          "url_type": "tracker_pixel",
           "description": "3rd party impression tracking pixel URL"
-        }
+        },
+        "event": "impression",
+        "method": "img"
       }
     ],
     "supported_macros": [
@@ -3179,11 +3212,12 @@
         "item_type": "individual",
         "asset_id": "impression_tracker",
         "required": false,
-        "asset_type": "url",
+        "asset_type": "pixel_tracker",
         "requirements": {
-          "url_type": "tracker_pixel",
           "description": "3rd party impression tracking pixel URL"
-        }
+        },
+        "event": "impression",
+        "method": "img"
       }
     ],
     "supported_macros": [
@@ -3276,11 +3310,12 @@
         "item_type": "individual",
         "asset_id": "impression_tracker",
         "required": false,
-        "asset_type": "url",
+        "asset_type": "pixel_tracker",
         "requirements": {
-          "url_type": "tracker_pixel",
           "description": "3rd party impression tracking pixel URL"
-        }
+        },
+        "event": "impression",
+        "method": "img"
       }
     ],
     "supported_macros": [
@@ -3371,12 +3406,12 @@
         },
         {
           "asset_group_id": "impression_tracker",
-          "asset_type": "native_tracker",
+          "asset_type": "pixel_tracker",
           "required": false
         },
         {
           "asset_group_id": "click_tracker",
-          "asset_type": "native_tracker",
+          "asset_type": "pixel_tracker",
           "required": false
         }
       ],
@@ -3451,11 +3486,12 @@
         "item_type": "individual",
         "asset_id": "impression_tracker",
         "required": false,
-        "asset_type": "url",
+        "asset_type": "pixel_tracker",
         "requirements": {
-          "url_type": "tracker_pixel",
           "description": "3rd party impression tracking pixel URL"
-        }
+        },
+        "event": "impression",
+        "method": "img"
       }
     ],
     "supported_macros": [
@@ -3547,12 +3583,12 @@
         },
         {
           "asset_group_id": "impression_tracker",
-          "asset_type": "native_tracker",
+          "asset_type": "pixel_tracker",
           "required": false
         },
         {
           "asset_group_id": "click_tracker",
-          "asset_type": "native_tracker",
+          "asset_type": "pixel_tracker",
           "required": false
         }
       ],
@@ -3587,11 +3623,12 @@
         "item_type": "individual",
         "asset_id": "impression_tracker",
         "required": false,
-        "asset_type": "url",
+        "asset_type": "pixel_tracker",
         "requirements": {
-          "url_type": "tracker_pixel",
           "description": "3rd party impression tracking pixel URL"
-        }
+        },
+        "event": "impression",
+        "method": "img"
       }
     ],
     "supported_macros": [
@@ -3655,11 +3692,12 @@
         "item_type": "individual",
         "asset_id": "impression_tracker",
         "required": false,
-        "asset_type": "url",
+        "asset_type": "pixel_tracker",
         "requirements": {
-          "url_type": "tracker_pixel",
           "description": "3rd party impression tracking pixel URL"
-        }
+        },
+        "event": "impression",
+        "method": "img"
       }
     ],
     "supported_macros": [
@@ -3723,11 +3761,12 @@
         "item_type": "individual",
         "asset_id": "impression_tracker",
         "required": false,
-        "asset_type": "url",
+        "asset_type": "pixel_tracker",
         "requirements": {
-          "url_type": "tracker_pixel",
           "description": "3rd party impression tracking pixel URL"
-        }
+        },
+        "event": "impression",
+        "method": "img"
       }
     ],
     "supported_macros": [
@@ -3803,11 +3842,12 @@
         "item_type": "individual",
         "asset_id": "impression_tracker",
         "required": false,
-        "asset_type": "url",
+        "asset_type": "pixel_tracker",
         "requirements": {
-          "url_type": "tracker_pixel",
           "description": "3rd party impression tracking pixel URL"
-        }
+        },
+        "event": "impression",
+        "method": "img"
       }
     ],
     "supported_macros": [
@@ -3871,11 +3911,12 @@
         "item_type": "individual",
         "asset_id": "impression_tracker",
         "required": false,
-        "asset_type": "url",
+        "asset_type": "pixel_tracker",
         "requirements": {
-          "url_type": "tracker_pixel",
           "description": "3rd party impression tracking pixel URL"
-        }
+        },
+        "event": "impression",
+        "method": "img"
       }
     ],
     "supported_macros": [
@@ -3938,11 +3979,12 @@
         "item_type": "individual",
         "asset_id": "impression_tracker",
         "required": false,
-        "asset_type": "url",
+        "asset_type": "pixel_tracker",
         "requirements": {
-          "url_type": "tracker_pixel",
           "description": "3rd party impression tracking pixel URL"
-        }
+        },
+        "event": "impression",
+        "method": "img"
       }
     ],
     "supported_macros": [
@@ -4020,11 +4062,12 @@
         "item_type": "individual",
         "asset_id": "impression_tracker",
         "required": false,
-        "asset_type": "url",
+        "asset_type": "pixel_tracker",
         "requirements": {
-          "url_type": "tracker_pixel",
           "description": "3rd party impression tracking pixel URL"
-        }
+        },
+        "event": "impression",
+        "method": "img"
       }
     ],
     "supported_macros": [
@@ -4132,11 +4175,12 @@
         "item_type": "individual",
         "asset_id": "impression_tracker",
         "required": false,
-        "asset_type": "url",
+        "asset_type": "pixel_tracker",
         "requirements": {
-          "url_type": "tracker_pixel",
           "description": "Impression tracking pixel URL"
-        }
+        },
+        "event": "impression",
+        "method": "img"
       }
     ],
     "supported_macros": [
@@ -4190,11 +4234,12 @@
         "item_type": "individual",
         "asset_id": "impression_tracker",
         "required": false,
-        "asset_type": "url",
+        "asset_type": "pixel_tracker",
         "requirements": {
-          "url_type": "tracker_pixel",
           "description": "Impression tracking pixel URL"
-        }
+        },
+        "event": "impression",
+        "method": "img"
       }
     ],
     "supported_macros": [
