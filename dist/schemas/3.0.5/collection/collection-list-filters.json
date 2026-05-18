@@ -1,0 +1,82 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.5/collection/collection-list-filters.json",
+  "title": "Collection List Filters",
+  "description": "Filters that dynamically modify a collection list when resolved. Include filters are allowlists (only matching collections pass). Exclude filters are blocklists (matching collections are removed). When both are present for the same dimension, include is applied first, then exclude narrows further.",
+  "type": "object",
+  "properties": {
+    "content_ratings_exclude": {
+      "type": "array",
+      "description": "Exclude collections with any of these content ratings (OR logic). This is a metadata filter on the collection's declared content_rating field — it does not evaluate episode content.",
+      "items": {
+        "$ref": "/schemas/3.0.5/core/content-rating.json"
+      },
+      "minItems": 1
+    },
+    "content_ratings_include": {
+      "type": "array",
+      "description": "Include only collections with any of these content ratings (OR logic). Collections without a declared content_rating are excluded.",
+      "items": {
+        "$ref": "/schemas/3.0.5/core/content-rating.json"
+      },
+      "minItems": 1
+    },
+    "genres_exclude": {
+      "type": "array",
+      "description": "Exclude collections tagged with any of these genres (OR logic). Values are interpreted against genre_taxonomy when present.",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "genres_include": {
+      "type": "array",
+      "description": "Include only collections with any of these genres (OR logic). Collections without genre metadata are excluded. Values are interpreted against genre_taxonomy when present.",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "genre_taxonomy": {
+      "$ref": "/schemas/3.0.5/enums/genre-taxonomy.json",
+      "description": "Taxonomy for genre filter values. When present, genres_include and genres_exclude values are interpreted as taxonomy IDs."
+    },
+    "kinds": {
+      "type": "array",
+      "description": "Filter to these collection kinds",
+      "items": {
+        "$ref": "/schemas/3.0.5/enums/collection-kind.json"
+      },
+      "minItems": 1
+    },
+    "exclude_distribution_ids": {
+      "type": "array",
+      "description": "Always exclude collections with these distribution identifiers",
+      "items": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "$ref": "/schemas/3.0.5/enums/distribution-identifier-type.json",
+            "description": "Type of distribution identifier"
+          },
+          "value": {
+            "type": "string",
+            "description": "The identifier value"
+          }
+        },
+        "required": ["type", "value"],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
+    "production_quality": {
+      "type": "array",
+      "description": "Filter by production quality tier",
+      "items": {
+        "$ref": "/schemas/3.0.5/enums/production-quality.json"
+      },
+      "minItems": 1
+    }
+  },
+  "additionalProperties": false
+}

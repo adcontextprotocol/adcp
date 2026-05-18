@@ -1,0 +1,66 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.4/media-buy/get-media-buys-request.json",
+  "title": "Get Media Buys Request",
+  "description": "Request parameters for retrieving media buy status, creative approval state, and optional delivery snapshots",
+  "type": "object",
+  "properties": {
+    "adcp_major_version": {
+      "type": "integer",
+      "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
+      "minimum": 1,
+      "maximum": 99
+    },
+    "account": {
+      "$ref": "/schemas/3.0.4/core/account-ref.json",
+      "description": "Account to retrieve media buys for. When omitted, returns data across all accessible accounts."
+    },
+    "media_buy_ids": {
+      "type": "array",
+      "description": "Array of media buy IDs to retrieve. When omitted, returns a paginated set of accessible media buys matching status_filter.",
+      "items": {
+        "type": "string",
+        "x-entity": "media_buy"
+      },
+      "minItems": 1
+    },
+    "status_filter": {
+      "oneOf": [
+        {
+          "$ref": "/schemas/3.0.4/enums/media-buy-status.json"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "/schemas/3.0.4/enums/media-buy-status.json"
+          },
+          "minItems": 1
+        }
+      ],
+      "description": "Filter by status. Can be a single status or array of statuses. Defaults to [\"active\"] when media_buy_ids is omitted. When media_buy_ids is provided, no implicit status filter is applied."
+    },
+    "include_snapshot": {
+      "type": "boolean",
+      "description": "When true, include a near-real-time delivery snapshot for each package. Snapshots reflect the latest available entity-level stats from the platform (e.g., updated every ~15 minutes on GAM, ~1 hour on batch-only platforms). The staleness_seconds field on each snapshot indicates data freshness. If a snapshot cannot be returned, package.snapshot_unavailable_reason explains why. Defaults to false.",
+      "default": false
+    },
+    "include_history": {
+      "type": "integer",
+      "description": "When present, include the last N revision history entries for each media buy (returns min(N, available entries)). Each entry contains revision number, timestamp, actor, and a summary of what changed. Omit or set to 0 to exclude history (default). Recommended: 5-10 for monitoring, 50+ for audit.",
+      "minimum": 0,
+      "maximum": 1000,
+      "default": 0
+    },
+    "pagination": {
+      "$ref": "/schemas/3.0.4/core/pagination-request.json",
+      "description": "Cursor-based pagination controls. Strongly recommended when querying broad scopes (for example, all active media buys in an account)."
+    },
+    "context": {
+      "$ref": "/schemas/3.0.4/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.4/core/ext.json"
+    }
+  },
+  "additionalProperties": true
+}

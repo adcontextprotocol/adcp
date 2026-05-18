@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.2/enums/purchase-type.json",
+  "title": "Purchase Type",
+  "description": "The type of financial commitment being governed.",
+  "type": "string",
+  "enum": ["media_buy", "rights_license", "signal_activation", "creative_services"]
+}

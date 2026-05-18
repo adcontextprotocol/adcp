@@ -1,0 +1,162 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.5/manifest.schema.json",
+  "title": "AdCP Manifest",
+  "description": "Machine-readable registry of every AdCP tool, error code, and specialism for a given AdCP version. SDKs consume this artifact at codegen time to derive their tool/error tables instead of hand-transcribing the spec. Replaces three categories of drift documented in adcp#3725: hand-rolled tool-by-protocol arrays, hand-classified error recovery, and hand-listed specialism→tool mappings.",
+  "type": "object",
+  "required": ["adcp_version", "generated_at", "tools", "error_codes", "error_code_policy", "specialisms"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Reference to this manifest meta-schema."
+    },
+    "adcp_version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+(-[A-Za-z0-9.-]+)?$",
+      "description": "Full semver of the AdCP release this manifest describes."
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 timestamp the manifest was generated. SDKs MAY use this for cache invalidation."
+    },
+    "tools": {
+      "type": "object",
+      "description": "Every tool the AdCP spec defines, keyed by tool name (the snake_case name used in MCP/A2A invocations).",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "required": ["protocol", "mutating", "request_schema", "response_schema", "async_response_schemas"],
+        "additionalProperties": false,
+        "properties": {
+          "protocol": {
+            "type": "string",
+            "description": "The protocol surface this tool belongs to. Derived from the source directory: media-buy, signals, governance, account, creative, brand, content-standards, property, collection, sponsored-intelligence, protocol, compliance, tmp.",
+            "enum": [
+              "media-buy",
+              "signals",
+              "governance",
+              "account",
+              "creative",
+              "brand",
+              "content-standards",
+              "property",
+              "collection",
+              "sponsored-intelligence",
+              "protocol",
+              "compliance",
+              "tmp",
+              "a2ui"
+            ]
+          },
+          "mutating": {
+            "type": "boolean",
+            "description": "True if invoking this tool with identical inputs more than once is unsafe — i.e., the tool changes server-side state. Mutating tools MUST declare an idempotency_key on the request schema (or carry an explicit `naturally idempotent` exemption marker in the schema's description). Read-only tools (verbs `get-`, `list-`, `check-`, `validate-`, `preview-`, `search-`) are safe to retry without an idempotency key."
+          },
+          "request_schema": {
+            "type": "string",
+            "description": "Path to the request schema, relative to the manifest's directory (e.g., 'media-buy/create-media-buy-request.json')."
+          },
+          "response_schema": {
+            "type": "string",
+            "description": "Path to the synchronous response schema, relative to the manifest's directory."
+          },
+          "async_response_schemas": {
+            "type": "array",
+            "description": "Paths to the tool's async response variants (typically -submitted, -working, -input-required). Empty array if the tool has no async surface. Buyer agents MUST handle every entry — a tool with async_response_schemas non-empty can return any of these from a non-final task state.",
+            "items": { "type": "string" }
+          },
+          "specialisms": {
+            "type": "array",
+            "description": "Specialism IDs that include this tool in their required_tools (or via inherited scenarios). Lets SDKs answer \"if I claim specialism X, which tools must I implement?\" without re-deriving from the compliance cache.",
+            "items": { "type": "string" }
+          },
+          "added_in": {
+            "type": "string",
+            "description": "Semver of the AdCP release that introduced this tool. Optional; absent means \"present since 1.0\"."
+          },
+          "deprecated_in": {
+            "type": "string",
+            "description": "Semver of the AdCP release that deprecated this tool. Absent means active."
+          }
+        }
+      }
+    },
+    "error_code_policy": {
+      "type": "object",
+      "description": "How SDKs should handle codes outside the standard set. The error vocabulary is open: sellers MAY return platform-specific codes that aren't in `error_codes`. Agents MUST fall back to `default_unknown_recovery` for unknown codes — they SHOULD NOT throw or treat unknown codes as malformed responses.",
+      "required": ["default_unknown_recovery", "note"],
+      "additionalProperties": false,
+      "properties": {
+        "default_unknown_recovery": {
+          "type": "string",
+          "enum": ["correctable", "transient", "terminal"],
+          "description": "The recovery classification an agent MUST apply to a code that is not present in this manifest's `error_codes` block. `transient` is the safe default — unknown codes from a non-conforming seller should be retried with backoff, not classified as fatal."
+        },
+        "note": {
+          "type": "string",
+          "description": "Human-readable summary of the open-set policy."
+        }
+      }
+    },
+    "error_codes": {
+      "type": "object",
+      "description": "Every standard error code in the AdCP error vocabulary, keyed by the SCREAMING_SNAKE code. Mirrors enums/error-code.json's enum + enumMetadata + enumDescriptions. Open-set: see error_code_policy for unknown-code handling.",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "required": ["recovery", "description", "suggestion"],
+        "additionalProperties": false,
+        "properties": {
+          "recovery": {
+            "type": "string",
+            "enum": ["correctable", "transient", "terminal"],
+            "description": "How the caller should respond. correctable: fix the request and retry. transient: retry with backoff. terminal: no autonomous recovery — operator intervention required."
+          },
+          "description": {
+            "type": "string",
+            "description": "Human-readable description of the error. Sourced from enumDescriptions in enums/error-code.json."
+          },
+          "suggestion": {
+            "type": "string",
+            "description": "Short remediation hint a buyer agent can act on. Sourced from enumMetadata in enums/error-code.json."
+          },
+          "added_in": {
+            "type": "string",
+            "description": "Semver of the AdCP release that introduced this code. Optional."
+          }
+        }
+      }
+    },
+    "specialisms": {
+      "type": "object",
+      "description": "Every storyboard specialism declared in static/compliance/source/specialisms/, keyed by specialism ID. Lets SDKs declare which specialisms they implement and verify their tool surface covers the required tools.",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["protocol", "entry_point_tools", "exercised_tools"],
+        "additionalProperties": false,
+        "properties": {
+          "protocol": {
+            "type": "string",
+            "description": "The protocol surface this specialism belongs to. Sourced from index.yaml's `protocol` field. Note: this is the specialism's home protocol; individual `exercised_tools` may belong to other protocols (e.g., a sales-track specialism may exercise an account-protocol tool like sync_accounts)."
+          },
+          "title": {
+            "type": "string",
+            "description": "Human-readable title. Sourced from index.yaml's `title` field."
+          },
+          "entry_point_tools": {
+            "type": "array",
+            "description": "The minimal contract: tools the spec asserts an implementer MUST ship to claim this specialism. Sourced from index.yaml's `required_tools` field. An agent declaring this specialism in its capabilities MUST respond to every tool listed here.",
+            "items": { "type": "string" }
+          },
+          "exercised_tools": {
+            "type": "array",
+            "description": "The full surface the conformance kit will call: union of entry_point_tools, the specialism's own phases[].steps[].task, and every linked scenario's tasks. An agent declaring this specialism MUST be prepared to handle every call here, even though some are inherited via storyboard scenarios rather than declared in `required_tools`. Use this set to size your tool registration, not entry_point_tools.",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.6/enums/brand-agent-type.json",
+  "title": "Brand Agent Type",
+  "description": "Functional roles for agents declared in brand.json. Each type represents a distinct capability that a brand or house can expose via an agent endpoint.",
+  "type": "string",
+  "enum": [
+    "brand",
+    "rights",
+    "measurement",
+    "governance",
+    "creative",
+    "sales",
+    "buying",
+    "signals"
+  ],
+  "enumDescriptions": {
+    "brand": "Provides brand identity data (logos, colors, tone, guidelines) via MCP",
+    "rights": "Handles rights discovery, pricing, and acquisition for licensable assets",
+    "measurement": "Provides campaign measurement, attribution, and reporting services",
+    "governance": "Enforces brand safety, compliance, and policy rules",
+    "creative": "Manages creative asset generation, review, and approval",
+    "sales": "Sells inventory on behalf of publishers and media owners",
+    "buying": "Executes media buying on behalf of the brand",
+    "signals": "Provides audience signal discovery and activation"
+  }
+}

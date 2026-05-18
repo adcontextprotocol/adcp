@@ -1,0 +1,550 @@
+---
+title: Embedded human judgment
+sidebarTitle: Embedded human judgment
+"og:image": /images/concepts/three-party-governance.png
+description: "Embedded Human Judgment (EHJ) is a set of principles and an oversight framework for keeping humans accountable when AI agents allocate capital, shape information environments, and execute advertising decisions at scale."
+"og:title": "AdCP — Embedded human judgment"
+---
+
+*Principles for agentic advertising accountability — followed by the EHJ oversight framework.*
+
+## The five principles
+
+### 1. Humans remain the locus of judgment and accountability
+
+AI systems can analyze, predict, and execute. But responsibility cannot be delegated to software.
+
+Any system that allocates capital, shapes information environments, or affects public trust must retain human-owned judgment.
+
+Humans define intent, acceptable risk, and reasonable trade-offs — even when execution is automated. Accountability must remain legible at every stage of automation. Oversight must operate under uncertainty. Human judgment defines what is reasonable, not what is perfect.
+
+### 2. Automated decisioning without abdication
+
+As we embrace autonomous advertising agents, we need to scale execution without diluting accountability.
+
+Automation should:
+
+- Scale execution
+- Increase precision in allocation decisions
+- Navigate complex systems to identify optimal execution paths
+- Reduce manual operational friction
+
+But automation must not remove authorship and responsibility for value judgments. Humans remain accountable for decisions that define risk, intent, and societal impact. Advanced automation is acceptable only when accountability remains intact.
+
+### 3. Optimization is not intelligence
+
+Not all decisions can be reduced to metrics.
+
+Certain classes of decisions must remain human-owned by design because they involve:
+
+- Values
+- Strategy
+- Legitimacy
+- Trust
+
+These judgments exist precisely because optimization cannot resolve them. System design must recognize how and when a decision exceeds mere optimization and requires human judgment.
+
+### 4. Oversight must be architectural, not procedural
+
+Human oversight must be embedded in system design. This requires:
+
+- Explicit decision boundaries
+- Escalation triggers
+- Auditability
+- Explainability
+- Identifiable human owners
+
+Systems must be built so that control cannot silently migrate away from humans over time.
+
+### 5. Efficiency does not override legitimacy
+
+Speed, scale, and optimization cannot justify:
+
+- Loss of accountability
+- Erosion of judgment
+- Opaque decision chains
+
+The goal is to ensure they remain governable to avoid loss of legitimacy over time.
+
+---
+
+## Humans are the locus of judgment and accountability
+
+AI agents exist to support, inform, and execute decisions, but they do not replace human ownership where risk tolerance, intent, or values judgments are at stake.
+
+Embedded Human Judgment (EHJ) ensures that certain decisions remain human-owned by design, even as agents automate analysis, optimization, and execution at scale.
+
+This is not an after-the-fact review process. It is about structurally designing accountability into the system.
+
+### EHJ in the AdCP architecture
+
+EHJ operates at the protocol layer, not inside any individual agent and not at the execution layer.
+
+The protocol defines decision boundaries: which decisions require human judgment, when escalation is triggered, and what must be logged and explainable. Agents implement their own internal logic and operate autonomously within those boundaries.
+
+Execution happens continuously and at speed within the structure the protocol defines.
+
+### What EHJ is not
+
+EHJ is not:
+
+- A temporary safety phase while AI "matures"
+- A UI approval system bolted on afterward
+- A mandate for humans to control execution
+- An attempt to eliminate agent autonomy
+
+EHJ is a permanent design constraint for accountable systems.
+
+## Why embedded human judgment matters
+
+Agentic systems will make mistakes. The question is not *if*, but *when* — and how costly.
+
+Key assumptions:
+
+- Agents can be technically correct but strategically wrong
+- Training data never covers all edge cases
+- Novel situations require judgment, not optimization
+- A single bad decision can outweigh years of efficiency gains
+
+EHJ exists to ensure that accountability attaches to intent and risk tolerance, not to the illusion of perfect outcomes.
+
+## Foundational principles
+
+### Human judgment without human bottlenecks
+
+The goal is not maximum human involvement, but human ownership where it structurally matters.
+
+| Dimension | How EHJ handles it |
+|---|---|
+| **Autonomy** | Agents handle the majority of routine decisions |
+| **Accountability** | Humans retain authority over brand, budget, legality, and ethics |
+| **Efficiency** | Oversight does not recreate approval hell |
+| **Transparency** | Every decision is auditable and explainable |
+
+### Human roles in the system
+
+"Human" refers to accountable roles, not individuals:
+
+- **Advertiser and publisher decision owners** — brand, budget, ethics. "Brand" refers to both buyers and sellers of media.
+- **Agency decision owners** — strategy, planning, execution
+- **Platform owners** — compliance, infrastructure
+- **Legal and regulatory authorities**
+
+Some decisions are human-owned permanently, by definition — not because AI is weak, but because accountability must remain human.
+
+## Domains of human-owned judgment
+
+EHJ defines decision domains where human ownership is required, even if agents provide analysis and recommendations:
+
+- Budget and capital allocation
+- Distribution and monetization partners
+- Brand suitability and context
+- Creative and messaging
+- Targeting and audience strategy
+- Pacing and performance monitoring
+
+### Budget and capital allocation
+
+**Principle.** Budget deployment beyond defined bounds is a human decision.
+
+Agents may:
+
+- Forecast outcomes
+- Optimize pacing
+- Propose reallocations
+
+Humans must decide when:
+
+- Spend exceeds absolute or relative thresholds
+- Cumulative spend accelerates unexpectedly
+- Pacing materially diverges from intent
+
+Accountability attaches to risk tolerance and intent, not perfect pacing.
+
+### Distribution and monetization partners
+
+**Principle.** New relationships imply new risk. Trusted execution with streamlined oversight is allowed for established, vetted partners.
+
+Human approval is required for:
+
+- First-time publishers or platforms
+- New contracts or personal data-sharing agreements
+- Quality or fraud concerns
+- Cross-border activations of personal data
+
+### Brand suitability and context
+
+**Principle.** Acceptable context and risk tolerance are human-defined.
+
+Humans define:
+
+- What is unacceptable
+- What requires review
+- What level of uncertainty is tolerable
+
+Agents classify and score risk probabilistically based on human-defined judgments. Decisions are tiered:
+
+- **Hard blocks** — always rejected
+- **Probabilistic review** — mandatory human decision
+- **Pre-campaign and post-placement audit** — logged and reviewable
+
+Escalation occurs whenever a reasonable human would want to decide.
+
+### Creative and messaging
+
+**Principle.** Messaging intent and claims remain human-owned.
+
+Trusted execution with streamlined oversight is allowed for:
+
+- Variations within approved templates
+- Localization using approved guidelines
+- DCO within guardrails
+
+Human validation is required for:
+
+- New core messaging
+- Claims with legal or reputational risk
+- Creative tied to current events
+- Assets that feel "technically on-brand but wrong"
+
+EHJ acknowledges that creative outcomes are probabilistic and context-dependent.
+
+### Targeting and audience strategy
+
+**Principle.** Targeting intent and acceptable risk are human-defined.
+
+Agents may optimize within approved strategies. Human review is required for:
+
+- New data sources
+- Sensitive or regulated attributes
+- Material shifts in targeting intent
+- Potentially discriminatory strategies
+
+In these cases, compliance, ethics, and jurisdictional risk override pure performance optimization.
+
+### Pacing and performance monitoring
+
+**Principle.** Significant deviations from expectations require explicit judgment.
+
+Agents must alert, escalate, and proportionally throttle activities when:
+
+- Performance collapses beyond thresholds
+- Fraud signals (IVT, click-fraud, publisher fraud) exceed tolerance
+- Budget exhaustion is imminent
+- Cross-platform metric discrepancies surpass thresholds
+
+Humans decide whether to continue, modify, or terminate. For termination, it would be advisable to include a description as to why.
+
+Not every anomaly is failure — but major deviations from intent must remain human-governed.
+
+## Governance architecture
+
+EHJ operates through a layered governance model that allows policy composition across organizations, brand portfolios, and campaigns.
+
+### Governance layers
+
+**Protocol layer.** Defines universal standards applied across the ecosystem: escalation requirements, confidence scoring rules, regulatory policy registry, minimum audit and logging standards. These rules apply to all participating agents. The registry is maintained as a shared ecosystem resource — organizations reference standardized policies by ID rather than maintaining independent compliance definitions.
+
+**Corporate governance layer.** Large organizations may define corporate-level policies that apply across a brand portfolio: regulatory compliance requirements, global brand safety standards, prohibited targeting categories, data protection policies. Corporate policies act as baseline constraints for all brands within the organization.
+
+**Brand governance layer.** Individual brands may define additional policies reflecting brand identity, positioning, and risk tolerance. A luxury brand may impose stricter placement rules; a mass-market brand may allow broader contextual environments; product categories may impose additional compliance constraints. Brand policies inherit corporate standards but may introduce stricter constraints or specialized rules.
+
+**Campaign governance layer.** Campaign-level configuration provides temporary execution parameters: budget thresholds, pacing constraints, creative eligibility rules, audience definitions. Campaign rules operate within the boundaries established by corporate and brand governance. Execution may be delegated to authorized agents operating within these constraints.
+
+### Policy composition
+
+Governance rules are applied hierarchically:
+
+```
+Corporate Governance
+      ↓
+Brand Governance
+      ↓
+Campaign Configuration
+```
+
+Each layer may add restrictions but cannot override higher-level governance constraints. If a lower governance layer attempts to relax or override a constraint defined by a higher layer, the governance agent treats the higher-level constraint as authoritative, rejects the conflicting rule, and records the conflict in the audit log.
+
+This structure allows organizations with large brand portfolios to operate multiple governance profiles simultaneously while maintaining consistent regulatory and ethical standards.
+
+### Accountability across layers
+
+Accountability remains explicit at each layer:
+
+- Protocol designers define system safeguards
+- Corporate owners define enterprise risk tolerance
+- Brand teams define positioning constraints
+- Campaign operators manage execution
+
+All decisions remain traceable through the audit framework.
+
+### Delegated execution and authorized operators
+
+Brands may delegate campaign execution authority to external agencies or authorized agent operators. Delegation does not transfer governance authority. Delegated and authorized operators may rely on stricter policies than what brands have delegated.
+
+Authorized agents operate within the governance constraints defined by the corporate and brand policy layers. The brand remains the accountable entity for campaign intent and policy configuration, while the delegated operator executes decisions within those defined boundaries.
+
+## Data protection and regulatory compliance
+
+Data protection and regulatory compliance are treated as governance constraints within the protocol, not as external policy considerations. Agents must validate decisions against the policy registry during governance evaluation before execution occurs.
+
+### Regulatory policy registry
+
+The protocol maintains a policy registry containing machine-readable references to regulatory frameworks and jurisdiction-specific rules, including but not limited to:
+
+- GDPR
+- COPPA
+- CCPA / CPRA
+- LGPD
+- APAC jurisdictional frameworks
+
+Each policy entry specifies:
+
+- Applicable jurisdiction
+- Relevant data classifications
+- Sensitive data definitions
+- Enforcement requirements
+
+The policy registry may also list contracts created by trade bodies or collective-bargaining groups to communicate among participants. Agents and platforms must reference the policy registry during decision validation.
+
+### Personal and non-personal data
+
+Data protection regulations apply when personal data is processed. In the EEA, the ePrivacy Directive applies to device access and storage, but the AdCP protocol is communication between software systems — whether agent-to-agent (via A2A) or client-to-server tool calls (via MCP) — not consumer devices.
+
+Within AdCP workflows:
+
+- Planning and negotiation layers typically exchange non-personal contextual information and campaign parameters.
+- Real-time execution layers may involve device-level signals that can qualify as personal data depending on jurisdiction and recipient capability.
+
+The protocol must specify whether a recipient agent is reasonably capable of re-identifying an individual or household using the exchanged data. If re-identification is reasonably possible, the data must be treated as personal data and processed according to the applicable regulatory framework.
+
+### Sensitive data classification
+
+Sensitive information refers to categories of data that may expose individuals to discrimination or material harm. Because definitions vary by jurisdiction, the protocol must reference jurisdiction-specific definitions from the policy registry.
+
+Agents must classify whether a decision involves sensitive information based on:
+
+- The data attributes used
+- The intended delivery geography
+- The applicable regulatory framework
+
+If sensitive data is involved, stricter governance rules apply.
+
+Consumer protection laws apply when sensitive information is being handled. Different jurisdictions define specific categories of sensitive information differently, but one commonality is when the information has historically been used to illegally discriminate or cause material harm to individuals.
+
+Most online advertising does not involve sensitive information, but it is important for actors to classify when data exchanged does qualify as sensitive. The protocol must specify whether the information used by a recipient agent will or will not involve sensitive information. The geography associated with the intended content delivery should govern which region-specific definition of sensitive information applies. For example, if the intended delivery is within the European Economic Area, GDPR's definition should apply.
+
+### Jurisdictional compliance validation
+
+Before execution, agents must validate decisions using the protocol's governance validation process (for example, [`check_governance`](/dist/docs/3.0.2/governance/campaign/tasks/check_governance)).
+
+Validation includes:
+
+- Applicable jurisdiction based on delivery geography
+- Applicable regulatory policies from the policy registry
+- Classification of the data used in the decision
+- Determination of whether sensitive data rules apply
+
+If a decision violates applicable regulatory policies, the system must:
+
+- Escalate for human review
+- Restrict execution
+- Or block the decision entirely, depending on risk tier
+
+### Intent and exposure
+
+AdCP records the intent of decision-makers as part of the protocol. This allows systems to distinguish between:
+
+- **Intentional targeting**
+- **Incidental exposure**
+
+For example, a campaign intended for adults may still appear in environments accessible to minors. Because the targeting intent is recorded, compliance evaluation can distinguish between intentional violations and unintended exposure. This design aligns accountability with reasonable intent rather than perfect outcomes.
+
+## Governance and decision framework
+
+### Decision types
+
+All agent decisions must be classifiable:
+
+| Type | Description |
+|---|---|
+| **AI-owned, deterministic** | Rule-based, predictable outcomes |
+| **AI-led, human-bounded** | Probabilistic optimization with thresholds |
+| **Human-owned, strategic** | Trade-offs, intent, ethics, and values |
+| **Human-owned by necessity (novel)** | Unknown situations agents cannot confidently resolve |
+
+The decision type determines whether and how escalation occurs.
+
+### Confidence and escalation
+
+Every agent recommendation must include:
+
+- A confidence score
+- An explanation of uncertainty
+- A defined escalation rule
+
+Confidence scores must reflect the agent's assessment of how reliably the recommendation aligns with the defined campaign intent and expected outcomes. This assessment should consider factors such as data completeness, model certainty, similarity to historical decisions, and variance in predicted outcomes.
+
+Confidence scores should be accompanied by a brief explanation of uncertainty, including factors such as:
+
+- Limited or incomplete data
+- Conflicting signals
+- Novel or out-of-distribution scenarios
+- Unusually high variance in predicted results
+
+Escalation decisions should follow a risk-aware framework. Agents must evaluate recommendations based on both:
+
+- **Decision confidence** — how certain the agent is
+- **Decision risk** — the potential impact if the decision is incorrect
+
+Risk may include financial exposure, brand safety implications, regulatory sensitivity, scale of audience reach, or deviation from defined campaign intent.
+
+Human decision owners define acceptable risk levels and associated confidence thresholds. When confidence is insufficient for the level of risk involved, agents must escalate to human oversight rather than execute autonomously.
+
+Escalation triggers may include:
+
+- Confidence below defined thresholds for the risk level
+- Material deviation from defined campaign intent
+- Changes in data quality or signal reliability
+- Inability to provide a clear explanation of the recommendation
+
+Thresholds may be based on:
+
+- Metric-driven limits (for example, financial spend or exposure)
+- Execution deviation from intent (for example, geographic targeting or audience constraints)
+
+When escalation occurs, the agent must present:
+
+- The recommended action
+- The confidence score
+- The explanation of uncertainty
+- The specific rule that triggered escalation
+
+This ensures that human oversight focuses on decisions where uncertainty or potential impact exceeds predefined governance boundaries, rather than routine execution.
+
+### Escalation mechanics
+
+EHJ defines how human judgment is invoked:
+
+| Mode | Behavior |
+|---|---|
+| **Synchronous** | Block until human decides |
+| **Asynchronous** | Proceed conservatively, allow override |
+| **Audit-only** | Act, log, review later |
+
+### Timeout and fallback handling
+
+Timeouts follow a risk-tiered approach:
+
+- **Low-risk decisions** — execution may proceed within predefined guardrails
+- **Medium-risk decisions** — agents apply conservative defaults or limited execution while notifying human owners
+- **High-risk decisions** — agents escalate for human review or temporarily restrict execution until guidance is received
+
+This approach ensures that operational continuity is maintained where risk is limited, while decisions with greater potential impact receive appropriate human oversight. In cases of uncertainty, systems prioritize governable outcomes over maximum speed, recognizing that occasional opportunity cost is an acceptable trade-off for maintaining accountability.
+
+## Protocol and runtime distinctions
+
+AdCP separates two operational layers: the **protocol layer**, where governance and decision constraints are defined, and the **runtime layer**, where real-time execution occurs.
+
+### Protocol layer
+
+The protocol layer defines the structure and governance of decision-making. It includes:
+
+- JSON schemas and task definitions
+- Governance rules and escalation policies
+- [`brand.json`](/dist/docs/3.0.2/brand-protocol/brand-json) and [`adagents.json`](/dist/docs/3.0.2/governance/property/adagents) declarations
+- Confidence scoring standards
+- Policy registry and regulatory constraints
+
+At this layer, planning and negotiation agents define campaign goals, constraints, and acceptable risk boundaries. These parameters are authored and maintained by human operators but exchanged between agents to establish a machine-readable contract.
+
+This layer determines what decisions are permitted and when human judgment must be invoked.
+
+### Runtime layer
+
+The runtime layer executes decisions in real time, including:
+
+- Bid evaluation
+- Creative rendering
+- Audience activation
+- Pacing and budget allocation
+
+Real-time agents operate within the boundaries defined by the protocol layer. Human operators define governance constraints in advance and intervene only through configured escalation checkpoints.
+
+In short:
+
+- The **protocol layer** governs the rules of decision-making.
+- The **runtime layer** executes those decisions at speed.
+
+## Audit, transparency, and learning
+
+Governable automation requires that all significant decisions remain observable, explainable, and reconstructable.
+
+### Audit trail
+
+Every high-impact decision must generate an auditable record including:
+
+- Decision inputs
+- Confidence score
+- Agent reasoning
+- Human interventions
+- Execution outcome
+
+Organizations retain their own logs to satisfy internal governance and regulatory compliance requirements.
+
+### Explainability
+
+Decisions must be explainable at multiple levels depending on the audience:
+
+| Audience | Detail level |
+|---|---|
+| **Approvers and oversight** | Summary level |
+| **System operators and campaign managers** | Operational level |
+| **Auditors and compliance reviewers** | Technical level |
+
+Decision intent is captured by design within the protocol for each message and targeting instruction.
+
+### Log attributes
+
+| Dimension | Attribute |
+|---|---|
+| **When** | Timestamp (millisecond precision) |
+| **Which** | Decision ID (unique, traceable across systems) |
+| **Who** | Agent ID (which agent made the decision); human ID (who reviewed, if applicable); advertiser responsible for the message; actor responsible for payment; actor owed payment for the decision; publisher responsible for delivery (for final steps in the supply chain) |
+| **What** | Input (full context), decision type and classification |
+| **How well** | Observed execution result |
+
+Consistent definitions of actors are described in the following protocols:
+
+- **Advertiser responsible for the message** — declared in [`brand.json`](/dist/docs/3.0.2/brand-protocol/brand-json), including the brand's `keller_type` (`master`, `sub_brand`, `endorsed`, or `independent`) and its `parent_brand` where applicable.
+- **Actor responsible for payment** — declared in [`brand.json`](/dist/docs/3.0.2/brand-protocol/brand-json) (the brand itself or its operator).
+- **Actor owed payment for the decision** — declared in [`adagents.json`](/dist/docs/3.0.2/governance/property/adagents), via `seller_id` and the authorized `property_id`(s).
+- **Publisher responsible for delivery** — the property associated with the final impression, identified by `property_id` in `adagents.json`.
+
+## How this maps to AdCP today
+
+The framework above is implementation-agnostic. For readers landing here to implement against AdCP, the principles currently surface through these protocol mechanisms:
+
+| Framework concept | AdCP mechanism |
+|---|---|
+| Humans define boundaries (budget, review) | [`sync_plans`](/dist/docs/3.0.2/governance/campaign/tasks/sync_plans) — `budget.reallocation_threshold`, `plan.human_review_required` |
+| Governance invocation on every spend-commit | [`check_governance`](/dist/docs/3.0.2/governance/campaign/tasks/check_governance) — called by orchestrator (intent check) and seller (execution check) |
+| Three-party separation of duties | [Safety model](/dist/docs/3.0.2/governance/campaign/safety-model) — orchestrator, governance agent, seller |
+| Escalation to human via async task | `check_governance` returns async, resolves `approved` or `denied` once the human acts |
+| Audit trail and explainability | [`get_plan_audit_logs`](/dist/docs/3.0.2/governance/campaign/tasks/get_plan_audit_logs) |
+| Regulatory policy registry | [Policy Registry](/dist/docs/3.0.2/governance/policy-registry) |
+
+## Policy Registry
+
+The [Policy Registry](/dist/docs/3.0.2/governance/policy-registry) is a community-maintained library of standardized, machine-readable advertising policies — regulations like COPPA, GDPR, and UK HFSS, as well as industry standards.
+
+It gives governance agents a shared vocabulary to reference by policy ID, rather than each agent defining the same rules independently. The registry page covers how policies are structured, the difference between hard regulations (must) and best-practice standards (should), how governance agents resolve and apply them at runtime, and how to contribute new policies.
+
+<CardGroup cols={2}>
+  <Card title="Governance overview" icon="shield-halved" href="/dist/docs/3.0.2/governance/overview">
+    See EHJ principles in action across a complete campaign scenario
+  </Card>
+  <Card title="Policy Registry" icon="book" href="/dist/docs/3.0.2/governance/policy-registry">
+    Shared library of machine-readable regulations and industry standards
+  </Card>
+</CardGroup>

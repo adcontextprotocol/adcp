@@ -1,0 +1,63 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.0.4/brand/creative-approval-request.json",
+  "title": "Creative Approval Request",
+  "description": "Payload submitted by the buyer to the approval_webhook URL from acquire_rights. Contains the creative for rights holder review before distribution.",
+  "x-mutates-state": true,
+  "type": "object",
+  "properties": {
+    "adcp_major_version": {
+      "type": "integer",
+      "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
+      "minimum": 1,
+      "maximum": 99
+    },
+    "rights_id": {
+      "type": "string",
+      "description": "Rights grant this creative was produced under",
+      "x-entity": "rights_grant"
+    },
+    "creative_id": {
+      "type": "string",
+      "description": "Buyer-assigned creative identifier. Equivalent to OpenRTB crid. Used to track approval status across resubmissions.",
+      "x-entity": "creative"
+    },
+    "creative_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "URL where the creative asset can be retrieved for review"
+    },
+    "creative_format": {
+      "$ref": "/schemas/3.0.4/core/format-id.json",
+      "description": "Format of the creative being submitted"
+    },
+    "description": {
+      "type": "string",
+      "description": "Description of the creative for reviewer context"
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Additional creative metadata (duration, dimensions, target audience, etc.)",
+      "additionalProperties": true
+    },
+    "idempotency_key": {
+      "type": "string",
+      "description": "Client-generated key for safe retries. Resubmitting with the same key returns the original response. MUST be unique per (seller, request) pair to prevent cross-seller correlation. Use a fresh UUID v4 for each request.",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
+    "context": {
+      "$ref": "/schemas/3.0.4/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.0.4/core/ext.json"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "rights_id",
+    "creative_url"
+  ],
+  "additionalProperties": true
+}

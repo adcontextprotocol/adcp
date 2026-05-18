@@ -1,0 +1,247 @@
+id: creative_sales_agent
+version: "1.0.0"
+title: "Sales agent with creative capabilities"
+category: creative_sales_agent
+summary: "Stateful sales agent that accepts pushed creative assets and renders them in its environment."
+track: creative
+required_tools:
+  - sync_creatives
+
+narrative: |
+  You run a publisher platform, retail media network, or other sell-side system that
+  accepts creative assets from buyers. The buyer pushes assets or catalog items to your
+  platform, and you render them in your environment.
+
+  Your agent is stateful: buyers push creatives to you via sync_creatives, and you
+  persist them for rendering. This is where catalogs get interesting — the buyer might
+  push product feeds (flights, hotels, retail products) that your platform renders as
+  native ads.
+
+  This storyboard walks through the push-and-preview flow from the buyer's perspective.
+
+agent:
+  interaction_model: stateful_push
+  capabilities:
+    - has_creative_library
+  examples:
+    - "Publisher platforms"
+    - "Retail media networks"
+    - "Native ad platforms"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The buyer has creative assets (images, catalog feeds, or ad tags) ready to push.
+    The test kit provides sample assets compatible with common publisher formats.
+  test_kit: "test-kits/acme-outdoor.yaml"
+
+phases:
+  - id: capability_discovery
+    title: "Capability discovery"
+    narrative: |
+      The buyer calls get_adcp_capabilities to confirm the agent supports creative operations before browsing or building creatives.
+
+    steps:
+      - id: get_capabilities
+        title: "Check agent capabilities"
+        narrative: |
+          Verify that the agent declares the expected protocol support before
+          proceeding with domain-specific operations.
+        task: get_adcp_capabilities
+        schema_ref: "protocol/get-adcp-capabilities-request.json"
+        response_schema_ref: "protocol/get-adcp-capabilities-response.json"
+        doc_ref: "/protocol/get_adcp_capabilities"
+        comply_scenario: capability_discovery
+        stateful: false
+        expected: |
+          Return capabilities declaring creative in supported_protocols, confirming the agent handles creative operations.
+        sample_request:
+          context:
+            correlation_id: "creative_sales_agent--get_capabilities"
+        validations:
+          - check: response_schema
+            description: "Response matches get-adcp-capabilities-response.json schema"
+          - check: field_present
+            path: "supported_protocols"
+            description: "Agent declares supported protocols"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "creative_sales_agent--get_capabilities"
+            description: "Context correlation_id returned unchanged"
+  - id: discover_accepted_formats
+    title: "Discover accepted formats"
+    narrative: |
+      The buyer first needs to know what creative formats your platform accepts.
+      For a publisher, this includes your native ad formats, display placements,
+      and any custom units. For retail media, this might include product listing
+      formats or sponsored product cards.
+
+    steps:
+      - id: list_formats
+        title: "Discover accepted creative formats"
+        narrative: |
+          The buyer asks: "What creative formats does your platform accept?" Your
+          platform returns the formats you support — native post formats, display
+          units, video slots, or product listing formats.
+        task: list_creative_formats
+        schema_ref: "creative/list-creative-formats-request.json"
+        response_schema_ref: "creative/list-creative-formats-response.json"
+        doc_ref: "/creative/task-reference/list_creative_formats"
+        comply_scenario: creative_sync
+        stateful: false
+        expected: |
+          Return the creative formats your platform accepts. Each format should define:
+          - Asset requirements (what the buyer needs to provide)
+          - Render dimensions
+          - Any catalog requirements (for product-feed formats)
+
+  - id: push_creatives
+    title: "Push creative assets"
+    narrative: |
+      The buyer pushes their creative assets to your platform. This could be:
+      - Standard display assets (images, HTML tags)
+      - Catalog items (product feeds, flight listings, hotel inventory)
+      - Native ad content (headlines, descriptions, images)
+
+      Your platform validates the assets against your format specs and stores them.
+
+    steps:
+      - id: sync_creatives
+        title: "Push creatives to the platform"
+        narrative: |
+          The buyer uploads creative assets to your platform. For standard ads, this
+          is images and copy. For catalog-driven formats, this is a product feed or
+          set of catalog items. Your platform validates each creative against the
+          format's asset requirements and returns a per-creative status.
+        task: sync_creatives
+        schema_ref: "creative/sync-creatives-request.json"
+        response_schema_ref: "creative/sync-creatives-response.json"
+        doc_ref: "/creative/task-reference/sync_creatives"
+        comply_scenario: creative_sync
+        stateful: true
+        expected: |
+          Accept the creatives, validate against format specifications, and return:
+          - Per-creative action (created or updated)
+          - Per-creative status (accepted, pending_review, rejected)
+          - Platform-assigned IDs if applicable
+          - Validation errors for rejected creatives
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          creatives:
+            - creative_id: "acme_summer_native_001"
+              name: "Acme Summer Sale — native 2026"
+              format_id:
+                agent_url: "https://your-platform.example.com"
+                id: "native_post"
+              assets:
+                headline:
+                  asset_type: "text"
+                  content: "Summer Sale — 40% Off All Gear"
+                image:
+                  asset_type: "image"
+                  url: "https://test-assets.adcontextprotocol.org/acme-outdoor/hero-master.jpg"
+                  width: 1200
+                  height: 628
+                click_url:
+                  asset_type: "url"
+                  url: "https://acmeoutdoor.example/summer-sale"
+
+          idempotency_key: "$generate:uuid_v4#creative_sales_agent_push_creatives_sync_creatives"
+          context:
+            correlation_id: "creative_sales_agent--sync_creatives"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-creatives-response.json schema"
+          - check: field_present
+            path: "creatives[0].action"
+            description: "Each creative has an action (created/updated)"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "creative_sales_agent--sync_creatives"
+            description: "Context correlation_id returned unchanged"
+  - id: preview
+    title: "Preview pushed creatives"
+    narrative: |
+      After pushing assets, the buyer wants to see how their creatives will render
+      in your platform's environment. For a publisher, this shows the ad in the
+      publication's native chrome — with engagement buttons, community badges, and
+      platform-specific styling that the buyer can't preview elsewhere.
+
+    steps:
+      - id: preview_synced
+        title: "Preview a pushed creative"
+        narrative: |
+          The buyer asks to see how a synced creative will look in your environment.
+          Your platform renders the creative with its native chrome — the surrounding
+          UI, engagement buttons, and platform-specific styling.
+        task: preview_creative
+        schema_ref: "creative/preview-creative-request.json"
+        response_schema_ref: "creative/preview-creative-response.json"
+        doc_ref: "/creative/task-reference/preview_creative"
+        comply_scenario: creative_flow
+        stateful: true
+        expected: |
+          Return a preview showing the creative in your platform's environment.
+          The preview should include your platform's native chrome — not just the
+          raw assets, but how they'll actually appear to users.
+
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          request_type: "single"
+          creative_manifest:
+            creative_id: "acme_summer_native_001"
+            format_id:
+              agent_url: "https://your-platform.example.com"
+              id: "native_post"
+            assets:
+              headline:
+                asset_type: "text"
+                content: "Summer Sale — 40% Off"
+              body:
+                asset_type: "text"
+                content: "Top-rated outdoor gear. This weekend only."
+              image:
+                asset_type: "image"
+                url: "https://test-assets.adcontextprotocol.org/acme-outdoor/hero.jpg"
+                width: 1200
+                height: 628
+              click_url:
+                asset_type: "url"
+                url: "https://acmeoutdoor.example/summer-sale"
+          output_format: "url"
+          quality: "draft"
+
+          context:
+            correlation_id: "creative_sales_agent--preview_synced"
+        validations:
+          - check: response_schema
+            description: "Response matches preview-creative-response.json schema"
+          - check: field_present
+            path: "previews[0].renders[0].preview_url"
+            description: "Preview includes a renderable URL"
+
+          - check: field_present
+            path: "context"
+            description: "Response echoes back the context object"
+          - check: field_value
+            path: "context.correlation_id"
+            value: "creative_sales_agent--preview_synced"
+            description: "Context correlation_id returned unchanged"

@@ -1,0 +1,189 @@
+---
+title: How demand reaches AI assistants
+sidebarTitle: AI mediation
+testable: true
+"og:image": /images/walkthrough/tmp-ai-01-black-box.png
+description: "A mediation protocol for AI assistants — how demand finds conversational AI when the context can't be broadcast to every buyer."
+"og:title": "AdCP — TMP for AI assistant mediation"
+---
+
+<img src="/images/walkthrough/tmp-ai-01-black-box.png" alt="Priya looks at a StreamHaus AI assistant interface — the conversation is helpful but there's no way for advertisers to participate" style={{ width: '100%', borderRadius: '12px', marginBottom: '2rem' }} />
+
+StreamHaus launched an AI assistant six months ago. Users ask about hiking trails, gear recommendations, trip planning — the kind of high-intent conversations advertisers would pay a premium to be part of. Priya watches the usage numbers climb and the ad revenue stay at zero.
+
+The assistant is a black box. There's no ad server. There's no impression. When a user asks "what trail shoes should I get for rocky terrain?", there's no bid request to broadcast — and even if there were, sending raw conversation context to every buyer on an exchange would leak user content at scale.
+
+This is the demand problem every AI platform faces: high-intent conversations with no standard way for buyers to participate.
+
+## The core design principle
+
+TMP solves this with a separation of concerns: the protocol decides **what** sponsored content is available and relevant, and the platform's LLM decides **how** to present it. The buyer never touches the user experience. The platform never builds custom ad logic.
+
+This is what makes TMP a mediation protocol rather than an ad injection system. Multiple buyer agents submit offers through a standard interface, and the platform retains editorial control over how — and whether — recommendations appear.
+
+## Step 1: The demand problem
+
+Every ad surface before AI assistants works the same way: a user loads a page, a bid request broadcasts context to buyers, an ad server renders a creative in a defined slot. AI assistants break all three assumptions:
+
+- **No defined slot** — sponsored content is woven into the response text
+- **No bid request** — the conversation is private and ephemeral, not a crawlable URL
+- **No ad server** — the platform's LLM generates the response
+
+There's no standard for this. No mediation layer, no protocol, no way for multiple buyers to compete for relevance in a conversation. Most AI platforms today partner with a single ad network, build proprietary sponsorship logic, or skip monetization entirely.
+
+Priya doesn't want to pick one ad network. She wants Sam at Pinnacle Agency, and every other buyer agent with relevant packages, to compete for relevance through a standard protocol. TMP addresses this by separating context evaluation from user identification.
+
+## Step 2: Bringing demand to the context
+
+<img src="/images/walkthrough/tmp-ai-02-same-router.png" alt="The TMP Router hub from the frequency capping walkthrough now has a fourth connection — an AI assistant chat bubble icon joining web, mobile, and CTV" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+On web, context radiates outward — the URL is public, the page content is crawlable, buyers evaluate it in parallel. AI assistants can't do that. The conversation is private, ephemeral, and contains user content that can't be shared openly.
+
+TMP's architecture was built for this constraint. Instead of broadcasting context outward, the router brings buyer agents inward — they see classified signals about the conversation, not the conversation itself. Priya registers the assistant as a new property on the same TMP Router that handles web and CTV:
+
+- **Property type**: `ai_assistant`
+- **Placement**: `chat-inline-recommendation` — a conversational context where the LLM can incorporate sponsored recommendations
+
+The router fans out Context Match requests to all registered buyer agents in parallel. Sam's agent competes alongside other buyers — this is mediation, not a single-partner deal.
+
+## Step 3: Classified signals instead of bid requests
+
+<img src="/images/walkthrough/tmp-ai-03-context-match.png" alt="A chat conversation about trail shoes sends classified context signals — topics, sentiment, keywords — to buyer agents, with a crossed-out person icon showing no user identity" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+A user asks: "What trail shoes should I get for rocky terrain? I need good ankle support."
+
+Before the LLM generates its response, StreamHaus sends a **Context Match** request. A conversation turn isn't a URL — it's ephemeral, it contains user content, and it can't be sent to buyers. Instead, the platform sends **classified signals**: IAB topic codes, sentiment, keywords, and a natural language summary. The buyer evaluates relevance without seeing the user's actual words.
+
+<Accordion title="Context Match request for a conversation turn">
+
+```json
+{
+  "type": "context_match_request",
+  "request_id": "ctx-trail-shoes-01",
+  "property_rid": "01916f3a-f8cb-7000-8000-000000000051",
+  "property_type": "ai_assistant",
+  "placement_id": "chat-inline-recommendation",
+  "context_signals": {
+    "topics": ["596", "477"],
+    "taxonomy_source": "iab",
+    "taxonomy_id": 7,
+    "sentiment": "positive",
+    "keywords": ["trail shoes", "rocky terrain", "ankle support"],
+    "language": "en",
+    "summary": "User seeking trail shoe recommendations for rocky terrain with ankle support"
+  }
+}
+```
+
+No `artifact_refs` — conversation turns are ephemeral. The `context_signals` carry the classified output. The `summary` field is especially useful for LLM-native buyers that evaluate relevance semantically. A platform that operates in a trusted execution environment could alternatively send the full conversation as an `artifact` — the publisher controls the disclosure level.
+
+</Accordion>
+
+Sam's buyer agent evaluates: "Trail shoes for rocky terrain — this matches Acme Outdoor's Trail Pro 3000 campaign." It responds with an offer that includes **text and structured data** — the raw material the LLM needs to generate a natural recommendation.
+
+Not every integration needs a full creative manifest. TMP supports a spectrum:
+
+| Integration level | What the offer contains | How the platform uses it |
+|---|---|---|
+| Activation only | `package_id` | Platform's ad server activates a line item (for platforms with traditional ad serving alongside AI) |
+| Brand mention | `package_id` + `brand` + `summary` | LLM uses summary to generate a natural brand mention |
+| Full recommendation | `package_id` + `brand` + `summary` + `creative_manifest` | LLM weaves product details from the manifest into the response |
+| Catalog steering | `package_id` + `brand` + `creative_manifest` with catalog items | LLM recommends specific products from a synced catalog |
+
+Priya chose full recommendation for StreamHaus's assistant:
+
+<Accordion title="Context Match response with inline creative manifest">
+
+```json
+{
+  "type": "context_match_response",
+  "request_id": "ctx-trail-shoes-01",
+  "offers": [
+    {
+      "package_id": "pkg-outdoor-display",
+      "brand": { "domain": "acmeoutdoor.example" },
+      "summary": "Trail Pro 3000 — ankle-height trail runner with rock plate, relevant to user's terrain needs",
+      "creative_manifest": {
+        "format_id": { "agent_url": "https://streamhaus.example", "id": "sponsored_recommendation" },
+        "assets": {
+          "headline": { "content": "Built for rocky trails" },
+          "body": { "content": "The Trail Pro 3000 has a full rock plate and ankle-height collar for technical terrain. Vibram outsole with 4mm lugs." }
+        }
+      }
+    }
+  ]
+}
+```
+
+The `summary` helps the platform judge relevance before deciding whether to incorporate the offer. The `body` gives the LLM factual product details it can weave into a natural response.
+
+</Accordion>
+
+## Step 4: Frequency caps cross every surface
+
+<img src="/images/walkthrough/tmp-ai-04-identity-match.png" alt="A session token flows to the buyer agent — the same eligibility check as web, same frequency caps, same shared exposure store" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+StreamHaus sends an Identity Match request with a session token. The buyer checks frequency caps, audience eligibility, and recency against the same shared exposure store that covers web and CTV.
+
+AI assistant users are often authenticated — logged in to the platform — which means the identity signal is typically stronger than web, not weaker. If this user saw the Trail Pro 3000 ad on StreamHaus's CTV app 30 minutes ago, the 2-hour recency window applies here too. The AI assistant doesn't get a free pass on frequency caps just because it's a different surface.
+
+## Step 5: The platform controls the experience
+
+<img src="/images/walkthrough/tmp-ai-05-llm-weaves.png" alt="The creative manifest text feeds into the LLM alongside the conversation context — the LLM generates a natural response that weaves in the product recommendation" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+StreamHaus joins the Context Match and Identity Match responses. The Trail Pro 3000 offer is eligible. The offer's creative manifest becomes part of the LLM's generation context:
+
+> "For rocky terrain with good ankle support, you'll want a shoe with a rock plate and higher collar. The **Trail Pro 3000** is designed exactly for this — it has a full rock plate to protect against sharp rocks and an ankle-height collar for stability on technical terrain. The Vibram outsole with 4mm lugs gives you solid grip on loose surfaces.
+>
+> You might also look at..."
+>
+> *Sponsored recommendation from Acme Outdoor*
+
+The LLM didn't copy the creative manifest verbatim. It wove the product details into a natural recommendation that addressed the user's specific question. The platform applied its own editorial policy — a sponsored content label, natural integration, and continuation with non-sponsored alternatives. Regulatory requirements around AI-generated sponsored content (FTC disclosure, EU AI Act) are the platform's responsibility, enforced through their LLM integration, not the protocol.
+
+## Step 6: What this unlocks
+
+<img src="/images/walkthrough/tmp-ai-06-three-winners.png" alt="Three panels: a user receiving a relevant product recommendation in chat, Sam seeing his campaign reach a new high-intent surface, Priya seeing AI assistant revenue appear on her dashboard" style={{ width: '100%', borderRadius: '12px', marginBottom: '1rem' }} />
+
+**The user** asked a question and got a useful answer. The Trail Pro 3000 recommendation was relevant — they asked about rocky terrain and ankle support, and that's what the product is built for. The sponsored label is transparent. The response continued with non-sponsored options.
+
+**Sam** reached a user in the moment they asked what to buy — intent doesn't get more specific than a direct question. The same packages running on web and CTV activated on the AI assistant. The creative manifest carried text instead of a banner, but Sam's buyer agent didn't need surface-specific logic.
+
+**Priya** monetized the AI assistant without proprietary sponsorship logic, without locking into a single ad network, and without compromising the user experience. Every buyer agent that speaks TMP can participate. The router handles the fan-out. StreamHaus controls editorial integration. Frequency caps from web and CTV carry over. And delivery reporting flows through the same measurement infrastructure as every other surface.
+
+| Without TMP | With TMP |
+|---|---|
+| Single ad network or no monetization | Any buyer agent can compete for relevance |
+| Proprietary integration per advertiser | Standard protocol, open demand |
+| No frequency caps across surfaces | Shared exposure store, same caps everywhere |
+| Platform builds ad logic | Platform controls editorial integration only |
+| Ad network controls the experience | Platform LLM controls presentation |
+
+## Multi-turn conversations
+
+Each user message triggers a fresh Context Match evaluation. The platform decides when to re-evaluate — recommended triggers are topic shift (detected by the platform's classifier), explicit product interest ("tell me more about..."), or session timeout (more than 5 minutes of inactivity).
+
+Platforms may cache the most recent Context Match response and skip re-evaluation for follow-up questions on the same topic. This reduces latency and provider load without affecting ad quality.
+
+When multiple buyers return offers for the same conversation turn, the platform ranks by relevance to the conversation — not by price. This is mediation, not an auction.
+
+An impression occurs when the LLM incorporates the creative manifest into its response. Follow-up questions about the recommended product ("where can I buy those?") are engagement events, not new impressions.
+
+**Latency.** TMP's sub-50ms round-trip is hidden within the LLM's generation time (typically 1-3 seconds). The platform sends the Context Match request while preparing the LLM prompt, so TMP adds no perceptible delay to the user experience.
+
+## Go deeper
+
+<CardGroup cols={2}>
+  <Card title="TMP for AI assistants" icon="robot" href="/dist/docs/3.0.2/trusted-match/surfaces/ai-assistants">
+    Technical reference for AI assistant integration — request/response formats, context signals, activation patterns.
+  </Card>
+  <Card title="Context and identity" icon="arrows-split-up-and-left" href="/dist/docs/3.0.2/trusted-match/context-and-identity">
+    How the two-operation model works across all surfaces, with concrete examples.
+  </Card>
+  <Card title="TMP overview" icon="shield-halved" href="/dist/docs/3.0.2/trusted-match">
+    Cross-publisher frequency capping walkthrough — how TMP solves the execution gap.
+  </Card>
+  <Card title="Specification" icon="scroll" href="/dist/docs/3.0.2/trusted-match/specification">
+    Authoritative message types, field tables, and conformance requirements.
+  </Card>
+</CardGroup>
