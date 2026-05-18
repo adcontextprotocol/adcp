@@ -99,36 +99,37 @@ See [Metric lifecycle](/docs/media-buy/media-buys/optimization-reporting#metric-
 
 `adcp_major_version` (the 3.0 integer field) and `adcp.major_versions` remain functional through all of 3.x — additive ship, no required changes for 3.0-conformant agents. The full migration table lives in [Versioning & Governance § Migration timeline](/docs/reference/versioning#migration-timeline).
 
-**Pin your release.** Every SDK exposes a constructor option for the version pin. Through 3.x, the SDK SHOULD also emit `adcp_major_version` automatically so legacy 3.x sellers that only read the integer keep negotiating correctly.
+**Pin your release.** Every SDK exposes a constructor option for the version pin. Through 3.x, the SDK SHOULD also emit `adcp_major_version` automatically so legacy 3.x sellers that only read the integer keep negotiating correctly. The wire shape is **release-precision only** (`"3.1"`, `"3.1-beta.1"`) — full semver like `"3.1.2"` or `"3.1.0-beta.1"` is invalid on the wire.
 
 ```typescript
-// @adcp/client (TypeScript)
-import { AdcpClient } from "@adcp/client";
+// @adcp/sdk (TypeScript)
+import { SingleAgentClient } from "@adcp/sdk";
 
-const client = new AdcpClient({
-  endpoint: "https://sales.example/.well-known/agent.json",
-  adcpVersion: "3.1",      // emitted on every request as adcp_version
-                           // adcp_major_version: 3 mirror auto-emitted
-});
+const client = new SingleAgentClient(
+  { agent_uri: "https://sales.example/mcp/", protocol: "mcp" },
+  { adcpVersion: "3.1" },   // emitted on every request as adcp_version
+                            // adcp_major_version: 3 mirror auto-emitted
+);
 ```
 
 ```python
 # adcp (Python)
-from adcp import AdcpClient
+from adcp import ADCPClient
+from adcp.types import AgentConfig, Protocol
 
-client = AdcpClient(
-    endpoint="https://sales.example/.well-known/agent.json",
-    adcp_version="3.1",    # emitted on every request as adcp_version
-                           # adcp_major_version: 3 mirror auto-emitted
+client = ADCPClient(
+    AgentConfig(agent_uri="https://sales.example/mcp/", protocol=Protocol.MCP),
+    adcp_version="3.1",     # emitted on every request as adcp_version
+                            # adcp_major_version: 3 mirror auto-emitted
 )
 ```
 
 ```go
-// adcp-go (Go)
+// adcp-go (Go) — planned, tracked in adcontextprotocol/adcp-go#107
 import "github.com/adcontextprotocol/adcp-go/adcp"
 
 client, err := adcp.NewClient(
-    "https://sales.example/.well-known/agent.json",
+    "https://sales.example/mcp/",
     adcp.WithAdcpVersion("3.1"), // emitted on every request as adcp_version
                                   // AdcpMajorVersion: 3 mirror auto-emitted
 )
@@ -140,7 +141,7 @@ client, err := adcp.NewClient(
 
 **Wire shape is release-precision only.** `"3.1.2"`, `"3.1.0-beta.1"`, `"v3.1"`, and `"3"` are all invalid on the wire. SDKs that key bundles by full semver MUST normalize to release-precision (`"3.1.0-beta.1"` → `"3.1-beta.1"`) before emitting — the `published_version` field on meta-objects (schema registry, tarball `manifest.json`, compliance index, `/protocol/` discovery) is documentation, not a wire value. See [Versioning § Patches are not negotiated](/docs/reference/versioning#patches-are-not-negotiated) for the full wire-shape rule.
 
-**Compliance grader at 3.1 is advisory.** The grader runs the new `version_negotiation` universal storyboard and reports presence on requests and responses. Sellers SHOULD echo `adcp_version` and SHOULD declare `adcp.supported_versions` on `get_adcp_capabilities`; the storyboard reports missing entries without failing certification. At 3.2 the grader flips to blocking failure — sellers aiming for 3.2 certification ship the echo and the capability declaration during the 3.1 window. At 4.0 the spec promotes both to MUST and the legacy integer fields are removed.
+**Compliance grader at 3.1 is advisory.** The grader runs the new `version_negotiation` universal storyboard and reports presence on requests and responses — see the [migration timeline](/docs/reference/versioning#migration-timeline) for the 3.1 → 3.2 → 4.0 cadence.
 
 Spec PR [#3493](https://github.com/adcontextprotocol/adcp/pull/3493). RFC: [`specs/version-negotiation.md`](https://github.com/adcontextprotocol/adcp/blob/main/specs/version-negotiation.md). Full normative reference: [Versioning & Governance § Version negotiation](/docs/reference/versioning#version-negotiation).
 
