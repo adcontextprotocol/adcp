@@ -282,6 +282,8 @@ phases:
         schema_ref: "media-buy/create-media-buy-request.json"
         response_schema_ref: "media-buy/create-media-buy-response.json"
         doc_ref: "/media-buy/task-reference/create_media_buy"
+        expect_error: true
+        negative_path: payload_well_formed
         stateful: false
         expected: |
           Reject with INVALID_REQUEST. error.field points at the offending

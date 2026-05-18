@@ -30,7 +30,11 @@ import {
   handleListCreatives,
   handleListCreativeFormats,
 } from './task-handlers.js';
-import { handleProvidePerformanceFeedback } from './catalog-event-handlers.js';
+import {
+  handleProvidePerformanceFeedback,
+  handleSyncEventSources,
+  handleLogEvent,
+} from './catalog-event-handlers.js';
 import { handleSyncAudiences } from './audience-handlers.js';
 import { syncAccountsUpsert } from './v6-account-helpers.js';
 import { trainingBuyerAgentRegistry } from './buyer-agent-registry.js';
@@ -281,6 +285,29 @@ export class TrainingSalesPlatform
 
     providePerformanceFeedback: async (req, ctx) => {
       const result = await handleProvidePerformanceFeedback(req as ToolArgs, buildTrainingCtx(ctx.account));
+      return translateV5Result(result);
+    },
+
+    // sync_event_sources and log_event are required for event-kind
+    // optimization goals (performance_buy_flow, event_dedup_flow). v5
+    // handlers session-key off `account.brand.domain`; the v6 framework
+    // strips account from req against the published schema, so thread
+    // brand_domain back in from ctx.account.ctx_metadata.
+    syncEventSources: async (req, ctx) => {
+      const brandDomain = brandDomainFromCtx(ctx.account);
+      const args = brandDomain
+        ? { ...(req as unknown as Record<string, unknown>), account: { brand: { domain: brandDomain } }, brand: { domain: brandDomain } }
+        : req;
+      const result = await handleSyncEventSources(args as ToolArgs, buildTrainingCtx(ctx.account));
+      return translateV5Result(result);
+    },
+
+    logEvent: async (req, ctx) => {
+      const brandDomain = brandDomainFromCtx(ctx.account);
+      const args = brandDomain
+        ? { ...(req as unknown as Record<string, unknown>), account: { brand: { domain: brandDomain } }, brand: { domain: brandDomain } }
+        : req;
+      const result = await handleLogEvent(args as ToolArgs, buildTrainingCtx(ctx.account));
       return translateV5Result(result);
     },
   };
