@@ -119,14 +119,14 @@ The buyer evaluates the user against all requested packages and returns the IDs 
     "pkg-native-0079",
     "pkg-display-0104"
   ],
-  "ttl_sec": 60
+  "serve_window_sec": 60
 }
 ```
 
 Key points:
 
 - Only eligible packages are listed. Packages absent from the list (e.g., `pkg-display-0043`, `pkg-display-0103`, `pkg-video-0201`) are ineligible. The buyer computes eligibility from frequency caps, audience membership, purchase history, and any other identity-based signals. The reasons are opaque to the publisher.
-- `ttl_sec` tells the router how long to cache this response. During that window, the router returns cached eligibility without re-querying the buyer. The publisher uses cached eligibility to allocate across all placements on the page.
+- `serve_window_sec` tells the router how long to cache this response. During that window, the router returns cached eligibility without re-querying the buyer. The publisher uses cached eligibility to allocate across all placements on the page.
 - There is no `frequency_capped`, `audience_match`, or `recency` field. The buyer's internal reasons stay with the buyer.
 
 ## Activation: Joining Context and Identity

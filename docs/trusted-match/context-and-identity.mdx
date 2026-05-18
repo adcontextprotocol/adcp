@@ -149,14 +149,14 @@ Note what is absent: no URL, no search query, no content signals, no topic IDs. 
   "type": "identity_match_response",
   "request_id": "id-9b2c",
   "eligible_package_ids": ["pkg-A", "pkg-B"],
-  "ttl_sec": 60,
+  "serve_window_sec": 60,
   "tmpx": "k1.dG1weC1leGFtcGxlLWVuY3J5cHRlZC10b2tlbi4uLg"
 }
 ```
 
 The buyer reports that this user is eligible for packages A and B. Package C is absent — the user is not eligible. The publisher does not need to know why — frequency capping, audience mismatch, and other disqualification reasons are buyer-internal.
 
-The `ttl_sec: 60` tells the router: "Cache this for 60 seconds." The router uses this cached eligibility to fill whatever placements exist — a single slot, a CTV ad pod, or a page with multiple ad units — without re-querying the buyer. The publisher decides how to allocate across placements.
+The `serve_window_sec: 60` tells the router: "Cache this for 60 seconds." The router uses this cached eligibility to fill whatever placements exist — a single slot, a CTV ad pod, or a page with multiple ad units — without re-querying the buyer. The publisher decides how to allocate across placements.
 
 ### What Identity Match never carries
 

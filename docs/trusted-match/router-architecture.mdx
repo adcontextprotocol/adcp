@@ -156,7 +156,7 @@ The router filters Identity Match providers by country and identity type:
 7. Because the per-provider payload differs from the inbound request, the router **re-signs** each per-provider forward using the canonical `identities_hash` of the filtered set. Providers verify signatures against the router's public key.
 8. It fans out to all matching providers in parallel, merges eligibility results, and returns a unified response.
 
-Duplicate `package_id` across providers is a configuration error — packages come from media buys and are provider-specific. If it occurs, the router applies conservative merging: the package is only eligible if it appears in `eligible_package_ids` from both providers. The router uses the minimum `ttl_sec` across providers and SHOULD log a warning.
+Duplicate `package_id` across providers is a configuration error — packages come from media buys and are provider-specific. If it occurs, the router applies conservative merging: the package is only eligible if it appears in `eligible_package_ids` from both providers. The router uses the minimum `serve_window_sec` across providers and SHOULD log a warning.
 
 ### Timeout handling
 

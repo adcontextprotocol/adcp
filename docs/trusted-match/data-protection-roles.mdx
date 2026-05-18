@@ -1,0 +1,239 @@
+---
+title: Data Protection Roles
+description: How TMP's architecture maps to GDPR controller/processor roles — what each party determines, what data each party holds, and where the risks are.
+"og:title": "AdCP TMP Data Protection Roles"
+---
+
+# Data Protection Roles
+
+This page maps TMP's architecture to GDPR data protection roles (controller, processor, joint controller). It explains what each participant can and cannot determine about individuals, where the architectural boundaries support a processor position, and where they don't.
+
+This is an architectural analysis, not legal advice. Organizations should consult qualified data protection counsel for their specific circumstances. Familiarity with the [TMP privacy architecture](/docs/trusted-match/privacy-architecture) is assumed — concepts like structural separation, TEE attestation, package set decorrelation, and temporal decorrelation are defined there.
+
+## Verdict at a Glance
+
+| Participant | Role | Confidence | Where the risk sits |
+|---|---|---|---|
+| **TMP Router** | Processor | High (architectural) | Operator deployment integrity. Mitigated by TEE attestation. |
+| **Buyer agent** | Processor | Conditional (operational) | Proprietary scoring, cross-advertiser data combination, audience construction, cross-publisher exposure accumulation. |
+| **Publisher** | Controller | Unchanged | Consent collection; configuring data processors; the final serve decision. |
+| **SSP / wrapper performing the join** | Joint controller or processor for the publisher | Conditional | Whoever performs the context+identity join inherits controller responsibility for that step. |
+| **Identity provider** | Out of scope for TMP; controller for token issuance | Varies by provider | Token scope and graph behavior (publisher-first-party vs. deterministic cross-site vs. probabilistic graph) materially changes the publisher's risk. |
+| **Measurement / attribution** | Out of scope for TMP | n/a | Post-impression flows reintroduce controller analysis that TMP does not address. See [Out of Scope](#out-of-scope-post-impression-flows). |
+
+## Background: Controller vs. Processor
+
+Under GDPR, a **controller** determines the purposes and means of processing personal data. A **processor** processes personal data on behalf of a controller. A **joint controller** jointly determines purposes and means with one or more other controllers.
+
+The distinction matters because controllers carry heavier obligations: legal basis for processing, data subject rights, DPIAs, and direct liability. The key question is not "who touches the data" but "who decides what happens with it."
+
+In advertising, the risk of being deemed a controller increases when an intermediary:
+
+- Decides to show an ad to a specific person based on something it knows or infers about them
+- Builds or populates a segment by determining that an identifier has a characteristic
+- Combines third-party segment data with other data to create a new profile
+- Uses the data for any purpose beyond the specific campaign instruction
+
+The risk decreases when the intermediary:
+
+- Processes data under instructions from a party that has a direct relationship with the data subject or data provider
+- Does not hold title to any segment or audience data
+- Does not use the data independently or for its own purposes
+- Does not combine data across sources to create new mappings
+
+## Why TMP's Posture Is Unusual
+
+The buyer agent's processor position is unusual relative to how the ad tech industry typically operates. Most DSPs function as joint controllers or independent controllers for their own optimization purposes, even when their MSAs claim processor status. The IAB Europe TCF framework reflects this by assigning separate purposes and legal bases to each vendor in the chain.
+
+TMP's architecture *enables* a buyer agent processor position that traditional DSPs cannot credibly claim, because:
+
+- The buyer never receives user identity and page context together (DSPs receive both in every bid request)
+- The buyer does not set per-impression prices based on identity (DSPs submit bid prices informed by user data)
+- The buyer returns binary eligibility, not a scored bid (DSPs return a price that encodes their valuation of the user)
+
+Whether a buyer agent operates within that envelope is a contractual and operational question, not an architectural one. Most buyer-side organizations will need to make explicit choices to stay inside it. A buyer agent that introduces proprietary scoring, cross-advertiser data combination, or independent audience construction erodes the architectural advantage and may need to assess its role as a joint controller regardless of what the protocol enables.
+
+## The TMP Router: Processor
+
+The TMP Router is infrastructure. It does not make targeting decisions, build profiles, or evaluate users. It receives requests from the publisher and fans them out to buyer agents. It receives responses and merges them. It returns the merged result to the publisher.
+
+**What the router sees on the Context Match path:**
+
+- Content signals (topics, keywords, sentiment)
+- Placement identifiers
+- Geographic context (coarse)
+- No user identity of any kind
+
+**What the router sees on the Identity Match path:**
+
+- Opaque user tokens
+- Package identifiers
+- Consent signals
+- No page context of any kind
+
+The two paths are structurally separate: no shared memory, no shared state, no communication channel. The router cannot associate a user token with a page URL because no single code path ever holds both. See [Privacy Architecture](/docs/trusted-match/privacy-architecture) for the enforcement mechanism.
+
+**What the router does not do:**
+
+- Evaluate whether a user should see an ad
+- Check frequency caps or audience membership
+- Build or store user profiles
+- Combine context data with identity data
+- Make pricing decisions
+- Retain data beyond the request/response lifecycle
+
+The router is a processor acting on the publisher's instructions (which providers to call, which properties to serve). It processes personal data (opaque user tokens) solely to deliver them to buyer agents and return the result.
+
+> **Bottom line:** The router can credibly claim processor status. With TEE attestation, this is independently verifiable; without TEE, it depends on operator integrity and code audit.
+
+## The Buyer Agent: Processor Conditional on Operational Discipline
+
+TMP architecturally constrains what the buyer receives (no context with identity) and what it returns (eligible package IDs, nothing more). It does not constrain what the buyer does internally with the tokens it sees, the exposure histories it builds, or the proprietary models it runs.
+
+The processor position is therefore conditional, not architectural. It depends on the buyer agent's operational choices and the DPAs that govern them. Most buyer-side organizations will need to make deliberate choices to stay inside the envelope TMP enables.
+
+**What the architecture provides:**
+
+- The buyer never receives page context with identity. Identity Match requests carry no page URL, no content signals, no topic IDs.
+- The buyer does not set price per impression. The Identity Match response is eligible package IDs and a cache TTL — no price, no bid, no scored response.
+- The buyer does not make the serve decision. The publisher performs the join (or delegates it — see [the SSP question](#the-publisher-and-the-ssp-join)).
+
+**Where the processor position erodes:**
+
+- **Proprietary eligibility scoring.** A buyer agent that uses ML models to score eligibility — even models trained only on advertiser data — is determining means of processing. The line between "applying advertiser criteria" and "operating an optimization engine" is the line between processor and joint controller. A buyer agent that does *not* run a proprietary optimizer is uncompetitive against existing DSPs. This is the base case, not the edge case.
+- **Cross-advertiser data combination.** A buyer agent serving multiple advertisers must keep their data isolated. Combining segment membership across advertisers to enrich profiles is controller behavior.
+- **Audience construction from observation.** Applying an advertiser-provided audience list (processor) is different from constructing an audience by observing behavior (controller). See [Risks requiring DPA scrutiny](#risks-requiring-dpa-scrutiny).
+- **Cross-publisher exposure histories.** Cross-publisher frequency capping is the headline TMP use case *and* the headline data protection exposure. Even without context, an exposure history tied to a user token across many publishers constitutes a behavioral profile under CJEU jurisprudence. The protocol does not eliminate this — it isolates it.
+
+> **Bottom line:** TMP enables a buyer-agent processor position; it does not enforce one. The DPA between the advertiser and the buyer agent must specify what the buyer may do with the tokens it sees, how exposure histories are bounded, and how proprietary models interact with advertiser data.
+
+## The Publisher and the SSP Join
+
+The publisher is the first party. They have a direct relationship with the user. They collect consent. They hold both context (what the user is viewing) and identity (who the user is). TMP does not change the publisher's controller status.
+
+The publisher's controller responsibilities include:
+
+- Collecting and transmitting consent signals in Identity Match requests
+- Ensuring user tokens are opaque and not reversible to PII by buyer agents
+- Performing (or delegating) the join between context and identity locally
+- Applying consent logic before serving
+- Configuring which providers the router calls (data processor selection)
+- Selecting which identity provider's tokens to use (a controller-level decision — see [Publisher configuration choices](#publisher-configuration-choices))
+
+**The join in practice.** "The publisher performs the join locally" is correct in principle and incomplete in practice. Most publishers operate ad servers (Google Ad Manager, Kevel, Equativ) that do not natively expose primitives for "join two real-time API responses with consent logic before serving." Publishers using GAM will typically need a header bidder wrapper, a Prebid module, or an SSP shim to perform the join. Many will outsource it to their SSP (Magnite, PubMatic, Index Exchange, OpenX).
+
+When the join is delegated, the SSP or wrapper inherits controller responsibility for the join step itself. The publisher's DPA with the SSP must reflect this: the SSP becomes a joint controller for the join (or processor specifically scoped to the join) depending on how their broader services are characterized. A publisher who assumes "TMP made me a processor" by virtue of delegating the join has misread the architecture.
+
+> **Bottom line:** Publisher remains controller. If the join is delegated to an SSP or wrapper, that party becomes a joint controller for the join step and must be addressed in the DPA chain.
+
+## Pricing and Real-Time Decisions
+
+A critical factor in controller/processor analysis is whether an intermediary makes real-time pricing or bidding decisions based on user identity.
+
+**TMP does not include real-time pricing based on identity.** Here is where pricing occurs in the protocol:
+
+| Decision | When | Based on | Where |
+|---|---|---|---|
+| Package price | Media buy negotiation (offline) | Product catalog, volume, terms | Buyer agent and publisher, before any user is evaluated |
+| Context Match offer price | Request time | Content context only — no user identity | Context Match path (no identity data available) |
+| Identity Match eligibility | Request time | Frequency caps, audience membership | Identity Match path (no context data available) |
+| Final serve decision | After both responses return | Publisher (or SSP) joins context + identity + consent | Publisher infrastructure or delegated to SSP |
+
+No participant in TMP sets a price based on "this specific user on this specific page." The Context Match path may include variable pricing (a buyer might value hiking content more than general content), but this is based on content, not identity. The Identity Match path determines eligibility, not price.
+
+The pre-negotiated pricing model reduces the link between identity and economic outcomes, but does not eliminate it entirely. When the publisher (or SSP) joins context match offers with identity match eligibility and activates a package, the economic result is that this user on this page saw this ad at this price. A regulator may assess the system holistically rather than examining individual protocol messages. The architectural distinction is that no single intermediary makes a combined user-plus-context pricing decision.
+
+This is distinct from OpenRTB, where a bidder receives user identity and page context together and submits a per-impression bid price. In that model, the bidder *can* make a real-time pricing decision based on who the user is combined with what they are viewing. Whether it does depends on the campaign — many bidders price primarily on context and use identity only for frequency capping, which is closer to a processor pattern. The structural concern is that OpenRTB *enables* this combination, and the processor position depends on contractual constraints rather than architectural ones. TMP separates these concerns at the protocol level.
+
+## Out of Scope: Post-Impression Flows
+
+**TMP covers real-time decisioning only.** It does not specify how delivery reports, conversion events, attribution, or measurement data flow after an impression is served.
+
+This matters because every campaign needs conversion tracking, view-through attribution, MMM inputs, and incrementality measurement. These flows route impression-level data — typically including user tokens, creative IDs, timestamps, and conversion events — to attribution systems (CM360, Innovid, Flashtalking), DSP-native attribution stacks, and measurement vendors (DV, IAS, iSpot, Nielsen). These vendors are typically controllers or joint controllers for the data they receive.
+
+If operators plug their existing impression-log pipelines into TMP-decisioned campaigns, they will have built privacy-preserving real-time decisioning attached to a wide-open post-impression pipe. The architectural protection in front does not reach the back.
+
+Two paths address this:
+
+1. **Scope-limit deployment.** Treat post-impression flows as a separate data protection question, governed by the existing DPAs between the advertiser, the measurement vendors, and any clean room operators. TMP is not the lever for solving attribution privacy; existing frameworks (clean rooms, measurement APIs, aggregated reporting) are.
+2. **Adopt compatible attribution.** Use buyer-blind conversion APIs, publisher-side conversion logs joined in a clean room, or aggregated measurement systems that maintain the same separation discipline as TMP itself. This is an emerging area; AdCP does not yet specify a "TMP-compatible attribution" pattern, though one may follow.
+
+DPOs evaluating TMP adoption should treat post-impression flows as a distinct workstream and not assume the protocol's separation properties extend to them.
+
+## Comparison: AXE (Deprecated) vs. TMP
+
+[AXE](/docs/media-buy/advanced-topics/agentic-execution-engine), TMP's predecessor, had a weaker data protection posture:
+
+| | AXE | TMP |
+|---|---|---|
+| What the real-time endpoint received | Full OpenRTB-style request: user identity + page context + device signals | Separate requests: context OR identity, never both |
+| Who saw user + context together | The AXE endpoint operator | Only the publisher (or delegated SSP), as first party |
+| Profile construction risk | Operator could theoretically build browsing profiles | Architecturally constrained for the router (no code path holds both signals); buyer-side correlation impeded by [decorrelation mechanisms](/docs/trusted-match/privacy-architecture) but depends on publisher compliance with SHOULD-level requirements |
+| Pricing model | Opaque segment decisions fed ad server targeting | Pre-negotiated package prices, no per-impression bidding |
+| Separation enforcement | Trust and contract | Code structure (auditable) or TEE attestation (verifiable) |
+
+AXE's design meant the endpoint operator (typically the orchestrator) received user identity and page context in the same request. The operator's processor position depended on contractual commitments not to misuse the combined data. TMP replaces this with structural separation — the router cannot misuse data it never holds together.
+
+## Comparison: RTD Modules (Prebid Real-Time Data)
+
+RTD modules are vendor-specific Prebid extensions that enrich bid requests at auction time. Each module sends the full OpenRTB BidRequest (2-10KB) to a vendor endpoint, which returns enrichment data (audience segments, contextual classifications, brand safety scores).
+
+**Data protection concern:** RTD modules send user identity and page context together to each vendor. The vendor's processor position depends on contract, not architecture. The cumulative exposure is significant: a publisher using 5 RTD modules sends the full user-plus-context payload to 5 different vendor endpoints per impression. Each vendor's processor position is independently contractual.
+
+TMP replaces vendor-specific RTD modules with a standardized protocol that enforces separation. Instead of sending everything to every vendor, TMP sends context to the context path and identity to the identity path. The result is the same (packages activate or don't), but the data exposure is structurally minimized.
+
+## Risks Requiring DPA Scrutiny
+
+These are operational risks that DPAs must address. The architecture does not constrain them.
+
+**1. Cross-publisher exposure histories** (the headline buyer-agent risk).
+
+Buyer agents that track cross-publisher frequency maintain exposure histories tied to user tokens. Even without page context, this constitutes a behavioral profile: how many properties this user appears on, how frequently, across which publisher categories. The CJEU's *Meta Platforms* decision (Case C-252/21) established that combining data across services can constitute controller-level processing even without deep profiling.
+
+This is not a footnote risk — it is the headline data protection exposure of the headline TMP use case. The protocol does not eliminate it; it isolates it. DPAs between advertisers and buyer agents must specify the legal basis, retention period, purpose limitation, and erasure flow (Article 17 rights apply: a user exercising erasure means the buyer's exposure history tied to that token must be deletable).
+
+**2. Retargeting audience construction.**
+
+There is a distinction between *applying* an audience (checking a user token against an advertiser-provided list — processor pattern) and *building* an audience (determining that a user token has a characteristic based on observed behavior — controller pattern). If a buyer agent receives conversion events or site visit signals and constructs a retargeting pool, it is building an audience.
+
+How retargeting audiences enter the system matters. Advertiser-provided lists that the buyer checks mechanically support a processor position. Buyer-constructed audiences from observed behavior do not.
+
+**3. Proprietary eligibility scoring.**
+
+A buyer agent that uses ML models to score eligibility — even models trained only on advertiser data — is determining means of processing. DPAs should specify what models the buyer may run, what data trains them, and how their outputs are constrained.
+
+**4. Measurement and attribution flows.**
+
+Covered in [Out of Scope](#out-of-scope-post-impression-flows). Treat as a distinct workstream from TMP itself.
+
+## Publisher Configuration Choices
+
+These are publisher-side configuration decisions with data protection implications. Each is a controller-level decision the publisher makes.
+
+**1. Identity provider selection.**
+
+TMP consumes tokens from identity providers, but the providers are not interchangeable. Different graph behaviors create fundamentally different risk shapes:
+
+| Token type | Risk shape | Examples |
+|---|---|---|
+| Publisher-first-party | No cross-site linkage. Lowest risk profile. | `publisher_first_party` (per-publisher hashed identifiers) |
+| Deterministic cross-site | Same user resolves to same token across sites and devices. Enables cross-site profiling. | UID2 (operated by The Trade Desk, primarily for buy-side use), ID5 |
+| Probabilistic / commercial graph | Provider operates an identity graph that resolves tokens to PII inside the provider's walls. | RampID (LiveRamp) |
+
+The choice of identity provider is itself a controller-level decision. Selecting a deterministic cross-site token expands the buyer agent's cross-publisher correlation surface. Publisher DPAs and consent flows should reflect the provider's specific posture, not treat all `uid_type` values equivalently.
+
+**2. Context Match with full artifacts.**
+
+When a publisher sends full content (`artifact` field) rather than classified signals (`context_signals`), the buyer agent receives the actual content. `context_signals` (pre-classified topics, sentiment, keywords) is the privacy-preserving baseline. Full artifacts exist for cases where the buyer needs to evaluate content directly (e.g., AI assistant conversations where classification alone is insufficient).
+
+**3. Cache semantics.**
+
+Identity Match responses include a `ttl_sec` caching contract. During the cache window, the router returns cached eligibility without re-querying the buyer. Cached eligibility is personal data (it's tied to a user token). The [specification](/docs/trusted-match/specification) allows TTLs up to 86,400 seconds (24 hours) with a recommended clamp at 3,600 seconds. Routers should enforce short TTLs, must not retain cached data beyond expiry, and must not use cached eligibility for any purpose other than responding to subsequent Identity Match requests for the same token.
+
+**4. Variable pricing on context.**
+
+The Context Match offer can include an `OfferPrice`. Because Context Match carries no identity, this is contextual pricing — not per-user pricing. However, if a publisher's `context_signals` are specific enough to identify an individual (e.g., a unique AI conversation summary), the contextual path could carry de facto identity. Publishers should ensure `context_signals` do not contain PII or uniquely identifying content.
+
+**5. Join delegation.**
+
+If the publisher delegates the context+identity join to an SSP, header bidder wrapper, or third-party module, that party becomes a joint controller for the join step. The publisher remains controller for the broader serve decision but must address the delegate's role in the DPA chain.

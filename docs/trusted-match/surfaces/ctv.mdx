@@ -134,11 +134,11 @@ Each buyer agent evaluates the household token against its own data (frequency c
     "pkg-vaultline-audio",
     "pkg-driftmoto-30s"
   ],
-  "ttl_sec": 90
+  "serve_window_sec": 90
 }
 ```
 
-The response covers all packages, not just CTV ones. The `ttl_sec: 90` covers the duration of the ad break — the router uses cached eligibility to fill all pod slots without re-querying. The publisher extracts only the package IDs relevant to the current pod.
+The response covers all packages, not just CTV ones. The `serve_window_sec: 90` covers the duration of the ad break — the router uses cached eligibility to fill all pod slots without re-querying. The publisher extracts only the package IDs relevant to the current pod.
 
 ## Pod Composition
 
@@ -198,7 +198,7 @@ Mid-roll break in "The Night Kitchen" S02E07
   Identity Match (after temporal decorrelation — random delay + random order)
   --> Broadcaster sends request: all 9 active packages across all buyers
   --> Response: eligible_package_ids includes Sparklean, Greenleaf, Vaultline, Driftmoto-30s
-  --> ttl_sec: 90 (covers the ad break)
+  --> serve_window_sec: 90 (covers the ad break)
 
   Pod Assembly (broadcaster's ad server)
   --> Join: Sparklean and Greenleaf both activated and eligible
