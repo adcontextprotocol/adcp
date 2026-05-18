@@ -193,6 +193,76 @@ export async function notifyRegistryRollback(rollback: {
 }
 
 /**
+ * Notify moderators when a community logo upload queues for review.
+ *
+ * Fires from both the HTTP route and the Addie MCP tool whenever a logo
+ * lands with `review_status='pending'`. Verified-owner uploads (auto-
+ * approved) do NOT fire this — they're owner-attested and don't need a
+ * second pair of eyes. Returns the message ts so future approval/rejection
+ * notifications can thread off it.
+ */
+export async function notifyPendingBrandLogo(upload: {
+  domain: string;
+  logo_id: string;
+  content_type: string;
+  tags: string[];
+  uploader_email?: string;
+  uploader_name?: string;
+  upload_note?: string;
+  source: 'community' | 'addie';
+}): Promise<string | null> {
+  const channelId = getChannelId();
+  if (!channelId || !isSlackConfigured()) return null;
+
+  const uploaderDisplay = upload.source === 'addie'
+    ? 'Addie (chat)'
+    : (upload.uploader_name || upload.uploader_email || 'Unknown');
+  const reviewUrl = `${APP_URL}/brand/view/${upload.domain}`;
+  const tagsLine = upload.tags.length ? upload.tags.join(', ') : '(none)';
+
+  const fields = [
+    { type: 'mrkdwn', text: `*Uploader:*\n${uploaderDisplay}` },
+    { type: 'mrkdwn', text: `*Tags:*\n${tagsLine}` },
+    { type: 'mrkdwn', text: `*Format:*\n${upload.content_type}` },
+  ] as const;
+
+  const blocks: SlackBlockMessage['blocks'] = [
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `🖼️ *Logo pending review:* <${reviewUrl}|${upload.domain}>`,
+      },
+    },
+    { type: 'section', fields: [...fields] },
+  ];
+
+  if (upload.upload_note) {
+    // Truncate to keep the Slack block under the 3000-char text limit and
+    // to keep moderator-facing copy scannable — full note is on the brand
+    // viewer page.
+    const note = upload.upload_note.slice(0, 500);
+    blocks.push({
+      type: 'section',
+      text: { type: 'mrkdwn', text: `*Note:*\n${note}` },
+    });
+  }
+
+  const message: SlackBlockMessage = {
+    text: `🖼️ Logo pending review: ${upload.domain} by ${uploaderDisplay}`,
+    blocks,
+  };
+
+  try {
+    const result = await sendChannelMessage(channelId, message);
+    return result.ts || null;
+  } catch (error) {
+    logger.error({ error, domain: upload.domain, logoId: upload.logo_id }, 'Failed to send pending-logo notification');
+    return null;
+  }
+}
+
+/**
  * Notify when a user is banned from editing.
  */
 export async function notifyRegistryBan(ban: {
