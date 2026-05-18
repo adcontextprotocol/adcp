@@ -967,6 +967,42 @@ The narrows relation is one-directional: v2 narrows v1 (v2 is the stricter shape
 
 SDK authors implementing the narrowing check SHOULD apply parameter-by-parameter subsumption per the rules above. Edge cases (composite parameters, platform_extensions, slot vocabulary changes) are not yet specified; SDKs MAY treat them as "unknown — pass" for 3.1 and surface a structured warning, with the working group tightening them per adopter feedback through 3.x.
 
+### v1 → v2 projection via `canonical:` annotation (object shape)
+
+The v1 catalog's `canonical:` annotation is an OBJECT, not a string. The minimal form carries just the canonical kind; the rich form adds `asset_source` and `slots_override` for v1 entries whose shape doesn't follow the canonical's defaults.
+
+**Why an object.** A bare-string annotation `canonical: "image"` implicitly carries the canonical's default slot set (`image_main: image, required`) and default asset_source (`buyer_uploaded`). For v1 entries that follow those defaults — a 300×250 image upload — that's correct. For v1 entries that DON'T (generative, brief-driven, host-recorded), the bare annotation is lossy: an SDK projecting `display_300x250_generative` with bare `canonical: "image"` would produce a v2 declaration claiming buyer-uploaded image bytes, when the v1 entry actually wants a `generation_prompt: text` input. v2-aware buyers reading the projection would mis-route. The object form fixes this.
+
+**Two cases.** Default-slot case (most v1 entries):
+
+```json
+"canonical": { "kind": "image" }
+```
+
+Override case (generative entries, brief-driven host-reads, anything whose v1 asset shape isn't the canonical's default):
+
+```json
+"canonical": {
+  "kind": "image",
+  "asset_source": "agent_synthesized",
+  "slots_override": [
+    { "asset_group_id": "generation_prompt", "asset_type": "text", "required": true }
+  ]
+}
+```
+
+**Projection rules** (per `canonical-projection-ref.json`):
+
+1. `kind` → `format_kind` on the projected v2 ProductFormatDeclaration.
+2. `asset_source` (if set) → `params.asset_source`. If absent, projection uses the canonical's default (typically `buyer_uploaded`).
+3. `slots_override` (if set) REPLACES the canonical's default `slots[]` on the projected declaration. If absent, projection inherits the canonical's defaults.
+4. v1 entry's `requirements` (dimensions, durations, codecs) → `params` fields per the canonical's parameter schema.
+5. v1 entry's `assets[*]` MUST be consistent with the resulting `slots[]` — `asset_id` ↔ `asset_group_id` (asset-group-vocabulary resolves aliases).
+
+**Generative formats in the catalog.** The 8 `display_*_generative` entries carry the rich form with `asset_source: agent_synthesized` and a `generation_prompt: text` slot override. v2-aware buyers projecting these get a v2 declaration that correctly says "this is a 300×250 image format, produced by agent synthesis, buyer ships a text prompt as input." A buyer with image bytes can't satisfy that contract; a buyer with a generation prompt can. The same canonical kind (`image`) supports both because `asset_source` + `slots_override` discriminates on the production model.
+
+**"How does a seller say 'I don't do generative'?"** They already have — by declaring `format_kind: image` with default slots (no `asset_source` override). The canonical's required `image_main: image` slot excludes generative buyers automatically. To OPT INTO generative, the seller declares `asset_source: agent_synthesized` and overrides `slots[]` on their product's format_options entry. Default behavior is the conservative one.
+
 ### v2 → v1 linking via `v1_format_ref`
 
 When a seller has both a published v1 named format AND a v2 declaration for the same underlying product/inventory, the v2 declaration carries `v1_format_ref: { agent_url, id }` linking back to the v1 identifier. The v2 declaration is the source of truth for shape; the v1 format file stays a pure v1 shape — no mirrored declaration.

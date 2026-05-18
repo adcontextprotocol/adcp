@@ -226,7 +226,7 @@
       "variants": 4,
       "note": "shared-required=[∅]; 0:req=[width,height] | 1:req=[sizes] | 2:req=[∅] | 3:req=[∅]"
     },
-    "formats/canonical/image.json##/allOf/0/oneOf": {
+    "formats/canonical/image.json##/allOf/1/oneOf": {
       "kind": "dangerous",
       "variants": 4,
       "note": "shared-required=[∅]; 0:req=[width,height] | 1:req=[sizes] | 2:req=[∅] | 3:req=[∅]"

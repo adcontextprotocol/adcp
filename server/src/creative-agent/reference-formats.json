@@ -61,7 +61,18 @@
           "description": "Text prompt describing the desired creative"
         }
       }
-    ]
+    ],
+    "canonical": {
+      "kind": "image",
+      "asset_source": "agent_synthesized",
+      "slots_override": [
+        {
+          "asset_group_id": "generation_prompt",
+          "asset_type": "text",
+          "required": true
+        }
+      ]
+    }
   },
   {
     "format_id": {
@@ -141,7 +152,18 @@
           "description": "Text prompt describing the desired creative"
         }
       }
-    ]
+    ],
+    "canonical": {
+      "kind": "image",
+      "asset_source": "agent_synthesized",
+      "slots_override": [
+        {
+          "asset_group_id": "generation_prompt",
+          "asset_type": "text",
+          "required": true
+        }
+      ]
+    }
   },
   {
     "format_id": {
@@ -221,7 +243,18 @@
           "description": "Text prompt describing the desired creative"
         }
       }
-    ]
+    ],
+    "canonical": {
+      "kind": "image",
+      "asset_source": "agent_synthesized",
+      "slots_override": [
+        {
+          "asset_group_id": "generation_prompt",
+          "asset_type": "text",
+          "required": true
+        }
+      ]
+    }
   },
   {
     "format_id": {
@@ -301,7 +334,18 @@
           "description": "Text prompt describing the desired creative"
         }
       }
-    ]
+    ],
+    "canonical": {
+      "kind": "image",
+      "asset_source": "agent_synthesized",
+      "slots_override": [
+        {
+          "asset_group_id": "generation_prompt",
+          "asset_type": "text",
+          "required": true
+        }
+      ]
+    }
   },
   {
     "format_id": {
@@ -381,7 +425,18 @@
           "description": "Text prompt describing the desired creative"
         }
       }
-    ]
+    ],
+    "canonical": {
+      "kind": "image",
+      "asset_source": "agent_synthesized",
+      "slots_override": [
+        {
+          "asset_group_id": "generation_prompt",
+          "asset_type": "text",
+          "required": true
+        }
+      ]
+    }
   },
   {
     "format_id": {
@@ -461,7 +516,18 @@
           "description": "Text prompt describing the desired creative"
         }
       }
-    ]
+    ],
+    "canonical": {
+      "kind": "image",
+      "asset_source": "agent_synthesized",
+      "slots_override": [
+        {
+          "asset_group_id": "generation_prompt",
+          "asset_type": "text",
+          "required": true
+        }
+      ]
+    }
   },
   {
     "format_id": {
@@ -541,7 +607,18 @@
           "description": "Text prompt describing the desired creative"
         }
       }
-    ]
+    ],
+    "canonical": {
+      "kind": "image",
+      "asset_source": "agent_synthesized",
+      "slots_override": [
+        {
+          "asset_group_id": "generation_prompt",
+          "asset_type": "text",
+          "required": true
+        }
+      ]
+    }
   },
   {
     "format_id": {
@@ -621,7 +698,18 @@
           "description": "Text prompt describing the desired creative"
         }
       }
-    ]
+    ],
+    "canonical": {
+      "kind": "image",
+      "asset_source": "agent_synthesized",
+      "slots_override": [
+        {
+          "asset_group_id": "generation_prompt",
+          "asset_type": "text",
+          "required": true
+        }
+      ]
+    }
   },
   {
     "format_id": {
@@ -688,7 +776,9 @@
         }
       }
     ],
-    "canonical": "video_hosted"
+    "canonical": {
+      "kind": "video_hosted"
+    }
   },
   {
     "format_id": {
@@ -755,7 +845,9 @@
         }
       }
     ],
-    "canonical": "video_hosted"
+    "canonical": {
+      "kind": "video_hosted"
+    }
   },
   {
     "format_id": {
@@ -798,7 +890,9 @@
         "asset_type": "vast"
       }
     ],
-    "canonical": "video_vast"
+    "canonical": {
+      "kind": "video_vast"
+    }
   },
   {
     "format_id": {
@@ -868,7 +962,9 @@
         }
       }
     ],
-    "canonical": "video_hosted"
+    "canonical": {
+      "kind": "video_hosted"
+    }
   },
   {
     "format_id": {
@@ -938,7 +1034,9 @@
         }
       }
     ],
-    "canonical": "video_hosted"
+    "canonical": {
+      "kind": "video_hosted"
+    }
   },
   {
     "format_id": {
@@ -984,7 +1082,9 @@
         }
       }
     ],
-    "canonical": "video_vast"
+    "canonical": {
+      "kind": "video_vast"
+    }
   },
   {
     "format_id": {
@@ -1067,7 +1167,9 @@
         }
       }
     ],
-    "canonical": "video_hosted"
+    "canonical": {
+      "kind": "video_hosted"
+    }
   },
   {
     "format_id": {
@@ -1150,7 +1252,9 @@
         }
       }
     ],
-    "canonical": "video_hosted"
+    "canonical": {
+      "kind": "video_hosted"
+    }
   },
   {
     "format_id": {
@@ -1233,7 +1337,9 @@
         }
       }
     ],
-    "canonical": "video_hosted"
+    "canonical": {
+      "kind": "video_hosted"
+    }
   },
   {
     "format_id": {
@@ -1316,7 +1422,9 @@
         }
       }
     ],
-    "canonical": "video_hosted"
+    "canonical": {
+      "kind": "video_hosted"
+    }
   },
   {
     "format_id": {
@@ -1385,7 +1493,9 @@
         }
       }
     ],
-    "canonical": "video_hosted"
+    "canonical": {
+      "kind": "video_hosted"
+    }
   },
   {
     "format_id": {
@@ -1454,7 +1564,9 @@
         }
       }
     ],
-    "canonical": "video_hosted"
+    "canonical": {
+      "kind": "video_hosted"
+    }
   },
   {
     "format_id": {
@@ -1798,7 +1910,9 @@
         }
       }
     ],
-    "canonical": "image"
+    "canonical": {
+      "kind": "image"
+    }
   },
   {
     "format_id": {
@@ -1900,7 +2014,9 @@
         }
       }
     ],
-    "canonical": "image"
+    "canonical": {
+      "kind": "image"
+    }
   },
   {
     "format_id": {
@@ -2002,7 +2118,9 @@
         }
       }
     ],
-    "canonical": "image"
+    "canonical": {
+      "kind": "image"
+    }
   },
   {
     "format_id": {
@@ -2104,7 +2222,9 @@
         }
       }
     ],
-    "canonical": "image"
+    "canonical": {
+      "kind": "image"
+    }
   },
   {
     "format_id": {
@@ -2206,7 +2326,9 @@
         }
       }
     ],
-    "canonical": "image"
+    "canonical": {
+      "kind": "image"
+    }
   },
   {
     "format_id": {
@@ -2308,7 +2430,9 @@
         }
       }
     ],
-    "canonical": "image"
+    "canonical": {
+      "kind": "image"
+    }
   },
   {
     "format_id": {
@@ -2410,7 +2534,9 @@
         }
       }
     ],
-    "canonical": "image"
+    "canonical": {
+      "kind": "image"
+    }
   },
   {
     "format_id": {
@@ -2512,7 +2638,9 @@
         }
       }
     ],
-    "canonical": "image"
+    "canonical": {
+      "kind": "image"
+    }
   },
   {
     "format_id": {
@@ -2570,7 +2698,9 @@
         }
       }
     ],
-    "canonical": "html5"
+    "canonical": {
+      "kind": "html5"
+    }
   },
   {
     "format_id": {
@@ -2644,7 +2774,9 @@
         }
       }
     ],
-    "canonical": "html5"
+    "canonical": {
+      "kind": "html5"
+    }
   },
   {
     "format_id": {
@@ -2716,7 +2848,9 @@
         }
       }
     ],
-    "canonical": "html5"
+    "canonical": {
+      "kind": "html5"
+    }
   },
   {
     "format_id": {
@@ -2788,7 +2922,9 @@
         }
       }
     ],
-    "canonical": "html5"
+    "canonical": {
+      "kind": "html5"
+    }
   },
   {
     "format_id": {
@@ -2860,7 +2996,9 @@
         }
       }
     ],
-    "canonical": "html5"
+    "canonical": {
+      "kind": "html5"
+    }
   },
   {
     "format_id": {
@@ -2932,7 +3070,9 @@
         }
       }
     ],
-    "canonical": "html5"
+    "canonical": {
+      "kind": "html5"
+    }
   },
   {
     "format_id": {
@@ -3004,7 +3144,9 @@
         }
       }
     ],
-    "canonical": "html5"
+    "canonical": {
+      "kind": "html5"
+    }
   },
   {
     "format_id": {
@@ -3054,7 +3196,9 @@
         "asset_type": "javascript"
       }
     ],
-    "canonical": "display_tag"
+    "canonical": {
+      "kind": "display_tag"
+    }
   },
   {
     "format_id": {
@@ -3388,7 +3532,9 @@
         }
       }
     ],
-    "canonical": "audio_hosted"
+    "canonical": {
+      "kind": "audio_hosted"
+    }
   },
   {
     "format_id": {
@@ -3454,7 +3600,9 @@
         }
       }
     ],
-    "canonical": "audio_hosted"
+    "canonical": {
+      "kind": "audio_hosted"
+    }
   },
   {
     "format_id": {
@@ -3520,7 +3668,9 @@
         }
       }
     ],
-    "canonical": "audio_hosted"
+    "canonical": {
+      "kind": "audio_hosted"
+    }
   },
   {
     "format_id": {
@@ -4702,7 +4852,9 @@
       "CACHEBUSTER",
       "CLICK_URL"
     ],
-    "canonical": "sponsored_placement"
+    "canonical": {
+      "kind": "sponsored_placement"
+    }
   },
   {
     "format_id": {
@@ -4867,6 +5019,8 @@
       "CACHEBUSTER",
       "CLICK_URL"
     ],
-    "canonical": "agent_placement"
+    "canonical": {
+      "kind": "agent_placement"
+    }
   }
 ]

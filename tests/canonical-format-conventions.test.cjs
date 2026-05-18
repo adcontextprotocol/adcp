@@ -36,6 +36,7 @@ const path = require('path');
 
 const FIXTURES_DIR = path.resolve(__dirname, '../static/examples/products/canonical');
 const ADAGENTS_FIXTURES = path.resolve(__dirname, '../static/examples/adagents');
+const V1_CATALOG = path.resolve(__dirname, '../server/src/creative-agent/reference-formats.json');
 const RED = '\x1b[31m';
 const YELLOW = '\x1b[33m';
 const GREEN = '\x1b[32m';
@@ -175,6 +176,34 @@ function walkProductFixtures() {
   }
 }
 
+function walkV1Catalog() {
+  if (!fs.existsSync(V1_CATALOG)) return;
+  console.log(`\nv1 catalog: ${V1_CATALOG}`);
+  const data = JSON.parse(fs.readFileSync(V1_CATALOG, 'utf8'));
+  if (!Array.isArray(data)) return;
+  const errBefore = errors;
+  const warnBefore = warnings;
+  const f = path.relative(path.resolve(__dirname, '..'), V1_CATALOG);
+  for (const entry of data) {
+    if (!entry || typeof entry !== 'object') continue;
+    const can = entry.canonical;
+    const fid = entry.format_id?.id || '?';
+    if (can === undefined || can === null) continue;
+    if (typeof can === 'string') {
+      fail(f, `entry ${fid} uses bare-string canonical "${can}" — must be object form { kind: "${can}" } (canonical-projection-ref.json)`);
+    } else if (typeof can === 'object') {
+      if (!can.kind || typeof can.kind !== 'string') {
+        fail(f, `entry ${fid} canonical missing required "kind" field`);
+      }
+      // If slots_override is set, asset_source SHOULD also be explicit
+      if (can.slots_override && !can.asset_source) {
+        warn(f, `entry ${fid} declares slots_override without explicit asset_source — projection ambiguous, default buyer_uploaded may not match override`);
+      }
+    }
+  }
+  if (errors === errBefore && warnings === warnBefore) pass(f, `${data.length} entries`);
+}
+
 function walkAdagentsFixtures() {
   if (!fs.existsSync(ADAGENTS_FIXTURES)) return;
   console.log(`\nadagents.json fixtures: ${ADAGENTS_FIXTURES}`);
@@ -199,6 +228,7 @@ console.log('==================================');
 
 walkProductFixtures();
 walkAdagentsFixtures();
+walkV1Catalog();
 
 console.log('');
 if (errors > 0) {
