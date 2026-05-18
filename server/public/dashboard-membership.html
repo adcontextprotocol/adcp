@@ -1081,7 +1081,7 @@
             </div>
             <div>
               <label style="display: block; font-size: 14px; font-weight: 500; color: var(--color-text); margin-bottom: 4px;">Country *</label>
-              <input type="text" id="invoice-country" name="country" required value="US" placeholder="US" style="width: 100%; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 8px; font-size: 14px;">
+              <select id="invoice-country" name="country" required style="width: 100%; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 8px; font-size: 14px; background: white;"></select>
             </div>
           </div>
 
@@ -1192,7 +1192,7 @@
             </div>
             <div>
               <label style="display: block; font-size: 14px; font-weight: 500; color: var(--color-text); margin-bottom: 4px;">Country *</label>
-              <input type="text" id="addr-country" name="country" required maxlength="200" value="US" style="width: 100%; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 8px; font-size: 14px;">
+              <select id="addr-country" name="country" required style="width: 100%; padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 8px; font-size: 14px; background: white;"></select>
             </div>
           </div>
           <div id="billingAddressError" style="display: none; color: var(--color-error-600); font-size: 14px; margin-bottom: 16px; padding: 12px; background: var(--color-error-bg); border-radius: 8px;"></div>
@@ -1211,6 +1211,54 @@
     let membershipProducts = [];
     let selectedCompanyType = null;
     let selectedRevenueTier = null;
+
+    // ISO-3166-1 alpha-2 codes for the billing-address country selector.
+    // The Stripe customer.address.country API and our server validator both
+    // require this exact 2-letter shape.
+    const COUNTRY_OPTIONS = [
+      ['US', 'United States'], ['CA', 'Canada'], ['GB', 'United Kingdom'],
+      ['AU', 'Australia'], ['NZ', 'New Zealand'], ['IE', 'Ireland'],
+      ['DE', 'Germany'], ['FR', 'France'], ['ES', 'Spain'], ['IT', 'Italy'],
+      ['NL', 'Netherlands'], ['BE', 'Belgium'], ['LU', 'Luxembourg'],
+      ['CH', 'Switzerland'], ['AT', 'Austria'], ['PT', 'Portugal'],
+      ['SE', 'Sweden'], ['NO', 'Norway'], ['DK', 'Denmark'], ['FI', 'Finland'],
+      ['IS', 'Iceland'], ['PL', 'Poland'], ['CZ', 'Czechia'],
+      ['SK', 'Slovakia'], ['HU', 'Hungary'], ['RO', 'Romania'],
+      ['BG', 'Bulgaria'], ['GR', 'Greece'], ['HR', 'Croatia'],
+      ['SI', 'Slovenia'], ['EE', 'Estonia'], ['LV', 'Latvia'],
+      ['LT', 'Lithuania'], ['CY', 'Cyprus'], ['MT', 'Malta'],
+      ['JP', 'Japan'], ['KR', 'South Korea'], ['CN', 'China'],
+      ['HK', 'Hong Kong'], ['TW', 'Taiwan'], ['SG', 'Singapore'],
+      ['MY', 'Malaysia'], ['TH', 'Thailand'], ['ID', 'Indonesia'],
+      ['PH', 'Philippines'], ['VN', 'Vietnam'], ['IN', 'India'],
+      ['AE', 'United Arab Emirates'], ['SA', 'Saudi Arabia'], ['IL', 'Israel'],
+      ['TR', 'Turkey'], ['ZA', 'South Africa'], ['NG', 'Nigeria'],
+      ['KE', 'Kenya'], ['EG', 'Egypt'], ['MA', 'Morocco'],
+      ['MX', 'Mexico'], ['BR', 'Brazil'], ['AR', 'Argentina'],
+      ['CL', 'Chile'], ['CO', 'Colombia'], ['PE', 'Peru'], ['UY', 'Uruguay'],
+    ];
+
+    function populateCountrySelect(selectEl, current) {
+      if (!selectEl) return;
+      const selected = (current || 'US').toUpperCase();
+      selectEl.replaceChildren();
+      // Persist whatever the org currently has even if it's not in our short
+      // list, so editing an existing address never silently changes country.
+      const seen = new Set();
+      const fallbackUnknown =
+        selected && /^[A-Z]{2}$/.test(selected) &&
+        !COUNTRY_OPTIONS.some(([code]) => code === selected);
+      if (fallbackUnknown) {
+        const opt = new Option(selected, selected, true, true);
+        selectEl.appendChild(opt);
+        seen.add(selected);
+      }
+      for (const [code, name] of COUNTRY_OPTIONS) {
+        if (seen.has(code)) continue;
+        const isSel = code === selected;
+        selectEl.appendChild(new Option(`${name} (${code})`, code, isSel, isSel));
+      }
+    }
 
     // Show toast
     function showToast(message, isError = false) {
@@ -1903,15 +1951,13 @@
       document.getElementById('invoice-recipient-summary').textContent =
         userEmail ? `Invoice will be sent to ${userEmail}` : 'Invoice will be sent to your account email';
 
-      if (currentOrg.billing_address) {
-        const a = currentOrg.billing_address;
-        if (a.line1) document.getElementById('invoice-address1').value = a.line1;
-        if (a.line2) document.getElementById('invoice-address2').value = a.line2;
-        if (a.city) document.getElementById('invoice-city').value = a.city;
-        if (a.state) document.getElementById('invoice-state').value = a.state;
-        if (a.postal_code) document.getElementById('invoice-postal').value = a.postal_code;
-        if (a.country) document.getElementById('invoice-country').value = a.country;
-      }
+      const prefill = currentOrg.billing_address || {};
+      if (prefill.line1) document.getElementById('invoice-address1').value = prefill.line1;
+      if (prefill.line2) document.getElementById('invoice-address2').value = prefill.line2;
+      if (prefill.city) document.getElementById('invoice-city').value = prefill.city;
+      if (prefill.state) document.getElementById('invoice-state').value = prefill.state;
+      if (prefill.postal_code) document.getElementById('invoice-postal').value = prefill.postal_code;
+      populateCountrySelect(document.getElementById('invoice-country'), prefill.country || 'US');
 
       const agreementCheckbox = document.getElementById('invoice-agreement-checkbox');
       const submitBtn = document.getElementById('invoiceSubmitBtn');
@@ -2239,7 +2285,7 @@
       document.getElementById('addr-city').value = a.city || '';
       document.getElementById('addr-state').value = a.state || '';
       document.getElementById('addr-postal').value = a.postal_code || '';
-      document.getElementById('addr-country').value = a.country || 'US';
+      populateCountrySelect(document.getElementById('addr-country'), a.country || 'US');
       document.getElementById('billingAddressError').style.display = 'none';
       document.getElementById('billingAddressModal').style.display = 'flex';
     }
