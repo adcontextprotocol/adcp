@@ -3368,6 +3368,16 @@
           "asset_group_id": "brand_name",
           "asset_type": "text",
           "required": true
+        },
+        {
+          "asset_group_id": "impression_tracker",
+          "asset_type": "native_tracker",
+          "required": false
+        },
+        {
+          "asset_group_id": "click_tracker",
+          "asset_type": "native_tracker",
+          "required": false
         }
       ],
       "asset_source": "buyer_uploaded"
@@ -3534,6 +3544,16 @@
           "asset_group_id": "disclosure",
           "asset_type": "text",
           "required": true
+        },
+        {
+          "asset_group_id": "impression_tracker",
+          "asset_type": "native_tracker",
+          "required": false
+        },
+        {
+          "asset_group_id": "click_tracker",
+          "asset_type": "native_tracker",
+          "required": false
         }
       ],
       "asset_source": "buyer_uploaded"

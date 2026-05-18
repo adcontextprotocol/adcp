@@ -41,6 +41,11 @@
       "schema": "/schemas/core/assets/daast-tracker-asset.json",
       "typical_use": "Decomposed DAAST event trackers on audio formats"
     },
+    "native_tracker": {
+      "description": "Native parity to vast_tracker: a single renderer-fired tracker URL bound to a native creative event (impression, viewability, click, custom). Maps to IAB OpenRTB Native 1.2 `imptrackers[]` / `jstracker` / `eventtrackers[]` / `link.clicktrackers[]`. Scope is RENDERER-FIRED trackers only — conversion pixels that fire on the advertiser's site post-click belong on `sync_event_sources` / `event_log`.",
+      "schema": "/schemas/core/assets/native-tracker-asset.json",
+      "typical_use": "Decomposed measurement trackers on native-shaped formats (native_standard, native_content); buyer's measurement vendor URLs the seller's native renderer fires at serve time"
+    },
     "text": {
       "description": "Plain text content asset",
       "schema": "/schemas/core/assets/text-asset.json",

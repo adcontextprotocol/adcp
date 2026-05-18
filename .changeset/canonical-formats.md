@@ -20,6 +20,8 @@
 
 **Error codes added** (all surfaced via response `errors[]` augmentation; non-fatal advisories): `FORMAT_PROJECTION_FAILED`, `FORMAT_DECLARATION_DIVERGENT`, `FORMAT_DECLARATION_V1_AMBIGUOUS`, `FORMAT_CAPABILITY_UNRESOLVED`, `FORMAT_DECLARATION_V1_LOSSY_MULTI_SIZE`.
 
+**Native tracker asset type (#4706)**: new `native_tracker` asset type at `static/schemas/source/core/assets/native-tracker-asset.json` — native parity to `vast_tracker` (#3051). Discriminated union with `event` (impression, viewable_mrc_50, viewable_mrc_100, viewable_video_50, click, custom), `method` (img, js), `url` (uri-template with universal-macros support), and `custom_event_name` (required when event is `custom`). Maps to IAB OpenRTB Native 1.2 `imptrackers[]` / `jstracker` / `eventtrackers[]` / `link.clicktrackers[]`. Scope is RENDERER-FIRED trackers — conversion pixels (Meta Pixel, GA4, server-side postbacks) stay on `sync_event_sources` / `event_log` per the format-vs-event_log boundary documented in canonical-formats.mdx. `native_standard` and `native_content` catalog entries upgraded to use `native_tracker` for impression and click trackers (was bare `url` asset, losing event/method semantics). New vocabulary entries: `impression_tracker`, `click_tracker`, `viewability_tracker` in asset-group-vocabulary.
+
 **Other adopter-facing additions:**
 
 - `ProductFormatDeclaration.seller_preference: "preferred" | "accepted" | "discouraged"` — soft routing hint on multi-format products.

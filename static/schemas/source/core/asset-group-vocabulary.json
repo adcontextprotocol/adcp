@@ -160,6 +160,23 @@
       "asset_type": "url",
       "typical_use": "LinkedIn lead gen, Snap lead gen — required for any format that collects user data."
     },
+    "impression_tracker": {
+      "description": "Renderer-fired impression tracker URL. Maps to native_tracker asset on native canonical formats; maps to url asset with url_type: \"tracker_pixel\" on VAST/DAAST formats (per the VAST `<Impression>` boundary documented on vast_tracker).",
+      "asset_type": "native_tracker",
+      "typical_use": "Measurement vendor impression pixel that the seller's native renderer fires at serve time. For VAST/DAAST formats use the url-asset shape instead.",
+      "aliases": ["imp_tracker", "impression_pixel", "imp_url"]
+    },
+    "click_tracker": {
+      "description": "Renderer-fired click tracker URL on native formats. Distinct from `landing_page_url` (the destination); click_tracker is a measurement hop that fires when the user clicks but doesn't navigate the user there.",
+      "asset_type": "native_tracker",
+      "typical_use": "IAB OpenRTB Native `link.clicktrackers[]` — measurement vendor URLs that fire on click in addition to the landing navigation.",
+      "aliases": ["click_pixel", "click_measurement_url"]
+    },
+    "viewability_tracker": {
+      "description": "Renderer-fired viewability tracker URL (MRC viewable, video-viewable). One per viewability event the buyer's measurement vendor wants to track.",
+      "asset_type": "native_tracker",
+      "typical_use": "MRC viewable measurement on native formats; the native_tracker event field carries the specific viewability variant (viewable_mrc_50, viewable_mrc_100, viewable_video_50)."
+    },
     "youtube_video_id": {
       "description": "Externally-hosted YouTube video reference.",
       "asset_type": "text",
