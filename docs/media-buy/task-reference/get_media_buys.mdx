@@ -30,6 +30,8 @@ Sellers that need to partition inventory away from a caller MUST do so at the **
 | `status_filter` | string \| string[] | No | Status filter: `"pending_creatives"`, `"pending_start"`, `"active"`, `"paused"`, `"completed"`, `"rejected"`, `"canceled"`. Defaults to `["active"]` only when `media_buy_ids` is omitted. |
 | `include_snapshot` | boolean | No | When true, include near-real-time delivery snapshots for each package. Defaults to `false`. |
 | `include_history` | integer | No | Include the last N revision history entries per media buy (returns min(N, available)). 0 or omit to exclude. Max 1000. |
+| `include_webhook_activity` | boolean | No | When true, each media buy includes a `webhook_activity` array with recent delivery-report webhook fires for the calling principal. Defaults to `false`. See [Webhook activity](#webhook-activity). |
+| `webhook_activity_limit` | integer | No | Per-buy cap on returned webhook records (most-recent first). Range 1–200, default 50. Ignored when `include_webhook_activity` is false. |
 | `pagination` | object | No | Cursor-based pagination controls (`max_results`, `cursor`) for broad queries. |
 
 *`media_buy_ids` filters results to specific media buys. If neither is provided, the query is scope-based and uses `status_filter` + `pagination`.
@@ -61,6 +63,7 @@ Returns an array of media buys with current status, creative approval state, and
 | `revision` | Current revision number. Pass in `update_media_buy` for optimistic concurrency. |
 | `valid_actions` | Actions the buyer can perform in the current state (e.g., `["pause", "cancel", "update_budget"]`). See [valid actions mapping](#valid-actions-mapping). |
 | `history` | Revision history entries, most recent first. Only present when `include_history > 0`. Append-only — entries are never modified or deleted. |
+| `webhook_activity` | Recent reporting and health webhook fires for the calling principal, most-recent first. Only present when `include_webhook_activity` is true AND the seller surfaces fire history for this buy. See [Webhook activity](#webhook-activity) for three-state presence semantics. |
 | `packages` | Array of packages with creative status and optional snapshots |
 
 ### Package Object
@@ -121,6 +124,180 @@ History entries are **append-only** — sellers MUST NOT modify or delete previo
 **`not_delivering`** means the package is within its scheduled flight but has delivered zero impressions for at least one full staleness cycle. Implementers must not return `not_delivering` until `staleness_seconds` have elapsed since package activation — a new package with no impressions in its first minutes is expected, not a problem. Check `start_time` to confirm the package is within its flight before acting on this status.
 
 Money fields use this currency precedence: `snapshot.currency` -> `package.currency` -> `media_buy.currency`.
+
+### Webhook Activity
+
+When `include_webhook_activity: true`, each returned media buy MAY carry a `webhook_activity` array describing recent reporting and health webhook fires from the seller to the buyer's registered endpoint. This is the buyer-side debug surface for the [persistent-channel webhook contract](/docs/building/by-layer/L3/webhooks#persistent-channel-contract) — buyers use it to verify that the publisher fired, what the buyer's gateway returned, and whether retries are still in flight, without needing an operator-level query against the seller's logs.
+
+The record shape, request-field names, scoping, retention floor, three-state presence, and cardinality rules are uniform across AdCP resources that adopt this surface. See [Webhook activity log pattern](/docs/protocol/snapshot-and-log#webhook-activity-log-pattern) on the snapshot/log contract page for the cross-resource normative section — the rules below restate it for the media-buy call site and add the media-buy-specific capability gate.
+
+The surface covers both delivery-report notification types (`scheduled`, `final`, `delayed`, `adjusted`) and health notification types (`impairment`). All share the same webhook delivery contract and the same buyer-side debug need.
+
+| Field | Description |
+|-------|-------------|
+| `idempotency_key` | Equals the `idempotency_key` carried in the webhook payload itself ([§ Dedup by `idempotency_key`](/docs/building/by-layer/L3/webhooks#dedup-by-idempotency_key)). Stable across retries of the same logical fire — buyers correlate this surface with their own endpoint logs via this exact field. Reference it when filing support tickets. |
+| `subscriber_id` | Identifies which registered webhook subscriber received this fire. Absent in single-subscriber configurations; populated under multi-subscriber buys (4.0+, see [#3009](https://github.com/adcontextprotocol/adcp/issues/3009)). |
+| `fired_at` | ISO 8601 timestamp when the seller initiated this attempt. |
+| `completed_at` | ISO 8601 timestamp when the response was observed (or terminal failure). Null while `status` is `pending`. |
+| `notification_type` | Verbatim from the webhook payload: `scheduled`, `final`, `delayed`, `adjusted`, `impairment`. |
+| `sequence_number` | Sequence number from the webhook payload — useful for spotting stale-sequence drops or gaps. Absent when the notification type does not carry one. |
+| `attempt` | 1-indexed retry counter for this logical fire. Initial fire is `attempt: 1`. |
+| `status` | `success`, `failed`, `timeout`, `connection_error`, or `pending`. See semantics below. |
+| `url` | Target URL with **query string and fragment stripped**, and high-entropy / token-shaped path segments redacted. Match this against your registered URL by origin + path, not full URL. |
+| `http_status_code` | HTTP status from the buyer's endpoint. Null when no HTTP response was received (`timeout`, `connection_error`, `pending`). |
+| `response_time_ms` | Wall-clock latency between request send and response receipt. Null for non-completed attempts. |
+| `payload_size_bytes` | Size of the request body the seller sent — useful for diagnosing oversized-payload rejections. |
+| `error_message` | Short human-readable server-side classification of failure. Null for `success`. Sellers MUST NOT include request / response bodies or headers here. |
+
+**Status semantics:**
+
+- `success` — response received with a 2xx status. `http_status_code` populated.
+- `failed` — response received with a non-2xx status. `http_status_code` populated; `error_message` describes the response.
+- `timeout` — no response within the seller's configured timeout. `http_status_code` null. Operationally: the buyer's endpoint is reachable but slow / overloaded.
+- `connection_error` — DNS, TLS, or socket failure before any HTTP response. `http_status_code` null. Operationally: the buyer's endpoint is unreachable or misconfigured.
+- `pending` — attempt is in flight or queued for retry. `completed_at` is null; subsequent attempts appear with the same `idempotency_key` and incremented `attempt`.
+
+**Record cardinality:** one record per attempt. A successful first-attempt fire appears as a single record with `attempt: 1`. A 3-attempt retry trail (e.g., two failures then a success) appears as three records sharing `idempotency_key`.
+
+**Scoping (normative):**
+
+- `webhook_activity` MUST be scoped to the **calling principal**. When multiple buyer principals share visibility into the same media buy via account-level access, each principal sees only fires targeting its own endpoint.
+- Sellers that surface this field **MUST** retain records for at least 30 days from each record's `completed_at` — uniformly across `success`, `failed`, `timeout`, and `connection_error` outcomes (all of which populate `completed_at`). For records still in `pending` status, the clock runs from `fired_at` until the attempt terminates and then transitions to 30 days from `completed_at` — retry trails do not age out mid-flight. Sellers that cannot honor this floor MUST omit the field entirely rather than return a shorter window; the three-state presence semantics give them a clean opt-out and buyers a single guarantee they can build against.
+- This surface is a debug aid, not a full audit log. There is no cursor for older fires beyond `webhook_activity_limit` — buyers needing full history must persist webhook records on their own side.
+
+**Three-state presence semantics:**
+
+| State | Meaning |
+|-------|---------|
+| Field **omitted** | Seller does not surface webhook activity for this buy. Either the seller does not persist fire history, the seller's declared [`propagation_surfaces`](/docs/media-buy/media-buys/lifecycle) excludes `webhook`, or the buy has no registered webhook endpoint for the calling principal. |
+| Empty array `[]` | Seller persists fire history but has fired nothing recent for this principal. |
+| Non-empty array | Actual fire records, most-recent first. |
+
+Sellers whose declared `propagation_surfaces` does not include `webhook` MUST omit the field; opting in via `include_webhook_activity: true` does not override that.
+
+**Diagnosing an unexpected omission.** When you expected fires but got an omitted field, two observables let you discriminate the cause without filing a ticket: (1) check your own `push_notification_config` registration state for this buy — if not registered, that's the cause; (2) check the seller's `capabilities.media_buy.propagation_surfaces` via `get_adcp_capabilities` — if `webhook` is absent, that's the cause. When both check out, "seller does not persist fire history" is the remaining cause; that's a seller-side gap and warrants an operator ticket.
+
+**Privacy:**
+
+- The `url` field has its query string and fragment **stripped**, and sellers SHOULD redact path segments resembling shared secrets (high-entropy random material, UUID / token shapes).
+- Request and response bodies are **not surfaced** by this field. A future `include_webhook_payloads` extension may add them under stricter authorization controls — out of scope here.
+- `error_message` is a server-side classification string only — never request headers, never response bodies, never buyer-endpoint stack traces.
+
+#### Diagnose a webhook delivery problem
+
+<CodeGroup>
+
+```typescript TypeScript
+import { testAgent } from '@adcp/sdk/testing';
+import { GetMediaBuysResponseSchema, type WebhookActivityRecord } from '@adcp/sdk';
+
+// The WebhookActivityRecord type is regenerated by the SDK from
+// /schemas/core/webhook-activity-record.json — once the SDK rebuilds against this
+// branch's schemas the import resolves. The same type appears on every AdCP resource
+// that surfaces webhook_activity[], so debug helpers can be written once and reused.
+function latestAttempt(trail: WebhookActivityRecord[]): WebhookActivityRecord {
+  return trail.reduce((a, b) => (a.attempt >= b.attempt ? a : b));
+}
+
+const result = await testAgent.getMediaBuys({
+  media_buy_ids: ['mb_12345'],
+  include_webhook_activity: true,
+  webhook_activity_limit: 20,
+});
+
+if (!result.success) {
+  throw new Error(`Request failed: ${result.error}`);
+}
+
+const validated = GetMediaBuysResponseSchema.parse(result.data);
+
+for (const mediaBuy of validated.media_buys) {
+  // Three-state semantics — distinguish "seller does not surface" from "no recent fires".
+  if (mediaBuy.webhook_activity === undefined) {
+    console.log(`${mediaBuy.media_buy_id}: seller does not surface webhook activity for this buy`);
+    continue;
+  }
+
+  const fires = mediaBuy.webhook_activity;
+  if (fires.length === 0) {
+    console.log(`${mediaBuy.media_buy_id}: no recent fires for this principal`);
+    continue;
+  }
+
+  // Group attempts by idempotency_key so we can see the retry trail per logical fire.
+  const trails = new Map();
+  for (const fire of fires) {
+    const trail = trails.get(fire.idempotency_key) ?? [];
+    trail.push(fire);
+    trails.set(fire.idempotency_key, trail);
+  }
+
+  for (const [idempotencyKey, trail] of trails) {
+    // Pick the latest attempt by `attempt` number — robust against any iteration order.
+    const latest = latestAttempt(trail);
+    if (latest.status === 'success') continue;
+
+    const detail = latest.error_message ?? latest.http_status_code ?? '—';
+    console.log(
+      `${mediaBuy.media_buy_id} ${idempotencyKey} ` +
+      `(${latest.notification_type} seq=${latest.sequence_number}): ` +
+      `${latest.status} after ${trail.length} attempt(s) — ${detail}`
+    );
+  }
+}
+```
+
+```python Python
+import asyncio
+from collections import defaultdict
+from adcp.testing import test_agent
+from adcp.types import GetMediaBuysRequest, WebhookActivityRecord
+
+# WebhookActivityRecord is regenerated by the SDK from
+# /schemas/core/webhook-activity-record.json — once the SDK rebuilds against this
+# branch's schemas the import resolves. The same type appears on every AdCP resource
+# that surfaces webhook_activity[].
+def latest_attempt(trail: list[WebhookActivityRecord]) -> WebhookActivityRecord:
+    return max(trail, key=lambda f: f.attempt)
+
+async def main():
+    result = await test_agent.get_media_buys(
+        GetMediaBuysRequest(
+            media_buy_ids=['mb_12345'],
+            include_webhook_activity=True,
+            webhook_activity_limit=20,
+        )
+    )
+
+    for media_buy in result.media_buys:
+        # Three-state semantics: distinguish "seller does not surface" from "no recent fires".
+        if media_buy.webhook_activity is None:
+            print(f"{media_buy.media_buy_id}: seller does not surface webhook activity for this buy")
+            continue
+
+        fires = media_buy.webhook_activity
+        if not fires:
+            print(f"{media_buy.media_buy_id}: no recent fires for this principal")
+            continue
+
+        trails = defaultdict(list)
+        for fire in fires:
+            trails[fire.idempotency_key].append(fire)
+
+        for idempotency_key, trail in trails.items():
+            latest = latest_attempt(trail)
+            if latest.status == 'success':
+                continue
+
+            detail = latest.error_message or latest.http_status_code or '—'
+            print(f"{media_buy.media_buy_id} {idempotency_key} "
+                  f"({latest.notification_type} seq={latest.sequence_number}): "
+                  f"{latest.status} after {len(trail)} attempt(s) — {detail}")
+
+asyncio.run(main())
+```
+
+</CodeGroup>
 
 ## Valid Actions Mapping
 

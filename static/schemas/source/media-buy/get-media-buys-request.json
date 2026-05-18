@@ -50,6 +50,18 @@
       "maximum": 1000,
       "default": 0
     },
+    "include_webhook_activity": {
+      "type": "boolean",
+      "description": "When true, each returned media buy includes a `webhook_activity` array describing recent delivery-report webhook fires for the calling principal. Used by buyer agents to verify whether a publisher actually fired against the buyer's registered endpoint and what the endpoint returned — closes the operator-ticket loop for webhook debugging. Scoped to the calling principal: a buyer sees only fires targeting its own endpoint, even when multiple principals share visibility into the same media buy. Defaults to false. See `webhook_activity_limit` for the per-buy cap.",
+      "default": false
+    },
+    "webhook_activity_limit": {
+      "type": "integer",
+      "description": "Maximum number of webhook delivery records to return per media buy, ordered most-recent first. Ignored when `include_webhook_activity` is false. Sellers that surface webhook activity MUST retain records for at least 30 days from each record's `completed_at` (see `webhook_activity` description in the response schema for the `pending`-status carve-out); sellers unable to honor that floor MUST omit the field entirely rather than truncate. When a buy has more historical fires than the limit, only the most recent are returned — there is no cursor for older fires; this surface is a debug aid, not a full audit log.",
+      "minimum": 1,
+      "maximum": 200,
+      "default": 50
+    },
     "pagination": {
       "$ref": "/schemas/core/pagination-request.json",
       "description": "Cursor-based pagination controls. Strongly recommended when querying broad scopes (for example, all active media buys in an account)."
