@@ -1847,6 +1847,15 @@
 
         if (!response.ok) {
           const error = await response.json();
+          // Active subscriptions can't be re-billed via checkout; tier changes
+          // happen in the Stripe Customer Portal. The guard returns the portal
+          // URL in the 409 body — follow it instead of dead-ending on a toast.
+          if (response.status === 409 && error.customer_portal_url) {
+            btn.textContent = 'Opening billing portal...';
+            closeAgreementModal();
+            window.location.href = error.customer_portal_url;
+            return;
+          }
           throw new Error(error.message || 'Failed to create checkout session');
         }
 
