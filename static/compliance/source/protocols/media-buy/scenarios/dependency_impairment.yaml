@@ -67,12 +67,14 @@ narrative: |
   re-approval grade that sibling not_applicable; this scenario (swap) is
   the universal recovery path.
 
-  **Capability gating.** Sellers declaring
-  `capabilities.media_buy.impairment_propagation: "webhook_only"` or
-  `"out_of_band"` grade this whole scenario not_applicable — their
-  compliance contract is the webhook channel or the offline agreement, not
-  the snapshot. See lifecycle.mdx § Compliance for the capability
-  declaration and adcp#4683 for the runtime gating wiring.
+  **Capability gating.** Sellers whose
+  `capabilities.media_buy.propagation_surfaces` does NOT include
+  `"snapshot"` (e.g., `["webhook"]` or `["out_of_band"]`) grade this
+  whole scenario not_applicable — their compliance contract is the
+  webhook channel or the offline agreement, not the snapshot. Sellers
+  declaring `["snapshot", "webhook"]` are graded on the snapshot surface
+  here and on the webhook contract separately. See lifecycle.mdx §
+  Compliance for the surface declaration.
 
   Audience-track and catalog-track variants are out of scope here — the
   comply test controller only ships force_creative_status today; the

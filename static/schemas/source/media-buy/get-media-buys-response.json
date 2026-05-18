@@ -44,6 +44,10 @@
               "$ref": "/schemas/core/impairment.json"
             }
           },
+          "rejection_reason": {
+            "type": "string",
+            "description": "Reason provided by the seller when status is 'rejected'. Present only when status is 'rejected'."
+          },
           "currency": {
             "type": "string",
             "description": "ISO 4217 currency code (e.g., USD, EUR, GBP) for monetary values at this media buy level. total_budget is always denominated in this currency. Package-level fields may override with package.currency.",

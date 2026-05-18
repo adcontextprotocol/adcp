@@ -54,9 +54,10 @@ narrative: |
   - Seller never decrements impairments[] on swap recovery — caught in both
     recovery phases.
 
-  Capability gating mirrors the base scenario: sellers declaring
-  `capabilities.media_buy.impairment_propagation: "webhook_only"` or
-  `"out_of_band"` grade this scenario not_applicable.
+  Capability gating mirrors the base scenario: sellers whose
+  `capabilities.media_buy.propagation_surfaces` does NOT include
+  `"snapshot"` grade this scenario not_applicable. Sellers declaring
+  `["snapshot", "webhook"]` are graded here on the snapshot surface.
 
 agent:
   interaction_model: media_buy_seller
