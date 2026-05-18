@@ -1012,6 +1012,12 @@ phases:
       Initiates an SI session, then uses the controller to force session timeout.
       Verifies that messaging on a terminated session fails appropriately.
 
+    # Phase establishes its own session via initiate_session; doesn't consume
+    # state from earlier deterministic_* phases. Explicit empty depends_on
+    # prevents the runner's default "depend on all prior phases" from
+    # cascade-skipping this phase when an unrelated upstream phase trips.
+    depends_on: []
+
     steps:
       - id: initiate_session
         title: 'Initiate SI session'
@@ -1134,6 +1140,12 @@ phases:
     narrative: |
       Creates a media buy, simulates delivery data via the controller, then verifies
       the simulated metrics are reflected in get_media_buy_delivery.
+
+    # Phase creates its own media buy via create_media_buy_for_delivery; doesn't
+    # consume state from earlier deterministic_* phases. In particular, must not
+    # cascade-skip when deterministic_session skips for missing si_initiate_session
+    # on non-SI sellers (adcp-client#1711 follow-up).
+    depends_on: []
 
     steps:
       - id: create_media_buy_for_delivery
@@ -1269,6 +1281,12 @@ phases:
     narrative: |
       Creates a media buy, then uses the controller to simulate budget spend at 95%
       and 100%. Verifies the agent handles near-depletion and full depletion.
+
+    # Phase creates its own media buy via create_media_buy_for_budget; doesn't
+    # consume state from earlier deterministic_* phases. In particular, must not
+    # cascade-skip when deterministic_session skips for missing si_initiate_session
+    # on non-SI sellers (adcp-client#1711 follow-up).
+    depends_on: []
 
     steps:
       - id: create_media_buy_for_budget
