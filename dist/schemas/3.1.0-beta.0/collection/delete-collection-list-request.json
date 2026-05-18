@@ -1,0 +1,43 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.0/collection/delete-collection-list-request.json",
+  "title": "Delete Collection List Request",
+  "description": "Request parameters for deleting a collection list",
+  "x-mutates-state": true,
+  "type": "object",
+  "properties": {
+    "adcp_major_version": {
+      "type": "integer",
+      "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
+      "minimum": 1,
+      "maximum": 99
+    },
+    "list_id": {
+      "type": "string",
+      "description": "ID of the collection list to delete",
+      "x-entity": "collection_list"
+    },
+    "account": {
+      "$ref": "/schemas/3.1.0-beta.0/core/account-ref.json",
+      "description": "Account that owns the list. Required when the authenticated agent has access to multiple accounts; optional otherwise."
+    },
+    "context": {
+      "$ref": "/schemas/3.1.0-beta.0/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.1.0-beta.0/core/ext.json"
+    },
+    "idempotency_key": {
+      "type": "string",
+      "description": "Client-generated unique key for at-most-once execution. If a request with the same key has already been processed, the server returns the original response without re-processing. MUST be unique per (seller, request) pair to prevent cross-seller correlation. Use a fresh UUID v4 for each request.",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "list_id"
+  ],
+  "additionalProperties": false
+}

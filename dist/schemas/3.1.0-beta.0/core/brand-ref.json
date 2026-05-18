@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.0/core/brand-ref.json",
+  "title": "Brand Reference",
+  "description": "Reference to a brand by domain and optional brand_id. The domain hosts /.well-known/brand.json or is registered in the brand registry. For single-brand domains, brand_id can be omitted. For house-of-brands domains, brand_id identifies the specific brand.",
+  "type": "object",
+  "properties": {
+    "domain": {
+      "type": "string",
+      "description": "Domain where /.well-known/brand.json is hosted, or the brand's operating domain",
+      "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"
+    },
+    "brand_id": {
+      "$ref": "/schemas/3.1.0-beta.0/core/brand-id.json",
+      "description": "Brand identifier within the house portfolio. Optional for single-brand domains."
+    },
+    "industries": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Inline override for the brand's industries. Useful when the caller cannot modify the brand's canonical brand.json but needs to declare industries for governance (e.g., Annex III vertical detection). brand.json remains the canonical source; when omitted here, governance agents SHOULD resolve from brand.json."
+    },
+    "data_subject_contestation": {
+      "type": "object",
+      "description": "Inline override for the brand's contestation contact point. Useful when the operator does not control brand.json but needs to discharge Art 22(3) for this plan. brand.json is canonical; when omitted, governance agents resolve brand → house → missing.",
+      "properties": {
+        "url": { "type": "string", "format": "uri", "pattern": "^https://" },
+        "email": { "type": "string", "format": "email" },
+        "languages": { "type": "array", "items": { "type": "string" } }
+      },
+      "anyOf": [
+        { "required": ["url"] },
+        { "required": ["email"] }
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": ["domain"],
+  "additionalProperties": false,
+  "examples": [
+    {
+      "domain": "nova-brands.com",
+      "brand_id": "spark"
+    },
+    {
+      "domain": "nova-brands.com",
+      "brand_id": "glow"
+    },
+    {
+      "domain": "acme-corp.com"
+    }
+  ]
+}

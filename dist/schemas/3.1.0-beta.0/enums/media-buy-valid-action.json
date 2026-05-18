@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.0/enums/media-buy-valid-action.json",
+  "title": "Media Buy Valid Action",
+  "description": "Actions the buyer can perform on a media buy",
+  "type": "string",
+  "enum": ["pause", "resume", "cancel", "update_budget", "update_dates", "update_packages", "add_packages", "sync_creatives"]
+}

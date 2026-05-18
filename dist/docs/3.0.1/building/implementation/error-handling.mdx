@@ -121,10 +121,6 @@ AdCP exposes errors in two distinct places, and implementers need to populate th
 
 **Storyboard validators.** Prefer `check: error_code` over `check: field_present, path: "errors"` when asserting on a failed task's error code. `error_code` is shape-agnostic — the runner resolves it from either `adcp_error.code` (transport) or `errors[0].code` (payload). Direct `path: "errors"` checks pin the assertion to the payload shape and fail against agents that surface errors only via the transport envelope, even when the agent is conformant. See [Storyboard authoring — Asserting on errors](/dist/docs/3.0.1/contributing/storyboard-authoring#asserting-on-errors).
 
-**Discriminated rejection arms.** When the task response defines a structured rejection arm (e.g., `AcquireRightsRejected`, `CreativeRejected` — see the wire-placement guidance on [`GOVERNANCE_DENIED`](https://adcontextprotocol.org/schemas/v3/enums/error-code.json) for the rule), the spec-correct denial response carries no error code on the wire — the rejection arm enforces `not: { required: [errors] }` at the schema layer. Asserting `check: error_code` will fail against a conformant agent. Assert on the discriminator instead: `check: field_value, path: "status", value: "rejected"`. This is the pattern for governance denial on `acquire_rights` and policy denial on `creative_approval`; assertions that mix the two paths (`error_code` for tasks with rejection arms, `field_value` for tasks without) bake non-spec opinions into the storyboard.
-
-**Discriminated rejection arms.** When the task response defines a structured rejection arm (e.g., `AcquireRightsRejected`, `CreativeRejected` — see the wire-placement guidance on [`GOVERNANCE_DENIED`](https://adcontextprotocol.org/schemas/v3/enums/error-code.json) for the rule), the spec-correct denial response carries no error code on the wire — the rejection arm enforces `not: { required: [errors] }` at the schema layer. Asserting `check: error_code` will fail against a conformant agent. Assert on the discriminator instead: `check: field_value, path: "status", value: "rejected"`. This is the pattern for governance denial on `acquire_rights` and policy denial on `creative_approval`; assertions that mix the two paths (`error_code` for tasks with rejection arms, `field_value` for tasks without) bake non-spec opinions into the storyboard.
-
 ### Error Object Fields
 
 These fields are defined by the [`error.json`](https://adcontextprotocol.org/schemas/3.0.1/core/error.json) schema:
@@ -135,10 +131,9 @@ These fields are defined by the [`error.json`](https://adcontextprotocol.org/sch
 | `message` | string | Yes | Human-readable error description |
 | `recovery` | string | No | Agent recovery classification: `transient`, `correctable`, or `terminal` |
 | `retry_after` | number | No | Seconds to wait before retrying (transient errors) |
-| `field` | string | No | Field path in JSONPath-lite format (e.g., `packages[0].targeting`). When `issues` is present, sellers MUST set this to `issues[0].pointer` translated from RFC 6901 to JSONPath-lite (e.g., `/packages/0/targeting` → `packages[0].targeting`). Will be deprecated in a future major version. |
-| `issues` | array | No | Structured list of validation failures, drawn from JSON Schema validator output. Each entry carries `pointer` (RFC 6901, matches Ajv's `instancePath`), `message`, `keyword` (the JSON Schema keyword that rejected — `required` / `type` / `format` / etc.), and optional `schemaPath`. Use on `VALIDATION_ERROR` and any other code where multiple fields were rejected at once. **`schemaPath` SHOULD NOT be emitted on production-facing endpoints** — it leaks which `oneOf` branch the validator selected, a probe oracle for adversarial callers crafting payloads against polymorphic unions. Sellers MAY emit in dev/sandbox modes. |
+| `field` | string | No | Field path that caused the error (e.g., `packages[0].targeting`) |
 | `suggestion` | string | No | Suggested fix for the error |
-| `details` | object | No | Additional context-specific information. Sellers MAY mirror `issues[]` here as `details.issues` for backward compatibility with pre-3.1 consumers; new consumers SHOULD prefer the top-level `issues` field. |
+| `details` | object | No | Additional context-specific information |
 
 ## Standard Error Codes
 
@@ -172,36 +167,12 @@ Non-normative implementation note: a single-query pattern like `SELECT ... WHERE
 
 | Code | Recovery | Description | Resolution |
 |------|----------|-------------|------------|
-| `AUTH_REQUIRED` | correctable | Authentication is required, or presented credentials were rejected | See *AUTH_REQUIRED sub-cases* below |
+| `AUTH_REQUIRED` | correctable | Authentication is required or credentials are invalid | Provide credentials via auth header |
 | `ACCOUNT_NOT_FOUND` | terminal | Account reference could not be resolved | Verify via `list_accounts` or contact seller |
 | `ACCOUNT_SETUP_REQUIRED` | correctable | Account needs setup before use | Check `details.setup` for URL or instructions |
 | `ACCOUNT_AMBIGUOUS` | correctable | Natural key resolves to multiple accounts | Pass explicit `account_id` or a more specific natural key |
 | `ACCOUNT_PAYMENT_REQUIRED` | terminal | Outstanding balance requires payment | Buyer must resolve billing |
 | `ACCOUNT_SUSPENDED` | terminal | Account has been suspended | Contact seller to resolve |
-
-#### `AUTH_REQUIRED` sub-cases
-
-`AUTH_REQUIRED` shares one wire code across two operationally distinct cases that agents MUST handle differently:
-
-| Sub-case | Behavior | Why |
-|---|---|---|
-| Credentials missing | Provide credentials and retry once. | Genuinely correctable from inside the agent loop. |
-| Credentials presented but rejected (expired / revoked / malformed signature) | Do **not** auto-retry. Escalate to operator for credential rotation. | Re-presenting a rejected credential against an SSO endpoint creates retry-storm patterns indistinguishable from brute-force probes. The seller's fraud detection may rate-limit, suspend, or alert on the calling agent. |
-
-A future minor release splits this code into `AUTH_MISSING` (correctable) and `AUTH_INVALID` (terminal). Until then, agents SHOULD branch on whether credentials were actually attached to the failing request:
-
-```javascript
-case 'AUTH_REQUIRED':
-  if (!requestHadCredentials) {
-    // Sub-case (a) — provide credentials and retry.
-    await refreshCredentials();
-    return retry();
-  }
-  // Sub-case (b) — credentials were presented and rejected.
-  // Treat as terminal at the application layer; surface to operator.
-  console.error('Credential rejected — needs human rotation:', error.message);
-  throw error;
-```
 
 ### Request Validation
 
@@ -366,13 +337,8 @@ async function handleAdcpError(error) {
   // Fall back to error code matching
   switch (error.code) {
     case 'AUTH_REQUIRED':
-      // Two sub-cases share this code; see "AUTH_REQUIRED sub-cases" above.
-      if (!error.requestHadCredentials) {
-        await refreshCredentials();
-        return retry();
-      }
-      // Credentials were presented and rejected — terminal at app layer.
-      throw error;
+      await refreshCredentials();
+      return retry();
 
     case 'INVALID_REQUEST':
       console.error('Validation error:', error);

@@ -1,0 +1,62 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.0/property/create-property-list-request.json",
+  "title": "Create Property List Request",
+  "description": "Request parameters for creating a new property list",
+  "x-mutates-state": true,
+  "type": "object",
+  "properties": {
+    "adcp_major_version": {
+      "type": "integer",
+      "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
+      "minimum": 1,
+      "maximum": 99
+    },
+    "account": {
+      "$ref": "/schemas/3.1.0-beta.0/core/account-ref.json",
+      "description": "Account that will own the list. Pass a natural key (brand, operator, optional sandbox) or a seller-assigned account_id from list_accounts. When omitted, the seller assigns the list to the agent's default account if exactly one is accessible; otherwise returns an error."
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable name for the list"
+    },
+    "description": {
+      "type": "string",
+      "description": "Description of the list's purpose"
+    },
+    "base_properties": {
+      "type": "array",
+      "description": "Array of property sources to evaluate. Each entry is a discriminated union: publisher_tags (publisher_domain + tags), publisher_ids (publisher_domain + property_ids), or identifiers (direct identifiers). If omitted, queries the agent's entire property database.",
+      "items": {
+        "$ref": "/schemas/3.1.0-beta.0/property/base-property-source.json"
+      },
+      "minItems": 1
+    },
+    "filters": {
+      "$ref": "/schemas/3.1.0-beta.0/property/property-list-filters.json",
+      "description": "Dynamic filters to apply when resolving the list"
+    },
+    "brand": {
+      "$ref": "/schemas/3.1.0-beta.0/core/brand-ref.json",
+      "description": "Brand reference. When provided, the agent automatically applies appropriate rules based on brand characteristics (industry, target_audience, etc.). Resolved at execution time."
+    },
+    "idempotency_key": {
+      "type": "string",
+      "description": "Client-generated unique key for this request. Prevents duplicate property list creation on retries. MUST be unique per (seller, request) pair to prevent cross-seller correlation. Use a fresh UUID v4 for each request.",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
+    "context": {
+      "$ref": "/schemas/3.1.0-beta.0/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.1.0-beta.0/core/ext.json"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "name"
+  ],
+  "additionalProperties": false
+}

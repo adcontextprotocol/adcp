@@ -1,0 +1,221 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "/schemas/3.1.0-beta.0/media-buy/create-media-buy-request.json",
+  "title": "Create Media Buy Request",
+  "description": "Request parameters for creating a media buy. Supports two modes: (1) Manual mode - provide packages array with explicit line item configurations, or (2) Proposal mode - provide proposal_id and total_budget to execute a proposal from get_products. One of packages or proposal_id must be provided.",
+  "x-mutates-state": true,
+  "type": "object",
+  "properties": {
+    "adcp_major_version": {
+      "type": "integer",
+      "description": "The AdCP major version the buyer's payloads conform to. Sellers validate against their supported major_versions and return VERSION_UNSUPPORTED if unsupported. When omitted, the seller assumes its highest supported version.",
+      "minimum": 1,
+      "maximum": 99
+    },
+    "idempotency_key": {
+      "type": "string",
+      "description": "Client-generated unique key for this request. If a request with the same idempotency_key and account has already been processed, the seller returns the existing media buy rather than creating a duplicate. MUST be unique per (seller, request) pair to prevent cross-seller correlation. Use a fresh UUID v4 for each request.",
+      "minLength": 16,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9_.:-]{16,255}$"
+    },
+    "plan_id": {
+      "type": "string",
+      "description": "Campaign governance plan identifier. Required when the account has governance_agents. The seller includes this in the committed check_governance request so the governance agent can validate against the correct plan.",
+      "x-entity": "governance_plan"
+    },
+    "account": {
+      "$ref": "/schemas/3.1.0-beta.0/core/account-ref.json",
+      "description": "Account to bill for this media buy. Pass a natural key (brand, operator, optional sandbox) or a seller-assigned account_id from list_accounts."
+    },
+    "proposal_id": {
+      "type": "string",
+      "description": "ID of a proposal from get_products to execute. When provided with total_budget, the publisher converts the proposal's allocation percentages into packages automatically. Alternative to providing packages array."
+    },
+    "total_budget": {
+      "type": "object",
+      "description": "Total budget for the media buy when executing a proposal. The publisher applies the proposal's allocation percentages to this amount to derive package budgets.",
+      "properties": {
+        "amount": {
+          "type": "number",
+          "description": "Total budget amount",
+          "minimum": 0
+        },
+        "currency": {
+          "type": "string",
+          "description": "ISO 4217 currency code"
+        }
+      },
+      "required": [
+        "amount",
+        "currency"
+      ],
+      "additionalProperties": false
+    },
+    "packages": {
+      "type": "array",
+      "description": "Array of package configurations. Required when not using proposal_id. When executing a proposal, this can be omitted and packages will be derived from the proposal's allocations.",
+      "items": {
+        "$ref": "/schemas/3.1.0-beta.0/media-buy/package-request.json"
+      },
+      "minItems": 1
+    },
+    "brand": {
+      "$ref": "/schemas/3.1.0-beta.0/core/brand-ref.json",
+      "description": "Brand reference for this media buy. Resolved to full brand identity at execution time from brand.json or the registry."
+    },
+    "advertiser_industry": {
+      "$ref": "/schemas/3.1.0-beta.0/enums/advertiser-industry.json",
+      "description": "Industry classification for this specific campaign. A brand may operate across multiple industries (brand.json industries field), but each media buy targets one. For example, a consumer health company running a wellness campaign sends 'healthcare.wellness', not 'cpg'. Sellers map this to platform-native codes (e.g., Spotify ADV categories, LinkedIn industry IDs). When omitted, sellers may infer from the brand manifest's industries field."
+    },
+    "invoice_recipient": {
+      "$ref": "/schemas/3.1.0-beta.0/core/business-entity.json",
+      "description": "Override the account's default billing entity for this specific buy. When provided, the seller invoices this entity instead. The seller MUST validate the invoice recipient is authorized for this account. When governance_agents are configured, the seller MUST include invoice_recipient in the check_governance request."
+    },
+    "io_acceptance": {
+      "type": "object",
+      "description": "Acceptance of an insertion order from a committed proposal. Required when the proposal's insertion_order has requires_signature: true. References the io_id from the proposal's insertion_order.",
+      "properties": {
+        "io_id": {
+          "type": "string",
+          "description": "The io_id from the proposal's insertion_order being accepted"
+        },
+        "accepted_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp when the IO was accepted"
+        },
+        "signatory": {
+          "type": "string",
+          "description": "Who accepted the IO — agent identifier or human name",
+          "minLength": 1,
+          "maxLength": 250
+        },
+        "signature_id": {
+          "type": "string",
+          "description": "Reference to the electronic signature from the signing service, when signing_url was used"
+        }
+      },
+      "required": [
+        "io_id",
+        "accepted_at",
+        "signatory"
+      ],
+      "additionalProperties": true
+    },
+    "po_number": {
+      "type": "string",
+      "description": "Purchase order number for tracking"
+    },
+    "agency_estimate_number": {
+      "type": "string",
+      "maxLength": 100,
+      "description": "Agency estimate or authorization number. Primary financial reference for broadcast buys — links the order to the agency's media plan and billing system. Travels with the order and Ad-IDs through the transaction lifecycle."
+    },
+    "start_time": {
+      "$ref": "/schemas/3.1.0-beta.0/core/start-timing.json"
+    },
+    "end_time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Campaign end date/time in ISO 8601 format"
+    },
+    "push_notification_config": {
+      "$ref": "/schemas/3.1.0-beta.0/core/push-notification-config.json",
+      "description": "Optional webhook configuration for async task status notifications. Publisher will send webhooks when status changes (working, input-required, completed, failed). The client generates an operation_id and embeds it in the URL before sending — the publisher echoes it back in webhook payloads for correlation."
+    },
+    "reporting_webhook": {
+      "$ref": "/schemas/3.1.0-beta.0/core/reporting-webhook.json",
+      "description": "Optional webhook configuration for automated reporting delivery"
+    },
+    "artifact_webhook": {
+      "$comment": "Webhook configuration for content artifact delivery - enables governance validation. Same authentication structure as reporting_webhook.",
+      "type": "object",
+      "description": "Optional webhook configuration for content artifact delivery. Used by governance agents to validate content adjacency. Seller pushes artifacts to this endpoint; orchestrator forwards to governance agent for validation.",
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Webhook endpoint URL for artifact delivery"
+        },
+        "token": {
+          "type": "string",
+          "description": "Optional client-provided token for webhook validation. Echoed back in webhook payload to validate request authenticity.",
+          "minLength": 16
+        },
+        "authentication": {
+          "type": "object",
+          "description": "Authentication configuration for webhook delivery (A2A-compatible)",
+          "properties": {
+            "schemes": {
+              "type": "array",
+              "description": "Array of authentication schemes. Supported: ['Bearer'] for simple token auth, ['HMAC-SHA256'] for signature verification (recommended for production)",
+              "items": {
+                "$ref": "/schemas/3.1.0-beta.0/enums/auth-scheme.json"
+              },
+              "minItems": 1,
+              "maxItems": 1
+            },
+            "credentials": {
+              "type": "string",
+              "description": "Credentials for authentication. For Bearer: token sent in Authorization header. For HMAC-SHA256: shared secret used to generate signature. Minimum 32 characters. Exchanged out-of-band during onboarding.",
+              "minLength": 32
+            }
+          },
+          "required": [
+            "schemes",
+            "credentials"
+          ],
+          "additionalProperties": false
+        },
+        "delivery_mode": {
+          "type": "string",
+          "enum": [
+            "realtime",
+            "batched"
+          ],
+          "description": "How artifacts are delivered. 'realtime' pushes artifacts as impressions occur. 'batched' aggregates artifacts and pushes periodically (see batch_frequency)."
+        },
+        "batch_frequency": {
+          "type": "string",
+          "enum": [
+            "hourly",
+            "daily"
+          ],
+          "description": "For batched delivery, how often to push artifacts. Required when delivery_mode is 'batched'."
+        },
+        "sampling_rate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Fraction of impressions to include (0-1). 1.0 = all impressions, 0.1 = 10% sample. Default: 1.0"
+        }
+      },
+      "required": [
+        "url",
+        "authentication",
+        "delivery_mode"
+      ],
+      "additionalProperties": true
+    },
+    "context": {
+      "$ref": "/schemas/3.1.0-beta.0/core/context.json"
+    },
+    "ext": {
+      "$ref": "/schemas/3.1.0-beta.0/core/ext.json"
+    }
+  },
+  "required": [
+    "idempotency_key",
+    "account",
+    "brand",
+    "start_time",
+    "end_time"
+  ],
+  "dependencies": {
+    "proposal_id": [
+      "total_budget"
+    ]
+  },
+  "additionalProperties": true
+}
