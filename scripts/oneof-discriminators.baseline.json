@@ -11,6 +11,11 @@
       "variants": 2,
       "note": "0:[account,currency,period,timezone] | 1:[errors]"
     },
+    "account/sync-accounts-request.json##/properties/accounts/items/oneOf": {
+      "kind": "narrowable",
+      "variants": 2,
+      "note": "0:[brand,operator,billing] | 1:[account]"
+    },
     "account/sync-accounts-response.json##/oneOf": {
       "kind": "narrowable",
       "variants": 2,
