@@ -444,6 +444,10 @@ app.post('/webhooks/adcp', async (req, res) => {
 
 **Always implement polling as backup.** Webhooks can fail due to network issues or server downtime. Use a slower poll interval when webhooks are configured (e.g., every 2 minutes instead of 30 seconds), and stop polling once you receive a terminal status via webhook.
 
+### Diagnosing missing fires
+
+When a buyer suspects a webhook isn't reaching its endpoint — gateway 5xx, stale-sequence dedup, drifted webhook URL, suppressed fires under a tripped circuit breaker — call [`get_media_buys`](/docs/media-buy/task-reference/get_media_buys#webhook-activity) with `include_webhook_activity: true`. Each returned media buy will carry a `webhook_activity` array of recent fires for the calling principal, including `idempotency_key` (matches the payload's dedup key — correlate against your own endpoint log), `status` (`success` / `failed` / `timeout` / `connection_error` / `pending`), `http_status_code`, `attempt`, and `error_message`. The scope is the calling principal's own fires; no operator ticket required.
+
 ## Best practices
 
 1. **Always implement polling as backup** — webhooks can fail; poll at a reduced interval (e.g. every 2 minutes) when webhooks are configured, and stop once you receive a terminal status
