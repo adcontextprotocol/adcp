@@ -28,10 +28,6 @@ const wgDb = new WorkingGroupDatabase();
  * domain to gate against.
  */
 export async function isRegistryModerator(userId: string): Promise<boolean> {
-  return isRegistryModeratorInternal(userId);
-}
-
-async function isRegistryModeratorInternal(userId: string): Promise<boolean> {
   const cached = moderatorCache.get(userId);
   if (cached && cached.expiresAt > Date.now()) {
     return cached.isModerator;
@@ -87,7 +83,7 @@ export async function canReviewBrandLogos(
   brandDb: BrandDatabase,
 ): Promise<boolean> {
   if (userId === 'admin_api_key') return true;
-  if (await isRegistryModeratorInternal(userId)) return true;
+  if (await isRegistryModerator(userId)) return true;
   return isVerifiedBrandOwner(userId, domain, brandDb);
 }
 

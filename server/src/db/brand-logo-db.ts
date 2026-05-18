@@ -88,6 +88,11 @@ export class BrandLogoDatabase {
    * Load a logo by id alone, regardless of review_status. Used by the
    * moderator-preview endpoint where the caller doesn't know the domain
    * up-front — they're walking the cross-brand pending queue.
+   *
+   * IMPORTANT: callers gating on brand ownership MUST gate on the
+   * returned row's `domain` field, never on a caller-supplied domain
+   * string. Mixing the two would let a verified owner of brand A read
+   * pending logo bytes for brand B by guessing UUIDs.
    */
   async getBrandLogoById(id: string): Promise<BrandLogoRow | null> {
     const result = await query<BrandLogoRow>(

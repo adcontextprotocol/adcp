@@ -408,13 +408,20 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
     },
   );
 
-  // GET /api/brand-logos/:id/preview — moderator-only image bytes for any
-  // review_status. The public CDN path (/logos/brands/:domain/:id) is
-  // strictly approved-only by design (#3393 follow-ups); this is the
-  // moderator escape hatch so they can actually see what they're reviewing.
+  // GET /api/brand-logos/:id/preview — moderator-only (or owner-of-the-
+  // brand-this-logo-belongs-to) image bytes for any review_status. The
+  // public CDN path (/logos/brands/:domain/:id) is strictly approved-only
+  // by design (#3393 follow-ups); this is the moderator escape hatch so
+  // they can actually see what they're reviewing.
+  //
+  // IMPORTANT: the owner-fallback path MUST gate on the row's stored
+  // domain (`row.domain`), never on a caller-supplied domain. Otherwise
+  // any verified owner of any brand could read any other brand's pending
+  // logo bytes by guessing UUIDs.
   router.get(
     '/brand-logos/:id/preview',
     requireAuth,
+    logoUploadRateLimiter,
     async (req: Request, res: Response) => {
       try {
         const user = (req as any).user;
@@ -422,24 +429,28 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
         if (!isUuid(logoId)) {
           return res.status(400).json({ error: 'Invalid logo ID' });
         }
-        const moderator = await isRegistryModerator(user.id);
-        if (!moderator) {
-          // Owners of the brand are also allowed — they may want to
-          // preview an unapproved upload submitted against their brand.
-          const row = await brandLogoDb.getBrandLogoById(logoId);
-          if (!row) return res.status(404).json({ error: 'Logo not found' });
-          const ownerCheck = await isVerifiedBrandOwner(user.id, row.domain, brandDb);
-          if (!ownerCheck) {
-            return res.status(403).json({ error: 'Not authorized to preview this logo' });
-          }
-          res.setHeader('Content-Type', row.content_type);
-          res.setHeader('Cache-Control', 'private, max-age=60');
-          return res.send(row.data);
-        }
+
         const row = await brandLogoDb.getBrandLogoById(logoId);
-        if (!row) return res.status(404).json({ error: 'Logo not found' });
+        const moderator = await isRegistryModerator(user.id);
+        const owner = row ? await isVerifiedBrandOwner(user.id, row.domain, brandDb) : false;
+
+        // Conflate not-found and not-authorized for unauthorized callers
+        // so a UUID guesser can't distinguish "this id doesn't exist" from
+        // "exists but you can't read it" — that distinction is an
+        // existence oracle. Moderators are the only callers who need the
+        // genuine 404 (e.g. when the queue UI is showing a stale row).
+        if (!row || (!moderator && !owner)) {
+          if (moderator) {
+            return res.status(404).json({ error: 'Logo not found' });
+          }
+          return res.status(403).json({ error: 'Not authorized to preview this logo' });
+        }
+
         res.setHeader('Content-Type', row.content_type);
-        res.setHeader('Cache-Control', 'private, max-age=60');
+        // Pending bytes can be approved, rejected, or hard-deleted
+        // mid-cache. `private` keeps shared caches out; `no-store` keeps
+        // the browser from replaying stale image bytes after a verdict.
+        res.setHeader('Cache-Control', 'private, no-store');
         return res.send(row.data);
       } catch (error) {
         logger.error({ err: error, id: req.params.id }, 'Failed to serve logo preview');

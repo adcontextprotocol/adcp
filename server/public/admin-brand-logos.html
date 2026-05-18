@@ -257,7 +257,10 @@
       empty.style.display = 'none';
 
       try {
-        const resp = await fetch('/api/brand-logos/pending?limit=200', { credentials: 'include' });
+        // Default to the API's page size (50). Loading 200 inline image
+        // previews at once is a bandwidth grenade; refresh + future
+        // paginator handle the long-tail case.
+        const resp = await fetch('/api/brand-logos/pending', { credentials: 'include' });
         if (resp.status === 403) {
           queue.innerHTML = '';
           empty.style.display = 'block';
