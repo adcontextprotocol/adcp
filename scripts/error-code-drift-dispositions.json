@@ -141,6 +141,16 @@
       "target_version": "3.1",
       "note": "Canonical-formats multi-size v1 emission advisory (#3307; adopter feedback from SDK implementor). Non-fatal; surfaces when a v2 declaration's `params.sizes[]` count exceeds its `v1_format_ref[]` count — v1 buyers see partial size coverage. Emitted alongside the partial v1 emit, not in place of it. SDK MAY (non-normative) fan out automatically via catalog lookup. Wire change — held for 3.1."
     },
+    "PIXEL_TRACKER_LOSSY_DOWNGRADE": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.1",
+      "note": "pixel_tracker → v1 url+tracker_pixel downgrade advisory (#3307; #4706). Non-fatal; surfaces when a 3.1 buyer SDK downgrades a pixel_tracker asset for a 3.0.x seller. URL still fires; lost fields (event variant, method:js execution context, or custom event timing) reported in error.details. Wire change — held for 3.1."
+    },
+    "PIXEL_TRACKER_UPGRADE_INFERRED": {
+      "disposition": "held-for-next-minor",
+      "target_version": "3.1",
+      "note": "v1 url+tracker_pixel → pixel_tracker upgrade-by-inference advisory (#3307; #4706). Non-fatal; surfaces when a 3.1 SDK upgrades a v1 tracker by inferring event and method from asset_id conventions. Wire change — held for 3.1."
+    },
     "UNSUPPORTED_GRANULARITY": {
       "disposition": "held-for-next-minor",
       "target_version": "3.1",
