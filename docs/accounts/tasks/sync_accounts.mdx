@@ -163,6 +163,60 @@ The notification payload includes the `(brand, operator)` natural key so the buy
 
 If the buyer did not provide `push_notification_config`, poll [`list_accounts`](/docs/accounts/tasks/list_accounts) to check for status changes.
 
+## Two modes: provisioning vs. settings-update
+
+Each per-account entry uses one of two key shapes, never both:
+
+- **Provisioning mode** — flat `brand` + `operator` + `billing` at the entry root. The seller provisions or upserts accounts. Used for implicit accounts (`require_operator_auth: false`). This is the shape AdCP 3.0 shipped with.
+- **Settings-update mode** — `account` (an [AccountRef](/docs/building/integration/accounts-and-agents#account-references)) at the entry root, with `brand`/`operator`/`billing` absent. The seller updates the account's settable state — no provisioning side effects. Used for explicit accounts (`require_operator_auth: true`) where accounts are pre-provisioned and discovered via `list_accounts`. Implicit-account sellers MAY also accept this mode for settings updates against accounts they previously provisioned.
+
+Schema enforces the exclusivity via `oneOf` — sending both shapes on the same entry is a validation error. Sellers that don't implement settings-update mode reject `account`-keyed entries with `UNSUPPORTED_PROVISIONING`; sellers that don't provision (most explicit-account platforms) reject natural-key entries with the same code.
+
+## Account-level webhook subscriptions
+
+`notification_configs[]` carries account-level webhook subscribers for notifications whose lifecycle outlives any single media buy — `creative.status_changed`, `creative.purged`, and future account-scoped events. Distinct from `push_notification_config` on this task (account-status webhook), which is one-shot transport for `sync_accounts`'s own async result.
+
+Permitted in **both** provisioning and settings-update modes. Declarative semantics: omit to leave existing subscribers unchanged; send `[]` to remove all subscribers; send a full array to replace.
+
+Each entry has:
+
+- `subscriber_id` — buyer-supplied identifier, unique within the account; echoed on every fire so multi-subscriber accounts can route by endpoint
+- `url` — HTTPS endpoint URL
+- `event_types[]` — types the subscriber wants. Only account-anchored types are permitted (today: `creative.status_changed`, `creative.purged`). Sellers MUST reject any media-buy-anchored type (`scheduled`, `final`, `delayed`, `adjusted`, `impairment`) with an `errors[]` warning — those belong on a media buy's `push_notification_config`.
+- `authentication` (optional) — legacy Bearer or HMAC-SHA256. Omit to use the default RFC 9421 webhook profile. Credentials are write-only — sellers omit them on reads.
+- `active` (default `true`) — set `false` to pause a subscriber without removing the registration.
+
+Example — register a buyer-side endpoint plus an audit bus on an explicit account:
+
+```json
+{
+  "idempotency_key": "f2c4b7d9-6789-49bc-defa-2345678901bc",
+  "accounts": [
+    {
+      "account": { "account_id": "acc_acme_pinnacle" },
+      "notification_configs": [
+        {
+          "subscriber_id": "buyer-primary",
+          "url": "https://buyer.example/webhooks/adcp/creative",
+          "event_types": ["creative.status_changed", "creative.purged"],
+          "active": true
+        },
+        {
+          "subscriber_id": "audit-bus",
+          "url": "https://audit.buyer.example/adcp/ingest",
+          "event_types": ["creative.status_changed", "creative.purged"],
+          "active": true
+        }
+      ]
+    }
+  ]
+}
+```
+
+Governance agents registered via [`sync_governance`](/docs/accounts/tasks/sync_governance) are **not** implicitly subscribed to these webhooks. If your governance agent should also receive creative-lifecycle fires, register its URL as a separate `notification_configs[]` entry — explicit, auditable, with its own `event_types[]` filter.
+
+Verify applied state via [`list_accounts`](/docs/accounts/tasks/list_accounts) — the response carries `notification_configs[]` per account with credentials redacted.
+
 ## Common scenarios
 
 ### Agency syncing multiple brands
