@@ -24,6 +24,11 @@ const mocks = vi.hoisted(() => ({
   countLogos: vi.fn().mockResolvedValue(0),
   listLogos: vi.fn().mockResolvedValue([]),
   rebuildManifestLogos: vi.fn().mockResolvedValue(undefined),
+  notifyPendingBrandLogo: vi.fn().mockResolvedValue(null),
+}));
+
+vi.mock('../../src/notifications/registry.js', () => ({
+  notifyPendingBrandLogo: (...args: unknown[]) => mocks.notifyPendingBrandLogo(...args),
 }));
 
 vi.mock('../../src/services/brand-logo-auth.js', () => ({
@@ -107,6 +112,8 @@ function makeApp(opts: {
 describe('POST /api/brands/:domain/logos write authority', () => {
   beforeEach(() => {
     mocks.insertLogo.mockReset();
+    mocks.notifyPendingBrandLogo.mockReset();
+    mocks.notifyPendingBrandLogo.mockResolvedValue(null);
     mocks.insertLogo.mockImplementation(async (input) => ({
       id: 'logo_test_id',
       ...input,
@@ -143,6 +150,8 @@ describe('POST /api/brands/:domain/logos write authority', () => {
     expect(mocks.insertLogo).toHaveBeenCalledWith(
       expect.objectContaining({ source: 'brand_owner', review_status: 'approved' }),
     );
+    // Owner-attested uploads don't need a moderator nudge.
+    expect(mocks.notifyPendingBrandLogo).not.toHaveBeenCalled();
   });
 
   it('queues community uploads as pending when no verified owner exists', async () => {
@@ -154,8 +163,20 @@ describe('POST /api/brands/:domain/logos write authority', () => {
     expect(res.status).toBe(201);
     expect(res.body.review_status).toBe('pending');
     expect(res.body.message).toMatch(/queued for moderator review/i);
+    expect(res.body.review_sla_hours).toBe(48);
     expect(mocks.insertLogo).toHaveBeenCalledWith(
       expect.objectContaining({ source: 'community', review_status: 'pending' }),
+    );
+    // Settle any microtasks (notification is fire-and-forget).
+    await new Promise((r) => setImmediate(r));
+    expect(mocks.notifyPendingBrandLogo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        domain: 'example.com',
+        logo_id: 'logo_test_id',
+        source: 'community',
+        uploader_email: 'test@example.com',
+        tags: ['primary'],
+      }),
     );
   });
 

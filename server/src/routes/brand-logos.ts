@@ -21,6 +21,9 @@ import {
 } from '../services/brand-logo-service.js';
 import { createLogger } from '../logger.js';
 import { isUuid } from '../utils/uuid.js';
+import { notifyPendingBrandLogo } from '../notifications/registry.js';
+
+const PENDING_REVIEW_SLA_HOURS = 48;
 
 const logger = createLogger('brand-logo-routes');
 
@@ -209,13 +212,33 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
           logger.debug({ err, domain, userId: user.id }, 'Logo upload audit revision skipped');
         }
 
+        // Fire-and-forget Slack notification for pending uploads. Owners
+        // who self-approve don't need a moderator nudge.
+        if (reviewStatus === 'pending') {
+          notifyPendingBrandLogo({
+            domain,
+            logo_id: logo.id,
+            content_type: contentType,
+            tags,
+            uploader_email: user.email,
+            uploader_name: (user as { firstName?: string; lastName?: string }).firstName
+              ? `${(user as { firstName?: string }).firstName} ${(user as { lastName?: string }).lastName ?? ''}`.trim()
+              : undefined,
+            upload_note: note,
+            source: 'community',
+          }).catch((err) => {
+            logger.warn({ err, domain }, 'Pending-logo Slack notification failed');
+          });
+        }
+
         return res.status(201).json({
           success: true,
           domain,
           logo_id: logo.id,
           review_status: reviewStatus,
           ...(reviewStatus === 'pending' && {
-            message: 'Logo queued for moderator review. It will appear on the brand viewer once approved.',
+            message: `Logo queued for moderator review (typically within ${PENDING_REVIEW_SLA_HOURS}h). It will appear on the brand viewer once approved.`,
+            review_sla_hours: PENDING_REVIEW_SLA_HOURS,
           }),
           url: `/logos/brands/${domain}/${logo.id}`,
         });

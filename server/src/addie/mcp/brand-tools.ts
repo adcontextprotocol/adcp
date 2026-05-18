@@ -15,6 +15,7 @@ import { downloadAndCacheLogos, isBrandfetchUrl } from '../../services/logo-cdn.
 import { BrandLogoDatabase } from '../../db/brand-logo-db.js';
 import { safeFetch } from '../../utils/url-security.js';
 import { detectContentType, sanitizeSvg, validateLogoTags, computeSha256, extractDimensions, rebuildManifestLogos } from '../../services/brand-logo-service.js';
+import { notifyPendingBrandLogo } from '../../notifications/registry.js';
 import { query } from '../../db/client.js';
 import { createLogger } from '../../logger.js';
 
@@ -651,13 +652,26 @@ export function createBrandToolHandlers(): Map<string, (args: Record<string, unk
       await rebuildManifestLogos(domain, brandLogoDb, brandDb);
     }
 
+    // Fire-and-forget Slack notification so moderators see the pending upload.
+    notifyPendingBrandLogo({
+      domain,
+      logo_id: logo.id,
+      content_type: contentType,
+      tags,
+      upload_note: note,
+      source: 'addie',
+    }).catch((err) => {
+      logger.warn({ err, domain }, 'Pending-logo Slack notification failed');
+    });
+
     // Exclude upload_note and original_filename from response (prompt injection vector)
     return JSON.stringify({
       success: true,
       domain,
       logo_id: logo.id,
       review_status: 'pending',
-      message: 'Logo queued for moderator review. It will not appear on the brand viewer until approved.',
+      message: 'Logo queued for moderator review (typically within 48h). It will not appear on the brand viewer until approved.',
+      review_sla_hours: 48,
       url: `/logos/brands/${domain}/${logo.id}`,
       content_type: contentType,
       tags,
