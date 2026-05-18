@@ -512,6 +512,58 @@ export function deriveStatus(mb: MediaBuyState): string {
   return mb.status;
 }
 
+/**
+ * Per-buy snapshot derivation for `media_buy.health` + `media_buy.impairments[]`
+ * (adcp#2860). Walks a buy's assigned creatives and surfaces an impairment
+ * entry for each one whose session status is in the spec's creative offline
+ * set (today: `rejected` — see `enums/impairment-offline-state.json`).
+ *
+ * Returns `null` when no impairments are open so the caller can emit
+ * `health: 'ok'` without an `impairments` field.
+ *
+ * Materiality (per impairment.json schema): each entry's `package_ids[]` lists
+ * the subset of the buy's packages that actually reference the offline
+ * creative, satisfying the spec's "cosmetic effects MUST NOT be reported"
+ * carve-out without requiring buyer-side dedup.
+ *
+ * Scope: creative-track only. Audience / catalog_item / event_source
+ * resource families are forward-only on the spec today (the SDK runner's
+ * `INVERSE_DEFERRED_FAMILIES` still includes them); adding training-agent
+ * support for those tracks is gated on adcp#4674 + adcp-client follow-ups.
+ */
+function deriveImpairments(
+  mb: MediaBuyState,
+  session: import('./types.js').SessionState,
+  observedAt: string,
+): Array<Record<string, unknown>> | null {
+  const buyOpenImpairments: Array<Record<string, unknown>> = [];
+  // Collect creative_id → packages-that-reference-it for materiality.
+  const refs = new Map<string, string[]>();
+  for (const pkg of mb.packages) {
+    for (const creativeId of pkg.creativeAssignments) {
+      const existing = refs.get(creativeId);
+      if (existing) existing.push(pkg.packageId);
+      else refs.set(creativeId, [pkg.packageId]);
+    }
+  }
+  for (const [creativeId, packageIds] of refs) {
+    const creative = session.creatives.get(creativeId);
+    if (!creative || creative.status !== 'rejected') continue;
+    buyOpenImpairments.push({
+      // Stable across re-emissions for the same open impairment — the runner
+      // correlates webhook fires to impairments[] entries by this id.
+      impairment_id: `imp_${mb.mediaBuyId}_creative_${creativeId}`,
+      resource_type: 'creative',
+      resource_id: creativeId,
+      package_ids: packageIds,
+      transition: { from: 'approved', to: 'rejected' },
+      reason_code: 'content_rejected',
+      observed_at: observedAt,
+    });
+  }
+  return buyOpenImpairments.length > 0 ? buyOpenImpairments : null;
+}
+
 /** Map lifecycle status to valid buyer actions. */
 function validActionsForStatus(status: string): string[] {
   switch (status) {
@@ -2186,9 +2238,13 @@ export async function handleCreateMediaBuy(args: ToolArgs, ctx: TrainingContext)
   session.mediaBuys.set(mediaBuyId, mediaBuy);
 
   const status = deriveStatus(mediaBuy);
+  const openImpairments = deriveImpairments(mediaBuy, session, new Date().toISOString());
+  const health = openImpairments ? 'impaired' : 'ok';
   return {
     media_buy_id: mediaBuyId,
     status,
+    health,
+    ...(openImpairments && { impairments: openImpairments }),
     revision: mediaBuy.revision,
     confirmed_at: mediaBuy.confirmedAt,
     valid_actions: validActionsForStatus(status),
@@ -2271,9 +2327,13 @@ export async function handleGetMediaBuys(args: ToolArgs, ctx: TrainingContext) {
     media_buys: pageBuys.map(mb => {
       const status = deriveStatus(mb);
       const totalBudget = mb.packages.reduce((sum, pkg) => sum + (pkg.budget || 0), 0);
+      const openImpairments = deriveImpairments(mb, session, new Date().toISOString());
+      const health = openImpairments ? 'impaired' : 'ok';
       const buy = {
         media_buy_id: mb.mediaBuyId,
         status,
+        health,
+        ...(openImpairments && { impairments: openImpairments }),
         revision: mb.revision,
         confirmed_at: mb.confirmedAt,
         created_at: mb.createdAt,
@@ -2635,13 +2695,29 @@ export async function handleSyncCreatives(args: ToolArgs, ctx: TrainingContext) 
   const assignmentResults: AssignmentResult[] = [];
   if (req.assignments?.length && !isDryRun) {
     for (const assignment of req.assignments) {
-      const mediaBuyId = (assignment as unknown as CreativeAssignmentInput).media_buy_id;
+      const explicitBuyId = (assignment as unknown as CreativeAssignmentInput).media_buy_id;
       const packageId = assignment.package_id;
       const creativeId = assignment.creative_id;
 
-      const mb = session.mediaBuys.get(mediaBuyId);
+      // Per `creative/sync-creatives-request.json`, `assignments[]` items
+      // require only creative_id + package_id — media_buy_id is optional.
+      // When missing, locate the buy whose packages contain `package_id`.
+      // package_ids are seller-assigned within a session so the resolution
+      // is deterministic in the sandbox; ambiguity (two buys with the same
+      // package_id) falls back to first match.
+      let mb: MediaBuyState | undefined;
+      if (explicitBuyId) {
+        mb = session.mediaBuys.get(explicitBuyId);
+      } else {
+        for (const candidate of session.mediaBuys.values()) {
+          if (candidate.packages.some(p => p.packageId === packageId)) {
+            mb = candidate;
+            break;
+          }
+        }
+      }
       if (!mb) {
-        assignmentResults.push({ creative_id: creativeId, package_id: packageId, status: 'error', message: `Media buy not found: ${mediaBuyId}` });
+        assignmentResults.push({ creative_id: creativeId, package_id: packageId, status: 'error', message: explicitBuyId ? `Media buy not found: ${explicitBuyId}` : `Could not locate buy containing package: ${packageId}` });
         continue;
       }
       const pkg = mb.packages.find(p => p.packageId === packageId);

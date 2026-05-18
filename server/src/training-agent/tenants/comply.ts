@@ -207,6 +207,13 @@ export function buildSalesComplyConfig(): ComplyControllerConfig {
       creative_format: cast(seedAdapter('seed_creative_format')),
     },
     force: {
+      // /sales advertises syncCreatives + listCreatives at the platform layer,
+      // so storyboards that need to flip a creative's status to drive the
+      // impairment.coherence cross-resource invariant (adcp#2860) reach the
+      // creative store the same way they do on /creative — added here in
+      // sales-non-guaranteed's footprint so the dependency_impairment_flow
+      // scenario can fire on this tenant.
+      creative_status: cast(forceAdapter('force_creative_status')),
       media_buy_status: cast(forceAdapter('force_media_buy_status')),
       create_media_buy_arm: cast(forceAdapter('force_create_media_buy_arm')),
       task_completion: cast(forceAdapter('force_task_completion')),
