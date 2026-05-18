@@ -21,9 +21,21 @@ import {
 } from '../services/brand-logo-service.js';
 import { createLogger } from '../logger.js';
 import { isUuid } from '../utils/uuid.js';
-import { notifyPendingBrandLogo } from '../notifications/registry.js';
+import { notifyPendingBrandLogo, notifyBrandLogoReviewed } from '../notifications/registry.js';
 
 const PENDING_REVIEW_SLA_HOURS = 48;
+// Per-user pending-queue threshold: how many distinct brand domains a
+// single uploader can have in pending state at once. Trips when the user
+// fans out uploads to enumerate ownership or saturate the queue. Picked
+// from typical legit usage (a moderator-in-training updating a handful of
+// brand logos in a session); enumeration attempts hit this within minutes.
+const MAX_PENDING_DOMAINS_PER_USER = 5;
+const PENDING_THRESHOLD_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+// Per-brand reserved owner slots: community uploads (any status) can fill
+// at most this many of the brand's MAX_LOGOS_PER_BRAND slots so a verified
+// owner always has room for their own logos even if community-pending got
+// there first.
+const MAX_COMMUNITY_LOGOS_PER_BRAND = 5;
 
 const logger = createLogger('brand-logo-routes');
 
@@ -98,10 +110,49 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
           return res.status(400).json({ error: 'File is required' });
         }
 
-        // Logo count cap
-        const count = await brandLogoDb.countBrandLogos(domain);
-        if (count >= MAX_LOGOS_PER_BRAND) {
-          return res.status(400).json({ error: `Maximum ${MAX_LOGOS_PER_BRAND} logos per brand` });
+        // Per-user abuse signal: refuse community uploads when the caller
+        // already has MAX_PENDING_DOMAINS_PER_USER distinct domains pending
+        // in the threshold window. Verified owners bypass — they're
+        // attesting the brand they own, not enumerating. Soft-pause: just
+        // rejects new attempts; existing pending entries stay, and the
+        // threshold relaxes as moderators clear them. Returns 429 so
+        // automated callers back off rather than retry.
+        if (!isOwner) {
+          const pendingDomainCount = await brandLogoDb.countPendingDomainsForUser(
+            user.id,
+            PENDING_THRESHOLD_WINDOW_MS,
+          );
+          if (pendingDomainCount >= MAX_PENDING_DOMAINS_PER_USER) {
+            logger.warn(
+              { userId: user.id, email: user.email, pendingDomainCount, domain },
+              'brand-logo upload rejected: user pending-queue threshold tripped',
+            );
+            return res.status(429).json({
+              error: `You already have ${pendingDomainCount} brand logo uploads awaiting review. Wait for moderators to clear the queue before adding more.`,
+              code: 'pending_queue_full',
+              pending_domain_count: pendingDomainCount,
+              max_pending_domains: MAX_PENDING_DOMAINS_PER_USER,
+            });
+          }
+        }
+
+        // Logo count cap. Community uploads (any status) are reserved to
+        // MAX_COMMUNITY_LOGOS_PER_BRAND so a verified owner uploading
+        // after the community-pending pool filled isn't locked out of
+        // their own brand. Owner uploads still respect the overall cap.
+        if (isOwner) {
+          const count = await brandLogoDb.countBrandLogos(domain);
+          if (count >= MAX_LOGOS_PER_BRAND) {
+            return res.status(400).json({ error: `Maximum ${MAX_LOGOS_PER_BRAND} logos per brand` });
+          }
+        } else {
+          const communityCount = await brandLogoDb.countLogosBySource(domain, ['community']);
+          if (communityCount >= MAX_COMMUNITY_LOGOS_PER_BRAND) {
+            return res.status(400).json({
+              error: `This brand already has ${communityCount} community-contributed logos pending or approved. Wait for moderators to clear some, or for the verified owner to claim and manage it.`,
+              code: 'community_cap_reached',
+            });
+          }
         }
 
         // Validate tags
@@ -213,7 +264,9 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
         }
 
         // Fire-and-forget Slack notification for pending uploads. Owners
-        // who self-approve don't need a moderator nudge.
+        // who self-approve don't need a moderator nudge. Capture the
+        // returned ts so the review path can thread its verdict reply
+        // under the original announcement (#4748).
         if (reviewStatus === 'pending') {
           notifyPendingBrandLogo({
             domain,
@@ -226,6 +279,10 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
               : undefined,
             upload_note: note,
             source: 'community',
+          }).then((threadTs) => {
+            if (threadTs) {
+              return brandLogoDb.setSlackThreadTs(logo.id, threadTs);
+            }
           }).catch((err) => {
             logger.warn({ err, domain }, 'Pending-logo Slack notification failed');
           });
@@ -342,6 +399,9 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
         }
 
         const note = typeof req.body.note === 'string' ? req.body.note.slice(0, 500) : undefined;
+        // Look up the row before mutating so we can thread the Slack
+        // verdict reply under the original pending-upload notification.
+        const priorRow = await brandLogoDb.getBrandLogoById(logoId);
         const updated = await brandLogoDb.updateLogoReviewStatus(
           logoId,
           domain,
@@ -371,6 +431,24 @@ export function createBrandLogoRouter(config: BrandLogoRoutesConfig): Router {
           });
         } catch {
           // Non-critical
+        }
+
+        // Thread the verdict under the original pending-logo notification
+        // when one exists. Fire-and-forget — Slack failure must not roll
+        // back a moderator's decision.
+        if (priorRow?.slack_thread_ts) {
+          notifyBrandLogoReviewed({
+            thread_ts: priorRow.slack_thread_ts,
+            domain,
+            action: action as 'approve' | 'reject' | 'delete',
+            reviewer_email: user.email,
+            reviewer_name: (user as { firstName?: string; lastName?: string }).firstName
+              ? `${(user as { firstName?: string }).firstName} ${(user as { lastName?: string }).lastName ?? ''}`.trim()
+              : undefined,
+            note,
+          }).catch((err) => {
+            logger.warn({ err, domain, logoId }, 'Logo-review Slack thread reply failed');
+          });
         }
 
         return res.json({

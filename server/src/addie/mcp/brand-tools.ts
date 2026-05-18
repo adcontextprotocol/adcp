@@ -606,10 +606,35 @@ export function createBrandToolHandlers(): Map<string, (args: Record<string, unk
       });
     }
 
-    // Check logo count cap
-    const count = await brandLogoDb.countBrandLogos(domain);
-    if (count >= 10) {
-      return JSON.stringify({ error: 'Maximum 10 logos per brand' });
+    // Per-brand community-cap: Addie uploads count as community, so they
+    // share the reserved-slot budget with route-level community uploads.
+    // Keeps Addie from saturating a brand's slots and locking out the
+    // verified owner who might claim it tomorrow.
+    const communityCount = await brandLogoDb.countLogosBySource(domain, ['community']);
+    if (communityCount >= 5) {
+      return JSON.stringify({
+        error: `This brand already has ${communityCount} community-contributed logos. Wait for moderators to clear some, or for the verified owner to claim and manage it.`,
+        code: 'community_cap_reached',
+      });
+    }
+
+    // Per-user abuse signal (Addie counts as 'system:addie'). Without
+    // this, a chat caller could ask Addie to fan out uploads across many
+    // unowned domains in a single session. Threshold matches the HTTP
+    // route's 5-distinct-domains-in-1-hour.
+    const pendingDomainCount = await brandLogoDb.countPendingDomainsForUser(
+      'system:addie',
+      60 * 60 * 1000,
+    );
+    if (pendingDomainCount >= 5) {
+      logger.warn(
+        { pendingDomainCount, domain },
+        'Addie upload_brand_logo rejected: system:addie pending-queue threshold tripped',
+      );
+      return JSON.stringify({
+        error: `Addie already has ${pendingDomainCount} brand logo uploads awaiting moderator review. Wait for the queue to clear before submitting more.`,
+        code: 'pending_queue_full',
+      });
     }
 
     const logo = await brandLogoDb.insertBrandLogo({
@@ -660,6 +685,10 @@ export function createBrandToolHandlers(): Map<string, (args: Record<string, unk
       tags,
       upload_note: note,
       source: 'addie',
+    }).then((threadTs) => {
+      if (threadTs) {
+        return brandLogoDb.setSlackThreadTs(logo.id, threadTs);
+      }
     }).catch((err) => {
       logger.warn({ err, domain }, 'Pending-logo Slack notification failed');
     });

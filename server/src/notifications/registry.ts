@@ -263,6 +263,57 @@ export async function notifyPendingBrandLogo(upload: {
 }
 
 /**
+ * Notify (as a thread reply) when a moderator resolves a pending logo
+ * upload. Threads off the original `notifyPendingBrandLogo` ts so the
+ * channel reads as a conversation rather than a stream of disconnected
+ * verdicts. Silently skips when `thread_ts` is missing — older uploads
+ * predate the notify path and Slack-disabled environments never had a
+ * parent message to thread off.
+ */
+export async function notifyBrandLogoReviewed(review: {
+  thread_ts: string | null;
+  domain: string;
+  action: 'approve' | 'reject' | 'delete';
+  reviewer_email?: string;
+  reviewer_name?: string;
+  note?: string;
+}): Promise<void> {
+  const channelId = getChannelId();
+  if (!channelId || !isSlackConfigured() || !review.thread_ts) return;
+
+  const verdictEmoji =
+    review.action === 'approve' ? '✅' :
+    review.action === 'reject' ? '❌' :
+    '🗑️';
+  const verdictLabel =
+    review.action === 'approve' ? 'Approved' :
+    review.action === 'reject' ? 'Rejected' :
+    'Deleted';
+  const reviewer = review.reviewer_name || review.reviewer_email || 'Moderator';
+  const noteSuffix = review.note ? `\n_${review.note.slice(0, 500)}_` : '';
+
+  const message: SlackBlockMessage = {
+    text: `${verdictEmoji} ${verdictLabel} by ${reviewer}`,
+    thread_ts: review.thread_ts,
+    blocks: [
+      {
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `${verdictEmoji} *${verdictLabel}* by ${reviewer}${noteSuffix}`,
+        },
+      },
+    ],
+  };
+
+  try {
+    await sendChannelMessage(channelId, message);
+  } catch (error) {
+    logger.error({ error, domain: review.domain }, 'Failed to send logo-review thread reply');
+  }
+}
+
+/**
  * Notify when a user is banned from editing.
  */
 export async function notifyRegistryBan(ban: {

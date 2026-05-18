@@ -22,6 +22,9 @@ const mocks = vi.hoisted(() => ({
   getLogoById: vi.fn(),
   insertLogo: vi.fn(),
   countLogos: vi.fn().mockResolvedValue(0),
+  countLogosBySource: vi.fn().mockResolvedValue(0),
+  countPendingDomainsForUser: vi.fn().mockResolvedValue(0),
+  setSlackThreadTs: vi.fn().mockResolvedValue(undefined),
   listLogos: vi.fn().mockResolvedValue([]),
   rebuildManifestLogos: vi.fn().mockResolvedValue(undefined),
 }));
@@ -54,10 +57,13 @@ vi.mock('../../src/middleware/auth.js', () => ({
 vi.mock('../../src/db/brand-logo-db.js', () => ({
   BrandLogoDatabase: class {
     countBrandLogos = mocks.countLogos;
+    countLogosBySource = mocks.countLogosBySource;
+    countPendingDomainsForUser = mocks.countPendingDomainsForUser;
     insertBrandLogo = mocks.insertLogo;
     listBrandLogos = mocks.listLogos;
     getPendingLogos = mocks.getPending;
     getBrandLogoById = mocks.getLogoById;
+    setSlackThreadTs = mocks.setSlackThreadTs;
   },
 }));
 
