@@ -375,6 +375,15 @@
             "type": "boolean",
             "description": "Indicates this delivery contains updated data for a previously reported period. Buyer should replace previous period data with these totals."
           },
+          "is_final": {
+            "type": "boolean",
+            "description": "Whether this row's delivery data is final for the reporting period — equivalent to all entries in `by_package` having `is_final: true` for the same `measurement_window`. When true, the seller considers these numbers closed and is willing to invoice on them (subject to the buy's `measurement_terms.billing_measurement`). When false, numbers may still move as measurement matures (broadcast C3 → C7) or processing completes (IVT scrubbing, dedup). When absent, the seller does not distinguish provisional from final at the row level — consult per-package `is_final`. Reconciliation against the buy's `measurement_terms.billing_measurement.measurement_window` happens at the row level when this flag is present."
+          },
+          "finalized_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 timestamp at which this row became final. Present only when `is_final: true`. Anchors the buyer's reconciliation and (when later defined) dispute-window clocks against the buy's `measurement_terms.billing_measurement`. Computed as the latest `finalized_at` across the row's packages for the same measurement window."
+          },
           "pricing_model": {
             "$ref": "/schemas/enums/pricing-model.json",
             "description": "Pricing model used for this media buy"
@@ -452,7 +461,12 @@
                     },
                     "is_final": {
                       "type": "boolean",
-                      "description": "Whether this delivery data is final for the reporting period. When false, the data may be updated as measurement matures (e.g., broadcast C7 window accumulating DVR playback) or as processing completes (e.g., IVT filtering, deduplication). When true, the seller considers this data closed — no further updates for this period. Absent means the seller does not distinguish provisional from final data."
+                      "description": "Whether this delivery data is final for the reporting period. When false, the data may be updated as measurement matures (e.g., broadcast C7 window accumulating DVR playback) or as processing completes (e.g., IVT filtering, deduplication). When true, the seller considers this data closed — no further updates for this period — and is willing to invoice on it subject to the buy's `measurement_terms.billing_measurement`. Absent means the seller does not distinguish provisional from final data."
+                    },
+                    "finalized_at": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "ISO 8601 timestamp at which this package's data became final. Present only when `is_final: true`. Anchors reconciliation and (when later defined) dispute-window clocks against the buy's `measurement_terms.billing_measurement.measurement_window`."
                     },
                     "measurement_window": {
                       "type": "string",

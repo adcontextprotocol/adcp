@@ -32,6 +32,11 @@
             "post_sivt",
             "downloads_30d"
           ]
+        },
+        "finalization_deadline_hours": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Maximum hours after `reporting_period.end` (or after the close of `measurement_window`, when that supersedes) by which the authoritative party MUST publish a final record (`is_final: true` / `finalized_at` on `get_media_buy_delivery`, or `final: true` / `finalized_at` on `report_usage`). When the deadline elapses without a final record, the seller MAY fall back to its own seller-attested numbers for invoicing, and the breach is treated like any other measurement-terms breach under `makegood_policy`. Absent means no contractual deadline — finalization is best-effort and disagreements resolve out of band."
         }
       },
       "required": ["vendor"],
