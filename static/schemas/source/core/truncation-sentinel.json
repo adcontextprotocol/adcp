@@ -2,18 +2,13 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/truncation-sentinel.json",
   "title": "Truncation Sentinel",
-  "description": "Universal AdCP sentinel value that replaces a field's content when the seller has truncated it due to a size cap. Used wherever an AdCP field may carry large user-supplied content (e.g., webhook request/response payloads under a future `include_webhook_payloads` extension, large structured-event blobs, captured response bodies) and the seller has elected to surface a bounded preview instead of the full value. Receivers MUST distinguish a truncation sentinel from a structurally similar value by checking for the `_meta.truncated: true` discriminator. Schemas that may carry truncated content reference this shape via `oneOf` against the natural value type — e.g., `{ \"oneOf\": [ { \"$ref\": \"#/definitions/NaturalValue\" }, { \"$ref\": \"/schemas/core/truncation-sentinel.json\" } ] }` — with `_meta.truncated` acting as the discriminator. See snapshot-and-log.mdx § Webhook activity log pattern for the cross-resource context this sentinel was introduced under.",
+  "description": "Universal AdCP sentinel value that replaces a field's content when the seller has truncated it due to a size cap. Used wherever an AdCP field may carry large user-supplied content (e.g., webhook request/response payloads under a future `include_webhook_payloads` extension, large structured-event blobs, captured response bodies) and the seller has elected to surface a bounded preview instead of the full value. The leading-underscore key `_truncation` is a deliberate control marker — its presence on an object is the discriminator that distinguishes a truncation sentinel from the natural value the field would otherwise carry. Schemas that may carry truncated content reference this shape via `oneOf` against the natural value type — e.g., `{ \"oneOf\": [ { \"$ref\": \"#/definitions/NaturalValue\" }, { \"$ref\": \"/schemas/core/truncation-sentinel.json\" } ] }`. Receivers detect a sentinel by testing `'_truncation' in value`. See snapshot-and-log.mdx § Webhook activity log pattern for the cross-resource context this sentinel was introduced under.",
   "type": "object",
   "properties": {
-    "_meta": {
+    "_truncation": {
       "type": "object",
-      "description": "Truncation envelope. The leading underscore on `_meta` is a deliberate signal that this property is a control marker and not a payload field — it MUST NOT collide with caller-supplied keys. `additionalProperties: true` so future revisions of this contract can add classification fields without a forward-compat break.",
+      "description": "Truncation envelope. The leading underscore is a deliberate signal that this property is a control marker and not a payload field — the natural value being surfaced will not have a `_truncation` key. `additionalProperties: true` so future revisions of this contract can add classification fields without a forward-compat break.",
       "properties": {
-        "truncated": {
-          "type": "boolean",
-          "const": true,
-          "description": "Discriminator. Always `true` on a truncation sentinel; absent (or false) on a natural value. Receivers MUST check this before parsing the field as natural content."
-        },
         "original_size_bytes": {
           "type": "integer",
           "description": "Size of the untruncated original content in bytes, measured before any encoding overhead. Lets the receiver decide whether to fetch the full value via a payload-bearing surface (when one exists) or proceed with the preview.",
@@ -29,14 +24,13 @@
         }
       },
       "required": [
-        "truncated",
         "original_size_bytes"
       ],
       "additionalProperties": true
     }
   },
   "required": [
-    "_meta"
+    "_truncation"
   ],
   "additionalProperties": false
 }
