@@ -11,7 +11,7 @@
     },
     "subscriber_id": {
       "type": "string",
-      "description": "Identifies which registered webhook subscriber received this fire. Optional and absent in single-subscriber configurations (the calling principal is unambiguous). Reserved for multi-subscriber configurations where a single resource has more than one registered subscriber endpoint — the seller MUST populate this field on records returned to the calling principal so callers can attribute fires across endpoints. Buyers MUST NOT use absence as a signal that no other subscribers exist; that information is not exposed by this surface. Precedent: #3009 (multi-subscriber `reporting_webhook` on media buys in AdCP 4.0); future per-account notification reads follow the same shape."
+      "description": "Identifies which registered webhook subscriber received this fire. **Required on records from account-anchored notification channels** (`notification_configs[]` registered via `sync_accounts`) — every subscriber has a `subscriber_id` at registration time, the seller MUST echo it on every fire and every activity record. **Optional on records from per-resource push channels** (`push_notification_config` on a media buy or task) — the calling principal is unambiguous in single-subscriber configurations and the field MAY be omitted; sellers MUST populate it once `reporting_webhook` adopts multi-subscriber (per #3009 in AdCP 4.0). Buyers MUST NOT use absence as a signal that no other subscribers exist; that information is not exposed by this surface."
     },
     "fired_at": {
       "type": "string",
