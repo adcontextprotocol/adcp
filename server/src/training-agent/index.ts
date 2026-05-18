@@ -38,6 +38,7 @@ import type { TrainingContext } from './types.js';
 import { PUBLISHERS } from './publishers.js';
 import { SIGNAL_PROVIDERS } from './signal-providers.js';
 import { getPublicJwks } from './webhooks.js';
+import { getAggregatedPublicJwks, getTenantResponseSigningMaterial } from './tenants/signing.js';
 import { WALKTHROUGH_FIXTURES } from './fixtures/verification-walkthrough/index.js';
 import {
   buildRequestSigningAuthenticator,
@@ -352,6 +353,14 @@ export function createTrainingAgentRouter(): Router {
     },
   });
 
+  // Pre-warm per-tenant response-signing material so each tenant's
+  // response-signing JWK appears in /.well-known/jwks.json from the first
+  // request — buyer verifiers fetching the JWKS before any tenant has been
+  // touched would otherwise see only the shared webhook key.
+  for (const tenantId of TENANT_IDS) {
+    getTenantResponseSigningMaterial(tenantId);
+  }
+
   // Per-tenant MCP routes — each tenant gets POST /<tenant>/mcp with bearer
   // auth + rate limiting. The tenant registry handles dispatch via
   // resolveByRequest(host, pathname).
@@ -561,9 +570,21 @@ export function createTrainingAgentRouter(): Router {
 
   // JWKS for webhook-signature verification by buyers (RFC 7517).
   // Public keys only — the emitter holds the private half.
+  // JWKS aggregates every signing purpose the training agent publishes:
+  //   - shared webhook-delivery key (adcp_use: 'webhook-signing')
+  //   - per-tenant response-signing keys (adcp_use: 'response-signing')
+  //   - per-tenant webhook-signing keys (adcp_use: 'webhook-signing')
+  //   - governance signing key (adcp_use: 'governance-signing')
+  // Buyer verifiers filter by adcp_use + kid to find the right one.
   router.get('/.well-known/jwks.json', (_req: Request, res: Response) => {
     res.setHeader('Cache-Control', 'public, max-age=300');
-    res.json(getPublicJwks());
+    const aggregated = getAggregatedPublicJwks();
+    res.json({
+      keys: [
+        ...getPublicJwks().keys,
+        ...aggregated.keys,
+      ],
+    });
   });
 
   // brand.json discovery — house portfolio variant per
