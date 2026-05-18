@@ -1852,6 +1852,7 @@
           // URL in the 409 body — follow it instead of dead-ending on a toast.
           if (response.status === 409 && error.customer_portal_url) {
             btn.textContent = 'Opening billing portal...';
+            closeAgreementModal();
             window.location.href = error.customer_portal_url;
             return;
           }

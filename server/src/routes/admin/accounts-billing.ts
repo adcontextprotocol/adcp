@@ -18,7 +18,7 @@ import {
   TIER_PRESERVING_STATUSES,
   buildSubscriptionUpdate,
 } from "../../db/organization-db.js";
-import { stripe, createCustomerPortalSession } from "../../billing/stripe-client.js";
+import { stripe } from "../../billing/stripe-client.js";
 import { pickMembershipSubWithProductFetch } from "../../billing/membership-prices.js";
 
 const logger = createLogger("admin-accounts-billing");
@@ -1290,51 +1290,6 @@ export function setupAccountsBillingRoutes(
           error: "Internal server error",
           message: "Unable to look up organization",
         });
-      }
-    }
-  );
-
-  // POST /api/admin/accounts/:orgId/portal-link - Mint a Stripe Customer Portal
-  // session URL for the org. Used to unblock members whose dashboard upgrade
-  // path is gated by `blockIfActiveSubscription` so an admin can hand them a
-  // working tier-change link out-of-band.
-  apiRouter.post(
-    "/accounts/:orgId/portal-link",
-    requireAuth,
-    requireAdmin,
-    async (req, res) => {
-      const { orgId } = req.params;
-      const returnUrl =
-        typeof req.body?.return_url === "string" && req.body.return_url.length > 0
-          ? req.body.return_url
-          : "https://agenticadvertising.org/dashboard/membership";
-
-      try {
-        const pool = getPool();
-        const result = await pool.query<{ stripe_customer_id: string | null }>(
-          "SELECT stripe_customer_id FROM organizations WHERE workos_organization_id = $1",
-          [orgId]
-        );
-        if (result.rows.length === 0) {
-          return res.status(404).json({ error: "Organization not found" });
-        }
-        const customerId = result.rows[0].stripe_customer_id;
-        if (!customerId) {
-          return res
-            .status(400)
-            .json({ error: "Organization has no Stripe customer" });
-        }
-        const portalUrl = await createCustomerPortalSession(customerId, returnUrl);
-        if (!portalUrl) {
-          return res.status(502).json({ error: "Failed to create portal session" });
-        }
-        return res.json({
-          portal_url: portalUrl,
-          stripe_customer_id: customerId,
-        });
-      } catch (err) {
-        logger.error({ err, orgId }, "Error minting portal link");
-        return res.status(500).json({ error: "Failed to mint portal link" });
       }
     }
   );
