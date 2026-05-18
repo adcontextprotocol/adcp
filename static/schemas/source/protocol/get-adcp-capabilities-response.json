@@ -528,6 +528,10 @@
               "type": "boolean",
               "description": "Whether this seller can deduplicate conversion events across multiple event sources within a single goal. When true, the seller honors the deduplication semantics in optimization_goals event_sources arrays — the same event_id from multiple sources counts once. When false or absent, buyers should use a single event source per goal; multi-source arrays will be treated as first-source-wins. Most social platforms cannot deduplicate across independently-managed pixel and CAPI sources."
             },
+            "per_creative_attribution": {
+              "type": "boolean",
+              "description": "Whether the seller can attribute conversions to specific creatives within a package and surface that breakdown via media_buy_deliveries[].by_package[].by_creative[].conversions in get_media_buy_delivery. Defaults to false when omitted. Sellers that report conversions only at the line / package / placement / campaign granularity (retail-media, MMP-mediated mobile, CTV performance) declare false (or omit) and the per-creative scenario grades not_applicable for them. Sellers that surface ad-level conversion attribution (most social platforms) declare true and the scenario asserts the breakdown is populated end-to-end. Defaults to false to preserve backward compatibility."
+            },
             "supported_event_types": {
               "type": "array",
               "description": "Event types this seller can track and attribute. If omitted, all standard event types are supported.",
