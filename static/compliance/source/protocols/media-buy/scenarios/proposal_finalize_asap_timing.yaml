@@ -189,6 +189,10 @@ phases:
               domain: "acmeoutdoor.example"
             operator: "pinnacle-agency.example"
 
+        context_outputs:
+          - path: "proposals[0].insertion_order.io_id"
+            key: "io_id"
+
         validations:
           - check: response_schema
             description: "Response matches get-products-response.json schema"
@@ -204,10 +208,10 @@ phases:
       start-timing.json). This verifies the seller's input-validation layer
       accepts this form without rejecting it before the handler runs.
 
-      io_acceptance is intentionally omitted: it is only required when the
-      proposal's insertion_order carries requires_signature: true, and gating
-      this scenario on IO signing would conflate two independent conformance
-      checks. The io_acceptance path is covered by the proposal_finalize scenario.
+      io_acceptance is included so this scenario works against sellers that
+      finalize proposals with requires_signature: true (the common production
+      shape). The asap-vs-iso check is on start_time only — passing io_acceptance
+      keeps the IO gate satisfied so the start_time form is the discriminator.
 
       Response field checks (media_buy_id, status, etc.) are intentionally limited
       to response_schema here. Behavioral verification of the create_media_buy
@@ -249,6 +253,10 @@ phases:
             currency: "USD"
           start_time: "asap"
           end_time: "2026-06-30T23:59:59Z"
+          io_acceptance:
+            io_id: "$context.io_id"
+            accepted_at: "2026-03-15T14:30:00Z"
+            signatory: "ops@acmeoutdoor.example"
 
           idempotency_key: "$generate:uuid_v4#media_buy_seller_proposal_finalize_asap_timing_accept_proposal_create_media_buy"
         validations:
