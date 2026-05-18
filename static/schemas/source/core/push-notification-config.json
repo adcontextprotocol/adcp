@@ -8,7 +8,7 @@
     "url": {
       "type": "string",
       "format": "uri",
-      "description": "Webhook endpoint URL for task status notifications"
+      "description": "Webhook endpoint URL for task status notifications. The wire contract is unconstrained beyond `format: \"uri\"` — in particular, publishers SHOULD NOT enforce a destination-port allowlist by default, since buyers legitimately host receivers on non-standard TLS ports (`:9443`, `:4443`, path-routed multi-tenant gateways). The SSRF guard the protocol relies on is the IP-range check + DNS-rebinding-resistant connect pin defined in [Webhook URL validation (SSRF)](/docs/building/by-layer/L1/security#webhook-url-validation-ssrf), not port filtering. Operators who want a hardened destination-port allowlist as defense-in-depth (e.g., locked-down enterprise egress) opt in explicitly — see [Destination port: permissive by default](/docs/building/by-layer/L1/security#destination-port-permissive-by-default)."
     },
     "token": {
       "type": "string",

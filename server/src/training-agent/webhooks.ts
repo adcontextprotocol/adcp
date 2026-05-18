@@ -169,6 +169,7 @@ export function maybeEmitCompletionWebhook(opts: {
   const webhookTaskId = (opts.response.task_id as string | undefined)
     ?? `tsk_${operationId.slice(0, 32).replace(/[^A-Za-z0-9_.:-]/g, '_')}`;
   const payload: Record<string, unknown> = {
+    operation_id: operationId,
     task_id: webhookTaskId,
     task_type: TOOL_TO_TASK_TYPE[tool],
     protocol: TOOL_TO_PROTOCOL[tool],

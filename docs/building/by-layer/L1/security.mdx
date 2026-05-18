@@ -110,6 +110,16 @@ Before any outbound fetch to a counterparty-controlled URL, fetchers MUST:
 5. **Cap response size and timeouts.** Recommended: 5 MB body cap, 10 s connect, 10 s read. The only exception is the dereferenced authoritative file in the managed-network indirection pattern — second-hop only, after a pointer file's `authoritative_location` redirects to the network origin — which uses a recommended 20 MB cap because it fans out across a publisher network. Pointer files themselves stay at 5 MB. See [managed networks security](/docs/governance/property/managed-networks#security-considerations).
 6. **Do not echo fetch errors to the agent that supplied the URL.** Detailed error messages (connection refused vs. timed out vs. TLS failure) are a side-channel for probing internal network topology.
 
+#### Destination port: permissive by default
+
+Publishers SHOULD NOT enforce a destination-port allowlist on counterparty-supplied URLs (`push_notification_config.url`, collection-list `webhook_url`, TMP provider `endpoint`, etc.) by default. The URL contract is `format: "uri"` only; the protocol does not constrain ports. Buyers legitimately host webhook receivers on non-standard TLS ports — Tomcat default `:9443`, Spring Boot default `:4443`, path-routed multi-tenant gateways, and per-tenant subdomains-with-port carve-outs — and a default port allowlist silently rejects them with no recourse short of asking the publisher operator to widen the list.
+
+The SSRF guard the protocol relies on is the **IP-range check + DNS-rebinding-resistant connect pin** in steps 2–3 above, not port filtering. The reserved-range check covers the realistic SSRF threat (smuggling traffic to internal services on `10.0.0.0/8`, `127.0.0.0/8`, `169.254.169.254`, etc.); port filtering on top of a routable public IP is a marginal defense whose cost (rejecting conformant buyers) typically exceeds its benefit.
+
+Operators who want a destination-port allowlist as defense-in-depth — for example, locked-down enterprise environments where the publisher's egress firewall already restricts outbound ports — SHOULD opt in explicitly via SDK or deployment configuration, with `{443, 8443}` as a reasonable hardened-mode starting point. SDKs that ship a `DEFAULT_ALLOWED_PORTS` constant MUST default it to "no restriction" and surface `{443, 8443}` as an opt-in profile, never as a default. Sellers that activate hardened mode MUST document the allowed-port set in their operator-facing documentation so buyers can size their integration before discovering the constraint at first-webhook-delivery time.
+
+The wire-level URL contract is **unconstrained beyond `format: "uri"`**; hardened-mode port filtering is an operator-side policy choice, not a protocol-side requirement.
+
 Feature-specific security sections extend these rules with their own lifecycle and content-handling requirements:
 - [Offline reporting buckets](/docs/media-buy/media-buys/optimization-reporting#security-considerations-for-offline-delivery) — IAM-layer prefix scoping, credential revocation on account status change.
 - [Collection lists](/docs/governance/collection/tasks/collection_lists#security-considerations) — `auth_token` scope and revocation, distribution-ID validation, webhook signature normative rules.
