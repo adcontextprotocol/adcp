@@ -1134,9 +1134,9 @@
         "description": "Asset type definitions for creative manifests"
       },
       "build_inputs": {
-        "scenes": {
-          "$ref": "/schemas/creative/scenes.json",
-          "description": "Typed scene-by-scene structure for build_creative input on generative video platforms"
+        "video_brief": {
+          "$ref": "/schemas/creative/video-brief.json",
+          "description": "Typed per-segment generation brief for build_creative input on generative video platforms"
         }
       }
     },

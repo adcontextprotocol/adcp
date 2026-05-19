@@ -8,7 +8,7 @@ testable: true
 # Canonical Formats (preview)
 
 > **TL;DR for adopters reading cold:**
-> - **6 of 11 canonical formats ship `stable` at 3.1 GA** (`image`, `display_tag`, `video_hosted`, `video_vast`, `audio_hosted`, `audio_daast` — all re-encodings of IAB/VAST/DAAST). 5 stay `preview` past GA (`html5`, `image_carousel`, `sponsored_placement`, `responsive_creative`, `agent_placement`).
+> - **7 of 12 canonical formats ship `stable` at 3.1 GA** (`image`, `display_tag`, `video_hosted`, `video_vast`, `audio_hosted`, `audio_daast`, `native_in_feed` — all re-encodings of IAB / VAST / DAAST / IAB OpenRTB Native 1.2). 5 stay `preview` past GA (`html5`, `image_carousel`, `sponsored_placement`, `responsive_creative`, `agent_placement`).
 > - **v1 named formats stay first-class** through 4.x with a 5.0 sunset floor. Dual-emission is the migration mode; SDKs translate either direction. Realistic v2-only buyer-agent timing is 4.x at the earliest.
 > - **15 v1→v2 mapping registry entries at GA, 71+ of audited v1 formats are v1-only** out of the gate (need seller `canonical` field or registry PR to project to v2). v2-aware buyers see meaningfully thinner inventory than v1-aware ones through 3.x. Dual-read codepath realistic through 3.3.
 > - **Phase 4 (SDK codegen) is the gating dependency for adopter consumption.** Schemas are shippable today; the typed-tagged-union ergonomics this design earns land fully only with codegen. The runtime Ajv validator is the load-bearing gate — generated TS/Pydantic types lose `if/then` narrowing on `format_kind: "custom"` and `result_kind`.
@@ -49,7 +49,7 @@ Canonical formats collapse today's separate format registry into product-bound d
 | **`brand_kit_override`** | Inline override on `BrandRef` for per-call brand-kit tweaks (logo, colors, voice, tagline) where `brand.json` is missing, stale, or inappropriate. Same pattern as `industries` and `data_subject_contestation` on BrandRef. |
 | **`fanout_mode`** | On `sponsored_placement`: how items map to delivery — `per_item`, `multi_item_in_creative`, `single_item`. |
 | **`item_production_model`** | On `sponsored_placement`: how each per-item creative is produced. Captures multi-output generative (1 brief × N items → N creatives). |
-| **`format_kind: "custom"`** | Adopter-defined shape that doesn't fit the 11 canonicals (multi-placement takeover, branded content, AR lens, etc.). Requires `format_shape` (registry classifier) and `format_schema` (URI+digest reference to a fetchable schema). |
+| **`format_kind: "custom"`** | Adopter-defined shape that doesn't fit the 12 canonicals (multi-placement takeover, branded content, AR lens, etc.). Requires `format_shape` (registry classifier) and `format_schema` (URI+digest reference to a fetchable schema). |
 | **`format_shape`** | Recognized global pattern from the [format-shape vocabulary registry](https://adcontextprotocol.org/schemas/v3/core/format-shape-vocabulary.json). Required when `format_kind: "custom"`. |
 | **`format_schema`** | URI+digest reference to the fetchable schema describing a custom shape's `params` and `slots`. Required when `format_kind: "custom"`. Same hosting model as `platform_extensions`. |
 
@@ -64,9 +64,9 @@ Canonical formats collapse today's separate format registry into product-bound d
 | Tracking | Mixed across asset types and format definitions | Baked into each canonical format (VAST events for `video_vast`, MRAID+OM-SDK for `html5`, impression pixel for `image`) |
 | Brand identity | Sometimes redeclared as format slots | Implicit via `brand` (a [`BrandRef`](https://adcontextprotocol.org/schemas/v3/core/brand-ref.json) — `domain` plus optional `brand_id` for house-of-brands) resolving brand.json; explicit override via `brand_kit_override` inline on the BrandRef itself |
 
-## The 11 canonical formats
+## The 12 canonical formats
 
-Each canonical lives at `/schemas/formats/canonical/<name>.json`. Tracking model is **format-specific** (split by tracking model is why we have 11 instead of, say, 5).
+Each canonical lives at `/schemas/formats/canonical/<name>.json`. Tracking model is **format-specific** (split by tracking model is why we have 12 instead of, say, 5).
 
 | Canonical | What it is | Tracking |
 |---|---|---|
@@ -78,7 +78,8 @@ Each canonical lives at `/schemas/formats/canonical/<name>.json`. Tracking model
 | `video_vast` | VAST tag (URL or inline XML), VAST 2-4.x | Inherent VAST events |
 | `audio_hosted` | Direct audio file (or host-read produced via build_creative) | Standard audio impression/completion |
 | `audio_daast` | DAAST tag | Inherent DAAST events |
-| `sponsored_placement` | Retail-media catalog-driven (Amazon SP, Criteo SP, CitrusAd SP) | Per-item catalog-keyed events |
+| `sponsored_placement` | Retail-media catalog-driven (Amazon SP, Criteo SP, CitrusAd SP) — REQUIRES `source_catalog` slot. Not for IAB in-feed native, content-recommendation, or PMax-style algorithmic surfaces. | Per-item catalog-keyed events |
+| `native_in_feed` | IAB-shaped in-feed native and content-recommendation widgets (Taboola, Outbrain, Yahoo Native, AdMob Native, in-feed sponsored cards). Slots map 1:1 to IAB OpenRTB Native 1.2. | Renderer-fired `pixel_tracker` (impression / viewability / click) |
 | `responsive_creative` | Buyer asset pool, surface composes combinations (Google Responsive Display/Search Ads, Performance Max, Demand Gen; Meta Advantage+ creative) | Per-asset performance breakdown |
 | `agent_placement` | Sponsored placement composed by an AI surface in response to a user query (ChatGPT, Perplexity, voice assistants, sponsored search snippets). Distinct from `si_chat` (brand-owned conversation; user → brand's agent). | Mention-level impression + attribution |
 
@@ -146,7 +147,7 @@ When `asset_source` is `buyer_uploaded`, the buyer ships rendered assets and any
    - **Conversion pixels** (fire on the advertiser's site post-click — Meta Pixel, GA4 server-side, custom postbacks) → `sync_event_sources` / `event_log`. Campaign-scoped, NOT creative-asset-scoped. The same pixel fires for every ad in the campaign.
 6. **Targeting context** (audience vs geo vs daypart) → media-buy targeting overlay, not the format.
 
-New `format_kind` only when the CREATIVE ASSET itself is structurally different (e.g., DAI's ad-stitched continuous audio stream is structurally different from `audio_hosted`'s file-per-impression). All 50 ad formats in the v1 catalog at GA project to canonicals via this rule; zero new canonicals were added for broadcast / DOOH / native / generative.
+New `format_kind` only when the CREATIVE ASSET itself is structurally different (e.g., DAI's ad-stitched continuous audio stream is structurally different from `audio_hosted`'s file-per-impression). All 50 ad formats in the v1 catalog at GA project to canonicals via this rule; broadcast TV, DOOH, and generative all stay on existing canonicals (sibling refinement via `applies_to_channels` / `asset_source` / `slots_override`). The one exception is `native_in_feed`: IAB OpenRTB Native 1.2 in-feed and content-recommendation units have an asset-bundle composition shape (title + image + body + CTA assembled by the renderer) that isn't expressible as sibling refinement on `image` or `responsive_creative` and isn't catalog-keyed like `sponsored_placement` — a buyer agent needs the `format_kind` discriminator to route to the right assembly logic. The 12-canonical line is held *because* native_in_feed cleared this bar; it's not a precedent for every channel asking for its own canonical.
 
 ## When to use `slots_override` (and when to leave it off)
 
@@ -165,11 +166,11 @@ New `format_kind` only when the CREATIVE ASSET itself is structurally different 
 
 The rule applies symmetrically: if you're tempted to add `slots_override` only to declare measurement pixels, delivery-medium flags, or targeting context, you're using it wrong — those don't belong in slots at all (see "What `format_kind` is NOT for" above).
 
-## Custom formats — shapes the 11 canonicals don't cover
+## Custom formats — shapes the 12 canonicals don't cover
 
-The 11 canonicals cover atomic creative shapes (one image, one video, one display tag, one carousel, one catalog placement, one AI-surface mention). They don't cover composed / coordinated / sponsorship shapes that high-end publishers and broadcast networks sell as headline products: multi-placement takeover, roadblock, branded content, cross-screen sponsorship, sponsorship lockup, newsletter sponsorship, AR lens, playable, live event sponsorship.
+The 12 canonicals cover atomic creative shapes (one image, one video, one display tag, one carousel, one native in-feed unit, one catalog placement, one AI-surface mention). They don't cover composed / coordinated / sponsorship shapes that high-end publishers and broadcast networks sell as headline products: multi-placement takeover, roadblock, branded content, cross-screen sponsorship, sponsorship lockup, newsletter sponsorship, AR lens, playable, live event sponsorship.
 
-These shapes are real ad-industry product types — but they're either multi-canonical compositions (takeover = image + video + display_tag + lockup, sold as a unit) or genuinely novel structures (branded content's editorial-sponsorship production model isn't a composition of the 11). v2 handles them via a structured custom mechanism that buyer agents can reason about, NOT via free-form `ext`.
+These shapes are real ad-industry product types — but they're either multi-canonical compositions (takeover = image + video + display_tag + lockup, sold as a unit) or genuinely novel structures (branded content's editorial-sponsorship production model isn't a composition of the 12). v2 handles them via a structured custom mechanism that buyer agents can reason about, NOT via free-form `ext`.
 
 ### The mechanism
 
@@ -237,7 +238,7 @@ A `format_shape` entry is promoted to a first-class `format_kind` when:
 3. The shape has a defined tracking model (which signals fire, which trackers attach, what the impression contract is)
 4. The working group opens a per-canonical promotion issue, drafts a canonical schema (`/schemas/formats/canonical/<name>.json`), lands a fixture, and ships in the next minor release
 
-Same governance pattern that produced the 11 canonicals from the v1 audit. The promotion queue lives at [adcp#3666](https://github.com/adcontextprotocol/adcp/issues/3666); current candidates are the 9 entries in the format-shape registry.
+Same governance pattern that produced the 12 canonicals from the v1 audit. The promotion queue lives at [adcp#3666](https://github.com/adcontextprotocol/adcp/issues/3666); current candidates are the 9 entries in the format-shape registry.
 
 **Promotion is a wire-shape change for consumer code.** Any client branching on `format_kind == "custom"` silently stops matching publishers that ship a promoted shape — the seller's product now arrives as `format_kind: "<promoted_name>"`. The normative migration contract (in `format-shape-vocabulary.json`'s description):
 
@@ -278,8 +279,8 @@ Format `slots` reference canonical `asset_group_id` values from the [vocabulary 
 | `hero_asset` | image | hero_banner, collection_hero |
 | `script` | text | script_text, host_script, voiceover_script |
 | `creative_brief` | brief | brief, creative_direction, talking_points |
-| `scenes` | object | storyboard |
-| `voice_id` / `offering_ref` / `youtube_video_id` / `pin_id` | text | — |
+| `video_brief` | object | scenes, storyboard, shot_brief |
+| `voice_id` / `offering_ref` | text | — |
 | `style_reference` | image | reference_image, style_image, inspiration_image |
 | `starter_assets` | object | — |
 | `vast_tag` | vast | (video_vast default) |
@@ -508,7 +509,7 @@ The `capability_id: "meta_reels"` tag lets buyer agents recognize this as the sa
 - **Campaign / event-log surfaces** — conversion tracking (Meta Pixel, GA4, server-side events). These belong on `sync_event_sources` / `event_log` (campaign-scoped, fires per impression regardless of creative). Format declarations carry creative shape; event-log declarations carry tracking configuration. Don't put `pixel_id` in `platform_extensions` on a creative format.
 - **Media-buy surfaces** — placement selection (Feed vs Reels vs Stories). Pick the right format on the publisher catalog (`meta_reels` vs `meta_stories_video` vs `meta_feed_image`); not a per-creative extension knob.
 
-This separation — canonical params + canonical slots + extensions only for net-new fields + BrandRef for brand context + event_log for tracking — is what keeps the 11 canonicals from accumulating per-platform fields. The lint at `tests/canonical-format-conventions.test.cjs` enforces the `v1_format_ref.agent_url` AAO-hosted convention and the slot/param consistency rule.
+This separation — canonical params + canonical slots + extensions only for net-new fields + BrandRef for brand context + event_log for tracking — is what keeps the 12 canonicals from accumulating per-platform fields. The lint at `tests/canonical-format-conventions.test.cjs` enforces the `v1_format_ref.agent_url` AAO-hosted convention and the slot/param consistency rule.
 
 ## Worked example — IAB display (flexible multi-format, multi-size)
 
@@ -933,7 +934,7 @@ When NOT to use `validate_input`:
 | Tool | Who calls | What it does | Side effects |
 |---|---|---|---|
 | `validate_input` | Buyer | Dry-run validation against canonicals and/or products. Returns per-target `ok` + violations. | None (no creative registered, no synthesis triggered). |
-| `build_creative` | Buyer (calling a creative agent) | Produces a creative manifest from inputs (brief, scenes, brand). For deterministic flows: one round-trip. For nondeterministic flows: returns task with QA-loop semantics. | Synthesis happens; output manifest is returned. May register a creative on the creative agent's library if the agent supports `has_creative_library`. Does NOT register on the seller. |
+| `build_creative` | Buyer (calling a creative agent) | Produces a creative manifest from inputs (brief, video_brief, brand). For deterministic flows: one round-trip. For nondeterministic flows: returns task with QA-loop semantics. | Synthesis happens; output manifest is returned. May register a creative on the creative agent's library if the agent supports `has_creative_library`. Does NOT register on the seller. |
 | `sync_creatives` | Buyer (calling a seller) | Submits a manifest to the sales agent for the seller to register against a product. | Validates against canonical + product narrowing; registers creative on the seller's library on success; returns violations on failure. |
 
 For the third-party creative-agent flow: `validate_input` first (cheap pre-flight) → `build_creative` on the creative agent → `sync_creatives` on the sales agent. For the in-house pre-rendered flow: skip `build_creative`; `validate_input` then `sync_creatives`. For the seller-renders-from-brief flow (universalads-class): skip `build_creative` (the seller does the rendering at `sync_creatives` time); `validate_input` then `sync_creatives` directly.
@@ -1168,12 +1169,12 @@ By design, v2 doesn't introduce new vocabulary for things AdCP already handles o
 
 ### Channels covered by sibling refinement (no new canonical)
 
-The 11 canonicals cover display, video, audio, retail-media, AI-surface, and responsive-creative archetypes. Several channels look like they want their own canonical but don't — they're covered by **sibling refinement**: the same canonical's `asset_source`, `slots_override`, or `applies_to_channels` axis handles the difference.
+The 12 canonicals cover display, video, audio, native in-feed, retail-media, AI-surface, and responsive-creative archetypes. Several channels look like they want their own canonical but don't — they're covered by **sibling refinement**: the same canonical's `asset_source`, `slots_override`, or `applies_to_channels` axis handles the difference.
 
 - **Linear / addressable TV** — `video_hosted` + `applies_to_channels: ["tv"]`. Asset is still a video file with size/codec/duration constraints. The GRP/spot transaction model and addressable household targeting are media-buy + measurement concerns, not creative-format concerns.
 - **OOH / DOOH** — `image` (or `video_hosted`) + `applies_to_channels: ["dooh"]`. Asset is still a still image (or short video) with size constraints. Location-keyed measurement (Geopath, COMMB) belongs on `sync_event_sources` / `event_log`, not on the format.
-- **Generative-from-prompt** — same `format_kind` as the buyer-uploaded equivalent (image, video_hosted, audio_hosted) + `asset_source: agent_synthesized` + `slots_override` declaring the input shape (`generation_prompt: text`, `creative_brief: brief`). v2-aware buyers see "this format wants a text prompt, not image bytes."
-- **Native** — `image` + `slots_override` covering native-specific slots (icon, disclosure, author, sponsored-by). `native_standard` and `native_content` catalog entries use this pattern. Richer native templates (TemplateCreative shape) deferred to 3.2 if they prove not to fit.
+- **Generative-from-prompt** — same `format_kind` as the buyer-uploaded equivalent (image, video_hosted, audio_hosted) + `asset_source: agent_synthesized` + `slots_override` declaring the input shape (`generation_prompt: text`, `creative_brief: brief`, `video_brief: object`). v2-aware buyers see "this format wants a text prompt or structured brief, not image bytes."
+- **Video native** — `video_hosted` + `applies_to_channels: ["native"]`. The asset is still a hosted video file; the difference is renderer placement (in-feed) and is captured by the channel axis. (For non-video in-feed native units — title + image + body assembled by the renderer — use the dedicated `native_in_feed` canonical, which has a meaningfully different assembly shape.)
 
 Channels that DO need their own canonical (genuinely different shape, deferred):
 
@@ -1221,11 +1222,10 @@ This is a doc concern, not a schema concern. The schema is more strict than the 
 
 | Phase | Status | What's in it |
 |---|---|---|
-| Phase 1 | ✅ in #3307 | `asset_group_id` vocabulary registry (canonical entries + audit-grounded aliases), `scenes` schema, `zip` asset type, video/audio doc fixes |
-| Phase 2 | ✅ in #3307 | 11 canonical format definitions with structured `slots` declaration, `ProductFormatDeclaration` (format_kind discriminator + params), `validate_input` primitive, `creative.supported_formats` on get_adcp_capabilities, `brand_kit_override` inline on `BrandRef`, `platform-extension-ref`, typed inline `product_card` / `product_card_detailed`, `format_ids` + `format_options` `anyOf` on Product (dual emission legal during migration per #3765) |
+| Phase 1 | ✅ in #3307 | `asset_group_id` vocabulary registry (canonical entries + audit-grounded aliases), `video_brief` schema (renamed from earlier `scenes`), `zip` asset type, video/audio doc fixes |
+| Phase 2 | ✅ in #3307 | 12 canonical format definitions with structured `slots` declaration, `ProductFormatDeclaration` (format_kind discriminator + params), `validate_input` primitive, `creative.supported_formats` on get_adcp_capabilities, `brand_kit_override` inline on `BrandRef`, `platform-extension-ref`, typed inline `product_card` / `product_card_detailed`, `format_ids` + `format_options` `anyOf` on Product (dual emission legal during migration per #3765) |
 | Phase 3 | ✅ in #3307 | v1↔canonical-formats migration guide, 12 fully-validated reference Product fixtures + 1 get_products response fixture with bundled extensions, fixture-validation test suite (`npm run test:canonical-fixtures`) |
 | Phase 4 | ⚠️ MUST ship alongside 3.1.0 beta | Reference SDK codegen (TypeScript first, then Python), server-side flatten wrapper reference implementation, platform_extensions URI+digest fetch+cache helper, first-class typed accessors for `production_window_business_days` and other slot-level scheduling hints (otherwise adopters dig them out of the format blob and lose the v1↔v2 ergonomic win). Without Phase 4, adopters cannot consume canonical-formats cleanly — the typed-tagged-union ergonomics this PR's design earns require codegen to deliver. Without the flatten wrapper, walled gardens stay v1-only and `list_creative_formats` reality skews; with it, `format_ids` is auto-derived from `format_options` and migration is invisible to v1 consumers. **The schemas are shippable today; the SDK work is the gating dependency for adopter consumption and MUST land alongside the 3.1.0 beta, not after.** |
-| Native canonical | TBD | Deferred to 3.2 after TemplateCreative + OpenRTB Native 1.2 audit |
 
 ## Empirical projection coverage
 
@@ -1250,5 +1250,5 @@ The SDK side's v1→v2 projection (validated in [adcp-client #1815](https://gith
 - [RFC #3305](https://github.com/adcontextprotocol/adcp/issues/3305) — v2 architecture decisions and rationale
 - [PR #3307](https://github.com/adcontextprotocol/adcp/pull/3307) — Phase 1 + Phase 2 implementation, on hold pending 3.1.0 beta cycle
 - [Asset group vocabulary](https://adcontextprotocol.org/schemas/v3/core/asset-group-vocabulary.json) — canonical slot-name registry
-- [Scenes schema](https://adcontextprotocol.org/schemas/v3/creative/scenes.json) — typed scene-by-scene structure for build_creative
+- [Video Brief schema](https://adcontextprotocol.org/schemas/v3/creative/video-brief.json) — typed per-segment generation brief for build_creative (renamed from earlier `scenes`)
 - [Universal macros](/docs/creative/universal-macros) — substitution patterns referenced from canonical tracking

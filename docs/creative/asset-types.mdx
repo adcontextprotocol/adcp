@@ -34,7 +34,7 @@ The full set of asset types valid in a v2 format `slots` declaration's `asset_ty
 | `vast_tracker` | Single VAST `Tracking` event URL (decomposed) | `/schemas/core/assets/vast-tracker-asset.json` |
 | `daast_tracker` | Single DAAST `Tracking` event URL (decomposed) | `/schemas/core/assets/daast-tracker-asset.json` |
 | `pixel_tracker` | Renderer-fired HTTP tracker (image pixel or JS include) for any web-rendered canonical. `event` (impression / viewable_mrc_* / viewable_video_50 / audible_video_complete / click / custom) × `method` (img / js). Maps to IAB OpenRTB Native 1.2 `imptrackers[]` / `jstracker` / `eventtrackers[]` / `link.clicktrackers[]` event-type registry (types 1, 2, 3, 4, 500) | `/schemas/core/assets/pixel-tracker-asset.json` |
-| `object` | Structured object (image_carousel `cards`, scenes for generative video) — sub-shape declared by the canonical | (no standalone schema; per-canonical sub-shape) |
+| `object` | Structured object (image_carousel `cards`, `video_brief` for generative video) — sub-shape declared by the canonical | (no standalone schema; per-canonical sub-shape) |
 
 In a v2 manifest's `assets` map, the **slot key** is the canonical's `asset_group_id` (e.g., `image_main`, `video_main`, `script`, `cards`, `landing_page_url`) and the **value** carries the matching asset payload with its `asset_type` discriminator. The format declaration's `slots[].asset_type` tells the validator which payload schema applies.
 

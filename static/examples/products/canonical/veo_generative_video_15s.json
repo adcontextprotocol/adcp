@@ -72,7 +72,7 @@
             "max_chars": 500
           },
           {
-            "asset_group_id": "scenes",
+            "asset_group_id": "video_brief",
             "asset_type": "object",
             "required": true,
             "min": 1,
