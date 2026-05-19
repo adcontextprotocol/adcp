@@ -1,5 +1,81 @@
 # Changelog
 
+## 3.1.0-beta.1
+
+### Minor Changes
+
+- b1a45e6: spec(3.1): pre-GA clarifications batch #3 — per-format error attribution on `build_creative` + sales-guaranteed submitted-vs-sync contract.
+
+  Two real spec clarifications surfaced during the 3.1 cluster work.
+
+  **#4556 — Per-format error attribution on `BuildCreativeError`.** The multi-format `build_creative` contract is **atomic** (already documented on `BuildCreativeMultiSuccess`: "all formats must succeed or the entire request fails") — so the issue's framing of "partial success with some manifests + some errors" is non-conformant. What the spec was missing is the per-format attribution convention on the error response, so buyers can identify _which_ format(s) caused the batch to fail and retry only the failing subset. Added normative guidance on `BuildCreativeError.errors[]`:
+
+  - `error.field` carries `target_format_ids[N]` (zero-based index) — required when the error is format-scoped, mirrors the JSONPath-lite convention used elsewhere
+  - `error.details.format_id` carries the resolved `format_id` value — required when the error is format-scoped, lets buyers dispatch on format identity without re-parsing `field`
+  - Whole-batch errors (auth, governance denial, transport-level) MAY omit both
+  - Sellers SHOULD emit one error per failing format rather than collapsing — keeps per-format recovery routing unambiguous
+  - Per-format `correctable` errors are scoped to the named format only; buyers may retry just that format with corrected input
+
+  This is the spec-level diagnostic surface for the agentic self-correction loop the issue identifies — the atomicity rule stays, but buyers no longer have to retry the whole batch to figure out which format failed.
+
+  **#3822 — Sales-guaranteed submitted-vs-sync contract.** The skill ↔ storyboard contradiction surfaced during matrix-blind fixture runs: an SDK skill in adcp-client (`build-seller-agent`) instructed sales-guaranteed agents to return a task envelope for every `create_media_buy`. The `sales_guaranteed` compliance storyboard runs **multiple** create_media_buy paths and only one expects `submitted` — four shared scenarios (measurement_terms_rejected, pending_creatives_to_start, inventory_list_targeting, invalid_transitions) expect synchronous `media_buy_id` returns against the non-guaranteed fixture products listed first in the storyboard. A blind agent following the skill fails 5 of 5 grader steps.
+
+  Resolution at the spec layer: added a `### When to return Submitted vs synchronous Success (normative)` section to `docs/media-buy/task-reference/create_media_buy.mdx` documenting that the choice is **per-call**, driven by per-product `delivery_type` + the seller's `requires_io_approval` capability — not a uniform per-seller rule. Conformant SDK skills MUST NOT instruct agents to return `submitted` for every `create_media_buy` regardless of input. Cross-references the `sales-guaranteed` specialism storyboard fixture pattern (non-guaranteed products listed first so open-brief `get_products` calls resolve to synchronous-create paths). Names the issue explicitly so future readers / future SDK skill audits land on the correct contract.
+
+  The SDK skill itself lives in adcp-client and will need a follow-up fix there; this PR closes the spec-side ambiguity that allowed the bad skill to ship.
+
+  Files:
+
+  - `static/schemas/source/media-buy/build-creative-response.json` — `BuildCreativeError` description + `errors` field gain per-format attribution convention
+  - `docs/media-buy/task-reference/create_media_buy.mdx` — new "When to return Submitted vs synchronous Success" section after the Submitted Response shape
+
+  Closes #4556. Refs #3822 (spec-side resolution; SDK-side skill fix tracked in adcp-client).
+
+- 9357289: Catalog sync cluster (3.1): three companion proposals for catalog mirroring between AdCP agents and consumers (storefronts, federated marketplaces, registries). Independent and complementary — agents MAY adopt any subset.
+
+  **#4762 — `get_signals` wholesale discovery mode**
+
+  - `signals/get-signals-request.json` adds `discovery_mode` enum (`brief` default, `wholesale`). Wholesale mode bans `signal_spec` / `signal_ids` and returns the agent's full priced catalog, paginated. Symmetric with `get_products buying_mode: "wholesale"`.
+  - `signals/get-signals-response.json` adds `incomplete[]` (scopes: `signals`, `pricing`, `catalog`) so partial completion is signalled inline rather than via async/Submitted handoff. `signals` becomes conditionally required (omitted when `unchanged: true`).
+  - `protocol/get-adcp-capabilities-response.json` adds `signals.discovery_modes`. Agents not declaring `"wholesale"` MAY return `INVALID_REQUEST` for wholesale calls.
+  - `docs/signals/tasks/get_signals.mdx` documents wholesale enumeration, authorization/provenance preservation for marketplace signals, pricing scope, and capability probing.
+
+  **#4761 — `catalog_version` conditional fetch (ETag-style)**
+
+  - `media-buy/get-products-request.json` and `signals/get-signals-request.json` add `if_catalog_version` and `if_pricing_version` opaque tokens.
+  - `media-buy/get-products-response.json` and `signals/get-signals-response.json` add `catalog_version`, `pricing_version`, and `unchanged`. When `unchanged: true`, `products` / `signals` MUST be omitted and `catalog_version` MUST be echoed — encoded as an explicit `oneOf` so the unchanged response is schema-valid without breaking the standard required-payload contract.
+  - Tokens are opaque and scoped to the request-parameter tuple that produced them. Pre-v3.1 agents that ignore the conditional fields simply return the full payload — semantically correct, just inefficient.
+  - Pagination interaction: if the catalog mutates mid-pagination, sellers SHOULD return the new `catalog_version` on each page; consumers SHOULD restart from `cursor: null` on a mid-pagination version change.
+
+  **#4763 — Per-agent catalog change feed**
+
+  - New `specs/catalog-change-feed.md` modeled on `specs/registry-change-feed.md`. UUID-v7 cursor-based event log, one feed per agent, denormalized payloads, optional webhook subscriptions.
+  - Event types: `product.{created,updated,priced,removed}`, `signal.{created,updated,priced,removed}`, `catalog.bulk_change` (fast-forward for rate-card sweeps).
+  - `protocol/get-adcp-capabilities-response.json` adds top-level `catalog_change_feed` declaration (`supported`, `retention_window_days` ≥7, `webhooks_supported`, `event_types[]`).
+  - Endpoints (`GET /catalog/events`, `POST /catalog/subscriptions`) live on the agent itself, not the registry. Authorization scope mirrors wholesale enumeration.
+
+  Additive across the board for 3.0-conformant agents: new optional fields, new conditional schemas, new capability stanzas, new spec doc. Agents MAY implement any combination: conditional-fetch alone for cheap probes against stable catalogs, the full feed for high-frequency mirroring, wholesale-only as a transitional step. Reference implementations land in the prebid salesagent as part of v3.1 conformance prep.
+
+  **Validator obligation for 3.1 SDKs (read carefully):** the 3.1 `get_products` / `get_signals` response schema makes `cache_scope` required to enforce the two-layer cache safety invariant — a seller that silently omits `cache_scope` on an account-scoped response would cause buyers to mis-key the cache and serve account-overlay payloads to other accounts. Pre-3.1 sellers correctly omit `cache_scope` and remain conformant to their declared version. SDKs that validate strictly against the 3.1 schema MUST select the validator based on the server-declared `adcp_version` (release-precision version negotiation, 3.1): for responses with `adcp_version` starting `3.0`, the 3.1 cache_scope-required constraint MUST be relaxed. This is a tightening within 3.1, not a 3.0 break — but adopter SDKs that hardcode the 3.1 schema without version-pinned validation will reject correct 3.0 traffic, so the obligation is normative.
+
+  Refs #4761, #4762, #4763.
+
+### Patch Changes
+
+- 1a900c6: Docs typo fix: two "behaviour" → "behavior" in `docs/reference/release-notes.mdx` to match the repo-wide US-spelling convention (158 vs 2 before this fix).
+
+  Opened to smoke-test the new Argus AI PR review workflow (#3488).
+
+- 9357289: fix(ci): OpenAPI generator merge-preserves hand-authored registry.yaml paths
+
+  PR #4771 added 685 lines of brand-registry endpoint documentation directly to `static/openapi/registry.yaml` because those routes (brand.json, brand-logos upload/list/review, brand ownership, brand wiki, brand-logos moderator queue/preview) are docs-only — the Express routes exist but were never given Zod schemas. The TypeScript Build CI step runs `npm run build:openapi && git diff --exit-code` and treats any drift as a failure, so #4771 was merged with the freshness lint already failing on main and every subsequent PR's CI has been red on the same step.
+
+  Rather than force every adopter to wire Zod schemas before they can ship a docs change, the generator now reads the on-disk yaml and unions its tracked output with anything already there — paths, component schemas, and tag descriptors. Generator output wins on conflicts so Zod-backed paths remain the source of truth; docs-only entries (the brand-registry surface, and any future hand-authored additions) are preserved across regens.
+
+  Brand Logos and Brand Wiki tag descriptions moved into `scripts/generate-openapi.ts`'s `TAG_DESCRIPTIONS` map so they emit in their documented position (between Brand Resolution and Property Resolution) instead of getting appended to the tag list.
+
+  `static/openapi/registry.yaml` carries a 2-line whitespace normalization from the YAML library's standard re-serialization — quoted string forms collapse to unquoted where YAML permits, semantically identical.
+
 ## 3.1.0-beta.0
 
 ### Minor Changes

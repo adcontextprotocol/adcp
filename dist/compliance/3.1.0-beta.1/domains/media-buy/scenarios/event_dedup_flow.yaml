@@ -1,0 +1,399 @@
+id: media_buy_seller/event_dedup_flow
+version: "1.0.0"
+title: "Seller deduplicates the same event across multiple registered event sources"
+category: media_buy_seller
+summary: "Verifies that a seller advertising conversion_tracking.multi_source_event_dedup can register multiple event sources for the same buy and deduplicate inbound events by event_id so the same conversion from a pixel and a CAPI source counts once, not twice. Sibling to media_buy_seller/performance_buy_flow gated on the dedup sub-capability bit: sellers that don't advertise multi-source dedup grade not_applicable."
+track: media_buy
+
+# Gate: scenario runs only when the seller declares
+# conversion_tracking.multi_source_event_dedup equals true. Sellers that
+# don't (most social platforms with independently-managed pixel + CAPI
+# pipelines, retail-media networks attributing per-source) grade
+# `not_applicable`, not failing. multi_source_event_dedup is a sub-capability
+# of conversion_tracking — gating on this bit rather than on
+# conversion_tracking presence avoids over-claiming against the broad
+# performance-tracking community.
+requires_capability:
+  path: media_buy.conversion_tracking.multi_source_event_dedup
+  equals: true
+
+required_tools:
+  - sync_event_sources
+  - create_media_buy
+  - log_event
+  - get_media_buy_delivery
+  - comply_test_controller
+
+invariants:
+  - status.monotonic
+
+narrative: |
+  "Multi-source event dedup" is the discriminating capability of sellers
+  whose attribution pipelines can deduplicate the same conversion observed
+  via two independent ingestion paths — typically a website pixel and a
+  server-side Conversions API (CAPI) feed, sharing event_id. When the
+  seller advertises multi_source_event_dedup: true, buyers can register
+  both sources on the same optimization_goal and rely on the seller
+  attributing each unique event_id once.
+
+  Most adopters cannot do this. Independently-managed pixel and CAPI
+  pipelines in social platforms attribute per source; retail-media networks
+  attribute at the line / placement level without cross-source dedup;
+  broadcast / CTV performance products dedup only within a single MMP feed.
+  Gating this scenario on the explicit sub-capability bit is what keeps
+  honest implementations from failing.
+
+  Discriminating behaviors this scenario verifies:
+  1. sync_event_sources can register multiple event sources for the same
+     buyer account, each with its own event_source_id but overlapping
+     event_types and allowed_domains.
+  2. create_media_buy accepts an event-kind optimization_goal whose
+     event_sources array contains both source ids — the seller commits to
+     deduplicating across them.
+  3. log_event accepts the SAME event_id from BOTH sources without
+     rejecting either as a duplicate (both API-level acks succeed —
+     the dedup happens in attribution, not ingestion).
+  4. get_media_buy_delivery reports the cumulative conversion count as 1,
+     not 2. The point of multi_source_event_dedup: true is that the same
+     event_id from two registered sources counts once.
+
+  Sellers without this capability would either reject the second log_event
+  call (overly conservative) or count both (the silent-double-count failure
+  mode this scenario guards against). The bit gates the scenario; the
+  assertion is the cumulative count.
+
+  Per-event-source conversion breakdown (conversions split per
+  event_source_id within media_buy_deliveries[].totals) is deliberately NOT
+  asserted: that field isn't first-class in delivery-metrics.json today.
+  A follow-up scenario gated on a sub-capability bit will land per-source
+  attribution once the breakdown shape is in spec.
+
+agent:
+  interaction_model: media_buy_seller
+  capabilities:
+    - sells_media
+    - conversion_tracking
+  examples:
+    - "Social platforms with unified pixel+CAPI dedup (rare — most don't)"
+    - "DSPs operating their own attribution graph"
+    - "Walled-garden platforms with deterministic cross-source dedup"
+
+caller:
+  role: buyer_agent
+  example: "Pinnacle Agency (buyer)"
+
+prerequisites:
+  description: |
+    The seller must implement comply_test_controller with simulate_delivery
+    accepting a `conversions` param so the dedup outcome is observable via
+    get_media_buy_delivery without a real attribution run.
+
+    The buyer fixture supplies a brand, an operator, and two event-source
+    definitions (a website pixel and a CAPI feed) sufficient to exercise
+    multi-source registration and dedup.
+  test_kit: "test-kits/acme-outdoor.yaml"
+  controller_seeding: true
+
+fixtures:
+  products:
+    - product_id: "dedup_performance_q2"
+      delivery_type: "non_guaranteed"
+      channels: ["display"]
+      format_ids:
+        - id: "display_300x250"
+  pricing_options:
+    - product_id: "dedup_performance_q2"
+      pricing_option_id: "auction_cpm"
+      pricing_model: "cpm"
+      currency: "USD"
+      floor_price: 1.50
+
+phases:
+
+  - id: setup
+    title: "Establish account and discover products"
+    steps:
+      - id: sync_accounts
+        title: "Establish account"
+        task: sync_accounts
+        schema_ref: "account/sync-accounts-request.json"
+        response_schema_ref: "account/sync-accounts-response.json"
+        doc_ref: "/accounts/tasks/sync_accounts"
+        stateful: true
+        expected: |
+          Return the account with account_id and status active.
+        sample_request:
+          accounts:
+            - brand:
+                domain: "acmeoutdoor.example"
+              operator: "pinnacle-agency.example"
+              billing: "operator"
+          idempotency_key: "$generate:uuid_v4#event_dedup_flow_setup_sync_accounts"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-accounts-response.json schema"
+          - check: field_present
+            path: "accounts[0].account_id"
+            description: "Account has a platform-assigned ID"
+
+      - id: get_products_for_dedup
+        title: "Discover products supporting multi-source event dedup"
+        task: get_products
+        schema_ref: "media-buy/get-products-request.json"
+        response_schema_ref: "media-buy/get-products-response.json"
+        doc_ref: "/media-buy/task-reference/get_products"
+        stateful: false
+        expected: |
+          Return at least one product whose conversion_tracking capabilities
+          include multi_source_event_dedup.
+        sample_request:
+          buying_mode: "brief"
+          brief: "Performance display, US, adults 25-54. Target CPA $40 with pixel + CAPI conversion sources; same event_id from both must dedup."
+          required_capabilities:
+            - "conversion_tracking"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+        validations:
+          - check: response_schema
+            description: "Response matches get-products-response.json schema"
+          - check: field_present
+            path: "products"
+            description: "Response contains products"
+
+  - id: register_two_event_sources
+    title: "Register a pixel and a CAPI source sharing event types"
+    narrative: |
+      Two event_sources in a single sync_event_sources call — a website
+      pixel and a server-side CAPI feed. Both observe the same purchase
+      events; the buyer expects the seller to dedup by event_id when both
+      sources are attached to the same optimization_goal.
+
+    steps:
+      - id: sync_event_sources
+        title: "Register pixel + CAPI as two sources on one account"
+        task: sync_event_sources
+        schema_ref: "media-buy/sync-event-sources-request.json"
+        response_schema_ref: "media-buy/sync-event-sources-response.json"
+        doc_ref: "/media-buy/task-reference/sync_event_sources"
+        stateful: true
+        expected: |
+          Return both event_sources with event_source_id, setup.snippet,
+          and action: created. Both ids are referenced in the next phase's
+          create_media_buy call.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          event_sources:
+            - event_source_id: "acmeoutdoor_website_pixel"
+              name: "Acme Outdoor website pixel"
+              event_types: ["purchase", "add_to_cart"]
+              allowed_domains: ["acmeoutdoor.example"]
+            - event_source_id: "acmeoutdoor_website_capi"
+              name: "Acme Outdoor server-side CAPI"
+              event_types: ["purchase", "add_to_cart"]
+              allowed_domains: ["acmeoutdoor.example"]
+          idempotency_key: "$generate:uuid_v4#event_dedup_flow_register_two_event_sources_sync_event_sources"
+        validations:
+          - check: response_schema
+            description: "Response matches sync-event-sources-response.json schema"
+          - check: field_present
+            path: "event_sources[0].event_source_id"
+            description: "First event source has a platform-assigned ID"
+          - check: field_present
+            path: "event_sources[1].event_source_id"
+            description: "Second event source has a platform-assigned ID"
+
+  - id: create_buy_with_dedup_goal
+    title: "Create a performance buy whose goal attaches BOTH event sources"
+    narrative: |
+      The buyer creates a media buy whose package carries an event-kind
+      optimization_goal binding to BOTH the pixel and the CAPI source.
+      Target is target_cpa $40 on purchase events; the seller commits to
+      deduplicating event_ids across the two sources.
+
+    steps:
+      - id: create_media_buy_dedup
+        title: "Create media buy with two event_sources on one goal"
+        task: create_media_buy
+        schema_ref: "media-buy/create-media-buy-request.json"
+        response_schema_ref: "media-buy/create-media-buy-response.json"
+        doc_ref: "/media-buy/task-reference/create_media_buy"
+        stateful: true
+        expected: |
+          Create the media buy. Response carries a media_buy_id used for
+          subsequent log_event and get_media_buy_delivery calls.
+        sample_request:
+          brand:
+            domain: "acmeoutdoor.example"
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          start_time: "2026-06-01T00:00:00Z"
+          end_time: "2026-06-30T23:59:59Z"
+          packages:
+            - product_id: "dedup_performance_q2"
+              budget: 20000
+              pricing_option_id: "auction_cpm"
+              optimization_goals:
+                - kind: "event"
+                  event_sources:
+                    - event_source_id: "acmeoutdoor_website_pixel"
+                      event_type: "purchase"
+                    - event_source_id: "acmeoutdoor_website_capi"
+                      event_type: "purchase"
+                  target:
+                    kind: "cost_per"
+                    value: 40.00
+                  priority: 1
+          idempotency_key: "$generate:uuid_v4#event_dedup_flow_create_buy_with_dedup_goal_create_media_buy"
+        context_outputs:
+          - name: media_buy_id
+            path: "media_buy_id"
+        validations:
+          - check: response_schema
+            description: "Response matches create-media-buy-response.json schema"
+          - check: field_present
+            path: "media_buy_id"
+            description: "Media buy has a platform-assigned ID"
+
+  - id: log_same_event_id_from_both_sources
+    title: "Log the same event_id from BOTH registered sources"
+    narrative: |
+      The buyer logs the SAME purchase event_id from the pixel AND from
+      the CAPI source. Both calls succeed at the API level — the dedup
+      happens in attribution, not ingestion. A seller that rejects the
+      second call as a duplicate at the API level is over-claiming
+      ingestion-level dedup, which is not what multi_source_event_dedup
+      asserts.
+
+    steps:
+      - id: log_event_from_pixel
+        title: "Log purchase event from the pixel"
+        task: log_event
+        schema_ref: "media-buy/log-event-request.json"
+        response_schema_ref: "media-buy/log-event-response.json"
+        doc_ref: "/media-buy/task-reference/log_event"
+        stateful: true
+        expected: |
+          Acknowledge the event with accepted status.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          event_source_id: "acmeoutdoor_website_pixel"
+          events:
+            - event_type: "purchase"
+              event_id: "evt_dedup_001"
+              event_time: "2026-06-05T14:30:00Z"
+              user_match:
+                hashed_email: "a000000000000000000000000000000000000000000000000000000000000010"
+              custom_data:
+                order_total: 199.99
+                currency: "USD"
+          idempotency_key: "$generate:uuid_v4#event_dedup_flow_log_same_event_id_from_both_sources_log_event_pixel"
+        validations:
+          - check: response_schema
+            description: "Response matches log-event-response.json schema"
+
+      - id: log_event_from_capi
+        title: "Log the SAME event_id from the CAPI source"
+        task: log_event
+        schema_ref: "media-buy/log-event-request.json"
+        response_schema_ref: "media-buy/log-event-response.json"
+        doc_ref: "/media-buy/task-reference/log_event"
+        stateful: true
+        expected: |
+          Acknowledge the event with accepted status. The seller MUST NOT
+          reject this as a duplicate at the API level — dedup is an
+          attribution-time concern, asserted via the totals.conversions
+          check in the next phase.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          event_source_id: "acmeoutdoor_website_capi"
+          events:
+            - event_type: "purchase"
+              event_id: "evt_dedup_001"
+              event_time: "2026-06-05T14:30:00Z"
+              user_match:
+                hashed_email: "a000000000000000000000000000000000000000000000000000000000000010"
+              custom_data:
+                order_total: 199.99
+                currency: "USD"
+          idempotency_key: "$generate:uuid_v4#event_dedup_flow_log_same_event_id_from_both_sources_log_event_capi"
+        validations:
+          - check: response_schema
+            description: "Response matches log-event-response.json schema"
+
+  - id: assert_single_attribution
+    title: "Delivery reports the deduplicated event ONCE, not twice"
+    narrative: |
+      The discriminating assertion: get_media_buy_delivery surfaces
+      totals.conversions equal to the count of unique event_ids attributed
+      to the buy. simulate_delivery injects conversions: 1 reflecting the
+      single unique event_id; the seller's response totals.conversions must
+      equal 1, not 2. If the seller failed to dedup, the cumulative count
+      would double-count and the assertion fails.
+
+    steps:
+      - id: simulate_deduplicated_delivery
+        title: "Inject impressions + ONE attributed conversion"
+        task: comply_test_controller
+        requires_tool: comply_test_controller
+        stateful: true
+        expected: |
+          The test controller acknowledges the simulated delivery with the
+          deduplicated conversion count (1, not 2 — the same event_id from
+          two sources is one conversion).
+        sample_request:
+          account:
+            sandbox: true
+          scenario: "simulate_delivery"
+          params:
+            media_buy_id: "$context.media_buy_id"
+            impressions: 150000
+            clicks: 3200
+            conversions: 1
+            reported_spend:
+              amount: 2400.00
+              currency: "USD"
+        validations:
+          - check: field_value
+            path: "success"
+            allowed_values: [true]
+            description: "Delivery simulation succeeds"
+
+      - id: get_dedup_delivery
+        title: "Get delivery and verify single conversion attribution"
+        task: get_media_buy_delivery
+        schema_ref: "media-buy/get-media-buy-delivery-request.json"
+        response_schema_ref: "media-buy/get-media-buy-delivery-response.json"
+        doc_ref: "/media-buy/task-reference/get_media_buy_delivery"
+        stateful: true
+        expected: |
+          Delivery response includes totals.conversions equal to 1 — the
+          same event_id from two registered sources counts once. A seller
+          double-counting would report 2 and fail this assertion.
+        sample_request:
+          account:
+            brand:
+              domain: "acmeoutdoor.example"
+            operator: "pinnacle-agency.example"
+          media_buy_ids:
+            - "$context.media_buy_id"
+          include_package_daily_breakdown: true
+        validations:
+          - check: response_schema
+            description: "Response matches get-media-buy-delivery-response.json schema"
+          - check: field_value
+            path: "media_buy_deliveries[0].totals.conversions"
+            value: 1
+            description: "Cumulative conversions equals 1 — the same event_id from two sources dedups to one (the discriminating assertion of multi_source_event_dedup)"
