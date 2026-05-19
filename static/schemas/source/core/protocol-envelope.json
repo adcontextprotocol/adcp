@@ -2,12 +2,16 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "/schemas/core/protocol-envelope.json",
   "title": "Protocol Envelope",
-  "description": "Standard envelope structure for AdCP task responses. This envelope is added by the protocol layer (MCP, A2A, REST) and wraps the task-specific response payload. Task response schemas should NOT include these fields - they are protocol-level concerns.",
+  "description": "Canonical envelope field-set for AdCP task responses, normalized across transports. Defines the protocol-layer fields (status, context_id, context, task_id, timestamp, replayed, adcp_error, push_notification_config, governance_context) and the conceptual `payload` grouping for task-specific response data. The serialization rules — whether envelope fields appear as siblings of payload fields, as a nested `payload` object, or via transport-native containers — are transport-specific and normative per transport (see Transport serialization below).",
   "type": "object",
   "properties": {
     "context_id": {
       "type": "string",
-      "description": "Session/conversation identifier for tracking related operations across multiple task invocations. Managed by the protocol layer to maintain conversational context."
+      "description": "Session/conversation identifier for tracking related operations across multiple task invocations. Managed by the protocol layer to maintain conversational context. Distinct from `context` (per-request opaque echo, see below)."
+    },
+    "context": {
+      "$ref": "/schemas/core/context.json",
+      "description": "Per-request opaque caller-supplied correlation object echoed unchanged in the response. Used for buyer-side tracking (UI session IDs, trace IDs, custom metadata) that the agent MUST preserve byte-for-byte without parsing. Distinct from `context_id` (server-managed session identifier) — `context` is caller-owned echo, `context_id` is server-owned session scope. Both MAY appear on the same response."
     },
     "task_id": {
       "type": "string",
@@ -49,14 +53,10 @@
     },
     "payload": {
       "type": "object",
-      "description": "The actual task-specific response data. This is the content defined in individual task response schemas (e.g., get-products-response.json, create-media-buy-response.json). Contains only domain-specific data without protocol-level fields.",
+      "description": "Conceptual grouping for the task-specific response data defined by individual task response schemas (e.g., get-products-response.json, create-media-buy-response.json). `payload` is a documentary construct — it is NOT a required wire field, and its on-the-wire shape depends on transport (see Transport serialization below). Task response schemas declare body fields without wrapping them in a `payload` object; the wire representation places those body fields per transport convention. On MCP the body fields appear as siblings of envelope fields at the root of the tool response; on A2A they appear inside `task.artifacts[0].parts[].DataPart`; on REST they appear at the root of the JSON body.",
       "additionalProperties": true
     }
   },
-  "required": [
-    "status",
-    "payload"
-  ],
   "additionalProperties": true,
   "not": {
     "anyOf": [
@@ -169,12 +169,13 @@
     }
   ],
   "notes": [
-    "Task response schemas (e.g., get-products-response.json) define ONLY the payload structure",
-    "Protocol implementations (MCP, A2A, REST) wrap the payload with this envelope",
-    "Different protocols may use different serialization formats but maintain the same semantic structure",
-    "MCP may represent this via tool response content fields and metadata",
-    "A2A may represent this via assistant messages with structured data",
-    "REST may use HTTP headers for status/task metadata and JSON body for payload",
-    "The envelope ensures consistent behavior across all protocol implementations"
+    "Task response schemas (e.g., get-products-response.json) define ONLY the body fields; protocol-layer fields live on this envelope.",
+    "Transport serialization (normative):",
+    "  - MCP: envelope fields and task-body fields are siblings at the root of the tool response. The `payload` object is NOT serialized as a nested key — its body fields are flattened to the root alongside `status`, `context_id`, `context`, etc. This matches MCP's native `structuredContent` convention and is what shipping SDKs (@adcp/client) emit. Conformant MCP receivers parse from the flat root; receivers that expect a nested `payload` key MUST migrate.",
+    "  - A2A: envelope fields map to A2A's native task metadata (`task.status.state` carries `status`, `task.contextId` carries `context_id`, `task.id` carries `task_id`). Task-body fields appear inside `task.artifacts[0].parts[].DataPart` for final states and `task.status.message.parts[].DataPart` for interim states. See `a2a-response-extraction.mdx`.",
+    "  - REST: envelope fields MAY ride on HTTP headers (e.g., `X-AdCP-Status`, `X-AdCP-Context-Id`) or as JSON body siblings; body fields appear at the JSON body root. Implementers choosing the header path SHOULD also mirror to body siblings for non-streaming callers.",
+    "Across all three: envelope and body fields are conceptually a single response object. A task response schema MAY declare body fields with the same name as envelope fields (e.g., `errors[]` body-level for per-record validation results vs envelope-level for fatal task failure) and the two MUST be treated as distinct fields by name within their respective namespaces — see `error-handling.mdx#envelope-vs-payload-errors-the-two-layer-model`.",
+    "`status` and `payload` are intentionally NOT required on this schema. `status` may be carried via transport-native state on A2A (`task.status.state`); `payload` is a documentary grouping construct, never a required wire field. See `mcp-guide.mdx` and `a2a-guide.mdx` for the wire-level patterns receivers MUST implement.",
+    "Receivers MUST handle absence of an envelope field (e.g., `replayed` omitted) as the field's documented default — see each field's `default` clause."
   ]
 }
