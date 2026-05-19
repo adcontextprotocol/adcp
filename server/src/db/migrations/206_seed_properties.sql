@@ -18,6 +18,10 @@
 --
 -- See: issue #4778 for the retirement rationale, PR #4773 (Dockerfile asset
 -- hygiene that surfaced the 8.7 MB blob).
+--
+-- Salvage path: the original 1,250 publisher / 53,422 property / 62,440
+-- identifier dataset is preserved in git history. To recover it:
+--   git show 89619fb060:server/src/db/migrations/206_seed_properties.sql
 
 -- intentional no-op; keep the version slot so schema_migrations stays linear
 SELECT 1;
